@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-11] deploy | v1.51.1 PROD — Testing e2e (suite reparada + gobernanza caja) + unit estable · `dev=main`
+
+**Sesión de testing acordada con GO** ("arrancar con testing e2e, ir autónomo hasta PROD"). PR **#180** `dev→main` merged, release **v1.51.1** `--latest`. **Sin migraciones** (test-only, sin cambio de comportamiento). Vercel auto-deploy desde `main`. Suites: **unit 625/625 · e2e 129/129** (owner+cajero+supervisor+rrhh).
+
+- **La suite e2e estaba podrida:** 11 smoke tests fallaban tras ~50 versiones de evolución de UI (selectores/rutas viejos). Reescritos contra la UI real de v1.51:
+  - **01 dashboard** — tab "General" ya no existe → chips de área (Todo) + sub-tabs (Insights/Métricas); "Mi Plan" migró del sidebar al menú de avatar (Perfil → /mi-cuenta).
+  - **02 inventario** — el CRUD de productos se movió a `/productos` (ProductoFormPage); SKU opcional (auto-gen). Buscador con timeout robusto.
+  - **03 movimientos** — `/movimientos` quedó **huérfano** (redirige a `/inventario`); ahora testea el redirect + los tabs reales "Agregar stock"/"Quitar stock".
+  - **05 caja** — U2: el cierre exige un **arqueo parcial previo** (gate); el test acepta tanto el modal de cierre como el gate.
+  - **08 clientes** — **DNI y teléfono ahora obligatorios**; baja vía **soft-delete A6** (botón "Dar de baja" → modal).
+  - **09 suscripción** — acceso a la cuenta vía menú de avatar (no hay link "Mi Plan" en el sidebar).
+  - **14 coherencia** — el badge de alertas **capea en "9+"** → no comparar por igualdad cuando está capeado.
+- **Tests e2e nuevos — gobernanza de caja** (plan `caja.plan.md`, escenarios "fuera de alcance unit"): **A2** apertura de caja a nombre de otro cajero ("Abrir caja para") + **traspaso entre cajas** (ISS-193, modal "Transferir a otra caja"). Defensivos: se omiten si la precondición de estado no está en el DEV compartido.
+- **Unit suite — `vitest fileParallelism:false`:** correr los 43 archivos en paralelo levanta un jsdom por worker, agota la RAM (12 cores, ~5.6 GB libres) y mata **toda** la suite con un error genérico (`Cannot read properties of undefined (reading 'config')`) — falla aunque los tests estén bien. Capar `maxWorkers` a 4 NO alcanzó; secuencial = **625 verdes** estable (~90 s).
+- **Wiki:** `testing.md` actualizado (era stale: decía 474 tests + nombres de spec viejos). Pendiente futuro de testing: e2e mutante real de traspaso/cierre end-to-end, cobertura POS de costo G4 por rol, usuarios DEPOSITO/CONTADOR.
+
 ## [2026-06-10] deploy | v1.51.0 PROD — RRHH diferidos (tardanza + fichado QR + portal) · `dev=main`
 
 **v1.51.0 a PROD** (GO: "ahora a PROD"). PR **#179** `dev→main` merged, release v1.51.0 `--latest`, mig **204** en PROD (antes del merge), Vercel production deploy desde `main` (commit 672ef264). PROD v1.50.0 → **v1.51.0**. **No quedan diferidos de RRHH.** Suite **625**. Detalle de las 3 features en la entrada `update` de abajo.

@@ -9,7 +9,13 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 10 de Junio, 2026
+**Última actualización:** 11 de Junio, 2026
+
+---
+
+## v1.51.1 — Testing e2e: suite reparada + gobernanza de caja + unit estable (PROD ✅)
+
+Sesión de **testing** (sin cambios de comportamiento de la app, **sin migraciones**). La suite e2e estaba podrida tras ~50 versiones de evolución de UI: **11 smoke tests** reescritos contra la UI real (dashboard, inventario→`/productos`, `/movimientos` huérfano→tabs Agregar/Quitar stock, caja U2 con gate de arqueo, clientes DNI/tel obligatorios + baja A6, suscripción vía avatar, badge de alertas que capea en "9+"). **Tests e2e nuevos de gobernanza de caja** del plan `caja.plan.md` (fuera de alcance unit): A2 apertura a nombre de cajero ajeno + traspaso entre cajas (ISS-193). **Unit:** `vitest fileParallelism:false` (el paralelismo agotaba la RAM y mataba la suite). Verificación: **unit 625/625 · e2e 129/129** · build verde · PR #180. Detalle en `wiki/development/testing.md`.
 
 ---
 

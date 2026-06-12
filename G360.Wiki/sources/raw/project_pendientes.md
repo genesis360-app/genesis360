@@ -55,9 +55,12 @@ Auditoría de flujos cruzados entre módulos (verificada contra código). **Quic
 
 **Pendientes futuros de testing (no bloqueantes):** e2e mutante real de traspaso/cierre end-to-end (hoy defensivo), cobertura POS de visibilidad de costo G4 por rol, usuarios DEPOSITO/CONTADOR para specs de rol.
 
-### ▶ PRÓXIMA SESIÓN — pendiente de GO
+### ▶ PRÓXIMA SESIÓN — candidatos
 
-**Relevamiento Inventario/WMS** (`relevamiento-inventario-reglas-negocio.html`, GO lo contesta offline) — sigue pendiente de responder.
+1. **#7 Cron externo para sweeps lazy** (auditoría, infra GH Actions ya lista): workflows análogos a `birthday-notifications.yml` para intereses CC / reservas vencidas / servicios recurrentes / notifs CC. Barato y de alto valor (los jobs dejan de depender de que alguien abra la página).
+2. **#8 RLS por sucursal + portal empleado** (deuda de seguridad, feature mediana-grande): el aislamiento es solo client-side.
+3. **Pendiente de GO (offline):** responder relevamiento **Inventario/WMS** (`relevamiento-inventario-reglas-negocio.html`) · conseguir cuenta B2B de courier (Andreani 1ro) para destrabar **EN6**.
+4. Diferidos menores nuevos: link `traslados.envio_id` → envío `traslado_interno` · cheque de tercero depositado/cobrado → cuenta de origen/bóveda.
 
 ---
 

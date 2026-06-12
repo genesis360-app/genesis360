@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.52.0 — Auditoría de procesos: módulos conectados (caja/envíos/devoluciones) (PROD ✅)
+
+Quick wins 1+2+3 de la **auditoría de flujos cruzados** (2026-06-11, verificada contra código). **Sin migraciones.** (1) **Cobranza CC impacta la caja**: las 3 vías (ficha/POS/Caja) registran `ingreso` real si es efectivo o `ingreso_informativo` si no — cierra el descuadre histórico de arqueo; sin caja imputable → warning. (2) **Anular venta cancela sus envíos `pendiente`** (en curso: avisa). (3) **Envío devuelto → CTA "Registrar devolución de la venta"** (`/ventas?id=X&devolver=1`). Lógica pura `movimientoCajaCobranza` +7 tests → suite **632**. Hallazgos restantes de la auditoría (traslado entre sucursales, cheques conectados, EFs huérfanas, cron externo) en `project_pendientes.md`. PR #182.
+
+---
+
 ## v1.51.1 — Testing e2e: suite reparada + gobernanza de caja + unit estable (PROD ✅)
 
 Sesión de **testing** (sin cambios de comportamiento de la app, **sin migraciones**). La suite e2e estaba podrida tras ~50 versiones de evolución de UI: **11 smoke tests** reescritos contra la UI real (dashboard, inventario→`/productos`, `/movimientos` huérfano→tabs Agregar/Quitar stock, caja U2 con gate de arqueo, clientes DNI/tel obligatorios + baja A6, suscripción vía avatar, badge de alertas que capea en "9+"). **Tests e2e nuevos de gobernanza de caja** del plan `caja.plan.md` (fuera de alcance unit): A2 apertura a nombre de cajero ajeno + traspaso entre cajas (ISS-193). **Unit:** `vitest fileParallelism:false` (el paralelismo agotaba la RAM y mataba la suite). Verificación: **unit 625/625 · e2e 129/129** · build verde · PR #180. Detalle en `wiki/development/testing.md`.

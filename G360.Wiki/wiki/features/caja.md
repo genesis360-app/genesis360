@@ -60,6 +60,7 @@ La apertura **sugiere el monto del cierre anterior** de esa misma caja.
 - **Reserva** con efectivo → INSERT `ingreso_reserva`
 - **Cancelar reserva señada** → INSERT `egreso_devolucion_sena`
 - **Al despachar desde reservada** → consulta si ya existe ingreso_reserva para evitar duplicado
+- **Cobranza CC** (v1.52.0, auditoría de procesos) → las 3 vías (ficha del cliente, POS, Caja → Cobranzas) registran el movimiento vía `cobrarDeudaCCFIFO`: Efectivo → `ingreso` real (entra al arqueo), otro método → `ingreso_informativo` `[Método] Cobranza CC — Cliente` (+cuenta de origen en POS). Sesión imputada: explícita (POS) > caja propia del usuario > única abierta; sin caja imputable y era efectivo → warning al operador. Antes la cobranza NO tocaba caja → descuadre de arqueo garantizado.
 
 ---
 

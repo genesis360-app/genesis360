@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-11] deploy | v1.52.0 PROD — Auditoría de procesos: quick wins 1+2+3 (caja/envíos/devoluciones) · `dev=main`
+
+**GO pidió una auditoría de procesos** ("qué está mal y qué módulos no se conectan entre sí y deberían") y eligió implementar los 3 quick wins. PR **#182** merged, release **v1.52.0** `--latest`. **Sin migraciones.** Suites: unit **632/632** (+7) · e2e owner 68/68 · build verde.
+
+**Auditoría (verificada contra código, no contra wiki).** Hallazgos críticos: (1) cobranza CC no impactaba caja — descuadre de arqueo garantizado, documentado en el propio código; (2) NO existe traslado de stock entre sucursales (el envío `traslado_interno` es solo logístico); (3) anular venta dejaba el envío vivo; (4) cheques son un cuaderno standalone (sin link a OC/gasto, rechazado no reactiva deuda); (5) envío en `devolucion` moría en el limbo sin reingreso de stock; (6) EFs huérfanas `birthday-notifications`/`process-aging` (nadie las invoca). Backlog completo en `project_pendientes.md` → "Auditoría de procesos 2026-06-11".
+
+**Implementado en v1.52.0 (quick wins 1+2+3):**
+- **Cobranza CC → caja**: `cobrarDeudaCCFIFO` ahora registra el movimiento en las 3 vías (ficha cliente / POS / Caja→Cobranzas). Efectivo → `ingreso` real al arqueo; otro método → `ingreso_informativo` con `[Método]` + cuenta de origen (POS). Resolución de sesión: explícita (POS) > caja propia del usuario > única abierta. Sin caja imputable y era efectivo → toast de warning (antes: descuadre silencioso). Lógica pura `movimientoCajaCobranza` en `cobranzaCC.ts` + `tests/unit/cobranzaCaja.test.ts` (7 tests).
+- **Anular venta → cancela envíos**: en el branch `cancelada`, los envíos `pendiente` de la venta pasan a `cancelado` (+toast); los `despachado/en_camino/en_bodega` no se tocan pero se avisa.
+- **Envío `devolucion` → CTA "Registrar devolución de la venta"** en Envíos: navega a `/ventas?id=X&devolver=1`; VentasPage extiende el patrón `?id=` existente y abre `abrirModalDevolucion` (respeta plazo del canal + clave maestra).
+
 ## [2026-06-11] deploy | v1.51.1 PROD — Testing e2e (suite reparada + gobernanza caja) + unit estable · `dev=main`
 
 **Sesión de testing acordada con GO** ("arrancar con testing e2e, ir autónomo hasta PROD"). PR **#180** `dev→main` merged, release **v1.51.1** `--latest`. **Sin migraciones** (test-only, sin cambio de comportamiento). Vercel auto-deploy desde `main`. Suites: **unit 625/625 · e2e 129/129** (owner+cajero+supervisor+rrhh).

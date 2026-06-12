@@ -456,6 +456,15 @@ Aplica en 5 puntos de `GastosPage.tsx`:
 
 ---
 
+## Cheques conectados al circuito de pago (v1.54.0 · migration 206 · auditoría #5)
+
+El tab **Cheques** (CO6, mig 187) dejó de ser un cuaderno aparte:
+
+- **Pagar una OC con medio "Cheque"** (modal de pago de OC) crea el cheque vinculado automáticamente: tipo propio, estado `entregado`, `oc_id` + proveedor. Mini-form inline (n° cheque / banco / **fecha de cobro obligatoria** — alimenta la alerta `chequeProximoACobrar`). Ídem **pago de gasto** (`cheques.gasto_id`, mig 206).
+- **Cheque propio RECHAZADO revierte el pago que lo originó** (ChequesPanel → cambiarEstado): la OC vuelve a `pendiente_pago`/`pago_parcial` (`reversionPagoOC`) y se inserta un **ajuste +monto en `proveedor_cc_movimientos`** (la deuda reaparece en la CC del proveedor); el gasto vuelve a `pendiente`/`parcial` (`reversionPagoGasto`). Toast ↩️ + actividad log.
+- Lógica pura en `src/lib/comprasCheques.ts`: `montoChequeDeMedios`, `reversionPagoOC`, `reversionPagoGasto` (testeadas).
+- **Pendiente menor (futuro):** cheque de tercero depositado/cobrado → impacto en cuenta de origen/bóveda (hoy solo cambia estado).
+
 ## Links relacionados
 
 - [[wiki/features/caja]]

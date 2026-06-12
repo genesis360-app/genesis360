@@ -2924,3 +2924,33 @@ ALTER TABLE rrhh_anticipos ADD COLUMN IF NOT EXISTS documento_url TEXT;  -- L3 (
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS fichado_token TEXT;  -- RH6: QR de fichado /fichar/:token
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tenants_fichado_token ON tenants(fichado_token) WHERE fichado_token IS NOT NULL;
 -- + funciones get_fichado_info(text) / fichar_qr(text,uuid) SECURITY DEFINER, GRANT EXECUTE a anon (ver mig 204).
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 205: Traslados de stock entre sucursales (v1.53.0 — auditoría de procesos #4)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Proceso formal con tránsito: despachar (origen, DEPOSITO+) → stock sale, "en_transito"
+-- → confirmar recepción (destino) → stock entra (mismo LPN/lote/series); parciales auditados.
+CREATE TABLE IF NOT EXISTS traslados (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  numero INTEGER,  -- correlativo por tenant (trigger set_traslado_numero)
+  sucursal_origen_id UUID NOT NULL REFERENCES sucursales(id), sucursal_destino_id UUID NOT NULL REFERENCES sucursales(id),
+  estado TEXT NOT NULL DEFAULT 'en_transito' CHECK (estado IN ('en_transito','recibido','recibido_parcial','cancelado')),
+  notas TEXT, envio_id UUID REFERENCES envios(id) ON DELETE SET NULL,
+  despachado_por UUID REFERENCES users(id), despachado_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  recibido_por UUID REFERENCES users(id), recibido_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK (sucursal_origen_id <> sucursal_destino_id)
+);
+ALTER TABLE traslados ENABLE ROW LEVEL SECURITY;  -- policy traslados_tenant (por tenant)
+CREATE TABLE IF NOT EXISTS traslado_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+  traslado_id UUID NOT NULL REFERENCES traslados(id) ON DELETE CASCADE, producto_id UUID NOT NULL REFERENCES productos(id),
+  linea_origen_id UUID REFERENCES inventario_lineas(id) ON DELETE SET NULL,
+  linea_destino_id UUID REFERENCES inventario_lineas(id) ON DELETE SET NULL,  -- creada al recibir
+  lpn TEXT, nro_lote TEXT, fecha_vencimiento DATE, estado_id UUID REFERENCES estados_inventario(id),
+  precio_costo_snapshot DECIMAL(14,2), series JSONB,  -- [{serie_id, nro_serie}]
+  cantidad DECIMAL(14,4) NOT NULL CHECK (cantidad > 0), cantidad_recibida DECIMAL(14,4),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE traslado_items ENABLE ROW LEVEL SECURITY;  -- policy traslado_items_tenant (por tenant)
+-- + función/trigger set_traslado_numero (correlativo por tenant, patrón mig 185)

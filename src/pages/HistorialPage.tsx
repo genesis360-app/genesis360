@@ -60,6 +60,10 @@ const ACCION_LABELS: Record<string, { label: string; color: string; bg: string }
   cambio_estado: { label: 'Cambió estado', color: 'text-purple-700', bg: 'bg-purple-100'},
   ingreso_stock: { label: 'Ingresó',       color: 'text-green-700 dark:text-green-400', bg: 'bg-green-100 dark:bg-green-900/30' },
   rebaje_stock:  { label: 'Rebajó',        color: 'text-blue-700 dark:text-blue-400',   bg: 'bg-blue-100 dark:bg-blue-900/30'  },
+  // Traslados entre sucursales (mig 205)
+  despacho_traslado:  { label: 'Despachó traslado', color: 'text-amber-700 dark:text-amber-400',  bg: 'bg-amber-100 dark:bg-amber-900/30' },
+  recepcion_traslado: { label: 'Recibió traslado',  color: 'text-green-700 dark:text-green-400',  bg: 'bg-green-100 dark:bg-green-900/30' },
+  faltante_traslado:  { label: 'Faltante traslado', color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
 }
 
 // Clasificación WMS de la transacción (mig 155)

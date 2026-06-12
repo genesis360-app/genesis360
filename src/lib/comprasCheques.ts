@@ -106,3 +106,44 @@ export function totalPendiente(cheques: { estado: string; monto: number }[]): nu
       .reduce((s, c) => s + (Number(c.monto) || 0), 0) * 100,
   ) / 100
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auditoría de procesos 2026-06-11 (ítem #5) — cheques conectados al circuito de pago.
+// Pagar una OC/gasto con medio "Cheque" crea el cheque vinculado (oc_id/gasto_id);
+// un cheque propio RECHAZADO revierte el pago que lo originó (la deuda reaparece).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Suma de los medios de pago de tipo "Cheque" (el pago puede combinar medios). */
+export function montoChequeDeMedios(medios: { tipo: string; monto: number }[]): number {
+  return Math.round(
+    medios.filter(m => m.tipo === 'Cheque' && Number.isFinite(m.monto) && m.monto > 0)
+      .reduce((s, m) => s + m.monto, 0) * 100,
+  ) / 100
+}
+
+/**
+ * Reversión del pago de una OC al rechazarse el cheque que la pagó.
+ * Devuelve el nuevo monto_pagado y estado_pago de la OC.
+ * (La parte CC vive en proveedor_cc_movimientos y se revierte con un 'ajuste' aparte.)
+ */
+export function reversionPagoOC(args: {
+  total: number
+  montoPagado: number
+  montoDescuento?: number | null
+  montoCheque: number
+}): { montoPagado: number; estadoPago: 'pagada' | 'pago_parcial' | 'pendiente_pago' } {
+  const { total, montoPagado, montoDescuento, montoCheque } = args
+  const nuevo = Math.max(0, Math.round((montoPagado - montoCheque) * 100) / 100)
+  const cubierto = nuevo + (montoDescuento ?? 0)
+  const estadoPago = cubierto >= total - 0.5 ? 'pagada' : nuevo > 0.5 ? 'pago_parcial' : 'pendiente_pago'
+  return { montoPagado: nuevo, estadoPago }
+}
+
+/** Reversión del pago de un gasto al rechazarse el cheque que lo pagó. */
+export function reversionPagoGasto(args: {
+  montoPagado: number
+  montoCheque: number
+}): { montoPagado: number; estadoPago: 'parcial' | 'pendiente' } {
+  const nuevo = Math.max(0, Math.round((args.montoPagado - args.montoCheque) * 100) / 100)
+  return { montoPagado: nuevo, estadoPago: nuevo > 0.5 ? 'parcial' : 'pendiente' }
+}

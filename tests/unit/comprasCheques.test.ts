@@ -98,3 +98,65 @@ describe('totalPendiente', () => {
     ])).toBe(1500)
   })
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Auditoría #5 (v1.54.0) — cheques conectados al circuito de pago
+// ─────────────────────────────────────────────────────────────────────────────
+import { montoChequeDeMedios, reversionPagoOC, reversionPagoGasto } from '@/lib/comprasCheques'
+
+describe('montoChequeDeMedios', () => {
+  it('suma solo los medios de tipo Cheque', () => {
+    expect(montoChequeDeMedios([
+      { tipo: 'Efectivo', monto: 1000 },
+      { tipo: 'Cheque', monto: 5000 },
+      { tipo: 'Cheque', monto: 2500 },
+    ])).toBe(7500)
+  })
+  it('sin cheques devuelve 0', () => {
+    expect(montoChequeDeMedios([{ tipo: 'Transferencia', monto: 1000 }])).toBe(0)
+    expect(montoChequeDeMedios([])).toBe(0)
+  })
+  it('ignora montos inválidos o negativos', () => {
+    expect(montoChequeDeMedios([
+      { tipo: 'Cheque', monto: NaN },
+      { tipo: 'Cheque', monto: -100 },
+      { tipo: 'Cheque', monto: 300 },
+    ])).toBe(300)
+  })
+  it('redondea a 2 decimales', () => {
+    expect(montoChequeDeMedios([{ tipo: 'Cheque', monto: 0.1 }, { tipo: 'Cheque', monto: 0.2 }])).toBe(0.3)
+  })
+})
+
+describe('reversionPagoOC (cheque rechazado)', () => {
+  it('pago total con cheque → vuelve a pendiente_pago', () => {
+    expect(reversionPagoOC({ total: 10000, montoPagado: 10000, montoCheque: 10000 }))
+      .toEqual({ montoPagado: 0, estadoPago: 'pendiente_pago' })
+  })
+  it('pago mixto (cheque + efectivo) → queda pago_parcial', () => {
+    expect(reversionPagoOC({ total: 10000, montoPagado: 10000, montoCheque: 6000 }))
+      .toEqual({ montoPagado: 4000, estadoPago: 'pago_parcial' })
+  })
+  it('con descuento que sigue cubriendo el total → sigue pagada', () => {
+    // total 10000, descuento 9500, pagado 500 con cheque de 0... caso: cheque chico, desc grande
+    expect(reversionPagoOC({ total: 10000, montoPagado: 500, montoDescuento: 9500, montoCheque: 0 }))
+      .toEqual({ montoPagado: 500, estadoPago: 'pagada' })
+  })
+  it('nunca deja monto_pagado negativo', () => {
+    expect(reversionPagoOC({ total: 10000, montoPagado: 3000, montoCheque: 5000 }).montoPagado).toBe(0)
+  })
+})
+
+describe('reversionPagoGasto (cheque rechazado)', () => {
+  it('pago total con cheque → vuelve a pendiente', () => {
+    expect(reversionPagoGasto({ montoPagado: 8000, montoCheque: 8000 }))
+      .toEqual({ montoPagado: 0, estadoPago: 'pendiente' })
+  })
+  it('pago parcial con cheque → queda parcial', () => {
+    expect(reversionPagoGasto({ montoPagado: 8000, montoCheque: 3000 }))
+      .toEqual({ montoPagado: 5000, estadoPago: 'parcial' })
+  })
+  it('nunca negativo', () => {
+    expect(reversionPagoGasto({ montoPagado: 1000, montoCheque: 5000 }).montoPagado).toBe(0)
+  })
+})

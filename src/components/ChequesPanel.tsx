@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase'
 import {
   TIPOS_CHEQUE, ESTADO_CHEQUE_LABEL, estadosSiguientes, puedeEndosar,
   chequeProximoACobrar, chequeVencido, validarChequeAlta, totalPendiente,
+  reversionPagoOC, reversionPagoGasto,
   type TipoCheque, type EstadoCheque,
 } from '@/lib/comprasCheques'
 import { logActividad } from '@/lib/actividadLog'
@@ -135,13 +136,62 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
   })
 
   const cambiarEstado = useMutation({
-    mutationFn: async ({ id, estado }: { id: string; estado: EstadoCheque }) => {
+    mutationFn: async ({ id, estado, cheque }: { id: string; estado: EstadoCheque; cheque?: any }) => {
+      // Auditoría #5 — cheque propio RECHAZADO revierte el pago que lo originó:
+      // la OC/gasto vuelven a deber y, si hay proveedor, la deuda reaparece en su CC.
+      let reversion: string | null = null
+      if (estado === 'rechazado' && cheque?.tipo === 'propio') {
+        const monto = Number(cheque.monto) || 0
+        if (cheque.oc_id && monto > 0) {
+          const { data: oc } = await supabase.from('ordenes_compra')
+            .select('id, numero, monto_total, monto_pagado, monto_descuento, proveedor_id')
+            .eq('id', cheque.oc_id).single()
+          if (oc) {
+            const rev = reversionPagoOC({
+              total: Number(oc.monto_total) || 0,
+              montoPagado: Number(oc.monto_pagado) || 0,
+              montoDescuento: Number(oc.monto_descuento) || 0,
+              montoCheque: monto,
+            })
+            const { error: eOc } = await supabase.from('ordenes_compra')
+              .update({ monto_pagado: rev.montoPagado, estado_pago: rev.estadoPago }).eq('id', oc.id)
+            if (eOc) throw eOc
+            if (oc.proveedor_id) {
+              await supabase.from('proveedor_cc_movimientos').insert({
+                tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, oc_id: oc.id,
+                tipo: 'ajuste', monto: monto, fecha: hoy,
+                descripcion: `Cheque rechazado${cheque.nro_cheque ? ` ${cheque.nro_cheque}` : ''} — pago OC #${oc.numero} revertido`,
+                created_by: user?.id ?? null,
+              })
+            }
+            reversion = `Pago de la OC #${oc.numero} revertido — la deuda volvió a quedar pendiente`
+          }
+        } else if (cheque.gasto_id && monto > 0) {
+          const { data: g } = await supabase.from('gastos')
+            .select('id, descripcion, monto_pagado').eq('id', cheque.gasto_id).single()
+          if (g) {
+            const rev = reversionPagoGasto({ montoPagado: Number(g.monto_pagado) || 0, montoCheque: monto })
+            const { error: eG } = await supabase.from('gastos')
+              .update({ monto_pagado: rev.montoPagado, estado_pago: rev.estadoPago }).eq('id', g.id)
+            if (eG) throw eG
+            reversion = `Pago del gasto "${g.descripcion}" revertido — volvió a pendiente`
+          }
+        }
+      }
       const { error } = await supabase.from('cheques')
         .update({ estado, updated_at: new Date().toISOString() }).eq('id', id)
       if (error) throw error
+      return { reversion }
     },
-    onSuccess: (_d, v) => {
+    onSuccess: (d: any, v) => {
       toast.success(`Cheque → ${ESTADO_CHEQUE_LABEL[v.estado]}`)
+      if (d?.reversion) {
+        toast(d.reversion, { icon: '↩️', duration: 8000 })
+        logActividad({ entidad: 'cheque', entidad_nombre: v.cheque?.nro_cheque || 'cheque', accion: 'rechazar', valor_nuevo: d.reversion, pagina: '/gastos' })
+        qc.invalidateQueries({ queryKey: ['gastos'] })
+        qc.invalidateQueries({ queryKey: ['ordenes-compra'] })
+        qc.invalidateQueries({ queryKey: ['proveedor-cc'] })
+      }
       qc.invalidateQueries({ queryKey: ['cheques'] })
     },
     onError: (e: any) => toast.error(e.message),
@@ -243,7 +293,7 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
                   </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {siguientes.filter(s => s !== 'endosado').map(s => (
-                      <button key={s} onClick={() => cambiarEstado.mutate({ id: c.id, estado: s })}
+                      <button key={s} onClick={() => cambiarEstado.mutate({ id: c.id, estado: s, cheque: c })}
                         className="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
                         {ESTADO_CHEQUE_LABEL[s]}
                       </button>

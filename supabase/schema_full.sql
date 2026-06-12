@@ -2954,3 +2954,10 @@ CREATE TABLE IF NOT EXISTS traslado_items (
 );
 ALTER TABLE traslado_items ENABLE ROW LEVEL SECURITY;  -- policy traslado_items_tenant (por tenant)
 -- + función/trigger set_traslado_numero (correlativo por tenant, patrón mig 185)
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 206: Cheques conectados al circuito de pago (v1.54.0 — auditoría #5)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Pagar OC/gasto con medio "Cheque" crea el cheque vinculado; cheque propio
+-- RECHAZADO revierte el pago (OC/gasto a pendiente + ajuste en CC proveedor).
+ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gasto_id UUID REFERENCES gastos(id) ON DELETE SET NULL;

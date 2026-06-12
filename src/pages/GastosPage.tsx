@@ -25,7 +25,7 @@ import BandejaAutorizacionesCC from '@/components/BandejaAutorizacionesCC'
 import CierresContablesPanel from '@/components/CierresContablesPanel'
 import ChequesPanel from '@/components/ChequesPanel'
 import ComprasReportesPanel from '@/components/ComprasReportesPanel'
-import { chequeProximoACobrar } from '@/lib/comprasCheques'
+import { chequeProximoACobrar, montoChequeDeMedios } from '@/lib/comprasCheques'
 import { useCierreContable, manejarErrorPeriodoCerrado } from '@/hooks/useCierreContable'
 
 // Fallback solo si la query a categorias_gasto falla. Se sobreescribe con la tabla.
@@ -213,7 +213,7 @@ export default function GastosPage() {
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
 
   // ISS-190: pago parcial de gasto
-  const [pagoGastoModal, setPagoGastoModal] = useState<{ id: string; monto: number; montoPagado: number; descripcion: string } | null>(null)
+  const [pagoGastoModal, setPagoGastoModal] = useState<{ id: string; monto: number; montoPagado: number; descripcion: string; proveedorId?: string | null } | null>(null)
   const [pagoParcialmonto, setPagoParcialmonto] = useState('')
   const [pagoParcialmedio, setPagoParcialmedio] = useState('')
   const [pagoParcialSaving, setPagoParcialSaving] = useState(false)
@@ -232,6 +232,13 @@ export default function GastosPage() {
   const [ocDescuentoTipo, setOcDescuentoTipo]       = useState<'monto' | 'pct'>('monto')
   const [ocCajaSeleccionadaId, setOcCajaSeleccionadaId] = useState<string | null>(null)
   const [ocClaveMaestra, setOcClaveMaestra]         = useState('')  // D5 — doble firma de pago por umbral
+  // Auditoría #5 — pagar con medio "Cheque" crea el cheque vinculado (datos del cheque)
+  const [ocChequeNro, setOcChequeNro]               = useState('')
+  const [ocChequeBanco, setOcChequeBanco]           = useState('')
+  const [ocChequeFechaCobro, setOcChequeFechaCobro] = useState('')
+  const [chqGastoNro, setChqGastoNro]               = useState('')
+  const [chqGastoBanco, setChqGastoBanco]           = useState('')
+  const [chqGastoFechaCobro, setChqGastoFechaCobro] = useState('')
   // ISS-096: comprobante de pago en OC
   const [ocSubiendoFile, setOcSubiendoFile]         = useState(false)
 
@@ -704,6 +711,13 @@ export default function GastosPage() {
         setOcGuardando(false); return
       }
 
+      // Auditoría #5 — pago con medio "Cheque" crea el cheque vinculado a la OC
+      const montoCheque = montoChequeDeMedios(mediosValidos)
+      if (montoCheque > 0 && !ocChequeFechaCobro) {
+        toast.error('Pagás con cheque: indicá la fecha de cobro (alimenta la alerta de cheques).')
+        setOcGuardando(false); return
+      }
+
       // Bloqueo CC: chequear si proveedor tiene OC vencidas o límite excedido (v1.8.44)
       if (montoCC > 0 && ocSeleccionada.proveedor_id) {
         const yaAprobado = await existeAutorizacionCCAprobada(ocSeleccionada.proveedor_id)
@@ -766,6 +780,27 @@ export default function GastosPage() {
         })
       }
 
+      // Auditoría #5 — el cheque entregado queda registrado y linkeado (antes: doble carga manual)
+      if (montoCheque > 0) {
+        const { error: chqErr } = await supabase.from('cheques').insert({
+          tenant_id: tenant!.id,
+          tipo: 'propio',
+          estado: 'entregado',
+          monto: montoCheque,
+          nro_cheque: ocChequeNro.trim() || null,
+          banco: ocChequeBanco.trim() || null,
+          fecha_emision: hoy,
+          fecha_cobro: ocChequeFechaCobro,
+          proveedor_id: ocSeleccionada.proveedor_id ?? null,
+          oc_id: ocSeleccionada.id,
+          sucursal_id: sucursalId || null,
+          notas: `Generado por pago OC #${ocSeleccionada.numero}`,
+          created_by: user?.id ?? null,
+        })
+        if (chqErr) console.error('[cheques] alta por pago OC:', chqErr.message)
+        else toast(`Cheque por $${montoCheque.toLocaleString('es-AR', { maximumFractionDigits: 0 })} registrado en Gastos → Cheques`, { icon: '🧾' })
+      }
+
       // ISS-136: Caja — egreso (efectivo) y egreso_informativo (no efectivo, sin CC)
       const concepto = `Pago OC #${ocSeleccionada.numero} — ${ocSeleccionada.proveedores?.nombre}`
       for (const m of mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente')) {
@@ -788,9 +823,12 @@ export default function GastosPage() {
       toast.success('Pago registrado')
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
+      qc.invalidateQueries({ queryKey: ['cheques'] })
+      qc.invalidateQueries({ queryKey: ['cheques-alerta'] })
       setOcModalId(null)
       setOcClaveMaestra('')
       setOcMediosPago([{ tipo: 'Transferencia', monto: '' }])
+      setOcChequeNro(''); setOcChequeBanco(''); setOcChequeFechaCobro('')
       setOcPagoCondiciones('')
       setOcDescuento('0'); setOcDescuentoTipo('monto')
       setOcCajaSeleccionadaId(null)
@@ -1288,12 +1326,40 @@ export default function GastosPage() {
     if (!pagoParcialmedio) { toast.error('Seleccioná un método de pago'); return }
     const saldoPendiente = pagoGastoModal.monto - pagoGastoModal.montoPagado
     if (monto > saldoPendiente + 0.5) { toast.error(`El monto supera el saldo pendiente ($${saldoPendiente.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`); return }
+    // Auditoría #5 — pago con cheque: la fecha de cobro es obligatoria (alimenta la alerta)
+    if (pagoParcialmedio === 'Cheque' && !chqGastoFechaCobro) {
+      toast.error('Pagás con cheque: indicá la fecha de cobro.'); return
+    }
     setPagoParcialSaving(true)
     try {
       const nuevoMontoPagado = pagoGastoModal.montoPagado + monto
       const nuevoEstado: 'parcial' | 'pagado' = nuevoMontoPagado >= pagoGastoModal.monto - 0.5 ? 'pagado' : 'parcial'
       const { error } = await supabase.from('gastos').update({ monto_pagado: nuevoMontoPagado, estado_pago: nuevoEstado }).eq('id', pagoGastoModal.id)
       if (error) throw error
+      // Auditoría #5 — el cheque entregado queda registrado y linkeado al gasto
+      if (pagoParcialmedio === 'Cheque') {
+        const { error: chqErr } = await supabase.from('cheques').insert({
+          tenant_id: tenant!.id,
+          tipo: 'propio',
+          estado: 'entregado',
+          monto,
+          nro_cheque: chqGastoNro.trim() || null,
+          banco: chqGastoBanco.trim() || null,
+          fecha_emision: new Date().toISOString().split('T')[0],
+          fecha_cobro: chqGastoFechaCobro,
+          proveedor_id: (pagoGastoModal as any).proveedorId ?? null,
+          gasto_id: pagoGastoModal.id,
+          sucursal_id: sucursalId || null,
+          notas: `Generado por pago de gasto: ${pagoGastoModal.descripcion}`,
+          created_by: user?.id ?? null,
+        })
+        if (chqErr) console.error('[cheques] alta por pago gasto:', chqErr.message)
+        else {
+          toast('Cheque registrado en Gastos → Cheques', { icon: '🧾' })
+          qc.invalidateQueries({ queryKey: ['cheques'] })
+          qc.invalidateQueries({ queryKey: ['cheques-alerta'] })
+        }
+      }
       const sesionUsar = sesionCajaId ?? sesionPropia?.id ?? sesionesOperativas[0]?.id
       if (sesionUsar) {
         const esEfectivo = pagoParcialmedio === 'Efectivo'
@@ -1786,7 +1852,7 @@ export default function GastosPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1 justify-end">
                             {(g.estado_pago === 'pendiente' || g.estado_pago === 'parcial' || (!g.estado_pago && !g.medio_pago)) && !isPeriodoCerrado(g.fecha) && (
-                              <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion }); setPagoParcialmonto(''); setPagoParcialmedio('') }}
+                              <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion, proveedorId: g.proveedor_id ?? null }); setPagoParcialmonto(''); setPagoParcialmedio(''); setChqGastoNro(''); setChqGastoBanco(''); setChqGastoFechaCobro('') }}
                                 title="Registrar pago"
                                 className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
                                 <CreditCard size={14} />
@@ -1977,7 +2043,7 @@ export default function GastosPage() {
 
                         <div className="flex items-center gap-2 pt-1 flex-wrap">
                           {(g.estado_pago === 'pendiente' || g.estado_pago === 'parcial' || (!g.estado_pago && !g.medio_pago)) && !isPeriodoCerrado(g.fecha) && (
-                            <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion }); setPagoParcialmonto(''); setPagoParcialmedio('') }}
+                            <button onClick={() => { setPagoGastoModal({ id: g.id, monto: Number(g.monto), montoPagado: Number(g.monto_pagado ?? 0), descripcion: g.descripcion, proveedorId: g.proveedor_id ?? null }); setPagoParcialmonto(''); setPagoParcialmedio(''); setChqGastoNro(''); setChqGastoBanco(''); setChqGastoFechaCobro('') }}
                               className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 hover:underline">
                               <CreditCard size={12} /> Registrar pago
                             </button>
@@ -3216,6 +3282,21 @@ export default function GastosPage() {
                           placeholder="Condiciones (opcional)" className="mt-2 w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       </div>
                     )}
+                    {/* Auditoría #5 — datos del cheque (se crea vinculado a la OC en Gastos → Cheques) */}
+                    {ocMediosPago.some(m => m.tipo === 'Cheque' && parseFloat(m.monto.replace(',', '.')) > 0) && (
+                      <div className="border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 space-y-2">
+                        <p className="text-xs font-medium text-amber-800 dark:text-amber-300">🧾 Datos del cheque (queda registrado en Gastos → Cheques, vinculado a esta OC)</p>
+                        <div className="grid grid-cols-3 gap-2">
+                          <input type="text" value={ocChequeNro} onChange={e => setOcChequeNro(e.target.value)} placeholder="N° cheque"
+                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input type="text" value={ocChequeBanco} onChange={e => setOcChequeBanco(e.target.value)} placeholder="Banco"
+                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <input type="date" value={ocChequeFechaCobro} onChange={e => setOcChequeFechaCobro(e.target.value)} title="Fecha de cobro *"
+                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        </div>
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400">La fecha de cobro es obligatoria — alimenta la alerta de cheques próximos a cobrar.</p>
+                      </div>
+                    )}
                     {(() => {
                       const totalMedios = ocMediosPago.reduce((s, m) => s + (parseFloat(m.monto.replace(',', '.')) || 0), 0)
                       const saldo = calcMontoTotalOC(ocSeleccionada) - Number(ocSeleccionada.monto_pagado ?? 0)
@@ -3365,6 +3446,21 @@ export default function GastosPage() {
                   {(metodosPagoCfg as any[]).map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                 </select>
               </div>
+              {/* Auditoría #5 — datos del cheque (queda registrado y vinculado al gasto) */}
+              {pagoParcialmedio === 'Cheque' && (
+                <div className="border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 rounded-xl p-3 space-y-2">
+                  <p className="text-xs font-medium text-amber-800 dark:text-amber-300">🧾 Datos del cheque (se registra en Gastos → Cheques)</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <input type="text" value={chqGastoNro} onChange={e => setChqGastoNro(e.target.value)} placeholder="N° cheque"
+                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <input type="text" value={chqGastoBanco} onChange={e => setChqGastoBanco(e.target.value)} placeholder="Banco"
+                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <input type="date" value={chqGastoFechaCobro} onChange={e => setChqGastoFechaCobro(e.target.value)} title="Fecha de cobro *"
+                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <p className="text-[11px] text-amber-700 dark:text-amber-400">La fecha de cobro es obligatoria.</p>
+                </div>
+              )}
             </div>
             <div className="flex gap-2 pt-1">
               <button onClick={() => setPagoGastoModal(null)}

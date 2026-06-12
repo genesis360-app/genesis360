@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.54.0 — Cheques conectados al circuito de pago (PROD ✅)
+
+Ítems #5 y #6 de la auditoría de procesos. Mig **206** (`cheques.gasto_id`). **Pagar OC/gasto con medio "Cheque" crea el cheque vinculado** (mini-form n°/banco/fecha de cobro obligatoria → alerta de próximos a cobrar). **Cheque propio rechazado revierte el pago**: OC vuelve a pendiente/parcial + la deuda reaparece en la CC del proveedor (ajuste auditado); gasto vuelve a pendiente/parcial. Libs `montoChequeDeMedios`/`reversionPagoOC`/`reversionPagoGasto` +11 tests → suite **665**. Además: `process-aging` eliminada (EF muerta) y verificado que `birthday-notifications` ya corre por cron diario de GH Actions (hallazgo de auditoría corregido). PR #186.
+
+---
+
 ## v1.53.0 — Traslados de stock entre sucursales: tránsito + confirmación (PROD ✅)
 
 Ítem #4 de la auditoría de procesos — **antes no existía forma formal de mover stock entre sucursales**. Mig **205**: `traslados` + `traslado_items` (snapshot LPN/lote/venc/costo/series, correlativo por tenant). Tab **Traslados** en Inventario: despachar (DEPOSITO+, sale del origen, queda **en tránsito**) → confirmar recepción (solo el destino; entra con el mismo LPN/lote/series) → faltantes auditados (`recibido_parcial`) · cancelar = reingreso. Ledger `movimientos_stock` tipo `traslado` en ambas puntas + Historial de actividad. Lib `trasladoLogic.ts` +22 tests → suite **654**. Decisiones relevadas con GO (tránsito+confirmación · por LPN · destino confirma · parcial auditado). PR #184.

@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-12] deploy | v1.54.0 PROD — Cheques conectados al circuito de pago + limpieza EF (mig 206) · `dev=main`
+
+**Ítems #5 y #6 de la auditoría de procesos.** PR **#186** merged, release **v1.54.0** `--latest`, mig **206** en DEV+PROD (aditiva, antes del merge). Suites: unit **665/665** (+11) · e2e owner 69/69 · build verde.
+
+- **#5 Cheques conectados** (antes: cuaderno standalone — doble carga manual, rechazo cosmético):
+  - Mig 206: `cheques.gasto_id` + índices (`oc_id` existía desde mig 187 pero nunca se llenaba).
+  - **Pagar OC con medio "Cheque"** (GastosPage → registrarPagoOC) crea el cheque vinculado (propio/entregado, `oc_id`+proveedor) con mini-form inline ámbar: n°/banco/**fecha de cobro obligatoria** (alimenta `chequeProximoACobrar`). Ídem **pago de gasto** (registrarPagoGasto, `gasto_id` + proveedor del gasto).
+  - **Cheque propio RECHAZADO revierte el pago** (ChequesPanel → cambiarEstado): OC → `monto_pagado -= cheque` + estado recalculado (`reversionPagoOC`) + **ajuste +monto en `proveedor_cc_movimientos`** (la deuda reaparece en la CC del proveedor); gasto → `pendiente`/`parcial` (`reversionPagoGasto`). Toast "↩️ pago revertido" + actividad log.
+  - Lib pura en `comprasCheques.ts`: `montoChequeDeMedios` + 2 reversiones (+11 tests). Pendiente menor futuro: tercero depositado/cobrado → cuenta de origen/bóveda.
+- **#6 EFs huérfanas — hallazgo de auditoría CORREGIDO:** `process-aging` **eliminada del repo** (código muerto confirmado: ConfigPage llama la RPC `process_aging_profiles` directo; el wrapper EF quedó sin callers). `birthday-notifications` **NO estaba huérfana**: tiene cron diario en GitHub Actions (`birthday-notifications.yml`, runs diarios OK) — el grep de la auditoría no había revisado `.github/workflows/`. **Bonus:** la infraestructura de cron externo (GH Actions + secrets Supabase) ya existe → el ítem #7 (sweeps lazy → cron) es barato de implementar.
+
+**Próximo de la auditoría:** #7 cron externo para sweeps (infra lista). **Pendiente de GO:** relevamiento Inventario/WMS offline.
+
 ## [2026-06-11] deploy | v1.53.0 PROD — Traslados de stock entre sucursales (tránsito + confirmación, mig 205) · `dev=main`
 
 **Ítem #4 de la auditoría de procesos — el gap más grande del modelo multi-sucursal, cerrado.** GO pidió "sigamos con #4"; relevamiento corto vía 4 preguntas (eligió las 4 recomendadas): **tránsito + confirmación** · **detalle por LPN/línea** (lote/venc/series viajan con la línea) · **DEPOSITO+ crea, el destino confirma** · **recepción parcial con faltante auditado**. PR **#184** merged, release **v1.53.0** `--latest`, mig **205** en DEV+PROD (aditiva, aplicada antes del merge). Suites: unit **654/654** (+22) · e2e owner 68/68 + smoke del tab nuevo · build verde.

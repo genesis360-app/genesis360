@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-11] deploy | v1.53.0 PROD — Traslados de stock entre sucursales (tránsito + confirmación, mig 205) · `dev=main`
+
+**Ítem #4 de la auditoría de procesos — el gap más grande del modelo multi-sucursal, cerrado.** GO pidió "sigamos con #4"; relevamiento corto vía 4 preguntas (eligió las 4 recomendadas): **tránsito + confirmación** · **detalle por LPN/línea** (lote/venc/series viajan con la línea) · **DEPOSITO+ crea, el destino confirma** · **recepción parcial con faltante auditado**. PR **#184** merged, release **v1.53.0** `--latest`, mig **205** en DEV+PROD (aditiva, aplicada antes del merge). Suites: unit **654/654** (+22) · e2e owner 68/68 + smoke del tab nuevo · build verde.
+
+- **Mig 205**: `traslados` (correlativo por tenant vía trigger `set_traslado_numero`, estados `en_transito/recibido/recibido_parcial/cancelado`, `envio_id` reservado para link logístico futuro) + `traslado_items` (snapshot LPN/lote/vencimiento/estado/costo/series JSONB, `cantidad_recibida` NULL=sin confirmar). RLS por tenant.
+- **Tab "Traslados" en Inventario** (`TrasladosPanel.tsx`): **despachar** — destino + líneas/LPN de la sucursal activa (series tildables, decimales según unidad, disponible neto de reservas, re-chequeo fresco contra carreras, guard de conteo wall-to-wall) → el stock sale del origen y queda EN TRÁNSITO (no está en ninguna sucursal) · **confirmar recepción** (gated a usuarios del destino o puedeVerTodas) — entra con el MISMO LPN/lote/series a la ubicación elegida; faltantes auditados (`recibido_parcial` + acción `faltante_traslado` en Historial); series no recibidas quedan inactivas (perdidas en tránsito) · **cancelar en tránsito** — reingreso completo al origen (reactiva/recrea la línea).
+- **Ledger**: `movimientos_stock` tipo `'traslado'` en ambas puntas (el tipo estaba en el CHECK desde mig 055 pero solo se usaba para mover-LPN intra-sucursal) + badge "Traslado" en historial de Inventario + acciones `despacho_traslado/recepcion_traslado/faltante_traslado` en HistorialPage.
+- **Lib pura** `src/lib/trasladoLogic.ts`: `puedeCrearTraslado`, `puedeConfirmarRecepcion`, `disponibleLinea`, `validarCantidadTraslado`, `validarRecepcion`, `estadoDesdeRecepcion`, `totalFaltante` — 22 tests.
+
+**Próximo de la auditoría:** #5 cheques conectados al circuito de pago. **Pendiente de GO:** relevamiento Inventario/WMS offline.
+
 ## [2026-06-11] deploy | v1.52.0 PROD — Auditoría de procesos: quick wins 1+2+3 (caja/envíos/devoluciones) · `dev=main`
 
 **GO pidió una auditoría de procesos** ("qué está mal y qué módulos no se conectan entre sí y deberían") y eligió implementar los 3 quick wins. PR **#182** merged, release **v1.52.0** `--latest`. **Sin migraciones.** Suites: unit **632/632** (+7) · e2e owner 68/68 · build verde.

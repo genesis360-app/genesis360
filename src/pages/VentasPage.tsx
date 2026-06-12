@@ -639,9 +639,19 @@ export default function VentasPage() {
     if (!clienteId) return
     setCobrarCCSaving(true)
     try {
-      const { aplicado } = await cobrarDeudaCCFIFO(supabase, { tenantId: tenant!.id, clienteId, monto, metodo: cobrarCCMetodo })
+      const { aplicado, cajaRegistrada } = await cobrarDeudaCCFIFO(supabase, {
+        tenantId: tenant!.id, clienteId, monto, metodo: cobrarCCMetodo,
+        usuarioId: user?.id, clienteNombre: clienteNombre || null,
+        sesionCajaId, cuentaOrigenId: cuentaOrigenDeMetodo(cobrarCCMetodo),
+      })
       if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
       toast.success(`Cobranza de $${Math.round(aplicado).toLocaleString('es-AR')} registrada`)
+      // Impacto en arqueo: si era efectivo y no había caja a la que imputar, avisar (descuadre seguro)
+      if (cobrarCCMetodo === 'Efectivo' && !cajaRegistrada) {
+        toast('El efectivo cobrado no quedó en ningún arqueo: no hay caja abierta a la que imputarlo.', { icon: '⚠️', duration: 7000 })
+      } else if (cajaRegistrada) {
+        qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
+      }
       void notificarPagoCC(tenant, clienteId, clienteNombre || 'cliente', aplicado)  // CL4/C4
       setCobrarCCOpen(false); setCobrarCCMonto(''); setCobrarCCMetodo('Efectivo')
       await fetchClienteCCDeuda()
@@ -1088,14 +1098,18 @@ export default function VentasPage() {
     enabled: !!tenant && tab === 'historial',
   })
 
-  // Abrir modal de venta directamente si viene con ?id= en la URL
+  // Abrir modal de venta directamente si viene con ?id= en la URL.
+  // Con ?devolver=1 (CTA desde Envíos cuando un envío vuelve en estado "devolución")
+  // se abre directo el flujo de devolución de esa venta (respeta plazo de canal + clave maestra).
   useEffect(() => {
     const id = searchParams.get('id')
     if (!id || loadingVentas) return
     const venta = ventas.find((v: any) => v.id === id)
     if (venta) {
-      setVentaDetalle(venta)
+      const devolver = searchParams.get('devolver') === '1'
       setSearchParams({}, { replace: true })
+      if (devolver) abrirModalDevolucion(venta)
+      else setVentaDetalle(venta)
     }
   }, [ventas, loadingVentas, searchParams, setSearchParams])
 
@@ -3161,6 +3175,25 @@ export default function VentasPage() {
             ...(cancelNota ? { notas: `${venta.notas ? venta.notas + ' · ' : ''}${cancelNota}` } : {}),
           })
           .eq('id', ventaId)
+        // Auditoría 2026-06-11 — la venta anulada no debe dejar su envío vivo:
+        // los envíos aún no despachados se cancelan; los que ya están en la calle
+        // no se tocan (realidad física) pero se avisa para gestionarlos en Envíos.
+        try {
+          const { data: enviosVenta } = await supabase.from('envios')
+            .select('id, estado')
+            .eq('venta_id', ventaId)
+            .in('estado', ['pendiente', 'despachado', 'en_camino', 'en_bodega'])
+          const cancelables = (enviosVenta ?? []).filter((e: any) => e.estado === 'pendiente')
+          const enCurso = (enviosVenta ?? []).filter((e: any) => e.estado !== 'pendiente')
+          if (cancelables.length > 0) {
+            await supabase.from('envios').update({ estado: 'cancelado' })
+              .in('id', cancelables.map((e: any) => e.id))
+            toast(`Se canceló ${cancelables.length === 1 ? 'el envío pendiente' : `${cancelables.length} envíos pendientes`} de esta venta`, { icon: '📦' })
+          }
+          if (enCurso.length > 0) {
+            toast(`Esta venta tiene ${enCurso.length === 1 ? 'un envío' : `${enCurso.length} envíos`} en curso — gestionalo en Envíos`, { icon: '⚠️', duration: 8000 })
+          }
+        } catch (e) { console.error('[ventas] cancelación de envíos asociados falló:', e) }
         // E2 — devolución de seña con penalidad opcional y destino configurable.
         const senaCobrada = venta.monto_pagado ?? 0
         if (senaCobrada > 0) {

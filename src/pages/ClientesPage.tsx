@@ -477,12 +477,21 @@ export default function ClientesPage() {
     if (!monto || monto <= 0) { toast.error('Ingresá un monto válido'); return }
     setSavingPago(true)
     try {
-      const { aplicado } = await cobrarDeudaCCFIFO(supabase, { tenantId: tenant!.id, clienteId, monto, metodo: pagoMetodo })
+      const nomb = (clientesCC as any[]).find(c => c.id === clienteId)?.nombre ?? 'cliente'
+      const { aplicado, cajaRegistrada } = await cobrarDeudaCCFIFO(supabase, {
+        tenantId: tenant!.id, clienteId, monto, metodo: pagoMetodo,
+        usuarioId: user?.id, clienteNombre: nomb,
+      })
       if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
       toast.success(`Pago de ${formatMoneda(aplicado)} registrado`)
-      const nomb = (clientesCC as any[]).find(c => c.id === clienteId)?.nombre ?? 'cliente'
+      // Impacto en arqueo: efectivo sin caja a la que imputar → avisar (descuadre seguro)
+      if (pagoMetodo === 'Efectivo' && !cajaRegistrada) {
+        toast('El efectivo cobrado no quedó en ningún arqueo: no hay caja abierta a la que imputarlo.', { icon: '⚠️', duration: 7000 })
+      }
       void notificarPagoCC(tenant, clienteId, nomb, aplicado)  // CL4/C4
       qc.invalidateQueries({ queryKey: ['ventas-cc'] })
+      qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
       setPagoInlineId(null); setPagoMonto(''); setPagoMetodo('Efectivo')
     } catch (e: any) { toast.error(e.message ?? 'Error al registrar pago') }
     finally { setSavingPago(false) }

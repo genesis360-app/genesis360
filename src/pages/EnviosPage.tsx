@@ -1628,6 +1628,14 @@ export default function EnviosPage() {
                                       <ExternalLink size={13} /> Ver venta
                                     </button>
                                   )}
+                                  {/* Auditoría 2026-06-11 — el envío que volvió no debe morir en el limbo:
+                                      CTA que abre el flujo de devolución de la venta (reingreso de stock + NC/egreso). */}
+                                  {e.estado === 'devolucion' && e.venta_id && (
+                                    <button onClick={() => navigate(`/ventas?id=${e.venta_id}&devolver=1`)}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-purple-300 dark:border-purple-700 rounded-lg text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-colors">
+                                      <RotateCcw size={13} /> Registrar devolución de la venta
+                                    </button>
+                                  )}
                                   {/* Registrar POD — disponible a partir de en_camino */}
                                   {(e.estado === 'en_camino' || e.estado === 'en_bodega' || e.estado === 'entregado') && (
                                     <button onClick={() => {

@@ -15,7 +15,7 @@ import toast from 'react-hot-toast'
  * Reusa `cobrarDeudaCCFIFO` (mismo flujo que la ficha y el POS).
  */
 export default function CajaCobranzasCC() {
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const [cobrarId, setCobrarId] = useState<string | null>(null)
@@ -71,13 +71,22 @@ export default function CajaCobranzasCC() {
     if (!m || m <= 0) { toast.error('Ingresá un monto válido'); return }
     setSaving(true)
     try {
-      const { aplicado } = await cobrarDeudaCCFIFO(supabase, { tenantId: tenant!.id, clienteId, monto: m, metodo })
+      const nomb = conDeuda.find(x => x.id === clienteId)?.nombre ?? 'cliente'
+      const { aplicado, cajaRegistrada } = await cobrarDeudaCCFIFO(supabase, {
+        tenantId: tenant!.id, clienteId, monto: m, metodo,
+        usuarioId: user?.id, clienteNombre: nomb,
+      })
       if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
       toast.success(`Cobranza de ${formatMoneda(aplicado)} registrada`)
-      const nomb = conDeuda.find(x => x.id === clienteId)?.nombre ?? 'cliente'
+      // Impacto en arqueo: efectivo sin caja a la que imputar → avisar (descuadre seguro)
+      if (metodo === 'Efectivo' && !cajaRegistrada) {
+        toast('El efectivo cobrado no quedó en ningún arqueo: no hay caja abierta a la que imputarlo.', { icon: '⚠️', duration: 7000 })
+      }
       void notificarPagoCC(tenant, clienteId, nomb, aplicado)  // CL4/C4
       setCobrarId(null); setMonto(''); setMetodo('Efectivo')
       qc.invalidateQueries({ queryKey: ['caja-cobranzas-cc'] })
+      qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas'] })
+      qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
     } catch (e: any) { toast.error(e.message ?? 'Error al registrar la cobranza') }
     finally { setSaving(false) }
   }

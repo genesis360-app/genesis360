@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] update | v1.57.0 DEV — Modo básico "mínimo mostrador" + auditoría de roles con tests
+
+GO planteó dos cosas tras el modo Básico/Avanzado: (1) el básico mostraba demasiados módulos, (2) auditar que cada rol pueda hacer su trabajo. Sin migración. Release **v1.57.0** sobre `dev`. Suite unit **701** (+22) · typecheck + build verdes.
+
+- **Nav básico "Mínimo mostrador":** Recursos y Biblioteca → `avanzadoOnly` (features empresariales); Facturación solo en básico si `facturacion_habilitada`; Sucursales solo si >1. Guard de rutas extendido a `/recursos` y `/biblioteca`. Básico típico (DUEÑO, 1 suc, sin facturación) = **12 módulos usables**.
+- **Auditoría de roles como tests:** lógica de visibilidad extraída a `src/lib/navVisibility.ts` (pura) + matriz rol×modo (`navVisibility.test.ts`, 16 casos). **2 bugs corregidos:** `supervisorOnly` ocultaba Recepciones a DEPOSITO e Historial a CONTADOR pese a `depositoVisible`/`contadorVisible` (y a estar en sus allowlists) → ahora el permiso explícito por rol prevalece sobre los gates de admin.
+- **Gap cerrado — rol custom read-only:** `src/lib/permisosModulo.ts` (`moduloSoloLectura`/`moduloOculto`/`puedeEditarModulo`) + enforcement en las mutaciones de Ventas, Caja, Inventario, Productos, Gastos y Clientes. Antes un rol custom `'ver'` igual podía mutar (solo se chequeaba en el nav).
+- **e2e roles faltantes:** specs DEPOSITO (17) y CONTADOR (18) + auth setups + projects en `playwright.config` (gated por `E2E_DEPOSITO_*`/`E2E_CONTADOR_*`; skip sin credenciales). **Prerrequisito de GO:** crear esos 2 usuarios de prueba en DEV.
+- **Revisado sin cambio:** ADMIN cierra período contable = no es bug (ADMIN es rol de poder consistente en compras/caja). 
+- **Pendiente:** sigue faltando deployar todo el modo (v1.55–v1.57) a PROD — mig 207 antes del merge dev→main.
+
 ## [2026-06-12] update | v1.56.0 DEV — Modo básico/avanzado F2+F3 — feature COMPLETO (falta solo deploy a PROD)
 
 Cierra el feature en la misma sesión que F1. **Sin migración.** Release **v1.56.0** sobre `dev` (`--latest`). Unit **679** · build + typecheck verdes.

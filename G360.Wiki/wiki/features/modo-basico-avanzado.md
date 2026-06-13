@@ -27,16 +27,30 @@ Dos experiencias en un solo SaaS (v1.55.0, mig 207):
 
 ## Matriz de módulos
 
+**Nav básico "Mínimo mostrador" (v1.57.0):** un DUEÑO con 1 sucursal y sin facturación ve **12 módulos usables** — Dashboard, Ventas, Caja, Productos, Inventario, Clientes, Gastos, Proveedores, Alertas, Reportes, Usuarios, Configuración (+ RRHH/Reportes en gris como upsell de plan).
+
 | Módulo | Básico | Avanzado |
 |---|---|---|
-| Dashboard, Ventas (POS), Caja, Clientes, Gastos, Reportes/Métricas/Alertas, Usuarios, Sucursales, Config, Facturación | ✅ | ✅ |
+| Dashboard, Ventas (POS), Caja, Clientes, Gastos, Reportes/Alertas, Usuarios, Config | ✅ | ✅ |
+| **Facturación** | solo si `facturacion_habilitada` | ✅ |
+| **Sucursales** | solo si >1 sucursal | ✅ |
 | Productos | Form simple (sin tracking/regla/aging/peso-dim/ubicación-estado default) | Completo |
 | Inventario | Stock + agregar/quitar simplificados + conteo rápido + Traslados (solo si >1 sucursal) | Completo (LPN, ubicaciones, estados, vista por ubicación, conteos guiado/ciego/ABC/cíclico, acciones LPN) |
-| Proveedores | Ficha + CC + pagos (F2: ocultar OC/presupuestos/calificación) | Completo |
+| Proveedores | Ficha + CC + pagos (sin OC/presupuestos/calificación) | Completo |
+| **Recursos** (activos fijos) | ❌ | ✅ |
+| **Biblioteca** (documentos) | ❌ | ✅ |
 | **Recepciones + OC** | ❌ (stock entra por Inventario → Agregar) | ✅ |
 | **Envíos** | ❌ (costo de envío manual en el POS) | ✅ |
 | **Historial/Trazabilidad** | ❌ (movimientos en el tab Historial de Inventario) | ✅ |
 | RRHH | Gate de plan existente (`puede_rrhh`), sin cambios | ídem |
+
+## Visibilidad de nav y auditoría de roles (v1.57.0)
+
+La decisión de qué módulos ve cada usuario vive en la función pura [`src/lib/navVisibility.ts`](../../../src/lib/navVisibility.ts) (`navItemVisible` + `navItemLocked`), consumida por `AppLayout`. Está cubierta por una **matriz rol × modo** en `tests/unit/navVisibility.test.ts` (cada rol conserva su trabajo core en básico y avanzado). **Regla clave:** el permiso explícito por rol (`depositoVisible`/`contadorVisible`/`cajeroVisible`/`rrhhVisible`) **prevalece sobre `ownerOnly`/`supervisorOnly`** — esto corrigió dos bugs (DEPOSITO no veía Recepciones, CONTADOR no veía Historial).
+
+**Rol custom read-only:** los `permisos_custom[modulo]` ahora se aplican también en las mutaciones, no solo en el nav. Helper [`src/lib/permisosModulo.ts`](../../../src/lib/permisosModulo.ts) (`moduloSoloLectura`/`moduloOculto`/`puedeEditarModulo`): un rol custom marcado `'ver'` no puede crear/editar en Ventas, Caja, Inventario, Productos, Gastos ni Clientes.
+
+**e2e por rol:** además de owner/cajero/supervisor/rrhh existen specs para **DEPOSITO** (17) y **CONTADOR** (18), gated por credenciales `E2E_DEPOSITO_*`/`E2E_CONTADOR_*` (se omiten si faltan).
 
 ## Implementación F1 (v1.55.0 — hecho)
 

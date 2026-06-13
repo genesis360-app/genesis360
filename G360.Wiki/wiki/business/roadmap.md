@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.57.0 — Modo básico "mínimo mostrador" + auditoría de roles (DEV)
+
+El modo básico ocultaba solo 3 módulos; ahora también **Recursos** y **Biblioteca** (empresariales), **Facturación** (solo si habilitada) y **Sucursales** (solo si >1) → básico típico = 12 módulos. La visibilidad del nav se extrajo a `navVisibility.ts` (pura) con matriz rol×modo en tests; en el camino se corrigieron **2 bugs** (`supervisorOnly` ocultaba Recepciones a DEPOSITO e Historial a CONTADOR). **Gap de seguridad cerrado:** rol custom marcado `'ver'` ya no puede mutar (helper `permisosModulo.ts` aplicado en Ventas/Caja/Inventario/Productos/Gastos/Clientes). e2e nuevos para DEPOSITO y CONTADOR. Suite **701**. Sin migración.
+
+---
+
 ## v1.56.0 — Modo Básico/Avanzado · F2 superficies internas + F3 sugerencia (DEV)
 
 Cierra el feature (F1+F2+F3 completos, falta solo deploy a PROD). **F2**: POS sin picker LPN ni cotización courier · Proveedores sin OC/comparar presupuestos · Config sin tab Envíos / Inventario reducido / Gastos sin gobierno OC · Dashboard sin chip Envíos. **F3**: banner descartable de sugerencia de modo avanzado por rubro (`sugiereModoAvanzado`) con CTA a Configuración. Sin migración. Suite **679**.

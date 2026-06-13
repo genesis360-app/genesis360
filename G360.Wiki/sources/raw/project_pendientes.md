@@ -24,13 +24,13 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.57.0` ✅ | `v1.57.0` ✅ |
+| APP_VERSION | `v1.58.0` 🚧 | `v1.57.0` ✅ |
 | Migrations | 001–**207** ✅ | 001–**207** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.57.0, PR #189) |
+| Branch | `dev` (adelantado: v1.58.0, sin mig) | `main` (release v1.57.0, PR #189) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.57.0 (auto desde `main`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (207 ya en PROD, 4 tenants → avanzado).
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (207 ya en PROD). **DEV adelantado por v1.58.0** (UI-only, sin migración) — recorte de superficies internas del modo básico (Inventario→Kits · Productos→es_kit/mayoristas · Gastos→OC/Reportes-compras/Recursos); pendiente de pasar a PROD.
 
 **Migrations DEV pendientes de aplicar en PROD:** **207** (`modo_operacion`, aditiva — aplicar ANTES del merge dev→main; deja a todos los tenants PROD en `avanzado`, cero impacto).
 

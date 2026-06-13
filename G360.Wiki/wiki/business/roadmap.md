@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.58.0 — Modo básico: ocultar superficies internas avanzadas "claras" (DEV)
+
+Auditoría de pestañas/sub-módulos que seguían en básico. Se ocultan (modo avanzado): Inventario→Kits · Productos→"Es un KIT" + Precios mayoristas · Gastos→OC, Reportes-compras, Recursos. Se dejan en básico (decisión GO): Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones. Sin migración. Pendiente deploy a PROD.
+
+---
+
 ## v1.57.0 — Modo básico "mínimo mostrador" + auditoría de roles (PROD ✅)
 
 > **v1.55.0 → v1.57.0 deployadas a PROD juntas el 2026-06-13 (PR #189, mig 207).** Los tres bloques abajo describen el feature completo; al deployar, los tenants existentes quedaron en `avanzado` (cero impacto).

@@ -34,8 +34,9 @@ Dos experiencias en un solo SaaS (v1.55.0, mig 207):
 | Dashboard, Ventas (POS), Caja, Clientes, Gastos, Reportes/Alertas, Usuarios, Config | ✅ | ✅ |
 | **Facturación** | solo si `facturacion_habilitada` | ✅ |
 | **Sucursales** | solo si >1 sucursal | ✅ |
-| Productos | Form simple (sin tracking/regla/aging/peso-dim/ubicación-estado default) | Completo |
-| Inventario | Stock + agregar/quitar simplificados + conteo rápido + Traslados (solo si >1 sucursal) | Completo (LPN, ubicaciones, estados, vista por ubicación, conteos guiado/ciego/ABC/cíclico, acciones LPN) |
+| Productos | Form simple (sin tracking/regla/aging/peso-dim/ubicación-estado default; **sin "Es un KIT" ni precios mayoristas** — v1.58.0). Quedan: variantes talle/color, precio USD | Completo |
+| Inventario | Stock + agregar/quitar simplificados + conteo rápido + Traslados (solo si >1 sucursal); **sin pestaña Kits** (v1.58.0) | Completo (LPN, ubicaciones, estados, vista por ubicación, conteos guiado/ciego/ABC/cíclico, acciones LPN, Kits) |
+| Gastos | Variables/fijos/historial + cheques/cierres/autorizaciones; **sin OC, Reportes-compras ni Recursos** (v1.58.0) | Completo |
 | Proveedores | Ficha + CC + pagos (sin OC/presupuestos/calificación) | Completo |
 | **Recursos** (activos fijos) | ❌ | ✅ |
 | **Biblioteca** (documentos) | ❌ | ✅ |

@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] deploy | v1.59.0 PROD — Auditoría pre-cliente (básico + seguridad migs 208/209 + react-router + e2e mutante) · `dev=main`
+
+**Toda la auditoría pre-cliente (tandas 1+2 + recorrido funcional + salud + testing) a PROD en un PR.** GO autorizó "testing y luego pasamos a PRD". **PR #191** merged a `main`, migs **208**+**209** aplicadas en PROD ANTES del merge (idempotentes/aditivas), release **v1.59.0** `--latest`, `dev=main` (`47749296`). Vercel auto-deploy de producción desde `main`. Verificado en PROD: planes policy ✓, `verificar_clave_maestra` anon=false ✓, `cerrar_periodo` search_path ✓, bucket `avatares` SELECT scopeado ✓. CI: unit verde, e2e SKIPPED (gateado por `RUN_E2E`, no depleta DEV).
+
+- **Contenido:** recortes modo básico (Productos→Estructura, Config→Conectividad→API; se mantiene Integraciones) · seguridad 208 (planes RLS, search_path 25→0, anon SECURITY DEFINER 29→15, clave maestra anti-fuerza-bruta) · seguridad 209 (buckets que listan 2→0) · react-router-dom 6.30.4 · primer e2e mutante de venta (suite 701 unit + 158 e2e).
+- **Acción pendiente de GO (no SQL):** activar Leaked Password Protection en Supabase → Authentication → Policies.
+- **Backlog post-deploy:** e2e mutantes restantes (caja lifecycle/recepción/devolución), y a futuro RLS por sucursal (cuando haya multi-sucursal), pase de performance, Vite 8, AFIP a PROD.
+
 ## [2026-06-13] update | v1.59.0 DEV — Auditoría pre-cliente T1: recortes modo básico + endurecimiento de seguridad (mig 208)
 
 **Arranca la auditoría pre-primer-cliente.** Dos frentes en una tanda, en DEV (NO deployado a PROD aún). Suite unit **701/701** · typecheck + build verdes. Commit `dev` `6eb93b5d`.

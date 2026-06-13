@@ -13,9 +13,9 @@ updated: 2026-05-29
 
 ---
 
-## v1.59.0 — Auditoría pre-cliente T1: recortes modo básico + endurecimiento de seguridad (DEV ✅, PROD ⏳)
+## v1.59.0 — Auditoría pre-cliente: modo básico + seguridad (208/209) + e2e mutante (PROD ✅, PR #191)
 
-Primera tanda de la **auditoría pre-primer-cliente**. **Recortes de modo básico (UI):** Productos→**Estructura** (jerarquía empaque unidad/caja/pallet = WMS) y Configuración→Conectividad→sub-tab **API** (API pública del marketplace) ocultos en básico; se mantiene el sub-tab Integraciones (TN/MeLi/MP). **Seguridad (mig 208, idempotente):** policy SELECT en `planes` (cierra RLS-no-policy), `search_path=public` en 25 funciones, y `REVOKE FROM PUBLIC`+re-GRANT en SECURITY DEFINER no públicas (períodos, sweeps CC, clave maestra anti-fuerza-bruta, seeds). Advisors: search_path 25→0, rls_no_policy 1→0, anon SECURITY DEFINER 29→15. **Pendiente:** deploy a PROD (mig 208 antes del merge) + follow-ups (buckets/pg_net/leaked-pw/RLS-sucursal). Suite **701**.
+**Auditoría pre-primer-cliente (tandas 1+2)** en PROD (migs 208/209 antes del merge, `dev=main`). **Recortes de modo básico (UI):** Productos→**Estructura** (empaque unidad/caja/pallet = WMS) y Configuración→Conectividad→sub-tab **API** ocultos; se mantiene Integraciones (TN/MeLi/MP). **Seguridad (mig 208):** policy SELECT en `planes`, `search_path=public` en 25 funciones, `REVOKE FROM PUBLIC`+re-GRANT en SECURITY DEFINER no públicas (períodos, sweeps CC, clave maestra anti-fuerza-bruta, seeds) → search_path 25→0, rls_no_policy 1→0, anon SECURITY DEFINER 29→15. **Seguridad (mig 209):** buckets `avatares`/`productos` con SELECT scopeado → listado cross-tenant 2→0. **Salud:** react-router-dom 6.30.4 (open-redirect); performance advisors (646) = deuda de escala documentada. **Testing:** recorrido funcional verde + primer e2e MUTANTE de venta; suite **701 unit + 158 e2e**. **Decisiones won't-fix/diferido:** pg_net (no relocatable), RLS por sucursal (0 exposición hoy), leaked-password (toggle de Auth, acción de GO).
 
 ---
 

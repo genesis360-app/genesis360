@@ -84,6 +84,7 @@ La decisión de qué módulos ve cada usuario vive en la función pura [`src/lib
 🔧 **v1.58.0 → v1.59.3 (PROD ✅)** recortaron superficies internas que se colaban en básico.
 - **v1.59.1 (PR #193):** Inventario — modal de detalle de movimiento sin Estado/LPN · tab **Autorizaciones** oculto (no hay modal de acciones LPN que las genere) · grilla de stock sin columnas **Lote/Venc.** y **Series** (grid-cols 4→2). Ajuste +1/-1 = vía Agregar/Quitar stock (sin ajuste a nivel LPN en básico).
 - **v1.59.3 (PR #195):** UX general — ESC cierra el modal de detalle · autoFocus en la búsqueda de SKU del modal de ingreso/rebaje (Enter ya lo abría) · alineación de la columna Cantidad.
+- **v1.59.4 (PR #196):** envío en el POS — el campo **`$/km`** ahora es editable (en básico no hay Config→Envíos para cargar la tarifa por km, así que se carga ad-hoc en el modal; el costo km×$/km se recalcula solo). El modo "$ Monto fijo" sigue como alternativa para el costo total directo.
 
 🔧 **v1.58.0 (PROD ✅)** y **v1.59.0 (PROD ✅, PR #191)** recortaron las primeras superficies internas que se colaban en básico. v1.58.0: Inventario→Kits, Productos→es_kit+mayoristas, Gastos→OC/Reportes/Recursos. v1.59.0: Productos→**Estructura** (empaque WMS) y Config→Conectividad→sub-tab **API** (se mantiene Integraciones). Decisiones GO de qué se deja en básico: Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones, Ventas→Canales.
 

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.59.4 — $/km editable en el envío del POS (PROD ✅, PR #196)
+
+En modo básico no existe Config→Envíos para cargar la tarifa por km, así que el modo "Por KM" del envío en el POS quedaba inusable (campo `$/km` read-only en "—"). Ahora el `$/km` es un input editable: pre-cargado con `sucursal.costo_km_envio`/`tenant.costo_envio_por_km` si existe, vacío si no; el costo (km × $/km) se recalcula solo. Funciona en básico (tarifa ad-hoc por venta) y avanzado (override por venta). El modo "$ Monto fijo" sigue como alternativa para el costo total directo. Sin migración.
+
+---
+
 ## v1.59.3 — UX Inventario: alineación Cantidad + ESC cierra detalle + autoFocus SKU (PROD ✅, PR #195)
 
 Refinamientos de UX (review GO), sin migración, shortcuts generales (básico+avanzado): (1) alineación de la columna Cantidad en la grilla de stock (regresión de v1.59.1: header `grid-cols-4` vs filas `grid-cols-2` en básico); (2) ESC cierra el modal de detalle de movimiento (ingreso/rebaje/historial); (3) Enter en Agregar/Quitar Stock abre el modal con autoFocus en la búsqueda de SKU.

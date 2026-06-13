@@ -4,7 +4,7 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release: **v1.59.3** ✅ EN PROD (2026-06-13, PR **#195**, UI-only, `dev=main` `669e528e`) — **UX Inventario** (alineación columna Cantidad [regresión de v1.59.1] · ESC cierra modal de detalle de movimiento · autoFocus en búsqueda SKU del modal de ingreso/rebaje). Antes hoy: **v1.59.2** (PR #194) — **FIX del bloqueo REAL de venta en básico: el ESTADO** (stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba `es_disponible_venta` → bloqueaba en `agregarProducto`; fix: filtro de estado solo en avanzado). **v1.59.1** (PR #193) — fix venta básico parte 1 (ubicación, `soloUbicado`) + recortes Inventario básico (modal detalle sin Estado/LPN · tab Autorizaciones oculto · grilla sin Lote/Venc./Series) + e2e mutante de ciclo de caja. **⚠ Regla:** el stock de básico tiene `ubicacion_id` Y `estado_id` NULL → queries de venta/stock deben ser mode-aware (ver sección de estado abajo).
+Último release: **v1.59.4** ✅ EN PROD (2026-06-13, PR **#196**, UI-only, `dev=main` `6d76cd92`) — **`$/km` editable en el envío del POS** (en básico no hay Config→Envíos para la tarifa por km → el modo "Por KM" quedaba inusable; ahora el `$/km` es input editable, pre-cargado si hay tarifa o vacío si no, y el costo km×$/km se recalcula solo; modo "$ Monto fijo" sigue como alternativa). Antes hoy: **v1.59.3** (PR #195, UI-only) — **UX Inventario** (alineación columna Cantidad [regresión de v1.59.1] · ESC cierra modal de detalle de movimiento · autoFocus en búsqueda SKU del modal de ingreso/rebaje). Antes hoy: **v1.59.2** (PR #194) — **FIX del bloqueo REAL de venta en básico: el ESTADO** (stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba `es_disponible_venta` → bloqueaba en `agregarProducto`; fix: filtro de estado solo en avanzado). **v1.59.1** (PR #193) — fix venta básico parte 1 (ubicación, `soloUbicado`) + recortes Inventario básico (modal detalle sin Estado/LPN · tab Autorizaciones oculto · grilla sin Lote/Venc./Series) + e2e mutante de ciclo de caja. **⚠ Regla:** el stock de básico tiene `ubicacion_id` Y `estado_id` NULL → queries de venta/stock deben ser mode-aware (ver sección de estado abajo).
 
 Antes: **v1.59.0** ✅ EN PROD (2026-06-13, PR **#191**, migs **208**+**209** aplicadas en PROD, `dev=main`) — **Auditoría pre-primer-cliente, tandas 1+2**. Recortes básico (UI): Productos→**Estructura** y Config→Conectividad→sub-tab **API** ocultos (se mantiene Integraciones TN/MeLi/MP). Seguridad (mig 208): policy SELECT en `planes`, `search_path=public` en 25 funciones, `REVOKE FROM PUBLIC`+re-GRANT en SECURITY DEFINER no públicas (períodos, sweeps CC, clave maestra anti-fuerza-bruta, seeds) → search_path 25→0, rls_no_policy 1→0, anon SECURITY DEFINER 29→15 (resto por diseño). Seguridad (mig 209): buckets `avatares`/`productos` con SELECT scopeado a la propia carpeta → `public_bucket_allows_listing` 2→0. Salud: react-router-dom 6.30.4 (open-redirect). Testing: **701 unit + 158 e2e**, primer e2e MUTANTE real de venta (POS→cobro→caja). Decisiones won't-fix/diferido: pg_net (no relocatable), RLS por sucursal (0 exposición hoy), leaked-password (toggle de Auth de GO). Detalle en "AUDITORÍA PRE-PRIMER CLIENTE" abajo.
 
@@ -28,13 +28,14 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.59.3` ✅ | `v1.59.3` ✅ |
+| APP_VERSION | `v1.59.4` ✅ | `v1.59.4` ✅ |
 | Migrations | 001–**209** ✅ | 001–**209** ✅ |
-| Branch | `dev` (= `main`) | `main` (release v1.59.3, PR #195) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.59.3 (auto desde `main`) |
+| Branch | `dev` (= `main`) | `main` (release v1.59.4, PR #196) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.59.4 (auto desde `main`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna. **Todo en PROD = DEV = v1.59.3** (`dev=main`, `669e528e`). Cadena del día:
+**Migrations DEV pendientes de aplicar en PROD:** ninguna. **Todo en PROD = DEV = v1.59.4** (`dev=main`, `6d76cd92`). Cadena del día:
+- **v1.59.4** (PR #196, UI-only): **`$/km` editable en el envío del POS** — en básico no hay Config→Envíos para cargar la tarifa por km, así que el modo "Por KM" quedaba inusable (campo read-only "—"). Ahora el `$/km` es input editable (pre-cargado si hay tarifa, vacío si no); costo km×$/km se recalcula solo. Modo "$ Monto fijo" sigue como alternativa.
 - **v1.59.3** (PR #195, UI-only): UX Inventario — alineación columna Cantidad (regresión de v1.59.1), ESC cierra modal de detalle, autoFocus en búsqueda SKU del modal de ingreso/rebaje (Enter ya lo abría).
 - **v1.59.2** (PR #194, UI-only): **FIX del bloqueo REAL de venta en básico = ESTADO**. Stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba por `es_disponible_venta` → bloqueaba en `agregarProducto`. Fix: filtro de estado solo en avanzado. (v1.59.1 había arreglado la ubicación pero no era suficiente.)
 - **v1.59.1** (PR #193, UI-only): fix venta básico parte 1 (ubicación, `soloUbicado`) + recortes Inventario básico (modal detalle sin Estado/LPN, tab Autorizaciones oculto, grilla sin Lote/Venc./Series) + e2e mutante de ciclo de caja.

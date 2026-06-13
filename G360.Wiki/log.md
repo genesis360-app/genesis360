@@ -6,6 +6,10 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] deploy | v1.59.4 PROD — $/km editable en el envío del POS (básico sin Config→Envíos) · `dev=main`
+
+**v1.59.4 (PR #196, UI-only).** GO: en modo básico no existe Config→Envíos para cargar la tarifa por km, así que el modo "Por KM" del envío en el POS quedaba inusable (el campo `$/km` era read-only, mostraba "—"). **Fix:** el campo `$/km` ahora es un **input editable** (pre-cargado con `sucursal.costo_km_envio`/`tenant.costo_envio_por_km` si existe, vacío si no). El costo (km × $/km) se recalcula solo (effect ya existente). Funciona en básico (cargás la tarifa ad-hoc por venta) y en avanzado (override por venta). El modo "$ Monto fijo" sigue como alternativa para tipear el costo total directo. `dev=main` `6d76cd92`.
+
 ## [2026-06-13] deploy | v1.59.2 + v1.59.3 PROD — Fix venta en básico (estado) + UX Inventario · `dev=main`
 
 **Dos patches a PROD el mismo día tras el feedback de GO probando el modo básico.** Sin migración (UI-only). `dev=main` en `669e528e`.

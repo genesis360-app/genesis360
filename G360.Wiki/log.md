@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] update | v1.59.0 DEV — Auditoría pre-cliente T1: recortes modo básico + endurecimiento de seguridad (mig 208)
+
+**Arranca la auditoría pre-primer-cliente.** Dos frentes en una tanda, en DEV (NO deployado a PROD aún). Suite unit **701/701** · typecheck + build verdes. Commit `dev` `6eb93b5d`.
+
+**1) Recortes de modo básico (pedido GO: "encontrá vos las sub-pestañas que no deberían estar en básico").** Auditoría sistemática de las pestañas internas de cada módulo visible en básico. UI-only, sin migración. GO eligió:
+- **Productos → Estructura** (jerarquía de empaque unidad/caja/pallet con pesos/dims = WMS) → oculta en básico. La página no chequeaba modo (el recorte de v1.58.0 fue en el *form*, no acá). Gateada por `modoAvanzado` + reset de tab.
+- **Configuración → Conectividad → sub-tab "API"** (API pública del marketplace `marketplace-api` + webhook) → oculto en básico. **Se mantiene el sub-tab "Integraciones"** (TiendaNube/MercadoLibre/MercadoPago) — decisión GO.
+- Evaluadas y **dejadas**: Ventas→Canales (reporte por canal, inofensivo). Verificadas ya-gateadas: Inventario (Kits/ubicación/columnas WMS), Proveedores (OC), Config (Envíos), Gastos (OC/Reportes/Recursos).
+
+**2) Endurecimiento de seguridad — mig 208 (idempotente, aplicada en DEV).** Remedia hallazgos de `get_advisors(security)`:
+- **`planes`**: policy SELECT pública (catálogo global lockeado; el front no lo lee). `rls_enabled_no_policy 1→0`.
+- **`search_path=public`** en 25 funciones (loop por `oid::regprocedure`). `function_search_path_mutable 25→0`.
+- **`REVOKE FROM PUBLIC` + re-`GRANT`** en SECURITY DEFINER no públicas. **Gotcha clave:** el EXECUTE de anon venía del grant a **PUBLIC**, no de un grant a `anon` — `REVOKE FROM anon` era no-op. Tras el fix: `anon SECURITY DEFINER 29→15`. Fuera de anon: períodos (cerrar/reabrir), sweeps CC, `cliente_cc_estado`, `verificar/requiere_clave_maestra` (corta fuerza bruta), seeds/triggers (anon+auth fuera, service_role escape — onboarding sigue OK porque los `fn_seed_*` son SECURITY DEFINER de postgres). Los 15 anon restantes son por diseño (10 token-gated + 5 helpers RLS que no-opean sin `auth.uid()`).
+- **Follow-up (no en 208):** 2 buckets que listan (avatares/productos), pg_net en public, leaked-password (toggle Auth de GO), `authenticated` SECURITY DEFINER (by-design), RLS por sucursal (#8).
+
+**▶ Próximo:** decisión GO de deployar v1.59.0 + mig 208 a PROD (aplicar 208 antes del merge), y seguir la auditoría (B. testing exhaustivo / C. recorrido funcional / D. salud / follow-ups de seguridad).
+
 ## [2026-06-13] cierre-sesión | Modo Básico/Avanzado (WMS) COMPLETO en PROD (v1.55→v1.58) + auditoría de roles · próximo: auditoría pre-primer-cliente
 
 **Sesión grande: 4 releases a PROD (v1.55.0 → v1.58.0).** El modo de operación Básico vs Avanzado quedó **completo y en producción**, más la auditoría de roles y el recorte de superficies internas del básico. Estado al cierre: PROD = DEV = **v1.58.0**, migrations 001-**207**, `dev=main` (salvo 1 commit de wiki). Suite unit **701** · e2e por rol (owner/cajero/supervisor/rrhh/**deposito**/**contador**).

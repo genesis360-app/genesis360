@@ -17,6 +17,7 @@ import { generarEstadoCuentaPDF } from '@/lib/estadoCuentaPDF'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import toast from 'react-hot-toast'
 
@@ -408,6 +409,7 @@ export default function ClientesPage() {
   }
 
   const guardar = async () => {
+    if (moduloSoloLectura(user, 'clientes')) { toast.error('Tu rol tiene acceso de solo lectura en Clientes.'); return }
     if (!form.nombre.trim()) { toast.error('El nombre es obligatorio'); return }
     if (!form.dni.trim()) { toast.error('El DNI es obligatorio'); return }
     if (!form.telefono.trim()) { toast.error('El teléfono es obligatorio'); return }

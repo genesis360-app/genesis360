@@ -23,6 +23,7 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
@@ -993,6 +994,7 @@ export default function InventarioPage() {
 
   const ingresoMutation = useMutation({
     mutationFn: async () => {
+      if (moduloSoloLectura(user, 'movimientos')) throw new Error('Tu rol tiene acceso de solo lectura en Inventario.')
       // A2 — wall-to-wall en curso: no permitir mover stock hasta cerrar el conteo
       if (conteoBloqueante) throw new Error('Hay un conteo wall-to-wall en curso en esta sucursal. Finalizalo o eliminalo antes de ingresar stock.')
       if (limits && !limits.puede_crear_movimiento)
@@ -1136,6 +1138,7 @@ export default function InventarioPage() {
 
   const rebajeMutation = useMutation({
     mutationFn: async () => {
+      if (moduloSoloLectura(user, 'movimientos')) throw new Error('Tu rol tiene acceso de solo lectura en Inventario.')
       // A2 — wall-to-wall en curso: no permitir mover stock hasta cerrar el conteo
       if (conteoBloqueante) throw new Error('Hay un conteo wall-to-wall en curso en esta sucursal. Finalizalo o eliminalo antes de rebajar stock.')
       if (limits && !limits.puede_crear_movimiento)

@@ -19,6 +19,7 @@ import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -1747,6 +1748,7 @@ export default function VentasPage() {
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
+    if (moduloSoloLectura(user, 'ventas')) { toast.error('Tu rol tiene acceso de solo lectura en Ventas.'); return }
     // A2 — durante un conteo wall-to-wall bloqueante no se puede mover stock (reserva/despacho).
     // El presupuesto ('pendiente') sí se permite porque no afecta stock.
     if (estado !== 'pendiente' && conteoBloqueante) {

@@ -11,6 +11,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -344,6 +345,7 @@ export default function ProductoFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (moduloSoloLectura(user, 'inventario')) return toast.error('Tu rol tiene acceso de solo lectura en Productos.')
     if (!form.nombre.trim()) return toast.error('El nombre es obligatorio')
     if (skuTaken) return toast.error('El SKU ya está en uso. Elegí otro o dejalo vacío para autogenerar.')
 

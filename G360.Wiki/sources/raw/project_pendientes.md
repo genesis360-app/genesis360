@@ -83,9 +83,10 @@ Auditoría de flujos cruzados entre módulos (verificada contra código). **Quic
 
 **C. RECORRIDO FUNCIONAL — ✅ HECHO (v1.59.0, veredicto VERDE).** Verificado con tenant nuevo real básico ("Kiosco Buildi" en DEV) + traza de código. Seeds completos al alta (1 sucursal, Caja Principal + Bóveda, 11 motivos, 2 estados, 6 unidades, 7 canales de venta, 16 categorías de gasto, **5 métodos de pago**: Efectivo/MP/Tarjetas/Transferencia). Cargar producto: solo `nombre` obligatorio (categoría opcional). Venta en básico: sin picker de LPN → despacha por **auto-FIFO** (Fase B de `registrarVenta` cuando `lpn_fuentes` vacío), baja stock + registra despacho. Caja/Fiado/Gasto OK. **Sin bloqueantes.** Pulido opcional (no hecho): seedear categoría "General" (el dropdown arranca solo con "Sin categoría"); cuentas de origen vacías (opcional contable). **Falta el recorrido en vivo (click-through) para UX/runtime — el estático no lo cubre.**
 
-**B. TESTING exhaustivo.**
-  - Correr suite completa: `npm run test:unit` (**701**) + `npm run test:e2e` con **todos los roles** (owner/cajero/supervisor/rrhh/**deposito**/**contador** — estos 2 ya tienen usuario de prueba en DEV; ver `tests/e2e/.env.test.local`). Confirmar que owner (`E2E_EMAIL`) y supervisor tengan credenciales válidas.
-  - Gap principal: **e2e MUTANTES reales** (hoy son defensivos/solo-lectura) — flujo de venta completo (POS→cobro→caja), apertura/cierre de caja end-to-end, recepción, devolución.
+**B. TESTING exhaustivo — ✅ EN PROGRESO (v1.59.0).**
+  - ✅ Suite completa verde: `npm run test:unit` **701** + `npm run test:e2e` **158 passed** (6 roles: owner/cajero/supervisor/rrhh/deposito/contador). Sin regresiones por los cambios de la auditoría.
+  - ✅ **Primer e2e MUTANTE real** (`19_flujo_venta_mutante.spec.ts`): venta directa en efectivo de punta a punta (POS→elige caja→Efectivo→despacha) que verifica la mutación (carrito se limpia ⇒ `registrarVenta` creó venta + rebajó stock + movimiento de caja, atómico). MUTA datos del tenant de prueba DEV (intencional). Gotchas resueltos: resultados de búsqueda son `<button>` en `div.absolute.top-full` (no `.cursor-pointer`); el carrito se valida con el contador "N producto" (no el heading "Agregar productos"); el `<select>` de caja es `label:has-text("Registrar en caja") + select`.
+  - **Backlog de mutantes (próxima tanda):** apertura/cierre de caja end-to-end, recepción, devolución.
 
 **C. RECORRIDO FUNCIONAL end-to-end (simular un primer cliente).**
   - Alta de tenant nuevo (onboarding) → arranca en **básico** → cargar productos → vender (POS) → caja (abrir/cobrar/cerrar) → cliente con fiado → gasto. Repetir activando **modo avanzado**.

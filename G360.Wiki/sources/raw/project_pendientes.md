@@ -59,13 +59,37 @@ Auditoría de flujos cruzados entre módulos (verificada contra código). **Quic
 
 **Pendientes futuros de testing (no bloqueantes):** e2e mutante real de traspaso/cierre end-to-end (hoy defensivo), cobertura POS de visibilidad de costo G4 por rol, usuarios DEPOSITO/CONTADOR para specs de rol.
 
-### ▶ PRÓXIMA SESIÓN — candidatos
+### ▶ PRÓXIMA SESIÓN — AUDITORÍA PRE-PRIMER CLIENTE 🎯
 
-0. **Modo básico/avanzado — DEPLOY A PROD** (F1+F2+F3 ✅ completos en DEV, v1.55.0+v1.56.0): aplicar **mig 207 en PROD antes del merge** dev→main (deja a todos los tenants PROD en avanzado, cero impacto) → PR → release. Pendiente menor: e2e smoke del modo básico (requiere alternar el modo del tenant de test).
-1. **#7 Cron externo para sweeps lazy** (auditoría, infra GH Actions ya lista): workflows análogos a `birthday-notifications.yml` para intereses CC / reservas vencidas / servicios recurrentes / notifs CC. Barato y de alto valor (los jobs dejan de depender de que alguien abra la página).
-2. **#8 RLS por sucursal + portal empleado** (deuda de seguridad, feature mediana-grande): el aislamiento es solo client-side.
-3. **Pendiente de GO (offline):** responder relevamiento **Inventario/WMS** (`relevamiento-inventario-reglas-negocio.html`) · conseguir cuenta B2B de courier (Andreani 1ro) para destrabar **EN6**.
-4. Diferidos menores nuevos: link `traslados.envio_id` → envío `traslado_interno` · cheque de tercero depositado/cobrado → cuenta de origen/bóveda.
+**Objetivo de GO (2026-06-13):** *"testear todo y que quede la app funcional para que la use un primer cliente."* Plan de auditoría por área, de mayor a menor criticidad. Todo lo de modo Básico/Avanzado (v1.55–v1.58) y la auditoría de roles ya están **en PROD**; arrancamos de base verde.
+
+**A. SEGURIDAD — crítico para un cliente real.** Hallazgos concretos de `get_advisors(security)` en PROD (2026-06-13). Remediación: https://supabase.com/docs/guides/database/database-linter
+  - 🔴 **1× RLS Enabled No Policy** (`rls_enabled_no_policy`): una tabla tiene RLS activa pero **sin policy** → identificar cuál y agregar policy (o confirmar que es service-role-only). Bloquea o expone según el caso.
+  - 🟠 **30× anon + 39× authenticated pueden ejecutar SECURITY DEFINER**: revisar cada RPC pública. Las token-gated (envío/fichar/cuenta cliente públicos) son **por diseño**; **revisar con lupa `tenant_sql_query`, `planes`, `productos`, `process_aging_*`** — no deberían ser ejecutables sin scope de tenant.
+  - 🟠 **25× Function Search Path Mutable**: agregar `SET search_path = public` a esas funciones (hardening anti-injection). Mecánico pero importante.
+  - 🟡 **2× Public Bucket Allows Listing** (`avatares`, `productos`): cualquiera puede **listar** los archivos → restringir el listing del bucket.
+  - 🟡 **1× Leaked Password Protection Disabled**: activar en Supabase Auth (chequeo HaveIBeenPwned).
+  - 🟡 **1× Extension in Public** (`pg_net`): mover al schema `extensions`.
+  - **#8 RLS por sucursal (deuda conocida, RIESGO #1 para multi-sucursal):** el aislamiento entre sucursales es **solo client-side**. Para un cliente con varias sucursales/usuarios, evaluar implementar RLS real por sucursal.
+
+**B. TESTING exhaustivo.**
+  - Correr suite completa: `npm run test:unit` (**701**) + `npm run test:e2e` con **todos los roles** (owner/cajero/supervisor/rrhh/**deposito**/**contador** — estos 2 ya tienen usuario de prueba en DEV; ver `tests/e2e/.env.test.local`). Confirmar que owner (`E2E_EMAIL`) y supervisor tengan credenciales válidas.
+  - Gap principal: **e2e MUTANTES reales** (hoy son defensivos/solo-lectura) — flujo de venta completo (POS→cobro→caja), apertura/cierre de caja end-to-end, recepción, devolución.
+
+**C. RECORRIDO FUNCIONAL end-to-end (simular un primer cliente).**
+  - Alta de tenant nuevo (onboarding) → arranca en **básico** → cargar productos → vender (POS) → caja (abrir/cobrar/cerrar) → cliente con fiado → gasto. Repetir activando **modo avanzado**.
+  - Verificar seeds/defaults del alta (sucursal, caja, categorías, estados, métodos de pago) y que **nada oculto en básico rompa un flujo**.
+
+**D. SALUD TÉCNICA.**
+  - `get_advisors(performance)` en PROD (índices faltantes) · **npm audit** (GitHub reporta **5 vulnerabilidades**: 4 moderate, 1 low) · revisar logs de Edge Functions.
+
+**E. BLOQUEANTES DE NEGOCIO (si el cliente factura).**
+  - Facturación AFIP sigue en **DEV** (requiere CUIT/constitución de empresa para PROD real) · el tenant del primer cliente debe arrancar **sin datos de prueba**.
+
+**Pendientes técnicos previos (siguen vigentes, menor prioridad que la auditoría):**
+  - #7 Cron externo para sweeps lazy (infra GH Actions lista: intereses CC / reservas vencidas / servicios recurrentes / notifs CC).
+  - Relevamiento Inventario/WMS (GO offline) · cuenta B2B courier para EN6.
+  - Diferidos menores: link `traslados.envio_id` → envío `traslado_interno` · cheque de tercero depositado/cobrado → cuenta origen/bóveda · modo básico borderline (Conteos/variantes/USD/bóveda/cheques/cierres se dejaron a propósito, revisar si molestan al usar).
 
 ---
 

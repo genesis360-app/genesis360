@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] cierre-sesión | Modo Básico/Avanzado (WMS) COMPLETO en PROD (v1.55→v1.58) + auditoría de roles · próximo: auditoría pre-primer-cliente
+
+**Sesión grande: 4 releases a PROD (v1.55.0 → v1.58.0).** El modo de operación Básico vs Avanzado quedó **completo y en producción**, más la auditoría de roles y el recorte de superficies internas del básico. Estado al cierre: PROD = DEV = **v1.58.0**, migrations 001-**207**, `dev=main` (salvo 1 commit de wiki). Suite unit **701** · e2e por rol (owner/cajero/supervisor/rrhh/**deposito**/**contador**).
+
+- **v1.55.0** (mig 207) F1 fundación · **v1.56.0** F2+F3 · **v1.57.0** "mínimo mostrador" + auditoría de roles (`navVisibility.ts` puro, 2 bugs corregidos: DEPOSITO/Recepciones + CONTADOR/Historial; rol custom read-only) · **v1.58.0** recorte de superficies internas (Kits, es_kit, mayoristas, tabs OC/Reportes-compras/Recursos de Gastos).
+- **e2e DEPOSITO + CONTADOR habilitados:** usuarios de prueba creados en DEV (gotcha GoTrue de tokens NULL resuelto); 27 verdes.
+
+**▶ PRÓXIMA SESIÓN — AUDITORÍA PRE-PRIMER CLIENTE.** GO pidió "testear todo y que quede la app funcional para un primer cliente". Plan completo + hallazgos concretos de `get_advisors(security)` en PROD documentados en `project_pendientes.md` → sección "PRÓXIMA SESIÓN — AUDITORÍA PRE-PRIMER CLIENTE". Resumen: **A. Seguridad** (1 RLS sin policy 🔴, 25 funciones sin search_path, 30/39 SECURITY DEFINER públicas a revisar, buckets que listan, leaked-password off; + #8 RLS por sucursal = riesgo #1) · **B. Testing** (suite completa todos los roles + e2e mutantes reales) · **C. Recorrido funcional** (alta tenant → vender → caja, en básico y avanzado) · **D. Salud** (advisors performance, npm audit 5 vulns) · **E. Bloqueantes** (AFIP en DEV, datos limpios).
+
 ## [2026-06-13] deploy | v1.58.0 PROD — recorte modo básico + e2e DEPOSITO/CONTADOR habilitados · `dev=main`
 
 **v1.58.0 a PROD** (PR **#190**, UI-only sin migración; Vercel producción READY desde `main` sha `fa06ccf9`, `dev=main`). Recorte de superficies internas del modo básico (Inventario→Kits · Productos→es_kit+mayoristas · Gastos→OC/Reportes-compras/Recursos).

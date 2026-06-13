@@ -958,7 +958,8 @@ export default function VentasPage() {
       )
 
       // Filtrar por estados válidos (grupo ∩ disponible_venta, o solo disponible_venta si sin grupo)
-      if (estadosFinal.length > 0) {
+      // En básico no se filtra por estado (el stock no tiene estado asignado — todo es vendible)
+      if (modoAvanzado && estadosFinal.length > 0) {
         lineasQuery = lineasQuery.in('estado_id', estadosFinal)
       }
 
@@ -1169,7 +1170,8 @@ export default function VentasPage() {
           .eq('producto_id', p.id).eq('activo', true)
       )
 
-      if (estadosFinal.length > 0) {
+      // En básico no se filtra por estado (el stock no tiene estado asignado — todo es vendible)
+      if (modoAvanzado && estadosFinal.length > 0) {
         lineasQuery = lineasQuery.in('estado_id', estadosFinal)
       }
 
@@ -1199,7 +1201,7 @@ export default function VentasPage() {
       let lq = supabase.from('inventario_lineas')
         .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
-      if (estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
+      if (modoAvanzado && estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
       const { data: lineasRaw2 } = await lq
       const hoyStr = new Date().toISOString().split('T')[0]
       const sortedLineas = (lineasRaw2 ?? [])
@@ -2155,9 +2157,10 @@ export default function VentasPage() {
         }
         const productIds = Object.keys(cantPorProducto)
         if (productIds.length > 0) {
-          // Estados vendibles del tenant — para calcular el stock por sucursal del movimiento
+          // Estados vendibles del tenant — para calcular el stock por sucursal del movimiento.
+          // En básico el stock no tiene estado → vendibleIds vacío = sin filtro (cuenta todo el activo).
           const { data: evData } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
-          const vendibleIds = (evData ?? []).map((e: any) => e.id)
+          const vendibleIds = modoAvanzado ? (evData ?? []).map((e: any) => e.id) : []
           const { data: prodsData } = await supabase.from('productos')
             .select('id, stock_minimo, nombre, sku').in('id', productIds)
           const prodMap = Object.fromEntries((prodsData ?? []).map(p => [p.id, p]))

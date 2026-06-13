@@ -1958,9 +1958,12 @@ export default function InventarioPage() {
     },
   })
 
+  // ESC cierra el modal de detalle de movimiento (ingreso/rebaje/historial)
+  useModalKeyboard({ isOpen: movDetalle !== null, onClose: () => setMovDetalle(null) })
+
   // ── Shortcuts de teclado por tab (cuando no hay modal abierto) ────────────
   useEffect(() => {
-    if (modal !== null || lpnAcciones) return // modal ya abierto, lo maneja useModalKeyboard
+    if (modal !== null || lpnAcciones || movDetalle) return // modal ya abierto, lo maneja useModalKeyboard
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
       const enInput = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
@@ -2001,7 +2004,7 @@ export default function InventarioPage() {
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [tab, modal, lpnAcciones, showConteoForm, conteoRows.length, conteoRefId,
+  }, [tab, modal, lpnAcciones, movDetalle, showConteoForm, conteoRows.length, conteoRefId,
       conteoLoading, finalizarConteoYAplicar.isPending])
 
   // F2b — mantener el ref espejo al día para el scan-to-count
@@ -3114,7 +3117,7 @@ export default function InventarioPage() {
                   <div className="px-6 pt-4 flex-shrink-0">
                     <div className="relative">
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-                      <input type="text" value={form.productoSearch}
+                      <input type="text" value={form.productoSearch} autoFocus
                         onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
                         placeholder="Buscar por nombre, SKU o código..."
                         className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
@@ -3488,7 +3491,7 @@ export default function InventarioPage() {
                   <div className="px-6 pt-4 flex-shrink-0">
                     <div className="relative">
                       <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-                      <input type="text" value={form.productoSearch}
+                      <input type="text" value={form.productoSearch} autoFocus
                         onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
                         placeholder="Buscar por nombre, SKU o código..."
                         className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
@@ -4071,7 +4074,7 @@ export default function InventarioPage() {
                           ) : (
                             <div className="overflow-x-auto -mx-4 px-4">
                             <div className="space-y-2 min-w-[680px]">
-                              <div className={`grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-4'} gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1`}>
+                              <div className={`grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-2'} gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1`}>
                                 {modoAvanzado && (
                                 <span className="col-span-1 flex items-center">
                                   <input type="checkbox" className="rounded accent-accent"

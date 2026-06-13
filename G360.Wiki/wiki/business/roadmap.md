@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.59.1 — Fix venta en modo básico (bloqueante) + recortes Inventario WMS + e2e caja (PROD ✅, PR #193)
+
+**Fix crítico de primer cliente:** no se podía vender en modo básico (stock sin ubicación). `registrarVenta` surtía filtrando `.not('ubicacion_id','is',null)` en 5 queries → excluía todo el stock básico (NULL). Helper `soloUbicado(q)` aplica el filtro solo en avanzado (WMS). Verificado en DEV (0→10 disponible) + regresión avanzado verde. **Recortes Inventario básico (review GO):** modal de detalle de movimiento sin Estado/LPN · tab Autorizaciones oculto (no hay modal de acciones LPN que las genere) · grilla sin columnas Lote/Venc./Series (grid-cols 4→2) · ajuste +1/-1 por diseño vía Agregar/Quitar. **Testing:** primer e2e mutante de ciclo de caja (apertura+arqueo+cierre, self-healing). UI-only, sin migración.
+
+---
+
 ## v1.59.0 — Auditoría pre-cliente: modo básico + seguridad (208/209) + e2e mutante (PROD ✅, PR #191)
 
 **Auditoría pre-primer-cliente (tandas 1+2)** en PROD (migs 208/209 antes del merge, `dev=main`). **Recortes de modo básico (UI):** Productos→**Estructura** (empaque unidad/caja/pallet = WMS) y Configuración→Conectividad→sub-tab **API** ocultos; se mantiene Integraciones (TN/MeLi/MP). **Seguridad (mig 208):** policy SELECT en `planes`, `search_path=public` en 25 funciones, `REVOKE FROM PUBLIC`+re-GRANT en SECURITY DEFINER no públicas (períodos, sweeps CC, clave maestra anti-fuerza-bruta, seeds) → search_path 25→0, rls_no_policy 1→0, anon SECURITY DEFINER 29→15. **Seguridad (mig 209):** buckets `avatares`/`productos` con SELECT scopeado → listado cross-tenant 2→0. **Salud:** react-router-dom 6.30.4 (open-redirect); performance advisors (646) = deuda de escala documentada. **Testing:** recorrido funcional verde + primer e2e MUTANTE de venta; suite **701 unit + 158 e2e**. **Decisiones won't-fix/diferido:** pg_net (no relocatable), RLS por sucursal (0 exposición hoy), leaked-password (toggle de Auth, acción de GO).

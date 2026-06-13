@@ -6,7 +6,11 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-13] fix | v1.59.1 DEV — BUG CRÍTICO: vender en modo básico (stock sin ubicación) + e2e mutante de caja
+## [2026-06-13] deploy | v1.59.1 PROD — Fix venta en básico (bloqueante) + recortes Inventario WMS + e2e caja · `dev=main`
+
+**v1.59.1 a PROD** (PR **#193**, UI-only sin migración — 208/209 ya estaban en PROD; `dev=main` en `7fe10281`). CI unit verde; Vercel producción auto-deploy desde `main`. **Nota:** durante el deploy, Vercel mostró un build ERROR en la rama **dependabot del PR #192** (Vite 8) — `Cannot find module 'esbuild'` (dependabot removió esbuild pero un plugin lo necesita); es la rama cerrada, **no afecta producción** (que buildea desde `main`). Conviene borrar esa rama desde GitHub para que pare el ruido.
+
+## [2026-06-13] fix | v1.59.1 — BUG CRÍTICO: vender en modo básico (stock sin ubicación) + e2e mutante de caja
 
 **Bug reportado por GO: en modo básico no se podía completar una venta** ("stock insuficiente" pese a haber stock). **Causa raíz:** básico no usa ubicaciones → el ingreso de stock deja `inventario_lineas.ubicacion_id = NULL`, pero `registrarVenta` surtía filtrando `.not('ubicacion_id','is',null)` en **5 queries** (buscador de stock, fetch de series, venta nueva, reserva→despachar, despachar reserva) → excluía todo el stock básico. El buscador mostraba `stock_actual` (trigger) pero el despacho devolvía 0. **Fix (v1.59.1, commit `ce50d2ac`):** helper `soloUbicado(q)` que aplica el filtro de ubicación **solo en avanzado** (WMS); en básico se surte aunque `ubicacion_id` sea NULL. Avanzado sin cambios. **Verificado empíricamente en DEV** (Kiosco Buildi básico: query vieja→0 disponible, query nueva→10) + regresión e2e de venta (avanzado) verde + build verde. **Pendiente menor (no bloqueante):** la alerta "Inventario sin ubicación" (`AlertasPage`) marcaría todo el stock básico como sin ubicación = ruido; suprimir en básico.
 

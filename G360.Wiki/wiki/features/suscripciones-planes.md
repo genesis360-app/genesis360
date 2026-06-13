@@ -62,6 +62,8 @@ El `SubscriptionGuard` (en `src/components/AuthGuard.tsx`) intercepta todas las 
 2. Estado de suscripción (`trial` o `active`)
 3. Si el plan permite la feature solicitada (via `usePlanLimits`)
 
+**v1.55.0**: nueva feature `wms` en Pro+/Enterprise (`puede_wms` en `usePlanLimits`) — habilita el **modo de operación Avanzado (WMS)**; el toggle vive en Config → Negocio y el trial lo prueba automáticamente. Ver [[wiki/features/modo-basico-avanzado]].
+
 ---
 
 ## Variables de entorno relevantes

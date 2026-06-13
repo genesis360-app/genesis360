@@ -9,7 +9,13 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 11 de Junio, 2026
+**Última actualización:** 12 de Junio, 2026
+
+---
+
+## v1.55.0 — Modo de operación Básico vs Avanzado (WMS) · F1 (DEV)
+
+**Dos experiencias en un solo SaaS.** Modo **Básico** (default para tenants nuevos, todos los planes): mostrador simple para kioscos/almacenes/pymes chicas — POS, caja, productos simples, stock simple, clientes, gastos; sin LPN/lotes/series/vencimientos/ubicaciones/OC/envíos. Modo **Avanzado (WMS)**: el sistema completo, toggle del DUEÑO en Configuración gateado a plan **Pro+** (el trial lo prueba). **El modo gatea UI, nunca datos**: el ledger sigue grado WMS por debajo, así el upgrade muestra el historial ya trazable; productos heredados con tracking conservan su flujo aun en básico. Mig **207** (existentes → avanzado, cero impacto). Kill-switch `MODO_BASICO_ENABLED`. Lib `modoOperacion.ts` +14 tests → suite **679**. Detalle en [[wiki/features/modo-basico-avanzado]]. Pendiente: **F2** (POS/Proveedores/secciones de Config) + **F3** (sugerencia en onboarding + copy de planes).
 
 ---
 

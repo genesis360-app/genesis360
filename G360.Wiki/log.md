@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-12] update | v1.55.0 DEV — Modo de operación Básico vs Avanzado (WMS) · F1 (mig 207)
+
+**Feature nueva pedida por GO**: dos experiencias en un solo SaaS. **Básico** (default para tenants nuevos, todos los planes) = mostrador simple para kioscos/almacenes/pymes chicas; **Avanzado (WMS)** = el sistema completo, toggle del DUEÑO en Config → Negocio gateado a **Pro+** (feature `wms`; el trial lo prueba gratis vía el mecanismo existente de features Pro en trial). Decisiones de GO: existentes → avanzado · downgrade permitido con advertencia (productos trackeados conservan flujo) · onboarding sugiere avanzado según tipo de comercio (F3). Plan completo + matriz de módulos en `wiki/features/modo-basico-avanzado.md`.
+
+- **Principio**: el modo gatea **UI, nunca datos** — el ledger sigue grado WMS por debajo (LPN auto, despachos, FIFO), así el upgrade muestra el historial ya trazable sin migración de datos.
+- **Mig 207** (aditiva, DEV ✅ / PROD pendiente): `tenants.modo_operacion` default `'basico'` + backfill existentes → `'avanzado'`.
+- **Fundación**: feature `wms` en `FEATURES_POR_PLAN`/`PLAN_REQUERIDO` + `usePlanLimits.puede_wms` + lib pura `modoOperacion.ts` (esModoAvanzado/motivoBasico/productoRequiereTracking/sugiereModoAvanzado, +14 tests) + hook `useModoOperacion` + kill-switch `MODO_BASICO_ENABLED` (rollback global de 1 línea).
+- **Gating F1**: nav/rutas (Recepciones/Envíos/Historial `avanzadoOnly` + redirect) · Config card "Modo de operación" (candado por plan, advertencia downgrade con conteo de trackeados, aviso plan insuficiente) · Productos (tracking/regla/aging/peso-dim/ubicación-estado solo avanzado; heredados solo-lectura) · Inventario (Traslados solo si >1 suc, sin vista por ubicación, ingreso/rebaje simplificados, conteo rápido forzado sin ABC/cíclico, grilla sin columnas WMS).
+- **Verificación**: unit **679/679** (+14) · typecheck + build verdes · mig 207 aplicada en DEV (8 tenants → avanzado). Release **v1.55.0** sobre `dev` (`--latest`).
+- **Pendiente**: F2 (POS/Proveedores/secciones Config) · F3 (sugerencia onboarding + copy planes + e2e) · aplicar mig 207 en PROD antes del merge dev→main.
+
 ## [2026-06-12] cierre-sesión | Sesión 2026-06-11/12: testing e2e + auditoría de procesos #1-6 → 4 releases en PROD · `dev=main`
 
 **Sesión larga con 4 releases a PROD** (v1.51.1 → v1.54.0), todas con `dev=main` al cierre. Suites al cierre: **unit 665/665** (45 archivos) · **e2e 130** (16 specs, 4 roles) · migrations 001-**206** en DEV+PROD.

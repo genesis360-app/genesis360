@@ -124,6 +124,11 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
 export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
+  // Modo básico no usa ubicaciones: el stock se surte/despacha aunque `ubicacion_id` sea NULL
+  // (el ingreso de stock en básico no asigna ubicación). En avanzado (WMS) solo se surte stock
+  // ubicado. Aplicar a TODAS las queries de inventario_lineas que buscan stock para vender/
+  // reservar/despachar — si no, en básico la venta falla con "stock insuficiente" pese a haber stock.
+  const soloUbicado = (q: any): any => (modoAvanzado ? q.not('ubicacion_id', 'is', null) : q)
   const esContador = user?.rol === 'CONTADOR'  // J3: acceso read-only a Ventas
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
   // A2 — conteo wall-to-wall en curso en la sucursal → bloquea reservas/despachos (mueven stock)
@@ -941,13 +946,15 @@ export default function VentasPage() {
         : estadosVentaIds
 
       // Traer líneas activas de estos productos con ubicación disponible para surtido
+      // (en básico no se filtra por ubicación — el stock no está ubicado)
       let lineasQuery = applyFilter(
-        supabase.from('inventario_lineas')
-          .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
-          .eq('tenant_id', tenant!.id)
-          .eq('activo', true)
-          .in('producto_id', productoIds)
-          .not('ubicacion_id', 'is', null)
+        soloUbicado(
+          supabase.from('inventario_lineas')
+            .select('producto_id, cantidad, cantidad_reservada, estado_id, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
+            .eq('tenant_id', tenant!.id)
+            .eq('activo', true)
+            .in('producto_id', productoIds)
+        )
       )
 
       // Filtrar por estados válidos (grupo ∩ disponible_venta, o solo disponible_venta si sin grupo)
@@ -1156,10 +1163,11 @@ export default function VentasPage() {
       const evIds = (evData ?? []).map((e: any) => e.id)
       const estadosFinal = estadosFiltro.length > 0 ? estadosFiltro.filter(id => evIds.includes(id)) : evIds
 
-      let lineasQuery = supabase.from('inventario_lineas')
-        .select('id, lpn, estado_id, ubicacion_id, ubicaciones(nombre, disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
-        .eq('producto_id', p.id).eq('activo', true)
-        .not('ubicacion_id', 'is', null)
+      let lineasQuery = soloUbicado(
+        supabase.from('inventario_lineas')
+          .select('id, lpn, estado_id, ubicacion_id, ubicaciones(nombre, disponible_surtido), inventario_series(id, nro_serie, activo, reservado)')
+          .eq('producto_id', p.id).eq('activo', true)
+      )
 
       if (estadosFinal.length > 0) {
         lineasQuery = lineasQuery.in('estado_id', estadosFinal)
@@ -2063,9 +2071,11 @@ export default function VentasPage() {
 
         if (!item.tiene_series && (estado === 'reservada' || estado === 'despachada')) {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
-          let lineasQ = supabase.from('inventario_lineas')
-            .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
-            .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+          let lineasQ = soloUbicado(
+            supabase.from('inventario_lineas')
+              .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
+              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
+          )
           // Filtrar ESTRICTAMENTE por sucursal activa para no tocar stock de otra sucursal
           if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
           const { data: lineasRaw } = await lineasQ
@@ -2884,9 +2894,11 @@ export default function VentasPage() {
           } else {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
-            const { data: lineasRaw } = await supabase.from('inventario_lineas')
-              .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
-              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+            const { data: lineasRaw } = await soloUbicado(
+              supabase.from('inventario_lineas')
+                .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+                .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
+            )
             const _hoyStr = new Date().toISOString().split('T')[0]
             const lineas = (lineasRaw ?? [])
               .filter((l: any) => l.ubicaciones?.disponible_surtido !== false)
@@ -2991,9 +3003,11 @@ export default function VentasPage() {
           } else {
             const prod = item.productos as any
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
-            let complQ = supabase.from('inventario_lineas')
-              .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
-              .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0).not('ubicacion_id', 'is', null)
+            let complQ = soloUbicado(
+              supabase.from('inventario_lineas')
+                .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
+                .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
+            )
             // Usar la sucursal de la venta original para no tocar lineas de otra sucursal
             const ventaSucursal = (ventaDetalle as any)?.sucursal_id
             if (ventaSucursal) complQ = complQ.eq('sucursal_id', ventaSucursal)

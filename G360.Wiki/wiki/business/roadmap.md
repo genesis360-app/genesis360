@@ -9,7 +9,25 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 11 de Junio, 2026
+**Última actualización:** 12 de Junio, 2026
+
+---
+
+## v1.57.0 — Modo básico "mínimo mostrador" + auditoría de roles (DEV)
+
+El modo básico ocultaba solo 3 módulos; ahora también **Recursos** y **Biblioteca** (empresariales), **Facturación** (solo si habilitada) y **Sucursales** (solo si >1) → básico típico = 12 módulos. La visibilidad del nav se extrajo a `navVisibility.ts` (pura) con matriz rol×modo en tests; en el camino se corrigieron **2 bugs** (`supervisorOnly` ocultaba Recepciones a DEPOSITO e Historial a CONTADOR). **Gap de seguridad cerrado:** rol custom marcado `'ver'` ya no puede mutar (helper `permisosModulo.ts` aplicado en Ventas/Caja/Inventario/Productos/Gastos/Clientes). e2e nuevos para DEPOSITO y CONTADOR. Suite **701**. Sin migración.
+
+---
+
+## v1.56.0 — Modo Básico/Avanzado · F2 superficies internas + F3 sugerencia (DEV)
+
+Cierra el feature (F1+F2+F3 completos, falta solo deploy a PROD). **F2**: POS sin picker LPN ni cotización courier · Proveedores sin OC/comparar presupuestos · Config sin tab Envíos / Inventario reducido / Gastos sin gobierno OC · Dashboard sin chip Envíos. **F3**: banner descartable de sugerencia de modo avanzado por rubro (`sugiereModoAvanzado`) con CTA a Configuración. Sin migración. Suite **679**.
+
+---
+
+## v1.55.0 — Modo de operación Básico vs Avanzado (WMS) · F1 (DEV)
+
+**Dos experiencias en un solo SaaS.** Modo **Básico** (default para tenants nuevos, todos los planes): mostrador simple para kioscos/almacenes/pymes chicas — POS, caja, productos simples, stock simple, clientes, gastos; sin LPN/lotes/series/vencimientos/ubicaciones/OC/envíos. Modo **Avanzado (WMS)**: el sistema completo, toggle del DUEÑO en Configuración gateado a plan **Pro+** (el trial lo prueba). **El modo gatea UI, nunca datos**: el ledger sigue grado WMS por debajo, así el upgrade muestra el historial ya trazable; productos heredados con tracking conservan su flujo aun en básico. Mig **207** (existentes → avanzado, cero impacto). Kill-switch `MODO_BASICO_ENABLED`. Lib `modoOperacion.ts` +14 tests → suite **679**. Detalle en [[wiki/features/modo-basico-avanzado]]. Pendiente: **F2** (POS/Proveedores/secciones de Config) + **F3** (sugerencia en onboarding + copy de planes).
 
 ---
 

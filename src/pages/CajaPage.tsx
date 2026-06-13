@@ -11,6 +11,7 @@ import {
 import { supabase } from '@/lib/supabase'
 import { createClient } from '@supabase/supabase-js'
 import { useAuthStore } from '@/store/authStore'
+import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import jsPDF from 'jspdf'
@@ -827,6 +828,7 @@ export default function CajaPage() {
 
   const agregarMovimiento = useMutation({
     mutationFn: async () => {
+      if (moduloSoloLectura(user, 'caja')) throw new Error('Tu rol tiene acceso de solo lectura en Caja.')
       if (!sesionActiva) throw new Error('No hay caja abierta')
       if (!movConcepto.trim()) throw new Error('Ingresá un concepto')
       const monto = parseFloat(movMonto)

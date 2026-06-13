@@ -18,6 +18,8 @@ import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -121,6 +123,7 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
 
 export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const esContador = user?.rol === 'CONTADOR'  // J3: acceso read-only a Ventas
   const { sucursalId, applyFilter, sucursales, puedeVerTodas } = useSucursalFilter()
   // A2 — conteo wall-to-wall en curso en la sucursal → bloquea reservas/despachos (mueven stock)
@@ -1745,6 +1748,7 @@ export default function VentasPage() {
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
+    if (moduloSoloLectura(user, 'ventas')) { toast.error('Tu rol tiene acceso de solo lectura en Ventas.'); return }
     // A2 — durante un conteo wall-to-wall bloqueante no se puede mover stock (reserva/despacho).
     // El presupuesto ('pendiente') sí se permite porque no afecta stock.
     if (estado !== 'pendiente' && conteoBloqueante) {
@@ -3489,7 +3493,7 @@ export default function VentasPage() {
                           </div>
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-xs text-gray-400 dark:text-gray-500">{item.sku}</span>
-                            {!item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
+                            {modoAvanzado && !item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
                               const canPick = (item.lineas_disponibles?.length ?? 0) > 1
                               const isOpen = lpnPickerIdx === idx
                               return (
@@ -3940,8 +3944,8 @@ export default function VentasPage() {
                         </div>
                       )}
 
-                      {/* ISS-174 — Cotizar por API del courier */}
-                      {envioTransporte === 'tercero' && esCourierApi(envioCourier) && (
+                      {/* ISS-174 — Cotizar por API del courier (Envíos/couriers = modo avanzado) */}
+                      {modoAvanzado && envioTransporte === 'tercero' && esCourierApi(envioCourier) && (
                         <div className="rounded-lg border border-accent/30 bg-accent/5 p-2.5 space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <button type="button" onClick={handleCotizarVenta} disabled={cotizandoVenta}

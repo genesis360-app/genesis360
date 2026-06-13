@@ -23,6 +23,7 @@ export type EntidadLog =
   | 'cliente'
   | 'cheque'
   | 'traslado'
+  | 'tenant'
 
 export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar' | 'ingreso_stock' | 'rebaje_stock' | 'incobrable' | 'despacho_traslado' | 'recepcion_traslado' | 'faltante_traslado'
 

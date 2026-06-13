@@ -15,6 +15,8 @@ import MetricasPage from './MetricasPage'
 import RentabilidadPage from './RentabilidadPage'
 import RecomendacionesPage from './RecomendacionesPage'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { sugiereModoAvanzado } from '@/lib/modoOperacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { getFechasDashboard, getFechasAnteriores, labelPeriodo } from '@/components/FilterBar'
@@ -100,10 +102,17 @@ const PERIODO_LABELS_DASH: Record<PeriodoDash, string> = {
 }
 
 export default function DashboardPage() {
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
   const { score, recomendaciones } = useRecomendaciones()
   const { limits } = usePlanLimits()
+  const { avanzado: modoAvanzado } = useModoOperacion()
+  // F3 — sugerencia de modo avanzado para rubros con trazabilidad típica (descartable)
+  const [sugerenciaWmsDismissed, setSugerenciaWmsDismissed] = useState(
+    () => localStorage.getItem(`sugerencia-wms-${tenant?.id}`) === '1'
+  )
+  const mostrarSugerenciaWms = !modoAvanzado && !sugerenciaWmsDismissed
+    && user?.rol === 'DUEÑO' && sugiereModoAvanzado(tenant?.tipo_comercio)
   const [area, setArea] = useState<AreaId>('todo')
   const [subTab, setSubTab] = useState<SubTabId>('overview')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
@@ -588,9 +597,25 @@ export default function DashboardPage() {
       <div className="space-y-3">
         <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
 
+        {/* F3 — sugerencia de modo avanzado según tipo de comercio */}
+        {mostrarSugerenciaWms && (
+          <div className="flex items-start gap-3 bg-accent/5 border border-accent/30 rounded-xl px-4 py-3">
+            <span className="text-lg leading-none mt-0.5">💡</span>
+            <p className="flex-1 text-sm text-gray-700 dark:text-gray-300">
+              Los negocios de <strong>{tenant?.tipo_comercio}</strong> suelen necesitar trazabilidad completa
+              (lotes, series, vencimientos, órdenes de compra). Podés activar el <strong>modo avanzado</strong> cuando quieras.
+              {' '}<Link to="/configuracion" className="text-accent font-medium underline">Ir a Configuración</Link>
+            </p>
+            <button
+              onClick={() => { localStorage.setItem(`sugerencia-wms-${tenant?.id}`, '1'); setSugerenciaWmsDismissed(true) }}
+              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-sm font-medium flex-shrink-0"
+              title="No volver a mostrar">✕</button>
+          </div>
+        )}
+
         {/* Area chips — horizontal scroll en móvil */}
         <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {(Object.entries(AREA_LABELS) as [AreaId, string][]).map(([id, label]) => (
+          {(Object.entries(AREA_LABELS) as [AreaId, string][]).filter(([id]) => modoAvanzado || id !== 'envios').map(([id, label]) => (
             <button key={id} onClick={() => handleSetArea(id)}
               className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
                 ${area === id

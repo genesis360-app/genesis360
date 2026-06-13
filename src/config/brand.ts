@@ -28,7 +28,12 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.54.0'
+export const APP_VERSION = 'v1.57.0'
+
+// Kill-switch del modo de operación Básico/Avanzado: en false, TODOS los tenants
+// operan en avanzado (la app completa, como antes de v1.55) sin importar
+// tenants.modo_operacion ni el plan, y el toggle desaparece de Configuración.
+export const MODO_BASICO_ENABLED = true
 
 export const MP_PLAN_IDS: Record<string, string> = {
   basico: '836c7829f7e944c9ac58d7c0c67a513b',
@@ -79,6 +84,7 @@ export const PLANES = [
       'Métricas avanzadas',
       'Importación masiva',
       'RRHH',
+      'Modo avanzado (WMS)',
     ],
   },
   {
@@ -107,6 +113,7 @@ export const PLANES = [
       'RRHH',
       'Aging profiles',
       'Marketplace',
+      'Modo avanzado (WMS)',
     ],
   },
   {
@@ -129,7 +136,7 @@ export const PLANES = [
       'RRHH completo',
       'Aging profiles',
       'Marketplace',
-      'Trazabilidad por serie y lote',
+      'Modo avanzado (WMS): lotes, series, vencimientos, FIFO/FEFO, OC y envíos',
       'Soporte prioritario',
     ],
     noIncluye: [],
@@ -164,14 +171,14 @@ export const PLANES = [
 export const FEATURES_POR_PLAN: Record<string, string[]> = {
   free:       ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas'],
   basico:     ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas'],
-  pro:        ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'rrhh', 'aging', 'marketplace'],
-  enterprise: ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'rrhh', 'aging', 'marketplace'],
+  pro:        ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'rrhh', 'aging', 'marketplace', 'wms'],
+  enterprise: ['ventas', 'caja', 'gastos', 'clientes', 'inventario', 'movimientos', 'alertas', 'reportes', 'historial', 'metricas', 'importar', 'rrhh', 'aging', 'marketplace', 'wms'],
 }
 
 // Plan mínimo requerido por feature (para mensajes de upgrade)
 export const PLAN_REQUERIDO: Record<string, string> = {
   reportes: 'basico', historial: 'basico', metricas: 'basico',
-  importar: 'pro', rrhh: 'pro', aging: 'pro', marketplace: 'pro',
+  importar: 'pro', rrhh: 'pro', aging: 'pro', marketplace: 'pro', wms: 'pro',
 }
 
 // Límites de movimientos por plan (para uso en usePlanLimits)

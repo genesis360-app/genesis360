@@ -201,6 +201,7 @@ Detalle completo en [[wiki/features/multi-sucursal]] → "Traslados entre sucurs
 
 ## Links relacionados
 
+- [[wiki/features/modo-basico-avanzado]] — desde v1.55.0 las superficies WMS solo se muestran en modo de operación **Avanzado** (toggle por tenant, plan Pro+); el modo gatea UI, nunca datos
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/clientes-proveedores]]

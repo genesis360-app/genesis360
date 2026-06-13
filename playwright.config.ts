@@ -47,6 +47,16 @@ export default defineConfig({
       name: 'setup-rrhh',
       testMatch: /auth\.rrhh\.setup\.ts/,
     }] : []),
+    // Setup DEPOSITO — solo si las credenciales están disponibles
+    ...(process.env.E2E_DEPOSITO_EMAIL ? [{
+      name: 'setup-deposito',
+      testMatch: /auth\.deposito\.setup\.ts/,
+    }] : []),
+    // Setup CONTADOR — solo si las credenciales están disponibles
+    ...(process.env.E2E_CONTADOR_EMAIL ? [{
+      name: 'setup-contador',
+      testMatch: /auth\.contador\.setup\.ts/,
+    }] : []),
 
     // ─── Tests OWNER (main)
     {
@@ -56,7 +66,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
       dependencies: ['setup-owner'],
-      testIgnore: /1[3-9]_rol_.*|1[56]_rol_.*/,
+      testIgnore: /1[3-8]_rol_.*/,
     },
 
     // ─── Tests CAJERO — solo si hay credenciales
@@ -90,6 +100,28 @@ export default defineConfig({
       },
       dependencies: ['setup-rrhh'],
       testMatch: /16_rol_rrhh\.spec\.ts/,
+    }] : []),
+
+    // ─── Tests DEPOSITO — solo si hay credenciales
+    ...(process.env.E2E_DEPOSITO_EMAIL ? [{
+      name: 'chromium-deposito',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: path.join(__dirname, 'tests/e2e/.auth/deposito_session.json'),
+      },
+      dependencies: ['setup-deposito'],
+      testMatch: /17_rol_deposito\.spec\.ts/,
+    }] : []),
+
+    // ─── Tests CONTADOR — solo si hay credenciales
+    ...(process.env.E2E_CONTADOR_EMAIL ? [{
+      name: 'chromium-contador',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: path.join(__dirname, 'tests/e2e/.auth/contador_session.json'),
+      },
+      dependencies: ['setup-contador'],
+      testMatch: /18_rol_contador\.spec\.ts/,
     }] : []),
   ],
 

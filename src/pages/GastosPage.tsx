@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { puedeRegistrarPagoOC, requiereDobleFirmaPago } from '@/lib/comprasPermisos'
 import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule } from '@/lib/comprasPago'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -991,6 +992,7 @@ export default function GastosPage() {
 
   // ── Guardar gasto ─────────────────────────────────────────────────────────
   const guardar = async () => {
+    if (moduloSoloLectura(user, 'gastos')) { toast.error('Tu rol tiene acceso de solo lectura en Gastos.'); return }
     if (!form.descripcion.trim()) { toast.error('La descripción es requerida'); return }
     const monto = parseFloat(form.monto.replace(',', '.'))
     if (isNaN(monto) || monto === 0) { toast.error('Ingresá un monto válido'); return }

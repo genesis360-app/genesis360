@@ -4,6 +4,8 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
+Último release: **v1.57.0** 🚧 EN DEV (**Modo básico "mínimo mostrador" + auditoría de roles**, sin migración). El básico ahora oculta también Recursos/Biblioteca (empresariales) + Facturación (solo si habilitada) + Sucursales (solo si >1) → básico típico = 12 módulos. Visibilidad de nav extraída a `src/lib/navVisibility.ts` (pura) + matriz rol×modo en tests; **2 bugs de roles corregidos** (`supervisorOnly` ocultaba Recepciones a DEPOSITO e Historial a CONTADOR). **Gap cerrado:** rol custom `'ver'` ya no muta (helper `permisosModulo.ts` en Ventas/Caja/Inventario/Productos/Gastos/Clientes). e2e nuevos DEPOSITO (17) + CONTADOR (18) gated por env. Suite unit **701**. **Pendiente de GO:** crear usuarios de prueba DEPOSITO+CONTADOR en DEV para correr esos e2e. — Antes: **v1.56.0** EN DEV (**Modo de operación Básico vs Avanzado (WMS) — COMPLETO F1+F2+F3**, pendiente solo deploy a PROD). **F1 (v1.55.0, mig 207):** `tenants.modo_operacion` (existentes → avanzado, nuevos → básico); **básico** = default en todos los planes, mostrador simple sin LPN/lotes/series/vencimientos/ubicaciones/OC/envíos/historial; **avanzado** = sistema completo, toggle DUEÑO en Config → Negocio gateado a plan **Pro+** (feature `wms`, el trial lo prueba); **el modo gatea UI, nunca datos** (ledger sigue grado WMS; productos heredados con tracking conservan flujo); kill-switch `MODO_BASICO_ENABLED`; lib `modoOperacion.ts` + `useModoOperacion` (+14 tests → suite unit **679**); gating de nav/rutas + Config + Productos + Inventario. **F2+F3 (v1.56.0, sin mig):** POS sin picker LPN ni cotización courier · Proveedores sin tab OC ni comparar presupuestos · Config sin tab Envíos / Inventario solo categorías-motivos-unidades / Gastos sin gobierno OC · Dashboard sin chip Envíos + **banner de sugerencia de modo avanzado por rubro** (descartable, `sugiereModoAvanzado`). **Pendiente: deploy a PROD** (aplicar mig 207 ANTES del merge dev→main — deja PROD en avanzado, cero impacto) + e2e smoke del modo básico (menor). Detalle: `wiki/features/modo-basico-avanzado.md`).
+
 Último release en PROD: **v1.54.0** ✅ (**Cheques conectados al circuito de pago** — pagar OC/gasto con "Cheque" crea el cheque vinculado + rechazado revierte el pago y la deuda reaparece en CC proveedor; mig **206**, suite unit **665**, PR #186; cierra ítems #5 y #6 de la auditoría). Antes: v1.53.0 (**Traslados entre sucursales** — tránsito + confirmación, mig 205, PR #184, ítem #4). Antes: v1.52.0 (**Auditoría de procesos — quick wins 1+2+3**: cobranza CC impacta caja + anular venta cancela envíos pendientes + CTA devolución desde envío devuelto; sin migración, PR #182). Antes: v1.51.1 (**Testing e2e** — suite e2e reparada + gobernanza caja, `vitest fileParallelism:false`, sin migraciones, suite unit 625 / e2e 129, PR #180). Antes: v1.51.0 (RRHH diferidos: tardanza + fichado QR + portal, mig 204), v1.50.0 (Caja A-M completo, mig 203), v1.49.0 (courier probar/logging). 🎉 **RRHH 2.0 (RH1-RH8) COMPLETO** en v1.48.0 (mig 201-202). Antes en PROD: v1.47.0 (RRHH RH4+RH5, mig 199-200), v1.46.0 (RRHH RH1+RH2+RH3+RH6, mig 195-198), v1.45.0 (Envíos EN7, mig 194). Antes: v1.43.0 EN4 tarifas (mig 192), v1.42.0 EN3 reparto (mig 191), v1.41.0 EN2 POD (mig 190), v1.40.0 EN1 (mig 189), v1.39.0 Compras CO8 (🎉 Compras 2.0 COMPLETO). **Relevamiento Envíos → EN1-EN5 ✅ en PROD + EN7 ✅ en DEV; solo falta EN6 (integraciones courier, BLOQUEADO por adapters B2B sin cuentas reales).** Historial Conteos/Compras 1-4 abajo. — v1.30.0 (**Conteos 2.0 · cierre 100% — F2b-ref + F3b + A2**, mig 181). **F2b-ref (E3):** escanear durante el conteo un producto fuera de alcance con stock → lo agrega como fila "fuera de alcance" (mercadería mal ubicada); sin stock → aviso hacia Ingreso. **F3b:** snapshot de costo por ítem (`costo_snapshot`, valorización estable al continuar borradores) + **doble conteo formal** (filas sobre umbral exigen re-ingreso vía columna "Recontar"; saltable con **clave maestra** SUPERVISOR/DUEÑO; persiste `cantidad_reconteo`+`reconteo_por`; el ajuste usa el valor recontado). **A2:** toggle `tenants.conteo_wall_to_wall_bloquea` (default OFF) — conteo de sucursal completa con confirmación de DUEÑO bloquea ventas (reserva/despacho) y movimientos hasta cerrarlo (hook `useConteoBloqueante`, badge "Bloqueante", se libera al finalizar/eliminar). **Conteos 2.0 cerrado (F1-F4 + refinamientos).** Antes: v1.29.0 (**Conteos 2.0 · F2b + F4 — cierre del módulo**. **F2b scan-to-count**: botón "Escanear para contar" = cámara persistente que suma a la fila del producto (cantidad del AI GS1 si viene, si no +1; reusa `resolverScanCompuesto`). **F4**: clase **ABC** (`productos.clase_abc` auto Pareto 80/95 por valor de movimiento 12m + override manual `clase_abc_manual`), **conteo cíclico sugerido** (`tenants.conteo_ciclico_dias_a/b/c`, panel "Conviene contar"), **reportes de exactitud + valorización** ($ faltante/sobrante/neto) por conteo y acumulado + export Excel, **trazabilidad por operador** (`inventario_conteo_items.contado_por` + `productos.ultimo_conteo_at`). Lógica pura en `conteoAbc.ts` (+16 tests → suite **362**). Mig **180** (aditiva). Antes: v1.27.0 (Conteos F3 gate+autorizaciones+delta, mig 179). v1.26.0 (F2a modos+ciego+unidad+secuencia, mig 178). v1.25.0 (F1 scope, mig 177). v1.24.0 (Clientes C6+D4).
 
 **Historial Clientes:** v1.19.0 (CL1+CL2), v1.20.0 (CL3 + bugfix origen), v1.23.0 (CL4+CL5+CL6), v1.23.1 (QA/tests CC + agentes).
@@ -18,17 +20,17 @@ type: project
 
 ---
 
-## Estado actual DEV / PROD — cierre sesión 2026-06-12
+## Estado actual DEV / PROD — sesión 2026-06-12 (modo básico/avanzado F1)
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.54.0` | `v1.54.0` ✅ |
-| Migrations | 001–**206** ✅ | 001–**206** ✅ |
-| Branch | `dev` (alineado con `main`) | `main` (release v1.54.0) |
+| APP_VERSION | `v1.57.0` 🚧 | `v1.54.0` ✅ |
+| Migrations | 001–**207** ✅ | 001–**206** ✅ |
+| Branch | `dev` (adelantado: v1.55.0 → v1.57.0) | `main` (release v1.54.0) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.54.0 (auto desde `main`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (206 ya en PROD).
+**Migrations DEV pendientes de aplicar en PROD:** **207** (`modo_operacion`, aditiva — aplicar ANTES del merge dev→main; deja a todos los tenants PROD en `avanzado`, cero impacto).
 
 ### ▶ Auditoría de procesos 2026-06-11 — hallazgos y estado
 
@@ -57,6 +59,7 @@ Auditoría de flujos cruzados entre módulos (verificada contra código). **Quic
 
 ### ▶ PRÓXIMA SESIÓN — candidatos
 
+0. **Modo básico/avanzado — DEPLOY A PROD** (F1+F2+F3 ✅ completos en DEV, v1.55.0+v1.56.0): aplicar **mig 207 en PROD antes del merge** dev→main (deja a todos los tenants PROD en avanzado, cero impacto) → PR → release. Pendiente menor: e2e smoke del modo básico (requiere alternar el modo del tenant de test).
 1. **#7 Cron externo para sweeps lazy** (auditoría, infra GH Actions ya lista): workflows análogos a `birthday-notifications.yml` para intereses CC / reservas vencidas / servicios recurrentes / notifs CC. Barato y de alto valor (los jobs dejan de depender de que alguien abra la página).
 2. **#8 RLS por sucursal + portal empleado** (deuda de seguridad, feature mediana-grande): el aislamiento es solo client-side.
 3. **Pendiente de GO (offline):** responder relevamiento **Inventario/WMS** (`relevamiento-inventario-reglas-negocio.html`) · conseguir cuenta B2B de courier (Andreani 1ro) para destrabar **EN6**.

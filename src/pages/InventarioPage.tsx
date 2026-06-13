@@ -219,9 +219,10 @@ export default function InventarioPage() {
   useEffect(() => {
     if (!modoAvanzado && conteoTipo === 'ubicacion') { setConteoTipo('producto'); setConteoRefId('') }
   }, [modoAvanzado, conteoTipo])
-  // Kits es solo avanzado: si quedó seleccionado al pasar a básico, volver a la vista de stock
+  // Kits y Autorizaciones son solo avanzado: si quedaron seleccionados al pasar a básico,
+  // volver a la vista de stock (incluye deep-links)
   useEffect(() => {
-    if (!modoAvanzado && tab === 'kits') setTab('inventario')
+    if (!modoAvanzado && (tab === 'kits' || tab === 'autorizaciones')) setTab('inventario')
   }, [modoAvanzado, tab])
   const [conteoRows, setConteoRows] = useState<ConteoRow[]>([])
   const [conteoNotas, setConteoNotas] = useState('')
@@ -2511,7 +2512,10 @@ export default function InventarioPage() {
             ...(modoAvanzado ? [{ id: 'kits' as const, label: 'Kits' }] : []),
             { id: 'conteo' as const, label: 'Conteos' },
             { id: 'historial' as const, label: 'Historial' },
-            ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones' }] : []),
+            // Autorizaciones: flujo de aprobación de ajustes/eliminación de LPN — solo avanzado
+            // (en básico no existe el modal de acciones sobre LPN que las genera; el stock se
+            // ajusta directo con Agregar/Quitar)
+            ...((modoAvanzado && puedeVerAutorizaciones) ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones' }] : []),
           ]).map(({ id, label }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
@@ -2969,6 +2973,7 @@ export default function InventarioPage() {
                           <p className="text-sm text-gray-700 dark:text-gray-300">{movDetalle.users?.nombre_display ?? '—'}</p>
                         </div>
                       </div>
+                      {modoAvanzado && (
                       <div>
                         <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Estado</p>
                         {movDetalle.estados_inventario ? (
@@ -2978,6 +2983,7 @@ export default function InventarioPage() {
                           </span>
                         ) : <p className="text-sm text-gray-400 dark:text-gray-500">—</p>}
                       </div>
+                      )}
                       <div className="col-span-2">
                         <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Motivo</p>
                         <p className="text-sm text-gray-700 dark:text-gray-300">{movDetalle.motivo ?? '—'}</p>
@@ -3007,7 +3013,7 @@ export default function InventarioPage() {
                               <p className="text-sm text-gray-700 dark:text-gray-300">{linea.proveedores.nombre}</p>
                             </div>
                           )}
-                          {linea.lpn && (
+                          {modoAvanzado && linea.lpn && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">LPN / Pallet</p>
                               <p className="text-sm text-gray-700 dark:text-gray-300">{linea.lpn}</p>
@@ -4093,12 +4099,12 @@ export default function InventarioPage() {
                                 <span className="col-span-1 text-right">Cantidad</span>
                                 {modoAvanzado && <span className="col-span-1">Estado</span>}
                                 {modoAvanzado && <span className="col-span-1">Ubicación</span>}
-                                <span className="col-span-1">Lote / Venc.</span>
-                                <span className="col-span-1">Series</span>
+                                {modoAvanzado && <span className="col-span-1">Lote / Venc.</span>}
+                                {modoAvanzado && <span className="col-span-1">Series</span>}
                                 {modoAvanzado && <span className="col-span-1 text-center">Acciones</span>}
                               </div>
                               {lineas.map((l: any) => (
-                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-4'} gap-2 items-center text-sm transition-colors
+                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-2'} gap-2 items-center text-sm transition-colors
                                   ${selectedLineas.includes(l.id) ? 'border-accent/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}`}>
                                   {modoAvanzado && (
                                   <div className="col-span-1 flex items-center">
@@ -4183,6 +4189,7 @@ export default function InventarioPage() {
                                   </div>
                                   )}
 
+                                  {modoAvanzado && (
                                   <div className="col-span-1">
                                     {l.nro_lote && (
                                       <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
@@ -4194,7 +4201,9 @@ export default function InventarioPage() {
                                     )}
                                     {!l.nro_lote && !l.fecha_vencimiento && <span className="text-xs text-gray-300">—</span>}
                                   </div>
+                                  )}
 
+                                  {modoAvanzado && (
                                   <div className="col-span-1">
                                     {tieneSerieProd ? (() => {
                                       const seriesActivas = (l.inventario_series ?? []).filter((s: any) => s.activo)
@@ -4222,6 +4231,7 @@ export default function InventarioPage() {
                                       )
                                     })() : <span className="text-xs text-gray-300">—</span>}
                                   </div>
+                                  )}
 
                                   {modoAvanzado && (
                                   <div className="col-span-1 flex justify-center">

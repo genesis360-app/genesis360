@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] fix | v1.59.1 DEV — BUG CRÍTICO: vender en modo básico (stock sin ubicación) + e2e mutante de caja
+
+**Bug reportado por GO: en modo básico no se podía completar una venta** ("stock insuficiente" pese a haber stock). **Causa raíz:** básico no usa ubicaciones → el ingreso de stock deja `inventario_lineas.ubicacion_id = NULL`, pero `registrarVenta` surtía filtrando `.not('ubicacion_id','is',null)` en **5 queries** (buscador de stock, fetch de series, venta nueva, reserva→despachar, despachar reserva) → excluía todo el stock básico. El buscador mostraba `stock_actual` (trigger) pero el despacho devolvía 0. **Fix (v1.59.1, commit `ce50d2ac`):** helper `soloUbicado(q)` que aplica el filtro de ubicación **solo en avanzado** (WMS); en básico se surte aunque `ubicacion_id` sea NULL. Avanzado sin cambios. **Verificado empíricamente en DEV** (Kiosco Buildi básico: query vieja→0 disponible, query nueva→10) + regresión e2e de venta (avanzado) verde + build verde. **Pendiente menor (no bloqueante):** la alerta "Inventario sin ubicación" (`AlertasPage`) marcaría todo el stock básico como sin ubicación = ruido; suprimir en básico.
+
+**Inventario en básico — recortes de superficies WMS (review GO, 4 ítems):** (1) ajuste +1/-1 es por diseño vía Agregar/Quitar stock (no hay ajuste a nivel LPN en básico — correcto); (2) modal de detalle de movimiento (ingreso/rebaje/historial) → ocultos **Estado** y **LPN/Pallet** en básico; (3) tab **Autorizaciones** oculto en básico (+ reset) — no existe el modal de acciones LPN que las genera; (4) grilla de stock → ocultas columnas **Lote/Venc.** y **Series** (header+celdas, grid-cols 4→2). Avanzado sin cambios.
+
+**También (pilar B testing):** primer **e2e mutante de ciclo de caja** (`20_caja_apertura_cierre`): abre una caja cerrada del owner, arqueo parcial y cierre de punta a punta (self-healing). Limpieza previa: sesión stale de Caja4 ($42.714) cerrada en DEV. **v1.59.1 NO deployado a PROD aún** (commits dev `9b1bf085`/`ce50d2ac`/`7ce2073b`).
+
+## [2026-06-13] deploy | v1.59.0 PROD — Auditoría pre-cliente (básico + seguridad migs 208/209 + react-router + e2e mutante) · `dev=main`
+
+**Toda la auditoría pre-cliente (tandas 1+2 + recorrido funcional + salud + testing) a PROD en un PR.** GO autorizó "testing y luego pasamos a PRD". **PR #191** merged a `main`, migs **208**+**209** aplicadas en PROD ANTES del merge (idempotentes/aditivas), release **v1.59.0** `--latest`, `dev=main` (`47749296`). Vercel auto-deploy de producción desde `main`. Verificado en PROD: planes policy ✓, `verificar_clave_maestra` anon=false ✓, `cerrar_periodo` search_path ✓, bucket `avatares` SELECT scopeado ✓. CI: unit verde, e2e SKIPPED (gateado por `RUN_E2E`, no depleta DEV).
+
+- **Contenido:** recortes modo básico (Productos→Estructura, Config→Conectividad→API; se mantiene Integraciones) · seguridad 208 (planes RLS, search_path 25→0, anon SECURITY DEFINER 29→15, clave maestra anti-fuerza-bruta) · seguridad 209 (buckets que listan 2→0) · react-router-dom 6.30.4 · primer e2e mutante de venta (suite 701 unit + 158 e2e).
+- **Acción pendiente de GO (no SQL):** activar Leaked Password Protection en Supabase → Authentication → Policies.
+- **Backlog post-deploy:** e2e mutantes restantes (caja lifecycle/recepción/devolución), y a futuro RLS por sucursal (cuando haya multi-sucursal), pase de performance, Vite 8, AFIP a PROD.
+
 ## [2026-06-13] update | v1.59.0 DEV — Auditoría pre-cliente T1: recortes modo básico + endurecimiento de seguridad (mig 208)
 
 **Arranca la auditoría pre-primer-cliente.** Dos frentes en una tanda, en DEV (NO deployado a PROD aún). Suite unit **701/701** · typecheck + build verdes. Commit `dev` `6eb93b5d`.

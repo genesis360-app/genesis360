@@ -79,7 +79,7 @@ La decisión de qué módulos ve cada usuario vive en la función pura [`src/lib
 
 ✅ **EN PROD desde v1.57.0 (2026-06-13, PR #189, mig 207).** F1+F2+F3 + auditoría de roles. Al deployar, los tenants existentes quedaron en `avanzado` (cero impacto). Kill-switch `MODO_BASICO_ENABLED` disponible para rollback global.
 
-🔧 **v1.58.0 (PROD ✅)** y **v1.59.0 (DEV ✅, PROD ⏳)** recortaron superficies internas que se colaban en básico. v1.58.0: Inventario→Kits, Productos→es_kit+mayoristas, Gastos→OC/Reportes/Recursos. v1.59.0: Productos→**Estructura** (empaque WMS) y Config→Conectividad→sub-tab **API** (se mantiene Integraciones). Decisiones GO de qué se deja en básico: Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones, Ventas→Canales.
+🔧 **v1.58.0 (PROD ✅)** y **v1.59.0 (PROD ✅, PR #191)** recortaron superficies internas que se colaban en básico. v1.58.0: Inventario→Kits, Productos→es_kit+mayoristas, Gastos→OC/Reportes/Recursos. v1.59.0: Productos→**Estructura** (empaque WMS) y Config→Conectividad→sub-tab **API** (se mantiene Integraciones). Decisiones GO de qué se deja en básico: Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones, Ventas→Canales.
 
 **e2e por rol:** los usuarios de prueba DEPOSITO (`deposito1@local.com`) y CONTADOR (`contador1@local.com`) ya están creados en DEV (tenant `3769b1db`); credenciales en `tests/e2e/.env.test.local`. Correr: `npx playwright test --project=chromium-deposito --project=chromium-contador` (27 tests verdes).
 

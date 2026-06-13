@@ -24,13 +24,13 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.58.0` 🚧 | `v1.57.0` ✅ |
+| APP_VERSION | `v1.58.0` ✅ | `v1.58.0` ✅ |
 | Migrations | 001–**207** ✅ | 001–**207** ✅ |
-| Branch | `dev` (adelantado: v1.58.0, sin mig) | `main` (release v1.57.0, PR #189) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.57.0 (auto desde `main`) |
+| Branch | `dev` (alineado con `main`) | `main` (release v1.58.0, PR #190) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.58.0 (auto desde `main`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (207 ya en PROD). **DEV adelantado por v1.58.0** (UI-only, sin migración) — recorte de superficies internas del modo básico (Inventario→Kits · Productos→es_kit/mayoristas · Gastos→OC/Reportes-compras/Recursos); pendiente de pasar a PROD.
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (207 ya en PROD). **v1.58.0 en PROD** (PR #190, UI-only) — recorte de superficies internas del modo básico. **e2e DEPOSITO + CONTADOR habilitados:** usuarios de prueba creados en DEV (`deposito1@local.com`/`contador1@local.com`, tenant `3769b1db`); **27 tests verdes**. (Al crear usuarios auth por SQL: setear `confirmation_token/recovery_token/email_change_token_new/email_change = ''` — NULL rompe el login de GoTrue.)
 
 **Migrations DEV pendientes de aplicar en PROD:** **207** (`modo_operacion`, aditiva — aplicar ANTES del merge dev→main; deja a todos los tenants PROD en `avanzado`, cero impacto).
 

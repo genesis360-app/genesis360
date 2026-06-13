@@ -13,9 +13,9 @@ updated: 2026-05-29
 
 ---
 
-## v1.58.0 — Modo básico: ocultar superficies internas avanzadas "claras" (DEV)
+## v1.58.0 — Modo básico: ocultar superficies internas avanzadas "claras" (PROD ✅, PR #190)
 
-Auditoría de pestañas/sub-módulos que seguían en básico. Se ocultan (modo avanzado): Inventario→Kits · Productos→"Es un KIT" + Precios mayoristas · Gastos→OC, Reportes-compras, Recursos. Se dejan en básico (decisión GO): Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones. Sin migración. Pendiente deploy a PROD.
+Auditoría de pestañas/sub-módulos que seguían en básico. Se ocultan (modo avanzado): Inventario→Kits · Productos→"Es un KIT" + Precios mayoristas · Gastos→OC, Reportes-compras, Recursos. Se dejan en básico (decisión GO): Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones. Sin migración. **Además:** e2e DEPOSITO + CONTADOR habilitados (usuarios de prueba creados en DEV, 27 tests verdes).
 
 ---
 

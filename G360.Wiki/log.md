@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] deploy | v1.58.0 PROD — recorte modo básico + e2e DEPOSITO/CONTADOR habilitados · `dev=main`
+
+**v1.58.0 a PROD** (PR **#190**, UI-only sin migración; Vercel producción READY desde `main` sha `fa06ccf9`, `dev=main`). Recorte de superficies internas del modo básico (Inventario→Kits · Productos→es_kit+mayoristas · Gastos→OC/Reportes-compras/Recursos).
+
+**e2e DEPOSITO + CONTADOR habilitados (pedido GO):** creados los usuarios de prueba en DEV vía SQL — `deposito1@local.com` (rol DEPOSITO) y `contador1@local.com` (rol CONTADOR), tenant `3769b1db` (el de los e2e), sucursal de los otros test users, `puede_ver_todas=false`. Credenciales en `tests/e2e/.env.test.local` (gitignored). **27 tests verdes** (`npx playwright test --project=chromium-deposito --project=chromium-contador`). **Gotcha resuelto:** al insertar en `auth.users` por SQL, GoTrue rechaza el login si `confirmation_token/recovery_token/email_change_token_new/email_change` quedan en NULL — hay que setearlos en `''` (cadena vacía, como hace cajero1).
+
 ## [2026-06-13] update | v1.58.0 DEV — Modo básico: ocultar superficies internas avanzadas "claras"
 
 Tras el deploy, GO pidió auditar qué pestañas/sub-secciones internas seguían siendo avanzado dentro de básico. Auditoría completa por módulo (señalada en el chat); GO eligió mover **solo los claros** (sin migración):

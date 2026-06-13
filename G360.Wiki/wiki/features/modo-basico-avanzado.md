@@ -78,7 +78,7 @@ La decisión de qué módulos ve cada usuario vive en la función pura [`src/lib
 
 ✅ **EN PROD desde v1.57.0 (2026-06-13, PR #189, mig 207).** F1+F2+F3 + auditoría de roles. Al deployar, los tenants existentes quedaron en `avanzado` (cero impacto). Kill-switch `MODO_BASICO_ENABLED` disponible para rollback global.
 
-**Pendiente menor:** crear usuarios de prueba DEPOSITO+CONTADOR en DEV para correr los e2e de esos roles (se omiten sin credenciales).
+**e2e por rol:** los usuarios de prueba DEPOSITO (`deposito1@local.com`) y CONTADOR (`contador1@local.com`) ya están creados en DEV (tenant `3769b1db`); credenciales en `tests/e2e/.env.test.local`. Correr: `npx playwright test --project=chromium-deposito --project=chromium-contador` (27 tests verdes).
 
 ## Links relacionados
 

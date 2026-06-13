@@ -503,11 +503,14 @@ export default function ConfigPage() {
   const { avanzado: modoAvanzado } = useModoOperacion()
 
   // En básico no existen el tab Envíos ni los sub-tabs WMS de Inventario (deep-links incluidos)
+  // ni el sub-tab "API" de Conectividad (API pública del marketplace = avanzado; las
+  // integraciones TiendaNube/MeLi sí quedan disponibles).
   useEffect(() => {
     if (modoAvanzado) return
     if (tab === 'envios') setTab('negocio')
     if (['reglas', 'ubicaciones', 'estados', 'codigos'].includes(invSubTab)) setInvSubTab('categorias')
-  }, [modoAvanzado, tab, invSubTab])
+    if (conSubTab === 'api') setConSubTab('integraciones')
+  }, [modoAvanzado, tab, invSubTab, conSubTab])
 
   // Mostrar resultado de OAuth al volver del redirect
   useState(() => {
@@ -4789,8 +4792,9 @@ export default function ConfigPage() {
           <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
             {([
               { id: 'integraciones' as ConSubTab, label: 'Integraciones', icon: Plug },
-              { id: 'api' as ConSubTab, label: 'API', icon: Key },
-            ] as const).map(({ id, label, icon: Icon }) => (
+              // API pública del marketplace: solo en modo avanzado
+              ...(modoAvanzado ? [{ id: 'api' as ConSubTab, label: 'API', icon: Key }] : []),
+            ]).map(({ id, label, icon: Icon }) => (
               <button key={id} onClick={() => setConSubTab(id)}
                 className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all
                   ${conSubTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>

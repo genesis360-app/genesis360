@@ -14,6 +14,7 @@ import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -428,6 +429,7 @@ type TicketScanItem = {
 
 export default function ProductosPage() {
   const { tenant, user } = useAuthStore()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const verCosto = puedeVerCosto(user?.rol)
   const navigate = useNavigate()
   const qc = useQueryClient()
@@ -492,6 +494,12 @@ export default function ProductosPage() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
+
+  // En modo básico la pestaña Estructura (jerarquía de empaque unidad/caja/pallet =
+  // WMS) no existe; resetear si se llega por deep-link o al cambiar de modo.
+  useEffect(() => {
+    if (!modoAvanzado && tab === 'estructura') setTab('productos')
+  }, [modoAvanzado, tab])
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
@@ -1027,7 +1035,8 @@ export default function ProductosPage() {
       <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-fit">
         {([
           { id: 'productos' as const, label: 'Productos', icon: Package },
-          { id: 'estructura' as const, label: 'Estructura', icon: Layers },
+          // Estructura (empaque unidad/caja/pallet) = WMS → solo modo avanzado
+          ...(modoAvanzado ? [{ id: 'estructura' as const, label: 'Estructura', icon: Layers }] : []),
         ]).map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id)}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all

@@ -13,9 +13,15 @@ updated: 2026-05-29
 
 ---
 
-## v1.58.0 — Modo básico: ocultar superficies internas avanzadas "claras" (DEV)
+## v1.59.0 — Auditoría pre-cliente T1: recortes modo básico + endurecimiento de seguridad (DEV ✅, PROD ⏳)
 
-Auditoría de pestañas/sub-módulos que seguían en básico. Se ocultan (modo avanzado): Inventario→Kits · Productos→"Es un KIT" + Precios mayoristas · Gastos→OC, Reportes-compras, Recursos. Se dejan en básico (decisión GO): Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones. Sin migración. Pendiente deploy a PROD.
+Primera tanda de la **auditoría pre-primer-cliente**. **Recortes de modo básico (UI):** Productos→**Estructura** (jerarquía empaque unidad/caja/pallet = WMS) y Configuración→Conectividad→sub-tab **API** (API pública del marketplace) ocultos en básico; se mantiene el sub-tab Integraciones (TN/MeLi/MP). **Seguridad (mig 208, idempotente):** policy SELECT en `planes` (cierra RLS-no-policy), `search_path=public` en 25 funciones, y `REVOKE FROM PUBLIC`+re-GRANT en SECURITY DEFINER no públicas (períodos, sweeps CC, clave maestra anti-fuerza-bruta, seeds). Advisors: search_path 25→0, rls_no_policy 1→0, anon SECURITY DEFINER 29→15. **Pendiente:** deploy a PROD (mig 208 antes del merge) + follow-ups (buckets/pg_net/leaked-pw/RLS-sucursal). Suite **701**.
+
+---
+
+## v1.58.0 — Modo básico: ocultar superficies internas avanzadas "claras" (PROD ✅, PR #190)
+
+Auditoría de pestañas/sub-módulos que seguían en básico. Se ocultan (modo avanzado): Inventario→Kits · Productos→"Es un KIT" + Precios mayoristas · Gastos→OC, Reportes-compras, Recursos. Se dejan en básico (decisión GO): Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones. Sin migración. **Además:** e2e DEPOSITO + CONTADOR habilitados (usuarios de prueba creados en DEV, 27 tests verdes).
 
 ---
 

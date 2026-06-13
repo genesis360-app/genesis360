@@ -34,10 +34,11 @@ Dos experiencias en un solo SaaS (v1.55.0, mig 207):
 | Dashboard, Ventas (POS), Caja, Clientes, Gastos, Reportes/Alertas, Usuarios, Config | ✅ | ✅ |
 | **Facturación** | solo si `facturacion_habilitada` | ✅ |
 | **Sucursales** | solo si >1 sucursal | ✅ |
-| Productos | Form simple (sin tracking/regla/aging/peso-dim/ubicación-estado default; **sin "Es un KIT" ni precios mayoristas** — v1.58.0). Quedan: variantes talle/color, precio USD | Completo |
+| Productos | Form simple (sin tracking/regla/aging/peso-dim/ubicación-estado default; **sin "Es un KIT" ni precios mayoristas** — v1.58.0); **sin pestaña "Estructura"** (empaque unidad/caja/pallet = WMS — v1.59.0). Quedan: variantes talle/color, precio USD | Completo (incl. pestaña Estructura) |
 | Inventario | Stock + agregar/quitar simplificados + conteo rápido + Traslados (solo si >1 sucursal); **sin pestaña Kits** (v1.58.0) | Completo (LPN, ubicaciones, estados, vista por ubicación, conteos guiado/ciego/ABC/cíclico, acciones LPN, Kits) |
 | Gastos | Variables/fijos/historial + cheques/cierres/autorizaciones; **sin OC, Reportes-compras ni Recursos** (v1.58.0) | Completo |
 | Proveedores | Ficha + CC + pagos (sin OC/presupuestos/calificación) | Completo |
+| Configuración | Conectividad: **sub-tab Integraciones** (TiendaNube/MercadoLibre/MercadoPago) sí; **sin sub-tab "API"** (API pública del marketplace — v1.59.0) | Completo (incl. API pública/webhook) |
 | **Recursos** (activos fijos) | ❌ | ✅ |
 | **Biblioteca** (documentos) | ❌ | ✅ |
 | **Recepciones + OC** | ❌ (stock entra por Inventario → Agregar) | ✅ |
@@ -78,7 +79,9 @@ La decisión de qué módulos ve cada usuario vive en la función pura [`src/lib
 
 ✅ **EN PROD desde v1.57.0 (2026-06-13, PR #189, mig 207).** F1+F2+F3 + auditoría de roles. Al deployar, los tenants existentes quedaron en `avanzado` (cero impacto). Kill-switch `MODO_BASICO_ENABLED` disponible para rollback global.
 
-**Pendiente menor:** crear usuarios de prueba DEPOSITO+CONTADOR en DEV para correr los e2e de esos roles (se omiten sin credenciales).
+🔧 **v1.58.0 (PROD ✅)** y **v1.59.0 (DEV ✅, PROD ⏳)** recortaron superficies internas que se colaban en básico. v1.58.0: Inventario→Kits, Productos→es_kit+mayoristas, Gastos→OC/Reportes/Recursos. v1.59.0: Productos→**Estructura** (empaque WMS) y Config→Conectividad→sub-tab **API** (se mantiene Integraciones). Decisiones GO de qué se deja en básico: Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones, Ventas→Canales.
+
+**e2e por rol:** los usuarios de prueba DEPOSITO (`deposito1@local.com`) y CONTADOR (`contador1@local.com`) ya están creados en DEV (tenant `3769b1db`); credenciales en `tests/e2e/.env.test.local`. Correr: `npx playwright test --project=chromium-deposito --project=chromium-contador` (27 tests verdes).
 
 ## Links relacionados
 

@@ -6,6 +6,44 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] update | v1.59.0 DEV — Auditoría pre-cliente T1: recortes modo básico + endurecimiento de seguridad (mig 208)
+
+**Arranca la auditoría pre-primer-cliente.** Dos frentes en una tanda, en DEV (NO deployado a PROD aún). Suite unit **701/701** · typecheck + build verdes. Commit `dev` `6eb93b5d`.
+
+**1) Recortes de modo básico (pedido GO: "encontrá vos las sub-pestañas que no deberían estar en básico").** Auditoría sistemática de las pestañas internas de cada módulo visible en básico. UI-only, sin migración. GO eligió:
+- **Productos → Estructura** (jerarquía de empaque unidad/caja/pallet con pesos/dims = WMS) → oculta en básico. La página no chequeaba modo (el recorte de v1.58.0 fue en el *form*, no acá). Gateada por `modoAvanzado` + reset de tab.
+- **Configuración → Conectividad → sub-tab "API"** (API pública del marketplace `marketplace-api` + webhook) → oculto en básico. **Se mantiene el sub-tab "Integraciones"** (TiendaNube/MercadoLibre/MercadoPago) — decisión GO.
+- Evaluadas y **dejadas**: Ventas→Canales (reporte por canal, inofensivo). Verificadas ya-gateadas: Inventario (Kits/ubicación/columnas WMS), Proveedores (OC), Config (Envíos), Gastos (OC/Reportes/Recursos).
+
+**2) Endurecimiento de seguridad — mig 208 (idempotente, aplicada en DEV).** Remedia hallazgos de `get_advisors(security)`:
+- **`planes`**: policy SELECT pública (catálogo global lockeado; el front no lo lee). `rls_enabled_no_policy 1→0`.
+- **`search_path=public`** en 25 funciones (loop por `oid::regprocedure`). `function_search_path_mutable 25→0`.
+- **`REVOKE FROM PUBLIC` + re-`GRANT`** en SECURITY DEFINER no públicas. **Gotcha clave:** el EXECUTE de anon venía del grant a **PUBLIC**, no de un grant a `anon` — `REVOKE FROM anon` era no-op. Tras el fix: `anon SECURITY DEFINER 29→15`. Fuera de anon: períodos (cerrar/reabrir), sweeps CC, `cliente_cc_estado`, `verificar/requiere_clave_maestra` (corta fuerza bruta), seeds/triggers (anon+auth fuera, service_role escape — onboarding sigue OK porque los `fn_seed_*` son SECURITY DEFINER de postgres). Los 15 anon restantes son por diseño (10 token-gated + 5 helpers RLS que no-opean sin `auth.uid()`).
+- **Follow-up (no en 208):** 2 buckets que listan (avatares/productos), pg_net en public, leaked-password (toggle Auth de GO), `authenticated` SECURITY DEFINER (by-design), RLS por sucursal (#8).
+
+**3) C. Recorrido funcional — ✅ VERDE.** Tenant nuevo básico ("Kiosco Buildi" en DEV) totalmente operable: seeds completos (sucursal/caja/motivos/estados/unidades/canales/cat-gasto/5 métodos de pago), categoría de producto opcional, venta despacha por auto-FIFO sin picker (Fase B de `registrarVenta`). Sin bloqueantes.
+
+**4) D. Salud técnica — ✅ HECHO.** npm audit 7→5 vulns: arreglada **react-router-dom 6.21→6.30.4** (open-redirect, no-breaking, commit `d6792c4f`); las 5 restantes son build-tooling dev-only (esbuild/vite/uuid) que requieren el salto breaking a Vite 8 → diferido (impacto runtime ~nulo). `get_advisors(performance)` PROD: **646 lints** todos deuda de optimización (FK sin índice, índices sin uso, RLS auth_initplan, policies múltiples) — ninguno bloquea un primer cliente con poco volumen → NO se tocan pre-cliente (optimización prematura + riesgo); candidato a pase de performance dedicado a futuro.
+
+**5) Seguridad follow-up (tanda 2) — mig 209.** ✅ **Buckets que listan CERRADO**: las policies SELECT amplias de `avatares`/`productos` (cualquier authenticated listaba todos los tenants) reemplazadas por SELECT scopeado a la propia carpeta (user_id/tenant_id). Advisor `public_bucket_allows_listing` 2→0; la app no lista (solo upload+getPublicUrl). **pg_net en public → WON'T-FIX** (es `extrelocatable=false`, 7 funciones lo usan, WARN de baja severidad). **RLS por sucursal #8 → DIFERIDO con datos**: 33 tablas con `sucursal_id` pero 0 tenants multi-sucursal y 0 usuarios restringidos en PROD → exposición real nula hoy; hacerlo cuando llegue el primer tenant multi-sucursal (migración grande/riesgosa, no a ciegas). Leaked-password sigue siendo toggle de GO en Auth. Estado seguridad DEV: search_path 0, rls_no_policy 0, bucket_listing 0, anon SECURITY DEFINER 15 (por diseño), authenticated 32 (por diseño), pg_net 1 (won't-fix), leaked-pw 1 (GO).
+
+**▶ Próximo:** decisión GO de deployar v1.59.0 + migs 208/209 a PROD (aplicarlas antes del merge), B. testing exhaustivo + e2e mutantes, leaked-password toggle de GO, y a futuro RLS por sucursal cuando haya multi-sucursal.
+
+## [2026-06-13] cierre-sesión | Modo Básico/Avanzado (WMS) COMPLETO en PROD (v1.55→v1.58) + auditoría de roles · próximo: auditoría pre-primer-cliente
+
+**Sesión grande: 4 releases a PROD (v1.55.0 → v1.58.0).** El modo de operación Básico vs Avanzado quedó **completo y en producción**, más la auditoría de roles y el recorte de superficies internas del básico. Estado al cierre: PROD = DEV = **v1.58.0**, migrations 001-**207**, `dev=main` (salvo 1 commit de wiki). Suite unit **701** · e2e por rol (owner/cajero/supervisor/rrhh/**deposito**/**contador**).
+
+- **v1.55.0** (mig 207) F1 fundación · **v1.56.0** F2+F3 · **v1.57.0** "mínimo mostrador" + auditoría de roles (`navVisibility.ts` puro, 2 bugs corregidos: DEPOSITO/Recepciones + CONTADOR/Historial; rol custom read-only) · **v1.58.0** recorte de superficies internas (Kits, es_kit, mayoristas, tabs OC/Reportes-compras/Recursos de Gastos).
+- **e2e DEPOSITO + CONTADOR habilitados:** usuarios de prueba creados en DEV (gotcha GoTrue de tokens NULL resuelto); 27 verdes.
+
+**▶ PRÓXIMA SESIÓN — AUDITORÍA PRE-PRIMER CLIENTE.** GO pidió "testear todo y que quede la app funcional para un primer cliente". Plan completo + hallazgos concretos de `get_advisors(security)` en PROD documentados en `project_pendientes.md` → sección "PRÓXIMA SESIÓN — AUDITORÍA PRE-PRIMER CLIENTE". Resumen: **A. Seguridad** (1 RLS sin policy 🔴, 25 funciones sin search_path, 30/39 SECURITY DEFINER públicas a revisar, buckets que listan, leaked-password off; + #8 RLS por sucursal = riesgo #1) · **B. Testing** (suite completa todos los roles + e2e mutantes reales) · **C. Recorrido funcional** (alta tenant → vender → caja, en básico y avanzado) · **D. Salud** (advisors performance, npm audit 5 vulns) · **E. Bloqueantes** (AFIP en DEV, datos limpios).
+
+## [2026-06-13] deploy | v1.58.0 PROD — recorte modo básico + e2e DEPOSITO/CONTADOR habilitados · `dev=main`
+
+**v1.58.0 a PROD** (PR **#190**, UI-only sin migración; Vercel producción READY desde `main` sha `fa06ccf9`, `dev=main`). Recorte de superficies internas del modo básico (Inventario→Kits · Productos→es_kit+mayoristas · Gastos→OC/Reportes-compras/Recursos).
+
+**e2e DEPOSITO + CONTADOR habilitados (pedido GO):** creados los usuarios de prueba en DEV vía SQL — `deposito1@local.com` (rol DEPOSITO) y `contador1@local.com` (rol CONTADOR), tenant `3769b1db` (el de los e2e), sucursal de los otros test users, `puede_ver_todas=false`. Credenciales en `tests/e2e/.env.test.local` (gitignored). **27 tests verdes** (`npx playwright test --project=chromium-deposito --project=chromium-contador`). **Gotcha resuelto:** al insertar en `auth.users` por SQL, GoTrue rechaza el login si `confirmation_token/recovery_token/email_change_token_new/email_change` quedan en NULL — hay que setearlos en `''` (cadena vacía, como hace cajero1).
+
 ## [2026-06-13] update | v1.58.0 DEV — Modo básico: ocultar superficies internas avanzadas "claras"
 
 Tras el deploy, GO pidió auditar qué pestañas/sub-secciones internas seguían siendo avanzado dentro de básico. Auditoría completa por módulo (señalada en el chat); GO eligió mover **solo los claros** (sin migración):

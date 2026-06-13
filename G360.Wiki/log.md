@@ -21,7 +21,11 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 - **`REVOKE FROM PUBLIC` + re-`GRANT`** en SECURITY DEFINER no públicas. **Gotcha clave:** el EXECUTE de anon venía del grant a **PUBLIC**, no de un grant a `anon` — `REVOKE FROM anon` era no-op. Tras el fix: `anon SECURITY DEFINER 29→15`. Fuera de anon: períodos (cerrar/reabrir), sweeps CC, `cliente_cc_estado`, `verificar/requiere_clave_maestra` (corta fuerza bruta), seeds/triggers (anon+auth fuera, service_role escape — onboarding sigue OK porque los `fn_seed_*` son SECURITY DEFINER de postgres). Los 15 anon restantes son por diseño (10 token-gated + 5 helpers RLS que no-opean sin `auth.uid()`).
 - **Follow-up (no en 208):** 2 buckets que listan (avatares/productos), pg_net en public, leaked-password (toggle Auth de GO), `authenticated` SECURITY DEFINER (by-design), RLS por sucursal (#8).
 
-**▶ Próximo:** decisión GO de deployar v1.59.0 + mig 208 a PROD (aplicar 208 antes del merge), y seguir la auditoría (B. testing exhaustivo / C. recorrido funcional / D. salud / follow-ups de seguridad).
+**3) C. Recorrido funcional — ✅ VERDE.** Tenant nuevo básico ("Kiosco Buildi" en DEV) totalmente operable: seeds completos (sucursal/caja/motivos/estados/unidades/canales/cat-gasto/5 métodos de pago), categoría de producto opcional, venta despacha por auto-FIFO sin picker (Fase B de `registrarVenta`). Sin bloqueantes.
+
+**4) D. Salud técnica — ✅ HECHO.** npm audit 7→5 vulns: arreglada **react-router-dom 6.21→6.30.4** (open-redirect, no-breaking, commit `d6792c4f`); las 5 restantes son build-tooling dev-only (esbuild/vite/uuid) que requieren el salto breaking a Vite 8 → diferido (impacto runtime ~nulo). `get_advisors(performance)` PROD: **646 lints** todos deuda de optimización (FK sin índice, índices sin uso, RLS auth_initplan, policies múltiples) — ninguno bloquea un primer cliente con poco volumen → NO se tocan pre-cliente (optimización prematura + riesgo); candidato a pase de performance dedicado a futuro.
+
+**▶ Próximo:** decisión GO de deployar v1.59.0 + mig 208 a PROD (aplicar 208 antes del merge), y seguir la auditoría (B. testing exhaustivo + e2e mutantes / follow-ups de seguridad: buckets, pg_net, **RLS por sucursal #8** / leaked-password toggle de GO).
 
 ## [2026-06-13] cierre-sesión | Modo Básico/Avanzado (WMS) COMPLETO en PROD (v1.55→v1.58) + auditoría de roles · próximo: auditoría pre-primer-cliente
 

@@ -89,8 +89,9 @@ Auditoría de flujos cruzados entre módulos (verificada contra código). **Quic
   - Alta de tenant nuevo (onboarding) → arranca en **básico** → cargar productos → vender (POS) → caja (abrir/cobrar/cerrar) → cliente con fiado → gasto. Repetir activando **modo avanzado**.
   - Verificar seeds/defaults del alta (sucursal, caja, categorías, estados, métodos de pago) y que **nada oculto en básico rompa un flujo**.
 
-**D. SALUD TÉCNICA.**
-  - `get_advisors(performance)` en PROD (índices faltantes) · **npm audit** (GitHub reporta **5 vulnerabilidades**: 4 moderate, 1 low) · revisar logs de Edge Functions.
+**D. SALUD TÉCNICA — ✅ HECHO (v1.59.0).**
+  - **npm audit:** eran 7 vulns (6 moderate, 1 high). ✅ **Arreglada react-router-dom 6.21→6.30.4** (open-redirect vía URL protocol-relative `//`; patch no-breaking dentro de v6; commit `d6792c4f`). **Quedan 5 (4 moderate + 1 high) dev-only en build-tooling** (esbuild high + vite/vite-plugin-pwa/vite-plugin-top-level-await/uuid moderate) — solo se arreglan con el salto **BREAKING a Vite 8**. **Diferido a propósito:** riesgo alto e impacto runtime ~nulo (el dev-server no se expone en PROD; Vite buildea estáticos). Revisar cuando se haga un upgrade mayor de tooling.
+  - **`get_advisors(performance)` PROD: 646 lints** — TODOS deuda de optimización, **ninguno bloquea a un primer cliente con poco volumen** (son temas de escala): 183 `unindexed_foreign_keys`, 172 `unused_index`, 135 `auth_rls_initplan` (RLS re-evalúa `auth.uid()` por fila → fix canónico: envolver en `(SELECT auth.uid())`), 156 `multiple_permissive_policies`. **Decisión:** NO churnear 600+ cambios de schema pre-cliente (optimización prematura + riesgo de regresión). Candidato a un **pase de performance dedicado** cuando el volumen lo justifique; el más valioso sería `auth_rls_initplan` (135 policies, grande/tedioso). Logs de Edge Functions: pendiente revisar.
 
 **E. BLOQUEANTES DE NEGOCIO (si el cliente factura).**
   - Facturación AFIP sigue en **DEV** (requiere CUIT/constitución de empresa para PROD real) · el tenant del primer cliente debe arrancar **sin datos de prueba**.

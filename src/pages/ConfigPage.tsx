@@ -14,6 +14,9 @@ import { CodigoPerfilesPanel } from '@/components/CodigoPerfilesPanel'
 import { CourierCredencialesPanel } from '@/components/CourierCredencialesPanel'
 import RepartidoresPanel from '@/components/RepartidoresPanel'
 import { CanalesVentaPanel } from '@/components/CanalesVentaPanel'
+import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { MODO_BASICO_ENABLED } from '@/config/brand'
+import { motivoBasico } from '@/lib/modoOperacion'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
@@ -377,6 +380,108 @@ function MarketplaceSection() {
             </div>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Modo de operación: Básico vs Avanzado (WMS) — mig 207 ───────────────────
+function ModoOperacionSection() {
+  const { tenant, user, setTenant } = useAuthStore()
+  const { limits } = usePlanLimits()
+  const canEdit = user?.rol === 'DUEÑO'
+  const [saving, setSaving] = useState(false)
+
+  const modoActual: 'basico' | 'avanzado' = tenant?.modo_operacion === 'avanzado' ? 'avanzado' : 'basico'
+  const puedeWms = limits?.puede_wms ?? false
+  const motivo = motivoBasico(tenant?.modo_operacion, puedeWms)
+
+  // Productos con tracking activo: en básico conservan su flujo (regla de integridad)
+  const { data: productosConTracking = 0 } = useQuery({
+    queryKey: ['productos-con-tracking', tenant?.id],
+    queryFn: async () => {
+      const { count } = await supabase.from('productos')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+        .or('tiene_series.eq.true,tiene_lote.eq.true,tiene_vencimiento.eq.true')
+      return count ?? 0
+    },
+    enabled: !!tenant,
+  })
+
+  if (!MODO_BASICO_ENABLED) return null
+
+  const cambiar = async (nuevo: 'basico' | 'avanzado') => {
+    if (!canEdit || nuevo === modoActual) return
+    if (nuevo === 'avanzado' && !puedeWms) return
+    if (nuevo === 'basico') {
+      const detalle = productosConTracking > 0
+        ? `\n\nTenés ${productosConTracking} producto(s) con trazabilidad activa (series/lotes/vencimiento): van a conservar su flujo al mover stock, pero no vas a poder activar trazabilidad en productos nuevos.`
+        : ''
+      const ok = window.confirm(
+        `¿Pasar al modo Básico?\n\nSe ocultan Recepciones/OC, Envíos, Trazabilidad y las opciones WMS (LPN, ubicaciones, lotes, series, vencimientos). Ningún dato se borra: al volver al modo Avanzado todo reaparece intacto.${detalle}`
+      )
+      if (!ok) return
+    }
+    setSaving(true)
+    const { data, error } = await supabase.from('tenants')
+      .update({ modo_operacion: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) toast.error(error.message)
+    else {
+      setTenant(data)
+      logActividad({ entidad: 'tenant', entidad_id: tenant!.id, accion: 'editar', campo: 'modo_operacion', valor_anterior: modoActual, valor_nuevo: nuevo, pagina: '/configuracion' })
+      toast.success(nuevo === 'avanzado' ? 'Modo avanzado activado' : 'Modo básico activado')
+    }
+    setSaving(false)
+  }
+
+  const opciones: { id: 'basico' | 'avanzado'; titulo: string; desc: string }[] = [
+    { id: 'basico', titulo: 'Básico', desc: 'Para kioscos, almacenes y pymes chicas. Ventas, caja, clientes, gastos y stock simple — sin trazabilidad ni depósito formal.' },
+    { id: 'avanzado', titulo: 'Avanzado (WMS)', desc: 'Trazabilidad completa: lotes, series, vencimientos, FIFO/FEFO, ubicaciones, LPN, órdenes de compra, recepciones y envíos.' },
+  ]
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+      <div className="flex items-center gap-2">
+        <Layers size={16} className="text-accent" />
+        <h2 className="font-semibold text-gray-700 dark:text-gray-300">Modo de operación</h2>
+      </div>
+      <p className="text-xs text-gray-400 dark:text-gray-500">
+        Define qué módulos y opciones muestra la app. Cambiar de modo no borra ningún dato.
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3">
+        {opciones.map(op => {
+          const activa = modoActual === op.id
+          const bloqueada = op.id === 'avanzado' && !puedeWms
+          return (
+            <button key={op.id} type="button" disabled={!canEdit || saving || bloqueada}
+              onClick={() => cambiar(op.id)}
+              className={`text-left rounded-xl border-2 p-4 transition-all ${activa
+                ? 'border-accent bg-accent/5'
+                : 'border-gray-200 dark:border-gray-700 hover:border-accent/40'} ${(!canEdit || bloqueada) ? 'opacity-60 cursor-not-allowed' : ''}`}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{op.titulo}</span>
+                {activa && <span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full font-medium">Activo</span>}
+                {bloqueada && <Lock size={14} className="text-gray-400" />}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{op.desc}</p>
+            </button>
+          )
+        })}
+      </div>
+      {motivo === 'plan_insuficiente' && (
+        <div className="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+          <AlertCircle size={16} className="text-amber-500 flex-shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            El modo avanzado está activado pero tu plan actual no lo incluye, así que la app opera en modo básico.
+            Tus datos WMS siguen intactos. <Link to="/suscripcion" className="underline font-medium">Mejorá tu plan</Link> para reactivarlo.
+          </p>
+        </div>
+      )}
+      {modoActual === 'basico' && !puedeWms && motivo !== 'plan_insuficiente' && (
+        <p className="text-xs text-gray-400 dark:text-gray-500">
+          El modo avanzado requiere plan <strong>Pro</strong>. <Link to="/suscripcion" className="text-accent underline">Ver planes</Link>
+        </p>
       )}
     </div>
   )
@@ -2177,6 +2282,8 @@ export default function ConfigPage() {
           )}
         </div>
       )}
+
+      {tab === 'negocio' && <ModoOperacionSection />}
 
       {tab === 'negocio' && <MarketplaceSection />}
 

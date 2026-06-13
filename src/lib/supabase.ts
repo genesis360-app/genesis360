@@ -35,6 +35,8 @@ export interface Tenant {
   cotizacion_usd?: number
   cotizacion_usd_updated_at?: string
   regla_inventario: string
+  // Modo de operación Básico/Avanzado (mig 207) — gatea UI, nunca datos
+  modo_operacion?: 'basico' | 'avanzado'
   marketplace_activo?: boolean
   marketplace_webhook_url?: string
   session_timeout_minutes?: number | null

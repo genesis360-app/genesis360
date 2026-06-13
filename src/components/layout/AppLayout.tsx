@@ -16,6 +16,7 @@ import { differenceInDays } from 'date-fns'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useInactivityTimeout } from '@/hooks/useInactivityTimeout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
@@ -35,15 +36,15 @@ const navItems = [
   { to: '/productos',     icon: Package,         label: 'Productos',      modulo: 'inventario',    depositoVisible: true },
   { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos',   depositoVisible: true },
   { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true, contadorVisible: true },
-  { to: '/envios',        icon: Send,            label: 'Envíos',         modulo: 'envios',        cajeroVisible: true, depositoVisible: true },
+  { to: '/envios',        icon: Send,            label: 'Envíos',         modulo: 'envios',        cajeroVisible: true, depositoVisible: true, avanzadoOnly: true },
   { to: '/facturacion',   icon: Receipt,         label: 'Facturación',    modulo: 'facturacion',   ownerOnly: true },
   { to: '/proveedores',   icon: Truck,           label: 'Prov./Servicios', modulo: 'proveedores',  ownerOnly: true },
   { to: '/recursos',      icon: Landmark,        label: 'Recursos',       modulo: 'recursos',      ownerOnly: true },
-  { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true },
+  { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
   { to: '/biblioteca',    icon: FolderOpen,      label: 'Biblioteca',     modulo: 'biblioteca',    ownerOnly: true },
   { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true,           depositoVisible: true },
   { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',           modulo: 'rrhh',          ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
-  { to: '/historial',     icon: ClipboardList,   label: 'Historial',      modulo: 'historial',     supervisorOnly: true, planFeature: 'puede_historial', contadorVisible: true },
+  { to: '/historial',     icon: ClipboardList,   label: 'Historial',      modulo: 'historial',     supervisorOnly: true, planFeature: 'puede_historial', contadorVisible: true, avanzadoOnly: true },
   { to: '/reportes',      icon: BarChart2,       label: 'Reportes',       modulo: 'reportes',      planFeature: 'puede_reportes', contadorVisible: true },
   { to: '/sucursales',    icon: Building2,       label: 'Sucursales',     modulo: 'sucursales',    ownerOnly: true },
   { to: '/usuarios',      icon: Shield,          label: 'Usuarios',       modulo: 'usuarios',      ownerOnly: true },
@@ -131,6 +132,17 @@ export function AppLayout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const { limits } = usePlanLimits()
+  const { avanzado: modoAvanzado } = useModoOperacion()
+
+  // Rutas que solo existen en modo avanzado (WMS) — en básico se redirige
+  const RUTAS_AVANZADO = ['/recepciones', '/envios', '/historial']
+  useEffect(() => {
+    if (!tenant || modoAvanzado) return
+    if (RUTAS_AVANZADO.some(r => pathname.startsWith(r))) {
+      toast('Esta sección es del modo avanzado. Podés activarlo en Configuración.', { icon: '🔒' })
+      navigate('/dashboard', { replace: true })
+    }
+  }, [pathname, modoAvanzado, tenant?.id])
 
   // Restricciones de rutas por rol
   useEffect(() => {
@@ -268,7 +280,8 @@ export function AppLayout() {
 
         {/* Navegación */}
         <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-2'}`}>
-          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible, contadorVisible, depositoVisible, portalEmpleado, modulo }: any) => {
+          {navItems.map(({ to, icon: Icon, label, badge, ownerOnly, supervisorOnly, planFeature, rrhhVisible, cajeroVisible, contadorVisible, depositoVisible, portalEmpleado, avanzadoOnly, modulo }: any) => {
+            if (avanzadoOnly && !modoAvanzado) return null
             if (portalEmpleado && !(tenant as any)?.rrhh_portal_empleado) return null
             if (user?.rol === 'RRHH' && !rrhhVisible) return null
             if (user?.rol === 'CAJERO' && !cajeroVisible) return null

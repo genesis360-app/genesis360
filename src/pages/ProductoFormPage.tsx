@@ -10,6 +10,7 @@ import { puedeVerCosto } from '@/lib/permisosCosto'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -612,6 +613,10 @@ export default function ProductoFormPage() {
 
   const canEdit = user?.rol === 'DUEÑO' || user?.rol === 'SUPERVISOR' || user?.rol === 'SUPER_USUARIO'
   const verCosto = puedeVerCosto(user?.rol)  // G4 — costo/margen oculto para CAJERO/DEPOSITO
+  const { avanzado: modoAvanzado } = useModoOperacion()
+  // Producto heredado con tracking: en básico se muestra solo-lectura (los flujos de datos se conservan)
+  const tieneTrackingActivo = form.tiene_series || form.tiene_lote || form.tiene_vencimiento
+  const mostrarTracking = modoAvanzado || tieneTrackingActivo
 
   const saveMinimos = async () => {
     if (!id || !tenant) return
@@ -1100,7 +1105,8 @@ export default function ProductoFormPage() {
                 </div>
               </div>
 
-              {/* ISS-174 — Peso y dimensiones para cotizar envíos */}
+              {/* ISS-174 — Peso y dimensiones para cotizar envíos (Envíos = modo avanzado) */}
+              {modoAvanzado && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Peso y dimensiones <span className="font-normal text-gray-400">(para cotizar envíos)</span></label>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Se usan cuando la cotización de envíos toma el peso del producto (Config → Envíos). Opcionales.</p>
@@ -1120,8 +1126,10 @@ export default function ProductoFormPage() {
                   ))}
                 </div>
               </div>
+              )}
 
-              {/* Ubicación predeterminada | Estado de inventario predeterminado */}
+              {/* Ubicación predeterminada | Estado de inventario predeterminado (WMS = modo avanzado) */}
+              {modoAvanzado && (
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1166,8 +1174,10 @@ export default function ProductoFormPage() {
                   </select>
                 </div>
               </div>
+              )}
 
-              {/* Regla de inventario */}
+              {/* Regla de inventario (FIFO/FEFO = modo avanzado; en básico aplica la default) */}
+              {modoAvanzado && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                   Regla de inventario
@@ -1183,6 +1193,7 @@ export default function ProductoFormPage() {
                   ))}
                 </select>
               </div>
+              )}
 
               {!isEditing && (
                 <div className="flex items-center gap-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl px-4 py-3 text-sm text-blue-700 dark:text-blue-400">
@@ -1228,14 +1239,20 @@ export default function ProductoFormPage() {
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Activá los atributos que aplican a este producto</p>
                 </div>
 
-                {/* Subsección Tracking */}
+                {/* Subsección Tracking — solo en modo avanzado; si el producto heredó tracking, solo-lectura */}
                 <div className="space-y-3">
+                  {mostrarTracking && (<>
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Tracking</p>
+                  {!modoAvanzado && (
+                    <p className="text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 rounded-lg px-3 py-2">
+                      Este producto tiene trazabilidad activa (modo avanzado). Sus flujos se conservan, pero la edición de tracking requiere el modo avanzado (Configuración → Modo de operación).
+                    </p>
+                  )}
 
                   {/* tiene_series */}
-                  <label className="flex items-start gap-3 cursor-pointer">
+                  <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
                     <div className="relative mt-0.5">
-                      <input type="checkbox" checked={form.tiene_series}
+                      <input type="checkbox" checked={form.tiene_series} disabled={!modoAvanzado}
                         onChange={e => setForm(p => ({ ...p, tiene_series: e.target.checked }))} className="sr-only" />
                       <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_series ? 'bg-accent' : 'bg-gray-300'}`}>
                         <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_series ? 'translate-x-5' : ''}`} />
@@ -1248,9 +1265,9 @@ export default function ProductoFormPage() {
                   </label>
 
                   {/* tiene_lote */}
-                  <label className="flex items-start gap-3 cursor-pointer">
+                  <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
                     <div className="relative mt-0.5">
-                      <input type="checkbox" checked={form.tiene_lote}
+                      <input type="checkbox" checked={form.tiene_lote} disabled={!modoAvanzado}
                         onChange={e => setForm(p => ({ ...p, tiene_lote: e.target.checked }))} className="sr-only" />
                       <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_lote ? 'bg-accent' : 'bg-gray-300'}`}>
                         <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_lote ? 'translate-x-5' : ''}`} />
@@ -1264,9 +1281,9 @@ export default function ProductoFormPage() {
 
                   {/* tiene_vencimiento + inline shelf_life_dias + aging_profile_id */}
                   <div>
-                    <label className="flex items-start gap-3 cursor-pointer">
+                    <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
                       <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_vencimiento}
+                        <input type="checkbox" checked={form.tiene_vencimiento} disabled={!modoAvanzado}
                           onChange={e => setForm(p => ({ ...p, tiene_vencimiento: e.target.checked }))} className="sr-only" />
                         <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_vencimiento ? 'bg-accent' : 'bg-gray-300'}`}>
                           <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_vencimiento ? 'translate-x-5' : ''}`} />
@@ -1285,7 +1302,7 @@ export default function ProductoFormPage() {
                             <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal" title="Días desde la fabricación hasta el vencimiento. Usado para calcular alertas de vencimiento próximo.">(días de shelf life)</span>
                           </label>
                           <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
-                            value={form.shelf_life_dias}
+                            value={form.shelf_life_dias} disabled={!modoAvanzado}
                             onChange={e => setForm(p => ({ ...p, shelf_life_dias: e.target.value }))}
                             placeholder="Ej: 365"
                             className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
@@ -1296,7 +1313,7 @@ export default function ProductoFormPage() {
                               Aging Profile
                               <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal">(requiere fecha de vencimiento activa)</span>
                             </label>
-                            <select value={form.aging_profile_id}
+                            <select value={form.aging_profile_id} disabled={!modoAvanzado}
                               onChange={e => setForm(p => ({ ...p, aging_profile_id: e.target.value }))}
                               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                               <option value="">— Sin aging profile —</option>
@@ -1311,9 +1328,9 @@ export default function ProductoFormPage() {
                   </div>
 
                   {/* tiene_pais_origen */}
-                  <label className="flex items-start gap-3 cursor-pointer">
+                  <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
                     <div className="relative mt-0.5">
-                      <input type="checkbox" checked={form.tiene_pais_origen}
+                      <input type="checkbox" checked={form.tiene_pais_origen} disabled={!modoAvanzado}
                         onChange={e => setForm(p => ({ ...p, tiene_pais_origen: e.target.checked }))} className="sr-only" />
                       <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_pais_origen ? 'bg-accent' : 'bg-gray-300'}`}>
                         <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_pais_origen ? 'translate-x-5' : ''}`} />
@@ -1324,6 +1341,7 @@ export default function ProductoFormPage() {
                       <p className="text-xs text-gray-400 dark:text-gray-500">Registra el país de origen en cada ingreso de inventario</p>
                     </div>
                   </label>
+                  </>)}
 
                   {/* es_kit */}
                   <label className="flex items-start gap-3 cursor-pointer">

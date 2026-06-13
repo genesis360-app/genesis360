@@ -22,6 +22,7 @@ import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
@@ -79,6 +80,7 @@ export default function InventarioPage() {
   const qc = useQueryClient()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { limits } = usePlanLimits()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, sucursales, puedeVerTodas, applyFilter } = useSucursalFilter()
 
   // ── Tab state ─────────────────────────────────────────────────────────────
@@ -192,8 +194,9 @@ export default function InventarioPage() {
   const [showDesarmarModal, setShowDesarmarModal] = useState(false)
   const [desarmarKitId, setDesarmarKitId] = useState<string | null>(null)
 
-  // Inventario vista
-  const [invVista, setInvVista] = useState<'producto' | 'ubicacion'>('producto')
+  // Inventario vista (en básico siempre 'producto': la vista por ubicación es WMS)
+  const [invVistaRaw, setInvVista] = useState<'producto' | 'ubicacion'>('producto')
+  const invVista = modoAvanzado ? invVistaRaw : 'producto'
 
   // Clonar KIT
   const [clonarOrigenId, setClonarOrigenId] = useState<string | null>(null)
@@ -211,6 +214,10 @@ export default function InventarioPage() {
   }
   const [conteoTipo, setConteoTipo] = useState<'ubicacion' | 'producto' | 'marca' | 'categoria' | 'sucursal'>('ubicacion')
   const [conteoRefId, setConteoRefId] = useState('')
+  // En básico no hay ubicaciones visibles: el alcance default pasa a 'producto'
+  useEffect(() => {
+    if (!modoAvanzado && conteoTipo === 'ubicacion') { setConteoTipo('producto'); setConteoRefId('') }
+  }, [modoAvanzado, conteoTipo])
   const [conteoRows, setConteoRows] = useState<ConteoRow[]>([])
   const [conteoNotas, setConteoNotas] = useState('')
   const [showConteoForm, setShowConteoForm] = useState(false)
@@ -218,7 +225,8 @@ export default function InventarioPage() {
   const [continuandoConteoId, setContinuandoConteoId] = useState<string | null>(null)
   const [conteoLoading, setConteoLoading] = useState(false)
   // F2a — modo del conteo: 'rapido' (informado, precarga esperada) | 'guiado' (a ciegas, arranca vacío)
-  const conteoModoTenant = ((tenant as any)?.conteo_modo ?? 'rapido') as 'rapido' | 'guiado' | 'elegir'
+  // En modo de operación básico se fuerza siempre el conteo rápido (guiado/ciego es WMS)
+  const conteoModoTenant = (modoAvanzado ? ((tenant as any)?.conteo_modo ?? 'rapido') : 'rapido') as 'rapido' | 'guiado' | 'elegir'
   const [conteoModo, setConteoModo] = useState<'rapido' | 'guiado'>(conteoModoTenant === 'guiado' ? 'guiado' : 'rapido')
   const conteoEsGuiado = conteoModo === 'guiado'
   // B2 — en modo a ciegas, líneas cuya cantidad esperada fue revelada (solo DUEÑO/SUPERVISOR)
@@ -2490,7 +2498,8 @@ export default function InventarioPage() {
             { id: 'inventario' as const, label: 'Inventario' },
             { id: 'agregar' as const, label: 'Agregar stock' },
             { id: 'quitar' as const, label: 'Quitar stock' },
-            { id: 'traslados' as const, label: 'Traslados' },
+            // En básico, Traslados solo tiene sentido con más de una sucursal
+            ...((modoAvanzado || sucursales.length > 1) ? [{ id: 'traslados' as const, label: 'Traslados' }] : []),
             { id: 'kits' as const, label: 'Kits' },
             { id: 'conteo' as const, label: 'Conteos' },
             { id: 'historial' as const, label: 'Historial' },
@@ -2505,7 +2514,7 @@ export default function InventarioPage() {
             </button>
           ))}
         </div>
-        {tab === 'inventario' && (
+        {tab === 'inventario' && modoAvanzado && (
           <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0 mb-px">
             <button onClick={() => setInvVista('producto')} title="Por producto"
               className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'producto' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
@@ -2606,8 +2615,8 @@ export default function InventarioPage() {
                           <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-8">#</th>
                           <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400">Producto</th>
                           <th className="text-center px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-28">Cantidad</th>
-                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-36">Estado</th>
-                          <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-36">Ubicación</th>
+                          {modoAvanzado && <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-36">Estado</th>}
+                          {modoAvanzado && <th className="text-left px-3 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 w-36">Ubicación</th>}
                           <th className="px-3 py-2.5 w-8" />
                           <th className="px-3 py-2.5 w-8" />
                         </tr>
@@ -2637,6 +2646,7 @@ export default function InventarioPage() {
                                   />
                                 )}
                               </td>
+                              {modoAvanzado && (
                               <td className="px-3 py-2">
                                 <select value={row.estado_id}
                                   onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, estado_id: e.target.value } : r))}
@@ -2645,6 +2655,8 @@ export default function InventarioPage() {
                                   {estados.map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                                 </select>
                               </td>
+                              )}
+                              {modoAvanzado && (
                               <td className="px-3 py-2">
                                 <select value={row.ubicacion_id}
                                   onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, ubicacion_id: e.target.value } : r))}
@@ -2653,13 +2665,16 @@ export default function InventarioPage() {
                                   {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                                 </select>
                               </td>
+                              )}
                               <td className="px-3 py-2 text-center">
+                                {(modoAvanzado || row.tiene_series || row.tiene_lote || row.tiene_vencimiento) && (
                                 <button
                                   onClick={() => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, showExtra: !r.showExtra } : r))}
                                   title="Lote / Vencimiento / LPN / Series"
                                   className={`p-1 rounded transition-colors ${row.showExtra ? 'text-accent' : 'text-gray-400 hover:text-gray-600'}`}>
                                   <ChevronDown size={14} className={`transition-transform ${row.showExtra ? 'rotate-180' : ''}`} />
                                 </button>
+                                )}
                               </td>
                               <td className="px-3 py-2 text-center">
                                 <button onClick={() => setMasivoRows(prev => prev.filter((_, i) => i !== idx))}
@@ -2673,7 +2688,7 @@ export default function InventarioPage() {
                                 <td />
                                 <td colSpan={6} className="px-3 py-2.5">
                                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
-                                    {(row.tiene_lote || !row.tiene_series) && (
+                                    {(row.tiene_lote || (modoAvanzado && !row.tiene_series)) && (
                                       <div>
                                         <label className="block text-gray-500 mb-1">Nro. lote{row.tiene_lote ? ' *' : ''}</label>
                                         <input type="text" value={row.nro_lote} placeholder="LOT-001"
@@ -2681,7 +2696,7 @@ export default function InventarioPage() {
                                           className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
                                       </div>
                                     )}
-                                    {(row.tiene_vencimiento || !row.tiene_series) && (
+                                    {(row.tiene_vencimiento || (modoAvanzado && !row.tiene_series)) && (
                                       <div>
                                         <label className="block text-gray-500 mb-1">Vencimiento{row.tiene_vencimiento ? ' *' : ''}</label>
                                         <input type="date" value={row.fecha_vencimiento}
@@ -2689,7 +2704,7 @@ export default function InventarioPage() {
                                           className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
                                       </div>
                                     )}
-                                    {!row.tiene_series && (
+                                    {modoAvanzado && !row.tiene_series && (
                                       <div>
                                         <label className="block text-gray-500 mb-1">LPN</label>
                                         <input type="text" value={row.lpn} placeholder="LPN-001"
@@ -3173,6 +3188,7 @@ export default function InventarioPage() {
                       </div>
                     )}
 
+                    {modoAvanzado && (
                     <div className="mb-3">
                       <label className="flex items-center text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                         LPN
@@ -3183,8 +3199,9 @@ export default function InventarioPage() {
                         placeholder="Ej: LPN-20260101-A1"
                         className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                     </div>
+                    )}
 
-                    {estructurasIngreso.length > 0 && (
+                    {modoAvanzado && estructurasIngreso.length > 0 && (
                       <div className="mb-3">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estructura de embalaje</label>
                         <select value={ingresoEstructuraId} onChange={e => setIngresoEstructuraId(e.target.value)}
@@ -3265,6 +3282,7 @@ export default function InventarioPage() {
                       })()
                     )}
 
+                    {modoAvanzado && (
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       {estados.length > 0 && (
                         <div>
@@ -3298,6 +3316,7 @@ export default function InventarioPage() {
                         </div>
                       )}
                     </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-3 mb-3">
                       {proveedores.length > 0 && (
@@ -3518,12 +3537,12 @@ export default function InventarioPage() {
                     <div className="mb-4">
                       <div className="flex items-center justify-between mb-2">
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center">
-                          Seleccioná línea de inventario
-                          <InfoTip text="Cada ingreso de stock genera una línea independiente con su propio LPN. Podés rebajar de una línea específica para tener trazabilidad exacta." />
+                          {modoAvanzado ? 'Seleccioná línea de inventario' : 'Seleccioná el ingreso a rebajar'}
+                          {modoAvanzado && <InfoTip text="Cada ingreso de stock genera una línea independiente con su propio LPN. Podés rebajar de una línea específica para tener trazabilidad exacta." />}
                         </label>
                       </div>
 
-                      {grupos.length > 0 && (
+                      {modoAvanzado && grupos.length > 0 && (
                         <div className="mb-2 flex items-center gap-2 flex-wrap">
                           <Layers size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
                           <span className="text-xs text-gray-500 dark:text-gray-400">Filtrar por grupo:</span>
@@ -3547,12 +3566,14 @@ export default function InventarioPage() {
                         </div>
                       )}
 
+                      {modoAvanzado && (
                       <div className="relative mb-2">
                         <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                         <input type="text" value={rebajeSearch} onChange={e => setRebajeSearch(e.target.value)}
                           placeholder="Buscar por ubicación, estado o lote..."
                           className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent" />
                       </div>
+                      )}
 
                       {lineasProducto.length === 0 ? (
                         <p className="text-sm text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-700 rounded-xl p-3 text-center">No hay líneas con stock disponible</p>
@@ -3583,6 +3604,11 @@ export default function InventarioPage() {
                                   ${rebajeLinea?.id === l.id ? 'border-accent bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
+                                    {!modoAvanzado ? (
+                                      <span className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                                        Ingreso{l.created_at ? ` del ${new Date(l.created_at).toLocaleDateString('es-AR')}` : ''}
+                                      </span>
+                                    ) : (<>
                                     {l.estados_inventario && (
                                       <span className="font-semibold text-sm" style={{ color: l.estados_inventario.color }}>
                                         ● {l.estados_inventario.nombre}
@@ -3594,6 +3620,7 @@ export default function InventarioPage() {
                                     {!l.estados_inventario && !l.ubicaciones && (
                                       <span className="text-sm text-gray-500 dark:text-gray-400">Sin estado/ubicación</span>
                                     )}
+                                    </>)}
                                   </div>
                                   <span className="font-bold text-gray-800 dark:text-gray-100">
                                     {(selectedProduct as any).tiene_series
@@ -3602,8 +3629,8 @@ export default function InventarioPage() {
                                   </span>
                                 </div>
                                 <div className="flex gap-3 mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                  <span>{l.lpn}</span>
-                                  {(l.ubicaciones?.prioridad ?? 0) > 0 && (
+                                  {modoAvanzado && <span>{l.lpn}</span>}
+                                  {modoAvanzado && (l.ubicaciones?.prioridad ?? 0) > 0 && (
                                     <span className="bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded">P{l.ubicaciones.prioridad}</span>
                                   )}
                                   {l.nro_lote && <span>🏷 {l.nro_lote}</span>}
@@ -4030,7 +4057,8 @@ export default function InventarioPage() {
                           ) : (
                             <div className="overflow-x-auto -mx-4 px-4">
                             <div className="space-y-2 min-w-[680px]">
-                              <div className="grid grid-cols-8 gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1">
+                              <div className={`grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-4'} gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1`}>
+                                {modoAvanzado && (
                                 <span className="col-span-1 flex items-center">
                                   <input type="checkbox" className="rounded accent-accent"
                                     title="Seleccionar todos"
@@ -4052,17 +4080,19 @@ export default function InventarioPage() {
                                     }}
                                   />
                                 </span>
-                                <span className="col-span-1">LPN</span>
+                                )}
+                                <span className="col-span-1">{modoAvanzado ? 'LPN' : 'Ingreso'}</span>
                                 <span className="col-span-1 text-right">Cantidad</span>
-                                <span className="col-span-1">Estado</span>
-                                <span className="col-span-1">Ubicación</span>
+                                {modoAvanzado && <span className="col-span-1">Estado</span>}
+                                {modoAvanzado && <span className="col-span-1">Ubicación</span>}
                                 <span className="col-span-1">Lote / Venc.</span>
                                 <span className="col-span-1">Series</span>
-                                <span className="col-span-1 text-center">Acciones</span>
+                                {modoAvanzado && <span className="col-span-1 text-center">Acciones</span>}
                               </div>
                               {lineas.map((l: any) => (
-                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid grid-cols-8 gap-2 items-center text-sm transition-colors
+                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-4'} gap-2 items-center text-sm transition-colors
                                   ${selectedLineas.includes(l.id) ? 'border-accent/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}`}>
+                                  {modoAvanzado && (
                                   <div className="col-span-1 flex items-center">
                                     <input type="checkbox" className="rounded accent-accent"
                                       checked={selectedLineas.includes(l.id)}
@@ -4077,14 +4107,21 @@ export default function InventarioPage() {
                                       }}
                                     />
                                   </div>
+                                  )}
                                   <div className="col-span-1">
+                                    {modoAvanzado ? (
                                     <div className="flex items-center gap-1.5">
                                       <span className="text-xs text-primary font-semibold">{l.lpn}</span>
                                       {(l.ubicaciones?.prioridad ?? 0) > 0 && (
                                         <span className="text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-500 px-1 rounded" title="Prioridad de la ubicación">P{l.ubicaciones.prioridad}</span>
                                       )}
                                     </div>
-                                    {l.parent_lpn_id && (
+                                    ) : (
+                                      <span className="text-xs text-gray-600 dark:text-gray-400">
+                                        {l.created_at ? new Date(l.created_at).toLocaleDateString('es-AR') : '—'}
+                                      </span>
+                                    )}
+                                    {modoAvanzado && l.parent_lpn_id && (
                                       <p className="text-xs text-purple-500 dark:text-purple-400">↳ {l.parent_lpn_id}</p>
                                     )}
                                     {l.proveedor_id && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{l.proveedores?.nombre}</p>}
@@ -4115,6 +4152,7 @@ export default function InventarioPage() {
                                     )}
                                   </div>
 
+                                  {modoAvanzado && (
                                   <div className="col-span-1">
                                     {l.estados_inventario ? (
                                       <span className="inline-block text-xs px-2 py-0.5 rounded-lg border"
@@ -4125,7 +4163,9 @@ export default function InventarioPage() {
                                       <span className="text-xs text-gray-300">—</span>
                                     )}
                                   </div>
+                                  )}
 
+                                  {modoAvanzado && (
                                   <div className="col-span-1">
                                     {l.ubicaciones?.nombre ? (
                                       <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
@@ -4133,6 +4173,7 @@ export default function InventarioPage() {
                                       </span>
                                     ) : <span className="text-xs text-gray-300">—</span>}
                                   </div>
+                                  )}
 
                                   <div className="col-span-1">
                                     {l.nro_lote && (
@@ -4174,6 +4215,7 @@ export default function InventarioPage() {
                                     })() : <span className="text-xs text-gray-300">—</span>}
                                   </div>
 
+                                  {modoAvanzado && (
                                   <div className="col-span-1 flex justify-center">
                                     <button
                                       onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
@@ -4182,6 +4224,7 @@ export default function InventarioPage() {
                                       <Settings2 size={15} />
                                     </button>
                                   </div>
+                                  )}
                                 </div>
                               ))}
                             </div>
@@ -4951,7 +4994,7 @@ export default function InventarioPage() {
                   ['marca', '🏷️ Por marca'],
                   ['categoria', '🗂️ Por categoría'],
                   ['sucursal', '🏬 Sucursal completa'],
-                ] as const).map(([t, label]) => {
+                ] as const).filter(([t]) => modoAvanzado || t !== 'ubicacion').map(([t, label]) => {
                   // Scopes amplios requieren una sucursal específica (aislamiento por sucursal)
                   const requiereSucursal = ['marca', 'categoria', 'sucursal'].includes(t)
                   const bloqueado = !!continuandoConteoId || (requiereSucursal && !sucursalId)
@@ -5262,8 +5305,8 @@ export default function InventarioPage() {
           ) : (
             /* ── HISTORIAL DE CONTEOS ── */
             <div className="space-y-3">
-              {/* F4 — panel de gestión: clase ABC + conteo cíclico + exactitud acumulada */}
-              {puedeGestionarConteo && (() => {
+              {/* F4 — panel de gestión: clase ABC + conteo cíclico + exactitud acumulada (WMS) */}
+              {modoAvanzado && puedeGestionarConteo && (() => {
                 const cicloCfg = {
                   diasA: (tenant as any)?.conteo_ciclico_dias_a ?? 30,
                   diasB: (tenant as any)?.conteo_ciclico_dias_b ?? 90,

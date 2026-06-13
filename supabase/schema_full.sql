@@ -2961,3 +2961,11 @@ ALTER TABLE traslado_items ENABLE ROW LEVEL SECURITY;  -- policy traslado_items_
 -- Pagar OC/gasto con medio "Cheque" crea el cheque vinculado; cheque propio
 -- RECHAZADO revierte el pago (OC/gasto a pendiente + ajuste en CC proveedor).
 ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gasto_id UUID REFERENCES gastos(id) ON DELETE SET NULL;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 207: Modo de operación por tenant — Básico vs Avanzado (WMS)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 'basico' = experiencia simplificada (kiosco/pyme chica), solo capa de presentación;
+-- 'avanzado' = sistema completo (gateado a Pro+ en el front). Existentes → 'avanzado'.
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS modo_operacion TEXT NOT NULL DEFAULT 'basico'
+  CHECK (modo_operacion IN ('basico', 'avanzado'));

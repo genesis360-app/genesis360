@@ -26,6 +26,7 @@ export interface PlanLimits {
   puede_rrhh: boolean
   puede_aging: boolean
   puede_marketplace: boolean
+  puede_wms: boolean
 }
 
 export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean } {
@@ -104,6 +105,7 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
         puede_rrhh:       tiene('rrhh'),
         puede_aging:      tiene('aging'),
         puede_marketplace: tiene('marketplace'),
+        puede_wms:        tiene('wms'),
       } as PlanLimits
     },
     enabled: !!tenant,

@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { capacidadCrearOC, ocRequiereAprobacion, puedeEnviarOC } from '@/lib/comprasPermisos'
 import { montoDevolucion, validarDevolucion, MOTIVOS_DEVOLUCION_PROVEEDOR, type FormaDevolucion } from '@/lib/devolucionProveedor'
 import {
@@ -123,6 +124,7 @@ let itemKey = 0
 
 export default function ProveedoresPage() {
   const { tenant, user } = useAuthStore()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   // CO1 — gobierno de OC: capacidad de creación por rol + config de aprobación por umbral
@@ -1419,10 +1421,11 @@ export default function ProveedoresPage() {
   })
 
   // ── Tabs bar ───────────────────────────────────────────────────────────────
+  // En modo básico no hay circuito de OC (el stock entra por Inventario → Agregar)
   const tabs: { id: Tab; label: string }[] = [
     { id: 'proveedores', label: 'Proveedores' },
     { id: 'servicios',   label: 'Servicios' },
-    { id: 'ordenes',     label: 'Órdenes de compra' },
+    ...(modoAvanzado ? [{ id: 'ordenes' as Tab, label: 'Órdenes de compra' }] : []),
   ]
 
   const exportarProveedores = (format: 'json' | 'csv') => {
@@ -1482,7 +1485,7 @@ export default function ProveedoresPage() {
             <Plus className="w-4 h-4" /> Nuevo servicio
           </button>
         )}
-        {tab === 'ordenes' && capOC !== 'ninguna' && (
+        {tab === 'ordenes' && modoAvanzado && capOC !== 'ninguna' && (
           <button
             onClick={openNewOC}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent/90"
@@ -1698,10 +1701,12 @@ export default function ProveedoresPage() {
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border-ds text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
                 <Wrench size={14} /> Servicios generales
               </button>
+              {modoAvanzado && (
               <button onClick={() => setShowComparar(true)}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border-ds text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
                 <BarChart3 size={14} /> Comparar presupuestos
               </button>
+              )}
             </div>
           </div>
 

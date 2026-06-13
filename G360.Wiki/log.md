@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] update | v1.58.0 DEV — Modo básico: ocultar superficies internas avanzadas "claras"
+
+Tras el deploy, GO pidió auditar qué pestañas/sub-secciones internas seguían siendo avanzado dentro de básico. Auditoría completa por módulo (señalada en el chat); GO eligió mover **solo los claros** (sin migración):
+- **Inventario:** pestaña **Kits** oculta en básico (+ reset de tab).
+- **Productos:** toggle **"Es un KIT"** (heredado → solo-lectura) y acordeón **Precios mayoristas** ocultos (tiers existentes siguen aplicando en POS).
+- **Gastos:** pestañas **Órdenes de Compra**, **Reportes (compras)** y **Recursos** ocultas (+ reset a Gastos).
+- **Se dejan en básico (decisión GO, útiles para pyme AR):** Conteos, variantes talle/color, precio USD, Caja Fuerte/Bóveda, Cheques, Cierres contables, Autorizaciones, Cobranzas CC.
+- Suite **701** · typecheck + build verdes. Release v1.58.0 sobre `dev`. **No deployado a PROD aún** (va en el próximo pasaje).
+
+## [2026-06-13] deploy | v1.57.0 PROD — Modo Básico/Avanzado (WMS) completo + auditoría de roles (mig 207) · `dev=main`
+
+**Deploy a PROD del modo de operación completo (v1.55.0 → v1.57.0) en un solo PR.** GO autorizó "pasa todo a PROD". **PR #189** merged a `main`, mig **207** aplicada en PROD ANTES del merge (aditiva → los 4 tenants de PROD quedaron en `avanzado`, cero impacto visual). Vercel auto-deploy de producción desde `main` (sha `6b4ed464`). `dev` resincronizado con `main`. Releases v1.55.0/v1.56.0/v1.57.0 ya publicados (tags sobre los commits, ahora en main).
+
+- Lo que entró: **F1** (mig 207, fundación + nav/rutas + Productos + Inventario), **F2+F3** (POS/Proveedores/Config/Dashboard + banner sugerencia), y **v1.57.0** (básico "mínimo mostrador" = 12 módulos + auditoría de roles con `navVisibility.ts` + 2 bugs de roles corregidos + rol custom read-only + e2e DEPOSITO/CONTADOR).
+- Para ver el modo básico en un tenant: Configuración → Negocio → Modo de operación → Básico (los existentes arrancan en avanzado).
+- **Pendiente menor:** crear usuarios de prueba DEPOSITO+CONTADOR en DEV para correr esos e2e (se omiten sin credenciales).
+
 ## [2026-06-13] update | v1.57.0 DEV — Modo básico "mínimo mostrador" + auditoría de roles con tests
 
 GO planteó dos cosas tras el modo Básico/Avanzado: (1) el básico mostraba demasiados módulos, (2) auditar que cada rol pueda hacer su trabajo. Sin migración. Release **v1.57.0** sobre `dev`. Suite unit **701** (+22) · typecheck + build verdes.

@@ -13,6 +13,18 @@ updated: 2026-05-29
 
 ---
 
+## v1.59.3 — UX Inventario: alineación Cantidad + ESC cierra detalle + autoFocus SKU (PROD ✅, PR #195)
+
+Refinamientos de UX (review GO), sin migración, shortcuts generales (básico+avanzado): (1) alineación de la columna Cantidad en la grilla de stock (regresión de v1.59.1: header `grid-cols-4` vs filas `grid-cols-2` en básico); (2) ESC cierra el modal de detalle de movimiento (ingreso/rebaje/historial); (3) Enter en Agregar/Quitar Stock abre el modal con autoFocus en la búsqueda de SKU.
+
+---
+
+## v1.59.2 — Fix venta en modo básico, parte 2: el ESTADO (PROD ✅, PR #194)
+
+**El bloqueo real de la venta en básico.** v1.59.1 arregló el filtro de ubicación, pero el stock de básico también tiene `estado_id = NULL` y el cálculo de stock disponible (`stockMap` → `agregarProducto`) filtraba `.in('estado_id', es_disponible_venta)` → excluía el stock NULL-estado → `stock_disponible = 0` → bloqueaba con "sin stock" antes del despacho. **Fix:** el filtro de estado aplica solo en avanzado. **Regla:** el stock de básico tiene `ubicacion_id` Y `estado_id` NULL → toda query de venta/disponibilidad debe ser mode-aware. Sin migración.
+
+---
+
 ## v1.59.1 — Fix venta en modo básico (bloqueante) + recortes Inventario WMS + e2e caja (PROD ✅, PR #193)
 
 **Fix crítico de primer cliente:** no se podía vender en modo básico (stock sin ubicación). `registrarVenta` surtía filtrando `.not('ubicacion_id','is',null)` en 5 queries → excluía todo el stock básico (NULL). Helper `soloUbicado(q)` aplica el filtro solo en avanzado (WMS). Verificado en DEV (0→10 disponible) + regresión avanzado verde. **Recortes Inventario básico (review GO):** modal de detalle de movimiento sin Estado/LPN · tab Autorizaciones oculto (no hay modal de acciones LPN que las genere) · grilla sin columnas Lote/Venc./Series (grid-cols 4→2) · ajuste +1/-1 por diseño vía Agregar/Quitar. **Testing:** primer e2e mutante de ciclo de caja (apertura+arqueo+cierre, self-healing). UI-only, sin migración.

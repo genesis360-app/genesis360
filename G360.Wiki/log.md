@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-13] deploy | v1.59.2 + v1.59.3 PROD — Fix venta en básico (estado) + UX Inventario · `dev=main`
+
+**Dos patches a PROD el mismo día tras el feedback de GO probando el modo básico.** Sin migración (UI-only). `dev=main` en `669e528e`.
+
+**v1.59.2 (PR #194) — el bloqueo REAL de la venta en básico era el ESTADO.** v1.59.1 había arreglado el filtro de **ubicación** en el despacho, pero GO seguía sin poder vender. Causa raíz (que GO intuyó desde el inicio): el stock de básico tiene **`estado_id = NULL`**, y el cálculo de **stock disponible** (`stockMap` que alimenta `agregarProducto`) filtraba `.in('estado_id', es_disponible_venta)` → excluía el stock NULL-estado → `stock_disponible = 0` → `agregarProducto` bloqueaba con "Este producto no tiene stock disponible" ANTES del despacho. **Fix:** el filtro de estado aplica solo en avanzado (`modoAvanzado && estadosFinal…`) en los cálculos de stock disponible (buscador stockMap + grupo2 + snapshot post-venta `stockVendibleSucursal` vía `vendibleIds=[]`). En básico todo el stock activo es vendible. Verificado en DEV (Kiosco Buildi: 14 u NULL-estado → vendibles). **Regla aprendida:** el stock de básico tiene `ubicacion_id` Y `estado_id` en NULL → toda query de venta/disponibilidad que filtre por ubicación o estado debe ser mode-aware.
+
+**v1.59.3 (PR #195) — UX de Inventario (review GO):** (1) **alineación de la columna Cantidad** en la grilla de stock — regresión de v1.59.1: el header quedó en `grid-cols-4` en básico mientras las filas pasaron a `grid-cols-2` (header "centrado", valores a la derecha); header ahora `grid-cols-2`. (2) **ESC cierra el modal de detalle** de movimiento (ingreso/rebaje/historial) vía `useModalKeyboard`. (3) **Enter en Agregar/Quitar Stock** abre el modal de ingreso/rebaje (ya andaba) + ahora la búsqueda de SKU tiene `autoFocus`. Shortcuts generales (básico + avanzado).
+
 ## [2026-06-13] deploy | v1.59.1 PROD — Fix venta en básico (bloqueante) + recortes Inventario WMS + e2e caja · `dev=main`
 
 **v1.59.1 a PROD** (PR **#193**, UI-only sin migración — 208/209 ya estaban en PROD; `dev=main` en `7fe10281`). CI unit verde; Vercel producción auto-deploy desde `main`. **Nota:** durante el deploy, Vercel mostró un build ERROR en la rama **dependabot del PR #192** (Vite 8) — `Cannot find module 'esbuild'` (dependabot removió esbuild pero un plugin lo necesita); es la rama cerrada, **no afecta producción** (que buildea desde `main`). Conviene borrar esa rama desde GitHub para que pare el ruido.

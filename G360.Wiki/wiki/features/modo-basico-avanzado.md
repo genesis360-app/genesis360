@@ -79,7 +79,13 @@ La decisión de qué módulos ve cada usuario vive en la función pura [`src/lib
 
 ✅ **EN PROD desde v1.57.0 (2026-06-13, PR #189, mig 207).** F1+F2+F3 + auditoría de roles. Al deployar, los tenants existentes quedaron en `avanzado` (cero impacto). Kill-switch `MODO_BASICO_ENABLED` disponible para rollback global.
 
-🔧 **v1.58.0 (PROD ✅)** y **v1.59.0 (PROD ✅, PR #191)** recortaron superficies internas que se colaban en básico. v1.58.0: Inventario→Kits, Productos→es_kit+mayoristas, Gastos→OC/Reportes/Recursos. v1.59.0: Productos→**Estructura** (empaque WMS) y Config→Conectividad→sub-tab **API** (se mantiene Integraciones). Decisiones GO de qué se deja en básico: Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones, Ventas→Canales.
+⚠️ **Gotcha de stock en básico (fix v1.59.1 + v1.59.2):** el stock de básico se ingresa con `inventario_lineas.ubicacion_id` Y `estado_id` en **NULL** (no usa ubicaciones ni estados). Las queries de venta/disponibilidad que filtraban `.not('ubicacion_id','is',null)` o `.in('estado_id', es_disponible_venta)` excluían TODO el stock básico → "sin stock" pese a haber. Fix: filtros mode-aware en `VentasPage` (`soloUbicado(q)` para ubicación + `modoAvanzado && estadosFinal` para estado). El filtro de **sucursal** SÍ se mantiene. Detalle en `reference_basico_stock_null_ubicacion_estado` (memoria).
+
+🔧 **v1.58.0 → v1.59.3 (PROD ✅)** recortaron superficies internas que se colaban en básico.
+- **v1.59.1 (PR #193):** Inventario — modal de detalle de movimiento sin Estado/LPN · tab **Autorizaciones** oculto (no hay modal de acciones LPN que las genere) · grilla de stock sin columnas **Lote/Venc.** y **Series** (grid-cols 4→2). Ajuste +1/-1 = vía Agregar/Quitar stock (sin ajuste a nivel LPN en básico).
+- **v1.59.3 (PR #195):** UX general — ESC cierra el modal de detalle · autoFocus en la búsqueda de SKU del modal de ingreso/rebaje (Enter ya lo abría) · alineación de la columna Cantidad.
+
+🔧 **v1.58.0 (PROD ✅)** y **v1.59.0 (PROD ✅, PR #191)** recortaron las primeras superficies internas que se colaban en básico. v1.58.0: Inventario→Kits, Productos→es_kit+mayoristas, Gastos→OC/Reportes/Recursos. v1.59.0: Productos→**Estructura** (empaque WMS) y Config→Conectividad→sub-tab **API** (se mantiene Integraciones). Decisiones GO de qué se deja en básico: Conteos, variantes, USD, Bóveda, Cheques, Cierres, Autorizaciones, Ventas→Canales.
 
 **e2e por rol:** los usuarios de prueba DEPOSITO (`deposito1@local.com`) y CONTADOR (`contador1@local.com`) ya están creados en DEV (tenant `3769b1db`); credenciales en `tests/e2e/.env.test.local`. Correr: `npx playwright test --project=chromium-deposito --project=chromium-contador` (27 tests verdes).
 

@@ -6,9 +6,9 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-05-27
 ---
 
-# Historial de Migraciones (001-208)
+# Historial de Migraciones (001-209)
 
-**Total al 2026-06-13:** 208 archivos de migración + 086b correctivo.  
+**Total al 2026-06-13:** 209 archivos de migración + 086b correctivo.  
 Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT EXISTS`
 
 > [!WARNING] `CREATE POLICY IF NOT EXISTS` no existe en PostgreSQL. Usar: `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE ...) THEN CREATE POLICY ...; END IF; END $$`
@@ -271,6 +271,7 @@ Convención: `NNN_descripcion_snake_case.sql` · Todas idempotentes con `IF NOT 
 | 205 | `205_traslados_sucursal.sql` | **Traslados de stock entre sucursales (v1.53.0, auditoría #4)** · tablas `traslados` (correlativo por tenant vía trigger `set_traslado_numero`, estados `en_transito/recibido/recibido_parcial/cancelado`, `envio_id` reservado) + `traslado_items` (snapshot LPN/lote/vencimiento/estado/costo + `series JSONB` + `cantidad_recibida`). RLS por tenant en ambas. Reusa `movimientos_stock` tipo `'traslado'` (en el CHECK desde mig 055). Aditiva. **DEV + PROD ✅ (2026-06-11)** |
 | 206 | `206_cheques_gasto_link.sql` | **Cheques conectados al circuito de pago (v1.54.0, auditoría #5)** · `cheques.gasto_id` REFERENCES gastos (ON DELETE SET NULL) + índices parciales `idx_cheques_gasto`/`idx_cheques_oc` (`oc_id` existía desde mig 187 pero nunca se llenaba). Pagar OC/gasto con "Cheque" crea el cheque vinculado; rechazado revierte el pago + ajuste en CC proveedor. Aditiva. **DEV + PROD ✅ (2026-06-12)** |
 | 207 | `207_modo_operacion.sql` | **Modo de operación Básico vs Avanzado (v1.55.0)** · `tenants.modo_operacion TEXT NOT NULL DEFAULT 'basico'` CHECK (`basico`/`avanzado`) + backfill `UPDATE tenants SET modo_operacion='avanzado'` (existentes conservan la UI completa; solo tenants nuevos arrancan en básico). El modo gatea UI, nunca datos. Rollback: UPDATE a `avanzado` o DROP COLUMN (front viejo compatible). Aditiva. **DEV + PROD ✅ (2026-06-13, PR #189)** |
+| 209 | `209_storage_bucket_listing.sql` | **Cerrar listado cross-tenant de buckets públicos (v1.59.0, auditoría pre-cliente)** · reemplaza las policies SELECT amplias `avatares_authenticated_read`/`productos_authenticated_read` (qual solo `bucket_id` → cualquier authenticated listaba todos los tenants) por SELECT **scopeado a la propia carpeta** (avatares=`{user_id}`, productos=`{tenant_id}`). La app no lista estos buckets (solo upload+getPublicUrl). Advisor `public_bucket_allows_listing` 2→0. Idempotente (DROP POLICY IF EXISTS + CREATE). **DEV ✅ · PROD ⏳** |
 | 208 | `208_security_hardening_pre_cliente.sql` | **Endurecimiento de seguridad — auditoría pre-cliente (v1.59.0)** · idempotente, NO destructiva. (1) policy SELECT pública en `public.planes` (cierra `rls_enabled_no_policy`); (2) `SET search_path = public` en 25 funciones (loop por `oid::regprocedure`); (3) `REVOKE EXECUTE FROM PUBLIC, anon` + re-`GRANT TO authenticated, service_role` en SECURITY DEFINER no públicas (períodos, sweeps CC, `cliente_cc_estado`, `verificar/requiere_clave_maestra`), y `REVOKE FROM PUBLIC, anon, authenticated` + `GRANT service_role` en seeds/triggers. **Gotcha:** el EXECUTE de anon venía de PUBLIC, no de un grant a anon → revocar de anon es no-op; hay que revocar de PUBLIC. Conserva anon en los endpoints públicos token-gated. Advisors: search_path 25→0, rls_no_policy 1→0, anon SECURITY DEFINER 29→15. **DEV ✅ · PROD ⏳ (aplicar ANTES del merge dev→main)** |
 
 ---

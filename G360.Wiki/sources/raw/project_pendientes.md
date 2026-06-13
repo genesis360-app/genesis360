@@ -26,13 +26,13 @@ type: project
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.59.0` ✅ (commit dev `6eb93b5d`) | `v1.58.0` |
-| Migrations | 001–**208** ✅ | 001–**207** |
+| APP_VERSION | `v1.59.0` ✅ (commit dev `43c05726`) | `v1.58.0` |
+| Migrations | 001–**209** ✅ | 001–**207** |
 | Branch | `dev` (1 commit por delante de `main`) | `main` (release v1.58.0, PR #190) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.58.0 (auto desde `main`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** **208** (`security_hardening_pre_cliente`, idempotente, NO destructiva — aplicar ANTES del merge dev→main). **v1.59.0 en DEV (sin deployar a PROD aún):** recortes de modo básico (Productos→Estructura, Config→Conectividad sub-tab API) + endurecimiento de seguridad (mig 208). Suite unit **701** · typecheck + build verdes.
+**Migrations DEV pendientes de aplicar en PROD:** **208** (`security_hardening_pre_cliente`) + **209** (`storage_bucket_listing`) — ambas idempotentes y NO destructivas, aplicar ANTES del merge dev→main. **v1.59.0 en DEV (sin deployar a PROD aún):** recortes de modo básico (Productos→Estructura, Config→Conectividad sub-tab API) + endurecimiento de seguridad (mig 208) + cierre de listado de buckets (mig 209) + npm audit react-router-dom 6.30.4. Suite unit **701** · typecheck + build verdes. Commits dev: `6eb93b5d`/`33e7746e`/`ea2640a7`/`d6792c4f`/`f40f6cee`/`43c05726`.
 
 ### ▶ Auditoría de procesos 2026-06-11 — hallazgos y estado
 
@@ -70,12 +70,14 @@ Auditoría de flujos cruzados entre módulos (verificada contra código). **Quic
   - ✅ **Function Search Path Mutable**: `SET search_path = public` en las 25 funciones. `25 → 0`.
   - ✅ **anon SECURITY DEFINER**: `29 → 15`. Gotcha clave: el EXECUTE venía del grant a **PUBLIC** (no a `anon`), así que hubo que `REVOKE FROM PUBLIC` + re-`GRANT` a `authenticated`/`service_role`. Revocadas de anon: cierre/reapertura de períodos, sweeps CC (`liberar_reservas_vencidas`/`recalcular_intereses_cc`/`fn_notificar_cc_vencidas`), `cliente_cc_estado`, `verificar_clave_maestra`/`requiere_clave_maestra` (cortar fuerza bruta de la clave maestra), y seeds/triggers (anon+auth fuera, service_role escape). **Los 15 anon restantes son por diseño:** 10 endpoints públicos token-gated (envío/fichado/cuenta-cliente) + 5 helpers de RLS (`get_user_role/tenant_id`, `is_admin/rrhh`, `get_supervisor_team_ids`) que devuelven null sin `auth.uid()` (revocarlos arriesga romper la evaluación de policies).
 
-**🟡 Follow-up de seguridad pendiente (no cerrado en 208):**
+**✅ Follow-up de seguridad — tanda 2 (v1.59.0, mig 209):**
+  - ✅ **Public Bucket Allows Listing (`avatares`, `productos`) — CERRADO (mig 209).** Las policies `*_authenticated_read` tenían qual amplio (solo `bucket_id`) → cualquier authenticated listaba archivos de TODOS los tenants. Reemplazadas por SELECT **scopeado a la propia carpeta** (avatares=`{user_id}`, productos=`{tenant_id}`). La app no lista estos buckets (solo `upload`+`getPublicUrl`, que no consulta `storage.objects`). Advisor `public_bucket_allows_listing` 2→0. Aplicada en DEV.
+
+**🟡 Follow-up de seguridad — decisiones/pendientes:**
+  - ⏭️ **`pg_net` en public — WON'T-FIX (decisión fundamentada).** Es `extrelocatable=false` → `ALTER EXTENSION SET SCHEMA` falla; moverlo exige DROP+CREATE y recrear las **7 funciones** que usan `net.http_*`. Riesgo alto para una WARN de baja severidad (higiene de naming, no vuln activa). No se toca.
+  - 🟡 **Leaked Password Protection Disabled**: toggle de Supabase Auth (no es SQL) → **lo activa GO** en Authentication → Policies (chequeo HaveIBeenPwned).
   - 🟠 **`authenticated` SECURITY DEFINER (32)**: ruido esperable de una app SECURITY-DEFINER-pesada; cada RPC valida authz/tenant internamente. Auditoría por-función diferida (no bloqueante).
-  - 🟡 **2× Public Bucket Allows Listing** (`avatares`, `productos`): policies `*_authenticated_read` amplias sobre `storage.objects` permiten **listar**. Requiere ajustar las policies de storage con cuidado (no romper la visualización por URL) → pase de storage dedicado.
-  - 🟡 **1× Leaked Password Protection Disabled**: toggle de Supabase Auth (no es SQL) → lo activa GO en el dashboard.
-  - 🟡 **1× Extension in Public** (`pg_net`): mover a schema `extensions` (riesgo de romper referencias `net.*` → verificar antes).
-  - **#8 RLS por sucursal (deuda conocida, RIESGO #1 multi-sucursal):** aislamiento entre sucursales **solo client-side**. Para cliente multi-sucursal evaluar RLS real por sucursal.
+  - ⏭️ **#8 RLS por sucursal — DIFERIDO con fundamento.** Scoping (2026-06-13, PROD): **33 tablas** con `sucursal_id`, pero **0 tenants multi-sucursal** y **0 usuarios restringidos** (`puede_ver_todas=false` con sucursal fija) → **exposición real hoy = nula** (el RLS por tenant ya aísla; un primer cliente single-sucursal no tiene data cross-sucursal que filtrar). Implementarlo = migración de 33 tablas, riesgo de romper vistas "Todas"/traslados/reportes cross-sucursal. **Hacerlo cuando llegue el primer tenant multi-sucursal**, en tanda dedicada con diseño + tests.
 
 **A.bis — Recortes de modo básico (✅ v1.59.0, UI-only):** auditoría sistemática de sub-pestañas que se colaban en básico. **Cortadas:** Productos → **Estructura** (jerarquía empaque unidad/caja/pallet = WMS) · Configuración → Conectividad → sub-tab **API** (API pública del marketplace; el sub-tab Integraciones TN/MeLi/MP se mantiene, decisión GO). **Verificadas OK (ya gateadas o mantenidas a propósito):** Inventario (Kits/ubicación/columnas WMS) · Proveedores (Órdenes de compra) · Config (Envíos) · Gastos (OC/Reportes-compras/Recursos) · y mantenidas: Caja Fuerte/Bóveda, Cierres, Clientes→CC, Conteos, Autorizaciones, variantes, USD. Ventas→Canales (reporte por canal) se evaluó y se **deja** (decisión GO).
 

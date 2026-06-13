@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { puedeRegistrarPagoOC, requiereDobleFirmaPago } from '@/lib/comprasPermisos'
 import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule } from '@/lib/comprasPago'
@@ -140,6 +141,7 @@ function formatFecha(f: string) {
 
 export default function GastosPage() {
   const { tenant, user } = useAuthStore()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -161,6 +163,10 @@ export default function GastosPage() {
   useEffect(() => {
     if (tabFromUrl && tabValidos.includes(tabFromUrl as TabGastos)) setTab(tabFromUrl as TabGastos)
   }, [tabFromUrl])
+  // OC, Reportes de compras y Recursos son del modo avanzado: en básico volver a Gastos
+  useEffect(() => {
+    if (!modoAvanzado && (tab === 'oc' || tab === 'reportes-compras' || tab === 'recursos')) setTab('gastos')
+  }, [modoAvanzado, tab])
 
   // Cuotas state (para gastos con tarjeta de crédito)
   const [esCuota, setEsCuota] = useState(false)
@@ -1671,10 +1677,11 @@ export default function GastosPage() {
           { id: 'gastos'   as const, label: 'Gastos variables', icon: <Receipt size={14} />, badge: 0 },
           { id: 'historial'as const, label: 'Historial',        icon: <History size={14} />, badge: 0 },
           { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} />, badge: 0 },
-          { id: 'oc'       as const, label: 'Órdenes de Compra',icon: <ShoppingCart size={14} />, badge: 0 },
+          // OC + Reportes de compras + Recursos = modo avanzado
+          ...(modoAvanzado ? [{ id: 'oc' as const, label: 'Órdenes de Compra', icon: <ShoppingCart size={14} />, badge: 0 }] : []),
           { id: 'cheques'  as const, label: 'Cheques',          icon: <FileCheck size={14} />, badge: chequesAlertaCount },
-          { id: 'reportes-compras' as const, label: 'Reportes', icon: <BarChart3 size={14} />, badge: 0 },
-          { id: 'recursos' as const, label: 'Recursos',         icon: <Landmark size={14} />, badge: 0 },
+          ...(modoAvanzado ? [{ id: 'reportes-compras' as const, label: 'Reportes', icon: <BarChart3 size={14} />, badge: 0 }] : []),
+          ...(modoAvanzado ? [{ id: 'recursos' as const, label: 'Recursos', icon: <Landmark size={14} />, badge: 0 }] : []),
           ...(puedeAprobarRoles
             ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones', icon: <AlertCircle size={14} />, badge: autorizacionesPendientesCount }]
             : []),

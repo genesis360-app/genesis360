@@ -1012,8 +1012,8 @@ export default function ProductoFormPage() {
                 )}
               </div>
 
-              {/* Accordion Precios mayoristas */}
-              {canEdit && (
+              {/* Accordion Precios mayoristas — venta mayorista = modo avanzado */}
+              {canEdit && modoAvanzado && (
                 <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
                   <button type="button" onClick={() => setShowMayorista(v => !v)}
                     className="flex items-center gap-3 w-full text-left group">
@@ -1345,10 +1345,11 @@ export default function ProductoFormPage() {
                   </label>
                   </>)}
 
-                  {/* es_kit */}
-                  <label className="flex items-start gap-3 cursor-pointer">
+                  {/* es_kit — kitting es modo avanzado; si el producto ya es kit, solo-lectura */}
+                  {(modoAvanzado || form.es_kit) && (
+                  <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
                     <div className="relative mt-0.5">
-                      <input type="checkbox" checked={form.es_kit}
+                      <input type="checkbox" checked={form.es_kit} disabled={!modoAvanzado}
                         onChange={e => setForm(p => ({ ...p, es_kit: e.target.checked }))} className="sr-only" />
                       <div className={`w-10 h-5 rounded-full transition-colors ${form.es_kit ? 'bg-accent' : 'bg-gray-300'}`}>
                         <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.es_kit ? 'translate-x-5' : ''}`} />
@@ -1359,6 +1360,7 @@ export default function ProductoFormPage() {
                       <p className="text-xs text-gray-400 dark:text-gray-500">Se arma a partir de otros SKUs (kitting). Configurá la receta en Inventario → Kits.</p>
                     </div>
                   </label>
+                  )}
                 </div>
 
                 {/* Separador visual */}

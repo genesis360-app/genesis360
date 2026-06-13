@@ -219,6 +219,10 @@ export default function InventarioPage() {
   useEffect(() => {
     if (!modoAvanzado && conteoTipo === 'ubicacion') { setConteoTipo('producto'); setConteoRefId('') }
   }, [modoAvanzado, conteoTipo])
+  // Kits es solo avanzado: si quedó seleccionado al pasar a básico, volver a la vista de stock
+  useEffect(() => {
+    if (!modoAvanzado && tab === 'kits') setTab('inventario')
+  }, [modoAvanzado, tab])
   const [conteoRows, setConteoRows] = useState<ConteoRow[]>([])
   const [conteoNotas, setConteoNotas] = useState('')
   const [showConteoForm, setShowConteoForm] = useState(false)
@@ -2503,7 +2507,8 @@ export default function InventarioPage() {
             { id: 'quitar' as const, label: 'Quitar stock' },
             // En básico, Traslados solo tiene sentido con más de una sucursal
             ...((modoAvanzado || sucursales.length > 1) ? [{ id: 'traslados' as const, label: 'Traslados' }] : []),
-            { id: 'kits' as const, label: 'Kits' },
+            // Kits (kitting/armado) es modo avanzado
+            ...(modoAvanzado ? [{ id: 'kits' as const, label: 'Kits' }] : []),
             { id: 'conteo' as const, label: 'Conteos' },
             { id: 'historial' as const, label: 'Historial' },
             ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones' }] : []),

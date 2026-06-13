@@ -4028,9 +4028,13 @@ export default function VentasPage() {
                             </div>
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">$/km</label>
-                              <div className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm bg-gray-50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400 select-none">
-                                {precioPorKmVenta || '—'}
-                              </div>
+                              {/* Editable: si el tenant no tiene tarifa por km cargada (p.ej. modo básico
+                                  sin Config→Envíos), se puede ingresar acá; si la tiene, viene pre-cargada
+                                  y se puede sobrescribir por venta. El costo (km × $/km) se recalcula solo. */}
+                              <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
+                                value={precioPorKmVenta} onChange={e => setPrecioPorKmVenta(e.target.value)}
+                                placeholder="0.00"
+                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                             </div>
                           </div>
                           {costoEnvioNum > 0 && (

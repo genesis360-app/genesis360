@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.56.0 — Modo Básico/Avanzado · F2 superficies internas + F3 sugerencia (DEV)
+
+Cierra el feature (F1+F2+F3 completos, falta solo deploy a PROD). **F2**: POS sin picker LPN ni cotización courier · Proveedores sin OC/comparar presupuestos · Config sin tab Envíos / Inventario reducido / Gastos sin gobierno OC · Dashboard sin chip Envíos. **F3**: banner descartable de sugerencia de modo avanzado por rubro (`sugiereModoAvanzado`) con CTA a Configuración. Sin migración. Suite **679**.
+
+---
+
 ## v1.55.0 — Modo de operación Básico vs Avanzado (WMS) · F1 (DEV)
 
 **Dos experiencias en un solo SaaS.** Modo **Básico** (default para tenants nuevos, todos los planes): mostrador simple para kioscos/almacenes/pymes chicas — POS, caja, productos simples, stock simple, clientes, gastos; sin LPN/lotes/series/vencimientos/ubicaciones/OC/envíos. Modo **Avanzado (WMS)**: el sistema completo, toggle del DUEÑO en Configuración gateado a plan **Pro+** (el trial lo prueba). **El modo gatea UI, nunca datos**: el ledger sigue grado WMS por debajo, así el upgrade muestra el historial ya trazable; productos heredados con tracking conservan su flujo aun en básico. Mig **207** (existentes → avanzado, cero impacto). Kill-switch `MODO_BASICO_ENABLED`. Lib `modoOperacion.ts` +14 tests → suite **679**. Detalle en [[wiki/features/modo-basico-avanzado]]. Pendiente: **F2** (POS/Proveedores/secciones de Config) + **F3** (sugerencia en onboarding + copy de planes).

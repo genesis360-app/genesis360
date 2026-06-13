@@ -54,10 +54,15 @@ Dos experiencias en un solo SaaS (v1.55.0, mig 207):
 3. **Rollback de release**: mig aditiva → el front anterior funciona con la columna presente.
 4. **No-pérdida**: en básico los datos WMS no se degradan; volver a avanzado los muestra intactos.
 
-## Pendiente (F2/F3)
+## Implementación F2+F3 (v1.56.0 — hecho, sin migración)
 
-- **F2** (sin migración): POS sin picker LPN ni cotización courier · Proveedores ocultar OC/presupuestos/calificación · ConfigPage ocultar secciones WMS (ubicaciones, estados, perfiles GS1, gates de conteo, días ABC, regla tenant, tab Envíos) · Historial dentro de Inventario pulido.
-- **F3** (sin migración): sugerencia post-onboarding según `tipo_comercio` (`sugiereModoAvanzado`: repuestos, construcción, electrónica, farmacia, ferretería, perfumería, veterinaria) · copy de planes/landing · e2e smoke del modo básico.
+- **F2 — superficies internas en básico**: POS (`VentasPage.tsx`) sin picker de LPN ni cotización por API de courier (costo de envío manual queda) · Proveedores (`ProveedoresPage.tsx`) sin tab Órdenes de compra ni "Comparar presupuestos" · Config sin tab Envíos, Inventario reducido a Categorías/Motivos/Unidades (Reglas/Ubicaciones/Estados/Códigos GS1 = avanzado), Gastos sin gobierno de OC; deep-links redirigen · Dashboard sin chip de área Envíos.
+- **F3 — adquisición**: banner descartable en Dashboard para DUEÑO en básico cuando `sugiereModoAvanzado(tipo_comercio)` (repuestos, construcción, electrónica, farmacia, ferretería, perfumería, veterinaria) con CTA a Configuración (dismiss por tenant en localStorage) · copy de planes en `PLANES` (Pro vende "Modo avanzado (WMS)", hecho en F1).
+
+## Pendiente
+
+- **Deploy a PROD**: aplicar mig 207 ANTES del merge `dev → main` (deja PROD en avanzado, cero impacto) → PR → release.
+- e2e smoke del modo básico (menor; requiere alternar el modo del tenant de test sin romper la suite avanzada).
 
 ## Links relacionados
 

@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-12] update | v1.56.0 DEV — Modo básico/avanzado F2+F3 — feature COMPLETO (falta solo deploy a PROD)
+
+Cierra el feature en la misma sesión que F1. **Sin migración.** Release **v1.56.0** sobre `dev` (`--latest`). Unit **679** · build + typecheck verdes.
+
+- **F2 — superficies internas en básico:** POS sin picker de LPN ni cotización por API de courier (costo de envío manual queda) · Proveedores sin tab OC, sin "Nueva OC" ni "Comparar presupuestos" (queda ficha + CC + pagos + servicios) · Config sin tab Envíos, Inventario reducido a Categorías/Motivos/Unidades, Gastos sin gobierno de OC ni alerta de anticipo, deep-links redirigen (`useEffect` guard) · Dashboard sin chip de área Envíos.
+- **F3 — adquisición:** banner descartable en Dashboard (DUEÑO en básico + `sugiereModoAvanzado(tipo_comercio)`: repuestos/construcción/electrónica/farmacia/ferretería/perfumería/veterinaria) con CTA a Configuración; dismiss en localStorage por tenant. Copy de planes ya hecho en F1.
+- **Pendiente:** deploy a PROD (mig 207 antes del merge) · e2e smoke del modo básico (menor).
+
 ## [2026-06-12] update | v1.55.0 DEV — Modo de operación Básico vs Avanzado (WMS) · F1 (mig 207)
 
 **Feature nueva pedida por GO**: dos experiencias en un solo SaaS. **Básico** (default para tenants nuevos, todos los planes) = mostrador simple para kioscos/almacenes/pymes chicas; **Avanzado (WMS)** = el sistema completo, toggle del DUEÑO en Config → Negocio gateado a **Pro+** (feature `wms`; el trial lo prueba gratis vía el mecanismo existente de features Pro en trial). Decisiones de GO: existentes → avanzado · downgrade permitido con advertencia (productos trackeados conservan flujo) · onboarding sugiere avanzado según tipo de comercio (F3). Plan completo + matriz de módulos en `wiki/features/modo-basico-avanzado.md`.

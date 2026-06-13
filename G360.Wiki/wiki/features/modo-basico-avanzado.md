@@ -73,10 +73,11 @@ La decisión de qué módulos ve cada usuario vive en la función pura [`src/lib
 - **F2 — superficies internas en básico**: POS (`VentasPage.tsx`) sin picker de LPN ni cotización por API de courier (costo de envío manual queda) · Proveedores (`ProveedoresPage.tsx`) sin tab Órdenes de compra ni "Comparar presupuestos" · Config sin tab Envíos, Inventario reducido a Categorías/Motivos/Unidades (Reglas/Ubicaciones/Estados/Códigos GS1 = avanzado), Gastos sin gobierno de OC; deep-links redirigen · Dashboard sin chip de área Envíos.
 - **F3 — adquisición**: banner descartable en Dashboard para DUEÑO en básico cuando `sugiereModoAvanzado(tipo_comercio)` (repuestos, construcción, electrónica, farmacia, ferretería, perfumería, veterinaria) con CTA a Configuración (dismiss por tenant en localStorage) · copy de planes en `PLANES` (Pro vende "Modo avanzado (WMS)", hecho en F1).
 
-## Pendiente
+## Estado
 
-- **Deploy a PROD**: aplicar mig 207 ANTES del merge `dev → main` (deja PROD en avanzado, cero impacto) → PR → release.
-- e2e smoke del modo básico (menor; requiere alternar el modo del tenant de test sin romper la suite avanzada).
+✅ **EN PROD desde v1.57.0 (2026-06-13, PR #189, mig 207).** F1+F2+F3 + auditoría de roles. Al deployar, los tenants existentes quedaron en `avanzado` (cero impacto). Kill-switch `MODO_BASICO_ENABLED` disponible para rollback global.
+
+**Pendiente menor:** crear usuarios de prueba DEPOSITO+CONTADOR en DEV para correr los e2e de esos roles (se omiten sin credenciales).
 
 ## Links relacionados
 

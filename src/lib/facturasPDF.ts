@@ -116,14 +116,15 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, 14, y); y += 5
 
   // ── Encabezado derecho — datos del comprobante ───────────────────────────────
-  const RX = COL + 14
+  // Alineado al margen derecho (no pegado al recuadro central del tipo de comprobante).
+  const RX = W - 14
   doc.setFontSize(10).setFont('helvetica', 'bold').setTextColor(0)
-  doc.text(`FACTURA`, RX, 15)
+  doc.text(`FACTURA`, RX, 15, { align: 'right' })
   doc.setFontSize(9).setFont('helvetica', 'normal').setTextColor(80)
   const pvStr = String(data.punto_venta).padStart(4, '0')
   const ncStr = String(data.numero_comprobante).padStart(8, '0')
-  doc.text(`N° ${pvStr}-${ncStr}`, RX, 21)
-  doc.text(`Fecha: ${formatFecha(data.fecha)}`, RX, 27)
+  doc.text(`N° ${pvStr}-${ncStr}`, RX, 21, { align: 'right' })
+  doc.text(`Fecha: ${formatFecha(data.fecha)}`, RX, 27, { align: 'right' })
 
   // ── Línea divisoria horizontal ───────────────────────────────────────────────
   const lineY = Math.max(y, boxY + boxH) + 3

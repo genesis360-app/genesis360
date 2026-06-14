@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] deploy | v1.61.0 EN PROD — Logo del negocio en la factura + filename con cliente · `dev=main`
+
+**v1.61.0 a PROD (PR #200, `dca27a78`, release latest). Mig 211 aplicada en DEV+PROD antes del merge.** Fase 1 de un plan por fases para **igualar el formato de comprobantes de Xubio** (relevamiento a partir de 3 PDFs de un cliente que migra: Maderas El Tilo / Madera Carrizo Hermanos SRL, RI que emite A y B).
+
+- **Mig 211**: bucket `logos` (público, policies scopeadas por carpeta de tenant, mismo patrón que `productos` de mig 209). `tenants.logo_url` ya existía (mig 001).
+- **Config → Facturación**: subir / cambiar / quitar logo (`handleLogoChange` → bucket `logos` → `tenants.logo_url`, `setTenant` para sincronizar store).
+- **`facturasPDF.ts`**: embebe el logo arriba a la izquierda (`cargarLogo`: Image crossOrigin → canvas → dataURL PNG, conserva aspecto; el bloque emisor usa `emX` y se corre a la derecha si hay logo). Si la imagen no carga → PDF sin logo.
+- **Filename**: incluye el nombre del cliente saneado (`sanitizarNombreArchivo`).
+- **Builders** (Ventas + Facturación): pasan `emisor_logo_url` desde `tenants.logo_url`.
+
+**Plan por fases pendiente (paridad Xubio):** v1.62.0 = datos fiscales emisor (Ing. Brutos + Inicio de Actividades) + domicilio receptor + moneda + forma de pago + fecha vto + **Régimen de Transparencia Fiscal Ley 27.743** (obligatorio en B) + desglose IVA completo + "Comprobante Autorizado" + letra en N° + SKU por ítem. v1.63.0 = **PDF de presupuesto A4** (hoy el presupuesto solo se imprime como ticket vía `window.print()`). v1.64.0 = detalle por línea (Observaciones + % Dto.). typecheck + build verdes.
+
 ## [2026-06-14] deploy | v1.60.2 EN PROD — Menú "Acciones" en toolbars + bloqueo Factura A sin CUIT · `dev=main`
 
 **v1.60.2 a PROD (PR #199, `82db1900`, release latest).** Solo frontend — **sin migraciones**.

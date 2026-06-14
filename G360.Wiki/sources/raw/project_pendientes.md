@@ -4,7 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-**✅ EN PROD: v1.60.2** (2026-06-14, PR **#199** `82db1900`, **sin migraciones**, release latest) — **Menú "Acciones" en toolbars + bloqueo Factura A sin CUIT.** Solo frontend: (1) componente reutilizable **`ActionMenu`** (`src/components/ActionMenu.tsx`) que colapsa las acciones secundarias del header en un solo botón "⋯ Acciones" (click, no hover → arregla el dropdown de Exportar que no andaba en touch; descongestiona mobile). **Aplicado en Productos + Clientes (piloto)**; falta replicar al resto (Proveedores tiene el mismo bug de hover, Ventas/Caja/Gastos/Inventario/Envíos…). (2) **Bloqueo de Factura A** en el POS si la venta no tiene cliente con CUIT (botón A deshabilitado + aviso; degrada a B). (3) **Mensaje de error real al emitir** (lee `error.context.json()` en POS/NC/Facturación) en vez del genérico "non-2xx". typecheck + build verdes.
+**✅ EN PROD: v1.61.0** (2026-06-14, PR **#200** `dca27a78`, **mig 211** aplicada DEV+PROD antes del merge, release latest) — **Logo del negocio en la factura + filename con cliente.** Fase 1 de **paridad con Xubio** (relevamiento de 3 PDFs de un cliente que migra, Maderas El Tilo RI A/B). Mig 211 = bucket `logos` (público, scopeado por tenant). Config → Facturación sube/quita logo (`tenants.logo_url`, ya existía); `facturasPDF` lo embebe arriba a la izq (canvas→dataURL, conserva aspecto, emisor se corre); filename con nombre del cliente. **Plan por fases pendiente:** v1.62.0 (datos fiscales emisor IIBB/Inicio Act + domicilio receptor + moneda + forma de pago + fecha vto + **Transparencia Fiscal Ley 27.743 en B** + desglose IVA + "Comprobante Autorizado" + letra N° + SKU), v1.63.0 (**PDF de presupuesto A4** — hoy solo ticket `window.print()`), v1.64.0 (detalle por línea: Observaciones + % Dto., amplía `venta_items` + UI POS). Ver sección "▶ PARIDAD XUBIO" abajo.
+
+Antes: **v1.60.2** (2026-06-14, PR **#199** `82db1900`, **sin migraciones**, release latest) — **Menú "Acciones" en toolbars + bloqueo Factura A sin CUIT.** Solo frontend: (1) componente reutilizable **`ActionMenu`** (`src/components/ActionMenu.tsx`) que colapsa las acciones secundarias del header en un solo botón "⋯ Acciones" (click, no hover → arregla el dropdown de Exportar que no andaba en touch; descongestiona mobile). **Aplicado en Productos + Clientes (piloto)**; falta replicar al resto (Proveedores tiene el mismo bug de hover, Ventas/Caja/Gastos/Inventario/Envíos…). (2) **Bloqueo de Factura A** en el POS si la venta no tiene cliente con CUIT (botón A deshabilitado + aviso; degrada a B). (3) **Mensaje de error real al emitir** (lee `error.context.json()` en POS/NC/Facturación) en vez del genérico "non-2xx". typecheck + build verdes.
 
 Antes: **v1.60.1** (2026-06-14, PR **#198** `39705d38`, **sin migraciones**, release latest) — **Autocompletar email de factura + layout PDF.** Mejoras de UX sobre facturación (solo frontend): (1) **Enviar factura por email** ahora abre un **modal con el `clientes.email` precargado y editable** (antes `window.prompt`), tanto en **Ventas** (modal post-emisión + detalle/historial) como en el módulo **Facturación**. (2) **PDF de factura**: el bloque "FACTURA / N° / Fecha" pasa a estar **alineado al margen derecho** (`facturasPDF.ts`), antes quedaba pegado al recuadro central del tipo. typecheck + build verdes, `facturacion.test.ts` 28/28. (Nota: el reporte de GO de "botones que no hacen nada" era el SW sirviendo el bundle viejo; el fix real ya estaba en v1.60.0.)
 
@@ -34,14 +36,15 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.60.2` ✅ (suite 734) | `v1.60.2` ✅ |
-| Migrations | 001–**210** ✅ | 001–**210** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.60.2, PR #199, `82db1900`) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.60.2 (auto desde `main`) |
+| APP_VERSION | `v1.61.0` ✅ (suite 734) | `v1.61.0` ✅ |
+| Migrations | 001–**211** ✅ | 001–**211** ✅ |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.61.0, PR #200, `dca27a78`) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.61.0 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (001–210 ya en PROD; v1.60.x fue solo frontend). **EF `emitir-factura` v8 ✅ en PROD.** Cadena reciente:
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (001–**211** ya en PROD). **EF `emitir-factura` v8 ✅ en PROD.** Cadena reciente:
+- **v1.61.0** (PR #200, **mig 211** bucket `logos`): **logo del negocio en la factura** (Config sube → `tenants.logo_url` → `facturasPDF` lo embebe) + **filename con nombre del cliente**. Fase 1 de paridad Xubio.
 - **v1.60.2** (PR #199, sin mig): **`ActionMenu`** (botón "⋯ Acciones" colapsando acciones secundarias del header — click no hover, mobile-friendly; aplicado en Productos + Clientes, falta el resto) + **bloqueo Factura A sin CUIT** en el POS + **mensaje de error real al emitir** (lee `error.context.json()`).
 - **v1.60.1** (PR #198, sin mig): **autocompletar email de factura** (modal con `clientes.email` precargado en Ventas + Facturación, reemplaza `window.prompt`) + **layout PDF** (bloque "FACTURA / N°" alineado al margen derecho).
 Cadena del día previo (v1.59.x ya en PROD):
@@ -50,6 +53,21 @@ Cadena del día previo (v1.59.x ya en PROD):
 - **v1.59.2** (PR #194, UI-only): **FIX del bloqueo REAL de venta en básico = ESTADO**. Stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba por `es_disponible_venta` → bloqueaba en `agregarProducto`. Fix: filtro de estado solo en avanzado. (v1.59.1 había arreglado la ubicación pero no era suficiente.)
 - **v1.59.1** (PR #193, UI-only): fix venta básico parte 1 (ubicación, `soloUbicado`) + recortes Inventario básico (modal detalle sin Estado/LPN, tab Autorizaciones oculto, grilla sin Lote/Venc./Series) + e2e mutante de ciclo de caja.
 - **v1.59.0** (PR #191, migs 208/209): recortes modo básico (Estructura, Config→API) + seguridad (planes RLS, search_path 25→0, anon SECURITY DEFINER 29→15, buckets 2→0) + react-router-dom 6.30.4 + e2e mutante de venta.
+
+### ▶ PARIDAD XUBIO (comprobantes) — relevamiento + plan por fases
+
+**Origen:** GO pasó 3 PDFs de Xubio de un cliente que **se muda a Genesis360** (Maderas El Tilo / Madera Carrizo Hermanos SRL, **Responsable Inscripto** que emite A y B). Objetivo: que nuestros comprobantes tengan **al menos lo mismo** que Xubio.
+
+**Gaps detectados (Xubio tiene / nosotros no):**
+- 🔴 **Logo del negocio** → ✅ HECHO v1.61.0 (bucket `logos`, Config, render en factura).
+- 🔴 **Ingresos Brutos** + **Inicio de Actividades** del emisor (no existen los campos) → v1.62.0 (mig nueva).
+- 🔴 **Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)** en Factura B: "IVA Contenido" + "Otros impuestos nacionales indirectos". **Obligatorio desde 2025.** → v1.62.0.
+- 🔴 **PDF de Presupuesto A4** (hoy solo ticket `window.print()`, no hay PDF) → v1.63.0.
+- 🟡 Domicilio del receptor (el PDF lo soporta pero los builders no lo pasan), Moneda (texto), Forma de pago, Fecha Vto., **letra en el N°** (`A-0004-…` vs `0004-…`), **SKU por ítem** (Cód.), "Comprobante Autorizado" + disclaimer ARCA, desglose IVA completo (todas las alícuotas) → v1.62.0.
+- 🟢 **Observaciones** y **% Dto. por línea** (requiere ampliar `venta_items` + UI del POS) → v1.64.0.
+- **Filename**: incluir nombre del cliente → ✅ HECHO v1.61.0.
+
+**Fases:** v1.61.0 (logo + filename) ✅ EN PROD · v1.62.0 (factura completa: emisor fiscal + Ley 27.743 + moneda/forma de pago/fecha vto + SKU + desglose IVA + Comprobante Autorizado + letra N° + domicilio receptor) · v1.63.0 (presupuesto PDF A4) · v1.64.0 (detalle por línea). Cada fase deploya con su release. Patrones: upload imagen = `storage.from(bucket).upload + getPublicUrl + setTenant`; logo en PDF vía `cargarLogo` (canvas→dataURL).
 
 **⚠ Regla aprendida (no reintroducir):** el stock de **modo básico** tiene `ubicacion_id` Y `estado_id` en **NULL** (no usa ubicaciones ni estados). Toda query de venta/disponibilidad de stock que filtre `.not('ubicacion_id','is',null)` o `.in('estado_id', es_disponible_venta)` **debe ser mode-aware** (saltar esos filtros en básico) o las ventas de básico fallan con "sin stock" pese a haber stock. Helpers en VentasPage: `soloUbicado(q)` + `if (modoAvanzado && estadosFinal…)`.
 

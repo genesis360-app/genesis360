@@ -4,8 +4,9 @@ import {
   Plus, Search, Package, AlertTriangle, Camera, ChevronDown, ChevronRight,
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
-  DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle,
+  DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle, Upload,
 } from 'lucide-react'
+import { ActionMenu } from '@/components/ActionMenu'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -996,28 +997,15 @@ export default function ProductosPage() {
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{productos.length} productos registrados</p>
         </div>
         <div className="flex gap-2">
-          <div className="relative group">
-            <button className="flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
-              <Download size={15} /> Exportar <ChevronDown size={13} />
-            </button>
-            <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden z-20 hidden group-hover:block w-32">
-              <button onClick={() => exportarProductos('json')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">JSON</button>
-              <button onClick={() => exportarProductos('csv')}  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">CSV</button>
-            </div>
-          </div>
-          <button
-            onClick={() => setGruposPanel(true)}
-            className="flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
-            <Boxes size={15} /> Grupos
-          </button>
-          <Link to="/productos/importar"
-            className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
-            Importar
-          </Link>
-          <button onClick={() => { setScanTicketStep('upload'); setScanTicketItems([]); setScanTicketPreview(null); setShowScanTicket(true) }}
-            className="flex items-center gap-2 border border-accent/40 text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/5 transition-all">
-            <Camera size={15} /> Escanear ticket
-          </button>
+          <ActionMenu
+            items={[
+              { label: 'Exportar JSON', icon: Download, onClick: () => exportarProductos('json') },
+              { label: 'Exportar CSV',  icon: Download, onClick: () => exportarProductos('csv') },
+              { label: 'Grupos',        icon: Boxes,    onClick: () => setGruposPanel(true) },
+              { label: 'Importar',      icon: Upload,   onClick: () => navigate('/productos/importar') },
+              { label: 'Escanear ticket', icon: Camera, onClick: () => { setScanTicketStep('upload'); setScanTicketItems([]); setScanTicketPreview(null); setShowScanTicket(true) } },
+            ]}
+          />
           <button
             onClick={() => {
               if (limits && !limits.puede_crear_producto) setShowLimitModal(true)

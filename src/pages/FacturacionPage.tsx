@@ -339,7 +339,9 @@ export default function FacturacionPage() {
       qc.invalidateQueries({ queryKey: ['facturacion-kpis'] })
       setShowEmitirModal(false); setVentaAFacturar(null)
     } catch (e: any) {
-      toast.error(e.message ?? 'Error al emitir')
+      let msg = String(e?.message ?? '')
+      try { const body = await (e as any).context?.json?.(); if (body?.error) msg = String(body.error) } catch { /* */ }
+      toast.error('Error al emitir: ' + (msg || 'intente nuevamente'), { duration: 8000 })
     } finally {
       setEmitiendo(false) }
   }

@@ -65,7 +65,7 @@ export function normalizarCondIVA(v?: string | null): string {
 
 // ─── Generador principal ──────────────────────────────────────────────────────
 
-export async function generarFacturaPDF(data: FacturaPDFData): Promise<void> {
+async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
   const W = 210
   const COL = W / 2  // 105mm — divisor A/B
@@ -242,10 +242,37 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<void> {
   doc.setFontSize(7).setTextColor(150)
   doc.text('Comprobante fiscal electrónico — Genesis360', W / 2, 285, { align: 'center' })
 
-  // ── Descargar ────────────────────────────────────────────────────────────────
+  return doc
+}
+
+function nombreFacturaPDF(data: FacturaPDFData): string {
   const pvPad = String(data.punto_venta).padStart(4, '0')
   const ncPad = String(data.numero_comprobante).padStart(8, '0')
-  doc.save(`Factura_${data.tipo_comprobante}_${pvPad}_${ncPad}.pdf`)
+  return `Factura_${data.tipo_comprobante}_${pvPad}_${ncPad}.pdf`
+}
+
+/** Genera el PDF y lo descarga (default) o lo abre listo para imprimir. */
+export async function generarFacturaPDF(
+  data: FacturaPDFData,
+  accion: 'descargar' | 'imprimir' = 'descargar',
+): Promise<void> {
+  const doc = await construirFacturaPDFDoc(data)
+  if (accion === 'imprimir') {
+    doc.autoPrint()
+    const url = doc.output('bloburl')
+    window.open(url as unknown as string, '_blank')
+  } else {
+    doc.save(nombreFacturaPDF(data))
+  }
+}
+
+/** Genera el PDF y lo devuelve como base64 (sin prefijo data:) + nombre, para adjuntar a un email. */
+export async function generarFacturaPDFBase64(
+  data: FacturaPDFData,
+): Promise<{ base64: string; filename: string }> {
+  const doc = await construirFacturaPDFDoc(data)
+  const dataUri = doc.output('datauristring')
+  return { base64: dataUri.split(',')[1] ?? '', filename: nombreFacturaPDF(data) }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

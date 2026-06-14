@@ -345,6 +345,8 @@ export default function VentasPage() {
   // E2/E3 — cancelación de reserva: motivo + (si hay seña) penalidad + destino devolución/crédito
   const [cancelReservaModal, setCancelReservaModal] = useState<{ venta: any; destino: 'devolucion' | 'credito'; motivo: string; observacion: string } | null>(null)
   const [facturaModal, setFacturaModal] = useState<{ ventaId: string; ventaNumero: number; ventaTotal: number } | null>(null)
+  // CUIT del cliente de la venta a facturar (para gatear Factura A, que exige CUIT del receptor)
+  const [facturaClienteCuit, setFacturaClienteCuit] = useState<string | null>(null)
   // Tras emitir desde el POS: pasa a la vista de acciones (descargar/imprimir/email) sin ir al historial
   const [facturaEmitida, setFacturaEmitida] = useState<{ ventaId: string; tipo: string; cae: string } | null>(null)
   const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
@@ -1419,8 +1421,24 @@ export default function VentasPage() {
     const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
     setFacturaTipo(tipo)
     setFacturaPV(pvDefault)
+    setFacturaClienteCuit(null)
     setFacturaModal({ ventaId, ventaNumero, ventaTotal })
   }
+
+  // Al abrir el modal, traer el CUIT del cliente de la venta (Factura A lo exige).
+  useEffect(() => {
+    if (!facturaModal) return
+    let cancel = false
+    supabase.from('ventas').select('clientes(cuit_receptor)').eq('id', facturaModal.ventaId).single()
+      .then(({ data }) => {
+        if (cancel) return
+        const cuit = ((data as any)?.clientes?.cuit_receptor ?? '').toString().replace(/[-\s]/g, '')
+        setFacturaClienteCuit(cuit || null)
+        // Si quedó seleccionada Factura A sin CUIT, degradar a B para no bloquear la emisión.
+        if (!cuit) setFacturaTipo(t => (t === 'A' ? 'B' : t))
+      })
+    return () => { cancel = true }
+  }, [facturaModal])
 
   const emitirFactura = async () => {
     if (!facturaModal) return
@@ -1440,7 +1458,9 @@ export default function VentasPage() {
             tipo_comprobante: `Factura ${facturaTipo}`, estado: d.estado === 'despachada' ? 'facturada' : d.estado }
         : d)
     } catch (e: any) {
-      toast.error('Error al emitir: ' + (e.message ?? 'intente nuevamente'))
+      let msg = String(e?.message ?? '')
+      try { const body = await (e as any).context?.json?.(); if (body?.error) msg = String(body.error) } catch { /* */ }
+      toast.error('Error al emitir: ' + (msg || 'intente nuevamente'), { duration: 8000 })
     } finally {
       setEmitiendoFactura(false)
     }
@@ -1465,7 +1485,9 @@ export default function VentasPage() {
       setNcModal(null)
       qc.invalidateQueries({ queryKey: ['devoluciones-venta', ncModal.ventaId] })
     } catch (e: any) {
-      toast.error('Error al emitir NC: ' + (e.message ?? 'intente nuevamente'))
+      let msg = String(e?.message ?? '')
+      try { const body = await (e as any).context?.json?.(); if (body?.error) msg = String(body.error) } catch { /* */ }
+      toast.error('Error al emitir NC: ' + (msg || 'intente nuevamente'), { duration: 8000 })
     } finally {
       setEmitiendoNC(false)
     }
@@ -6168,19 +6190,28 @@ export default function VentasPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de comprobante</label>
               <div className="grid grid-cols-3 gap-2">
-                {(['A','B','C'] as const).map(t => (
-                  <button key={t} onClick={() => setFacturaTipo(t)}
-                    className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all
-                      ${facturaTipo === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent/40'}`}>
-                    Factura {t}
-                  </button>
-                ))}
+                {(['A','B','C'] as const).map(t => {
+                  const bloqueado = t === 'A' && !facturaClienteCuit
+                  return (
+                    <button key={t} onClick={() => { if (!bloqueado) setFacturaTipo(t) }} disabled={bloqueado}
+                      title={bloqueado ? 'Factura A requiere un cliente con CUIT (Responsable Inscripto)' : undefined}
+                      className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed
+                        ${facturaTipo === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent/40'}`}>
+                      Factura {t}
+                    </button>
+                  )
+                })}
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
                 {facturaTipo === 'A' && 'Para clientes Responsables Inscriptos — discrimina IVA'}
                 {facturaTipo === 'B' && 'Para Consumidores Finales / Monotributistas'}
                 {facturaTipo === 'C' && 'Para emisores Monotributistas — sin IVA'}
               </p>
+              {!facturaClienteCuit && (
+                <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
+                  Factura A deshabilitada: la venta no tiene un cliente con CUIT.
+                </p>
+              )}
             </div>
 
             {/* Punto de venta */}

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.60.1 — Autocompletar email de factura + layout PDF (PROD ✅, PR #198)
+
+**Mejoras de UX sobre la facturación (solo frontend, sin migraciones).** (1) **Enviar factura por email**: reemplaza el `window.prompt` por un modal con el correo del cliente (`clientes.email`) **precargado y editable**, en Ventas (modal post-emisión + detalle/historial) y en el módulo Facturación. (2) **PDF de factura**: el bloque "FACTURA / N° / Fecha" pasa a estar **alineado al margen derecho** (antes pegado al recuadro central del tipo de comprobante).
+
+---
+
 ## v1.60.0 — Facturación AFIP production-ready + cert propio + UX/bugfixes (PROD ✅, PR #197)
 
 **"AFIP a PROD" — de preparar el camino a validar la facturación emitiendo CAE real (homologación) de punta a punta.** El módulo operaba contra homologación; esta versión deja el pase a producción listo y seguro, conecta el certificado propio del tenant, y corrige una tanda de bugs/UX. Verificado emitiendo **Factura C real** en homologación ×3 (test Node + app + e2e mutante).

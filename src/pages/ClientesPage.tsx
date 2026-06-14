@@ -8,6 +8,7 @@ import {
   Tag, Calendar, StickyNote, CreditCard, AlertCircle, MessageCircle, DollarSign,
   UserX, RotateCcw,
 } from 'lucide-react'
+import { ActionMenu } from '@/components/ActionMenu'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
 import { agruparAgingCC } from '@/lib/ccLogic'
@@ -789,31 +790,20 @@ export default function ClientesPage() {
         </div>
         <div className="flex gap-2">
           {pageTab === 'lista' && <>
-            <div className="relative group">
-              <button className="flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
-                <Download size={15} /> Exportar <ChevronDown size={13} />
-              </button>
-              <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden z-20 hidden group-hover:block w-32">
-                <button onClick={() => exportarClientes('json')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">JSON</button>
-                <button onClick={() => exportarClientes('csv')}  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">CSV</button>
-              </div>
-            </div>
-            <button onClick={() => setVerInactivos(v => !v)}
-              className={`flex items-center gap-2 border font-medium px-4 py-2.5 rounded-xl text-sm transition-all
-                ${verInactivos ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}
-              title="Mostrar también clientes dados de baja">
-              <UserX size={16} /> {verInactivos ? 'Ver activos' : 'Ver inactivos'}
-            </button>
-            {puedeEditar && <>
-              <button onClick={() => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }}
-                className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
-                <Upload size={16} /> Importar
-              </button>
+            <ActionMenu
+              items={[
+                { label: 'Exportar JSON', icon: Download, onClick: () => exportarClientes('json') },
+                { label: 'Exportar CSV',  icon: Download, onClick: () => exportarClientes('csv') },
+                { label: verInactivos ? 'Ver activos' : 'Ver inactivos', icon: UserX, onClick: () => setVerInactivos(v => !v) },
+                { label: 'Importar', icon: Upload, onClick: () => { setShowImport(true); setFilasImport([]); setResultadoImport(null) }, hidden: !puedeEditar },
+              ]}
+            />
+            {puedeEditar && (
               <button onClick={() => abrirModal()}
                 className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-medium px-4 py-2.5 rounded-xl transition-all">
                 <Plus size={18} /> Nuevo cliente
               </button>
-            </>}
+            )}
           </>}
         </div>
       </div>

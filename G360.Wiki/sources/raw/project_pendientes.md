@@ -67,7 +67,17 @@ Cadena del día previo (v1.59.x ya en PROD):
 - 🟢 **Observaciones** y **% Dto. por línea** (requiere ampliar `venta_items` + UI del POS) → v1.64.0.
 - **Filename**: incluir nombre del cliente → ✅ HECHO v1.61.0.
 
-**Fases:** v1.61.0 (logo + filename) ✅ EN PROD · v1.62.0 (factura completa: emisor fiscal + Ley 27.743 + moneda/forma de pago/fecha vto + SKU + desglose IVA + Comprobante Autorizado + letra N° + domicilio receptor) · v1.63.0 (presupuesto PDF A4) · v1.64.0 (detalle por línea). Cada fase deploya con su release. Patrones: upload imagen = `storage.from(bucket).upload + getPublicUrl + setTenant`; logo en PDF vía `cargarLogo` (canvas→dataURL).
+**Plan RE-SCOPEADO (2026-06-14, tras desafiar Xubio con GO):** no copiamos Xubio al 100%. **Se descartan:** desglose IVA con todas las alícuotas en 0 (mostrar solo las presentes), Prov. Destino (salvo Convenio Multilateral), "Fecha Vto." como campo fijo (solo si CC), Original/Duplicado/Triplicado (no aplica a electrónico). **Observaciones = a nivel documento** (campo en la venta, ej. "No incluye relleno"), **NO per-línea** (se descarta la fase per-línea cara; queda en backlog solo si lo piden). **Se SUMA lo que Xubio no tiene** (decisión GO): datos bancarios (CBU/Alias/Banco) en el pie, **link/QR de pago MercadoPago** en la factura (ya tenemos MP), leyendas + contacto (tel/email/web/redes) configurables, y **Remito/Nota de entrega** (la maderera entrega mercadería → alimentar con envíos/POD).
+
+**Fases (re-scopeadas):**
+- **v1.61.0 ✅ EN PROD:** logo del negocio + filename con cliente.
+- **v1.62.0:** factura "completa" — IIBB + Inicio Act (mig `tenants`) + domicilio receptor + moneda + forma de pago + letra N° + "Comprobante Autorizado" + SKU por ítem + **Ley 27.743 (B)** + **Observaciones a nivel documento** (mig `ventas` si no existe) + **datos bancarios en el pie** + **leyendas/contacto custom**.
+- **v1.63.0:** Presupuesto PDF A4 (reusa header/logo + observaciones + datos bancarios/leyendas).
+- **v1.64.0:** **Link/QR de pago MercadoPago** en la factura.
+- **v1.65.0:** **Remito / Nota de entrega** (alimentado por envíos/POD).
+- **Backlog (solo si lo piden):** per-línea (% dto + obs), factura recurrente de ventas, percepciones/retenciones (IIBB/Ganancias, motor impositivo), multimoneda USD.
+
+Cada fase deploya con su release. **Ya por delante de Xubio:** envío por email con PDF, estado de cuenta PDF, factura atada a stock/caja/CC/envíos/RRHH, CAE in-app. Patrones: upload imagen = `storage.from(bucket).upload + getPublicUrl + setTenant`; logo en PDF vía `cargarLogo` (canvas→dataURL).
 
 **⚠ Regla aprendida (no reintroducir):** el stock de **modo básico** tiene `ubicacion_id` Y `estado_id` en **NULL** (no usa ubicaciones ni estados). Toda query de venta/disponibilidad de stock que filtre `.not('ubicacion_id','is',null)` o `.in('estado_id', es_disponible_venta)` **debe ser mode-aware** (saltar esos filtros en básico) o las ventas de básico fallan con "sin stock" pese a haber stock. Helpers en VentasPage: `soloUbicado(q)` + `if (modoAvanzado && estadosFinal…)`.
 

@@ -272,13 +272,16 @@ serve(async (req) => {
         nc_punto_venta:       punto_venta,
       }).eq('id', devolucion_id)
     } else {
-      // Factura normal: guardar en ventas
-      await supabase.from('ventas').update({
+      // Factura normal: guardar en ventas. Si estaba 'despachada', pasa a 'facturada'
+      // automáticamente (antes había que marcarla a mano desde el detalle de la venta).
+      const ventaUpdate: Record<string, unknown> = {
         cae:               resultado.CAE,
         vencimiento_cae:   resultado.CAEFchVto,
         tipo_comprobante:  `Factura ${tipo_comprobante}`,
         numero_comprobante: proximo,
-      }).eq('id', venta_id)
+      }
+      if (venta.estado === 'despachada') ventaUpdate.estado = 'facturada'
+      await supabase.from('ventas').update(ventaUpdate).eq('id', venta_id)
     }
 
     console.log(`CAE emitido: ${resultado.CAE} — ${esNC ? `NC devolucion ${devolucion_id}` : `Venta ${venta_id}`}`)

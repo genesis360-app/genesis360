@@ -84,27 +84,36 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   })
   const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 200, margin: 1 })
 
-  // ── Encabezado izquierdo — datos del emisor ──────────────────────────────────
-  let y = 15
-  doc.setFontSize(14).setFont('helvetica', 'bold')
-  doc.text(data.emisor_razon_social, 14, y)
-  y += 6
-  doc.setFontSize(9).setFont('helvetica', 'normal').setTextColor(80)
-  doc.text(`CUIT: ${formatCuit(data.emisor_cuit)}`, 14, y); y += 5
-  if (data.emisor_domicilio) { doc.text(data.emisor_domicilio, 14, y); y += 5 }
-  doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, 14, y); y += 5
-
   // ── Caja central — tipo de comprobante ──────────────────────────────────────
-  const boxX = COL - 12; const boxY = 10; const boxW = 24; const boxH = 18
+  // Se dibuja primero para conocer su geometría (la columna izquierda hace wrap
+  // para no superponerse con él).
+  const boxW = 26; const boxX = COL - boxW / 2; const boxY = 10; const boxH = 24
+  // Ancho útil de la columna izquierda: hasta ~3mm antes del recuadro central.
+  const LEFT_W = boxX - 14 - 3
   doc.setDrawColor(0).setLineWidth(0.5)
   doc.rect(boxX, boxY, boxW, boxH)
-  doc.setFontSize(22).setFont('helvetica', 'bold').setTextColor(0)
-  doc.text(data.tipo_comprobante, boxX + boxW / 2, boxY + 11, { align: 'center' })
+  doc.setFontSize(26).setFont('helvetica', 'bold').setTextColor(0)
+  doc.text(data.tipo_comprobante, boxX + boxW / 2, boxY + 13, { align: 'center' })
   doc.setFontSize(8).setFont('helvetica', 'normal').setTextColor(80)
-  doc.text('COD.', boxX + boxW / 2, boxY + 15, { align: 'center' })
+  doc.text('COD.', boxX + boxW / 2, boxY + 18.5, { align: 'center' })
   const cod = String(TIPO_CMP_AFIP[data.tipo_comprobante] ?? 6).padStart(2, '0')
   doc.setFontSize(9).setTextColor(0)
-  doc.text(cod, boxX + boxW / 2, boxY + 18, { align: 'center' })
+  doc.text(cod, boxX + boxW / 2, boxY + 22.5, { align: 'center' })
+
+  // ── Encabezado izquierdo — datos del emisor (con wrap para no chocar el recuadro) ─
+  let y = 15
+  doc.setFontSize(14).setFont('helvetica', 'bold').setTextColor(0)
+  for (const ln of (doc.splitTextToSize(data.emisor_razon_social, LEFT_W) as string[])) {
+    doc.text(ln, 14, y); y += 6
+  }
+  doc.setFontSize(9).setFont('helvetica', 'normal').setTextColor(80)
+  doc.text(`CUIT: ${formatCuit(data.emisor_cuit)}`, 14, y); y += 5
+  if (data.emisor_domicilio) {
+    for (const ln of (doc.splitTextToSize(data.emisor_domicilio, LEFT_W) as string[])) {
+      doc.text(ln, 14, y); y += 5
+    }
+  }
+  doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, 14, y); y += 5
 
   // ── Encabezado derecho — datos del comprobante ───────────────────────────────
   const RX = COL + 14
@@ -117,7 +126,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.text(`Fecha: ${formatFecha(data.fecha)}`, RX, 27)
 
   // ── Línea divisoria horizontal ───────────────────────────────────────────────
-  const lineY = Math.max(y, 34) + 2
+  const lineY = Math.max(y, boxY + boxH) + 3
   doc.setDrawColor(180).setLineWidth(0.3)
   doc.line(14, lineY, W - 14, lineY)
 

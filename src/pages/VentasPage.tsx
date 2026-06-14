@@ -345,6 +345,8 @@ export default function VentasPage() {
   // E2/E3 — cancelación de reserva: motivo + (si hay seña) penalidad + destino devolución/crédito
   const [cancelReservaModal, setCancelReservaModal] = useState<{ venta: any; destino: 'devolucion' | 'credito'; motivo: string; observacion: string } | null>(null)
   const [facturaModal, setFacturaModal] = useState<{ ventaId: string; ventaNumero: number; ventaTotal: number } | null>(null)
+  // Tras emitir desde el POS: pasa a la vista de acciones (descargar/imprimir/email) sin ir al historial
+  const [facturaEmitida, setFacturaEmitida] = useState<{ ventaId: string; tipo: string; cae: string } | null>(null)
   const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
   const [facturaPV, setFacturaPV]     = useState<number>(1)
   const [ncModal, setNcModal]         = useState<{ devolucionId: string; ventaId: string; ventaNumero: number; monto: number } | null>(null)
@@ -1426,7 +1428,8 @@ export default function VentasPage() {
       if (error) throw error
       if (data?.error) throw new Error(data.error)
       toast.success(`✅ Factura ${facturaTipo} emitida — CAE: ${data.cae}`, { duration: 8000 })
-      setFacturaModal(null)
+      // No cerramos: pasamos a la vista de acciones (descargar/imprimir/email)
+      setFacturaEmitida({ ventaId: facturaModal.ventaId, tipo: facturaTipo, cae: data.cae })
     } catch (e: any) {
       toast.error('Error al emitir: ' + (e.message ?? 'intente nuevamente'))
     } finally {
@@ -1459,65 +1462,69 @@ export default function VentasPage() {
     }
   }
 
-  // Arma el FacturaPDFData de la venta abierta en el detalle (compartido por descargar/imprimir/email)
-  async function buildFacturaPDFDataVenta(): Promise<FacturaPDFData | null> {
-    if (!ventaDetalle?.cae) return null
+  // Arma el FacturaPDFData + email del cliente para una venta facturada (por id).
+  // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
+  async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
+    const { data: venta } = await supabase.from('ventas')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, created_at, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor), venta_items(descripcion, cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre))')
+      .eq('id', ventaId).single()
+    if (!venta?.cae) return null
     const { data: pv } = await supabase.from('puntos_venta_afip')
       .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
       .order('numero').limit(1).maybeSingle()
     const { data: cfgTenant } = await supabase.from('tenants')
       .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor')
       .eq('id', tenant!.id).single()
-    return {
-      tipo_comprobante:    (ventaDetalle.tipo_comprobante ?? 'B').replace(/^Factura\s+/i, ''),
-      numero_comprobante:  ventaDetalle.numero_comprobante ?? ventaDetalle.numero,
+    const cli = (venta as any).clientes
+    const data: FacturaPDFData = {
+      tipo_comprobante:    (venta.tipo_comprobante ?? 'B').replace(/^Factura\s+/i, ''),
+      numero_comprobante:  venta.numero_comprobante ?? venta.numero,
       punto_venta:         pv?.numero ?? 1,
-      fecha:               ventaDetalle.created_at,
-      cae:                 ventaDetalle.cae,
-      vencimiento_cae:     ventaDetalle.vencimiento_cae ?? '',
+      fecha:               venta.created_at,
+      cae:                 venta.cae,
+      vencimiento_cae:     venta.vencimiento_cae ?? '',
       emisor_razon_social: cfgTenant?.razon_social_fiscal ?? tenant?.nombre ?? '',
       emisor_cuit:         cfgTenant?.cuit ?? '',
       emisor_domicilio:    cfgTenant?.domicilio_fiscal,
       emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
-      receptor_nombre:     ventaDetalle.clientes?.nombre ?? 'Consumidor Final',
-      receptor_cuit_dni:   ventaDetalle.clientes?.cuit_receptor ?? ventaDetalle.clientes?.dni,
-      receptor_condicion_iva: normalizarCondIVA(ventaDetalle.clientes?.condicion_iva_receptor),
-      items: (ventaDetalle.venta_items ?? []).map((i: any) => ({
+      receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
+      receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
+      receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
+      items: ((venta as any).venta_items ?? []).map((i: any) => ({
         descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
         cantidad:       Number(i.cantidad),
         precio_unitario: Number(i.precio_unitario),
         alicuota_iva:   Number(i.alicuota_iva ?? 21),
         subtotal:       Number(i.subtotal),
       })),
-      total: Number(ventaDetalle.total),
+      total: Number(venta.total),
     }
+    return { data, email: cli?.email ?? null }
   }
 
-  async function accionFacturaPDFVenta(accion: 'descargar' | 'imprimir') {
+  async function accionFacturaPDF(ventaId: string, accion: 'descargar' | 'imprimir') {
     setDescargandoPdfVenta(true)
     try {
-      const data = await buildFacturaPDFDataVenta()
-      if (!data) return
-      await generarFacturaPDF(data, accion)
+      const res = await buildFacturaPDFDataPorId(ventaId)
+      if (res) await generarFacturaPDF(res.data, accion)
     } catch (e: any) {
       toast.error(`Error al generar PDF: ${e.message}`)
     } finally {
       setDescargandoPdfVenta(false)
     }
   }
-  const descargarFacturaPDFVenta = () => accionFacturaPDFVenta('descargar')
+  const descargarFacturaPDFVenta = () => ventaDetalle?.id && accionFacturaPDF(ventaDetalle.id, 'descargar')
 
   // Envía la factura por email con el PDF adjunto (reusa el template factura_emitida)
-  const enviarFacturaEmailVenta = async () => {
-    if (!ventaDetalle?.cae) return
-    const sugerido = ventaDetalle.clientes?.email ?? ''
-    const email = (window.prompt('Enviar factura a:', sugerido) ?? '').trim()
-    if (!email) return
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.error('Email inválido'); return }
-    setEnviandoFacturaEmail(true)
+  async function enviarFacturaEmail(ventaId: string) {
     try {
-      const data = await buildFacturaPDFDataVenta()
-      if (!data) return
+      const res = await buildFacturaPDFDataPorId(ventaId)
+      if (!res) return
+      const email = (window.prompt('Enviar factura a:', res.email ?? '') ?? '').trim()
+      if (!email) return
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.error('Email inválido'); return }
+      setEnviandoFacturaEmail(true)
+      const { data } = res
       const { base64, filename } = await generarFacturaPDFBase64(data)
       const { error } = await supabase.functions.invoke('send-email', {
         body: {
@@ -4912,13 +4919,13 @@ export default function VentasPage() {
                   </button>
                   <div className="grid grid-cols-2 gap-2">
                     <button
-                      onClick={() => accionFacturaPDFVenta('imprimir')}
+                      onClick={() => ventaDetalle?.id && accionFacturaPDF(ventaDetalle.id, 'imprimir')}
                       disabled={descargandoPdfVenta}
                       className="flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
                       <Printer size={15} /> Imprimir
                     </button>
                     <button
-                      onClick={enviarFacturaEmailVenta}
+                      onClick={() => ventaDetalle?.id && enviarFacturaEmail(ventaDetalle.id)}
                       disabled={enviandoFacturaEmail}
                       className="flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
                       {enviandoFacturaEmail
@@ -6106,6 +6113,8 @@ export default function VentasPage() {
     {facturaModal && (
       <div className="fixed inset-0 bg-black/40 z-[60] flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+          {!facturaEmitida ? (
+          <>
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2">
               <span className="text-xl">🧾</span>
@@ -6158,7 +6167,7 @@ export default function VentasPage() {
           </div>
 
           <div className="px-5 pb-5 flex gap-2">
-            <button onClick={() => setFacturaModal(null)}
+            <button onClick={() => { setFacturaModal(null); setFacturaEmitida(null) }}
               className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
               Saltar
             </button>
@@ -6169,6 +6178,40 @@ export default function VentasPage() {
                 : <>🧾 Emitir Factura {facturaTipo}</>}
             </button>
           </div>
+          </>
+          ) : (
+          <>
+          <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">✅</span>
+              <h2 className="font-semibold text-gray-800 dark:text-gray-100">Factura {facturaEmitida.tipo} emitida</h2>
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">CAE {facturaEmitida.cae}</p>
+          </div>
+          <div className="p-5 space-y-2">
+            <button onClick={() => accionFacturaPDF(facturaEmitida.ventaId, 'descargar')} disabled={descargandoPdfVenta}
+              className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
+              {descargandoPdfVenta ? <><RefreshCw size={15} className="animate-spin" /> Generando PDF…</> : <><FileDown size={15} /> Descargar PDF</>}
+            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => accionFacturaPDF(facturaEmitida.ventaId, 'imprimir')} disabled={descargandoPdfVenta}
+                className="flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
+                <Printer size={15} /> Imprimir
+              </button>
+              <button onClick={() => enviarFacturaEmail(facturaEmitida.ventaId)} disabled={enviandoFacturaEmail}
+                className="flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
+                {enviandoFacturaEmail ? <><RefreshCw size={15} className="animate-spin" /> Enviando…</> : <><Send size={15} /> Enviar email</>}
+              </button>
+            </div>
+          </div>
+          <div className="px-5 pb-5">
+            <button onClick={() => { setFacturaModal(null); setFacturaEmitida(null) }}
+              className="w-full border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
+              Cerrar
+            </button>
+          </div>
+          </>
+          )}
         </div>
       </div>
     )}

@@ -52,6 +52,9 @@ export default function FacturacionPage() {
   const [emitiendo, setEmitiendo]              = useState(false)
   const [descargandoPdf, setDescargandoPdf]    = useState<string | null>(null)
   const [enviandoEmail, setEnviandoEmail]      = useState<string | null>(null)
+  // Modal "Enviar factura por email": precarga el correo del cliente (editable)
+  const [facturaEmailModal, setFacturaEmailModal] = useState<{ facturaId: string } | null>(null)
+  const [facturaEmailValue, setFacturaEmailValue] = useState('')
 
   // Arma el FacturaPDFData + email del cliente para una factura emitida (descargar/imprimir/email)
   async function buildFacturaPDFDataById(facturaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
@@ -104,15 +107,27 @@ export default function FacturacionPage() {
   }
   const descargarFacturaPDF = (facturaId: string) => accionFacturaPDF(facturaId, 'descargar')
 
-  async function enviarFacturaEmail(facturaId: string) {
+  // Abre el modal de envío por email precargando el correo del cliente de la factura (editable).
+  async function abrirEnviarFacturaEmail(facturaId: string) {
+    setFacturaEmailModal({ facturaId })
+    setFacturaEmailValue('')
+    try {
+      const { data } = await supabase.from('ventas')
+        .select('clientes(email)').eq('id', facturaId).single()
+      const em = (data as any)?.clientes?.email
+      if (em) setFacturaEmailValue(em)
+    } catch { /* si falla el prefill, el usuario igual puede tipear el correo */ }
+  }
+
+  async function enviarFacturaEmail(facturaId: string, email: string) {
+    email = email.trim()
+    if (!email) { toast.error('Ingresá un email'); return }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.error('Email inválido'); return }
     try {
       const res = await buildFacturaPDFDataById(facturaId)
       if (!res) return
-      const email = (window.prompt('Enviar factura a:', res.email ?? '') ?? '').trim()
-      if (!email) return
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.error('Email inválido'); return }
       setEnviandoEmail(facturaId)
-      const { data, email: _e } = res
+      const { data } = res
       const { base64, filename } = await generarFacturaPDFBase64(data)
       const { error } = await supabase.functions.invoke('send-email', {
         body: {
@@ -137,6 +152,7 @@ export default function FacturacionPage() {
         throw new Error(detalle || error.message || 'No se pudo enviar el email')
       }
       toast.success(`Factura enviada a ${email}`)
+      setFacturaEmailModal(null)
     } catch (e: any) {
       const msg = String(e?.message ?? '')
       toast.error(/api key/i.test(msg)
@@ -567,7 +583,7 @@ export default function FacturacionPage() {
                               <Printer size={14} />
                             </button>
                             <button
-                              onClick={() => enviarFacturaEmail(f.id)}
+                              onClick={() => abrirEnviarFacturaEmail(f.id)}
                               disabled={enviandoEmail === f.id}
                               title="Enviar por email"
                               className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-40"
@@ -864,6 +880,41 @@ export default function FacturacionPage() {
                 disabled={emitiendo || (tipoComprobante === 'A' && !ventaAFacturar.clientes?.cuit_receptor)}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
                 {emitiendo ? <><RefreshCw size={14} className="animate-spin" /> Emitiendo…</> : <><Send size={14} /> Emitir y obtener CAE</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: ENVIAR FACTURA POR EMAIL (correo del cliente precargado) ── */}
+      {facturaEmailModal && (
+        <div className="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Send size={18} className="text-accent" />
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100">Enviar factura por email</h2>
+              </div>
+              <button onClick={() => setFacturaEmailModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Destinatario</label>
+              <input
+                type="email" value={facturaEmailValue} autoFocus
+                onChange={e => setFacturaEmailValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && enviandoEmail !== facturaEmailModal.facturaId) enviarFacturaEmail(facturaEmailModal.facturaId, facturaEmailValue) }}
+                placeholder="email@cliente.com"
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              <p className="text-[11px] text-gray-400">Se adjunta el PDF de la factura.</p>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button onClick={() => setFacturaEmailModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
+                Cancelar
+              </button>
+              <button onClick={() => enviarFacturaEmail(facturaEmailModal.facturaId, facturaEmailValue)} disabled={enviandoEmail === facturaEmailModal.facturaId}
+                className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
+                {enviandoEmail === facturaEmailModal.facturaId ? <><RefreshCw size={15} className="animate-spin" /> Enviando…</> : <><Send size={15} /> Enviar</>}
               </button>
             </div>
           </div>

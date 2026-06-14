@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] deploy | v1.60.0 EN PROD — Facturación AFIP production-ready + cert propio + UX/bugfixes · `dev=main`
+
+**v1.60.0 a PROD (PR #197, `427a03c4`).** GO autorizó "pasemos todos a PRD". Aplicadas en PROD **antes** del merge (deploy-order de aditivas): **mig 210** (`afip_produccion`, los 4 tenants en false = homologación, cero impacto) + **EF `emitir-factura` v8** (sha idéntico a DEV). PR dev→main merged, release **v1.60.0** marcada latest, Vercel auto-deploy de producción desde `main`. `dev=main` (salvo el commit de doc de cierre). Contenido completo en la entrada de abajo (cert propio cableado, Factura C sin IVA, auto-facturada, acciones descargar/imprimir/email, fix 400 venta_items.descripcion, recuperación de chunk, ESC stack, Alertas WMS en básico). Suite **734**.
+
+**Acción pendiente de GO (no código):** para facturar en **producción real**, cargar cert de PRODUCCIÓN (issuer real, no "Test") + token AfipSDK prod en Config → Facturación y prender el toggle "Modo de emisión" → PRODUCCIÓN. Hoy todos en homologación.
+
 ## [2026-06-14] update | v1.60.0 DEV (cont.) — Facturación validada end-to-end + cert propio cableado + paquete de UX/bugfixes
 
 **Sesión larga sobre facturación: de "preparar el camino" a validarla emitiendo CAE real (homologación) desde la app.** Todo en DEV (sin deployar a PROD aún). Suite unit **734** · typecheck + build verdes. EF `emitir-factura` **v8**.

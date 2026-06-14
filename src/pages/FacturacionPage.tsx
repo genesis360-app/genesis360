@@ -55,9 +55,10 @@ export default function FacturacionPage() {
 
   // Arma el FacturaPDFData + email del cliente para una factura emitida (descargar/imprimir/email)
   async function buildFacturaPDFDataById(facturaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
-    const { data: venta } = await supabase.from('ventas')
-      .select('*, clientes(*), venta_items(descripcion, cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre))')
+    const { data: venta, error: vErr } = await supabase.from('ventas')
+      .select('*, clientes(*), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre))')
       .eq('id', facturaId).single()
+    if (vErr) throw new Error(vErr.message)
     if (!venta) throw new Error('Venta no encontrada')
 
     const { data: pv } = await supabase.from('puntos_venta_afip')

@@ -267,9 +267,25 @@ export async function generarFacturaPDF(
 ): Promise<void> {
   const doc = await construirFacturaPDFDoc(data)
   if (accion === 'imprimir') {
+    // window.open tras un await queda bloqueado por el popup-blocker (se pierde el
+    // gesto del usuario). Imprimimos vía un iframe oculto: con autoPrint() el visor
+    // de PDF dispara el diálogo de impresión al cargar.
     doc.autoPrint()
-    const url = doc.output('bloburl')
-    window.open(url as unknown as string, '_blank')
+    const url = doc.output('bloburl') as unknown as string
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    iframe.src = url
+    iframe.onload = () => {
+      try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch { /* el visor ya imprime por autoPrint */ }
+      // Limpiar el iframe tras un margen para no cortar el diálogo de impresión.
+      setTimeout(() => iframe.remove(), 60_000)
+    }
+    document.body.appendChild(iframe)
   } else {
     doc.save(nombreFacturaPDF(data))
   }

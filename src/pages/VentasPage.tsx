@@ -1430,6 +1430,11 @@ export default function VentasPage() {
       toast.success(`✅ Factura ${facturaTipo} emitida — CAE: ${data.cae}`, { duration: 8000 })
       // No cerramos: pasamos a la vista de acciones (descargar/imprimir/email)
       setFacturaEmitida({ ventaId: facturaModal.ventaId, tipo: facturaTipo, cae: data.cae })
+      // Sincronizar el detalle abierto (si es la misma venta) para reflejar CAE + estado
+      setVentaDetalle((d: any) => d && d.id === facturaModal.ventaId
+        ? { ...d, cae: data.cae, vencimiento_cae: data.vencimiento, numero_comprobante: data.numero,
+            tipo_comprobante: `Factura ${facturaTipo}`, estado: d.estado === 'despachada' ? 'facturada' : d.estado }
+        : d)
     } catch (e: any) {
       toast.error('Error al emitir: ' + (e.message ?? 'intente nuevamente'))
     } finally {
@@ -1465,9 +1470,10 @@ export default function VentasPage() {
   // Arma el FacturaPDFData + email del cliente para una venta facturada (por id).
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
-    const { data: venta } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, created_at, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor), venta_items(descripcion, cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre))')
+    const { data: venta, error: vErr } = await supabase.from('ventas')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, created_at, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre))')
       .eq('id', ventaId).single()
+    if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
     const { data: pv } = await supabase.from('puntos_venta_afip')
       .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
@@ -4982,12 +4988,27 @@ export default function VentasPage() {
                   </button>
                 )
               })()}
-              {ventaDetalle.estado === 'despachada' && (
-                <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'facturada' })}
-                  disabled={cambiarEstado.isPending}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
-                  Marcar como facturada
+              {/* Emitir comprobante AFIP si la venta despachada aún no tiene CAE (ej. se saltó el prompt) */}
+              {ventaDetalle.estado === 'despachada' && !ventaDetalle.cae && factHabilitada && (
+                <button onClick={() => triggerFacturaModal(ventaDetalle.id, ventaDetalle.numero, Number(ventaDetalle.total), ventaDetalle.clientes?.condicion_iva_receptor)}
+                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all flex items-center justify-center gap-2">
+                  <Receipt size={16} /> Emitir factura
                 </button>
+              )}
+              {ventaDetalle.estado === 'despachada' && (
+                factHabilitada && !ventaDetalle.cae ? (
+                  <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'facturada' })}
+                    disabled={cambiarEstado.isPending}
+                    className="w-full text-gray-500 dark:text-gray-400 font-medium py-1.5 text-xs hover:underline disabled:opacity-40">
+                    O marcar como facturada sin emitir comprobante
+                  </button>
+                ) : (
+                  <button onClick={() => cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'facturada' })}
+                    disabled={cambiarEstado.isPending}
+                    className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all">
+                    Marcar como facturada
+                  </button>
+                )
               )}
               {['despachada', 'facturada'].includes(ventaDetalle.estado) && (
                 <button onClick={() => abrirModalDevolucion(ventaDetalle)}

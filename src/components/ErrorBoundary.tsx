@@ -16,29 +16,43 @@ interface State {
   eventId: string | null
 }
 
+// Mismo flag que usa main.tsx para no recargar en bucle (se limpia al cargar OK).
+const CHUNK_RELOAD_KEY = 'chunk-reload-attempt'
+
+// Detecta fallos de carga de chunk lazy tras un deploy nuevo. Incluye el caso en que el
+// import dinámico resuelve a `undefined` y React.lazy lanza "reading 'default'".
+function looksLikeChunkError(error: Error): boolean {
+  const m = error?.message ?? ''
+  return (
+    error?.name === 'ChunkLoadError' ||
+    m.includes('Failed to fetch dynamically imported module') ||
+    m.includes('Importing a module script failed') ||
+    m.includes('dynamically imported module') ||
+    m.includes("reading 'default'")
+  )
+}
+
 export class ErrorBoundary extends Component<Props, State> {
   state: State = { hasError: false, isChunkError: false, errorMsg: '', componentStack: '', eventId: null }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    const isChunkError =
-      error.name === 'ChunkLoadError' ||
-      error.message.includes('Failed to fetch dynamically imported module') ||
-      error.message.includes('Importing a module script failed') ||
-      error.message.includes('dynamically imported module')
-    return { hasError: true, isChunkError, errorMsg: error.message }
+    return { hasError: true, isChunkError: looksLikeChunkError(error), errorMsg: error.message }
   }
 
   componentDidCatch(error: Error, info: any) {
     // Loguear para diagnóstico (visible en browser console → F12)
     console.error('[ErrorBoundary] Error capturado:', error.message, error.stack, info?.componentStack)
 
-    // Auto-reload en errores de chunk (deploy nuevo, chunk viejo) — no reportar, es esperado
-    if (
-      error.name === 'ChunkLoadError' ||
-      error.message.includes('Failed to fetch dynamically imported module')
-    ) {
-      window.location.reload()
-      return
+    // Auto-reload UNA vez en errores de chunk (deploy nuevo → chunk viejo en la pestaña).
+    // Guarda en sessionStorage para no entrar en bucle si el fallo es real/persistente.
+    if (looksLikeChunkError(error)) {
+      if (!sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
+        sessionStorage.setItem(CHUNK_RELOAD_KEY, '1')
+        window.location.reload()
+        return
+      }
+      // Ya recargamos y sigue fallando → no es un chunk viejo: mostrar el error real.
+      this.setState({ isChunkError: false })
     }
 
     // Reportar a Sentry con contexto del componente que crasheó

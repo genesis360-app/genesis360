@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] deploy | v1.60.1 EN PROD — Autocompletar email de factura + layout PDF · `dev=main`
+
+**v1.60.1 a PROD (PR #198, `39705d38`, release latest).** Solo frontend — **sin migraciones**. Mejoras de UX sobre la facturación AFIP (v1.60.0):
+
+- **Enviar factura por email → autocompleta el correo del cliente.** El botón "Enviar por email" antes usaba `window.prompt` (el prellenado dependía del navegador). Ahora abre un **modal propio** con el `clientes.email` de la venta **precargado y editable**. Aplica en **Ventas** (modal post-emisión + detalle/historial) **y** en el módulo **Facturación**.
+- **PDF de factura → encabezado al margen derecho.** El bloque "FACTURA / N° / Fecha" estaba pegado al recuadro central del tipo de comprobante; ahora está **alineado al margen derecho** (`facturasPDF.ts`, `{ align: 'right' }` en `W - 14`).
+
+**Contexto:** GO reportó que los botones descargar/imprimir/email "no hacían nada". Diagnóstico: el camino (`buildFacturaPDFData…` → `construirFacturaPDFDoc`) estaba sano y las columnas existían (migs 060/076); el síntoma "no pasa nada" era el bundle viejo cacheado por el SW (el fix real ya estaba en v1.60.0). Tras confirmar que ya funcionaban, GO pidió estas dos mejoras. typecheck + build verdes, `facturacion.test.ts` 28/28.
+
 ## [2026-06-14] deploy | v1.60.0 EN PROD — Facturación AFIP production-ready + cert propio + UX/bugfixes · `dev=main`
 
 **v1.60.0 a PROD (PR #197, `427a03c4`).** GO autorizó "pasemos todos a PRD". Aplicadas en PROD **antes** del merge (deploy-order de aditivas): **mig 210** (`afip_produccion`, los 4 tenants en false = homologación, cero impacto) + **EF `emitir-factura` v8** (sha idéntico a DEV). PR dev→main merged, release **v1.60.0** marcada latest, Vercel auto-deploy de producción desde `main`. `dev=main` (salvo el commit de doc de cierre). Contenido completo en la entrada de abajo (cert propio cableado, Factura C sin IVA, auto-facturada, acciones descargar/imprimir/email, fix 400 venta_items.descripcion, recuperación de chunk, ESC stack, Alertas WMS en básico). Suite **734**.

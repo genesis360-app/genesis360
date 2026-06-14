@@ -4,6 +4,7 @@ import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, Cale
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { Link, useNavigate } from 'react-router-dom'
 import { capacidadCrearOC } from '@/lib/comprasPermisos'
 import { formatDistanceToNow } from 'date-fns'
@@ -16,6 +17,7 @@ const RESERVAS_DIAS_LIMITE = 3
 export default function AlertasPage() {
   const { tenant, user } = useAuthStore()
   const { sucursalId, applyFilter } = useSucursalFilter()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const qc = useQueryClient()
   const navigate = useNavigate()
   const puedeGenerarOC = capacidadCrearOC(user?.rol) !== 'ninguna'  // CO7/A3
@@ -143,7 +145,9 @@ export default function AlertasPage() {
       if (error) throw error
       return data ?? []
     },
-    enabled: !!tenant,
+    // En modo básico el stock no usa ubicaciones (ubicacion_id siempre NULL) → la alerta
+    // marcaría TODO como "sin ubicación" = ruido. Solo aplica en avanzado (WMS).
+    enabled: !!tenant && modoAvanzado,
   })
 
   const { data: lineasSinProveedor = [], isLoading: loadingSinProv } = useQuery({
@@ -160,7 +164,8 @@ export default function AlertasPage() {
       if (error) throw error
       return data ?? []
     },
-    enabled: !!tenant,
+    // Trazabilidad de proveedor por LPN es de WMS (avanzado); en básico es ruido.
+    enabled: !!tenant && modoAvanzado,
   })
 
   const hoyStr = new Date().toISOString().split('T')[0]
@@ -585,8 +590,8 @@ export default function AlertasPage() {
             </div>
           )}
 
-          {/* Inventario sin ubicación */}
-          {lineasSinUbicacion.length > 0 && (
+          {/* Inventario sin ubicación (solo avanzado/WMS) */}
+          {modoAvanzado && lineasSinUbicacion.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
                 <MapPin size={14} />
@@ -621,8 +626,8 @@ export default function AlertasPage() {
             </div>
           )}
 
-          {/* Inventario sin proveedor */}
-          {lineasSinProveedor.length > 0 && (
+          {/* Inventario sin proveedor (solo avanzado/WMS) */}
+          {modoAvanzado && lineasSinProveedor.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider flex items-center gap-2">
                 <Truck size={14} />

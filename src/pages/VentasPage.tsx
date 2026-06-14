@@ -824,6 +824,7 @@ export default function VentasPage() {
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
   useModalKeyboard({ isOpen: ticketVenta !== null, onClose: () => setTicketVenta(null) })
   useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
+  useModalKeyboard({ isOpen: facturaModal !== null, onClose: () => { setFacturaModal(null); setFacturaEmitida(null) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
 

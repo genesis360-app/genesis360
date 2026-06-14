@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.60.2 — Menú "Acciones" en toolbars + bloqueo Factura A sin CUIT (PROD ✅, PR #199)
+
+**Solo frontend, sin migraciones.** (1) **`ActionMenu`** — componente reutilizable que colapsa las acciones secundarias del header en un botón "⋯ Acciones" (abre con click, no hover → arregla el dropdown de Exportar en mobile/touch; descongestiona el toolbar). Aplicado en **Productos** y **Clientes** (piloto); la acción principal queda visible aparte. (2) **Bloqueo de Factura A** en el POS cuando la venta no tiene cliente con CUIT (Responsable Inscripto). (3) **Mensaje de error real al emitir** (POS/NC/Facturación) en vez de "Edge Function returned a non-2xx status code".
+
+---
+
 ## v1.60.1 — Autocompletar email de factura + layout PDF (PROD ✅, PR #198)
 
 **Mejoras de UX sobre la facturación (solo frontend, sin migraciones).** (1) **Enviar factura por email**: reemplaza el `window.prompt` por un modal con el correo del cliente (`clientes.email`) **precargado y editable**, en Ventas (modal post-emisión + detalle/historial) y en el módulo Facturación. (2) **PDF de factura**: el bloque "FACTURA / N° / Fecha" pasa a estar **alineado al margen derecho** (antes pegado al recuadro central del tipo de comprobante).

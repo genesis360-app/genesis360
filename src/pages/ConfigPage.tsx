@@ -600,6 +600,9 @@ export default function ConfigPage() {
   const [bizUmbralB,         setBizUmbralB]         = useState<string>(String((tenant as any)?.umbral_factura_b ?? '68305.16'))
   const [bizAfipToken,       setBizAfipToken]       = useState<string>((tenant as any)?.afipsdk_token ?? '')
   const [showAfipToken,      setShowAfipToken]      = useState(false)
+  // Logo del negocio (sale en factura + presupuesto) — bucket `logos`
+  const [bizLogoUrl,         setBizLogoUrl]         = useState<string>((tenant as any)?.logo_url ?? '')
+  const [uploadingLogo,      setUploadingLogo]      = useState(false)
   // Modo de emisión: homologación (sandbox) vs producción (CAE fiscal real)
   const [bizAfipProduccion,  setBizAfipProduccion]  = useState<boolean>((tenant as any)?.afip_produccion ?? false)
   const [showProdConfirm,    setShowProdConfirm]    = useState(false)
@@ -775,6 +778,49 @@ export default function ConfigPage() {
 
   // Guardar solo los datos fiscales (sin pisar otros campos del state)
   const [savingFact, setSavingFact] = useState(false)
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !tenant) return
+    if (!file.type.startsWith('image/')) { toast.error('Subí una imagen (PNG/JPG)'); return }
+    if (file.size > 2 * 1024 * 1024) { toast.error('La imagen no puede superar los 2 MB'); return }
+    setUploadingLogo(true)
+    try {
+      const ext = file.name.split('.').pop()?.toLowerCase() ?? 'png'
+      const path = `${tenant.id}/logo.${ext}`
+      const { error: upErr } = await supabase.storage.from('logos').upload(path, file, { upsert: true })
+      if (upErr) throw upErr
+      const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path)
+      const publicUrl = urlData.publicUrl + `?t=${Date.now()}` // cache-bust
+      const { data, error: dbErr } = await supabase.from('tenants')
+        .update({ logo_url: publicUrl }).eq('id', tenant.id).select().single()
+      if (dbErr || !data) throw (dbErr ?? new Error('No se pudo guardar'))
+      setBizLogoUrl(publicUrl)
+      setTenant(data)
+      toast.success('Logo actualizado')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al subir el logo')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  const handleQuitarLogo = async () => {
+    if (!tenant) return
+    setUploadingLogo(true)
+    try {
+      const { data, error } = await supabase.from('tenants')
+        .update({ logo_url: null }).eq('id', tenant.id).select().single()
+      if (error || !data) throw (error ?? new Error('No se pudo quitar'))
+      setBizLogoUrl('')
+      setTenant(data)
+      toast.success('Logo quitado')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al quitar el logo')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
   const handleSaveFacturacion = async () => {
     setSavingFact(true)
     const { data, error } = await supabase.from('tenants').update({
@@ -2378,6 +2424,30 @@ export default function ConfigPage() {
             <p className="text-xs text-gray-400 dark:text-gray-500">
               Completá los datos fiscales del negocio para emitir comprobantes electrónicos A, B y C.
             </p>
+            {/* Logo del negocio — sale en la factura y el presupuesto */}
+            <div className="flex items-center gap-4 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
+              <div className="w-20 h-20 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 flex items-center justify-center overflow-hidden shrink-0">
+                {bizLogoUrl
+                  ? <img src={bizLogoUrl} alt="Logo" className="max-w-full max-h-full object-contain" />
+                  : <span className="text-[10px] text-gray-400 text-center px-1">Sin logo</span>}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Logo del negocio</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Sale en la factura y el presupuesto. PNG/JPG, máx. 2 MB.</p>
+                <div className="flex gap-2">
+                  <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${uploadingLogo ? 'opacity-60 pointer-events-none' : ''} border border-accent text-accent hover:bg-accent/10`}>
+                    {uploadingLogo ? 'Subiendo…' : (bizLogoUrl ? 'Cambiar logo' : 'Subir logo')}
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLogoChange} disabled={uploadingLogo} />
+                  </label>
+                  {bizLogoUrl && (
+                    <button type="button" onClick={handleQuitarLogo} disabled={uploadingLogo}
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-60">
+                      Quitar
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CUIT</label>

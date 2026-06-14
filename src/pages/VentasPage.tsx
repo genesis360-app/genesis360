@@ -1505,7 +1505,7 @@ export default function VentasPage() {
       .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
       .order('numero').limit(1).maybeSingle()
     const { data: cfgTenant } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor')
+      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url')
       .eq('id', tenant!.id).single()
     const cli = (venta as any).clientes
     const data: FacturaPDFData = {
@@ -1519,6 +1519,7 @@ export default function VentasPage() {
       emisor_cuit:         cfgTenant?.cuit ?? '',
       emisor_domicilio:    cfgTenant?.domicilio_fiscal,
       emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
+      emisor_logo_url:     (cfgTenant as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),

@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] deploy | v1.60.2 EN PROD — Menú "Acciones" en toolbars + bloqueo Factura A sin CUIT · `dev=main`
+
+**v1.60.2 a PROD (PR #199, `82db1900`, release latest).** Solo frontend — **sin migraciones**.
+
+- **UX `ActionMenu`** (`src/components/ActionMenu.tsx`): componente reutilizable que colapsa las acciones **secundarias** del header en un solo botón **"⋯ Acciones"** (abre con **click**, cierra con click-afuera/ESC, accesible, en mobile queda solo el ícono ⋯). Descongestiona el toolbar en mobile (GO reportó que los botones se salían de pantalla) y **arregla un bug real**: el menú "Exportar" usaba `group-hover` → en touch no se podía abrir. **Aplicado en Productos y Clientes (piloto)**; la acción principal ("+ Nuevo") queda visible aparte. Pendiente replicar al resto (Proveedores tiene el mismo bug de hover-dropdown, Ventas/Caja/Gastos/Inventario/Envíos/etc.).
+- **Facturación — bloqueo de Factura A sin CUIT** en el POS: el botón "Factura A" se deshabilita cuando la venta no tiene cliente con CUIT (Responsable Inscripto) + aviso; si quedaba seleccionada, degrada a B. (La EF ya lo rechazaba con `Para Factura A se requiere CUIT del cliente`, pero ahora no se llega a intentar.)
+- **Mensaje de error real al emitir** (POS + NC + módulo Facturación): se lee `error.context.json()` y se muestra el motivo de la EF en vez de "Edge Function returned a non-2xx status code". (GO reportó ese genérico al intentar Factura A a Consumidor Final.)
+
+typecheck + build verdes.
+
 ## [2026-06-14] deploy | v1.60.1 EN PROD — Autocompletar email de factura + layout PDF · `dev=main`
 
 **v1.60.1 a PROD (PR #198, `39705d38`, release latest).** Solo frontend — **sin migraciones**. Mejoras de UX sobre la facturación AFIP (v1.60.0):

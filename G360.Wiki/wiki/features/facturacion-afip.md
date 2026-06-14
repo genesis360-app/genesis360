@@ -154,6 +154,8 @@ gastos.conciliado_iva BOOLEAN
 
 > **v1.60.1** — UX: el envío por email abre un **modal con el correo del cliente precargado y editable** (busca `clientes.email` de la venta) en vez del prompt del navegador, tanto en **Ventas** (modal post-emisión + detalle/historial) como en el módulo **Facturación**. Y en el **PDF**, el bloque "FACTURA / N° / Fecha" quedó **alineado al margen derecho** (`facturasPDF.ts`, `{ align: 'right' }`).
 
+> **v1.60.2** — **Bloqueo de Factura A sin CUIT en el POS:** el botón "Factura A" se deshabilita cuando la venta no tiene cliente con CUIT (Responsable Inscripto) + aviso; si quedaba seleccionada, degrada a B. La EF ya lo rechazaba (`Para Factura A se requiere CUIT del cliente`, [emitir-factura/index.ts:135](../../../supabase/functions/emitir-factura/index.ts)), pero ahora no se llega a intentar. Además, **el error de emisión muestra el motivo real** (lee `error.context.json()` en POS/NC/Facturación) en vez de "Edge Function returned a non-2xx status code". Recordatorio AFIP: Factura A es solo entre Responsables Inscriptos (receptor con CUIT); a Consumidor Final solo B (o C si el emisor es Monotributista). `CbteFch` es **date-only** → el comprobante no lleva hora.
+
 ---
 
 ## Modo de emisión: homologación vs producción (v1.60.0)

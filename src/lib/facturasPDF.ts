@@ -19,6 +19,7 @@ export interface FacturaPDFData {
   emisor_cuit: string             // sin guiones: "20409378472"
   emisor_domicilio?: string
   emisor_condicion_iva: string    // "Responsable Inscripto" | "Monotributo" | etc.
+  emisor_logo_url?: string | null // logo del negocio (bucket `logos`), se embebe arriba a la izq.
 
   // Receptor (cliente)
   receptor_nombre: string
@@ -84,12 +85,23 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   })
   const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 200, margin: 1 })
 
+  // ── Logo del negocio (arriba a la izquierda, opcional) ───────────────────────
+  const logo = data.emisor_logo_url ? await cargarLogo(data.emisor_logo_url) : null
+  let emX = 14  // x de inicio del bloque emisor (se corre a la derecha si hay logo)
+  if (logo) {
+    const LOGO_MAX_W = 26, LOGO_MAX_H = 20
+    const ratio = Math.min(LOGO_MAX_W / logo.w, LOGO_MAX_H / logo.h)
+    const lw = logo.w * ratio, lh = logo.h * ratio
+    doc.addImage(logo.dataUrl, 'PNG', 14, 9, lw, lh)
+    emX = 14 + lw + 4
+  }
+
   // ── Caja central — tipo de comprobante ──────────────────────────────────────
   // Se dibuja primero para conocer su geometría (la columna izquierda hace wrap
   // para no superponerse con él).
   const boxW = 26; const boxX = COL - boxW / 2; const boxY = 10; const boxH = 24
-  // Ancho útil de la columna izquierda: hasta ~3mm antes del recuadro central.
-  const LEFT_W = boxX - 14 - 3
+  // Ancho útil de la columna izquierda: desde el bloque emisor hasta ~3mm antes del recuadro.
+  const LEFT_W = boxX - emX - 3
   doc.setDrawColor(0).setLineWidth(0.5)
   doc.rect(boxX, boxY, boxW, boxH)
   doc.setFontSize(26).setFont('helvetica', 'bold').setTextColor(0)
@@ -104,16 +116,16 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   let y = 15
   doc.setFontSize(14).setFont('helvetica', 'bold').setTextColor(0)
   for (const ln of (doc.splitTextToSize(data.emisor_razon_social, LEFT_W) as string[])) {
-    doc.text(ln, 14, y); y += 6
+    doc.text(ln, emX, y); y += 6
   }
   doc.setFontSize(9).setFont('helvetica', 'normal').setTextColor(80)
-  doc.text(`CUIT: ${formatCuit(data.emisor_cuit)}`, 14, y); y += 5
+  doc.text(`CUIT: ${formatCuit(data.emisor_cuit)}`, emX, y); y += 5
   if (data.emisor_domicilio) {
     for (const ln of (doc.splitTextToSize(data.emisor_domicilio, LEFT_W) as string[])) {
-      doc.text(ln, 14, y); y += 5
+      doc.text(ln, emX, y); y += 5
     }
   }
-  doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, 14, y); y += 5
+  doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
 
   // ── Encabezado derecho — datos del comprobante ───────────────────────────────
   // Alineado al margen derecho (no pegado al recuadro central del tipo de comprobante).
@@ -258,7 +270,15 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
 function nombreFacturaPDF(data: FacturaPDFData): string {
   const pvPad = String(data.punto_venta).padStart(4, '0')
   const ncPad = String(data.numero_comprobante).padStart(8, '0')
-  return `Factura_${data.tipo_comprobante}_${pvPad}_${ncPad}.pdf`
+  const cli = sanitizarNombreArchivo(data.receptor_nombre)
+  return `Factura_${data.tipo_comprobante}_${pvPad}-${ncPad}${cli ? '_' + cli : ''}.pdf`
+}
+
+/** Saca tildes/símbolos y limita el largo para usar el nombre del cliente en el filename. */
+function sanitizarNombreArchivo(s?: string): string {
+  if (!s) return ''
+  return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40)
 }
 
 /** Genera el PDF y lo descarga (default) o lo abre listo para imprimir. */
@@ -302,6 +322,33 @@ export async function generarFacturaPDFBase64(
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Carga el logo del negocio desde su URL pública y lo pasa a dataURL PNG (vía canvas)
+ * para embeberlo en el PDF. Devuelve también el tamaño natural (para conservar aspecto).
+ * Si falla (URL caída, CORS, etc.) devuelve null y el PDF se genera sin logo.
+ */
+async function cargarLogo(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+  try {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve()
+      img.onerror = () => reject(new Error('logo load error'))
+      img.src = url
+    })
+    if (!img.naturalWidth || !img.naturalHeight) return null
+    const canvas = document.createElement('canvas')
+    canvas.width = img.naturalWidth
+    canvas.height = img.naturalHeight
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return null
+    ctx.drawImage(img, 0, 0)
+    return { dataUrl: canvas.toDataURL('image/png'), w: img.naturalWidth, h: img.naturalHeight }
+  } catch {
+    return null
+  }
+}
 
 function fmtPesos(v: number): string {
   return `$${v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`

@@ -79,6 +79,7 @@ export default function FacturacionPage() {
       emisor_cuit:       (config as any)?.cuit ?? '',
       emisor_domicilio:  (tenant as any)?.domicilio_fiscal,
       emisor_condicion_iva: (config as any)?.condicion_iva_emisor ?? 'responsable_inscripto',
+      emisor_logo_url:   (config as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
       receptor_nombre:   venta.clientes?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni: venta.clientes?.cuit_receptor ?? venta.clientes?.dni,
       receptor_condicion_iva: normalizarCondIVA(venta.clientes?.condicion_iva_receptor),
@@ -168,7 +169,7 @@ export default function FacturacionPage() {
     queryKey: ['facturacion-config', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('tenants')
-        .select('facturacion_habilitada, condicion_iva_emisor, razon_social_fiscal, cuit, umbral_factura_b')
+        .select('facturacion_habilitada, condicion_iva_emisor, razon_social_fiscal, cuit, umbral_factura_b, logo_url')
         .eq('id', tenant!.id).single()
       return data
     },

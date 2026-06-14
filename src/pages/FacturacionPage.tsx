@@ -3,14 +3,14 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Receipt, BarChart2, BookOpen, Scale, Plus, Send, CheckCircle,
   AlertTriangle, Download, X, ChevronDown, Filter, RefreshCw,
-  FileText, ExternalLink, Info, Building, Calendar,
+  FileText, ExternalLink, Info, Building, Calendar, Printer,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
-import { generarFacturaPDF, normalizarCondIVA } from '@/lib/facturasPDF'
+import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
 import toast from 'react-hot-toast'
 
 type Tab = 'panel' | 'emitir' | 'libros' | 'liquidacion'
@@ -51,46 +51,99 @@ export default function FacturacionPage() {
   const [puntoVenta, setPuntoVenta]            = useState(1)
   const [emitiendo, setEmitiendo]              = useState(false)
   const [descargandoPdf, setDescargandoPdf]    = useState<string | null>(null)
+  const [enviandoEmail, setEnviandoEmail]      = useState<string | null>(null)
 
-  async function descargarFacturaPDF(facturaId: string) {
+  // Arma el FacturaPDFData + email del cliente para una factura emitida (descargar/imprimir/email)
+  async function buildFacturaPDFDataById(facturaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
+    const { data: venta, error: vErr } = await supabase.from('ventas')
+      .select('*, clientes(*), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre))')
+      .eq('id', facturaId).single()
+    if (vErr) throw new Error(vErr.message)
+    if (!venta) throw new Error('Venta no encontrada')
+
+    const { data: pv } = await supabase.from('puntos_venta_afip')
+      .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
+      .order('numero').limit(1).maybeSingle()
+
+    const data: FacturaPDFData = {
+      tipo_comprobante:  (venta.tipo_comprobante ?? 'B').replace(/^Factura\s+/i, ''),
+      numero_comprobante: venta.numero_comprobante ?? venta.numero,
+      punto_venta:       pv?.numero ?? 1,
+      fecha:             venta.created_at,
+      cae:               venta.cae,
+      vencimiento_cae:   venta.vencimiento_cae ?? '',
+      emisor_razon_social: (config as any)?.razon_social_fiscal ?? tenant?.nombre ?? '',
+      emisor_cuit:       (config as any)?.cuit ?? '',
+      emisor_domicilio:  (tenant as any)?.domicilio_fiscal,
+      emisor_condicion_iva: (config as any)?.condicion_iva_emisor ?? 'responsable_inscripto',
+      receptor_nombre:   venta.clientes?.nombre ?? 'Consumidor Final',
+      receptor_cuit_dni: venta.clientes?.cuit_receptor ?? venta.clientes?.dni,
+      receptor_condicion_iva: normalizarCondIVA(venta.clientes?.condicion_iva_receptor),
+      items: (venta.venta_items ?? []).map((i: any) => ({
+        descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
+        cantidad:       Number(i.cantidad),
+        precio_unitario: Number(i.precio_unitario),
+        alicuota_iva:   Number(i.alicuota_iva ?? 21),
+        subtotal:       Number(i.subtotal),
+      })),
+      total: Number(venta.total),
+    }
+    return { data, email: venta.clientes?.email ?? null }
+  }
+
+  async function accionFacturaPDF(facturaId: string, accion: 'descargar' | 'imprimir') {
     setDescargandoPdf(facturaId)
     try {
-      const { data: venta } = await supabase.from('ventas')
-        .select('*, clientes(*), venta_items(descripcion, cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre))')
-        .eq('id', facturaId).single()
-      if (!venta) throw new Error('Venta no encontrada')
-
-      const { data: pv } = await supabase.from('puntos_venta_afip')
-        .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
-        .order('numero').limit(1).maybeSingle()
-
-      await generarFacturaPDF({
-        tipo_comprobante:  venta.tipo_comprobante ?? 'B',
-        numero_comprobante: venta.numero_comprobante ?? venta.numero,
-        punto_venta:       pv?.numero ?? 1,
-        fecha:             venta.created_at,
-        cae:               venta.cae,
-        vencimiento_cae:   venta.vencimiento_cae ?? '',
-        emisor_razon_social: (config as any)?.razon_social_fiscal ?? tenant?.nombre ?? '',
-        emisor_cuit:       (config as any)?.cuit ?? '',
-        emisor_domicilio:  (tenant as any)?.domicilio_fiscal,
-        emisor_condicion_iva: (config as any)?.condicion_iva_emisor ?? 'responsable_inscripto',
-        receptor_nombre:   venta.clientes?.nombre ?? 'Consumidor Final',
-        receptor_cuit_dni: venta.clientes?.cuit_receptor ?? venta.clientes?.dni,
-        receptor_condicion_iva: normalizarCondIVA(venta.clientes?.condicion_iva_receptor),
-        items: (venta.venta_items ?? []).map((i: any) => ({
-          descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
-          cantidad:       Number(i.cantidad),
-          precio_unitario: Number(i.precio_unitario),
-          alicuota_iva:   Number(i.alicuota_iva ?? 21),
-          subtotal:       Number(i.subtotal),
-        })),
-        total: Number(venta.total),
-      })
+      const res = await buildFacturaPDFDataById(facturaId)
+      if (res) await generarFacturaPDF(res.data, accion)
     } catch (e: any) {
       toast.error(`Error al generar PDF: ${e.message}`)
     } finally {
       setDescargandoPdf(null)
+    }
+  }
+  const descargarFacturaPDF = (facturaId: string) => accionFacturaPDF(facturaId, 'descargar')
+
+  async function enviarFacturaEmail(facturaId: string) {
+    try {
+      const res = await buildFacturaPDFDataById(facturaId)
+      if (!res) return
+      const email = (window.prompt('Enviar factura a:', res.email ?? '') ?? '').trim()
+      if (!email) return
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.error('Email inválido'); return }
+      setEnviandoEmail(facturaId)
+      const { data, email: _e } = res
+      const { base64, filename } = await generarFacturaPDFBase64(data)
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          type: 'factura_emitida',
+          to: email,
+          data: {
+            cliente_nombre: data.receptor_nombre,
+            negocio: tenant!.nombre,
+            tipo_comprobante: `Factura ${data.tipo_comprobante}`,
+            numero_comprobante: data.numero_comprobante,
+            cae: data.cae,
+            vencimiento_cae: data.vencimiento_cae,
+            items: data.items.map(it => ({ nombre: it.descripcion, cantidad: it.cantidad, precio_unitario: it.precio_unitario, subtotal: it.subtotal })),
+            total: data.total,
+          },
+          attachments: [{ filename, content: base64 }],
+        },
+      })
+      if (error) {
+        let detalle = ''
+        try { const body = await (error as any).context?.json?.(); if (body?.error) detalle = String(body.error) } catch { /* */ }
+        throw new Error(detalle || error.message || 'No se pudo enviar el email')
+      }
+      toast.success(`Factura enviada a ${email}`)
+    } catch (e: any) {
+      const msg = String(e?.message ?? '')
+      toast.error(/api key/i.test(msg)
+        ? 'Resend rechazó la API key (revisá el secret RESEND_API_KEY en Supabase).'
+        : (msg || 'No se pudo enviar el email'), { duration: 8000 })
+    } finally {
+      setEnviandoEmail(null)
     }
   }
 
@@ -494,16 +547,36 @@ export default function FacturacionPage() {
                         <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{formatMoneda(Number(f.total ?? 0))}</td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-500 dark:text-gray-400">{f.cae?.slice(0, 12)}…</td>
                         <td className="px-4 py-3">
-                          <button
-                            onClick={() => descargarFacturaPDF(f.id)}
-                            disabled={descargandoPdf === f.id}
-                            title="Descargar PDF"
-                            className="text-accent hover:text-accent/80 disabled:opacity-40"
-                          >
-                            {descargandoPdf === f.id
-                              ? <RefreshCw size={14} className="animate-spin" />
-                              : <Download size={14} />}
-                          </button>
+                          <div className="flex items-center gap-2.5">
+                            <button
+                              onClick={() => descargarFacturaPDF(f.id)}
+                              disabled={descargandoPdf === f.id}
+                              title="Descargar PDF"
+                              className="text-accent hover:text-accent/80 disabled:opacity-40"
+                            >
+                              {descargandoPdf === f.id
+                                ? <RefreshCw size={14} className="animate-spin" />
+                                : <Download size={14} />}
+                            </button>
+                            <button
+                              onClick={() => accionFacturaPDF(f.id, 'imprimir')}
+                              disabled={descargandoPdf === f.id}
+                              title="Imprimir"
+                              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-40"
+                            >
+                              <Printer size={14} />
+                            </button>
+                            <button
+                              onClick={() => enviarFacturaEmail(f.id)}
+                              disabled={enviandoEmail === f.id}
+                              title="Enviar por email"
+                              className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 disabled:opacity-40"
+                            >
+                              {enviandoEmail === f.id
+                                ? <RefreshCw size={14} className="animate-spin" />
+                                : <Send size={14} />}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

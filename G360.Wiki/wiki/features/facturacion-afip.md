@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-05
+updated: 2026-06-13
 ---
 
 # Facturación Electrónica AFIP
@@ -101,6 +101,7 @@ tenants:
   domicilio_fiscal TEXT
   umbral_factura_b DECIMAL
   afipsdk_token TEXT             -- oculto en UI
+  afip_produccion BOOLEAN        -- false=homologación / true=producción (mig 210)
 ```
 
 **Puntos de venta AFIP:** CRUD colapsable → `puntos_venta_afip(id, sucursal_id, numero, nombre, activo)`
@@ -140,17 +141,113 @@ gastos.conciliado_iva BOOLEAN
 | Config + datos maestros | Toggle, CUIT, condición IVA, umbral, puntos de venta | ✅ PROD v1.3.0 |
 | Emisión CAE | EF `emitir-factura` + prompt al despachar | ✅ PROD v1.3.0 |
 | PDF con QR AFIP | `facturasPDF.ts` + RG 4291 | ✅ PROD v1.5.0 |
-| Notas de Crédito electrónicas | NC en devoluciones | 🔵 Pendiente |
-| Envío automático por email | Al emitir factura | 🔵 Pendiente |
+| Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
+| Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
+| Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ DEV v1.60.0 |
+| Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ DEV v1.60.0 |
+| Factura C sin IVA (Monotributista) | `calcularImportes` (ImpIVA 0, sin array Iva) + PDF sin columnas IVA | ✅ DEV v1.60.0 |
+| Auto-facturada al emitir | venta `despachada` → `facturada` al obtener CAE | ✅ DEV v1.60.0 |
+| Acciones descargar / imprimir / email | POS post-emisión + detalle + historial; imprimir vía iframe; email con PDF adjunto | ✅ DEV v1.60.0 |
+| Emitir desde el detalle | botón "Emitir factura" si la venta despachada no tiene CAE | ✅ DEV v1.60.0 |
+| Tests de la lógica pura | `facturacionLogic.ts` + 28 unit tests + e2e mutante | ✅ DEV v1.60.0 |
+
+---
+
+## Modo de emisión: homologación vs producción (v1.60.0)
+
+El módulo SIEMPRE operó contra **homologación** (sandbox de AFIP — los CAE no tienen
+valor fiscal). El pase a **producción** (CAE fiscal real) ahora es un interruptor
+**por-tenant**, no global:
+
+- **`tenants.afip_produccion BOOLEAN DEFAULT false`** (mig 210). La EF lo lee como
+  fuente de verdad: `isProduction = !masterKill && tenant.afip_produccion === true`.
+- **`AFIP_FORCE_HOMOLOGACION=true`** (env var de la EF) = freno de emergencia GLOBAL
+  que fuerza homologación para todos. Nunca prende producción.
+- **UI:** Config → Facturación → banda "Modo de emisión" (DUEÑO). Pasar a producción
+  exige CUIT + Token AfipSDK guardados y una confirmación explícita (checkbox de
+  reconocimiento de que se emiten comprobantes fiscales reales). Volver a homologación
+  es directo (seguro).
+- **Por qué por-tenant y no la env var global anterior (`AFIP_PRODUCTION`):** prenderla
+  globalmente pasaba a TODOS los tenants con facturación habilitada a emitir real de
+  golpe. El flag por-tenant permite habilitar producción **un cliente a la vez**.
+
+### Consistencia ImpTotal (anti error AFIP 10048)
+
+La EF arma `ImpTotal = ImpNeto + ImpIVA` (no `ventas.total`). Si confiara en
+`ventas.total` y este difiriera por redondeo de centavos o por un descuento/recargo
+global no prorrateado en los ítems, AFIP rechaza con error 10048 ("ImpTotal no es
+igual a la suma…"). Si hay diferencia > $0.50 se loguea un warning para investigar.
+
+---
+
+## Runbook — onboarding AFIP (homologación → producción)
+
+Modelo = **AfipSDK cloud + certificado propio del tenant**. El tenant genera su
+certificado (en AFIP/ARCA o con el asistente de AfipSDK), lo **sube en Config →
+Facturación → Certificados AFIP**, y la EF lo lee del bucket y se lo pasa a AfipSDK por
+constructor (`cert`/`key`). AfipSDK resuelve la firma WSAA en su nube (por eso funciona
+en Deno Edge). El `access_token` identifica la cuenta de AfipSDK. Verificado el
+2026-06-13 con un cert de homologación real (CUIT 23-32031506-9 → CAE C #1).
+
+**Datos fiscales** (Config → Facturación): CUIT, condición IVA emisor (Monotributista→C,
+RI→A/B), razón social, domicilio, **Token AfipSDK**, ≥1 **Punto de venta** que coincida
+con AFIP. + subir **Certificado (.crt)** y **Clave privada (.key)** → debe quedar ✅ Activo.
+
+**Probar en homologación (sin valor fiscal):** cert de homologación + `afip_produccion=false`
+(banda "Modo de emisión" en HOMOLOGACIÓN). Vender → "¿Facturar ahora?" → emitir → CAE de
+prueba. El log de la EF muestra `[homologación]`.
+
+**Pasar a producción (CAE fiscal real):**
+1. **CUIT activo** habilitado para WS `wsfe` en AFIP/ARCA.
+2. **Certificado de PRODUCCIÓN** (issuer "AC Raíz/Computadores de la AFIP", no "Test")
+   generado en AFIP + delegado en **Administrador de Relaciones** al servicio
+   Facturación Electrónica → subirlo en Config (reemplaza el de homologación).
+3. **Token AfipSDK de producción** (plan pago; homologación es gratis).
+4. Banda **Modo de emisión** → **PRODUCCIÓN** (confirmar checkbox).
+5. **Smoke real:** emitir un comprobante de monto chico → verificar CAE en el PDF y en
+   "Mis Comprobantes" de AFIP. El log de la EF muestra `[PRODUCCIÓN]`.
+
+---
+
+## Decisión técnica: modelo de integración con AFIP
+
+**Modelo adoptado = AfipSDK cloud + certificado propio del tenant (híbrido).** Es lo
+mejor de los dos mundos y responde al comentario "usá afip.js con tu .key/.crt":
+
+- Cada tenant **genera su propio certificado** (en AFIP/ARCA o con el asistente de
+  AfipSDK) y lo **sube en Config → Facturación** (`tenant_certificates` + bucket
+  `certificados-afip`, mig 043). La EF lo baja del bucket y lo pasa a AfipSDK por
+  constructor (`cert`/`key`) — verificado: AfipSDK acepta cert+key directo.
+- **AfipSDK** (`@afipsdk/afip.js` con `access_token`) resuelve la firma WSAA (CMS/PKCS7
+  del ticket + cache del TA) en su nube. Por eso funciona en **Deno Edge**, donde firmar
+  localmente sería impráctico (cripto limitada).
+- **Ventaja:** el cliente controla su certificado (no depende de que esté cargado en el
+  dashboard de AfipSDK), per-tenant, y AfipSDK solo hace la parte criptográfica.
+
+**Alternativa self-host puro** (sin AfipSDK, firma local directa a ARCA): exigiría
+implementar WSAA+WSFE y mover la EF a un runtime Node/microservicio — proyecto dedicado,
+solo si a futuro se quiere sacar el tercero del camino.
+
+> El uploader de certificados `.crt`/`.key` de Config (que antes era código muerto)
+> quedó **cableado a la EF en v1.60.0** — ya no es trampa, es el mecanismo oficial.
+
+### Factura C (Monotributista) — sin discriminar IVA
+
+La EF detecta C / NC-C (`tipo_comprobante`) y emite con `ImpNeto = ImpTotal`, `ImpIVA = 0`
+y **sin array `Iva`** (AFIP rechaza una C que lleve IVA/alícuotas). A/B siguen
+discriminando por alícuota. Cubierto por `calcularImportes` + tests.
 
 ---
 
 ## Riesgos
 
-1. **Numeración correlativa** — bugs de duplicados/saltos son graves para AFIP
-2. **AFIP WSFE tiene downtime** — retry robusto necesario
-3. **Clientes sin CUIT** — flujo de completar datos antes de emitir
-4. **CUIT inactivo del dueño** → usar CUIT de empresa cuando se constituya
+1. **Numeración correlativa** — `getLastVoucher + 1` tiene condición de carrera si hay
+   emisiones concurrentes (mismo PV/tipo). Bajo para un mostrador single-cajero; revisar
+   si crece el volumen.
+2. **AFIP WSFE tiene downtime** — AfipSDK reintenta; igual el toast informa el error.
+3. **Clientes sin CUIT** — Factura A exige CUIT del cliente (la EF lanza error claro).
+4. **CUIT inactivo del dueño** → usar el CUIT del cliente/empresa que factura.
+5. **ImpTotal** — ver "Consistencia ImpTotal" arriba (resuelto en v1.60.0).
 
 ---
 

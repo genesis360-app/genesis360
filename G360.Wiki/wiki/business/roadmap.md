@@ -9,7 +9,28 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 12 de Junio, 2026
+**Última actualización:** 13 de Junio, 2026
+
+---
+
+## v1.60.0 — Facturación AFIP production-ready + cert propio + UX/bugfixes (DEV ✅)
+
+**"AFIP a PROD" — de preparar el camino a validar la facturación emitiendo CAE real (homologación) de punta a punta.** El módulo operaba contra homologación; esta versión deja el pase a producción listo y seguro, conecta el certificado propio del tenant, y corrige una tanda de bugs/UX. Verificado emitiendo **Factura C real** en homologación ×3 (test Node + app + e2e mutante).
+
+- **Modo de emisión por-tenant** (mig **210**): `tenants.afip_produccion` (default false → homologación). La EF decide homologación↔producción **por-tenant** (reemplaza la env var GLOBAL `AFIP_PRODUCTION`); `AFIP_FORCE_HOMOLOGACION` = freno global. Toggle owner-only en Config con confirmación + guards.
+- **Certificado propio por-tenant CABLEADO:** la EF lee `.crt`/`.key` del bucket `certificados-afip` (`tenant_certificates`) y los pasa a AfipSDK por constructor. Modelo final = **AfipSDK cloud + certificado del tenant**. El uploader de Config dejó de ser código muerto.
+- **Factura C (Monotributista):** EF no discrimina IVA (`ImpNeto=ImpTotal`, `ImpIVA=0`, sin array `Iva`) + PDF de la C sin columnas de IVA. Fix `tipo_comprobante` "Factura C"→"C" (COD + branch). Fix **ImpTotal = ImpNeto+ImpIVA** (anti error 10048).
+- **Auto-facturada:** al emitir el CAE, la venta `despachada` pasa a `facturada` automáticamente.
+- **UX:** acciones **Descargar / Imprimir / Enviar email (con PDF)** en el POS post-emisión + detalle + historial; botón **"Emitir factura"** en el detalle si se saltó el prompt; visual del PDF (recuadro + wrap de dirección).
+- **Bugfixes generales:** **400** por `venta_items.descripcion` inexistente (rompía descargar/imprimir/email); **recuperación de chunk viejo** tras deploy (vite:preloadError + ErrorBoundary "reading 'default'"); **ESC cierra el modal de arriba primero** (stack en `useModalKeyboard`); **Alertas WMS ocultas en básico** (sin ubicación/proveedor).
+- **Tests:** `src/lib/facturacionLogic.ts` + **28 unit** (Factura C incluida), `modalKeyboard.test.ts` (+5), e2e mutante de emisión → suite **734**. EF **v8**.
+- **Pendiente:** deploy a PROD (mig 210 aditiva, default false = cero impacto) + para producción real: cert de PRODUCCIÓN + token AfipSDK prod + toggle.
+
+---
+
+## v1.59.4 — $/km editable en el envío del POS (PROD ✅, PR #196)
+
+En modo básico no existe Config→Envíos para cargar la tarifa por km, así que el modo "Por KM" del envío en el POS quedaba inusable (campo `$/km` read-only en "—"). Ahora el `$/km` es un input editable: pre-cargado con `sucursal.costo_km_envio`/`tenant.costo_envio_por_km` si existe, vacío si no; el costo (km × $/km) se recalcula solo. Funciona en básico (tarifa ad-hoc por venta) y avanzado (override por venta). El modo "$ Monto fijo" sigue como alternativa para el costo total directo. Sin migración.
 
 ---
 

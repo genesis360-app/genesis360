@@ -4,7 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-Último release: **v1.59.3** ✅ EN PROD (2026-06-13, PR **#195**, UI-only, `dev=main` `669e528e`) — **UX Inventario** (alineación columna Cantidad [regresión de v1.59.1] · ESC cierra modal de detalle de movimiento · autoFocus en búsqueda SKU del modal de ingreso/rebaje). Antes hoy: **v1.59.2** (PR #194) — **FIX del bloqueo REAL de venta en básico: el ESTADO** (stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba `es_disponible_venta` → bloqueaba en `agregarProducto`; fix: filtro de estado solo en avanzado). **v1.59.1** (PR #193) — fix venta básico parte 1 (ubicación, `soloUbicado`) + recortes Inventario básico (modal detalle sin Estado/LPN · tab Autorizaciones oculto · grilla sin Lote/Venc./Series) + e2e mutante de ciclo de caja. **⚠ Regla:** el stock de básico tiene `ubicacion_id` Y `estado_id` NULL → queries de venta/stock deben ser mode-aware (ver sección de estado abajo).
+**EN DEV (sin deployar a PROD aún): v1.60.0** — **Facturación AFIP production-ready (validada emitiendo CAE real en homologación) + paquete UX/bugfixes.** Además de lo de abajo: **cert propio por-tenant cableado a la EF** (lee `.crt`/`.key` del bucket → AfipSDK; modelo final = AfipSDK cloud + cert del tenant), **fix Factura C** (sin IVA en EF + PDF), **fix `tipo_comprobante` "Factura C"→"C"**, **fix 400** (`venta_items.descripcion` inexistente rompía descargar/imprimir/email), **auto-facturada** al emitir, **acciones post-venta** (descargar/imprimir/email con PDF en POS+detalle+historial), **botón "Emitir factura"** en detalle si se saltó el prompt, **visual PDF** (recuadro+wrap), **recuperación de chunk viejo** (vite:preloadError + ErrorBoundary "reading 'default'"), **ESC cierra el modal de arriba primero** (stack en useModalKeyboard +5 tests), **Alertas WMS ocultas en básico** (sin ubicación/proveedor). EF **v8**, suite **734**. Verificado: Factura C real homologación ×3 (Node + app + e2e mutante). Ver log 2026-06-14. — Antes (mismo v1.60.0): **modo producción por-tenant + tests + fix ImpTotal.** "AFIP a PROD" (preparar el camino para el primer cliente que facture). El módulo ya estaba en PROD pero operaba contra **homologación**; esta versión habilita el pase a **producción real** de forma segura: (1) **mig 210** `tenants.afip_produccion` (default false → homologación; todos los tenants existentes sin cambio); la EF `emitir-factura` decide homologación↔producción **por-tenant** (antes env var GLOBAL `AFIP_PRODUCTION` que prendía a todos), con `AFIP_FORCE_HOMOLOGACION` como freno global; toggle owner-only en Config→Facturación con confirmación + guards. (2) **Fix anti error AFIP 10048**: `ImpTotal = ImpNeto + ImpIVA` (no `ventas.total`). (3) **Tests**: `src/lib/facturacionLogic.ts` + **25 unit** (suite 701→**726**); refactor `facturasPDF`/`VentasPage`. (4) Runbook + decisión **AfipSDK cloud vs self-host** en `wiki/features/facturacion-afip.md`. **EF v5 en DEV.** ⏳ Falta: deploy a PROD (mig aditiva default false = cero impacto) + operativo de GO (CUIT activo + cert + token AfipSDK prod) + smoke real. Ver sección "▶ AFIP A PRODUCCIÓN" abajo.
+
+Último release: **v1.59.4** ✅ EN PROD (2026-06-13, PR **#196**, UI-only, `dev=main` `6d76cd92`) — **`$/km` editable en el envío del POS** (en básico no hay Config→Envíos para la tarifa por km → el modo "Por KM" quedaba inusable; ahora el `$/km` es input editable, pre-cargado si hay tarifa o vacío si no, y el costo km×$/km se recalcula solo; modo "$ Monto fijo" sigue como alternativa). Antes hoy: **v1.59.3** (PR #195, UI-only) — **UX Inventario** (alineación columna Cantidad [regresión de v1.59.1] · ESC cierra modal de detalle de movimiento · autoFocus en búsqueda SKU del modal de ingreso/rebaje). Antes hoy: **v1.59.2** (PR #194) — **FIX del bloqueo REAL de venta en básico: el ESTADO** (stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba `es_disponible_venta` → bloqueaba en `agregarProducto`; fix: filtro de estado solo en avanzado). **v1.59.1** (PR #193) — fix venta básico parte 1 (ubicación, `soloUbicado`) + recortes Inventario básico (modal detalle sin Estado/LPN · tab Autorizaciones oculto · grilla sin Lote/Venc./Series) + e2e mutante de ciclo de caja. **⚠ Regla:** el stock de básico tiene `ubicacion_id` Y `estado_id` NULL → queries de venta/stock deben ser mode-aware (ver sección de estado abajo).
 
 Antes: **v1.59.0** ✅ EN PROD (2026-06-13, PR **#191**, migs **208**+**209** aplicadas en PROD, `dev=main`) — **Auditoría pre-primer-cliente, tandas 1+2**. Recortes básico (UI): Productos→**Estructura** y Config→Conectividad→sub-tab **API** ocultos (se mantiene Integraciones TN/MeLi/MP). Seguridad (mig 208): policy SELECT en `planes`, `search_path=public` en 25 funciones, `REVOKE FROM PUBLIC`+re-GRANT en SECURITY DEFINER no públicas (períodos, sweeps CC, clave maestra anti-fuerza-bruta, seeds) → search_path 25→0, rls_no_policy 1→0, anon SECURITY DEFINER 29→15 (resto por diseño). Seguridad (mig 209): buckets `avatares`/`productos` con SELECT scopeado a la propia carpeta → `public_bucket_allows_listing` 2→0. Salud: react-router-dom 6.30.4 (open-redirect). Testing: **701 unit + 158 e2e**, primer e2e MUTANTE real de venta (POS→cobro→caja). Decisiones won't-fix/diferido: pg_net (no relocatable), RLS por sucursal (0 exposición hoy), leaked-password (toggle de Auth de GO). Detalle en "AUDITORÍA PRE-PRIMER CLIENTE" abajo.
 
@@ -28,13 +30,15 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.59.3` ✅ | `v1.59.3` ✅ |
-| Migrations | 001–**209** ✅ | 001–**209** ✅ |
-| Branch | `dev` (= `main`) | `main` (release v1.59.3, PR #195) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.59.3 (auto desde `main`) |
+| APP_VERSION | `v1.60.0` ✅ (suite 734) | `v1.59.4` ✅ |
+| Migrations | 001–**210** ✅ | 001–**209** ✅ |
+| Branch | `dev` (varios commits adelante de `main`) | `main` (release v1.59.4, PR #196) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.59.4 (auto desde `main`) |
+| Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | v3 (global `AFIP_PRODUCTION`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna. **Todo en PROD = DEV = v1.59.3** (`dev=main`, `669e528e`). Cadena del día:
+**Migrations DEV pendientes de aplicar en PROD:** **210** (`afip_produccion`, aditiva, default false = cero impacto). **EF `emitir-factura` v5 pendiente de deployar a PROD** (junto con el frontend v1.60.0). Cadena del día (v1.59.x ya en PROD):
+- **v1.59.4** (PR #196, UI-only): **`$/km` editable en el envío del POS** — en básico no hay Config→Envíos para cargar la tarifa por km, así que el modo "Por KM" quedaba inusable (campo read-only "—"). Ahora el `$/km` es input editable (pre-cargado si hay tarifa, vacío si no); costo km×$/km se recalcula solo. Modo "$ Monto fijo" sigue como alternativa.
 - **v1.59.3** (PR #195, UI-only): UX Inventario — alineación columna Cantidad (regresión de v1.59.1), ESC cierra modal de detalle, autoFocus en búsqueda SKU del modal de ingreso/rebaje (Enter ya lo abría).
 - **v1.59.2** (PR #194, UI-only): **FIX del bloqueo REAL de venta en básico = ESTADO**. Stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba por `es_disponible_venta` → bloqueaba en `agregarProducto`. Fix: filtro de estado solo en avanzado. (v1.59.1 había arreglado la ubicación pero no era suficiente.)
 - **v1.59.1** (PR #193, UI-only): fix venta básico parte 1 (ubicación, `soloUbicado`) + recortes Inventario básico (modal detalle sin Estado/LPN, tab Autorizaciones oculto, grilla sin Lote/Venc./Series) + e2e mutante de ciclo de caja.
@@ -43,6 +47,27 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 **⚠ Regla aprendida (no reintroducir):** el stock de **modo básico** tiene `ubicacion_id` Y `estado_id` en **NULL** (no usa ubicaciones ni estados). Toda query de venta/disponibilidad de stock que filtre `.not('ubicacion_id','is',null)` o `.in('estado_id', es_disponible_venta)` **debe ser mode-aware** (saltar esos filtros en básico) o las ventas de básico fallan con "sin stock" pese a haber stock. Helpers en VentasPage: `soloUbicado(q)` + `if (modoAvanzado && estadosFinal…)`.
 
 **Acciones pendientes de GO (no bloqueantes):** activar **Leaked Password Protection** en Supabase Auth (requiere plan Pro) · borrar la rama dependabot del PR #192 (Vite 8, cerrado) para frenar builds de preview fallidos.
+
+### ▶ AFIP A PRODUCCIÓN (v1.60.0) — estado y pasos
+
+**Decisión de GO (2026-06-13):** flag **por-tenant** + **preparar el camino** (sin emitir real todavía). El código quedó listo en DEV.
+
+**Hecho (código, en DEV):**
+- `tenants.afip_produccion` (mig 210) + EF `emitir-factura` **v7** decide por-tenant + `AFIP_FORCE_HOMOLOGACION` freno global.
+- Toggle owner-only Config→Facturación (confirmación + exige CUIT/token guardados).
+- Fix `ImpTotal = ImpNeto+ImpIVA` (anti error AFIP 10048).
+- **Certificado propio por tenant CABLEADO:** la EF lee `.crt`/`.key` del bucket `certificados-afip` (`tenant_certificates`) y los pasa a AfipSDK por constructor (`cert`/`key`). El uploader de Config dejó de ser código muerto → es el mecanismo oficial.
+- **Fix Factura C (Monotributista):** la EF NO discrimina IVA en C/NC-C (`ImpNeto=ImpTotal`, `ImpIVA=0`, sin array `Iva`) o AFIP rechaza. `calcularImportes` + tests.
+- `src/lib/facturacionLogic.ts` + **28 unit tests** (suite 729). Refactor `facturasPDF`/`VentasPage`.
+- Runbook + decisión de modelo en `wiki/features/facturacion-afip.md`.
+
+**✅ Verificado el 2026-06-13:** el certificado de HOMOLOGACIÓN real de GO (CUIT **23-32031506-9**, issuer "Computadores Test") emitió **Factura C #1 → CAE 86240262256502** vía AfipSDK con `cert`+`key` por constructor (test Node `C:\Users\gasto\afip-test\test_propio.mjs`). Confirma: (1) el cert anda, (2) AfipSDK acepta cert+key directo. DEV tenant "Almacén Jorgito" (3769b1db) pre-cargado (token homol + facturación + PV nº1). **Falta:** GO sube el cert por la UI (Config→Certificados AFIP) y corre el smoke desde la app.
+
+**Modelo = AfipSDK cloud + certificado propio del tenant (híbrido).** Responde al comentario de GO ("afip.js con .key/.crt"): cada tenant genera su cert, lo sube en Config, la EF lo usa; AfipSDK solo hace la firma WSAA (por eso anda en Deno Edge). Self-host puro (sin AfipSDK) sería proyecto dedicado.
+
+**Para producción real falta (operativo de GO):** CUIT activo (wsfe) + **certificado de PRODUCCIÓN** (issuer real, no "Test") delegado en Administrador de Relaciones → subirlo en Config → token AfipSDK prod (plan pago) → toggle Modo de emisión a PRODUCCIÓN → smoke real.
+
+**Cobertura de tests:** la lógica pura está cubierta (auto-tipo, IVA, Factura C, DocTipo, umbral, QR). La emisión real (WSAA+WSFE round-trip) NO se unit-testea (depende de AFIP) → smoke manual (ya verificado en homologación vía Node).
 
 ### ▶ Auditoría de procesos 2026-06-11 — hallazgos y estado
 

@@ -67,7 +67,7 @@ serve(async (req) => {
 
     // 1. Fetch config del tenant
     const { data: tenant, error: tErr } = await supabase.from('tenants')
-      .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b')
+      .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b, afip_produccion')
       .eq('id', tenant_id).single()
     if (tErr || !tenant) throw new Error('Tenant no encontrado')
     if (!tenant.cuit) throw new Error('El tenant no tiene CUIT configurado')
@@ -138,7 +138,9 @@ serve(async (req) => {
       docNro  = parseInt((cliente.dni ?? '').replace(/[.\s-]/g, '')) || 0
     }
 
-    // 4. Agrupar IVA por alícuota
+    // 4. Importes. Factura C / NC-C (Monotributista) NO discrimina IVA: ImpNeto =
+    //    ImpTotal, ImpIVA = 0 y SIN array Iva (AFIP rechaza una C con IVA/alícuotas).
+    const sinIVA = tipo_comprobante === 'C' || tipo_comprobante === 'NC-C'
     const ivaMap: Record<number, { base: number; importe: number }> = {}
     let totalNeto = 0; let totalIVA = 0
 
@@ -146,6 +148,13 @@ serve(async (req) => {
       const qty      = Number(it.cantidad)
       const precio   = Number(it.precio_unitario)
       const subTotal = Number(it.subtotal ?? precio * qty)
+
+      if (sinIVA) {
+        // Comprobante C: el total va entero a neto, sin discriminar IVA.
+        totalNeto += subTotal
+        continue
+      }
+
       const tasaStr  = String(it.alicuota_iva ?? it.productos?.alicuota_iva ?? '21')
       const ivaId    = ALICUOTA_ID[tasaStr] ?? 5
       const tasa     = tasaStr === 'exento' || tasaStr === 'sin_iva' ? 0 : parseFloat(tasaStr) / 100
@@ -162,6 +171,15 @@ serve(async (req) => {
     totalNeto = parseFloat(totalNeto.toFixed(2))
     totalIVA  = parseFloat(totalIVA.toFixed(2))
 
+    // ImpTotal DEBE ser ImpNeto + ImpIVA (+ Trib/OpEx/TotConc = 0) o AFIP rechaza
+    // (error 10048: "el campo ImpTotal no es igual a la suma de los campos..."). No
+    // confiar en venta.total, que puede diferir por redondeo de centavos o por
+    // descuentos/recargos globales no prorrateados en los ítems.
+    const impTotal = parseFloat((totalNeto + totalIVA).toFixed(2))
+    if (Math.abs(impTotal - totalVenta) > 0.5) {
+      console.warn(`ImpTotal calculado (${impTotal}) difiere de venta.total (${totalVenta}) — revisar descuento/recargo global no reflejado en ítems`)
+    }
+
     // 5. Fecha de hoy
     const hoy = new Date()
     const fecha = parseInt(
@@ -170,12 +188,39 @@ serve(async (req) => {
 
     // 6. Obtener próximo número
     const cuit = parseInt(tenant.cuit.replace(/[-\s]/g, ''))
-    const isProduction = Deno.env.get('AFIP_PRODUCTION') === 'true'
+    // Homologación vs producción: decisión POR-TENANT (tenants.afip_produccion).
+    // `AFIP_FORCE_HOMOLOGACION=true` es un freno de emergencia GLOBAL que fuerza
+    // homologación para todos (nunca prende producción). Default → homologación.
+    const masterKill = Deno.env.get('AFIP_FORCE_HOMOLOGACION') === 'true'
+    const isProduction = !masterKill && tenant.afip_produccion === true
+
+    // Certificado propio del tenant (subido en Config → Facturación, tabla
+    // tenant_certificates + bucket certificados-afip). AfipSDK acepta cert+key por
+    // constructor y hace la firma WSAA en su nube → funciona en Deno. Si el tenant no
+    // cargó cert, cae a modo token-only (sirve para el CUIT de prueba compartido).
+    let certPem: string | undefined
+    let keyPem: string | undefined
+    const { data: certRow } = await supabase.from('tenant_certificates')
+      .select('cert_crt_path, cert_key_path, activo')
+      .eq('tenant_id', tenant_id).eq('activo', true).maybeSingle()
+    if (certRow?.cert_crt_path && certRow?.cert_key_path) {
+      const [crtDl, keyDl] = await Promise.all([
+        supabase.storage.from('certificados-afip').download(certRow.cert_crt_path),
+        supabase.storage.from('certificados-afip').download(certRow.cert_key_path),
+      ])
+      if (crtDl.data && keyDl.data) {
+        certPem = await crtDl.data.text()
+        keyPem = await keyDl.data.text()
+      } else {
+        console.warn('tenant_certificates apunta a archivos que no se pudieron bajar del bucket — usando modo token-only')
+      }
+    }
 
     const afip = new Afip({
       CUIT: cuit,
       production: isProduction,
       access_token: tenant.afipsdk_token,
+      ...(certPem && keyPem ? { cert: certPem, key: keyPem } : {}),
     })
 
     const eb = afip.ElectronicBilling
@@ -193,7 +238,7 @@ serve(async (req) => {
       CbteDesde:  proximo,
       CbteHasta:  proximo,
       CbteFch:    fecha,
-      ImpTotal:   totalVenta,
+      ImpTotal:   impTotal,
       ImpTotConc: 0,
       ImpNeto:    totalNeto,
       ImpOpEx:    0,
@@ -202,15 +247,18 @@ serve(async (req) => {
       MonId:      'PES',
       MonCotiz:   1,
       CondicionIVAReceptorId: condicionId,
-      Iva: Object.entries(ivaMap).map(([id, v]) => ({
-        Id:      parseInt(id),
-        BaseImp: parseFloat(v.base.toFixed(2)),
-        Importe: parseFloat(v.importe.toFixed(2)),
-      })),
+      // Factura C: sin array Iva (AFIP lo rechaza si se envía).
+      ...(sinIVA ? {} : {
+        Iva: Object.entries(ivaMap).map(([id, v]) => ({
+          Id:      parseInt(id),
+          BaseImp: parseFloat(v.base.toFixed(2)),
+          Importe: parseFloat(v.importe.toFixed(2)),
+        })),
+      }),
     }
 
     // 8. Emitir
-    console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id}`)
+    console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id} [${isProduction ? 'PRODUCCIÓN' : 'homologación'}]`)
     const resultado = await eb.createVoucher(payload)
 
     // 9. Guardar CAE
@@ -224,13 +272,16 @@ serve(async (req) => {
         nc_punto_venta:       punto_venta,
       }).eq('id', devolucion_id)
     } else {
-      // Factura normal: guardar en ventas
-      await supabase.from('ventas').update({
+      // Factura normal: guardar en ventas. Si estaba 'despachada', pasa a 'facturada'
+      // automáticamente (antes había que marcarla a mano desde el detalle de la venta).
+      const ventaUpdate: Record<string, unknown> = {
         cae:               resultado.CAE,
         vencimiento_cae:   resultado.CAEFchVto,
         tipo_comprobante:  `Factura ${tipo_comprobante}`,
         numero_comprobante: proximo,
-      }).eq('id', venta_id)
+      }
+      if (venta.estado === 'despachada') ventaUpdate.estado = 'facturada'
+      await supabase.from('ventas').update(ventaUpdate).eq('id', venta_id)
     }
 
     console.log(`CAE emitido: ${resultado.CAE} — ${esNC ? `NC devolucion ${devolucion_id}` : `Venta ${venta_id}`}`)

@@ -6,6 +6,53 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] update | v1.60.0 DEV (cont.) — Facturación validada end-to-end + cert propio cableado + paquete de UX/bugfixes
+
+**Sesión larga sobre facturación: de "preparar el camino" a validarla emitiendo CAE real (homologación) desde la app.** Todo en DEV (sin deployar a PROD aún). Suite unit **734** · typecheck + build verdes. EF `emitir-factura` **v8**.
+
+**Hito: GO ya tenía el certificado.** Resultó que GO tenía un cert de **homologación** real (CUIT 23-32031506-9, issuer "Computadores Test"). Verificado emitiendo **Factura C** real por triplicado: test Node aislado (CAE #1), GO desde la app (CAE #2), y **e2e mutante automatizado** (`21_facturacion_mutante`, CAE #4). El certificado **NO** se guardaba en Genesis360 → **cablée la EF para leer `.crt`/`.key` del bucket `certificados-afip`** y pasarlos a AfipSDK por constructor (AfipSDK acepta cert+key directo). Modelo final = **AfipSDK cloud + certificado propio del tenant**. El uploader de Config dejó de ser código muerto.
+
+**Bugs de facturación corregidos:**
+- **Factura C (Monotributista) sin IVA:** la EF emitía C con array `Iva` → AFIP la rechazaría. Ahora C/NC-C: `ImpNeto=ImpTotal`, `ImpIVA=0`, sin `Iva`. El **PDF** de la C también: tabla sin columnas IVA + totales sin desglose.
+- **`tipo_comprobante` "Factura C"→"C":** la BD guarda "Factura C" pero el PDF esperaba "C" → mostraba COD 06 (de B) y forzaba IVA. Se stripea el prefijo.
+- **400 que rompía descargar/imprimir/email:** el SELECT pedía `venta_items.descripcion` (columna inexistente) → 400 → "Venta no encontrada" → fallaba en silencio. Quitada (el nombre viene de `productos.nombre`).
+- **ImpTotal = ImpNeto + ImpIVA** (anti error AFIP 10048).
+- **Auto-facturada:** al emitir el CAE, si la venta estaba `despachada` pasa a `facturada` (antes había que marcarla a mano). Mejora también las devoluciones (ofrece NC).
+
+**UX de facturación (pedidos de GO):**
+- **Acciones post-venta en el POS:** al emitir, la modal pasa a vista con **Descargar / Imprimir / Enviar email** (sin ir al historial). Mismos 3 botones en el detalle de venta y en el historial.
+- **Imprimir** vía iframe oculto + autoPrint (el `window.open` tras `await` lo bloqueaba el popup-blocker).
+- **Enviar por email** con el **PDF adjunto** (send-email `type=factura_emitida` + attachments base64).
+- **Botón "Emitir factura"** en el detalle si se saltó el prompt (venta despachada sin CAE).
+- **Visual del PDF:** recuadro del tipo más alto (cerca de la divisoria) + dirección del emisor con wrap (no se superpone con el recuadro).
+
+**Bugs generales corregidos:**
+- **"Loop entrada/salida" en /facturacion (y navegación lazy):** era un **chunk viejo** tras un deploy (React.lazy recibía `undefined` → "reading 'default'"). Agregada recuperación: `main.tsx` escucha `vite:preloadError`/errores de chunk y el **ErrorBoundary** detecta también `reading 'default'` → recarga 1 vez (guarda `sessionStorage` anti-bucle). No era reproducible en el código (probado con e2e).
+- **ESC cierra el modal de arriba primero:** `useModalKeyboard` ahora usa un **stack global** (último abierto = el de arriba; al cerrarlo el siguiente toma el control). Resuelve que en el POS ESC cerraba el detalle en vez del modal de emitir. +5 unit tests (`modalKeyboard.test.ts`).
+- **Alertas en básico:** se ocultan "Inventario sin ubicación" y "sin proveedor" (en básico el stock no usa ubicaciones ni proveedor por LPN → marcaba todo = ruido).
+
+**Consulta respondida (QR de la factura):** es el QR fiscal obligatorio RG 4291. Lo escanea el **cliente** (verificar autenticidad) o **AFIP** (control); el emisor solo debe incluirlo. No sirve para cobrar/pagar.
+
+**▶ Próximo (otra sesión):** decisión de GO de deployar v1.60.0 + mig 210 + EF v8 a PROD; para producción real: cert de PRODUCCIÓN (issuer real, no "Test") + token AfipSDK prod + toggle a PRODUCCIÓN. Commits dev: `d80551a8`→`b43e2fb5`.
+
+## [2026-06-13] update | v1.60.0 DEV — Facturación AFIP: modo producción por-tenant + tests + fix ImpTotal (preparar "AFIP a PROD")
+
+**Arranca "AFIP a PROD" — dejar la facturación lista para el primer cliente que facture.** El módulo ya estaba en PROD pero operando contra **homologación** (sandbox); el código `production` se decidía con una env var GLOBAL `AFIP_PRODUCTION` (peligrosa: prendería a todos los tenants a emitir real de golpe). Decisión de GO: flag **por-tenant** + **preparar el camino** (sin emitir real todavía). En DEV (NO en PROD aún). Suite unit **726** (701→726) · typecheck + build verdes.
+
+- **Modo de emisión por-tenant (mig 210):** `tenants.afip_produccion BOOLEAN DEFAULT false` (todos los existentes → homologación, cero impacto). La EF `emitir-factura` (**v5** en DEV) decide `isProduction = !masterKill && tenant.afip_produccion === true`; `AFIP_FORCE_HOMOLOGACION=true` = freno de emergencia global. Toggle owner-only en Config→Facturación (banda "Modo de emisión") con confirmación explícita (checkbox) + guard (exige CUIT + token guardados).
+- **Fix anti error AFIP 10048:** la EF arma `ImpTotal = ImpNeto + ImpIVA` (no `ventas.total`, que puede diferir por redondeo/descuento global → AFIP rechaza). Warning si difiere > $0.50.
+- **Tests (pedido de GO):** nueva lib pura `src/lib/facturacionLogic.ts` (auto-tipo A/B/C, desglose IVA multi-alícuota, DocTipo/DocNro + umbral RG 5616, QR RG 4291) + **25 unit tests** (`tests/unit/facturacion.test.ts`, plan en `tests/specs/facturacion.plan.md`). Refactor: `facturasPDF.ts` (QR) y `VentasPage` (auto-tipo) ahora usan la lib (dedup). **La emisión real WSAA+WSFE NO se unit-testea** (depende de AFIP) → smoke manual.
+- **Opinión sobre el comentario de GO (afip.js con .key/.crt):** el consejo "usar una librería" ya se cumple — usamos `@afipsdk/afip.js`. El comentario describe el modo **self-host** (cert local). Adoptamos un **híbrido**: cert propio del tenant + AfipSDK para la firma WSAA (ver abajo).
+- **GIRO: GO YA tenía el certificado.** Inspeccionando `e:\...\AFIP\Certificado.crt`: CUIT **23-32031506-9**, issuer "Computadores Test" (= **homologación**), válido a 2028. Test Node aislado (`test_propio.mjs`) con `cert`+`key`+token → **Factura C #1, CAE 86240262256502** ✅. Confirma que el cert anda y que **AfipSDK acepta cert+key por constructor**.
+- **Por eso CABLEÉ el cert a la EF (v6):** lee `.crt`/`.key` del bucket `certificados-afip` (`tenant_certificates`) y los pasa a AfipSDK. El uploader de Config (antes código muerto, mig 043) es ahora el **mecanismo oficial**. Modelo final = **AfipSDK cloud + certificado propio del tenant**.
+- **Fix Factura C / NC-C (EF v7):** Monotributista NO discrimina IVA → `ImpNeto=ImpTotal`, `ImpIVA=0`, sin array `Iva` (AFIP rechaza C con IVA). `calcularImportes` + 3 tests (suite **729**). **Esto habría hecho fallar la emisión de GO** (es monotributista).
+- **DEV "Almacén Jorgito" (3769b1db) pre-cargado** (token homol + facturación + PV nº1, CUIT ya estaba). GO entra con su cuenta (es DUEÑO), sube el cert por Config→Certificados AFIP, vende → emite Factura C → CAE.
+- **▶ Próximo:** smoke de GO desde la app (homologación) → luego commit/tag final + decisión de deployar v1.60.0 + mig 210 a PROD. Para producción real: cert de PRODUCCIÓN (no "Test") + token AfipSDK prod + toggle a PRODUCCIÓN.
+
+## [2026-06-13] deploy | v1.59.4 PROD — $/km editable en el envío del POS (básico sin Config→Envíos) · `dev=main`
+
+**v1.59.4 (PR #196, UI-only).** GO: en modo básico no existe Config→Envíos para cargar la tarifa por km, así que el modo "Por KM" del envío en el POS quedaba inusable (el campo `$/km` era read-only, mostraba "—"). **Fix:** el campo `$/km` ahora es un **input editable** (pre-cargado con `sucursal.costo_km_envio`/`tenant.costo_envio_por_km` si existe, vacío si no). El costo (km × $/km) se recalcula solo (effect ya existente). Funciona en básico (cargás la tarifa ad-hoc por venta) y en avanzado (override por venta). El modo "$ Monto fijo" sigue como alternativa para tipear el costo total directo. `dev=main` `6d76cd92`.
+
 ## [2026-06-13] deploy | v1.59.2 + v1.59.3 PROD — Fix venta en básico (estado) + UX Inventario · `dev=main`
 
 **Dos patches a PROD el mismo día tras el feedback de GO probando el modo básico.** Sin migración (UI-only). `dev=main` en `669e528e`.

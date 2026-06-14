@@ -13,15 +13,18 @@ updated: 2026-05-29
 
 ---
 
-## v1.60.0 — Facturación AFIP: modo producción por-tenant + tests + fix ImpTotal (DEV ✅)
+## v1.60.0 — Facturación AFIP production-ready + cert propio + UX/bugfixes (DEV ✅)
 
-**"AFIP a PROD" — preparar el camino para que el primer cliente facture.** El módulo de facturación ya estaba en PROD pero operando contra **homologación** (sandbox). Esta versión deja listo el pase a **producción real** de forma segura y agrega cobertura de tests.
+**"AFIP a PROD" — de preparar el camino a validar la facturación emitiendo CAE real (homologación) de punta a punta.** El módulo operaba contra homologación; esta versión deja el pase a producción listo y seguro, conecta el certificado propio del tenant, y corrige una tanda de bugs/UX. Verificado emitiendo **Factura C real** en homologación ×3 (test Node + app + e2e mutante).
 
-- **Modo de emisión por-tenant** (mig **210**): `tenants.afip_produccion` (default false → homologación). La EF `emitir-factura` decide homologación↔producción **por-tenant** (antes era una env var GLOBAL `AFIP_PRODUCTION` que prendía a todos de golpe); queda `AFIP_FORCE_HOMOLOGACION` como freno de emergencia global. Toggle owner-only en Config → Facturación con confirmación explícita + guards (exige CUIT + token guardados).
-- **Fix anti-rechazo AFIP (error 10048):** la EF arma `ImpTotal = ImpNeto + ImpIVA` (no `ventas.total`) para garantizar la consistencia que AFIP exige; warning si difiere > $0.50.
-- **Tests:** nueva lib pura `src/lib/facturacionLogic.ts` (auto-tipo A/B/C, desglose IVA multi-alícuota, DocTipo/umbral RG 5616, QR RG 4291) + **25 unit tests** (suite 701→**726**). Refactor: `facturasPDF.ts` y `VentasPage` usan la lib (dedup).
-- **Runbook** de onboarding a producción AFIP + decisión documentada **AfipSDK cloud vs self-host (cert local)** en `wiki/features/facturacion-afip.md`.
-- **Pendiente:** deploy a PROD (mig 210 aditiva, default false = cero impacto); CUIT activo + cert + token AfipSDK prod (operativo de GO); smoke real de CAE.
+- **Modo de emisión por-tenant** (mig **210**): `tenants.afip_produccion` (default false → homologación). La EF decide homologación↔producción **por-tenant** (reemplaza la env var GLOBAL `AFIP_PRODUCTION`); `AFIP_FORCE_HOMOLOGACION` = freno global. Toggle owner-only en Config con confirmación + guards.
+- **Certificado propio por-tenant CABLEADO:** la EF lee `.crt`/`.key` del bucket `certificados-afip` (`tenant_certificates`) y los pasa a AfipSDK por constructor. Modelo final = **AfipSDK cloud + certificado del tenant**. El uploader de Config dejó de ser código muerto.
+- **Factura C (Monotributista):** EF no discrimina IVA (`ImpNeto=ImpTotal`, `ImpIVA=0`, sin array `Iva`) + PDF de la C sin columnas de IVA. Fix `tipo_comprobante` "Factura C"→"C" (COD + branch). Fix **ImpTotal = ImpNeto+ImpIVA** (anti error 10048).
+- **Auto-facturada:** al emitir el CAE, la venta `despachada` pasa a `facturada` automáticamente.
+- **UX:** acciones **Descargar / Imprimir / Enviar email (con PDF)** en el POS post-emisión + detalle + historial; botón **"Emitir factura"** en el detalle si se saltó el prompt; visual del PDF (recuadro + wrap de dirección).
+- **Bugfixes generales:** **400** por `venta_items.descripcion` inexistente (rompía descargar/imprimir/email); **recuperación de chunk viejo** tras deploy (vite:preloadError + ErrorBoundary "reading 'default'"); **ESC cierra el modal de arriba primero** (stack en `useModalKeyboard`); **Alertas WMS ocultas en básico** (sin ubicación/proveedor).
+- **Tests:** `src/lib/facturacionLogic.ts` + **28 unit** (Factura C incluida), `modalKeyboard.test.ts` (+5), e2e mutante de emisión → suite **734**. EF **v8**.
+- **Pendiente:** deploy a PROD (mig 210 aditiva, default false = cero impacto) + para producción real: cert de PRODUCCIÓN + token AfipSDK prod + toggle.
 
 ---
 

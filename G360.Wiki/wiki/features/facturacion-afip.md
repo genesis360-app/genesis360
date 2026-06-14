@@ -145,8 +145,11 @@ gastos.conciliado_iva BOOLEAN
 | Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
 | Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ DEV v1.60.0 |
 | Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ DEV v1.60.0 |
-| Factura C sin IVA (Monotributista) | `calcularImportes` (ImpIVA 0, sin array Iva) | ✅ DEV v1.60.0 |
-| Tests de la lógica pura | `facturacionLogic.ts` + 28 unit tests | ✅ DEV v1.60.0 |
+| Factura C sin IVA (Monotributista) | `calcularImportes` (ImpIVA 0, sin array Iva) + PDF sin columnas IVA | ✅ DEV v1.60.0 |
+| Auto-facturada al emitir | venta `despachada` → `facturada` al obtener CAE | ✅ DEV v1.60.0 |
+| Acciones descargar / imprimir / email | POS post-emisión + detalle + historial; imprimir vía iframe; email con PDF adjunto | ✅ DEV v1.60.0 |
+| Emitir desde el detalle | botón "Emitir factura" si la venta despachada no tiene CAE | ✅ DEV v1.60.0 |
+| Tests de la lógica pura | `facturacionLogic.ts` + 28 unit tests + e2e mutante | ✅ DEV v1.60.0 |
 
 ---
 

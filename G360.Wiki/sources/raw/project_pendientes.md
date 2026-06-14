@@ -53,24 +53,21 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 **Decisión de GO (2026-06-13):** flag **por-tenant** + **preparar el camino** (sin emitir real todavía). El código quedó listo en DEV.
 
 **Hecho (código, en DEV):**
-- `tenants.afip_produccion` (mig 210) + EF `emitir-factura` v5 decide por-tenant + `AFIP_FORCE_HOMOLOGACION` freno global.
+- `tenants.afip_produccion` (mig 210) + EF `emitir-factura` **v7** decide por-tenant + `AFIP_FORCE_HOMOLOGACION` freno global.
 - Toggle owner-only Config→Facturación (confirmación + exige CUIT/token guardados).
 - Fix `ImpTotal = ImpNeto+ImpIVA` (anti error AFIP 10048).
-- `src/lib/facturacionLogic.ts` + 25 unit tests (suite 726). Refactor `facturasPDF`/`VentasPage`.
-- Runbook + decisión cloud vs self-host en `wiki/features/facturacion-afip.md`.
+- **Certificado propio por tenant CABLEADO:** la EF lee `.crt`/`.key` del bucket `certificados-afip` (`tenant_certificates`) y los pasa a AfipSDK por constructor (`cert`/`key`). El uploader de Config dejó de ser código muerto → es el mecanismo oficial.
+- **Fix Factura C (Monotributista):** la EF NO discrimina IVA en C/NC-C (`ImpNeto=ImpTotal`, `ImpIVA=0`, sin array `Iva`) o AFIP rechaza. `calcularImportes` + tests.
+- `src/lib/facturacionLogic.ts` + **28 unit tests** (suite 729). Refactor `facturasPDF`/`VentasPage`.
+- Runbook + decisión de modelo en `wiki/features/facturacion-afip.md`.
 
-**Falta (operativo de GO, fuera de código):**
-1. **CUIT activo** habilitado para WS `wsfe` en AFIP/ARCA.
-2. **Certificado de producción** generado/cargado en AfipSDK + vinculado vía **Administrador de Relaciones** al servicio Facturación Electrónica.
-3. **Token AfipSDK de producción** (plan pago; homologación es gratis).
-4. Cargar en Config→Facturación (CUIT/condición/razón social/domicilio/token) + ≥1 punto de venta que coincida con AFIP.
-5. Toggle Modo de emisión → PRODUCCIÓN (confirmar) → **smoke real**: Factura B chica → verificar CAE en PDF y en "Mis Comprobantes" de AFIP.
+**✅ Verificado el 2026-06-13:** el certificado de HOMOLOGACIÓN real de GO (CUIT **23-32031506-9**, issuer "Computadores Test") emitió **Factura C #1 → CAE 86240262256502** vía AfipSDK con `cert`+`key` por constructor (test Node `C:\Users\gasto\afip-test\test_propio.mjs`). Confirma: (1) el cert anda, (2) AfipSDK acepta cert+key directo. DEV tenant "Almacén Jorgito" (3769b1db) pre-cargado (token homol + facturación + PV nº1). **Falta:** GO sube el cert por la UI (Config→Certificados AFIP) y corre el smoke desde la app.
 
-**Para probar SIN valor fiscal:** dejar `afip_produccion=false` (homologación) con token de homologación → emite CAE de prueba real, sin riesgo. Es lo que conviene hacer con el CUIT de GO para validar el flujo end-to-end antes de ir a producción.
+**Modelo = AfipSDK cloud + certificado propio del tenant (híbrido).** Responde al comentario de GO ("afip.js con .key/.crt"): cada tenant genera su cert, lo sube en Config, la EF lo usa; AfipSDK solo hace la firma WSAA (por eso anda en Deno Edge). Self-host puro (sin AfipSDK) sería proyecto dedicado.
 
-**Modelo actual = AfipSDK cloud** (access_token). El uploader de certificados `.crt`/`.key` en Config (`tenant_certificates`, mig 043) **NO lo usa la EF** → es código muerto hoy; ocultar/relabelear o cablear solo si se migra a self-host. **El comentario de GO sobre "afip.js con .key/.crt" describe el modo self-host**; ya usamos afip.js (la variante cloud). Migrar a self-host es proyecto dedicado (la firma WSAA/CMS local es impráctica en Deno Edge). Detalle en la feature page.
+**Para producción real falta (operativo de GO):** CUIT activo (wsfe) + **certificado de PRODUCCIÓN** (issuer real, no "Test") delegado en Administrador de Relaciones → subirlo en Config → token AfipSDK prod (plan pago) → toggle Modo de emisión a PRODUCCIÓN → smoke real.
 
-**Cobertura de tests:** la lógica pura está cubierta (auto-tipo, IVA, DocTipo, umbral, QR). La emisión real (WSAA+WSFE round-trip) NO se unit-testea (depende de AFIP) → es smoke manual/integración.
+**Cobertura de tests:** la lógica pura está cubierta (auto-tipo, IVA, Factura C, DocTipo, umbral, QR). La emisión real (WSAA+WSFE round-trip) NO se unit-testea (depende de AFIP) → smoke manual (ya verificado en homologación vía Node).
 
 ### ▶ Auditoría de procesos 2026-06-11 — hallazgos y estado
 

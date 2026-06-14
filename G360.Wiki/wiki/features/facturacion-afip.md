@@ -144,7 +144,9 @@ gastos.conciliado_iva BOOLEAN
 | Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
 | Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
 | Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ DEV v1.60.0 |
-| Tests de la lógica pura | `facturacionLogic.ts` + 25 unit tests | ✅ DEV v1.60.0 |
+| Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ DEV v1.60.0 |
+| Factura C sin IVA (Monotributista) | `calcularImportes` (ImpIVA 0, sin array Iva) | ✅ DEV v1.60.0 |
+| Tests de la lógica pura | `facturacionLogic.ts` + 28 unit tests | ✅ DEV v1.60.0 |
 
 ---
 
@@ -175,51 +177,62 @@ igual a la suma…"). Si hay diferencia > $0.50 se loguea un warning para invest
 
 ---
 
-## Runbook — pasar un tenant a PRODUCCIÓN AFIP
+## Runbook — onboarding AFIP (homologación → producción)
 
-Lo de código ya está listo; lo que sigue es **operativo** (CUIT + certificado) y lo hace
-el dueño del tenant. Modelo actual = **AfipSDK cloud** (access_token), no cert local.
+Modelo = **AfipSDK cloud + certificado propio del tenant**. El tenant genera su
+certificado (en AFIP/ARCA o con el asistente de AfipSDK), lo **sube en Config →
+Facturación → Certificados AFIP**, y la EF lo lee del bucket y se lo pasa a AfipSDK por
+constructor (`cert`/`key`). AfipSDK resuelve la firma WSAA en su nube (por eso funciona
+en Deno Edge). El `access_token` identifica la cuenta de AfipSDK. Verificado el
+2026-06-13 con un cert de homologación real (CUIT 23-32031506-9 → CAE C #1).
 
-1. **CUIT activo** habilitado para "Facturación Electrónica" (WS `wsfe`) en AFIP/ARCA.
-2. **Certificado de producción**: en AfipSDK, generar/cargar el certificado y vincularlo
-   en AFIP vía **Administrador de Relaciones** al servicio Facturación Electrónica.
+**Datos fiscales** (Config → Facturación): CUIT, condición IVA emisor (Monotributista→C,
+RI→A/B), razón social, domicilio, **Token AfipSDK**, ≥1 **Punto de venta** que coincida
+con AFIP. + subir **Certificado (.crt)** y **Clave privada (.key)** → debe quedar ✅ Activo.
+
+**Probar en homologación (sin valor fiscal):** cert de homologación + `afip_produccion=false`
+(banda "Modo de emisión" en HOMOLOGACIÓN). Vender → "¿Facturar ahora?" → emitir → CAE de
+prueba. El log de la EF muestra `[homologación]`.
+
+**Pasar a producción (CAE fiscal real):**
+1. **CUIT activo** habilitado para WS `wsfe` en AFIP/ARCA.
+2. **Certificado de PRODUCCIÓN** (issuer "AC Raíz/Computadores de la AFIP", no "Test")
+   generado en AFIP + delegado en **Administrador de Relaciones** al servicio
+   Facturación Electrónica → subirlo en Config (reemplaza el de homologación).
 3. **Token AfipSDK de producción** (plan pago; homologación es gratis).
-4. En Genesis360: **Config → Facturación** → cargar CUIT + condición IVA + razón social
-   + domicilio + **Token AfipSDK (prod)** → Guardar datos fiscales.
-5. Cargar al menos un **Punto de venta** (debe coincidir con uno habilitado en AFIP).
-6. Banda **Modo de emisión** → pasar a **PRODUCCIÓN** (confirmar checkbox).
-7. **Smoke real:** emitir una Factura B de monto chico → verificar el CAE en el PDF y en
-   "Mis Comprobantes" de AFIP. Los logs de la EF muestran `[PRODUCCIÓN]` vs `[homologación]`.
-
-> Para **probar el flujo completo sin valor fiscal**, dejar `afip_produccion=false`
-> (homologación) con el token de homologación: emite CAE de prueba real, sin riesgo.
+4. Banda **Modo de emisión** → **PRODUCCIÓN** (confirmar checkbox).
+5. **Smoke real:** emitir un comprobante de monto chico → verificar CAE en el PDF y en
+   "Mis Comprobantes" de AFIP. El log de la EF muestra `[PRODUCCIÓN]`.
 
 ---
 
-## Decisión técnica: AfipSDK cloud vs self-host (cert .crt/.key local)
+## Decisión técnica: modelo de integración con AFIP
 
-Hay dos formas de hablar con AFIP, y conviene tenerlas claras:
+**Modelo adoptado = AfipSDK cloud + certificado propio del tenant (híbrido).** Es lo
+mejor de los dos mundos y responde al comentario "usá afip.js con tu .key/.crt":
 
-- **AfipSDK cloud (actual):** `@afipsdk/afip.js` con `access_token`. AfipSDK resuelve el
-  WSAA (firma criptográfica CMS del ticket de login, cache del TA ~12 h) en SUS
-  servidores. Simple, ya anda, maneja downtime/retries. **Contras:** un tercero (AfipSDK)
-  en el camino fiscal; producción requiere plan pago; hoy cada tenant necesita su propio
-  token/cuenta AfipSDK (fricción de onboarding).
-- **Self-host (cert local):** firmar el WSAA con el `.crt`/`.key` propios y pegarle directo
-  a ARCA, sin tercero. **Contras:** hay que implementar WSAA+WSFE; en **Deno (Supabase
-  Edge)** la firma CMS/PKCS7 local es impráctica (cripto limitada) → realista solo
-  moviendo la EF a un runtime Node o un microservicio dedicado. Mantenimiento continuo de
-  la integración AFIP. Por eso existen servicios como AfipSDK.
+- Cada tenant **genera su propio certificado** (en AFIP/ARCA o con el asistente de
+  AfipSDK) y lo **sube en Config → Facturación** (`tenant_certificates` + bucket
+  `certificados-afip`, mig 043). La EF lo baja del bucket y lo pasa a AfipSDK por
+  constructor (`cert`/`key`) — verificado: AfipSDK acepta cert+key directo.
+- **AfipSDK** (`@afipsdk/afip.js` con `access_token`) resuelve la firma WSAA (CMS/PKCS7
+  del ticket + cache del TA) en su nube. Por eso funciona en **Deno Edge**, donde firmar
+  localmente sería impráctico (cripto limitada).
+- **Ventaja:** el cliente controla su certificado (no depende de que esté cargado en el
+  dashboard de AfipSDK), per-tenant, y AfipSDK solo hace la parte criptográfica.
 
-**Recomendación:** para el primer cliente, **quedarse en AfipSDK cloud** (es "usar una
-librería", lo que el consejo recomienda; solo que usamos la variante cloud). Migrar a
-self-host solo si el costo/modelo por-tenant de AfipSDK molesta a escala o se quiere
-sacar el tercero — y ahí es un proyecto dedicado, no un swap rápido.
+**Alternativa self-host puro** (sin AfipSDK, firma local directa a ARCA): exigiría
+implementar WSAA+WSFE y mover la EF a un runtime Node/microservicio — proyecto dedicado,
+solo si a futuro se quiere sacar el tercero del camino.
 
-> ⚠ **Deuda / trampa de UX:** Config tiene un uploader de certificados `.crt`/`.key`
-> (`tenant_certificates` + bucket `certificados-afip`, mig 043) que la EF **NO usa** (usa
-> el token). Subir certs ahí hoy no hace nada. Solo tendría sentido si se migra a
-> self-host; mientras tanto conviene ocultarlo/relabelearlo para no confundir.
+> El uploader de certificados `.crt`/`.key` de Config (que antes era código muerto)
+> quedó **cableado a la EF en v1.60.0** — ya no es trampa, es el mecanismo oficial.
+
+### Factura C (Monotributista) — sin discriminar IVA
+
+La EF detecta C / NC-C (`tipo_comprobante`) y emite con `ImpNeto = ImpTotal`, `ImpIVA = 0`
+y **sin array `Iva`** (AFIP rechaza una C que lleve IVA/alícuotas). A/B siguen
+discriminando por alícuota. Cubierto por `calcularImportes` + tests.
 
 ---
 

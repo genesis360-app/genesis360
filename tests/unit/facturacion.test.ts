@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   detectarTipoComprobante,
   calcularIvaDesglose,
+  calcularImportes,
+  esComprobanteSinIVA,
   determinarReceptor,
   buildQrAfipUrl,
   UMBRAL_FACTURA_B_DEFAULT,
@@ -81,6 +83,34 @@ describe('calcularIvaDesglose', () => {
       { cantidad: 1, precio_unitario: 77.77, subtotal: 77.77, alicuota_iva: '10.5' },
     ])
     expect(d.impTotal).toBe(parseFloat((d.totalNeto + d.totalIVA).toFixed(2)))
+  })
+})
+
+// ── 2.bis Importes según tipo (Factura C no discrimina IVA) ──────────────────────
+describe('calcularImportes / esComprobanteSinIVA', () => {
+  const items = [
+    { cantidad: 1, precio_unitario: 1210, subtotal: 1210, alicuota_iva: '21' },
+    { cantidad: 2, precio_unitario: 100, subtotal: 200, alicuota_iva: '21' },
+  ]
+  it('FAC-C-01 esComprobanteSinIVA true solo para C y NC-C', () => {
+    expect(esComprobanteSinIVA('C')).toBe(true)
+    expect(esComprobanteSinIVA('NC-C')).toBe(true)
+    expect(esComprobanteSinIVA('B')).toBe(false)
+    expect(esComprobanteSinIVA('A')).toBe(false)
+    expect(esComprobanteSinIVA('NC-B')).toBe(false)
+  })
+  it('FAC-C-02 Factura C: ImpNeto = ImpTotal, ImpIVA 0, sin array Iva', () => {
+    const r = calcularImportes(items, 'C')
+    expect(r.impTotal).toBe(1410)
+    expect(r.impNeto).toBe(1410)
+    expect(r.impIVA).toBe(0)
+    expect(r.iva).toEqual([])
+  })
+  it('FAC-C-03 Factura B: discrimina IVA (neto+iva)', () => {
+    const r = calcularImportes(items, 'B')
+    expect(r.impIVA).toBeGreaterThan(0)
+    expect(r.impTotal).toBe(parseFloat((r.impNeto + r.impIVA).toFixed(2)))
+    expect(r.iva.length).toBe(1) // todo 21%
   })
 })
 

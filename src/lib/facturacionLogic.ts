@@ -116,6 +116,37 @@ export function calcularIvaDesglose(items: ItemFacturable[]): IvaDesglose {
   }
 }
 
+// ── Importes según tipo de comprobante (Factura C no discrimina IVA) ─────────────
+
+export interface ComprobanteImportes {
+  impNeto: number
+  impIVA: number
+  impTotal: number
+  iva: IvaItemWSFE[]   // vacío para C / NC-C
+}
+
+/** Factura C / NC-C (Monotributista) NO discrimina IVA. */
+export function esComprobanteSinIVA(tipoComprobante: string): boolean {
+  return tipoComprobante === 'C' || tipoComprobante === 'NC-C'
+}
+
+/**
+ * Arma los importes WSFE según el tipo:
+ *  - C / NC-C: ImpNeto = ImpTotal, ImpIVA = 0, sin array Iva (AFIP rechaza C con IVA).
+ *  - A / B: desglose por alícuota (ver calcularIvaDesglose).
+ */
+export function calcularImportes(items: ItemFacturable[], tipoComprobante: string): ComprobanteImportes {
+  if (esComprobanteSinIVA(tipoComprobante)) {
+    const total = r2(items.reduce(
+      (s, it) => s + Number(it.subtotal ?? Number(it.precio_unitario) * Number(it.cantidad)),
+      0,
+    ))
+    return { impNeto: total, impIVA: 0, impTotal: total, iva: [] }
+  }
+  const d = calcularIvaDesglose(items)
+  return { impNeto: d.totalNeto, impIVA: d.totalIVA, impTotal: d.impTotal, iva: d.iva }
+}
+
 // ── Documento del receptor (DocTipo/DocNro) + condición IVA ──────────────────────
 
 export interface ClienteReceptor {

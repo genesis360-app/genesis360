@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import QRCode from 'qrcode'
-import { buildQrAfipUrl } from '@/lib/facturacionLogic'
+import { buildQrAfipUrl, esComprobanteSinIVA } from '@/lib/facturacionLogic'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -139,57 +139,83 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<void> {
   }
 
   // ── Tabla de ítems ───────────────────────────────────────────────────────────
+  // Factura C (Monotributista) NO discrimina IVA → tabla y totales sin columnas de IVA.
   const tableY = ry + 3
+  const sinIVA = esComprobanteSinIVA(data.tipo_comprobante)
   const ivaGroups: Record<number, number> = {}
 
-  const rows = data.items.map(item => {
-    const neto = item.subtotal / (1 + item.alicuota_iva / 100)
-    const ivaM = item.subtotal - neto
-    ivaGroups[item.alicuota_iva] = (ivaGroups[item.alicuota_iva] ?? 0) + ivaM
-    return [
+  if (sinIVA) {
+    const rows = data.items.map(item => [
       item.descripcion,
       String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
-      fmtPesos(item.subtotal / item.cantidad / (1 + item.alicuota_iva / 100)),
-      `${item.alicuota_iva}%`,
-      fmtPesos(neto),
-      fmtPesos(ivaM),
+      fmtPesos(item.subtotal / item.cantidad),
       fmtPesos(item.subtotal),
-    ]
-  })
-
-  autoTable(doc, {
-    startY:      tableY,
-    margin:      { left: 14, right: 14 },
-    head:        [['Descripción', 'Cant.', 'P. Unit. Neto', 'IVA %', 'Subtotal Neto', 'IVA $', 'Total']],
-    body:        rows,
-    headStyles:  { fillColor: [30, 58, 95], fontSize: 8, halign: 'center' },
-    bodyStyles:  { fontSize: 8 },
-    columnStyles: {
-      0: { cellWidth: 60 },
-      1: { halign: 'center', cellWidth: 14 },
-      2: { halign: 'right', cellWidth: 26 },
-      3: { halign: 'center', cellWidth: 14 },
-      4: { halign: 'right', cellWidth: 26 },
-      5: { halign: 'right', cellWidth: 20 },
-      6: { halign: 'right', cellWidth: 24 },
-    },
-    theme: 'striped',
-  })
+    ])
+    autoTable(doc, {
+      startY:      tableY,
+      margin:      { left: 14, right: 14 },
+      head:        [['Descripción', 'Cant.', 'P. Unitario', 'Subtotal']],
+      body:        rows,
+      headStyles:  { fillColor: [30, 58, 95], fontSize: 8, halign: 'center' },
+      bodyStyles:  { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 96 },
+        1: { halign: 'center', cellWidth: 20 },
+        2: { halign: 'right', cellWidth: 33 },
+        3: { halign: 'right', cellWidth: 33 },
+      },
+      theme: 'striped',
+    })
+  } else {
+    const rows = data.items.map(item => {
+      const neto = item.subtotal / (1 + item.alicuota_iva / 100)
+      const ivaM = item.subtotal - neto
+      ivaGroups[item.alicuota_iva] = (ivaGroups[item.alicuota_iva] ?? 0) + ivaM
+      return [
+        item.descripcion,
+        String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
+        fmtPesos(item.subtotal / item.cantidad / (1 + item.alicuota_iva / 100)),
+        `${item.alicuota_iva}%`,
+        fmtPesos(neto),
+        fmtPesos(ivaM),
+        fmtPesos(item.subtotal),
+      ]
+    })
+    autoTable(doc, {
+      startY:      tableY,
+      margin:      { left: 14, right: 14 },
+      head:        [['Descripción', 'Cant.', 'P. Unit. Neto', 'IVA %', 'Subtotal Neto', 'IVA $', 'Total']],
+      body:        rows,
+      headStyles:  { fillColor: [30, 58, 95], fontSize: 8, halign: 'center' },
+      bodyStyles:  { fontSize: 8 },
+      columnStyles: {
+        0: { cellWidth: 60 },
+        1: { halign: 'center', cellWidth: 14 },
+        2: { halign: 'right', cellWidth: 26 },
+        3: { halign: 'center', cellWidth: 14 },
+        4: { halign: 'right', cellWidth: 26 },
+        5: { halign: 'right', cellWidth: 20 },
+        6: { halign: 'right', cellWidth: 24 },
+      },
+      theme: 'striped',
+    })
+  }
 
   // ── Totales ──────────────────────────────────────────────────────────────────
   const afterTable = (doc as any).lastAutoTable.finalY + 6
   let ty = afterTable
-
-  const totalNeto = data.total - Object.values(ivaGroups).reduce((a, b) => a + b, 0)
   const totalsX = W - 14
   doc.setFontSize(9).setTextColor(60)
 
-  doc.text('Subtotal Neto:', totalsX - 50, ty, { align: 'right' })
-  doc.text(fmtPesos(totalNeto), totalsX, ty, { align: 'right' }); ty += 5
+  if (!sinIVA) {
+    const totalNeto = data.total - Object.values(ivaGroups).reduce((a, b) => a + b, 0)
+    doc.text('Subtotal Neto:', totalsX - 50, ty, { align: 'right' })
+    doc.text(fmtPesos(totalNeto), totalsX, ty, { align: 'right' }); ty += 5
 
-  for (const [rate, amount] of Object.entries(ivaGroups).sort()) {
-    doc.text(`IVA ${rate}%:`, totalsX - 50, ty, { align: 'right' })
-    doc.text(fmtPesos(amount), totalsX, ty, { align: 'right' }); ty += 5
+    for (const [rate, amount] of Object.entries(ivaGroups).sort()) {
+      doc.text(`IVA ${rate}%:`, totalsX - 50, ty, { align: 'right' })
+      doc.text(fmtPesos(amount), totalsX, ty, { align: 'right' }); ty += 5
+    }
   }
 
   doc.setFontSize(11).setFont('helvetica', 'bold').setTextColor(0)

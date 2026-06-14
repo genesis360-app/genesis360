@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-06-13
+updated: 2026-06-14
 ---
 
 # Facturación Electrónica AFIP
@@ -143,13 +143,13 @@ gastos.conciliado_iva BOOLEAN
 | PDF con QR AFIP | `facturasPDF.ts` + RG 4291 | ✅ PROD v1.5.0 |
 | Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
 | Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
-| Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ DEV v1.60.0 |
-| Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ DEV v1.60.0 |
-| Factura C sin IVA (Monotributista) | `calcularImportes` (ImpIVA 0, sin array Iva) + PDF sin columnas IVA | ✅ DEV v1.60.0 |
-| Auto-facturada al emitir | venta `despachada` → `facturada` al obtener CAE | ✅ DEV v1.60.0 |
-| Acciones descargar / imprimir / email | POS post-emisión + detalle + historial; imprimir vía iframe; email con PDF adjunto | ✅ DEV v1.60.0 |
-| Emitir desde el detalle | botón "Emitir factura" si la venta despachada no tiene CAE | ✅ DEV v1.60.0 |
-| Tests de la lógica pura | `facturacionLogic.ts` + 28 unit tests + e2e mutante | ✅ DEV v1.60.0 |
+| Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ PROD v1.60.0 |
+| Certificado propio por tenant | EF lee `.crt`/`.key` del bucket → AfipSDK constructor | ✅ PROD v1.60.0 |
+| Factura C sin IVA (Monotributista) | `calcularImportes` (ImpIVA 0, sin array Iva) + PDF sin columnas IVA | ✅ PROD v1.60.0 |
+| Auto-facturada al emitir | venta `despachada` → `facturada` al obtener CAE | ✅ PROD v1.60.0 |
+| Acciones descargar / imprimir / email | POS post-emisión + detalle + historial; imprimir vía iframe; email con PDF adjunto | ✅ PROD v1.60.0 |
+| Emitir desde el detalle | botón "Emitir factura" si la venta despachada no tiene CAE | ✅ PROD v1.60.0 |
+| Tests de la lógica pura | `facturacionLogic.ts` + 28 unit tests + e2e mutante | ✅ PROD v1.60.0 |
 
 ---
 

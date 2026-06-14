@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.60.0 — Facturación AFIP production-ready + cert propio + UX/bugfixes (DEV ✅)
+## v1.60.0 — Facturación AFIP production-ready + cert propio + UX/bugfixes (PROD ✅, PR #197)
 
 **"AFIP a PROD" — de preparar el camino a validar la facturación emitiendo CAE real (homologación) de punta a punta.** El módulo operaba contra homologación; esta versión deja el pase a producción listo y seguro, conecta el certificado propio del tenant, y corrige una tanda de bugs/UX. Verificado emitiendo **Factura C real** en homologación ×3 (test Node + app + e2e mutante).
 
@@ -24,7 +24,7 @@ updated: 2026-05-29
 - **UX:** acciones **Descargar / Imprimir / Enviar email (con PDF)** en el POS post-emisión + detalle + historial; botón **"Emitir factura"** en el detalle si se saltó el prompt; visual del PDF (recuadro + wrap de dirección).
 - **Bugfixes generales:** **400** por `venta_items.descripcion` inexistente (rompía descargar/imprimir/email); **recuperación de chunk viejo** tras deploy (vite:preloadError + ErrorBoundary "reading 'default'"); **ESC cierra el modal de arriba primero** (stack en `useModalKeyboard`); **Alertas WMS ocultas en básico** (sin ubicación/proveedor).
 - **Tests:** `src/lib/facturacionLogic.ts` + **28 unit** (Factura C incluida), `modalKeyboard.test.ts` (+5), e2e mutante de emisión → suite **734**. EF **v8**.
-- **Pendiente:** deploy a PROD (mig 210 aditiva, default false = cero impacto) + para producción real: cert de PRODUCCIÓN + token AfipSDK prod + toggle.
+- **EN PROD** (PR #197, mig 210 + EF v8 aplicadas antes del merge; 4 tenants en homologación). **Para producción real (operativo de GO):** cert de PRODUCCIÓN + token AfipSDK prod + toggle a PRODUCCIÓN.
 
 ---
 

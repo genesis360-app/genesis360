@@ -67,7 +67,7 @@ serve(async (req) => {
 
     // 1. Fetch config del tenant
     const { data: tenant, error: tErr } = await supabase.from('tenants')
-      .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b')
+      .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b, afip_produccion')
       .eq('id', tenant_id).single()
     if (tErr || !tenant) throw new Error('Tenant no encontrado')
     if (!tenant.cuit) throw new Error('El tenant no tiene CUIT configurado')
@@ -162,6 +162,15 @@ serve(async (req) => {
     totalNeto = parseFloat(totalNeto.toFixed(2))
     totalIVA  = parseFloat(totalIVA.toFixed(2))
 
+    // ImpTotal DEBE ser ImpNeto + ImpIVA (+ Trib/OpEx/TotConc = 0) o AFIP rechaza
+    // (error 10048: "el campo ImpTotal no es igual a la suma de los campos..."). No
+    // confiar en venta.total, que puede diferir por redondeo de centavos o por
+    // descuentos/recargos globales no prorrateados en los ítems.
+    const impTotal = parseFloat((totalNeto + totalIVA).toFixed(2))
+    if (Math.abs(impTotal - totalVenta) > 0.5) {
+      console.warn(`ImpTotal calculado (${impTotal}) difiere de venta.total (${totalVenta}) — revisar descuento/recargo global no reflejado en ítems`)
+    }
+
     // 5. Fecha de hoy
     const hoy = new Date()
     const fecha = parseInt(
@@ -170,7 +179,11 @@ serve(async (req) => {
 
     // 6. Obtener próximo número
     const cuit = parseInt(tenant.cuit.replace(/[-\s]/g, ''))
-    const isProduction = Deno.env.get('AFIP_PRODUCTION') === 'true'
+    // Homologación vs producción: decisión POR-TENANT (tenants.afip_produccion).
+    // `AFIP_FORCE_HOMOLOGACION=true` es un freno de emergencia GLOBAL que fuerza
+    // homologación para todos (nunca prende producción). Default → homologación.
+    const masterKill = Deno.env.get('AFIP_FORCE_HOMOLOGACION') === 'true'
+    const isProduction = !masterKill && tenant.afip_produccion === true
 
     const afip = new Afip({
       CUIT: cuit,
@@ -193,7 +206,7 @@ serve(async (req) => {
       CbteDesde:  proximo,
       CbteHasta:  proximo,
       CbteFch:    fecha,
-      ImpTotal:   totalVenta,
+      ImpTotal:   impTotal,
       ImpTotConc: 0,
       ImpNeto:    totalNeto,
       ImpOpEx:    0,
@@ -210,7 +223,7 @@ serve(async (req) => {
     }
 
     // 8. Emitir
-    console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id}`)
+    console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id} [${isProduction ? 'PRODUCCIÓN' : 'homologación'}]`)
     const resultado = await eb.createVoucher(payload)
 
     // 9. Guardar CAE

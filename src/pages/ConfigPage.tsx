@@ -600,6 +600,11 @@ export default function ConfigPage() {
   const [bizUmbralB,         setBizUmbralB]         = useState<string>(String((tenant as any)?.umbral_factura_b ?? '68305.16'))
   const [bizAfipToken,       setBizAfipToken]       = useState<string>((tenant as any)?.afipsdk_token ?? '')
   const [showAfipToken,      setShowAfipToken]      = useState(false)
+  // Modo de emisión: homologación (sandbox) vs producción (CAE fiscal real)
+  const [bizAfipProduccion,  setBizAfipProduccion]  = useState<boolean>((tenant as any)?.afip_produccion ?? false)
+  const [showProdConfirm,    setShowProdConfirm]    = useState(false)
+  const [prodAck,            setProdAck]            = useState(false)
+  const [savingProd,         setSavingProd]         = useState(false)
 
   // WhatsApp
   const [bizWAPlantilla, setBizWAPlantilla] = useState<string>((tenant as any)?.whatsapp_plantilla ?? '')
@@ -783,7 +788,45 @@ export default function ConfigPage() {
     setSavingFact(false)
     if (error || !data) { toast.error('No se pudo guardar'); return }
     setTenant(data)  // refrescar store
+    setBizAfipProduccion(data.afip_produccion ?? bizAfipProduccion)
     toast.success('Datos fiscales guardados')
+  }
+
+  // Modo de emisión: pasar a producción exige CUIT + token GUARDADOS (no solo tipeados)
+  const afipDatosListos = !!(tenant as any)?.cuit && !!(tenant as any)?.afipsdk_token
+  const persistAfipProduccion = async (nuevoValor: boolean) => {
+    setSavingProd(true)
+    const { data, error } = await supabase.from('tenants')
+      .update({ afip_produccion: nuevoValor })
+      .eq('id', tenant!.id).select().single()
+    setSavingProd(false)
+    if (error || !data) { toast.error('No se pudo cambiar el modo de emisión'); return false }
+    setTenant(data)
+    setBizAfipProduccion(nuevoValor)
+    return true
+  }
+  const toggleAfipProduccion = async () => {
+    if (bizAfipProduccion) {
+      // Volver a homologación es seguro → directo
+      const ok = await persistAfipProduccion(false)
+      if (ok) toast.success('Modo de emisión: HOMOLOGACIÓN (sin valor fiscal)')
+      return
+    }
+    // Pasar a PRODUCCIÓN → confirmación explícita
+    if (!afipDatosListos) {
+      toast.error('Primero guardá CUIT y Token AfipSDK antes de pasar a producción')
+      return
+    }
+    setProdAck(false)
+    setShowProdConfirm(true)
+  }
+  const confirmActivarProduccion = async () => {
+    if (!prodAck) return
+    const ok = await persistAfipProduccion(true)
+    if (ok) {
+      setShowProdConfirm(false)
+      toast.success('Modo de emisión: PRODUCCIÓN — se emitirán comprobantes fiscales REALES')
+    }
   }
 
   const handleSaveBiz = async () => {
@@ -2390,6 +2433,34 @@ export default function ConfigPage() {
                 <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
               </div>
             </div>
+            {/* Modo de emisión: homologación (prueba) vs producción (CAE fiscal real) */}
+            <div className={`rounded-xl border p-3 ${bizAfipProduccion ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/20' : 'border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-900/20'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-2">
+                  {bizAfipProduccion
+                    ? <ShieldCheck size={18} className="text-emerald-600 dark:text-emerald-400 mt-0.5 shrink-0" />
+                    : <AlertCircle size={18} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />}
+                  <div>
+                    <p className={`text-sm font-semibold ${bizAfipProduccion ? 'text-emerald-800 dark:text-emerald-300' : 'text-amber-800 dark:text-amber-300'}`}>
+                      {bizAfipProduccion ? 'Modo PRODUCCIÓN — comprobantes fiscales REALES' : 'Modo PRUEBA (homologación) — sin valor fiscal'}
+                    </p>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                      {bizAfipProduccion
+                        ? 'Cada emisión genera un CAE válido ante AFIP, con numeración correlativa oficial.'
+                        : 'Los CAE emitidos son de prueba y no tienen validez fiscal. Pasá a producción solo cuando completes el onboarding AFIP (CUIT activo + certificado + token de producción).'}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={toggleAfipProduccion} disabled={savingProd}
+                  title={bizAfipProduccion ? 'Volver a modo prueba (homologación)' : 'Pasar a producción real'}
+                  className={`relative w-10 h-5 rounded-full transition-colors shrink-0 disabled:opacity-50 ${bizAfipProduccion ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${bizAfipProduccion ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </button>
+              </div>
+              {!afipDatosListos && !bizAfipProduccion && (
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">Cargá y guardá CUIT + Token AfipSDK para poder pasar a producción.</p>
+              )}
+            </div>
             <div className="flex justify-end pt-2">
               <button onClick={handleSaveFacturacion} disabled={savingFact}
                 className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
@@ -2397,6 +2468,37 @@ export default function ConfigPage() {
               </button>
             </div>
           </div>
+
+          {/* Confirmación para pasar a PRODUCCIÓN (CAE fiscal real) */}
+          {showProdConfirm && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowProdConfirm(false)}>
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6" onClick={e => e.stopPropagation()}>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertCircle size={22} className="text-red-500" />
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pasar a PRODUCCIÓN AFIP</h3>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  A partir de ahora, cada factura emitida generará un <strong>CAE fiscal real e irreversible</strong> ante AFIP, con numeración correlativa oficial. Esto no es una prueba.
+                </p>
+                <ul className="text-xs text-gray-500 dark:text-gray-400 mt-3 space-y-1 list-disc pl-5">
+                  <li>El CUIT debe estar <strong>activo</strong> y habilitado para Facturación Electrónica.</li>
+                  <li>El certificado de producción debe estar autorizado en AFIP (Administrador de Relaciones).</li>
+                  <li>El Token AfipSDK debe ser de <strong>producción</strong>.</li>
+                </ul>
+                <label className="flex items-start gap-2 mt-4 cursor-pointer">
+                  <input type="checkbox" checked={prodAck} onChange={e => setProdAck(e.target.checked)} className="mt-0.5" />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Entiendo que se emitirán comprobantes fiscales reales con valor legal.</span>
+                </label>
+                <div className="flex justify-end gap-2 mt-5">
+                  <button onClick={() => setShowProdConfirm(false)} className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl">Cancelar</button>
+                  <button onClick={confirmActivarProduccion} disabled={!prodAck || savingProd}
+                    className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-xl disabled:opacity-50">
+                    {savingProd ? 'Activando…' : 'Activar producción'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

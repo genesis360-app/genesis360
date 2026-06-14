@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import QRCode from 'qrcode'
+import { buildQrAfipUrl } from '@/lib/facturacionLogic'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -59,33 +60,8 @@ export function normalizarCondIVA(v?: string | null): string {
   return COND_IVA_LABEL[v] ?? v
 }
 
-// ─── Construcción URL QR AFIP (RG 4291) ──────────────────────────────────────
-
-function buildQrAfipUrl(data: FacturaPDFData): string {
-  const nroDocRec = data.receptor_cuit_dni?.replace(/\D/g, '') ?? '0'
-  const tipoDocRec = nroDocRec.length === 11 ? 80  // CUIT
-                   : nroDocRec.length >= 7   ? 96  // DNI
-                   : 99                             // Consumidor Final
-
-  const payload = {
-    ver:        1,
-    fecha:      data.fecha.slice(0, 10),
-    cuit:       parseInt(data.emisor_cuit.replace(/\D/g, '')),
-    ptoVta:     data.punto_venta,
-    tipoCmp:    TIPO_CMP_AFIP[data.tipo_comprobante] ?? 6,
-    nroCmp:     data.numero_comprobante,
-    importe:    data.total,
-    moneda:     data.moneda ?? 'PES',
-    ctz:        1,
-    tipoDocRec,
-    nroDocRec:  parseInt(nroDocRec) || 0,
-    tipoCodAut: 'E',
-    codAut:     parseInt(data.cae),
-  }
-
-  const b64 = btoa(JSON.stringify(payload))
-  return `https://www.afip.gob.ar/fe/qr/?p=${b64}`
-}
+// El QR fiscal (RG 4291) se construye con buildQrAfipUrl de '@/lib/facturacionLogic'
+// (lógica pura testeable).
 
 // ─── Generador principal ──────────────────────────────────────────────────────
 
@@ -95,7 +71,17 @@ export async function generarFacturaPDF(data: FacturaPDFData): Promise<void> {
   const COL = W / 2  // 105mm — divisor A/B
 
   // ── QR ──────────────────────────────────────────────────────────────────────
-  const qrUrl = buildQrAfipUrl(data)
+  const qrUrl = buildQrAfipUrl({
+    fecha:             data.fecha,
+    emisorCuit:        data.emisor_cuit,
+    puntoVenta:        data.punto_venta,
+    tipoComprobante:   data.tipo_comprobante,
+    numeroComprobante: data.numero_comprobante,
+    importe:           data.total,
+    cae:               data.cae,
+    receptorCuitDni:   data.receptor_cuit_dni,
+    moneda:            data.moneda,
+  })
   const qrDataUrl = await QRCode.toDataURL(qrUrl, { width: 200, margin: 1 })
 
   // ── Encabezado izquierdo — datos del emisor ──────────────────────────────────

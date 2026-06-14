@@ -4,6 +4,8 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
+**EN DEV (sin deployar a PROD aún): v1.60.0** — **Facturación AFIP: modo producción por-tenant + tests + fix ImpTotal.** "AFIP a PROD" (preparar el camino para el primer cliente que facture). El módulo ya estaba en PROD pero operaba contra **homologación**; esta versión habilita el pase a **producción real** de forma segura: (1) **mig 210** `tenants.afip_produccion` (default false → homologación; todos los tenants existentes sin cambio); la EF `emitir-factura` decide homologación↔producción **por-tenant** (antes env var GLOBAL `AFIP_PRODUCTION` que prendía a todos), con `AFIP_FORCE_HOMOLOGACION` como freno global; toggle owner-only en Config→Facturación con confirmación + guards. (2) **Fix anti error AFIP 10048**: `ImpTotal = ImpNeto + ImpIVA` (no `ventas.total`). (3) **Tests**: `src/lib/facturacionLogic.ts` + **25 unit** (suite 701→**726**); refactor `facturasPDF`/`VentasPage`. (4) Runbook + decisión **AfipSDK cloud vs self-host** en `wiki/features/facturacion-afip.md`. **EF v5 en DEV.** ⏳ Falta: deploy a PROD (mig aditiva default false = cero impacto) + operativo de GO (CUIT activo + cert + token AfipSDK prod) + smoke real. Ver sección "▶ AFIP A PRODUCCIÓN" abajo.
+
 Último release: **v1.59.4** ✅ EN PROD (2026-06-13, PR **#196**, UI-only, `dev=main` `6d76cd92`) — **`$/km` editable en el envío del POS** (en básico no hay Config→Envíos para la tarifa por km → el modo "Por KM" quedaba inusable; ahora el `$/km` es input editable, pre-cargado si hay tarifa o vacío si no, y el costo km×$/km se recalcula solo; modo "$ Monto fijo" sigue como alternativa). Antes hoy: **v1.59.3** (PR #195, UI-only) — **UX Inventario** (alineación columna Cantidad [regresión de v1.59.1] · ESC cierra modal de detalle de movimiento · autoFocus en búsqueda SKU del modal de ingreso/rebaje). Antes hoy: **v1.59.2** (PR #194) — **FIX del bloqueo REAL de venta en básico: el ESTADO** (stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba `es_disponible_venta` → bloqueaba en `agregarProducto`; fix: filtro de estado solo en avanzado). **v1.59.1** (PR #193) — fix venta básico parte 1 (ubicación, `soloUbicado`) + recortes Inventario básico (modal detalle sin Estado/LPN · tab Autorizaciones oculto · grilla sin Lote/Venc./Series) + e2e mutante de ciclo de caja. **⚠ Regla:** el stock de básico tiene `ubicacion_id` Y `estado_id` NULL → queries de venta/stock deben ser mode-aware (ver sección de estado abajo).
 
 Antes: **v1.59.0** ✅ EN PROD (2026-06-13, PR **#191**, migs **208**+**209** aplicadas en PROD, `dev=main`) — **Auditoría pre-primer-cliente, tandas 1+2**. Recortes básico (UI): Productos→**Estructura** y Config→Conectividad→sub-tab **API** ocultos (se mantiene Integraciones TN/MeLi/MP). Seguridad (mig 208): policy SELECT en `planes`, `search_path=public` en 25 funciones, `REVOKE FROM PUBLIC`+re-GRANT en SECURITY DEFINER no públicas (períodos, sweeps CC, clave maestra anti-fuerza-bruta, seeds) → search_path 25→0, rls_no_policy 1→0, anon SECURITY DEFINER 29→15 (resto por diseño). Seguridad (mig 209): buckets `avatares`/`productos` con SELECT scopeado a la propia carpeta → `public_bucket_allows_listing` 2→0. Salud: react-router-dom 6.30.4 (open-redirect). Testing: **701 unit + 158 e2e**, primer e2e MUTANTE real de venta (POS→cobro→caja). Decisiones won't-fix/diferido: pg_net (no relocatable), RLS por sucursal (0 exposición hoy), leaked-password (toggle de Auth de GO). Detalle en "AUDITORÍA PRE-PRIMER CLIENTE" abajo.
@@ -28,13 +30,14 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.59.4` ✅ | `v1.59.4` ✅ |
-| Migrations | 001–**209** ✅ | 001–**209** ✅ |
-| Branch | `dev` (= `main`) | `main` (release v1.59.4, PR #196) |
+| APP_VERSION | `v1.60.0` ✅ | `v1.59.4` ✅ |
+| Migrations | 001–**210** ✅ | 001–**209** ✅ |
+| Branch | `dev` (1 adelante de `main`) | `main` (release v1.59.4, PR #196) |
 | Vercel | preview auto desde `dev` | PROD deploy v1.59.4 (auto desde `main`) |
+| Edge Function `emitir-factura` | **v5** (por-tenant + ImpTotal) ✅ | v3 (global `AFIP_PRODUCTION`) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna. **Todo en PROD = DEV = v1.59.4** (`dev=main`, `6d76cd92`). Cadena del día:
+**Migrations DEV pendientes de aplicar en PROD:** **210** (`afip_produccion`, aditiva, default false = cero impacto). **EF `emitir-factura` v5 pendiente de deployar a PROD** (junto con el frontend v1.60.0). Cadena del día (v1.59.x ya en PROD):
 - **v1.59.4** (PR #196, UI-only): **`$/km` editable en el envío del POS** — en básico no hay Config→Envíos para cargar la tarifa por km, así que el modo "Por KM" quedaba inusable (campo read-only "—"). Ahora el `$/km` es input editable (pre-cargado si hay tarifa, vacío si no); costo km×$/km se recalcula solo. Modo "$ Monto fijo" sigue como alternativa.
 - **v1.59.3** (PR #195, UI-only): UX Inventario — alineación columna Cantidad (regresión de v1.59.1), ESC cierra modal de detalle, autoFocus en búsqueda SKU del modal de ingreso/rebaje (Enter ya lo abría).
 - **v1.59.2** (PR #194, UI-only): **FIX del bloqueo REAL de venta en básico = ESTADO**. Stock básico tiene `estado_id=NULL`; el cálculo de stock disponible filtraba por `es_disponible_venta` → bloqueaba en `agregarProducto`. Fix: filtro de estado solo en avanzado. (v1.59.1 había arreglado la ubicación pero no era suficiente.)
@@ -44,6 +47,30 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 **⚠ Regla aprendida (no reintroducir):** el stock de **modo básico** tiene `ubicacion_id` Y `estado_id` en **NULL** (no usa ubicaciones ni estados). Toda query de venta/disponibilidad de stock que filtre `.not('ubicacion_id','is',null)` o `.in('estado_id', es_disponible_venta)` **debe ser mode-aware** (saltar esos filtros en básico) o las ventas de básico fallan con "sin stock" pese a haber stock. Helpers en VentasPage: `soloUbicado(q)` + `if (modoAvanzado && estadosFinal…)`.
 
 **Acciones pendientes de GO (no bloqueantes):** activar **Leaked Password Protection** en Supabase Auth (requiere plan Pro) · borrar la rama dependabot del PR #192 (Vite 8, cerrado) para frenar builds de preview fallidos.
+
+### ▶ AFIP A PRODUCCIÓN (v1.60.0) — estado y pasos
+
+**Decisión de GO (2026-06-13):** flag **por-tenant** + **preparar el camino** (sin emitir real todavía). El código quedó listo en DEV.
+
+**Hecho (código, en DEV):**
+- `tenants.afip_produccion` (mig 210) + EF `emitir-factura` v5 decide por-tenant + `AFIP_FORCE_HOMOLOGACION` freno global.
+- Toggle owner-only Config→Facturación (confirmación + exige CUIT/token guardados).
+- Fix `ImpTotal = ImpNeto+ImpIVA` (anti error AFIP 10048).
+- `src/lib/facturacionLogic.ts` + 25 unit tests (suite 726). Refactor `facturasPDF`/`VentasPage`.
+- Runbook + decisión cloud vs self-host en `wiki/features/facturacion-afip.md`.
+
+**Falta (operativo de GO, fuera de código):**
+1. **CUIT activo** habilitado para WS `wsfe` en AFIP/ARCA.
+2. **Certificado de producción** generado/cargado en AfipSDK + vinculado vía **Administrador de Relaciones** al servicio Facturación Electrónica.
+3. **Token AfipSDK de producción** (plan pago; homologación es gratis).
+4. Cargar en Config→Facturación (CUIT/condición/razón social/domicilio/token) + ≥1 punto de venta que coincida con AFIP.
+5. Toggle Modo de emisión → PRODUCCIÓN (confirmar) → **smoke real**: Factura B chica → verificar CAE en PDF y en "Mis Comprobantes" de AFIP.
+
+**Para probar SIN valor fiscal:** dejar `afip_produccion=false` (homologación) con token de homologación → emite CAE de prueba real, sin riesgo. Es lo que conviene hacer con el CUIT de GO para validar el flujo end-to-end antes de ir a producción.
+
+**Modelo actual = AfipSDK cloud** (access_token). El uploader de certificados `.crt`/`.key` en Config (`tenant_certificates`, mig 043) **NO lo usa la EF** → es código muerto hoy; ocultar/relabelear o cablear solo si se migra a self-host. **El comentario de GO sobre "afip.js con .key/.crt" describe el modo self-host**; ya usamos afip.js (la variante cloud). Migrar a self-host es proyecto dedicado (la firma WSAA/CMS local es impráctica en Deno Edge). Detalle en la feature page.
+
+**Cobertura de tests:** la lógica pura está cubierta (auto-tipo, IVA, DocTipo, umbral, QR). La emisión real (WSAA+WSFE round-trip) NO se unit-testea (depende de AFIP) → es smoke manual/integración.
 
 ### ▶ Auditoría de procesos 2026-06-11 — hallazgos y estado
 

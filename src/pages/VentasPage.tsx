@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { generarFacturaPDF, normalizarCondIVA } from '@/lib/facturasPDF'
+import { detectarTipoComprobante } from '@/lib/facturacionLogic'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
@@ -1403,11 +1404,8 @@ export default function VentasPage() {
   // ── Facturación ───────────────────────────────────────────────────────────
   const factHabilitada = !!(tenant as any)?.facturacion_habilitada && !!(tenant as any)?.cuit
 
-  const detectarTipoComp = (clienteCondIva?: string): 'A' | 'B' | 'C' => {
-    if ((tenant as any)?.condicion_iva_emisor === 'Monotributista') return 'C'
-    if (clienteCondIva === 'RI') return 'A'
-    return 'B'
-  }
+  const detectarTipoComp = (clienteCondIva?: string): 'A' | 'B' | 'C' =>
+    detectarTipoComprobante((tenant as any)?.condicion_iva_emisor, clienteCondIva)
 
   const triggerFacturaModal = (ventaId: string, ventaNumero: number, ventaTotal: number, clienteCondIva?: string) => {
     const tipo = detectarTipoComp(clienteCondIva)

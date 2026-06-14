@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-05
+updated: 2026-06-13
 ---
 
 # Facturación Electrónica AFIP
@@ -101,6 +101,7 @@ tenants:
   domicilio_fiscal TEXT
   umbral_factura_b DECIMAL
   afipsdk_token TEXT             -- oculto en UI
+  afip_produccion BOOLEAN        -- false=homologación / true=producción (mig 210)
 ```
 
 **Puntos de venta AFIP:** CRUD colapsable → `puntos_venta_afip(id, sucursal_id, numero, nombre, activo)`
@@ -140,17 +141,97 @@ gastos.conciliado_iva BOOLEAN
 | Config + datos maestros | Toggle, CUIT, condición IVA, umbral, puntos de venta | ✅ PROD v1.3.0 |
 | Emisión CAE | EF `emitir-factura` + prompt al despachar | ✅ PROD v1.3.0 |
 | PDF con QR AFIP | `facturasPDF.ts` + RG 4291 | ✅ PROD v1.5.0 |
-| Notas de Crédito electrónicas | NC en devoluciones | 🔵 Pendiente |
-| Envío automático por email | Al emitir factura | 🔵 Pendiente |
+| Notas de Crédito electrónicas | NC-A/B/C desde devoluciones (`devolucion_id`) | ✅ PROD |
+| Envío automático por email | `send-email type=factura_emitida` al emitir | ✅ PROD |
+| Modo de emisión por-tenant | `tenants.afip_produccion` (homologación↔producción) | ✅ DEV v1.60.0 |
+| Tests de la lógica pura | `facturacionLogic.ts` + 25 unit tests | ✅ DEV v1.60.0 |
+
+---
+
+## Modo de emisión: homologación vs producción (v1.60.0)
+
+El módulo SIEMPRE operó contra **homologación** (sandbox de AFIP — los CAE no tienen
+valor fiscal). El pase a **producción** (CAE fiscal real) ahora es un interruptor
+**por-tenant**, no global:
+
+- **`tenants.afip_produccion BOOLEAN DEFAULT false`** (mig 210). La EF lo lee como
+  fuente de verdad: `isProduction = !masterKill && tenant.afip_produccion === true`.
+- **`AFIP_FORCE_HOMOLOGACION=true`** (env var de la EF) = freno de emergencia GLOBAL
+  que fuerza homologación para todos. Nunca prende producción.
+- **UI:** Config → Facturación → banda "Modo de emisión" (DUEÑO). Pasar a producción
+  exige CUIT + Token AfipSDK guardados y una confirmación explícita (checkbox de
+  reconocimiento de que se emiten comprobantes fiscales reales). Volver a homologación
+  es directo (seguro).
+- **Por qué por-tenant y no la env var global anterior (`AFIP_PRODUCTION`):** prenderla
+  globalmente pasaba a TODOS los tenants con facturación habilitada a emitir real de
+  golpe. El flag por-tenant permite habilitar producción **un cliente a la vez**.
+
+### Consistencia ImpTotal (anti error AFIP 10048)
+
+La EF arma `ImpTotal = ImpNeto + ImpIVA` (no `ventas.total`). Si confiara en
+`ventas.total` y este difiriera por redondeo de centavos o por un descuento/recargo
+global no prorrateado en los ítems, AFIP rechaza con error 10048 ("ImpTotal no es
+igual a la suma…"). Si hay diferencia > $0.50 se loguea un warning para investigar.
+
+---
+
+## Runbook — pasar un tenant a PRODUCCIÓN AFIP
+
+Lo de código ya está listo; lo que sigue es **operativo** (CUIT + certificado) y lo hace
+el dueño del tenant. Modelo actual = **AfipSDK cloud** (access_token), no cert local.
+
+1. **CUIT activo** habilitado para "Facturación Electrónica" (WS `wsfe`) en AFIP/ARCA.
+2. **Certificado de producción**: en AfipSDK, generar/cargar el certificado y vincularlo
+   en AFIP vía **Administrador de Relaciones** al servicio Facturación Electrónica.
+3. **Token AfipSDK de producción** (plan pago; homologación es gratis).
+4. En Genesis360: **Config → Facturación** → cargar CUIT + condición IVA + razón social
+   + domicilio + **Token AfipSDK (prod)** → Guardar datos fiscales.
+5. Cargar al menos un **Punto de venta** (debe coincidir con uno habilitado en AFIP).
+6. Banda **Modo de emisión** → pasar a **PRODUCCIÓN** (confirmar checkbox).
+7. **Smoke real:** emitir una Factura B de monto chico → verificar el CAE en el PDF y en
+   "Mis Comprobantes" de AFIP. Los logs de la EF muestran `[PRODUCCIÓN]` vs `[homologación]`.
+
+> Para **probar el flujo completo sin valor fiscal**, dejar `afip_produccion=false`
+> (homologación) con el token de homologación: emite CAE de prueba real, sin riesgo.
+
+---
+
+## Decisión técnica: AfipSDK cloud vs self-host (cert .crt/.key local)
+
+Hay dos formas de hablar con AFIP, y conviene tenerlas claras:
+
+- **AfipSDK cloud (actual):** `@afipsdk/afip.js` con `access_token`. AfipSDK resuelve el
+  WSAA (firma criptográfica CMS del ticket de login, cache del TA ~12 h) en SUS
+  servidores. Simple, ya anda, maneja downtime/retries. **Contras:** un tercero (AfipSDK)
+  en el camino fiscal; producción requiere plan pago; hoy cada tenant necesita su propio
+  token/cuenta AfipSDK (fricción de onboarding).
+- **Self-host (cert local):** firmar el WSAA con el `.crt`/`.key` propios y pegarle directo
+  a ARCA, sin tercero. **Contras:** hay que implementar WSAA+WSFE; en **Deno (Supabase
+  Edge)** la firma CMS/PKCS7 local es impráctica (cripto limitada) → realista solo
+  moviendo la EF a un runtime Node o un microservicio dedicado. Mantenimiento continuo de
+  la integración AFIP. Por eso existen servicios como AfipSDK.
+
+**Recomendación:** para el primer cliente, **quedarse en AfipSDK cloud** (es "usar una
+librería", lo que el consejo recomienda; solo que usamos la variante cloud). Migrar a
+self-host solo si el costo/modelo por-tenant de AfipSDK molesta a escala o se quiere
+sacar el tercero — y ahí es un proyecto dedicado, no un swap rápido.
+
+> ⚠ **Deuda / trampa de UX:** Config tiene un uploader de certificados `.crt`/`.key`
+> (`tenant_certificates` + bucket `certificados-afip`, mig 043) que la EF **NO usa** (usa
+> el token). Subir certs ahí hoy no hace nada. Solo tendría sentido si se migra a
+> self-host; mientras tanto conviene ocultarlo/relabelearlo para no confundir.
 
 ---
 
 ## Riesgos
 
-1. **Numeración correlativa** — bugs de duplicados/saltos son graves para AFIP
-2. **AFIP WSFE tiene downtime** — retry robusto necesario
-3. **Clientes sin CUIT** — flujo de completar datos antes de emitir
-4. **CUIT inactivo del dueño** → usar CUIT de empresa cuando se constituya
+1. **Numeración correlativa** — `getLastVoucher + 1` tiene condición de carrera si hay
+   emisiones concurrentes (mismo PV/tipo). Bajo para un mostrador single-cajero; revisar
+   si crece el volumen.
+2. **AFIP WSFE tiene downtime** — AfipSDK reintenta; igual el toast informa el error.
+3. **Clientes sin CUIT** — Factura A exige CUIT del cliente (la EF lanza error claro).
+4. **CUIT inactivo del dueño** → usar el CUIT del cliente/empresa que factura.
+5. **ImpTotal** — ver "Consistencia ImpTotal" arriba (resuelto en v1.60.0).
 
 ---
 

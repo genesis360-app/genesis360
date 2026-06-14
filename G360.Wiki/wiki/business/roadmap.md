@@ -9,7 +9,19 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 12 de Junio, 2026
+**Última actualización:** 13 de Junio, 2026
+
+---
+
+## v1.60.0 — Facturación AFIP: modo producción por-tenant + tests + fix ImpTotal (DEV ✅)
+
+**"AFIP a PROD" — preparar el camino para que el primer cliente facture.** El módulo de facturación ya estaba en PROD pero operando contra **homologación** (sandbox). Esta versión deja listo el pase a **producción real** de forma segura y agrega cobertura de tests.
+
+- **Modo de emisión por-tenant** (mig **210**): `tenants.afip_produccion` (default false → homologación). La EF `emitir-factura` decide homologación↔producción **por-tenant** (antes era una env var GLOBAL `AFIP_PRODUCTION` que prendía a todos de golpe); queda `AFIP_FORCE_HOMOLOGACION` como freno de emergencia global. Toggle owner-only en Config → Facturación con confirmación explícita + guards (exige CUIT + token guardados).
+- **Fix anti-rechazo AFIP (error 10048):** la EF arma `ImpTotal = ImpNeto + ImpIVA` (no `ventas.total`) para garantizar la consistencia que AFIP exige; warning si difiere > $0.50.
+- **Tests:** nueva lib pura `src/lib/facturacionLogic.ts` (auto-tipo A/B/C, desglose IVA multi-alícuota, DocTipo/umbral RG 5616, QR RG 4291) + **25 unit tests** (suite 701→**726**). Refactor: `facturasPDF.ts` y `VentasPage` usan la lib (dedup).
+- **Runbook** de onboarding a producción AFIP + decisión documentada **AfipSDK cloud vs self-host (cert local)** en `wiki/features/facturacion-afip.md`.
+- **Pendiente:** deploy a PROD (mig 210 aditiva, default false = cero impacto); CUIT activo + cert + token AfipSDK prod (operativo de GO); smoke real de CAE.
 
 ---
 

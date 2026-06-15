@@ -14,7 +14,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 - **Ocultar "Anular" + "Cambiar cliente" cuando la venta tiene CAE:** una factura electrónica está en AFIP a nombre de un cliente fijo → anularla la dejaría viva en AFIP y cambiar el cliente descuadraría el comprobante. Ahora con CAE solo se ofrece **"Devolver"** (reversión vía NC). Las ventas sin CAE (despachada o marcada facturada) siguen permitiendo ambas. (Antes v1.70.0 bloqueaba con toast; ahora directamente no se muestran — sugerencia de GO.)
 - **Feature: drag-scroll en barras de tabs** (`useDragScroll`): en RRHH/Gastos/Inventario las tabs que no entran en pantalla ahora se pueden **arrastrar con el mouse** (click + mover horizontal); si hubo arrastre, el click no cambia de tab. `cursor-grab` + `select-none`.
 
-typecheck + suite unit **734/734** verdes. **EF DEV deployada; falta deploy EF a PROD (espera OK de GO — PROD Supabase no se toca sin autorización).** Pendiente fiscal: NC manual de la venta #20 de Kiosko (cancelada con CAE pre-fix).
+typecheck + suite unit **734/734** verdes. **EF `emitir-factura` deployada a DEV + PROD (GO autorizó "dejar PRD=DEV") → PRD=DEV.** Pendiente fiscal menor: NC de la venta #20 de Kiosko (cancelada con CAE de homologación pre-fix; sin peso fiscal real — el fix v1.71.0 ya impide anular facturadas con CAE, así que no es un caso reproducible).
 
 ## [2026-06-15] deploy | v1.70.0 EN PROD — Click-through básico (tanda 2): NC electrónica, ESC stack, anular factura con CAE · `dev=main`
 

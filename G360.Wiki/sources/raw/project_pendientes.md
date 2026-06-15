@@ -4,7 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-**✅ EN PROD: v1.61.0** (2026-06-14, PR **#200** `dca27a78`, **mig 211** aplicada DEV+PROD antes del merge, release latest) — **Logo del negocio en la factura + filename con cliente.** Fase 1 de **paridad con Xubio** (relevamiento de 3 PDFs de un cliente que migra, Maderas El Tilo RI A/B). Mig 211 = bucket `logos` (público, scopeado por tenant). Config → Facturación sube/quita logo (`tenants.logo_url`, ya existía); `facturasPDF` lo embebe arriba a la izq (canvas→dataURL, conserva aspecto, emisor se corre); filename con nombre del cliente. **Plan por fases pendiente:** v1.62.0 (datos fiscales emisor IIBB/Inicio Act + domicilio receptor + moneda + forma de pago + fecha vto + **Transparencia Fiscal Ley 27.743 en B** + desglose IVA + "Comprobante Autorizado" + letra N° + SKU), v1.63.0 (**PDF de presupuesto A4** — hoy solo ticket `window.print()`), v1.64.0 (detalle por línea: Observaciones + % Dto., amplía `venta_items` + UI POS). Ver sección "▶ PARIDAD XUBIO" abajo.
+**✅ EN PROD: v1.62.0** (2026-06-14, PR **#201** `dbf94a37`, **mig 212** aplicada DEV+PROD antes del merge, release latest) — **Comprobantes: presupuesto A4 + factura completa + remito (paridad Xubio).** Mig 212 = `tenants += ingresos_brutos/inicio_actividades/cbu/alias_cbu/banco/leyenda_comprobante/sitio_web`. **Presupuesto PDF A4 nuevo** (`presupuestoPDF.ts` — antes solo ticket térmico). **Factura completa**: IIBB + Inicio Act + contacto + N° con letra + moneda + forma de pago + domicilio receptor + Cód. SKU + **Ley 27.743 (B)** + "Comprobante Autorizado" + datos bancarios + leyenda. **Remito nuevo** (`remitoPDF.ts`, no fiscal, "Recibí conforme"). Config → Facturación: sección "Datos para los comprobantes". **Único pendiente del backlog Xubio: link/QR de pago MercadoPago** (integración de pagos, deploy dedicado). Ver "▶ PARIDAD XUBIO".
+
+Antes: **v1.61.0** (2026-06-14, PR **#200** `dca27a78`, **mig 211** aplicada DEV+PROD antes del merge, release latest) — **Logo del negocio en la factura + filename con cliente.** Fase 1 de **paridad con Xubio** (relevamiento de 3 PDFs de un cliente que migra, Maderas El Tilo RI A/B). Mig 211 = bucket `logos` (público, scopeado por tenant). Config → Facturación sube/quita logo (`tenants.logo_url`, ya existía); `facturasPDF` lo embebe arriba a la izq (canvas→dataURL, conserva aspecto, emisor se corre); filename con nombre del cliente. **Plan por fases pendiente:** v1.62.0 (datos fiscales emisor IIBB/Inicio Act + domicilio receptor + moneda + forma de pago + fecha vto + **Transparencia Fiscal Ley 27.743 en B** + desglose IVA + "Comprobante Autorizado" + letra N° + SKU), v1.63.0 (**PDF de presupuesto A4** — hoy solo ticket `window.print()`), v1.64.0 (detalle por línea: Observaciones + % Dto., amplía `venta_items` + UI POS). Ver sección "▶ PARIDAD XUBIO" abajo.
 
 Antes: **v1.60.2** (2026-06-14, PR **#199** `82db1900`, **sin migraciones**, release latest) — **Menú "Acciones" en toolbars + bloqueo Factura A sin CUIT.** Solo frontend: (1) componente reutilizable **`ActionMenu`** (`src/components/ActionMenu.tsx`) que colapsa las acciones secundarias del header en un solo botón "⋯ Acciones" (click, no hover → arregla el dropdown de Exportar que no andaba en touch; descongestiona mobile). **Aplicado en Productos + Clientes (piloto)**; falta replicar al resto (Proveedores tiene el mismo bug de hover, Ventas/Caja/Gastos/Inventario/Envíos…). (2) **Bloqueo de Factura A** en el POS si la venta no tiene cliente con CUIT (botón A deshabilitado + aviso; degrada a B). (3) **Mensaje de error real al emitir** (lee `error.context.json()` en POS/NC/Facturación) en vez del genérico "non-2xx". typecheck + build verdes.
 
@@ -36,14 +38,15 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.61.0` ✅ (suite 734) | `v1.61.0` ✅ |
-| Migrations | 001–**211** ✅ | 001–**211** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.61.0, PR #200, `dca27a78`) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.61.0 (auto desde `main`) |
+| APP_VERSION | `v1.62.0` ✅ (suite 734) | `v1.62.0` ✅ |
+| Migrations | 001–**212** ✅ | 001–**212** ✅ |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.62.0, PR #201, `dbf94a37`) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.62.0 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
-**Migrations DEV pendientes de aplicar en PROD:** ninguna (001–**211** ya en PROD). **EF `emitir-factura` v8 ✅ en PROD.** Cadena reciente:
+**Migrations DEV pendientes de aplicar en PROD:** ninguna (001–**212** ya en PROD). **EF `emitir-factura` v8 ✅ en PROD.** Cadena reciente:
+- **v1.62.0** (PR #201, **mig 212** datos del emisor): **presupuesto PDF A4** (nuevo, antes solo ticket) + **factura completa** (IIBB/Inicio Act/contacto + N° con letra + moneda + forma de pago + domicilio receptor + Cód. SKU + **Ley 27.743 B** + Comprobante Autorizado + datos bancarios + leyenda) + **remito** (nuevo, no fiscal). Config → "Datos para los comprobantes".
 - **v1.61.0** (PR #200, **mig 211** bucket `logos`): **logo del negocio en la factura** (Config sube → `tenants.logo_url` → `facturasPDF` lo embebe) + **filename con nombre del cliente**. Fase 1 de paridad Xubio.
 - **v1.60.2** (PR #199, sin mig): **`ActionMenu`** (botón "⋯ Acciones" colapsando acciones secundarias del header — click no hover, mobile-friendly; aplicado en Productos + Clientes, falta el resto) + **bloqueo Factura A sin CUIT** en el POS + **mensaje de error real al emitir** (lee `error.context.json()`).
 - **v1.60.1** (PR #198, sin mig): **autocompletar email de factura** (modal con `clientes.email` precargado en Ventas + Facturación, reemplaza `window.prompt`) + **layout PDF** (bloque "FACTURA / N°" alineado al margen derecho).
@@ -69,12 +72,10 @@ Cadena del día previo (v1.59.x ya en PROD):
 
 **Plan RE-SCOPEADO (2026-06-14, tras desafiar Xubio con GO):** no copiamos Xubio al 100%. **Se descartan:** desglose IVA con todas las alícuotas en 0 (mostrar solo las presentes), Prov. Destino (salvo Convenio Multilateral), "Fecha Vto." como campo fijo (solo si CC), Original/Duplicado/Triplicado (no aplica a electrónico). **Observaciones = a nivel documento** (campo en la venta, ej. "No incluye relleno"), **NO per-línea** (se descarta la fase per-línea cara; queda en backlog solo si lo piden). **Se SUMA lo que Xubio no tiene** (decisión GO): datos bancarios (CBU/Alias/Banco) en el pie, **link/QR de pago MercadoPago** en la factura (ya tenemos MP), leyendas + contacto (tel/email/web/redes) configurables, y **Remito/Nota de entrega** (la maderera entrega mercadería → alimentar con envíos/POD).
 
-**Fases (re-scopeadas):**
+**Fases (re-scopeadas) — estado:**
 - **v1.61.0 ✅ EN PROD:** logo del negocio + filename con cliente.
-- **v1.62.0:** factura "completa" — IIBB + Inicio Act (mig `tenants`) + domicilio receptor + moneda + forma de pago + letra N° + "Comprobante Autorizado" + SKU por ítem + **Ley 27.743 (B)** + **Observaciones a nivel documento** (mig `ventas` si no existe) + **datos bancarios en el pie** + **leyendas/contacto custom**.
-- **v1.63.0:** Presupuesto PDF A4 (reusa header/logo + observaciones + datos bancarios/leyendas).
-- **v1.64.0:** **Link/QR de pago MercadoPago** en la factura.
-- **v1.65.0:** **Remito / Nota de entrega** (alimentado por envíos/POD).
+- **v1.62.0 ✅ EN PROD:** presupuesto PDF A4 (nuevo) + factura completa (IIBB/Inicio Act/contacto + N° con letra + moneda + forma de pago + domicilio receptor + Cód. SKU + **Ley 27.743 B** + Comprobante Autorizado + datos bancarios + leyenda) + **remito** (nuevo, no fiscal) + Config "Datos para los comprobantes". Observaciones = `ventas.notas` (no hizo falta migración de `ventas`). (Absorbió lo que era v1.63.0 y v1.65.0 del plan anterior.)
+- **⏳ ÚNICO PENDIENTE — Link/QR de pago MercadoPago en la factura:** integración de pagos, NO solo formato. Necesita: crear *preference* MP (init_point/checkout) por comprobante + credenciales MP del tenant + Edge Function + testing contra MP. **No se shipea a ciegas a PROD.** El cobro por transferencia ya está cubierto con los datos bancarios en el pie. Hacer como deploy dedicado.
 - **Backlog (solo si lo piden):** per-línea (% dto + obs), factura recurrente de ventas, percepciones/retenciones (IIBB/Ganancias, motor impositivo), multimoneda USD.
 
 Cada fase deploya con su release. **Ya por delante de Xubio:** envío por email con PDF, estado de cuenta PDF, factura atada a stock/caja/CC/envíos/RRHH, CAE in-app. Patrones: upload imagen = `storage.from(bucket).upload + getPublicUrl + setTenant`; logo en PDF vía `cargarLogo` (canvas→dataURL).

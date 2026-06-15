@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] deploy | v1.62.0 EN PROD — Comprobantes: presupuesto A4 + factura completa + remito (paridad Xubio) · `dev=main`
+
+**v1.62.0 a PROD (PR #201, `dbf94a37`, release latest). Mig 212 aplicada en DEV+PROD antes del merge.** Cierra la paridad de comprobantes con Xubio (cliente RI que migra) + extras de cobro elegidos por GO.
+
+- **Mig 212**: `tenants += ingresos_brutos, inicio_actividades, cbu, alias_cbu, banco, leyenda_comprobante, sitio_web` (opcionales, aditiva).
+- **Presupuesto PDF A4 (nuevo `presupuestoPDF.ts`):** antes el presupuesto solo se imprimía como **ticket térmico** (`window.print()` del modal `ticketVenta`); ahora hay PDF A4 propio (logo + emisor + cliente + ítems con Cód. SKU + total + observaciones=`ventas.notas` + validez + datos bancarios + leyenda). Botones Descargar/Imprimir en el detalle del presupuesto. Builder `buildPresupuestoPDFDataPorId`.
+- **Factura completa (`facturasPDF.ts`):** Ing. Brutos + Inicio de Actividades + contacto (tel/email/web); N° **con letra** (A-0001-…); **Moneda** + **Forma de pago** (de `medio_pago`, helper `parseFormaPago`); **domicilio del receptor** (los builders ahora lo pasan); columna **Cód. (SKU)**; **Régimen de Transparencia Fiscal Ley 27.743 en Factura B** (IVA contenido); **"Comprobante Autorizado"** + **datos para transferencia (CBU/Alias/Banco)** + **leyenda** en el pie.
+- **Remito (nuevo `remitoPDF.ts`):** nota de entrega **no fiscal** (ítems sin precio + "Recibí conforme"); botones en el detalle de la venta (estado ≠ presupuesto). Builder `buildRemitoPDFDataPorId`.
+- **Config → Facturación:** sección "Datos para los comprobantes" (IIBB, Inicio Act, sitio web, banco, CBU, alias, leyenda) + ya estaba el logo (v1.61.0).
+
+**Decisión de re-scope (desafiando Xubio):** se descartó copiar el desglose IVA con todas las alícuotas en 0, Prov. Destino, per-línea (Observaciones quedó a nivel documento vía `ventas.notas`). Se sumó lo que Xubio no tiene: datos bancarios, leyendas/contacto, remito. **Único pendiente: link/QR de pago MercadoPago** (integración de pagos: preference API + creds MP por tenant + edge function + testing → deploy dedicado, no se shipea a ciegas). typecheck + build verdes.
+
 ## [2026-06-14] deploy | v1.61.0 EN PROD — Logo del negocio en la factura + filename con cliente · `dev=main`
 
 **v1.61.0 a PROD (PR #200, `dca27a78`, release latest). Mig 211 aplicada en DEV+PROD antes del merge.** Fase 1 de un plan por fases para **igualar el formato de comprobantes de Xubio** (relevamiento a partir de 3 PDFs de un cliente que migra: Maderas El Tilo / Madera Carrizo Hermanos SRL, RI que emite A y B).

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.62.0 — Comprobantes: presupuesto A4 + factura completa + remito (PROD ✅, PR #201, mig 212)
+
+**Paridad de comprobantes con Xubio + extras de cobro** (cliente Responsable Inscripto que migra). **Mig 212**: datos del emisor en `tenants` (IIBB, inicio actividades, CBU/alias/banco, leyenda, sitio web). (1) **Presupuesto PDF A4 nuevo** (`presupuestoPDF.ts`) — antes solo se imprimía como ticket térmico. (2) **Factura completa**: Ing. Brutos + Inicio Act + contacto, N° con letra, moneda, forma de pago, domicilio del receptor, columna Cód. (SKU), **Régimen de Transparencia Fiscal Ley 27.743 (Factura B)**, "Comprobante Autorizado" + datos para transferencia (CBU/Alias/Banco) + leyenda en el pie. (3) **Remito nuevo** (`remitoPDF.ts`) — nota de entrega no fiscal con "Recibí conforme". (4) Config → Facturación: sección "Datos para los comprobantes". **Único pendiente del backlog Xubio: link/QR de pago MercadoPago** (integración de pagos, deploy dedicado).
+
+---
+
 ## v1.61.0 — Logo del negocio en la factura + filename con cliente (PROD ✅, PR #200, mig 211)
 
 **Fase 1 de paridad con Xubio** (cliente Responsable Inscripto que migra). **Mig 211**: bucket `logos` (público, scopeado por tenant). Config → Facturación permite subir/cambiar/quitar el logo (→ `tenants.logo_url`); la **factura lo embebe arriba a la izquierda** (conserva aspecto; si no carga, sale sin logo). El **filename del PDF** ahora incluye el nombre del cliente. Próximas fases: v1.62.0 (datos fiscales emisor + Ley 27.743 + moneda/forma de pago/fecha vto + SKU), v1.63.0 (presupuesto PDF A4), v1.64.0 (detalle por línea).

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.69.0 — Auditoría de costuras + click-through básico: 4 bugs (PROD ✅, PR #210)
+
+Sin migración. (1) **Anular venta despachada no restauraba stock** (reembolsaba seña pero no reingresaba, ambos modos) → reingreso al anular espejando Devolver. (2) **🔴 Cobranza CC en efectivo sin caja perdía el pago** (saldaba deuda sin asentar el efectivo) → exige caja ANTES de saldar (raíz `cobranzaCC.ts` + 3 callers). (3) Devolución en básico mostraba "ubicación DEV" → sección WMS oculta. (4) Rebaje/ingreso masivo mostraba LPN/lote en básico → UI WMS de `MasivoModal` gateada por modo. Costuras gasto→caja y servicio-recurrente→gasto auditadas OK. Suite 734 verde.
+
+---
+
 ## v1.68.0 — Auditoría modo Básico: 4 bugs de mode-awareness del stock (PROD ✅, PR #209)
 
 Pase de auditoría del modo básico end-to-end (sin migración). En básico el stock tiene `ubicacion_id` Y `estado_id` en NULL; 4 queries filtraban por esas columnas WMS sin gatear por modo. **Reparados:** (1) `VentasPage` reserva→despachada guardaba `stock_antes/despues=0`; (2) **`ProductosPage` mostraba "0 disponible" en todos los productos**; (3) `MasivoModal` rebaje masivo no encontraba stock; (4) **devolución totalmente bloqueada en básico** (exigía ubicación/estado `es_devolucion` inexistentes). Plan de auditoría en `tests/specs/auditoria-basico.plan.md` + e2e `22_devolucion`/`23_inventario_ingreso`. Suite 734 verde.

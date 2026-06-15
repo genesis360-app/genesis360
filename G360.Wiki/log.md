@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-15] deploy | v1.69.0 EN PROD — Auditoría costuras + click-through básico: 4 bugs reparados (anular stock, cobranza CC sin caja, devolución/masivo básico) · `dev=main`
+
+**v1.69.0 a PROD (PR #210, sin migración, release latest).** Auditoría de costuras cross-module (costuras §3 del plan `tests/specs/auditoria-basico.plan.md`) + click-through interactivo de GO sobre Kiosko Buildi (básico). Validado contra los 2 tenants DEV (Almacén Jorgito avanzado + Kiosko Buildi básico — Kiosko tiene stock con `ubicacion_id`/`estado_id` NULL, 0 ubicaciones, 0 estados `es_devolucion`).
+
+Costuras auditadas: **Gasto efectivo → caja** ✅ OK · **Servicio recurrente → gasto** ✅ OK. Bugs reparados:
+
+- **🔴 #5 — Anular venta despachada no restauraba stock:** anular una venta **despachada/facturada** reembolsaba la seña pero **NO restauraba el stock** (el loop solo liberaba `cantidad_reservada`, que una despachada ya no tiene) → pérdida fantasma de inventario (ambos modos). **Decisión GO: "Anular restaura el stock".** Fix: reingreso al anular espejando Devolver (series → reactivar; no-series → nueva línea + `movimientos_stock`), mode-aware.
+- **🔴 B (grave) — Cobranza CC en efectivo sin caja perdía el pago:** `cobrarDeudaCCFIFO` saldaba la deuda y *después* intentaba la caja; sin caja, la deuda quedaba saldada y el efectivo sin respaldo en arqueo. Fix: para efectivo **exige caja imputable ANTES de saldar** (devuelve `requiereCaja`); sin caja **bloquea** ("Abrí una caja…"). Raíz (`cobranzaCC.ts`) + 3 callers (ClientesPage, CajaCobranzasCC, VentasPage).
+- **A — Devolución en básico mostraba "Destino del stock devuelto" (ubicación DEV):** sección WMS oculta en básico (el reingreso es directo, sin ubicación/estado; ya cubierto por el fix #4 de v1.68.0).
+- **C — Rebaje/ingreso masivo mostraba LPN/lote + preview de LPNs en básico:** toda la UI WMS de `MasivoModal` (LPN/lote preferido, preview de LPNs a consumir, ubicación/estado/LPN del ingreso) gateada por modo. El "preview de LPNs" era la "cantidad distinta" que confundía.
+
+typecheck + suite unit **734/734** verdes. **Pendiente (no bloqueante): reconciliar el pago CC huérfano de GO** (ya saldado sin asiento en caja, ocurrido antes del fix B) + click-through en vivo del anular/devolución.
+
 ## [2026-06-15] deploy | v1.68.0 EN PROD — Auditoría modo BÁSICO: 4 bugs reparados + plan + 2 e2e · `dev=main`
 
 GO pidió dejar el **modo básico al 100%** de punta a punta (caja/ventas/gastos/inventario/productos/clientes/proveedores/facturación) y cazar bugs antes que un cliente. Pase de auditoría estática sobre la **clase de bug más cara** (mode-awareness del stock: en básico `inventario_lineas.ubicacion_id` Y `estado_id` son NULL — ver [[reference_basico_stock_null_ubicacion_estado]]). **4 bugs reales encontrados y reparados:**

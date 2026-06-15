@@ -35,6 +35,7 @@ flujo**. Patrón de fix: `const ids = modoAvanzado ? [...] : []` + aplicar el fi
 | 🔴 2 | Productos | `ProductosPage.tsx` (`stockDisponibleMap`) | **Todos los productos mostraban "0 disponible"** en la lista (filtraba `estado_id IN vendibles`) | Gatear `evIds` por modo + no filtrar si vacío |
 | 🔴 3 | Inventario | `MasivoModal.tsx` (rebaje masivo, 2 queries) | El **rebaje masivo no encontraba stock** (filtraba `.not('ubicacion_id')`) | `if (modoAvanzado) q = q.not('ubicacion_id', ...)` |
 | 🔴 4 | Ventas | `VentasPage.tsx` (devolución) | **Devolución totalmente bloqueada**: exigía ubicación + estado `es_devolucion` que el seed no crea y que básico no puede configurar (tabs ocultos) | Gatear el requisito por modo; en básico reingresar con `ubicacion_id/estado_id = NULL` |
+| 🔴 5 | Ventas (v1.69.0) | `VentasPage.tsx` (anular venta despachada) | **Anular una venta despachada/facturada devolvía la plata pero NO el stock** (ambos modos) → pérdida fantasma de inventario | Reingreso al anular (espejo de Devolver): series reactivadas, no-series → nueva línea + movimiento; mode-aware (básico sin ubicación/estado). Decisión GO: "Anular restaura el stock" |
 
 > Nota seed: `112_seed_tenant_defaults.sql` crea solo 2 estados ('Disponible', 'Bloqueado'),
 > **ninguno `es_devolucion`**, y **0 ubicaciones**. Por eso #4 bloqueaba.
@@ -94,11 +95,11 @@ Leyenda: 🔴 mueve plata/stock · 🟡 governance/visibilidad · 🟢 cosmétic
 |---|---|---|
 | Venta → trigger rebaja stock → `movimientos_stock` → caja `ingreso` | Atómico; stock_antes/despues reales | ✅ e2e #19 + BUG #1 |
 | Cobranza CC → caja `ingreso` (ficha/POS/Caja) | `movimientoCajaCobranza` (unit ✓) | ✅ unit |
-| Gasto efectivo → caja `egreso` | Sesión imputable | ⬜ |
+| Gasto efectivo → caja `egreso` | Sesión imputable | ✅ auditado — efectivo exige caja + valida saldo, OK |
 | Devolución → reingreso stock + caja `egreso` + NC | Reingreso correcto en básico | ✅ BUG #4 |
 | Factura → venta (auto-facturada) | `ventas.facturada` | ✅ e2e #21 |
-| Anular venta → revierte stock + cancela envíos pendientes | — | ⬜ |
-| Servicio recurrente vencido → gasto | sweep lazy en Proveedores | ⬜ |
+| **Anular venta despachada → revierte stock** + cancela envíos | Restaurar stock al anular | ✅ **BUG #5** (no restauraba stock; ahora reingresa, mode-aware) |
+| Servicio recurrente vencido → gasto | sweep lazy en Proveedores | ✅ auditado — genera gasto no pagado + avanza vencimiento, OK |
 
 ---
 

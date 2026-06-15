@@ -600,7 +600,8 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                                   onChange={e => upd(it.localId, { motivo: e.target.value })}
                                   className={inp} placeholder="Opcional" />
                               </div>
-                              {/* ISS-012: LPN/lote preferido override */}
+                              {/* ISS-012: LPN/lote preferido override — solo avanzado (en básico no hay LPN/lote) */}
+                              {modoAvanzado && (
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                                   LPN o Lote preferido <span className="text-gray-400">(opcional — deja vacío para auto-{tenant?.regla_inventario ?? 'FIFO'})</span>
@@ -609,13 +610,14 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                                   onChange={e => upd(it.localId, { lpnPreferido: e.target.value })}
                                   className={inp} placeholder="Ej: LPN-0042 o LOTE-2024-01" />
                               </div>
+                              )}
                             </div>
                           )}
                         </div>
                       )}
 
-                      {/* ISS-012: Preview de LPNs/líneas a consumir (rebaje) */}
-                      {tipo === 'rebaje' && !it.tieneSeries && lineasCache[it.productoId] && (() => {
+                      {/* ISS-012: Preview de LPNs/líneas a consumir (rebaje) — solo avanzado (en básico el stock no tiene LPN/lote) */}
+                      {modoAvanzado && tipo === 'rebaje' && !it.tieneSeries && lineasCache[it.productoId] && (() => {
                         const cant = getCantidad(it)
                         if (cant <= 0) return null
                         const pref = it.lpnPreferido.trim()
@@ -660,11 +662,13 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                             onClick={() => upd(it.localId, { expanded: !it.expanded })}
                             className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-accent transition-colors">
                             {it.expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                            {it.expanded ? 'Ocultar opciones' : 'Más opciones (ubicación, estado, lote…)'}
+                            {it.expanded ? 'Ocultar opciones' : (modoAvanzado ? 'Más opciones (ubicación, estado, lote…)' : 'Más opciones (proveedor, motivo…)')}
                           </button>
 
                           {it.expanded && (
                             <div className="mt-3 grid grid-cols-2 gap-3">
+                              {/* Ubicación + Estado = WMS → solo avanzado (en básico el stock no los usa) */}
+                              {modoAvanzado && (<>
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ubicación</label>
                                 <select value={it.ubicacionId} onChange={e => upd(it.localId, { ubicacionId: e.target.value })} className={sel}>
@@ -679,6 +683,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                                   {(estados as any[]).map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                                 </select>
                               </div>
+                              </>)}
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Proveedor</label>
                                 <select value={it.proveedorId} onChange={e => upd(it.localId, { proveedorId: e.target.value })} className={sel}>
@@ -708,12 +713,14 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                                     className={inp} />
                                 </div>
                               )}
+                              {modoAvanzado && (
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">LPN</label>
                                 <input type="text" value={it.lpn}
                                   onChange={e => upd(it.localId, { lpn: e.target.value })}
                                   className={inp} placeholder="Opcional" />
                               </div>
+                              )}
                             </div>
                           )}
                         </div>

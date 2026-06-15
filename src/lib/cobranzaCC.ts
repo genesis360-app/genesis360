@@ -66,9 +66,19 @@ export async function cobrarDeudaCCFIFO(
     /** Cuenta de origen para el ingreso_informativo de métodos no-efectivo */
     cuentaOrigenId?: string | null
   },
-): Promise<{ aplicado: number; ventasSaldadas: number; cajaRegistrada: boolean }> {
+): Promise<{ aplicado: number; ventasSaldadas: number; cajaRegistrada: boolean; requiereCaja: boolean }> {
   const { tenantId, clienteId, monto, metodo, usuarioId, clienteNombre, sesionCajaId, cuentaOrigenId } = args
-  if (!(monto > 0)) return { aplicado: 0, ventasSaldadas: 0, cajaRegistrada: false }
+  if (!(monto > 0)) return { aplicado: 0, ventasSaldadas: 0, cajaRegistrada: false, requiereCaja: false }
+
+  // EFECTIVO: exigir una caja imputable ANTES de saldar. Si no hay, NO tocamos la deuda
+  // (devolvemos requiereCaja) — de lo contrario el efectivo entra al cajón, ningún arqueo
+  // lo cuenta y la deuda queda saldada sin respaldo (cash perdido). Bug reportado 2026-06-16.
+  const esEfectivo = (metodo ?? '').trim().toLowerCase() === 'efectivo'
+  let sesionId: string | null = sesionCajaId ?? null
+  if (esEfectivo) {
+    if (!sesionId) sesionId = await resolverSesionCajaCobranza(supabase, tenantId, usuarioId)
+    if (!sesionId) return { aplicado: 0, ventasSaldadas: 0, cajaRegistrada: false, requiereCaja: true }
+  }
 
   const { data: ventas } = await supabase
     .from('ventas')
@@ -91,16 +101,18 @@ export async function cobrarDeudaCCFIFO(
   }
 
   // Registro en caja (impacto en arqueo) — fire-and-report, nunca rompe la cobranza.
+  // El efectivo ya tiene `sesionId` resuelto arriba (garantizado); los no-efectivo lo
+  // resuelven acá best-effort (su informativo no afecta el arqueo de efectivo).
   let cajaRegistrada = false
   if (aplicado > 0) {
     const mov = movimientoCajaCobranza(metodo, clienteNombre)
     if (mov) {
       try {
-        const sesionId = sesionCajaId ?? await resolverSesionCajaCobranza(supabase, tenantId, usuarioId)
-        if (sesionId) {
+        const sid = sesionId ?? await resolverSesionCajaCobranza(supabase, tenantId, usuarioId)
+        if (sid) {
           const { error } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenantId,
-            sesion_id: sesionId,
+            sesion_id: sid,
             tipo: mov.tipo,
             concepto: mov.concepto,
             monto: aplicado,
@@ -116,5 +128,5 @@ export async function cobrarDeudaCCFIFO(
     }
   }
 
-  return { aplicado, ventasSaldadas, cajaRegistrada }
+  return { aplicado, ventasSaldadas, cajaRegistrada, requiereCaja: false }
 }

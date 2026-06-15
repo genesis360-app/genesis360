@@ -4,7 +4,11 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-**✅ EN PROD: v1.65.0** (2026-06-14, PR **#205**, **mig 213** aplicada DEV+PROD, release latest) — **Facturas/ventas recurrentes** (plantillas). Tabla `ventas_recurrentes` (snapshot ítems + frecuencia + `proximo_at`, RLS); generación **asistida segura** → crea presupuesto 'pendiente' (no toca stock/caja). "Convertir en recurrente" desde una venta + panel con badge de vencidas. Antes: **v1.64.0** (PR #204, sin mig) — **% Dto. por línea en el presupuesto** (dato ya estaba en `venta_items.descuento`). **Backlog restante (percepciones + USD): son sale-time (POS+caja+AFIP), NO tweaks de PDF, y el cliente que migra no las necesita → construir contra caso real.**
+**✅ EN PROD: v1.67.0** (2026-06-15, PR **#208**, sin migración, release latest) — **Paquete UX.** (1) **Gastos**: scrollbar oculto en la barra de tabs. (2) **Alertas mode-aware**: `useAlertas` (badge sidebar) + `AlertasPage` ya no cuentan/muestran alertas WMS/compras (LPN vencidos, OC vencidas/próximas) en básico → se elimina el "1" fantasma; comunes a ambos modos = stock bajo mínimo, reservas, sin categoría, deuda CC. Ver [[reference_alertas_badge_mode_aware]]. (3) **RRHH**: layout a ancho completo (como Gastos) + tabs en una sola fila scrolleable con iconos (antes flex-wrap amontonado), `text-2xl`. (4) **Configuración**: botones "Guardar" consolidados a uno por tab (Envíos 11→1, Ventas→operativa 5→1). typecheck + build verdes.
+
+Antes: **v1.66.0** (2026-06-15, PR **#207**, sin migración) — **`ActionMenu` replicado** a Proveedores (mata el bug `group-hover:block` de Exportar + colapsa sub-toolbar de Servicios) e Inventario (tab Agregar stock: Ingreso + menú [Masivo, ASN]). Barrido del resto: no requieren ActionMenu. Ver [[feedback_toolbar_actionmenu]].
+
+Antes: **v1.65.0** (2026-06-14, PR **#205**, **mig 213** aplicada DEV+PROD, release latest) — **Facturas/ventas recurrentes** (plantillas). Tabla `ventas_recurrentes` (snapshot ítems + frecuencia + `proximo_at`, RLS); generación **asistida segura** → crea presupuesto 'pendiente' (no toca stock/caja). "Convertir en recurrente" desde una venta + panel con badge de vencidas. Antes: **v1.64.0** (PR #204, sin mig) — **% Dto. por línea en el presupuesto** (dato ya estaba en `venta_items.descuento`). **Backlog restante (percepciones + USD): son sale-time (POS+caja+AFIP), NO tweaks de PDF, y el cliente que migra no las necesita → construir contra caso real.**
 
 Antes: **v1.63.0** (2026-06-14, PR **#203** `370e66e8`, **sin migración**, release latest) — **QR de pago MercadoPago en la factura con saldo pendiente.** Cierra el backlog de paridad Xubio (extra que Xubio no tiene). Reusa EF `mp-crear-link-pago` (ya en PROD) + `mercadopago_credentials`. Si la factura tiene saldo (total − monto_pagado > 0) y el tenant tiene MP conectado → QR "Pagá con MercadoPago" en el pie (`external_reference = venta_id`, `mp-webhook` concilia). Sin MP / pagada → sin QR (graceful). **🎉 PARIDAD XUBIO COMPLETA.** Antes: **v1.62.1** (PR #202, sin mig) — fix domicilio del cliente desde `cliente_domicilios` (no `clientes.direccion`).
 
@@ -42,10 +46,10 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.66.0` ✅ (suite 734) | `v1.66.0` ✅ |
+| APP_VERSION | `v1.67.0` ✅ (suite 734) | `v1.67.0` ✅ |
 | Migrations | 001–**213** ✅ | 001–**213** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.66.0, PR #207) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.66.0 (auto desde `main`) |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.67.0, PR #208) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.67.0 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 

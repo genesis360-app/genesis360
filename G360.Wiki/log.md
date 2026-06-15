@@ -6,7 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-15] update | UX — `ActionMenu` ("⋯ Acciones") replicado a Proveedores + Inventario (queda en DEV)
+## [2026-06-15] deploy | v1.67.0 EN PROD — Paquete UX (scrollbar tabs · Alertas mode-aware · layout RRHH · guardado Config) · `dev=main`
+
+**v1.67.0 a PROD (PR #208, sin migración, release latest).** 4 mejoras de UX reportadas por GO:
+
+1. **Gastos — scrollbar en tabs:** la barra de tabs usaba `overflow-x-auto` y mostraba el scrollbar. Se ocultó con `[&::-webkit-scrollbar]:hidden` + `scrollbarWidth:'none'` (mismo patrón que Inventario): scroll sigue, barra no.
+2. **Alertas — badge "1" fantasma en básico:** el badge del sidebar (`useAlertas`) sumaba fuentes **avanzado-only** sin gatear (vencimiento de lote/LPN vencidos = WMS, OC vencidas/próximas = compras) → en básico contaba algo que la página no mostraba. Se hizo **mode-aware** el hook (queries condicionales + `queryKey` con `modoAvanzado`) y `AlertasPage` (queries `enabled: modoAvanzado`, render gates, total). Comunes a ambos modos: stock bajo mínimo, reservas, sin categoría, deuda CC. Ahora badge y página **siempre coinciden**. Memoria: [[reference_alertas_badge_mode_aware]].
+3. **RRHH — layout feo/amontonado:** se sacó `max-w-7xl mx-auto px-4 py-8` → **ancho completo** (como Gastos, padding del layout general); header `text-4xl`→`text-2xl text-primary`; los ~12 tabs pasaron de `flex-wrap` (varias filas amontonadas) a **una sola fila scrolleable con iconos** (mapa `TAB_META` que además limpió el render verboso de `{tab === 'x' && ...}`).
+4. **Configuración — muchos botones "Guardar" por tab:** todos llamaban al mismo `handleSaveBiz` (guarda toda la config). Se consolidaron a **un botón por tab**: **Envíos 11→1**, **Ventas→operativa 5→1** (negocio/inventario/descuentos ya tenían 1; caja 2, aceptable). Se quitaron por `replace_all` scopeado por indentación única de cada tab.
+
+typecheck (`tsc --noEmit`) + `npm run build` verdes. Sin migración → deploy directo (Vercel auto desde `main`).
+
+## [2026-06-15] update | UX — `ActionMenu` ("⋯ Acciones") replicado a Proveedores + Inventario (v1.66.0 EN PROD, PR #207)
 
 Continuación del patrón de toolbar (acción principal visible + secundarias colapsadas en "⋯ Acciones", click no hover — ver [[feedback_toolbar_actionmenu]]). El piloto estaba en Productos + Clientes; GO pidió seguir con "las demás páginas" y revisar también las **sub-páginas/tabs** que cambian sus botones.
 

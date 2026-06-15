@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.67.0 — UX: scrollbar tabs + badge Alertas mode-aware + layout RRHH + guardado Config (PROD ✅, PR #208)
+
+Paquete de mejoras de UX (sin migración). **(1) Gastos:** la barra de tabs ya no muestra scrollbar (scroll oculto). **(2) Alertas:** el badge del sidebar (`useAlertas`) y la página se hicieron **mode-aware** — en básico no se cuentan ni muestran las alertas de WMS/compras (LPN vencidos, OC vencidas/próximas), que generaban un "1" fantasma sin nada visible. **(3) RRHH:** layout a **ancho completo** (como Gastos) + los ~12 tabs pasaron de amontonarse (flex-wrap) a **una sola fila scrolleable con iconos**. **(4) Configuración:** se consolidaron los botones "Guardar" repetidos por card en **un solo botón por tab** (Envíos 11→1, Ventas→operativa 5→1).
+
+---
+
 ## v1.66.0 — UX: "⋯ Acciones" (ActionMenu) en Proveedores + Inventario (PROD ✅, PR #207)
 
 Continuación del patrón de toolbar mobile-friendly (acción principal visible + secundarias colapsadas en "⋯ Acciones", click no hover). Sin migración. **Proveedores:** se mató el bug de hover-dropdown (`group-hover:block`, no abría en touch) — "Exportar JSON/CSV" → `ActionMenu`; el sub-toolbar de la tab Servicios (Servicios generales / Comparar presupuestos) también se colapsó. **Inventario:** la tab "Agregar stock" pasó de 3 botones (Ingreso / Masivo / ASN) a Ingreso + `ActionMenu[Masivo, ASN]`. Barrido del resto de páginas: no requieren ActionMenu (headers de 1 botón o toolbars de filtros/formatos; Reportes deja sus 3 botones de formato Excel/PDF/CSV).

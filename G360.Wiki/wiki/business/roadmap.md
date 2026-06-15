@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.63.0 — QR de pago MercadoPago en la factura (PROD ✅, PR #203)
+
+**Cierra la paridad con Xubio** con un extra que Xubio no tiene. Sin migración (reusa la EF `mp-crear-link-pago` + `mercadopago_credentials`). Si la factura tiene **saldo pendiente** y el tenant tiene **MercadoPago conectado**, el PDF embebe un **QR "Pagá con MercadoPago — saldo $X"** en el pie; `external_reference = venta_id` → `mp-webhook` concilia el pago automáticamente. Si no hay MP conectado o la factura ya está paga, sale sin QR (graceful). 🎉 **Plan de paridad Xubio completo** (logo · factura completa · presupuesto A4 · remito · datos bancarios/leyenda · Ley 27.743 · pago MP).
+
+---
+
 ## v1.62.0 — Comprobantes: presupuesto A4 + factura completa + remito (PROD ✅, PR #201, mig 212)
 
 **Paridad de comprobantes con Xubio + extras de cobro** (cliente Responsable Inscripto que migra). **Mig 212**: datos del emisor en `tenants` (IIBB, inicio actividades, CBU/alias/banco, leyenda, sitio web). (1) **Presupuesto PDF A4 nuevo** (`presupuestoPDF.ts`) — antes solo se imprimía como ticket térmico. (2) **Factura completa**: Ing. Brutos + Inicio Act + contacto, N° con letra, moneda, forma de pago, domicilio del receptor, columna Cód. (SKU), **Régimen de Transparencia Fiscal Ley 27.743 (Factura B)**, "Comprobante Autorizado" + datos para transferencia (CBU/Alias/Banco) + leyenda en el pie. (3) **Remito nuevo** (`remitoPDF.ts`) — nota de entrega no fiscal con "Recibí conforme". (4) Config → Facturación: sección "Datos para los comprobantes". **Único pendiente del backlog Xubio: link/QR de pago MercadoPago** (integración de pagos, deploy dedicado).

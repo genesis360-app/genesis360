@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] deploy | v1.63.0 EN PROD — QR de pago MercadoPago en la factura (cierra paridad Xubio) · `dev=main`
+
+**v1.63.0 a PROD (PR #203, `370e66e8`, release latest). Sin migración.** Cierra el backlog de paridad Xubio con un **extra que Xubio no tiene**. Reusa la EF **`mp-crear-link-pago`** (ya en PROD, la usa el POS) + `mercadopago_credentials` del tenant.
+
+- **`facturasPDF`**: si la factura tiene **saldo pendiente** (`total − monto_pagado > 0`) y el tenant tiene **MP conectado**, el PDF embebe un **QR "Pagá con MercadoPago — saldo $X"** en el pie. `external_reference = venta_id` → `mp-webhook` concilia el pago automáticamente.
+- **Builders** (Ventas `crearPagoMpQR` + Facturación): calculan el saldo; si > 0 crean el link y pasan el QR. Si no hay MP conectado o falla → factura **sin** QR (graceful, try/catch). Facturas ya pagadas → sin QR.
+
+**🎉 Plan de paridad Xubio COMPLETO** (v1.61.0 logo → v1.62.0 factura completa + presupuesto A4 + remito → v1.62.1 fix domicilio → v1.63.0 pago MP). Quedan solo en backlog (si los piden): per-línea, factura recurrente de ventas, percepciones/retenciones, multimoneda USD. typecheck + build verdes.
+
 ## [2026-06-14] fix | v1.62.1 EN PROD — Domicilio del cliente en comprobantes (cliente_domicilios) · `dev=main`
 
 **v1.62.1 a PROD (PR #202, `8d35d4bf`, release latest). Sin migración.** Bug: crear presupuesto o remito daba `column clientes_1.direccion does not exist` — me confié de un campo de formulario; **`clientes` NO tiene columna `direccion`**, las direcciones viven en la tabla **`cliente_domicilios`** (mig 074: calle/numero/piso_depto/ciudad/provincia/es_principal). **Fix:** los builders embeben `clientes(..., cliente_domicilios(...))` y arman el domicilio del receptor con el principal (helper `composeDomicilioCliente`). Aplica a factura, presupuesto y remito (Ventas) + factura (Facturación). typecheck + build verdes.

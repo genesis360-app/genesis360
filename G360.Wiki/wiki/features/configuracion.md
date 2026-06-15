@@ -17,6 +17,8 @@ updated: 2026-05-20
 
 La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con separadores de grupo:
 
+> [!NOTE] **Guardado consolidado (v1.67.0):** todas las cards de un tab que editan la config del negocio comparten el mismo `handleSaveBiz` (guarda todo el estado), así que ya **no hay un botón "Guardar" por card** — hay **un solo botón por tab**. Se consolidó en Envíos (11→1) y Ventas→Operativa (5→1). Al agregar una card nueva a uno de esos tabs, **no** agregues otro botón Guardar: el del final del tab ya la cubre.
+
 ### Grupo: Negocio
 
 | Tab | Contenido |

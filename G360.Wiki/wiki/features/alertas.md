@@ -89,12 +89,21 @@ Nueva sección **ámbar** en AlertasPage:
 
 ---
 
-## Badge del sidebar vs totalAlertas — actualizado v1.6.0
+## Badge del sidebar vs totalAlertas — mode-aware (v1.67.0)
 
-| Contexto | Incluye |
-|---------|---------|
-| Badge sidebar | alertas DB + reservas_viejas + OC vencidas + OC próximas ≤3d |
-| AlertasPage `totalAlertas` | Todo lo anterior + sinCategoria + clientesConDeuda + LPN vencidos |
+Desde **v1.67.0** el badge del sidebar (`useAlertas`) y `AlertasPage.totalAlertas` cuentan **las mismas fuentes** y se **gatean por modo de operación** (`useModoOperacion().avanzado`). Antes, el badge sumaba fuentes de WMS/compras que la página no mostraba en básico → aparecía un "1" fantasma sin nada visible.
+
+| Fuente | Básico | Avanzado |
+|--------|:------:|:--------:|
+| Stock bajo mínimo (tabla `alertas`) | ✅ | ✅ |
+| Reservas viejas (>3d) | ✅ | ✅ |
+| Productos sin categoría | ✅ | ✅ |
+| Clientes con deuda CC | ✅ | ✅ |
+| **LPN vencidos** (vencimiento de lote, WMS) | — | ✅ |
+| **OC vencidas / próximas ≤3d** (compras) | — | ✅ |
+| Inventario sin ubicación / sin proveedor (WMS) | — | ✅ |
+
+> [!IMPORTANT] Si tocás una de las fuentes avanzado-only, gateála en **ambos** lados (hook + página) o el badge vuelve a desincronizarse. Ver memoria `reference_alertas_badge_mode_aware`.
 
 ---
 

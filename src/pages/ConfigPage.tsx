@@ -3660,14 +3660,6 @@ export default function ConfigPage() {
                 className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               <p className="text-xs text-gray-400 dark:text-gray-500">Default global. Si una sucursal tiene su propio $/km en Sucursales, ese valor predomina.</p>
             </div>
-            {canEdit && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* EN4 — costos y tarifas (envío propio) */}
@@ -3772,14 +3764,6 @@ export default function ConfigPage() {
                 </div>
               </div>
             </div>
-            {canEdit && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* ISS-178 — Rangos horarios de entrega */}
@@ -3823,10 +3807,6 @@ export default function ConfigPage() {
                 >
                   + Agregar rango
                 </button>
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
               </div>
             )}
           </div>
@@ -3855,14 +3835,6 @@ export default function ConfigPage() {
                 </button>
               ))}
             </div>
-            {canEdit && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* EN1 — pagos a courier contables */}
@@ -3895,14 +3867,6 @@ export default function ConfigPage() {
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 flex-1 min-w-[180px]">Pagos a courier por encima del umbral exigen la clave maestra del dueño.</p>
             </div>
-            {canEdit && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* EN2 — POD robusto */}
@@ -3961,14 +3925,6 @@ export default function ConfigPage() {
               </div>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500">El OTP solo aplica a envíos propios sobre el monto indicado. La geoloc tiene fallback: si no se puede capturar, igual permite confirmar.</p>
-            {canEdit && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* EN3 — reparto (repartidores + reglas del transportista) */}
@@ -4020,14 +3976,6 @@ export default function ConfigPage() {
                 </div>
               </div>
             </div>
-            {canEdit && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* EN5 — creación y alcance */}
@@ -4067,14 +4015,6 @@ export default function ConfigPage() {
               </div>
               {canEdit && <button onClick={() => setBizCpCourier(arr => [...arr, { desde: '', hasta: '', courier: '' }])} className="text-xs text-accent hover:underline mt-1">+ Agregar regla</button>}
             </div>
-            {canEdit && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* EN7 — envío propio (combustible) + alertas de envíos */}
@@ -4105,14 +4045,6 @@ export default function ConfigPage() {
                 ))}
               </div>
             </div>
-            {canEdit && (
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
-            )}
           </div>
 
           {/* ISS-174 — credenciales de courier (owner-only) */}
@@ -4129,12 +4061,16 @@ export default function ConfigPage() {
               <textarea value={bizWAPlantilla} onChange={e => setBizWAPlantilla(e.target.value)}
                 rows={5} placeholder={`Hola {{Nombre_Cliente}}! Somos {{Nombre_Negocio}}.\n\nTu pedido #{{Numero_Orden}} está en camino.\n🚚 Courier: {{Courier}}\n📅 Fecha: {{Fecha_Entrega}}`}
                 className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-y bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono" />
-              <div className="flex justify-end">
-                <button onClick={handleSaveBiz} disabled={savingBiz}
-                  className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                  {savingBiz ? 'Guardando...' : 'Guardar'}
-                </button>
-              </div>
+            </div>
+          )}
+
+          {/* Un solo botón guarda toda la configuración de Envíos */}
+          {canEdit && (
+            <div className="flex justify-end pt-1">
+              <button onClick={handleSaveBiz} disabled={savingBiz}
+                className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                {savingBiz ? 'Guardando...' : 'Guardar configuración de Envíos'}
+              </button>
             </div>
           )}
         </div>
@@ -4736,14 +4672,6 @@ export default function ConfigPage() {
                       className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                   </div>
                 </div>
-                {canEdit && (
-                  <div className="flex justify-end">
-                    <button onClick={handleSaveBiz} disabled={savingBiz}
-                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                      {savingBiz ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                )}
               </div>
               {/* Presupuesto */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
@@ -4755,14 +4683,6 @@ export default function ConfigPage() {
                     className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
                 </div>
-                {canEdit && (
-                  <div className="flex justify-end">
-                    <button onClick={handleSaveBiz} disabled={savingBiz}
-                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                      {savingBiz ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Reservas (E1/E2/E6) */}
@@ -4806,14 +4726,6 @@ export default function ConfigPage() {
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">0 = sin penalidad (se devuelve la seña completa). Ej: 10 retiene el 10% de la seña al cancelar.</p>
                 </div>
 
-                {canEdit && (
-                  <div className="flex justify-end">
-                    <button onClick={handleSaveBiz} disabled={savingBiz}
-                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                      {savingBiz ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Cuenta corriente de clientes (CL2 · B1/B3/B4) */}
@@ -4914,14 +4826,6 @@ export default function ConfigPage() {
                   </label>
                 </div>
 
-                {canEdit && (
-                  <div className="flex justify-end">
-                    <button onClick={handleSaveBiz} disabled={savingBiz}
-                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                      {savingBiz ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Cliente en POS */}
@@ -4968,15 +4872,17 @@ export default function ConfigPage() {
                     <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizClienteCreacionInline ? 'translate-x-5' : 'translate-x-0'}`} />
                   </button>
                 </div>
-                {canEdit && (
-                  <div className="flex justify-end">
-                    <button onClick={handleSaveBiz} disabled={savingBiz}
-                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                      {savingBiz ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                )}
               </div>
+
+              {/* Un solo botón guarda toda la configuración operativa de Ventas */}
+              {canEdit && (
+                <div className="flex justify-end pt-1">
+                  <button onClick={handleSaveBiz} disabled={savingBiz}
+                    className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                    {savingBiz ? 'Guardando...' : 'Guardar configuración de Ventas'}
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -5683,14 +5589,6 @@ export default function ConfigPage() {
                     Cuando el saldo en caja supera este monto, el sistema alerta para transferir el excedente a la bóveda. Dejá vacío para no poner umbral.
                   </p>
                 </div>
-                {canEdit && (
-                  <div className="flex justify-end">
-                    <button onClick={handleSaveBiz} disabled={savingBiz}
-                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                      {savingBiz ? 'Guardando...' : 'Guardar'}
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Diferencias de cierre (B1/B2/B3) */}

@@ -30,6 +30,22 @@ import { es } from 'date-fns/locale'
 type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos' | 'capacitaciones' | 'equipo' | 'reportes'
 type FormMode = 'crear' | 'editar' | null
 
+// Metadata de cada tab (label + icono) para la barra de tabs — una sola fila scrolleable.
+const TAB_META: Record<Tab, { label: string; icon: typeof Users2 }> = {
+  dashboard:      { label: 'Dashboard',      icon: LayoutDashboard },
+  empleados:      { label: 'Empleados',      icon: Users2 },
+  puestos:        { label: 'Puestos',        icon: Briefcase },
+  departamentos:  { label: 'Departamentos',  icon: Building2 },
+  cumpleanos:     { label: 'Cumpleaños',     icon: Heart },
+  nomina:         { label: 'Nómina',         icon: DollarSign },
+  vacaciones:     { label: 'Vacaciones',     icon: Plane },
+  asistencia:     { label: 'Asistencia',     icon: ClipboardList },
+  documentos:     { label: 'Documentos',     icon: Paperclip },
+  capacitaciones: { label: 'Capacitaciones', icon: BookOpen },
+  reportes:       { label: 'Reportes',       icon: TrendingUp },
+  equipo:         { label: 'Mi Equipo',      icon: Network },
+}
+
 interface Concepto {
   id: string
   tenant_id: string
@@ -1937,45 +1953,37 @@ export default function RrhhPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-          <Users2 size={32} className="text-blue-600 dark:text-blue-400" />
+      <div>
+        <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+          <Users2 size={22} className="text-blue-600 dark:text-blue-400" />
           Gestión de Empleados
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-2">Administra tu equipo de trabajo</p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Administrá tu equipo de trabajo</p>
       </div>
 
-      {/* Tabs */}
-      <div className="flex gap-2 mb-8 border-b border-gray-200 dark:border-gray-700 flex-wrap">
+      {/* Tabs — una sola fila scrolleable (sin amontonarse) */}
+      <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' } as any}>
         {(esSupervisor
           ? (['equipo', 'asistencia', 'vacaciones', 'cumpleanos'] as Tab[])
           : (['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'capacitaciones', 'documentos', 'reportes', 'equipo'] as Tab[])
-        ).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => { setActiveTab(tab); resetForm() }}
-            className={`px-4 py-3 font-medium border-b-2 transition ${
-              activeTab === tab
-                ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'
-            }`}
-          >
-            {tab === 'dashboard'      && <span className="flex items-center gap-1"><LayoutDashboard size={14}/>Dashboard</span>}
-            {tab === 'empleados'      && 'Empleados'}
-            {tab === 'puestos'        && 'Puestos'}
-            {tab === 'departamentos'  && 'Departamentos'}
-            {tab === 'cumpleanos'     && '🎂 Cumpleaños'}
-            {tab === 'nomina'         && <span className="flex items-center gap-1"><DollarSign size={14}/>Nómina</span>}
-            {tab === 'vacaciones'     && <span className="flex items-center gap-1"><Plane size={14}/>Vacaciones</span>}
-            {tab === 'asistencia'     && <span className="flex items-center gap-1"><ClipboardList size={14}/>Asistencia</span>}
-            {tab === 'documentos'     && <span className="flex items-center gap-1"><Paperclip size={14}/>Documentos</span>}
-            {tab === 'capacitaciones' && <span className="flex items-center gap-1"><BookOpen size={14}/>Capacitaciones</span>}
-            {tab === 'reportes'       && <span className="flex items-center gap-1"><TrendingUp size={14}/>Reportes</span>}
-            {tab === 'equipo'         && <span className="flex items-center gap-1"><Network size={14}/>Mi Equipo</span>}
-          </button>
-        ))}
+        ).map((tab) => {
+          const Icon = TAB_META[tab].icon
+          return (
+            <button
+              key={tab}
+              onClick={() => { setActiveTab(tab); resetForm() }}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
+                activeTab === tab
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              <Icon size={14} />{TAB_META[tab].label}
+            </button>
+          )
+        })}
       </div>
 
       {/* RH8 — REPORTES TAB (+ RH7 F4 evaluaciones + F2/F3 config) */}

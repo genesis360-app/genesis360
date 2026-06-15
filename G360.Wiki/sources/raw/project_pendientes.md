@@ -38,10 +38,10 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.62.0` ✅ (suite 734) | `v1.62.0` ✅ |
+| APP_VERSION | `v1.62.1` ✅ (suite 734) | `v1.62.1` ✅ |
 | Migrations | 001–**212** ✅ | 001–**212** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.62.0, PR #201, `dbf94a37`) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.62.0 (auto desde `main`) |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.62.1, PR #202, `8d35d4bf`) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.62.1 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 

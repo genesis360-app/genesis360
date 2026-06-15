@@ -6,6 +6,10 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] fix | v1.62.1 EN PROD — Domicilio del cliente en comprobantes (cliente_domicilios) · `dev=main`
+
+**v1.62.1 a PROD (PR #202, `8d35d4bf`, release latest). Sin migración.** Bug: crear presupuesto o remito daba `column clientes_1.direccion does not exist` — me confié de un campo de formulario; **`clientes` NO tiene columna `direccion`**, las direcciones viven en la tabla **`cliente_domicilios`** (mig 074: calle/numero/piso_depto/ciudad/provincia/es_principal). **Fix:** los builders embeben `clientes(..., cliente_domicilios(...))` y arman el domicilio del receptor con el principal (helper `composeDomicilioCliente`). Aplica a factura, presupuesto y remito (Ventas) + factura (Facturación). typecheck + build verdes.
+
 ## [2026-06-14] deploy | v1.62.0 EN PROD — Comprobantes: presupuesto A4 + factura completa + remito (paridad Xubio) · `dev=main`
 
 **v1.62.0 a PROD (PR #201, `dbf94a37`, release latest). Mig 212 aplicada en DEV+PROD antes del merge.** Cierra la paridad de comprobantes con Xubio (cliente RI que migra) + extras de cobro elegidos por GO.

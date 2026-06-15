@@ -6,6 +6,7 @@ import {
   FileText, ExternalLink, Info, Building, Calendar, Printer,
 } from 'lucide-react'
 import * as XLSX from 'xlsx'
+import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -64,6 +65,8 @@ export default function FacturacionPage() {
     if (vErr) throw new Error(vErr.message)
     if (!venta) throw new Error('Venta no encontrada')
     const formaPago = parseFormaPago((venta as any).medio_pago)
+    const saldo = Number(venta.total) - Number((venta as any).monto_pagado ?? 0)
+    const pagoMpQr = saldo > 0.5 ? await crearPagoMpQR(facturaId, saldo) : null
 
     const { data: pv } = await supabase.from('puntos_venta_afip')
       .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
@@ -104,8 +107,26 @@ export default function FacturacionPage() {
       })),
       total: Number(venta.total),
       forma_pago: formaPago,
+      pago_mp_qr: pagoMpQr,
+      pago_mp_monto: pagoMpQr ? saldo : null,
     }
     return { data, email: venta.clientes?.email ?? null }
+  }
+
+  // Crea el link de pago MercadoPago para un saldo y devuelve su QR (dataURL), o null.
+  async function crearPagoMpQR(ventaId: string, monto: number): Promise<string | null> {
+    if (!monto || monto <= 0) return null
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mp-crear-link-pago`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ venta_id: ventaId, monto }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json?.init_point) return null
+      return await QRCode.toDataURL(json.init_point, { width: 200, margin: 1 })
+    } catch { return null }
   }
 
   // El domicilio del cliente vive en cliente_domicilios (no en clientes). Toma el principal.

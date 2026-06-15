@@ -4,7 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-**✅ EN PROD: v1.63.0** (2026-06-14, PR **#203** `370e66e8`, **sin migración**, release latest) — **QR de pago MercadoPago en la factura con saldo pendiente.** Cierra el backlog de paridad Xubio (extra que Xubio no tiene). Reusa EF `mp-crear-link-pago` (ya en PROD) + `mercadopago_credentials`. Si la factura tiene saldo (total − monto_pagado > 0) y el tenant tiene MP conectado → QR "Pagá con MercadoPago" en el pie (`external_reference = venta_id`, `mp-webhook` concilia). Sin MP / pagada → sin QR (graceful). **🎉 PARIDAD XUBIO COMPLETA.** Antes: **v1.62.1** (PR #202, sin mig) — fix domicilio del cliente desde `cliente_domicilios` (no `clientes.direccion`).
+**✅ EN PROD: v1.65.0** (2026-06-14, PR **#205**, **mig 213** aplicada DEV+PROD, release latest) — **Facturas/ventas recurrentes** (plantillas). Tabla `ventas_recurrentes` (snapshot ítems + frecuencia + `proximo_at`, RLS); generación **asistida segura** → crea presupuesto 'pendiente' (no toca stock/caja). "Convertir en recurrente" desde una venta + panel con badge de vencidas. Antes: **v1.64.0** (PR #204, sin mig) — **% Dto. por línea en el presupuesto** (dato ya estaba en `venta_items.descuento`). **Backlog restante (percepciones + USD): son sale-time (POS+caja+AFIP), NO tweaks de PDF, y el cliente que migra no las necesita → construir contra caso real.**
+
+Antes: **v1.63.0** (2026-06-14, PR **#203** `370e66e8`, **sin migración**, release latest) — **QR de pago MercadoPago en la factura con saldo pendiente.** Cierra el backlog de paridad Xubio (extra que Xubio no tiene). Reusa EF `mp-crear-link-pago` (ya en PROD) + `mercadopago_credentials`. Si la factura tiene saldo (total − monto_pagado > 0) y el tenant tiene MP conectado → QR "Pagá con MercadoPago" en el pie (`external_reference = venta_id`, `mp-webhook` concilia). Sin MP / pagada → sin QR (graceful). **🎉 PARIDAD XUBIO COMPLETA.** Antes: **v1.62.1** (PR #202, sin mig) — fix domicilio del cliente desde `cliente_domicilios` (no `clientes.direccion`).
 
 Antes: **v1.62.0** (2026-06-14, PR **#201** `dbf94a37`, **mig 212** aplicada DEV+PROD antes del merge, release latest) — **Comprobantes: presupuesto A4 + factura completa + remito (paridad Xubio).** Mig 212 = `tenants += ingresos_brutos/inicio_actividades/cbu/alias_cbu/banco/leyenda_comprobante/sitio_web`. **Presupuesto PDF A4 nuevo** (`presupuestoPDF.ts` — antes solo ticket térmico). **Factura completa**: IIBB + Inicio Act + contacto + N° con letra + moneda + forma de pago + domicilio receptor + Cód. SKU + **Ley 27.743 (B)** + "Comprobante Autorizado" + datos bancarios + leyenda. **Remito nuevo** (`remitoPDF.ts`, no fiscal, "Recibí conforme"). Config → Facturación: sección "Datos para los comprobantes". **Único pendiente del backlog Xubio: link/QR de pago MercadoPago** (integración de pagos, deploy dedicado). Ver "▶ PARIDAD XUBIO".
 
@@ -40,10 +42,10 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.63.0` ✅ (suite 734) | `v1.63.0` ✅ |
-| Migrations | 001–**212** ✅ | 001–**212** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.63.0, PR #203, `370e66e8`) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.63.0 (auto desde `main`) |
+| APP_VERSION | `v1.65.0` ✅ (suite 734) | `v1.65.0` ✅ |
+| Migrations | 001–**213** ✅ | 001–**213** ✅ |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.65.0, PR #205) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.65.0 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
@@ -78,7 +80,9 @@ Cadena del día previo (v1.59.x ya en PROD):
 - **v1.61.0 ✅ EN PROD:** logo del negocio + filename con cliente.
 - **v1.62.0 ✅ EN PROD:** presupuesto PDF A4 (nuevo) + factura completa (IIBB/Inicio Act/contacto + N° con letra + moneda + forma de pago + domicilio receptor + Cód. SKU + **Ley 27.743 B** + Comprobante Autorizado + datos bancarios + leyenda) + **remito** (nuevo, no fiscal) + Config "Datos para los comprobantes". Observaciones = `ventas.notas` (no hizo falta migración de `ventas`). (Absorbió lo que era v1.63.0 y v1.65.0 del plan anterior.)
 - **v1.63.0 ✅ EN PROD:** **QR de pago MercadoPago** en la factura con saldo pendiente (reusa EF `mp-crear-link-pago` + `mercadopago_credentials`; `external_reference = venta_id` → `mp-webhook` concilia; graceful si no hay MP). **🎉 PARIDAD XUBIO COMPLETA.**
-- **Backlog (solo si lo piden):** per-línea (% dto + obs), factura recurrente de ventas, percepciones/retenciones (IIBB/Ganancias, motor impositivo), multimoneda USD.
+- **v1.64.0 ✅ EN PROD:** % Dto. por línea en el presupuesto (dato ya estaba en `venta_items.descuento`).
+- **v1.65.0 ✅ EN PROD (mig 213):** facturas/ventas recurrentes (plantillas + generación asistida segura → presupuesto 'pendiente').
+- **Backlog restante (2 ítems, sale-time, construir contra caso real):** (a) **Percepciones**: cambia lo que paga el cliente → debe cobrarse en el POS y fluir a venta/caja/CC + `Tributos` de la EF AFIP; NO un agregado solo-PDF (descuadre). (b) **Multimoneda USD**: la venta debe estar pricada en USD (hoy ARS) + EF `MonId='DOL'`/`MonCotiz`; cross-module en el POS. **El cliente que migra (RI, ARS, no agente de percepción) no necesita ninguna** → diferidas hasta un caso real. También quedan: per-línea observaciones, percepciones de Ganancias, retenciones (son del comprador, no van en la factura del vendedor).
 
 Cada fase deploya con su release. **Ya por delante de Xubio:** envío por email con PDF, estado de cuenta PDF, factura atada a stock/caja/CC/envíos/RRHH, CAE in-app. Patrones: upload imagen = `storage.from(bucket).upload + getPublicUrl + setTenant`; logo en PDF vía `cargarLogo` (canvas→dataURL).
 

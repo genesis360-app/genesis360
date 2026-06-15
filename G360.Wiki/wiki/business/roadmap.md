@@ -13,6 +13,18 @@ updated: 2026-05-29
 
 ---
 
+## v1.65.0 — Facturas/ventas recurrentes (PROD ✅, PR #205, mig 213)
+
+Plantillas de venta que se repiten (abono/mantenimiento). Tabla `ventas_recurrentes` (snapshot de ítems + frecuencia + próxima fecha). Generación **asistida y segura**: al vencer, crea un presupuesto ('pendiente', no toca stock/caja) para revisar y facturar. "Convertir en recurrente" desde una venta + panel "Recurrentes" con badge de vencidas, pausar/activar/eliminar y "Generar presupuesto ahora".
+
+---
+
+## v1.64.0 — % Dto. por línea en el presupuesto (PROD ✅, PR #204)
+
+Muestra el descuento por línea (ya guardado en `venta_items.descuento`) en el PDF de presupuesto, con columnas dinámicas. Sin migración.
+
+---
+
 ## v1.63.0 — QR de pago MercadoPago en la factura (PROD ✅, PR #203)
 
 **Cierra la paridad con Xubio** con un extra que Xubio no tiene. Sin migración (reusa la EF `mp-crear-link-pago` + `mercadopago_credentials`). Si la factura tiene **saldo pendiente** y el tenant tiene **MercadoPago conectado**, el PDF embebe un **QR "Pagá con MercadoPago — saldo $X"** en el pie; `external_reference = venta_id` → `mp-webhook` concilia el pago automáticamente. Si no hay MP conectado o la factura ya está paga, sale sin QR (graceful). 🎉 **Plan de paridad Xubio completo** (logo · factura completa · presupuesto A4 · remito · datos bancarios/leyenda · Ley 27.743 · pago MP).

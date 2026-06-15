@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-14] deploy | v1.64.0 + v1.65.0 EN PROD — Backlog comprobantes: % Dto. por línea + facturas recurrentes · `dev=main`
+
+GO pidió cerrar el backlog ("si va a servir a futuro, hagámoslo ahora"). Lo evalué críticamente y entregué los 2 de menor riesgo:
+
+- **v1.64.0 (PR #204, sin mig):** **% Dto. por línea en el presupuesto.** El descuento ya vivía en `venta_items.descuento` (es un %, el subtotal ya viene neto); ahora el PDF de presupuesto lo muestra (tabla con columnas dinámicas, la columna aparece solo si hay descuentos).
+- **v1.65.0 (PR #205, mig 213):** **Facturas/ventas recurrentes.** Tabla `ventas_recurrentes` (plantilla con snapshot de ítems + frecuencia + `proximo_at`, RLS por tenant). Generación **asistida y segura**: al vencer, crea un **presupuesto** ('pendiente', no toca stock/caja) por insert directo (`crypto.randomUUID`, `numero` por trigger) para revisar y facturar. lib `ventasRecurrentes.ts` + "Convertir en recurrente" desde una venta + panel "Recurrentes" (badge de vencidas, pausar/activar/eliminar, "Generar presupuesto ahora").
+
+**Hallazgo que frenó los otros 2 (decisión consciente):** **percepciones y multimoneda USD NO son tweaks del PDF** — una percepción cambia lo que paga el cliente (descuadre vs caja/CC si solo se agrega a la factura), y una factura en USD requiere que la **venta** esté pricada en USD. Ambas son features de **momento-de-venta** (POS + ventas + caja/CC + EF AFIP). Además **el cliente que migra (RI, factura en ARS) no las necesita**. Recomendación: construirlas bien contra un caso real, no especulativamente. Quedan en backlog priorizado.
+
 ## [2026-06-14] deploy | v1.63.0 EN PROD — QR de pago MercadoPago en la factura (cierra paridad Xubio) · `dev=main`
 
 **v1.63.0 a PROD (PR #203, `370e66e8`, release latest). Sin migración.** Cierra el backlog de paridad Xubio con un **extra que Xubio no tiene**. Reusa la EF **`mp-crear-link-pago`** (ya en PROD, la usa el POS) + `mercadopago_credentials` del tenant.

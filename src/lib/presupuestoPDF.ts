@@ -36,8 +36,9 @@ export interface PresupuestoPDFData {
     codigo?: string | null
     descripcion: string
     cantidad: number
-    precio_unitario: number
-    subtotal: number
+    precio_unitario: number   // unitario de lista (antes del descuento)
+    descuento_pct?: number    // % de descuento de la línea
+    subtotal: number          // ya neto del descuento
   }[]
 
   total: number
@@ -116,31 +117,30 @@ async function construirPresupuestoDoc(data: PresupuestoPDFData): Promise<jsPDF>
     doc.text(`Domicilio: ${data.receptor_domicilio}`, 14, ry); ry += 5
   }
 
-  // ── Tabla de ítems (sin discriminar IVA — el presupuesto no es comprobante fiscal) ─
+  // ── Tabla de ítems (columnas dinámicas: Cód? · Descripción · Cant · P.Unit · %Dto? · Importe) ─
+  // El presupuesto no es comprobante fiscal → sin discriminar IVA.
   const tieneCodigo = data.items.some(i => (i.codigo ?? '').trim().length > 0)
-  const head = tieneCodigo
-    ? [['Cód.', 'Descripción', 'Cant.', 'P. Unitario', 'Importe']]
-    : [['Descripción', 'Cant.', 'P. Unitario', 'Importe']]
-  const rows = data.items.map(item => {
-    const base = [
-      String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
-      fmtPesos(item.subtotal / item.cantidad),
-      fmtPesos(item.subtotal),
-    ]
-    return tieneCodigo
-      ? [item.codigo ?? '', item.descripcion, ...base]
-      : [item.descripcion, ...base]
-  })
+  const tieneDto    = data.items.some(i => Number(i.descuento_pct ?? 0) > 0)
+  type Col = { header: string; width: number; align?: 'center' | 'right'; get: (i: PresupuestoPDFData['items'][number]) => string }
+  const cols: Col[] = []
+  if (tieneCodigo) cols.push({ header: 'Cód.', width: 22, get: i => i.codigo ?? '' })
+  cols.push({ header: 'Descripción', width: 0, get: i => i.descripcion }) // 0 = flex
+  cols.push({ header: 'Cant.', width: 18, align: 'center', get: i => String(i.cantidad % 1 === 0 ? i.cantidad : i.cantidad.toFixed(3)) })
+  cols.push({ header: 'P. Unitario', width: 30, align: 'right', get: i => fmtPesos(i.precio_unitario) })
+  if (tieneDto) cols.push({ header: '% Dto.', width: 16, align: 'center', get: i => `${Number(i.descuento_pct ?? 0)}%` })
+  cols.push({ header: 'Importe', width: 30, align: 'right', get: i => fmtPesos(i.subtotal) })
+  const flex = cols.find(c => c.width === 0)!
+  flex.width = 182 - cols.reduce((s, c) => s + c.width, 0)
+  const columnStyles: Record<number, any> = {}
+  cols.forEach((c, idx) => { columnStyles[idx] = { cellWidth: c.width, ...(c.align ? { halign: c.align } : {}) } })
   autoTable(doc, {
     startY:     ry + 3,
     margin:     { left: 14, right: 14 },
-    head,
-    body:       rows,
+    head:       [cols.map(c => c.header)],
+    body:       data.items.map(it => cols.map(c => c.get(it))),
     headStyles: { fillColor: [30, 58, 95], fontSize: 8, halign: 'center' },
     bodyStyles: { fontSize: 8 },
-    columnStyles: tieneCodigo
-      ? { 0: { cellWidth: 24 }, 1: { cellWidth: 86 }, 2: { halign: 'center', cellWidth: 18 }, 3: { halign: 'right', cellWidth: 29 }, 4: { halign: 'right', cellWidth: 29 } }
-      : { 0: { cellWidth: 96 }, 1: { halign: 'center', cellWidth: 20 }, 2: { halign: 'right', cellWidth: 33 }, 3: { halign: 'right', cellWidth: 33 } },
+    columnStyles,
     theme: 'striped',
   })
 

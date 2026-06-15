@@ -668,17 +668,18 @@ export default function VentasPage() {
     if (!clienteId) return
     setCobrarCCSaving(true)
     try {
-      const { aplicado, cajaRegistrada } = await cobrarDeudaCCFIFO(supabase, {
+      const { aplicado, cajaRegistrada, requiereCaja } = await cobrarDeudaCCFIFO(supabase, {
         tenantId: tenant!.id, clienteId, monto, metodo: cobrarCCMetodo,
         usuarioId: user?.id, clienteNombre: clienteNombre || null,
         sesionCajaId, cuentaOrigenId: cuentaOrigenDeMetodo(cobrarCCMetodo),
       })
+      if (requiereCaja) {
+        toast.error('Abrí una caja antes de cobrar en efectivo: si no, el pago no quedaría registrado en ningún arqueo.', { duration: 7000 })
+        return
+      }
       if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
       toast.success(`Cobranza de $${Math.round(aplicado).toLocaleString('es-AR')} registrada`)
-      // Impacto en arqueo: si era efectivo y no había caja a la que imputar, avisar (descuadre seguro)
-      if (cobrarCCMetodo === 'Efectivo' && !cajaRegistrada) {
-        toast('El efectivo cobrado no quedó en ningún arqueo: no hay caja abierta a la que imputarlo.', { icon: '⚠️', duration: 7000 })
-      } else if (cajaRegistrada) {
+      if (cajaRegistrada) {
         qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
       }
       void notificarPagoCC(tenant, clienteId, clienteNombre || 'cliente', aplicado)  // CL4/C4
@@ -3594,6 +3595,50 @@ export default function VentasPage() {
             }
           }
         }
+        // Auditoría 2026-06-15 — si la venta YA había rebajado stock (despachada/facturada),
+        // restaurarlo al anular (espejo del reingreso de Devolver): el void devuelve plata Y stock.
+        // En reservada/pendiente el stock no se había rebajado (solo reservado) → no re-agregar.
+        if (venta.estado === 'despachada' || venta.estado === 'facturada') {
+          // Destino del reingreso: en avanzado, primer estado vendible (sin ubicación, se reubica
+          // luego); en básico, sin estado ni ubicación (todo es vendible). Ver [[reference_basico_stock_null_ubicacion_estado]].
+          let estadoVendibleId: string | null = null
+          if (modoAvanzado) {
+            const { data: ev } = await supabase.from('estados_inventario')
+              .select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true).limit(1).maybeSingle()
+            estadoVendibleId = ev?.id ?? null
+          }
+          for (const item of items ?? []) {
+            const cantItem = Number(item.cantidad) || 0
+            if (cantItem <= 0) continue
+            if ((item.productos as any)?.tiene_series) {
+              // Reactivar las series vendidas + sus líneas (el trigger recalcula stock_actual).
+              const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id).filter(Boolean)
+              if (serieIds.length > 0) {
+                await supabase.from('inventario_series').update({ activo: true, reservado: false }).in('id', serieIds)
+                const { data: seriesData } = await supabase.from('inventario_series').select('linea_id').in('id', serieIds)
+                const lineaIds = [...new Set((seriesData ?? []).map((s: any) => s.linea_id).filter(Boolean))]
+                if (lineaIds.length > 0) await supabase.from('inventario_lineas').update({ activo: true }).in('id', lineaIds)
+              }
+            } else {
+              // Crear nueva línea con la cantidad despachada (el trigger recalcula stock_actual).
+              const lineaPayload: any = {
+                tenant_id: tenant!.id, producto_id: item.producto_id, cantidad: cantItem,
+                notas: `Anulación de venta #${venta.numero}`,
+              }
+              if (modoAvanzado && estadoVendibleId) lineaPayload.estado_id = estadoVendibleId
+              const { data: linea } = await supabase.from('inventario_lineas').insert(lineaPayload).select('id').single()
+              const { data: prodData } = await supabase.from('productos').select('stock_actual').eq('id', item.producto_id).single()
+              if (linea && prodData) {
+                await supabase.from('movimientos_stock').insert({
+                  tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'ingreso', cantidad: cantItem,
+                  stock_antes: (prodData.stock_actual ?? 0) - cantItem, stock_despues: prodData.stock_actual ?? 0,
+                  motivo: `Anulación venta #${venta.numero}`, usuario_id: user?.id, linea_id: linea.id, venta_id: ventaId,
+                })
+              }
+            }
+          }
+        }
+
         // E3 — registrar motivo de cancelación (catálogo + observación opcional) en notas
         const cancelNota = cancelOpts?.motivo
           ? `[Cancelación: ${cancelOpts.motivo}${cancelOpts.observacion?.trim() ? ` — ${cancelOpts.observacion.trim()}` : ''}]`
@@ -5575,7 +5620,10 @@ export default function VentasPage() {
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
               </div>
 
-              {/* A7 — Destino del stock devuelto (no aplica a series — esas siempre vuelven a su línea original) */}
+              {/* A7 — Destino del stock devuelto (no aplica a series — esas siempre vuelven a su línea original).
+                  Solo AVANZADO: en básico el stock no usa ubicaciones/estados → el reingreso es directo
+                  (a stock vendible sin ubicación) y no hay "ubicación DEV" que elegir. */}
+              {modoAvanzado && (
               <div>
                 <label className="block text-sm font-medium text-primary mb-1.5">Destino del stock devuelto</label>
                 <div className="flex flex-col sm:flex-row gap-2">
@@ -5609,6 +5657,7 @@ export default function VentasPage() {
                   </label>
                 </div>
               </div>
+              )}
 
               {/* L1 — Selector de caja para el egreso efectivo */}
               {devMediosPago.some(mp => mp.tipo === 'Efectivo' && parseFloat(mp.monto) > 0) && sesionesAbiertas.length > 0 && (

@@ -72,16 +72,16 @@ export default function CajaCobranzasCC() {
     setSaving(true)
     try {
       const nomb = conDeuda.find(x => x.id === clienteId)?.nombre ?? 'cliente'
-      const { aplicado, cajaRegistrada } = await cobrarDeudaCCFIFO(supabase, {
+      const { aplicado, requiereCaja } = await cobrarDeudaCCFIFO(supabase, {
         tenantId: tenant!.id, clienteId, monto: m, metodo,
         usuarioId: user?.id, clienteNombre: nomb,
       })
+      if (requiereCaja) {
+        toast.error('Abrí una caja antes de cobrar en efectivo: si no, el pago no quedaría registrado en ningún arqueo.', { duration: 7000 })
+        return
+      }
       if (aplicado <= 0) { toast.error('Sin ventas CC pendientes'); return }
       toast.success(`Cobranza de ${formatMoneda(aplicado)} registrada`)
-      // Impacto en arqueo: efectivo sin caja a la que imputar → avisar (descuadre seguro)
-      if (metodo === 'Efectivo' && !cajaRegistrada) {
-        toast('El efectivo cobrado no quedó en ningún arqueo: no hay caja abierta a la que imputarlo.', { icon: '⚠️', duration: 7000 })
-      }
       void notificarPagoCC(tenant, clienteId, nomb, aplicado)  // CL4/C4
       setCobrarId(null); setMonto(''); setMetodo('Efectivo')
       qc.invalidateQueries({ queryKey: ['caja-cobranzas-cc'] })

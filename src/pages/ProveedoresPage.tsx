@@ -19,6 +19,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
 import { esDecimal } from '@/lib/ventasValidation'
+import { ActionMenu } from '@/components/ActionMenu'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
@@ -1460,15 +1461,12 @@ export default function ProveedoresPage() {
         </div>
         {tab === 'proveedores' && (
           <div className="flex gap-2">
-            <div className="relative group">
-              <button className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                <Download size={14} /> Exportar <ChevronDown size={12} />
-              </button>
-              <div className="absolute right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg overflow-hidden z-20 hidden group-hover:block w-28">
-                <button onClick={() => exportarProveedores('json')} className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">JSON</button>
-                <button onClick={() => exportarProveedores('csv')}  className="w-full text-left px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">CSV</button>
-              </div>
-            </div>
+            <ActionMenu
+              items={[
+                { label: 'Exportar JSON', icon: Download, onClick: () => exportarProveedores('json') },
+                { label: 'Exportar CSV',  icon: Download, onClick: () => exportarProveedores('csv') },
+              ]}
+            />
             <button
               onClick={() => { setEditId(null); setForm({ ...FORM_PROV_EMPTY, tipo: 'proveedor' }); setShowForm(true) }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent/90"
@@ -1696,18 +1694,12 @@ export default function ProveedoresPage() {
                 placeholder="Buscar por nombre, contacto…"
                 value={serviciosSearch} onChange={e => setServiciosSearch(e.target.value)} />
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setShowGenerales(v => !v)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border-ds text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
-                <Wrench size={14} /> Servicios generales
-              </button>
-              {modoAvanzado && (
-              <button onClick={() => setShowComparar(true)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-border-ds text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
-                <BarChart3 size={14} /> Comparar presupuestos
-              </button>
-              )}
-            </div>
+            <ActionMenu
+              items={[
+                { label: 'Servicios generales', icon: Wrench, onClick: () => setShowGenerales(v => !v) },
+                { label: 'Comparar presupuestos', icon: BarChart3, onClick: () => setShowComparar(true), hidden: !modoAvanzado },
+              ]}
+            />
           </div>
 
           {/* CO7b/F1 — aviso de servicios recurrentes vencidos */}

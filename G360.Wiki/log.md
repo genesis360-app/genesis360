@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-15] update | UX — `ActionMenu` ("⋯ Acciones") replicado a Proveedores + Inventario (queda en DEV)
+
+Continuación del patrón de toolbar (acción principal visible + secundarias colapsadas en "⋯ Acciones", click no hover — ver [[feedback_toolbar_actionmenu]]). El piloto estaba en Productos + Clientes; GO pidió seguir con "las demás páginas" y revisar también las **sub-páginas/tabs** que cambian sus botones.
+
+- **Proveedores** (`ProveedoresPage.tsx`): se eliminó el **bug real de hover-dropdown** (`group-hover:block`, no abría en touch) — el "Exportar JSON/CSV" del header pasó a `<ActionMenu>`. Además, el sub-toolbar de la tab **Servicios** (Servicios generales / Comparar presupuestos) se colapsó en un ActionMenu. La tab Órdenes solo tiene filtros + "Nueva OC" (sin cambios).
+- **Inventario** (`InventarioPage.tsx`): la tab **Agregar stock** pasó de 3 botones (Ingreso / Masivo / ASN) a **Ingreso** (principal) + `ActionMenu[Ingreso masivo, Recepción/ASN]`.
+
+**Barrido página por página del resto — no necesitan ActionMenu** (documentado en la nota): Ventas, Caja, Gastos, Envíos, Recepciones, Usuarios, Sucursales, Config = header de **1 botón** que cambia por tab; Facturación = período + Libros con 1 botón Exportar; **Reportes** = panel con 3 botones de formato Excel/PDF/CSV (color-coded, son el propósito, NO se colapsan); RRHH = formularios/cards sin toolbar de header; Historial = 2 botones (Filtros + Excel), aceptable. **Regla afinada:** colapsar solo con **3+ acciones secundarias dispares** o un **hover-dropdown**; 1-2 botones o toolbars de filtros/formatos se dejan. typecheck (`tsc --noEmit`) verde. Sin versión nueva ni migración — queda en DEV.
+
 ## [2026-06-14] deploy | v1.64.0 + v1.65.0 EN PROD — Backlog comprobantes: % Dto. por línea + facturas recurrentes · `dev=main`
 
 GO pidió cerrar el backlog ("si va a servir a futuro, hagámoslo ahora"). Lo evalué críticamente y entregué los 2 de menor riesgo:

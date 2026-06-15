@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.66.0 — UX: "⋯ Acciones" (ActionMenu) en Proveedores + Inventario (PROD ✅, PR #207)
+
+Continuación del patrón de toolbar mobile-friendly (acción principal visible + secundarias colapsadas en "⋯ Acciones", click no hover). Sin migración. **Proveedores:** se mató el bug de hover-dropdown (`group-hover:block`, no abría en touch) — "Exportar JSON/CSV" → `ActionMenu`; el sub-toolbar de la tab Servicios (Servicios generales / Comparar presupuestos) también se colapsó. **Inventario:** la tab "Agregar stock" pasó de 3 botones (Ingreso / Masivo / ASN) a Ingreso + `ActionMenu[Masivo, ASN]`. Barrido del resto de páginas: no requieren ActionMenu (headers de 1 botón o toolbars de filtros/formatos; Reportes deja sus 3 botones de formato Excel/PDF/CSV).
+
+---
+
 ## v1.65.0 — Facturas/ventas recurrentes (PROD ✅, PR #205, mig 213)
 
 Plantillas de venta que se repiten (abono/mantenimiento). Tabla `ventas_recurrentes` (snapshot de ítems + frecuencia + próxima fecha). Generación **asistida y segura**: al vencer, crea un presupuesto ('pendiente', no toca stock/caja) para revisar y facturar. "Convertir en recurrente" desde una venta + panel "Recurrentes" con badge de vencidas, pausar/activar/eliminar y "Generar presupuesto ahora".

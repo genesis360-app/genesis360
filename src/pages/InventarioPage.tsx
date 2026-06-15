@@ -9,6 +9,7 @@ import {
   Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { ActionMenu } from '@/components/ActionMenu'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
 import { CodigoMasivoModal } from '@/components/CodigoMasivoModal'
 import { MasivoModal } from '@/components/MasivoModal'
@@ -2458,19 +2459,15 @@ export default function InventarioPage() {
         </div>
         {tab === 'agregar' && !masivoInline && (
           <div className="flex flex-wrap gap-2">
+            <ActionMenu
+              items={[
+                { label: 'Ingreso masivo (varios SKUs)', icon: Plus, onClick: () => { setMasivoInline(true); setMasivoRows([]) }, disabled: limiteAlcanzado },
+                { label: 'Recepción / ASN', icon: ShoppingBasket, onClick: () => navigate('/recepciones') },
+              ]}
+            />
             <button onClick={() => setModal('ingreso')} disabled={limiteAlcanzado}
               className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2.5 rounded-xl text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed">
               <Plus size={16} /> Ingreso
-            </button>
-            <button onClick={() => { setMasivoInline(true); setMasivoRows([]) }} disabled={limiteAlcanzado}
-              className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Recepción de múltiples SKUs">
-              <Plus size={16} /> Masivo
-            </button>
-            <button onClick={() => navigate('/recepciones')}
-              className="flex items-center gap-2 border-2 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all"
-              title="Módulo de recepción / ASN">
-              <ShoppingBasket size={16} /> ASN
             </button>
           </div>
         )}

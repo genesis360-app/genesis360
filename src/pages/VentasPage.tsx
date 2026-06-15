@@ -841,10 +841,17 @@ export default function VentasPage() {
 
   useModalKeyboard({ isOpen: seriesModal !== null, onClose: () => { setSeriesModal(null); setSeriesBusqueda('') }, onConfirm: () => { setSeriesModal(null); setSeriesBusqueda('') } })
   useModalKeyboard({ isOpen: ticketVenta !== null, onClose: () => setTicketVenta(null) })
-  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
+  // El detalle de venta cede el ESC a cualquier modal apilado por encima (devolución, NC,
+  // cancelar reserva, cambiar cliente, saldo, ticket) → ESC siempre cierra el modal visible.
+  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null && devolucionVenta === null && ncModal === null && cancelReservaModal === null && cambiarClienteVenta === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: facturaModal !== null, onClose: () => { setFacturaModal(null); setFacturaEmitida(null) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
+  // Modales que se apilan sobre el detalle de venta — la NC va encima de la devolución.
+  useModalKeyboard({ isOpen: devolucionVenta !== null && ncModal === null, onClose: () => setDevolucionVenta(null) })
+  useModalKeyboard({ isOpen: ncModal !== null, onClose: () => setNcModal(null) })
+  useModalKeyboard({ isOpen: cancelReservaModal !== null, onClose: () => setCancelReservaModal(null) })
+  useModalKeyboard({ isOpen: cambiarClienteVenta !== null, onClose: () => setCambiarClienteVenta(null) })
 
   // Cola de scans para procesar secuencialmente (evita duplicados por concurrencia)
   const scanQueueRef = useRef<string[]>([])
@@ -5457,10 +5464,19 @@ export default function VentasPage() {
               {/* J2 — acciones con clave maestra (anular despachada / cambiar cliente) */}
               {!esContador && ['despachada', 'facturada'].includes(ventaDetalle.estado) && !isPeriodoCerrado(ventaDetalle.created_at) && (
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => pedirClaveMaestra('Anular venta despachada', () => {
-                    logVentaAuditoria(ventaDetalle.id, 'anulacion', { estado_previo: ventaDetalle.estado, total: ventaDetalle.total })
-                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
-                  })}
+                  <button onClick={() => {
+                    // Una venta con factura electrónica (CAE) NO se puede solo "anular": hay que
+                    // revertirla fiscalmente con una Nota de Crédito que AFIP registre, o los libros
+                    // quedan descuadrados (la factura sigue válida en AFIP). Forzar Devolver → Emitir NC.
+                    if (ventaDetalle.cae) {
+                      toast.error('Esta venta tiene factura electrónica (CAE ' + ventaDetalle.cae + '). Para revertirla usá "Devolver" y emití la Nota de Crédito — así queda asentada en AFIP.', { duration: 9000 })
+                      return
+                    }
+                    pedirClaveMaestra('Anular venta despachada', () => {
+                      logVentaAuditoria(ventaDetalle.id, 'anulacion', { estado_previo: ventaDetalle.estado, total: ventaDetalle.total })
+                      cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
+                    })
+                  }}
                     disabled={cambiarEstado.isPending}
                     className="flex items-center justify-center gap-1.5 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm">
                     <X size={15} /> Anular

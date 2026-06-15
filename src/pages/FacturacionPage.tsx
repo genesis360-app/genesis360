@@ -59,7 +59,7 @@ export default function FacturacionPage() {
   // Arma el FacturaPDFData + email del cliente para una factura emitida (descargar/imprimir/email)
   async function buildFacturaPDFDataById(facturaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('*, clientes(*), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre, sku))')
+      .select('*, clientes(*, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre, sku))')
       .eq('id', facturaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta) throw new Error('Venta no encontrada')
@@ -93,7 +93,7 @@ export default function FacturacionPage() {
       receptor_nombre:   venta.clientes?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni: venta.clientes?.cuit_receptor ?? venta.clientes?.dni,
       receptor_condicion_iva: normalizarCondIVA(venta.clientes?.condicion_iva_receptor),
-      receptor_domicilio: venta.clientes?.direccion ?? undefined,
+      receptor_domicilio: composeDomicilioCliente(venta.clientes?.cliente_domicilios),
       items: (venta.venta_items ?? []).map((i: any) => ({
         codigo:         i.productos?.sku ?? null,
         descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
@@ -106,6 +106,15 @@ export default function FacturacionPage() {
       forma_pago: formaPago,
     }
     return { data, email: venta.clientes?.email ?? null }
+  }
+
+  // El domicilio del cliente vive en cliente_domicilios (no en clientes). Toma el principal.
+  function composeDomicilioCliente(doms: any[] | null | undefined): string | undefined {
+    const d = (doms ?? []).find((x: any) => x.es_principal) ?? (doms ?? [])[0]
+    if (!d) return undefined
+    const l1 = [d.calle, d.numero, d.piso_depto].filter(Boolean).join(' ')
+    const l2 = [d.ciudad, d.provincia].filter(Boolean).join(', ')
+    return [l1, l2].filter(Boolean).join(', ') || undefined
   }
 
   // medio_pago es un JSON string [{"tipo":"Efectivo","monto":1500}] → etiqueta para el PDF

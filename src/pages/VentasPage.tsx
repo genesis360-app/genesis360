@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { reproducirSonidoCobro } from '@/lib/sonidoCobro'
@@ -15,6 +15,7 @@ import { getRebajeSort } from '@/lib/rebajeSort'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
+import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, type RecurrenteItemSnapshot } from '@/lib/ventasRecurrentes'
 import { detectarTipoComprobante } from '@/lib/facturacionLogic'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
@@ -361,6 +362,13 @@ export default function VentasPage() {
   const [descargandoPdfVenta, setDescargandoPdfVenta] = useState(false)
   const [descargandoPresupuesto, setDescargandoPresupuesto] = useState(false)
   const [descargandoRemito, setDescargandoRemito] = useState(false)
+  // Facturas recurrentes (plantillas)
+  const [recPanelOpen, setRecPanelOpen] = useState(false)
+  const [convertirRecModal, setConvertirRecModal] = useState<{ venta: any } | null>(null)
+  const [recNombre, setRecNombre] = useState('')
+  const [recFrecuencia, setRecFrecuencia] = useState(30)
+  const [guardandoRec, setGuardandoRec] = useState(false)
+  const [generandoRecId, setGenerandoRecId] = useState<string | null>(null)
   const [enviandoFacturaEmail, setEnviandoFacturaEmail] = useState(false)
   // Modal "Enviar factura por email": precarga el correo del cliente de la venta (editable)
   const [facturaEmailModal, setFacturaEmailModal] = useState<{ ventaId: string } | null>(null)
@@ -1717,6 +1725,115 @@ export default function VentasPage() {
     } finally {
       setDescargandoRemito(false)
     }
+  }
+
+  // ── Facturas recurrentes (plantillas) ──────────────────────────────────────
+  const { data: recurrentes = [] } = useQuery({
+    queryKey: ['ventas-recurrentes', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('ventas_recurrentes')
+        .select('*').eq('tenant_id', tenant!.id).order('proximo_at')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+  const recurrentesVencidas = (recurrentes as any[]).filter(r => r.activo && estaVencida(r.proximo_at)).length
+
+  // Crea una plantilla recurrente a partir de una venta (snapshot de ítems).
+  async function convertirEnRecurrente() {
+    if (!convertirRecModal) return
+    const v = convertirRecModal.venta
+    const items: RecurrenteItemSnapshot[] = (v.venta_items ?? []).map((i: any) => ({
+      producto_id: i.producto_id ?? i.productos?.id,
+      nombre: i.productos?.nombre ?? 'Producto',
+      sku: i.productos?.sku ?? null,
+      cantidad: Number(i.cantidad),
+      precio_unitario: Number(i.precio_unitario),
+      descuento: Number(i.descuento ?? 0),
+      alicuota_iva: Number(i.alicuota_iva ?? 21),
+      subtotal: Number(i.subtotal),
+    })).filter((i: RecurrenteItemSnapshot) => i.producto_id)
+    if (items.length === 0) { toast.error('La venta no tiene ítems para repetir'); return }
+    setGuardandoRec(true)
+    try {
+      const { error } = await supabase.from('ventas_recurrentes').insert({
+        id: crypto.randomUUID(),
+        tenant_id: tenant!.id,
+        sucursal_id: v.sucursal_id ?? sucursalId ?? null,
+        cliente_id: v.cliente_id ?? null,
+        cliente_nombre: v.cliente_nombre ?? v.clientes?.nombre ?? null,
+        nombre: recNombre.trim() || `Recurrente de ${v.cliente_nombre ?? 'cliente'}`,
+        frecuencia_dias: recFrecuencia,
+        proximo_at: proximaFecha(recFrecuencia),
+        activo: true,
+        items,
+        notas: v.notas ?? null,
+      })
+      if (error) throw error
+      toast.success('Plantilla recurrente creada')
+      setConvertirRecModal(null); setRecNombre('')
+      qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo crear la plantilla')
+    } finally {
+      setGuardandoRec(false)
+    }
+  }
+
+  // Genera un PRESUPUESTO ('pendiente', no toca stock/caja) desde una plantilla y avanza la fecha.
+  async function generarDesdeRecurrente(rec: any) {
+    setGenerandoRecId(rec.id)
+    try {
+      const items: RecurrenteItemSnapshot[] = rec.items ?? []
+      const total = totalRecurrente(items)
+      const ventaId = crypto.randomUUID()
+      const { error: vErr } = await supabase.from('ventas').insert({
+        id: ventaId,
+        tenant_id: tenant!.id,
+        sucursal_id: rec.sucursal_id ?? sucursalId ?? null,
+        cliente_id: rec.cliente_id ?? null,
+        cliente_nombre: rec.cliente_nombre ?? null,
+        consumidor_final: !rec.cliente_id,
+        estado: 'pendiente',
+        subtotal: total,
+        total,
+        notas: rec.notas ?? null,
+      })
+      if (vErr) throw vErr
+      const itemRows = items.filter(i => i.producto_id).map(i => ({
+        tenant_id: tenant!.id,
+        venta_id: ventaId,
+        producto_id: i.producto_id,
+        cantidad: i.cantidad,
+        precio_unitario: i.precio_unitario,
+        descuento: Number(i.descuento ?? 0),
+        subtotal: i.subtotal,
+        alicuota_iva: Number(i.alicuota_iva ?? 21),
+      }))
+      const { error: iErr } = await supabase.from('venta_items').insert(itemRows)
+      if (iErr) throw iErr
+      await supabase.from('ventas_recurrentes').update({
+        proximo_at: proximaFecha(rec.frecuencia_dias),
+        ultima_generada_at: new Date().toISOString(),
+      }).eq('id', rec.id)
+      toast.success('Presupuesto generado desde la plantilla. Revisalo y convertilo/facturalo.')
+      qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['ventas'] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo generar')
+    } finally {
+      setGenerandoRecId(null)
+    }
+  }
+
+  async function toggleRecurrente(rec: any) {
+    await supabase.from('ventas_recurrentes').update({ activo: !rec.activo }).eq('id', rec.id)
+    qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
+  }
+  async function eliminarRecurrente(rec: any) {
+    if (!confirm(`¿Eliminar la plantilla "${rec.nombre}"?`)) return
+    await supabase.from('ventas_recurrentes').delete().eq('id', rec.id)
+    qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
   }
 
   // Abre el modal de envío por email precargando el correo del cliente de la venta (editable).
@@ -3605,6 +3722,15 @@ export default function VentasPage() {
           <h1 className="text-2xl font-bold text-primary">Ventas</h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Registrá y gestioná tus ventas</p>
         </div>
+        {!esContador && (
+          <button onClick={() => setRecPanelOpen(true)}
+            className="relative flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+            <RotateCcw size={15} /> <span className="hidden sm:inline">Recurrentes</span>
+            {recurrentesVencidas > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 bg-accent text-white text-[10px] font-bold rounded-full min-w-[18px] h-[18px] flex items-center justify-center px-1">{recurrentesVencidas}</span>
+            )}
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -5188,6 +5314,13 @@ export default function VentasPage() {
                   </button>
                 </div>
               )}
+              {(ventaDetalle.venta_items?.length ?? 0) > 0 && (
+                <button
+                  onClick={() => { setRecNombre(`Recurrente de ${ventaDetalle.cliente_nombre ?? 'cliente'}`); setRecFrecuencia(30); setConvertirRecModal({ venta: ventaDetalle }) }}
+                  className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm">
+                  <RotateCcw size={15} /> Convertir en recurrente
+                </button>
+              )}
               {ventaDetalle.estado === 'pendiente' && (() => {
                 const vencido = isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
                 return (
@@ -6523,6 +6656,94 @@ export default function VentasPage() {
                 className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
                 {enviandoFacturaEmail ? <><RefreshCw size={15} className="animate-spin" /> Enviando…</> : <><Send size={15} /> Enviar</>}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: CONVERTIR EN RECURRENTE ── */}
+      {convertirRecModal && (
+        <div className="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RotateCcw size={18} className="text-accent" />
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100">Convertir en recurrente</h2>
+              </div>
+              <button onClick={() => setConvertirRecModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Se guarda una plantilla con los ítems de esta venta. Cuando venza, la generás con un clic como presupuesto para revisar y facturar.</p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre</label>
+                <input value={recNombre} onChange={e => setRecNombre(e.target.value)} autoFocus
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Frecuencia</label>
+                <div className="relative">
+                  <select value={recFrecuencia} onChange={e => setRecFrecuencia(parseInt(e.target.value))}
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    {FRECUENCIAS.map(f => <option key={f.dias} value={f.dias}>{f.label}</option>)}
+                  </select>
+                  <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button onClick={() => setConvertirRecModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm">Cancelar</button>
+              <button onClick={convertirEnRecurrente} disabled={guardandoRec}
+                className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm">
+                {guardandoRec ? 'Guardando…' : 'Crear plantilla'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PANEL: FACTURAS RECURRENTES ── */}
+      {recPanelOpen && (
+        <div className="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <RotateCcw size={18} className="text-accent" />
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100">Facturas recurrentes</h2>
+              </div>
+              <button onClick={() => setRecPanelOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-2">
+              {(recurrentes as any[]).length === 0 ? (
+                <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-8">No tenés plantillas. Abrí una venta y usá "Convertir en recurrente".</p>
+              ) : (recurrentes as any[]).map(rec => {
+                const vencida = rec.activo && estaVencida(rec.proximo_at)
+                return (
+                  <div key={rec.id} className={`border rounded-xl p-3 ${vencida ? 'border-accent/50 bg-accent/5' : 'border-gray-200 dark:border-gray-700'}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-medium text-sm text-gray-800 dark:text-gray-100 truncate">{rec.nombre}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {rec.cliente_nombre ?? 'Consumidor final'} · {frecuenciaLabel(rec.frecuencia_dias)} · ${totalRecurrente(rec.items ?? []).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                        </p>
+                        <p className={`text-xs mt-0.5 ${vencida ? 'text-accent font-semibold' : 'text-gray-400'}`}>
+                          {vencida ? '● Vence: ' : 'Próxima: '}{new Date(rec.proximo_at + 'T00:00:00').toLocaleDateString('es-AR')}{!rec.activo && ' · pausada'}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button onClick={() => toggleRecurrente(rec)} title={rec.activo ? 'Pausar' : 'Activar'}
+                          className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">{rec.activo ? '⏸' : '▶'}</button>
+                        <button onClick={() => eliminarRecurrente(rec)} title="Eliminar"
+                          className="p-1.5 text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
+                      </div>
+                    </div>
+                    <button onClick={() => generarDesdeRecurrente(rec)} disabled={generandoRecId === rec.id || !rec.activo}
+                      className="mt-2 w-full bg-accent hover:bg-accent/90 text-white font-medium py-2 rounded-lg text-sm transition-all disabled:opacity-50">
+                      {generandoRecId === rec.id ? 'Generando…' : 'Generar presupuesto ahora'}
+                    </button>
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>

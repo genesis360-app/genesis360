@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-15] deploy | v1.70.0 EN PROD — Click-through básico (tanda 2): NC electrónica, ESC stack, anular factura con CAE · `dev=main`
+
+**v1.70.0 a PROD (PR #211, sin migración, EF `emitir-factura` redeploy DEV+PROD, release latest).** 3 bugs del click-through interactivo de GO sobre Kiosko Buildi (facturación AFIP habilitada en básico):
+
+- **🔴 Emitir NC fallaba siempre ("La venta no tiene factura emitida. No se puede emitir NC sin CAE original")** aunque la venta tuviera CAE real. Causa: el SELECT de la venta en la EF `emitir-factura` **no incluía `cae`** → `venta.cae` siempre `undefined` → el guard de línea 97 tiraba el error. La emisión de NC nunca había funcionado end-to-end (solo se habían probado facturas). Fix: agregar `cae, tipo_comprobante, numero_comprobante` al SELECT. **Requiere redeploy de la EF.**
+- **🔴 ESC cerraba el modal de ATRÁS, no el visible:** los modales de devolución, **Emitir NC**, cancelar-reserva y cambiar-cliente no se registraban en el stack de `useModalKeyboard` → el ESC caía en el detalle de venta (registrado). Fix: registrarlos (la NC va encima de la devolución) + el detalle cede el ESC a cualquier modal apilado. Ahora ESC cierra siempre el modal visible, uno por uno.
+- **⚠️ Anular venta facturada con CAE pasaba a "cancelada" sin reversar la factura AFIP** → libros descuadrados (la factura sigue válida en AFIP). Fix: **bloquear "Anular" si la venta tiene CAE** y dirigir a *Devolver → emitir NC* (reversión fiscal correcta). Las ventas sin CAE (solo marcadas facturada) siguen anulándose normal.
+
+Hallazgo de datos en Kiosko: la venta **#20** (Factura C #15, CAE real) fue anulada sin NC ANTES del fix → queda para reconciliación fiscal manual de GO (la factura AFIP sigue vigente). **Sobre cobranza CC no-efectivo sin caja:** se reflejada en la CC del cliente (deuda saldada), NO en caja (el `ingreso_informativo` solo se asienta con caja abierta) — comportamiento correcto, transferencia va al banco. typecheck + suite unit **734/734** verdes.
+
 ## [2026-06-15] deploy | v1.69.0 EN PROD — Auditoría costuras + click-through básico: 4 bugs reparados (anular stock, cobranza CC sin caja, devolución/masivo básico) · `dev=main`
 
 **v1.69.0 a PROD (PR #210, sin migración, release latest).** Auditoría de costuras cross-module (costuras §3 del plan `tests/specs/auditoria-basico.plan.md`) + click-through interactivo de GO sobre Kiosko Buildi (básico). Validado contra los 2 tenants DEV (Almacén Jorgito avanzado + Kiosko Buildi básico — Kiosko tiene stock con `ubicacion_id`/`estado_id` NULL, 0 ubicaciones, 0 estados `es_devolucion`).

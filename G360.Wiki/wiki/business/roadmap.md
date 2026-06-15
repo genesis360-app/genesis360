@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.70.0 — Click-through básico (tanda 2): NC electrónica, ESC stack, anular factura con CAE (PROD ✅, PR #211)
+
+Sin migración (redeploy EF `emitir-factura`). (1) **🔴 Emitir NC fallaba siempre** ("sin CAE original") porque la EF no traía `cae` en el SELECT de la venta → la emisión de NC nunca funcionó end-to-end. Fix: `+cae, tipo_comprobante, numero_comprobante`. (2) **🔴 ESC cerraba el modal de atrás** (devolución/NC/cancelar/cambiar-cliente no entraban al stack de `useModalKeyboard`) → ahora ESC cierra el modal visible, uno por uno. (3) **⚠️ Anular venta con CAE** la pasaba a cancelada sin reversar la factura AFIP (libros descuadrados) → bloquea y dirige a Devolver→NC. Suite 734 verde.
+
+---
+
 ## v1.69.0 — Auditoría de costuras + click-through básico: 4 bugs (PROD ✅, PR #210)
 
 Sin migración. (1) **Anular venta despachada no restauraba stock** (reembolsaba seña pero no reingresaba, ambos modos) → reingreso al anular espejando Devolver. (2) **🔴 Cobranza CC en efectivo sin caja perdía el pago** (saldaba deuda sin asentar el efectivo) → exige caja ANTES de saldar (raíz `cobranzaCC.ts` + 3 callers). (3) Devolución en básico mostraba "ubicación DEV" → sección WMS oculta. (4) Rebaje/ingreso masivo mostraba LPN/lote en básico → UI WMS de `MasivoModal` gateada por modo. Costuras gasto→caja y servicio-recurrente→gasto auditadas OK. Suite 734 verde.

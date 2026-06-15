@@ -76,7 +76,7 @@ serve(async (req) => {
     // 2. Fetch venta con ítems y cliente
     const { data: venta, error: vErr } = await supabase.from('ventas')
       .select(`
-        id, numero, total, estado, medio_pago,
+        id, numero, total, estado, medio_pago, cae, tipo_comprobante, numero_comprobante,
         venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto,
           productos(nombre, sku, alicuota_iva)),
         clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor)

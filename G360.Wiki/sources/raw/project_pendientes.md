@@ -4,7 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-**✅ EN PROD: v1.69.0** (2026-06-15, PR **#210**, sin migración, release latest) — **Auditoría de costuras + click-through básico: 4 bugs reparados.** (1) **Anular venta despachada no restauraba stock** (reembolsaba seña pero no reingresaba; ambos modos) → fix reingreso espejando Devolver, decisión GO "Anular restaura stock". (2) **🔴 Cobranza CC en efectivo sin caja perdía el pago** (saldaba deuda sin asentar el efectivo) → ahora exige caja ANTES de saldar (`requiereCaja`, raíz + 3 callers). (3) Devolución en básico mostraba "ubicación DEV" → sección WMS oculta. (4) Rebaje/ingreso masivo mostraba LPN/lote + preview en básico → UI WMS de MasivoModal gateada por modo. Costuras gasto→caja y servicio-recurrente→gasto auditadas OK. **Pendiente: reconciliar el pago CC huérfano de GO** (saldado sin caja, pre-fix). Detalle en [[reference_basico_stock_null_ubicacion_estado]].
+**✅ EN PROD: v1.70.0** (2026-06-15, PR **#211**, sin migración, **EF `emitir-factura` redeploy**, release latest) — **Click-through básico tanda 2: NC electrónica + ESC stack + anular factura con CAE.** (1) **🔴 Emitir NC fallaba siempre** — la EF no traía `cae` en el SELECT de la venta → la emisión de NC nunca funcionó (solo se habían probado facturas). Fix EF: `+cae, tipo_comprobante, numero_comprobante`. (2) **🔴 ESC cerraba el modal de atrás** — devolución/NC/cancelar/cambiar-cliente no se registraban en `useModalKeyboard`; ahora ESC cierra el visible. (3) **⚠️ Anular venta con CAE** pasaba a cancelada sin reversar AFIP → ahora bloquea y dirige a Devolver→NC. **Pendiente reconciliación fiscal: venta #20 de Kiosko** (Factura C con CAE anulada pre-fix). Detalle en [[project_afip_produccion]].
+
+Antes: **v1.69.0** (2026-06-15, PR **#210**, sin migración, release latest) — **Auditoría de costuras + click-through básico: 4 bugs reparados.** (1) **Anular venta despachada no restauraba stock** (reembolsaba seña pero no reingresaba; ambos modos) → fix reingreso espejando Devolver, decisión GO "Anular restaura stock". (2) **🔴 Cobranza CC en efectivo sin caja perdía el pago** (saldaba deuda sin asentar el efectivo) → ahora exige caja ANTES de saldar (`requiereCaja`, raíz + 3 callers). (3) Devolución en básico mostraba "ubicación DEV" → sección WMS oculta. (4) Rebaje/ingreso masivo mostraba LPN/lote + preview en básico → UI WMS de MasivoModal gateada por modo. Costuras gasto→caja y servicio-recurrente→gasto auditadas OK. **Pendiente: reconciliar el pago CC huérfano de GO** (saldado sin caja, pre-fix). Detalle en [[reference_basico_stock_null_ubicacion_estado]].
 
 Antes: **v1.68.0** (2026-06-15, PR **#209**, sin migración, release latest) — **Auditoría modo BÁSICO end-to-end + 4 bugs reparados.** Pase estático sobre la clase de bug más cara (mode-awareness del stock: en básico `inventario_lineas.ubicacion_id` Y `estado_id` son NULL — [[reference_basico_stock_null_ubicacion_estado]]). Bugs: (1) `VentasPage` reserva→despachada guardaba `stock_antes/despues=0`; (2) **`ProductosPage` mostraba "0 disponible" en TODOS los productos**; (3) `MasivoModal` rebaje masivo no encontraba stock; (4) **devolución totalmente bloqueada en básico** (exigía ubicación/estado `es_devolucion` que el seed no crea ni básico puede configurar). Plan `tests/specs/auditoria-basico.plan.md` + e2e `22_devolucion`/`23_inventario_ingreso`. typecheck + suite unit 734 verdes. **Falta: deploy + click-through manual del recorrido básico (validación definitiva, el tenant DEV de e2e está en avanzado).**
 
@@ -50,10 +52,10 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.69.0` ✅ (suite 734) | `v1.69.0` ✅ |
+| APP_VERSION | `v1.70.0` ✅ (suite 734) | `v1.70.0` ✅ |
 | Migrations | 001–**213** ✅ | 001–**213** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.69.0, PR #210) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.69.0 (auto desde `main`) |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.70.0, PR #211) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.70.0 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 

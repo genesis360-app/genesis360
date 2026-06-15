@@ -1497,6 +1497,23 @@ export default function VentasPage() {
     }
   }
 
+  // Crea el link de pago MercadoPago para un saldo y devuelve su QR (dataURL).
+  // Si el tenant no tiene MP conectado o falla, devuelve null (la factura sale sin QR de pago).
+  async function crearPagoMpQR(ventaId: string, monto: number): Promise<string | null> {
+    if (!monto || monto <= 0) return null
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/mp-crear-link-pago`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token}` },
+        body: JSON.stringify({ venta_id: ventaId, monto }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || !json?.init_point) return null
+      return await QRCode.toDataURL(json.init_point, { width: 200, margin: 1 })
+    } catch { return null }
+  }
+
   // El domicilio del cliente vive en cliente_domicilios (no en clientes). Toma el principal.
   function composeDomicilioCliente(doms: any[] | null | undefined): string | undefined {
     const d = (doms ?? []).find((x: any) => x.es_principal) ?? (doms ?? [])[0]
@@ -1520,7 +1537,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, created_at, medio_pago, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, monto_pagado, created_at, medio_pago, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -1532,6 +1549,9 @@ export default function VentasPage() {
       .eq('id', tenant!.id).single()
     const cli = (venta as any).clientes
     const formaPago = parseFormaPago((venta as any).medio_pago)
+    // Saldo pendiente → QR de pago MercadoPago en el PDF (si el tenant tiene MP conectado)
+    const saldo = Number(venta.total) - Number((venta as any).monto_pagado ?? 0)
+    const pagoMpQr = saldo > 0.5 ? await crearPagoMpQR(ventaId, saldo) : null
     const data: FacturaPDFData = {
       tipo_comprobante:    (venta.tipo_comprobante ?? 'B').replace(/^Factura\s+/i, ''),
       numero_comprobante:  venta.numero_comprobante ?? venta.numero,
@@ -1567,6 +1587,8 @@ export default function VentasPage() {
       })),
       total: Number(venta.total),
       forma_pago: formaPago,
+      pago_mp_qr: pagoMpQr,
+      pago_mp_monto: pagoMpQr ? saldo : null,
     }
     return { data, email: cli?.email ?? null }
   }

@@ -51,6 +51,10 @@ export interface FacturaPDFData {
   total: number
   moneda?: string                 // 'PES' por defecto
   forma_pago?: string | null      // "Efectivo", "Cuenta Corriente", etc.
+
+  // Pago online (MercadoPago) — QR del init_point, solo si hay saldo pendiente
+  pago_mp_qr?: string | null      // dataURL del QR del link de pago
+  pago_mp_monto?: number | null   // saldo a pagar
 }
 
 // ─── Mapeo tipo comprobante → número AFIP ────────────────────────────────────
@@ -318,6 +322,16 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   if (data.emisor_leyenda) {
     doc.setFontSize(7.5).setFont('helvetica', 'italic').setTextColor(120)
     for (const ln of (doc.splitTextToSize(data.emisor_leyenda, W - 28) as string[])) { doc.text(ln, 14, fy); fy += 4 }
+  }
+
+  // ── QR de pago MercadoPago (solo si hay saldo pendiente) ─────────────────────
+  if (data.pago_mp_qr) {
+    const mpy = fy + 2
+    doc.addImage(data.pago_mp_qr, 'PNG', 14, mpy, 22, 22)
+    doc.setFontSize(8.5).setFont('helvetica', 'bold').setTextColor(80)
+    doc.text('Pagá con MercadoPago', 39, mpy + 8)
+    doc.setFontSize(8).setFont('helvetica', 'normal').setTextColor(110)
+    doc.text(data.pago_mp_monto ? `Escaneá el QR — saldo ${fmtPesos(data.pago_mp_monto)}` : 'Escaneá el QR para pagar', 39, mpy + 13)
   }
 
   // ── Pie ───────────────────────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useDragScroll } from '@/hooks/useDragScroll'
 import QRCode from 'qrcode'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -1943,6 +1944,7 @@ export default function RrhhPage() {
 
   const esSupervisor = user?.rol === 'SUPERVISOR'
   const esRrhhAdmin = user?.rol === 'DUEÑO' || user?.rol === 'RRHH'
+  const tabsRef = useDragScroll<HTMLDivElement>()  // arrastrar la barra de tabs con el mouse
 
   if (!esRrhhAdmin && !esSupervisor) {
     return (
@@ -1963,8 +1965,8 @@ export default function RrhhPage() {
         <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Administrá tu equipo de trabajo</p>
       </div>
 
-      {/* Tabs — una sola fila scrolleable (sin amontonarse) */}
-      <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' } as any}>
+      {/* Tabs — una sola fila scrolleable + arrastrable con el mouse (drag para ver las que no entran) */}
+      <div ref={tabsRef} className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden cursor-grab select-none" style={{ scrollbarWidth: 'none' } as any}>
         {(esSupervisor
           ? (['equipo', 'asistencia', 'vacaciones', 'cumpleanos'] as Tab[])
           : (['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'capacitaciones', 'documentos', 'reportes', 'equipo'] as Tab[])

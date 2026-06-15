@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { ActionMenu } from '@/components/ActionMenu'
+import { useDragScroll } from '@/hooks/useDragScroll'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
 import { CodigoMasivoModal } from '@/components/CodigoMasivoModal'
 import { MasivoModal } from '@/components/MasivoModal'
@@ -76,6 +77,7 @@ function resolverCantidad(raw: string, unitAlt: string | null, unitBase: string 
 
 export default function InventarioPage() {
   const { tenant, user } = useAuthStore()
+  const tabsRef = useDragScroll<HTMLDivElement>()  // arrastrar la barra de tabs con el mouse
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { cotizacion: cotizacionNum } = useCotizacion()
@@ -2501,7 +2503,7 @@ export default function InventarioPage() {
 
       {/* Tabs + vista toggle */}
       <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' } as any}>
+        <div ref={tabsRef} className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden cursor-grab select-none" style={{ scrollbarWidth: 'none' } as any}>
           {([
             { id: 'inventario' as const, label: 'Inventario' },
             { id: 'agregar' as const, label: 'Agregar stock' },

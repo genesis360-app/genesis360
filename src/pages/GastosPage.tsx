@@ -1,4 +1,5 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
+import { useDragScroll } from '@/hooks/useDragScroll'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
@@ -141,6 +142,7 @@ function formatFecha(f: string) {
 
 export default function GastosPage() {
   const { tenant, user } = useAuthStore()
+  const tabsRef = useDragScroll<HTMLDivElement>()  // arrastrar la barra de tabs con el mouse
   const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
@@ -1672,7 +1674,7 @@ export default function GastosPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden" style={{ scrollbarWidth: 'none' } as any}>
+      <div ref={tabsRef} className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden cursor-grab select-none" style={{ scrollbarWidth: 'none' } as any}>
         {[
           { id: 'gastos'   as const, label: 'Gastos variables', icon: <Receipt size={14} />, badge: 0 },
           { id: 'historial'as const, label: 'Historial',        icon: <History size={14} />, badge: 0 },

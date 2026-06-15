@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.71.0 — NC CbtesAsoc + ocultar Anular/Cambiar-cliente con CAE + drag-scroll de tabs (PROD ✅, PR #212)
+
+Sin migración (redeploy EF `emitir-factura`). (1) **🔴 NC fallaba con AFIP 10197**: la NC exige `CbtesAsoc` (referencia a la factura original) → fix EF `CbtesAsoc:[{Tipo,PtoVta,Nro}]`. (2) Con CAE se **ocultan** "Anular" y "Cambiar cliente" (la factura ya está en AFIP a un cliente fijo) → solo "Devolver". (3) **Feature drag-scroll** (`useDragScroll`): las barras de tabs largas (RRHH/Gastos/Inventario) se arrastran con el mouse. Suite 734 verde.
+
+---
+
 ## v1.70.0 — Click-through básico (tanda 2): NC electrónica, ESC stack, anular factura con CAE (PROD ✅, PR #211)
 
 Sin migración (redeploy EF `emitir-factura`). (1) **🔴 Emitir NC fallaba siempre** ("sin CAE original") porque la EF no traía `cae` en el SELECT de la venta → la emisión de NC nunca funcionó end-to-end. Fix: `+cae, tipo_comprobante, numero_comprobante`. (2) **🔴 ESC cerraba el modal de atrás** (devolución/NC/cancelar/cambiar-cliente no entraban al stack de `useModalKeyboard`) → ahora ESC cierra el modal visible, uno por uno. (3) **⚠️ Anular venta con CAE** la pasaba a cancelada sin reversar la factura AFIP (libros descuadrados) → bloquea y dirige a Devolver→NC. Suite 734 verde.

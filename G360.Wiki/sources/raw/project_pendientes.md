@@ -4,7 +4,21 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-**✅ EN PROD: v1.71.0** (2026-06-15, PR **#212**, sin migración, **EF `emitir-factura` redeploy DEV+PROD — PRD=DEV**, release latest) — **NC CbtesAsoc + ocultar Anular/Cambiar-cliente con CAE + drag-scroll tabs.** (1) **🔴 NC fallaba con AFIP 10197** → la NC exige `CbtesAsoc` (referencia a la factura original); fix EF: `CbtesAsoc:[{Tipo,PtoVta,Nro}]` (asume mismo PV). (2) Con CAE se ocultan "Anular" y "Cambiar cliente" (factura ya en AFIP a cliente fijo) → solo "Devolver". (3) **Feature drag-scroll** de tabs (`useDragScroll`) en RRHH/Gastos/Inventario. **Pendiente: deploy EF a PROD (espera OK GO) + NC manual de venta #20 de Kiosko.**
+## ▶ CIERRE DE SESIÓN 2026-06-15 — dónde retomar
+
+**Estado:** **PRD = DEV = v1.71.0**, migs 001–213, EF `emitir-factura` DEV+PROD (con `cae` + `CbtesAsoc`). Sesión larga: v1.66→v1.71 (UX ActionMenu/scrollbar/Alertas/RRHH/Config + **auditoría modo básico** [4 bugs] + auditoría de costuras [anular no restauraba stock, cobranza efectivo sin caja] + **click-through interactivo de GO** sobre Kiosko Buildi → NC electrónica reparada, ESC stack, anular-con-CAE bloqueado, masivo/devolución básico, drag-scroll tabs).
+
+**Plan de auditoría modo básico:** `tests/specs/auditoria-basico.plan.md`. Costuras gasto→caja y servicio-recurrente→gasto: OK. e2e mutantes 19-23 (venta/caja/facturación/devolución/ingreso).
+
+**Pendientes / próxima sesión:**
+- **GO retesteando** en Kiosko: NC de #21 (Devolver→Emitir NC, debería traer CAE), anular oculto en facturadas, drag de tabs. Seguir el click-through de los demás módulos.
+- **Venta #20 de Kiosko** (cancelada con CAE de homologación): reconciliación fiscal OPCIONAL — GO dijo dejarla (es test, sin peso fiscal; el fix v1.71.0 ya impide el caso). Si la quiere cerrar: revertir estado a 'facturada' → Devolver → Emitir NC-C.
+- **Reconciliaciones de Kiosko ya hechas por GO:** pago efectivo huérfano $2.000 (Armando Barreras) asentado a mano en caja. ✅
+- **Backlog sin tocar (igual que antes):** AFIP **producción real** (operativo de GO: cert prod + token prod + toggle — ver [[project_afip_produccion]]) · #7 cron externo sweeps (infra GH Actions lista) · #8 RLS por sucursal (0 exposición hoy) · EN6 couriers (bloqueado B2B) · comprobantes percepciones+USD (sale-time, contra caso real) · pase de performance DB (646 lints).
+
+---
+
+**✅ EN PROD: v1.71.0** (2026-06-15, PR **#212**, sin migración, **EF `emitir-factura` redeploy DEV+PROD — PRD=DEV**, release latest) — **NC CbtesAsoc + ocultar Anular/Cambiar-cliente con CAE + drag-scroll tabs.** (1) **🔴 NC fallaba con AFIP 10197** → la NC exige `CbtesAsoc` (referencia a la factura original); fix EF: `CbtesAsoc:[{Tipo,PtoVta,Nro}]` (asume mismo PV). (2) Con CAE se ocultan "Anular" y "Cambiar cliente" (factura ya en AFIP a cliente fijo) → solo "Devolver". (3) **Feature drag-scroll** de tabs (`useDragScroll`) en RRHH/Gastos/Inventario.
 
 Antes: **v1.70.0** (2026-06-15, PR **#211**, sin migración, **EF `emitir-factura` redeploy**, release latest) — **Click-through básico tanda 2: NC electrónica + ESC stack + anular factura con CAE.** (1) **🔴 Emitir NC fallaba siempre** — la EF no traía `cae` en el SELECT de la venta → la emisión de NC nunca funcionó (solo se habían probado facturas). Fix EF: `+cae, tipo_comprobante, numero_comprobante`. (2) **🔴 ESC cerraba el modal de atrás** — devolución/NC/cancelar/cambiar-cliente no se registraban en `useModalKeyboard`; ahora ESC cierra el visible. (3) **⚠️ Anular venta con CAE** pasaba a cancelada sin reversar AFIP → ahora bloquea y dirige a Devolver→NC. **Pendiente reconciliación fiscal: venta #20 de Kiosko** (Factura C con CAE anulada pre-fix). Detalle en [[project_afip_produccion]].
 

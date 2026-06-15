@@ -6,6 +6,10 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-15] close | Cierre de sesión — PRD=DEV=v1.71.0
+
+Sesión muy larga (v1.66→v1.71, todo a PROD, sin migraciones nuevas — migs 001-213). Arco: **(a) UX** — ActionMenu en Proveedores+Inventario (v1.66), scrollbar tabs + Alertas mode-aware + layout RRHH + guardado Config consolidado (v1.67). **(b) Auditoría modo básico** — 4 bugs de stock NULL-ubicación/estado (ProductosPage "0 disponible", rebaje masivo, devolución bloqueada, despacho snapshot) (v1.68) + plan `tests/specs/auditoria-basico.plan.md` + e2e 22/23. **(c) Auditoría de costuras** — anular venta no restauraba stock + cobranza CC efectivo sin caja perdía el pago (v1.69). **(d) Click-through interactivo de GO sobre Kiosko Buildi** (básico con AFIP): NC electrónica reparada (EF `+cae` v1.70, `+CbtesAsoc` v1.71 — **nunca había funcionado**), ESC cierra el modal visible, anular-con-CAE bloqueado/oculto, devolución/masivo sin UI WMS en básico, drag-scroll de tabs (`useDragScroll`). EF redeployada DEV+PROD via CLI. Suite unit **734/734** estable. **Próxima sesión:** GO sigue el click-through; ver bloque "▶ CIERRE DE SESIÓN" en `project_pendientes.md`. Memorias nuevas/actualizadas: [[project_afip_produccion]] (NC), [[reference_cobranza_efectivo_exige_caja]], [[reference_basico_stock_null_ubicacion_estado]] (auditoría).
+
 ## [2026-06-15] deploy | v1.71.0 EN PROD — NC CbtesAsoc + ocultar Anular/Cambiar-cliente con CAE + drag-scroll de tabs · `dev=main`
 
 **v1.71.0 a PROD (PR #212, sin migración, EF `emitir-factura` redeploy DEV; PROD pendiente OK de GO, release latest).** Continuación del click-through de GO:

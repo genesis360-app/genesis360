@@ -13,6 +13,7 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
+import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { detectarTipoComprobante } from '@/lib/facturacionLogic'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
@@ -357,6 +358,7 @@ export default function VentasPage() {
   const [emitendoNC, setEmitiendoNC]  = useState(false)
   const [emitiendoFactura, setEmitiendoFactura] = useState(false)
   const [descargandoPdfVenta, setDescargandoPdfVenta] = useState(false)
+  const [descargandoPresupuesto, setDescargandoPresupuesto] = useState(false)
   const [enviandoFacturaEmail, setEnviandoFacturaEmail] = useState(false)
   // Modal "Enviar factura por email": precarga el correo del cliente de la venta (editable)
   const [facturaEmailModal, setFacturaEmailModal] = useState<{ ventaId: string } | null>(null)
@@ -1547,6 +1549,59 @@ export default function VentasPage() {
     }
   }
   const descargarFacturaPDFVenta = () => ventaDetalle?.id && accionFacturaPDF(ventaDetalle.id, 'descargar')
+
+  // Arma el PresupuestoPDFData (A4) para una venta en estado presupuesto ('pendiente').
+  async function buildPresupuestoPDFDataPorId(ventaId: string): Promise<PresupuestoPDFData | null> {
+    const { data: venta, error } = await supabase.from('ventas')
+      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, direccion), venta_items(cantidad, precio_unitario, subtotal, productos(nombre, sku))')
+      .eq('id', ventaId).single()
+    if (error) throw new Error(error.message)
+    if (!venta) return null
+    const { data: cfgTenant } = await supabase.from('tenants')
+      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url')
+      .eq('id', tenant!.id).single()
+    const cli = (venta as any).clientes
+    const validezDias = (tenant as any)?.presupuesto_validez_dias
+    let validez: string | null = null
+    if (validezDias && venta.created_at) {
+      const d = new Date(venta.created_at); d.setDate(d.getDate() + Number(validezDias)); validez = d.toISOString()
+    }
+    return {
+      numero:              formatTicket(venta),
+      fecha:               venta.created_at,
+      validez_hasta:       validez,
+      emisor_razon_social: cfgTenant?.razon_social_fiscal ?? tenant?.nombre ?? '',
+      emisor_cuit:         cfgTenant?.cuit ?? '',
+      emisor_domicilio:    cfgTenant?.domicilio_fiscal,
+      emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
+      emisor_logo_url:     (cfgTenant as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
+      receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
+      receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
+      receptor_condicion_iva: cli?.condicion_iva_receptor ? normalizarCondIVA(cli.condicion_iva_receptor) : null,
+      receptor_domicilio:  cli?.direccion ?? null,
+      items: ((venta as any).venta_items ?? []).map((i: any) => ({
+        codigo:          i.productos?.sku ?? null,
+        descripcion:     i.productos?.nombre ?? 'Producto',
+        cantidad:        Number(i.cantidad),
+        precio_unitario: Number(i.precio_unitario),
+        subtotal:        Number(i.subtotal),
+      })),
+      total: Number(venta.total),
+      observaciones: venta.notas ?? null,
+    }
+  }
+
+  async function accionPresupuestoPDF(ventaId: string, accion: 'descargar' | 'imprimir') {
+    setDescargandoPresupuesto(true)
+    try {
+      const data = await buildPresupuestoPDFDataPorId(ventaId)
+      if (data) await generarPresupuestoPDF(data, accion)
+    } catch (e: any) {
+      toast.error(`Error al generar el presupuesto: ${e.message}`)
+    } finally {
+      setDescargandoPresupuesto(false)
+    }
+  }
 
   // Abre el modal de envío por email precargando el correo del cliente de la venta (editable).
   async function abrirEnviarFacturaEmail(ventaId: string) {
@@ -4952,6 +5007,24 @@ export default function VentasPage() {
                   <RefreshCw size={15} className={actualizandoPrecios ? 'animate-spin' : ''} />
                   {actualizandoPrecios ? 'Actualizando...' : 'Actualizar presupuesto (precios + validez)'}
                 </button>
+              )}
+              {ventaDetalle.estado === 'pendiente' && (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => ventaDetalle?.id && accionPresupuestoPDF(ventaDetalle.id, 'descargar')}
+                    disabled={descargandoPresupuesto}
+                    className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
+                    {descargandoPresupuesto
+                      ? <><RefreshCw size={15} className="animate-spin" /> Generando PDF…</>
+                      : <><FileDown size={15} /> Descargar Presupuesto PDF</>}
+                  </button>
+                  <button
+                    onClick={() => ventaDetalle?.id && accionPresupuestoPDF(ventaDetalle.id, 'imprimir')}
+                    disabled={descargandoPresupuesto}
+                    className="w-full flex items-center justify-center gap-2 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all text-sm disabled:opacity-50">
+                    <Printer size={15} /> Imprimir presupuesto
+                  </button>
+                </div>
               )}
               {ventaDetalle.cae && (
                 <div className="space-y-2">

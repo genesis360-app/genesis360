@@ -328,7 +328,7 @@ export async function generarFacturaPDFBase64(
  * para embeberlo en el PDF. Devuelve también el tamaño natural (para conservar aspecto).
  * Si falla (URL caída, CORS, etc.) devuelve null y el PDF se genera sin logo.
  */
-async function cargarLogo(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+export async function cargarLogo(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
   try {
     const img = new Image()
     img.crossOrigin = 'anonymous'

@@ -42,10 +42,10 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.65.0` ✅ (suite 734) | `v1.65.0` ✅ |
+| APP_VERSION | `v1.66.0` ✅ (suite 734) | `v1.66.0` ✅ |
 | Migrations | 001–**213** ✅ | 001–**213** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.65.0, PR #205) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.65.0 (auto desde `main`) |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.66.0, PR #207) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.66.0 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 
@@ -53,6 +53,7 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 - **v1.62.0** (PR #201, **mig 212** datos del emisor): **presupuesto PDF A4** (nuevo, antes solo ticket) + **factura completa** (IIBB/Inicio Act/contacto + N° con letra + moneda + forma de pago + domicilio receptor + Cód. SKU + **Ley 27.743 B** + Comprobante Autorizado + datos bancarios + leyenda) + **remito** (nuevo, no fiscal). Config → "Datos para los comprobantes".
 - **v1.61.0** (PR #200, **mig 211** bucket `logos`): **logo del negocio en la factura** (Config sube → `tenants.logo_url` → `facturasPDF` lo embebe) + **filename con nombre del cliente**. Fase 1 de paridad Xubio.
 - **v1.60.2** (PR #199, sin mig): **`ActionMenu`** (botón "⋯ Acciones" colapsando acciones secundarias del header — click no hover, mobile-friendly; aplicado en Productos + Clientes, falta el resto) + **bloqueo Factura A sin CUIT** en el POS + **mensaje de error real al emitir** (lee `error.context.json()`).
+  - **[2026-06-15, en DEV] `ActionMenu` replicado:** **Proveedores** (mata el bug `group-hover:block` de Exportar JSON/CSV + colapsa sub-toolbar de tab Servicios) e **Inventario** (tab Agregar stock: Ingreso + menú [Masivo, ASN]). Barrido del resto: no necesitan ActionMenu (headers de 1 botón o toolbars de filtros/formatos — Reportes deja sus 3 botones de formato Excel/PDF/CSV). Detalle en [[feedback_toolbar_actionmenu]].
 - **v1.60.1** (PR #198, sin mig): **autocompletar email de factura** (modal con `clientes.email` precargado en Ventas + Facturación, reemplaza `window.prompt`) + **layout PDF** (bloque "FACTURA / N°" alineado al margen derecho).
 Cadena del día previo (v1.59.x ya en PROD):
 - **v1.59.4** (PR #196, UI-only): **`$/km` editable en el envío del POS** — en básico no hay Config→Envíos para cargar la tarifa por km, así que el modo "Por KM" quedaba inusable (campo read-only "—"). Ahora el `$/km` es input editable (pre-cargado si hay tarifa, vacío si no); costo km×$/km se recalcula solo. Modo "$ Monto fijo" sigue como alternativa.

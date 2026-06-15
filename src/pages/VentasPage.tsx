@@ -1497,6 +1497,15 @@ export default function VentasPage() {
     }
   }
 
+  // El domicilio del cliente vive en cliente_domicilios (no en clientes). Toma el principal.
+  function composeDomicilioCliente(doms: any[] | null | undefined): string | undefined {
+    const d = (doms ?? []).find((x: any) => x.es_principal) ?? (doms ?? [])[0]
+    if (!d) return undefined
+    const l1 = [d.calle, d.numero, d.piso_depto].filter(Boolean).join(' ')
+    const l2 = [d.ciudad, d.provincia].filter(Boolean).join(', ')
+    return [l1, l2].filter(Boolean).join(', ') || undefined
+  }
+
   // medio_pago es un JSON string [{"tipo":"Efectivo","monto":1500}] → etiqueta para el PDF
   function parseFormaPago(mp: any): string | null {
     try {
@@ -1511,7 +1520,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, created_at, medio_pago, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, direccion), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, created_at, medio_pago, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -1547,7 +1556,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
-      receptor_domicilio:  cli?.direccion ?? undefined,
+      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios),
       items: ((venta as any).venta_items ?? []).map((i: any) => ({
         codigo:         i.productos?.sku ?? null,
         descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
@@ -1578,7 +1587,7 @@ export default function VentasPage() {
   // Arma el PresupuestoPDFData (A4) para una venta en estado presupuesto ('pendiente').
   async function buildPresupuestoPDFDataPorId(ventaId: string): Promise<PresupuestoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, direccion), venta_items(cantidad, precio_unitario, subtotal, productos(nombre, sku))')
+      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
@@ -1612,7 +1621,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: cli?.condicion_iva_receptor ? normalizarCondIVA(cli.condicion_iva_receptor) : null,
-      receptor_domicilio:  cli?.direccion ?? null,
+      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios) ?? null,
       items: ((venta as any).venta_items ?? []).map((i: any) => ({
         codigo:          i.productos?.sku ?? null,
         descripcion:     i.productos?.nombre ?? 'Producto',
@@ -1640,7 +1649,7 @@ export default function VentasPage() {
   // Arma el RemitoPDFData (nota de entrega, no fiscal) de una venta.
   async function buildRemitoPDFDataPorId(ventaId: string): Promise<RemitoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, numero_sucursal, sucursal_id, estado, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, direccion), venta_items(cantidad, productos(nombre, sku))')
+      .select('numero, numero_sucursal, sucursal_id, estado, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
@@ -1665,7 +1674,7 @@ export default function VentasPage() {
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: cli?.condicion_iva_receptor ? normalizarCondIVA(cli.condicion_iva_receptor) : null,
-      receptor_domicilio:  cli?.direccion ?? null,
+      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios) ?? null,
       items: ((venta as any).venta_items ?? []).map((i: any) => ({
         codigo:      i.productos?.sku ?? null,
         descripcion: i.productos?.nombre ?? 'Producto',

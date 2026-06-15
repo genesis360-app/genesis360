@@ -1609,7 +1609,7 @@ export default function VentasPage() {
   // Arma el PresupuestoPDFData (A4) para una venta en estado presupuesto ('pendiente').
   async function buildPresupuestoPDFDataPorId(ventaId: string): Promise<PresupuestoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, productos(nombre, sku))')
+      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, descuento, subtotal, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
@@ -1649,6 +1649,7 @@ export default function VentasPage() {
         descripcion:     i.productos?.nombre ?? 'Producto',
         cantidad:        Number(i.cantidad),
         precio_unitario: Number(i.precio_unitario),
+        descuento_pct:   Number(i.descuento ?? 0),
         subtotal:        Number(i.subtotal),
       })),
       total: Number(venta.total),

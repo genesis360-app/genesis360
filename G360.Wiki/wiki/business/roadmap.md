@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.68.0 — Auditoría modo Básico: 4 bugs de mode-awareness del stock (PROD ✅, PR #209)
+
+Pase de auditoría del modo básico end-to-end (sin migración). En básico el stock tiene `ubicacion_id` Y `estado_id` en NULL; 4 queries filtraban por esas columnas WMS sin gatear por modo. **Reparados:** (1) `VentasPage` reserva→despachada guardaba `stock_antes/despues=0`; (2) **`ProductosPage` mostraba "0 disponible" en todos los productos**; (3) `MasivoModal` rebaje masivo no encontraba stock; (4) **devolución totalmente bloqueada en básico** (exigía ubicación/estado `es_devolucion` inexistentes). Plan de auditoría en `tests/specs/auditoria-basico.plan.md` + e2e `22_devolucion`/`23_inventario_ingreso`. Suite 734 verde.
+
+---
+
 ## v1.67.0 — UX: scrollbar tabs + badge Alertas mode-aware + layout RRHH + guardado Config (PROD ✅, PR #208)
 
 Paquete de mejoras de UX (sin migración). **(1) Gastos:** la barra de tabs ya no muestra scrollbar (scroll oculto). **(2) Alertas:** el badge del sidebar (`useAlertas`) y la página se hicieron **mode-aware** — en básico no se cuentan ni muestran las alertas de WMS/compras (LPN vencidos, OC vencidas/próximas), que generaban un "1" fantasma sin nada visible. **(3) RRHH:** layout a **ancho completo** (como Gastos) + los ~12 tabs pasaron de amontonarse (flex-wrap) a **una sola fila scrolleable con iconos**. **(4) Configuración:** se consolidaron los botones "Guardar" repetidos por card en **un solo botón por tab** (Envíos 11→1, Ventas→operativa 5→1).

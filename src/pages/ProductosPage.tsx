@@ -520,22 +520,26 @@ export default function ProductosPage() {
     enabled: !!tenant,
   })
 
-  // Stock disponible para venta (solo líneas en estados con es_disponible_venta = true)
+  // Stock disponible para venta (solo líneas en estados con es_disponible_venta = true).
+  // En básico el stock no tiene estado (estado_id NULL) → NO filtrar por estado o el
+  // "disponible" saldría 0 para todos los productos. Ver [[reference_basico_stock_null_ubicacion_estado]].
   const { data: stockDisponibleMap = {} } = useQuery({
-    queryKey: ['stock-disponible-map', tenant?.id, sucursalId],
+    queryKey: ['stock-disponible-map', tenant?.id, sucursalId, modoAvanzado],
     queryFn: async () => {
-      const { data: evData } = await supabase
-        .from('estados_inventario').select('id')
-        .eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
-      const evIds = (evData ?? []).map((e: any) => e.id)
-      if (evIds.length === 0) return {}
-      const { data: lineas } = await applyFilter(
-        supabase
-          .from('inventario_lineas')
-          .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
-          .eq('tenant_id', tenant!.id).eq('activo', true)
-          .in('estado_id', evIds)
-      )
+      let evIds: string[] = []
+      if (modoAvanzado) {
+        const { data: evData } = await supabase
+          .from('estados_inventario').select('id')
+          .eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
+        evIds = (evData ?? []).map((e: any) => e.id)
+        if (evIds.length === 0) return {}   // avanzado sin estados vendibles = nada disponible
+      }
+      let q = supabase
+        .from('inventario_lineas')
+        .select('producto_id, cantidad, cantidad_reservada, inventario_series(id, activo)')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+      if (evIds.length > 0) q = q.in('estado_id', evIds)
+      const { data: lineas } = await applyFilter(q)
       const map: Record<string, number> = {}
       for (const l of lineas ?? []) {
         const pid = (l as any).producto_id

@@ -18,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { logActividad } from '@/lib/actividadLog'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
@@ -93,6 +94,9 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
   const { sucursalId } = useSucursalFilter()
+  // En básico el stock no tiene ubicación (ubicacion_id NULL) → no filtrar por "ubicado"
+  // o el rebaje masivo no encontraría stock. Ver [[reference_basico_stock_null_ubicacion_estado]].
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const [items, setItems] = useState<MasivoItem[]>([])
   // ISS-012: cache de líneas ordenadas por producto (para preview FIFO/FEFO en rebaje)
   const [lineasCache, setLineasCache] = useState<Record<string, { id: string; lpn: string | null; lote: string | null; disponible: number; sorted: boolean }[]>>({})
@@ -179,7 +183,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
         .eq('producto_id', productoId)
         .eq('activo', true)
         .gt('cantidad', 0)
-        .not('ubicacion_id', 'is', null)
+      if (modoAvanzado) q = q.not('ubicacion_id', 'is', null)
       if (sucursalId) q = q.eq('sucursal_id', sucursalId)
       const { data: lineasRaw } = await q
       const hoy = new Date().toISOString().split('T')[0]
@@ -346,7 +350,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
             .eq('producto_id', it.productoId)
             .eq('activo', true)
             .gt('cantidad', 0)
-            .not('ubicacion_id', 'is', null)
+          if (modoAvanzado) lineasQ = lineasQ.not('ubicacion_id', 'is', null)
           if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
           const { data: lineasRaw } = await lineasQ
           const { data: prodInfo } = await supabase.from('productos')

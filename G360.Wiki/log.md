@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-15] deploy | v1.68.0 EN PROD — Auditoría modo BÁSICO: 4 bugs reparados + plan + 2 e2e · `dev=main`
+
+GO pidió dejar el **modo básico al 100%** de punta a punta (caja/ventas/gastos/inventario/productos/clientes/proveedores/facturación) y cazar bugs antes que un cliente. Pase de auditoría estática sobre la **clase de bug más cara** (mode-awareness del stock: en básico `inventario_lineas.ubicacion_id` Y `estado_id` son NULL — ver [[reference_basico_stock_null_ubicacion_estado]]). **4 bugs reales encontrados y reparados:**
+
+1. **Ventas — flujo reserva→despachada** (`VentasPage`, `vendibleIdsCambio` sin gatear): el `movimientos_stock` del despacho guardaba `stock_antes/despues = 0` en básico. Fix: `modoAvanzado ? ... : []`.
+2. **Productos — lista** (`ProductosPage`, `stockDisponibleMap`): **todos los productos mostraban "0 disponible"** (filtraba `estado_id IN vendibles`). Fix: gatear `evIds` por modo + no filtrar si vacío.
+3. **Inventario — rebaje masivo** (`MasivoModal`, 2 queries con `.not('ubicacion_id')`): no encontraba stock en básico. Fix: aplicar el filtro solo en avanzado.
+4. **Ventas — devolución** (`VentasPage`): **totalmente bloqueada en básico** — exigía ubicación + estado `es_devolucion` que el seed no crea y que básico no puede configurar (tabs ocultos). Fix: gatear el requisito por modo; en básico reingresar con `ubicacion_id/estado_id = NULL`.
+
+**Entregables:** plan de auditoría exhaustivo `tests/specs/auditoria-basico.plan.md` (método 3 capas: traza estática + e2e mutante + click-through; checklist por módulo + costuras cross-module). e2e nuevos: `23_inventario_ingreso_mutante` (ingreso de stock, mutante) + `22_devolucion_mutante` (alcanzabilidad del flujo; el happy-path monetario exige medios exactos → manual). **typecheck verde · suite unit 734/734 verde.** Caveat: el tenant DEV de e2e está en avanzado → la validación definitiva de básico es el click-through manual (2 tenants DEV disponibles: **Almacén Jorgito** avanzado + **Kiosko Buildi** básico). **EN PROD v1.68.0 (PR #209, sin migración).**
+
 ## [2026-06-15] deploy | v1.67.0 EN PROD — Paquete UX (scrollbar tabs · Alertas mode-aware · layout RRHH · guardado Config) · `dev=main`
 
 **v1.67.0 a PROD (PR #208, sin migración, release latest).** 4 mejoras de UX reportadas por GO:

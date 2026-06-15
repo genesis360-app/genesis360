@@ -2998,27 +2998,36 @@ export default function VentasPage() {
       return
     }
 
-    // Validar que existe ubicación y estado de devolución configurados
-    const { data: ubicDevData } = await supabase.from('ubicaciones')
-      .select('id').eq('tenant_id', tenant.id).eq('es_devolucion', true).single()
-    if (!ubicDevData) {
-      toast.error('Configurá una ubicación de devolución en Configuración → Ubicaciones antes de continuar')
-      return
+    // Ubicación + estado de devolución. En AVANZADO la mercadería devuelta va a una
+    // ubicación/estado "es_devolucion" (flujo WMS de revisión) que el tenant debe tener
+    // configurados. En BÁSICO el stock no usa ubicaciones/estados → se reingresa directo
+    // (ubicacion_id/estado_id NULL); exigir esa config bloquearía la devolución con un
+    // mensaje hacia tabs que el básico ni siquiera muestra. Ver [[reference_basico_stock_null_ubicacion_estado]].
+    let ubicDevId: string | null = null
+    let estadoDevId: string | null = null
+    if (modoAvanzado) {
+      const { data: ubicDevData } = await supabase.from('ubicaciones')
+        .select('id').eq('tenant_id', tenant.id).eq('es_devolucion', true).single()
+      if (!ubicDevData) {
+        toast.error('Configurá una ubicación de devolución en Configuración → Ubicaciones antes de continuar')
+        return
+      }
+      const { data: estadoDevData } = await supabase.from('estados_inventario')
+        .select('id').eq('tenant_id', tenant.id).eq('es_devolucion', true).single()
+      if (!estadoDevData) {
+        toast.error('Configurá un estado de devolución en Configuración → Estados antes de continuar')
+        return
+      }
+      ubicDevId = ubicDevData.id
+      estadoDevId = estadoDevData.id
     }
-    const { data: estadoDevData } = await supabase.from('estados_inventario')
-      .select('id').eq('tenant_id', tenant.id).eq('es_devolucion', true).single()
-    if (!estadoDevData) {
-      toast.error('Configurá un estado de devolución en Configuración → Estados antes de continuar')
-      return
-    }
-    const ubicDevId = ubicDevData.id
-    const estadoDevId = estadoDevData.id
 
     // A7: si el operador eligió "vendible", buscar primer estado disponible para la venta
     // (la línea queda sin ubicación — el dueño después la mueve si quiere). Solo aplica
     // a items no serializados; los serializados re-activan a su línea original siempre.
+    // Solo modo avanzado (en básico el reingreso es directo, sin estado).
     let estadoVendibleId: string | null = null
-    if (devDestinoStock === 'vendible') {
+    if (modoAvanzado && devDestinoStock === 'vendible') {
       const { data: estadoVendData } = await supabase.from('estados_inventario')
         .select('id').eq('tenant_id', tenant.id).eq('es_disponible_venta', true).limit(1).maybeSingle()
       if (!estadoVendData) {
@@ -3136,7 +3145,9 @@ export default function VentasPage() {
             cantidad: cantDev,
             notas: `Devolución de venta #${devolucionVenta.numero}${devDestinoStock === 'vendible' ? ' — reintegrado a stock vendible' : ''}`,
           }
-          if (devDestinoStock === 'vendible' && estadoVendibleId) {
+          if (!modoAvanzado) {
+            // Básico: reingreso directo al stock (sin ubicación ni estado), inmediatamente vendible.
+          } else if (devDestinoStock === 'vendible' && estadoVendibleId) {
             lineaPayload.estado_id = estadoVendibleId
             // ubicacion_id queda null → aparece en alerta "Inventario sin ubicación"
           } else {
@@ -3377,9 +3388,11 @@ export default function VentasPage() {
       } else if (nuevoEstado === 'despachada') {
         // ISS-075: desglose de despacho por LPN al pasar reserva → despachada
         const despachoRows: any[] = []
-        // Estados vendibles del tenant — para el stock por sucursal del movimiento (B1)
+        // Estados vendibles del tenant — para el stock por sucursal del movimiento (B1).
+        // En básico el stock no tiene estado → vendibleIds vacío = sin filtro (cuenta todo el activo),
+        // si no el stock_antes/despues del movimiento saldría 0 (estado_id NULL no matchea el IN). Ver ISS-075/v1.59.2.
         const { data: evDataCambio } = await supabase.from('estados_inventario').select('id').eq('tenant_id', tenant!.id).eq('es_disponible_venta', true)
-        const vendibleIdsCambio = (evDataCambio ?? []).map((e: any) => e.id)
+        const vendibleIdsCambio = modoAvanzado ? (evDataCambio ?? []).map((e: any) => e.id) : []
         for (const item of items ?? []) {
           if ((item.productos as any)?.tiene_series) {
             const serieIds = (item.venta_series ?? []).map((s: any) => s.serie_id)

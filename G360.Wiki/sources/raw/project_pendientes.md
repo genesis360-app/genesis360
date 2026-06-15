@@ -4,6 +4,8 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
+**✅ EN PROD: v1.68.0** (2026-06-15, PR **#209**, sin migración, release latest) — **Auditoría modo BÁSICO end-to-end + 4 bugs reparados.** Pase estático sobre la clase de bug más cara (mode-awareness del stock: en básico `inventario_lineas.ubicacion_id` Y `estado_id` son NULL — [[reference_basico_stock_null_ubicacion_estado]]). Bugs: (1) `VentasPage` reserva→despachada guardaba `stock_antes/despues=0`; (2) **`ProductosPage` mostraba "0 disponible" en TODOS los productos**; (3) `MasivoModal` rebaje masivo no encontraba stock; (4) **devolución totalmente bloqueada en básico** (exigía ubicación/estado `es_devolucion` que el seed no crea ni básico puede configurar). Plan `tests/specs/auditoria-basico.plan.md` + e2e `22_devolucion`/`23_inventario_ingreso`. typecheck + suite unit 734 verdes. **Falta: deploy + click-through manual del recorrido básico (validación definitiva, el tenant DEV de e2e está en avanzado).**
+
 **✅ EN PROD: v1.67.0** (2026-06-15, PR **#208**, sin migración, release latest) — **Paquete UX.** (1) **Gastos**: scrollbar oculto en la barra de tabs. (2) **Alertas mode-aware**: `useAlertas` (badge sidebar) + `AlertasPage` ya no cuentan/muestran alertas WMS/compras (LPN vencidos, OC vencidas/próximas) en básico → se elimina el "1" fantasma; comunes a ambos modos = stock bajo mínimo, reservas, sin categoría, deuda CC. Ver [[reference_alertas_badge_mode_aware]]. (3) **RRHH**: layout a ancho completo (como Gastos) + tabs en una sola fila scrolleable con iconos (antes flex-wrap amontonado), `text-2xl`. (4) **Configuración**: botones "Guardar" consolidados a uno por tab (Envíos 11→1, Ventas→operativa 5→1). typecheck + build verdes.
 
 Antes: **v1.66.0** (2026-06-15, PR **#207**, sin migración) — **`ActionMenu` replicado** a Proveedores (mata el bug `group-hover:block` de Exportar + colapsa sub-toolbar de Servicios) e Inventario (tab Agregar stock: Ingreso + menú [Masivo, ASN]). Barrido del resto: no requieren ActionMenu. Ver [[feedback_toolbar_actionmenu]].
@@ -46,10 +48,10 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.67.0` ✅ (suite 734) | `v1.67.0` ✅ |
+| APP_VERSION | `v1.68.0` ✅ (suite 734) | `v1.68.0` ✅ |
 | Migrations | 001–**213** ✅ | 001–**213** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.67.0, PR #208) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.67.0 (auto desde `main`) |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.68.0, PR #209) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.68.0 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 

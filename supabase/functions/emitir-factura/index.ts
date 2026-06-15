@@ -247,6 +247,16 @@ serve(async (req) => {
       MonId:      'PES',
       MonCotiz:   1,
       CondicionIVAReceptorId: condicionId,
+      // AFIP exige CbtesAsoc en NC/ND (error 10197 si falta). Referencia la factura
+      // original: Tipo (de venta.tipo_comprobante, guardado como "Factura X"), el mismo
+      // punto de venta y su número. (Asumimos mismo PV que la NC — el caso single-PV.)
+      ...(esNC ? {
+        CbtesAsoc: [{
+          Tipo:   TIPO_CBTE[String(venta.tipo_comprobante ?? '').replace('Factura ', '').trim()] ?? 6,
+          PtoVta: punto_venta,
+          Nro:    Number(venta.numero_comprobante) || 0,
+        }],
+      } : {}),
       // Factura C: sin array Iva (AFIP lo rechaza si se envía).
       ...(sinIVA ? {} : {
         Iva: Object.entries(ivaMap).map(([id, v]) => ({

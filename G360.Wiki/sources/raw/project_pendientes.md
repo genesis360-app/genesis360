@@ -4,7 +4,9 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-**✅ EN PROD: v1.70.0** (2026-06-15, PR **#211**, sin migración, **EF `emitir-factura` redeploy**, release latest) — **Click-through básico tanda 2: NC electrónica + ESC stack + anular factura con CAE.** (1) **🔴 Emitir NC fallaba siempre** — la EF no traía `cae` en el SELECT de la venta → la emisión de NC nunca funcionó (solo se habían probado facturas). Fix EF: `+cae, tipo_comprobante, numero_comprobante`. (2) **🔴 ESC cerraba el modal de atrás** — devolución/NC/cancelar/cambiar-cliente no se registraban en `useModalKeyboard`; ahora ESC cierra el visible. (3) **⚠️ Anular venta con CAE** pasaba a cancelada sin reversar AFIP → ahora bloquea y dirige a Devolver→NC. **Pendiente reconciliación fiscal: venta #20 de Kiosko** (Factura C con CAE anulada pre-fix). Detalle en [[project_afip_produccion]].
+**✅ EN PROD: v1.71.0** (2026-06-15, PR **#212**, sin migración, **EF `emitir-factura` redeploy DEV; PROD pendiente OK GO**, release latest) — **NC CbtesAsoc + ocultar Anular/Cambiar-cliente con CAE + drag-scroll tabs.** (1) **🔴 NC fallaba con AFIP 10197** → la NC exige `CbtesAsoc` (referencia a la factura original); fix EF: `CbtesAsoc:[{Tipo,PtoVta,Nro}]` (asume mismo PV). (2) Con CAE se ocultan "Anular" y "Cambiar cliente" (factura ya en AFIP a cliente fijo) → solo "Devolver". (3) **Feature drag-scroll** de tabs (`useDragScroll`) en RRHH/Gastos/Inventario. **Pendiente: deploy EF a PROD (espera OK GO) + NC manual de venta #20 de Kiosko.**
+
+Antes: **v1.70.0** (2026-06-15, PR **#211**, sin migración, **EF `emitir-factura` redeploy**, release latest) — **Click-through básico tanda 2: NC electrónica + ESC stack + anular factura con CAE.** (1) **🔴 Emitir NC fallaba siempre** — la EF no traía `cae` en el SELECT de la venta → la emisión de NC nunca funcionó (solo se habían probado facturas). Fix EF: `+cae, tipo_comprobante, numero_comprobante`. (2) **🔴 ESC cerraba el modal de atrás** — devolución/NC/cancelar/cambiar-cliente no se registraban en `useModalKeyboard`; ahora ESC cierra el visible. (3) **⚠️ Anular venta con CAE** pasaba a cancelada sin reversar AFIP → ahora bloquea y dirige a Devolver→NC. **Pendiente reconciliación fiscal: venta #20 de Kiosko** (Factura C con CAE anulada pre-fix). Detalle en [[project_afip_produccion]].
 
 Antes: **v1.69.0** (2026-06-15, PR **#210**, sin migración, release latest) — **Auditoría de costuras + click-through básico: 4 bugs reparados.** (1) **Anular venta despachada no restauraba stock** (reembolsaba seña pero no reingresaba; ambos modos) → fix reingreso espejando Devolver, decisión GO "Anular restaura stock". (2) **🔴 Cobranza CC en efectivo sin caja perdía el pago** (saldaba deuda sin asentar el efectivo) → ahora exige caja ANTES de saldar (`requiereCaja`, raíz + 3 callers). (3) Devolución en básico mostraba "ubicación DEV" → sección WMS oculta. (4) Rebaje/ingreso masivo mostraba LPN/lote + preview en básico → UI WMS de MasivoModal gateada por modo. Costuras gasto→caja y servicio-recurrente→gasto auditadas OK. **Pendiente: reconciliar el pago CC huérfano de GO** (saldado sin caja, pre-fix). Detalle en [[reference_basico_stock_null_ubicacion_estado]].
 
@@ -52,10 +54,10 @@ Antes: **v1.58.0** ✅ EN PROD (2026-06-13, PR #190, UI-only). Antes: **v1.57.0*
 
 | | DEV | PROD |
 |---|---|---|
-| APP_VERSION | `v1.70.0` ✅ (suite 734) | `v1.70.0` ✅ |
+| APP_VERSION | `v1.71.0` ✅ (suite 734) | `v1.71.0` ✅ |
 | Migrations | 001–**213** ✅ | 001–**213** ✅ |
-| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.70.0, PR #211) |
-| Vercel | preview auto desde `dev` | PROD deploy v1.70.0 (auto desde `main`) |
+| Branch | `dev` (= `main` salvo doc de cierre) | `main` (release v1.71.0, PR #212) |
+| Vercel | preview auto desde `dev` | PROD deploy v1.71.0 (auto desde `main`) |
 | Edge Function `emitir-factura` | **v8** (por-tenant + cert bucket + Factura C + ImpTotal + auto-facturada) ✅ | **v8** ✅ (deployada en PROD) |
 | Edge Function `courier-api` | con logging + `probar` ✅ | con logging + `probar` ✅ |
 

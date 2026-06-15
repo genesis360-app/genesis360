@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-15] deploy | v1.71.0 EN PROD — NC CbtesAsoc + ocultar Anular/Cambiar-cliente con CAE + drag-scroll de tabs · `dev=main`
+
+**v1.71.0 a PROD (PR #212, sin migración, EF `emitir-factura` redeploy DEV; PROD pendiente OK de GO, release latest).** Continuación del click-through de GO:
+
+- **🔴 NC fallaba con AFIP 10197** ("Si el comprobante es Débito o Crédito, enviar CbteAsoc o PeriodoAsoc"): tras el fix del `cae` (v1.70.0), AFIP exige la estructura **`CbtesAsoc`** referenciando la factura original. Fix EF: agregar `CbtesAsoc: [{ Tipo (de `venta.tipo_comprobante`), PtoVta (mismo PV), Nro (`venta.numero_comprobante`) }]` al payload WSFE de las NC. **Asume mismo PV que la NC (caso single-PV).** Redeploy EF necesario.
+- **Ocultar "Anular" + "Cambiar cliente" cuando la venta tiene CAE:** una factura electrónica está en AFIP a nombre de un cliente fijo → anularla la dejaría viva en AFIP y cambiar el cliente descuadraría el comprobante. Ahora con CAE solo se ofrece **"Devolver"** (reversión vía NC). Las ventas sin CAE (despachada o marcada facturada) siguen permitiendo ambas. (Antes v1.70.0 bloqueaba con toast; ahora directamente no se muestran — sugerencia de GO.)
+- **Feature: drag-scroll en barras de tabs** (`useDragScroll`): en RRHH/Gastos/Inventario las tabs que no entran en pantalla ahora se pueden **arrastrar con el mouse** (click + mover horizontal); si hubo arrastre, el click no cambia de tab. `cursor-grab` + `select-none`.
+
+typecheck + suite unit **734/734** verdes. **EF DEV deployada; falta deploy EF a PROD (espera OK de GO — PROD Supabase no se toca sin autorización).** Pendiente fiscal: NC manual de la venta #20 de Kiosko (cancelada con CAE pre-fix).
+
 ## [2026-06-15] deploy | v1.70.0 EN PROD — Click-through básico (tanda 2): NC electrónica, ESC stack, anular factura con CAE · `dev=main`
 
 **v1.70.0 a PROD (PR #211, sin migración, EF `emitir-factura` redeploy DEV+PROD, release latest).** 3 bugs del click-through interactivo de GO sobre Kiosko Buildi (facturación AFIP habilitada en básico):

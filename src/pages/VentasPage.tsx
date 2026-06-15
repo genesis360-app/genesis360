@@ -5462,21 +5462,16 @@ export default function VentasPage() {
                 </button>
               )}
               {/* J2 — acciones con clave maestra (anular despachada / cambiar cliente) */}
-              {!esContador && ['despachada', 'facturada'].includes(ventaDetalle.estado) && !isPeriodoCerrado(ventaDetalle.created_at) && (
+              {/* Anular + Cambiar cliente: NO se ofrecen si la venta tiene factura electrónica (CAE).
+                  Con CAE la factura ya está en AFIP a nombre de un cliente fijo → anularla la dejaría
+                  viva en AFIP y cambiar el cliente descuadraría el comprobante. La reversión correcta
+                  es "Devolver" → emitir NC. Ventas sin CAE (despachada o marcada facturada) sí se pueden. */}
+              {!esContador && ['despachada', 'facturada'].includes(ventaDetalle.estado) && !isPeriodoCerrado(ventaDetalle.created_at) && !ventaDetalle.cae && (
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => {
-                    // Una venta con factura electrónica (CAE) NO se puede solo "anular": hay que
-                    // revertirla fiscalmente con una Nota de Crédito que AFIP registre, o los libros
-                    // quedan descuadrados (la factura sigue válida en AFIP). Forzar Devolver → Emitir NC.
-                    if (ventaDetalle.cae) {
-                      toast.error('Esta venta tiene factura electrónica (CAE ' + ventaDetalle.cae + '). Para revertirla usá "Devolver" y emití la Nota de Crédito — así queda asentada en AFIP.', { duration: 9000 })
-                      return
-                    }
-                    pedirClaveMaestra('Anular venta despachada', () => {
-                      logVentaAuditoria(ventaDetalle.id, 'anulacion', { estado_previo: ventaDetalle.estado, total: ventaDetalle.total })
-                      cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
-                    })
-                  }}
+                  <button onClick={() => pedirClaveMaestra('Anular venta despachada', () => {
+                    logVentaAuditoria(ventaDetalle.id, 'anulacion', { estado_previo: ventaDetalle.estado, total: ventaDetalle.total })
+                    cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
+                  })}
                     disabled={cambiarEstado.isPending}
                     className="flex items-center justify-center gap-1.5 border-2 border-red-200 text-red-600 dark:text-red-400 font-semibold py-2.5 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all text-sm">
                     <X size={15} /> Anular

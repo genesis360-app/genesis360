@@ -15,6 +15,15 @@ export interface PresupuestoPDFData {
   emisor_domicilio?: string | null
   emisor_condicion_iva: string
   emisor_logo_url?: string | null
+  emisor_ingresos_brutos?: string | null
+  emisor_inicio_actividades?: string | null
+  emisor_telefono?: string | null
+  emisor_email?: string | null
+  emisor_sitio_web?: string | null
+  emisor_banco?: string | null
+  emisor_cbu?: string | null
+  emisor_alias?: string | null
+  emisor_leyenda?: string | null
 
   // Receptor (cliente)
   receptor_nombre: string
@@ -67,6 +76,12 @@ async function construirPresupuestoDoc(data: PresupuestoPDFData): Promise<jsPDF>
     }
   }
   doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
+  if (data.emisor_ingresos_brutos) { doc.text(`Ing. Brutos: ${data.emisor_ingresos_brutos}`, emX, y); y += 5 }
+  if (data.emisor_inicio_actividades) { doc.text(`Inicio Act.: ${formatFecha(data.emisor_inicio_actividades)}`, emX, y); y += 5 }
+  const contacto = [data.emisor_telefono, data.emisor_email, data.emisor_sitio_web].filter(Boolean).join('  ·  ')
+  if (contacto) {
+    for (const ln of (doc.splitTextToSize(contacto, LEFT_W) as string[])) { doc.text(ln, emX, y); y += 5 }
+  }
 
   // ── Encabezado derecho — título + datos del documento ────────────────────────
   const RX = W - 14
@@ -146,10 +161,27 @@ async function construirPresupuestoDoc(data: PresupuestoPDFData): Promise<jsPDF>
     }
   }
 
+  // ── Datos para transferencia + leyenda ───────────────────────────────────────
+  if (data.emisor_banco || data.emisor_cbu || data.emisor_alias) {
+    doc.setFontSize(8).setFont('helvetica', 'bold').setTextColor(80)
+    doc.text('Datos para transferencia:', 14, ty); ty += 4.5
+    doc.setFont('helvetica', 'normal').setTextColor(100)
+    const banco = [
+      data.emisor_banco && `Banco: ${data.emisor_banco}`,
+      data.emisor_cbu   && `CBU: ${data.emisor_cbu}`,
+      data.emisor_alias && `Alias: ${data.emisor_alias}`,
+    ].filter(Boolean).join('    ')
+    for (const ln of (doc.splitTextToSize(banco, W - 28) as string[])) { doc.text(ln, 14, ty); ty += 4.5 }
+  }
+  if (data.emisor_leyenda) {
+    doc.setFontSize(7.5).setFont('helvetica', 'italic').setTextColor(120)
+    for (const ln of (doc.splitTextToSize(data.emisor_leyenda, W - 28) as string[])) { doc.text(ln, 14, ty); ty += 4 }
+  }
+
   // ── Pie ───────────────────────────────────────────────────────────────────────
   doc.setDrawColor(180).setLineWidth(0.3)
   doc.line(14, 280, W - 14, 280)
-  doc.setFontSize(7).setTextColor(150)
+  doc.setFontSize(7).setFont('helvetica', 'normal').setTextColor(150)
   doc.text('Presupuesto — no válido como comprobante fiscal', W / 2, 285, { align: 'center' })
 
   return doc

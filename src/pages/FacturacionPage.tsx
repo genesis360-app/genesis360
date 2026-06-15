@@ -59,10 +59,11 @@ export default function FacturacionPage() {
   // Arma el FacturaPDFData + email del cliente para una factura emitida (descargar/imprimir/email)
   async function buildFacturaPDFDataById(facturaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('*, clientes(*), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre))')
+      .select('*, clientes(*), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre, sku))')
       .eq('id', facturaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta) throw new Error('Venta no encontrada')
+    const formaPago = parseFormaPago((venta as any).medio_pago)
 
     const { data: pv } = await supabase.from('puntos_venta_afip')
       .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
@@ -77,13 +78,24 @@ export default function FacturacionPage() {
       vencimiento_cae:   venta.vencimiento_cae ?? '',
       emisor_razon_social: (config as any)?.razon_social_fiscal ?? tenant?.nombre ?? '',
       emisor_cuit:       (config as any)?.cuit ?? '',
-      emisor_domicilio:  (tenant as any)?.domicilio_fiscal,
+      emisor_domicilio:  (config as any)?.domicilio_fiscal ?? (tenant as any)?.domicilio_fiscal,
       emisor_condicion_iva: (config as any)?.condicion_iva_emisor ?? 'responsable_inscripto',
       emisor_logo_url:   (config as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
+      emisor_ingresos_brutos:    (config as any)?.ingresos_brutos ?? null,
+      emisor_inicio_actividades: (config as any)?.inicio_actividades ?? null,
+      emisor_telefono:   (config as any)?.telefono ?? (tenant as any)?.telefono ?? null,
+      emisor_email:      (config as any)?.email ?? (tenant as any)?.email ?? null,
+      emisor_sitio_web:  (config as any)?.sitio_web ?? null,
+      emisor_banco:      (config as any)?.banco ?? null,
+      emisor_cbu:        (config as any)?.cbu ?? null,
+      emisor_alias:      (config as any)?.alias_cbu ?? null,
+      emisor_leyenda:    (config as any)?.leyenda_comprobante ?? null,
       receptor_nombre:   venta.clientes?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni: venta.clientes?.cuit_receptor ?? venta.clientes?.dni,
       receptor_condicion_iva: normalizarCondIVA(venta.clientes?.condicion_iva_receptor),
+      receptor_domicilio: venta.clientes?.direccion ?? undefined,
       items: (venta.venta_items ?? []).map((i: any) => ({
+        codigo:         i.productos?.sku ?? null,
         descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
         cantidad:       Number(i.cantidad),
         precio_unitario: Number(i.precio_unitario),
@@ -91,8 +103,19 @@ export default function FacturacionPage() {
         subtotal:       Number(i.subtotal),
       })),
       total: Number(venta.total),
+      forma_pago: formaPago,
     }
     return { data, email: venta.clientes?.email ?? null }
+  }
+
+  // medio_pago es un JSON string [{"tipo":"Efectivo","monto":1500}] → etiqueta para el PDF
+  function parseFormaPago(mp: any): string | null {
+    try {
+      const arr = typeof mp === 'string' ? JSON.parse(mp) : mp
+      if (!Array.isArray(arr) || arr.length === 0) return null
+      const tipos = Array.from(new Set(arr.map((m: any) => m?.tipo).filter(Boolean)))
+      return tipos.length ? tipos.join(' + ') : null
+    } catch { return null }
   }
 
   async function accionFacturaPDF(facturaId: string, accion: 'descargar' | 'imprimir') {
@@ -169,7 +192,7 @@ export default function FacturacionPage() {
     queryKey: ['facturacion-config', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('tenants')
-        .select('facturacion_habilitada, condicion_iva_emisor, razon_social_fiscal, cuit, umbral_factura_b, logo_url')
+        .select('facturacion_habilitada, condicion_iva_emisor, razon_social_fiscal, cuit, umbral_factura_b, logo_url, domicilio_fiscal, ingresos_brutos, inicio_actividades, telefono, email, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
         .eq('id', tenant!.id).single()
       return data
     },

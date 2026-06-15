@@ -603,6 +603,14 @@ export default function ConfigPage() {
   // Logo del negocio (sale en factura + presupuesto) — bucket `logos`
   const [bizLogoUrl,         setBizLogoUrl]         = useState<string>((tenant as any)?.logo_url ?? '')
   const [uploadingLogo,      setUploadingLogo]      = useState(false)
+  // Datos del emisor para comprobantes (mig 212)
+  const [bizIngBrutos,       setBizIngBrutos]       = useState<string>((tenant as any)?.ingresos_brutos ?? '')
+  const [bizInicioAct,       setBizInicioAct]       = useState<string>(((tenant as any)?.inicio_actividades ?? '').slice(0, 10))
+  const [bizSitioWeb,        setBizSitioWeb]        = useState<string>((tenant as any)?.sitio_web ?? '')
+  const [bizBanco,           setBizBanco]           = useState<string>((tenant as any)?.banco ?? '')
+  const [bizCbu,             setBizCbu]             = useState<string>((tenant as any)?.cbu ?? '')
+  const [bizAliasCbu,        setBizAliasCbu]        = useState<string>((tenant as any)?.alias_cbu ?? '')
+  const [bizLeyenda,         setBizLeyenda]         = useState<string>((tenant as any)?.leyenda_comprobante ?? '')
   // Modo de emisión: homologación (sandbox) vs producción (CAE fiscal real)
   const [bizAfipProduccion,  setBizAfipProduccion]  = useState<boolean>((tenant as any)?.afip_produccion ?? false)
   const [showProdConfirm,    setShowProdConfirm]    = useState(false)
@@ -830,6 +838,13 @@ export default function ConfigPage() {
       domicilio_fiscal: bizDomicilioFiscal.trim() || null,
       umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
       afipsdk_token: bizAfipToken.trim() || null,
+      ingresos_brutos: bizIngBrutos.trim() || null,
+      inicio_actividades: bizInicioAct || null,
+      sitio_web: bizSitioWeb.trim() || null,
+      banco: bizBanco.trim() || null,
+      cbu: bizCbu.trim() || null,
+      alias_cbu: bizAliasCbu.trim() || null,
+      leyenda_comprobante: bizLeyenda.trim() || null,
     }).eq('id', tenant!.id).select().single()
     setSavingFact(false)
     if (error || !data) { toast.error('No se pudo guardar'); return }
@@ -2501,6 +2516,53 @@ export default function ConfigPage() {
                   </button>
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
+              </div>
+            </div>
+            {/* Datos que salen en factura / presupuesto / remito (mig 212) */}
+            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+              <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Datos para los comprobantes (factura / presupuesto / remito)</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ingresos Brutos</label>
+                  <input type="text" value={bizIngBrutos} onChange={e => setBizIngBrutos(e.target.value)}
+                    placeholder="N° de Ingresos Brutos / Convenio"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Inicio de Actividades</label>
+                  <input type="date" value={bizInicioAct} onChange={e => setBizInicioAct(e.target.value)}
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sitio web</label>
+                  <input type="text" value={bizSitioWeb} onChange={e => setBizSitioWeb(e.target.value)}
+                    placeholder="www.minegocio.com"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Banco</label>
+                  <input type="text" value={bizBanco} onChange={e => setBizBanco(e.target.value)}
+                    placeholder="Banco (para transferencias)"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CBU</label>
+                  <input type="text" value={bizCbu} onChange={e => setBizCbu(e.target.value)}
+                    placeholder="0000000000000000000000"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Alias CBU</label>
+                  <input type="text" value={bizAliasCbu} onChange={e => setBizAliasCbu(e.target.value)}
+                    placeholder="mi.alias.cbu"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Leyenda / nota del comprobante</label>
+                  <textarea value={bizLeyenda} onChange={e => setBizLeyenda(e.target.value)} rows={2}
+                    placeholder="Ej.: ¡Gracias por su compra! · Seguinos en @minegocio"
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                </div>
               </div>
             </div>
             {/* Modo de emisión: homologación (prueba) vs producción (CAE fiscal real) */}

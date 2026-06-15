@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.61.0 — Logo del negocio en la factura + filename con cliente (PROD ✅, PR #200, mig 211)
+
+**Fase 1 de paridad con Xubio** (cliente Responsable Inscripto que migra). **Mig 211**: bucket `logos` (público, scopeado por tenant). Config → Facturación permite subir/cambiar/quitar el logo (→ `tenants.logo_url`); la **factura lo embebe arriba a la izquierda** (conserva aspecto; si no carga, sale sin logo). El **filename del PDF** ahora incluye el nombre del cliente. Próximas fases: v1.62.0 (datos fiscales emisor + Ley 27.743 + moneda/forma de pago/fecha vto + SKU), v1.63.0 (presupuesto PDF A4), v1.64.0 (detalle por línea).
+
+---
+
 ## v1.60.2 — Menú "Acciones" en toolbars + bloqueo Factura A sin CUIT (PROD ✅, PR #199)
 
 **Solo frontend, sin migraciones.** (1) **`ActionMenu`** — componente reutilizable que colapsa las acciones secundarias del header en un botón "⋯ Acciones" (abre con click, no hover → arregla el dropdown de Exportar en mobile/touch; descongestiona el toolbar). Aplicado en **Productos** y **Clientes** (piloto); la acción principal queda visible aparte. (2) **Bloqueo de Factura A** en el POS cuando la venta no tiene cliente con CUIT (Responsable Inscripto). (3) **Mensaje de error real al emitir** (POS/NC/Facturación) en vez de "Edge Function returned a non-2xx status code".

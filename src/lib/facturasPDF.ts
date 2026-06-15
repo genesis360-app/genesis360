@@ -20,6 +20,16 @@ export interface FacturaPDFData {
   emisor_domicilio?: string
   emisor_condicion_iva: string    // "Responsable Inscripto" | "Monotributo" | etc.
   emisor_logo_url?: string | null // logo del negocio (bucket `logos`), se embebe arriba a la izq.
+  emisor_ingresos_brutos?: string | null   // N° de Ingresos Brutos
+  emisor_inicio_actividades?: string | null // ISO date
+  emisor_telefono?: string | null
+  emisor_email?: string | null
+  emisor_sitio_web?: string | null
+  // Datos para cobro / leyenda (pie del comprobante)
+  emisor_banco?: string | null
+  emisor_cbu?: string | null
+  emisor_alias?: string | null
+  emisor_leyenda?: string | null
 
   // Receptor (cliente)
   receptor_nombre: string
@@ -29,6 +39,7 @@ export interface FacturaPDFData {
 
   // Ítems
   items: {
+    codigo?: string | null        // SKU / código de artículo
     descripcion: string
     cantidad: number
     precio_unitario: number
@@ -39,6 +50,7 @@ export interface FacturaPDFData {
   // Totales
   total: number
   moneda?: string                 // 'PES' por defecto
+  forma_pago?: string | null      // "Efectivo", "Cuenta Corriente", etc.
 }
 
 // ─── Mapeo tipo comprobante → número AFIP ────────────────────────────────────
@@ -126,6 +138,12 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
     }
   }
   doc.text(`IVA: ${normalizarCondIVA(data.emisor_condicion_iva)}`, emX, y); y += 5
+  if (data.emisor_ingresos_brutos) { doc.text(`Ing. Brutos: ${data.emisor_ingresos_brutos}`, emX, y); y += 5 }
+  if (data.emisor_inicio_actividades) { doc.text(`Inicio Act.: ${formatFecha(data.emisor_inicio_actividades)}`, emX, y); y += 5 }
+  const contacto = [data.emisor_telefono, data.emisor_email, data.emisor_sitio_web].filter(Boolean).join('  ·  ')
+  if (contacto) {
+    for (const ln of (doc.splitTextToSize(contacto, LEFT_W) as string[])) { doc.text(ln, emX, y); y += 5 }
+  }
 
   // ── Encabezado derecho — datos del comprobante ───────────────────────────────
   // Alineado al margen derecho (no pegado al recuadro central del tipo de comprobante).
@@ -135,11 +153,14 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.setFontSize(9).setFont('helvetica', 'normal').setTextColor(80)
   const pvStr = String(data.punto_venta).padStart(4, '0')
   const ncStr = String(data.numero_comprobante).padStart(8, '0')
-  doc.text(`N° ${pvStr}-${ncStr}`, RX, 21, { align: 'right' })
+  doc.text(`N° ${data.tipo_comprobante}-${pvStr}-${ncStr}`, RX, 21, { align: 'right' })
   doc.text(`Fecha: ${formatFecha(data.fecha)}`, RX, 27, { align: 'right' })
+  doc.text(`Moneda: ${data.moneda === 'USD' ? 'Dólares' : 'Pesos Argentinos'}`, RX, 32, { align: 'right' })
+  if (data.forma_pago) doc.text(`Forma de pago: ${data.forma_pago}`, RX, 37, { align: 'right' })
 
   // ── Línea divisoria horizontal ───────────────────────────────────────────────
-  const lineY = Math.max(y, boxY + boxH) + 3
+  const rightBottom = data.forma_pago ? 37 : 32
+  const lineY = Math.max(y, boxY + boxH, rightBottom) + 3
   doc.setDrawColor(180).setLineWidth(0.3)
   doc.line(14, lineY, W - 14, lineY)
 
@@ -165,9 +186,15 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   const tableY = ry + 3
   const sinIVA = esComprobanteSinIVA(data.tipo_comprobante)
   const ivaGroups: Record<number, number> = {}
+  const conCod = data.items.some(i => (i.codigo ?? '').trim().length > 0)
+  const codCell = (item: FacturaPDFData['items'][number]) => (conCod ? [item.codigo ?? ''] : [])
+  const codHead = conCod ? ['Cód.'] : []
+  const codStyle: Record<number, { cellWidth: number }> = conCod ? { 0: { cellWidth: 20 } } : {}
+  const off = conCod ? 1 : 0  // desplazamiento de índices de columna cuando hay Cód.
 
   if (sinIVA) {
     const rows = data.items.map(item => [
+      ...codCell(item),
       item.descripcion,
       String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
       fmtPesos(item.subtotal / item.cantidad),
@@ -176,15 +203,16 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
     autoTable(doc, {
       startY:      tableY,
       margin:      { left: 14, right: 14 },
-      head:        [['Descripción', 'Cant.', 'P. Unitario', 'Subtotal']],
+      head:        [[...codHead, 'Descripción', 'Cant.', 'P. Unitario', 'Subtotal']],
       body:        rows,
       headStyles:  { fillColor: [30, 58, 95], fontSize: 8, halign: 'center' },
       bodyStyles:  { fontSize: 8 },
       columnStyles: {
-        0: { cellWidth: 96 },
-        1: { halign: 'center', cellWidth: 20 },
-        2: { halign: 'right', cellWidth: 33 },
-        3: { halign: 'right', cellWidth: 33 },
+        ...codStyle,
+        [off]:     { cellWidth: conCod ? 76 : 96 },
+        [off + 1]: { halign: 'center', cellWidth: 20 },
+        [off + 2]: { halign: 'right', cellWidth: 33 },
+        [off + 3]: { halign: 'right', cellWidth: 33 },
       },
       theme: 'striped',
     })
@@ -194,6 +222,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       const ivaM = item.subtotal - neto
       ivaGroups[item.alicuota_iva] = (ivaGroups[item.alicuota_iva] ?? 0) + ivaM
       return [
+        ...codCell(item),
         item.descripcion,
         String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
         fmtPesos(item.subtotal / item.cantidad / (1 + item.alicuota_iva / 100)),
@@ -206,18 +235,19 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
     autoTable(doc, {
       startY:      tableY,
       margin:      { left: 14, right: 14 },
-      head:        [['Descripción', 'Cant.', 'P. Unit. Neto', 'IVA %', 'Subtotal Neto', 'IVA $', 'Total']],
+      head:        [[...codHead, 'Descripción', 'Cant.', 'P. Unit. Neto', 'IVA %', 'Subtotal Neto', 'IVA $', 'Total']],
       body:        rows,
       headStyles:  { fillColor: [30, 58, 95], fontSize: 8, halign: 'center' },
       bodyStyles:  { fontSize: 8 },
       columnStyles: {
-        0: { cellWidth: 60 },
-        1: { halign: 'center', cellWidth: 14 },
-        2: { halign: 'right', cellWidth: 26 },
-        3: { halign: 'center', cellWidth: 14 },
-        4: { halign: 'right', cellWidth: 26 },
-        5: { halign: 'right', cellWidth: 20 },
-        6: { halign: 'right', cellWidth: 24 },
+        ...codStyle,
+        [off]:     { cellWidth: conCod ? 44 : 60 },
+        [off + 1]: { halign: 'center', cellWidth: 14 },
+        [off + 2]: { halign: 'right', cellWidth: 26 },
+        [off + 3]: { halign: 'center', cellWidth: 14 },
+        [off + 4]: { halign: 'right', cellWidth: 26 },
+        [off + 5]: { halign: 'right', cellWidth: 20 },
+        [off + 6]: { halign: 'right', cellWidth: 24 },
       },
       theme: 'striped',
     })
@@ -245,6 +275,19 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.text(fmtPesos(data.total), totalsX, ty + 1, { align: 'right' })
   ty += 8
 
+  // ── Régimen de Transparencia Fiscal al Consumidor (Ley 27.743) — Factura B ────
+  // Obligatorio desde 2025 en comprobantes B a consumidor final: discriminar el IVA
+  // contenido + otros impuestos nacionales indirectos.
+  if (data.tipo_comprobante === 'B') {
+    const ivaContenido = Object.values(ivaGroups).reduce((a, b) => a + b, 0)
+    doc.setFontSize(7.5).setFont('helvetica', 'bold').setTextColor(90)
+    doc.text('Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)', 14, ty)
+    doc.setFont('helvetica', 'normal').setTextColor(110)
+    doc.text(`IVA Contenido: ${fmtPesos(ivaContenido)}`, 14, ty + 4.5)
+    doc.text(`Otros impuestos nacionales indirectos: ${fmtPesos(0)}`, 14, ty + 9)
+    ty += 13
+  }
+
   // ── CAE + QR ─────────────────────────────────────────────────────────────────
   const caeY = ty + 4
   doc.setFontSize(8).setFont('helvetica', 'normal').setTextColor(80)
@@ -254,14 +297,33 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   // QR (40×40mm a la derecha)
   const qrX = W - 14 - 35; const qrY = caeY - 4
   doc.addImage(qrDataUrl, 'PNG', qrX, qrY, 35, 35)
-  doc.setFontSize(7).setTextColor(120)
-  doc.text('Comprobante', qrX + 17.5, qrY + 37, { align: 'center' })
-  doc.text('Electrónico AFIP', qrX + 17.5, qrY + 40, { align: 'center' })
+  doc.setFontSize(7).setFont('helvetica', 'bold').setTextColor(90)
+  doc.text('Comprobante Autorizado', qrX + 17.5, qrY + 37, { align: 'center' })
+  doc.setFont('helvetica', 'normal').setTextColor(120)
+  doc.text('AFIP · ARCA', qrX + 17.5, qrY + 40, { align: 'center' })
+
+  // ── Datos para transferencia + leyenda (debajo del CAE, a la izquierda) ───────
+  let fy = caeY + 14
+  if (data.emisor_banco || data.emisor_cbu || data.emisor_alias) {
+    doc.setFontSize(8).setFont('helvetica', 'bold').setTextColor(80)
+    doc.text('Datos para transferencia:', 14, fy); fy += 4.5
+    doc.setFont('helvetica', 'normal').setTextColor(100)
+    const banco = [
+      data.emisor_banco && `Banco: ${data.emisor_banco}`,
+      data.emisor_cbu   && `CBU: ${data.emisor_cbu}`,
+      data.emisor_alias && `Alias: ${data.emisor_alias}`,
+    ].filter(Boolean).join('    ')
+    for (const ln of (doc.splitTextToSize(banco, W - 28) as string[])) { doc.text(ln, 14, fy); fy += 4.5 }
+  }
+  if (data.emisor_leyenda) {
+    doc.setFontSize(7.5).setFont('helvetica', 'italic').setTextColor(120)
+    for (const ln of (doc.splitTextToSize(data.emisor_leyenda, W - 28) as string[])) { doc.text(ln, 14, fy); fy += 4 }
+  }
 
   // ── Pie ───────────────────────────────────────────────────────────────────────
   doc.setDrawColor(180).setLineWidth(0.3)
   doc.line(14, 280, W - 14, 280)
-  doc.setFontSize(7).setTextColor(150)
+  doc.setFontSize(7).setFont('helvetica', 'normal').setTextColor(150)
   doc.text('Comprobante fiscal electrónico — Genesis360', W / 2, 285, { align: 'center' })
 
   return doc
@@ -328,7 +390,7 @@ export async function generarFacturaPDFBase64(
  * para embeberlo en el PDF. Devuelve también el tamaño natural (para conservar aspecto).
  * Si falla (URL caída, CORS, etc.) devuelve null y el PDF se genera sin logo.
  */
-async function cargarLogo(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
+export async function cargarLogo(url: string): Promise<{ dataUrl: string; w: number; h: number } | null> {
   try {
     const img = new Image()
     img.crossOrigin = 'anonymous'

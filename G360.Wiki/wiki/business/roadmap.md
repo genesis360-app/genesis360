@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.74.1 — Fix alerta fantasma "sin categoría" en básico (PROD ✅, sin migración)
+
+El badge de Alertas mostraba "1" con la página vacía: `AlertasPage` scopeaba los "productos sin categoría" por sucursal con `ubicaciones!inner`, que en básico (sin ubicaciones) borra todo el stock. Fix mode-aware (básico filtra por `inventario_lineas.sucursal_id`). + reconciliación DEV de 1 línea de devolución con sucursal NULL (Productos "11/12"). Suite 739 verde.
+
+---
+
 ## v1.74.0 — Auditoría efectivo↔caja: el efectivo de devolución/venta siempre se asienta (PROD ✅, sin migración)
 
 Bug raíz (venta #26): devolución en efectivo no asentaba el egreso en caja (egreso `void` que fallaba en silencio + sin fallback a la caja única). Fix + auditoría completa de los flujos de efectivo en Ventas (despacho/reserva/saldo/devolución/cancelación): caja = elegida ∥ activa ∥ única abierta, insert awaited, aviso si falla. Cobranza CC y gastos→caja ya estaban cubiertos (v1.69.0). Suite 739 verde.

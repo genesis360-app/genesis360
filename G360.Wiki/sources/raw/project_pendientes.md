@@ -6,7 +6,7 @@ type: project
 
 ## ▶ CIERRE DE SESIÓN 2026-06-16 — dónde retomar
 
-**Estado:** **PRD = DEV = v1.74.0**, migs 001–215, EF `emitir-factura` + `cron-sweeps`. Sesión 2026-06-15/16: v1.66→v1.71 (UX + auditoría básico + costuras + click-through GO), **v1.72.0** (NC fiscal PDF · rol Lector · roles custom→Pro · fix sucursal reingreso · fix NC tipo · auto-A/B/C Exento · 3 guards fiscales), **v1.73.0** (issue #10 sucursal default oculta + #10b consolidar reingreso · roles · #7 cron sweeps) y **v1.74.0** (🔴 **auditoría efectivo↔caja**: el egreso de devolución en efectivo no se asentaba — fix + se auditaron despacho/reserva/saldo/cancelación: todo asiento de efectivo ahora es awaited + fallback a caja única + aviso si falla).
+**Estado:** **PRD = DEV = v1.74.1**, migs 001–215, EF `emitir-factura` + `cron-sweeps`. Sesión 2026-06-15/16: v1.66→v1.71 (UX + auditoría básico + costuras + click-through GO), **v1.72.0** (NC fiscal PDF · rol Lector · roles custom→Pro · fix sucursal reingreso · fix NC tipo · auto-A/B/C Exento · 3 guards fiscales), **v1.73.0** (issue #10 sucursal default oculta + #10b consolidar reingreso · roles · #7 cron sweeps) y **v1.74.0** (🔴 **auditoría efectivo↔caja**: el egreso de devolución en efectivo no se asentaba — fix + se auditaron despacho/reserva/saldo/cancelación: todo asiento de efectivo ahora es awaited + fallback a caja única + aviso si falla).
 
 **Plan de auditoría modo básico:** `tests/specs/auditoria-basico.plan.md`. Costuras gasto→caja y servicio-recurrente→gasto: OK. e2e mutantes 19-23 (venta/caja/facturación/devolución/ingreso).
 
@@ -15,6 +15,10 @@ type: project
 - **GO retesteando en PROD (v1.74.0):** devolución/venta en efectivo → que el egreso/ingreso aparezca en caja (bug #26 arreglado); NC fiscal PDF/imprimir/email; rol Lector; en básico el selector de sucursal oculto + Super Usuario no aparece en invitar.
 - **Backlog sin tocar:** AFIP **producción real** (operativo de GO: cert prod + token prod + toggle — ver [[project_afip_produccion]]) · EN6 couriers (bloqueado B2B) · comprobantes percepciones+USD (sale-time, contra caso real) · pase de performance DB (646 lints) · consolidación de líneas también en ingresos manuales (hoy solo reingresos) · básico con >1 sucursal mantiene selector (edge raro).
 - **✅ Cerrados esta sesión:** v1.72 (NC fiscal PDF + rol Lector + roles custom→Pro + fix NC tipo AFIP 10040 + A/B/C Exento + 3 guards fiscales) · v1.73 (#10 sucursal default oculta + #10b consolidar reingreso + #7 cron sweeps + roles) · v1.74 (auditoría efectivo↔caja).
+
+### ✅ EN PROD: v1.74.1 (2026-06-16, sin migración, release latest) — Fix alerta fantasma "sin categoría" en básico (badge vs página)
+
+Bug (GO, Kiosko): el badge de **Alertas** mostraba "1" pero la página estaba vacía. Causa: el badge (`useAlertas`) cuenta *productos sin categoría* tenant-wide, pero `AlertasPage` los scopeaba por sucursal con un **`ubicaciones!inner`** → en básico (sin ubicaciones, `ubicacion_id` NULL) el INNER join borraba TODO el stock → la página nunca mostraba el producto. Fix: el scoping de sucursal es **mode-aware** — básico filtra por `inventario_lineas.sucursal_id` directo, avanzado por `ubicaciones.sucursal_id`. Ahora badge y página coinciden. **+Reconciliación DEV (no es bug de código, era data legacy):** Productos de Kiosko mostraba "11 disponible / 12 total" — 1 línea de devolución (#16) tenía `sucursal_id` NULL (venta original sin sucursal, pre-v1.73.0) → quedaba fuera del "disponible" por sucursal; backfilleada. typecheck + 739 unit + build verdes.
 
 ### ✅ EN PROD: v1.74.0 (2026-06-16, sin migración, release latest) — Auditoría efectivo↔caja: el efectivo de devolución/venta siempre se asienta
 

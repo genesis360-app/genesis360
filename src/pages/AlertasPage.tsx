@@ -102,7 +102,7 @@ export default function AlertasPage() {
   // inventario en esa sucursal — un producto sin stock en la sucursal no es
   // accionable desde ahí.
   const { data: sinCategoria = [], isLoading: loadingSinCategoria } = useQuery({
-    queryKey: ['productos-sin-categoria', tenant?.id, sucursalId],
+    queryKey: ['productos-sin-categoria', tenant?.id, sucursalId, modoAvanzado],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('productos')
@@ -115,14 +115,20 @@ export default function AlertasPage() {
       const all = data ?? []
       if (!sucursalId || all.length === 0) return all
 
-      const { data: lineas } = await supabase
+      // En AVANZADO el stock se ubica por `ubicaciones.sucursal_id`; en BÁSICO no hay
+      // ubicaciones (ubicacion_id NULL) y la sucursal vive directo en `inventario_lineas.sucursal_id`.
+      // El INNER join a ubicaciones borraba TODO el stock básico → la página quedaba vacía aunque
+      // el badge contara el producto (mismatch). Ver reference_basico_stock_null_ubicacion_estado.
+      const lineasQ = supabase
         .from('inventario_lineas')
-        .select('producto_id, ubicacion:ubicaciones!inner(sucursal_id)')
+        .select(modoAvanzado ? 'producto_id, ubicacion:ubicaciones!inner(sucursal_id)' : 'producto_id')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .gt('cantidad', 0)
         .in('producto_id', all.map(p => p.id))
-        .eq('ubicacion.sucursal_id', sucursalId)
+      const { data: lineas } = await (modoAvanzado
+        ? lineasQ.eq('ubicacion.sucursal_id', sucursalId)
+        : lineasQ.eq('sucursal_id', sucursalId))
 
       const enSuc = new Set<string>((lineas ?? []).map((l: any) => l.producto_id))
       return all.filter(p => enSuc.has(p.id))

@@ -81,6 +81,8 @@ CREATE TABLE users (
   tenant_id      UUID REFERENCES tenants(id) ON DELETE CASCADE,
   rol            TEXT NOT NULL DEFAULT 'CAJERO'
     CHECK (rol IN ('DUEÑO','SUPER_USUARIO','SUPERVISOR','CAJERO','ADMIN','RRHH','DEPOSITO','CONTADOR','VIEWER')),
+  sucursal_id    UUID,          -- mig 094: FK a sucursales(id) ON DELETE SET NULL (la FK se agrega ahí; aquí plano para evitar forward-ref)
+  puede_ver_todas BOOLEAN NOT NULL DEFAULT FALSE,  -- mig 094: si false → el usuario queda restringido a sucursal_id
   nombre_display TEXT,
   activo         BOOLEAN DEFAULT TRUE,
   created_at     TIMESTAMPTZ DEFAULT NOW()
@@ -105,6 +107,25 @@ RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER AS $$
   SELECT EXISTS (
     SELECT 1 FROM users WHERE id = auth.uid() AND rol = 'ADMIN'
   )
+$$;
+
+-- RLS por sucursal (mig 216). Espejan authStore.puedeVerTodas para no desincronizarse.
+CREATE OR REPLACE FUNCTION public.auth_ve_todas_sucursales()
+RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM users u
+    WHERE u.id = auth.uid()
+      AND (
+        u.rol = 'DUEÑO'                                                            -- siempre global
+        OR (u.rol IN ('SUPERVISOR','SUPER_USUARIO','VIEWER') AND u.puede_ver_todas IS NOT FALSE)  -- global por defecto
+        OR u.puede_ver_todas = TRUE                                                -- resto: solo si explícito
+      )
+  )
+$$;
+
+CREATE OR REPLACE FUNCTION public.auth_user_sucursal()
+RETURNS UUID LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT sucursal_id FROM users WHERE id = auth.uid()
 $$;
 
 -- ============================================================
@@ -732,17 +753,29 @@ CREATE POLICY "productos_update_tenant" ON productos FOR UPDATE
 CREATE POLICY "productos_delete_tenant" ON productos FOR DELETE
   USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
 
--- INVENTARIO LINEAS
+-- INVENTARIO LINEAS (RLS por sucursal — mig 216)
 CREATE POLICY "lineas_tenant" ON inventario_lineas FOR ALL
-  USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING (
+    tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR sucursal_id IS NULL OR sucursal_id = auth_user_sucursal() )
+  )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
 
--- INVENTARIO SERIES
+-- INVENTARIO SERIES (RLS por sucursal vía línea padre — mig 218)
 CREATE POLICY "series_tenant" ON inventario_series FOR ALL
-  USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING ( tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR linea_id IS NULL
+          OR EXISTS (SELECT 1 FROM inventario_lineas l WHERE l.id = inventario_series.linea_id
+                     AND ( l.sucursal_id IS NULL OR l.sucursal_id = auth_user_sucursal() )) ) )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
 
--- MOVIMIENTOS STOCK
+-- MOVIMIENTOS STOCK (append-only: solo SELECT filtra por sucursal — mig 216;
+-- INSERT queda tenant-only para no romper traslados/triggers cross-sucursal)
 CREATE POLICY "movimientos_select" ON movimientos_stock FOR SELECT
-  USING (tenant_id = get_user_tenant_id());
+  USING (
+    tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR sucursal_id IS NULL OR sucursal_id = auth_user_sucursal() )
+  );
 CREATE POLICY "movimientos_insert" ON movimientos_stock FOR INSERT
   WITH CHECK (tenant_id = get_user_tenant_id());
 
@@ -754,29 +787,61 @@ CREATE POLICY "alertas_tenant" ON alertas FOR ALL
 CREATE POLICY "clientes_tenant" ON clientes FOR ALL
   USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
 
--- VENTAS
+-- VENTAS (RLS por sucursal — mig 216)
 CREATE POLICY "ventas_tenant" ON ventas FOR ALL
-  USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING (
+    tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR sucursal_id IS NULL OR sucursal_id = auth_user_sucursal() )
+  )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
 
--- VENTA ITEMS
+-- VENTA ITEMS (RLS por sucursal vía venta padre — mig 218)
 CREATE POLICY "venta_items_tenant" ON venta_items FOR ALL
-  USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING ( tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR venta_id IS NULL
+          OR EXISTS (SELECT 1 FROM ventas v WHERE v.id = venta_items.venta_id
+                     AND ( v.sucursal_id IS NULL OR v.sucursal_id = auth_user_sucursal() )) ) )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
 
--- VENTA SERIES
+-- VENTA SERIES (RLS por sucursal vía venta padre — mig 218)
 CREATE POLICY "venta_series_tenant" ON venta_series FOR ALL
-  USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING ( tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR venta_id IS NULL
+          OR EXISTS (SELECT 1 FROM ventas v WHERE v.id = venta_series.venta_id
+                     AND ( v.sucursal_id IS NULL OR v.sucursal_id = auth_user_sucursal() )) ) )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
 
--- CAJAS
+-- CAJAS (RLS por sucursal — mig 217; bóveda/Caja Fuerte tiene sucursal_id NULL → sigue visible)
 CREATE POLICY "cajas_tenant" ON cajas FOR ALL
-  USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING (
+    tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR sucursal_id IS NULL OR sucursal_id = auth_user_sucursal() )
+  )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
+-- NOTA (mig 217): el mismo patrón de RLS por sucursal aplica a envios, ordenes_compra,
+-- recepciones, recursos e inventario_conteos. Esas tablas no están en este snapshot
+-- parcial (se agregaron por migraciones posteriores); su DDL canónico vive en
+-- supabase/migrations/217_rls_sucursal_operativas.sql.
 
--- CAJA SESIONES
+-- CAJA SESIONES (RLS por sucursal — mig 216; bóveda/Caja Fuerte tiene sucursal_id NULL → sigue visible)
 CREATE POLICY "sesiones_tenant" ON caja_sesiones FOR ALL
-  USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING (
+    tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR sucursal_id IS NULL OR sucursal_id = auth_user_sucursal() )
+  )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
 
--- CAJA MOVIMIENTOS
+-- CAJA MOVIMIENTOS (RLS por sucursal vía sesión padre — mig 218)
 CREATE POLICY "mov_caja_tenant" ON caja_movimientos FOR ALL
-  USING (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING ( tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR sesion_id IS NULL
+          OR EXISTS (SELECT 1 FROM caja_sesiones s WHERE s.id = caja_movimientos.sesion_id
+                     AND ( s.sucursal_id IS NULL OR s.sucursal_id = auth_user_sucursal() )) ) )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
+-- NOTA (mig 218): el mismo patrón hijo→padre aplica a venta_item_despachos,
+-- venta_auditoria, devoluciones (SELECT), caja_arqueos, orden_compra_items,
+-- recepcion_items, inventario_conteo_items y envio_items. No están en este
+-- snapshot parcial; su DDL canónico vive en supabase/migrations/218_rls_sucursal_hijas.sql.
 
 -- ============================================================
 -- M14. COMBOS (reglas de precio por volumen)
@@ -815,9 +880,13 @@ CREATE TABLE IF NOT EXISTS gastos (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE gastos ENABLE ROW LEVEL SECURITY;
+-- GASTOS (RLS por sucursal — mig 216)
 CREATE POLICY "gastos_tenant" ON gastos
-  USING  (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
-  WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()));
+  USING (
+    tenant_id = get_user_tenant_id()
+    AND ( auth_ve_todas_sucursales() OR sucursal_id IS NULL OR sucursal_id = auth_user_sucursal() )
+  )
+  WITH CHECK ( tenant_id = get_user_tenant_id() );
 
 -- ============================================================
 -- M16. STORAGE — bucket 'productos' (imágenes de productos)

@@ -26,6 +26,21 @@ CREATE POLICY "tenant_isolation" ON tabla_x
 
 > [!NOTE] Se usa una **subquery** en lugar de una función (`get_tenant_id()`). Esto es intencional: las funciones en políticas RLS tienen peor performance porque PostgreSQL no puede optimizarlas igual que las subqueries inlineadas.
 
+### Segunda capa: aislamiento por sucursal (v1.75.0, migs 216-218)
+
+Además del `tenant_id`, **23 tablas operativas** filtran por **sucursal** a nivel servidor. La policy combina ambos:
+
+```sql
+USING (
+  tenant_id = get_user_tenant_id()
+  AND ( auth_ve_todas_sucursales()            -- DUEÑO + roles globales → todo el tenant
+        OR sucursal_id IS NULL                 -- bóveda/legacy → visible para todos
+        OR sucursal_id = auth_user_sucursal() ) -- usuario restringido → solo la suya
+)
+```
+
+`auth_ve_todas_sucursales()` (STABLE SECURITY DEFINER) replica `authStore.puedeVerTodas`. Las tablas hijas sin `sucursal_id` propia heredan la visibilidad del padre vía `EXISTS`. Detalle, tablas incluidas/excluidas y el gotcha de usuarios mal configurados (activos sin sucursal → sin acceso) en [[wiki/features/multi-sucursal]].
+
 ---
 
 ## Jerarquía de entidades

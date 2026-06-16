@@ -38,7 +38,7 @@ const navItems = [
   { to: '/inventario',    icon: Boxes,           label: 'Inventario',     modulo: 'movimientos',   depositoVisible: true },
   { to: '/clientes',      icon: Users,           label: 'Clientes',       modulo: 'clientes',      cajeroVisible: true, contadorVisible: true },
   { to: '/envios',        icon: Send,            label: 'Envíos',         modulo: 'envios',        cajeroVisible: true, depositoVisible: true, avanzadoOnly: true },
-  { to: '/facturacion',   icon: Receipt,         label: 'Facturación',    modulo: 'facturacion',   ownerOnly: true, basicoSiFacturacion: true },
+  { to: '/facturacion',   icon: Receipt,         label: 'Facturación',    modulo: 'facturacion',   ownerOnly: true, contadorVisible: true, basicoSiFacturacion: true },
   { to: '/proveedores',   icon: Truck,           label: 'Prov./Servicios', modulo: 'proveedores',  ownerOnly: true },
   { to: '/recursos',      icon: Landmark,        label: 'Recursos',       modulo: 'recursos',      ownerOnly: true, avanzadoOnly: true },
   { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },

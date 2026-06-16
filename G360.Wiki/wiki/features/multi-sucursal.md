@@ -269,9 +269,27 @@ const puedeVerTodas =
 - Con sucursal activa (o destino elegido en vista global) → **"Stock en sucursal: X"** (valor de esa sucursal, query reactiva `stockEnSucursal`).
 - En vista global "Todas" → **"Stock total (todas las sucursales): X"** (rótulo explícito para no confundir el global con el de la sucursal). Solo lo ven roles con `puedeVerTodas`.
 
-### ⚠️ Limitación conocida — RLS es por TENANT, no por sucursal
+### 🔒 RLS por sucursal a nivel servidor (v1.75.0 — migs 216-217-218) ✅
 
-El triple blindaje es **del lado del cliente (la app)**. La RLS de la DB filtra por `tenant_id`, **no** por `sucursal_id`. Un usuario técnico con las credenciales podría, vía API directa, consultar datos de otra sucursal del mismo tenant. Para que el aislamiento sea **imposible a nivel servidor** hay que agregar **RLS por sucursal** en las tablas operativas (`inventario_lineas`, `movimientos_stock`, `ventas`, `gastos`, `caja_sesiones`, …), cruzando `auth.uid()` → `users.sucursal_id` cuando `puede_ver_todas = false`. **Pendiente** — ver `project_pendientes.md` → "Aislamiento por sucursal a nivel RLS".
+Hasta v1.74.1 el triple blindaje era **solo del lado del cliente** y la RLS de la DB filtraba solo por `tenant_id` → un usuario con credenciales podía leer otra sucursal del mismo tenant por API directa. **Desde v1.75.0 el aislamiento por sucursal está a nivel servidor en 23 tablas.**
+
+**Helpers (mig 216, STABLE SECURITY DEFINER, `search_path=public`):**
+- `auth_ve_todas_sucursales()` — espeja EXACTAMENTE `authStore.puedeVerTodas` (`src/store/authStore.ts`): `DUEÑO` siempre; `SUPERVISOR`/`SUPER_USUARIO`/`VIEWER` global salvo `puede_ver_todas=false` explícito; el resto solo si `puede_ver_todas=true`. **Debe replicar el front** o un usuario global con `sucursal_id` NULL quedaría sin datos.
+- `auth_user_sucursal()` — la sucursal asignada al usuario.
+
+**Patrón** (reemplaza la policy `*_tenant` de cada tabla):
+```sql
+USING (
+  tenant_id = get_user_tenant_id()
+  AND ( auth_ve_todas_sucursales() OR sucursal_id IS NULL OR sucursal_id = auth_user_sucursal() )
+)
+WITH CHECK ( tenant_id = get_user_tenant_id() )   -- tenant-only: no rompe traslados/triggers cross-sucursal
+```
+- **Filas `sucursal_id` NULL → visibles para todos** (invariante histórica: bóveda/Caja Fuerte es tenant-wide; legacy ya backfilleado).
+- **mig 216 core:** ventas, caja_sesiones, gastos, inventario_lineas, movimientos_stock (SELECT). **mig 217 operativas:** envios, ordenes_compra, recepciones, recursos, cajas, inventario_conteos. **mig 218 hijas** sin `sucursal_id` propia → scopean vía el padre con `EXISTS`/`IN` de 1 salto (venta_items/series/despachos/auditoria, devoluciones-SELECT, caja_movimientos, caja_arqueos, envio_items, inventario_series, orden_compra_items, recepcion_items, inventario_conteo_items).
+- **Dejadas tenant-only a propósito:** catálogo/config (clientes, proveedores, combos, credenciales, ubicaciones, puntos_venta_afip), finanzas/tesorería (cheques, CC, devoluciones_proveedor, courier_*), integración, y las que cruzan sucursales por diseño (caja_traspasos doble sesión, traslado_items origen+destino).
+
+> ⚠️ **Gotcha operativo:** todo usuario **activo** con `puede_ver_todas=false` **y `sucursal_id` NULL** queda **sin acceso** bajo esta RLS (solo ve filas NULL, y la data operativa tiene sucursal). Antes de aplicar las migs en cada tenant hay que chequear/backfillear esos usuarios (en PROD se asignó sucursal a un cajero activo así configurado). Ver [[wiki/architecture/multi-tenant-rls]] y `feedback_aislamiento_sucursal` (memoria).
 
 ---
 

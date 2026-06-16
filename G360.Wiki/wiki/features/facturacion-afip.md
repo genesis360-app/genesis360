@@ -88,6 +88,20 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 5. Llama AFIP WSFE vía AfipSDK
 6. Guarda `cae`, `vencimiento_cae`, `tipo_comprobante`, `numero_comprobante` en `ventas`
 
+**Deploy de la EF:** `npx supabase functions deploy emitir-factura --project-ref <ref>` (CLI lee el archivo local, preserva config; más limpio que el MCP). DEV `gcmhzdedrkmmzfzfveig` · PROD `jjffnbrdjchquexdfgwq` (PROD requiere autorización explícita).
+
+---
+
+## Notas de Crédito (NC) — flujo y gotchas (v1.70.0–v1.71.0)
+
+**El único camino para emitir una NC es: abrir la venta facturada → "Devolver" (total o parcial) → en la devolución, botón "Emitir NC".** No hay "NC manual" suelta: una NC siempre reversa un comprobante puntual y queda atada a una `devoluciones` (`devolucion_id`). La EF toma los ítems de la devolución (no de la venta).
+
+> [!WARNING] La emisión de NC **nunca había funcionado end-to-end** hasta v1.71.0 (solo se habían probado facturas). Dos bugs encadenados:
+> - **El SELECT de la venta no traía `cae`** → la EF veía `venta.cae` undefined → "La venta no tiene factura emitida. No se puede emitir NC sin CAE original". Fix v1.70.0: `+cae, tipo_comprobante, numero_comprobante`.
+> - **Falta `CbtesAsoc`** → AFIP rechaza con **error 10197** ("Si el comprobante es Débito o Crédito, enviar CbteAsoc o PeriodoAsoc"). Fix v1.71.0: `CbtesAsoc:[{ Tipo (del original), PtoVta (mismo PV), Nro (`numero_comprobante`) }]`. **Asume mismo PV que la NC** (caso single-PV; si el tenant usa otro PV para NC, guardar el PV de la factura original).
+
+**Anular vs Devolver una facturada:** una venta **con CAE** no se puede "Anular" (los botones Anular + Cambiar cliente se **ocultan** si `ventaDetalle.cae`) — la reversión correcta es Devolver → NC. Anularla dejaría la factura viva en AFIP (libros descuadrados).
+
 ---
 
 ## Configuración del tenant (ConfigPage → Negocio)

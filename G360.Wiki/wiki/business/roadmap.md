@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.72.0 — NC fiscal PDF + rol Lector + roles custom Pro + fixes fiscales (PROD ✅, mig 214)
+
+**Mig 214** (`users.rol` CHECK + `VIEWER`). (1) **NC fiscal — Descargar/Imprimir/Email** del PDF de la nota de crédito AFIP (lo que se entrega al cliente; el ticket interno NO es fiscal). `facturasPDF.ts` parametrizado con `clase:'nota_credito'`. (2) **Rol fijo LECTOR (Viewer)** solo-lectura en todos los planes (operación + reportes, sin administración). (3) **Roles personalizados → Pro** (gateados a modo avanzado). (4) **🔴 Fix NC tipo (AFIP 10040)**: la letra de la NC se deriva de la factura original y queda fija (Factura C→NC-C). (5) **🔴 Fix sucursal en reingreso** Devolver/Anular (heredan `sucursal_id` de la venta; antes NULL → invisibles por sucursal) + backfill. (6) **Auto-A/B/C contempla emisor Exento** (→ C). (7) **3 guards fiscales**: no habilitar facturación sin condición IVA emisor + CUIT; Factura B ≥ umbral a CF exige DNI/CUIT; cliente nuevo defaultea CF. (8) Fix ESC del ticket de NC interna. Suite 739 verde + build verde.
+
+---
+
 ## v1.71.0 — NC CbtesAsoc + ocultar Anular/Cambiar-cliente con CAE + drag-scroll de tabs (PROD ✅, PR #212)
 
 Sin migración (redeploy EF `emitir-factura`). (1) **🔴 NC fallaba con AFIP 10197**: la NC exige `CbtesAsoc` (referencia a la factura original) → fix EF `CbtesAsoc:[{Tipo,PtoVta,Nro}]`. (2) Con CAE se **ocultan** "Anular" y "Cambiar cliente" (la factura ya está en AFIP a un cliente fijo) → solo "Devolver". (3) **Feature drag-scroll** (`useDragScroll`): las barras de tabs largas (RRHH/Gastos/Inventario) se arrastran con el mouse. Suite 734 verde.

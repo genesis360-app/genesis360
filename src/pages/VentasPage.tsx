@@ -350,11 +350,13 @@ export default function VentasPage() {
   const [facturaModal, setFacturaModal] = useState<{ ventaId: string; ventaNumero: number; ventaTotal: number } | null>(null)
   // CUIT del cliente de la venta a facturar (para gatear Factura A, que exige CUIT del receptor)
   const [facturaClienteCuit, setFacturaClienteCuit] = useState<string | null>(null)
+  // DNI del cliente: junto al CUIT, sirve para identificar al receptor en Factura B sobre el umbral
+  const [facturaClienteDni, setFacturaClienteDni] = useState<string | null>(null)
   // Tras emitir desde el POS: pasa a la vista de acciones (descargar/imprimir/email) sin ir al historial
   const [facturaEmitida, setFacturaEmitida] = useState<{ ventaId: string; tipo: string; cae: string } | null>(null)
   const [facturaTipo, setFacturaTipo] = useState<'A' | 'B' | 'C'>('B')
   const [facturaPV, setFacturaPV]     = useState<number>(1)
-  const [ncModal, setNcModal]         = useState<{ devolucionId: string; ventaId: string; ventaNumero: number; monto: number } | null>(null)
+  const [ncModal, setNcModal]         = useState<{ devolucionId: string; ventaId: string; ventaNumero: number; monto: number; facturaLetra: string } | null>(null)
   const [ncTipo, setNcTipo]           = useState<'NC-A' | 'NC-B' | 'NC-C'>('NC-B')
   const [ncPV, setNcPV]               = useState<number>(1)
   const [emitendoNC, setEmitiendoNC]  = useState(false)
@@ -373,6 +375,11 @@ export default function VentasPage() {
   // Modal "Enviar factura por email": precarga el correo del cliente de la venta (editable)
   const [facturaEmailModal, setFacturaEmailModal] = useState<{ ventaId: string } | null>(null)
   const [facturaEmailValue, setFacturaEmailValue] = useState('')
+  // NC fiscal (AFIP): descargar/imprimir/email del PDF de la nota de crédito electrónica
+  const [descargandoNc, setDescargandoNc] = useState(false)
+  const [ncEmailModal, setNcEmailModal] = useState<{ devolucionId: string } | null>(null)
+  const [ncEmailValue, setNcEmailValue] = useState('')
+  const [enviandoNcEmail, setEnviandoNcEmail] = useState(false)
   const [modoVenta, setModoVenta] = useState<'reservada' | 'despachada' | 'pendiente'>('despachada')
   const [editandoPago, setEditandoPago] = useState(false)
   const [editMontoPagado, setEditMontoPagado] = useState('')
@@ -843,7 +850,7 @@ export default function VentasPage() {
   useModalKeyboard({ isOpen: ticketVenta !== null, onClose: () => setTicketVenta(null) })
   // El detalle de venta cede el ESC a cualquier modal apilado por encima (devolución, NC,
   // cancelar reserva, cambiar cliente, saldo, ticket) → ESC siempre cierra el modal visible.
-  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null && devolucionVenta === null && ncModal === null && cancelReservaModal === null && cambiarClienteVenta === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
+  useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null && devolucionVenta === null && ncModal === null && cancelReservaModal === null && cambiarClienteVenta === null && devComprobante === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: facturaModal !== null, onClose: () => { setFacturaModal(null); setFacturaEmitida(null) } })
   useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
@@ -852,6 +859,9 @@ export default function VentasPage() {
   useModalKeyboard({ isOpen: ncModal !== null, onClose: () => setNcModal(null) })
   useModalKeyboard({ isOpen: cancelReservaModal !== null, onClose: () => setCancelReservaModal(null) })
   useModalKeyboard({ isOpen: cambiarClienteVenta !== null, onClose: () => setCambiarClienteVenta(null) })
+  // El comprobante de devolución / NC interna se muestra encima del detalle de venta tras devolver → ESC lo cierra a él.
+  useModalKeyboard({ isOpen: devComprobante !== null, onClose: () => setDevComprobante(null) })
+  useModalKeyboard({ isOpen: ncEmailModal !== null, onClose: () => setNcEmailModal(null) })
 
   // Cola de scans para procesar secuencialmente (evita duplicados por concurrencia)
   const scanQueueRef = useRef<string[]>([])
@@ -1445,23 +1455,37 @@ export default function VentasPage() {
     setFacturaModal({ ventaId, ventaNumero, ventaTotal })
   }
 
-  // Al abrir el modal, traer el CUIT del cliente de la venta (Factura A lo exige).
+  // Al abrir el modal, traer el CUIT y DNI del cliente de la venta (Factura A exige CUIT;
+  // Factura B sobre el umbral exige identificar al receptor con DNI o CUIT).
   useEffect(() => {
     if (!facturaModal) return
     let cancel = false
-    supabase.from('ventas').select('clientes(cuit_receptor)').eq('id', facturaModal.ventaId).single()
+    supabase.from('ventas').select('clientes(cuit_receptor, dni)').eq('id', facturaModal.ventaId).single()
       .then(({ data }) => {
         if (cancel) return
         const cuit = ((data as any)?.clientes?.cuit_receptor ?? '').toString().replace(/[-\s]/g, '')
+        const dni = ((data as any)?.clientes?.dni ?? '').toString().replace(/\D/g, '')
         setFacturaClienteCuit(cuit || null)
+        setFacturaClienteDni(dni || null)
         // Si quedó seleccionada Factura A sin CUIT, degradar a B para no bloquear la emisión.
         if (!cuit) setFacturaTipo(t => (t === 'A' ? 'B' : t))
       })
     return () => { cancel = true }
   }, [facturaModal])
 
+  // RG AFIP: una Factura B a consumidor final por un total ≥ umbral exige identificar al
+  // comprador (DNI o CUIT). Si no está identificado, se bloquea la emisión hasta cargarlo.
+  const umbralFacturaB = Number((tenant as any)?.umbral_factura_b ?? 68305.16)
+  const requiereIdentFacturaB = !!facturaModal && facturaTipo === 'B'
+    && Number(facturaModal.ventaTotal) >= umbralFacturaB
+    && !facturaClienteCuit && !facturaClienteDni
+
   const emitirFactura = async () => {
     if (!facturaModal) return
+    if (requiereIdentFacturaB) {
+      toast.error(`Factura B por $${umbralFacturaB.toLocaleString('es-AR', { maximumFractionDigits: 0 })} o más a consumidor final: AFIP exige identificar al cliente con DNI o CUIT. Cargalo en la ficha del cliente.`, { duration: 9000 })
+      return
+    }
     setEmitiendoFactura(true)
     try {
       const { data, error } = await supabase.functions.invoke('emitir-factura', {
@@ -1903,6 +1927,125 @@ export default function VentasPage() {
         : (msg || 'No se pudo enviar el email'), { duration: 8000 })
     } finally {
       setEnviandoFacturaEmail(false)
+    }
+  }
+
+  // ── NC fiscal (AFIP) — PDF / imprimir / email ──────────────────────────────
+  // El documento LEGAL que se entrega al cliente es la NC electrónica (con CAE), NO el
+  // ticket interno de devolución. La NC vive en `devoluciones` (nc_cae, nc_tipo, etc.).
+  async function buildNCPDFDataPorDevolucion(devolucionId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
+    const { data: dev, error } = await supabase.from('devoluciones')
+      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva))')
+      .eq('id', devolucionId).single()
+    if (error) throw new Error(error.message)
+    if (!dev?.nc_cae) return null
+    const { data: cfgTenant } = await supabase.from('tenants')
+      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, telefono, email, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
+      .eq('id', tenant!.id).single()
+    const cli = (dev as any).ventas?.clientes
+    const data: FacturaPDFData = {
+      clase:               'nota_credito',
+      tipo_comprobante:    (dev as any).nc_tipo ?? 'NC-B',
+      numero_comprobante:  (dev as any).nc_numero_comprobante ?? 0,
+      punto_venta:         (dev as any).nc_punto_venta ?? 1,
+      fecha:               (dev as any).created_at,
+      cae:                 (dev as any).nc_cae,
+      vencimiento_cae:     (dev as any).nc_vencimiento_cae ?? '',
+      emisor_razon_social: cfgTenant?.razon_social_fiscal ?? tenant?.nombre ?? '',
+      emisor_cuit:         cfgTenant?.cuit ?? '',
+      emisor_domicilio:    cfgTenant?.domicilio_fiscal,
+      emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
+      emisor_logo_url:     (cfgTenant as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
+      emisor_ingresos_brutos:    (cfgTenant as any)?.ingresos_brutos ?? null,
+      emisor_inicio_actividades: (cfgTenant as any)?.inicio_actividades ?? null,
+      emisor_telefono:     (cfgTenant as any)?.telefono ?? null,
+      emisor_email:        (cfgTenant as any)?.email ?? null,
+      emisor_sitio_web:    (cfgTenant as any)?.sitio_web ?? null,
+      emisor_banco:        (cfgTenant as any)?.banco ?? null,
+      emisor_cbu:          (cfgTenant as any)?.cbu ?? null,
+      emisor_alias:        (cfgTenant as any)?.alias_cbu ?? null,
+      emisor_leyenda:      (cfgTenant as any)?.leyenda_comprobante ?? null,
+      receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
+      receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
+      receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
+      receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios),
+      items: ((dev as any).devolucion_items ?? []).map((i: any) => ({
+        codigo:          i.productos?.sku ?? null,
+        descripcion:     i.productos?.nombre ?? 'Producto',
+        cantidad:        Number(i.cantidad),
+        precio_unitario: Number(i.precio_unitario),
+        alicuota_iva:    Number(i.productos?.alicuota_iva ?? 21),
+        subtotal:        Number(i.precio_unitario) * Number(i.cantidad),
+      })),
+      total: Number((dev as any).monto_total ?? 0),
+      forma_pago: null,
+    }
+    return { data, email: cli?.email ?? null }
+  }
+
+  async function accionNCPDF(devolucionId: string, accion: 'descargar' | 'imprimir') {
+    setDescargandoNc(true)
+    try {
+      const res = await buildNCPDFDataPorDevolucion(devolucionId)
+      if (res) await generarFacturaPDF(res.data, accion)
+      else toast.error('Esta devolución no tiene NC electrónica emitida.')
+    } catch (e: any) {
+      toast.error(`Error al generar PDF: ${e.message}`)
+    } finally {
+      setDescargandoNc(false)
+    }
+  }
+
+  async function abrirEnviarNCEmail(devolucionId: string) {
+    setNcEmailModal({ devolucionId })
+    setNcEmailValue('')
+    try {
+      const res = await buildNCPDFDataPorDevolucion(devolucionId)
+      if (res?.email) setNcEmailValue(res.email)
+    } catch { /* si falla el prefill, el usuario igual puede tipear el correo */ }
+  }
+
+  async function enviarNCEmail(devolucionId: string, email: string) {
+    email = email.trim()
+    if (!email) { toast.error('Ingresá un email'); return }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { toast.error('Email inválido'); return }
+    try {
+      const res = await buildNCPDFDataPorDevolucion(devolucionId)
+      if (!res) return
+      setEnviandoNcEmail(true)
+      const { data } = res
+      const { base64, filename } = await generarFacturaPDFBase64(data)
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          type: 'factura_emitida',
+          to: email,
+          data: {
+            cliente_nombre: data.receptor_nombre,
+            negocio: tenant!.nombre,
+            tipo_comprobante: `Nota de Crédito ${data.tipo_comprobante.replace(/^NC-/, '')}`,
+            numero_comprobante: data.numero_comprobante,
+            cae: data.cae,
+            vencimiento_cae: data.vencimiento_cae,
+            items: data.items.map(it => ({ nombre: it.descripcion, cantidad: it.cantidad, precio_unitario: it.precio_unitario, subtotal: it.subtotal })),
+            total: data.total,
+          },
+          attachments: [{ filename, content: base64 }],
+        },
+      })
+      if (error) {
+        let detalle = ''
+        try { const body = await (error as any).context?.json?.(); if (body?.error) detalle = String(body.error) } catch { /* */ }
+        throw new Error(detalle || error.message || 'No se pudo enviar el email')
+      }
+      toast.success(`Nota de crédito enviada a ${email}`)
+      setNcEmailModal(null)
+    } catch (e: any) {
+      const msg = String(e?.message ?? '')
+      toast.error(/api key/i.test(msg)
+        ? 'Resend rechazó la API key (revisá el secret RESEND_API_KEY en Supabase).'
+        : (msg || 'No se pudo enviar el email'), { duration: 8000 })
+    } finally {
+      setEnviandoNcEmail(false)
     }
   }
 
@@ -3151,6 +3294,9 @@ export default function VentasPage() {
             tenant_id: tenant.id,
             producto_id: item.producto_id,
             cantidad: cantDev,
+            // El stock devuelto vuelve a la sucursal de la venta (sin esto la línea queda con
+            // sucursal_id NULL y solo se ve en "Todas las sucursales"). Fallback: contexto activo.
+            sucursal_id: (devolucionVenta as any).sucursal_id ?? sucursalId ?? null,
             notas: `Devolución de venta #${devolucionVenta.numero}${devDestinoStock === 'vendible' ? ' — reintegrado a stock vendible' : ''}`,
           }
           if (!modoAvanzado) {
@@ -3178,6 +3324,7 @@ export default function VentasPage() {
               usuario_id: user?.id,
               linea_id: linea.id,
               venta_id: devolucionVenta.id,
+              sucursal_id: (devolucionVenta as any).sucursal_id ?? sucursalId ?? null,
             })
           }
           // Insertar devolucion_item con referencia a la nueva linea
@@ -3630,6 +3777,9 @@ export default function VentasPage() {
               // Crear nueva línea con la cantidad despachada (el trigger recalcula stock_actual).
               const lineaPayload: any = {
                 tenant_id: tenant!.id, producto_id: item.producto_id, cantidad: cantItem,
+                // Reingreso a la sucursal de la venta (evita líneas con sucursal_id NULL que solo
+                // se ven en "Todas las sucursales"). Fallback: contexto activo.
+                sucursal_id: (venta as any).sucursal_id ?? sucursalId ?? null,
                 notas: `Anulación de venta #${venta.numero}`,
               }
               if (modoAvanzado && estadoVendibleId) lineaPayload.estado_id = estadoVendibleId
@@ -3640,6 +3790,7 @@ export default function VentasPage() {
                   tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'ingreso', cantidad: cantItem,
                   stock_antes: (prodData.stock_actual ?? 0) - cantItem, stock_despues: prodData.stock_actual ?? 0,
                   motivo: `Anulación venta #${venta.numero}`, usuario_id: user?.id, linea_id: linea.id, venta_id: ventaId,
+                  sucursal_id: (venta as any).sucursal_id ?? sucursalId ?? null,
                 })
               }
             }
@@ -5210,18 +5361,30 @@ export default function VentasPage() {
                             <span className="font-medium text-orange-600 dark:text-orange-400">{d.numero_nc ?? 'Sin NC interna'}</span>
                             <span className="ml-2 text-gray-400">{new Date(d.created_at).toLocaleDateString('es-AR')}</span>
                           </div>
-                          {/* Badge NC electrónica emitida */}
+                          {/* Badge NC electrónica emitida + acciones del PDF fiscal (lo que se entrega al cliente) */}
                           {d.nc_cae ? (
-                            <span className="flex-shrink-0 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full text-xs font-medium">
-                              {d.nc_tipo} #{d.nc_numero_comprobante}
-                            </span>
+                            <div className="flex-shrink-0 flex items-center gap-1">
+                              <span className="bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full text-xs font-medium">
+                                {d.nc_tipo} #{d.nc_numero_comprobante}
+                              </span>
+                              <button title="Descargar NC (PDF fiscal)" disabled={descargandoNc} onClick={() => accionNCPDF(d.id, 'descargar')}
+                                className="p-1 text-gray-500 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"><FileDown size={13} /></button>
+                              <button title="Imprimir NC" disabled={descargandoNc} onClick={() => accionNCPDF(d.id, 'imprimir')}
+                                className="p-1 text-gray-500 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"><Printer size={13} /></button>
+                              <button title="Enviar NC por email" onClick={() => abrirEnviarNCEmail(d.id)}
+                                className="p-1 text-gray-500 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded"><Send size={13} /></button>
+                            </div>
                           ) : d.origen === 'facturada' && ventaDetalle?.cae && (tenant as any)?.facturacion_habilitada ? (
                             <button
                               onClick={() => {
                                 const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
                                 setNcPV(pvDefault)
-                                setNcTipo('NC-B')
-                                setNcModal({ devolucionId: d.id, ventaId: ventaDetalle.id, ventaNumero: ventaDetalle.numero, monto: d.monto_total })
+                                // La NC DEBE ser de la misma letra que la factura original (AFIP 10040 si no).
+                                const letra = String((ventaDetalle as any)?.tipo_comprobante ?? 'B')
+                                  .replace(/^Factura\s+/i, '').replace(/^NC-/i, '').trim().toUpperCase()
+                                const ncLetra = (['A', 'B', 'C'].includes(letra) ? letra : 'B')
+                                setNcTipo(`NC-${ncLetra}` as 'NC-A' | 'NC-B' | 'NC-C')
+                                setNcModal({ devolucionId: d.id, ventaId: ventaDetalle.id, ventaNumero: ventaDetalle.numero, monto: d.monto_total, facturaLetra: ncLetra })
                               }}
                               className="flex-shrink-0 flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-200 dark:hover:bg-blue-800/40 px-2 py-0.5 rounded-full text-xs font-medium transition-colors">
                               <Receipt size={11} /> Emitir NC
@@ -6626,6 +6789,11 @@ export default function VentasPage() {
                   Factura A deshabilitada: la venta no tiene un cliente con CUIT.
                 </p>
               )}
+              {requiereIdentFacturaB && (
+                <p className="text-[11px] text-red-600 dark:text-red-400 mt-1">
+                  Factura B ≥ ${umbralFacturaB.toLocaleString('es-AR', { maximumFractionDigits: 0 })} a consumidor final: AFIP exige DNI o CUIT del cliente. Cargalo en la ficha del cliente para poder emitir.
+                </p>
+              )}
             </div>
 
             {/* Punto de venta */}
@@ -6654,8 +6822,9 @@ export default function VentasPage() {
               className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
               Saltar
             </button>
-            <button onClick={emitirFactura} disabled={emitiendoFactura}
-              className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
+            <button onClick={emitirFactura} disabled={emitiendoFactura || requiereIdentFacturaB}
+              title={requiereIdentFacturaB ? 'Cargá DNI o CUIT del cliente para emitir Factura B sobre el umbral' : undefined}
+              className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2">
               {emitiendoFactura
                 ? <><span className="animate-spin">⟳</span> Emitiendo…</>
                 : <>🧾 Emitir Factura {facturaTipo}</>}
@@ -6728,6 +6897,41 @@ export default function VentasPage() {
               <button onClick={() => enviarFacturaEmail(facturaEmailModal.ventaId, facturaEmailValue)} disabled={enviandoFacturaEmail}
                 className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
                 {enviandoFacturaEmail ? <><RefreshCw size={15} className="animate-spin" /> Enviando…</> : <><Send size={15} /> Enviar</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: ENVIAR NOTA DE CRÉDITO POR EMAIL ── */}
+      {ncEmailModal && (
+        <div className="fixed inset-0 bg-black/40 z-[70] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Send size={18} className="text-accent" />
+                <h2 className="font-semibold text-gray-800 dark:text-gray-100">Enviar nota de crédito por email</h2>
+              </div>
+              <button onClick={() => setNcEmailModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">Destinatario</label>
+              <input
+                type="email" value={ncEmailValue} autoFocus
+                onChange={e => setNcEmailValue(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && !enviandoNcEmail) enviarNCEmail(ncEmailModal.devolucionId, ncEmailValue) }}
+                placeholder="email@cliente.com"
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              <p className="text-[11px] text-gray-400">Se adjunta el PDF fiscal de la nota de crédito (AFIP).</p>
+            </div>
+            <div className="px-5 pb-5 flex gap-2">
+              <button onClick={() => setNcEmailModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
+                Cancelar
+              </button>
+              <button onClick={() => enviarNCEmail(ncEmailModal.devolucionId, ncEmailValue)} disabled={enviandoNcEmail}
+                className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
+                {enviandoNcEmail ? <><RefreshCw size={15} className="animate-spin" /> Enviando…</> : <><Send size={15} /> Enviar</>}
               </button>
             </div>
           </div>
@@ -6839,14 +7043,10 @@ export default function VentasPage() {
             <div className="p-5 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de Nota de Crédito</label>
-                <div className="grid grid-cols-3 gap-2">
-                  {(['NC-A','NC-B','NC-C'] as const).map(t => (
-                    <button key={t} onClick={() => setNcTipo(t)}
-                      className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all
-                        ${ncTipo === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent/40'}`}>
-                      {t}
-                    </button>
-                  ))}
+                {/* La letra de la NC la fija la factura original (AFIP exige que coincidan) → no es elegible. */}
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 border-accent/30 bg-accent/5">
+                  <span className="text-sm font-semibold text-accent">{ncTipo}</span>
+                  <span className="text-xs text-gray-500 dark:text-gray-400">· coincide con la Factura {ncModal.facturaLetra} original (obligatorio AFIP)</span>
                 </div>
               </div>
 

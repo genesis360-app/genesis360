@@ -8,10 +8,16 @@
 // fijos (DUEÑO/CAJERO/etc.) `permisos_custom` es null y estos helpers no bloquean
 // nada — esos roles siguen gobernados por su lógica de página habitual.
 
-type ConPermisos = { permisos_custom?: Record<string, 'no_ver' | 'ver' | 'editar'> | null } | null | undefined
+type ConPermisos = { rol?: string | null; permisos_custom?: Record<string, 'no_ver' | 'ver' | 'editar'> | null } | null | undefined
 
-/** El rol custom tiene este módulo en SOLO LECTURA ('ver'). Bloquea mutaciones. */
+/** El rol fijo LECTOR (Viewer) es solo-lectura en TODOS los módulos. */
+function esLector(user: ConPermisos): boolean {
+  return user?.rol === 'VIEWER'
+}
+
+/** El módulo está en SOLO LECTURA. True para el rol LECTOR (todo) o un rol custom con 'ver'. */
 export function moduloSoloLectura(user: ConPermisos, modulo: string): boolean {
+  if (esLector(user)) return true
   return user?.permisos_custom?.[modulo] === 'ver'
 }
 
@@ -20,8 +26,9 @@ export function moduloOculto(user: ConPermisos, modulo: string): boolean {
   return user?.permisos_custom?.[modulo] === 'no_ver'
 }
 
-/** Puede editar/mutar el módulo: no está en solo-lectura ni oculto por rol custom. */
+/** Puede editar/mutar el módulo: no es LECTOR, ni está en solo-lectura/oculto por rol custom. */
 export function puedeEditarModulo(user: ConPermisos, modulo: string): boolean {
+  if (esLector(user)) return false
   const p = user?.permisos_custom?.[modulo]
   return p !== 'ver' && p !== 'no_ver'
 }

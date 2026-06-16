@@ -59,7 +59,8 @@ interface ClienteForm {
 }
 const FORM_VACIO: ClienteForm = {
   nombre: '', dni: '', telefono: '', email: '', notas: '',
-  cuit_receptor: '', condicion_iva_receptor: '',
+  // Default fiscal del cliente nuevo: Consumidor Final (el caso más común; el alta queda explícita).
+  cuit_receptor: '', condicion_iva_receptor: 'CF',
   fecha_nacimiento: '', etiquetas: '',
   codigo_fiscal: '', regimen_fiscal: '',
   cuenta_corriente_habilitada: false, limite_credito: '', plazo_pago_dias: '30',

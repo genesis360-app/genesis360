@@ -2,17 +2,18 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   UserPlus, Trash2, Shield, User, Mail, AlertTriangle,
-  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Building2,
+  ChevronDown, ChevronUp, Check, X as XIcon, Plus, Edit, Sliders, Globe, Building2, Lock,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import toast from 'react-hot-toast'
 
-type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO'
+type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO' | 'VIEWER'
 const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = {
   DUEÑO:      { label: 'Dueño',         desc: 'Acceso completo',                    color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
   SUPER_USUARIO: { label: 'Super Usuario', desc: 'Administración técnica y configuración', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' },
@@ -21,6 +22,7 @@ const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = 
   RRHH:       { label: 'RRHH',          desc: 'Gestión de empleados',               color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'     },
   CONTADOR:   { label: 'Contador',      desc: 'Dashboard, gastos y reportes',       color: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400'         },
   DEPOSITO:   { label: 'Depósito',      desc: 'Productos e inventario',             color: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400' },
+  VIEWER:     { label: 'Lector',        desc: 'Solo lectura — supervisa, no edita', color: 'bg-gray-100 dark:bg-gray-700/40 text-gray-600 dark:text-gray-300'         },
 }
 
 type Permiso = 'no_ver' | 'ver' | 'editar'
@@ -64,13 +66,15 @@ function defaultPermisos(): Record<string, Permiso> {
 
 // Roles que siempre tienen visión global (no configurables)
 const ROLES_SIEMPRE_GLOBALES: string[] = ['DUEÑO', 'SUPER_USUARIO']
-// Roles con visión global por defecto (configurable)
-const ROLES_GLOBAL_DEFAULT: string[] = ['SUPERVISOR', 'CONTADOR']
+// Roles con visión global por defecto (configurable) — el Lector supervisa todas las sucursales
+const ROLES_GLOBAL_DEFAULT: string[] = ['SUPERVISOR', 'CONTADOR', 'VIEWER']
 
 export default function UsuariosPage() {
   const { tenant, user, sucursales } = useAuthStore()
   const qc = useQueryClient()
   const { limits } = usePlanLimits()
+  // Roles personalizados = feature de modo avanzado (Pro+). En básico se ofrecen solo los roles fijos.
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const [showInvitar, setShowInvitar] = useState(false)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [invEmail, setInvEmail] = useState('')
@@ -559,8 +563,28 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* ── Roles personalizados (solo Dueño) ─────────────────────────────────── */}
-      {canManage && (
+      {/* ── Roles personalizados (solo Dueño · feature de modo avanzado/Pro) ──── */}
+      {canManage && !modoAvanzado && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
+          <div className="flex items-start gap-3">
+            <div className="bg-accent/10 rounded-lg p-2 flex-shrink-0"><Lock size={16} className="text-accent" /></div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                Roles personalizados
+                <span className="text-[10px] uppercase tracking-wide bg-accent/10 text-accent px-1.5 py-0.5 rounded-full font-bold">Pro</span>
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Creá roles con permisos a medida (módulo por módulo). Disponible en el <span className="font-medium">modo avanzado</span>.
+                En el plan básico contás con los roles fijos (Dueño, Supervisor, Cajero, Depósito, Contador, Lector).
+              </p>
+              <a href="/suscripcion" className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent/80 mt-2">
+                Ver planes →
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+      {canManage && modoAvanzado && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <button onClick={() => setShowRolesSection(v => !v)}
             className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">

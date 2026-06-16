@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.75.0 — 🔒 RLS por sucursal a nivel servidor (PROD ✅, migs 216-217-218)
+
+Cierra la deuda técnica #8. El aislamiento por sucursal pasa del cliente al servidor: 23 tablas filtran por sucursal en la DB (antes solo `tenant_id` + blindaje client-side). Helpers `auth_ve_todas_sucursales()`/`auth_user_sucursal()` que espejan `authStore.puedeVerTodas`. Tablas globales/config/finanzas y las que cruzan sucursales por diseño se dejan tenant-only. Sin cambios de frontend. Ver [[wiki/features/multi-sucursal]].
+
 ## v1.74.1 — Fix alerta fantasma "sin categoría" en básico (PROD ✅, sin migración)
 
 El badge de Alertas mostraba "1" con la página vacía: `AlertasPage` scopeaba los "productos sin categoría" por sucursal con `ubicaciones!inner`, que en básico (sin ubicaciones) borra todo el stock. Fix mode-aware (básico filtra por `inventario_lineas.sucursal_id`). + reconciliación DEV de 1 línea de devolución con sucursal NULL (Productos "11/12"). Suite 739 verde.

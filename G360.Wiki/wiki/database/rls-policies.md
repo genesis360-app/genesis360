@@ -59,6 +59,8 @@ WITH CHECK (tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid()))
 
 Aplica a: `productos`, `inventario_lineas`, `movimientos_stock`, `ventas`, `venta_items`, `caja_sesiones`, `caja_movimientos`, `gastos`, `clientes`, `proveedores`, etc.
 
+> [!NOTE] **RLS por sucursal (v1.75.0, migs 216-218):** 23 tablas operativas agregan un segundo filtro por `sucursal_id` sobre el de tenant — `... AND ( auth_ve_todas_sucursales() OR sucursal_id IS NULL OR sucursal_id = auth_user_sucursal() )`. Las hijas sin `sucursal_id` propio heredan del padre vía `EXISTS`. Catálogo/config, finanzas/tesorería y tablas cross-sucursal quedan solo-tenant. Helpers `auth_ve_todas_sucursales()`/`auth_user_sucursal()` (espejan `authStore.puedeVerTodas`). Ver [[wiki/features/multi-sucursal]].
+
 ### Tablas RRHH (acceso restringido por rol)
 
 ```sql

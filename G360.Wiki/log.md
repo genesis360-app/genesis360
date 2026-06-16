@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-16] deploy | v1.75.0 EN PROD — 🔒 RLS por sucursal a nivel servidor (#8 cerrado) · `dev→main` PR #219 (migs 216-217-218)
+
+**v1.75.0 a DEV+PROD, migs 216-217-218 DEV+PROD, release latest, PR #219.** Cierra la deuda técnica #8: hasta v1.74.1 la RLS filtraba **solo por `tenant_id`** y el aislamiento por sucursal era 100% client-side → un usuario con credenciales podía leer otra sucursal del mismo tenant por API directa. Ahora **23 tablas** filtran por sucursal en la DB.
+
+- **Helpers (mig 216):** `auth_ve_todas_sucursales()` / `auth_user_sucursal()` (STABLE SECURITY DEFINER, `search_path=public`). El primero espeja EXACTAMENTE `authStore.puedeVerTodas` (verificado en `src/store/authStore.ts:92-95` — el wiki listaba mal los roles globales, **faltaba VIEWER**). Si el helper fuera más restrictivo que el front, un DUEÑO/SUPERVISOR con `puede_ver_todas=false`+`sucursal_id` NULL quedaría sin datos.
+- **Patrón:** `tenant AND ( ve_todas OR sucursal_id IS NULL OR = la del usuario )`. NULL visible para todos (bóveda/legacy). `WITH CHECK` tenant-only (no rompe traslados/triggers cross-sucursal).
+- **216 core** (ventas, caja_sesiones, gastos, inventario_lineas, movimientos_stock-SELECT) · **217 operativas** (envios, ordenes_compra, recepciones, recursos, cajas, inventario_conteos) · **218 hijas sin sucursal_id** (venta_items/series/despachos/auditoria, devoluciones-SELECT, caja_movimientos, caja_arqueos, envio_items, inventario_series + las sin tenant_id que scopean 100% por padre: orden_compra_items, recepcion_items, inventario_conteo_items).
+- **Tenant-only a propósito:** catálogo/config, finanzas/tesorería (cheques, CC, devoluciones_proveedor, courier_*), integración, y cross-sucursal por diseño (caja_traspasos, traslado_items). Tanda 4 opcional: devolucion_items (2 saltos).
+- **Validación DEV:** impersonando (`SET LOCAL ROLE authenticated` + `request.jwt.claims`) cajero1/Cajero2/SUPERVISOR-restringido/DUEÑO contra ground-truth → coincidencia exacta (lectura + escritura cruzada bloqueada).
+- **🔴 Fix de dato PROD pre-deploy:** el CAJERO activo `nicolas.otranto86` (tenant Familia Otranto De Porto, 2 sucursales) estaba restringido **sin sucursal asignada** → bajo la RLS hubiera visto 0 filas (toda la data tiene sucursal). Se le asignó Casa Huechuraba (donde vende) ANTES de aplicar las migs. Smoke PROD OK: Nico ve solo su sucursal (7 ventas), DUEÑO ve todo (22). **Lección clave:** todo usuario activo `puede_ver_todas=false` + `sucursal_id` NULL queda sin acceso → chequear/backfillear por tenant antes de aplicar.
+
+739 unit + build (tsc+vite) verdes. Sin cambios de frontend (solo `APP_VERSION`). Memorias: [[feedback_aislamiento_sucursal]] (RLS DONE), [[project_auditoria_primer_cliente]] (#8 cerrado).
+
 ## [2026-06-16] deploy | v1.74.1 EN PROD — Fix alerta fantasma "sin categoría" en básico (badge vs página) · `dev→main` (sin migración)
 
 **v1.74.1 a DEV+PROD, sin migración, release latest.** Dos reportes de GO sobre Kiosko (básico):

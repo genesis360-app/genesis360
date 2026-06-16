@@ -38,13 +38,14 @@ export const UMBRAL_FACTURA_B_DEFAULT = 68305.16
 const r2 = (n: number): number => parseFloat(n.toFixed(2))
 
 // ── Auto-detección del tipo de comprobante ──────────────────────────────────────
-// Emisor Monotributista → SIEMPRE C. Emisor RI: receptor RI → A (discrimina IVA),
-// resto (CF/Mono/Exento) → B (IVA incluido).
+// Regla AFIP: Emisor Monotributista o Exento → SIEMPRE C (no discrimina IVA ni genera
+// crédito fiscal, sin importar el receptor). Emisor RI: receptor RI → A (discrimina IVA),
+// resto (Consumidor Final / Monotributista / Exento) → B (IVA incluido en el precio).
 export function detectarTipoComprobante(
   emisorCondIva?: string | null,
   receptorCondIva?: string | null,
 ): TipoComprobante {
-  if (emisorCondIva === 'Monotributista') return 'C'
+  if (emisorCondIva === 'Monotributista' || emisorCondIva === 'Exento') return 'C'
   if (receptorCondIva === 'RI') return 'A'
   return 'B'
 }

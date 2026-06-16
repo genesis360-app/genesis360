@@ -1,13 +1,14 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import QRCode from 'qrcode'
-import { buildQrAfipUrl, esComprobanteSinIVA } from '@/lib/facturacionLogic'
+import { buildQrAfipUrl, esComprobanteSinIVA, TIPO_CBTE } from '@/lib/facturacionLogic'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
 export interface FacturaPDFData {
   // Comprobante
-  tipo_comprobante: string        // 'A' | 'B' | 'C'
+  clase?: 'factura' | 'nota_credito'  // default 'factura'. Cambia título, COD y QR a NC.
+  tipo_comprobante: string        // 'A' | 'B' | 'C' (la letra; para NC también acepta 'NC-B')
   numero_comprobante: number      // ej: 1
   punto_venta: number             // ej: 1
   fecha: string                   // ISO date
@@ -58,12 +59,7 @@ export interface FacturaPDFData {
 }
 
 // ─── Mapeo tipo comprobante → número AFIP ────────────────────────────────────
-
-const TIPO_CMP_AFIP: Record<string, number> = {
-  A: 1,
-  B: 6,
-  C: 11,
-}
+// (TIPO_CBTE vive en facturacionLogic e incluye A/B/C + NC-A/B/C + ND-A/B/C.)
 
 const COND_IVA_LABEL: Record<string, string> = {
   responsable_inscripto: 'Responsable Inscripto',
@@ -87,12 +83,17 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   const W = 210
   const COL = W / 2  // 105mm — divisor A/B
 
+  // ── Clase de comprobante (factura vs nota de crédito) ────────────────────────
+  const esNC = data.clase === 'nota_credito'
+  const letra = data.tipo_comprobante.replace(/^N[CD]-/, '')  // 'NC-B' → 'B'
+  const cbteKey = esNC ? `NC-${letra}` : letra                // clave para TIPO_CBTE / QR
+
   // ── QR ──────────────────────────────────────────────────────────────────────
   const qrUrl = buildQrAfipUrl({
     fecha:             data.fecha,
     emisorCuit:        data.emisor_cuit,
     puntoVenta:        data.punto_venta,
-    tipoComprobante:   data.tipo_comprobante,
+    tipoComprobante:   cbteKey,
     numeroComprobante: data.numero_comprobante,
     importe:           data.total,
     cae:               data.cae,
@@ -121,10 +122,10 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   doc.setDrawColor(0).setLineWidth(0.5)
   doc.rect(boxX, boxY, boxW, boxH)
   doc.setFontSize(26).setFont('helvetica', 'bold').setTextColor(0)
-  doc.text(data.tipo_comprobante, boxX + boxW / 2, boxY + 13, { align: 'center' })
+  doc.text(letra, boxX + boxW / 2, boxY + 13, { align: 'center' })
   doc.setFontSize(8).setFont('helvetica', 'normal').setTextColor(80)
   doc.text('COD.', boxX + boxW / 2, boxY + 18.5, { align: 'center' })
-  const cod = String(TIPO_CMP_AFIP[data.tipo_comprobante] ?? 6).padStart(2, '0')
+  const cod = String(TIPO_CBTE[cbteKey] ?? 6).padStart(2, '0')
   doc.setFontSize(9).setTextColor(0)
   doc.text(cod, boxX + boxW / 2, boxY + 22.5, { align: 'center' })
 
@@ -153,11 +154,11 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   // Alineado al margen derecho (no pegado al recuadro central del tipo de comprobante).
   const RX = W - 14
   doc.setFontSize(10).setFont('helvetica', 'bold').setTextColor(0)
-  doc.text(`FACTURA`, RX, 15, { align: 'right' })
+  doc.text(esNC ? 'NOTA DE CRÉDITO' : 'FACTURA', RX, 15, { align: 'right' })
   doc.setFontSize(9).setFont('helvetica', 'normal').setTextColor(80)
   const pvStr = String(data.punto_venta).padStart(4, '0')
   const ncStr = String(data.numero_comprobante).padStart(8, '0')
-  doc.text(`N° ${data.tipo_comprobante}-${pvStr}-${ncStr}`, RX, 21, { align: 'right' })
+  doc.text(`N° ${letra}-${pvStr}-${ncStr}`, RX, 21, { align: 'right' })
   doc.text(`Fecha: ${formatFecha(data.fecha)}`, RX, 27, { align: 'right' })
   doc.text(`Moneda: ${data.moneda === 'USD' ? 'Dólares' : 'Pesos Argentinos'}`, RX, 32, { align: 'right' })
   if (data.forma_pago) doc.text(`Forma de pago: ${data.forma_pago}`, RX, 37, { align: 'right' })
@@ -188,7 +189,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   // ── Tabla de ítems ───────────────────────────────────────────────────────────
   // Factura C (Monotributista) NO discrimina IVA → tabla y totales sin columnas de IVA.
   const tableY = ry + 3
-  const sinIVA = esComprobanteSinIVA(data.tipo_comprobante)
+  const sinIVA = esComprobanteSinIVA(cbteKey)
   const ivaGroups: Record<number, number> = {}
   const conCod = data.items.some(i => (i.codigo ?? '').trim().length > 0)
   const codCell = (item: FacturaPDFData['items'][number]) => (conCod ? [item.codigo ?? ''] : [])
@@ -282,7 +283,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   // ── Régimen de Transparencia Fiscal al Consumidor (Ley 27.743) — Factura B ────
   // Obligatorio desde 2025 en comprobantes B a consumidor final: discriminar el IVA
   // contenido + otros impuestos nacionales indirectos.
-  if (data.tipo_comprobante === 'B') {
+  if (letra === 'B') {
     const ivaContenido = Object.values(ivaGroups).reduce((a, b) => a + b, 0)
     doc.setFontSize(7.5).setFont('helvetica', 'bold').setTextColor(90)
     doc.text('Régimen de Transparencia Fiscal al Consumidor (Ley 27.743)', 14, ty)
@@ -347,7 +348,9 @@ function nombreFacturaPDF(data: FacturaPDFData): string {
   const pvPad = String(data.punto_venta).padStart(4, '0')
   const ncPad = String(data.numero_comprobante).padStart(8, '0')
   const cli = sanitizarNombreArchivo(data.receptor_nombre)
-  return `Factura_${data.tipo_comprobante}_${pvPad}-${ncPad}${cli ? '_' + cli : ''}.pdf`
+  const letra = data.tipo_comprobante.replace(/^N[CD]-/, '')
+  const prefijo = data.clase === 'nota_credito' ? 'NotaCredito' : 'Factura'
+  return `${prefijo}_${letra}_${pvPad}-${ncPad}${cli ? '_' + cli : ''}.pdf`
 }
 
 /** Saca tildes/símbolos y limita el largo para usar el nombre del cliente en el filename. */

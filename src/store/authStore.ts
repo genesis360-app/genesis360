@@ -4,7 +4,7 @@ import { supabase, type User, type Tenant, type Sucursal } from '@/lib/supabase'
 // Solo DUEÑO es siempre global — no se puede restringir a una sucursal
 const ROLES_SIEMPRE_GLOBALES = ['DUEÑO']
 // Estos roles son globales por defecto, pero pueden restringirse con puede_ver_todas = false en DB
-const ROLES_GLOBAL_POR_DEFECTO = ['SUPERVISOR', 'SUPER_USUARIO']
+const ROLES_GLOBAL_POR_DEFECTO = ['SUPERVISOR', 'SUPER_USUARIO', 'VIEWER']
 
 interface AuthState {
   user: User | null

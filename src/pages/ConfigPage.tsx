@@ -771,6 +771,18 @@ export default function ConfigPage() {
   // Toggle facturación con auto-guardado y rollback si falla
   const toggleFacturacion = async () => {
     const nuevoValor = !bizFactHabilitada
+    // Guard: no habilitar facturación sin los datos fiscales mínimos GUARDADOS. La condición
+    // IVA del emisor gobierna A/B/C (un Monotributista sin setearla emitiría B en vez de C) y
+    // el CUIT es imprescindible para AFIP. Forzar a completarlos antes evita comprobantes mal tipados.
+    if (nuevoValor) {
+      const faltan: string[] = []
+      if (!(tenant as any)?.condicion_iva_emisor) faltan.push('Condición IVA del emisor')
+      if (!(tenant as any)?.cuit) faltan.push('CUIT')
+      if (faltan.length) {
+        toast.error(`Antes de habilitar la facturación, completá y guardá: ${faltan.join(' y ')} (en "Datos para los comprobantes").`, { duration: 8000 })
+        return
+      }
+    }
     setBizFactHabilitada(nuevoValor)
     const { data, error } = await supabase.from('tenants')
       .update({ facturacion_habilitada: nuevoValor })

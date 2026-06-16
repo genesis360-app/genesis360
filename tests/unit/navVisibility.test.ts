@@ -52,6 +52,23 @@ describe('modo básico oculta los módulos avanzados', () => {
   })
 })
 
+describe('Rol LECTOR (Viewer) — solo operación + reportes, nunca administración', () => {
+  const VIEWER_OK = ['dashboard', 'ventas', 'caja', 'gastos', 'inventario', 'movimientos', 'clientes', 'alertas', 'reportes']
+  const VIEWER_NUNCA = ['usuarios', 'configuracion', 'sucursales', 'facturacion', 'proveedores', 'rrhh', 'recursos', 'biblioteca', 'envios', 'recepciones']
+
+  it('en avanzado ve operación + reportes (incl. historial) y nada de administración', () => {
+    const v = visibles(base({ rol: 'VIEWER', modoAvanzado: true }))
+    for (const m of [...VIEWER_OK, 'historial']) expect(v, `Lector debería ver ${m}`).toContain(m)
+    for (const m of VIEWER_NUNCA) expect(v, `Lector NO debería ver ${m}`).not.toContain(m)
+  })
+
+  it('en básico no asoma ningún módulo de WMS (historial es avanzadoOnly)', () => {
+    const v = visibles(base({ rol: 'VIEWER', modoAvanzado: false }))
+    expect(v).not.toContain('historial')
+    for (const m of ['dashboard', 'ventas', 'caja', 'clientes', 'reportes']) expect(v).toContain(m)
+  })
+})
+
 describe('Facturación y Sucursales condicionales en básico', () => {
   it('Facturación oculta en básico salvo facturación habilitada', () => {
     expect(visibles(base({ modoAvanzado: false, facturacionHabilitada: false }))).not.toContain('facturacion')

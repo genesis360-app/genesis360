@@ -32,6 +32,11 @@ describe('detectarTipoComprobante', () => {
   it('FAC-TIPO-06 emisor sin dato → B (default seguro)', () => {
     expect(detectarTipoComprobante(undefined, 'CF')).toBe('B')
   })
+  it('FAC-TIPO-07 emisor Exento → C (sin importar receptor, igual que Monotributista)', () => {
+    expect(detectarTipoComprobante('Exento', 'RI')).toBe('C')
+    expect(detectarTipoComprobante('Exento', 'CF')).toBe('C')
+    expect(detectarTipoComprobante('Exento', undefined)).toBe('C')
+  })
 })
 
 // ── 2. Desglose de IVA por alícuota ─────────────────────────────────────────────

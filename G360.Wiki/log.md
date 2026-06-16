@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-16] deploy | v1.72.0 EN PROD — NC fiscal PDF + rol Lector + roles custom Pro + fixes fiscales · `dev→main` (mig 214)
+
+**v1.72.0 a DEV+PROD (Vercel), mig 214 DEV+PROD, release latest.** Continuación del click-through de GO sobre Kiosko (básico con AFIP) + features pedidas:
+
+- **NC fiscal — Descargar/Imprimir/Email.** El ticket "NC INTERNA · NO FISCAL" no es el documento legal; el legal es la NC electrónica (CAE). El badge verde `NC-B #N` ahora tiene 3 acciones. `facturasPDF.ts` parametrizado con `clase:'nota_credito'` (título "NOTA DE CRÉDITO", COD/QR con código AFIP de NC vía `TIPO_CBTE`); builder `buildNCPDFDataPorDevolucion` (datos en `devoluciones.nc_*`). Reusa send-email `factura_emitida`.
+- **Rol fijo LECTOR (Viewer)** — solo-lectura, todos los planes; ve operación + reportes, nunca administración. Enforcement rol-aware en `permisosModulo.ts` + allowlist en `navVisibility.ts`. **Mig 214** amplía `users.rol` CHECK. Cierra el hueco vs. el set SaaS estándar (Owner/Admin/Member/**Viewer**/Billing).
+- **Roles personalizados → modo avanzado (Pro+)**; en básico, card con candado + CTA.
+- **🔴 Fix NC tipo (AFIP 10040)**: la letra de la NC se deriva de la factura original y queda fija (Factura C→NC-C). Antes defaulteaba NC-B → rebotaba contra una Factura C.
+- **🔴 Fix sucursal en reingreso** (Devolver/Anular): líneas + `movimientos_stock` heredan `sucursal_id` de la venta (antes NULL → solo visibles en "Todas") + **backfill** de 8 líneas viejas en DEV.
+- **Fix auto-A/B/C**: emisor **Exento** → C (antes solo Monotributista).
+- **3 guards fiscales (sugerencias GO):** (1) no habilitar facturación sin `condicion_iva_emisor` + `cuit` guardados; (2) Factura B ≥ `umbral_factura_b` (~$68.305) a consumidor final exige DNI o CUIT del cliente (bloquea emisión); (3) cliente nuevo defaultea a Consumidor Final.
+- **Fix ESC** del ticket de devolución/NC interna (`devComprobante`) — no entraba al stack de `useModalKeyboard`.
+
+typecheck + suite unit **739/739** + build verdes. **Issue documentado #10:** arquitectura de sucursales en modo básico (recomendación: sucursal default oculta) + consolidación de líneas de reingreso (pendiente). **Sin cambios en la EF** (`emitir-factura`).
+
 ## [2026-06-15] close | Cierre de sesión — PRD=DEV=v1.71.0
 
 Sesión muy larga (v1.66→v1.71, todo a PROD, sin migraciones nuevas — migs 001-213). Arco: **(a) UX** — ActionMenu en Proveedores+Inventario (v1.66), scrollbar tabs + Alertas mode-aware + layout RRHH + guardado Config consolidado (v1.67). **(b) Auditoría modo básico** — 4 bugs de stock NULL-ubicación/estado (ProductosPage "0 disponible", rebaje masivo, devolución bloqueada, despacho snapshot) (v1.68) + plan `tests/specs/auditoria-basico.plan.md` + e2e 22/23. **(c) Auditoría de costuras** — anular venta no restauraba stock + cobranza CC efectivo sin caja perdía el pago (v1.69). **(d) Click-through interactivo de GO sobre Kiosko Buildi** (básico con AFIP): NC electrónica reparada (EF `+cae` v1.70, `+CbtesAsoc` v1.71 — **nunca había funcionado**), ESC cierra el modal visible, anular-con-CAE bloqueado/oculto, devolución/masivo sin UI WMS en básico, drag-scroll de tabs (`useDragScroll`). EF redeployada DEV+PROD via CLI. Suite unit **734/734** estable. **Próxima sesión:** GO sigue el click-through; ver bloque "▶ CIERRE DE SESIÓN" en `project_pendientes.md`. Memorias nuevas/actualizadas: [[project_afip_produccion]] (NC), [[reference_cobranza_efectivo_exige_caja]], [[reference_basico_stock_null_ubicacion_estado]] (auditoría).

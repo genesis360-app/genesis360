@@ -5,8 +5,17 @@
 
 export type RolUsuario =
   | 'DUEÑO' | 'SUPER_USUARIO' | 'ADMIN' | 'SUPERVISOR'
-  | 'CAJERO' | 'CONTADOR' | 'DEPOSITO' | 'RRHH'
+  | 'CAJERO' | 'CONTADOR' | 'DEPOSITO' | 'RRHH' | 'VIEWER'
   | string | null | undefined
+
+// Lector (Viewer): rol pasivo de solo-lectura. Ve operación + reportes para supervisar,
+// nunca administración de la cuenta (usuarios/config/sucursales/facturación/proveedores/
+// RRHH) ni flujos con mutación pesada no protegidos (envíos/recepciones). El bloqueo de
+// edición lo garantiza `permisosModulo.ts` (es solo-lectura en TODOS los módulos).
+const VIEWER_MODULOS = new Set([
+  'dashboard', 'ventas', 'caja', 'gastos', 'inventario', 'movimientos',
+  'clientes', 'alertas', 'historial', 'reportes',
+])
 
 export type PermisoModulo = 'no_ver' | 'ver' | 'editar'
 
@@ -52,6 +61,10 @@ export function navItemVisible(item: NavItemFlags, ctx: NavVisibilityCtx): boole
 
   // Portal del empleado
   if (item.portalEmpleado && !ctx.rrhhPortalEmpleado) return false
+
+  // Lector (Viewer): allowlist fija de módulos operativos + reportes (ver constante arriba).
+  // Va después de los gates de modo (avanzadoOnly) para que en básico no asomen items de WMS.
+  if (rol === 'VIEWER') return VIEWER_MODULOS.has(item.modulo)
 
   // Roles operativos: solo ven items marcados explícitamente para ellos
   if (rol === 'RRHH' && !item.rrhhVisible) return false

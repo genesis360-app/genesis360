@@ -38,3 +38,16 @@ describe('puedeEditarModulo', () => {
     expect(puedeEditarModulo({ permisos_custom: { ventas: 'no_ver' } }, 'ventas')).toBe(false)
   })
 })
+
+describe('rol LECTOR (VIEWER) — solo lectura en TODOS los módulos', () => {
+  const lector = { rol: 'VIEWER' as const }
+  it('solo-lectura en cualquier módulo (sin importar permisos_custom)', () => {
+    for (const m of ['ventas', 'caja', 'inventario', 'productos', 'gastos', 'clientes']) {
+      expect(moduloSoloLectura(lector, m)).toBe(true)
+      expect(puedeEditarModulo(lector, m)).toBe(false)
+    }
+  })
+  it('no oculta módulos por sí solo (la visibilidad la maneja navVisibility)', () => {
+    expect(moduloOculto(lector, 'ventas')).toBe(false)
+  })
+})

@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-16] deploy | v1.74.1 EN PROD — Fix alerta fantasma "sin categoría" en básico (badge vs página) · `dev→main` (sin migración)
+
+**v1.74.1 a DEV+PROD, sin migración, release latest.** Dos reportes de GO sobre Kiosko (básico):
+- **Badge de Alertas mostraba "1" pero la página vacía.** El badge (`useAlertas`) cuenta *productos sin categoría* tenant-wide; `AlertasPage` los scopeaba por sucursal con `ubicaciones!inner(sucursal_id)` → en básico (sin ubicaciones, `ubicacion_id` NULL) el INNER join borra TODO el stock → la página nunca mostraba el producto (SKU TEST sin categoría). **Fix mode-aware:** básico filtra por `inventario_lineas.sucursal_id` directo; avanzado mantiene el join a ubicaciones. Otra instancia de la clase [[reference_basico_stock_null_ubicacion_estado]]. Ver [[reference_alertas_badge_mode_aware]].
+- **Productos mostraba "11 disponible / 12 total".** NO era bug de código: 1 línea de devolución (#16) tenía `sucursal_id` NULL (la venta original no tenía sucursal, pre-v1.73.0/Opción B) → quedaba fuera del "disponible" filtrado por sucursal pero sí en el total (stock_actual global). Reconciliada en DEV (backfill a la única sucursal). El caso ya no se reproduce: v1.73.0 fija la sucursal en básico, así que los reingresos nuevos heredan sucursal no-NULL.
+
+typecheck + suite unit **739/739** + build verdes. **Docs de feature actualizadas:** `wiki/features/caja.md` (auditoría efectivo↔caja v1.74.0) + `wiki/features/devoluciones.md` (NC electrónica ✅ + PDF + egreso robusto).
+
 ## [2026-06-16] deploy | v1.74.0 EN PROD — Auditoría efectivo↔caja: el efectivo de devolución/venta siempre se asienta · `dev→main` (sin migración)
 
 **v1.74.0 a DEV+PROD (Vercel), sin migración, release latest.** Disparado por un bug que reportó GO: en la **devolución en efectivo de la venta #26 (Kiosco)** se reembolsaban $2.000 pero **no se registraba el egreso en caja** (quedaba el +2.000 de la venta sin la salida).

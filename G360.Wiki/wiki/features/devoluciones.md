@@ -3,7 +3,7 @@ title: Devoluciones
 category: features
 tags: [devoluciones, stock, nota-credito, caja, serializado]
 sources: [CLAUDE.md]
-updated: 2026-05-29
+updated: 2026-06-16
 ---
 
 # Devoluciones
@@ -57,13 +57,13 @@ No aplica a items serializados — esos siempre reactivan a su línea original (
 
 ### Nota de Crédito
 
-- Si origen = `facturada` → `numero_nc = "NC-{venta.numero}-{n}"` (n = count previas + 1)
+- Si origen = `facturada` → `numero_nc = "NC-{venta.numero}-{n}"` (n = count previas + 1) — esto es el **ticket interno NO fiscal** (comprobante de ajuste).
 - Si origen = `despachada` → sin NC
-- NC electrónica con AFIP: **pendiente** (requiere extensión del módulo)
+- **NC electrónica AFIP: ✅ desde v1.71.0** (Devolver → botón "Emitir NC" en el detalle → CAE; no hay NC manual). **PDF / imprimir / email de la NC fiscal desde v1.72.0** — ESO es lo que se le entrega legalmente al cliente, NO el ticket interno. La **letra de la NC se deriva de la factura original y queda fija** (Factura C→NC-C; antes defaulteaba a NC-B y rebotaba con AFIP 10040). Datos en `devoluciones.nc_*`; PDF vía `facturasPDF.ts` con `clase:'nota_credito'`. Ver [[project_afip_produccion]].
 
 ### Caja
 
-- Efectivo en `medio_pago` de la devolución → INSERT `egreso` en `caja_movimientos`
+- Efectivo en `medio_pago` de la devolución → INSERT `egreso` en `caja_movimientos`. **v1.74.0:** el insert se **aguarda** + fallback a la **única caja abierta** + aviso si falla (antes era fire-and-forget y un fallo perdía el egreso en silencio — bug venta #26). Ver [[caja]] (auditoría efectivo↔caja).
 - Otro medio → `egreso_informativo`
 - Bloquea si no hay sesión de caja abierta y el medio es efectivo
 
@@ -114,16 +114,9 @@ Si cualquier operación falla después del INSERT del header `devoluciones`:
 
 ---
 
-## Notas de Crédito electrónicas (pendiente)
+## Notas de Crédito electrónicas (✅ implementado)
 
-Para ventas facturadas con AFIP, la devolución requiere NC electrónica.  
-Pendiente extender la tabla `devoluciones`:
-```sql
-nc_cae TEXT
-nc_vencimiento_cae DATE
-nc_numero_comprobante TEXT
-factura_vinculada_id FK ventas(id)
-```
+Para ventas facturadas con AFIP, la devolución habilita la NC electrónica. **Tabla `devoluciones` ya extendida (mig 088):** `nc_cae`, `nc_vencimiento_cae`, `nc_numero_comprobante`, `nc_tipo` (`NC-A/B/C`), `nc_punto_venta`. Flujo: Devolver → "Emitir NC" → EF `emitir-factura` (esNC, con `CbtesAsoc` a la factura original) → CAE. **PDF/imprimir/email desde v1.72.0.** Detalle en [[project_afip_produccion]].
 
 ---
 

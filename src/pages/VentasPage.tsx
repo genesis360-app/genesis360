@@ -3287,53 +3287,80 @@ export default function VentasPage() {
             producto_id: item.producto_id, sucursal_id: (devolucionVenta as any).sucursal_id ?? null,
           })
         } else {
-          // No serializado: crear nueva inventario_lineas.
-          // A7: si devDestinoStock === 'vendible', la línea va al stock disponible (sin ubicación
-          // específica, el operador la mueve después). Si no, va a la ubicación DEV para revisión.
-          const lineaPayload: any = {
-            tenant_id: tenant.id,
-            producto_id: item.producto_id,
-            cantidad: cantDev,
-            // El stock devuelto vuelve a la sucursal de la venta (sin esto la línea queda con
-            // sucursal_id NULL y solo se ve en "Todas las sucursales"). Fallback: contexto activo.
-            sucursal_id: (devolucionVenta as any).sucursal_id ?? sucursalId ?? null,
-            notas: `Devolución de venta #${devolucionVenta.numero}${devDestinoStock === 'vendible' ? ' — reintegrado a stock vendible' : ''}`,
-          }
-          if (!modoAvanzado) {
-            // Básico: reingreso directo al stock (sin ubicación ni estado), inmediatamente vendible.
-          } else if (devDestinoStock === 'vendible' && estadoVendibleId) {
-            lineaPayload.estado_id = estadoVendibleId
-            // ubicacion_id queda null → aparece en alerta "Inventario sin ubicación"
-          } else {
-            lineaPayload.ubicacion_id = ubicDevId
-            lineaPayload.estado_id = estadoDevId
-          }
-          const { data: linea, error: lineaErr } = await supabase.from('inventario_lineas').insert(lineaPayload).select().single()
-          if (lineaErr) throw lineaErr
-          // Movimiento de ingreso
+          // No serializado. El stock devuelto vuelve a la sucursal de la venta (sin esto la línea
+          // queda con sucursal_id NULL y solo se ve en "Todas"). Fallback: contexto activo.
+          const sucReingreso = (devolucionVenta as any).sucursal_id ?? sucursalId ?? null
           const { data: prodData } = await supabase.from('productos').select('stock_actual').eq('id', item.producto_id).single()
-          if (prodData) {
-            await supabase.from('movimientos_stock').insert({
+          const stockAntes = prodData?.stock_actual ?? 0
+
+          // Issue #10b — BÁSICO: consolidar en la línea de stock existente del producto (misma
+          // sucursal, sin ubicación/estado/lote/series) en vez de crear una línea por devolución
+          // (evita la proliferación "unidad por unidad"). AVANZADO: cada línea es un LPN → nueva.
+          let lineaExistente: any = null
+          if (!modoAvanzado && sucReingreso) {
+            const { data } = await supabase.from('inventario_lineas')
+              .select('id, cantidad, lpn')
+              .eq('tenant_id', tenant.id).eq('producto_id', item.producto_id).eq('activo', true)
+              .eq('sucursal_id', sucReingreso)
+              .is('ubicacion_id', null).is('estado_id', null).is('nro_lote', null)
+              .order('created_at').limit(1).maybeSingle()
+            lineaExistente = data
+          }
+
+          let lineaId: string
+          let lineaLpn: string | null = null
+          if (lineaExistente) {
+            // Sumar a la línea existente. El trigger recalcula stock SOLO en INSERT → bump manual.
+            await supabase.from('inventario_lineas')
+              .update({ cantidad: lineaExistente.cantidad + cantDev }).eq('id', lineaExistente.id)
+            await supabase.from('productos').update({ stock_actual: stockAntes + cantDev }).eq('id', item.producto_id)
+            lineaId = lineaExistente.id
+            lineaLpn = lineaExistente.lpn
+          } else {
+            // A7: si devDestinoStock === 'vendible', va al stock disponible (sin ubicación); si no,
+            // a la ubicación DEV de revisión. En básico, reingreso directo (sin ubicación/estado).
+            const lineaPayload: any = {
               tenant_id: tenant.id,
               producto_id: item.producto_id,
-              tipo: 'ingreso',
               cantidad: cantDev,
-              stock_antes: prodData.stock_actual,
-              stock_despues: prodData.stock_actual + cantDev,
-              motivo: `Devolución venta #${devolucionVenta.numero}`,
-              usuario_id: user?.id,
-              linea_id: linea.id,
-              venta_id: devolucionVenta.id,
-              sucursal_id: (devolucionVenta as any).sucursal_id ?? sucursalId ?? null,
-            })
+              sucursal_id: sucReingreso,
+              notas: `Devolución de venta #${devolucionVenta.numero}${devDestinoStock === 'vendible' ? ' — reintegrado a stock vendible' : ''}`,
+            }
+            if (!modoAvanzado) {
+              // Básico: reingreso directo al stock (sin ubicación ni estado), inmediatamente vendible.
+            } else if (devDestinoStock === 'vendible' && estadoVendibleId) {
+              lineaPayload.estado_id = estadoVendibleId
+            } else {
+              lineaPayload.ubicacion_id = ubicDevId
+              lineaPayload.estado_id = estadoDevId
+            }
+            const { data: linea, error: lineaErr } = await supabase.from('inventario_lineas').insert(lineaPayload).select().single()
+            if (lineaErr) throw lineaErr
+            lineaId = linea.id
+            lineaLpn = linea.lpn
           }
-          // Insertar devolucion_item con referencia a la nueva linea
+
+          // Movimiento de ingreso (auditoría intacta, apunta a la línea destino)
+          await supabase.from('movimientos_stock').insert({
+            tenant_id: tenant.id,
+            producto_id: item.producto_id,
+            tipo: 'ingreso',
+            cantidad: cantDev,
+            stock_antes: stockAntes,
+            stock_despues: stockAntes + cantDev,
+            motivo: `Devolución venta #${devolucionVenta.numero}`,
+            usuario_id: user?.id,
+            linea_id: lineaId,
+            venta_id: devolucionVenta.id,
+            sucursal_id: sucReingreso,
+          })
+          // Insertar devolucion_item con referencia a la linea destino (nueva o consolidada)
           await supabase.from('devolucion_items').insert({
             devolucion_id: dev.id,
             producto_id: item.producto_id,
             cantidad: cantDev,
             precio_unitario: item.precio_unitario,
-            inventario_linea_nueva_id: linea.id,
+            inventario_linea_nueva_id: lineaId,
           })
           logActividad({
             entidad: 'venta', entidad_id: devolucionVenta.id, entidad_nombre: `Venta #${devolucionVenta.numero ?? ''}`,
@@ -3341,7 +3368,7 @@ export default function VentasPage() {
             valor_anterior: item.nombre,
             valor_nuevo: `${cantDev} u${numero_nc ? ` · ${numero_nc}` : ''}${devDestinoStock === 'vendible' ? ' · reintegrado vendible' : ' · a revisión'}`,
             pagina: '/ventas', transaccion_id: txDev, tipo_transaccion: 'devolucion',
-            producto_id: item.producto_id, lpn: linea.lpn ?? null, sucursal_id: (devolucionVenta as any).sucursal_id ?? null,
+            producto_id: item.producto_id, lpn: lineaLpn ?? null, sucursal_id: sucReingreso,
           })
         }
       }
@@ -3774,23 +3801,49 @@ export default function VentasPage() {
                 if (lineaIds.length > 0) await supabase.from('inventario_lineas').update({ activo: true }).in('id', lineaIds)
               }
             } else {
-              // Crear nueva línea con la cantidad despachada (el trigger recalcula stock_actual).
-              const lineaPayload: any = {
-                tenant_id: tenant!.id, producto_id: item.producto_id, cantidad: cantItem,
-                // Reingreso a la sucursal de la venta (evita líneas con sucursal_id NULL que solo
-                // se ven en "Todas las sucursales"). Fallback: contexto activo.
-                sucursal_id: (venta as any).sucursal_id ?? sucursalId ?? null,
-                notas: `Anulación de venta #${venta.numero}`,
+              // Reingreso a la sucursal de la venta (evita líneas con sucursal_id NULL que solo
+              // se ven en "Todas las sucursales"). Fallback: contexto activo.
+              const sucReingreso = (venta as any).sucursal_id ?? sucursalId ?? null
+              const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', item.producto_id).single()
+              const stockAntes = prodAntes?.stock_actual ?? 0
+
+              // Issue #10b — BÁSICO: consolidar en la línea existente del producto (misma sucursal,
+              // sin ubicación/estado/lote) en vez de crear una nueva por anulación.
+              let lineaExistente: any = null
+              if (!modoAvanzado && sucReingreso) {
+                const { data } = await supabase.from('inventario_lineas')
+                  .select('id, cantidad')
+                  .eq('tenant_id', tenant!.id).eq('producto_id', item.producto_id).eq('activo', true)
+                  .eq('sucursal_id', sucReingreso)
+                  .is('ubicacion_id', null).is('estado_id', null).is('nro_lote', null)
+                  .order('created_at').limit(1).maybeSingle()
+                lineaExistente = data
               }
-              if (modoAvanzado && estadoVendibleId) lineaPayload.estado_id = estadoVendibleId
-              const { data: linea } = await supabase.from('inventario_lineas').insert(lineaPayload).select('id').single()
-              const { data: prodData } = await supabase.from('productos').select('stock_actual').eq('id', item.producto_id).single()
-              if (linea && prodData) {
+
+              let lineaId: string | undefined
+              if (lineaExistente) {
+                // El trigger recalcula stock SOLO en INSERT → bump manual al sumar a una línea.
+                await supabase.from('inventario_lineas')
+                  .update({ cantidad: lineaExistente.cantidad + cantItem }).eq('id', lineaExistente.id)
+                await supabase.from('productos').update({ stock_actual: stockAntes + cantItem }).eq('id', item.producto_id)
+                lineaId = lineaExistente.id
+              } else {
+                // Nueva línea (el trigger recalcula stock_actual en el INSERT).
+                const lineaPayload: any = {
+                  tenant_id: tenant!.id, producto_id: item.producto_id, cantidad: cantItem,
+                  sucursal_id: sucReingreso,
+                  notas: `Anulación de venta #${venta.numero}`,
+                }
+                if (modoAvanzado && estadoVendibleId) lineaPayload.estado_id = estadoVendibleId
+                const { data: linea } = await supabase.from('inventario_lineas').insert(lineaPayload).select('id').single()
+                lineaId = linea?.id
+              }
+              if (lineaId) {
                 await supabase.from('movimientos_stock').insert({
                   tenant_id: tenant!.id, producto_id: item.producto_id, tipo: 'ingreso', cantidad: cantItem,
-                  stock_antes: (prodData.stock_actual ?? 0) - cantItem, stock_despues: prodData.stock_actual ?? 0,
-                  motivo: `Anulación venta #${venta.numero}`, usuario_id: user?.id, linea_id: linea.id, venta_id: ventaId,
-                  sucursal_id: (venta as any).sucursal_id ?? sucursalId ?? null,
+                  stock_antes: stockAntes, stock_despues: stockAntes + cantItem,
+                  motivo: `Anulación venta #${venta.numero}`, usuario_id: user?.id, linea_id: lineaId, venta_id: ventaId,
+                  sucursal_id: sucReingreso,
                 })
               }
             }

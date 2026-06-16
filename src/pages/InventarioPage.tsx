@@ -4133,9 +4133,15 @@ export default function InventarioPage() {
                                       )}
                                     </div>
                                     ) : (
-                                      <span className="text-xs text-gray-600 dark:text-gray-400">
-                                        {l.created_at ? new Date(l.created_at).toLocaleDateString('es-AR') : '—'}
-                                      </span>
+                                      <div>
+                                        <span className="text-xs text-gray-600 dark:text-gray-400">
+                                          {l.created_at ? new Date(l.created_at).toLocaleDateString('es-AR') : '—'}
+                                        </span>
+                                        {/* Issue #10: origen del ingreso (devolución/anulación lo guardan en notas) */}
+                                        {l.notas && (
+                                          <p className="text-[11px] text-gray-400 dark:text-gray-500 truncate" title={l.notas}>{l.notas}</p>
+                                        )}
+                                      </div>
                                     )}
                                     {modoAvanzado && l.parent_lpn_id && (
                                       <p className="text-xs text-purple-500 dark:text-purple-400">↳ {l.parent_lpn_id}</p>

@@ -16,8 +16,8 @@ import toast from 'react-hot-toast'
 type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO' | 'VIEWER'
 const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = {
   DUEÑO:      { label: 'Dueño',         desc: 'Acceso completo',                    color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' },
-  SUPER_USUARIO: { label: 'Super Usuario', desc: 'Administración técnica y configuración', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' },
-  SUPERVISOR: { label: 'Supervisor',    desc: 'Inventario y movimientos',           color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'        },
+  SUPER_USUARIO: { label: 'Super Usuario', desc: 'Admin técnica y configuración (avanzado)', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400' },
+  SUPERVISOR: { label: 'Supervisor',    desc: 'Encargado: operación, inventario y reportes', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'        },
   CAJERO:     { label: 'Cajero',        desc: 'Solo ventas y caja',                 color: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'     },
   RRHH:       { label: 'RRHH',          desc: 'Gestión de empleados',               color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'     },
   CONTADOR:   { label: 'Contador',      desc: 'Dashboard, gastos y reportes',       color: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-700 dark:text-cyan-400'         },
@@ -375,7 +375,9 @@ export default function UsuariosPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rol</label>
             <div className="grid grid-cols-3 gap-2">
               {(Object.entries(ROLES) as [UserRole, any][])
-                .filter(([r]) => r !== 'DUEÑO')
+                // Dueño no se asigna por invitación. SUPER_USUARIO (admin técnico) se reserva al
+                // modo avanzado: una PyME en básico no necesita dos roles "administrador".
+                .filter(([r]) => r !== 'DUEÑO' && (modoAvanzado || r !== 'SUPER_USUARIO'))
                 .map(([rol, cfg]) => (
                   <button key={rol} type="button" onClick={() => setInvRol(rol)}
                     className={`px-3 py-2.5 rounded-xl border-2 text-left transition-all

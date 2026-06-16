@@ -1,0 +1,21 @@
+name: Sweeps periódicos (intereses CC + reservas vencidas)
+
+on:
+  schedule:
+    # Todos los días a las 6:10 AM UTC (3:10 AM Argentina) — antes del horario comercial
+    - cron: '10 6 * * *'
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  sweeps:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call cron-sweeps Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/cron-sweeps" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

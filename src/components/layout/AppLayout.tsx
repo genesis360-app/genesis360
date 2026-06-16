@@ -204,6 +204,11 @@ export function AppLayout() {
   const RUTAS_SOLO_SUCURSAL = ['/ventas', '/gastos', '/caja', '/recepciones', '/alertas']
   const enRutaSoloSucursal = RUTAS_SOLO_SUCURSAL.some(r => pathname.startsWith(r))
 
+  // Issue #10 — Modo básico con UNA sola sucursal = "sucursal default oculta": se fija como
+  // contexto activo (nunca "Todas"/null) y se oculta el selector. Sin esto, un DUEÑO podía
+  // quedar en "Todas" y el stock reingresado (devolución/anulación) "desaparecía" de la vista.
+  const sucursalUnicaBasico = !modoAvanzado && sucursales.length === 1
+
   // Auto-seleccionar la primera sucursal si nunca se configuró preferencia
   useEffect(() => {
     const saved = localStorage.getItem('sucursal-id')
@@ -218,6 +223,13 @@ export function AppLayout() {
       setSucursal(sucursales[0].id)
     }
   }, [pathname, sucursalId, sucursales.length, puedeVerTodas])
+
+  // Básico 1 sucursal: pinear esa sucursal (incluye salir de "Todas" si el DUEÑO la había elegido).
+  useEffect(() => {
+    if (sucursalUnicaBasico && puedeVerTodas && sucursalId !== sucursales[0].id) {
+      setSucursal(sucursales[0].id)
+    }
+  }, [sucursalUnicaBasico, puedeVerTodas, sucursalId, sucursales])
 
   // Abrir walkthrough la primera vez
   useEffect(() => {
@@ -398,7 +410,8 @@ export function AppLayout() {
           <div className="flex items-center gap-0.5">
 
             {/* Sucursal — visible en todas las rutas excepto /sucursales y /usuarios */}
-            {sucursales.length > 0 && (() => {
+            {/* Issue #10: en básico con una sola sucursal el selector se oculta (todo cae en la default). */}
+            {sucursales.length > 0 && !sucursalUnicaBasico && (() => {
               // ISS-102: clientes y proveedores son globales — ocultar selector de sucursal
               const RUTAS_SIN_SELECTOR  = ['/sucursales', '/usuarios', '/clientes', '/proveedores']
               // ISS-102: /clientes y /proveedores son globales — no filtran por sucursal

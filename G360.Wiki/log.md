@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-16] deploy | v1.73.0 EN PROD — issue #10 sucursales básico + roles + #7 cron sweeps + #10b consolidación · `dev→main` (mig 215 + EF cron-sweeps)
+
+**v1.73.0 a DEV+PROD (Vercel), mig 215 DEV+PROD, EF nueva `cron-sweeps` DEV+PROD, workflow `sweeps.yml`, release latest.** Batch acumulado tras v1.72.0:
+
+- **Issue #10 — sucursal default oculta (Opción B):** en básico con 1 sucursal, `AppLayout` fija esa sucursal como contexto (effect de pin que saca al DUEÑO de "Todas") y **oculta el selector** (`sucursalUnicaBasico`). Resuelve el bug "el stock devuelto solo se ve en Todas". + **origen del ingreso** en el Inventario básico (cada línea muestra `inventario_lineas.notas`).
+- **#10b — consolidar líneas de reingreso en básico:** Devolver/Anular suman a la línea de stock existente del producto (misma sucursal, sin ubicación/estado/lote) en vez de crear una por unidad. El trigger de stock solo recalcula en INSERT → el merge hace bump manual de `stock_actual` (espeja la rama de series). Avanzado sin cambios (un LPN por línea).
+- **#7 — cron sweeps externos:** mig 215 = `liberar_reservas_vencidas_all()` + `recalcular_intereses_cc_all()` (SECURITY DEFINER, solo service_role; el de intereses replica la lógica per-tenant de mig 172 porque la original exige `auth.uid()`). EF `cron-sweeps` (service_role, espeja `birthday-notifications`) + workflow `sweeps.yml` (diario 06:10 UTC, llama la EF con ANON_KEY). Cubre intereses CC + reservas vencidas; **servicios recurrentes quedan asistidos** (generan gastos). Validado en DEV.
+- **Roles:** invitación en básico ya no ofrece Super Usuario (admin técnico → avanzado); descripciones aclaradas (Supervisor = "Encargado").
+
+typecheck + suite unit **739/739** + build verdes. **Sin cambios en `emitir-factura`.** pg_cron sigue NO habilitado → el cron es externo (GH Actions), patrón consistente con birthday.
+
 ## [2026-06-16] deploy | v1.72.0 EN PROD — NC fiscal PDF + rol Lector + roles custom Pro + fixes fiscales · `dev→main` (mig 214)
 
 **v1.72.0 a DEV+PROD (Vercel), mig 214 DEV+PROD, release latest.** Continuación del click-through de GO sobre Kiosko (básico con AFIP) + features pedidas:

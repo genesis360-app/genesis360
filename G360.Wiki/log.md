@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-16] deploy | v1.76.0 EN PROD — 🧪 Auditoría UAT modo básico: 7 bugfixes de plata/stock · `dev→main` PR #220 (SIN migración)
+
+**v1.76.0 a DEV+PROD (Vercel), sin migración, release latest, PR #220.** GO pidió un **archivo de pruebas tipo UAT** exhaustivo del modo básico (happy + borde + excepción, "qué pasa si el usuario hace X") porque en auditorías previas se escaparon bugs (devolución/NC). Se construyó `tests/specs/uat-modo-basico.md` (~300 escenarios, toda la superficie del básico incl. AFIP) y se **auditó por código** (capa A).
+
+- **Lo previamente roto (devolución/NC) quedó confirmado OK** — los fixes v1.70-v1.74 están presentes.
+- **7 bugs nuevos encontrados y reparados:**
+  - **DEV-07** 🔴 re-devolución sin tope (cap = vendido en vez de vendido − ya_devuelto) → reingreso/reembolso de más. Fix UI + guard server-side.
+  - **DEV-04** 🔴 devolución vs deuda CC (regla GO): con deuda → reduce deuda FIFO sin efectivo; sin deuda → efectivo/medio/**crédito a favor**. Banner + opción crédito + guards.
+  - **GAS-01/05** 🔴 egreso de gasto efectivo fire-and-forget + silencioso sin caja → awaited + toast + aviso (clase bug #26).
+  - **VEN-22** ⚠️ `savingRef` anti doble-submit en `registrarVenta`.
+  - **CONTADOR** ⚠️ `contadorVisible` en Facturación (el rol no la veía).
+  - **PRES-08** 🔴 convertir presupuesto/reserva → despachada (`cambiarEstado`) no re-validaba stock → pre/post-check (espejo del POS).
+  - **CAJ-18** 🔴 no caja negativa: gasto/devolución efectivo > saldo se bloquea. Lib `cajaSaldo.ts` (puro + async) + 7 unit tests.
+- typecheck + **746 unit** + build verdes. Sin migración → sin tocar Supabase/EFs.
+- **El UAT tiene los resultados de auditoría (pases 1 y 2)** y queda como guion para la próxima pasada (capa C click-through + auditar §25-28). Memorias actualizadas: [[reference_cobranza_efectivo_exige_caja]] (gasto + devolución + caja negativa), [[project_auditoria_primer_cliente]], nueva [[reference_uat_modo_basico]].
+
 ## [2026-06-16] deploy | v1.75.0 EN PROD — 🔒 RLS por sucursal a nivel servidor (#8 cerrado) · `dev→main` PR #219 (migs 216-217-218)
 
 **v1.75.0 a DEV+PROD, migs 216-217-218 DEV+PROD, release latest, PR #219.** Cierra la deuda técnica #8: hasta v1.74.1 la RLS filtraba **solo por `tenant_id`** y el aislamiento por sucursal era 100% client-side → un usuario con credenciales podía leer otra sucursal del mismo tenant por API directa. Ahora **23 tablas** filtran por sucursal en la DB.

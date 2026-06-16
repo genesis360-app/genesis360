@@ -29,6 +29,25 @@ Disponible para ventas en estado `despachada` o `facturada`.
 
 ---
 
+## Reglas de devolución (v1.76.0 — auditoría UAT básico)
+
+### Tope de cantidad (DEV-07)
+No se puede devolver más de lo que queda: el cap es **`vendido − ya_devuelto`** por producto (no la cantidad vendida total). En el modal (`abrir`) se calcula el remanente a partir de las devoluciones previas de esa venta; si ya se devolvió todo → "nada para devolver". Hay además un **guard server-side** en `procesarDevolucion` que re-chequea contra `devolucion_items` previos (defensa ante UI desactualizada).
+
+### Devolución vs. deuda CC del cliente (DEV-04)
+Regla GO: **a un cliente con deuda no se le da efectivo.**
+- Cliente **con deuda CC** → la devolución se **aplica a reducir la deuda** (FIFO sobre sus ventas CC pendientes, sin movimiento de caja). Un banner avisa "se aplicarán $X a la deuda". Si la devolución supera la deuda, el **excedente** se devuelve por el medio elegido.
+- Cliente **sin deuda** → se devuelve por efectivo / otro medio / **crédito a favor** (a elección). "Crédito a favor" genera un saldo en `cliente_creditos` (origen `devolucion`) y exige cliente.
+
+### Efectivo y caja
+- El egreso de efectivo de la devolución va **`await`eado + toast si falla** + fallback a la única caja abierta (bug #26, v1.74.0).
+- **No se permite caja en negativo (CAJ-18, v1.76.0):** si el efectivo a devolver supera el saldo de la sesión, se bloquea ("hacé un ingreso a la caja o devolvé por otro medio/crédito a favor"). Helper `src/lib/cajaSaldo.ts`.
+
+### Modo básico
+El reingreso es **directo** (sin ubicación/estado — `ubicacion_id`/`estado_id` NULL) y **consolida** en la línea de stock existente del producto. La ubicación/estado `es_devolucion` solo se exige en modo avanzado.
+
+---
+
 ## Flujo de devolución
 
 **Puntos de entrada:** historial de Ventas (botón Devolver) y, desde v1.52.0, el módulo **Envíos** — un envío en estado `devolucion` muestra el CTA "Registrar devolución de la venta" que abre este flujo pre-apuntado (`/ventas?id=<venta>&devolver=1`). Ver [[wiki/features/envios]].

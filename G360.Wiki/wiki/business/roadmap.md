@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.76.0 — 🧪 Auditoría UAT modo básico: 7 bugfixes de plata/stock (PROD ✅, sin migración)
+
+UAT exhaustivo de modo básico (`tests/specs/uat-modo-basico.md`, ~300 escenarios) + auditoría por código → 7 fixes: DEV-07 (tope re-devolución), DEV-04 (devolución vs deuda CC / crédito a favor), GAS-01/05 (egreso efectivo robusto), VEN-22 (anti doble-submit), CONTADOR (ve Facturación), PRES-08 (convert re-valida stock), CAJ-18 (no caja negativa, lib `cajaSaldo.ts`). Sin migración.
+
 ## v1.75.0 — 🔒 RLS por sucursal a nivel servidor (PROD ✅, migs 216-217-218)
 
 Cierra la deuda técnica #8. El aislamiento por sucursal pasa del cliente al servidor: 23 tablas filtran por sucursal en la DB (antes solo `tenant_id` + blindaje client-side). Helpers `auth_ve_todas_sucursales()`/`auth_user_sucursal()` que espejan `authStore.puedeVerTodas`. Tablas globales/config/finanzas y las que cruzan sucursales por diseño se dejan tenant-only. Sin cambios de frontend. Ver [[wiki/features/multi-sucursal]].

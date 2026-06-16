@@ -21,6 +21,10 @@ La caja es el registro de efectivo físico del negocio. Es obligatoria para regi
 > **"Sin caja abierta = sin negocio"**
 > No se puede registrar ninguna venta (despachada o reservada) ni gasto en efectivo si no hay sesión de caja abierta.
 
+### Integridad del efectivo (no caja negativa) — CAJ-18 (v1.76.0)
+
+Todo egreso de efectivo (gasto, devolución, traspaso) se **bloquea si supera el saldo** de la sesión → la caja nunca queda en negativo. El saldo se calcula con `src/lib/cajaSaldo.ts` (`calcularSaldoEfectivo` puro + `saldoEfectivoSesion`), considerando solo los tipos que mueven efectivo real (`ingreso`/`ingreso_reserva`/`ingreso_traspaso` − `egreso`/`egreso_devolucion_sena`/`egreso_traspaso`). Caja **no tiene egreso manual**: los egresos entran por Gastos / traspaso / devolución (el traspaso ya validaba saldo desde antes). Además, todo asiento de efectivo va **`await`eado + toast si falla** (clase bug #26, v1.74.0/v1.76.0) — nunca se pierde del arqueo en silencio.
+
 ---
 
 ## Ciclo de una sesión de caja

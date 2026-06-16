@@ -4,18 +4,17 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-## ▶ CIERRE DE SESIÓN 2026-06-15 — dónde retomar
+## ▶ CIERRE DE SESIÓN 2026-06-16 — dónde retomar
 
 **Estado:** **PRD = DEV = v1.74.0**, migs 001–215, EF `emitir-factura` + `cron-sweeps`. Sesión 2026-06-15/16: v1.66→v1.71 (UX + auditoría básico + costuras + click-through GO), **v1.72.0** (NC fiscal PDF · rol Lector · roles custom→Pro · fix sucursal reingreso · fix NC tipo · auto-A/B/C Exento · 3 guards fiscales), **v1.73.0** (issue #10 sucursal default oculta + #10b consolidar reingreso · roles · #7 cron sweeps) y **v1.74.0** (🔴 **auditoría efectivo↔caja**: el egreso de devolución en efectivo no se asentaba — fix + se auditaron despacho/reserva/saldo/cancelación: todo asiento de efectivo ahora es awaited + fallback a caja única + aviso si falla).
 
 **Plan de auditoría modo básico:** `tests/specs/auditoria-basico.plan.md`. Costuras gasto→caja y servicio-recurrente→gasto: OK. e2e mutantes 19-23 (venta/caja/facturación/devolución/ingreso).
 
 **Pendientes / próxima sesión:**
-- **GO retesteando** en Kiosko: NC de #21 (Devolver→Emitir NC, debería traer CAE), anular oculto en facturadas, drag de tabs. Seguir el click-through de los demás módulos.
-- **Venta #20 de Kiosko** (cancelada con CAE de homologación): reconciliación fiscal OPCIONAL — GO dijo dejarla (es test, sin peso fiscal; el fix v1.71.0 ya impide el caso). Si la quiere cerrar: revertir estado a 'facturada' → Devolver → Emitir NC-C.
-- **Reconciliaciones de Kiosko ya hechas por GO:** pago efectivo huérfano $2.000 (Armando Barreras) asentado a mano en caja. ✅
-- **Backlog sin tocar (igual que antes):** AFIP **producción real** (operativo de GO: cert prod + token prod + toggle — ver [[project_afip_produccion]]) · #8 RLS por sucursal (0 exposición hoy) · EN6 couriers (bloqueado B2B) · comprobantes percepciones+USD (sale-time, contra caso real) · pase de performance DB (646 lints).
-- **✅ Cerrados en v1.73.0:** #7 cron sweeps externos (EF `cron-sweeps` + workflow `sweeps.yml` diario) · #10 sucursales en básico (Opción B: sucursal default oculta) + #10b consolidación de líneas de reingreso.
+- **🟠 #8 RLS por sucursal — el próximo a retomar** (GO: "lo dejamos para más adelante, en breve lo continuamos"). Aislamiento hoy solo client-side; 0 exposición real (1 tenant/cliente, mayoría 1 sucursal). Pros/cons relevados con GO: aislamiento real a nivel DB pero riesgo de romper accesos legítimos + tablas globales (clientes/proveedores) + datos legacy NULL + perf. Hacerlo tabla por tabla con tests, respetando `puede_ver_todas` y las globales.
+- **GO retesteando en PROD (v1.74.0):** devolución/venta en efectivo → que el egreso/ingreso aparezca en caja (bug #26 arreglado); NC fiscal PDF/imprimir/email; rol Lector; en básico el selector de sucursal oculto + Super Usuario no aparece en invitar.
+- **Backlog sin tocar:** AFIP **producción real** (operativo de GO: cert prod + token prod + toggle — ver [[project_afip_produccion]]) · EN6 couriers (bloqueado B2B) · comprobantes percepciones+USD (sale-time, contra caso real) · pase de performance DB (646 lints) · consolidación de líneas también en ingresos manuales (hoy solo reingresos) · básico con >1 sucursal mantiene selector (edge raro).
+- **✅ Cerrados esta sesión:** v1.72 (NC fiscal PDF + rol Lector + roles custom→Pro + fix NC tipo AFIP 10040 + A/B/C Exento + 3 guards fiscales) · v1.73 (#10 sucursal default oculta + #10b consolidar reingreso + #7 cron sweeps + roles) · v1.74 (auditoría efectivo↔caja).
 
 ### ✅ EN PROD: v1.74.0 (2026-06-16, sin migración, release latest) — Auditoría efectivo↔caja: el efectivo de devolución/venta siempre se asienta
 

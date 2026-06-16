@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
+import { saldoEfectivoSesion } from '@/lib/cajaSaldo'
 import { puedeRegistrarPagoOC, requiereDobleFirmaPago } from '@/lib/comprasPermisos'
 import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule } from '@/lib/comprasPago'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -1204,15 +1205,29 @@ export default function GastosPage() {
           }
         }
       } else {
+        // CAJ-18 — no permitir un egreso de efectivo que deje la caja en negativo.
+        const efectivoGasto = mediosValidos.filter(mp => mp.tipo === 'Efectivo').reduce((a, mp) => a + parseFloat(mp.monto), 0)
+        const sesionParaEgreso = sesionCajaId ?? sesionesOperativas[0]?.id
+        if (efectivoGasto > 0.5 && sesionParaEgreso) {
+          const saldo = await saldoEfectivoSesion(supabase, sesionParaEgreso)
+          if (efectivoGasto > saldo + 0.001)
+            throw new Error(`No hay suficiente efectivo en caja ($${Math.round(saldo).toLocaleString('es-AR')}) para pagar $${Math.round(efectivoGasto).toLocaleString('es-AR')} en efectivo. Hacé un ingreso a la caja o pagá por otro medio.`)
+        }
         const { data: inserted, error } = await supabase.from('gastos').insert(payload).select('id').single()
         if (error) throw error
         gastoId = inserted.id
         toast.success('Gasto registrado')
         logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
 
-        // ISS-084: Registrar en caja — un movimiento por cada medio de pago
+        // ISS-084: Registrar en caja — un movimiento por cada medio de pago.
+        // El egreso de EFECTIVO se aguarda y se avisa si falla (antes era fire-and-forget:
+        // un fallo o la falta de caja perdían el egreso del arqueo en silencio — bug clase #26).
         const sesionUsar = sesionCajaId ?? sesionesOperativas[0]?.id
         const esFuerte = cajaSeleccionadaId === '__fuerte__'
+        const hayEfectivoGasto = mediosValidos.some(mp => mp.tipo === 'Efectivo' && parseFloat(mp.monto) > 0)
+        if (!sesionUsar && hayEfectivoGasto) {
+          toast(`⚠ Sin caja abierta: el egreso en efectivo de "${form.descripcion.trim()}" no se asentó en caja. Abrí una caja o registralo manualmente.`, { icon: '⚠', duration: 10000 })
+        }
         if (sesionUsar && mediosValidos.length > 0) {
           const concepto = `Gasto: ${form.descripcion.trim()}`
           for (const mp of mediosValidos) {
@@ -1220,14 +1235,18 @@ export default function GastosPage() {
             const esEfectivo = mp.tipo === 'Efectivo'
             // Caja fuerte: egreso_traspaso (visible en historial de caja fuerte)
             const tipo = esFuerte && esEfectivo ? 'egreso_traspaso' : esEfectivo ? 'egreso' : 'egreso_informativo'
-            supabase.from('caja_movimientos').insert({
+            const { error: cajErr } = await supabase.from('caja_movimientos').insert({
               tenant_id: tenant!.id, sesion_id: sesionUsar,
               tipo,
               concepto: esEfectivo ? concepto : `[${mp.tipo}] ${concepto}`,
               monto: montoMp,
               cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
               usuario_id: user?.id,
-            }).then(({ error }) => { if (error) console.error('caja_movimientos gasto:', error.message) })
+            })
+            if (cajErr) {
+              console.error('caja_movimientos gasto:', cajErr.message)
+              if (esEfectivo) toast.error(`El gasto se registró, pero el egreso de $${montoMp.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se asentó en caja. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
+            }
           }
           qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
         }
@@ -1520,21 +1539,30 @@ export default function GastosPage() {
         const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, generarFile, { upsert: true })
         if (!upErr) await supabase.from('gastos').update({ comprobante_url: path }).eq('id', inserted.id)
       }
-      // Registrar en caja — prioriza: selección explícita > sesión propia > única disponible
+      // Registrar en caja — prioriza: selección explícita > sesión propia > única disponible.
+      // Egreso de efectivo awaited + aviso si falla / si no hay caja (clase bug #26).
       const sesionUsarFijo = cajaGenerarFijoId
         ?? sesionPropia?.id
         ?? (sesionesOperativas.length === 1 ? sesionesOperativas[0].id : null)
+      const hayEfectivoFijo = mediosValGen.some(mp => mp.tipo === 'Efectivo' && parseFloat(mp.monto) > 0)
+      if (!sesionUsarFijo && hayEfectivoFijo) {
+        toast(`⚠ Sin caja abierta: el egreso en efectivo de "${f.descripcion}" no se asentó en caja. Abrí una caja o registralo manualmente.`, { icon: '⚠', duration: 10000 })
+      }
       if (sesionUsarFijo && mediosValGen.length > 0) {
         for (const mp of mediosValGen) {
           const esEfectivo = mp.tipo === 'Efectivo'
-          supabase.from('caja_movimientos').insert({
+          const { error: cajErr } = await supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id, sesion_id: sesionUsarFijo,
             tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
             concepto: esEfectivo ? `Gasto: ${f.descripcion}` : `[${mp.tipo}] Gasto: ${f.descripcion}`,
             monto: parseFloat(mp.monto),
             cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(mp.tipo),
             usuario_id: user?.id,
-          }).then(({ error: cajErr }) => { if (cajErr) console.error('caja fijo:', cajErr.message) })
+          })
+          if (cajErr) {
+            console.error('caja fijo:', cajErr.message)
+            if (esEfectivo) toast.error(`El gasto se registró, pero el egreso de $${parseFloat(mp.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se asentó en caja. Registralo manualmente. (${cajErr.message})`, { duration: 12000 })
+          }
         }
         qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
         qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })

@@ -8,6 +8,7 @@ import { reproducirSonidoCobro } from '@/lib/sonidoCobro'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
 import { evaluarLimiteCC, evaluarMorosidad } from '@/lib/ccLogic'
+import { saldoEfectivoSesion } from '@/lib/cajaSaldo'
 import { notificarRegistroDeudaCC, notificarPagoCC } from '@/lib/notificacionesCC'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
@@ -331,6 +332,9 @@ export default function VentasPage() {
   const [envioRangoHorarioIdx, setEnvioRangoHorarioIdx] = useState<string>('')
   const [calculandoDistancia, setCalculandoDistancia] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Guard SÍNCRONO anti doble-submit (el `disabled={saving}` depende del re-render y
+  // setSaving ocurre tras awaits → un doble-click/Enter+click rápido podía duplicar la venta).
+  const savingRef = useRef(false)
   const [ticketVenta, setTicketVenta] = useState<any | null>(null)
   // H2 — enviar ticket por email
   const [emailTicketOpen, setEmailTicketOpen] = useState(false)
@@ -409,6 +413,9 @@ export default function VentasPage() {
   const [devSaving, setDevSaving] = useState(false)
   const [devComprobante, setDevComprobante] = useState<any | null>(null)
   const [devolucionesOpen, setDevolucionesOpen] = useState(false)
+  // DEV-04 — deuda CC del cliente al abrir la devolución. Si tiene deuda, la devolución
+  // se aplica a reducirla (no se le da efectivo); solo el excedente se devuelve por otro medio.
+  const [devDeudaCliente, setDevDeudaCliente] = useState(0)
 
   // MP link de pago
   const [mpLinkModal, setMpLinkModal] = useState<{ ventaId: string; monto: number; initPoint: string; qrDataUrl: string } | null>(null)
@@ -2304,6 +2311,7 @@ export default function VentasPage() {
   const montoCredito = mediosPago.filter(m => m.tipo === 'Crédito a favor').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
+    if (savingRef.current) return   // reentrada (doble-click/Enter+click) — ya hay una venta en curso
     if (esContador) { toast.error('El CONTADOR tiene acceso de solo lectura en Ventas.'); return }
     if (moduloSoloLectura(user, 'ventas')) { toast.error('Tu rol tiene acceso de solo lectura en Ventas.'); return }
     // A2 — durante un conteo wall-to-wall bloqueante no se puede mover stock (reserva/despacho).
@@ -2462,6 +2470,7 @@ export default function VentasPage() {
     // Caja para los asientos: la elegida, o la única abierta (con varias el guard ya exigió elegir).
     // Sin este fallback, vender/reservar con UNA caja sin selección explícita perdía el efectivo en silencio.
     const sesionCaja = sesionCajaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
+    savingRef.current = true
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     let ventaIdCreada: string | null = null
@@ -2903,6 +2912,7 @@ export default function VentasPage() {
       }
       toast.error(err.message ?? 'Error al registrar la venta')
     } finally {
+      savingRef.current = false
       setSaving(false)
     }
   }
@@ -3038,21 +3048,53 @@ export default function VentasPage() {
     // VF5/H1 — edición/quita de ítems post-cobro: requiere autorización SUPERVISOR/DUEÑO.
     // Roles autorizados pasan directo; el resto (CAJERO, etc.) necesita la clave maestra
     // de un DUEÑO/SUPERVISOR para autorizar (si no hay clave configurada, se bloquea).
-    const abrir = () => {
-      const items = (venta.venta_items ?? []).map((item: any) => ({
-        venta_item_id: item.id,
-        producto_id: item.producto_id,
-        nombre: item.productos?.nombre ?? '',
-        cantidad_original: item.cantidad,
-        precio_unitario: item.precio_unitario,
-        tiene_series: (item.productos?.tiene_series ?? false),
-        venta_series: (item.venta_series ?? []).map((vs: any) => ({
-          serie_id: vs.serie_id,
-          nro_serie: vs.inventario_series?.nro_serie ?? '',
-        })),
-        cantidad_devolver: item.tiene_series ? 0 : item.cantidad,
-        series_seleccionadas: [],
-      }))
+    const abrir = async () => {
+      // DEV-07: no permitir devolver más de lo que queda (vendido − ya devuelto en
+      // devoluciones previas de esta venta). Sin esto se podía re-devolver hasta el
+      // total vendido en cada devolución parcial → reingreso/reembolso de más.
+      const { data: prevItems } = await supabase
+        .from('devolucion_items')
+        .select('producto_id, cantidad, devoluciones!inner(venta_id)')
+        .eq('devoluciones.venta_id', venta.id)
+      const yaDevByProd: Record<string, number> = {}
+      for (const di of (prevItems ?? []) as any[]) yaDevByProd[di.producto_id] = (yaDevByProd[di.producto_id] ?? 0) + Number(di.cantidad)
+      // Pool de unidades aún devolvibles por producto (se va consumiendo al repartir entre líneas)
+      const restanteByProd: Record<string, number> = {}
+      for (const it of (venta.venta_items ?? []) as any[]) restanteByProd[it.producto_id] = (restanteByProd[it.producto_id] ?? 0) + Number(it.cantidad)
+      for (const pid of Object.keys(restanteByProd)) restanteByProd[pid] = Math.max(0, restanteByProd[pid] - (yaDevByProd[pid] ?? 0))
+
+      const items = (venta.venta_items ?? []).map((item: any) => {
+        const esSerie = (item.productos?.tiene_series ?? false)
+        // Para no-series: capar al remanente del producto (repartido entre líneas).
+        const restanteProd = restanteByProd[item.producto_id] ?? 0
+        const maxLinea = esSerie ? item.cantidad : Math.min(item.cantidad, restanteProd)
+        if (!esSerie) restanteByProd[item.producto_id] = Math.max(0, restanteProd - maxLinea)
+        return {
+          venta_item_id: item.id,
+          producto_id: item.producto_id,
+          nombre: item.productos?.nombre ?? '',
+          cantidad_original: maxLinea,
+          precio_unitario: item.precio_unitario,
+          tiene_series: esSerie,
+          venta_series: (item.venta_series ?? []).map((vs: any) => ({
+            serie_id: vs.serie_id,
+            nro_serie: vs.inventario_series?.nro_serie ?? '',
+          })),
+          cantidad_devolver: esSerie ? 0 : maxLinea,
+          series_seleccionadas: [],
+        }
+      })
+      if (items.every((i: any) => i.tiene_series ? false : i.cantidad_original <= 0) && !items.some((i: any) => i.tiene_series)) {
+        toast.error('Esta venta ya fue devuelta por completo. No queda nada para devolver.')
+        return
+      }
+      // DEV-04 — deuda CC del cliente: si tiene, la devolución se aplicará a reducirla.
+      let deuda = 0
+      if (venta.cliente_id) {
+        const { data: ccData } = await supabase.rpc('cliente_cc_estado', { p_cliente: venta.cliente_id })
+        deuda = Number((ccData?.[0] as any)?.deuda_total ?? 0)
+      }
+      setDevDeudaCliente(deuda)
       setDevItems(items)
       setDevMotivo('')
       setDevMediosPago([{ tipo: '', monto: '' }])
@@ -3061,7 +3103,7 @@ export default function VentasPage() {
       setDevolucionVenta(venta)
     }
     const rolesAutorizan = ['DUEÑO', 'SUPERVISOR', 'ADMIN', 'SUPER_USUARIO']
-    if (rolesAutorizan.includes(user?.rol ?? '')) { abrir(); return }
+    if (rolesAutorizan.includes(user?.rol ?? '')) { void abrir(); return }
     if (!claveMaestraConfigurada) {
       toast.error('Solo DUEÑO/SUPERVISOR/ADMIN pueden devolver o editar una venta cobrada. Configurá una clave maestra para autorizar a otros roles.')
       return
@@ -3156,6 +3198,32 @@ export default function VentasPage() {
       return
     }
 
+    // DEV-07 (defensa server-side ante UI desactualizada): re-chequear que lo pedido no
+    // supere lo que queda por devolver (vendido − ya devuelto) por producto en esta venta.
+    {
+      const { data: prevItems } = await supabase
+        .from('devolucion_items')
+        .select('producto_id, cantidad, devoluciones!inner(venta_id)')
+        .eq('devoluciones.venta_id', devolucionVenta.id)
+      const yaDev: Record<string, number> = {}
+      for (const di of (prevItems ?? []) as any[]) yaDev[di.producto_id] = (yaDev[di.producto_id] ?? 0) + Number(di.cantidad)
+      const vendido: Record<string, number> = {}
+      for (const it of (devolucionVenta.venta_items ?? []) as any[]) vendido[it.producto_id] = (vendido[it.producto_id] ?? 0) + Number(it.cantidad)
+      const pedido: Record<string, number> = {}
+      for (const it of itemsADevolver) {
+        const c = it.tiene_series ? it.series_seleccionadas.length : it.cantidad_devolver
+        pedido[it.producto_id] = (pedido[it.producto_id] ?? 0) + c
+      }
+      for (const pid of Object.keys(pedido)) {
+        const restante = (vendido[pid] ?? 0) - (yaDev[pid] ?? 0)
+        if (pedido[pid] > restante + 0.001) {
+          const nombre = itemsADevolver.find(i => i.producto_id === pid)?.nombre ?? 'un producto'
+          toast.error(`No se puede devolver ${pedido[pid]} de "${nombre}": solo quedan ${Math.max(0, restante)} por devolver (ya se devolvieron ${yaDev[pid] ?? 0} de ${vendido[pid] ?? 0}).`)
+          return
+        }
+      }
+    }
+
     // Ubicación + estado de devolución. En AVANZADO la mercadería devuelta va a una
     // ubicación/estado "es_devolucion" (flujo WMS de revisión) que el tenant debe tener
     // configurados. En BÁSICO el stock no usa ubicaciones/estados → se reingresa directo
@@ -3201,13 +3269,35 @@ export default function VentasPage() {
       return acc + i.precio_unitario * cant
     }, 0)
 
-    // Validar medio de pago si hay monto
+    // DEV-04 — si el cliente tiene deuda, la devolución se aplica primero a REDUCIRLA (no se
+    // le da efectivo por esa parte). Solo el excedente (montoARefundir) se devuelve por el
+    // medio elegido (efectivo / otro / crédito a favor). Se re-consulta la deuda server-side.
+    const fmt0 = (n: number) => '$' + Math.round(n).toLocaleString('es-AR')
+    let deudaActual = 0
+    if (devolucionVenta.cliente_id) {
+      const { data: ccDev } = await supabase.rpc('cliente_cc_estado', { p_cliente: devolucionVenta.cliente_id })
+      deudaActual = Number((ccDev?.[0] as any)?.deuda_total ?? 0)
+    }
+    const aplicarADeuda = deudaActual > 0 ? Math.min(montoTotal, deudaActual) : 0
+    const montoARefundir = Math.max(0, montoTotal - aplicarADeuda)
+
+    // Validar medio de pago: deben cubrir el EXCEDENTE (no el total cuando hay deuda).
     const mediosValidos = devMediosPago.filter(m => m.tipo && parseFloat(m.monto) > 0)
     const totalMedios = mediosValidos.reduce((a, m) => a + parseFloat(m.monto), 0)
     const hayEfectivo = mediosValidos.some(m => m.tipo === 'Efectivo')
 
-    if (montoTotal > 0 && Math.abs(totalMedios - montoTotal) > 0.5) {
-      toast.error(`Los medios de devolución ($${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}) no cubren el total ($${montoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })})`)
+    if (aplicarADeuda > 0 && montoARefundir <= 0.5 && totalMedios > 0.5) {
+      toast.error(`Este cliente tiene deuda de ${fmt0(deudaActual)}: la devolución de ${fmt0(montoTotal)} se aplica completa a su deuda. No corresponde devolución monetaria — quitá los medios.`)
+      return
+    }
+    if (montoARefundir > 0.5 && Math.abs(totalMedios - montoARefundir) > 0.5) {
+      toast.error(aplicarADeuda > 0
+        ? `Se aplican ${fmt0(aplicarADeuda)} a la deuda del cliente. El resto a devolver es ${fmt0(montoARefundir)}, pero los medios suman ${fmt0(totalMedios)}.`
+        : `Los medios de devolución (${fmt0(totalMedios)}) no cubren el total (${fmt0(montoTotal)})`)
+      return
+    }
+    if (mediosValidos.some(m => m.tipo === 'Crédito a favor') && !devolucionVenta.cliente_id) {
+      toast.error('Para dejar el monto como crédito a favor, la venta debe tener un cliente asociado.')
       return
     }
     if (hayEfectivo) {
@@ -3221,6 +3311,16 @@ export default function VentasPage() {
       if (sesionesAbiertas.length > 1 && !devCajaSesionId) {
         toast.error('Hay varias cajas abiertas. Seleccioná en cuál registrar el egreso.')
         return
+      }
+      // CAJ-18 — no permitir egreso que deje la caja en negativo.
+      const cajaEg = devCajaSesionId || sesionCajaId || (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
+      const efectivoADevolver = mediosValidos.filter(m => m.tipo === 'Efectivo').reduce((a, m) => a + parseFloat(m.monto), 0)
+      if (cajaEg && efectivoADevolver > 0.5) {
+        const saldo = await saldoEfectivoSesion(supabase, cajaEg)
+        if (efectivoADevolver > saldo + 0.001) {
+          toast.error(`No hay suficiente efectivo en caja (${fmt0(saldo)}) para devolver ${fmt0(efectivoADevolver)}. Hacé un ingreso a la caja o devolvé por otro medio / crédito a favor.`, { duration: 10000 })
+          return
+        }
       }
     }
 
@@ -3406,6 +3506,46 @@ export default function VentasPage() {
         }
       }
 
+      // DEV-04 — aplicar el monto a la DEUDA CC del cliente (FIFO sobre sus ventas CC
+      // pendientes, más antiguas primero). Sin movimiento de caja: la mercadería devuelta
+      // compensa el receivable (regla GO: a un cliente con deuda no se le da efectivo).
+      if (aplicarADeuda > 0.5 && devolucionVenta.cliente_id) {
+        const { data: ccVentas } = await supabase.from('ventas')
+          .select('id, total, monto_pagado, created_at')
+          .eq('tenant_id', tenant.id).eq('cliente_id', devolucionVenta.cliente_id)
+          .eq('es_cuenta_corriente', true).in('estado', ['despachada', 'facturada'])
+          .order('created_at', { ascending: true })
+        let restanteDeuda = aplicarADeuda
+        for (const v of (ccVentas ?? [])) {
+          if (restanteDeuda <= 0.5) break
+          const pend = Number(v.total) - Number((v as any).monto_pagado ?? 0)
+          if (pend <= 0.5) continue
+          const aplica = Math.min(pend, restanteDeuda)
+          await supabase.from('ventas').update({ monto_pagado: Number((v as any).monto_pagado ?? 0) + aplica }).eq('id', v.id)
+          restanteDeuda -= aplica
+        }
+        qc.invalidateQueries({ queryKey: ['clientes'] })
+        toast.success(`Se aplicaron ${fmt0(aplicarADeuda - Math.max(0, restanteDeuda))} a la deuda del cliente`)
+      }
+
+      // DEV-04 — "Crédito a favor" como medio de devolución: el excedente queda como saldo a
+      // favor del cliente (cliente_creditos), en vez de salir por caja. Requiere cliente (ya validado).
+      const montoCreditoFavor = mediosValidos
+        .filter(m => m.tipo === 'Crédito a favor')
+        .reduce((a, m) => a + parseFloat(m.monto), 0)
+      if (montoCreditoFavor > 0.5 && devolucionVenta.cliente_id) {
+        await supabase.from('cliente_creditos').insert({
+          tenant_id: tenant.id,
+          cliente_id: devolucionVenta.cliente_id,
+          monto: Math.round(montoCreditoFavor * 100) / 100,
+          origen: 'devolucion',
+          venta_id: devolucionVenta.id,
+          nota: `Crédito por devolución venta #${devolucionVenta.numero}${numero_nc ? ` · ${numero_nc}` : ''}`,
+          usuario_id: user?.id,
+        })
+        qc.invalidateQueries({ queryKey: ['clientes'] })
+      }
+
       // Marcar venta como "devuelta" si el total devuelto cubre el 100% del total
       const { data: todasDev } = await supabase
         .from('devoluciones')
@@ -3490,7 +3630,7 @@ export default function VentasPage() {
       }
 
       const { data: items } = await supabase.from('venta_items')
-        .select('*, venta_series(serie_id), productos(tiene_series, tiene_vencimiento, regla_inventario)')
+        .select('*, venta_series(serie_id), productos(nombre, tiene_series, tiene_vencimiento, regla_inventario)')
         .eq('venta_id', ventaId)
 
       if (nuevoEstado === 'reservada') {
@@ -3524,6 +3664,11 @@ export default function VentasPage() {
               linea.cantidad_reservada = (linea.cantidad_reservada ?? 0) + areservar
               return areservar
             }
+            // PRES-08 — re-validar stock al convertir (el POS directo ya lo hace; este camino
+            // de conversión no lo hacía → se reservaba parcial sin avisar si el stock bajó).
+            const dispReserva = lineas.reduce((s: number, l: any) => s + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+            if (dispReserva < item.cantidad)
+              throw new Error(`Stock insuficiente para reservar "${(item.productos as any)?.nombre ?? 'el producto'}" en esta sucursal. Disponible: ${dispReserva}, necesario: ${item.cantidad}. El stock cambió desde el presupuesto.`)
             let restante = item.cantidad
             // Mig 156 — Fase A: honrar el plan de LPN del carrito (si se eligió manualmente).
             for (const p of ((item.lpn_plan ?? []) as any[])) {
@@ -3535,6 +3680,8 @@ export default function VentasPage() {
               if (restante <= 0) break
               restante -= await reservarEn(linea, restante)
             }
+            if (restante > 0.0001)
+              throw new Error(`Stock insuficiente para reservar "${(item.productos as any)?.nombre ?? 'el producto'}" en esta sucursal.`)
           }
         }
         // Guardar seña si se cobró al reservar
@@ -3649,6 +3796,15 @@ export default function VentasPage() {
               })
               return rebajar
             }
+            // PRES-08 — re-validar stock al convertir/despachar. Si la venta YA estaba reservada,
+            // sus unidades están en `cantidad_reservada` (las retuvo esta venta) → cuentan como
+            // disponibles; si venía de presupuesto ('pendiente') se excluye lo reservado por otros.
+            const esDesdeReserva = venta.estado === 'reservada'
+            const dispDespacho = esDesdeReserva
+              ? lineas.reduce((s: number, l: any) => s + (l.cantidad ?? 0), 0)
+              : lineas.reduce((s: number, l: any) => s + Math.max(0, (l.cantidad ?? 0) - (l.cantidad_reservada ?? 0)), 0)
+            if (dispDespacho < item.cantidad)
+              throw new Error(`Stock insuficiente para despachar "${(item.productos as any)?.nombre ?? 'el producto'}" en esta sucursal. Disponible: ${dispDespacho}, necesario: ${item.cantidad}. El stock cambió desde el presupuesto/reserva.`)
             let restante = item.cantidad
             // Mig 156 — Fase A: honrar el plan de LPN persistido de la reserva (manual/auto).
             for (const p of ((item.lpn_plan ?? []) as any[])) {
@@ -3660,6 +3816,8 @@ export default function VentasPage() {
               if (restante <= 0) break
               restante -= await consumir(linea, restante, 'auto')
             }
+            if (restante > 0.0001)
+              throw new Error(`Stock insuficiente para despachar "${(item.productos as any)?.nombre ?? 'el producto'}" en esta sucursal.`)
           }
           // B1: Registrar movimiento. NO actualizamos stock_actual a mano: el trigger
           // (lineas/series_recalcular_stock) ya lo recalculó tras la rebaja de arriba.
@@ -5858,6 +6016,24 @@ export default function VentasPage() {
                 ) : null
               })()}
 
+              {/* DEV-04 — aviso de aplicación a deuda: si el cliente debe, la devolución reduce
+                  su deuda (no se le da efectivo); solo el excedente se devuelve por otro medio. */}
+              {devDeudaCliente > 0.5 && (() => {
+                const total = devItems.reduce((acc, i) => acc + i.precio_unitario * (i.tiene_series ? i.series_seleccionadas.length : i.cantidad_devolver), 0)
+                if (total <= 0.5) return null
+                const aDeuda = Math.min(total, devDeudaCliente)
+                const resto = Math.max(0, total - aDeuda)
+                return (
+                  <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-lg px-4 py-2.5 text-xs text-blue-800 dark:text-blue-300 space-y-0.5">
+                    <p>El cliente tiene una deuda de <b>${Math.round(devDeudaCliente).toLocaleString('es-AR')}</b>.</p>
+                    <p>Se aplicarán <b>${Math.round(aDeuda).toLocaleString('es-AR')}</b> a reducir su deuda.</p>
+                    {resto > 0.5
+                      ? <p>Resto a devolver por otro medio: <b>${Math.round(resto).toLocaleString('es-AR')}</b>.</p>
+                      : <p>No corresponde devolución monetaria (se aplica todo a la deuda) — dejá los medios vacíos.</p>}
+                  </div>
+                )
+              })()}
+
               {/* Motivo */}
               <div>
                 <label className="block text-sm font-medium text-primary mb-1">Motivo (opcional)</label>
@@ -5937,6 +6113,7 @@ export default function VentasPage() {
                         className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                         <option value="">Sin devolución monetaria</option>
                         {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                        {devolucionVenta?.cliente_id && <option value="Crédito a favor">Crédito a favor (saldo del cliente)</option>}
                       </select>
                       {mp.tipo && (
                         <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}

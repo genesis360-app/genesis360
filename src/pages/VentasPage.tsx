@@ -2459,6 +2459,9 @@ export default function VentasPage() {
     const vuelto = calcularVuelto(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
     // ISS-105: efectivo en caja se calcula contra totalConEnvio (costo de envío incluido)
     const montoEfectivoCaja = calcularEfectivoCaja(mediosPago.filter(m => m.tipo !== 'Cuenta Corriente'), totalConEnvio - montoCC)
+    // Caja para los asientos: la elegida, o la única abierta (con varias el guard ya exigió elegir).
+    // Sin este fallback, vender/reservar con UNA caja sin selección explícita perdía el efectivo en silencio.
+    const sesionCaja = sesionCajaId ?? (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
     setSaving(true)
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     let ventaIdCreada: string | null = null
@@ -2773,18 +2776,20 @@ export default function VentasPage() {
         })
         setClienteCredito(c => Math.max(0, Math.round((c - montoCredito) * 100) / 100))
       }
-      if (estado === 'despachada' && montoEfectivoCaja > 0 && sesionCajaId) {
-        void supabase.from('caja_movimientos').insert({
+      if (estado === 'despachada' && montoEfectivoCaja > 0 && sesionCaja) {
+        const { error: ingErr } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id,
-          sesion_id: sesionCajaId,
+          sesion_id: sesionCaja,
           tipo: 'ingreso',
           concepto: `Venta #${venta.numero}`,
           monto: montoEfectivoCaja,
           usuario_id: user?.id,
-        }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
+        })
+        if (ingErr) toast.error(`La venta se registró, pero el ingreso de $${montoEfectivoCaja.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se asentó en caja. Registralo manualmente. (${ingErr.message})`, { duration: 12000 })
+        else qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
       }
       // Registros informativos para medios no-efectivo — un insert por método (no afectan saldo)
-      const sesionInformativo = sesionCajaId ?? ((sesionesAbiertas as any[])[0]?.id ?? null)
+      const sesionInformativo = sesionCaja
       if (estado === 'despachada' && sesionInformativo) {
         for (const mp of mediosPago) {
           if (!mp.tipo || mp.tipo === 'Efectivo' || mp.tipo === 'Cuenta Corriente' || mp.tipo === 'Crédito a favor' || !mp.tipo.trim()) continue
@@ -2802,26 +2807,28 @@ export default function VentasPage() {
           if (errInfo) console.error('[caja] ingreso_informativo error:', errInfo)
         }
       }
-      // Seña en caja: registrar efectivo cobrado al crear la reserva (fire-and-forget)
-      if (estado === 'reservada' && montoEfectivoCaja > 0 && sesionCajaId) {
-        void supabase.from('caja_movimientos').insert({
+      // Seña en caja: registrar efectivo cobrado al crear la reserva (awaited + aviso si falla)
+      if (estado === 'reservada' && montoEfectivoCaja > 0 && sesionCaja) {
+        const { error: senaErr } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id,
-          sesion_id: sesionCajaId,
+          sesion_id: sesionCaja,
           tipo: 'ingreso_reserva',
           concepto: `Seña Venta #${venta.numero}`,
           monto: montoEfectivoCaja,
           usuario_id: user?.id,
-        }).then(() => qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] }))
+        })
+        if (senaErr) toast.error(`La reserva se creó, pero la seña de $${montoEfectivoCaja.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se asentó en caja. Registrala manualmente. (${senaErr.message})`, { duration: 12000 })
+        else qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
       }
       // Seña no-efectivo: un ingreso_informativo por método (fire-and-forget)
-      if (estado === 'reservada' && sesionCajaId) {
+      if (estado === 'reservada' && sesionCaja) {
         for (const mp of mediosPago) {
           if (!mp.tipo || mp.tipo === 'Efectivo' || mp.tipo === 'Crédito a favor' || !mp.tipo.trim()) continue
           const montoMp = parseFloat(mp.monto) || 0
           if (montoMp <= 0.01) continue
           void supabase.from('caja_movimientos').insert({
             tenant_id: tenant!.id,
-            sesion_id: sesionCajaId,
+            sesion_id: sesionCaja,
             tipo: 'ingreso_informativo',
             concepto: `[${mp.tipo}] Seña Venta #${venta.numero}`,
             monto: montoMp,
@@ -3204,8 +3211,9 @@ export default function VentasPage() {
       return
     }
     if (hayEfectivo) {
-      // L1 — si hay efectivo, debe haber caja elegida (selector explícito o fallback a la activa)
-      const cajaParaEgreso = devCajaSesionId || sesionCajaId
+      // L1 — si hay efectivo, debe haber caja para el egreso. Con UNA sola caja abierta se usa
+      // esa (el modal muestra "→ Caja única"); con varias hace falta elegir explícitamente.
+      const cajaParaEgreso = devCajaSesionId || sesionCajaId || (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
       if (!cajaParaEgreso) {
         toast.error('No hay caja abierta. Abrí una caja antes de devolver en efectivo.')
         return
@@ -3373,13 +3381,16 @@ export default function VentasPage() {
         }
       }
 
-      // 4. Egreso en caja si hay efectivo (L1: usar caja seleccionada explícitamente para el egreso)
-      const cajaParaEgreso = devCajaSesionId || sesionCajaId
+      // 4. Egreso en caja si hay efectivo. Con UNA sola caja abierta se usa esa aunque no haya
+      // selección explícita (consistente con el "→ Caja única" del modal). Se AGUARDA el insert y
+      // se avisa si falla: antes era fire-and-forget y un fallo dejaba el efectivo devuelto sin
+      // asentar en el arqueo, en silencio (bug detectado en la devolución de la venta #26).
+      const cajaParaEgreso = devCajaSesionId || sesionCajaId || (sesionesAbiertas.length === 1 ? (sesionesAbiertas[0] as any).id : null)
       if (hayEfectivo && cajaParaEgreso) {
         const montoEfectivo = mediosValidos
           .filter(m => m.tipo === 'Efectivo')
           .reduce((a, m) => a + parseFloat(m.monto), 0)
-        void supabase.from('caja_movimientos').insert({
+        const { error: egresoErr } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant.id,
           sesion_id: cajaParaEgreso,
           tipo: 'egreso',
@@ -3388,6 +3399,11 @@ export default function VentasPage() {
           cuenta_origen_id: cuentaOrigenDeMetodo('Efectivo'),
           usuario_id: user?.id,
         })
+        if (egresoErr) {
+          toast.error(`La devolución se procesó, pero el egreso de $${montoEfectivo.toLocaleString('es-AR', { maximumFractionDigits: 0 })} NO se registró en la caja. Registralo manualmente. (${egresoErr.message})`, { duration: 12000 })
+        } else {
+          qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
+        }
       }
 
       // Marcar venta como "devuelta" si el total devuelto cubre el 100% del total
@@ -3546,11 +3562,12 @@ export default function VentasPage() {
           if (_sesionId) {
             const efectivoSena = calcularEfectivoCaja(saldoMediosPago, montoPagadoReserva)
             if (efectivoSena > 0) {
-              supabase.from('caja_movimientos').insert({
+              const { error: senaErr } = await supabase.from('caja_movimientos').insert({
                 tenant_id: tenant!.id, sesion_id: _sesionId,
                 tipo: 'ingreso_reserva', monto: efectivoSena,
                 concepto: `Seña Venta #${venta.numero}`, usuario_id: user?.id,
-              }).then(() => null)
+              })
+              if (senaErr) toast.error(`La reserva se creó, pero la seña de $${efectivoSena.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se asentó en caja. Registrala manualmente.`, { duration: 12000 })
             }
             for (const mp of saldoMediosPago) {
               const monto = parseFloat(mp.monto) || 0
@@ -3706,7 +3723,7 @@ export default function VentasPage() {
                 })()
             const efectivoTotal = efectivoSaldo + efectivoOriginal
             if (efectivoTotal > 0) {
-              await supabase.from('caja_movimientos').insert({
+              const { error: ingErr } = await supabase.from('caja_movimientos').insert({
                 tenant_id: tenant!.id,
                 sesion_id: _sesionId,
                 tipo: 'ingreso',
@@ -3714,6 +3731,7 @@ export default function VentasPage() {
                 monto: efectivoTotal,
                 usuario_id: user?.id,
               })
+              if (ingErr) toast.error(`La venta se despachó, pero el efectivo de $${efectivoTotal.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se asentó en caja. Registralo manualmente.`, { duration: 12000 })
             }
             // No-efectivo: un insert por método (saldo cobrado ahora + no-efectivo original de reserva)
             const prevArr: { tipo: string; monto: number }[] = venta.medio_pago ? (() => { try { return JSON.parse(venta.medio_pago) } catch { return [] } })() : []
@@ -3907,7 +3925,7 @@ export default function VentasPage() {
                 const prevArr = venta.medio_pago ? JSON.parse(venta.medio_pago) as { tipo: string; monto: number }[] : []
                 const efectivoCobrado = prevArr.filter(m => m.tipo === 'Efectivo').reduce((s, m) => s + (m.monto ?? 0), 0) * ratio
                 if (efectivoCobrado > 0.01) {
-                  void supabase.from('caja_movimientos').insert({
+                  const { error: refErr } = await supabase.from('caja_movimientos').insert({
                     tenant_id: tenant!.id,
                     sesion_id: cancelSesionId,
                     tipo: 'egreso_devolucion_sena',
@@ -3915,6 +3933,7 @@ export default function VentasPage() {
                     monto: efectivoCobrado,
                     usuario_id: user?.id,
                   })
+                  if (refErr) toast.error(`La cancelación se procesó, pero el reintegro de $${efectivoCobrado.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se asentó en caja. Registralo manualmente.`, { duration: 12000 })
                 }
                 const noCashCancelado = aDevolver - efectivoCobrado
                 if (noCashCancelado > 0.01) {

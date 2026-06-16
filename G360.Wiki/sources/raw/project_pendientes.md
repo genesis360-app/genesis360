@@ -6,7 +6,7 @@ type: project
 
 ## ▶ CIERRE DE SESIÓN 2026-06-15 — dónde retomar
 
-**Estado:** **PRD = DEV = v1.73.0**, migs 001–215, EF `emitir-factura` (con `cae` + `CbtesAsoc`) + **EF nueva `cron-sweeps`** DEV+PROD. Sesión 2026-06-15/16: v1.66→v1.71 (UX + auditoría básico + costuras + click-through GO), **v1.72.0** (NC fiscal PDF · rol Lector · roles custom→Pro · fix sucursal reingreso · fix NC tipo · auto-A/B/C Exento · 3 guards fiscales) y **v1.73.0** (issue #10 sucursal default oculta en básico + origen en inventario · roles SUPER_USUARIO oculto en básico · **#7 cron sweeps externos** · **#10b consolidar líneas de reingreso en básico**).
+**Estado:** **PRD = DEV = v1.74.0**, migs 001–215, EF `emitir-factura` + `cron-sweeps`. Sesión 2026-06-15/16: v1.66→v1.71 (UX + auditoría básico + costuras + click-through GO), **v1.72.0** (NC fiscal PDF · rol Lector · roles custom→Pro · fix sucursal reingreso · fix NC tipo · auto-A/B/C Exento · 3 guards fiscales), **v1.73.0** (issue #10 sucursal default oculta + #10b consolidar reingreso · roles · #7 cron sweeps) y **v1.74.0** (🔴 **auditoría efectivo↔caja**: el egreso de devolución en efectivo no se asentaba — fix + se auditaron despacho/reserva/saldo/cancelación: todo asiento de efectivo ahora es awaited + fallback a caja única + aviso si falla).
 
 **Plan de auditoría modo básico:** `tests/specs/auditoria-basico.plan.md`. Costuras gasto→caja y servicio-recurrente→gasto: OK. e2e mutantes 19-23 (venta/caja/facturación/devolución/ingreso).
 
@@ -16,6 +16,13 @@ type: project
 - **Reconciliaciones de Kiosko ya hechas por GO:** pago efectivo huérfano $2.000 (Armando Barreras) asentado a mano en caja. ✅
 - **Backlog sin tocar (igual que antes):** AFIP **producción real** (operativo de GO: cert prod + token prod + toggle — ver [[project_afip_produccion]]) · #8 RLS por sucursal (0 exposición hoy) · EN6 couriers (bloqueado B2B) · comprobantes percepciones+USD (sale-time, contra caso real) · pase de performance DB (646 lints).
 - **✅ Cerrados en v1.73.0:** #7 cron sweeps externos (EF `cron-sweeps` + workflow `sweeps.yml` diario) · #10 sucursales en básico (Opción B: sucursal default oculta) + #10b consolidación de líneas de reingreso.
+
+### ✅ EN PROD: v1.74.0 (2026-06-16, sin migración, release latest) — Auditoría efectivo↔caja: el efectivo de devolución/venta siempre se asienta
+
+typecheck + suite unit **739** + build verdes.
+- **🔴 Bug raíz (venta #26 Kiosco):** devolución en efectivo $2.000 reembolsada → **no se asentaba el egreso en caja** (la caja quedaba +2.000 sin la salida). Causa: el egreso era `void` (fire-and-forget, sin `await` ni manejo de error) → un fallo se perdía en silencio; y el modal de "Caja única" no seteaba la caja + el egreso no tenía fallback a la única caja abierta. **Reconciliado** el egreso faltante de #26 en DEV.
+- **Fix + auditoría completa de flujos efectivo↔caja en Ventas** (`VentasPage`): despacho (ingreso), reserva (seña), saldo cobrado al despachar, devolución (egreso), cancelación de reserva (reintegro). Patrón unificado: **(1)** resolver caja = elegida ∥ activa ∥ **única abierta** (fallback); **(2)** insert **awaited**; **(3)** si falla, **toast** "se procesó pero el efectivo no se asentó, registralo manual" (nunca más pérdida silenciosa). Los `ingreso_informativo` (no afectan saldo) quedan best-effort.
+- **Ya cubiertos antes (v1.69.0):** cobranza CC efectivo (`cobranzaCC.ts`: gate `requiereCaja` + resolver sesión + awaited) y gasto efectivo→caja. **Pendiente menor:** despacho/reserva *informativo* siguen best-effort (no afectan arqueo).
 
 ### ✅ EN PROD: v1.73.0 (2026-06-16, **mig 215** + EF `cron-sweeps` DEV+PROD, release latest) — issue #10 sucursales básico + roles + #7 cron sweeps + #10b consolidación
 

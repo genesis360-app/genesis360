@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.74.0 — Auditoría efectivo↔caja: el efectivo de devolución/venta siempre se asienta (PROD ✅, sin migración)
+
+Bug raíz (venta #26): devolución en efectivo no asentaba el egreso en caja (egreso `void` que fallaba en silencio + sin fallback a la caja única). Fix + auditoría completa de los flujos de efectivo en Ventas (despacho/reserva/saldo/devolución/cancelación): caja = elegida ∥ activa ∥ única abierta, insert awaited, aviso si falla. Cobranza CC y gastos→caja ya estaban cubiertos (v1.69.0). Suite 739 verde.
+
+---
+
 ## v1.73.0 — Sucursales en básico (Opción B) + roles + cron sweeps + consolidación de reingreso (PROD ✅, mig 215 + EF cron-sweeps)
 
 **Mig 215** (wrappers all-tenants) + **EF `cron-sweeps`** + workflow `sweeps.yml`. (1) **Issue #10 — sucursal default oculta**: en básico con 1 sucursal se fija como contexto y se oculta el selector (fin del bug "stock devuelto solo en Todas") + origen del ingreso visible en Inventario. (2) **#10b — consolidar líneas de reingreso** en básico (Devolver/Anular suman a la línea existente; bump manual de stock). (3) **#7 — cron sweeps externos**: intereses CC + reservas vencidas para todos los tenants vía EF + GitHub Actions diario (servicios recurrentes quedan asistidos). (4) **Roles**: Super Usuario oculto en básico (una PyME no necesita dos "administrador"). Suite 739 verde.

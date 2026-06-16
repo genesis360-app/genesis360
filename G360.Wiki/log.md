@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-16] deploy | v1.74.0 EN PROD — Auditoría efectivo↔caja: el efectivo de devolución/venta siempre se asienta · `dev→main` (sin migración)
+
+**v1.74.0 a DEV+PROD (Vercel), sin migración, release latest.** Disparado por un bug que reportó GO: en la **devolución en efectivo de la venta #26 (Kiosco)** se reembolsaban $2.000 pero **no se registraba el egreso en caja** (quedaba el +2.000 de la venta sin la salida).
+
+- **Causa raíz:** el egreso de la devolución era `void supabase...insert()` (fire-and-forget, sin `await` ni manejo de error) → cualquier fallo (transitorio) se perdía en silencio. Además el modal con **una sola caja** muestra "→ Caja única" pero **no seteaba `devCajaSesionId`**, y el egreso no tenía **fallback a la única caja abierta** (a diferencia de despacho/cancelación). Este camino no estuvo en la auditoría de costuras de v1.69.0.
+- **Auditoría completa de efectivo↔caja en `VentasPage`** (lo pidió GO): despacho (ingreso), reserva (seña), saldo cobrado al despachar, devolución (egreso), cancelación de reserva (reintegro). Patrón unificado: caja = elegida ∥ activa ∥ **única abierta**; insert **awaited**; **toast** si falla ("se procesó pero el efectivo no se asentó, registralo manual"). Los `ingreso_informativo` (no afectan saldo) quedan best-effort.
+- **Reconciliado** en DEV el egreso faltante de #26 (-$2.000 en la caja abierta de Kiosco → #26 neta en 0).
+- **Ya estaban bien (v1.69.0):** cobranza CC efectivo (`requiereCaja` + resolver sesión + awaited) y gasto efectivo→caja.
+
+typecheck + suite unit **739/739** + build verdes. Sin cambios en EFs. **#8 RLS por sucursal: diferido** (se retoma más adelante; 0 exposición hoy con 1 tenant/cliente).
+
 ## [2026-06-16] deploy | v1.73.0 EN PROD — issue #10 sucursales básico + roles + #7 cron sweeps + #10b consolidación · `dev→main` (mig 215 + EF cron-sweeps)
 
 **v1.73.0 a DEV+PROD (Vercel), mig 215 DEV+PROD, EF nueva `cron-sweeps` DEV+PROD, workflow `sweeps.yml`, release latest.** Batch acumulado tras v1.72.0:

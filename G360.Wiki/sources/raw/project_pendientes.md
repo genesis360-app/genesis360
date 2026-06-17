@@ -4,17 +4,41 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-## ▶ CIERRE DE SESIÓN 2026-06-16 — dónde retomar
+## ▶ CIERRE DE SESIÓN 2026-06-17 — dónde retomar
 
-**Estado:** **PRD = DEV = v1.75.0**, migs 001–218, EF `emitir-factura` + `cron-sweeps`. **🔒 v1.75.0 (2026-06-16, migs 216-217-218 DEV+PROD): RLS por sucursal a nivel servidor — #8 CERRADO.** Sesión 2026-06-15/16: v1.66→v1.71 (UX + auditoría básico + costuras + click-through GO), **v1.72.0** (NC fiscal PDF · rol Lector · roles custom→Pro · fix sucursal reingreso · fix NC tipo · auto-A/B/C Exento · 3 guards fiscales), **v1.73.0** (issue #10 sucursal default oculta + #10b consolidar reingreso · roles · #7 cron sweeps) y **v1.74.0** (🔴 **auditoría efectivo↔caja**: el egreso de devolución en efectivo no se asentaba — fix + se auditaron despacho/reserva/saldo/cancelación: todo asiento de efectivo ahora es awaited + fallback a caja única + aviso si falla).
+**Estado:** **DEV = v1.77.0 (migs 001–219) · PROD = v1.76.0 (migs 001–218)** — ⚠ **mig 219 pendiente de aplicar en PROD + deploy v1.77.0** (requiere OK de GO). EF `emitir-factura` + `cron-sweeps`.
 
-**Plan de auditoría modo básico:** `tests/specs/auditoria-basico.plan.md`. Costuras gasto→caja y servicio-recurrente→gasto: OK. e2e mutantes 19-23 (venta/caja/facturación/devolución/ingreso).
+**🔔 v1.77.0 (2026-06-17, mig 219, EN DEV) — Pase 3 de la auditoría UAT modo básico (§25-28):** un hallazgo 🔴 — la RLS de `notificaciones` bloqueaba el INSERT cross-user → **TODAS las notificaciones in-app estaban rotas** (solicitud de Caja Fuerte —que además abortaba el pedido del cajero—, diferencia apertura/cierre de caja, alertas de venta margen-negativo/devoluciones). PROD y DEV estaban **desincronizados** (PROD `notif_user FOR ALL` rechazaba cross-user; DEV tenía `notif_select`+`notif_update` aplicadas fuera de banda y **sin policy de INSERT**). **Mig 219** normaliza ambos: SELECT/UPDATE/DELETE solo propias (aislamiento intacto) + INSERT mismo tenant. Validado en DEV impersonando cajero. Sin cambios de frontend. Resto §25-28 verde (escaneo, idempotencia webhooks, chunk recovery, savingRef, export/import). **⚠ Drift de config detectado** (policies en DEV sin migración) → conviene barrido DEV-vs-PROD-vs-repo.
+
+**Para retomar (deploy v1.77.0 a PROD):** 1) aplicar **mig 219** en PROD (`jjffnbrdjchquexdfgwq`) — dropea `notif_user`, crea las 4 policies; 2) PR `dev→main` `v1.77.0 — Fix RLS notificaciones (mig 219)`; 3) release `v1.77.0`. Smoke PROD: que un supervisor reciba la notificación de una solicitud de caja fuerte / diferencia de caja.
+
+---
+
+### Histórico previo (v1.76.0 y anteriores)
+
+**Estado:** **PRD = DEV = v1.76.0**, migs 001–218, EF `emitir-factura` + `cron-sweeps`. **🧪 v1.76.0 (2026-06-16, PR #220, SIN migración): auditoría exhaustiva del UAT modo básico (`tests/specs/uat-modo-basico.md`, ~300 escenarios) → 7 bugfixes de plata/stock** (DEV-07 tope re-devolución · DEV-04 devolución vs deuda CC/crédito a favor · GAS-01/05 egreso efectivo awaited+aviso · VEN-22 savingRef anti doble-submit · CONTADOR ve Facturación · PRES-08 convert re-valida stock · CAJ-18 no caja negativa, lib `cajaSaldo.ts`). **🔒 v1.75.0 (migs 216-217-218 DEV+PROD): RLS por sucursal a nivel servidor — #8 CERRADO.** Sesión 2026-06-15/16: v1.66→v1.71 (UX + auditoría básico + costuras + click-through GO), **v1.72.0** (NC fiscal PDF · rol Lector · roles custom→Pro · fix sucursal reingreso · fix NC tipo · auto-A/B/C Exento · 3 guards fiscales), **v1.73.0** (issue #10 sucursal default oculta + #10b consolidar reingreso · roles · #7 cron sweeps) y **v1.74.0** (🔴 **auditoría efectivo↔caja**: el egreso de devolución en efectivo no se asentaba — fix + se auditaron despacho/reserva/saldo/cancelación: todo asiento de efectivo ahora es awaited + fallback a caja única + aviso si falla).
+
+**UAT modo básico (NUEVO, v1.76.0):** `tests/specs/uat-modo-basico.md` — checklist de aceptación exhaustiva (~300 escenarios: happy + borde + excepción) de TODA la superficie del básico (operativo + admin + integraciones + AFIP). Tiene los **resultados de auditoría capa código** (pases 1 y 2) con los hallazgos y fixes. Es el guion para la próxima auditoría / click-through. **Pendiente: capa C (click-through manual)** de las áreas que quedaron sin verificar por código (PDFs/impresión, config UI, integraciones, i18n, concurrencia real, PWA). El plan técnico previo (`auditoria-basico.plan.md`) sigue válido como complemento.
 
 **Pendientes / próxima sesión:**
 - **✅ #8 RLS por sucursal — CERRADO (v1.75.0).** Aislamiento movido del cliente al servidor en 23 tablas (migs 216-217-218). Tablas globales (clientes/proveedores/catálogo/config) y finanzas/tesorería se dejaron tenant-only a propósito. Pendiente menor opcional (tanda 4): hijas de 2 saltos (`devolucion_items`) y tablas cross-sucursal (`caja_traspasos`, `traslado_items`). Ver [[feedback_aislamiento_sucursal]].
 - **GO retesteando en PROD (v1.74.1):** devolución/venta en efectivo → que el egreso/ingreso aparezca en caja (bug #26 arreglado); NC fiscal PDF/imprimir/email; rol Lector; en básico el selector de sucursal oculto + Super Usuario no aparece en invitar; **Alertas: el badge y la página deben coincidir** (fantasma "sin categoría" arreglado en v1.74.1).
 - **Backlog sin tocar:** AFIP **producción real** (operativo de GO: cert prod + token prod + toggle — ver [[project_afip_produccion]]) · EN6 couriers (bloqueado B2B) · comprobantes percepciones+USD (sale-time, contra caso real) · pase de performance DB (646 lints) · consolidación de líneas también en ingresos manuales (hoy solo reingresos) · básico con >1 sucursal mantiene selector (edge raro).
 - **✅ Cerrados esta sesión:** v1.72 (NC fiscal PDF + rol Lector + roles custom→Pro + fix NC tipo AFIP 10040 + A/B/C Exento + 3 guards fiscales) · v1.73 (#10 sucursal default oculta + #10b consolidar reingreso + #7 cron sweeps + roles) · v1.74.0 (auditoría efectivo↔caja: el efectivo de devolución/venta siempre se asienta) · **v1.74.1 (fix alerta fantasma "sin categoría" en básico — scoping de sucursal mode-aware vía `inventario_lineas.sucursal_id`; + reconciliación DEV de 1 línea de devolución con sucursal NULL que daba "11/12 disponible" en Kiosko).**
+
+### ✅ EN PROD: v1.76.0 (2026-06-16, PR #220, **SIN migración**, release latest) — 🧪 Auditoría UAT modo básico: 7 bugfixes de plata/stock
+
+Se construyó el **UAT exhaustivo de modo básico** (`tests/specs/uat-modo-basico.md`, ~300 escenarios) y se **auditó por código** (capa A) los flujos 🔴. Lo previamente roto (devolución/NC) quedó confirmado OK; se encontraron y repararon **7 bugs nuevos**:
+
+- **DEV-07** 🔴 — **re-devolución sin tope**: el cap era la cantidad *vendida*, no `vendido − ya_devuelto` → en parciales se podía re-devolver hasta el total en cada vuelta (reingreso/reembolso de más). Fix: cap en UI (`abrir`) + **guard server-side** en `procesarDevolucion` + "nada para devolver" si está completa.
+- **DEV-04** 🔴 — **devolución vs deuda CC** (regla GO): cliente **con deuda** → la devolución la **reduce** (FIFO sobre sus ventas CC, sin egreso de efectivo); **sin deuda** → efectivo/otro medio/**crédito a favor** (`cliente_creditos`, origen `devolucion`). Banner en el modal + opción "Crédito a favor" + guards (no efectivo a deudor, crédito exige cliente).
+- **GAS-01/05** 🔴 — el egreso de **gasto en efectivo** era `.then()` fire-and-forget + se salteaba en silencio sin caja (clase bug #26). Fix: **awaited + toast si falla + aviso si no hay caja** (alta + gasto fijo).
+- **VEN-22** ⚠️ — doble-submit del POS sin guard síncrono → `savingRef` en `registrarVenta`.
+- **CONTADOR** ⚠️ — Facturación era `ownerOnly` sin `contadorVisible` → el CONTADOR no la veía pese a su rol. Fix: `contadorVisible: true`.
+- **PRES-08** 🔴 — convertir presupuesto/reserva → reservada/despachada (`cambiarEstado`) **no re-validaba stock** (a diferencia del POS): rebajaba/reservaba parcial sin avisar. Fix: pre-check (disponible estado-aware: la reserva ya retuvo sus unidades) + post-check `restante > 0` → lanza error.
+- **CAJ-18** 🔴 — **no se permite caja en negativo**: gasto y devolución en efectivo se **bloquean si superan el saldo** de la sesión. Lib nueva `src/lib/cajaSaldo.ts` (`calcularSaldoEfectivo` puro + `saldoEfectivoSesion`), **7 unit tests**. (Caja no tiene egreso manual — los egresos van por Gastos/traspaso/devolución; el traspaso ya estaba guardado.)
+
+typecheck + **746 unit** (+7 cajaSaldo) + build verdes. Sin migración → sin cambios en Supabase ni EFs. **Pendiente: capa C (click-through)** de PDFs/impresión/config/integraciones/i18n/concurrencia + auditar el batch ampliado del UAT (§25-28).
 
 ### ✅ EN PROD: v1.75.0 (2026-06-16, **migs 216-217-218** DEV+PROD, release latest) — 🔒 RLS por sucursal a nivel servidor (#8 cerrado)
 

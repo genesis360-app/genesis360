@@ -514,12 +514,12 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 
 | ID | Escenario | Pasos | Resultado esperado | Tipo | Pri | Estado | Resultado real / Nota |
 |---|---|---|---|---|---|---|---|
-| SCAN-01 | Escanear barcode en POS | Lector/cámara → código EAN | Agrega el producto al carrito (match por `codigo_barras`) | H | 🔴 | ⬜ | |
-| SCAN-02 | Código GS1 compuesto | Escanear código con AI (GTIN + cantidad/lote/venc.) | Resuelve el producto por GTIN + aplica cantidad si viene (AI 30) | B | 🟡 | ⬜ | |
-| SCAN-03 | Código no encontrado | Escanear un código inexistente | Aviso "producto no encontrado"; no agrega nada | E | 🟡 | ⬜ | |
-| SCAN-04 | Escanear para sumar cantidad | Escanear el mismo producto 2 veces | Suma a la línea existente (no crea 2 líneas) | H | 🟡 | ⬜ | |
-| SCAN-05 | Escanear en alta de stock | Inventario → ingreso por escaneo | Encuentra el producto y precarga | B | 🟢 | ⬜ | |
-| SCAN-06 | Buscar manual por SKU/nombre | Tipear en el buscador del POS | Filtra y permite agregar; autoFocus en el campo | H | 🟢 | ⬜ | |
+| SCAN-01 | Escanear barcode en POS | Lector/cámara → código EAN | Agrega el producto al carrito (match por `codigo_barras`) | H | 🔴 | ✅ | `procesarScan` match por barcode/SKU; cámara + lector físico (modo manual) |
+| SCAN-02 | Código GS1 compuesto | Escanear código con AI (GTIN + cantidad/lote/venc.) | Resuelve el producto por GTIN + aplica cantidad si viene (AI 30) | B | 🟡 | ✅ | `resolverScanCompuesto` (GTIN + `cantidad`) |
+| SCAN-03 | Código no encontrado | Escanear un código inexistente | Aviso "producto no encontrado"; no agrega nada | E | 🟡 | ✅ | toast "No se encontró ningún producto con código…" |
+| SCAN-04 | Escanear para sumar cantidad | Escanear el mismo producto 2 veces | Suma a la línea existente (no crea 2 líneas) | H | 🟡 | ✅ | suma con tope `maxDisp`; cola anti-dup |
+| SCAN-05 | Escanear en alta de stock | Inventario → ingreso por escaneo | Encuentra el producto y precarga | B | 🟢 | ✅ | `handleBarcodeScan` en InventarioPage |
+| SCAN-06 | Buscar manual por SKU/nombre | Tipear en el buscador del POS | Filtra y permite agregar; autoFocus en el campo | H | 🟢 | ✅ | match `codigo_barras.eq OR sku.eq` |
 
 ---
 
@@ -531,7 +531,7 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | PWA-02 | Operar con conexión intermitente | Cortar internet a mitad de venta | Degrada con aviso; no deja venta a medias (ver NEG-02) | E | 🔴 | ⬜ | |
 | PWA-03 | Reconexión | Volver online | Reintenta / refresca datos (staleTime 0) | B | 🟡 | ⬜ | |
 | PWA-04 | POS en mobile | Operar en celular | Layout usable; selector de sucursal con tap; botones no se salen (ActionMenu) | H | 🟡 | ⬜ | |
-| PWA-05 | Update de bundle (SW) | Deploy nuevo con pestaña abierta | Recupera el chunk nuevo (`vite:preloadError` + ErrorBoundary); sin "reading 'default'" | E | 🔴 | ⬜ | |
+| PWA-05 | Update de bundle (SW) | Deploy nuevo con pestaña abierta | Recupera el chunk nuevo (`vite:preloadError` + ErrorBoundary); sin "reading 'default'" | E | 🔴 | ✅ | `main.tsx` handler + red de seguridad + guard anti-bucle; `ErrorBoundary` detecta `reading 'default'` |
 
 ---
 
@@ -539,10 +539,10 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 
 | ID | Escenario | Pasos | Resultado esperado | Tipo | Pri | Estado | Resultado real / Nota |
 |---|---|---|---|---|---|---|---|
-| NOT-01 | Badge sidebar == página de Alertas | Comparar el "N" del badge con la lista | Coinciden (mode-aware; ver ALR-03) | E | 🔴 | ⬜ | |
-| NOT-02 | Notificación de evento | Margen negativo / muchas devoluciones / stock bajo | Llega notificación a los roles de ventas | B | 🟡 | ⬜ | |
-| NOT-03 | Marcar leída / limpiar | Abrir campana → marcar | Baja el contador; persiste | B | 🟢 | ⬜ | |
-| NOT-04 | Aislamiento de notificaciones | Notif de otro usuario | Cada usuario ve solo las suyas (`notif_user` por `auth.uid()`) | E | 🔴 | ⬜ | |
+| NOT-01 | Badge sidebar == página de Alertas | Comparar el "N" del badge con la lista | Coinciden (mode-aware; ver ALR-03) | E | 🔴 | ✅ | Fix v1.74.1; campana es sistema aparte |
+| NOT-02 | Notificación de evento | Margen negativo / muchas devoluciones / stock bajo | Llega notificación a los roles de ventas | B | 🟡 | ⚠️→✅ | **Estaba roto: RLS bloqueaba el INSERT cross-user → nunca llegaba.** Fix mig 219 (pase 3). Falta confirmar end-to-end en runtime |
+| NOT-03 | Marcar leída / limpiar | Abrir campana → marcar | Baja el contador; persiste | B | 🟢 | ✅ | `markRead`/`markAllRead` + invalidate |
+| NOT-04 | Aislamiento de notificaciones | Notif de otro usuario | Cada usuario ve solo las suyas (`notif_user` por `auth.uid()`) | E | 🔴 | ✅ | Verificado impersonando: cajero ve 0 ajenas (mig 219 mantiene SELECT solo propias) |
 
 ---
 
@@ -554,10 +554,10 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | LIST-02 | Filtros y búsqueda | Filtrar por estado/fecha/sucursal | Resultados correctos; filtros por sucursal aplican | H | 🟡 | ⬜ | |
 | LIST-03 | Export Excel/PDF/CSV | Exportar un listado | Genera el archivo con los datos filtrados | H | 🟡 | ⬜ | |
 | CLI-17 | Importar clientes (lote) | Importar archivo de clientes | Crea en lote; reporta filas inválidas/duplicadas | B | 🟡 | ⬜ | |
-| INT-08 | Webhook de venta externa duplicado | Mismo evento MP/TN/MeLi 2 veces | **Idempotente**: no duplica venta ni doble descuento de stock (`webhook_external_id`) | E | 🔴 | ⬜ | |
-| INT-09 | Conflicto de stock multicanal | Vendido en POS y marketplace casi a la vez | El stock no queda negativo; el segundo falla/avisa | E | 🔴 | ⬜ | |
-| KBD-01 | Atajos de teclado POS | Enter cobra · ESC cierra modal visible (stack) | Enter dispara el cobro; ESC cierra el modal de arriba, de a uno | B | 🟡 | ⬜ | |
-| KBD-02 | Doble-Enter / Enter + click en cobrar | Enter rápido x2 | No duplica la venta (`savingRef`, ver VEN-22) | E | 🔴 | ⬜ | |
+| INT-08 | Webhook de venta externa duplicado | Mismo evento MP/TN/MeLi 2 veces | **Idempotente**: no duplica venta ni doble descuento de stock (`webhook_external_id`) | E | 🔴 | ✅ | Doble guard: `webhook_external_id` + UNIQUE (mig 060) + dedup por `tracking_id` |
+| INT-09 | Conflicto de stock multicanal | Vendido en POS y marketplace casi a la vez | El stock no queda negativo; el segundo falla/avisa | E | 🔴 | 🔍 | Carrera real → necesita lock DB; runtime (= NEG-03) |
+| KBD-01 | Atajos de teclado POS | Enter cobra · ESC cierra modal visible (stack) | Enter dispara el cobro; ESC cierra el modal de arriba, de a uno | B | 🟡 | ✅ | `useModalKeyboard` (stack ESC) |
+| KBD-02 | Doble-Enter / Enter + click en cobrar | Enter rápido x2 | No duplica la venta (`savingRef`, ver VEN-22) | E | 🔴 | ✅ | `savingRef` (fix VEN-22, pase 1) |
 
 ---
 
@@ -663,3 +663,41 @@ PRES-03/06/07/09 (PDF/edición/anular), COMP-01..09 (impresión/PDF/email — ru
 | **CAJ-18** | **No se permite caja en negativo**: el egreso de efectivo (gasto + devolución) se **bloquea si supera el saldo** de la sesión. Helper puro `calcularSaldoEfectivo` + `saldoEfectivoSesion` (lib `cajaSaldo.ts`, 7 unit tests) | `GastosPage.tsx`, `VentasPage.tsx`, `lib/cajaSaldo.ts` |
 
 Nuevos escenarios: **PRES-10** (convertir con stock OK), **CAJ-20** (gasto efectivo > saldo bloqueado), **DEV-17** (devolución efectivo > saldo bloqueada). typecheck + **746 unit** + build verdes.
+
+---
+
+# 📋 RESULTADOS DE LA AUDITORÍA — Pase 3 (§25-28: escaneo · PWA · notificaciones · listas/webhooks/teclado)
+
+> Auditoría por código del batch ampliado que quedó pendiente tras los pases 1-2.
+
+## 🐞 Hallazgos
+
+| ID UAT | Sev | Hallazgo | Evidencia | Fix |
+|---|---|---|---|---|
+| **NOT-02 / NOT-04** | 🔴 | **La RLS de `notificaciones` bloquea el INSERT cross-user → las notificaciones in-app nunca se crean.** TODAS las notificaciones in-app del código apuntan a OTROS usuarios (cajero → supervisores/dueño): solicitud de Caja Fuerte, diferencia de apertura/cierre de caja, alertas de venta (margen negativo, muchas devoluciones). El estado real de la DB estaba **desincronizado y roto en ambos entornos**: PROD tenía `notif_user FOR ALL USING (user_id = auth.uid())` (sin `WITH CHECK` propio → el INSERT hereda el USING → rechaza `user_id != auth.uid()`); DEV tenía `notif_select`+`notif_update` aplicadas **fuera de banda** (no están en ninguna migración) y **ninguna policy de INSERT** → todo insert client-side rechazado. La de Caja Fuerte además hace `if (error) throw error` → **abortaba la solicitud del cajero** (flujo de plata bloqueado). | `CajaPage.tsx:605/:798/:1116`, `VentasPage.tsx:240`; policy mig 084 + drift en DEV; verificado con `SELECT … pg_policies` en ambos proyectos | **Mig 219**: normaliza ambos entornos — SELECT/UPDATE/DELETE = propias (aislamiento NOT-04 intacto), INSERT = mismo tenant (`tenant_id = get_user_tenant_id()`). Validado en DEV impersonando cajero: insert cross-user OK, lee ajenas = 0, cross-tenant bloqueado |
+
+## ✅ Confirmado correcto (capa código) — §25-28
+
+| Área | IDs | Nota |
+|---|---|---|
+| Escaneo POS | SCAN-01/02/03/04/06 | `procesarScan` mode-safe (no usa filtros WMS que rompen básico); cola anti-duplicados (`scanQueueRef`); GS1 vía `resolverScanCompuesto` (GTIN + AI cantidad 30) con `.eq('activo',true)`; suma a línea existente con tope de stock; "no encontrado" avisa. `BarcodeScanner` = cámara (BarcodeDetector→zbar→ZXing DataMatrix) + **modo manual = lector físico USB/BT** |
+| Notificaciones (resto) | NOT-01/03 | badge Alertas vs página = mode-aware (v1.74.1); campana (`notificaciones`) es sistema aparte; `markRead`/`markAllRead` invalidan query; generación de eventos presente (`notificarRolesVentas`) |
+| Webhooks idempotencia | INT-08 | doble guard: `webhook_external_id` (check) + UNIQUE `(tenant,integracion,webhook_external_id)` (mig 060) + dedup de venta por `tracking_id` antes de crear (TN). MP/MeLi/Modo igual patrón |
+| PWA / chunk viejo | PWA-05 | `vite:preloadError` + red de seguridad (`ChunkLoadError`/`Failed to fetch dynamically`) → recarga 1 vez con guard `sessionStorage` anti-bucle; `ErrorBoundary` detecta `reading 'default'` |
+| Teclado anti-duplicado | KBD-02 | cubierto por VEN-22 (`savingRef` en `registrarVenta`, pase 1) |
+| Export / Import | LIST-03, CLI-17 | XLSX/CSV presentes en 15 páginas; import en `ImportarMasterPage`/`ImportarProductosPage` |
+
+## 🔍 Cobertura pendiente (capa C / runtime)
+INT-09 (carrera real multicanal con stock=1 → necesita lock DB, mismo riesgo que NEG-03, runtime), PWA-01/02/03/04 (instalar/offline/reconexión/mobile = runtime), NOT-02 end-to-end (verificar que el supervisor RECIBE el aviso tras el fix, click-through en PROD).
+
+## Resumen pase 3
+- **1 hallazgo 🔴** (NOT-02/NOT-04: RLS rompía TODAS las notificaciones in-app + abortaba la solicitud de Caja Fuerte; PROD y DEV además estaban desincronizados). Fix = **mig 219**.
+- El resto del batch §25-28 auditable por código quedó **verde**.
+
+## ✅ Fixes aplicados (pase 3 — v1.77.0)
+
+| Hallazgo | Fix aplicado | Archivos |
+|---|---|---|
+| **NOT-02 / NOT-04** | **Mig 219** `219_fix_rls_notificaciones_insert.sql`: policies explícitas por comando — `notif_select`/`notif_update`/`notif_delete` (solo propias) + `notif_insert` (mismo tenant). Aplicada DEV + verificada (impersonación cajero). Sin cambios de frontend (el código ya insertaba bien). | `supabase/migrations/219_*.sql` |
+
+typecheck + **746 unit** + build verdes. Sin cambios de frontend (solo `APP_VERSION` + migración).

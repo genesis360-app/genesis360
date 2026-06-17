@@ -63,6 +63,20 @@ Objetivo: evitar consumo innecesario de tokens leyendo código que ya está resu
 - **DEV**: `gcmhzdedrkmmzfzfveig` · Tenant dev: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`
 - Migrations: `supabase/migrations/NNN_*.sql` → aplicar en DEV → actualizar `schema_full.sql` → commit → aplicar en PROD al deployar
 
+### ⚠ TODO cambio de DB va por migración versionada — NUNCA SQL suelto
+
+**Regla de oro anti-drift (aprendida con el bug de `notificaciones`, mig 219):** cualquier DDL persistente
+(policies RLS, funciones, columnas, índices, grants) se aplica **exclusivamente** como archivo
+`supabase/migrations/NNN_*.sql` (vía `apply_migration`), commiteado al repo, y se aplica en **DEV y PROD**.
+
+- ❌ **PROHIBIDO**: el botón "Fix"/"quick fix" del **Security Advisor** de Supabase, el editor SQL del
+  dashboard, o `execute_sql` para DDL que deba persistir. Esos cambios **no generan migración, no quedan
+  en el historial y no se propagan** → producen drift DEV≠PROD silencioso (causa raíz de mig 219/220).
+- ✅ Si el Advisor sugiere algo, se **traduce a una migración** versionada antes de aplicarlo.
+- ✅ `execute_sql` solo para **lectura / diagnóstico** (p.ej. `pg_policies`, impersonar con `SET LOCAL ROLE`).
+- 🔍 **Auditoría de drift** (correr periódicamente): comparar `md5(string_agg(...))` de `pg_policies`
+  entre DEV y PROD; deben dar el **mismo hash global** (al 2026-06-17: 152 policies, sincronizadas).
+
 ---
 
 ## Convenciones y gotchas de código

@@ -34,9 +34,35 @@ const ACTION_MODULE: Record<string, string> = {
   'agents.list': 'users',
   'agents.create': 'users',
   'agents.update': 'users',
+  'billing.overview': 'billing',
+  'crm.leads.list': 'crm',
+  'crm.leads.create': 'crm',
+  'crm.leads.update': 'crm',
 }
 const ROLES = ['admin', 'support', 'marketing', 'billing']
 const DAY = 86400000
+
+// MRR + distribución por plan (join tenants→planes). Paga = plan_id no nulo y fuera de trial.
+async function computeBilling(svc: any) {
+  const nowIso = new Date().toISOString()
+  const { data: tenants } = await svc.from('tenants').select('plan_id, trial_ends_at')
+  const { data: planes } = await svc.from('planes').select('id, nombre, precio_mensual')
+  const precioById = new Map((planes ?? []).map((p: any) => [p.id, p]))
+  const porPlan = new Map<string, { nombre: string; precio_mensual: number; tenants: number; subtotal: number }>()
+  let mrr = 0
+  for (const t of tenants ?? []) {
+    if (!t.plan_id) continue
+    const enTrial = t.trial_ends_at && t.trial_ends_at > nowIso
+    const plan = precioById.get(t.plan_id) as any
+    if (!plan) continue
+    const key = plan.id
+    const row = porPlan.get(key) ?? { nombre: plan.nombre, precio_mensual: Number(plan.precio_mensual ?? 0), tenants: 0, subtotal: 0 }
+    row.tenants += 1
+    if (!enTrial) { row.subtotal += Number(plan.precio_mensual ?? 0); mrr += Number(plan.precio_mensual ?? 0) }
+    porPlan.set(key, row)
+  }
+  return { mrr, por_plan: Array.from(porPlan.values()) }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
@@ -85,10 +111,47 @@ Deno.serve(async (req) => {
         ])
         const { data: modos } = await svc.from('tenants').select('modo_operacion')
         const basico = (modos ?? []).filter((m: any) => m.modo_operacion === 'basico').length
+        const { mrr } = await computeBilling(svc)
         return json({ metrics: {
           total: t.count ?? 0, altas30: a30.count ?? 0, enTrial: trial.count ?? 0,
-          ticketsAbiertos: tickets.count ?? 0, basico, avanzado: (modos?.length ?? 0) - basico,
+          ticketsAbiertos: tickets.count ?? 0, basico, avanzado: (modos?.length ?? 0) - basico, mrr,
         } })
+      }
+
+      case 'billing.overview': {
+        const { mrr, por_plan } = await computeBilling(svc)
+        return json({ mrr, por_plan })
+      }
+
+      case 'crm.leads.list': {
+        const { data, error } = await svc.from('leads')
+          .select('id, nombre, empresa, email, telefono, estado, valor_estimado, origen, asignado_a, created_at, updated_at')
+          .order('updated_at', { ascending: false }).limit(300)
+        if (error) throw error
+        return json({ leads: data ?? [] })
+      }
+
+      case 'crm.leads.create': {
+        if (!p.nombre) return json({ error: 'Falta nombre' }, 400)
+        const { data, error } = await svc.from('leads').insert({
+          nombre: p.nombre, empresa: p.empresa ?? null, email: p.email ?? null, telefono: p.telefono ?? null,
+          estado: p.estado ?? 'lead', valor_estimado: p.valorEstimado ?? null, origen: p.origen ?? null,
+          notas: p.notas ?? null, asignado_a: uid,
+        }).select('id').single()
+        if (error) throw error
+        return json({ ok: true, id: data.id })
+      }
+
+      case 'crm.leads.update': {
+        if (!p.leadId) return json({ error: 'Falta leadId' }, 400)
+        const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+        for (const k of ['nombre', 'empresa', 'email', 'telefono', 'estado', 'origen', 'notas'] as const) {
+          if (p[k] !== undefined) patch[k] = p[k]
+        }
+        if (p.valorEstimado !== undefined) patch.valor_estimado = p.valorEstimado
+        const { error } = await svc.from('leads').update(patch).eq('id', p.leadId)
+        if (error) throw error
+        return json({ ok: true })
       }
 
       case 'customers.list': {

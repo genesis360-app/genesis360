@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.77.0 — 🔔 Fix RLS notificaciones: el INSERT cross-user estaba bloqueado (PROD ✅, mig 219, PR #221)
+
+Pase 3 de la auditoría UAT modo básico (§25-28). La RLS de `notificaciones` bloqueaba el INSERT cross-user → **todas** las notificaciones in-app estaban rotas (solicitud de Caja Fuerte —que además abortaba el pedido del cajero—, diferencia de apertura/cierre de caja, alertas de venta). Apareció además **config drift**: PROD seguía el repo (`notif_user FOR ALL`), DEV tenía policies aplicadas con SQL crudo fuera de migración. La **mig 219** normaliza ambos: SELECT/UPDATE/DELETE solo propias (aislamiento intacto) + INSERT mismo tenant. Sin cambios de frontend. Resto §25-28 verde por código.
+
+---
+
 ## v1.76.0 — 🧪 Auditoría UAT modo básico: 7 bugfixes de plata/stock (PROD ✅, sin migración)
 
 UAT exhaustivo de modo básico (`tests/specs/uat-modo-basico.md`, ~300 escenarios) + auditoría por código → 7 fixes: DEV-07 (tope re-devolución), DEV-04 (devolución vs deuda CC / crédito a favor), GAS-01/05 (egreso efectivo robusto), VEN-22 (anti doble-submit), CONTADOR (ve Facturación), PRES-08 (convert re-valida stock), CAJ-18 (no caja negativa, lib `cajaSaldo.ts`). Sin migración.

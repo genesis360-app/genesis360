@@ -690,6 +690,8 @@ Nuevos escenarios: **PRES-10** (convertir con stock OK), **CAJ-20** (gasto efect
 ## 🔍 Cobertura pendiente (capa C / runtime)
 INT-09 (carrera real multicanal con stock=1 → necesita lock DB, mismo riesgo que NEG-03, runtime), PWA-01/02/03/04 (instalar/offline/reconexión/mobile = runtime), NOT-02 end-to-end (verificar que el supervisor RECIBE el aviso tras el fix, click-through en PROD).
 
+**e2e agregados (capa C parcial):** `tests/e2e/25_notificaciones.spec.ts` (NOT-01/03: campana abre, panel renderiza, marcar leídas) + `tests/e2e/24_presupuesto_despacho_mutante.spec.ts` (§22: modo Presupuesto alcanzable + guard de cliente obligatorio). Ambos verdes. El convert PRES-08 y NOT-02 cross-user end-to-end siguen para click-through manual (requieren datos sembrados / 2 sesiones).
+
 ## Resumen pase 3
 - **1 hallazgo 🔴** (NOT-02/NOT-04: RLS rompía TODAS las notificaciones in-app + abortaba la solicitud de Caja Fuerte; PROD y DEV además estaban desincronizados). Fix = **mig 219**.
 - El resto del batch §25-28 auditable por código quedó **verde**.

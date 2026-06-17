@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-17] update | v1.77.0 EN DEV (pendiente PROD) — 🔔 Fix RLS `notificaciones`: el INSERT cross-user estaba bloqueado (mig 219) · auditoría UAT pase 3 §25-28
+
+**v1.77.0 en DEV (mig 219 aplicada+verificada). Pendiente deploy a PROD (requiere OK de GO).** Pase 3 de la auditoría UAT modo básico — se auditaron por código las secciones que habían quedado pendientes (**§25 escaneo · §26 PWA · §27 notificaciones · §28 listas/webhooks/teclado**).
+
+- **🔴 Hallazgo único pero serio (NOT-02/NOT-04): la RLS de `notificaciones` rompía TODAS las notificaciones in-app.** Todas las notificaciones que genera el código apuntan a OTROS usuarios (cajero → supervisores/dueño): **solicitud de Caja Fuerte**, diferencia de apertura/cierre de caja, alertas de venta (margen negativo / muchas devoluciones). La policy bloqueaba el INSERT cuando `user_id != auth.uid()`. **PROD y DEV estaban desincronizados, ambos rotos:**
+  - PROD: `notif_user FOR ALL USING (user_id = auth.uid())` — sin `WITH CHECK` propio, el INSERT hereda el USING → rechaza filas para otros usuarios.
+  - DEV: `notif_select` + `notif_update` (aplicadas **fuera de banda**, no están en ninguna migración del repo — drift de config) y **ninguna policy de INSERT** → todo insert client-side rechazado.
+  - La solicitud de Caja Fuerte además hace `if (error) throw error` → **abortaba el pedido del cajero** (flujo de plata bloqueado). Las otras eran fire-and-forget → fallaban en silencio.
+- **Fix (mig 219, `219_fix_rls_notificaciones_insert.sql`):** normaliza ambos entornos a policies explícitas por comando — `notif_select`/`notif_update`/`notif_delete` solo las propias (aislamiento NOT-04 intacto) + `notif_insert` con `WITH CHECK (tenant_id = get_user_tenant_id())` (cualquier usuario crea notificaciones para usuarios de su mismo tenant). **Sin cambios de frontend** (el código ya insertaba bien; el bug era la policy).
+- **Validado en DEV impersonando un cajero** (`SET LOCAL ROLE authenticated` + jwt claims): insert cross-user mismo tenant OK, lee notificaciones ajenas = 0, insert cross-tenant bloqueado.
+- **Resto de §25-28 verde por código:** escaneo (mode-safe, GS1, cola anti-dup, lector físico vía modo manual), idempotencia de webhooks (doble guard `webhook_external_id` + UNIQUE mig 060 + dedup por `tracking_id`), recuperación de chunk viejo (`vite:preloadError` + ErrorBoundary), anti-doble-submit (`savingRef`/VEN-22), export/import presentes. Pendiente runtime: INT-09 (carrera multicanal = NEG-03), NOT-02 end-to-end.
+- typecheck + **746 unit** + build verdes. **⚠ Drift detectado:** `notif_select`/`notif_update` existían en DEV sin migración que las creara → conviene un barrido futuro de policies DEV-vs-PROD-vs-repo.
+
 ## [2026-06-16] deploy | v1.76.0 EN PROD — 🧪 Auditoría UAT modo básico: 7 bugfixes de plata/stock · `dev→main` PR #220 (SIN migración)
 
 **v1.76.0 a DEV+PROD (Vercel), sin migración, release latest, PR #220.** GO pidió un **archivo de pruebas tipo UAT** exhaustivo del modo básico (happy + borde + excepción, "qué pasa si el usuario hace X") porque en auditorías previas se escaparon bugs (devolución/NC). Se construyó `tests/specs/uat-modo-basico.md` (~300 escenarios, toda la superficie del básico incl. AFIP) y se **auditó por código** (capa A).

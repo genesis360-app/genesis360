@@ -4,7 +4,17 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-## ▶ CIERRE DE SESIÓN 2026-06-16 — dónde retomar
+## ▶ CIERRE DE SESIÓN 2026-06-17 — dónde retomar
+
+**Estado:** **DEV = v1.77.0 (migs 001–219) · PROD = v1.76.0 (migs 001–218)** — ⚠ **mig 219 pendiente de aplicar en PROD + deploy v1.77.0** (requiere OK de GO). EF `emitir-factura` + `cron-sweeps`.
+
+**🔔 v1.77.0 (2026-06-17, mig 219, EN DEV) — Pase 3 de la auditoría UAT modo básico (§25-28):** un hallazgo 🔴 — la RLS de `notificaciones` bloqueaba el INSERT cross-user → **TODAS las notificaciones in-app estaban rotas** (solicitud de Caja Fuerte —que además abortaba el pedido del cajero—, diferencia apertura/cierre de caja, alertas de venta margen-negativo/devoluciones). PROD y DEV estaban **desincronizados** (PROD `notif_user FOR ALL` rechazaba cross-user; DEV tenía `notif_select`+`notif_update` aplicadas fuera de banda y **sin policy de INSERT**). **Mig 219** normaliza ambos: SELECT/UPDATE/DELETE solo propias (aislamiento intacto) + INSERT mismo tenant. Validado en DEV impersonando cajero. Sin cambios de frontend. Resto §25-28 verde (escaneo, idempotencia webhooks, chunk recovery, savingRef, export/import). **⚠ Drift de config detectado** (policies en DEV sin migración) → conviene barrido DEV-vs-PROD-vs-repo.
+
+**Para retomar (deploy v1.77.0 a PROD):** 1) aplicar **mig 219** en PROD (`jjffnbrdjchquexdfgwq`) — dropea `notif_user`, crea las 4 policies; 2) PR `dev→main` `v1.77.0 — Fix RLS notificaciones (mig 219)`; 3) release `v1.77.0`. Smoke PROD: que un supervisor reciba la notificación de una solicitud de caja fuerte / diferencia de caja.
+
+---
+
+### Histórico previo (v1.76.0 y anteriores)
 
 **Estado:** **PRD = DEV = v1.76.0**, migs 001–218, EF `emitir-factura` + `cron-sweeps`. **🧪 v1.76.0 (2026-06-16, PR #220, SIN migración): auditoría exhaustiva del UAT modo básico (`tests/specs/uat-modo-basico.md`, ~300 escenarios) → 7 bugfixes de plata/stock** (DEV-07 tope re-devolución · DEV-04 devolución vs deuda CC/crédito a favor · GAS-01/05 egreso efectivo awaited+aviso · VEN-22 savingRef anti doble-submit · CONTADOR ve Facturación · PRES-08 convert re-valida stock · CAJ-18 no caja negativa, lib `cajaSaldo.ts`). **🔒 v1.75.0 (migs 216-217-218 DEV+PROD): RLS por sucursal a nivel servidor — #8 CERRADO.** Sesión 2026-06-15/16: v1.66→v1.71 (UX + auditoría básico + costuras + click-through GO), **v1.72.0** (NC fiscal PDF · rol Lector · roles custom→Pro · fix sucursal reingreso · fix NC tipo · auto-A/B/C Exento · 3 guards fiscales), **v1.73.0** (issue #10 sucursal default oculta + #10b consolidar reingreso · roles · #7 cron sweeps) y **v1.74.0** (🔴 **auditoría efectivo↔caja**: el egreso de devolución en efectivo no se asentaba — fix + se auditaron despacho/reserva/saldo/cancelación: todo asiento de efectivo ahora es awaited + fallback a caja única + aviso si falla).
 

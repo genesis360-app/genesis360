@@ -2295,7 +2295,12 @@ CREATE TABLE IF NOT EXISTS notificaciones (
 CREATE INDEX IF NOT EXISTS idx_notificaciones_user_id ON notificaciones(user_id);
 CREATE INDEX IF NOT EXISTS idx_notificaciones_leida   ON notificaciones(user_id, leida) WHERE leida = FALSE;
 ALTER TABLE notificaciones ENABLE ROW LEVEL SECURITY;
-CREATE POLICY notif_user ON notificaciones FOR ALL USING (user_id = auth.uid());
+-- mig 219: SELECT/UPDATE/DELETE solo propias (aislamiento); INSERT cross-user dentro del mismo tenant
+-- (el sistema avisa a supervisores/dueño de eventos generados por un cajero).
+CREATE POLICY notif_select ON notificaciones FOR SELECT USING (user_id = auth.uid());
+CREATE POLICY notif_update ON notificaciones FOR UPDATE USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+CREATE POLICY notif_delete ON notificaciones FOR DELETE USING (user_id = auth.uid());
+CREATE POLICY notif_insert ON notificaciones FOR INSERT WITH CHECK (tenant_id = get_user_tenant_id());
 
 ALTER TABLE caja_sesiones
   ADD COLUMN IF NOT EXISTS monto_sugerido_apertura DECIMAL(12,2),

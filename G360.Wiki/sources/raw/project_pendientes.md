@@ -6,7 +6,9 @@ type: project
 
 ## ▶ CIERRE DE SESIÓN 2026-06-17 — dónde retomar
 
-**Estado:** **PRD = DEV = v1.77.0**, migs 001–219, EF `emitir-factura` + `cron-sweeps`.
+**Estado:** **PRD = DEV = v1.77.0**, migs 001–220, EF `emitir-factura` + `cron-sweeps`.
+
+**🧹 Mig 220 (2026-06-17, DEV+PROD) — barrido de drift de policies:** tras la 219 se comparó `pg_policies` DEV vs PROD; aparecieron 4 tablas con drift **cosmético** (clientes duplicada, gasto_cuotas con nombre distinto + nunca migrada, productos/tenants `is_admin()` vs inline equivalente). Mig 220 las normaliza al canónico del repo. **Resultado: DEV == PROD == 152 policies, mismo hash global** (`54c6422…`). La capa RLS quedó 100% sincronizada. **Regla nueva en CLAUDE.md:** todo DDL va por migración versionada, nunca SQL suelto / botón del Security Advisor (esa fue la causa raíz del drift).
 
 **🔔 v1.77.0 (2026-06-17, mig 219, EN PROD, PR #221) — Pase 3 de la auditoría UAT modo básico (§25-28):** un hallazgo 🔴 — la RLS de `notificaciones` bloqueaba el INSERT cross-user → **TODAS las notificaciones in-app estaban rotas** (solicitud de Caja Fuerte —que además abortaba el pedido del cajero—, diferencia apertura/cierre de caja, alertas de venta margen-negativo/devoluciones). PROD y DEV estaban **desincronizados** (PROD `notif_user FOR ALL` rechazaba cross-user; DEV tenía `notif_select`+`notif_update` aplicadas fuera de banda y **sin policy de INSERT**). **Mig 219** normaliza ambos: SELECT/UPDATE/DELETE solo propias (aislamiento intacto) + INSERT mismo tenant. Validado impersonando cajero en DEV **y PROD**. Sin cambios de frontend. Resto §25-28 verde (escaneo, idempotencia webhooks, chunk recovery, savingRef, export/import).
 

@@ -6,7 +6,9 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-18] update | v1.78.0 EN DEV — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo · 🛟 Panel de soporte desplegado (admin.genesis360.pro) + cambiar contraseña
+## [2026-06-18] deploy | v1.78.0 EN PROD (PR #224) — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo + restricción tipos A/B/C · 🛟 Panel de soporte desplegado (admin.genesis360.pro) + cambiar contraseña
+
+**v1.78.0 a PROD:** EF `emitir-factura` deployada en PROD, frontend mergeado `dev→main` (PR #224), release v1.78.0. Sin migración. ✅ Validado en homologación: Factura C con envío → CAE OK + envío en el detalle.
 
 **Sesión larga: panel interno de soporte construido y desplegado + fix de costo de envío en factura.**
 

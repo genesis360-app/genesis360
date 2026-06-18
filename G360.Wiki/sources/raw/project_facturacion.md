@@ -12,7 +12,7 @@ El `costo_envio` cobrado al cliente **debe** ir dentro de la factura (no puede q
 - **`Concepto=3`** (Productos y Servicios) cuando hay envío + **`FchServDesde`/`FchServHasta`/`FchVtoPago`** (= fecha del comprobante) — AFIP los **exige** con Concepto 2/3 (sin ellos rebota). Sin envío → `Concepto=1`.
 - **Courier que paga el cliente directo** (pago en destino / separado): `costo_envio` = 0 → no se agrega (queda afuera, correcto).
 - PDF de factura: línea de envío + total/saldo con envío.
-- ⚠️ **Cambio fiscal: EF deployada en DEV; PROD pendiente de deploy** (GO ya probó Factura C con envío en homologación → CAE OK + envío en el detalle). Ver [[project_costo_envio_factura]].
+- ✅ **EN PROD (v1.78.0, PR #224):** EF `emitir-factura` deployada en PROD; validado en homologación (Factura C con envío → CAE OK + envío en el detalle). Ver [[project_costo_envio_factura]].
 
 ## 🧾 Tipos de comprobante habilitados según el emisor (v1.78.0)
 

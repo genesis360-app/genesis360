@@ -6,7 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-18] update | v1.78.0 EN DEV — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo · 🛟 Panel de soporte desplegado (admin.genesis360.pro) + cambiar contraseña
+## [2026-06-18] update | 🧾 Facturación: 4 bugs (alícuota ≠21% → AFIP la rechazaba, Exento→21%, select no reflejaba, tipo sin validar server-side) + PV en Facturación + UAT blindado — EN DEV
+
+**Disparado por dos reportes de GO en homologación (Almacén Jorgito, monotributista):** (1) "me deja hacer Factura B siendo monotributista" y (2) "puse IVA 10,5% al producto y la factura lo tomó como 21%". La revisión a fondo del flujo de facturación (incl. envío) encontró **4 bugs**, uno grave y latente. **Todo aplicado en código + EF `emitir-factura` deployada a DEV. Pendiente: test homologación → PROD (con OK de GO) + PR `dev→main` + bump de versión.**
+
+- **🔴 GRAVE (fiscal) — alícuota ≠ 21% se mandaba a AFIP como 21%.** El `numeric` de Postgres llega como `"10.50"/"0.00"/"27.00"` y no matcheaba `ALICUOTA_ID` (claves `"10.5"/"0"/"27"`) → caía al default `Id:5` (21%). El *importe* se calculaba a la tasa real pero el *Id de alícuota* iba como 21% → **AFIP rechaza (error 10051)** o clasifica mal. Latente: todo lo probado era 21% (coincidía con el default) + los monotributistas emiten C (sin IVA discriminado). Hubiera explotado con el primer cliente RI con producto a 10,5%. **Fix:** normalizar la clave con `String(parseFloat(tasaStr))` antes del lookup, en `supabase/functions/emitir-factura/index.ts` y su espejo `src/lib/facturacionLogic.ts`. +4 unit de regresión con el formato real (`"10.50"`, `"0.00"`, `"27.00"`) — la suite pasaba en verde porque solo usaba `"10.5"/"21"` limpios.
+- **🔴 (fiscal) — tipo de comprobante no validado server-side.** La restricción A/B/C por emisor (v1.78.0) era **solo UI**; un bundle viejo / API directa podía emitir B siendo monotributista (pasó en ventas #222 y #224 de Almacén Jorgito). **Fix:** guard en la EF — Monotributista/Exento → solo C; RI → nunca C; si no, **400**.
+- **🔴 — producto Exento (0%) se guardaba como 21%.** `parseFloat(form.alicuota_iva) || 21` convertía `0→21` (IVA fantasma). **Fix:** `Number.isFinite(...) ? ... : 21` en `src/pages/ProductoFormPage.tsx`.
+- **🟠 (UX/confianza) — el `<select>` de alícuota no reflejaba el valor guardado.** Cargaba `"21.00"/"10.50"` (no matchea las opciones `"21"/"10.5"`) → campo en blanco al editar (lo que hizo pensar a GO que el 10,5 "no quedaba"). **Fix:** normalizar al cargar con `String(parseFloat(...))`.
+- **🟡 — botón "Emitir factura" en Facturación.** EF verificada OK (logs DEV = `emitir-factura` 200 en todas las emisiones recientes; el backend NO es el problema). Hallazgo: el modal de Facturación **no auto-seleccionaba el punto de venta** (quedaba en default `1`); si el tenant tiene un PV ≠ 1 el `<select value=1>` no matchea → emite con PV inválido. **Fix:** auto-set del primer PV al abrir (consistente con el POS). **Dato:** **Kiosco Buildi no tiene punto de venta configurado** (solo Almacén Jorgito tiene el PV 1) → revisar con GO. Pendiente confirmar con GO el síntoma exacto del botón (posible bundle cacheado).
+- **Flujo envío + factura auditado y CORRECTO:** `ventas.total` = suma de ítems (no incluye envío); `costo_envio` aparte; la EF arma `impTotal = venta.total + costo_envio` → **no duplica** (verificado con datos reales en DEV: venta #220 total 13000 + envío 1000 = pagado 14000).
+- **🧪 UAT blindado:** `tests/specs/uat-modo-basico.md` +12 escenarios (PRD-15/16/17 alícuota, VEN-21 actualizado + VEN-35 envío, FAC-20→26 tipos por emisor + guard + envío + alícuota) + bloque "Fixes aplicados sesión 2026-06-18". typecheck + **753 unit** + build verdes.
+
+## [2026-06-18] deploy | v1.78.0 EN PROD (PR #224) — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo + restricción tipos A/B/C · 🛟 Panel de soporte desplegado (admin.genesis360.pro) + cambiar contraseña
+
+**v1.78.0 a PROD:** EF `emitir-factura` deployada en PROD, frontend mergeado `dev→main` (PR #224), release v1.78.0. Sin migración. ✅ Validado en homologación: Factura C con envío → CAE OK + envío en el detalle.
 
 **Sesión larga: panel interno de soporte construido y desplegado + fix de costo de envío en factura.**
 

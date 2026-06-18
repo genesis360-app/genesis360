@@ -88,7 +88,13 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 5. Llama AFIP WSFE vía AfipSDK
 6. Guarda `cae`, `vencimiento_cae`, `tipo_comprobante`, `numero_comprobante` en `ventas`
 
+7. **Guard fiscal (2026-06-18):** valida que el `tipo_comprobante` sea válido para `condicion_iva_emisor` — Monotributista/Exento → solo C; RI → nunca C; si no, **400**. Es la última línea de defensa: la restricción del selector en el front es solo UI y puede estar cacheada/bypasseada.
+
 **Deploy de la EF:** `npx supabase functions deploy emitir-factura --project-ref <ref>` (CLI lee el archivo local, preserva config; más limpio que el MCP). DEV `gcmhzdedrkmmzfzfveig` · PROD `jjffnbrdjchquexdfgwq` (PROD requiere autorización explícita).
+
+### ⚠ Gotcha — normalización de alícuota (numeric de Postgres) [2026-06-18]
+
+`productos.alicuota_iva` / `venta_items.alicuota_iva` son `numeric` → supabase-js los devuelve como **string con decimales fijos**: `"21.00"`, `"10.50"`, `"0.00"`, `"27.00"`. El mapa `ALICUOTA_ID` tiene claves **sin** esos ceros (`"21"`, `"10.5"`, `"0"`, `"27"`). Hay que **normalizar la clave con `String(parseFloat(tasaStr))`** antes del lookup (excepto los literales `'exento'`/`'sin_iva'`). Si no, el lookup falla y cae al default `Id:5` (=21%) → para A/B con alícuota ≠ 21 el *importe* va a la tasa real pero el *Id* va como 21% → **AFIP rechaza (error 10051)**. Bug latente arreglado en `emitir-factura/index.ts` + espejo `facturacionLogic.ts` (unit FAC-IVA-08/09/10). El `<select>` de alícuota en `ProductoFormPage` requiere la misma normalización al cargar (si no, muestra el campo en blanco al editar), y al guardar NO usar `||21` (convierte Exento `0`→21).
 
 ---
 

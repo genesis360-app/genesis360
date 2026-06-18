@@ -13,9 +13,9 @@ updated: 2026-05-29
 
 ---
 
-## v1.78.0 — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo (EN DEV, pendiente PROD)
+## v1.78.0 — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo + restricción tipos A/B/C (PROD ✅, PR #224)
 
-El `costo_envio` cobrado al cliente ahora entra como ítem "Costo de Envío" en la factura (A/B/C) y suma al total (antes quedaba afuera). En Factura A el flete sigue la alícuota del producto; en C va a neto. **Concepto=3 + FchServDesde/Hasta/VtoPago** cuando hay envío (AFIP los exige). Courier pagado directo por el cliente queda afuera. PDF de factura con la línea de envío. **Modo básico:** el envío pasa a ser **solo un campo de costo** (sale en ticket y factura) — sin courier/reparto/dirección y **sin crear registro en Envíos**. **EN DEV** (EF `emitir-factura` deployada en DEV); **PROD pendiente test en homologación + OK de GO** (cambio fiscal). También: **🛟 panel interno de soporte desplegado en `admin.genesis360.pro`** (repo `genesis360-admin`, migs 221-224 + EF `admin-api`).
+El `costo_envio` cobrado al cliente ahora entra como ítem "Costo de Envío" en la factura (A/B/C) y suma al total (antes quedaba afuera). En Factura A el flete sigue la alícuota del producto; en C va a neto. **Concepto=3 + FchServDesde/Hasta/VtoPago** cuando hay envío (AFIP los exige). Courier pagado directo por el cliente queda afuera. PDF de factura con la línea de envío. **Modo básico:** el envío pasa a ser **solo un campo de costo** (sale en ticket y factura) — sin courier/reparto/dirección y **sin crear registro en Envíos**. **PROD ✅** (EF `emitir-factura` deployada en PROD; frontend `dev→main` PR #224; validado en homologación: Factura C con envío → CAE OK). **+ Restricción de tipos A/B/C por emisor** (Monotributista/Exento → solo C; RI → A/B). También: **🛟 panel interno de soporte desplegado en `admin.genesis360.pro`** (repo `genesis360-admin`, migs 221-224 + EF `admin-api`).
 
 ---
 

@@ -106,6 +106,23 @@ describe('calcularIvaDesglose', () => {
     ])
     expect(d.impTotal).toBe(parseFloat((d.totalNeto + d.totalIVA).toFixed(2)))
   })
+  // Regresión: la alícuota llega de un numeric de Postgres como "10.50"/"21.00"/"0.00"/"27.00",
+  // no como "10.5"/"21"/"0"/"27". Antes el lookup de ALICUOTA_ID fallaba y caía al default
+  // Id 5 (21%) → AFIP rechazaba toda A/B con alícuota ≠ 21 (error 10051).
+  it('FAC-IVA-08 alícuota 10,5% en formato numeric "10.50" → Id 4 (no 5)', () => {
+    const d = calcularIvaDesglose([{ cantidad: 1, precio_unitario: 1105, subtotal: 1105, alicuota_iva: '10.50' }])
+    expect(d.iva).toEqual([{ Id: 4, BaseImp: 1000, Importe: 105 }])
+  })
+  it('FAC-IVA-09 "21.00" → Id 5, "27.00" → Id 6, "0.00" → Id 3', () => {
+    expect(calcularIvaDesglose([{ cantidad: 1, precio_unitario: 1210, subtotal: 1210, alicuota_iva: '21.00' }]).iva[0].Id).toBe(5)
+    expect(calcularIvaDesglose([{ cantidad: 1, precio_unitario: 1270, subtotal: 1270, alicuota_iva: '27.00' }]).iva[0].Id).toBe(6)
+    expect(calcularIvaDesglose([{ cantidad: 1, precio_unitario: 500, subtotal: 500, alicuota_iva: '0.00' }]).iva[0].Id).toBe(3)
+  })
+  it('FAC-IVA-10 "10.50" y 10.5 numérico dan idéntico resultado', () => {
+    const str = calcularIvaDesglose([{ cantidad: 1, precio_unitario: 1105, subtotal: 1105, alicuota_iva: '10.50' }])
+    const num = calcularIvaDesglose([{ cantidad: 1, precio_unitario: 1105, subtotal: 1105, alicuota_iva: 10.5 }])
+    expect(str).toEqual(num)
+  })
 })
 
 // ── 2.bis Importes según tipo (Factura C no discrimina IVA) ──────────────────────

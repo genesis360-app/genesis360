@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.78.1 — 🧾 Fix alícuota AFIP ≠21% + guard tipo server-side + Exento/select producto + PV Facturación + ✨ tarjeta Capital Caja Fuerte (PROD ✅, PR #225)
+
+Cuatro bugs de facturación, uno **grave y latente**: la alícuota llega de un `numeric` de Postgres como `"10.50"/"0.00"/"27.00"` y no matcheaba `ALICUOTA_ID` → caía a `Id:5` (21%) → **AFIP rechazaba (error 10051)** toda Factura A/B con alícuota ≠ 21 (solo 21% funcionaba, por casualidad; los monotributistas emiten C sin IVA, por eso no se había visto). Fix: normalizar con `String(parseFloat())` en la EF + espejo. Además: **guard fiscal server-side** (Monotributista/Exento→solo C; RI→nunca C; 400 si no), **Exento (0%) ya no se guarda como 21%**, el **select de alícuota refleja el valor guardado**, y **auto-set del punto de venta** al emitir desde Facturación. **✨ UX:** tarjeta de **Capital total** en Caja Fuerte (degradé violeta→cian, estilo Dashboard). EF `emitir-factura` deployada en DEV y PROD. UAT +12 escenarios. 753 unit + build verdes.
+
+---
+
 ## v1.78.0 — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo + restricción tipos A/B/C (PROD ✅, PR #224)
 
 El `costo_envio` cobrado al cliente ahora entra como ítem "Costo de Envío" en la factura (A/B/C) y suma al total (antes quedaba afuera). En Factura A el flete sigue la alícuota del producto; en C va a neto. **Concepto=3 + FchServDesde/Hasta/VtoPago** cuando hay envío (AFIP los exige). Courier pagado directo por el cliente queda afuera. PDF de factura con la línea de envío. **Modo básico:** el envío pasa a ser **solo un campo de costo** (sale en ticket y factura) — sin courier/reparto/dirección y **sin crear registro en Envíos**. **PROD ✅** (EF `emitir-factura` deployada en PROD; frontend `dev→main` PR #224; validado en homologación: Factura C con envío → CAE OK). **+ Restricción de tipos A/B/C por emisor** (Monotributista/Exento → solo C; RI → A/B). También: **🛟 panel interno de soporte desplegado en `admin.genesis360.pro`** (repo `genesis360-admin`, migs 221-224 + EF `admin-api`).

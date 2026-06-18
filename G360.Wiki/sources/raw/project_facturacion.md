@@ -4,6 +4,24 @@ description: Diseño completo del módulo de facturación electrónica AFIP — 
 type: project
 originSessionId: 7ac12f69-1217-41e2-b6e5-3547bd561e43
 ---
+## 🚚 Costo de envío en la factura (v1.78.0, 2026-06-18 — EN DEV)
+
+El `costo_envio` cobrado al cliente **debe** ir dentro de la factura (no puede quedar afuera). Implementado en `emitir-factura` + `buildFacturaPDFDataPorId` (`facturasPDF.ts`):
+- Si `ventas.costo_envio > 0` y NO es NC → se agrega un ítem **"Costo de Envío"** al detalle + suma al `ImpTotal`.
+- **Alícuota del flete** = la **predominante de los productos** (regla AFIP: en A el envío sigue al producto; en C va a neto sin discriminar).
+- **`Concepto=3`** (Productos y Servicios) cuando hay envío + **`FchServDesde`/`FchServHasta`/`FchVtoPago`** (= fecha del comprobante) — AFIP los **exige** con Concepto 2/3 (sin ellos rebota). Sin envío → `Concepto=1`.
+- **Courier que paga el cliente directo** (pago en destino / separado): `costo_envio` = 0 → no se agrega (queda afuera, correcto).
+- PDF de factura: línea de envío + total/saldo con envío.
+- ⚠️ **Cambio fiscal: EF deployada en DEV; PROD pendiente de deploy** (GO ya probó Factura C con envío en homologación → CAE OK + envío en el detalle). Ver [[project_costo_envio_factura]].
+
+## 🧾 Tipos de comprobante habilitados según el emisor (v1.78.0)
+
+El selector A/B/C del POS y de Facturación ahora ofrece **solo las letras válidas según la condición de IVA del emisor** (`condicion_iva_emisor`), regla AFIP:
+- **Monotributista / Exento** → **solo C** (no pueden emitir A ni B).
+- **Responsable Inscripto** → **A** (cliente RI con CUIT) o **B** (resto); nunca C.
+- Helper puro `tiposComprobantePermitidos(emisorCondIva)` en `facturacionLogic.ts` (espejo de `detectarTipoComprobante`) + tests. La A además exige CUIT del cliente. Facturación defaultea al tipo auto-detectado.
+Antes mostraba los 3 y dejaba elegir A a un monotributista (incorrecto). Solo frontend (no cambia la emisión).
+
 ## Decisión estratégica
 
 **Integración propia directa con AFIP WSFE** usando la librería `@afipsdk/afip.js` como wrapper.

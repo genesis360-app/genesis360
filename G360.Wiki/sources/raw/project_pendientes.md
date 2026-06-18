@@ -4,9 +4,36 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-## ▶ CIERRE DE SESIÓN 2026-06-17 — dónde retomar
+## ▶ CIERRE DE SESIÓN 2026-06-18 — dónde retomar
 
-**Estado:** **PRD = DEV = v1.77.0**, migs 001–220, EF `emitir-factura` + `cron-sweeps`.
+**Estado:** **PROD = v1.77.0 · DEV = v1.78.0** (app principal). Migs **001–224** en DEV **y PROD** (las 221-224 son del panel de soporte). EFs: `emitir-factura` (v con costo de envío en DEV; **PROD aún sin ese cambio**), `cron-sweeps`, `admin-api` (panel, DEV+PROD).
+
+**🚚 v1.78.0 (2026-06-18, EN DEV, sin migración) — Costo de envío en factura + envío en básico + restricción de tipos A/B/C por emisor (pedido GO):** ✅ implementado y verde en DEV (**750 unit** + build). **EF `emitir-factura` deployada en DEV; PROD del cambio fiscal PENDIENTE** → GO debe deployar `emitir-factura` a PROD. **✅ GO ya probó en homologación una Factura C con envío → CAE OK + envío en el detalle.** (Falta confirmar A/B si aplica, pero GO es monotributista → C.) Lo hecho:
+- **Restricción de tipos A/B/C (frontend, inocuo, no necesita homologación):** el selector del POS y de Facturación ahora ofrece **solo las letras válidas según `condicion_iva_emisor`** — Monotributista/Exento → solo C; RI → A/B (nunca C). Antes mostraba los 3 y dejaba elegir A siendo monotributista. Helper `tiposComprobantePermitidos()` en `facturacionLogic.ts` + 4 unit tests; Facturación además defaultea al tipo auto-detectado.
+- **Factura:** `costo_envio` cobrado al cliente ahora entra como ítem "Costo de Envío" + suma al total (antes quedaba afuera). Alícuota del flete = la predominante de los productos (regla AFIP: en A sigue al producto; en C va a neto). **Concepto=3 + FchServDesde/Hasta/VtoPago** cuando hay envío (AFIP los exige). Courier que paga el cliente directo = `costo_envio` 0 → no se agrega (correcto). PDF de factura: línea + total/saldo con envío. NC no afectada.
+- **Envío en básico:** ahora es **solo un campo de costo** (se guarda en `ventas.costo_envio`, sale en ticket y factura); se ocultan transporte/courier/km/dirección y **NO crea registro en `envios`** (inserción gateada por `modoAvanzado`). Avanzado sin cambios.
+- **Para PROD:** 1) ✅ homologación probada (Factura C con envío → CAE OK + envío en el detalle); 2) **deploy `emitir-factura` a PROD** (`npx supabase functions deploy emitir-factura --project-ref jjffnbrdjchquexdfgwq`); 3) PR `dev→main` **v1.78.0** + release. (El resto del batch v1.78.0 es frontend e inocuo; el único punto sensible era el EF fiscal, ya validado en homologación.)
+
+**🛟 Panel de soporte — cambiar contraseña (2026-06-18):** EF `admin-api` action `auth.change_password` (DEV+PROD) + modal en el sidebar. Resuelve el password temporal sin pasar por el dashboard de Supabase. Mergeado dev→main del repo `genesis360-admin` → live en `admin.genesis360.pro`. (El panel quedó desplegado y en uso: ver [[project_plataforma_soporte]].)
+
+### 🟢 RESUELTO (v1.78.0, en DEV) — Costo de envío en factura/ticket + flujo de envío en básico
+
+*(Era backlog prioritario; implementado el 2026-06-18, pendiente solo el deploy fiscal a PROD tras test en homologación.)* Reglas implementadas:
+
+**A) AFIP — el costo de envío cobrado al cliente DEBE ir dentro de la factura (A/B/C)** como un **ítem extra** "Costo de Envío" (no puede quedar afuera; es parte del neto total de la operación). Tratamiento:
+- **Envío propio** (o courier que te factura a vos y vos se lo cobrás al cliente): el envío es **servicio accesorio**. En B/C: ítem extra "Costo de Envío" por el valor cobrado. En **A**: el envío sigue la **misma alícuota de IVA que el producto** (producto al 21% → envío al 21%; al 10,5% → 10,5%).
+- **Courier que el cliente paga directo** (pago en destino / pago separado al correo): el envío **queda FUERA** de la factura; se factura solo el neto del producto.
+- **wsfe / EF `emitir-factura`:** cuando hay envío cobrado, setear **`Concepto=3`** (Productos y Servicios) y agregar la línea de flete en el `Detalle` con su `ImpIVA` según alícuota. (Con `Concepto=1` AFIP puede rechazar si detecta descripción de flete en Factura A.) Hoy `ventas.costo_envio` existe pero **no se está sumando ni a `venta_items`/detalle de la factura ni al total cobrado** → ese es el bug.
+- **Verificar también:** el **total cobrado al cliente** en la factura debe incluir el envío (hoy no lo considera).
+
+**B) Modo básico — el envío es SOLO un campo de costo en la venta:**
+- En básico: un **campo "Costo de envío"** en el POS para tipear el monto; **NADA de lógica de envíos**, **NO crear un envío en la página de Envíos**, nada de courier/reparto/etc.
+- Ese costo debe aparecer **en el ticket Y en la factura** (como ítem, según regla A).
+- **Modo avanzado:** sí se gestiona todo el envío (como hoy).
+- ⚠️ Bug a confirmar: en básico el flujo estaría derivando al módulo de Envíos (que en básico está oculto) → revisar `VentasPage` (`costoEnvioNum`, creación de envío, gating por `modoAvanzado`).
+
+Fuente: comentario de GO (detalle completo con ejemplo de JSON wsfe `Concepto=3` + ítem ENV-001). **Pendiente de auditoría/implementación** (GO lo marcó "revisar luego").
+
 
 **🧹 Mig 220 (2026-06-17, DEV+PROD) — barrido de drift de policies:** tras la 219 se comparó `pg_policies` DEV vs PROD; aparecieron 4 tablas con drift **cosmético** (clientes duplicada, gasto_cuotas con nombre distinto + nunca migrada, productos/tenants `is_admin()` vs inline equivalente). Mig 220 las normaliza al canónico del repo. **Resultado: DEV == PROD == 152 policies, mismo hash global** (`54c6422…`). La capa RLS quedó 100% sincronizada. **Regla nueva en CLAUDE.md:** todo DDL va por migración versionada, nunca SQL suelto / botón del Security Advisor (esa fue la causa raíz del drift).
 

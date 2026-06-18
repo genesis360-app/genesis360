@@ -76,7 +76,7 @@ serve(async (req) => {
     // 2. Fetch venta con ítems y cliente
     const { data: venta, error: vErr } = await supabase.from('ventas')
       .select(`
-        id, numero, total, estado, medio_pago, cae, tipo_comprobante, numero_comprobante,
+        id, numero, total, costo_envio, estado, medio_pago, cae, tipo_comprobante, numero_comprobante,
         venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto,
           productos(nombre, sku, alicuota_iva)),
         clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor)
@@ -119,6 +119,30 @@ serve(async (req) => {
       if (!items.length) throw new Error('La devolución no tiene ítems')
     }
 
+    // 2b. Costo de envío cobrado al cliente → DEBE ir como ítem en la factura (regla AFIP:
+    //     es parte del neto total de la operación). Solo en facturas (no NC) y si se cobró
+    //     (costo_envio > 0; el caso "courier paga el cliente directo" tiene costo_envio = 0).
+    //     El flete sigue la alícuota del producto (en A/B); en C va a neto sin discriminar.
+    //     Al ser un servicio, abajo se setea Concepto=3 + FchServ* (AFIP los exige).
+    const costoEnvio = Number((venta as any).costo_envio ?? 0)
+    const envioFacturado = !esNC && costoEnvio > 0
+    if (envioFacturado) {
+      // Alícuota predominante de los productos (la de mayor subtotal); default 21.
+      const porAlic: Record<string, number> = {}
+      for (const it of items) {
+        const a = String(it.alicuota_iva ?? it.productos?.alicuota_iva ?? '21')
+        porAlic[a] = (porAlic[a] ?? 0) + Number(it.subtotal ?? it.precio_unitario * it.cantidad ?? 0)
+      }
+      const alicEnvio = Object.entries(porAlic).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '21'
+      items = [...items, {
+        cantidad: 1,
+        precio_unitario: costoEnvio,
+        subtotal: costoEnvio,
+        alicuota_iva: alicEnvio,
+        productos: { nombre: 'Costo de Envío', sku: 'ENVIO', alicuota_iva: alicEnvio },
+      }]
+    }
+
     // 3. Determinar tipo de comprobante y datos del receptor
     const cbteTipo = TIPO_CBTE[tipo_comprobante] ?? 6
     const condicionIvaReceptor = cliente?.condicion_iva_receptor ?? 'CF'
@@ -126,7 +150,7 @@ serve(async (req) => {
 
     // DocTipo/DocNro según condición
     let docTipo = 99; let docNro = 0 // Consumidor Final por defecto
-    const totalVenta = Number(venta.total ?? 0)
+    const totalVenta = Number(venta.total ?? 0) + (envioFacturado ? costoEnvio : 0)
     const umbral = Number(tenant.umbral_factura_b ?? 68305.16)
 
     if (tipo_comprobante === 'A') {
@@ -232,7 +256,10 @@ serve(async (req) => {
       CantReg:    1,
       PtoVta:     punto_venta,
       CbteTipo:   cbteTipo,
-      Concepto:   1, // 1=Productos 2=Servicios 3=Ambos
+      // 1=Productos · 3=Productos y Servicios (cuando se factura el envío como servicio).
+      // Con Concepto 2/3 AFIP EXIGE FchServDesde/Hasta/VtoPago (se agregan abajo).
+      Concepto:   envioFacturado ? 3 : 1,
+      ...(envioFacturado ? { FchServDesde: fecha, FchServHasta: fecha, FchVtoPago: fecha } : {}),
       DocTipo:    docTipo,
       DocNro:     docNro,
       CbteDesde:  proximo,

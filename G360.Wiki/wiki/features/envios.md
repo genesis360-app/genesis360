@@ -8,6 +8,8 @@ updated: 2026-06-09
 
 # Módulo Envíos
 
+> **🚚 Envío en modo BÁSICO (v1.78.0, 2026-06-18 — EN DEV):** en básico el envío es **solo un campo de costo** en el POS (se guarda en `ventas.costo_envio`, sale en ticket y factura). **NO** hay courier/reparto/dirección ni se crea registro en `envios` (la inserción está gateada por `modoAvanzado`) — el módulo de Envíos queda oculto en básico. La gestión completa que describe esta página aplica **solo a modo avanzado**. El costo de envío cobrado al cliente ahora también entra en la **factura AFIP** (ver [[project_facturacion]] / [[project_costo_envio_factura]]).
+
 Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.  
 **Última actualización:** 2026-06-10 — **courier `probar` + logging diagnóstico en `courier-api`** (v1.49.0, PROD): botón "Probar credenciales" en Config → Envíos + logs del intercambio HTTP crudo (sin credenciales) para validar adapters con cuentas B2B. Antes: EN7 (envío propio + recursos + reportes/alertas) en PROD (v1.45.0, mig 194). Envíos cerrado salvo EN6 (integraciones courier, bloqueado por cuentas B2B). Ver "Relevamiento Envíos 2.0" al final.
 

@@ -12,6 +12,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
+import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
 import toast from 'react-hot-toast'
 
 type Tab = 'panel' | 'emitir' | 'libros' | 'liquidacion'
@@ -577,7 +578,7 @@ export default function FacturacionPage() {
                       </p>
                     </div>
                     <button
-                      onClick={() => { setVentaAFacturar(v); setTipoComprobante('B'); setShowEmitirModal(true) }}
+                      onClick={() => { setVentaAFacturar(v); setTipoComprobante(detectarTipoComprobante((config as any)?.condicion_iva_emisor, (v as any).clientes?.condicion_iva_receptor)); setShowEmitirModal(true) }}
                       disabled={!config?.facturacion_habilitada}
                       className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-xl disabled:opacity-40 transition-all">
                       <Send size={14} /> Emitir factura
@@ -893,7 +894,9 @@ export default function FacturacionPage() {
                 <div className="relative">
                   <select value={tipoComprobante} onChange={e => setTipoComprobante(e.target.value)}
                     className={`w-full appearance-none ${inputClass} pr-8`}>
-                    {TIPO_COMPROBANTE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    {TIPO_COMPROBANTE_OPTS
+                      .filter(o => tiposComprobantePermitidos((config as any)?.condicion_iva_emisor).includes(o.value as any))
+                      .map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                   <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>

@@ -22,6 +22,7 @@ const ROLE_MODULES: Record<string, string[]> = {
 }
 const ACTION_MODULE: Record<string, string> = {
   'auth.whoami': 'dashboard',
+  'auth.change_password': 'dashboard',
   'metrics.overview': 'dashboard',
   'customers.list': 'customers',
   'customers.get': 'customers',
@@ -99,6 +100,15 @@ Deno.serve(async (req) => {
     switch (action) {
       case 'auth.whoami':
         return json({ agent })
+
+      case 'auth.change_password': {
+        const pw = String(p.password ?? '')
+        if (pw.length < 8) return json({ error: 'La contraseña debe tener al menos 8 caracteres' }, 400)
+        const { error } = await svc.auth.admin.updateUserById(uid, { password: pw })
+        if (error) return json({ error: error.message }, 400)
+        await audit({ self_password_change: true })
+        return json({ ok: true })
+      }
 
       case 'metrics.overview': {
         const ago30 = new Date(Date.now() - 30 * DAY).toISOString()

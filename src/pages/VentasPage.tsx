@@ -1584,10 +1584,19 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, monto_pagado, created_at, medio_pago, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
+    // Costo de envío cobrado al cliente → línea extra en la factura (igual que en la EF emitir-factura).
+    const costoEnvioPdf = Number((venta as any).costo_envio ?? 0)
+    const totalConEnvioPdf = Number(venta.total) + costoEnvioPdf
+    const ventaItemsPdf: any[] = (venta as any).venta_items ?? []
+    const alicEnvioPdf = (() => {
+      const porAlic: Record<string, number> = {}
+      for (const i of ventaItemsPdf) { const a = String(i.alicuota_iva ?? 21); porAlic[a] = (porAlic[a] ?? 0) + Number(i.subtotal ?? 0) }
+      return Number(Object.entries(porAlic).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 21)
+    })()
     const { data: pv } = await supabase.from('puntos_venta_afip')
       .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
       .order('numero').limit(1).maybeSingle()
@@ -1597,7 +1606,7 @@ export default function VentasPage() {
     const cli = (venta as any).clientes
     const formaPago = parseFormaPago((venta as any).medio_pago)
     // Saldo pendiente → QR de pago MercadoPago en el PDF (si el tenant tiene MP conectado)
-    const saldo = Number(venta.total) - Number((venta as any).monto_pagado ?? 0)
+    const saldo = totalConEnvioPdf - Number((venta as any).monto_pagado ?? 0)
     const pagoMpQr = saldo > 0.5 ? await crearPagoMpQR(ventaId, saldo) : null
     const data: FacturaPDFData = {
       tipo_comprobante:    (venta.tipo_comprobante ?? 'B').replace(/^Factura\s+/i, ''),
@@ -1624,15 +1633,21 @@ export default function VentasPage() {
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
       receptor_domicilio:  composeDomicilioCliente(cli?.cliente_domicilios),
-      items: ((venta as any).venta_items ?? []).map((i: any) => ({
-        codigo:         i.productos?.sku ?? null,
-        descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
-        cantidad:       Number(i.cantidad),
-        precio_unitario: Number(i.precio_unitario),
-        alicuota_iva:   Number(i.alicuota_iva ?? 21),
-        subtotal:       Number(i.subtotal),
-      })),
-      total: Number(venta.total),
+      items: [
+        ...ventaItemsPdf.map((i: any) => ({
+          codigo:         i.productos?.sku ?? null,
+          descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
+          cantidad:       Number(i.cantidad),
+          precio_unitario: Number(i.precio_unitario),
+          alicuota_iva:   Number(i.alicuota_iva ?? 21),
+          subtotal:       Number(i.subtotal),
+        })),
+        ...(costoEnvioPdf > 0 ? [{
+          codigo: 'ENVIO', descripcion: 'Costo de Envío', cantidad: 1,
+          precio_unitario: costoEnvioPdf, alicuota_iva: alicEnvioPdf, subtotal: costoEnvioPdf,
+        }] : []),
+      ],
+      total: totalConEnvioPdf,
       forma_pago: formaPago,
       pago_mp_qr: pagoMpQr,
       pago_mp_monto: pagoMpQr ? saldo : null,
@@ -2856,8 +2871,10 @@ export default function VentasPage() {
       if (estado === 'despachada' && factHabilitada) {
         triggerFacturaModal(venta.id, venta.numero ?? 0, Number(venta.total ?? 0))
       }
-      // Auto-crear envío si el toggle está activo
-      if (requiereEnvio && estado !== 'pendiente') {
+      // Auto-crear envío si el toggle está activo. SOLO en modo avanzado: en básico el envío
+      // es únicamente un costo en la venta (ya guardado en `costo_envio` arriba) — no se crea
+      // registro en `envios` ni se usa el módulo de Envíos (que está oculto en básico).
+      if (requiereEnvio && estado !== 'pendiente' && modoAvanzado) {
         // ISS-156/175: el costo del envío que paga el CLIENTE ya entra con la venta.
         // - Envío propio: no hay courier a quien pagar → siempre saldado.
         // - Envío por tercero: si la venta se despachó (cobrada al 100%), el costo ya se cobró → saldado.
@@ -4775,6 +4792,18 @@ export default function VentasPage() {
                   {requiereEnvio && (
                     <div className="px-3 pb-3 pt-2 space-y-3 border-t border-accent/20">
 
+                      {!modoAvanzado ? (
+                        /* Modo básico: el envío es SOLO un costo (sin courier/reparto/dirección;
+                           no crea registro en Envíos). Se suma al total, ticket y factura. */
+                        <div>
+                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Costo de envío ($)</label>
+                          <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
+                            value={costoEnvioVenta} onChange={e => setCostoEnvioVenta(e.target.value)} placeholder="0.00"
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Se suma al total, al ticket y a la factura. La gestión completa de envíos (courier, reparto, dirección) está en modo avanzado.</p>
+                        </div>
+                      ) : (<>
+
                       {/* Tipo de transporte: propio vs courier tercero */}
                       <div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo de transporte</p>
@@ -4998,6 +5027,7 @@ export default function VentasPage() {
                           })()}
                         </div>
                       </div>
+                      </>)}
                     </div>
                   )}
                 </div>

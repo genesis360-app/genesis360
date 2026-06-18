@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-18] update | 🏦 Caja Fuerte: 2 tarjetas (bóveda + capital total) + selector de cuenta destino + lock caja-origen en básico + fix conteo de efectivo (mig 226) — EN DEV
+
+**Pedidos de GO sobre la Caja Fuerte (todo en DEV, sin versionar):**
+- **2 tarjetas destacadas** (estilo Dashboard) en el header: **"En la caja fuerte"** (saldo de bóveda `fuerteSaldo`, degradé violeta→cian — sube al depositar) + **"Capital total del negocio"** (efectivo en cajas + bóveda + cuentas). Reemplaza el "Total" chico. (GO eligió "mostrar las dos cosas".)
+- **Modal Ingresar a Caja Fuerte:** nuevo selector de **Cuenta de destino** (cuentas_origen activas, default Efectivo) — antes el ingreso era siempre Efectivo hardcodeado. La pata de ingreso a la bóveda usa la cuenta elegida; la de egreso de la caja queda en Efectivo.
+- **Modo básico:** el selector de **Caja de origen** queda bloqueado y asume la caja activa (no se elige).
+- **🔴 Fix conteo de capital (mig 226):** el "Capital por cuenta"/"Capital total" no reflejaba el efectivo de ventas/gastos porque esos `caja_movimientos` dejan `cuenta_origen_id` NULL. La vista `vw_boveda_cuentas` ahora atribuye los movimientos NULL **no informativos** (efectivo físico) a la cuenta Efectivo del tenant (read-time, sin tocar write-paths). Verificado: Almacén Jorgito 12.873.811→12.889.570 (sin doble conteo), Kiosco Buildi 10.000→55.300. **Limitación conocida:** las aperturas de caja (`monto_apertura`) no son movimientos → no se cuentan (gap a evaluar). typecheck + build verdes.
+- **⏳ Pendiente PROD:** migs 225+226 + frontend (bump versión + PR `dev→main`).
+
 ## [2026-06-18] update | 💵 Efectivo por default en el alta de tenant (cuenta de origen + método vinculado) — mig 225 EN DEV
 
 **Pedido de GO:** cada tenant nuevo debe nacer con (1) la Cuenta de Origen **Efectivo** (tipo `efectivo`, en la moneda del tenant) y (2) el método de pago **Efectivo** vinculado a esa cuenta, todo por default.

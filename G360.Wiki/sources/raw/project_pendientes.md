@@ -6,7 +6,9 @@ type: project
 
 ## ▶ CIERRE DE SESIÓN 2026-06-18 — dónde retomar
 
-**Estado:** **PRD = v1.78.1** · **DEV adelantado: mig 225** (Efectivo por default en alta de tenant) aplicada en DEV, ⏳ pendiente PROD. migs **001–224** en DEV **y PROD**; **225 solo DEV**. EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte).
+**Estado:** **PRD = v1.78.1** · **DEV adelantado: migs 225+226** (Efectivo por default en alta de tenant + fix conteo efectivo en `vw_boveda_cuentas`) + UI de Caja Fuerte (2 tarjetas, selector de cuenta, lock básico), ⏳ pendiente PROD. migs **001–224** en DEV **y PROD**; **225+226 solo DEV**. EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte).
+
+**🏦 Caja Fuerte (2026-06-18, EN DEV) — pedidos GO:** 2 tarjetas (saldo bóveda + capital total), selector de cuenta destino en el ingreso (default Efectivo), lock de caja-origen en básico, y **mig 226** (la vista cuenta el efectivo de ventas/gastos que quedaba NULL). **Gap conocido:** aperturas de caja no se cuentan en el capital (no son movimientos) — evaluar si incluirlas. **▶ PROD:** migs 225+226 + bump versión + PR.
 
 **💵 Efectivo por default en alta de tenant (2026-06-18, mig 225, EN DEV) — pedido GO:** cada tenant nuevo nace con la Cuenta de Origen Efectivo (tipo `efectivo`, moneda del tenant) + 5 métodos default con Efectivo vinculado. Trigger `fn_seed_tenant_defaults` extendido + backfill de existentes + fallback en `ConfigPage`. Verificado en DEV. **▶ PRÓXIMO PASO PROD:** aplicar mig 225 a PROD + bump v1.78.2 + PR `dev→main` + release.
 

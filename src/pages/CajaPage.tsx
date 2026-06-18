@@ -1971,13 +1971,20 @@ export default function CajaPage() {
                   )}
                 </div>
               </div>
-              {/* Tarjeta destacada — Capital total (lo principal de la página: cuánta plata
-                  hay en la cartera/capital). Estilo Dashboard, degradé violeta→cian. */}
+              {/* Tarjetas destacadas (estilo Dashboard): lo principal de la página.
+                  (1) Plata física en la bóveda · (2) Capital total del negocio. */}
               {puedeExtraerBoveda && (
-                <div className="lg:w-72 shrink-0 rounded-2xl p-5 bg-gradient-to-br from-[#7B00FF] to-[#06B6D4] text-white shadow-lg flex flex-col justify-center">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Capital total</p>
-                  <p className="text-3xl font-bold leading-tight mt-1 break-words">{formatMoneda(capitalTotal)}</p>
-                  <p className="text-[11px] text-white/70 mt-1.5">Efectivo + cuentas · toda la plata del negocio</p>
+                <div className="lg:w-72 shrink-0 flex flex-col gap-3">
+                  <div className="rounded-2xl p-5 bg-gradient-to-br from-[#7B00FF] to-[#06B6D4] text-white shadow-lg">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-white/80">En la caja fuerte</p>
+                    <p className="text-3xl font-bold leading-tight mt-1 break-words">{formatMoneda(fuerteSaldo)}</p>
+                    <p className="text-[11px] text-white/70 mt-1.5">Plata que hay hoy en la bóveda</p>
+                  </div>
+                  <div className="rounded-2xl p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Capital total del negocio</p>
+                    <p className="text-2xl font-bold leading-tight mt-1 break-words text-gray-800 dark:text-gray-100">{formatMoneda(capitalTotal)}</p>
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Efectivo en cajas + bóveda + cuentas</p>
+                  </div>
                 </div>
               )}
             </div>

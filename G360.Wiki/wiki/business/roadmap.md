@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.78.2 — 💵 Efectivo por default + 💰 fix capital bóveda + 🏦 Caja Fuerte UI + 🎨 logo nuevo + 🖥️ Caja full-width + 🟣 degradé de marca (PROD ✅, PR #226, migs 225-226)
+
+Lote de UX + datos. **Efectivo por default (mig 225):** cada tenant nuevo nace con la cuenta de origen Efectivo (en su moneda) + métodos default con Efectivo vinculado (+ backfill). **Fix capital bóveda (mig 226):** `vw_boveda_cuentas` atribuye el efectivo sin cuenta (ventas/gastos) a la cuenta Efectivo → el capital lo refleja. **Caja Fuerte:** 2 tarjetas (saldo bóveda + capital total), selector de cuenta destino en el ingreso, lock de caja-origen en básico. **Logo/iconos nuevos** (favicon + PWA + maskable + sidebar + login). **Caja a pantalla completa** (2 columnas). **Degradé de marca violeta→cian** con lugar único de configuración (vars de `src/index.css`; `bg-accent`→degradé en todos los botones/barras). migs 225-226 en DEV y PROD. typecheck + build verdes.
+
+---
+
 ## v1.78.1 — 🧾 Fix alícuota AFIP ≠21% + guard tipo server-side + Exento/select producto + PV Facturación + ✨ tarjeta Capital Caja Fuerte (PROD ✅, PR #225)
 
 Cuatro bugs de facturación, uno **grave y latente**: la alícuota llega de un `numeric` de Postgres como `"10.50"/"0.00"/"27.00"` y no matcheaba `ALICUOTA_ID` → caía a `Id:5` (21%) → **AFIP rechazaba (error 10051)** toda Factura A/B con alícuota ≠ 21 (solo 21% funcionaba, por casualidad; los monotributistas emiten C sin IVA, por eso no se había visto). Fix: normalizar con `String(parseFloat())` en la EF + espejo. Además: **guard fiscal server-side** (Monotributista/Exento→solo C; RI→nunca C; 400 si no), **Exento (0%) ya no se guarda como 21%**, el **select de alícuota refleja el valor guardado**, y **auto-set del punto de venta** al emitir desde Facturación. **✨ UX:** tarjeta de **Capital total** en Caja Fuerte (degradé violeta→cian, estilo Dashboard). EF `emitir-factura` deployada en DEV y PROD. UAT +12 escenarios. 753 unit + build verdes.

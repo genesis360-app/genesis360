@@ -568,10 +568,13 @@ export default function VentasPage() {
     queryKey: ['caja-sesiones-abiertas', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('caja_sesiones')
-        .select('id, caja_id, cajas(nombre, moneda)')
+        .select('id, caja_id, cajas(nombre, moneda, es_caja_fuerte)')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'abierta')
-      return data ?? []
+      // Excluir la sesión permanente de la Caja Fuerte/Bóveda: en la venta solo se
+      // cobra en cajas operativas. (Además, si no, con 1 sola caja real `length` sería
+      // 2 y no autopreseleccionaría la única caja abierta.)
+      return (data ?? []).filter((s: any) => !s.cajas?.es_caja_fuerte)
     },
     enabled: !!tenant,
     refetchInterval: 15_000,

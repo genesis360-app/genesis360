@@ -6,7 +6,7 @@ type: project
 
 ## ▶ CIERRE DE SESIÓN 2026-06-18 — dónde retomar
 
-**Estado:** **PRD = v1.78.1** · **DEV adelantado: migs 225+226** (Efectivo por default en alta de tenant + fix conteo efectivo en `vw_boveda_cuentas`) + UI de Caja Fuerte (2 tarjetas, selector de cuenta, lock básico), ⏳ pendiente PROD. migs **001–224** en DEV **y PROD**; **225+226 solo DEV**. EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte).
+**Estado:** **PRD = DEV = v1.78.2**, migs **001–226** en DEV **y PROD**. EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte). **v1.78.2 (PR #226):** Efectivo por default en alta de tenant (mig 225) + fix conteo de efectivo en bóveda (mig 226) + Caja Fuerte UI (2 tarjetas + selector de cuenta + lock básico) + **logo/iconos nuevos** + **Caja a pantalla completa (2 columnas)** + **degradé de marca violeta→cian** (single-source en `src/index.css`; `bg-accent`→degradé). **⚠ A VERIFICAR VISUALMENTE en PROD:** el degradé global y el layout de Caja (no se pudieron ver renderizados; revertibles con un commit).
 
 **🏦 Caja Fuerte (2026-06-18, EN DEV) — pedidos GO:** 2 tarjetas (saldo bóveda + capital total), selector de cuenta destino en el ingreso (default Efectivo), lock de caja-origen en básico, y **mig 226** (la vista cuenta el efectivo de ventas/gastos que quedaba NULL). **Gap conocido:** aperturas de caja no se cuentan en el capital (no son movimientos) — evaluar si incluirlas. **▶ PROD:** migs 225+226 + bump versión + PR.
 

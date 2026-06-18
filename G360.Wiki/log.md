@@ -10,6 +10,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 GO pasó el logo nuevo (G en estrella/compás, degradé violeta→cian, 1024×1024 transparente). Fuente versionada en `brand/logo-source.png` + script reproducible `scripts/gen-brand-icons.mjs` (usa `sharp` + `png-to-ico`, **devDependencies**, no entran al bundle). Generados en `public/`: favicon 16/32 + favicon.ico (transparente), android-chrome 192/512 (transparente), apple-touch-icon 180 + **nuevo** android-chrome-512x512-maskable (fondo blanco + padding para el safe-zone de Android). Manifest (`vite.config.ts`) actualizado: 512 `any` + 512 `maskable` dedicado. `LoginPage` ahora muestra el logo (antes ícono genérico `Package`). El sidebar ya usaba `android-chrome-192`. typecheck + build verdes. **Ojo:** favicon/PWA cacheados pueden tardar en refrescar (hard-reload). **theme_color del manifest sigue `#0000FF`** (no matchea el violeta — opcional cambiarlo). Pendiente PROD (junto con migs 225+226 + fixes de caja).
 
+## [2026-06-18] deploy | v1.78.2 EN PROD (PR #226, migs 225-226) — 💵 Efectivo default + 💰 fix capital bóveda + 🏦 Caja Fuerte UI + 🎨 logo nuevo + 🖥️ Caja full-width + 🟣 degradé de marca
+
+**v1.78.2 a PROD:** migs 225+226 aplicadas en PROD (verificado: 4/4 tenants con cuenta Efectivo, 0 sin link), PR #226 `dev→main` mergeado, release v1.78.2, `APP_VERSION` v1.78.2. Bundle de los updates de la sesión (Efectivo por default, fix capital bóveda, Caja Fuerte 2-tarjetas + selector de cuenta + lock básico, logo/iconos nuevos, Caja a pantalla completa 2 columnas, degradé de marca violeta→cian single-source). Detalle de cada uno en las entradas `update` de abajo.
+
+**⚠ A verificar visualmente en PROD (no se pudieron ver renderizados, son revertibles):** el **degradé global** (`bg-accent`→degradé en todos los botones/barras) y el **layout de Caja** (2 columnas full-width). Si algo se ve raro, revert de un commit + redeploy.
+
 ## [2026-06-18] update | 🏦 Caja Fuerte: 2 tarjetas (bóveda + capital total) + selector de cuenta destino + lock caja-origen en básico + fix conteo de efectivo (mig 226) — EN DEV
 
 **Pedidos de GO sobre la Caja Fuerte (todo en DEV, sin versionar):**

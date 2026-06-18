@@ -8,6 +8,25 @@ type: project
 
 **Estado:** **PRD = DEV = v1.77.0**, migs 001–220, EF `emitir-factura` + `cron-sweeps`.
 
+### 🔴 BACKLOG PRIORITARIO (pedido GO 2026-06-17) — Costo de envío en factura/ticket + flujo de envío en básico
+
+GO reportó que **la factura AFIP NO incluye el costo de envío** (cuando se cobra envío al cliente, no aparece) y que **en modo básico el POS parece mandar el envío al módulo de Envíos** (que en básico no debería existir). **Revisar y corregir.** Reglas a implementar:
+
+**A) AFIP — el costo de envío cobrado al cliente DEBE ir dentro de la factura (A/B/C)** como un **ítem extra** "Costo de Envío" (no puede quedar afuera; es parte del neto total de la operación). Tratamiento:
+- **Envío propio** (o courier que te factura a vos y vos se lo cobrás al cliente): el envío es **servicio accesorio**. En B/C: ítem extra "Costo de Envío" por el valor cobrado. En **A**: el envío sigue la **misma alícuota de IVA que el producto** (producto al 21% → envío al 21%; al 10,5% → 10,5%).
+- **Courier que el cliente paga directo** (pago en destino / pago separado al correo): el envío **queda FUERA** de la factura; se factura solo el neto del producto.
+- **wsfe / EF `emitir-factura`:** cuando hay envío cobrado, setear **`Concepto=3`** (Productos y Servicios) y agregar la línea de flete en el `Detalle` con su `ImpIVA` según alícuota. (Con `Concepto=1` AFIP puede rechazar si detecta descripción de flete en Factura A.) Hoy `ventas.costo_envio` existe pero **no se está sumando ni a `venta_items`/detalle de la factura ni al total cobrado** → ese es el bug.
+- **Verificar también:** el **total cobrado al cliente** en la factura debe incluir el envío (hoy no lo considera).
+
+**B) Modo básico — el envío es SOLO un campo de costo en la venta:**
+- En básico: un **campo "Costo de envío"** en el POS para tipear el monto; **NADA de lógica de envíos**, **NO crear un envío en la página de Envíos**, nada de courier/reparto/etc.
+- Ese costo debe aparecer **en el ticket Y en la factura** (como ítem, según regla A).
+- **Modo avanzado:** sí se gestiona todo el envío (como hoy).
+- ⚠️ Bug a confirmar: en básico el flujo estaría derivando al módulo de Envíos (que en básico está oculto) → revisar `VentasPage` (`costoEnvioNum`, creación de envío, gating por `modoAvanzado`).
+
+Fuente: comentario de GO (detalle completo con ejemplo de JSON wsfe `Concepto=3` + ítem ENV-001). **Pendiente de auditoría/implementación** (GO lo marcó "revisar luego").
+
+
 **🧹 Mig 220 (2026-06-17, DEV+PROD) — barrido de drift de policies:** tras la 219 se comparó `pg_policies` DEV vs PROD; aparecieron 4 tablas con drift **cosmético** (clientes duplicada, gasto_cuotas con nombre distinto + nunca migrada, productos/tenants `is_admin()` vs inline equivalente). Mig 220 las normaliza al canónico del repo. **Resultado: DEV == PROD == 152 policies, mismo hash global** (`54c6422…`). La capa RLS quedó 100% sincronizada. **Regla nueva en CLAUDE.md:** todo DDL va por migración versionada, nunca SQL suelto / botón del Security Advisor (esa fue la causa raíz del drift).
 
 **🔔 v1.77.0 (2026-06-17, mig 219, EN PROD, PR #221) — Pase 3 de la auditoría UAT modo básico (§25-28):** un hallazgo 🔴 — la RLS de `notificaciones` bloqueaba el INSERT cross-user → **TODAS las notificaciones in-app estaban rotas** (solicitud de Caja Fuerte —que además abortaba el pedido del cajero—, diferencia apertura/cierre de caja, alertas de venta margen-negativo/devoluciones). PROD y DEV estaban **desincronizados** (PROD `notif_user FOR ALL` rechazaba cross-user; DEV tenía `notif_select`+`notif_update` aplicadas fuera de banda y **sin policy de INSERT**). **Mig 219** normaliza ambos: SELECT/UPDATE/DELETE solo propias (aislamiento intacto) + INSERT mismo tenant. Validado impersonando cajero en DEV **y PROD**. Sin cambios de frontend. Resto §25-28 verde (escaneo, idempotencia webhooks, chunk recovery, savingRef, export/import).

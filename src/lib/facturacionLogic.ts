@@ -50,6 +50,14 @@ export function detectarTipoComprobante(
   return 'B'
 }
 
+// Qué letras puede EMITIR el tenant según SU condición frente a IVA (no depende del cliente):
+//  - Monotributista / Exento → SOLO C (no pueden emitir A ni B).
+//  - Responsable Inscripto (o cualquier otra) → A (a RI) o B (al resto). Nunca C.
+// El selector del POS/Facturación debe ofrecer solo estas (la A además exige CUIT del cliente).
+export function tiposComprobantePermitidos(emisorCondIva?: string | null): TipoComprobante[] {
+  return (emisorCondIva === 'Monotributista' || emisorCondIva === 'Exento') ? ['C'] : ['A', 'B']
+}
+
 // ── Desglose de IVA por alícuota ────────────────────────────────────────────────
 
 export interface ItemFacturable {

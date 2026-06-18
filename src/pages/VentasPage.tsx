@@ -17,7 +17,7 @@ import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type Fac
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
 import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, type RecurrenteItemSnapshot } from '@/lib/ventasRecurrentes'
-import { detectarTipoComprobante } from '@/lib/facturacionLogic'
+import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
@@ -7045,8 +7045,8 @@ export default function VentasPage() {
             {/* Tipo de comprobante */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de comprobante</label>
-              <div className="grid grid-cols-3 gap-2">
-                {(['A','B','C'] as const).map(t => {
+              <div className={`grid gap-2 ${tiposComprobantePermitidos((tenant as any)?.condicion_iva_emisor).length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                {tiposComprobantePermitidos((tenant as any)?.condicion_iva_emisor).map(t => {
                   const bloqueado = t === 'A' && !facturaClienteCuit
                   return (
                     <button key={t} onClick={() => { if (!bloqueado) setFacturaTipo(t) }} disabled={bloqueado}

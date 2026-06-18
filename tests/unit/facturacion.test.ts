@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   detectarTipoComprobante,
+  tiposComprobantePermitidos,
   calcularIvaDesglose,
   calcularImportes,
   esComprobanteSinIVA,
@@ -36,6 +37,22 @@ describe('detectarTipoComprobante', () => {
     expect(detectarTipoComprobante('Exento', 'RI')).toBe('C')
     expect(detectarTipoComprobante('Exento', 'CF')).toBe('C')
     expect(detectarTipoComprobante('Exento', undefined)).toBe('C')
+  })
+})
+
+describe('tiposComprobantePermitidos (qué letras puede emitir el tenant)', () => {
+  it('Monotributista → solo C (no puede A ni B)', () => {
+    expect(tiposComprobantePermitidos('Monotributista')).toEqual(['C'])
+  })
+  it('Exento → solo C', () => {
+    expect(tiposComprobantePermitidos('Exento')).toEqual(['C'])
+  })
+  it('Responsable Inscripto → A y B (nunca C)', () => {
+    expect(tiposComprobantePermitidos('RI')).toEqual(['A', 'B'])
+    expect(tiposComprobantePermitidos('responsable_inscripto')).toEqual(['A', 'B'])
+  })
+  it('sin condición conocida → A y B (no expone C)', () => {
+    expect(tiposComprobantePermitidos(undefined)).toEqual(['A', 'B'])
   })
 })
 

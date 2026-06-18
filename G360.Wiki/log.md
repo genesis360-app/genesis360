@@ -6,6 +6,10 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-18] update | 🎨 Nuevo logo/iconos de marca Genesis360 (favicon + PWA + sidebar + login) — EN DEV
+
+GO pasó el logo nuevo (G en estrella/compás, degradé violeta→cian, 1024×1024 transparente). Fuente versionada en `brand/logo-source.png` + script reproducible `scripts/gen-brand-icons.mjs` (usa `sharp` + `png-to-ico`, **devDependencies**, no entran al bundle). Generados en `public/`: favicon 16/32 + favicon.ico (transparente), android-chrome 192/512 (transparente), apple-touch-icon 180 + **nuevo** android-chrome-512x512-maskable (fondo blanco + padding para el safe-zone de Android). Manifest (`vite.config.ts`) actualizado: 512 `any` + 512 `maskable` dedicado. `LoginPage` ahora muestra el logo (antes ícono genérico `Package`). El sidebar ya usaba `android-chrome-192`. typecheck + build verdes. **Ojo:** favicon/PWA cacheados pueden tardar en refrescar (hard-reload). **theme_color del manifest sigue `#0000FF`** (no matchea el violeta — opcional cambiarlo). Pendiente PROD (junto con migs 225+226 + fixes de caja).
+
 ## [2026-06-18] update | 🏦 Caja Fuerte: 2 tarjetas (bóveda + capital total) + selector de cuenta destino + lock caja-origen en básico + fix conteo de efectivo (mig 226) — EN DEV
 
 **Pedidos de GO sobre la Caja Fuerte (todo en DEV, sin versionar):**

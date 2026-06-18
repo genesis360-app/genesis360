@@ -1,7 +1,7 @@
 import { BRAND } from '@/config/brand'
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { Package, Mail, Lock, Chrome } from 'lucide-react'
+import { Mail, Lock, Chrome } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import toast from 'react-hot-toast'
 
@@ -38,8 +38,8 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white dark:bg-gray-800 rounded-2xl shadow-lg mb-4">
-            <Package size={32} className="text-primary" />
+          <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
+            <img src="/android-chrome-192x192.png" alt={BRAND.name} className="w-20 h-20 object-contain drop-shadow-lg" />
           </div>
           <h1 className="text-3xl font-bold text-white">{BRAND.name}</h1>
           <p className="text-blue-200 mt-1">Gestión de inventario simplificada</p>

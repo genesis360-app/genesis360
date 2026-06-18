@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useCierreContable } from '@/hooks/useCierreContable'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
@@ -54,6 +55,7 @@ export default function CajaPage() {
   const navigate = useNavigate()
   const { tenant, user, sucursales } = useAuthStore()
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
@@ -81,6 +83,7 @@ export default function CajaPage() {
   const [showDepositoFuerte, setShowDepositoFuerte] = useState(false)
   const [showRetiroFuerte, setShowRetiroFuerte] = useState(false)
   const [depositoFuenteSesionId, setDepositoFuenteSesionId] = useState('')
+  const [depositoCuentaId, setDepositoCuentaId] = useState('') // cuenta de origen destino del ingreso a la bóveda
   const [showDifConfirm, setShowDifConfirm] = useState(false)
   const [fuerteMonto, setFuerteMonto] = useState('')
   const [fuerteConcepto, setFuerteConcepto] = useState('')
@@ -1007,8 +1010,8 @@ export default function CajaPage() {
   // ── Caja fuerte mutations ──────────────────────────────────────────────────
   const operarCajaFuerte = useMutation({
     mutationFn: async ({
-      tipo, monto, concepto, desdeSessionId, hastaSessionId,
-    }: { tipo: 'deposito' | 'retiro'; monto: number; concepto: string; desdeSessionId?: string; hastaSessionId?: string }) => {
+      tipo, monto, concepto, desdeSessionId, hastaSessionId, cuentaOrigenId,
+    }: { tipo: 'deposito' | 'retiro'; monto: number; concepto: string; desdeSessionId?: string; hastaSessionId?: string; cuentaOrigenId?: string }) => {
       if (!cajaFuerte) throw new Error('No hay caja fuerte configurada')
       if (monto <= 0) throw new Error('Ingresá un monto válido')
       // Depósito desde caja: requiere saldo en esa caja
@@ -1039,9 +1042,11 @@ export default function CajaPage() {
         fuerteSessionId = ns.id
       }
 
-      // Cuenta efectivo del tenant — los traspasos siempre son de efectivo entre cajas
+      // Cuenta efectivo del tenant — default para retiros/traspasos entre cajas (siempre efectivo).
       const cuentaEfectivo = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo')
       const cuentaEfectivoId = cuentaEfectivo?.cuenta_origen_id ?? null
+      // Cuenta destino del ingreso a la bóveda: la elegida en el modal (default Efectivo).
+      const cuentaIngresoId = cuentaOrigenId || cuentaEfectivoId
 
       if (tipo === 'deposito') {
         // Si viene de una caja activa: egreso en esa caja
@@ -1055,12 +1060,12 @@ export default function CajaPage() {
           })
           if (e1) throw e1
         }
-        // Ingreso en caja fuerte (siempre)
+        // Ingreso en caja fuerte (siempre) — a la cuenta de origen elegida (default Efectivo)
         const { error: e2 } = await supabase.from('caja_movimientos').insert({
           tenant_id: tenant!.id, sesion_id: fuerteSessionId,
           tipo: 'ingreso_traspaso', monto,
           concepto: concepto || (desdeSessionId ? `Depósito desde caja` : 'Ingreso externo'),
-          cuenta_origen_id: cuentaEfectivoId,
+          cuenta_origen_id: cuentaIngresoId,
           usuario_id: user!.id,
         })
         if (e2) throw e2
@@ -1190,6 +1195,16 @@ export default function CajaPage() {
   useModalKeyboard({ isOpen: showTraspaso && !showMovimiento, onClose: () => { setShowTraspaso(false); setTraspasoMonto(''); setTraspasoConcepto(''); setTraspasoDestinoSesionId('') }, onConfirm: () => { if (!realizarTraspaso.isPending) realizarTraspaso.mutate() } })
   useModalKeyboard({ isOpen: showArqueo, onClose: () => { setShowArqueo(false); setArqueoConteo(''); setArqueoNotas('') }, onConfirm: () => { if (!realizarArqueo.isPending) realizarArqueo.mutate() } })
   useModalKeyboard({ isOpen: showExtraerBoveda, onClose: () => setShowExtraerBoveda(false), onConfirm: () => { if (!extraerDeBoveda.isPending) extraerDeBoveda.mutate() } })
+
+  // Defaults al abrir "Ingresar a Caja Fuerte": cuenta destino = Efectivo. En modo básico
+  // la "caja de origen" queda fijada a la caja activa (el selector se bloquea — el usuario
+  // siempre transfiere desde la caja en la que está parado).
+  useEffect(() => {
+    if (!showDepositoFuerte) return
+    const efId = (bovedaCuentas as any[]).find((c: any) => c.tipo === 'efectivo')?.cuenta_origen_id ?? ''
+    setDepositoCuentaId(efId)
+    if (!modoAvanzado && sesionActiva) setDepositoFuenteSesionId(sesionActiva.id)
+  }, [showDepositoFuerte]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Atajo de teclado: Shift+I = ingreso (solo con caja abierta)
   useEffect(() => {
@@ -2140,7 +2155,9 @@ export default function CajaPage() {
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Caja de origen</label>
               <select value={depositoFuenteSesionId} onChange={e => setDepositoFuenteSesionId(e.target.value)}
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                disabled={!modoAvanzado}
+                title={!modoAvanzado ? 'En modo básico se transfiere desde la caja en la que estás operando' : undefined}
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent disabled:opacity-60 disabled:cursor-not-allowed">
                 <option value="">Ingreso externo (sin caja)</option>
                 {(sesionesAbiertasAll as any[]).filter((s: any) => !cajaFuerte || s.caja_id !== cajaFuerte.id).map((s: any) => (
                   <option key={s.id} value={s.id}>{s.cajas?.nombre}</option>
@@ -2149,9 +2166,19 @@ export default function CajaPage() {
               {depositoFuenteSesionId && (() => {
                 const sesOrigen = (sesionesAbiertasAll as any[]).find((s: any) => s.id === depositoFuenteSesionId)
                 return sesOrigen ? (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Se descontará de <strong>{sesOrigen.cajas?.nombre}</strong></p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Se descontará de <strong>{sesOrigen.cajas?.nombre}</strong>{!modoAvanzado ? ' (caja activa)' : ''}</p>
                 ) : null
               })()}
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cuenta de destino</label>
+              <select value={depositoCuentaId} onChange={e => setDepositoCuentaId(e.target.value)}
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                {(bovedaCuentas as any[]).filter((c: any) => c.activo).map((c: any) => (
+                  <option key={c.cuenta_origen_id} value={c.cuenta_origen_id}>{c.nombre}</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">A qué cuenta de la bóveda ingresa el dinero (default Efectivo).</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
@@ -2175,6 +2202,7 @@ export default function CajaPage() {
               monto: parseFloat(fuerteMonto) || 0,
               concepto: fuerteConcepto,
               desdeSessionId: depositoFuenteSesionId || undefined,
+              cuentaOrigenId: depositoCuentaId || undefined,
             })}
               disabled={operarCajaFuerte.isPending || !fuerteMonto}
               className="w-full bg-yellow-500 hover:bg-yellow-600 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-50">

@@ -1686,8 +1686,22 @@ export default function ConfigPage() {
       const { data } = await supabase.from('metodos_pago')
         .select('*').eq('tenant_id', tenant!.id).order('orden').order('nombre')
       if (!data || data.length === 0) {
+        // Fallback de seed. Lo normal es que el trigger de alta de tenant (migración 225)
+        // ya cree estos métodos + la cuenta de origen Efectivo vinculada. Esto solo corre
+        // en tenants viejos sin métodos: aseguramos la cuenta Efectivo y vinculamos el
+        // método Efectivo a ella (el resto queda sin cuenta hasta que se configure).
+        const { data: efCuenta } = await supabase.from('cuentas_origen')
+          .select('id').eq('tenant_id', tenant!.id).ilike('nombre', 'efectivo').limit(1).maybeSingle()
+        let efectivoCuentaId = efCuenta?.id ?? null
+        if (!efectivoCuentaId) {
+          const { data: nueva } = await supabase.from('cuentas_origen')
+            .insert({ tenant_id: tenant!.id, nombre: 'Efectivo', tipo: 'efectivo', moneda: (tenant as any)?.moneda ?? 'ARS', activo: true })
+            .select('id').single()
+          efectivoCuentaId = nueva?.id ?? null
+        }
         const { data: inserted } = await supabase.from('metodos_pago').insert(
-          METODOS_DEFAULTS.map(d => ({ ...d, tenant_id: tenant!.id, activo: true, es_sistema: true }))
+          METODOS_DEFAULTS.map(d => ({ ...d, tenant_id: tenant!.id, activo: true, es_sistema: true,
+            cuenta_origen_id: d.nombre === 'Efectivo' ? efectivoCuentaId : null }))
         ).select()
         return inserted ?? []
       }

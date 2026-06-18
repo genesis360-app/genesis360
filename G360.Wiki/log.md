@@ -6,6 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-18] update | 💵 Efectivo por default en el alta de tenant (cuenta de origen + método vinculado) — mig 225 EN DEV
+
+**Pedido de GO:** cada tenant nuevo debe nacer con (1) la Cuenta de Origen **Efectivo** (tipo `efectivo`, en la moneda del tenant) y (2) el método de pago **Efectivo** vinculado a esa cuenta, todo por default.
+
+- **Diagnóstico:** hoy un tenant nuevo no tiene métodos ni cuentas; recién al abrir Config→Ventas un seed lazy app-side creaba 5 métodos **sin** cuenta vinculada, y la cuenta Efectivo no se creaba en ningún lado.
+- **Fix (mig 225, `225_seed_efectivo_default_tenant.sql`):** se extiende el trigger de onboarding `fn_seed_tenant_defaults` (SECURITY DEFINER + search_path=public — el trigger corre antes de existir la fila en `users`) para crear la cuenta Efectivo + los 5 métodos default con Efectivo vinculado. **Backfill:** crea la cuenta Efectivo en todos los tenants existentes que no la tenían + vincula el método Efectivo. El seed lazy de `ConfigPage` queda como fallback (ahora también asegura+vincula la cuenta Efectivo).
+- **Verificado en DEV:** tenant de prueba con moneda USD → cuenta `Efectivo / efectivo / USD`, 5 métodos, método Efectivo `LINKED_OK` (luego borrado). Backfill: 9/9 tenants con cuenta Efectivo, 0 métodos Efectivo sin link. typecheck + build verdes.
+- **⏳ Pendiente PROD:** aplicar mig 225 + deploy frontend (bump a v1.78.2 + PR `dev→main` + release).
+
 ## [2026-06-18] deploy | v1.78.1 EN PROD (PR #225) — 🧾 Facturación: 4 bugs (alícuota ≠21% → AFIP la rechazaba, Exento→21%, select no reflejaba, tipo sin validar server-side) + PV en Facturación + ✨ tarjeta Capital total en Caja Fuerte + UAT blindado
 
 **Disparado por dos reportes de GO en homologación (Almacén Jorgito, monotributista):** (1) "me deja hacer Factura B siendo monotributista" y (2) "puse IVA 10,5% al producto y la factura lo tomó como 21%". La revisión a fondo del flujo de facturación (incl. envío) encontró **4 bugs**, uno grave y latente. **✅ EN PROD: EF `emitir-factura` deployada en DEV y PROD, PR #225 `dev→main` mergeado, release v1.78.1, `APP_VERSION` v1.78.1.** GO autorizó el deploy a PROD (impacto cero: ningún tenant factura en PROD hoy). **Recomendado: GO valida en homologación (Factura A/B con producto 10,5% → Id 4; forzar B siendo monotributista → 400).**

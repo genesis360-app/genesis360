@@ -6,7 +6,9 @@ type: project
 
 ## ▶ CIERRE DE SESIÓN 2026-06-18 — dónde retomar
 
-**Estado:** **PRD = DEV = v1.78.1**, migs **001–224** en DEV **y PROD**. EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte).
+**Estado:** **PRD = v1.78.1** · **DEV adelantado: mig 225** (Efectivo por default en alta de tenant) aplicada en DEV, ⏳ pendiente PROD. migs **001–224** en DEV **y PROD**; **225 solo DEV**. EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte).
+
+**💵 Efectivo por default en alta de tenant (2026-06-18, mig 225, EN DEV) — pedido GO:** cada tenant nuevo nace con la Cuenta de Origen Efectivo (tipo `efectivo`, moneda del tenant) + 5 métodos default con Efectivo vinculado. Trigger `fn_seed_tenant_defaults` extendido + backfill de existentes + fallback en `ConfigPage`. Verificado en DEV. **▶ PRÓXIMO PASO PROD:** aplicar mig 225 a PROD + bump v1.78.2 + PR `dev→main` + release.
 
 **🧾 Fixes de facturación + ✨ tarjeta Capital Caja Fuerte (2026-06-18, ✅ EN PROD v1.78.1, PR #225) — 4 bugs, uno GRAVE:**
 - **▶ Smoke recomendado en homologación (GO):** Factura A/B con producto a 10,5% → Id 4 (antes 21%/AFIP 10051); forzar B siendo monotributista → 400.

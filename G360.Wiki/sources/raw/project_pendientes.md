@@ -4,13 +4,20 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-## ▶ CIERRE DE SESIÓN 2026-06-17 — dónde retomar
+## ▶ CIERRE DE SESIÓN 2026-06-18 — dónde retomar
 
-**Estado:** **PRD = DEV = v1.77.0**, migs 001–220, EF `emitir-factura` + `cron-sweeps`.
+**Estado:** **PROD = v1.77.0 · DEV = v1.78.0** (app principal). Migs **001–224** en DEV **y PROD** (las 221-224 son del panel de soporte). EFs: `emitir-factura` (v con costo de envío en DEV; **PROD aún sin ese cambio**), `cron-sweeps`, `admin-api` (panel, DEV+PROD).
 
-### 🔴 BACKLOG PRIORITARIO (pedido GO 2026-06-17) — Costo de envío en factura/ticket + flujo de envío en básico
+**🚚 v1.78.0 (2026-06-18, EN DEV, sin migración) — Costo de envío en factura + envío en básico (pedido GO):** ✅ implementado y verde en DEV (746 unit + build). **EF `emitir-factura` deployada en DEV; PROD PENDIENTE** porque es cambio fiscal → **GO debe probar una emisión real en homologación antes de PROD**. Lo hecho:
+- **Factura:** `costo_envio` cobrado al cliente ahora entra como ítem "Costo de Envío" + suma al total (antes quedaba afuera). Alícuota del flete = la predominante de los productos (regla AFIP: en A sigue al producto; en C va a neto). **Concepto=3 + FchServDesde/Hasta/VtoPago** cuando hay envío (AFIP los exige). Courier que paga el cliente directo = `costo_envio` 0 → no se agrega (correcto). PDF de factura: línea + total/saldo con envío. NC no afectada.
+- **Envío en básico:** ahora es **solo un campo de costo** (se guarda en `ventas.costo_envio`, sale en ticket y factura); se ocultan transporte/courier/km/dirección y **NO crea registro en `envios`** (inserción gateada por `modoAvanzado`). Avanzado sin cambios.
+- **Para PROD:** 1) GO prueba en homologación una venta con envío (Factura B y C) → verificar CAE OK + envío en el detalle/total; 2) deploy `emitir-factura` a PROD (`npx supabase functions deploy emitir-factura --project-ref jjffnbrdjchquexdfgwq`); 3) PR `dev→main` v1.78.0 + release.
 
-GO reportó que **la factura AFIP NO incluye el costo de envío** (cuando se cobra envío al cliente, no aparece) y que **en modo básico el POS parece mandar el envío al módulo de Envíos** (que en básico no debería existir). **Revisar y corregir.** Reglas a implementar:
+**🛟 Panel de soporte — cambiar contraseña (2026-06-18):** EF `admin-api` action `auth.change_password` (DEV+PROD) + modal en el sidebar. Resuelve el password temporal sin pasar por el dashboard de Supabase. Mergeado dev→main del repo `genesis360-admin` → live en `admin.genesis360.pro`. (El panel quedó desplegado y en uso: ver [[project_plataforma_soporte]].)
+
+### 🟢 RESUELTO (v1.78.0, en DEV) — Costo de envío en factura/ticket + flujo de envío en básico
+
+*(Era backlog prioritario; implementado el 2026-06-18, pendiente solo el deploy fiscal a PROD tras test en homologación.)* Reglas implementadas:
 
 **A) AFIP — el costo de envío cobrado al cliente DEBE ir dentro de la factura (A/B/C)** como un **ítem extra** "Costo de Envío" (no puede quedar afuera; es parte del neto total de la operación). Tratamiento:
 - **Envío propio** (o courier que te factura a vos y vos se lo cobrás al cliente): el envío es **servicio accesorio**. En B/C: ítem extra "Costo de Envío" por el valor cobrado. En **A**: el envío sigue la **misma alícuota de IVA que el producto** (producto al 21% → envío al 21%; al 10,5% → 10,5%).

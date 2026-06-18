@@ -4,6 +4,16 @@ description: Diseño completo del módulo de facturación electrónica AFIP — 
 type: project
 originSessionId: 7ac12f69-1217-41e2-b6e5-3547bd561e43
 ---
+## 🚚 Costo de envío en la factura (v1.78.0, 2026-06-18 — EN DEV)
+
+El `costo_envio` cobrado al cliente **debe** ir dentro de la factura (no puede quedar afuera). Implementado en `emitir-factura` + `buildFacturaPDFDataPorId` (`facturasPDF.ts`):
+- Si `ventas.costo_envio > 0` y NO es NC → se agrega un ítem **"Costo de Envío"** al detalle + suma al `ImpTotal`.
+- **Alícuota del flete** = la **predominante de los productos** (regla AFIP: en A el envío sigue al producto; en C va a neto sin discriminar).
+- **`Concepto=3`** (Productos y Servicios) cuando hay envío + **`FchServDesde`/`FchServHasta`/`FchVtoPago`** (= fecha del comprobante) — AFIP los **exige** con Concepto 2/3 (sin ellos rebota). Sin envío → `Concepto=1`.
+- **Courier que paga el cliente directo** (pago en destino / separado): `costo_envio` = 0 → no se agrega (queda afuera, correcto).
+- PDF de factura: línea de envío + total/saldo con envío.
+- ⚠️ **Cambio fiscal: EF deployada en DEV; PROD pendiente de test en homologación + OK de GO** (probar Factura B y C con envío → CAE OK + envío en detalle/total). Ver [[project_costo_envio_factura]].
+
 ## Decisión estratégica
 
 **Integración propia directa con AFIP WSFE** usando la librería `@afipsdk/afip.js` como wrapper.

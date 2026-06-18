@@ -6,6 +6,19 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-18] update | v1.78.0 EN DEV — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo · 🛟 Panel de soporte desplegado (admin.genesis360.pro) + cambiar contraseña
+
+**Sesión larga: panel interno de soporte construido y desplegado + fix de costo de envío en factura.**
+
+**🛟 Panel de soporte (genesis360-admin) — Fase 0-3, EN PROD:** consola interna para el equipo de soporte (diseño Stitch "Genesis360 Admin Control Panel"). Repo separado **público** `github.com/genesis360-app/genesis360-admin` (Vite+React+TS+Tailwind), deployado en Vercel → **`admin.genesis360.pro`** (DNS Cloudflare, CNAME gris). Backend en el repo Genesis360: **migs 221-224** (support_agents + admin_audit_log + is_staff + roles + support_tickets/messages + leads) **DEV+PROD** + EF **`admin-api`** (service_role; valida agente activo + autoriza por rol/módulo + audita). 6 módulos: Dashboard (MRR+counts reales), Clientes + **Vista por Cliente** (snapshot read-only), CRM (Kanban leads), Soporte (tickets), Billing (MRR/planes), Analytics (placeholder, bloqueado Meta/GA4), Usuarios (gestión de agentes). **Acceso por rol** admin/support/marketing/billing (enforzado en la EF). Auth **Opción C** (support_agents + claim `app_metadata.staff`). Agente PROD `soporte@genesis360.pro` (password temporal, cambiable desde el panel). Ramas dev/main del panel (preview=DEV, prod=PROD). Detalle en [[project_plataforma_soporte]].
+
+**🚚 v1.78.0 (app principal, EN DEV, sin migración) — Costo de envío en factura + envío en básico (pedido GO):**
+- **Factura AFIP:** el `costo_envio` cobrado al cliente ahora entra como ítem "Costo de Envío" + suma al ImpTotal (antes existía en `ventas.costo_envio` pero NO entraba ni al detalle ni al total — bug). Alícuota del flete = predominante de los productos (regla AFIP: en A sigue al producto, en C va a neto). **Concepto=3 + FchServDesde/Hasta/VtoPago** cuando hay envío (AFIP los exige con Concepto 2/3). Courier pagado directo por el cliente = `costo_envio` 0 → afuera (correcto). PDF de factura con línea + total/saldo con envío. EF `emitir-factura` deployada en **DEV**; **PROD pendiente test homologación + OK GO** (cambio fiscal).
+- **Envío en básico:** ahora **solo un campo de costo** (guardado en `ventas.costo_envio`, visible en ticket y factura); se ocultan transporte/courier/km/dirección y **NO crea registro en `envios`** (gateado por `modoAvanzado`) → ya no deriva al módulo de Envíos oculto en básico. Avanzado sin cambios.
+- 746 unit + build verdes. **Pendiente PROD:** GO prueba venta con envío en homologación (Factura B y C) → deploy EF a PROD → PR `dev→main` v1.78.0 + release. Ver [[project_costo_envio_factura]].
+
+**Diferidos del panel (con motivo):** Analytics Meta/GA4 (bloqueado por credenciales externas), login-as real en la app del cliente (riesgoso, toca prod; el snapshot read-only cubre diagnóstico), churn/LTV:CAC (necesita histórico de bajas).
+
 ## [2026-06-17] deploy | v1.77.0 EN PROD — 🔔 Fix RLS `notificaciones`: el INSERT cross-user estaba bloqueado (mig 219) · `dev→main` PR #221 · auditoría UAT pase 3 §25-28
 
 **v1.77.0 a DEV + PROD (mig 219 aplicada+verificada en ambos), PR #221, release v1.77.0 latest.** Pase 3 de la auditoría UAT modo básico — se auditaron por código las secciones que habían quedado pendientes (**§25 escaneo · §26 PWA · §27 notificaciones · §28 listas/webhooks/teclado**).

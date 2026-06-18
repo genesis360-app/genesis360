@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.78.0 — 🚚 Costo de envío en la factura AFIP + envío en básico solo-costo (EN DEV, pendiente PROD)
+
+El `costo_envio` cobrado al cliente ahora entra como ítem "Costo de Envío" en la factura (A/B/C) y suma al total (antes quedaba afuera). En Factura A el flete sigue la alícuota del producto; en C va a neto. **Concepto=3 + FchServDesde/Hasta/VtoPago** cuando hay envío (AFIP los exige). Courier pagado directo por el cliente queda afuera. PDF de factura con la línea de envío. **Modo básico:** el envío pasa a ser **solo un campo de costo** (sale en ticket y factura) — sin courier/reparto/dirección y **sin crear registro en Envíos**. **EN DEV** (EF `emitir-factura` deployada en DEV); **PROD pendiente test en homologación + OK de GO** (cambio fiscal). También: **🛟 panel interno de soporte desplegado en `admin.genesis360.pro`** (repo `genesis360-admin`, migs 221-224 + EF `admin-api`).
+
+---
+
 ## v1.77.0 — 🔔 Fix RLS notificaciones: el INSERT cross-user estaba bloqueado (PROD ✅, mig 219, PR #221)
 
 Pase 3 de la auditoría UAT modo básico (§25-28). La RLS de `notificaciones` bloqueaba el INSERT cross-user → **todas** las notificaciones in-app estaban rotas (solicitud de Caja Fuerte —que además abortaba el pedido del cajero—, diferencia de apertura/cierre de caja, alertas de venta). Apareció además **config drift**: PROD seguía el repo (`notif_user FOR ALL`), DEV tenía policies aplicadas con SQL crudo fuera de migración. La **mig 219** normaliza ambos: SELECT/UPDATE/DELETE solo propias (aislamiento intacto) + INSERT mismo tenant. Sin cambios de frontend. Resto §25-28 verde por código.

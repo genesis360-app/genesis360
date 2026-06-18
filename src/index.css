@@ -9,7 +9,8 @@
 :root {
   /* ── Tokens de marca (existentes) ────────────────────────── */
   --color-primary:   13 13 13;     /* #0D0D0D — negro       */
-  --color-accent:    123 0 255;    /* #7B00FF — violeta elé */
+  --color-accent:    123 0 255;    /* #7B00FF — violeta (color PRINCIPAL de marca) */
+  --color-accent-2:  6 182 212;    /* #06B6D4 — cian (fin del degradé de marca)    */
   --color-brand-bg:  245 240 255;  /* #F5F0FF — fondo lila  */
 
   /* ── Design System — light mode ──────────────────────────── */
@@ -23,6 +24,30 @@
   --ds-danger:   239 68 68;    /* #EF4444 red-500     */
   --ds-warning:  245 158 11;   /* #F59E0B amber-500   */
   --ds-info:     59 130 246;   /* #3B82F6 blue-500    */
+}
+
+/* ─── Degradé de marca (violeta → cian, diagonal ↘) ───────────────────────────
+   LUGAR ÚNICO del color de marca: las vars --color-accent (violeta) y
+   --color-accent-2 (cian) de :root. Cambiándolas ahí, cambia toda la app.
+   • bg-accent  → todo lo que use el violeta sólido (botones, pills de pestaña,
+     barras de progreso/carga, badges) toma el degradé automáticamente.
+   • bg-brand-gradient → degradé explícito (tarjetas destacadas).
+   • text-gradient-brand → texto con degradé (títulos/pestañas). NO usar en
+     íconos: los volvería transparentes.
+   ─────────────────────────────────────────────────────────────────────────── */
+@layer utilities {
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, rgb(var(--color-accent)) 0%, rgb(var(--color-accent-2)) 100%);
+  }
+  .bg-accent {
+    background-image: linear-gradient(135deg, rgb(var(--color-accent)) 0%, rgb(var(--color-accent-2)) 100%);
+  }
+  .text-gradient-brand {
+    background-image: linear-gradient(135deg, rgb(var(--color-accent)) 0%, rgb(var(--color-accent-2)) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 }
 
 * { box-sizing: border-box; }

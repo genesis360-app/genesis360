@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.78.1'
+export const APP_VERSION = 'v1.78.2'
 
 // Kill-switch del modo de operación Básico/Avanzado: en false, TODOS los tenants
 // operan en avanzado (la app completa, como antes de v1.55) sin importar
@@ -46,9 +46,12 @@ export const BRAND = {
   description: 'Gestioná tu stock, ventas y movimientos desde cualquier dispositivo. Simple, rápido y pensado para comercios reales.',
   email: 'hola@genesis360.pro',
   website: 'https://genesis360.pro',
+  // Espejo de las vars de src/index.css (:root). El color de marca se cambia en UN
+  // solo lugar (esas vars); el degradé violeta→cian sale de accent + accent2.
   color: {
     primary: '#0D0D0D',
-    accent: '#7B00FF',
+    accent: '#7B00FF',   // violeta — principal
+    accent2: '#06B6D4',  // cian — fin del degradé
     bg: '#F5F0FF',
   },
   social: {

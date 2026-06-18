@@ -1426,7 +1426,7 @@ export default function CajaPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary">Caja</h1>
@@ -1678,7 +1678,9 @@ export default function CajaPage() {
             </div>
           ) : (
             /* Caja abierta */
-            <div className="space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+              {/* Columna izquierda: resumen + acciones (sticky en desktop) */}
+              <div className="lg:col-span-1 space-y-4 lg:sticky lg:top-4">
               {/* Resumen */}
               <div className="bg-primary rounded-2xl p-5 text-white">
                 <div className="flex items-center justify-between mb-4">
@@ -1764,7 +1766,10 @@ export default function CajaPage() {
                 )}
               </div>
               )}
+              </div>{/* fin columna izquierda */}
 
+              {/* Columna derecha: movimientos + arqueos + cierre */}
+              <div className="lg:col-span-2 space-y-4">
               {/* Movimientos */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
@@ -1918,6 +1923,7 @@ export default function CajaPage() {
                   <Lock size={18} /> Cerrar caja
                 </button>
               )}
+              </div>{/* fin columna derecha */}
             </div>
           )}
         </div>
@@ -1975,7 +1981,7 @@ export default function CajaPage() {
                   (1) Plata física en la bóveda · (2) Capital total del negocio. */}
               {puedeExtraerBoveda && (
                 <div className="lg:w-72 shrink-0 flex flex-col gap-3">
-                  <div className="rounded-2xl p-5 bg-gradient-to-br from-[#7B00FF] to-[#06B6D4] text-white shadow-lg">
+                  <div className="rounded-2xl p-5 bg-brand-gradient text-white shadow-lg">
                     <p className="text-xs font-semibold uppercase tracking-wide text-white/80">En la caja fuerte</p>
                     <p className="text-3xl font-bold leading-tight mt-1 break-words">{formatMoneda(fuerteSaldo)}</p>
                     <p className="text-[11px] text-white/70 mt-1.5">Plata que hay hoy en la bóveda</p>

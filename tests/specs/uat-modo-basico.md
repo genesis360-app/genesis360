@@ -102,6 +102,9 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | PRD-12 | Importar productos (Excel/CSV) | Importar archivo | Crea en lote; reporta filas inválidas/duplicadas sin abortar todo | B | 🟡 | ⬜ | |
 | PRD-13 | Buscar por nombre/SKU/código de barras | Búsqueda en lista/POS | Encuentra; escaneo de barcode resuelve | H | 🟡 | ⬜ | |
 | PRD-14 | Stock mínimo por producto | Setear mínimo | Al caer bajo mínimo → alerta de stock bajo | B | 🟡 | ⬜ | |
+| PRD-15 | **Alícuota IVA 10,5% se guarda Y se muestra al reabrir** (BUG sesión 2026-06-18) | Editar producto → Alícuota IVA = 10,5% → Guardar → reabrir | Persiste `10.50` en DB; al reabrir el `<select>` muestra **10,5% seleccionado** (no en blanco). El numeric `"10.50"` se normaliza a `"10.5"` para matchear la opción | B | 🔴 | ⬜ | |
+| PRD-16 | **Producto Exento (0%) NO se guarda como 21%** (BUG sesión 2026-06-18) | Alícuota IVA = Exento (0%) → Guardar | Persiste `0` (no 21). Antes `parseFloat||21` convertía `0→21` (IVA fantasma) | E | 🔴 | ⬜ | |
+| PRD-17 | Alícuotas 21% / 27% se guardan y muestran bien | Setear 21% y 27%, reabrir | `21.00`/`27.00` en DB; select muestra la opción correcta (normalización `String(parseFloat())`) | B | 🟡 | ⬜ | |
 
 ---
 
@@ -149,7 +152,7 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | VEN-18 | **Descuentos solo DUEÑO/SUPERVISOR/ADMIN** | CAJERO intenta descuento | Bloqueado para CAJERO (G3) | E | 🟡 | ⬜ | |
 | VEN-19 | Vender **sin caja abierta** (efectivo) | Cobrar efectivo sin sesión de caja | Resuelve caja única / pide abrir; el efectivo SIEMPRE se asienta (no se pierde) | E | 🔴 | ⬜ | |
 | VEN-20 | Combo/descuento por cantidad | Vender cantidad que dispara combo | Aplica descuento del combo | B | 🟡 | ⬜ | |
-| VEN-21 | **Envío dentro del POS** (módulo Envíos oculto) | Agregar envío a la venta | Permite envío; **`$/km` editable** (no hay Config→Envíos en básico); costo km×$/km recalcula; o monto fijo | H | 🔴 | ⬜ | |
+| VEN-21 | **Envío en básico = solo costo** (v1.78.0; módulo Envíos oculto) | Agregar envío a la venta en básico | Solo un **campo de costo** (`ventas.costo_envio`); **se ocultan** transporte/courier/km/dirección; **NO crea registro en `envios`** (gateado por `modoAvanzado`). En avanzado: km×$/km + transporte sin cambios | H | 🔴 | ⬜ | |
 | VEN-22 | Doble-click en "Cobrar" | Click rápido x2 | Idempotente: NO duplica venta ni doble rebaja de stock/caja | E | 🔴 | ⬜ | |
 | VEN-23 | Concurrencia: 2 cajeros venden el último | Misma unidad simultánea | Uno gana; el otro recibe "sin stock" (re-chequeo fresco) | E | 🔴 | ⬜ | |
 | VEN-24 | Anular venta despachada (sin CAE) | Anular | **Restaura stock** (reingreso mode-aware) + reintegra plata + cancela envíos pendientes | E | 🔴 | ⬜ | |
@@ -163,6 +166,7 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | VEN-32 | Límite de CC superado | Venta CC que excede el límite del cliente | Avisa o bloquea según `cc_enforcement_politica` | E | 🔴 | ⬜ | |
 | VEN-33 | Crédito a favor aplicado en venta | Cliente con saldo a favor → usarlo | Descuenta del saldo; no puede aplicar más que el disponible | B | 🔴 | ⬜ | |
 | VEN-34 | Descuento sobre el límite con clave maestra | CAJERO/SUPERVISOR excede el máx de descuento | Pide clave maestra para autorizar; sin clave → bloquea | E | 🟡 | ⬜ | |
+| VEN-35 | **Costo de envío del POS visible en ticket Y factura** (v1.78.0) | Vender con costo de envío → ver ticket → emitir factura | El costo aparece en el ticket **y** entra a la factura como ítem (ver FAC-23). `ventas.total` NO incluye el envío (va aparte en `costo_envio`); `monto_pagado` = total + envío (no se duplica) | H | 🔴 | ⬜ | |
 
 ---
 
@@ -293,6 +297,13 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | FAC-17 | Libros IVA / reporte de comprobantes | Ver libros | Lista emitidos con totales | 🟡 | 🟡 | ⬜ | |
 | FAC-18 | Chunk viejo tras deploy (SW) | Bundle viejo cacheado | `vite:preloadError` + ErrorBoundary recupera (no "reading 'default'") | E | 🟡 | ⬜ | |
 | FAC-19 | Reimprimir factura ya emitida (idempotente) | Re-descargar | Regenera PDF desde snapshot; no re-emite CAE | B | 🔴 | ⬜ | |
+| FAC-20 | **Restricción de tipos por emisor en el POS** (v1.78.0) | Emisor Monotributista → abrir modal de factura en Ventas | Ofrece **solo Factura C** (`tiposComprobantePermitidos`→`['C']`); A y B **no se renderizan**; default = C | H | 🔴 | ⬜ | |
+| FAC-21 | Restricción de tipos por emisor en Facturación | Emisor Monotributista → modal Emitir en Facturación | El `<select>` lista **solo C**; emisor RI → solo A/B (nunca C) | H | 🔴 | ⬜ | |
+| FAC-22 | **Guard server-side en la EF `emitir-factura`** (sesión 2026-06-18) | Forzar `tipo='B'` con emisor Monotributista (bundle viejo / API directa) | EF responde **400** "Un emisor Monotributista solo puede emitir tipo C"; RI forzando C → 400. Ya no depende solo de ocultar el botón en la UI | E | 🔴 | ⬜ | |
+| FAC-23 | **Costo de envío entra a la factura** (v1.78.0) | Venta con `costo_envio>0` → emitir factura | Ítem **"Costo de Envío"** + suma al `ImpTotal`; **Concepto=3** + `FchServDesde/Hasta/VtoPago`; alícuota del flete = predominante de los productos (en A sigue al producto, en C va a neto); PDF con línea + total. `ImpTotal = venta.total + costo_envio` (no duplica) | H | 🔴 | ⬜ | |
+| FAC-24 | Courier pagado directo por el cliente | Venta con `costo_envio=0` (courier cobra al cliente) | **No** entra a la factura (correcto); sin ítem de envío | B | 🔴 | ⬜ | |
+| FAC-25 | **Alícuota 10,5% en Factura A/B → Id AFIP 4** (BUG GRAVE sesión 2026-06-18) | Emisor RI → producto a 10,5% → emitir A o B | Array `Iva` con **`Id:4`** (10,5%) y `Importe` a la tasa real. Antes el numeric `"10.50"` no matcheaba `ALICUOTA_ID` → caía a `Id:5` (21%) → **AFIP rechazaba (error 10051)** o clasificaba mal | E | 🔴 | ⬜ | |
+| FAC-26 | Alícuotas 0%/Exento y 27% en A/B → Id correcto | Emisor RI → producto 0%/exento y otro 27% → emitir A/B | `"0.00"/exento`→**`Id:3`**, `"27.00"`→**`Id:6`** (no 21%). El ítem de envío toma la alícuota predominante de los productos | E | 🔴 | ⬜ | |
 
 ---
 
@@ -703,3 +714,20 @@ INT-09 (carrera real multicanal con stock=1 → necesita lock DB, mismo riesgo q
 | **NOT-02 / NOT-04** | **Mig 219** `219_fix_rls_notificaciones_insert.sql`: policies explícitas por comando — `notif_select`/`notif_update`/`notif_delete` (solo propias) + `notif_insert` (mismo tenant). Aplicada DEV + verificada (impersonación cajero). Sin cambios de frontend (el código ya insertaba bien). | `supabase/migrations/219_*.sql` |
 
 typecheck + **746 unit** + build verdes. Sin cambios de frontend (solo `APP_VERSION` + migración).
+
+---
+
+## ✅ Fixes aplicados (sesión 2026-06-18 — facturación: tipos por emisor + alícuotas + envío)
+
+Disparado por dos reportes de GO en homologación (Almacén Jorgito, monotributista): (1) "me deja hacer Factura B siendo monotributista" y (2) "puse IVA 10,5% al producto y la factura lo tomó como 21%". La revisión a fondo del flujo de facturación (incl. envío) encontró **4 bugs**, uno grave y latente.
+
+| Hallazgo | Severidad | Fix aplicado | Archivos | Cubierto por |
+|---|---|---|---|---|
+| **Alícuota ≠ 21% se mandaba a AFIP como 21%** — el numeric de Postgres llega como `"10.50"/"0.00"/"27.00"` y no matcheaba `ALICUOTA_ID` (`"10.5"/"0"/"27"`) → caía al default `Id:5` (21%). Importe a la tasa real + Id 21% → **AFIP rechaza (10051)**. Latente: todo lo probado era 21% + los monotributistas emiten C | 🔴 GRAVE (fiscal) | Normalizar la clave con `String(parseFloat(tasaStr))` antes del lookup, en la EF y en el espejo | `supabase/functions/emitir-factura/index.ts`, `src/lib/facturacionLogic.ts` | unit FAC-IVA-08/09/10 · UAT FAC-25/26 |
+| **Tipo de comprobante no validado server-side** — la restricción A/B/C por emisor era solo UI; un bundle viejo / API directa podía emitir B siendo monotributista (pasó en ventas #222 y #224) | 🔴 (fiscal) | Guard en la EF: Monotributista/Exento → solo C; RI → nunca C; si no, **400** | `supabase/functions/emitir-factura/index.ts` | UAT FAC-20/21/22 |
+| **Producto Exento (0%) se guardaba como 21%** — `parseFloat(form.alicuota_iva) || 21` convierte `0→21` | 🔴 | `Number.isFinite(...) ? ... : 21` (preserva el 0) | `src/pages/ProductoFormPage.tsx` | UAT PRD-16 |
+| **Select de alícuota no reflejaba el valor guardado** — cargaba `"21.00"/"10.50"` (no matchea las opciones `"21"/"10.5"`) → campo en blanco al editar; daba la sensación de que el 10,5 "no quedaba" | 🟠 (UX/confianza) | Normalizar al cargar con `String(parseFloat(...))` | `src/pages/ProductoFormPage.tsx` | UAT PRD-15/17 |
+
+**Flujo de envío + factura auditado y confirmado correcto:** `ventas.total` = suma de ítems (no incluye envío); `costo_envio` aparte; la EF arma `impTotal = venta.total + costo_envio` desde los ítems + la línea de envío → **no duplica** (verificado con datos reales en DEV). Cubierto por UAT VEN-21/35 + FAC-23/24.
+
+typecheck + **753 unit** (4 de regresión de alícuota nuevos) + build verdes. **Pendiente deploy:** EF `emitir-factura` (lleva el guard + el fix de alícuota) a DEV → test homologación → PROD con OK de GO. Frontend (ProductoForm + facturacionLogic) va por el flujo normal `dev`.

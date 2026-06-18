@@ -98,8 +98,13 @@ export function calcularIvaDesglose(items: ItemFacturable[]): IvaDesglose {
     const precio = Number(it.precio_unitario)
     const subTotal = Number(it.subtotal ?? precio * qty)
     const tasaStr = String(it.alicuota_iva ?? '21')
-    const ivaId = ALICUOTA_ID[tasaStr] ?? 5
-    const tasa = tasaStr === 'exento' || tasaStr === 'sin_iva' ? 0 : parseFloat(tasaStr) / 100
+    const esExenta = tasaStr === 'exento' || tasaStr === 'sin_iva'
+    // La alícuota puede llegar como numeric de Postgres ("21.00" / "10.50" / "0.00").
+    // Normalizar a "21" / "10.5" / "0" para que matchee ALICUOTA_ID (si no, caía al
+    // default 5 = 21% → AFIP rechazaba A/B con alícuota ≠ 21). Espejo de emitir-factura.
+    const tasaKey = esExenta ? tasaStr : String(parseFloat(tasaStr))
+    const ivaId = ALICUOTA_ID[tasaKey] ?? 5
+    const tasa = esExenta ? 0 : parseFloat(tasaStr) / 100
     const ivaItem = tasa > 0 ? r2(subTotal - subTotal / (1 + tasa)) : 0
     const netoItem = r2(subTotal - ivaItem)
 

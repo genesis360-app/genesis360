@@ -214,6 +214,11 @@ export default function CajaPage() {
     refetchInterval: 30_000,
   })
 
+  // Capital total del negocio = suma de todas las cuentas activas de la bóveda.
+  // Es el dato principal de la pestaña Caja Fuerte (se muestra en la tarjeta destacada del header).
+  const cuentasActivasBoveda = (bovedaCuentas as any[]).filter((c: any) => c.activo)
+  const capitalTotal = cuentasActivasBoveda.reduce((acc: number, c: any) => acc + Number(c.saldo || 0), 0)
+
   // Historial de retiros de bóveda — RLS estricta: solo DUEÑO/ADMIN/SUPER_USUARIO
   const { data: bovedaRetiros = [] } = useQuery({
     queryKey: ['boveda-retiros', tenant?.id],
@@ -1913,54 +1918,63 @@ export default function CajaPage() {
       {tab === 'caja_fuerte' && cajaFuerte && (
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center">
-                <Lock size={18} className="text-yellow-600 dark:text-yellow-400" />
+            <div className="flex flex-col lg:flex-row lg:items-stretch gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900/30 rounded-xl flex items-center justify-center">
+                    <Lock size={18} className="text-yellow-600 dark:text-yellow-400" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-gray-800 dark:text-gray-100">Caja Fuerte / Bóveda</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">Efectivo + cuentas asociadas a métodos de pago.</p>
+                  </div>
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => setShowDepositoFuerte(true)}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-semibold rounded-xl transition-colors">
+                    <Plus size={15} /> Ingresar a Caja Fuerte
+                  </button>
+                  <button onClick={() => { setShowRetiroFuerte(true); setRetiroCajaDestinoSesionId('') }}
+                    disabled={fuerteSaldo <= 0}
+                    title={fuerteSaldo <= 0 ? 'Sin saldo en caja fuerte' : ''}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
+                    <ArrowRightLeft size={15} /> Enviar a Caja
+                  </button>
+                  {puedeExtraerBoveda && (
+                    <button onClick={() => { setShowArqueoBoveda(true); setArqueoBovedaConteo({}); setArqueoBovedaNotas('') }}
+                      title="Arqueo manual de la bóveda — contar el saldo sin cerrarla"
+                      className="flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-semibold rounded-xl transition-colors">
+                      <CheckCircle size={15} /> Arquear bóveda
+                    </button>
+                  )}
+                  {puedeExtraerBoveda && (
+                    <button onClick={() => setShowExtraerBoveda(true)}
+                      title="Extraer dinero del negocio (retiro personal, banco, gasto, etc.)"
+                      className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">
+                      <Minus size={15} /> Extraer dinero
+                    </button>
+                  )}
+                </div>
               </div>
-              <div>
-                <p className="font-semibold text-gray-800 dark:text-gray-100">Caja Fuerte / Bóveda</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Efectivo + cuentas asociadas a métodos de pago.</p>
-              </div>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <button onClick={() => setShowDepositoFuerte(true)}
-                className="flex items-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white text-sm font-semibold rounded-xl transition-colors">
-                <Plus size={15} /> Ingresar a Caja Fuerte
-              </button>
-              <button onClick={() => { setShowRetiroFuerte(true); setRetiroCajaDestinoSesionId('') }}
-                disabled={fuerteSaldo <= 0}
-                title={fuerteSaldo <= 0 ? 'Sin saldo en caja fuerte' : ''}
-                className="flex items-center gap-2 px-4 py-2.5 bg-gray-700 dark:bg-gray-600 hover:bg-gray-800 dark:hover:bg-gray-500 text-white text-sm font-semibold rounded-xl disabled:opacity-50 transition-colors">
-                <ArrowRightLeft size={15} /> Enviar a Caja
-              </button>
+              {/* Tarjeta destacada — Capital total (lo principal de la página: cuánta plata
+                  hay en la cartera/capital). Estilo Dashboard, degradé violeta→cian. */}
               {puedeExtraerBoveda && (
-                <button onClick={() => { setShowArqueoBoveda(true); setArqueoBovedaConteo({}); setArqueoBovedaNotas('') }}
-                  title="Arqueo manual de la bóveda — contar el saldo sin cerrarla"
-                  className="flex items-center gap-2 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-semibold rounded-xl transition-colors ml-auto">
-                  <CheckCircle size={15} /> Arquear bóveda
-                </button>
-              )}
-              {puedeExtraerBoveda && (
-                <button onClick={() => setShowExtraerBoveda(true)}
-                  title="Extraer dinero del negocio (retiro personal, banco, gasto, etc.)"
-                  className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-xl transition-colors">
-                  <Minus size={15} /> Extraer dinero
-                </button>
+                <div className="lg:w-72 shrink-0 rounded-2xl p-5 bg-gradient-to-br from-[#7B00FF] to-[#06B6D4] text-white shadow-lg flex flex-col justify-center">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-white/80">Capital total</p>
+                  <p className="text-3xl font-bold leading-tight mt-1 break-words">{formatMoneda(capitalTotal)}</p>
+                  <p className="text-[11px] text-white/70 mt-1.5">Efectivo + cuentas · toda la plata del negocio</p>
+                </div>
               )}
             </div>
           </div>
 
           {/* Saldos por Cuenta de Origen — bóveda discriminada (H1) */}
           {(() => {
-            const cuentasActivas = (bovedaCuentas as any[]).filter((c: any) => c.activo)
-            const capitalTotal = cuentasActivas.reduce((acc: number, c: any) => acc + Number(c.saldo || 0), 0)
+            const cuentasActivas = cuentasActivasBoveda
             return (
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Capital del negocio por cuenta</p>
-                  {puedeExtraerBoveda && cuentasActivas.length > 0 && (
-                    <p className="text-sm font-bold text-gray-700 dark:text-gray-200">Total: <span className="text-accent">{formatMoneda(capitalTotal)}</span></p>
-                  )}
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {cuentasActivas.map((c: any) => {

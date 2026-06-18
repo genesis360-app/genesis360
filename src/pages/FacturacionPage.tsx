@@ -578,7 +578,7 @@ export default function FacturacionPage() {
                       </p>
                     </div>
                     <button
-                      onClick={() => { setVentaAFacturar(v); setTipoComprobante(detectarTipoComprobante((config as any)?.condicion_iva_emisor, (v as any).clientes?.condicion_iva_receptor)); setShowEmitirModal(true) }}
+                      onClick={() => { setVentaAFacturar(v); setTipoComprobante(detectarTipoComprobante((config as any)?.condicion_iva_emisor, (v as any).clientes?.condicion_iva_receptor)); setPuntoVenta((puntosVenta as any[])[0]?.numero ?? 1); setShowEmitirModal(true) }}
                       disabled={!config?.facturacion_habilitada}
                       className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-xl disabled:opacity-40 transition-all">
                       <Send size={14} /> Emitir factura

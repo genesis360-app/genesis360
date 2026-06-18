@@ -268,7 +268,10 @@ export default function ProductoFormPage() {
         regla_inventario: productoData.regla_inventario ?? '',
         aging_profile_id: productoData.aging_profile_id ?? '',
         margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
-        alicuota_iva: (productoData.alicuota_iva ?? 21).toString(),
+        // El numeric de Postgres llega como "21.00"/"10.50"/"0.00"; normalizar a
+        // "21"/"10.5"/"0" para que matchee las opciones del <select> (si no, el campo
+        // queda en blanco al editar y parece que la alícuota guardada "se perdió").
+        alicuota_iva: String(parseFloat(String(productoData.alicuota_iva ?? 21))),
         // Nuevos atributos
         marca: productoData.marca ?? '',
         shelf_life_dias: productoData.shelf_life_dias?.toString() ?? '',
@@ -403,7 +406,8 @@ export default function ProductoFormPage() {
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
-        alicuota_iva: parseFloat(form.alicuota_iva) || 21,
+        // No usar `|| 21`: Exento es 0 y `0 || 21` lo guardaría como 21% (IVA fantasma).
+        alicuota_iva: Number.isFinite(parseFloat(form.alicuota_iva)) ? parseFloat(form.alicuota_iva) : 21,
         // Nuevos atributos
         marca: form.marca.trim() || null,
         shelf_life_dias: form.shelf_life_dias ? parseInt(form.shelf_life_dias) : null,

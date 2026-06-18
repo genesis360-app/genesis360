@@ -73,6 +73,23 @@ serve(async (req) => {
     if (!tenant.cuit) throw new Error('El tenant no tiene CUIT configurado')
     if (!tenant.afipsdk_token) throw new Error('El tenant no tiene token de facturación configurado')
 
+    // Guard fiscal — última línea de defensa (la restricción del selector en el front es
+    // solo UI y puede estar cacheada/bypasseada). Espeja tiposComprobantePermitidos() de
+    // src/lib/facturacionLogic.ts: Monotributista/Exento → SOLO C (y NC-C/ND-C); cualquier
+    // otra condición (RI) → A o B, nunca C. La `letra` ignora el prefijo NC-/ND-.
+    const letra = tipo_comprobante.replace(/^N[CD]-/, '')
+    const emisorSoloC = tenant.condicion_iva_emisor === 'Monotributista' || tenant.condicion_iva_emisor === 'Exento'
+    if (emisorSoloC && letra !== 'C') {
+      return new Response(JSON.stringify({ error: `Un emisor ${tenant.condicion_iva_emisor} solo puede emitir comprobantes tipo C (se intentó ${tipo_comprobante}).` }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    if (!emisorSoloC && letra === 'C') {
+      return new Response(JSON.stringify({ error: `Un emisor Responsable Inscripto no puede emitir comprobantes tipo C (se intentó ${tipo_comprobante}).` }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // 2. Fetch venta con ítems y cliente
     const { data: venta, error: vErr } = await supabase.from('ventas')
       .select(`
@@ -180,8 +197,14 @@ serve(async (req) => {
       }
 
       const tasaStr  = String(it.alicuota_iva ?? it.productos?.alicuota_iva ?? '21')
-      const ivaId    = ALICUOTA_ID[tasaStr] ?? 5
-      const tasa     = tasaStr === 'exento' || tasaStr === 'sin_iva' ? 0 : parseFloat(tasaStr) / 100
+      const esExenta = tasaStr === 'exento' || tasaStr === 'sin_iva'
+      // La alícuota viene de un numeric de Postgres → llega como "21.00" / "10.50" / "0.00".
+      // Hay que normalizarla a "21" / "10.5" / "0" para que matchee ALICUOTA_ID; si no,
+      // el lookup fallaba y caía al default 5 (= Id de 21%) → AFIP rechazaba (error 10051)
+      // toda Factura A/B con alícuota ≠ 21 (10.5 / 27 / exento se mandaban como 21%).
+      const tasaKey  = esExenta ? tasaStr : String(parseFloat(tasaStr))
+      const ivaId    = ALICUOTA_ID[tasaKey] ?? 5
+      const tasa     = esExenta ? 0 : parseFloat(tasaStr) / 100
       const ivaItem  = tasa > 0 ? parseFloat((subTotal - subTotal / (1 + tasa)).toFixed(2)) : 0
       const netoItem = parseFloat((subTotal - ivaItem).toFixed(2))
 

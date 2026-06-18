@@ -8,6 +8,7 @@ export default {
         // ── Tokens de marca (existentes — NO cambiar nombres) ──────────────
         primary:    'rgb(var(--color-primary) / <alpha-value>)',
         accent:     'rgb(var(--color-accent) / <alpha-value>)',
+        accent2:    'rgb(var(--color-accent-2) / <alpha-value>)',
         'brand-bg': 'rgb(var(--color-brand-bg) / <alpha-value>)',
 
         // ── Design System Sprint 1 — nuevos tokens semánticos ─────────────

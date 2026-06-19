@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.80.0 — 🎨 Tabs unificadas (degradé + drag-scroll) + 💱 capital por moneda + 🧾 guards fiscales FAC-27/GAS-17/PRD-11 (EN DEV ⏳, sin migración)
+
+**EN DEV (rama dev / preview Vercel), pendiente deploy a PROD.** Componente compartido `PageTabs` (subrayado estilo Clientes + tab activo en **degradé de marca violeta→cian** + **drag-scroll** + badge) aplicado a TODAS las páginas con tabs. **Caja:** "Capital total" **discriminado por moneda** (ya no suma ARS+USD sin convertir) + tooltip; aperturas no se suman al capital (capital inicial vía "Ingreso externo"); tab "Caja actual" vuelto a columna centrada. **Fiscal:** FAC-27 (EF: guard server-side de Factura B ≥ umbral sin DNI/CUIT → 400, deployado a DEV), GAS-17 (default "Deducir Ganancias": RI ON / resto OFF), PRD-11 (precio ≥ 0); GAS-16 resuelto by-design (sin re-saneo retroactivo). **CLAUDE.md:** nueva REGLA DE ORO #0 (integridad fiscal/contable/inventario). **UAT:** code-audit finalizado + §29 matriz fiscal por condición (RI/Mono/Exento) para runtime. 753 unit + 164 e2e verdes. **▶ PROD pendiente:** PR dev→main + EF `emitir-factura` a PROD (cambio fiscal) + release.
+
+---
+
 ## v1.79.0 — 🧾 Gastos: automatización fiscal por condición del tenant (PROD ✅, PR #231, mig 227)
 
 El módulo de Gastos cruza el **tipo de comprobante** con la **condición frente al IVA del tenant** (`condicion_iva_emisor`, default Monotributista). **Monotributista/Exento:** comprobante B/C/Ticket, el monto es el total, sin crédito de IVA ni deducción de Ganancias. **RI:** A/B/C/Ticket; **Factura A** discrimina crédito de IVA (alícuota default 21%, 10.5/27/custom) con Neto + IVA automáticos; B/C/Ticket → IVA crédito 0; Ganancias marcable (default on). Columna `tipo_comprobante` (gastos + gastos_fijos) + trigger `fn_gastos_iva_guard` server-side (sanea el crédito salvo RI+Factura A). Aplica a gastos variables y fijos. mig 227 en DEV y PROD.

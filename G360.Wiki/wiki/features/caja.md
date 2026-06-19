@@ -10,6 +10,8 @@ updated: 2026-06-16
 
 La caja es el registro de efectivo físico del negocio. Es obligatoria para registrar ventas y gastos en efectivo.
 
+> **v1.80.0 (EN DEV, 2026-06-19):** "Capital total del negocio" ahora se muestra **discriminado por moneda** (ya no suma ARS+USD sin convertir) + tooltip que explica qué cuenta. Las **aperturas de caja NO se suman al capital** (decisión: evita doble conteo del arrastre; el capital inicial real se asienta como **"Ingreso externo"** a la bóveda, flujo ya existente). El tab **"Caja actual"** volvió a **columna centrada** (resumen+acciones arriba, movimientos abajo). Tabs del módulo migrados al componente compartido `PageTabs` (degradé de marca + drag-scroll). Ver [[reference_caja_fuerte_capital_efectivo]].
+
 **Página:** `src/pages/CajaPage.tsx` · panel cajero simplificado `src/pages/PanelCajeroPage.tsx` (`/caja/panel`, M3)  
 **Shortcuts:** `Shift+I` = ingreso · (egreso solo vía Gastos)  
 **Última actualización:** 2026-06-10 — 🎉 **relevamiento Caja A-M COMPLETO en PROD**. Tanda final v1.50.0 (PROD, mig 203, PR #178): E1 bóveda roles custom · E3 arqueo de bóveda · L3 préstamo a empleado · M3 panel cajero · M4 sonido al cobrar. Ver "Estado del relevamiento" abajo.

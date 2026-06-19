@@ -4,6 +4,27 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
+## ▶ CIERRE DE SESIÓN 2026-06-19 — dónde retomar
+
+**Estado:** **PROD = v1.79.0** · **DEV = v1.80.0** (todo esta sesión quedó EN DEV, rama dev / preview Vercel = DEV). Migs **001–227** en DEV **y PROD** (sin migración nueva esta sesión). EF `emitir-factura` redeployada a **DEV (v13)** con el guard FAC-27; **PROD sin tocar**.
+
+**v1.80.0 (EN DEV, 9 commits en dev):**
+- **🎨 Tabs unificadas** — componente compartido `src/components/PageTabs.tsx`: subrayado (estilo Clientes) + activo en **degradé de marca violeta→cian** + **drag-scroll** (`useDragScroll`) + `badge`. Migradas TODAS las páginas (Ventas/Productos/Inventario/Gastos/RRHH/Facturación/Proveedores/Envíos/Clientes/Caja/Config sub-tabs). Config nav principal queda como sidebar.
+- **💱 Caja:** capital total **discriminado por moneda** (CAJ-29) + tooltip; aperturas NO se suman al capital (Opción A: capital inicial vía "Ingreso externo" a la bóveda); tab "Caja actual" vuelto a **columna centrada** (deshace el pegado-a-la-izquierda de v1.78.2).
+- **🧾 Guards fiscales:** **FAC-27** (EF: Factura B ≥ umbral sin DNI/CUIT → 400 antes de AFIP; en DEV, **pendiente PROD**), **GAS-17** (default "Deducir Ganancias": RI→ON, resto→OFF), **PRD-11** (precio ≥ 0). **GAS-16** resuelto **by-design** (no re-saneo retroactivo de gastos históricos).
+- **🛑 REGLA DE ORO #0** al tope del CLAUDE.md: integridad fiscal/contable/inventario no negociable.
+- **✅ UAT code-audit FINALIZADO** + **§29 matriz fiscal por condición** (RI/Mono/Exento) para runtime; e2e 3 selectores arreglados; **753 unit + 164 e2e verdes**.
+
+### ▶ Para retomar (próxima sesión)
+
+1. **▶ DEPLOY v1.80.0 A PROD:** PR `dev → main` + **deploy EF `emitir-factura` a PROD** (FAC-27 es cambio fiscal — GO ya dio OK conceptual, confirmar) + GitHub release v1.80.0. Sin migración.
+2. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`): cambiar `condicion_iva_emisor` del tenant (RI / Monotributista / Exento) y recorrer Facturación (emitir CAE real homologación por tipo) + Gastos (IVA crédito/Ganancias por condición). Es el único pendiente fuerte del UAT (capa C / runtime).
+3. **Verificación VISUAL en PROD** (pendiente desde v1.78.2 + nuevo): degradé violeta→cian global, **nuevo formato de tabs** (subrayado + degradé + drag-scroll), layout de Caja centrado, logo/iconos (hard-reload por caché PWA).
+4. **Dato:** Almacén Jorgito (DEV) se usó en RI para pruebas; **GO lo vuelve a Monotributista**.
+5. **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto; reevaluar si se necesita flujo de caja en el tiempo).
+
+---
+
 ## ▶ CIERRE DE SESIÓN 2026-06-18 — dónde retomar
 
 **Estado:** **PRD = DEV = v1.79.0**, migs **001–227** en DEV **y PROD**. **v1.79.0 (PR #231, mig 227):** Gastos — automatización fiscal por condición del tenant (`tipo_comprobante` + trigger guard de IVA crédito; RI+Factura A discrimina, Mono/Exento total sin crédito ni Ganancias). **v1.78.4 (PR #230):** arqueo repetible visible + flex-wrap + theme_color violeta. **v1.78.3 (PR #227):** fix selector de caja en la venta — excluye la Caja Fuerte y autopreselecciona la única caja operativa. **v1.78.4 (PR #230, sin mig):** arqueo repetible más visible (botón "Arqueo" + tooltip; ya funcionaba, era UI) + acciones de caja `flex-wrap` + `theme_color` del manifest al violeta (#7B00FF). EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte). **v1.78.2 (PR #226):** Efectivo por default en alta de tenant (mig 225) + fix conteo de efectivo en bóveda (mig 226) + Caja Fuerte UI (2 tarjetas + selector de cuenta + lock básico) + **logo/iconos nuevos** + **Caja a pantalla completa (2 columnas)** + **degradé de marca violeta→cian** (single-source en `src/index.css`; `bg-accent`→degradé). **⚠ A VERIFICAR VISUALMENTE en PROD:** el degradé global y el layout de Caja (no se pudieron ver renderizados; revertibles con un commit).

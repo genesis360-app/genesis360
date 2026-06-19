@@ -11,6 +11,8 @@ updated: 2026-06-14
 Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1.3.0 PROD ✅.  
 **PDF con QR AFIP implementado en v1.5.0 PROD ✅** (RG 4291 — obligatorio desde 2021).
 
+> **v1.80.0 (EN DEV, 2026-06-19) — FAC-27:** guard server-side en la EF `emitir-factura` para **Factura B ≥ umbral sin DNI/CUIT** → responde **400** antes de llamar a AFIP (espeja `requiereIdentFacturaB` del POS; consistente con el guard de tipo A/B/C de v1.78.1). EF deployada a **DEV (v13)**; **pendiente PROD** (cambio fiscal). Comportamiento esperado por condición del emisor (RI/Monotributista/Exento) documentado y testeable en `tests/specs/uat-modo-basico.md` **§29 (matriz fiscal)**.
+
 > [!NOTE] Homologación confirmada: CAE `86170057489609` emitido exitosamente (Factura B, CUIT de prueba `20409378472`).
 
 ---

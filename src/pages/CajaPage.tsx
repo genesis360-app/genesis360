@@ -1729,15 +1729,15 @@ export default function CajaPage() {
                   <Info size={14} /> Modo solo lectura — CONTADOR puede consultar movimientos y reimprimir tickets de cierre, pero no operar la caja.
                 </div>
               ) : (
-              <div className="flex gap-2">
+              <div className="flex gap-2 flex-wrap">
                 <button onClick={() => setShowMovimiento(true)}
                   className="flex-1 flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all">
                   <Plus size={18} /> Ingreso
                 </button>
                 <button onClick={() => setShowArqueo(true)}
-                  title="Arqueo parcial — contar efectivo sin cerrar caja"
+                  title="Arqueo parcial — contar efectivo (podés hacer varios por sesión, sin cerrar la caja)"
                   className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-semibold rounded-xl transition-all">
-                  <CheckCircle size={16} />
+                  <CheckCircle size={16} /> Arqueo
                 </button>
                 {cajaFuerte && (() => {
                   const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']

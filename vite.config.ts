@@ -17,8 +17,8 @@ export default defineConfig({
         name: 'Genesis360',
         short_name: 'Genesis360',
         description: 'El cerebro del negocio físico',
-        theme_color: '#0000FF',
-        background_color: '#0000FF',
+        theme_color: '#7B00FF',
+        background_color: '#F5F0FF',
         display: 'standalone',
         icons: [
           { src: 'android-chrome-192x192.png', sizes: '192x192', type: 'image/png' },

@@ -6,7 +6,7 @@ import {
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
   ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check, SlidersHorizontal, ScanBarcode,
-  Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock,
+  Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock, ArrowRightLeft,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { ActionMenu } from '@/components/ActionMenu'
@@ -224,7 +224,7 @@ export default function InventarioPage() {
   // Kits y Autorizaciones son solo avanzado: si quedaron seleccionados al pasar a básico,
   // volver a la vista de stock (incluye deep-links)
   useEffect(() => {
-    if (!modoAvanzado && (tab === 'kits' || tab === 'autorizaciones')) setTab('inventario')
+    if (!modoAvanzado && tab === 'kits') setTab('inventario')
   }, [modoAvanzado, tab])
   const [conteoRows, setConteoRows] = useState<ConteoRow[]>([])
   const [conteoNotas, setConteoNotas] = useState('')
@@ -2505,17 +2505,18 @@ export default function InventarioPage() {
         <PageTabs
           className="flex-1"
           tabs={[
-            { id: 'inventario', label: 'Inventario' },
-            { id: 'agregar', label: 'Agregar stock' },
-            { id: 'quitar', label: 'Quitar stock' },
+            { id: 'inventario', label: 'Inventario', icon: Package },
+            { id: 'agregar', label: 'Agregar stock', icon: Plus },
+            { id: 'quitar', label: 'Quitar stock', icon: Minus },
             // En básico, Traslados solo tiene sentido con más de una sucursal
-            ...((modoAvanzado || sucursales.length > 1) ? [{ id: 'traslados', label: 'Traslados' }] : []),
+            ...((modoAvanzado || sucursales.length > 1) ? [{ id: 'traslados', label: 'Traslados', icon: ArrowRightLeft }] : []),
             // Kits (kitting/armado) es modo avanzado
-            ...(modoAvanzado ? [{ id: 'kits', label: 'Kits' }] : []),
-            { id: 'conteo', label: 'Conteos' },
-            { id: 'historial', label: 'Historial' },
-            // Autorizaciones: flujo de aprobación de ajustes/eliminación de LPN — solo avanzado
-            ...((modoAvanzado && puedeVerAutorizaciones) ? [{ id: 'autorizaciones', label: 'Autorizaciones' }] : []),
+            ...(modoAvanzado ? [{ id: 'kits', label: 'Kits', icon: Layers }] : []),
+            { id: 'conteo', label: 'Conteos', icon: ClipboardList },
+            { id: 'historial', label: 'Historial', icon: Clock },
+            // Autorizaciones: aprobación de ajustes/conteos. También en BÁSICO: el tab Conteo
+            // genera ajustes que requieren aprobación (corregido 2026-06-19, antes se ocultaba mal).
+            ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: CheckCircle2 }] : []),
           ]}
           active={tab}
           onChange={(id) => setTab(id as Tab)}

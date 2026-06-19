@@ -1424,10 +1424,10 @@ export default function ProveedoresPage() {
 
   // ── Tabs bar ───────────────────────────────────────────────────────────────
   // En modo básico no hay circuito de OC (el stock entra por Inventario → Agregar)
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'proveedores', label: 'Proveedores' },
-    { id: 'servicios',   label: 'Servicios' },
-    ...(modoAvanzado ? [{ id: 'ordenes' as Tab, label: 'Órdenes de compra' }] : []),
+  const tabs = [
+    { id: 'proveedores' as Tab, label: 'Proveedores', icon: Truck },
+    { id: 'servicios' as Tab,   label: 'Servicios', icon: Wrench },
+    ...(modoAvanzado ? [{ id: 'ordenes' as Tab, label: 'Órdenes de compra', icon: FileText }] : []),
   ]
 
   const exportarProveedores = (format: 'json' | 'csv') => {

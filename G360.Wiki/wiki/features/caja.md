@@ -402,3 +402,15 @@ Indicador **Total: $X** arriba a la derecha (visible solo para DUEÑO+) sumando 
 
 `operarCajaFuerte` ahora setea `cuenta_origen_id = id de cuenta tipo='efectivo'` en los 4 inserts (depósito caja → fuerte + retiro fuerte → caja). Así esos movimientos también se reflejan en la vista discriminada.
 
+
+---
+
+## Caja Fuerte + Caja: cambios v1.78.2–v1.79.0 (2026-06-18)
+
+- **2 tarjetas destacadas** en el header de la bóveda (estilo Dashboard): **"En la caja fuerte"** (`fuerteSaldo`, degradé violeta→cian — sube al depositar) + **"Capital total del negocio"** (`capitalTotal` = suma de `vw_boveda_cuentas`). Reemplazan el "Total" chico.
+- **Fix conteo de capital (mig 226):** `vw_boveda_cuentas` ahora atribuye el efectivo **sin cuenta** (ventas/gastos con `cuenta_origen_id` NULL, no informativos) a la cuenta Efectivo del tenant vía `COALESCE`. Antes el "capital por cuenta" no reflejaba el efectivo de ventas/gastos. **Limitación conocida:** las aperturas de caja (`monto_apertura`) no son movimientos → no se cuentan (gap a evaluar).
+- **Ingreso a Caja Fuerte — selector de cuenta destino** (cuentas_origen activas, default Efectivo). La pata de ingreso a la bóveda usa la cuenta elegida; la de egreso de la caja queda en Efectivo. **Modo básico:** el selector de **Caja de origen** queda bloqueado a la caja activa.
+- **Efectivo por default en alta de tenant (mig 225):** cada tenant nuevo nace con la Cuenta de Origen Efectivo (tipo efectivo, en su moneda) + 5 métodos default con Efectivo vinculado. Trigger `fn_seed_tenant_defaults` + backfill. Ver [[gastos]] / wiki de tenants.
+- **Selector de caja en la VENTA (v1.78.3):** excluye la sesión permanente de la Caja Fuerte (solo cajas operativas); con 1 caja abierta se autopreselecciona (antes la bóveda inflaba el conteo y obligaba a elegir).
+- **Arqueo repetible (v1.78.4):** se pueden hacer **varios arqueos parciales por sesión** (siempre se pudo — no hay constraint ni guard; era descubribilidad). El botón ahora dice "Arqueo" + tooltip. La fila de acciones es `flex-wrap`.
+- **Layout:** el módulo Caja usa **pantalla completa**; el tab principal va en **2 columnas** (izq: saldo + acciones sticky / der: movimientos + arqueos + cierre).

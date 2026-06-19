@@ -167,6 +167,7 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | VEN-33 | Crédito a favor aplicado en venta | Cliente con saldo a favor → usarlo | Descuenta del saldo; no puede aplicar más que el disponible | B | 🔴 | ⬜ | |
 | VEN-34 | Descuento sobre el límite con clave maestra | CAJERO/SUPERVISOR excede el máx de descuento | Pide clave maestra para autorizar; sin clave → bloquea | E | 🟡 | ⬜ | |
 | VEN-35 | **Costo de envío del POS visible en ticket Y factura** (v1.78.0) | Vender con costo de envío → ver ticket → emitir factura | El costo aparece en el ticket **y** entra a la factura como ítem (ver FAC-23). `ventas.total` NO incluye el envío (va aparte en `costo_envio`); `monto_pagado` = total + envío (no se duplica) | H | 🔴 | ⬜ | |
+| VEN-36 | **Selector de caja en la venta: excluye Caja Fuerte + autopreselecciona** (v1.78.3) | Vender con 1 sola caja operativa abierta | El selector NO lista la Caja Fuerte (solo cajas operativas); con 1 caja, se usa esa sola sin pedir selección (antes la sesión permanente de la bóveda inflaba el conteo y obligaba a elegir) | H | 🔴 | ⬜ | |
 
 ---
 
@@ -195,6 +196,12 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | CAJ-19 | Movimiento informativo no afecta arqueo | Venta no-efectivo → `ingreso_informativo` | El arqueo de efectivo NO lo cuenta; sí figura en el detalle | B | 🔴 | ⬜ | |
 | CAJ-20 | **Gasto efectivo > saldo de caja** | Pagar un gasto en efectivo mayor al saldo | **Bloquea**: "no hay suficiente efectivo en caja, hacé un ingreso o pagá por otro medio" (no deja caja negativa) | E | 🔴 | ⬜ | *Fix v1.76.0 (CAJ-18)* |
 | CAJ-21 | Caja solo registra ingresos manuales | Buscar "egreso manual" en Caja | Por diseño no hay egreso manual en Caja: los egresos van por Gastos / traspaso / devolución | B | 🟢 | ⬜ | |
+| CAJ-22 | **Caja Fuerte: 2 tarjetas** (v1.78.2) | Ver header de la bóveda (rol con acceso) | "En la caja fuerte" (`fuerteSaldo`, sube al depositar) + "Capital total del negocio" (`capitalTotal`). Degradé violeta→cian | H | 🟡 | ⬜ | |
+| CAJ-23 | **Capital cuenta el efectivo de ventas/gastos** (v1.78.2, mig 226) | Vender/gastar en efectivo → ver Capital por cuenta | El efectivo sin `cuenta_origen_id` (ventas/gastos) se atribuye a la cuenta Efectivo. **Gap conocido:** aperturas (`monto_apertura`) NO se cuentan | B | 🔴 | ⬜ | |
+| CAJ-24 | **Ingreso a Caja Fuerte: selector de cuenta destino** (v1.78.2) | Ingresar a la bóveda | Selector de cuenta de origen (default Efectivo) → permite ingresar a otra cuenta; antes era siempre Efectivo | H | 🟡 | ⬜ | |
+| CAJ-25 | **Básico: caja-origen del depósito bloqueada** (v1.78.2) | Depositar a bóveda en modo básico | El selector de Caja de origen queda fijado a la caja activa (no se elige) | B | 🟡 | ⬜ | |
+| CAJ-26 | **Arqueo repetible** (v1.78.4) | Hacer un 2º arqueo parcial en la misma sesión | Se permite (sin constraint ni guard); el botón dice "Arqueo" + tooltip "podés hacer varios por sesión" | H | 🟡 | ⬜ | |
+| CAJ-27 | **Efectivo por default en alta de tenant** (v1.78.2, mig 225) | Crear un tenant nuevo | Nace con la Cuenta de Origen Efectivo (tipo efectivo, en su moneda) + 5 métodos default con Efectivo vinculado | H | 🔴 | ⬜ | |
 
 ---
 
@@ -211,6 +218,12 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | GAS-07 | Monto 0 / negativo | Cargar gasto inválido | Rechaza | E | 🟡 | ⬜ | |
 | GAS-08 | **Gasto efectivo con caja: egreso awaited** | Pagar gasto efectivo con caja abierta | Egreso `await`eado; si el insert falla → toast (ya no fire-and-forget) | E | 🔴 | ⬜ | *Fix v1.76.0 (GAS-05)* |
 | GAS-09 | **Gasto efectivo sin caja: avisa** | Pagar gasto efectivo sin sesión | El gasto se registra + **toast de aviso** "el egreso no se asentó en caja, registralo manual" (ya no silencioso) | E | 🔴 | ⬜ | *Fix v1.76.0* |
+| GAS-10 | **Fiscal — Monotributista/Exento** (v1.79.0) | Tenant Mono/Exento → cargar gasto | El selector de comprobante NO ofrece Factura A (solo B/C/Ticket); el monto es el **total**; NO se muestran IVA crédito ni "Deducir de Ganancias" | H | 🔴 | ⬜ | |
+| GAS-11 | **Fiscal — RI + Factura A** (v1.79.0) | Tenant RI → comprobante Factura A | Muestra **Alícuota de IVA** (default **21%**, 10.5/27/custom) + Neto + **IVA crédito** calculado automático; se persiste `iva_monto` | H | 🔴 | ⬜ | |
+| GAS-12 | **Fiscal — RI + Factura B/C/Ticket** (v1.79.0) | Tenant RI → comprobante B/C/Ticket | Input = monto total; **`iva_monto`=0** (no discrimina crédito). "Deducir de Ganancias" sí disponible (default ON) | H | 🔴 | ⬜ | |
+| GAS-13 | **Guard server-side de IVA crédito** (v1.79.0, mig 227) | Forzar `iva_monto` sin RI+Factura A (bundle viejo / insert directo) | El trigger `fn_gastos_iva_guard` **sanea** `iva_monto`/`iva_deducible` a 0/NULL salvo RI+Factura A, y `deduce_ganancias` salvo RI. Verificado en DB: RI+A permite, RI+B sanea | E | 🔴 | ⬜ | |
+| GAS-14 | Condición no seteada → Monotributista | Tenant sin `condicion_iva_emisor` | Default conservador: se comporta como Monotributista (sin IVA crédito ni Ganancias) | B | 🟡 | ⬜ | |
+| GAS-15 | Gasto fijo también respeta la condición | Crear gasto fijo (RI/Mono) | La sección fiscal (`renderFiscal` compartido) aplica igual; al materializarse en `gastos` el guard re-sanea | B | 🟡 | ⬜ | |
 
 ---
 
@@ -731,3 +744,23 @@ Disparado por dos reportes de GO en homologación (Almacén Jorgito, monotributi
 **Flujo de envío + factura auditado y confirmado correcto:** `ventas.total` = suma de ítems (no incluye envío); `costo_envio` aparte; la EF arma `impTotal = venta.total + costo_envio` desde los ítems + la línea de envío → **no duplica** (verificado con datos reales en DEV). Cubierto por UAT VEN-21/35 + FAC-23/24.
 
 typecheck + **753 unit** (4 de regresión de alícuota nuevos) + build verdes. **Pendiente deploy:** EF `emitir-factura` (lleva el guard + el fix de alícuota) a DEV → test homologación → PROD con OK de GO. Frontend (ProductoForm + facturacionLogic) va por el flujo normal `dev`.
+
+---
+
+## ✅ Fixes/features aplicados (sesión 2026-06-18 — tanda 2: caja, gastos, branding) — v1.78.2 → v1.79.0
+
+| Tema | Versión | Qué cambió | Cubierto por |
+|---|---|---|---|
+| **Gastos — automatización fiscal** | v1.79.0 (mig 227) | `tipo_comprobante` (gastos+gastos_fijos) + trigger `fn_gastos_iva_guard` (RI+Factura A discrimina IVA crédito; Mono/Exento total sin crédito ni Ganancias; default Monotributista). UI condicional en ambos forms. | GAS-10→15 |
+| **Efectivo por default en alta de tenant** | v1.78.2 (mig 225) | Trigger de onboarding crea cuenta Efectivo (en moneda del tenant) + 5 métodos default con Efectivo vinculado + backfill. | CAJ-27 |
+| **Capital bóveda cuenta el efectivo** | v1.78.2 (mig 226) | `vw_boveda_cuentas` atribuye el efectivo sin cuenta a la cuenta Efectivo. Gap: aperturas no se cuentan. | CAJ-23 |
+| **Caja Fuerte UI** | v1.78.2 | 2 tarjetas (bóveda + capital total) + selector de cuenta destino en el ingreso + lock de caja-origen en básico. | CAJ-22/24/25 |
+| **Selector de caja en la venta** | v1.78.3 | Excluye la sesión permanente de la Caja Fuerte; autopreselecciona la única caja operativa. | VEN-36 |
+| **Arqueo repetible** | v1.78.4 | Varios arqueos por sesión (siempre se pudo; era descubribilidad). Botón "Arqueo" + tooltip. | CAJ-26 |
+| **Caja a pantalla completa (2 columnas)** | v1.78.2 | Layout full-width; saldo+acciones / movimientos+arqueos+cierre. | — (visual) |
+| **Degradé de marca violeta→cian** | v1.78.2 | Single-source en `src/index.css` (`--color-accent` + `--color-accent-2`); `bg-accent`→degradé en botones/barras/pills. | — (visual) |
+| **Logo/iconos nuevos** | v1.78.2 | favicon + PWA (192/512 + maskable) + apple-touch + sidebar + login. | — (visual) |
+
+**A verificar visualmente en PROD** (no se pudieron ver renderizados; revertibles): degradé global, layout de Caja 2-col, logo, form de Gastos según condición del tenant.
+
+**Patrón de bugs de esta sesión (para no repetir):** (1) **drift de dato de tenant** — un campo de condición (`condicion_iva_emisor`) que cambia y afecta varios módulos a la vez (facturación + gastos); (2) **sesión permanente de la bóveda** que se cuela en queries de "cajas abiertas"; (3) **`numeric` de Postgres llega como string** (`"21.00"`/`"10.50"`) y rompe lookups por igualdad de string (alícuota AFIP) — normalizar con `parseFloat`; (4) **movimientos de efectivo sin `cuenta_origen_id`** que no entran a las vistas de capital; (5) **defaults server-side** (guards/trigger) además de la UI, porque la UI se puede cachear/bypassear.

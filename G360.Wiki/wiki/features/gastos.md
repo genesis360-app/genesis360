@@ -3,7 +3,7 @@ title: Módulo Gastos
 category: features
 tags: [gastos, egresos, iva, comprobantes, gastos-fijos, caja, ordenes-compra, categorias-gasto, capitalizacion, cierre-contable]
 sources: [CLAUDE.md, ROADMAP.md, reglas_negocio.md]
-updated: 2026-05-25
+updated: 2026-06-18
 ---
 
 # Módulo Gastos
@@ -56,6 +56,19 @@ Si un gasto ya tiene `medio_pago` asignado (fue registrado en caja):
 - Columna IVA en tabla + total en footer
 - Card de stats "IVA deducible" del período
 - Impacta en "Posición IVA" del Dashboard (KPI)
+
+### Automatización fiscal por condición del tenant (v1.79.0 · mig 227)
+
+La sección fiscal del form (componente compartido `renderFiscal`, usado en gasto variable **y** fijo) se adapta a `tenants.condicion_iva_emisor` (**default Monotributista** si no está seteada):
+
+- **Columna nueva `tipo_comprobante`** (en `gastos` y `gastos_fijos`): `Factura A` / `Factura B` / `Factura C` / `Ticket`.
+- **Monotributista / Exento:** el selector NO ofrece Factura A; el monto cargado es el **total**; se ocultan IVA crédito y "Deducir de Ganancias".
+- **Responsable Inscripto (RI):** ofrece A/B/C/Ticket.
+  - **Factura A** → muestra **Alícuota de IVA** (default **21%**, 10.5/27/custom) y calcula el **IVA crédito** automático (Neto + IVA).
+  - **Factura B/C/Ticket** → `iva_monto = 0` (esos comprobantes no discriminan crédito fiscal).
+  - **"Deducir de Ganancias"** marcable (default ON, desmarcable si el gasto es personal).
+- **Guard server-side — trigger `fn_gastos_iva_guard`** (BEFORE INSERT/UPDATE en `gastos`, `SECURITY DEFINER`): **sanea** (`iva_monto`/`alicuota_iva`/`tipo_iva` → NULL, `iva_deducible` → false) salvo **RI + Factura A**, y `deduce_ganancias` → false salvo RI. Es la última línea de defensa (no hay Edge Function de gastos). Verificado: RI+A permite IVA, RI+B lo sanea.
+- **Notas de modelo:** `iva_credito` del pedido original = columna existente `iva_monto`; `monto_neto` no se persiste (derivable = `monto − iva_monto`).
 
 ### Comprobantes adjuntos
 

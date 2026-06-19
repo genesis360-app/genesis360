@@ -227,7 +227,7 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | GAS-14 | Condición no seteada → Monotributista | Tenant sin `condicion_iva_emisor` | Default conservador: se comporta como Monotributista (sin IVA crédito ni Ganancias) | B | 🟡 | ✅ | *Auditado 2026-06-19: UI `condicion_iva_emisor || 'Monotributista'` (:164) + trigger `COALESCE(NULLIF(...,''),'Monotributista')`* |
 | GAS-15 | Gasto fijo también respeta la condición | Crear gasto fijo (RI/Mono) | La sección fiscal (`renderFiscal` compartido) aplica igual; al materializarse en `gastos` el guard re-sanea | B | 🟡 | ✅ | *Auditado 2026-06-19: `renderFiscal` usado en ambos forms (:2407, :2752); "Generar gasto desde fijo" copia `tipo_comprobante`+IVA (:1539) e inserta en `gastos` → trigger sanea. Materialización es user-triggered (no cron)* |
 | GAS-16 | **Cambiar la condición del tenant con gastos ya cargados** (borde, 2026-06-19) | Tenant RI con gastos Factura A (con `iva_monto`) → cambiar a Monotributista | Los gastos **viejos conservan** su `iva_monto`/`deduce_ganancias`. **RESUELTO: by design — NO se hace re-saneo masivo.** Un re-saneo retroactivo borraría el IVA crédito **legítimo** de gastos cargados cuando el tenant SÍ era RI (con Factura A válida) → falsearía el historial fiscal. El comportamiento correcto es conservar lo histórico y aplicar la condición nueva solo a lo que se cree/edite a partir del cambio (que es lo que ya hace el trigger) | B | 🟡 | ✅ | *Resuelto by-design 2026-06-19: integridad del registro fiscal histórico. Si un gasto puntual quedó mal, se corrige editándolo (el guard lo re-sanea)* |
-| GAS-17 | **Default de "Deducir de Ganancias" para RI** (decisión, 2026-06-19) | Tenant RI → abrir un gasto nuevo | Hoy el checkbox arranca **OFF** (FORM_VACIO:129). La nota de v1.79.0 decía "default ON". Conservador (OFF) evita marcar como deducible un gasto personal por descuido; ON es más cómodo para RI. **Pendiente decisión GO** | B | 🟡 | ⬜ | *Discrepancia spec↔código detectada 2026-06-19. Sin tocar hasta definir* |
+| GAS-17 | **Default de "Deducir de Ganancias" según condición** (2026-06-19) | Tenant RI → gasto nuevo; tenant no-RI → gasto nuevo | RI → checkbox arranca **ON**; cualquier otra condición → **OFF**. `abrirNuevo`/`abrirNuevoFijo` setean `deduce_ganancias: esRI` | B | 🟡 | ✅ | *Implementado 2026-06-19: GastosPage.tsx:920/980 (`{ ...FORM_VACIO, deduce_ganancias: esRI }`)* |
 
 ---
 
@@ -846,7 +846,9 @@ Cubiertos en pases previos (v1.74.0 efectivo↔caja / v1.76.0): VEN-11/12 (reser
 
 ## ✅ Balance de finalización del UAT (2026-06-19)
 
-**Auditado por código (capa A) — esta sesión:** §3 Productos, §4 Inventario, §5 Ventas/POS, §6 Caja, §7 Gastos, §10 Devoluciones, §11 Facturación AFIP. Cubren TODA la superficie 🔴 de plata/stock/fiscal.
+**Auditado por código (capa A) — esta sesión:** §3 Productos, §4 Inventario, §5 Ventas/POS, §6 Caja, §7 Gastos, §8 Clientes (CC), §9 Proveedores (CC), §10 Devoluciones, §11 Facturación AFIP. Cubren TODA la superficie 🔴 de plata/stock/fiscal.
+
+**§8 Clientes / §9 Proveedores (CC) — verificado:** CLI-04/05 (cobranza CC efectivo exige caja ANTES de saldar — `requiereCaja` en cobranzaCC.ts:77-80; sin sesión no se reduce la deuda), CLI-06 (no-efectivo no exige caja), CLI-14 (FIFO `planificarCobranzaFIFO`, oldest-first, con unit tests en ccLogic), CLI-08/13 (crédito a favor → `cliente_creditos`, redención en venta). PROV-03 (servicio recurrente vencido → gasto) cubierto por el cron-sweeps EF (v1.73.0); PROV-06 (pago CC proveedor) por `proveedor_cc_movimientos`. **Sin bugs nuevos.**
 
 **Cubierto por pases previos (no re-auditado, ya verde):**
 - §14 Roles/permisos + §20 matriz rol×módulo → v1.57.0 (matriz + e2e DEPOSITO/CONTADOR) + e2e 17/18 verdes hoy.

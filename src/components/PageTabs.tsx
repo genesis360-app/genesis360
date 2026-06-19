@@ -49,10 +49,10 @@ export function PageTabs({
             className={`relative flex items-center font-medium transition-all border-b-2 -mb-px whitespace-nowrap ${pad}
               ${isActive
                 ? 'border-transparent'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'}`}
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 nav-grad-hover'}`}
           >
-            {Icon && <Icon size={15} className={isActive ? 'text-accent' : ''} />}
-            <span className={isActive ? 'text-gradient-brand' : ''}>{label}</span>
+            {Icon && <Icon size={15} className={isActive ? 'text-accent' : 'nav-grad-icon'} />}
+            <span className={isActive ? 'text-gradient-brand' : 'nav-grad-text'}>{label}</span>
             {badge ? (
               <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold">
                 {badge}

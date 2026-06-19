@@ -55,6 +55,21 @@
   }
 }
 
+/* ─── Hover de marca para items de sidebar y tabs ─────────────────────────────
+   Al pasar el cursor, la TIPOGRAFÍA y el ÍCONO pasan del violeta sólido al degradé
+   violeta→cian. El fondo/sombra violeta translúcido (hover:bg-accent/10) se mantiene
+   aparte (vía Tailwind). El ícono (SVG stroke) usa el gradiente #g360-grad-stroke,
+   definido una sola vez en el DOM (AppLayout). Solo se aplica a items NO activos. */
+.nav-grad-hover:hover .nav-grad-text {
+  background-image: linear-gradient(135deg, rgb(var(--color-accent)) 0%, rgb(var(--color-accent-2)) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.nav-grad-hover:hover .nav-grad-icon {
+  stroke: url(#g360-grad-stroke);
+}
+
 * { box-sizing: border-box; }
 html, body { overflow-x: hidden; }
 body { font-family: 'Inter', system-ui, sans-serif; }

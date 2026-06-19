@@ -144,11 +144,11 @@ export default function OnboardingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary to-accent flex items-center justify-center p-4">
+    <div className="min-h-screen bg-brand-gradient-hero flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-white dark:bg-gray-800 rounded-2xl shadow-lg mb-4">
-            <Package size={32} className="text-primary" />
+          <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
+            <img src={BRAND.logo} alt={BRAND.name} className="w-20 h-20 object-contain drop-shadow-lg" />
           </div>
           <h1 className="text-3xl font-bold text-white">{BRAND.name}</h1>
           <p className="text-blue-200 mt-1">Registrá tu negocio — 7 días gratis</p>

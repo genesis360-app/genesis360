@@ -39,7 +39,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
-            <img src="/android-chrome-192x192.png" alt={BRAND.name} className="w-20 h-20 object-contain drop-shadow-lg" />
+            <img src={BRAND.logo} alt={BRAND.name} className="w-20 h-20 object-contain drop-shadow-lg" />
           </div>
           <h1 className="text-3xl font-bold text-white">{BRAND.name}</h1>
           <p className="text-blue-200 mt-1">Gestión de inventario simplificada</p>

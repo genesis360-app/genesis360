@@ -111,9 +111,7 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur border-b border-gray-100">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <Package size={16} className="text-white" />
-            </div>
+            <img src={BRAND.logo} alt={BRAND.name} className="w-8 h-8 rounded-lg object-contain" />
             <span className="font-bold text-xl text-primary">{BRAND.name}</span>
           </div>
 
@@ -155,7 +153,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ── HERO ── */}
-      <section className="bg-gradient-to-br from-primary via-primary to-accent text-white">
+      <section className="bg-brand-gradient-hero text-white">
         <div className="max-w-6xl mx-auto px-4 py-20 md:py-28 text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm mb-6">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -404,9 +402,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-white/10 rounded-lg flex items-center justify-center">
-                <Package size={14} className="text-white" />
-              </div>
+              <img src={BRAND.logo} alt={BRAND.name} className="w-7 h-7 rounded-lg object-contain" />
               <span className="font-bold text-white">{BRAND.name}</span>
             </div>
             <div className="flex gap-6 text-sm">

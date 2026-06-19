@@ -46,6 +46,13 @@ export const BRAND = {
   description: 'Gestioná tu stock, ventas y movimientos desde cualquier dispositivo. Simple, rápido y pensado para comercios reales.',
   email: 'hola@genesis360.pro',
   website: 'https://genesis360.pro',
+  // 🎯 LOGO — fuente ÚNICA del ícono in-app (sidebar, login, landing, suscripción, onboarding).
+  // Apunta a un archivo generado por `scripts/gen-brand-icons.mjs` desde `brand/logo-source.png`.
+  // Para cambiar el ícono EN TODOS LADOS: reemplazar `brand/logo-source.png` por el nuevo PNG
+  // y correr `node scripts/gen-brand-icons.mjs` (regenera favicon + PWA + este). Cambiar la ruta
+  // acá lo cambia en toda la app (el favicon del navegador sale de index.html + manifest, también
+  // generados del mismo source).
+  logo: '/android-chrome-192x192.png',
   // Espejo de las vars de src/index.css (:root). El color de marca se cambia en UN
   // solo lugar (esas vars); el degradé violeta→cian sale de accent + accent2.
   color: {

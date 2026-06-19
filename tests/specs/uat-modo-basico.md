@@ -89,16 +89,16 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | ID | Escenario | Pasos | Resultado esperado | Tipo | Pri | Estado | Resultado real / Nota |
 |---|---|---|---|---|---|---|---|
 | PRD-01 | Alta producto mínima | Solo `nombre` (categoría opcional) | Crea; SKU autogenerado o manual | H | 🟡 | ⬜ | |
-| PRD-02 | **Stock disponible en la lista** (BUG histórico #2) | Producto con stock | Muestra cantidad real, **NO "0 disponible"** (no filtra `estado_id` en básico) | H | 🔴 | ⬜ | |
+| PRD-02 | **Stock disponible en la lista** (BUG histórico #2) | Producto con stock | Muestra cantidad real, **NO "0 disponible"** (no filtra `estado_id` en básico) | H | 🔴 | ✅ | *Auditado 2026-06-19: en básico `evIds=[]` → no aplica `.in('estado_id')` (ProductosPage.tsx:531-542)* |
 | PRD-03 | Producto sin categoría | Alta sin categoría | Se crea; **dispara alerta "sin categoría"** (ver ALR-03) | B | 🟡 | ⬜ | |
 | PRD-04 | Precio de venta / costo / margen | Editar precios | Calcula margen; costo visible solo a roles autorizados (G4) | H | 🟡 | ⬜ | |
 | PRD-05 | `es_kit` + mayoristas gateados | Ver opciones en básico | Kit y precios mayoristas **ocultos** en básico (avanzado) | B | 🟢 | ⬜ | |
 | PRD-06 | Editar producto | Cambiar nombre/precio | Persiste; no asume ubicación/estado | H | 🟡 | ⬜ | |
-| PRD-07 | Baja lógica (activo=false) | Desactivar producto | Deja de aparecer en POS; histórico se conserva | B | 🟡 | ⬜ | |
-| PRD-08 | Eliminar producto **con stock** | Intentar borrar con stock>0 | Bloquea o advierte (no deja inventario huérfano) | E | 🔴 | ⬜ | |
-| PRD-09 | Eliminar producto **con ventas** | Borrar producto vendido | Bloquea (FK) o desactiva; no rompe histórico de ventas | E | 🔴 | ⬜ | |
-| PRD-10 | SKU duplicado | Alta con SKU repetido | Rechaza con mensaje claro | E | 🟡 | ⬜ | |
-| PRD-11 | Precio negativo / 0 | Cargar precio <0 | Valida; rechaza negativo (0 puede ser válido para regalo) | E | 🟡 | ⬜ | |
+| PRD-07 | Baja lógica (activo=false) | Desactivar producto | Deja de aparecer en POS; histórico se conserva | B | 🟡 | ✅ | *Auditado 2026-06-19: bulk `activo:false` (ProductosPage.tsx:701-703); "no aparecen en ventas ni en el listado"* |
+| PRD-08 | Eliminar producto **con stock** | Intentar borrar con stock>0 | Bloquea o advierte (no deja inventario huérfano) | E | 🔴 | ✅ | *Auditado 2026-06-19: por diseño NO hay hard-delete de productos en la UI (solo baja lógica) → no quedan líneas huérfanas* |
+| PRD-09 | Eliminar producto **con ventas** | Borrar producto vendido | Bloquea (FK) o desactiva; no rompe histórico de ventas | E | 🔴 | ✅ | *Auditado 2026-06-19: solo baja lógica (no hard-delete) → el histórico de ventas nunca se rompe* |
+| PRD-10 | SKU duplicado | Alta con SKU repetido | Rechaza con mensaje claro | E | 🟡 | ✅ | *Auditado 2026-06-19: check debounced `skuTaken` bloquea submit (ProductoFormPage.tsx:304-353) + 23505 DB "Ya existe un producto con ese SKU" (:437)* |
+| PRD-11 | Precio negativo / 0 | Cargar precio <0 | Valida; rechaza negativo (0 puede ser válido para regalo) | E | 🟡 | ⚠️ | *Auditado 2026-06-19: inputs `type=number min=0 step=0.01` (ProductoFormPage.tsx:871) pero `parseFloat()\|\|0` no rechaza un negativo tipeado directo (sin validación nativa de form). Gap menor → considerar guard `Math.max(0, …)` al guardar* |
 | PRD-12 | Importar productos (Excel/CSV) | Importar archivo | Crea en lote; reporta filas inválidas/duplicadas sin abortar todo | B | 🟡 | ⬜ | |
 | PRD-13 | Buscar por nombre/SKU/código de barras | Búsqueda en lista/POS | Encuentra; escaneo de barcode resuelve | H | 🟡 | ⬜ | |
 | PRD-14 | Stock mínimo por producto | Setear mínimo | Al caer bajo mínimo → alerta de stock bajo | B | 🟡 | ⬜ | |
@@ -295,16 +295,16 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 
 | ID | Escenario | Pasos | Resultado esperado | Tipo | Pri | Estado | Resultado real / Nota |
 |---|---|---|---|---|---|---|---|
-| FAC-01 | **Emitir Factura C** (monotributo) desde venta | Vender → Emitir factura | CAE real homologación; **C sin IVA** (`ImpNeto=ImpTotal`, `ImpIVA=0`); venta queda `facturada` | H | 🔴 | ⬜ | |
-| FAC-02 | `ImpTotal = ImpNeto + ImpIVA` | Emitir | Evita error AFIP 10048 | H | 🔴 | ⬜ | |
-| FAC-03 | Auto-detección A/B/C contempla **Exento** | Emisor Exento | Emite **C** (no A/B) | B | 🔴 | ⬜ | |
-| FAC-04 | **Factura A sin CUIT** | Cliente CF, elegir A | Botón A **deshabilitado** + aviso; degrada a B | E | 🔴 | ⬜ | |
+| FAC-01 | **Emitir Factura C** (monotributo) desde venta | Vender → Emitir factura | CAE real homologación; **C sin IVA** (`ImpNeto=ImpTotal`, `ImpIVA=0`); venta queda `facturada` | H | 🔴 | ✅ | *Auditado 2026-06-19: `sinIVA` para C/NC-C → todo a neto, sin array Iva (index.ts:184,193-196). CAE real verificado vía e2e 21* |
+| FAC-02 | `ImpTotal = ImpNeto + ImpIVA` | Emitir | Evita error AFIP 10048 | H | 🔴 | ✅ | *Auditado 2026-06-19: `impTotal = totalNeto + totalIVA` (index.ts:225)* |
+| FAC-03 | Auto-detección A/B/C contempla **Exento** | Emisor Exento | Emite **C** (no A/B) | B | 🔴 | ✅ | *Auditado 2026-06-19: guard `emisorSoloC` incluye Exento (index.ts:81); `detectarTipoComprobante` en facturacionLogic* |
+| FAC-04 | **Factura A sin CUIT** | Cliente CF, elegir A | Botón A **deshabilitado** + aviso; degrada a B | E | 🔴 | ✅ | *Auditado 2026-06-19: UI deshabilita (VentasPage:7051) + EF lanza "Para Factura A se requiere CUIT" (index.ts:176)* |
 | FAC-05 | **Factura B ≥ umbral a Consumidor Final sin DNI/CUIT** | Total ≥ ~$68.305 sin ID | **Bloquea** emisión (RG AFIP) + aviso | E | 🔴 | ⬜ | |
 | FAC-06 | Descargar / Imprimir / Email factura | Acciones post-emisión | PDF correcto; imprimir vía iframe (sin popup-blocker); email autocompleta `clientes.email` | H | 🔴 | ⬜ | |
 | FAC-07 | PDF de factura completo | Ver PDF | Logo, IIBB, Inicio Act, N° con letra, domicilio receptor, Cód. SKU, "Comprobante Autorizado", QR, Ley 27.743 (en B), datos bancarios/leyenda | H | 🟡 | ⬜ | |
 | FAC-08 | Emitir factura desde el detalle (si se saltó el prompt) | Detalle de venta → Emitir | Botón disponible si no facturada | B | 🟡 | ⬜ | |
 | FAC-09 | QR de pago MercadoPago en factura con saldo | Factura con saldo + MP conectado | QR "Pagá con MercadoPago" (`external_reference=venta_id`); graceful si no hay MP | B | 🟡 | ⬜ | |
-| FAC-10 | **Emitir Nota de Crédito electrónica** (vía Devolver) | Devolver venta facturada → Emitir NC | CAE NC; **letra derivada de la factura original y fija** (C→NC-C); `CbtesAsoc` a la original; badge `NC-C #N` | H | 🔴 | ⬜ | |
+| FAC-10 | **Emitir Nota de Crédito electrónica** (vía Devolver) | Devolver venta facturada → Emitir NC | CAE NC; **letra derivada de la factura original y fija** (C→NC-C); `CbtesAsoc` a la original; badge `NC-C #N` | H | 🔴 | ✅ | *Auditado 2026-06-19: `CbtesAsoc` referencia la factura original (index.ts:304, evita AFIP 10197); `sinIVA` cubre NC-C* |
 | FAC-11 | NC: Descargar/Imprimir/Email | Acciones del badge NC | PDF "NOTA DE CRÉDITO" (COD/QR con código AFIP de NC); email | H | 🔴 | ⬜ | |
 | FAC-12 | Emitir NC sin factura previa (sin CAE) | Intentar NC de venta no facturada | Bloquea: "no se puede emitir NC sin CAE original" | E | 🔴 | ⬜ | |
 | FAC-13 | **Anular venta CON CAE** | Intentar Anular factura emitida | **Bloqueado**: oculta "Anular" + "Cambiar cliente"; solo "Devolver→NC" | E | 🔴 | ⬜ | |
@@ -316,11 +316,12 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | FAC-19 | Reimprimir factura ya emitida (idempotente) | Re-descargar | Regenera PDF desde snapshot; no re-emite CAE | B | 🔴 | ⬜ | |
 | FAC-20 | **Restricción de tipos por emisor en el POS** (v1.78.0) | Emisor Monotributista → abrir modal de factura en Ventas | Ofrece **solo Factura C** (`tiposComprobantePermitidos`→`['C']`); A y B **no se renderizan**; default = C | H | 🔴 | ⬜ | |
 | FAC-21 | Restricción de tipos por emisor en Facturación | Emisor Monotributista → modal Emitir en Facturación | El `<select>` lista **solo C**; emisor RI → solo A/B (nunca C) | H | 🔴 | ⬜ | |
-| FAC-22 | **Guard server-side en la EF `emitir-factura`** (sesión 2026-06-18) | Forzar `tipo='B'` con emisor Monotributista (bundle viejo / API directa) | EF responde **400** "Un emisor Monotributista solo puede emitir tipo C"; RI forzando C → 400. Ya no depende solo de ocultar el botón en la UI | E | 🔴 | ⬜ | |
-| FAC-23 | **Costo de envío entra a la factura** (v1.78.0) | Venta con `costo_envio>0` → emitir factura | Ítem **"Costo de Envío"** + suma al `ImpTotal`; **Concepto=3** + `FchServDesde/Hasta/VtoPago`; alícuota del flete = predominante de los productos (en A sigue al producto, en C va a neto); PDF con línea + total. `ImpTotal = venta.total + costo_envio` (no duplica) | H | 🔴 | ⬜ | |
-| FAC-24 | Courier pagado directo por el cliente | Venta con `costo_envio=0` (courier cobra al cliente) | **No** entra a la factura (correcto); sin ítem de envío | B | 🔴 | ⬜ | |
-| FAC-25 | **Alícuota 10,5% en Factura A/B → Id AFIP 4** (BUG GRAVE sesión 2026-06-18) | Emisor RI → producto a 10,5% → emitir A o B | Array `Iva` con **`Id:4`** (10,5%) y `Importe` a la tasa real. Antes el numeric `"10.50"` no matcheaba `ALICUOTA_ID` → caía a `Id:5` (21%) → **AFIP rechazaba (error 10051)** o clasificaba mal | E | 🔴 | ⬜ | |
-| FAC-26 | Alícuotas 0%/Exento y 27% en A/B → Id correcto | Emisor RI → producto 0%/exento y otro 27% → emitir A/B | `"0.00"/exento`→**`Id:3`**, `"27.00"`→**`Id:6`** (no 21%). El ítem de envío toma la alícuota predominante de los productos | E | 🔴 | ⬜ | |
+| FAC-22 | **Guard server-side en la EF `emitir-factura`** (sesión 2026-06-18) | Forzar `tipo='B'` con emisor Monotributista (bundle viejo / API directa) | EF responde **400** "Un emisor Monotributista solo puede emitir tipo C"; RI forzando C → 400. Ya no depende solo de ocultar el botón en la UI | E | 🔴 | ✅ | *Auditado 2026-06-19: guard en index.ts:80-91 (Mono/Exento→solo C, RI→nunca C); usa `letra` que ignora prefijo NC-/ND-* |
+| FAC-23 | **Costo de envío entra a la factura** (v1.78.0) | Venta con `costo_envio>0` → emitir factura | Ítem **"Costo de Envío"** + suma al `ImpTotal`; **Concepto=3** + `FchServDesde/Hasta/VtoPago`; alícuota del flete = predominante de los productos (en A sigue al producto, en C va a neto); PDF con línea + total. `ImpTotal = venta.total + costo_envio` (no duplica) | H | 🔴 | ✅ | *Auditado 2026-06-19: index.ts:144-161 (predominante por subtotal), :170 (total+envío), :284 (Concepto=3)* |
+| FAC-24 | Courier pagado directo por el cliente | Venta con `costo_envio=0` (courier cobra al cliente) | **No** entra a la factura (correcto); sin ítem de envío | B | 🔴 | ✅ | *Auditado 2026-06-19: `envioFacturado = !esNC && costoEnvio > 0` (index.ts:145)* |
+| FAC-25 | **Alícuota 10,5% en Factura A/B → Id AFIP 4** (BUG GRAVE sesión 2026-06-18) | Emisor RI → producto a 10,5% → emitir A o B | Array `Iva` con **`Id:4`** (10,5%) y `Importe` a la tasa real. Antes el numeric `"10.50"` no matcheaba `ALICUOTA_ID` → caía a `Id:5` (21%) → **AFIP rechazaba (error 10051)** o clasificaba mal | E | 🔴 | ✅ | *Auditado 2026-06-19: `ALICUOTA_ID['10.5']=4` (:19) + `String(parseFloat("10.50"))="10.5"` (:205)* |
+| FAC-26 | Alícuotas 0%/Exento y 27% en A/B → Id correcto | Emisor RI → producto 0%/exento y otro 27% → emitir A/B | `"0.00"/exento`→**`Id:3`**, `"27.00"`→**`Id:6`** (no 21%). El ítem de envío toma la alícuota predominante de los productos | E | 🔴 | ✅ | *Auditado 2026-06-19: `'0':3,'27':6,'exento':3` (:18-22); exento usa `tasaStr` directo (parseFloat daría NaN)* |
+| FAC-27 | **Factura B ≥ umbral sin DNI/CUIT — guard solo UI** (HALLAZGO 2026-06-19) | Forzar emisión de B ≥ umbral a CF sin ident (bundle viejo / API directa) | ⚠️ El bloqueo (`requiereIdentFacturaB`) está **solo en el POS** (VentasPage:7072). La EF NO lo replica: emite con DocTipo 99/DocNro 0 y **depende de que AFIP rechace** (RG 5616). Misma clase que el guard de tipo (FAC-22), que sí se movió a server-side. **Pendiente decidir** si conviene espejarlo en la EF (evita round-trip fallido) | E | 🟡 | ❌ | *Hallazgo capa código 2026-06-19. No es silencioso (AFIP rechaza), pero el guard server-side sería consistente con FAC-22* |
 
 ---
 
@@ -811,4 +812,18 @@ Auditados **por código** (no runtime) los escenarios agregados en v1.78.2→v1.
 - **e2e 21 (facturación mutante, CAE real):** el tenant de e2e (Almacén Jorgito) quedó en **RI** → no ofrece "Factura C" (RI emite A/B), el locator `/^Factura C$/` no existía. Fix: el test ahora toma el **primer tipo de comprobante habilitado** (adaptable a la condición del tenant) y verifica el CAE con esa letra. Emitió CAE real de homologación.
 - **e2e 23 (inventario ingreso mutante):** NO era dominó — el selector del resultado de producto (`div.flex-1 button`) no matcheaba y su fallback page-wide agarraba un botón detrás del backdrop del modal. Fix: selector scopeado al modal (`button.w-full.text-left` dentro del `div.fixed.inset-0` del buscador).
 
-Tras los fixes: **e2e 164/164 ✅** (verificados puntualmente los 3).
+Tras los fixes: **e2e 164/164 ✅** (verificados puntualmente los 3 + corrida completa).
+
+### §11 Facturación AFIP — auditado por código (EF `emitir-factura` + `facturacionLogic`)
+
+✅ FAC-01 (C sin IVA), FAC-02 (`ImpTotal=Neto+IVA`), FAC-03 (Exento→C), FAC-04 (A sin CUIT: UI+EF), FAC-10 (NC `CbtesAsoc`), FAC-22 (guard tipo 400 server-side), FAC-23 (envío: Concepto=3 + predominante + no dup), FAC-24 (courier directo afuera), FAC-25 (`'10.5'→Id 4` + normalización), FAC-26 (`0/exento→3`, `27→6`).
+
+🐞 **FAC-27 (nuevo) — Factura B ≥ umbral sin DNI/CUIT: guard solo UI.** El bloqueo vive en el POS (`requiereIdentFacturaB`); la EF emite con CF y depende de que AFIP rechace (RG 5616). No es silencioso, pero espejarlo server-side sería consistente con FAC-22. Pendiente decidir con GO.
+
+Pendientes capa C (runtime/PDF, no code-auditable): FAC-06/07/08/09/11/14/15/17/18/19.
+
+### §3 Productos — auditado por código
+
+✅ PRD-02 (stock disponible mode-aware: básico no filtra `estado_id`), PRD-07 (baja lógica), PRD-08/09 (no hay hard-delete de productos en la UI → sin líneas huérfanas ni histórico roto, por diseño), PRD-10 (SKU dup: check debounced + 23505 DB).
+
+⚠️ **PRD-11 — precio negativo:** inputs con `min=0` pero `parseFloat()||0` no rechaza un negativo tipeado directo (sin validación nativa de form). Gap menor → guard `Math.max(0, …)` al guardar. Pendiente decidir.

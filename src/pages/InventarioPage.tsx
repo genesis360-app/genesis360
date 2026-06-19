@@ -10,7 +10,7 @@ import {
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { ActionMenu } from '@/components/ActionMenu'
-import { useDragScroll } from '@/hooks/useDragScroll'
+import { PageTabs } from '@/components/PageTabs'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
 import { CodigoMasivoModal } from '@/components/CodigoMasivoModal'
 import { MasivoModal } from '@/components/MasivoModal'
@@ -77,7 +77,6 @@ function resolverCantidad(raw: string, unitAlt: string | null, unitBase: string 
 
 export default function InventarioPage() {
   const { tenant, user } = useAuthStore()
-  const tabsRef = useDragScroll<HTMLDivElement>()  // arrastrar la barra de tabs con el mouse
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { cotizacion: cotizacionNum } = useCotizacion()
@@ -2503,31 +2502,24 @@ export default function InventarioPage() {
 
       {/* Tabs + vista toggle */}
       <div className="flex items-center justify-between gap-2">
-        <div ref={tabsRef} className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden cursor-grab select-none" style={{ scrollbarWidth: 'none' } as any}>
-          {([
-            { id: 'inventario' as const, label: 'Inventario' },
-            { id: 'agregar' as const, label: 'Agregar stock' },
-            { id: 'quitar' as const, label: 'Quitar stock' },
+        <PageTabs
+          className="flex-1"
+          tabs={[
+            { id: 'inventario', label: 'Inventario' },
+            { id: 'agregar', label: 'Agregar stock' },
+            { id: 'quitar', label: 'Quitar stock' },
             // En básico, Traslados solo tiene sentido con más de una sucursal
-            ...((modoAvanzado || sucursales.length > 1) ? [{ id: 'traslados' as const, label: 'Traslados' }] : []),
+            ...((modoAvanzado || sucursales.length > 1) ? [{ id: 'traslados', label: 'Traslados' }] : []),
             // Kits (kitting/armado) es modo avanzado
-            ...(modoAvanzado ? [{ id: 'kits' as const, label: 'Kits' }] : []),
-            { id: 'conteo' as const, label: 'Conteos' },
-            { id: 'historial' as const, label: 'Historial' },
+            ...(modoAvanzado ? [{ id: 'kits', label: 'Kits' }] : []),
+            { id: 'conteo', label: 'Conteos' },
+            { id: 'historial', label: 'Historial' },
             // Autorizaciones: flujo de aprobación de ajustes/eliminación de LPN — solo avanzado
-            // (en básico no existe el modal de acciones sobre LPN que las genera; el stock se
-            // ajusta directo con Agregar/Quitar)
-            ...((modoAvanzado && puedeVerAutorizaciones) ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones' }] : []),
-          ]).map(({ id, label }) => (
-            <button key={id} onClick={() => setTab(id)}
-              className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
-                ${tab === id
-                  ? 'border-accent text-accent'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
+            ...((modoAvanzado && puedeVerAutorizaciones) ? [{ id: 'autorizaciones', label: 'Autorizaciones' }] : []),
+          ]}
+          active={tab}
+          onChange={(id) => setTab(id as Tab)}
+        />
         {tab === 'inventario' && modoAvanzado && (
           <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0 mb-px">
             <button onClick={() => setInvVista('producto')} title="Por producto"

@@ -6,9 +6,11 @@ import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import {
   DollarSign, Plus, Minus, Lock, Unlock, History, Trash2,
-  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft, Receipt, RotateCcw, Tablet
+  Printer, X, ChevronDown, ChevronUp, CheckCircle, AlertTriangle, Clock, Info, ArrowRightLeft, Receipt, RotateCcw, Tablet,
+  Wallet, CreditCard, BarChart3, Settings
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { PageTabs } from '@/components/PageTabs'
 import { createClient } from '@supabase/supabase-js'
 import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
@@ -217,10 +219,16 @@ export default function CajaPage() {
     refetchInterval: 30_000,
   })
 
-  // Capital total del negocio = suma de todas las cuentas activas de la bóveda.
-  // Es el dato principal de la pestaña Caja Fuerte (se muestra en la tarjeta destacada del header).
+  // Capital del negocio por moneda = suma de las cuentas activas de la bóveda, AGRUPADA por moneda
+  // (CAJ-29: no se convierte entre monedas; un tenant ARS+USD ve cada moneda por separado).
+  // Es el dato principal de la pestaña Caja Fuerte (tarjeta destacada del header).
   const cuentasActivasBoveda = (bovedaCuentas as any[]).filter((c: any) => c.activo)
-  const capitalTotal = cuentasActivasBoveda.reduce((acc: number, c: any) => acc + Number(c.saldo || 0), 0)
+  const capitalPorMoneda = cuentasActivasBoveda.reduce((acc: Record<string, number>, c: any) => {
+    const m = c.moneda || (tenant as any)?.moneda || 'ARS'
+    acc[m] = (acc[m] || 0) + Number(c.saldo || 0)
+    return acc
+  }, {} as Record<string, number>)
+  const monedasCapital = Object.entries(capitalPorMoneda) as [string, number][]
 
   // Historial de retiros de bóveda — RLS estricta: solo DUEÑO/ADMIN/SUPER_USUARIO
   const { data: bovedaRetiros = [] } = useQuery({
@@ -1447,24 +1455,14 @@ export default function CajaPage() {
         const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
         const puedeCajaFuerte = accedeABoveda(user?.rol as any, (user as any)?.rol_custom_id, cajaFuerteRoles)
         const tabs = [
-          { id: 'caja', label: 'Caja actual', visible: true },
-          { id: 'cobranzas', label: '💳 Cobranzas CC', visible: true },
-          { id: 'historial', label: 'Historial', visible: true },
-          { id: 'caja_fuerte', label: '🔒 Caja Fuerte', visible: puedeCajaFuerte && !!cajaFuerte },
-          { id: 'reportes', label: '📊 Reportes', visible: puedeAdministrarCaja || puedeReimprimirTicket },
-          { id: 'configuracion', label: 'Configuración', visible: puedeAdministrarCaja },
+          { id: 'caja', label: 'Caja actual', icon: Wallet, visible: true },
+          { id: 'cobranzas', label: 'Cobranzas CC', icon: CreditCard, visible: true },
+          { id: 'historial', label: 'Historial', icon: History, visible: true },
+          { id: 'caja_fuerte', label: 'Caja Fuerte', icon: Lock, visible: puedeCajaFuerte && !!cajaFuerte },
+          { id: 'reportes', label: 'Reportes', icon: BarChart3, visible: puedeAdministrarCaja || puedeReimprimirTicket },
+          { id: 'configuracion', label: 'Configuración', icon: Settings, visible: puedeAdministrarCaja },
         ].filter(t => t.visible)
-        return (
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-fit flex-wrap">
-            {tabs.map(({ id, label }) => (
-              <button key={id} onClick={() => setTab(id as Tab)}
-                className={`py-2 px-4 rounded-lg text-sm font-medium transition-all
-                  ${tab === id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-                {label}
-              </button>
-            ))}
-          </div>
-        )
+        return <PageTabs tabs={tabs} active={tab} onChange={(id) => setTab(id as Tab)} />
       })()}
 
       {/* ── CAJA ACTUAL ── */}
@@ -1677,10 +1675,10 @@ export default function CajaPage() {
               </p>
             </div>
           ) : (
-            /* Caja abierta */
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
-              {/* Columna izquierda: resumen + acciones (sticky en desktop) */}
-              <div className="lg:col-span-1 space-y-4 lg:sticky lg:top-4">
+            /* Caja abierta — columna centrada: resumen+acciones arriba, movimientos+arqueos+cierre abajo */
+            <div className="max-w-3xl mx-auto space-y-4">
+              {/* Resumen + acciones */}
+              <div className="space-y-4">
               {/* Resumen */}
               <div className="bg-primary rounded-2xl p-5 text-white">
                 <div className="flex items-center justify-between mb-4">
@@ -1766,10 +1764,10 @@ export default function CajaPage() {
                 )}
               </div>
               )}
-              </div>{/* fin columna izquierda */}
+              </div>{/* fin resumen + acciones */}
 
-              {/* Columna derecha: movimientos + arqueos + cierre */}
-              <div className="lg:col-span-2 space-y-4">
+              {/* Movimientos + arqueos + cierre (debajo del resumen) */}
+              <div className="space-y-4">
               {/* Movimientos */}
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                 <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
@@ -1923,7 +1921,7 @@ export default function CajaPage() {
                   <Lock size={18} /> Cerrar caja
                 </button>
               )}
-              </div>{/* fin columna derecha */}
+              </div>{/* fin movimientos + arqueos + cierre */}
             </div>
           )}
         </div>
@@ -1987,8 +1985,29 @@ export default function CajaPage() {
                     <p className="text-[11px] text-white/70 mt-1.5">Plata que hay hoy en la bóveda</p>
                   </div>
                   <div className="rounded-2xl p-4 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Capital total del negocio</p>
-                    <p className="text-2xl font-bold leading-tight mt-1 break-words text-gray-800 dark:text-gray-100">{formatMoneda(capitalTotal)}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Capital total del negocio</p>
+                      <span
+                        className="text-gray-400 dark:text-gray-500 cursor-help"
+                        title={'Suma cada peso una sola vez: efectivo en cajas + bóveda + cuentas (bancos/tarjetas).\n\nSe calcula con los movimientos registrados (ventas, gastos, depósitos). El monto de apertura de una caja NO se suma aparte: es el arrastre del cierre anterior y ya viene de ventas ya contadas.\n\nSi tenés capital inicial que nunca registraste (ej. plata propia que pusiste en el negocio), ingresalo una vez como "Ingreso externo" a la Caja Fuerte para que cuente acá.\n\nSi tenés cuentas en varias monedas, se muestra el capital discriminado por moneda (no se convierte entre sí).'}
+                      >
+                        <Info size={13} />
+                      </span>
+                    </div>
+                    {monedasCapital.length <= 1 ? (
+                      <p className="text-2xl font-bold leading-tight mt-1 break-words text-gray-800 dark:text-gray-100">
+                        {monedasCapital.length === 1 ? formatMonedaLib(monedasCapital[0][1], monedasCapital[0][0]) : formatMoneda(0)}
+                      </p>
+                    ) : (
+                      <div className="mt-1.5 space-y-1">
+                        {monedasCapital.map(([moneda, total]) => (
+                          <div key={moneda} className="flex items-baseline justify-between gap-2">
+                            <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{moneda}</span>
+                            <span className="text-xl font-bold leading-tight break-words text-gray-800 dark:text-gray-100">{formatMonedaLib(total, moneda)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                     <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">Efectivo en cajas + bóveda + cuentas</p>
                   </div>
                 </div>
@@ -2207,7 +2226,7 @@ export default function CajaPage() {
             </div>
             {!depositoFuenteSesionId && (
               <p className="text-xs text-amber-600 dark:text-amber-400">
-                Ingreso externo — no hay caja de origen. Solo se registrará el ingreso en la Caja Fuerte.
+                Ingreso externo — no sale de ninguna caja: suma plata nueva al negocio (capital inicial, aporte de socio, etc.) y la hace contar en el capital total.
               </p>
             )}
             <button onClick={() => operarCajaFuerte.mutate({

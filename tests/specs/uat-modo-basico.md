@@ -167,7 +167,7 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | VEN-33 | Crédito a favor aplicado en venta | Cliente con saldo a favor → usarlo | Descuenta del saldo; no puede aplicar más que el disponible | B | 🔴 | ⬜ | |
 | VEN-34 | Descuento sobre el límite con clave maestra | CAJERO/SUPERVISOR excede el máx de descuento | Pide clave maestra para autorizar; sin clave → bloquea | E | 🟡 | ⬜ | |
 | VEN-35 | **Costo de envío del POS visible en ticket Y factura** (v1.78.0) | Vender con costo de envío → ver ticket → emitir factura | El costo aparece en el ticket **y** entra a la factura como ítem (ver FAC-23). `ventas.total` NO incluye el envío (va aparte en `costo_envio`); `monto_pagado` = total + envío (no se duplica) | H | 🔴 | ⬜ | |
-| VEN-36 | **Selector de caja en la venta: excluye Caja Fuerte + autopreselecciona** (v1.78.3) | Vender con 1 sola caja operativa abierta | El selector NO lista la Caja Fuerte (solo cajas operativas); con 1 caja, se usa esa sola sin pedir selección (antes la sesión permanente de la bóveda inflaba el conteo y obligaba a elegir) | H | 🔴 | ⬜ | |
+| VEN-36 | **Selector de caja en la venta: excluye Caja Fuerte + autopreselecciona** (v1.78.3) | Vender con 1 sola caja operativa abierta | El selector NO lista la Caja Fuerte (solo cajas operativas); con 1 caja, se usa esa sola sin pedir selección (antes la sesión permanente de la bóveda inflaba el conteo y obligaba a elegir) | H | 🔴 | ✅ | *Auditado por código 2026-06-19: `.filter(s => !s.cajas?.es_caja_fuerte)` (VentasPage.tsx:577) + autopreselect de única (`sesionesAbiertas.length===1` :627)* |
 
 ---
 
@@ -196,12 +196,14 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | CAJ-19 | Movimiento informativo no afecta arqueo | Venta no-efectivo → `ingreso_informativo` | El arqueo de efectivo NO lo cuenta; sí figura en el detalle | B | 🔴 | ⬜ | |
 | CAJ-20 | **Gasto efectivo > saldo de caja** | Pagar un gasto en efectivo mayor al saldo | **Bloquea**: "no hay suficiente efectivo en caja, hacé un ingreso o pagá por otro medio" (no deja caja negativa) | E | 🔴 | ⬜ | *Fix v1.76.0 (CAJ-18)* |
 | CAJ-21 | Caja solo registra ingresos manuales | Buscar "egreso manual" en Caja | Por diseño no hay egreso manual en Caja: los egresos van por Gastos / traspaso / devolución | B | 🟢 | ⬜ | |
-| CAJ-22 | **Caja Fuerte: 2 tarjetas** (v1.78.2) | Ver header de la bóveda (rol con acceso) | "En la caja fuerte" (`fuerteSaldo`, sube al depositar) + "Capital total del negocio" (`capitalTotal`). Degradé violeta→cian | H | 🟡 | ⬜ | |
-| CAJ-23 | **Capital cuenta el efectivo de ventas/gastos** (v1.78.2, mig 226) | Vender/gastar en efectivo → ver Capital por cuenta | El efectivo sin `cuenta_origen_id` (ventas/gastos) se atribuye a la cuenta Efectivo. **Gap conocido:** aperturas (`monto_apertura`) NO se cuentan | B | 🔴 | ⬜ | |
-| CAJ-24 | **Ingreso a Caja Fuerte: selector de cuenta destino** (v1.78.2) | Ingresar a la bóveda | Selector de cuenta de origen (default Efectivo) → permite ingresar a otra cuenta; antes era siempre Efectivo | H | 🟡 | ⬜ | |
-| CAJ-25 | **Básico: caja-origen del depósito bloqueada** (v1.78.2) | Depositar a bóveda en modo básico | El selector de Caja de origen queda fijado a la caja activa (no se elige) | B | 🟡 | ⬜ | |
-| CAJ-26 | **Arqueo repetible** (v1.78.4) | Hacer un 2º arqueo parcial en la misma sesión | Se permite (sin constraint ni guard); el botón dice "Arqueo" + tooltip "podés hacer varios por sesión" | H | 🟡 | ⬜ | |
-| CAJ-27 | **Efectivo por default en alta de tenant** (v1.78.2, mig 225) | Crear un tenant nuevo | Nace con la Cuenta de Origen Efectivo (tipo efectivo, en su moneda) + 5 métodos default con Efectivo vinculado | H | 🔴 | ⬜ | |
+| CAJ-22 | **Caja Fuerte: 2 tarjetas** (v1.78.2) | Ver header de la bóveda (rol con acceso) | "En la caja fuerte" (`fuerteSaldo`, sube al depositar) + "Capital total del negocio" (`capitalTotal`). Degradé violeta→cian | H | 🟡 | ✅ | *Auditado por código 2026-06-19: CajaPage.tsx:1984-1994, gateadas por `puedeExtraerBoveda`* |
+| CAJ-23 | **Capital cuenta el efectivo de ventas/gastos** (v1.78.2, mig 226) | Vender/gastar en efectivo → ver Capital por cuenta | El efectivo sin `cuenta_origen_id` (ventas/gastos) se atribuye a la cuenta Efectivo. **Las aperturas (`monto_apertura`) NO se cuentan — DECISIÓN DE DISEÑO (no bug), ver CAJ-28** | B | 🔴 | ✅ | *Auditado 2026-06-19: vista mig 226 atribuye los movimientos no-informativos sin cuenta a Efectivo (`COALESCE`); el gap de aperturas se resolvió como Opción A (ver CAJ-28)* |
+| CAJ-24 | **Ingreso a Caja Fuerte: selector de cuenta destino** (v1.78.2) | Ingresar a la bóveda | Selector de cuenta de origen (default Efectivo) → permite ingresar a otra cuenta; antes era siempre Efectivo | H | 🟡 | ✅ | *Auditado por código 2026-06-19: CajaPage.tsx:2195-2202 (`depositoCuentaId`, default Efectivo)* |
+| CAJ-25 | **Básico: caja-origen del depósito bloqueada** (v1.78.2) | Depositar a bóveda en modo básico | El selector de Caja de origen queda fijado a la caja activa (no se elige) | B | 🟡 | ✅ | *Auditado por código 2026-06-19: `disabled={!modoAvanzado}` (CajaPage.tsx:2179)* |
+| CAJ-26 | **Arqueo repetible** (v1.78.4) | Hacer un 2º arqueo parcial en la misma sesión | Se permite (sin constraint ni guard); el botón dice "Arqueo" + tooltip "podés hacer varios por sesión" | H | 🟡 | ✅ | *Auditado por código 2026-06-19: `realizarArqueo` (CajaPage.tsx:1148) solo inserta, sin guard; botón "Arqueo"+tooltip :1737* |
+| CAJ-27 | **Efectivo por default en alta de tenant** (v1.78.2, mig 225) | Crear un tenant nuevo | Nace con la Cuenta de Origen Efectivo (tipo efectivo, en su moneda) + 5 métodos default con Efectivo vinculado | H | 🔴 | ✅ | *Verificado en DEV 2026-06-19: 9/9 tenants con cuenta Efectivo, 0 métodos Efectivo sin link* |
+| CAJ-28 | **Capital inicial vía "Ingreso externo" + las aperturas NO se cuentan** (decisión 2026-06-19) | Ver tooltip de la tarjeta Capital; ingresar capital inicial real | Las aperturas (`monto_apertura`) NO se suman al capital (evita doble conteo del arrastre, que ya viene de ventas registradas). El capital inicial real (plata propia/aporte de socio nunca asentada) se registra **una vez** como "Ingreso externo (sin caja)" a la bóveda → entra al capital. El tooltip ℹ️ de la tarjeta lo explica | B | 🟡 | ✅ | *Implementado 2026-06-19: tooltip CajaPage.tsx:1989 + nota del modal :2216. Vista sin cambios (Opción A elegida por GO). Ver [[reference_caja_fuerte_capital_efectivo]]* |
+| CAJ-29 | **Capital total con cuentas multi-moneda suma SIN convertir** (HALLAZGO 2026-06-19) | Tenant con cuentas en ARS **y** USD → ver "Capital total del negocio" | ⚠️ Hoy `capitalTotal` suma los saldos de todas las cuentas activas sin mirar `moneda` (CajaPage.tsx:223) → mezcla ARS+USD en un solo número. **Real en DEV: Almacén Jorgito (ARS+USD).** Pendiente decisión de diseño (sumar solo moneda principal / mostrar por moneda / convertir con cotización) | B | 🔴 | ❌ | *Hallazgo capa código 2026-06-19. No es regresión (preexistía); afecta solo tenants multi-moneda. Ver Hallazgos* |
 
 ---
 
@@ -218,12 +220,14 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | GAS-07 | Monto 0 / negativo | Cargar gasto inválido | Rechaza | E | 🟡 | ⬜ | |
 | GAS-08 | **Gasto efectivo con caja: egreso awaited** | Pagar gasto efectivo con caja abierta | Egreso `await`eado; si el insert falla → toast (ya no fire-and-forget) | E | 🔴 | ⬜ | *Fix v1.76.0 (GAS-05)* |
 | GAS-09 | **Gasto efectivo sin caja: avisa** | Pagar gasto efectivo sin sesión | El gasto se registra + **toast de aviso** "el egreso no se asentó en caja, registralo manual" (ya no silencioso) | E | 🔴 | ⬜ | *Fix v1.76.0* |
-| GAS-10 | **Fiscal — Monotributista/Exento** (v1.79.0) | Tenant Mono/Exento → cargar gasto | El selector de comprobante NO ofrece Factura A (solo B/C/Ticket); el monto es el **total**; NO se muestran IVA crédito ni "Deducir de Ganancias" | H | 🔴 | ⬜ | |
-| GAS-11 | **Fiscal — RI + Factura A** (v1.79.0) | Tenant RI → comprobante Factura A | Muestra **Alícuota de IVA** (default **21%**, 10.5/27/custom) + Neto + **IVA crédito** calculado automático; se persiste `iva_monto` | H | 🔴 | ⬜ | |
-| GAS-12 | **Fiscal — RI + Factura B/C/Ticket** (v1.79.0) | Tenant RI → comprobante B/C/Ticket | Input = monto total; **`iva_monto`=0** (no discrimina crédito). "Deducir de Ganancias" sí disponible (default ON) | H | 🔴 | ⬜ | |
-| GAS-13 | **Guard server-side de IVA crédito** (v1.79.0, mig 227) | Forzar `iva_monto` sin RI+Factura A (bundle viejo / insert directo) | El trigger `fn_gastos_iva_guard` **sanea** `iva_monto`/`iva_deducible` a 0/NULL salvo RI+Factura A, y `deduce_ganancias` salvo RI. Verificado en DB: RI+A permite, RI+B sanea | E | 🔴 | ⬜ | |
-| GAS-14 | Condición no seteada → Monotributista | Tenant sin `condicion_iva_emisor` | Default conservador: se comporta como Monotributista (sin IVA crédito ni Ganancias) | B | 🟡 | ⬜ | |
-| GAS-15 | Gasto fijo también respeta la condición | Crear gasto fijo (RI/Mono) | La sección fiscal (`renderFiscal` compartido) aplica igual; al materializarse en `gastos` el guard re-sanea | B | 🟡 | ⬜ | |
+| GAS-10 | **Fiscal — Monotributista/Exento** (v1.79.0) | Tenant Mono/Exento → cargar gasto | El selector de comprobante NO ofrece Factura A (solo B/C/Ticket); el monto es el **total**; NO se muestran IVA crédito ni "Deducir de Ganancias" | H | 🔴 | ✅ | *Auditado por código 2026-06-19: `comprobantesGasto` excluye Factura A si `!esRI` (GastosPage.tsx:167); IVA gateado por `esRI && tipo_comprobante==='Factura A'` :1643; Ganancias por `esRI &&` :1680; nota explicativa :1635* |
+| GAS-11 | **Fiscal — RI + Factura A** (v1.79.0) | Tenant RI → comprobante Factura A | Muestra **Alícuota de IVA** (default **21%**, 10.5/27/custom) + Neto + **IVA crédito** calculado automático; se persiste `iva_monto` | H | 🔴 | ✅ | *Auditado 2026-06-19: default 21% al elegir Factura A (:1625); preview Neto/IVA crédito :1664; persiste `iva_monto` vía `calcularIVA` :1117. `tipo_iva` es clave de texto (no sufre el bug numeric→string de AFIP)* |
+| GAS-12 | **Fiscal — RI + Factura B/C/Ticket** (v1.79.0) | Tenant RI → comprobante B/C/Ticket | Input = monto total; **`iva_monto`=0** (no discrimina crédito). "Deducir de Ganancias" disponible | H | 🔴 | ⚠️ | *Auditado 2026-06-19: al elegir ≠Factura A se limpia `tipo_iva`/`iva_deducible` (:1626) → IVA crédito oculto. "Deducir de Ganancias" se muestra para RI siempre, PERO default **OFF** (FORM_VACIO:129), no ON como decía la nota v1.79.0. Ver GAS-17* |
+| GAS-13 | **Guard server-side de IVA crédito** (v1.79.0, mig 227) | Forzar `iva_monto` sin RI+Factura A (bundle viejo / insert directo) | El trigger `fn_gastos_iva_guard` **sanea** `iva_monto`/`iva_deducible` a 0/NULL salvo RI+Factura A, y `deduce_ganancias` salvo RI. Verificado en DB: RI+A permite, RI+B sanea | E | 🔴 | ✅ | *Auditado 2026-06-19: trigger BEFORE INSERT OR UPDATE, SECURITY DEFINER, default Mono (mig 227:36-52)* |
+| GAS-14 | Condición no seteada → Monotributista | Tenant sin `condicion_iva_emisor` | Default conservador: se comporta como Monotributista (sin IVA crédito ni Ganancias) | B | 🟡 | ✅ | *Auditado 2026-06-19: UI `condicion_iva_emisor || 'Monotributista'` (:164) + trigger `COALESCE(NULLIF(...,''),'Monotributista')`* |
+| GAS-15 | Gasto fijo también respeta la condición | Crear gasto fijo (RI/Mono) | La sección fiscal (`renderFiscal` compartido) aplica igual; al materializarse en `gastos` el guard re-sanea | B | 🟡 | ✅ | *Auditado 2026-06-19: `renderFiscal` usado en ambos forms (:2407, :2752); "Generar gasto desde fijo" copia `tipo_comprobante`+IVA (:1539) e inserta en `gastos` → trigger sanea. Materialización es user-triggered (no cron)* |
+| GAS-16 | **Cambiar la condición del tenant con gastos ya cargados** (borde, 2026-06-19) | Tenant RI con gastos Factura A (con `iva_monto`) → cambiar a Monotributista | Los gastos **viejos conservan** su `iva_monto`/`deduce_ganancias` (el guard solo corre al INSERT/UPDATE de esa fila); **editarlos** los re-sanea; los reportes (`totalIVA`) siguen contando el crédito viejo hasta editar. ¿Aceptable o hace falta re-saneo masivo? | B | 🟡 | ⬜ | *Caso nuevo capa código 2026-06-19 — definir con GO si requiere acción* |
+| GAS-17 | **Default de "Deducir de Ganancias" para RI** (decisión, 2026-06-19) | Tenant RI → abrir un gasto nuevo | Hoy el checkbox arranca **OFF** (FORM_VACIO:129). La nota de v1.79.0 decía "default ON". Conservador (OFF) evita marcar como deducible un gasto personal por descuido; ON es más cómodo para RI. **Pendiente decisión GO** | B | 🟡 | ⬜ | *Discrepancia spec↔código detectada 2026-06-19. Sin tocar hasta definir* |
 
 ---
 
@@ -764,3 +768,38 @@ typecheck + **753 unit** (4 de regresión de alícuota nuevos) + build verdes. *
 **A verificar visualmente en PROD** (no se pudieron ver renderizados; revertibles): degradé global, layout de Caja 2-col, logo, form de Gastos según condición del tenant.
 
 **Patrón de bugs de esta sesión (para no repetir):** (1) **drift de dato de tenant** — un campo de condición (`condicion_iva_emisor`) que cambia y afecta varios módulos a la vez (facturación + gastos); (2) **sesión permanente de la bóveda** que se cuela en queries de "cajas abiertas"; (3) **`numeric` de Postgres llega como string** (`"21.00"`/`"10.50"`) y rompe lookups por igualdad de string (alícuota AFIP) — normalizar con `parseFloat`; (4) **movimientos de efectivo sin `cuenta_origen_id`** que no entran a las vistas de capital; (5) **defaults server-side** (guards/trigger) además de la UI, porque la UI se puede cachear/bypassear.
+
+---
+
+## 🔎 Pase de auditoría 2026-06-19 (capa código) — Caja Fuerte / capital + selector de caja
+
+Auditados **por código** (no runtime) los escenarios agregados en v1.78.2→v1.79.0 que estaban ⬜:
+
+| Escenario | Resultado | Evidencia |
+|---|---|---|
+| CAJ-22 (2 tarjetas) | ✅ | CajaPage.tsx:1984-1994, gateadas por `puedeExtraerBoveda` |
+| CAJ-23 (capital cuenta efectivo) | ✅ | vista mig 226 (`COALESCE` atribuye no-informativos sin cuenta a Efectivo) |
+| CAJ-24 (selector cuenta destino) | ✅ | CajaPage.tsx:2195-2202 |
+| CAJ-25 (caja-origen bloqueada en básico) | ✅ | `disabled={!modoAvanzado}` :2179 |
+| CAJ-26 (arqueo repetible) | ✅ | `realizarArqueo` :1148 sin guard; botón+tooltip :1737 |
+| CAJ-27 (Efectivo default en alta) | ✅ | DEV: 9/9 tenants con cuenta Efectivo, 0 métodos sin link |
+| VEN-36 (selector excluye bóveda) | ✅ | `.filter(!es_caja_fuerte)` VentasPage.tsx:577 + autopreselect :627 |
+
+**Decisión cerrada (CAJ-28):** el gap de "aperturas no se cuentan en el capital" se resolvió como **Opción A** — NO sumar `monto_apertura` (evita doble conteo del arrastre, que ya está en las ventas registradas); el capital inicial real se asienta una vez como "Ingreso externo" a la bóveda. Solo UX (tooltip + nota), sin migración.
+
+**🐞 Hallazgo nuevo (CAJ-29) — capital total multi-moneda suma sin convertir:** `capitalTotal` (CajaPage.tsx:223) hace `reduce(+saldo)` sobre todas las cuentas activas **ignorando `moneda`** → un tenant con cuentas ARS+USD muestra un único número que mezcla ambas. **Real en DEV: Almacén Jorgito (ARS+USD).** No es regresión (preexistía a esta sesión) y solo afecta tenants multi-moneda, pero el número es engañoso. **Pendiente decisión de diseño con GO:** (a) sumar solo la moneda principal del tenant; (b) mostrar el capital discriminado por moneda; (c) convertir con cotización (requiere fuente de tipo de cambio). Hasta definir, no se toca la semántica.
+
+### Gastos — automatización fiscal (GAS-10→15) auditados por código
+
+| Escenario | Resultado | Evidencia |
+|---|---|---|
+| GAS-10 (Mono/Exento) | ✅ | `comprobantesGasto` sin Factura A si `!esRI` (GastosPage.tsx:167); IVA/Ganancias gateados por `esRI` :1643/:1680 |
+| GAS-11 (RI + Factura A) | ✅ | default 21% :1625; preview Neto/IVA crédito :1664; persiste `iva_monto` :1117 |
+| GAS-12 (RI + B/C/Ticket) | ⚠️ | IVA crédito oculto + `iva_monto`=0 OK; pero "Deducir de Ganancias" default **OFF** (no ON como decía la nota) → GAS-17 |
+| GAS-13 (guard server-side) | ✅ | trigger BEFORE INSERT/UPDATE, SECURITY DEFINER (mig 227) |
+| GAS-14 (sin condición → Mono) | ✅ | UI :164 + trigger `COALESCE(NULLIF(...))` |
+| GAS-15 (gasto fijo respeta condición) | ✅ | renderFiscal compartido; "Generar desde fijo" copia tipo_comprobante :1539 → trigger sanea |
+
+**Casos nuevos agregados:** GAS-16 (cambiar condición del tenant con gastos viejos: conservan crédito hasta editar) · GAS-17 (decisión: default de "Deducir de Ganancias" para RI — hoy OFF, la nota decía ON).
+
+**Nota:** el agente `general-purpose` lanzado para esta auditoría falló por error 529 (sobrecarga del servidor) sin producir output; se hizo inline. El `test-runner` (baseline de la suite) quedó corriendo en paralelo.

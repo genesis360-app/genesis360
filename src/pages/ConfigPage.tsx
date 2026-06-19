@@ -6,6 +6,7 @@ import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
+import { PageTabs } from '@/components/PageTabs'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { uploadCertificates } from '@/lib/afip'
@@ -2272,15 +2273,11 @@ export default function ConfigPage() {
     active: T,
     setActive: (v: T) => void
   ) => (
-    <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-      {items.map(({ id, label, icon: Icon }) => (
-        <button key={id} onClick={() => setActive(id)}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all whitespace-nowrap
-            ${active === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-          <Icon size={14} />{label}
-        </button>
-      ))}
-    </div>
+    <PageTabs
+      tabs={items.map(i => ({ id: i.id, label: i.label, icon: i.icon }))}
+      active={active}
+      onChange={(id) => setActive(id as T)}
+    />
   )
 
   return (
@@ -2844,8 +2841,8 @@ export default function ConfigPage() {
       {tab === 'inventario' && (
         <div className="space-y-4">
           {/* sub-tab nav */}
-          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-            {([
+          <PageTabs
+            tabs={([
               { id: 'reglas' as InvSubTab, label: 'Reglas de stock', icon: Timer },
               { id: 'categorias' as InvSubTab, label: 'Categorías', icon: Tag },
               { id: 'ubicaciones' as InvSubTab, label: 'Ubicaciones', icon: MapPin },
@@ -2854,14 +2851,10 @@ export default function ConfigPage() {
               { id: 'unidades' as InvSubTab, label: 'Unidades', icon: Ruler },
               { id: 'codigos' as InvSubTab, label: 'Códigos', icon: ScanBarcode },
               // Reglas (FIFO/conteos), Ubicaciones, Estados y Códigos GS1 son WMS → solo avanzado
-            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos'].includes(id)).map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setInvSubTab(id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all whitespace-nowrap
-                  ${invSubTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                <Icon size={14} />{label}
-              </button>
-            ))}
-          </div>
+            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
+            active={invSubTab}
+            onChange={(id) => setInvSubTab(id as InvSubTab)}
+          />
 
           {invSubTab === 'codigos' && (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
@@ -3207,21 +3200,15 @@ export default function ConfigPage() {
           {invSubTab === 'estados' && (
         <div className="space-y-4">
           {/* Sub-tab navigation */}
-          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-            {([
-              { id: 'estados' as EstadosSubTab, label: 'Estados', icon: CircleDot },
-              { id: 'grupos' as EstadosSubTab, label: 'Grupos de estados', icon: Layers },
-              { id: 'progresion' as EstadosSubTab, label: 'Progresión de estado', icon: Timer },
-            ] as const).map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setEstadosSubTab(id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all
-                  ${estadosSubTab === id
-                    ? 'border-accent text-accent'
-                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                <Icon size={14} />{label}
-              </button>
-            ))}
-          </div>
+          <PageTabs
+            tabs={[
+              { id: 'estados', label: 'Estados', icon: CircleDot },
+              { id: 'grupos', label: 'Grupos de estados', icon: Layers },
+              { id: 'progresion', label: 'Progresión de estado', icon: Timer },
+            ]}
+            active={estadosSubTab}
+            onChange={(id) => setEstadosSubTab(id as EstadosSubTab)}
+          />
 
           {/* Sub-tab: Estados */}
           {estadosSubTab === 'estados' && (
@@ -4955,19 +4942,15 @@ export default function ConfigPage() {
 
       {tab === 'conectividad' && (
         <div className="space-y-4">
-          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-            {([
-              { id: 'integraciones' as ConSubTab, label: 'Integraciones', icon: Plug },
+          <PageTabs
+            tabs={[
+              { id: 'integraciones', label: 'Integraciones', icon: Plug },
               // API pública del marketplace: solo en modo avanzado
-              ...(modoAvanzado ? [{ id: 'api' as ConSubTab, label: 'API', icon: Key }] : []),
-            ]).map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setConSubTab(id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all
-                  ${conSubTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                <Icon size={14} />{label}
-              </button>
-            ))}
-          </div>
+              ...(modoAvanzado ? [{ id: 'api', label: 'API', icon: Key }] : []),
+            ]}
+            active={conSubTab}
+            onChange={(id) => setConSubTab(id as ConSubTab)}
+          />
 
           {conSubTab === 'integraciones' && (
         <div className="space-y-6">

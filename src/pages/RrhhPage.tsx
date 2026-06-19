@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useDragScroll } from '@/hooks/useDragScroll'
+import { PageTabs } from '@/components/PageTabs'
 import QRCode from 'qrcode'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
@@ -1944,7 +1944,6 @@ export default function RrhhPage() {
 
   const esSupervisor = user?.rol === 'SUPERVISOR'
   const esRrhhAdmin = user?.rol === 'DUEÑO' || user?.rol === 'RRHH'
-  const tabsRef = useDragScroll<HTMLDivElement>()  // arrastrar la barra de tabs con el mouse
 
   if (!esRrhhAdmin && !esSupervisor) {
     return (
@@ -1966,27 +1965,14 @@ export default function RrhhPage() {
       </div>
 
       {/* Tabs — una sola fila scrolleable + arrastrable con el mouse (drag para ver las que no entran) */}
-      <div ref={tabsRef} className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden cursor-grab select-none" style={{ scrollbarWidth: 'none' } as any}>
-        {(esSupervisor
+      <PageTabs
+        tabs={(esSupervisor
           ? (['equipo', 'asistencia', 'vacaciones', 'cumpleanos'] as Tab[])
           : (['dashboard', 'empleados', 'puestos', 'departamentos', 'cumpleanos', 'nomina', 'vacaciones', 'asistencia', 'capacitaciones', 'documentos', 'reportes', 'equipo'] as Tab[])
-        ).map((tab) => {
-          const Icon = TAB_META[tab].icon
-          return (
-            <button
-              key={tab}
-              onClick={() => { setActiveTab(tab); resetForm() }}
-              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap ${
-                activeTab === tab
-                  ? 'border-blue-600 text-blue-600 dark:text-blue-400'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-              }`}
-            >
-              <Icon size={14} />{TAB_META[tab].label}
-            </button>
-          )
-        })}
-      </div>
+        ).map((t) => ({ id: t, label: TAB_META[t].label, icon: TAB_META[t].icon }))}
+        active={activeTab}
+        onChange={(id) => { setActiveTab(id as Tab); resetForm() }}
+      />
 
       {/* RH8 — REPORTES TAB (+ RH7 F4 evaluaciones + F2/F3 config) */}
       {activeTab === 'reportes' && (

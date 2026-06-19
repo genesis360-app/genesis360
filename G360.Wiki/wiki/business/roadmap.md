@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.79.0 — 🧾 Gastos: automatización fiscal por condición del tenant (PROD ✅, PR #231, mig 227)
+
+El módulo de Gastos cruza el **tipo de comprobante** con la **condición frente al IVA del tenant** (`condicion_iva_emisor`, default Monotributista). **Monotributista/Exento:** comprobante B/C/Ticket, el monto es el total, sin crédito de IVA ni deducción de Ganancias. **RI:** A/B/C/Ticket; **Factura A** discrimina crédito de IVA (alícuota default 21%, 10.5/27/custom) con Neto + IVA automáticos; B/C/Ticket → IVA crédito 0; Ganancias marcable (default on). Columna `tipo_comprobante` (gastos + gastos_fijos) + trigger `fn_gastos_iva_guard` server-side (sanea el crédito salvo RI+Factura A). Aplica a gastos variables y fijos. mig 227 en DEV y PROD.
+
+---
+
 ## v1.78.2 — 💵 Efectivo por default + 💰 fix capital bóveda + 🏦 Caja Fuerte UI + 🎨 logo nuevo + 🖥️ Caja full-width + 🟣 degradé de marca (PROD ✅, PR #226, migs 225-226)
 
 Lote de UX + datos. **Efectivo por default (mig 225):** cada tenant nuevo nace con la cuenta de origen Efectivo (en su moneda) + métodos default con Efectivo vinculado (+ backfill). **Fix capital bóveda (mig 226):** `vw_boveda_cuentas` atribuye el efectivo sin cuenta (ventas/gastos) a la cuenta Efectivo → el capital lo refleja. **Caja Fuerte:** 2 tarjetas (saldo bóveda + capital total), selector de cuenta destino en el ingreso, lock de caja-origen en básico. **Logo/iconos nuevos** (favicon + PWA + maskable + sidebar + login). **Caja a pantalla completa** (2 columnas). **Degradé de marca violeta→cian** con lugar único de configuración (vars de `src/index.css`; `bg-accent`→degradé en todos los botones/barras). migs 225-226 en DEV y PROD. typecheck + build verdes.

@@ -103,6 +103,7 @@ function calcularIVA(monto: number, tipoIva: string, alicuotaCustom?: number | n
 
 interface FormGasto {
   descripcion: string; monto: string
+  tipo_comprobante: string
   tipo_iva: string; iva_deducible: boolean
   alicuota_iva_custom: string
   deduce_ganancias: boolean; gasto_negocio: string
@@ -113,6 +114,7 @@ interface FormGasto {
 }
 interface FormFijo {
   descripcion: string; monto: string
+  tipo_comprobante: string
   tipo_iva: string; iva_deducible: boolean
   alicuota_iva_custom: string
   deduce_ganancias: boolean; gasto_negocio: string
@@ -122,14 +124,14 @@ interface FormFijo {
 }
 
 const FORM_VACIO: FormGasto = {
-  descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
+  descripcion: '', monto: '', tipo_comprobante: '', tipo_iva: '', iva_deducible: false,
   alicuota_iva_custom: '',
   deduce_ganancias: false, gasto_negocio: '',
   categoria: '', fecha: new Date().toISOString().split('T')[0], notas: '',
   recurso_id: '', capitaliza_recurso: false,
 }
 const FORM_FIJO_VACIO: FormFijo = {
-  descripcion: '', monto: '', tipo_iva: '', iva_deducible: false,
+  descripcion: '', monto: '', tipo_comprobante: '', tipo_iva: '', iva_deducible: false,
   alicuota_iva_custom: '',
   deduce_ganancias: false, gasto_negocio: '',
   categoria: '', medio_pago: '', frecuencia: 'mensual',
@@ -156,6 +158,15 @@ export default function GastosPage() {
   // Moneda principal del tenant para formateo (v1.8.44)
   const monedaTenant = (tenant as any)?.moneda ?? 'ARS'
   const formatMoneda = (v: number) => formatMonedaLib(v, monedaTenant)
+
+  // Condición frente al IVA del tenant (default Monotributista si no está seteada).
+  // Solo un Responsable Inscripto discrimina crédito de IVA (en Factura A) y deduce Ganancias.
+  const condicionIvaTenant = ((tenant as any)?.condicion_iva_emisor || 'Monotributista') as string
+  const esRI = condicionIvaTenant === 'RI'
+  // Comprobantes que puede recibir/cargar según su condición (Mono/Exento no recibe Factura A).
+  const comprobantesGasto = esRI
+    ? ['Factura A', 'Factura B', 'Factura C', 'Ticket']
+    : ['Factura B', 'Factura C', 'Ticket']
 
   // ── Tabs ─────────────────────────────────────────────────────────────────
   const [searchParams] = useSearchParams()
@@ -919,6 +930,7 @@ export default function GastosPage() {
     setForm({
       descripcion:          `Corrección de: ${g.descripcion}`,
       monto:                '',
+      tipo_comprobante:     g.tipo_comprobante ?? '',
       tipo_iva:             g.tipo_iva ?? '',
       iva_deducible:        g.iva_deducible ?? false,
       alicuota_iva_custom:  g.tipo_iva === 'custom' && g.alicuota_iva != null ? String(g.alicuota_iva) : '',
@@ -939,7 +951,7 @@ export default function GastosPage() {
     setEditandoId(g.id)
     setForm({
       descripcion: g.descripcion, monto: String(g.monto),
-      tipo_iva: g.tipo_iva ?? '', iva_deducible: g.iva_deducible ?? false,
+      tipo_comprobante: g.tipo_comprobante ?? '', tipo_iva: g.tipo_iva ?? '', iva_deducible: g.iva_deducible ?? false,
       alicuota_iva_custom: g.tipo_iva === 'custom' && g.alicuota_iva != null ? String(g.alicuota_iva) : '',
       deduce_ganancias: g.deduce_ganancias ?? false,
       gasto_negocio: g.gasto_negocio === true ? 'negocio' : g.gasto_negocio === false ? 'personal' : '',
@@ -970,7 +982,7 @@ export default function GastosPage() {
     setEditandoFijoId(f.id)
     setFormFijo({
       descripcion: f.descripcion, monto: String(f.monto),
-      tipo_iva: f.tipo_iva ?? '', iva_deducible: f.iva_deducible ?? false,
+      tipo_comprobante: f.tipo_comprobante ?? '', tipo_iva: f.tipo_iva ?? '', iva_deducible: f.iva_deducible ?? false,
       alicuota_iva_custom: f.tipo_iva === 'custom' && f.alicuota_iva != null ? String(f.alicuota_iva) : '',
       deduce_ganancias: f.deduce_ganancias ?? false,
       gasto_negocio: f.gasto_negocio === true ? 'negocio' : f.gasto_negocio === false ? 'personal' : '',
@@ -1120,6 +1132,7 @@ export default function GastosPage() {
       const payload: any = {
         tenant_id: tenant!.id,
         descripcion: form.descripcion.trim(), monto,
+        tipo_comprobante: form.tipo_comprobante || null,
         tipo_iva: form.tipo_iva || null,
         iva_monto: ivaMonto && ivaMonto > 0 ? parseFloat(ivaMonto.toFixed(2)) : null,
         alicuota_iva: alicuotaIvaPersist,
@@ -1423,6 +1436,7 @@ export default function GastosPage() {
       const payload: any = {
         tenant_id: tenant!.id,
         descripcion: formFijo.descripcion.trim(), monto,
+        tipo_comprobante: formFijo.tipo_comprobante || null,
         tipo_iva: formFijo.tipo_iva || null,
         iva_monto: ivaMonto && ivaMonto > 0 ? parseFloat(ivaMonto.toFixed(2)) : null,
         alicuota_iva: alicuotaIvaFijoPersist,
@@ -1522,6 +1536,7 @@ export default function GastosPage() {
       const { data: inserted, error } = await supabase.from('gastos').insert({
         tenant_id: tenant!.id,
         descripcion: f.descripcion, monto: f.monto,
+        tipo_comprobante: f.tipo_comprobante ?? null,
         tipo_iva: f.tipo_iva ?? null,
         iva_monto: f.iva_monto ?? null, iva_deducible: f.iva_deducible ?? false,
         deduce_ganancias: f.deduce_ganancias ?? false, gasto_negocio: f.gasto_negocio ?? null,
@@ -1587,21 +1602,51 @@ export default function GastosPage() {
 
   // ── Sección IVA + Ganancias (reutilizable en ambos modales) ───────────────
   const renderFiscal = (
-    vals: { tipo_iva: string; iva_deducible: boolean; alicuota_iva_custom: string; deduce_ganancias: boolean; gasto_negocio: string; monto: string },
+    vals: { tipo_comprobante: string; tipo_iva: string; iva_deducible: boolean; alicuota_iva_custom: string; deduce_ganancias: boolean; gasto_negocio: string; monto: string },
     setVals: (u: any) => void,
     ivaCalc: number, netoCalc: number
   ) => (
     <div className="space-y-3 border border-blue-100 dark:border-blue-900/30 rounded-xl p-3 bg-blue-50/50 dark:bg-blue-900/10">
       <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wider">Información fiscal</p>
 
-      {/* IVA */}
+      {/* Tipo de comprobante (según condición del tenant) */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tasa de IVA</label>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de comprobante</label>
+        <div className="relative">
+          <select value={vals.tipo_comprobante}
+            onChange={e => {
+              const tc = e.target.value
+              setVals((f: any) => ({
+                ...f,
+                tipo_comprobante: tc,
+                // Factura A (solo RI) → habilita crédito de IVA con 21% por default.
+                // Cualquier otro comprobante → sin crédito de IVA.
+                ...(esRI && tc === 'Factura A'
+                  ? { tipo_iva: f.tipo_iva || '21', iva_deducible: true }
+                  : { tipo_iva: '', iva_deducible: false, alicuota_iva_custom: '' }),
+              }))
+            }}
+            className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+            <option value="">Seleccionar…</option>
+            {comprobantesGasto.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+        </div>
+        {!esRI && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Como <strong>{condicionIvaTenant}</strong>, el monto cargado es el <strong>total</strong> (el IVA no es crédito fiscal) y no aplica deducción de Ganancias.
+          </p>
+        )}
+      </div>
+
+      {/* IVA — solo RI + Factura A (discrimina crédito fiscal) */}
+      {esRI && vals.tipo_comprobante === 'Factura A' && (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alícuota de IVA</label>
         <div className="flex gap-2 items-center flex-wrap">
           <div className="relative flex-1 min-w-[140px]">
-            <select value={vals.tipo_iva} onChange={e => setVals((f: any) => ({ ...f, tipo_iva: e.target.value, alicuota_iva_custom: e.target.value === 'custom' ? f.alicuota_iva_custom : '' }))}
+            <select value={vals.tipo_iva} onChange={e => setVals((f: any) => ({ ...f, tipo_iva: e.target.value, iva_deducible: true, alicuota_iva_custom: e.target.value === 'custom' ? f.alicuota_iva_custom : '' }))}
               className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-              <option value="">Sin IVA / No aplica</option>
               {TASAS_IVA.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
             <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -1615,30 +1660,24 @@ export default function GastosPage() {
               <span className="text-sm text-gray-500">%</span>
             </div>
           )}
-          {vals.tipo_iva && vals.tipo_iva !== 'exento' && vals.tipo_iva !== 'sin_iva' && (
-            <label className="flex items-center gap-1.5 text-sm text-gray-600 dark:text-gray-300 whitespace-nowrap cursor-pointer">
-              <input type="checkbox" checked={vals.iva_deducible}
-                onChange={e => setVals((f: any) => ({ ...f, iva_deducible: e.target.checked }))}
-                className="accent-accent" />
-              ¿Es deducible?
-            </label>
-          )}
         </div>
-        {vals.tipo_iva && vals.iva_deducible && ivaCalc > 0 && (
+        {ivaCalc > 0 && (
           <div className="mt-1.5 grid grid-cols-2 gap-2 text-xs">
             <div className="bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-center">
               <p className="text-gray-500 dark:text-gray-400">Neto</p>
               <p className="font-semibold text-gray-800 dark:text-gray-100">{formatMoneda(netoCalc)}</p>
             </div>
             <div className="bg-white dark:bg-gray-700 rounded-lg px-2 py-1.5 text-center">
-              <p className="text-blue-500">IVA a favor</p>
+              <p className="text-blue-500">IVA crédito</p>
               <p className="font-semibold text-blue-600 dark:text-blue-400">{formatMoneda(ivaCalc)}</p>
             </div>
           </div>
         )}
       </div>
+      )}
 
-      {/* Ganancias */}
+      {/* Ganancias — solo RI */}
+      {esRI && (
       <div>
         <label className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 cursor-pointer">
           <input type="checkbox" checked={vals.deduce_ganancias}
@@ -1673,6 +1712,7 @@ export default function GastosPage() {
           </div>
         )}
       </div>
+      )}
     </div>
   )
 

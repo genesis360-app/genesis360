@@ -827,3 +827,13 @@ Pendientes capa C (runtime/PDF, no code-auditable): FAC-06/07/08/09/11/14/15/17/
 ✅ PRD-02 (stock disponible mode-aware: básico no filtra `estado_id`), PRD-07 (baja lógica), PRD-08/09 (no hay hard-delete de productos en la UI → sin líneas huérfanas ni histórico roto, por diseño), PRD-10 (SKU dup: check debounced + 23505 DB).
 
 ⚠️ **PRD-11 — precio negativo:** inputs con `min=0` pero `parseFloat()||0` no rechaza un negativo tipeado directo (sin validación nativa de form). Gap menor → guard `Math.max(0, …)` al guardar. Pendiente decidir.
+
+### §5 Ventas/POS — auditado por código (`registrarVenta` + validaciones pre-submit)
+
+✅ VEN-01 (efectivo→`ingreso` awaited + toast si falla, VentasPage:2807), VEN-03 (sin `numero` en el insert, lo pone el trigger :2498), VEN-05 (no-efectivo→`ingreso_informativo` con cuenta :2819), VEN-06 (mixto: `serializeMediosPago` + `monto_pagado`), VEN-07 (`validarMediosPago` exige cubrir el total :2459-2467), VEN-08/09 (CC exige cliente + CC habilitada :2406-2409), VEN-10 (seña efectivo→`ingreso_reserva` awaited :2839), VEN-13/14 (despacho re-valida stock: `throw "Stock insuficiente"` :2713 + **rollback** de la venta :2928), VEN-22 (savingRef anti doble-submit :2333/2492), VEN-28 (seña obligatoria/mínima :2445), VEN-30/E2 (crédito a favor: exige cliente, no supera saldo :2437), VEN-31/32 (morosidad `bloqueo_total`/`bloqueo_cc` + límite CC :2410-2436), VEN-36 (selector caja, ya auditado).
+
+Cubiertos en pases previos (v1.74.0 efectivo↔caja / v1.76.0): VEN-11/12 (reserva/despacho asienta efectivo), VEN-19 (sin caja → fallback a única + nunca pierde el asiento), VEN-24 (anular restaura stock). **Sin bugs nuevos** — la capa de plata/stock del POS está sólida. Runtime/UX no code-auditable: VEN-23 (concurrencia real), VEN-26 (ESC cierra modal del stack).
+
+### §10 Devoluciones — auditado por código (`procesarDevolucion`)
+
+✅ DEV-01/02 (reingreso + egreso proporcional), DEV-03 (egreso awaited + **fallback a caja única** + toast si falla, VentasPage:3509-3528 — fix bug #26), DEV-04/11/12 (aplica a deuda CC FIFO sin efectivo :3530-3550), DEV-08 (reingreso con `sucursal_id` correcta, no NULL :3455), DEV-09 (**consolida** en la línea existente + bump manual de `stock_actual` :3441-3447), DEV-13/14 (crédito a favor → `cliente_creditos` origen `devolucion` :3557-3568, exige cliente), DEV-15 (cap re-devolución + "nada para devolver" :3109). Reingreso **mode-aware** (:3458 básico sin ubicación/estado). DEV-05/06/07/16/17 cubiertos por los fixes v1.76.0 (CAJ-18/DEV-07). **Sin bugs nuevos** — el módulo de devoluciones (zona histórica de bugs) quedó sólido tras los pases v1.74/v1.76.

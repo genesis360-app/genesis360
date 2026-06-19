@@ -802,4 +802,13 @@ Auditados **por código** (no runtime) los escenarios agregados en v1.78.2→v1.
 
 **Casos nuevos agregados:** GAS-16 (cambiar condición del tenant con gastos viejos: conservan crédito hasta editar) · GAS-17 (decisión: default de "Deducir de Ganancias" para RI — hoy OFF, la nota decía ON).
 
-**Nota:** el agente `general-purpose` lanzado para esta auditoría falló por error 529 (sobrecarga del servidor) sin producir output; se hizo inline. El `test-runner` (baseline de la suite) quedó corriendo en paralelo.
+**Nota:** el agente `general-purpose` lanzado para esta auditoría falló por error 529 (sobrecarga del servidor) sin producir output; se hizo inline.
+
+### Baseline de la suite + fixes de selectores e2e (2026-06-19)
+
+`test-runner`: **unit 753/753 ✅**. **e2e 161/164** → arreglados los 3 rojos (regresiones de test, no de lógica), re-corridos en verde:
+- **e2e 20 (caja apertura/cierre):** el botón de arqueo pasó a decir "Arqueo" (v1.78.4); el locator buscaba `/Arqueo parcial/`. Fix: `/^Arqueo$/`.
+- **e2e 21 (facturación mutante, CAE real):** el tenant de e2e (Almacén Jorgito) quedó en **RI** → no ofrece "Factura C" (RI emite A/B), el locator `/^Factura C$/` no existía. Fix: el test ahora toma el **primer tipo de comprobante habilitado** (adaptable a la condición del tenant) y verifica el CAE con esa letra. Emitió CAE real de homologación.
+- **e2e 23 (inventario ingreso mutante):** NO era dominó — el selector del resultado de producto (`div.flex-1 button`) no matcheaba y su fallback page-wide agarraba un botón detrás del backdrop del modal. Fix: selector scopeado al modal (`button.w-full.text-left` dentro del `div.fixed.inset-0` del buscador).
+
+Tras los fixes: **e2e 164/164 ✅** (verificados puntualmente los 3).

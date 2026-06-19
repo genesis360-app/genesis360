@@ -42,8 +42,9 @@ test.describe('Caja — apertura + cierre (mutante)', () => {
       await page.waitForTimeout(600)
     }
 
-    // Caja abierta: el botón de arqueo (✓, title "Arqueo parcial") solo existe con caja abierta
-    const arqueoBtn = page.getByRole('button', { name: /Arqueo parcial/ }).first()
+    // Caja abierta: el botón de arqueo dice "Arqueo" (title "Arqueo parcial…") — solo existe con caja abierta.
+    // (v1.78.4 lo relabeleó de ícono ✓ a texto "Arqueo"; el accessible name es el texto visible.)
+    const arqueoBtn = page.getByRole('button', { name: /^Arqueo$/ }).first()
     await expect(arqueoBtn).toBeVisible({ timeout: 8000 })
 
     // 3) ARQUEO PARCIAL (obligatorio antes de cerrar)

@@ -33,12 +33,10 @@ test.describe('Inventario — ingreso de stock (mutante)', () => {
     await expect(buscador).toBeVisible({ timeout: 6000 })
     await buscador.fill('a')
     await page.waitForTimeout(900)
-    const primerProducto = page.locator('div.flex-1 button', { hasText: /\w/ })
-      .filter({ hasNot: page.locator('svg') }).first()
-    // Fallback robusto: el primer resultado es un <button> con el nombre del producto
-    const resultado = (await primerProducto.isVisible().catch(() => false))
-      ? primerProducto
-      : page.locator('button').filter({ hasText: /[A-Za-z]{3,}/ }).nth(0)
+    // El resultado es un <button> full-width con el nombre del producto, DENTRO del modal de
+    // Ingreso (evitamos un fallback page-wide que agarraba un botón detrás del backdrop).
+    const modal = page.locator('div.fixed.inset-0').filter({ has: buscador }).first()
+    const resultado = modal.locator('button.w-full.text-left').first()
     const hayProducto = await resultado.isVisible().catch(() => false)
     test.skip(!hayProducto, 'No hay productos en el tenant de prueba')
     await resultado.click()

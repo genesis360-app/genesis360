@@ -1,5 +1,37 @@
 # Genesis360 — Contexto para Claude Code
 
+## 🛑 REGLA DE ORO #0 — Integridad FISCAL, CONTABLE y de INVENTARIO (CRÍTICO, NO NEGOCIABLE)
+
+**Lo fiscal, lo contable y el inventario deben funcionar PERFECTO. Cero errores tolerados.** Un error acá
+(una factura mal emitida, un IVA mal calculado, plata que no cuadra en caja/CC/capital, stock que queda
+mal) tiene consecuencias reales para el cliente (AFIP, plata, mercadería). Esta regla está por encima de
+la velocidad: ante la duda, frenar y verificar.
+
+**Alcance:**
+- **Fiscal:** AFIP/facturación, NC/ND, tipos A/B/C por condición del emisor, alícuotas de IVA, CAE,
+  `CbtesAsoc`, umbrales (Factura B con identificación), percepciones, comprobantes.
+- **Contable:** caja (ingresos/egresos/arqueos), cuenta corriente (clientes y proveedores), cuentas de
+  origen, capital/bóveda, cheques, conciliaciones, medios de pago.
+- **Inventario:** stock (`stock_actual`, disponible, reservado), `movimientos_stock`, reingresos,
+  consolidación de líneas, trazabilidad, kits.
+
+**Obligaciones (siempre):**
+1. **Avisar a GO de inmediato** si detecto algo que está mal —o que *puede* romper— lo fiscal/contable/
+   inventario, **aunque sea un edge case latente o no me lo hayan pedido**. No seguir como si nada.
+2. **Verificar el comportamiento REAL contra la regla** (AFIP/contable) antes de tocar cualquier flujo que
+   mueva plata, comprobantes fiscales o stock. No asumir; leer el código y, si hace falta, los datos.
+3. **Guards server-side ADEMÁS de la UI** (la UI se cachea/bypassea): EF `emitir-factura`, triggers de DB.
+4. **Todo movimiento de EFECTIVO se asienta en caja** — `await`eado + aviso si falla, nunca fire-and-forget
+   ni silencioso (ver [[reference_cobranza_efectivo_exige_caja]]).
+5. **El `numeric` de Postgres llega como string** (`"21.00"`) → normalizar con `parseFloat` antes de
+   comparar/mapear (bug de alícuota AFIP). Un `||default` sobre `0` convierte Exento en 21% — usar `Number.isFinite`.
+6. **Stock nunca negativo en silencio** (`Math.max(0,…)` + bloqueo si rebaja > disponible); queries de stock
+   **mode-aware** (básico no tiene `ubicacion_id`/`estado_id`).
+7. **Nunca reescribir registros fiscales/contables históricos** retroactivamente (el IVA crédito de un gasto
+   se calculó con la condición del tenant *de ese momento*; re-sanearlo falsea el historial).
+8. Tras tocar algo fiscal/contable/inventario: typecheck + build + tests verdes, y registrar el escenario en
+   el UAT (`tests/specs/uat-modo-basico.md`).
+
 ## ⚡ Wiki — Reglas de oro (OBLIGATORIO)
 
 ### Al iniciar cada sesión nueva

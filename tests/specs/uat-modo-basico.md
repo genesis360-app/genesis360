@@ -861,3 +861,60 @@ Cubiertos en pases previos (v1.74.0 efectivo↔caja / v1.76.0): VEN-11/12 (reser
 **Pendiente SOLO capa C (click-through manual / runtime — NO code-auditable):** PDFs e impresión (FAC-06/07/19, §23 comprobantes), config UI (§2 parcial), integraciones reales TN/MeLi/MP/courier (§17 — couriers bloqueados por cuentas B2B), i18n, concurrencia real (VEN-23), PWA/offline (§26), auth/sesión runtime (§1 AUTH-05/06/08). Estos requieren ejecutar la app y un humano; no se pueden cerrar leyendo código.
 
 **Conclusión:** el code-audit del UAT está **completo para todo lo automatizable/auditable por código**. Lo que resta es exclusivamente verificación manual en runtime (capa C), que es un click-through, no una auditoría de código.
+
+---
+
+# 🧾 §29 — Matriz fiscal por condición del emisor (RI / Monotributista / Exento)
+
+> **Para probar en la próxima sesión.** El campo `tenants.condicion_iva_emisor` (Config → Facturación)
+> gobierna **a la vez** Facturación (qué comprobantes se emiten y cómo) y Gastos (IVA crédito + Ganancias).
+> Valores posibles: **RI** · **Monotributista** · **Exento** (no hay otros). Cada condición DEBE comportarse
+> distinto y de forma consistente entre módulos. Probar cambiando la condición del tenant y recorriendo
+> ambos módulos. **Recordatorio:** Almacén Jorgito (DEV) se usó en RI para pruebas y se volvió a Monotributista.
+
+### 29.A — Facturación (POS + módulo Facturación + EF `emitir-factura`)
+
+| ID | Condición emisor | Escenario | Resultado esperado | Pri | Estado |
+|---|---|---|---|---|---|
+| MF-01 | **RI** | Tipos ofrecidos en el POS/Facturación | Solo **A** y **B** (nunca C). Default = el auto-detectado según el cliente | 🔴 | ⬜ |
+| MF-02 | **RI** | Emitir **Factura A** a cliente con CUIT | Discrimina IVA: array `Iva` con Id por alícuota (0→3, 10.5→4, 21→5, 27→6); `ImpNeto`+`ImpIVA`=`ImpTotal`; CAE | 🔴 | ⬜ |
+| MF-03 | **RI** | Factura A a cliente **sin CUIT** | Bloqueado (UI deshabilita + EF lanza "Para Factura A se requiere CUIT") | 🔴 | ⬜ |
+| MF-04 | **RI** | Factura **B** a Consumidor Final | Discrimina IVA (B); CAE. Ley 27.743 en el PDF (B) | 🔴 | ⬜ |
+| MF-05 | **RI** | Factura **B ≥ umbral** (~$68.305) sin DNI/CUIT | **Bloqueado**: UI (`requiereIdentFacturaB`) + EF 400 (FAC-27) | 🔴 | ⬜ |
+| MF-06 | **RI** | Forzar **C** (bundle viejo / API directa) | EF responde **400** "RI no puede emitir tipo C" | 🔴 | ⬜ |
+| MF-07 | **Monotributista** | Tipos ofrecidos | **Solo C** (A y B no se renderizan); default C | 🔴 | ⬜ |
+| MF-08 | **Monotributista** | Emitir **Factura C** | **Sin IVA**: `ImpNeto=ImpTotal`, `ImpIVA=0`, **sin** array `Iva`; CAE | 🔴 | ⬜ |
+| MF-09 | **Monotributista** | Forzar **A o B** (bundle viejo / API directa) | EF responde **400** "Un emisor Monotributista solo puede emitir tipo C" | 🔴 | ⬜ |
+| MF-10 | **Exento** | Tipos ofrecidos + emisión | **Igual que Monotributista**: solo C, sin IVA; forzar A/B → EF 400 (`emisorSoloC` incluye Exento) | 🔴 | ⬜ |
+| MF-11 | **(sin setear)** | Intentar habilitar facturación | **Bloquea** (CFG-07): exige condición IVA + CUIT antes de activar | 🔴 | ⬜ |
+| MF-12 | **cualquiera** | NC vía Devolver | La NC hereda la letra de la factura original (C→NC-C, A→NC-A, B→NC-B) + `CbtesAsoc`; respeta el mismo guard de condición | 🔴 | ⬜ |
+| MF-13 | **RI** | Envío cobrado en Factura A/B | Ítem "Costo de Envío" con alícuota predominante de los productos; Concepto=3 | 🟡 | ⬜ |
+| MF-14 | **Monotributista/Exento** | Envío cobrado en Factura C | Ítem "Costo de Envío" va a neto (C sin discriminar); Concepto=3 | 🟡 | ⬜ |
+
+### 29.B — Gastos (form variable + gasto fijo + trigger `fn_gastos_iva_guard`)
+
+| ID | Condición emisor | Escenario | Resultado esperado | Pri | Estado |
+|---|---|---|---|---|---|
+| MG-01 | **RI** | Comprobantes ofrecidos al cargar gasto | **Factura A, B, C, Ticket** | 🔴 | ⬜ |
+| MG-02 | **RI** | Gasto con **Factura A** | Muestra **Alícuota IVA** (default 21%, 10.5/27/custom) + **Neto** + **IVA crédito**; persiste `iva_monto` + `iva_deducible=true` | 🔴 | ⬜ |
+| MG-03 | **RI** | Gasto con **B / C / Ticket** | Monto = total; **`iva_monto`=0/NULL** (sin crédito) | 🔴 | ⬜ |
+| MG-04 | **RI** | "Deducir de Ganancias" | **Disponible, default ON** (GAS-17); con sub-opción negocio/personal | 🟡 | ⬜ |
+| MG-05 | **RI** | Forzar `iva_monto` con comprobante ≠ Factura A (API/insert directo) | Trigger **sanea** `iva_monto`/`alicuota_iva`/`tipo_iva`→NULL + `iva_deducible`=false | 🔴 | ⬜ |
+| MG-06 | **Monotributista** | Comprobantes ofrecidos | **B, C, Ticket** (sin Factura A) | 🔴 | ⬜ |
+| MG-07 | **Monotributista** | Cargar gasto | Monto = total; **NO** se muestran IVA crédito ni "Deducir Ganancias"; nota "el monto es el total" | 🔴 | ⬜ |
+| MG-08 | **Monotributista** | "Deducir de Ganancias" default | **OFF** (no aplica); el trigger fuerza `deduce_ganancias=false` | 🟡 | ⬜ |
+| MG-09 | **Monotributista** | Forzar `iva_monto`/`deduce_ganancias` (insert directo) | Trigger los **sanea** a 0/NULL/false | 🔴 | ⬜ |
+| MG-10 | **Exento** | Comprobantes + IVA + Ganancias | **Igual que Monotributista**: sin Factura A, sin IVA crédito, sin Ganancias | 🔴 | ⬜ |
+| MG-11 | **(sin setear)** | Cargar gasto | Default conservador = **Monotributista** (sin crédito ni Ganancias); trigger `COALESCE(NULLIF(...),'Monotributista')` | 🟡 | ⬜ |
+| MG-12 | **cualquiera** | **Gasto fijo** (plantilla) | La sección fiscal aplica igual (`renderFiscal` compartido); al **materializar** en `gastos` ("Generar desde fijo") el trigger re-sanea según la condición vigente | 🟡 | ⬜ |
+| MG-13 | **RI → Monotributista** | Cambiar la condición con gastos viejos cargados | Los gastos **históricos NO se tocan** (conservan su IVA crédito legítimo); solo lo nuevo usa la condición nueva (GAS-16 by-design) | 🟡 | ⬜ |
+
+### 29.C — Consistencia cross-módulo
+
+| ID | Escenario | Resultado esperado | Pri | Estado |
+|---|---|---|---|---|
+| MX-01 | Cambiar `condicion_iva_emisor` en Config | Cambia **a la vez** el comportamiento de Facturación (tipos A/B/C) **y** de Gastos (IVA crédito/Ganancias), sin desfasaje | 🔴 | ⬜ |
+| MX-02 | Guards server-side en ambos | EF `emitir-factura` (tipo + B≥umbral) **y** trigger `fn_gastos_iva_guard` aplican aunque la UI esté cacheada/bypasseada | 🔴 | ⬜ |
+| MX-03 | `numeric` de PG en alícuotas | `"21.00"/"10.50"/"0.00"` se normalizan con `parseFloat` antes de mapear a Id AFIP / opción del select (facturación y gastos) | 🔴 | ⬜ |
+
+**Nota de implementación verificada (2026-06-19):** todo lo de arriba está implementado y auditado por código en esta sesión; esta matriz es para la **verificación en runtime** (emisión real con CAE en homologación + carga real de gastos) cambiando la condición del tenant. Fuentes: `src/lib/facturacionLogic.ts` (`tiposComprobantePermitidos`/`detectarTipoComprobante`), `supabase/functions/emitir-factura/index.ts`, `src/pages/GastosPage.tsx` (`renderFiscal`), `supabase/migrations/227_*.sql` (`fn_gastos_iva_guard`).

@@ -837,3 +837,25 @@ Cubiertos en pases previos (v1.74.0 efectivo↔caja / v1.76.0): VEN-11/12 (reser
 ### §10 Devoluciones — auditado por código (`procesarDevolucion`)
 
 ✅ DEV-01/02 (reingreso + egreso proporcional), DEV-03 (egreso awaited + **fallback a caja única** + toast si falla, VentasPage:3509-3528 — fix bug #26), DEV-04/11/12 (aplica a deuda CC FIFO sin efectivo :3530-3550), DEV-08 (reingreso con `sucursal_id` correcta, no NULL :3455), DEV-09 (**consolida** en la línea existente + bump manual de `stock_actual` :3441-3447), DEV-13/14 (crédito a favor → `cliente_creditos` origen `devolucion` :3557-3568, exige cliente), DEV-15 (cap re-devolución + "nada para devolver" :3109). Reingreso **mode-aware** (:3458 básico sin ubicación/estado). DEV-05/06/07/16/17 cubiertos por los fixes v1.76.0 (CAJ-18/DEV-07). **Sin bugs nuevos** — el módulo de devoluciones (zona histórica de bugs) quedó sólido tras los pases v1.74/v1.76.
+
+### §4 Inventario — auditado por código
+
+✅ INV-06 (ajuste: `stock_antes/despues` con `Math.max(0,…)`, InventarioPage:728), INV-07 (rebaje > disponible → `throw "Stock disponible insuficiente"` :1170; nunca negativo), INV-01/03/04/05 (ingreso/rebaje/masivo **mode-aware**: en básico stock sin ubicación/estado — fixes v1.59.x, ver [[reference_basico_stock_null_ubicacion_estado]]; consistente con el stock-disponible-map de §3), INV-10/11/13 (columnas/tabs WMS — Kits/Autorizaciones — gateados por `modoAvanzado`). **Sin bugs nuevos.**
+
+---
+
+## ✅ Balance de finalización del UAT (2026-06-19)
+
+**Auditado por código (capa A) — esta sesión:** §3 Productos, §4 Inventario, §5 Ventas/POS, §6 Caja, §7 Gastos, §10 Devoluciones, §11 Facturación AFIP. Cubren TODA la superficie 🔴 de plata/stock/fiscal.
+
+**Cubierto por pases previos (no re-auditado, ya verde):**
+- §14 Roles/permisos + §20 matriz rol×módulo → v1.57.0 (matriz + e2e DEPOSITO/CONTADOR) + e2e 17/18 verdes hoy.
+- §15 Sucursales/RLS → **v1.75.0** (RLS por sucursal a nivel servidor, 23 tablas, validado impersonando — ver [[reference_rls_por_sucursal]]).
+- §27 Notificaciones → **v1.77.0** mig 219 (RLS de `notificaciones`, INSERT cross-user) + mig 220 (anti-drift).
+- §25 Escaneo / §28 export-teclado → pase 3 v1.77.0 (§25-28 verde).
+
+**Hallazgos abiertos (registrados, sin tocar — decisión de GO):** FAC-27 (guard B≥umbral server-side), PRD-11 (precio negativo), GAS-16 (re-saneo masivo al cambiar condición), CAJ-29 (✅ implementado), GAS-17 (✅ implementado).
+
+**Pendiente SOLO capa C (click-through manual / runtime — NO code-auditable):** PDFs e impresión (FAC-06/07/19, §23 comprobantes), config UI (§2 parcial), integraciones reales TN/MeLi/MP/courier (§17 — couriers bloqueados por cuentas B2B), i18n, concurrencia real (VEN-23), PWA/offline (§26), auth/sesión runtime (§1 AUTH-05/06/08). Estos requieren ejecutar la app y un humano; no se pueden cerrar leyendo código.
+
+**Conclusión:** el code-audit del UAT está **completo para todo lo automatizable/auditable por código**. Lo que resta es exclusivamente verificación manual en runtime (capa C), que es un click-through, no una auditoría de código.

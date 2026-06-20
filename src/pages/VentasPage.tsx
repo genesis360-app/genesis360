@@ -28,6 +28,7 @@ import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { PageTabs } from '@/components/PageTabs'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
@@ -4200,17 +4201,14 @@ export default function VentasPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-700 -mb-2">
-        {(esContador ? [{ id: 'historial', label: 'Historial', icon: FileText }] : [{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }, { id: 'canales', label: 'Canales', icon: Layers }]).map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setTab(id as Tab)}
-            className={`flex items-center gap-2 py-2.5 px-4 text-sm font-medium transition-all border-b-2 -mb-px
-              ${tab === id
-                ? 'border-accent text-accent'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600'}`}>
-            <Icon size={15} />{label}
-          </button>
-        ))}
-      </div>
+      <PageTabs
+        tabs={esContador
+          ? [{ id: 'historial', label: 'Historial', icon: FileText }]
+          : [{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }, { id: 'canales', label: 'Canales', icon: Layers }]}
+        active={tab}
+        onChange={(id) => setTab(id as Tab)}
+        className="-mb-2"
+      />
 
       {/* ── NUEVA VENTA ── */}
       {tab === 'nueva' && sesionesAbiertas.length === 0 && (

@@ -7,6 +7,7 @@ import {
   DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle, Upload,
 } from 'lucide-react'
 import { ActionMenu } from '@/components/ActionMenu'
+import { PageTabs } from '@/components/PageTabs'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -1024,21 +1025,15 @@ export default function ProductosPage() {
         onChange={e => { const f = e.target.files?.[0]; if (f) procesarTicketProductos(f); e.target.value = '' }} />
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl w-fit">
-        {([
-          { id: 'productos' as const, label: 'Productos', icon: Package },
+      <PageTabs
+        tabs={[
+          { id: 'productos', label: 'Productos', icon: Package },
           // Estructura (empaque unidad/caja/pallet) = WMS → solo modo avanzado
-          ...(modoAvanzado ? [{ id: 'estructura' as const, label: 'Estructura', icon: Layers }] : []),
-        ]).map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
-              ${tab === id
-                ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-            <Icon size={15} />{label}
-          </button>
-        ))}
-      </div>
+          ...(modoAvanzado ? [{ id: 'estructura', label: 'Estructura', icon: Layers }] : []),
+        ]}
+        active={tab}
+        onChange={(id) => setTab(id as Tab)}
+      />
 
       {/* ════════════════════ TAB ESTRUCTURA ════════════════════ */}
       {tab === 'estructura' ? (

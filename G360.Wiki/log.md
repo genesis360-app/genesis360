@@ -6,9 +6,46 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-19] deploy | v1.80.0 EN PROD (PR dev→main, mig 228, EF emitir-factura) — branding (ícono único + degradé) + autorización de ajustes por rol + UAT finalizado
+
+**v1.80.0 a PROD.** mig 228 aplicada en DEV y PROD. EF `emitir-factura` deployada en PROD (incluye el guard FAC-27 de Factura B≥umbral). PR `dev→main` mergeado, release v1.80.0. APP_VERSION v1.80.0.
+
+**Branding (single-source):** ícono nuevo (regenerado desde `brand/logo-source.png` con `scripts/gen-brand-icons.mjs`) en tab del navegador, sidebar, landing, suscripción, login y onboarding — todo desde `BRAND.logo`. Tabs unificadas (componente `PageTabs`: subrayado + degradé violeta→cian + drag-scroll + badge + **iconos en Inventario y Proveedores**). Hover de marca en tabs/sidebar (texto e ícono al degradé, manteniendo el fondo violeta translúcido). Fondos de landing/suscripción/onboarding de negro a degradé de marca (`bg-brand-gradient-hero`). Caja: capital por moneda + tab "Caja actual" centrado.
+
+**🔴 Autorización de ajustes de inventario POR ROL (mig 228, `tenants.ajuste_autorizacion_roles`):** DUEÑO ajusta directo; el resto requiere aprobación; **configurable por rol** (Directo/Por umbral/Siempre) en Config → Inventario → Reglas. Aplica a diferencias de Conteo, ajustes/eliminación de LPN y edición masiva. Lógica pura `ajusteAutorizacion.ts` (+9 tests). **Corrección de un error previo:** se había sacado el tab Autorizaciones del modo básico por una conclusión equivocada; el Conteo (presente en básico) genera ajustes que requieren aprobación → el tab vuelve a básico (gateado por rol aprobador).
+
+**Fiscal (FAC-27):** EF rechaza (400) Factura B ≥ umbral sin DNI/CUIT antes de AFIP. **GAS-17** default Ganancias por condición. **PRD-11** precio ≥ 0. **GAS-16** by-design (no re-saneo histórico). **🛑 REGLA DE ORO #0** (integridad fiscal/contable/inventario) al tope de CLAUDE.md.
+
+**UAT:** code-audit finalizado (§3-§11) + **§29 matriz fiscal por condición** (RI/Mono/Exento) para verificación en runtime. Suite: unit + e2e verdes. **▶ Próxima sesión: verificación RUNTIME de la matriz fiscal §29** (emitir CAE real por condición + cargar gastos) — es el pendiente principal del UAT.
+
+## [2026-06-19] update | v1.80.0 EN DEV — 🎨 Tabs unificadas (degradé de marca + drag-scroll) · 💱 Capital por moneda · 🧾 Guards fiscales (FAC-27/GAS-17) · 🛑 Regla de oro fiscal · ✅ UAT code-audit finalizado + matriz fiscal §29
+
+**Sesión larga, TODO EN DEV (rama dev, preview Vercel = DEV). PROD sigue en v1.79.0. Sin migración nueva (última = 227). `APP_VERSION` → v1.80.0. EF `emitir-factura` redeployada a DEV (v13) con el guard FAC-27.** 9 commits en dev (último `a06a9d1c` + el del wiki).
+
+**🎨 Tabs unificadas (pedido GO):** nuevo componente compartido `src/components/PageTabs.tsx` — formato único subrayado (estilo Clientes) con el tab activo remarcado en el **degradé de marca violeta→cian** (`text-gradient-brand` + barra `bg-brand-gradient`; ícono activo en violeta sólido). Incluye **drag-scroll** (hook `useDragScroll`) para páginas con muchos tabs + soporte `badge`. Migradas TODAS las páginas con tabs: Ventas, Productos, Inventario, Gastos, RRHH, Facturación, Proveedores, Envíos, Clientes (page + sub-tabs), Caja, Config (sub-tabs). El nav principal de Config queda como sidebar (otro paradigma, a propósito).
+
+**💱 Caja:** "Capital total del negocio" ahora **discriminado por moneda** (CAJ-29 — antes sumaba ARS+USD sin convertir; real en DEV: Almacén Jorgito ARS+USD) + tooltip explicativo. Las **aperturas de caja NO se suman al capital** (decisión Opción A de GO: evita doble conteo del arrastre; el capital inicial real se asienta como "Ingreso externo" a la bóveda; el flujo ya existía). El tab "Caja actual" volvió a **columna centrada** (resumen+acciones arriba, movimientos abajo) — se deshizo el "pegado a la izquierda" del layout 2-col de v1.78.2.
+
+**🧾 Guards fiscales:** **FAC-27** — guard server-side en la EF `emitir-factura`: Factura B ≥ umbral sin DNI/CUIT responde **400** antes de llamar a AFIP (espeja `requiereIdentFacturaB` del POS; consistente con el guard de tipo A/B/C). Deployado a DEV (v13); **pendiente PROD (cambio fiscal)**. **GAS-17** — el default de "Deducir de Ganancias" depende de la condición: RI → ON, Monotributista/Exento → OFF. **PRD-11** — clamp de precio ≥ 0 (`Math.max`) en alta/edición de variantes. **GAS-16** — resuelto **by-design** (NO se hace re-saneo masivo: borrar retroactivamente el IVA crédito de gastos cargados cuando el tenant era RI falsearía el historial fiscal).
+
+**🛑 REGLA DE ORO #0 (nueva, al tope de CLAUDE.md):** integridad fiscal/contable/inventario no negociable — cero errores, avisar a GO ante cualquier riesgo aunque sea latente, verificar contra la regla real, guards server-side, efectivo siempre asentado, `numeric`→`parseFloat`, stock nunca negativo + mode-aware, nunca reescribir histórico fiscal.
+
+**✅ UAT — code-audit FINALIZADO** (`tests/specs/uat-modo-basico.md`): auditadas por código §3/§4/§5/§6/§7/§8/§9/§10/§11 (toda la superficie 🔴 de plata/stock/fiscal) — **sin bugs nuevos** (los fixes de pases previos aguantan). Lo que resta es solo capa C (runtime/PDFs/PWA/integraciones reales). Agregada **§29 — matriz fiscal por condición del emisor (RI/Monotributista/Exento)** con casos esperados testeables (MF-01→14 facturación, MG-01→13 gastos, MX-01→03 cross-módulo) **para verificar en runtime la próxima sesión**. **Tests e2e:** 3 selectores desactualizados arreglados (20 caja "Arqueo", 21 facturación adaptable a la condición, 23 inventario scopeado al modal). **Suite: 753 unit + 164 e2e verdes.**
+
+**Dato:** Almacén Jorgito (DEV) se usó en RI para pruebas y GO lo vuelve a Monotributista.
+
+**▶ Pendiente próxima sesión / PROD:** deploy v1.80.0 a PROD (PR dev→main + EF `emitir-factura` a PROD por FAC-27 + release) · verificación runtime de la matriz fiscal §29 · verificación visual en PROD (degradé/tabs/layout Caja/logo, pendiente desde v1.78.2).
+
 ## [2026-06-18] update | 🎨 Nuevo logo/iconos de marca Genesis360 (favicon + PWA + sidebar + login) — EN DEV
 
 GO pasó el logo nuevo (G en estrella/compás, degradé violeta→cian, 1024×1024 transparente). Fuente versionada en `brand/logo-source.png` + script reproducible `scripts/gen-brand-icons.mjs` (usa `sharp` + `png-to-ico`, **devDependencies**, no entran al bundle). Generados en `public/`: favicon 16/32 + favicon.ico (transparente), android-chrome 192/512 (transparente), apple-touch-icon 180 + **nuevo** android-chrome-512x512-maskable (fondo blanco + padding para el safe-zone de Android). Manifest (`vite.config.ts`) actualizado: 512 `any` + 512 `maskable` dedicado. `LoginPage` ahora muestra el logo (antes ícono genérico `Package`). El sidebar ya usaba `android-chrome-192`. typecheck + build verdes. **Ojo:** favicon/PWA cacheados pueden tardar en refrescar (hard-reload). **theme_color del manifest sigue `#0000FF`** (no matchea el violeta — opcional cambiarlo). Pendiente PROD (junto con migs 225+226 + fixes de caja).
+
+## [2026-06-18] deploy | v1.79.0 EN PROD (PR #231, mig 227) — 🧾 Gastos: automatización fiscal por condición del tenant
+
+GO pasó un prompt para refactorizar Gastos cruzando `tipo_comprobante` × condición frente al IVA del tenant. Revisado y corregido vs. la realidad: el campo del tenant es **`condicion_iva_emisor`** (no `condicion_iva`); `iva_credito` ya existía como **`iva_monto`**, `deduce_ganancias` ya existía, `monto_neto` es derivable → la **única columna nueva es `tipo_comprobante`**; "backend" = **trigger** (no hay EF de gastos). **Implementado:**
+- **mig 227:** `tipo_comprobante` en `gastos` + `gastos_fijos` (backfill `'Factura A'` donde `iva_deducible`); trigger `fn_gastos_iva_guard` que **sanea** el crédito de IVA salvo **RI + Factura A** y `deduce_ganancias` salvo RI (default Monotributista). Elegí sanear (forzar a 0/NULL) en vez de rechazar con error: mismo resultado fiscal, no rompe el flujo.
+- **GastosPage (ambos forms, `renderFiscal` compartido):** Mono/Exento → comprobante B/C/Ticket, monto total, sin IVA crédito ni Ganancias. RI → A/B/C/Ticket; **Factura A** muestra alícuota (default 21%) + Neto + IVA crédito; B/C/Ticket → IVA 0; Ganancias marcable (default on).
+- **Verificado en DB:** RI+Factura A permite IVA $210; RI+Factura B lo sanea a NULL. mig 227 en DEV y PROD. typecheck + build verdes. **A verificar visualmente en PROD:** el form de gastos según la condición del tenant.
 
 ## [2026-06-18] deploy | v1.78.4 EN PROD (PR #230, sin mig) — arqueo repetible visible + acciones flex-wrap + theme_color violeta
 

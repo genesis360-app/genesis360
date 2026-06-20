@@ -6,6 +6,7 @@ import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
+import { PageTabs } from '@/components/PageTabs'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { uploadCertificates } from '@/lib/afip'
@@ -544,6 +545,11 @@ export default function ConfigPage() {
     gateU: num((tenant as any)?.conteo_gate_umbral_u), gatePct: num((tenant as any)?.conteo_gate_umbral_pct), gateValor: num((tenant as any)?.conteo_gate_umbral_valor),
     recU: num((tenant as any)?.conteo_reconteo_umbral_u), recPct: num((tenant as any)?.conteo_reconteo_umbral_pct), recValor: num((tenant as any)?.conteo_reconteo_umbral_valor),
   })
+  // mig 228 — autorización de ajustes de inventario POR ROL (directo|umbral|siempre).
+  // Default en código: DUEÑO directo, resto siempre. Acá se guardan los overrides por rol.
+  const [bizAjusteRoles, setBizAjusteRoles] = useState<Record<string, string>>(
+    ((tenant as any)?.ajuste_autorizacion_roles ?? {}) as Record<string, string>
+  )
   // F4 — días de ciclo de conteo por clase ABC (sugerencia cíclica)
   const [bizConteoCiclo, setBizConteoCiclo] = useState({
     a: num((tenant as any)?.conteo_ciclico_dias_a ?? 30),
@@ -913,6 +919,7 @@ export default function ConfigPage() {
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       trazabilidad_asignacion: bizTrazaAsignacion,
       conteo_modo: bizConteoModo,
+      ajuste_autorizacion_roles: Object.keys(bizAjusteRoles).length ? bizAjusteRoles : null,
       conteo_gate_activo: bizConteoGate.activo,
       conteo_gate_umbral_u: bizConteoGate.gateU !== '' ? Number(bizConteoGate.gateU) : null,
       conteo_gate_umbral_pct: bizConteoGate.gatePct !== '' ? Number(bizConteoGate.gatePct) : null,
@@ -2272,15 +2279,11 @@ export default function ConfigPage() {
     active: T,
     setActive: (v: T) => void
   ) => (
-    <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-      {items.map(({ id, label, icon: Icon }) => (
-        <button key={id} onClick={() => setActive(id)}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all whitespace-nowrap
-            ${active === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-          <Icon size={14} />{label}
-        </button>
-      ))}
-    </div>
+    <PageTabs
+      tabs={items.map(i => ({ id: i.id, label: i.label, icon: i.icon }))}
+      active={active}
+      onChange={(id) => setActive(id as T)}
+    />
   )
 
   return (
@@ -2844,8 +2847,8 @@ export default function ConfigPage() {
       {tab === 'inventario' && (
         <div className="space-y-4">
           {/* sub-tab nav */}
-          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none]">
-            {([
+          <PageTabs
+            tabs={([
               { id: 'reglas' as InvSubTab, label: 'Reglas de stock', icon: Timer },
               { id: 'categorias' as InvSubTab, label: 'Categorías', icon: Tag },
               { id: 'ubicaciones' as InvSubTab, label: 'Ubicaciones', icon: MapPin },
@@ -2854,14 +2857,10 @@ export default function ConfigPage() {
               { id: 'unidades' as InvSubTab, label: 'Unidades', icon: Ruler },
               { id: 'codigos' as InvSubTab, label: 'Códigos', icon: ScanBarcode },
               // Reglas (FIFO/conteos), Ubicaciones, Estados y Códigos GS1 son WMS → solo avanzado
-            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos'].includes(id)).map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setInvSubTab(id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all whitespace-nowrap
-                  ${invSubTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                <Icon size={14} />{label}
-              </button>
-            ))}
-          </div>
+            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
+            active={invSubTab}
+            onChange={(id) => setInvSubTab(id as InvSubTab)}
+          />
 
           {invSubTab === 'codigos' && (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
@@ -2960,6 +2959,30 @@ export default function ConfigPage() {
                   <input type="checkbox" disabled={!canEdit} checked={bizConteoWtwBloquea} onChange={e => setBizConteoWtwBloquea(e.target.checked)} className="rounded" />
                   <span><strong>Wall-to-wall bloquea la sucursal</strong> — al iniciar un conteo de sucursal completa, se bloquean ventas (reserva/despacho) y movimientos de stock hasta finalizarlo o eliminarlo (requiere confirmación de DUEÑO/SUPERVISOR al iniciar).</span>
                 </label>
+              </div>
+              {/* mig 228 — Autorización de ajustes de inventario POR ROL */}
+              <div className="py-1 border-t border-gray-100 dark:border-gray-700 pt-3">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">¿Quién puede ajustar stock sin autorización?</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 mb-2">
+                  Por rol: <strong>Directo</strong> = ajusta sin aprobación · <strong>Por umbral</strong> = solo lo que supere el umbral de arriba va a aprobación · <strong>Siempre</strong> = toda diferencia requiere aprobación. Aplica a diferencias de conteo y a ajustes de cantidad. El DUEÑO va directo por default; podés dejar a otro rol igual (ej. SUPERVISOR). Aprueban DUEÑO/SUPERVISOR en <strong>Inventario → Autorizaciones</strong>.
+                </p>
+                <div className="space-y-1.5">
+                  {(['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'CAJERO', 'DEPOSITO'] as const).map(rol => {
+                    const val = bizAjusteRoles[rol] ?? (rol === 'DUEÑO' ? 'directo' : 'siempre')
+                    return (
+                      <div key={rol} className="flex items-center justify-between gap-2">
+                        <span className="text-sm text-gray-600 dark:text-gray-300">{rol}</span>
+                        <select disabled={!canEdit} value={val}
+                          onChange={e => setBizAjusteRoles(prev => ({ ...prev, [rol]: e.target.value }))}
+                          className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm dark:bg-gray-700 dark:text-white disabled:opacity-50">
+                          <option value="directo">Directo (sin autorización)</option>
+                          <option value="umbral">Por umbral</option>
+                          <option value="siempre">Siempre requiere</option>
+                        </select>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
               {canEdit && (
                 <div className="flex justify-end">
@@ -3207,21 +3230,15 @@ export default function ConfigPage() {
           {invSubTab === 'estados' && (
         <div className="space-y-4">
           {/* Sub-tab navigation */}
-          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-            {([
-              { id: 'estados' as EstadosSubTab, label: 'Estados', icon: CircleDot },
-              { id: 'grupos' as EstadosSubTab, label: 'Grupos de estados', icon: Layers },
-              { id: 'progresion' as EstadosSubTab, label: 'Progresión de estado', icon: Timer },
-            ] as const).map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setEstadosSubTab(id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all
-                  ${estadosSubTab === id
-                    ? 'border-accent text-accent'
-                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                <Icon size={14} />{label}
-              </button>
-            ))}
-          </div>
+          <PageTabs
+            tabs={[
+              { id: 'estados', label: 'Estados', icon: CircleDot },
+              { id: 'grupos', label: 'Grupos de estados', icon: Layers },
+              { id: 'progresion', label: 'Progresión de estado', icon: Timer },
+            ]}
+            active={estadosSubTab}
+            onChange={(id) => setEstadosSubTab(id as EstadosSubTab)}
+          />
 
           {/* Sub-tab: Estados */}
           {estadosSubTab === 'estados' && (
@@ -4955,19 +4972,15 @@ export default function ConfigPage() {
 
       {tab === 'conectividad' && (
         <div className="space-y-4">
-          <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-            {([
-              { id: 'integraciones' as ConSubTab, label: 'Integraciones', icon: Plug },
+          <PageTabs
+            tabs={[
+              { id: 'integraciones', label: 'Integraciones', icon: Plug },
               // API pública del marketplace: solo en modo avanzado
-              ...(modoAvanzado ? [{ id: 'api' as ConSubTab, label: 'API', icon: Key }] : []),
-            ]).map(({ id, label, icon: Icon }) => (
-              <button key={id} onClick={() => setConSubTab(id)}
-                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all
-                  ${conSubTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-                <Icon size={14} />{label}
-              </button>
-            ))}
-          </div>
+              ...(modoAvanzado ? [{ id: 'api', label: 'API', icon: Key }] : []),
+            ]}
+            active={conSubTab}
+            onChange={(id) => setConSubTab(id as ConSubTab)}
+          />
 
           {conSubTab === 'integraciones' && (
         <div className="space-y-6">

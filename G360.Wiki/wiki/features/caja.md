@@ -10,6 +10,8 @@ updated: 2026-06-16
 
 La caja es el registro de efectivo físico del negocio. Es obligatoria para registrar ventas y gastos en efectivo.
 
+> **v1.80.0 (EN DEV, 2026-06-19):** "Capital total del negocio" ahora se muestra **discriminado por moneda** (ya no suma ARS+USD sin convertir) + tooltip que explica qué cuenta. Las **aperturas de caja NO se suman al capital** (decisión: evita doble conteo del arrastre; el capital inicial real se asienta como **"Ingreso externo"** a la bóveda, flujo ya existente). El tab **"Caja actual"** volvió a **columna centrada** (resumen+acciones arriba, movimientos abajo). Tabs del módulo migrados al componente compartido `PageTabs` (degradé de marca + drag-scroll). Ver [[reference_caja_fuerte_capital_efectivo]].
+
 **Página:** `src/pages/CajaPage.tsx` · panel cajero simplificado `src/pages/PanelCajeroPage.tsx` (`/caja/panel`, M3)  
 **Shortcuts:** `Shift+I` = ingreso · (egreso solo vía Gastos)  
 **Última actualización:** 2026-06-10 — 🎉 **relevamiento Caja A-M COMPLETO en PROD**. Tanda final v1.50.0 (PROD, mig 203, PR #178): E1 bóveda roles custom · E3 arqueo de bóveda · L3 préstamo a empleado · M3 panel cajero · M4 sonido al cobrar. Ver "Estado del relevamiento" abajo.
@@ -402,3 +404,15 @@ Indicador **Total: $X** arriba a la derecha (visible solo para DUEÑO+) sumando 
 
 `operarCajaFuerte` ahora setea `cuenta_origen_id = id de cuenta tipo='efectivo'` en los 4 inserts (depósito caja → fuerte + retiro fuerte → caja). Así esos movimientos también se reflejan en la vista discriminada.
 
+
+---
+
+## Caja Fuerte + Caja: cambios v1.78.2–v1.79.0 (2026-06-18)
+
+- **2 tarjetas destacadas** en el header de la bóveda (estilo Dashboard): **"En la caja fuerte"** (`fuerteSaldo`, degradé violeta→cian — sube al depositar) + **"Capital total del negocio"** (`capitalTotal` = suma de `vw_boveda_cuentas`). Reemplazan el "Total" chico.
+- **Fix conteo de capital (mig 226):** `vw_boveda_cuentas` ahora atribuye el efectivo **sin cuenta** (ventas/gastos con `cuenta_origen_id` NULL, no informativos) a la cuenta Efectivo del tenant vía `COALESCE`. Antes el "capital por cuenta" no reflejaba el efectivo de ventas/gastos. **Limitación conocida:** las aperturas de caja (`monto_apertura`) no son movimientos → no se cuentan (gap a evaluar).
+- **Ingreso a Caja Fuerte — selector de cuenta destino** (cuentas_origen activas, default Efectivo). La pata de ingreso a la bóveda usa la cuenta elegida; la de egreso de la caja queda en Efectivo. **Modo básico:** el selector de **Caja de origen** queda bloqueado a la caja activa.
+- **Efectivo por default en alta de tenant (mig 225):** cada tenant nuevo nace con la Cuenta de Origen Efectivo (tipo efectivo, en su moneda) + 5 métodos default con Efectivo vinculado. Trigger `fn_seed_tenant_defaults` + backfill. Ver [[gastos]] / wiki de tenants.
+- **Selector de caja en la VENTA (v1.78.3):** excluye la sesión permanente de la Caja Fuerte (solo cajas operativas); con 1 caja abierta se autopreselecciona (antes la bóveda inflaba el conteo y obligaba a elegir).
+- **Arqueo repetible (v1.78.4):** se pueden hacer **varios arqueos parciales por sesión** (siempre se pudo — no hay constraint ni guard; era descubribilidad). El botón ahora dice "Arqueo" + tooltip. La fila de acciones es `flex-wrap`.
+- **Layout:** el módulo Caja usa **pantalla completa**; el tab principal va en **2 columnas** (izq: saldo + acciones sticky / der: movimientos + arqueos + cierre).

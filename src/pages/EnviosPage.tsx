@@ -9,6 +9,7 @@ import {
   Camera, CreditCard, DollarSign, PackageCheck, QrCode, Tag, BarChart3, Fuel, Car,
 } from 'lucide-react'
 import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
+import { PageTabs } from '@/components/PageTabs'
 import PodFotosManager from '@/components/PodFotosManager'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import jsPDF from 'jspdf'
@@ -1260,21 +1261,17 @@ export default function EnviosPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-        {([
-          { key: 'envios', label: 'Envíos', icon: <Package2 size={14} /> },
-          { key: 'pagos',  label: 'Pagos Courier', icon: <CreditCard size={14} />, badge: (enviosPendientesPago as any[]).length || undefined },
-          { key: 'facturas', label: 'Facturas Courier', icon: <FileText size={14} /> },
-          { key: 'reparto', label: 'Reparto', icon: <Navigation size={14} /> },
-          { key: 'reportes', label: 'Reportes', icon: <BarChart3 size={14} /> },
-        ] as const).map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors ${tab === t.key ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
-            {t.icon} {t.label}
-            {'badge' in t && t.badge ? <span className="ml-1 bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{t.badge}</span> : null}
-          </button>
-        ))}
-      </div>
+      <PageTabs
+        tabs={[
+          { id: 'envios', label: 'Envíos', icon: Package2 },
+          { id: 'pagos', label: 'Pagos Courier', icon: CreditCard, badge: (enviosPendientesPago as any[]).length || undefined },
+          { id: 'facturas', label: 'Facturas Courier', icon: FileText },
+          { id: 'reparto', label: 'Reparto', icon: Navigation },
+          { id: 'reportes', label: 'Reportes', icon: BarChart3 },
+        ]}
+        active={tab}
+        onChange={(id) => setTab(id as any)}
+      />
 
       {/* ══ TAB: ENVÍOS ══ */}
       {tab === 'envios' && (

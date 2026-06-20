@@ -8,6 +8,7 @@ import {
 import * as XLSX from 'xlsx'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
+import { PageTabs } from '@/components/PageTabs'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -487,20 +488,16 @@ export default function FacturacionPage() {
       )}
 
       {/* Tabs */}
-      <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
-        {[
-          { id: 'panel'      as Tab, label: 'Panel de control', icon: <BarChart2 size={14} /> },
-          { id: 'emitir'     as Tab, label: 'Facturación',      icon: <Send size={14} /> },
-          { id: 'libros'     as Tab, label: 'Libros IVA',       icon: <BookOpen size={14} /> },
-          { id: 'liquidacion'as Tab, label: 'Liquidación',      icon: <Scale size={14} /> },
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
-              ${tab === t.id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-            {t.icon}{t.label}
-          </button>
-        ))}
-      </div>
+      <PageTabs
+        tabs={[
+          { id: 'panel', label: 'Panel de control', icon: BarChart2 },
+          { id: 'emitir', label: 'Facturación', icon: Send },
+          { id: 'libros', label: 'Libros IVA', icon: BookOpen },
+          { id: 'liquidacion', label: 'Liquidación', icon: Scale },
+        ]}
+        active={tab}
+        onChange={(id) => setTab(id as Tab)}
+      />
 
       {/* ══ TAB 1: PANEL DE CONTROL ══ */}
       {tab === 'panel' && (

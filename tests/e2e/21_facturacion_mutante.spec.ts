@@ -65,12 +65,18 @@ test.describe('Facturación electrónica (mutante)', () => {
     const apareceModal = await modal.isVisible({ timeout: 6000 }).catch(() => false)
     test.skip(!apareceModal, 'Facturación no configurada en el tenant de prueba (no aparece el modal)')
 
-    // 6) Elegir Factura C (Monotributista) y emitir
-    await page.getByRole('button', { name: /^Factura C$/ }).click()
-    await page.getByRole('button', { name: /Emitir Factura C/ }).click()
+    // 6) Elegir un tipo de comprobante disponible y emitir. El set ofrecido depende de
+    //    condicion_iva_emisor del tenant (Monotributista→C, RI→A/B) y "Factura A" se
+    //    deshabilita sin CUIT, así que tomamos el primer botón de tipo habilitado en vez de
+    //    asumir Factura C (evita romper si el tenant de DEV cambia de condición fiscal).
+    const tipoBtn = page.locator('button:not([disabled])', { hasText: /^Factura [ABC]$/ }).first()
+    await expect(tipoBtn).toBeVisible({ timeout: 6000 })
+    const letra = ((await tipoBtn.textContent()) ?? '').match(/Factura ([ABC])/)?.[1] ?? 'C'
+    await tipoBtn.click()
+    await page.getByRole('button', { name: new RegExp(`Emitir Factura ${letra}`) }).click()
 
     // 7) Verificar el CAE real de AFIP en el toast de éxito (la llamada a AFIP tarda)
-    await expect(page.getByText(/Factura C emitida — CAE:/)).toBeVisible({ timeout: 30000 })
+    await expect(page.getByText(new RegExp(`Factura ${letra} emitida — CAE:`))).toBeVisible({ timeout: 30000 })
 
     // No debe quedar un toast de error de emisión
     await expect(page.getByText(/Error al emitir/i)).not.toBeVisible()

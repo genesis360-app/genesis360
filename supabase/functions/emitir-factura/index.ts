@@ -179,6 +179,16 @@ serve(async (req) => {
       docNro  = parseInt((cliente.dni ?? '').replace(/[.\s-]/g, '')) || 0
     }
 
+    // FAC-27 — Factura B ≥ umbral sin identificar al cliente: AFIP (RG 5616) lo exige.
+    // Guard server-side, espejo del bloqueo del POS (requiereIdentFacturaB): un bundle viejo
+    // o una llamada directa a la API podía saltear la UI y la EF emitía con Consumidor Final
+    // (DocTipo 99) → AFIP rechazaba. Falla rápido con mensaje claro (consistente con el guard de tipo).
+    if (tipo_comprobante === 'B' && totalVenta >= umbral && docNro === 0) {
+      return new Response(JSON.stringify({ error: `Factura B por $${Math.round(totalVenta).toLocaleString('es-AR')} o más: AFIP exige identificar al cliente con DNI o CUIT.` }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
     // 4. Importes. Factura C / NC-C (Monotributista) NO discrimina IVA: ImpNeto =
     //    ImpTotal, ImpIVA = 0 y SIN array Iva (AFIP rechaza una C con IVA/alícuotas).
     const sinIVA = tipo_comprobante === 'C' || tipo_comprobante === 'NC-C'

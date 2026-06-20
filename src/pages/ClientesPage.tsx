@@ -9,6 +9,7 @@ import {
   UserX, RotateCcw,
 } from 'lucide-react'
 import { ActionMenu } from '@/components/ActionMenu'
+import { PageTabs } from '@/components/PageTabs'
 import { buildWhatsAppUrl } from '@/lib/whatsapp'
 import { cobrarDeudaCCFIFO } from '@/lib/cobranzaCC'
 import { agruparAgingCC } from '@/lib/ccLogic'
@@ -811,19 +812,15 @@ export default function ClientesPage() {
       </div>
 
       {/* Page tabs */}
-      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
-        {([
-          { id: 'lista' as const, label: 'Clientes', icon: Users },
-          { id: 'cc' as const, label: 'Cuenta Corriente', icon: CreditCard },
-          { id: 'reportes' as const, label: 'Reportes', icon: TrendingUp },
-        ]).map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setPageTab(id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors
-              ${pageTab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-            <Icon size={15} />{label}
-          </button>
-        ))}
-      </div>
+      <PageTabs
+        tabs={[
+          { id: 'lista', label: 'Clientes', icon: Users },
+          { id: 'cc', label: 'Cuenta Corriente', icon: CreditCard },
+          { id: 'reportes', label: 'Reportes', icon: TrendingUp },
+        ]}
+        active={pageTab}
+        onChange={(id) => setPageTab(id as any)}
+      />
 
       {/* ═══════════════ TAB CUENTA CORRIENTE ═══════════════ */}
       {pageTab === 'cc' && (() => {
@@ -1451,20 +1448,18 @@ export default function ClientesPage() {
                 {isExpanded && (
                   <div className="border-t border-gray-100 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 px-4 py-4">
                     {/* Sub-tabs */}
-                    <div className="flex gap-0 border-b border-gray-200 dark:border-gray-600 mb-4 -mx-4 px-4">
-                      {[
-                        { id: 'historial' as const, label: 'Historial de compras', icon: <ShoppingCart size={12} /> },
-                        { id: 'domicilios' as const, label: 'Domicilios',          icon: <MapPin size={12} /> },
-                        { id: 'notas'     as const, label: 'Notas',                icon: <StickyNote size={12} /> },
-                        { id: 'cambios'   as const, label: 'Cambios',              icon: <Clock size={12} /> },
-                      ].map(t => (
-                        <button key={t.id} onClick={() => setInnerTab(t.id)}
-                          className={`flex items-center gap-1.5 px-4 py-2 text-xs font-medium border-b-2 -mb-px transition-colors
-                            ${innerTab === t.id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-                          {t.icon}{t.label}
-                        </button>
-                      ))}
-                    </div>
+                    <PageTabs
+                      size="sm"
+                      className="mb-4 -mx-4 px-4"
+                      tabs={[
+                        { id: 'historial', label: 'Historial de compras', icon: ShoppingCart },
+                        { id: 'domicilios', label: 'Domicilios', icon: MapPin },
+                        { id: 'notas', label: 'Notas', icon: StickyNote },
+                        { id: 'cambios', label: 'Cambios', icon: Clock },
+                      ]}
+                      active={innerTab}
+                      onChange={(id) => setInnerTab(id as any)}
+                    />
 
                     {/* Tab: Historial */}
                     {innerTab === 'historial' && <>

@@ -270,7 +270,7 @@ export function AppLayout() {
             title="Ir al sitio de Genesis360"
             className="flex items-center gap-3 flex-1 min-w-0 group"
           >
-            <img src="/android-chrome-192x192.png" alt="Genesis360" className="w-8 h-8 rounded-lg flex-shrink-0 object-cover" />
+            <img src={BRAND.logo} alt={BRAND.name} className="w-8 h-8 rounded-lg flex-shrink-0 object-cover" />
             {!collapsed && (
               <div className="flex flex-col min-w-0">
                 <span className="text-primary dark:text-white font-bold text-lg tracking-tight leading-tight truncate">
@@ -317,12 +317,12 @@ export function AppLayout() {
                     ? 'text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-500'
                     : isActive
                       ? 'bg-accent text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent dark:hover:text-accent'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent dark:hover:text-accent nav-grad-hover'
                   }`
                 }
               >
                 <div className="relative flex-shrink-0">
-                  <Icon size={18} />
+                  <Icon size={18} className="nav-grad-icon" />
                   {to === '/caja' && collapsed && (
                     <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white dark:border-gray-900 ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} />
                   )}
@@ -335,7 +335,7 @@ export function AppLayout() {
                     </span>
                   )}
                 </div>
-                {!collapsed && <span className="flex-1">{label}</span>}
+                {!collapsed && <span className="flex-1 nav-grad-text">{label}</span>}
                 {!collapsed && locked && <Lock size={12} className="text-gray-400 dark:text-gray-600 flex-shrink-0" />}
                 {!collapsed && to === '/caja' && !locked && (
                   <span
@@ -369,6 +369,15 @@ export function AppLayout() {
 
   return (
     <div className={`flex bg-page overflow-hidden ${isDevEnv ? 'h-[calc(100vh-1rem)] mt-4' : 'h-screen'}`}>
+      {/* Def del degradé de marca para íconos SVG en hover (sidebar + tabs). Una sola vez en el DOM. */}
+      <svg width="0" height="0" className="absolute" aria-hidden="true">
+        <defs>
+          <linearGradient id="g360-grad-stroke" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="rgb(123 0 255)" />
+            <stop offset="100%" stopColor="rgb(6 182 212)" />
+          </linearGradient>
+        </defs>
+      </svg>
       <Walkthrough open={walkthroughOpen} onClose={() => setWalkthroughOpen(false)} />
       <AyudaModal isOpen={ayudaOpen} onClose={() => setAyudaOpen(false)} currentModule={pathname} />
 

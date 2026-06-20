@@ -6,11 +6,11 @@ import {
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
   ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check, SlidersHorizontal, ScanBarcode,
-  Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock,
+  Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock, ArrowRightLeft,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { ActionMenu } from '@/components/ActionMenu'
-import { useDragScroll } from '@/hooks/useDragScroll'
+import { PageTabs } from '@/components/PageTabs'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
 import { CodigoMasivoModal } from '@/components/CodigoMasivoModal'
 import { MasivoModal } from '@/components/MasivoModal'
@@ -35,6 +35,7 @@ import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
+import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
 import * as XLSX from 'xlsx'
 
@@ -77,7 +78,6 @@ function resolverCantidad(raw: string, unitAlt: string | null, unitBase: string 
 
 export default function InventarioPage() {
   const { tenant, user } = useAuthStore()
-  const tabsRef = useDragScroll<HTMLDivElement>()  // arrastrar la barra de tabs con el mouse
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { cotizacion: cotizacionNum } = useCotizacion()
@@ -225,7 +225,7 @@ export default function InventarioPage() {
   // Kits y Autorizaciones son solo avanzado: si quedaron seleccionados al pasar a básico,
   // volver a la vista de stock (incluye deep-links)
   useEffect(() => {
-    if (!modoAvanzado && (tab === 'kits' || tab === 'autorizaciones')) setTab('inventario')
+    if (!modoAvanzado && tab === 'kits') setTab('inventario')
   }, [modoAvanzado, tab])
   const [conteoRows, setConteoRows] = useState<ConteoRow[]>([])
   const [conteoNotas, setConteoNotas] = useState('')
@@ -256,6 +256,9 @@ export default function InventarioPage() {
   const conteoReconteoConfig: UmbralConfig = {
     u: (tenant as any)?.conteo_reconteo_umbral_u, pct: (tenant as any)?.conteo_reconteo_umbral_pct, valor: (tenant as any)?.conteo_reconteo_umbral_valor,
   }
+  // Autorización de ajustes POR ROL (mig 228): DUEÑO directo, resto siempre (configurable). Aplica
+  // a diferencias de conteo y a ajustes directos. Combina con el gate por umbral cuando modo='umbral'.
+  const ajusteAuthConfig = (tenant as any)?.ajuste_autorizacion_roles ?? null
   // A2 — wall-to-wall puede bloquear movimientos de la sucursal hasta cerrar el conteo
   const conteoWtwBloquea = !!(tenant as any)?.conteo_wall_to_wall_bloquea
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
@@ -875,7 +878,8 @@ export default function InventarioPage() {
   const bulkEditarAtributos = useMutation({
     mutationFn: async () => {
       if (selectedLineas.length === 0) throw new Error('No hay LPNs seleccionados')
-      const esDeposito = user?.rol === 'DEPOSITO'
+      // Edición masiva de LPN: aprobación según la config por rol (mig 228), no solo DEPOSITO.
+      const requiereAprob = requiereAuthAjuste(user?.rol, ajusteAuthConfig, false)
 
       // Construir payload de campos a cambiar
       const campos: Record<string, any> = {}
@@ -886,7 +890,7 @@ export default function InventarioPage() {
 
       if (Object.keys(campos).length === 0) throw new Error('Seleccioná al menos un campo para cambiar')
 
-      if (esDeposito) {
+      if (requiereAprob) {
         const { error } = await supabase.from('autorizaciones_inventario').insert({
           tenant_id: tenant!.id,
           tipo: 'bulk_edit',
@@ -1784,8 +1788,10 @@ export default function InventarioPage() {
         const diffAbs = Math.abs(diff)
         if (diffAbs < 0.001) continue
         const valorDiff = diffAbs * (row.costo || 0)
-        // D — gate: si supera el umbral (o el gate está inactivo) la diferencia va a aprobación, no se aplica todavía
-        if (requiereAutorizacion(conteoGateActivo, diffAbs, row.cantidad_esperada, valorDiff, conteoGateConfig)) {
+        // D — gate por ROL (mig 228) combinado con el gate por umbral: DUEÑO (directo) aplica al
+        // toque; 'siempre' va a aprobación sí o sí; 'umbral' sigue el gate por umbral de abajo.
+        const umbralReq = requiereAutorizacion(conteoGateActivo, diffAbs, row.cantidad_esperada, valorDiff, conteoGateConfig)
+        if (requiereAuthAjuste(user?.rol, ajusteAuthConfig, umbralReq)) {
           await supabase.from('autorizaciones_inventario').insert({
             tenant_id: tenant!.id, tipo: 'ajuste_conteo', linea_id: row.linea_id, estado: 'pendiente',
             solicitado_por: user?.id,
@@ -2503,31 +2509,25 @@ export default function InventarioPage() {
 
       {/* Tabs + vista toggle */}
       <div className="flex items-center justify-between gap-2">
-        <div ref={tabsRef} className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-1 overflow-x-auto [&::-webkit-scrollbar]:hidden cursor-grab select-none" style={{ scrollbarWidth: 'none' } as any}>
-          {([
-            { id: 'inventario' as const, label: 'Inventario' },
-            { id: 'agregar' as const, label: 'Agregar stock' },
-            { id: 'quitar' as const, label: 'Quitar stock' },
+        <PageTabs
+          className="flex-1"
+          tabs={[
+            { id: 'inventario', label: 'Inventario', icon: Package },
+            { id: 'agregar', label: 'Agregar stock', icon: Plus },
+            { id: 'quitar', label: 'Quitar stock', icon: Minus },
             // En básico, Traslados solo tiene sentido con más de una sucursal
-            ...((modoAvanzado || sucursales.length > 1) ? [{ id: 'traslados' as const, label: 'Traslados' }] : []),
+            ...((modoAvanzado || sucursales.length > 1) ? [{ id: 'traslados', label: 'Traslados', icon: ArrowRightLeft }] : []),
             // Kits (kitting/armado) es modo avanzado
-            ...(modoAvanzado ? [{ id: 'kits' as const, label: 'Kits' }] : []),
-            { id: 'conteo' as const, label: 'Conteos' },
-            { id: 'historial' as const, label: 'Historial' },
-            // Autorizaciones: flujo de aprobación de ajustes/eliminación de LPN — solo avanzado
-            // (en básico no existe el modal de acciones sobre LPN que las genera; el stock se
-            // ajusta directo con Agregar/Quitar)
-            ...((modoAvanzado && puedeVerAutorizaciones) ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones' }] : []),
-          ]).map(({ id, label }) => (
-            <button key={id} onClick={() => setTab(id)}
-              className={`flex-shrink-0 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px
-                ${tab === id
-                  ? 'border-accent text-accent'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-              {label}
-            </button>
-          ))}
-        </div>
+            ...(modoAvanzado ? [{ id: 'kits', label: 'Kits', icon: Layers }] : []),
+            { id: 'conteo', label: 'Conteos', icon: ClipboardList },
+            { id: 'historial', label: 'Historial', icon: Clock },
+            // Autorizaciones: aprobación de ajustes/conteos. También en BÁSICO: el tab Conteo
+            // genera ajustes que requieren aprobación (corregido 2026-06-19, antes se ocultaba mal).
+            ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: CheckCircle2 }] : []),
+          ]}
+          active={tab}
+          onChange={(id) => setTab(id as Tab)}
+        />
         {tab === 'inventario' && modoAvanzado && (
           <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0 mb-px">
             <button onClick={() => setInvVista('producto')} title="Por producto"

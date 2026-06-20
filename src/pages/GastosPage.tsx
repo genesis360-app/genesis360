@@ -1,5 +1,5 @@
 import { useRef, useState, useMemo, useEffect } from 'react'
-import { useDragScroll } from '@/hooks/useDragScroll'
+import { PageTabs } from '@/components/PageTabs'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Pencil, Trash2, Receipt, TrendingDown, Calendar, Filter, X,
@@ -145,7 +145,6 @@ function formatFecha(f: string) {
 
 export default function GastosPage() {
   const { tenant, user } = useAuthStore()
-  const tabsRef = useDragScroll<HTMLDivElement>()  // arrastrar la barra de tabs con el mouse
   const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
@@ -917,7 +916,8 @@ export default function GastosPage() {
   const [correccionPadre, setCorreccionPadre] = useState<any | null>(null)
 
   const abrirNuevo = () => {
-    setEditandoId(null); setCorreccionPadre(null); setForm(FORM_VACIO)
+    // GAS-17: el default de "Deducir de Ganancias" depende de la condición del tenant — RI ON, resto OFF.
+    setEditandoId(null); setCorreccionPadre(null); setForm({ ...FORM_VACIO, deduce_ganancias: esRI })
     setMediosPago([{ tipo: '', monto: '' }])
     setComprobanteFile(null); setComprobanteExistente(null)
     setComprobanteNombre(''); setTipoComprobanteSelect(''); setUsarPrefixCategoria(false)
@@ -977,7 +977,7 @@ export default function GastosPage() {
   }
   useModalKeyboard({ isOpen: modalAbierto, onClose: cerrarModal, onConfirm: () => { if (!guardando) guardar() } })
 
-  const abrirNuevoFijo = () => { setEditandoFijoId(null); setFormFijo(FORM_FIJO_VACIO); setModalFijoAbierto(true) }
+  const abrirNuevoFijo = () => { setEditandoFijoId(null); setFormFijo({ ...FORM_FIJO_VACIO, deduce_ganancias: esRI }); setModalFijoAbierto(true) }
   const abrirEdicionFijo = (f: any) => {
     setEditandoFijoId(f.id)
     setFormFijo({
@@ -1742,35 +1742,22 @@ export default function GastosPage() {
       </div>
 
       {/* Tabs */}
-      <div ref={tabsRef} className="flex gap-0 border-b border-gray-200 dark:border-gray-700 overflow-x-auto [&::-webkit-scrollbar]:hidden cursor-grab select-none" style={{ scrollbarWidth: 'none' } as any}>
-        {[
-          { id: 'gastos'   as const, label: 'Gastos variables', icon: <Receipt size={14} />, badge: 0 },
-          { id: 'historial'as const, label: 'Historial',        icon: <History size={14} />, badge: 0 },
-          { id: 'fijos'    as const, label: 'Gastos fijos',     icon: <Repeat size={14} />, badge: 0 },
+      <PageTabs
+        tabs={[
+          { id: 'gastos', label: 'Gastos variables', icon: Receipt },
+          { id: 'historial', label: 'Historial', icon: History },
+          { id: 'fijos', label: 'Gastos fijos', icon: Repeat },
           // OC + Reportes de compras + Recursos = modo avanzado
-          ...(modoAvanzado ? [{ id: 'oc' as const, label: 'Órdenes de Compra', icon: <ShoppingCart size={14} />, badge: 0 }] : []),
-          { id: 'cheques'  as const, label: 'Cheques',          icon: <FileCheck size={14} />, badge: chequesAlertaCount },
-          ...(modoAvanzado ? [{ id: 'reportes-compras' as const, label: 'Reportes', icon: <BarChart3 size={14} />, badge: 0 }] : []),
-          ...(modoAvanzado ? [{ id: 'recursos' as const, label: 'Recursos', icon: <Landmark size={14} />, badge: 0 }] : []),
-          ...(puedeAprobarRoles
-            ? [{ id: 'autorizaciones' as const, label: 'Autorizaciones', icon: <AlertCircle size={14} />, badge: autorizacionesPendientesCount }]
-            : []),
-          ...(puedeCerrarPeriodo
-            ? [{ id: 'cierres' as const, label: 'Cierres contables', icon: <Lock size={14} />, badge: 0 }]
-            : []),
-        ].map(({ id, label, icon, badge }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`flex items-center gap-1.5 px-5 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap
-              ${tab === id ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
-            {icon}{label}
-            {badge > 0 && (
-              <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold">
-                {badge}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+          ...(modoAvanzado ? [{ id: 'oc', label: 'Órdenes de Compra', icon: ShoppingCart }] : []),
+          { id: 'cheques', label: 'Cheques', icon: FileCheck, badge: chequesAlertaCount },
+          ...(modoAvanzado ? [{ id: 'reportes-compras', label: 'Reportes', icon: BarChart3 }] : []),
+          ...(modoAvanzado ? [{ id: 'recursos', label: 'Recursos', icon: Landmark }] : []),
+          ...(puedeAprobarRoles ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: AlertCircle, badge: autorizacionesPendientesCount }] : []),
+          ...(puedeCerrarPeriodo ? [{ id: 'cierres', label: 'Cierres contables', icon: Lock }] : []),
+        ]}
+        active={tab}
+        onChange={(id) => setTab(id as TabGastos)}
+      />
 
       {/* ══ TAB: GASTOS VARIABLES (últimos 30 días) ══ */}
       {tab === 'gastos' && (

@@ -20,6 +20,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { Proveedor, OrdenCompra, OrdenCompraItem, Producto } from '@/lib/supabase'
 import { esDecimal } from '@/lib/ventasValidation'
 import { ActionMenu } from '@/components/ActionMenu'
+import { PageTabs } from '@/components/PageTabs'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import toast from 'react-hot-toast'
@@ -1423,10 +1424,10 @@ export default function ProveedoresPage() {
 
   // ── Tabs bar ───────────────────────────────────────────────────────────────
   // En modo básico no hay circuito de OC (el stock entra por Inventario → Agregar)
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'proveedores', label: 'Proveedores' },
-    { id: 'servicios',   label: 'Servicios' },
-    ...(modoAvanzado ? [{ id: 'ordenes' as Tab, label: 'Órdenes de compra' }] : []),
+  const tabs = [
+    { id: 'proveedores' as Tab, label: 'Proveedores', icon: Truck },
+    { id: 'servicios' as Tab,   label: 'Servicios', icon: Wrench },
+    ...(modoAvanzado ? [{ id: 'ordenes' as Tab, label: 'Órdenes de compra', icon: FileText }] : []),
   ]
 
   const exportarProveedores = (format: 'json' | 'csv') => {
@@ -1495,23 +1496,7 @@ export default function ProveedoresPage() {
       </div>
 
       {/* Tab bar */}
-      <div className="border-b border-border-ds">
-        <div className="flex gap-0 -mb-px">
-          {tabs.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                tab === t.id
-                  ? 'border-accent text-accent'
-                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-primary'
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageTabs tabs={tabs} active={tab} onChange={(id) => setTab(id as Tab)} />
 
       {/* ── Tab Proveedores ─────────────────────────────────────────────────── */}
       {tab === 'proveedores' && (

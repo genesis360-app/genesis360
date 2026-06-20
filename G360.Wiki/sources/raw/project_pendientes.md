@@ -4,11 +4,37 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
+## ▶ CIERRE DE SESIÓN 2026-06-19 — dónde retomar
+
+**Estado:** **PROD = DEV = v1.80.0**, migs **001–228** en DEV **y PROD**. EF `emitir-factura` deployada en DEV **y PROD** (incluye el guard FAC-27). PR `dev→main` mergeado, release v1.80.0.
+
+**v1.80.0 (EN PROD):**
+- **🎨 Branding single-source:** ícono nuevo (regenerado de `brand/logo-source.png`) en tab/sidebar/landing/suscripción/login/onboarding vía `BRAND.logo`. Tabs unificadas (`PageTabs`: subrayado + degradé violeta→cian + drag-scroll + badge + **iconos en Inventario y Proveedores**). **Hover de marca** en tabs/sidebar (texto+ícono al degradé, mantiene fondo violeta translúcido). Fondos landing/suscripción/onboarding → degradé (`bg-brand-gradient-hero`). Caja: capital **por moneda** (CAJ-29) + tab "Caja actual" centrado.
+- **🔴 Autorización de ajustes de inventario POR ROL (mig 228):** DUEÑO directo, resto requiere aprobación, **configurable por rol** (Directo/Por umbral/Siempre) en Config → Inventario → Reglas. Aplica a Conteo, ajuste/eliminación de LPN y edición masiva. `ajusteAutorizacion.ts` +9 tests. **Tab Autorizaciones de vuelta en básico** (se había sacado por error; el Conteo de básico genera autorizaciones).
+- **🧾 Guards fiscales:** **FAC-27** (EF: B ≥ umbral sin DNI/CUIT → 400), **GAS-17** (default Ganancias por condición), **PRD-11** (precio ≥ 0), **GAS-16** by-design. **🛑 REGLA DE ORO #0** en CLAUDE.md.
+- **✅ UAT code-audit FINALIZADO** + **§29 matriz fiscal por condición** para runtime.
+
+### ▶ Para retomar (próxima sesión — arrancar con esto)
+
+1. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`) — **EL pendiente principal del UAT.** En un tenant DEV, cambiar `condicion_iva_emisor` (RI / Monotributista / Exento) y recorrer Facturación (emitir **CAE real homologación** por tipo: MF-01→14) + Gastos (IVA crédito/Ganancias por condición: MG-01→13) + cross-módulo (MX-01→03). Marcar cada fila ✅/❌.
+2. **Verificación RUNTIME de la autorización de ajustes por rol** (nuevo v1.80.0): con un rol no exento, cerrar un Conteo con diferencia / ajustar un LPN → debe ir a **Inventario → Autorizaciones** (pendiente); con DUEÑO → aplica directo. Probar la config en Config → Inventario → Reglas.
+3. **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover de tabs/sidebar, iconos en tabs, fondos de landing/suscripción, capital por moneda.
+4. **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto).
+
+---
+
 ## ▶ CIERRE DE SESIÓN 2026-06-18 — dónde retomar
 
-**Estado:** **PRD = DEV = v1.78.4**, migs **001–226** en DEV **y PROD**. **v1.78.3 (PR #227):** fix selector de caja en la venta — excluye la Caja Fuerte y autopreselecciona la única caja operativa. **v1.78.4 (PR #230, sin mig):** arqueo repetible más visible (botón "Arqueo" + tooltip; ya funcionaba, era UI) + acciones de caja `flex-wrap` + `theme_color` del manifest al violeta (#7B00FF). EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte). **v1.78.2 (PR #226):** Efectivo por default en alta de tenant (mig 225) + fix conteo de efectivo en bóveda (mig 226) + Caja Fuerte UI (2 tarjetas + selector de cuenta + lock básico) + **logo/iconos nuevos** + **Caja a pantalla completa (2 columnas)** + **degradé de marca violeta→cian** (single-source en `src/index.css`; `bg-accent`→degradé). **⚠ A VERIFICAR VISUALMENTE en PROD:** el degradé global y el layout de Caja (no se pudieron ver renderizados; revertibles con un commit).
+**Estado:** **PRD = DEV = v1.79.0**, migs **001–227** en DEV **y PROD**. **v1.79.0 (PR #231, mig 227):** Gastos — automatización fiscal por condición del tenant (`tipo_comprobante` + trigger guard de IVA crédito; RI+Factura A discrimina, Mono/Exento total sin crédito ni Ganancias). **v1.78.4 (PR #230):** arqueo repetible visible + flex-wrap + theme_color violeta. **v1.78.3 (PR #227):** fix selector de caja en la venta — excluye la Caja Fuerte y autopreselecciona la única caja operativa. **v1.78.4 (PR #230, sin mig):** arqueo repetible más visible (botón "Arqueo" + tooltip; ya funcionaba, era UI) + acciones de caja `flex-wrap` + `theme_color` del manifest al violeta (#7B00FF). EFs (DEV+PROD): `emitir-factura` (con costo de envío + guard de tipo + fix de alícuota), `cron-sweeps`, `admin-api` (panel de soporte). **v1.78.2 (PR #226):** Efectivo por default en alta de tenant (mig 225) + fix conteo de efectivo en bóveda (mig 226) + Caja Fuerte UI (2 tarjetas + selector de cuenta + lock básico) + **logo/iconos nuevos** + **Caja a pantalla completa (2 columnas)** + **degradé de marca violeta→cian** (single-source en `src/index.css`; `bg-accent`→degradé). **⚠ A VERIFICAR VISUALMENTE en PROD:** el degradé global y el layout de Caja (no se pudieron ver renderizados; revertibles con un commit).
 
-**🏦 Caja Fuerte (2026-06-18, EN DEV) — pedidos GO:** 2 tarjetas (saldo bóveda + capital total), selector de cuenta destino en el ingreso (default Efectivo), lock de caja-origen en básico, y **mig 226** (la vista cuenta el efectivo de ventas/gastos que quedaba NULL). **Gap conocido:** aperturas de caja no se cuentan en el capital (no son movimientos) — evaluar si incluirlas. **▶ PROD:** migs 225+226 + bump versión + PR.
+### ▶ Para retomar (post-/clear) — ítems abiertos
+
+1. **Verificación VISUAL en PROD** (no se pudieron ver renderizados; todos revertibles con un commit): el **degradé violeta→cian** en botones/barras de toda la app; el **layout de Caja** (full-width 2 columnas); el **logo/iconos** nuevos (hard-reload por caché PWA/favicon); el **form de Gastos** según la condición del tenant; las **2 tarjetas** de Caja Fuerte.
+2. **Decisión pendiente — aperturas de caja en el capital total:** hoy `vw_boveda_cuentas` no suma `caja_sesiones.monto_apertura` (no son movimientos). Incluirlas tiene riesgo de doble conteo según cómo se fondeó la apertura → definir criterio con GO antes de tocar. Ver [[reference_caja_fuerte_capital_efectivo]].
+3. **Módulo Finanzas/Tesorería consolidada:** diferido (recomendado NO crearlo aún; la página de Bóveda es la tesorería de-facto). Reevaluar si se necesita flujo de caja en el tiempo + proyecciones.
+4. **Dato:** Almacén Jorgito (DEV) quedó en `condicion_iva_emisor = RI` (GO lo cambió). Afecta facturación (emite A/B) y gastos (Factura A con IVA crédito). Si era para probar, recordá volverlo a Monotributista.
+
+**🏦 Caja Fuerte (✅ EN PROD v1.78.2):** 2 tarjetas (saldo bóveda + capital total), selector de cuenta destino en el ingreso (default Efectivo), lock de caja-origen en básico, mig 226 (capital cuenta el efectivo de ventas/gastos). Gap conocido: aperturas no se cuentan (ítem 2 de arriba).
 
 **💵 Efectivo por default en alta de tenant (2026-06-18, mig 225, EN DEV) — pedido GO:** cada tenant nuevo nace con la Cuenta de Origen Efectivo (tipo `efectivo`, moneda del tenant) + 5 métodos default con Efectivo vinculado. Trigger `fn_seed_tenant_defaults` extendido + backfill de existentes + fallback en `ConfigPage`. Verificado en DEV. **▶ PRÓXIMO PASO PROD:** aplicar mig 225 a PROD + bump v1.78.2 + PR `dev→main` + release.
 

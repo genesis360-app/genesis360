@@ -87,7 +87,7 @@ export default function SuscripcionPage() {
   // Pantalla de resultado de pago
   if (status) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-primary to-accent flex items-center justify-center p-4">
+      <div className="min-h-screen bg-brand-gradient-hero flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
           {status === 'approved' ? (
             esAddon ? (
@@ -143,7 +143,7 @@ export default function SuscripcionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary via-primary to-accent">
+    <div className="min-h-screen bg-brand-gradient-hero">
       {/* Barra superior */}
       <div className="px-4 pt-5 max-w-5xl mx-auto flex items-center justify-between">
         {tenant?.subscription_status === 'cancelled' ? (
@@ -180,8 +180,8 @@ export default function SuscripcionPage() {
 
       {/* Header */}
       <div className="text-center pt-6 pb-8 px-4">
-        <div className="inline-flex items-center justify-center w-14 h-14 bg-accent rounded-2xl mb-4">
-          <Package size={28} className="text-white" />
+        <div className="inline-flex items-center justify-center w-16 h-16 mb-4">
+          <img src={BRAND.logo} alt={BRAND.name} className="w-16 h-16 object-contain drop-shadow-lg" />
         </div>
         <h1 className="text-3xl font-bold text-white mb-2">
           {tenant?.subscription_status === 'trial'

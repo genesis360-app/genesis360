@@ -18,6 +18,11 @@ GO pidió validar TODA la app en DEV manejándola como un usuario. Se corrió el
 
 **🧪 Tenant de testing creado:** `ZZZ_VALIDACION_CLAUDE` (DEV) para validaciones propias, ya seedeado completo. El 2º descartable se borró.
 
+**✅ Flujos de plata REGLA #0 validados por click-through (specs nuevos 27 + 28):**
+- **`27_gasto_efectivo_mutante`** — gasto pagado en efectivo → asienta `egreso` en caja (el módulo Gastos solo tenía cobertura read-only). Verde a la primera.
+- **`28_cobranza_cc_mutante`** — cobranza de cuenta corriente en efectivo (exige caja abierta) → `ingreso`. **Verificado el efecto real en DB:** la deuda del cliente bajó (5714 → 5614) + 1 ingreso en caja. ⚠️ **Lección:** la 1ra versión dio FALSO-VERDE por una aserción negativa vacua (`Confirmar pago` "not visible" pasaba sin que el panel se abriera) → se reescribió con aserción **positiva** (toast "Pago de $… registrado") + verificación del efecto en DB. **Regla: en e2e mutante, aserción positiva del resultado + verificar la mutación, nunca solo `.not.toBeVisible()`.**
+- **Pendientes (multi-página, lógica ya unit-tested + módulo smoke-covered):** OC→recepción→stock y traslado entre sucursales — e2e UI completo a consultar con GO por el costo de autoría.
+
 **✅ Smoke de primer uso por click-through (spec `26_primer_uso_smoke.spec.ts`) VALIDADO + verde:** se ejecutó y se dejaron verdes los flujos drift-prone que faltaban — **cliente con notas** (la columna que faltaba en PROD, mig 231), **venta no-efectivo Tarjeta** (`ingreso_informativo`), **reserva con seña efectivo** (`ingreso_reserva`, con cliente + seña). PU-11 **Caja Fuerte (`ingreso_traspaso`)** validado a nivel DB sobre el tenant fresco: se insertaron los **7 tipos de `caja_movimientos`** (ingreso/ingreso_informativo/ingreso_traspaso/ingreso_reserva/egreso/egreso_devolucion_sena/egreso_traspaso) y **todos los acepta el CHECK** (confirma mig 229/230 en un alta nueva). Al autorear el spec se confirmó además **comportamiento correcto de la app**: DNI+Teléfono obligatorios en alta de cliente, **no-sobrepago en medios no-efectivo** (tarjeta no admite vuelto), y **cliente obligatorio en reservas** (`cliente_obligatorio` default 'reservas'). Ninguno era bug.
 
 ## [2026-06-20] update | UAT primer uso — onboarding (PU-01/02) code-audit + PU-03 seed verificado + e2e smoke PREPARADO (sin ejecutar)

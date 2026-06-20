@@ -6,6 +6,10 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-19] update | ⚙️ DEV — aviso de saturación de recursos: crons TiendaNube desactivados + pase de performance al backlog
+
+Supabase avisó "exhausting resources" en **DEV**. Diagnóstico (pg_stat_statements): no hay query asesina ni bloat grave (`net._http_response` 26 MB se auto-limpia); la carga es **volumen de requests** (~582k `set_config` = e2e de la sesión + polling de la app) + **crons cada 5 min** (`net.http_post` jobid 1 + `fn_tn_sync_heartbeat` jobid 3, lento 134ms en el tier chico de DEV) + **RLS por-fila** (los 646 lints). **Acción:** desactivados jobid 1+3 en DEV (`cron.alter_job(... active=>false)`, reversibles); jobid 4/5 daily siguen; **PROD intacto**. NO se subió compute (es DEV, pico transitorio). **Backlog (para PROD):** pase de performance — `(select auth.*())` en RLS + índices FK. Ver project_pendientes.
+
 ## [2026-06-19] deploy | v1.80.0 EN PROD (PR dev→main, mig 228, EF emitir-factura) — branding (ícono único + degradé) + autorización de ajustes por rol + UAT finalizado
 
 **v1.80.0 a PROD.** mig 228 aplicada en DEV y PROD. EF `emitir-factura` deployada en PROD (incluye el guard FAC-27 de Factura B≥umbral). PR `dev→main` mergeado, release v1.80.0. APP_VERSION v1.80.0.

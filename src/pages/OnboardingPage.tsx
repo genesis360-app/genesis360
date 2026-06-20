@@ -27,8 +27,30 @@ export default function OnboardingPage() {
     nombre: '', tipo_comercio: '', pais: 'AR', telefono: '',
   })
   const [tipoPersonalizado, setTipoPersonalizado] = useState('')
+  // "Confirm email" ON: tras signUp NO hay sesión → se muestra "revisá tu email" y el negocio
+  // se crea al confirmar (el useEffect detecta la sesión + el metadata del alta).
+  const [emailEnviado, setEmailEnviado] = useState(false)
+  const [emailPendiente, setEmailPendiente] = useState('')
 
-  // Si el usuario ya tiene sesión (ej: vino de Google OAuth), saltear paso de cuenta
+  // Crea el tenant + el usuario DUEÑO. REQUIERE sesión activa (la RLS de tenants exige auth.uid()).
+  const provisionNegocio = async (userId: string, email: string, displayName: string, nombre: string, tipo: string, pais: string) => {
+    const tenantId = crypto.randomUUID()  // UUID en cliente: evita el SELECT post-insert (RLS)
+    const { error: tenantError } = await supabase.from('tenants').insert({
+      id: tenantId, nombre, tipo_comercio: tipo, pais,
+      subscription_status: 'trial', max_users: 2,
+      regla_inventario: 'Manual', session_timeout_minutes: null,
+    })
+    if (tenantError) throw tenantError
+    const { error: userError } = await supabase.from('users').insert({
+      id: userId, tenant_id: tenantId, rol: 'DUEÑO', nombre_display: displayName, activo: true,
+    })
+    if (userError) { await supabase.from('tenants').delete().eq('id', tenantId); throw userError }
+    supabase.functions.invoke('send-email', {
+      body: { type: 'welcome', to: email, data: { nombre: displayName, negocio: nombre } },
+    }).catch(() => {/* el email de bienvenida no es bloqueante */})
+  }
+
+  // Si el usuario ya tiene sesión (Google OAuth, o volvió de confirmar su email), continuar el alta
   const [existingAuthUser, setExistingAuthUser] = useState<{ id: string; email: string; name: string } | null>(null)
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
@@ -36,19 +58,26 @@ export default function OnboardingPage() {
       const u = session.user
       // Si ya tiene tenant registrado, ir directo al dashboard (evita duplicados)
       const { data: existingUser } = await supabase
-        .from('users')
-        .select('tenant_id')
-        .eq('id', u.id)
-        .maybeSingle()
-      if (existingUser?.tenant_id) {
-        await loadUserData(u.id)
-        navigate('/dashboard')
-        return
+        .from('users').select('tenant_id').eq('id', u.id).maybeSingle()
+      if (existingUser?.tenant_id) { await loadUserData(u.id); navigate('/dashboard'); return }
+      // Volvió de confirmar un signup email/password: los datos del negocio viajaron en el
+      // metadata → crear el tenant AHORA (ya hay sesión) sin re-pedir el formulario.
+      const md = (u.user_metadata ?? {}) as Record<string, any>
+      if (md.ob_nombre && md.ob_pais) {
+        try {
+          setLoading(true)
+          await provisionNegocio(u.id, u.email ?? '', md.full_name ?? md.name ?? (u.email ?? ''), md.ob_nombre, md.ob_tipo ?? '', md.ob_pais)
+          await loadUserData(u.id)
+          navigate('/dashboard')
+          return
+        } catch (e: unknown) {
+          toast.error(e instanceof Error ? e.message : 'No se pudo crear el negocio')
+          // fallback: mostrar el paso de negocio para reintentar manualmente
+        } finally { setLoading(false) }
       }
       setExistingAuthUser({
-        id: u.id,
-        email: u.email ?? '',
-        name: u.user_metadata?.full_name ?? u.user_metadata?.name ?? '',
+        id: u.id, email: u.email ?? '',
+        name: md.full_name ?? md.name ?? '',
       })
       setStep('business')
     })
@@ -68,70 +97,44 @@ export default function OnboardingPage() {
     setLoading(true)
 
     try {
-      let userId: string
-      let displayName: string
-
-      if (existingAuthUser) {
-        // Vino de Google OAuth — ya tiene sesión, no crear nuevo auth user
-        userId = existingAuthUser.id
-        displayName = existingAuthUser.name || existingAuthUser.email
-      } else {
-        // Registro normal con email/password
-        const { data: authData, error: authError } = await supabase.auth.signUp({
-          email: accountData.email,
-          password: accountData.password,
-          options: { data: { full_name: accountData.name } },
-        })
-        if (authError) throw authError
-        if (!authData.user) throw new Error('No se pudo crear el usuario')
-        userId = authData.user.id
-        displayName = accountData.name
-      }
-
-      // 2. Crear tenant (UUID generado en cliente para evitar problema de RLS en SELECT post-insert)
-      const tenantId = crypto.randomUUID()
       const tipoFinal = bizData.tipo_comercio === 'Otro' && tipoPersonalizado.trim()
         ? tipoPersonalizado.trim()
         : bizData.tipo_comercio
-      const { error: tenantError } = await supabase
-        .from('tenants')
-        .insert({
-          id: tenantId,
-          nombre: bizData.nombre,
-          tipo_comercio: tipoFinal,
-          pais: bizData.pais,
-          subscription_status: 'trial',
-          max_users: 2,
-          regla_inventario: 'Manual',       // Default: Manual según prioridad de ubicaciones
-          session_timeout_minutes: null,     // Default: Nunca cerrar sesión por inactividad
-        })
-      if (tenantError) throw tenantError
+      let provisionedUserId: string | null = null
 
-      // 3. Crear perfil de usuario con rol DUEÑO
-      const { error: userError } = await supabase
-        .from('users')
-        .insert({
-          id: userId,
-          tenant_id: tenantId,
-          rol: 'DUEÑO',
-          nombre_display: displayName,
-          activo: true,
+      if (existingAuthUser) {
+        // Ya tiene sesión (Google OAuth, o volvió de confirmar) → crear el negocio ahora
+        await provisionNegocio(existingAuthUser.id, existingAuthUser.email, existingAuthUser.name || existingAuthUser.email, bizData.nombre, tipoFinal, bizData.pais)
+        provisionedUserId = existingAuthUser.id
+      } else {
+        // Registro email/password. Los datos del negocio viajan en el metadata para poder crear
+        // el tenant al confirmar (la RLS de tenants exige sesión; signUp con "Confirm email" ON
+        // no devuelve sesión). emailRedirectTo trae al usuario de vuelta a /onboarding.
+        const { data: authData, error: authError } = await supabase.auth.signUp({
+          email: accountData.email,
+          password: accountData.password,
+          options: {
+            data: { full_name: accountData.name, ob_nombre: bizData.nombre, ob_tipo: tipoFinal, ob_pais: bizData.pais },
+            emailRedirectTo: `${window.location.origin}/onboarding`,
+          },
         })
-      if (userError) {
-        // Rollback manual del tenant para evitar huérfanos
-        await supabase.from('tenants').delete().eq('id', tenantId)
-        throw userError
+        if (authError) throw authError
+        if (!authData.user) throw new Error('No se pudo crear el usuario')
+
+        if (!authData.session) {
+          // "Confirm email" ON → todavía no hay sesión: el negocio se crea cuando confirme
+          // (el useEffect lo detecta y provisiona desde el metadata). Mostrar el aviso.
+          setEmailPendiente(accountData.email)
+          setEmailEnviado(true)
+          return
+        }
+        // "Confirm email" OFF → signUp ya devolvió sesión → crear el negocio ahora
+        await provisionNegocio(authData.user.id, accountData.email, accountData.name, bizData.nombre, tipoFinal, bizData.pais)
+        provisionedUserId = authData.user.id
       }
 
-      // Email de bienvenida (fire-and-forget, no bloquea el flujo)
-      const emailTo = existingAuthUser ? existingAuthUser.email : accountData.email
-      const emailNombre = existingAuthUser ? (existingAuthUser.name || existingAuthUser.email) : accountData.name
-      supabase.functions.invoke('send-email', {
-        body: { type: 'welcome', to: emailTo, data: { nombre: emailNombre, negocio: bizData.nombre } },
-      }).catch(() => {/* silencioso — el email no es bloqueante */})
-
       toast.success('¡Negocio creado! Bienvenido.')
-      await loadUserData(userId)
+      if (provisionedUserId) await loadUserData(provisionedUserId)
       navigate('/dashboard')
     } catch (err: unknown) {
       const msg = err instanceof Error
@@ -141,6 +144,33 @@ export default function OnboardingPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // "Confirm email" ON: cuenta creada, falta confirmar → el negocio se crea solo al confirmar.
+  if (emailEnviado) {
+    return (
+      <div className="min-h-screen bg-brand-gradient-hero flex items-center justify-center p-4">
+        <div className="w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-20 h-20 mb-4">
+              <img src={BRAND.logo} alt={BRAND.name} className="w-20 h-20 object-contain drop-shadow-lg" />
+            </div>
+            <h1 className="text-3xl font-bold text-white">{BRAND.name}</h1>
+          </div>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center space-y-3">
+            <div className="w-14 h-14 bg-accent/10 rounded-full flex items-center justify-center mx-auto">
+              <Mail size={26} className="text-accent" />
+            </div>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Revisá tu email</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Te enviamos un link de confirmación a <strong className="text-gray-700 dark:text-gray-200">{emailPendiente}</strong>. Confirmá tu cuenta desde ese email y <strong>tu negocio queda creado automáticamente</strong>.
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500">¿No te llegó? Revisá spam o esperá un minuto.</p>
+            <Link to="/login" className="inline-block text-sm font-medium text-accent hover:underline mt-2">Ir a Ingresar</Link>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

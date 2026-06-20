@@ -19,7 +19,10 @@ type: project
 1. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`) — **EL pendiente principal del UAT.** En un tenant DEV, cambiar `condicion_iva_emisor` (RI / Monotributista / Exento) y recorrer Facturación (emitir **CAE real homologación** por tipo: MF-01→14) + Gastos (IVA crédito/Ganancias por condición: MG-01→13) + cross-módulo (MX-01→03). Marcar cada fila ✅/❌.
 2. **Verificación RUNTIME de la autorización de ajustes por rol** (nuevo v1.80.0): con un rol no exento, cerrar un Conteo con diferencia / ajustar un LPN → debe ir a **Inventario → Autorizaciones** (pendiente); con DUEÑO → aplica directo. Probar la config en Config → Inventario → Reglas.
 3. **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover de tabs/sidebar, iconos en tabs, fondos de landing/suscripción, capital por moneda.
-4. **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto).
+4. **▶ Pase de performance DB (backlog, para PROD):** los **646 lints de performance** — envolver `auth.*()` en las policies RLS con `(select auth.*())` (se evalúa 1 vez por query en lugar de por fila) + **índices en FKs sin índice**. Mueve la aguja a escala; va como migración DEV+PROD. *Disparado por un aviso de "exhausting resources" en DEV (2026-06-19); el diagnóstico mostró que la carga es volumen de requests + RLS por-fila, no una query asesina.*
+5. **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto).
+
+**⚙️ Infra DEV (2026-06-19):** por el aviso de saturación de recursos se **desactivaron en DEV** los crons `jobid 1` (`net.http_post`) y `jobid 3` (`fn_tn_sync_heartbeat`, sync TiendaNube, cada 5 min) — saturaban el tier chico sin aportar en un entorno de prueba. **Reversibles:** `SELECT cron.alter_job(job_id => 1, active => true)` (ídem 3). jobid 4 (CC vencidas) y 5 (limpieza token envíos), daily, siguen activos. **PROD intacto** (sus crons siguen activos: sync real cada 5 min). No se subió compute (es DEV; el aviso era transitorio por el pico de e2e + diagnóstico).
 
 ---
 

@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import type { Sucursal } from '@/lib/supabase'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
+import { requiereAuthAjuste } from '@/lib/ajusteAutorizacion'
 import { LpnQR } from '@/components/LpnQR'
 import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
 import toast from 'react-hot-toast'
@@ -27,7 +28,9 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   const tieneReservas = (linea.cantidad_reservada ?? 0) > 0
   const [tab, setTab] = useState<AccionTab>(tieneReservas ? 'mover' : 'editar')
   const tieneSeries = producto.tiene_series
-  const esDeposito = user?.rol === 'DEPOSITO'
+  // Ajuste/eliminación de LPN: ¿requiere aprobación según la config por rol del tenant (mig 228)?
+  // DUEÑO directo; el resto según config (default 'siempre'). Para LPN no hay umbral → false.
+  const requiereAprobacion = requiereAuthAjuste(user?.rol, (tenant as any)?.ajuste_autorizacion_roles ?? null, false)
 
   // Editar campos
   const [editForm, setEditForm] = useState({
@@ -177,7 +180,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         throw new Error('Este producto requiere fecha de vencimiento')
 
       // DEPOSITO: si cambia cantidad → crear solicitud de autorización en vez de ejecutar
-      if (esDeposito && cantCambio) {
+      if (requiereAprobacion && cantCambio) {
         await crearAutorizacion('ajuste_cantidad', {
           cantidad_anterior: cantVieja,
           cantidad_nueva: cantNueva,
@@ -327,7 +330,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         : linea.cantidad
 
       // DEPOSITO: crear solicitud de autorización en vez de ejecutar
-      if (esDeposito) {
+      if (requiereAprobacion) {
         await crearAutorizacion('eliminar_lpn', { lpn: linea.lpn, cantidad: cantEliminada })
         return { esAutorizacion: true }
       }
@@ -401,7 +404,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       const serie = (linea.inventario_series ?? []).find((s: any) => s.id === serieId)
 
       // DEPOSITO: crear solicitud de autorización en vez de ejecutar
-      if (esDeposito) {
+      if (requiereAprobacion) {
         await crearAutorizacion('eliminar_serie', { serie_id: serieId, nro_serie: serie?.nro_serie ?? '' })
         return { esAutorizacion: true }
       }
@@ -864,12 +867,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           {/* ── ELIMINAR ── */}
           {tab === 'eliminar' && (
             <div className="space-y-4">
-              {esDeposito ? (
+              {requiereAprobacion ? (
                 <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 rounded-xl p-4 text-center">
                   <ClipboardList size={28} className="text-blue-500 mx-auto mb-2" />
                   <p className="font-semibold text-blue-700 dark:text-blue-400">Solicitar eliminación del LPN {linea.lpn}</p>
                   <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                    Como DEPOSITO, la eliminación requiere aprobación del Dueño o Supervisor.
+                    Tu rol requiere aprobación del Dueño o Supervisor para esta acción.
                   </p>
                 </div>
               ) : (
@@ -890,15 +893,15 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
               )}
               <button
                 onClick={() => {
-                  const msg = esDeposito
+                  const msg = requiereAprobacion
                     ? `¿Enviar solicitud de eliminación del LPN ${linea.lpn}?`
                     : `¿Eliminar definitivamente el LPN ${linea.lpn}?`
                   if (confirm(msg)) eliminarLpn.mutate()
                 }}
                 disabled={eliminarLpn.isPending}
                 className={`w-full font-semibold py-3 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2 text-white
-                  ${esDeposito ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}`}>
-                {esDeposito
+                  ${requiereAprobacion ? 'bg-blue-600 hover:bg-blue-700' : 'bg-red-600 hover:bg-red-700'}`}>
+                {requiereAprobacion
                   ? <><ClipboardList size={15} /> {eliminarLpn.isPending ? 'Enviando...' : 'Enviar solicitud'}</>
                   : <><Trash2 size={15} /> {eliminarLpn.isPending ? 'Eliminando...' : 'Confirmar eliminación'}</>
                 }

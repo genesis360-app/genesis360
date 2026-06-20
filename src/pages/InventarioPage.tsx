@@ -35,6 +35,7 @@ import { getRebajeSort } from '@/lib/rebajeSort'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
+import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
 import * as XLSX from 'xlsx'
 
@@ -255,6 +256,9 @@ export default function InventarioPage() {
   const conteoReconteoConfig: UmbralConfig = {
     u: (tenant as any)?.conteo_reconteo_umbral_u, pct: (tenant as any)?.conteo_reconteo_umbral_pct, valor: (tenant as any)?.conteo_reconteo_umbral_valor,
   }
+  // Autorización de ajustes POR ROL (mig 228): DUEÑO directo, resto siempre (configurable). Aplica
+  // a diferencias de conteo y a ajustes directos. Combina con el gate por umbral cuando modo='umbral'.
+  const ajusteAuthConfig = (tenant as any)?.ajuste_autorizacion_roles ?? null
   // A2 — wall-to-wall puede bloquear movimientos de la sucursal hasta cerrar el conteo
   const conteoWtwBloquea = !!(tenant as any)?.conteo_wall_to_wall_bloquea
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
@@ -1783,8 +1787,10 @@ export default function InventarioPage() {
         const diffAbs = Math.abs(diff)
         if (diffAbs < 0.001) continue
         const valorDiff = diffAbs * (row.costo || 0)
-        // D — gate: si supera el umbral (o el gate está inactivo) la diferencia va a aprobación, no se aplica todavía
-        if (requiereAutorizacion(conteoGateActivo, diffAbs, row.cantidad_esperada, valorDiff, conteoGateConfig)) {
+        // D — gate por ROL (mig 228) combinado con el gate por umbral: DUEÑO (directo) aplica al
+        // toque; 'siempre' va a aprobación sí o sí; 'umbral' sigue el gate por umbral de abajo.
+        const umbralReq = requiereAutorizacion(conteoGateActivo, diffAbs, row.cantidad_esperada, valorDiff, conteoGateConfig)
+        if (requiereAuthAjuste(user?.rol, ajusteAuthConfig, umbralReq)) {
           await supabase.from('autorizaciones_inventario').insert({
             tenant_id: tenant!.id, tipo: 'ajuste_conteo', linea_id: row.linea_id, estado: 'pendiente',
             solicitado_por: user?.id,

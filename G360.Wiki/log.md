@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-19] deploy | v1.80.0 EN PROD (PR dev→main, mig 228, EF emitir-factura) — branding (ícono único + degradé) + autorización de ajustes por rol + UAT finalizado
+
+**v1.80.0 a PROD.** mig 228 aplicada en DEV y PROD. EF `emitir-factura` deployada en PROD (incluye el guard FAC-27 de Factura B≥umbral). PR `dev→main` mergeado, release v1.80.0. APP_VERSION v1.80.0.
+
+**Branding (single-source):** ícono nuevo (regenerado desde `brand/logo-source.png` con `scripts/gen-brand-icons.mjs`) en tab del navegador, sidebar, landing, suscripción, login y onboarding — todo desde `BRAND.logo`. Tabs unificadas (componente `PageTabs`: subrayado + degradé violeta→cian + drag-scroll + badge + **iconos en Inventario y Proveedores**). Hover de marca en tabs/sidebar (texto e ícono al degradé, manteniendo el fondo violeta translúcido). Fondos de landing/suscripción/onboarding de negro a degradé de marca (`bg-brand-gradient-hero`). Caja: capital por moneda + tab "Caja actual" centrado.
+
+**🔴 Autorización de ajustes de inventario POR ROL (mig 228, `tenants.ajuste_autorizacion_roles`):** DUEÑO ajusta directo; el resto requiere aprobación; **configurable por rol** (Directo/Por umbral/Siempre) en Config → Inventario → Reglas. Aplica a diferencias de Conteo, ajustes/eliminación de LPN y edición masiva. Lógica pura `ajusteAutorizacion.ts` (+9 tests). **Corrección de un error previo:** se había sacado el tab Autorizaciones del modo básico por una conclusión equivocada; el Conteo (presente en básico) genera ajustes que requieren aprobación → el tab vuelve a básico (gateado por rol aprobador).
+
+**Fiscal (FAC-27):** EF rechaza (400) Factura B ≥ umbral sin DNI/CUIT antes de AFIP. **GAS-17** default Ganancias por condición. **PRD-11** precio ≥ 0. **GAS-16** by-design (no re-saneo histórico). **🛑 REGLA DE ORO #0** (integridad fiscal/contable/inventario) al tope de CLAUDE.md.
+
+**UAT:** code-audit finalizado (§3-§11) + **§29 matriz fiscal por condición** (RI/Mono/Exento) para verificación en runtime. Suite: unit + e2e verdes. **▶ Próxima sesión: verificación RUNTIME de la matriz fiscal §29** (emitir CAE real por condición + cargar gastos) — es el pendiente principal del UAT.
+
 ## [2026-06-19] update | v1.80.0 EN DEV — 🎨 Tabs unificadas (degradé de marca + drag-scroll) · 💱 Capital por moneda · 🧾 Guards fiscales (FAC-27/GAS-17) · 🛑 Regla de oro fiscal · ✅ UAT code-audit finalizado + matriz fiscal §29
 
 **Sesión larga, TODO EN DEV (rama dev, preview Vercel = DEV). PROD sigue en v1.79.0. Sin migración nueva (última = 227). `APP_VERSION` → v1.80.0. EF `emitir-factura` redeployada a DEV (v13) con el guard FAC-27.** 9 commits en dev (último `a06a9d1c` + el del wiki).

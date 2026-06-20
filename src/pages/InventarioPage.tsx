@@ -878,7 +878,8 @@ export default function InventarioPage() {
   const bulkEditarAtributos = useMutation({
     mutationFn: async () => {
       if (selectedLineas.length === 0) throw new Error('No hay LPNs seleccionados')
-      const esDeposito = user?.rol === 'DEPOSITO'
+      // Edición masiva de LPN: aprobación según la config por rol (mig 228), no solo DEPOSITO.
+      const requiereAprob = requiereAuthAjuste(user?.rol, ajusteAuthConfig, false)
 
       // Construir payload de campos a cambiar
       const campos: Record<string, any> = {}
@@ -889,7 +890,7 @@ export default function InventarioPage() {
 
       if (Object.keys(campos).length === 0) throw new Error('Seleccioná al menos un campo para cambiar')
 
-      if (esDeposito) {
+      if (requiereAprob) {
         const { error } = await supabase.from('autorizaciones_inventario').insert({
           tenant_id: tenant!.id,
           tipo: 'bulk_edit',

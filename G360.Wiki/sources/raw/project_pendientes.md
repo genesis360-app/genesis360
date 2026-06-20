@@ -6,22 +6,20 @@ type: project
 
 ## ▶ CIERRE DE SESIÓN 2026-06-19 — dónde retomar
 
-**Estado:** **PROD = v1.79.0** · **DEV = v1.80.0** (todo esta sesión quedó EN DEV, rama dev / preview Vercel = DEV). Migs **001–227** en DEV **y PROD** (sin migración nueva esta sesión). EF `emitir-factura` redeployada a **DEV (v13)** con el guard FAC-27; **PROD sin tocar**.
+**Estado:** **PROD = DEV = v1.80.0**, migs **001–228** en DEV **y PROD**. EF `emitir-factura` deployada en DEV **y PROD** (incluye el guard FAC-27). PR `dev→main` mergeado, release v1.80.0.
 
-**v1.80.0 (EN DEV, 9 commits en dev):**
-- **🎨 Tabs unificadas** — componente compartido `src/components/PageTabs.tsx`: subrayado (estilo Clientes) + activo en **degradé de marca violeta→cian** + **drag-scroll** (`useDragScroll`) + `badge`. Migradas TODAS las páginas (Ventas/Productos/Inventario/Gastos/RRHH/Facturación/Proveedores/Envíos/Clientes/Caja/Config sub-tabs). Config nav principal queda como sidebar.
-- **💱 Caja:** capital total **discriminado por moneda** (CAJ-29) + tooltip; aperturas NO se suman al capital (Opción A: capital inicial vía "Ingreso externo" a la bóveda); tab "Caja actual" vuelto a **columna centrada** (deshace el pegado-a-la-izquierda de v1.78.2).
-- **🧾 Guards fiscales:** **FAC-27** (EF: Factura B ≥ umbral sin DNI/CUIT → 400 antes de AFIP; en DEV, **pendiente PROD**), **GAS-17** (default "Deducir Ganancias": RI→ON, resto→OFF), **PRD-11** (precio ≥ 0). **GAS-16** resuelto **by-design** (no re-saneo retroactivo de gastos históricos).
-- **🛑 REGLA DE ORO #0** al tope del CLAUDE.md: integridad fiscal/contable/inventario no negociable.
-- **✅ UAT code-audit FINALIZADO** + **§29 matriz fiscal por condición** (RI/Mono/Exento) para runtime; e2e 3 selectores arreglados; **753 unit + 164 e2e verdes**.
+**v1.80.0 (EN PROD):**
+- **🎨 Branding single-source:** ícono nuevo (regenerado de `brand/logo-source.png`) en tab/sidebar/landing/suscripción/login/onboarding vía `BRAND.logo`. Tabs unificadas (`PageTabs`: subrayado + degradé violeta→cian + drag-scroll + badge + **iconos en Inventario y Proveedores**). **Hover de marca** en tabs/sidebar (texto+ícono al degradé, mantiene fondo violeta translúcido). Fondos landing/suscripción/onboarding → degradé (`bg-brand-gradient-hero`). Caja: capital **por moneda** (CAJ-29) + tab "Caja actual" centrado.
+- **🔴 Autorización de ajustes de inventario POR ROL (mig 228):** DUEÑO directo, resto requiere aprobación, **configurable por rol** (Directo/Por umbral/Siempre) en Config → Inventario → Reglas. Aplica a Conteo, ajuste/eliminación de LPN y edición masiva. `ajusteAutorizacion.ts` +9 tests. **Tab Autorizaciones de vuelta en básico** (se había sacado por error; el Conteo de básico genera autorizaciones).
+- **🧾 Guards fiscales:** **FAC-27** (EF: B ≥ umbral sin DNI/CUIT → 400), **GAS-17** (default Ganancias por condición), **PRD-11** (precio ≥ 0), **GAS-16** by-design. **🛑 REGLA DE ORO #0** en CLAUDE.md.
+- **✅ UAT code-audit FINALIZADO** + **§29 matriz fiscal por condición** para runtime.
 
-### ▶ Para retomar (próxima sesión)
+### ▶ Para retomar (próxima sesión — arrancar con esto)
 
-1. **▶ DEPLOY v1.80.0 A PROD:** PR `dev → main` + **deploy EF `emitir-factura` a PROD** (FAC-27 es cambio fiscal — GO ya dio OK conceptual, confirmar) + GitHub release v1.80.0. Sin migración.
-2. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`): cambiar `condicion_iva_emisor` del tenant (RI / Monotributista / Exento) y recorrer Facturación (emitir CAE real homologación por tipo) + Gastos (IVA crédito/Ganancias por condición). Es el único pendiente fuerte del UAT (capa C / runtime).
-3. **Verificación VISUAL en PROD** (pendiente desde v1.78.2 + nuevo): degradé violeta→cian global, **nuevo formato de tabs** (subrayado + degradé + drag-scroll), layout de Caja centrado, logo/iconos (hard-reload por caché PWA).
-4. **Dato:** Almacén Jorgito (DEV) se usó en RI para pruebas; **GO lo vuelve a Monotributista**.
-5. **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto; reevaluar si se necesita flujo de caja en el tiempo).
+1. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`) — **EL pendiente principal del UAT.** En un tenant DEV, cambiar `condicion_iva_emisor` (RI / Monotributista / Exento) y recorrer Facturación (emitir **CAE real homologación** por tipo: MF-01→14) + Gastos (IVA crédito/Ganancias por condición: MG-01→13) + cross-módulo (MX-01→03). Marcar cada fila ✅/❌.
+2. **Verificación RUNTIME de la autorización de ajustes por rol** (nuevo v1.80.0): con un rol no exento, cerrar un Conteo con diferencia / ajustar un LPN → debe ir a **Inventario → Autorizaciones** (pendiente); con DUEÑO → aplica directo. Probar la config en Config → Inventario → Reglas.
+3. **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover de tabs/sidebar, iconos en tabs, fondos de landing/suscripción, capital por moneda.
+4. **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto).
 
 ---
 

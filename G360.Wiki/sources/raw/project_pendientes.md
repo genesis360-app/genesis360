@@ -4,9 +4,15 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
-## ▶ CIERRE DE SESIÓN 2026-06-19 — dónde retomar
+## ▶ CIERRE DE SESIÓN 2026-06-20 — dónde retomar
 
-**Estado:** **PROD = DEV = v1.80.0**, migs **001–228** en DEV **y PROD**. EF `emitir-factura` deployada en DEV **y PROD** (incluye el guard FAC-27). PR `dev→main` mergeado, release v1.80.0.
+**Estado:** **PROD = DEV = v1.80.1**, migs **001–230** en DEV **y PROD**. EF `emitir-factura` en DEV **y PROD** (con FAC-27). Releases v1.80.0 + v1.80.1.
+
+**🆕 v1.80.1 + fixes de PRIMER USO (2026-06-20) — disparados por una mala experiencia real de un usuario nuevo en PROD:**
+- **SMTP de Auth → Resend** (los mails de confirmación usaban el SMTP integrado → "email rate limit"). *Config de dashboard, hecha por GO.*
+- **Onboarding soporta "Confirm email" ON (v1.80.1, PR #233):** el alta fallaba la RLS de `tenants` (signUp sin sesión). Ahora los datos del negocio van en el metadata + `emailRedirectTo=/onboarding`; sin sesión muestra "revisá tu email"; al confirmar, el `useEffect` crea el tenant (`provisionNegocio`). Robusto vía AuthGuard→/onboarding. ⚠️ Requiere en Supabase Auth: Site URL = la app + Redirect URLs con /onboarding.
+- **🔴 DRIFT DEV≠PROD de CHECK constraints (migs 229 + 230) — causa raíz de varios errores en PROD:** `caja_movimientos_tipo_check` (mig 229: rompía Caja Fuerte/señas/ventas no-efectivo/devolución de seña) + `ventas_estado_check` sin `'devuelta'` (rompía la devolución total) + `notificaciones_tipo_check` que rechazaba claves de evento (rompía abrir/cerrar caja con diferencia). **mig 230 reconcilió los 5 CHECKs → DEV == PROD (PAR-01 cerrado, hash `565c8f0…`, 97 CHECKs).** Ver [[reference_drift_dev_prod_paridad]] y `tests/specs/uat-primer-uso.plan.md`.
+- **📋 Plan nuevo `tests/specs/uat-primer-uso.plan.md`:** UAT de primer uso (tenant nuevo, cero config) + auditoría de paridad DEV↔PROD. **Es lo que se debe correr antes de cada alta de cliente.**
 
 **v1.80.0 (EN PROD):**
 - **🎨 Branding single-source:** ícono nuevo (regenerado de `brand/logo-source.png`) en tab/sidebar/landing/suscripción/login/onboarding vía `BRAND.logo`. Tabs unificadas (`PageTabs`: subrayado + degradé violeta→cian + drag-scroll + badge + **iconos en Inventario y Proveedores**). **Hover de marca** en tabs/sidebar (texto+ícono al degradé, mantiene fondo violeta translúcido). Fondos landing/suscripción/onboarding → degradé (`bg-brand-gradient-hero`). Caja: capital **por moneda** (CAJ-29) + tab "Caja actual" centrado.
@@ -16,7 +22,8 @@ type: project
 
 ### ▶ Para retomar (próxima sesión — arrancar con esto)
 
-1. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`) — **EL pendiente principal del UAT.** En un tenant DEV, cambiar `condicion_iva_emisor` (RI / Monotributista / Exento) y recorrer Facturación (emitir **CAE real homologación** por tipo: MF-01→14) + Gastos (IVA crédito/Ganancias por condición: MG-01→13) + cross-módulo (MX-01→03). Marcar cada fila ✅/❌.
+1. **▶ PLAN DE PRIMER USO — `tests/specs/uat-primer-uso.plan.md` (PRIORIDAD #1).** Que un tenant NUEVO opere sin configurar nada y SIN errores. (a) **Paridad DEV↔PROD** PAR-02..05 (policies/columnas/triggers/defaults del alta) — PAR-01 (CHECKs) ya cerrado por mig 230; (b) **smoke de primer uso** PU-01→PU-17 sobre un tenant nuevo real **en PROD** (alta + abrir caja + venta efectivo/no-efectivo + gasto + Caja Fuerte + reserva + devolución + cierre). El drift DEV≠PROD ya causó 3 errores a un usuario real → esto es lo que lo previene.
+2. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`) — **pendiente principal del UAT fiscal.** En un tenant DEV, cambiar `condicion_iva_emisor` (RI / Monotributista / Exento) y recorrer Facturación (emitir **CAE real homologación** por tipo: MF-01→14) + Gastos (IVA crédito/Ganancias por condición: MG-01→13) + cross-módulo (MX-01→03). Marcar cada fila ✅/❌.
 2. **Verificación RUNTIME de la autorización de ajustes por rol** (nuevo v1.80.0): con un rol no exento, cerrar un Conteo con diferencia / ajustar un LPN → debe ir a **Inventario → Autorizaciones** (pendiente); con DUEÑO → aplica directo. Probar la config en Config → Inventario → Reglas.
 3. **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover de tabs/sidebar, iconos en tabs, fondos de landing/suscripción, capital por moneda.
 4. **▶ Pase de performance DB (backlog, para PROD):** los **646 lints de performance** — envolver `auth.*()` en las policies RLS con `(select auth.*())` (se evalúa 1 vez por query en lugar de por fila) + **índices en FKs sin índice**. Mueve la aguja a escala; va como migración DEV+PROD. *Disparado por un aviso de "exhausting resources" en DEV (2026-06-19); el diagnóstico mostró que la carga es volumen de requests + RLS por-fila, no una query asesina.*

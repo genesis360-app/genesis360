@@ -8,10 +8,11 @@
  *   - caja_movimientos_tipo_check viejo → venta no-efectivo (ingreso_informativo),    (PU-09)
  *     Caja Fuerte (ingreso_traspaso) y reserva con seña (ingreso_reserva) rompían     (PU-11/PU-12)
  *
- * ⚠️ PREPARADO, NO VALIDADO TODAVÍA. Por decisión de GO (2026-06-20) la suite e2e se
- * ejecuta al FINAL del desarrollo (tras re-correr la auditoría de paridad). Los
- * selectores siguen el patrón de 19_flujo_venta_mutante / 20_caja_apertura_cierre pero
- * NO se corrieron — validar/ajustar en la primera ejecución.
+ * ✅ VALIDADO 2026-06-20 (click-through real contra DEV): los 3 flujos pasan. Al escribirlos
+ * se confirmó además comportamiento CORRECTO de la app: DNI+Teléfono obligatorios en cliente,
+ * no-sobrepago en medios no-efectivo (tarjeta), y cliente obligatorio en reservas
+ * (cliente_obligatorio default 'reservas'). PU-11 (Caja Fuerte ingreso_traspaso) validado a
+ * nivel DB sobre un tenant fresco (los 7 tipos de caja_movimientos se aceptan).
  *
  * NOTA: PU-05 (abrir caja) + PU-14 (arqueo + cierre) ya están cubiertos por
  * 20_caja_apertura_cierre.spec.ts; PU-08 (venta efectivo) por 19_flujo_venta_mutante.
@@ -36,23 +37,21 @@ test.describe('Primer uso — smoke (mutante)', () => {
     await page.waitForTimeout(400)
 
     const nombre = uniqueName('Cliente')
-    // Nombre (requerido)
-    const nombreInput = page.locator('xpath=//label[contains(.,"Nombre")]/following::input[1]')
-    await expect(nombreInput).toBeVisible({ timeout: 5000 })
-    await nombreInput.fill(nombre)
+    const dni = String(Date.now()).slice(-8) // DNI único → evita el confirm() de duplicado
+    // Nombre + DNI + Teléfono son obligatorios (form los marca con *)
+    await page.getByPlaceholder(/Nombre completo o razón social/i).fill(nombre)
+    await page.getByPlaceholder(/Ej: 30123456/i).fill(dni)
+    await page.getByPlaceholder(/Ej: \+54/i).fill('+54 11 5555-' + dni.slice(-4))
 
     // Notas — el campo cuya columna faltaba en PROD (payload la manda SIEMPRE)
-    const notasInput = page.locator('xpath=//label[contains(.,"Notas")]/following::textarea[1] | //label[contains(.,"Notas")]/following::input[1]').first()
-    if (await notasInput.isVisible().catch(() => false)) {
-      await notasInput.fill('Nota de prueba primer uso')
-    }
+    await page.getByPlaceholder(/Observaciones internas/i).fill('Nota de prueba primer uso')
 
     // Guardar
-    await page.getByRole('button', { name: /^Guardar$|Crear cliente|Guardar cliente/i }).first().click()
+    await page.getByRole('button', { name: /Crear cliente/i }).click()
 
-    // Mutación OK: aparece toast de éxito y NO el error de columna (PostgREST 42703)
-    await expect(page.getByText(/cliente creado|cliente guardado|guardado/i).first()).toBeVisible({ timeout: 10000 })
-    await expect(page.getByText(/column .*notas.*does not exist|notas.*no existe/i)).not.toBeVisible()
+    // Mutación OK: el modal se cierra (no error de columna PostgREST 42703 que dejaría el modal abierto)
+    await expect(page.getByRole('heading', { name: /Nuevo cliente/i })).not.toBeVisible({ timeout: 10000 })
+    await expect(page.getByText(/notas.*does not exist|column .*notas/i)).not.toBeVisible()
 
     // El cliente aparece en la lista
     await expect(page.getByText(nombre).first()).toBeVisible({ timeout: 8000 })
@@ -84,16 +83,21 @@ test.describe('Primer uso — smoke (mutante)', () => {
       if (values.length > 0) await cajaSelect.selectOption(values[0])
     }
 
-    // Método de pago: Tarjeta (NO efectivo → asienta ingreso_informativo, no ingreso real)
+    // Método de pago: Tarjeta (NO efectivo → asienta ingreso_informativo, no ingreso real).
+    // Los medios no-efectivo NO admiten excedente → pagar EXACTO el total.
     const tipoSelect = page.locator('select')
-      .filter({ has: page.locator('option', { hasText: /Tarjeta/i }) }).first()
+      .filter({ has: page.locator('option', { hasText: /Tarjeta de crédito/i }) }).first()
     await expect(tipoSelect).toBeVisible({ timeout: 5000 })
-    const tarjetaOpt = await tipoSelect.locator('option', { hasText: /Tarjeta/i }).first().textContent()
-    await tipoSelect.selectOption({ label: (tarjetaOpt || 'Tarjeta').trim() })
-    const montoInput = page.getByPlaceholder(/^Monto$/i).first()
-    await montoInput.fill('100000')
+    await tipoSelect.selectOption({ label: 'Tarjeta de crédito' })
+
+    // Leer el Total exacto (es-AR: "$1.200" → 1200) y pagar ese monto
+    const totalTxt = await page.getByText(/^Total$/).first().locator('xpath=following::*[1]').textContent()
+    const total = Number((totalTxt || '0').replace(/[^\d,]/g, '').replace(/\./g, '').replace(',', '.'))
+    expect(total).toBeGreaterThan(0)
+    const montoInput = page.locator('input[type="number"]').last()
+    await montoInput.fill(String(total))
     await montoInput.blur()
-    await page.waitForTimeout(300)
+    await page.waitForTimeout(400)
 
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
     await expect(finalizar).toBeEnabled({ timeout: 5000 })
@@ -104,14 +108,59 @@ test.describe('Primer uso — smoke (mutante)', () => {
     await expect(page.getByText(/caja_movimientos_tipo_check|no se pudo registrar/i)).not.toBeVisible()
   })
 
-  // ── PU-11 · Caja Fuerte: ingresar dinero → caja_movimientos.tipo = ingreso_traspaso ──
-  // STUB a completar al validar la suite (flujo de Caja Fuerte: bóveda → Ingresar dinero →
-  // cuenta destino Efectivo → confirmar; verificar que el saldo de bóveda sube y no rompe
-  // el CHECK). Era el error exacto del usuario nuevo (mig 229).
-  test.fixme('PU-11 · ingreso a Caja Fuerte asienta ingreso_traspaso sin romper el CHECK', async () => {})
-
   // ── PU-12 · Reserva con seña en efectivo → caja_movimientos.tipo = ingreso_reserva ──
-  // STUB a completar al validar la suite (POS → modo "Reservar" → seña efectivo →
-  // confirmar; verificar la seña asentada en caja y la venta en estado 'reservada').
-  test.fixme('PU-12 · reserva con seña efectivo asienta ingreso_reserva', async () => {})
+  test('reserva con seña efectivo: crea la reserva y asienta ingreso_reserva', async ({ page }) => {
+    await goto(page, '/ventas')
+    await waitForApp(page)
+
+    const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
+    await expect(buscador).toBeVisible({ timeout: 8000 })
+    await buscador.fill('a')
+    await page.waitForTimeout(1000)
+    const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
+    test.skip(!(await primerProducto.isVisible().catch(() => false)), 'No hay productos vendibles')
+    await primerProducto.click()
+    await page.waitForTimeout(600)
+    await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
+
+    const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
+    if (await cajaSelect.isVisible().catch(() => false)) {
+      const values = await cajaSelect.locator('option').evaluateAll(
+        opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
+      )
+      if (values.length > 0) await cajaSelect.selectOption(values[0])
+    }
+
+    // La reserva exige cliente registrado (cliente_obligatorio default 'reservas') → seleccionar uno
+    await page.getByRole('button', { name: /Cliente registrado/i }).click()
+    const clienteSearch = page.getByPlaceholder(/Buscar por nombre o DNI/i).first()
+    await clienteSearch.fill('a')
+    await page.waitForTimeout(800)
+    await page.locator('div.absolute.z-20 button').first().click()
+    await page.waitForTimeout(300)
+
+    // Seña en Efectivo cubriendo el total (cumple la seña mínima; efectivo admite excedente)
+    const tipoSelect = page.locator('select')
+      .filter({ has: page.locator('option', { hasText: /^Efectivo$/ }) }).first()
+    await tipoSelect.selectOption('Efectivo')
+    const montoInput = page.locator('input[type="number"]').last()
+    await montoInput.fill('100000')
+    await montoInput.blur()
+    await page.waitForTimeout(300)
+
+    // Cambiar a modo "Reservar" (toggle) y ejecutar con el botón de acción ("Reservar stock")
+    await page.getByRole('button', { name: 'Reservar', exact: true }).first().click()
+    await page.waitForTimeout(300)
+    await page.getByRole('button', { name: /Reservar stock/i }).click()
+
+    // Reserva OK: el carrito se limpia y NO hay error de seña ni del CHECK de caja_movimientos
+    await expect(page.getByText(/\d+\s+producto/).first()).not.toBeVisible({ timeout: 15000 })
+    await expect(page.getByText(/no se puede reservar sin seña|caja_movimientos_tipo_check|no se asentó/i)).not.toBeVisible()
+  })
+
+  // ── PU-11 · Caja Fuerte: ingresar dinero → caja_movimientos.tipo = ingreso_traspaso ──
+  // El depósito a Caja Fuerte es un modal multi-paso (requiere caja operativa abierta con fondos
+  // + la bóveda). Validado a nivel DB sobre un tenant fresco (el insert ingreso_traspaso que hace
+  // la app — el CHECK lo acepta tras mig 229/230) + queda como check de runtime de GO en la UI.
+  test.fixme('PU-11 · ingreso a Caja Fuerte (ingreso_traspaso) — validado en DB + runtime de GO', async () => {})
 })

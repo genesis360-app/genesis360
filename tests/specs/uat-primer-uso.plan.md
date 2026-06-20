@@ -50,9 +50,9 @@ las dos vías de alta. Hacer las primeras acciones **sin entrar a Configuración
 
 | ID | Escenario | Pasos | Resultado esperado (CERO config) | Pri | Estado |
 |---|---|---|---|---|---|
-| PU-01 | **Alta email/password (Confirm email ON)** | Registro → datos del negocio → "revisá tu email" → confirmar | Tras confirmar, el negocio se crea solo y entra al dashboard. Sin error de RLS. (v1.80.1) | 🔴 | ⬜ |
-| PU-02 | **Alta Google OAuth** | Login Google → datos del negocio | Crea tenant + usuario DUEÑO; entra al dashboard | 🔴 | ⬜ |
-| PU-03 | **Seed del alta verificado** | Tras el alta, mirar la DB del tenant nuevo | Nace con: **modo básico**, **Sucursal 1**, **Caja Principal**, **estados** (Disponible/Bloqueado), **11 motivos**, **categorías de gasto**, **cuenta Efectivo** + **5 métodos de pago** con Efectivo vinculado, trial 14d. Suficiente para operar sin configurar | 🔴 | ⬜ |
+| PU-01 | **Alta email/password (Confirm email ON)** | Registro → datos del negocio → "revisá tu email" → confirmar | Tras confirmar, el negocio se crea solo y entra al dashboard. Sin error de RLS. (v1.80.1) | 🔴 | 🟡 code-audit ✅ (OnboardingPage: `crypto.randomUUID` evita RLS-SELECT, rollback si falla user, dedup por `users.id` PK, metadata→provision al confirmar, `loadUserData` antes de navegar). Falta runtime |
+| PU-02 | **Alta Google OAuth** | Login Google → datos del negocio | Crea tenant + usuario DUEÑO; entra al dashboard | 🔴 | 🟡 code-audit ✅ (mismo `provisionNegocio`; `existingAuthUser`→provision directo). Falta runtime |
+| PU-03 | **Seed del alta verificado** | Tras el alta, mirar la DB del tenant nuevo | Nace con: **modo básico**, **Sucursal 1**, **Caja Principal**, **estados** (Disponible/Bloqueado), **11 motivos**, **categorías de gasto**, **cuenta Efectivo** + **5 métodos de pago** con Efectivo vinculado, trial 14d. Suficiente para operar sin configurar | 🔴 | ✅ **verificado en DB (DEV, 2026-06-20)**: sucursales 1 · cajas 2 (Principal+Bóveda) · estados 2 · motivos 11 · categorías_gasto 16 · cuenta efectivo 1 · métodos_pago 5 · canales 7 · básico · trial. Seed fn byte-idéntica DEV=PROD |
 | PU-04 | **Dashboard sin datos** | Entrar al dashboard recién creado | Carga sin error, sin badges/alertas fantasma (cero "1" en Alertas) | 🟡 | ⬜ |
 | PU-05 | **Abrir caja** | Caja → abrir (monto 0 o el que sea) | Abre la sesión sin pedir configurar nada | 🔴 | ⬜ |
 | PU-06 | **Crear producto mínimo** | Productos → nuevo (solo nombre + precio) | Se crea; SKU autogenerado; sin exigir categoría/estructura | 🔴 | ⬜ |
@@ -102,6 +102,19 @@ las dos vías de alta. Hacer las primeras acciones **sin entrar a Configuración
   todo en DEV+PROD** → columnas idénticas (1817, hash `d482718f…`), seed byte-idéntico. El resto del
   diff de cuerpos de funciones es **cosmético** (whitespace/CRLF/comentarios; verificadas las de
   inventario/contable/RLS = misma lógica). `schema_full.sql` actualizado (estaba lapsado desde mig 208).
-- ⏳ **Pendiente del plan (próxima sesión):** el **smoke de primer uso PU-01→PU-17** sobre un tenant
-  nuevo real, en PROD (alta + abrir caja + venta efectivo/no-efectivo + gasto + Caja Fuerte + reserva +
-  devolución + cierre). Requiere alta real/UI o e2e — es runtime, no DB.
+- ✅ **PU-01/PU-02 (alta) code-audit (2026-06-20):** `OnboardingPage.provisionNegocio` correcto —
+  `crypto.randomUUID()` (evita RLS-SELECT post-insert), rollback del tenant si falla el insert de
+  `users`, dedup por `existingUser.tenant_id` + el PK `users.id` (un 2º tenant se auto-borra),
+  `loadUserData()` antes de `navigate('/dashboard')`, seed vía trigger que falla-fuerte, email de
+  bienvenida no bloqueante. Sin bugs. Falta solo el runtime (confirmar email real).
+- ✅ **PU-03 (seed) verificado en DB (DEV, 2026-06-20):** un tenant nace con Sucursal(1) +
+  Caja Principal+Bóveda(2) + estados(2) + motivos(11) + categorías_gasto(16) + Efectivo(1) +
+  métodos_pago(5) + canales(7), modo básico, trial. La función de seed es byte-idéntica DEV=PROD.
+- 📝 **e2e PREPARADO, sin ejecutar (decisión GO):** `tests/e2e/26_primer_uso_smoke.spec.ts` cubre los
+  caminos que tenían el drift y no estaban en 19/20 — **clientes con notas** (PU-16, la columna que
+  faltaba) y **venta no-efectivo** (PU-09, `ingreso_informativo`), con stubs `test.fixme` para Caja
+  Fuerte (PU-11, `ingreso_traspaso`) y reserva con seña (PU-12, `ingreso_reserva`). **NO validado** —
+  se corre con el resto de la suite e2e al cerrar el desarrollo, junto con la re-corrida de paridad.
+- ⏳ **Pendiente del plan:** ejecutar el **smoke runtime PU-04→PU-17** (alta real + abrir caja + venta
+  efectivo/no-efectivo + gasto + Caja Fuerte + reserva + devolución + cierre) — al final del desarrollo,
+  vía la suite e2e (incl. `26_primer_uso_smoke`) o click-through manual en PROD.

@@ -918,3 +918,22 @@ Cubiertos en pases previos (v1.74.0 efectivo↔caja / v1.76.0): VEN-11/12 (reser
 | MX-03 | `numeric` de PG en alícuotas | `"21.00"/"10.50"/"0.00"` se normalizan con `parseFloat` antes de mapear a Id AFIP / opción del select (facturación y gastos) | 🔴 | ⬜ |
 
 **Nota de implementación verificada (2026-06-19):** todo lo de arriba está implementado y auditado por código en esta sesión; esta matriz es para la **verificación en runtime** (emisión real con CAE en homologación + carga real de gastos) cambiando la condición del tenant. Fuentes: `src/lib/facturacionLogic.ts` (`tiposComprobantePermitidos`/`detectarTipoComprobante`), `supabase/functions/emitir-factura/index.ts`, `src/pages/GastosPage.tsx` (`renderFiscal`), `supabase/migrations/227_*.sql` (`fn_gastos_iva_guard`).
+
+---
+
+# ✅ Code-audit 2026-06-20 (cierre de la capa código)
+
+Re-confirmación y cierre del code-audit tras la auditoría de paridad DEV↔PROD (mig 231).
+
+**§29 fiscal — re-confirmado:**
+- **MX-03/MF-02** mapeo de alícuota: `facturacionLogic.ts:105` usa `String(parseFloat(tasaStr))` para normalizar `"21.00"/"10.50"/"0.00"` antes de `ALICUOTA_ID` (0→3, 10.5→4, 21→5, 27→6); exento/sin_iva → 3. El bug GRAVE de v1.78.1 (alícuota ≠21 mandada como 21) sigue arreglado. Espejado en la EF.
+- **Guards server-side de `emitir-factura` (REGLA #0 #3) — todos presentes y deployados en PROD:** MF-06 (RI no C → 400), MF-09/MF-10 (`emisorSoloC` = Monotributista||Exento → ≠C → 400), MF-03 (Factura A exige CUIT del cliente → throw), MF-05/FAC-27 (B ≥ `umbral_factura_b` ≈68305.16 sin DNI/CUIT → 400), MF-08 (C/NC-C no discrimina IVA), MX-02 (independientes de la UI). Anti-doble-emisión: venta con CAE / devolución con NC → throw.
+
+**Autorización de ajustes por rol (v1.80.0, mig 228) — code-audit ✅ + 🐞 hallazgo:**
+- `ajusteAutorizacion.ts` (`modoAjusteRol`/`requiereAuthAjuste`) correcto; 3 consumidores: Conteo (`ajuste_conteo`), LPN modal (`eliminar_lpn`/`ajuste_cantidad`) y **edición masiva (`bulk_edit`)**.
+- 🐞 **El `bulk_edit` inserta `linea_id: null` y DEV lo rechazaba** (`autorizaciones_inventario.linea_id` había quedado `NOT NULL` en DEV; mig 103 lo dejó nullable para bulk). La edición masiva con aprobación (rol ≠ DUEÑO) **estaba rota en DEV** (0 filas bulk_edit; los +9 unit tests son lógica pura → no lo veían). PROD estaba OK. **Arreglado por mig 231** (DROP NOT NULL en DEV). Ver [[reference_drift_dev_prod_paridad]].
+- RLS `aut_inv_tenant` (`FOR ALL`, tenant-scoped, CHECK=NULL→usa el USING): INSERT del solicitante + UPDATE del aprobador (otro usuario, mismo tenant) pasan; **sin** el bug cross-user de `notificaciones`.
+
+**Onboarding / primer uso (PU-01/02/03) — code-audit ✅** (ver `tests/specs/uat-primer-uso.plan.md`): `provisionNegocio` correcto (UUID en cliente, rollback, dedup por `users.id` PK, `loadUserData` antes de navegar, seed que falla-fuerte); PU-03 seed verificado en DB.
+
+**Balance:** el **code-audit de ambos UAT (modo básico + primer uso) está COMPLETO**. Lo que resta es exclusivamente **capa C / runtime** (emisión CAE real por condición, PDFs/impresión, integraciones B2B, PWA, click-through de UI, verificación visual en PROD) + la **suite e2e** (que por decisión de GO se ejecuta junto con la re-corrida de paridad al **cerrar el desarrollo**).

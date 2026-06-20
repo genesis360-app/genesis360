@@ -3043,3 +3043,17 @@ ALTER TABLE cheques ADD COLUMN IF NOT EXISTS gasto_id UUID REFERENCES gastos(id)
 -- 'avanzado' = sistema completo (gateado a Pro+ en el front). Existentes → 'avanzado'.
 ALTER TABLE tenants ADD COLUMN IF NOT EXISTS modo_operacion TEXT NOT NULL DEFAULT 'basico'
   CHECK (modo_operacion IN ('basico', 'avanzado'));
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 231: reconciliar drift DEV↔PROD de columnas/objetos (PAR-03/PAR-04)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Detectado por la auditoría de paridad del UAT de primer uso. Estas 3 columnas existían
+-- en DEV (con datos y usadas por la app) pero NO en PROD por DDL fuera de banda → rompían
+-- en PROD (alta de clientes, venta con costo de envío + PDF de factura, movimiento de stock).
+-- NOTA: schema_full quedó desactualizado entre la mig 208 y la 230 (mantenimiento lapsado);
+-- estas columnas en particular ni siquiera tenían migración versionada antes de la 231.
+ALTER TABLE ventas            ADD COLUMN IF NOT EXISTS costo_envio NUMERIC;                          -- fiscal: envío cobrado (v1.78.0)
+ALTER TABLE movimientos_stock ADD COLUMN IF NOT EXISTS linea_id UUID REFERENCES inventario_lineas(id); -- trazabilidad WMS
+ALTER TABLE clientes          ADD COLUMN IF NOT EXISTS notas TEXT;                                   -- notas del cliente
+-- + autorizaciones_inventario.linea_id → nullable (alinea con mig 103; DEV había quedado NOT NULL)
+-- + event trigger ensure_rls / fn rls_auto_enable (auto-habilita RLS en tablas nuevas de public) — paridad

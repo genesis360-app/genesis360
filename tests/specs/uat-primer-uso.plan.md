@@ -22,13 +22,13 @@
 La regla: **lo que se prueba en DEV tiene que ser idéntico en PROD.** Cualquier diferencia es un bug
 latente que va a explotar recién con un usuario real en PROD.
 
-| ID | Chequeo | Cómo | Esperado |
-|---|---|---|---|
-| PAR-01 | **CHECK constraints idénticos** | comparar `pg_get_constraintdef` de todos los CHECK en `public` entre DEV y PROD (ver SQL abajo) | Mismo set, misma definición. *(El bug de hoy: `caja_movimientos_tipo_check` difería.)* |
-| PAR-02 | **Policies RLS idénticas** | `md5(string_agg(...))` de `pg_policies` por tabla, DEV vs PROD | Mismo hash global (regla del CLAUDE.md). |
-| PAR-03 | **Columnas idénticas** | comparar `information_schema.columns` (tabla, columna, tipo, default, nullable) | Sin diferencias en tablas operativas. |
-| PAR-04 | **Triggers + funciones idénticos** | comparar `pg_trigger` + `pg_proc` (nombres) de `public` | Mismo set (incl. `fn_seed_tenant_defaults`, guards). |
-| PAR-05 | **Defaults del alta idénticos** | crear un tenant de prueba en DEV y en PROD y comparar lo seedeado (ver §B PU-03) | Mismo set de filas default. |
+| ID | Chequeo | Cómo | Esperado | Estado |
+|---|---|---|---|---|
+| PAR-01 | **CHECK constraints idénticos** | comparar `pg_get_constraintdef` de todos los CHECK en `public` entre DEV y PROD (ver SQL abajo) | Mismo set, misma definición. *(El bug de hoy: `caja_movimientos_tipo_check` difería.)* | ✅ mig 230 (hash `565c8f0…`, 97 CHECKs) |
+| PAR-02 | **Policies RLS idénticas** | `md5(string_agg(...))` de `pg_policies` por tabla, DEV vs PROD | Mismo hash global (regla del CLAUDE.md). | ✅ 2026-06-20 — 153 policies, hash idéntico `c974cded…` |
+| PAR-03 | **Columnas idénticas** | comparar `information_schema.columns` (tabla, columna, tipo, default, nullable) | Sin diferencias en tablas operativas. | ✅ **mig 231** — hallados 3 drifts (PROD no tenía `ventas.costo_envio`, `movimientos_stock.linea_id`, `clientes.notas`). Reconciliado → 1817 cols, hash idéntico `d482718f…` |
+| PAR-04 | **Triggers + funciones idénticos** | comparar `pg_trigger` + `pg_proc` (nombres+cuerpo) de `public` | Mismo set (incl. `fn_seed_tenant_defaults`, guards). | ✅ Triggers idénticos (50). Funciones: `ensure_rls`/`rls_auto_enable` faltaba en DEV + `autorizaciones_inventario.linea_id` quedó NOT NULL en DEV → reconciliado por **mig 231**. Resto del diff de cuerpos = **cosmético** (whitespace/CRLF/comentarios; verificadas las de inventario/contable/RLS — misma lógica) |
+| PAR-05 | **Defaults del alta idénticos** | crear un tenant de prueba en DEV y en PROD y comparar lo seedeado (ver §B PU-03) | Mismo set de filas default. | ✅ por equivalencia: funciones de seed (`fn_seed_tenant_defaults` + `fn_seed_*_new_tenant` + `seed_*`) **byte-idénticas** DEV=PROD + esquema ya idéntico ⇒ seed idéntico. Verificación viva = PU-03 |
 
 **SQL de comparación de CHECK constraints (correr en cada env, diffear el resultado):**
 ```sql
@@ -92,5 +92,16 @@ las dos vías de alta. Hacer las primeras acciones **sin entrar a Configuración
   mig 230 deja **DEV == PROD** (mismo hash `565c8f0…`, 97 CHECKs): ventas con set completo,
   notificaciones sin CHECK (es clave de evento), y caja_sesiones/motivos agregados a DEV;
   inventario_lineas_cantidad_check eliminado (redundante con chk_cantidad_no_negativa).
-- ⏳ **Pendiente del plan (próxima sesión):** PAR-02..05 (policies/columnas/triggers/defaults) + el
-  smoke de primer uso PU-01→PU-17 sobre un tenant nuevo real, en PROD.
+- ✅ **PAR-02..05 CERRADOS (2026-06-20).** Policies idénticas (153, hash `c974cded…`). **mig 231 —
+  PAR-03/04:** la auditoría encontró que PROD NO tenía 3 columnas que la app v1.80.1 usa
+  (`ventas.costo_envio` 🔴 fiscal, `movimientos_stock.linea_id`, `clientes.notas`) → en PROD rompían
+  el alta/edición de clientes, la venta con costo de envío y el PDF de factura (no se había notado
+  porque nadie ejerció esos flujos en PROD todavía — app pre-primer-cliente). Además
+  `autorizaciones_inventario.linea_id` había quedado NOT NULL en DEV (drift; mig 103 la dejó nullable)
+  y el event trigger de seguridad `ensure_rls`/`rls_auto_enable` faltaba en DEV. **mig 231 reconcilió
+  todo en DEV+PROD** → columnas idénticas (1817, hash `d482718f…`), seed byte-idéntico. El resto del
+  diff de cuerpos de funciones es **cosmético** (whitespace/CRLF/comentarios; verificadas las de
+  inventario/contable/RLS = misma lógica). `schema_full.sql` actualizado (estaba lapsado desde mig 208).
+- ⏳ **Pendiente del plan (próxima sesión):** el **smoke de primer uso PU-01→PU-17** sobre un tenant
+  nuevo real, en PROD (alta + abrir caja + venta efectivo/no-efectivo + gasto + Caja Fuerte + reserva +
+  devolución + cierre). Requiere alta real/UI o e2e — es runtime, no DB.

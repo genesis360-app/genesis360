@@ -6,7 +6,9 @@ type: project
 
 ## ▶ CIERRE DE SESIÓN 2026-06-20 — dónde retomar
 
-**Estado:** **PROD = DEV = v1.80.1**, migs **001–230** en DEV **y PROD**. EF `emitir-factura` en DEV **y PROD** (con FAC-27). Releases v1.80.0 + v1.80.1.
+**Estado:** **PROD = DEV = v1.80.1**, migs **001–231** en DEV **y PROD**. EF `emitir-factura` en DEV **y PROD** (con FAC-27). Releases v1.80.0 + v1.80.1.
+
+**🆕 Paridad DEV↔PROD PAR-02..05 CERRADA (2026-06-20) — mig 231:** la auditoría del UAT de primer uso encontró **drift de columnas grave** — PROD NO tenía 3 columnas que la app v1.80.1 usa (`ventas.costo_envio` 🔴 fiscal, `clientes.notas` 🔴, `movimientos_stock.linea_id` 🟠), agregadas a DEV fuera de banda. En PROD **rompían** el alta/edición de clientes, la venta con costo de envío y el PDF de factura (no se notó: nadie ejerció esos flujos en PROD todavía). **mig 231** las agregó a PROD (GO aprobó) + dejó `autorizaciones_inventario.linea_id` nullable en DEV (drift; alinea mig 103) + agregó el event trigger `ensure_rls` a DEV. **Resultado: DEV == PROD** — columnas idénticas (1817, `d482718f…`), policies idénticas (153, `c974cded…`), seed byte-idéntico. El resto del diff de funciones es cosmético (whitespace/CRLF/comentarios; verificadas inventario/contable/RLS = misma lógica). `schema_full.sql` actualizado. **Queda solo el smoke de primer uso PU-01→PU-17** (runtime/UI/e2e en PROD). Ver [[reference_drift_dev_prod_paridad]] y `tests/specs/uat-primer-uso.plan.md`.
 
 **🆕 v1.80.1 + fixes de PRIMER USO (2026-06-20) — disparados por una mala experiencia real de un usuario nuevo en PROD:**
 - **SMTP de Auth → Resend** (los mails de confirmación usaban el SMTP integrado → "email rate limit"). *Config de dashboard, hecha por GO.*
@@ -22,7 +24,7 @@ type: project
 
 ### ▶ Para retomar (próxima sesión — arrancar con esto)
 
-1. **▶ PLAN DE PRIMER USO — `tests/specs/uat-primer-uso.plan.md` (PRIORIDAD #1).** Que un tenant NUEVO opere sin configurar nada y SIN errores. (a) **Paridad DEV↔PROD** PAR-02..05 (policies/columnas/triggers/defaults del alta) — PAR-01 (CHECKs) ya cerrado por mig 230; (b) **smoke de primer uso** PU-01→PU-17 sobre un tenant nuevo real **en PROD** (alta + abrir caja + venta efectivo/no-efectivo + gasto + Caja Fuerte + reserva + devolución + cierre). El drift DEV≠PROD ya causó 3 errores a un usuario real → esto es lo que lo previene.
+1. **▶ PLAN DE PRIMER USO — `tests/specs/uat-primer-uso.plan.md` (PRIORIDAD #1).** Que un tenant NUEVO opere sin configurar nada y SIN errores. (a) **Paridad DEV↔PROD PAR-01..05 ✅ CERRADA** (mig 230 CHECKs + mig 231 columnas/objetos; policies/seed idénticos) — ver nota arriba; (b) **▶ FALTA: smoke de primer uso PU-01→PU-17** sobre un tenant nuevo real **en PROD** (alta + abrir caja + venta efectivo/no-efectivo + gasto + Caja Fuerte + reserva + devolución + cierre). Es **runtime/UI** (no DB): lo corre GO con un alta real o se automatiza por e2e. El drift DEV≠PROD ya causó 3 errores a un usuario real → la paridad ya lo previene; el smoke confirma el flujo end-to-end.
 2. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`) — **pendiente principal del UAT fiscal.** En un tenant DEV, cambiar `condicion_iva_emisor` (RI / Monotributista / Exento) y recorrer Facturación (emitir **CAE real homologación** por tipo: MF-01→14) + Gastos (IVA crédito/Ganancias por condición: MG-01→13) + cross-módulo (MX-01→03). Marcar cada fila ✅/❌.
 2. **Verificación RUNTIME de la autorización de ajustes por rol** (nuevo v1.80.0): con un rol no exento, cerrar un Conteo con diferencia / ajustar un LPN → debe ir a **Inventario → Autorizaciones** (pendiente); con DUEÑO → aplica directo. Probar la config en Config → Inventario → Reglas.
 3. **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover de tabs/sidebar, iconos en tabs, fondos de landing/suscripción, capital por moneda.

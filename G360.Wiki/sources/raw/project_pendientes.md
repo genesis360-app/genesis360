@@ -24,14 +24,45 @@ type: project
 - **🧾 Guards fiscales:** **FAC-27** (EF: B ≥ umbral sin DNI/CUIT → 400), **GAS-17** (default Ganancias por condición), **PRD-11** (precio ≥ 0), **GAS-16** by-design. **🛑 REGLA DE ORO #0** en CLAUDE.md.
 - **✅ UAT code-audit FINALIZADO** + **§29 matriz fiscal por condición** para runtime.
 
-### ▶ Para retomar (próxima sesión — arrancar con esto)
+**🆕 VALIDACIÓN E2E POR CLICK-THROUGH (2026-06-20) — descubrimiento clave para la próxima sesión:**
+- **El e2e de Playwright SÍ corre en este entorno** (`npm run test:e2e` levanta el dev server → DEV y maneja la app como usuario). **Usar esto para validar flujos de verdad, no solo code-audit.**
+- **El unit suite (vitest) NO corre completo acá por RAM de jsdom** (el error `Cannot read properties of undefined (reading 'config')` que el propio `vitest.config.ts` documenta como OOM). **Un archivo suelto SÍ** (`npx vitest run tests/unit/X.test.ts` = verde). Para la suite completa, correr en la máquina de GO/CI.
+- **Suite e2e completa: 163/164 verde** (la única roja = emisión Factura C contra AFIP homologación, timeout por servicio externo lento — NO bug; confirmar con emisión real).
+- **Smoke de primer uso (spec `26_primer_uso_smoke`)**: cliente+notas, venta no-efectivo (`ingreso_informativo`), reserva+seña (`ingreso_reserva`) — **verde**; Caja Fuerte (`ingreso_traspaso`) validado a nivel DB (los 7 tipos de `caja_movimientos` se aceptan en un tenant fresco).
+- **4 flujos profundos nuevos validados por UI con efecto verificado en DB:** `27_gasto_efectivo` (→egreso caja), `28_cobranza_cc` (deuda 5714→5614 + ingreso), `29_recepcion_stock` (Elite 133→134), `30_traslado_sucursal` (Norte→Sur `recibido`).
+- **Lección de autoría e2e:** usar **aserción POSITIVA del resultado** (toast/efecto) + **verificar la mutación en DB**, nunca solo `.not.toBeVisible()` (da falso-verde). La recepción exige lote/venc/series según el producto (usar uno simple). El traslado fija la sucursal origen vía `localStorage('sucursal-id')`.
+- **Tenant de testing propio en DEV:** `ZZZ_VALIDACION_CLAUDE` (ya seedeado completo, para validaciones).
 
-1. **▶ PLAN DE PRIMER USO — `tests/specs/uat-primer-uso.plan.md` (PRIORIDAD #1).** Que un tenant NUEVO opere sin configurar nada y SIN errores. (a) **Paridad DEV↔PROD PAR-01..05 ✅ CERRADA** (mig 230 CHECKs + mig 231 columnas/objetos; policies/seed idénticos) — ver nota arriba; (b) **▶ FALTA: smoke de primer uso PU-01→PU-17** sobre un tenant nuevo real **en PROD** (alta + abrir caja + venta efectivo/no-efectivo + gasto + Caja Fuerte + reserva + devolución + cierre). Es **runtime/UI** (no DB): lo corre GO con un alta real o se automatiza por e2e. El drift DEV≠PROD ya causó 3 errores a un usuario real → la paridad ya lo previene; el smoke confirma el flujo end-to-end.
-2. **▶ Verificación RUNTIME de la matriz fiscal §29** (`tests/specs/uat-modo-basico.md`) — **pendiente principal del UAT fiscal.** En un tenant DEV, cambiar `condicion_iva_emisor` (RI / Monotributista / Exento) y recorrer Facturación (emitir **CAE real homologación** por tipo: MF-01→14) + Gastos (IVA crédito/Ganancias por condición: MG-01→13) + cross-módulo (MX-01→03). Marcar cada fila ✅/❌.
-2. **Verificación RUNTIME de la autorización de ajustes por rol** (nuevo v1.80.0): con un rol no exento, cerrar un Conteo con diferencia / ajustar un LPN → debe ir a **Inventario → Autorizaciones** (pendiente); con DUEÑO → aplica directo. Probar la config en Config → Inventario → Reglas.
-3. **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover de tabs/sidebar, iconos en tabs, fondos de landing/suscripción, capital por moneda.
-4. **▶ Pase de performance DB (backlog, para PROD):** los **646 lints de performance** — envolver `auth.*()` en las policies RLS con `(select auth.*())` (se evalúa 1 vez por query en lugar de por fila) + **índices en FKs sin índice**. Mueve la aguja a escala; va como migración DEV+PROD. *Disparado por un aviso de "exhausting resources" en DEV (2026-06-19); el diagnóstico mostró que la carga es volumen de requests + RLS por-fila, no una query asesina.*
-5. **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto).
+### ▶ PRÓXIMA SESIÓN — continuar UAT / e2e / auditorías de TODOS los módulos y funciones restantes
+
+**Método:** por cada módulo → leer el flujo real → autorear un e2e mutante (aserción positiva + verificar efecto en DB) → correr verde. Complementar con code-audit donde aplique.
+
+**Flujos/módulos YA validados por e2e mutante (no repetir):** ventas (venta directa, no-efectivo, reserva+seña), caja (apertura/arqueo/cierre), devolución, despacho de presupuesto, ingreso de inventario, facturación (salvo CAE runtime), gasto efectivo, cobranza CC, recepción→stock, traslado entre sucursales, alta de cliente.
+
+**▶ Backlog de módulos/funciones SIN e2e mutante todavía (priorizar plata/stock/fiscal = REGLA #0):**
+1. **Cheques** (pagar OC/gasto con Cheque → crea cheque; rechazo revierte el pago) — REGLA #0 contable.
+2. **Caja Fuerte UI** (ingreso/traspaso `ingreso_traspaso`, extracción de bóveda, arqueo de bóveda) — solo validado a nivel DB; falta el click-through.
+3. **Devolución a proveedor** (crédito CC / efectivo / reposición + rebaja stock) — REGLA #0.
+4. **OC completa** (creación + envío/aprobación + recepción vinculada con acumulado over/under) — solo se validó recepción sin OC.
+5. **Conteos de inventario** (conteo con diferencia → ajuste/autorización por rol; doble conteo; ABC).
+6. **NC (nota de crédito)** — emisión vía Devolver (CbtesAsoc) — REGLA #0 fiscal (runtime AFIP).
+7. **RRHH** (pagar nómina → gasto + recibo PDF; liquidación final; asistencia/fichado; vacaciones; anticipos).
+8. **Envíos** (crear envío, POD, hoja de ruta/reparto, envío propio→gasto, courier).
+9. **Clientes/CC avanzado** (crédito a favor, condonación incobrable con clave maestra, intereses CC).
+10. **Productos** (kits/recetas, variantes, mayoristas, estructura).
+11. **Presupuestos** (crear → convertir a venta; recurrentes/facturas recurrentes).
+12. **Config** (datos fiscales, métodos de pago, cuentas de origen, clave maestra, autorizaciones por rol UI).
+13. **Suscripción/planes/trial** (upgrade, gating Pro).
+14. **Caja avanzada** (traspaso entre cajas operativas, préstamo a empleado, panel cajero).
+15. **Autorización de ajustes por rol (runtime UI)** — DUEÑO directo vs rol→Autorizaciones (mig 228).
+16. **§29 matriz fiscal RUNTIME** — cambiar `condicion_iva_emisor` (RI/Mono/Exento) + emitir CAE real homologación (MF-01→14) + Gastos por condición (MG-01→13). *(Requiere AFIP homologación; los guards server-side ya están code-auditados.)*
+
+**Otros pendientes (no e2e):**
+- **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover tabs/sidebar, iconos en tabs, fondos landing/suscripción, capital por moneda.
+- **Smoke de primer uso PU-01→17 en PROD** sobre un tenant nuevo real (alta con confirmación de email — no automatizable sin inbox; lo corre GO). La paridad (migs 230-232) ya previene los drifts.
+- **▶ Pase de performance DB (backlog, para PROD):** los **646 lints** — envolver `auth.*()` en RLS con `(select auth.*())` + índices en FKs sin índice. Migración DEV+PROD.
+- **Limpieza:** borrar el tenant `ZZZ_VALIDACION_CLAUDE` (DEV) cuando ya no se use; los datos de prueba en Almacén Jorgito (clientes test, traslado #1, recepción, gasto) son inocuos.
+- **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto).
 
 **⚙️ Infra DEV (2026-06-19):** por el aviso de saturación de recursos se **desactivaron en DEV** los crons `jobid 1` (`net.http_post`) y `jobid 3` (`fn_tn_sync_heartbeat`, sync TiendaNube, cada 5 min) — saturaban el tier chico sin aportar en un entorno de prueba. **Reversibles:** `SELECT cron.alter_job(job_id => 1, active => true)` (ídem 3). jobid 4 (CC vencidas) y 5 (limpieza token envíos), daily, siguen activos. **PROD intacto** (sus crons siguen activos: sync real cada 5 min). No se subió compute (es DEV; el aviso era transitorio por el pico de e2e + diagnóstico).
 

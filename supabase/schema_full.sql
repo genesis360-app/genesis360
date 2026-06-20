@@ -3057,3 +3057,12 @@ ALTER TABLE movimientos_stock ADD COLUMN IF NOT EXISTS linea_id UUID REFERENCES 
 ALTER TABLE clientes          ADD COLUMN IF NOT EXISTS notas TEXT;                                   -- notas del cliente
 -- + autorizaciones_inventario.linea_id → nullable (alinea con mig 103; DEV había quedado NOT NULL)
 -- + event trigger ensure_rls / fn rls_auto_enable (auto-habilita RLS en tablas nuevas de public) — paridad
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 232: FIX regresión del seed — restaurar Sucursal 1 + Caja Principal + unidades
+-- ─────────────────────────────────────────────────────────────────────────────
+-- La mig 225 reescribió fn_seed_tenant_defaults para agregar Efectivo + métodos y PERDIÓ la
+-- creación de Sucursal 1 + Caja Principal + 6 unidades de medida que tenían las migs 114/148.
+-- Desde 2026-06-18 los tenants nuevos nacían sin sucursal/caja/unidades → no podían operar.
+-- mig 232 restaura el set COMPLETO en fn_seed_tenant_defaults + backfillea tenants afectados.
+-- (Detectado validando un alta desde cero; afectaba a "El muller" en PROD.)

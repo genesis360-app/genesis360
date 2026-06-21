@@ -73,7 +73,19 @@ y comprobante de gasto obligatorio** vive en el **frontend**. Server-side solo e
 ### H2 — Doble firma por umbral bypasseable + solo-UI 🟥
 Los guards de **pago de OC y de courier** sobre umbral exigen clave maestra **solo si el tenant tiene clave
 seteada**; si supera el umbral pero no configuró clave, el pago grande pasa **sin segunda firma, en silencio**
-(`GastosPage.tsx:721`, `EnviosPage.tsx:788`). Guard solo-UI. → server-side + exigir clave si hay umbral.
+(`GastosPage.tsx:721-727`, `EnviosPage.tsx:788`). Guard solo-UI.
+
+> **Naturaleza (verificado 2026-06-21):** la doble firma ES la verificación de la clave maestra → **no es
+> trigger-able** (un trigger no puede validar una clave chequeada antes en el cliente). Opciones:
+> - **(A) RPC refactor (correcto, server-side real):** mover el pago de OC/courier a un RPC SECURITY DEFINER
+>   que reciba la clave, la verifique y haga el pago atómico. Cierra también el "se omite si no hay clave"
+>   (el RPC exige clave cuando el monto supera el umbral). Cambio mayor: frontend (llamar RPC) + backend +
+>   re-test de los flujos de pago de OC/courier. Misma forma que la clave del incobrable.
+> - **(B) Fix de consistencia client-side (rápido, parcial):** si hay umbral de doble firma pero NO hay
+>   `clave_maestra` configurada, la UI debe exigir configurar la clave (o bloquear el pago sobre umbral) en
+>   vez de saltear el guard en silencio. No es server-side, pero elimina el bypass más probable.
+> **Recomendación:** (A) como hardening real, agrupado con la clave-via-RPC del incobrable (mismo patrón) en
+> una tanda "RPCs clave-gated", hecha con calma + su propia batería de tests. (B) como mitigación inmediata.
 
 ### H3 — Clave maestra CON vs SIN nunca contrastada 🟥
 Con `clave_maestra = null` se **apagan en silencio TODOS los gates** (cerrar caja ajena, anular, incobrable,

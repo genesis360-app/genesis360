@@ -60,7 +60,12 @@ y comprobante de gasto obligatorio** vive en el **frontend**. Server-side solo e
 >
 > **✅ HECHO en DEV (mig 235, 2026-06-21): guard de ROL para write-offs (`fn_ventas_writeoff_rol_guard`, BEFORE UPDATE en `ventas`)** — exige rol DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN cuando se agrega un tag `Condonación CC`/`Incobrable` nuevo. Verificado por impersonación (W1-W4): DUEÑO condona→ok, CAJERO condona→bloquea, CAJERO cobranza normal→ok, CAJERO incobrable→bloquea. **Pendiente (separado):** la **clave maestra del incobrable se omite si no está configurada** y se verifica solo client-side → cerrarlo requiere refactor de condonar/incobrable a **RPC SECURITY DEFINER** (verifica rol + clave + write-off atómico) + cambio de frontend; es una decisión aparte (¿condonación también debería pedir clave?).
 >
-> **Falta del set H1/H2:** doble firma OC/courier (H2), descuento máx por rol, comprobante de gasto obligatorio, + clave-via-RPC del incobrable.
+> **Falta del set H1/H2 (NO cleanly-triggereables — necesitan cambio de frontend, agrupar como tanda "hardening frontend-coupled"):**
+> - **Comprobante de gasto obligatorio** — VERIFICADO 2026-06-21: en un gasto nuevo `comprobante_url` se setea en un UPDATE **posterior** al INSERT (sube el archivo con el `gastoId` ya creado, `GastosPage.tsx:1296-1300`). Un trigger BEFORE INSERT vería null y **bloquearía todo gasto con archivo**. Fix: reordenar el frontend (generar `gastoId` client-side + subir archivo + INSERT con `comprobante_url` ya seteado) y recién ahí un trigger puede enforzar; o RPC.
+> - **Doble firma OC/courier** (H2) + **clave del incobrable** — RPC clave-gated (ver H2).
+> - **Descuento máx por rol** — el descuento SÍ está en la venta al INSERT (sería trigger-able), pero es bajo valor: el CAJERO ya está 100% bloqueado de descuentos y el tope de SUPERVISOR se enforza client-side. Evaluar si vale un guard.
+>
+> **Conclusión:** los 2 guards cleanly-triggereables (CC límite/morosidad + write-off rol) están HECHOS. El resto es frontend-coupled → tanda deliberada con su propia batería de tests, no triggers sueltos.
 
 > **Diseño verificado del guard de CC (mig futura, BEFORE INSERT en `ventas`, `fn_ventas_cc_guard`):**
 > - Saltar si `estado='pendiente'` (presupuesto) o `cliente_id IS NULL`.

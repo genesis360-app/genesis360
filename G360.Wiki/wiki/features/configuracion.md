@@ -93,7 +93,7 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 
 | Campo | DB |
 |-------|-----|
-| Contraseña maestra | `tenants.clave_maestra` — requerida para cerrar caja ajena |
+| Contraseña maestra | `tenants.clave_maestra` — requerida para cerrar caja ajena, abrir con diferencia, anular, dar de baja incobrable, pago OC/courier sobre umbral. **Guardada HASHEADA (bcrypt, mig 233)** — se setea vía el RPC `set_clave_maestra` (solo DUEÑO, mínimo 6 chars, con campo de confirmación); se verifica con `verificar_clave_maestra`. No se compara nunca en el cliente. |
 | Umbral bóveda | `tenants.boveda_umbral_caja` — alertar cuando el saldo supera este monto |
 
 ---

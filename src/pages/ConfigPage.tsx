@@ -705,6 +705,7 @@ export default function ConfigPage() {
   const [bizDescuentoMaxCajero,     setBizDescuentoMaxCajero]     = useState<string>(tenant?.descuento_max_cajero_pct != null ? String(tenant.descuento_max_cajero_pct) : '')
   const [bizDescuentoMaxSupervisor, setBizDescuentoMaxSupervisor] = useState<string>(tenant?.descuento_max_supervisor_pct != null ? String(tenant.descuento_max_supervisor_pct) : '')
   const [bizClaveMaestra,           setBizClaveMaestra]           = useState<string>('')
+  const [bizClaveMaestraConfirm,    setBizClaveMaestraConfirm]    = useState<string>('')
   const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
   const [bizBovedaUmbral,           setBizBovedaUmbral]           = useState<string>(tenant?.boveda_umbral_caja != null ? String(tenant.boveda_umbral_caja) : '')
   // Fase 2.1 — Diferencia de cierre (B1/B2/B3)
@@ -1023,12 +1024,31 @@ export default function ConfigPage() {
       boveda_umbral_caja:           bizBovedaUmbral           ? parseFloat(bizBovedaUmbral)           : null,
     }
     if (bizAfipToken.trim()) updatePayload.afipsdk_token = bizAfipToken.trim()
-    if (bizClaveMaestra.trim()) updatePayload.clave_maestra = bizClaveMaestra.trim()
+
+    // Clave maestra — se guarda HASHEADA vía RPC `set_clave_maestra` (NO en texto plano).
+    // Validación anti-error: si se ingresó una clave nueva, debe repetirse igual y tener ≥6 chars.
+    const claveNueva = bizClaveMaestra.trim()
+    if (claveNueva) {
+      if (claveNueva.length < 6) { toast.error('La clave maestra debe tener al menos 6 caracteres'); setSavingBiz(false); return }
+      if (claveNueva !== bizClaveMaestraConfirm.trim()) { toast.error('Las claves maestras no coinciden — repetila igual'); setSavingBiz(false); return }
+    }
+
     const { data, error } = await supabase.from('tenants')
       .update(updatePayload)
       .eq('id', tenant!.id).select().single()
-    if (error) toast.error(error.message)
-    else { setTenant(data); toast.success('Datos actualizados') }
+    if (error) { toast.error(error.message); setSavingBiz(false); return }
+
+    let tenantData = data
+    if (claveNueva) {
+      const { error: claveErr } = await supabase.rpc('set_clave_maestra', { p_clave: claveNueva })
+      if (claveErr) { toast.error(`Datos guardados, pero la clave maestra no se actualizó: ${claveErr.message}`); setSavingBiz(false); return }
+      // Releer el tenant para reflejar la clave (hash) recién seteada + limpiar los campos.
+      const { data: refreshed } = await supabase.from('tenants').select().eq('id', tenant!.id).single()
+      if (refreshed) tenantData = refreshed
+      setBizClaveMaestra(''); setBizClaveMaestraConfirm('')
+    }
+    setTenant(tenantData)
+    toast.success(claveNueva ? 'Datos y clave maestra actualizados' : 'Datos actualizados')
     setSavingBiz(false)
   }
 
@@ -5554,8 +5574,29 @@ export default function ConfigPage() {
                       <Eye size={15} />
                     </button>
                   </div>
+                  {/* Confirmación (anti-error): solo cuando se está ingresando una clave nueva */}
+                  {user?.rol === 'DUEÑO' && bizClaveMaestra.length > 0 && (
+                    <input
+                      type={showClaveMaestra ? 'text' : 'password'}
+                      value={bizClaveMaestraConfirm}
+                      onChange={e => setBizClaveMaestraConfirm(e.target.value)}
+                      placeholder="Repetí la clave maestra"
+                      className={`w-full mt-2 px-4 py-2.5 border rounded-xl text-sm focus:outline-none dark:bg-gray-700
+                        ${bizClaveMaestraConfirm.length === 0
+                          ? 'border-gray-200 dark:border-gray-700 focus:border-accent'
+                          : bizClaveMaestra.trim() === bizClaveMaestraConfirm.trim()
+                            ? 'border-green-400 focus:border-green-500'
+                            : 'border-red-400 focus:border-red-500'}`}
+                    />
+                  )}
+                  {bizClaveMaestra.length > 0 && bizClaveMaestra.trim().length < 6 && (
+                    <p className="text-xs text-red-500 mt-1">Mínimo 6 caracteres.</p>
+                  )}
+                  {bizClaveMaestra.length > 0 && bizClaveMaestraConfirm.length > 0 && bizClaveMaestra.trim() !== bizClaveMaestraConfirm.trim() && (
+                    <p className="text-xs text-red-500 mt-1">Las claves no coinciden.</p>
+                  )}
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Requerida para: cerrar caja ajena · abrir con diferencia · anular ventas o movimientos. Si está vacía, ninguna acción la requiere.
+                    Requerida para: cerrar caja ajena · abrir con diferencia · anular ventas o movimientos · dar de baja deuda incobrable. Si está vacía, ninguna acción la requiere. Se guarda <strong>encriptada</strong> (no en texto plano).
                   </p>
                 </div>
                 {user?.rol === 'DUEÑO' && (

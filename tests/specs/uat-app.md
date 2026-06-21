@@ -54,7 +54,15 @@ existentes corren un único camino feliz con el valor default de cada flag. **Ah
 El enforcement de **límite CC, morosidad/bloqueo CC, condonación de deuda, baja por incobrable, descuentos
 y comprobante de gasto obligatorio** vive en el **frontend**. Server-side solo existen `fn_gastos_iva_guard`
 (mig 227) y el hash de clave (mig 233). Ante **bundle cacheado o escritura por API**, esos topes se saltan.
-→ **Recomendación: guards server-side (triggers/RPC SECURITY DEFINER)** antes de un cliente que use CC en serio.
+→ **Recomendación (aprobada por GO 2026-06-21): guards server-side (triggers/RPC SECURITY DEFINER)** antes de un cliente que use CC en serio. **Implementar guard por guard, cada uno testeado en DEV** (es el hot-path de plata — un guard mal hecho bloquea ventas legítimas).
+
+> **Diseño verificado del guard de CC (mig futura, BEFORE INSERT en `ventas`, `fn_ventas_cc_guard`):**
+> - Saltar si `estado='pendiente'` (presupuesto) o `cliente_id IS NULL`.
+> - **`montoCC` = suma de los medios `tipo='Cuenta Corriente'` en `NEW.medio_pago` (JSON), NO `total − monto_pagado`** (el crédito a favor y el envío lo distorsionan) — espeja `VentasPage.tsx:2327`.
+> - `cliente_cc_estado(NEW.cliente_id)` → `deuda_total`, `deuda_vencida`.
+> - **Morosidad (B4):** si `deuda_vencida > 0.5`: `cc_morosidad_politica='bloqueo_total'` → RAISE (cualquier venta); `'bloqueo_cc'` + `es_cuenta_corriente` → RAISE.
+> - **Límite (B1):** solo si `es_cuenta_corriente` + `montoCC>0.5` + `cc_enforcement_politica='bloquear'` (NO 'avisar' — ese es confirm de UX, no se enforza en server): `limite = clientes.limite_credito ?? tenants.limite_cc_default`; si `limite IS NOT NULL` y `deuda_total+montoCC > limite+0.5` → RAISE.
+> - EPS = 0.5. Lógica pura espejada en `src/lib/ccLogic.ts` (evaluarLimiteCC/evaluarMorosidad, ya con unit). **Probar en DEV:** bajo límite (ok), sobre límite+bloquear (raise), sobre+avisar (NO raise), moroso bloqueo_total (raise), bloqueo_cc CC (raise) vs no-CC (ok), presupuesto (ok), venta con crédito a favor (montoCC correcto).
 
 ### H2 — Doble firma por umbral bypasseable + solo-UI 🟥
 Los guards de **pago de OC y de courier** sobre umbral exigen clave maestra **solo si el tenant tiene clave
@@ -78,8 +86,8 @@ doble-firma OC/envío). Falta el escenario que pruebe el comportamiento con clav
 
 → **Decisión para GO por cada uno:** implementar el efecto, o quitar la opción de Config (no dejar promesas falsas).
 
-### H5 — Otros (fiscal/stock, a confirmar regla de negocio)
-- **Kits sin explosión de componentes:** vender un `es_kit` rebaja su propio `stock_actual` como producto normal; **no descuenta insumos**. Si la regla espera rebajar componentes, el stock de insumos queda mal. **Confirmar regla con GO.**
+### H5 — Otros (fiscal/stock)
+- **Kits — ✅ NO es bug (by-design, confirmado con GO 2026-06-21):** el rebaje de componentes ocurre **al ARMAR el kit** (kitting: reserva → rebaja componentes + ingresa 1 kit al stock, `InventarioPage.tsx:1360`); desarmar (des_kitting) reingresa componentes. **Vender el kit rebaja solo el stock del kit terminado** — los componentes ya se rebajaron al armar, volver a rebajarlos sería doble conteo. El hallazgo del agente era falso positivo.
 - **EF descuento global solo `console.warn`:** si un descuento/recargo global no está prorrateado en ítems, la EF avisa pero **no bloquea** → riesgo de comprobante con total ≠ suma de ítems (AFIP 10048).
 - **ConfigPage:** los tabs `rrhh`/`alertas`/`notificaciones` son **placeholders vacíos** (flags sin UI de configuración). `handleSaveBiz` persiste ~100 columnas de golpe sin importar el tab (condiciona cómo se testea "guardar tab X").
 

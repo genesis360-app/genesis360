@@ -56,6 +56,8 @@ y comprobante de gasto obligatorio** vive en el **frontend**. Server-side solo e
 (mig 227) y el hash de clave (mig 233). Ante **bundle cacheado o escritura por API**, esos topes se saltan.
 → **Recomendación (aprobada por GO 2026-06-21): guards server-side (triggers/RPC SECURITY DEFINER)** antes de un cliente que use CC en serio. **Implementar guard por guard, cada uno testeado en DEV** (es el hot-path de plata — un guard mal hecho bloquea ventas legítimas).
 
+> **✅ HECHO en DEV (mig 234, 2026-06-21): guard de CC (`fn_ventas_cc_guard`, BEFORE INSERT en `ventas`)** — límite (B1) + morosidad (B4). Verificado con 8 escenarios (S1-S8) todos verdes: límite bloquear sobre→bloquea / dentro→ok / avisar→no bloquea; presupuesto→skip; no-CC→ok; moroso bloqueo_total→bloquea (hasta no-CC); bloqueo_cc→bloquea solo CC. **Hallazgo clave:** `cliente_cc_estado` filtra por `auth.uid()` y devuelve 0 sin sesión → el guard computa la deuda **inline scopeada por `NEW.tenant_id`** (robusto ante service-role/API/batch). **PROD ⏳** (deploy junto con el resto de guards + OK de GO; cambia comportamiento: hard-block donde antes solo la UI). Falta el resto: condonación/incobrable, doble firma OC/courier (H2), descuento máx, comprobante de gasto.
+
 > **Diseño verificado del guard de CC (mig futura, BEFORE INSERT en `ventas`, `fn_ventas_cc_guard`):**
 > - Saltar si `estado='pendiente'` (presupuesto) o `cliente_id IS NULL`.
 > - **`montoCC` = suma de los medios `tipo='Cuenta Corriente'` en `NEW.medio_pago` (JSON), NO `total − monto_pagado`** (el crédito a favor y el envío lo distorsionan) — espeja `VentasPage.tsx:2327`.

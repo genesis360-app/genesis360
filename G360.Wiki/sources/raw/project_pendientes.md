@@ -6,15 +6,17 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-**Lo primero, en orden:**
-1. **NC #6 (AFIP) — reintentar.** AFIP homologación **respondió** el 2026-06-20 (spec 21 CAE verde). Emitir NC vía **Devolver → Emitir NC** (CbtesAsoc; la letra de la NC se deriva de la factura original). Necesita una venta con CAE para referenciar (Almacén Jorgito emite Factura C). Si AFIP vuelve a estar lento puede timeoutear (no es bug). Autorear spec mutante + verificar la NC con CAE en DB.
-2. **#10 Productos** (kits/recetas, variantes, mayoristas, estructura) — autorear e2e mutante.
-3. **#11 Presupuestos** (crear → convertir a venta; recurrentes/facturas recurrentes) — autorear e2e mutante.
-4. **Deploy a PROD de mig 233 (clave maestra hash) + `ConfigPage`** cuando GO lo decida: aplicar mig 233 + bump versión + PR dev→main + release.
+**✅ CERRADO el 2026-06-21 (v1.80.2 EN PROD):** #6 NC fiscal, #10 Productos, #11 Presupuestos validados por e2e click-through con efecto en DB (specs 42/43/44) + **deploy a PROD de mig 233 (clave maestra hash) + ConfigPage** (PR #235, release v1.80.2). **PROD = DEV = migs 001-233.** El merge también corrigió el drift de branch (los archivos de migs 231/232/233 no estaban en `main`). Detalle en `log.md` [2026-06-21].
 
-**Método e2e (recordatorio):** aserción POSITIVA del resultado (toast/efecto) + verificar la mutación en DB con `execute_sql`; nunca solo `.not.toBeVisible()`. Correr con `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN_spec --project=chromium`. Tenant DEV = Almacén Jorgito (`3769b1db…`). Clave maestra del tenant = **12345678**. Ver [[reference_e2e_validation_capability]].
+**▶ LO PRIMERO de la próxima sesión — AUDITORÍA DE COBERTURA UAT (pedido de GO 2026-06-21):**
+1. **Inventario de TODAS las funcionalidades (lógicas distintas) de la app** + cruce contra los escenarios de los archivos UAT → detectar qué NO está cubierto. Norte: saber que probamos todo y que nada va a fallar.
+2. **Matriz de configuración/flags:** listar todo lo configurable (módulo Configuración + columnas de `tenants`) y por cada flag/setting testear **con** y **sin** → validar el comportamiento esperado en cada combinación. Complementar los UAT con estos escenarios.
+3. **Decidir estructura UAT:** ¿UAT de modo avanzado separado, o renombrar `uat-modo-basico.md` a uno general básico+avanzado? (recomendación inicial: UAT general con tags por modo).
+4. **Plan + primer inventario + recomendación de enfoque (yo vs agentes): `tests/specs/uat-cobertura.plan.md`** (creado 2026-06-21).
 
-**Diferidos/parciales (no bloqueantes):** autorización de conteo por rol ≠ DUEÑO (2 actores), RRHH pagar nómina (RPC `pagar_nomina_empleado`)/recibo PDF/liquidación final, gate de pago de OC (cruza Gastos→OC), brazo OC del rechazo de cheque (revierte OC + ajuste proveedor_cc), formas efectivo/reposición de devolución a proveedor, over/under-receipt B3/B4.
+**Método e2e (recordatorio):** aserción POSITIVA del resultado (toast/efecto) + verificar la mutación en DB con `execute_sql`; nunca solo `.not.toBeVisible()`. Correr con `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN_spec --project=chromium`. Tenant DEV = Almacén Jorgito (`3769b1db…`). Clave maestra del tenant = **12345678**. Las fixtures por SQL (devolución spec 42, OC spec 35) para saltear pasos frágiles/cross-módulo son patrón aceptado. Ver [[reference_e2e_validation_capability]].
+
+**Diferidos/parciales (no bloqueantes):** **gotcha UX — el convert de presupuesto desde historial NO expone selector de caja con 2+ cajas abiertas** (`cambiarEstado` exige caja elegida; ver log 2026-06-21); autorización de conteo por rol ≠ DUEÑO (2 actores), RRHH pagar nómina (RPC `pagar_nomina_empleado`)/recibo PDF/liquidación final, gate de pago de OC (cruza Gastos→OC), brazo OC del rechazo de cheque (revierte OC + ajuste proveedor_cc), formas efectivo/reposición de devolución a proveedor, over/under-receipt B3/B4.
 
 ---
 

@@ -13,6 +13,18 @@ updated: 2026-05-29
 
 ---
 
+## v1.80.2 — 🔐 Clave maestra hasheada (mig 233) + 🧪 validación e2e #6/#10/#11 (PROD ✅, PR #235)
+
+**EN PROD** (2026-06-21, PR #235, release v1.80.2). **Seguridad (mig 233):** `tenants.clave_maestra` deja de guardarse en TEXTO PLANO → **bcrypt** (`extensions.crypt`/`gen_salt('bf')`); `verificar_clave_maestra` compara por hash (fallback compat); nuevo RPC `set_clave_maestra` (SECURITY DEFINER, solo DUEÑO, mín 6); `ConfigPage` con campo de confirmación + guarda vía el RPC. Backfill hasheó la única clave plaintext de PROD (preserva el valor). El merge también incorporó a `main` los archivos de migs **231/232/233** que no habían llegado (drift de branch). **PROD = DEV = migs 001-233.** **Validación e2e por click-through con efecto en DB:** #6 NC fiscal (NC electrónica con CbtesAsoc → CAE real homologación, spec 42), #10 Productos (alícuota 10,5% persiste sin convertir a 21%, spec 43), #11 Presupuestos (crear sin tocar stock/caja → convertir a venta con rebaje real PRES-08, spec 44). **Gotcha UX anotado:** convertir presupuesto desde historial con 2+ cajas abiertas no expone selector de caja (no bloqueante).
+
+---
+
+## v1.80.1 — 🔴 Onboarding "Confirm email" ON + drift CHECK/columnas DEV↔PROD (PROD ✅, PR #233/#234, migs 229-232)
+
+**EN PROD.** Disparado por una mala experiencia real de un usuario nuevo en PROD. **Onboarding:** soporta "Confirm email" ON (los datos del negocio van en el metadata + `emailRedirectTo=/onboarding`; el tenant se crea al confirmar). SMTP de Auth → Resend; Site URL = `app.genesis360.pro`. **Reconciliación de drift DEV↔PROD (REGLA #0):** mig 229 (`caja_movimientos_tipo_check` por prefijo), mig 230 (5 CHECKs, incl. `ventas_estado` con 'devuelta' + `notificaciones_tipo`), mig 231 (3 columnas que faltaban en PROD: `ventas.costo_envio`/`clientes.notas`/`movimientos_stock.linea_id`), mig 232 (fix regresión del seed de alta: Sucursal 1 + Caja Principal + 6 unidades). Plan `tests/specs/uat-primer-uso.plan.md` (correr antes de cada alta de cliente).
+
+---
+
 ## v1.80.0 — 🎨 Branding single-source (ícono+degradé+hover) + 🔐 autorización de ajustes por rol + 🧾 guards fiscales (PROD ✅, mig 228, EF emitir-factura)
 
 **EN PROD** (PR dev→main, mig 228 en DEV+PROD, EF `emitir-factura` deployada en PROD). **Branding:** ícono nuevo single-source (`brand/logo-source.png` → `BRAND.logo`) en tab/sidebar/landing/suscripción/login/onboarding; componente `PageTabs` (subrayado + degradé violeta→cian + drag-scroll + badge + iconos en Inventario/Proveedores); hover de marca en tabs/sidebar (texto+ícono al degradé, mantiene fondo violeta translúcido); fondos de landing/suscripción/onboarding al degradé (`bg-brand-gradient-hero`); Caja con capital **por moneda** + tab "Caja actual" centrado. **🔐 Autorización de ajustes de inventario POR ROL (mig 228):** DUEÑO directo, resto requiere aprobación, configurable por rol (Directo/Por umbral/Siempre) en Config → Inventario; aplica a Conteo + LPN + edición masiva; `ajusteAutorizacion.ts` +9 tests; tab Autorizaciones de vuelta en básico. **Fiscal:** FAC-27 (EF: Factura B ≥ umbral sin DNI/CUIT → 400), GAS-17 (default Ganancias por condición), PRD-11 (precio ≥ 0), GAS-16 by-design. **CLAUDE.md:** REGLA DE ORO #0 (integridad fiscal/contable/inventario). **UAT:** code-audit finalizado + §29 matriz fiscal por condición para runtime.

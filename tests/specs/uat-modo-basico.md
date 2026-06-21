@@ -937,3 +937,29 @@ Re-confirmación y cierre del code-audit tras la auditoría de paridad DEV↔PRO
 **Onboarding / primer uso (PU-01/02/03) — code-audit ✅** (ver `tests/specs/uat-primer-uso.plan.md`): `provisionNegocio` correcto (UUID en cliente, rollback, dedup por `users.id` PK, `loadUserData` antes de navegar, seed que falla-fuerte); PU-03 seed verificado en DB.
 
 **Balance:** el **code-audit de ambos UAT (modo básico + primer uso) está COMPLETO**. Lo que resta es exclusivamente **capa C / runtime** (emisión CAE real por condición, PDFs/impresión, integraciones B2B, PWA, click-through de UI, verificación visual en PROD) + la **suite e2e** (que por decisión de GO se ejecuta junto con la re-corrida de paridad al **cerrar el desarrollo**).
+
+---
+
+# ✅ §30 — Validación e2e MUTANTE por click-through (capa C/runtime, 2026-06-20/21)
+
+Se manejó la app como usuario (Playwright vs DEV, tenant Almacén Jorgito) cubriendo los flujos REGLA #0 que faltaban de la capa C. **Metodología:** aserción POSITIVA del resultado (toast/efecto) + **verificación de la mutación en DB** con `execute_sql` (nunca solo `.not.toBeVisible()` = falso-verde). Todos **VERDE + verificados en DB**.
+
+| # | Spec | Escenario (Given/When/Then) | Invariante REGLA #0 verificado en DB |
+|---|------|------------------------------|--------------------------------------|
+| CHQ-E2E-01 | `31_cheque_gasto_rechazo` | Gasto pendiente → pago con medio "Cheque" → en Gastos→Cheques se marca **Rechazado** | El cheque propio rechazado **revierte el pago**: gasto `monto_pagado` 700→0, `estado_pago` pendiente; cheque `rechazado` vinculado |
+| CFU-E2E-01 | `32_caja_fuerte_deposito` | Depositar $50 de una caja operativa a la Bóveda | **2 patas balanceadas**: `egreso_traspaso` en Caja1 + `ingreso_traspaso` en la Bóveda (mismo concepto) |
+| DEVP-E2E-01 | `33_devolucion_proveedor` | Devolver 1 u. de una OC recibida con forma "Crédito en CC" | Rebaja stock FIFO (251→250) + `stock_actual` 254→253 + `ajuste_rebaje`; `nota_credito` −1000 en CC del proveedor; `devoluciones_proveedor` confirmada |
+| OC-E2E-01 | `34_oc_creacion` | Crear OC (proveedor + producto + cantidad) → Guardar | OC `borrador` + ítem persistidos. *Gotcha: `openNewOC` ya trae 1 línea vacía → NO "Agregar línea".* |
+| OC-E2E-02 | `35_recepcion_oc_vinculada` | "Recibir mercadería" de una OC confirmada → confirmar recepción | Sube stock (Elite 134→139) + la OC pasa a **`recibida`** por el acumulado B5 (`estadoOCdesdeRecibido`) |
+| CONT-E2E-01 | `36_conteo_ajuste` | Conteo "Por producto" con diferencia +1, finalizar (DUEÑO) | Ajuste **directo** (modo `directo`, mig 228): `reconciliarDelta` → Elite 139→140 + `ajuste_ingreso` "Conteo de inventario"; conteo `finalizado` |
+| RH-E2E-01 | `37_rrhh_nomina_gasto` | "Generar nómina del mes" → "Generar gasto" de una liquidación | Gasto "Sueldo … — período" categoría **Sueldos**, monto=neto, pendiente, `rrhh_salarios.gasto_id` vinculado; `deduce_ganancias` saneado a false (Monotributista, mig 227) |
+| ENV-E2E-01 | `38_envio_combustible_gasto` | Envío propio con vehículo → "Registrar combustible" | Gasto categoría **Combustible** $5000 pagado + `envios.gasto_combustible_id` vinculado |
+| CC-E2E-01 | `39_cc_condonacion` | Condonar una venta CC (write-off, sin clave) | Venta `monto_pagado`=total + tag **'Condonación CC'** (excluido de ingresos) |
+| CC-E2E-02 | `40_cc_incobrable_clave_maestra` | "Incobrable" → motivo + **clave maestra** → Confirmar baja | Salda toda la deuda CC pendiente (tag 'Incobrable') + gasto "Deudor incobrable: …" categoría "Deudores incobrables" ($1557) |
+| SEG-E2E-01 | `41_clave_maestra_set_hash` | Config→Caja → setear clave maestra + **confirmación** → Guardar | Persiste **hasheada (bcrypt)** vía RPC `set_clave_maestra` (mig 233): hash nuevo + `verificar_clave_maestra` OK |
+
+**Fixtures DEV (data de prueba, no migración):** método de pago "Cheque" (CHQ-E2E-01), OC #14 confirmada Mayorista MAX/Elite x5 (OC-E2E-02, saltea el gate de pago de OC), recurso "Moto Reparto Test" en envío #15 (ENV-E2E-01). Clave maestra del tenant de prueba = **12345678**.
+
+**🔐 SEG-E2E-01 / mig 233 — clave maestra hasheada (EN DEV, PROD pendiente):** la clave estaba en TEXTO PLANO; ahora se guarda con bcrypt + setter server-side `set_clave_maestra` (solo DUEÑO, mín 6) + campo de confirmación en ConfigPage (anti-error). La app no truncaba a 6 (el hueco real era falta de confirmación + texto plano).
+
+**▶ Pendientes de capa C (próxima sesión):** **NC #6** (Devolver→Emitir NC con CAE de AFIP homologación — AFIP respondió el 2026-06-20, spec 21 CAE verde), **#10 Productos** (kits/variantes/mayoristas), **#11 Presupuestos** (crear→convertir). Parciales: autorización de conteo por rol ≠ DUEÑO, RRHH pagar nómina/recibo/liquidación final, gate de pago de OC, brazo OC del rechazo de cheque, formas efectivo/reposición de devolución.

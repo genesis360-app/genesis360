@@ -478,6 +478,8 @@ El tab **Cheques** (CO6, mig 187) dejó de ser un cuaderno aparte:
 - Lógica pura en `src/lib/comprasCheques.ts`: `montoChequeDeMedios`, `reversionPagoOC`, `reversionPagoGasto` (testeadas).
 - **Pendiente menor (futuro):** cheque de tercero depositado/cobrado → impacto en cuenta de origen/bóveda (hoy solo cambia estado).
 
+> ⚙️ **Config requerida para pagar con cheque (decisión GO 2026-06-20, config opcional):** el seed de alta (`fn_seed_tenant_defaults`) crea Efectivo + 5 métodos de pago **pero NO "Cheque"**. Para que la opción "Cheque" aparezca en los modales de pago de OC/gasto, el tenant debe **agregar el método "Cheque"** en *Config → Métodos de pago* (con `habilitado_gastos`). Se decidió dejarlo como configuración opcional (no sumarlo al seed). Validado por e2e: `tests/e2e/31_cheque_gasto_rechazo_mutante.spec.ts` (gasto pagado con cheque → rechazo revierte el pago a `pendiente`).
+
 ## Links relacionados
 
 - [[wiki/features/caja]]

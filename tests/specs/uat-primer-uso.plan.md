@@ -102,6 +102,12 @@ las dos vías de alta. Hacer las primeras acciones **sin entrar a Configuración
   todo en DEV+PROD** → columnas idénticas (1817, hash `d482718f…`), seed byte-idéntico. El resto del
   diff de cuerpos de funciones es **cosmético** (whitespace/CRLF/comentarios; verificadas las de
   inventario/contable/RLS = misma lógica). `schema_full.sql` actualizado (estaba lapsado desde mig 208).
+- ⚠️ **DEV adelantado a PROD por mig 233 (clave maestra hash) — DIFF ESPERADO, no drift (2026-06-21).**
+  mig 233 (DEV) reescribe `verificar_clave_maestra` (compara hash), agrega el RPC `set_clave_maestra`
+  y **hashea los valores** de `tenants.clave_maestra` (la columna sigue `text`; cambian los datos).
+  Hasta deployarla a PROD, PAR-04 (funciones) y los valores de `clave_maestra` van a diferir DEV vs
+  PROD — **es esperado**. Al aplicar mig 233 en PROD la paridad se restablece (las claves de PROD se
+  hashean preservando su valor). No reabrir PAR-04 por este diff.
 - ✅ **PU-01/PU-02 (alta) code-audit (2026-06-20):** `OnboardingPage.provisionNegocio` correcto —
   `crypto.randomUUID()` (evita RLS-SELECT post-insert), rollback del tenant si falla el insert de
   `users`, dedup por `existingUser.tenant_id` + el PK `users.id` (un 2º tenant se auto-borra),

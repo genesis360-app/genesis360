@@ -4,9 +4,25 @@ description: Tareas pendientes y contexto para retomar en la próxima sesión de
 type: project
 ---
 
+## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
+
+**Lo primero, en orden:**
+1. **NC #6 (AFIP) — reintentar.** AFIP homologación **respondió** el 2026-06-20 (spec 21 CAE verde). Emitir NC vía **Devolver → Emitir NC** (CbtesAsoc; la letra de la NC se deriva de la factura original). Necesita una venta con CAE para referenciar (Almacén Jorgito emite Factura C). Si AFIP vuelve a estar lento puede timeoutear (no es bug). Autorear spec mutante + verificar la NC con CAE en DB.
+2. **#10 Productos** (kits/recetas, variantes, mayoristas, estructura) — autorear e2e mutante.
+3. **#11 Presupuestos** (crear → convertir a venta; recurrentes/facturas recurrentes) — autorear e2e mutante.
+4. **Deploy a PROD de mig 233 (clave maestra hash) + `ConfigPage`** cuando GO lo decida: aplicar mig 233 + bump versión + PR dev→main + release.
+
+**Método e2e (recordatorio):** aserción POSITIVA del resultado (toast/efecto) + verificar la mutación en DB con `execute_sql`; nunca solo `.not.toBeVisible()`. Correr con `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN_spec --project=chromium`. Tenant DEV = Almacén Jorgito (`3769b1db…`). Clave maestra del tenant = **12345678**. Ver [[reference_e2e_validation_capability]].
+
+**Diferidos/parciales (no bloqueantes):** autorización de conteo por rol ≠ DUEÑO (2 actores), RRHH pagar nómina (RPC `pagar_nomina_empleado`)/recibo PDF/liquidación final, gate de pago de OC (cruza Gastos→OC), brazo OC del rechazo de cheque (revierte OC + ajuste proveedor_cc), formas efectivo/reposición de devolución a proveedor, over/under-receipt B3/B4.
+
+---
+
 ## ▶ CIERRE DE SESIÓN 2026-06-20 — dónde retomar
 
-**Estado:** **PROD = DEV = v1.80.1**, migs **001–232** en DEV **y PROD**. EF `emitir-factura` en DEV **y PROD** (con FAC-27). Releases v1.80.0 + v1.80.1.
+**Estado:** **PROD = v1.80.1 (migs 001–232)**; **DEV = migs 001–233** (mig 233 clave maestra hash solo en DEV). EF `emitir-factura` en DEV **y PROD** (con FAC-27). Releases v1.80.0 + v1.80.1.
+
+**🔐 PENDIENTE PROD — mig 233 (clave maestra hasheada) + frontend `ConfigPage`:** cambio de seguridad REGLA #0 (la clave estaba en texto plano). En DEV ✅. Para PROD: aplicar mig 233 (hashea las claves existentes preservando el valor) + deploy de `ConfigPage` (campo de confirmación + RPC `set_clave_maestra`) → bump de versión + PR dev→main. GO decide cuándo. **Ojo:** tras aplicar en PROD, las claves de los tenants quedan hasheadas (siguen verificando con el mismo valor); no hace falta que nadie re-tipee. Detalle en el log 2026-06-20 + `supabase/migrations/233_clave_maestra_hash.sql`.
 
 **🔴 REGRESIÓN del seed de alta CORREGIDA (2026-06-20) — mig 232:** validando un alta desde cero se detectó que desde la **mig 225** (18/06) `fn_seed_tenant_defaults` dejó de crear **Sucursal 1 + Caja Principal + 6 unidades de medida** (la reescritura para Efectivo las perdió). Todo tenant nuevo nacía sin poder operar; golpeó a un tenant REAL en PROD ("El muller"). **mig 232** restaura el seed completo + backfill (DEV+PROD). Verificado: tenant nuevo nace completo; PROD con 0 tenants sin sucursal/caja/unidades. **Validación e2e (Playwright contra DEV): 163/164 verde**; la única roja es la emisión de Factura C contra AFIP homologación (timeout 30s por lentitud del servicio externo, no bug — confirmar con emisión real). Unit suite no corre en el sandbox por RAM de jsdom (1 archivo suelto = verde; correr en máquina con más RAM). Tenant de testing propio: `ZZZ_VALIDACION_CLAUDE` (DEV).
 
@@ -37,18 +53,18 @@ type: project
 
 **Método:** por cada módulo → leer el flujo real → autorear un e2e mutante (aserción positiva + verificar efecto en DB) → correr verde. Complementar con code-audit donde aplique.
 
-**Flujos/módulos YA validados por e2e mutante (no repetir):** ventas (venta directa, no-efectivo, reserva+seña), caja (apertura/arqueo/cierre), devolución, despacho de presupuesto, ingreso de inventario, facturación (salvo CAE runtime), gasto efectivo, cobranza CC, recepción→stock, traslado entre sucursales, alta de cliente.
+**Flujos/módulos YA validados por e2e mutante (no repetir):** ventas (venta directa, no-efectivo, reserva+seña), caja (apertura/arqueo/cierre), devolución, despacho de presupuesto, ingreso de inventario, facturación (salvo CAE runtime), gasto efectivo, cobranza CC, recepción→stock, traslado entre sucursales, alta de cliente, **cheques (gasto pagado con cheque → rechazo revierte el pago, spec 31)**, **Caja Fuerte (depósito caja→bóveda con las 2 patas, spec 32)**, **devolución a proveedor (crédito en CC → rebaja stock + nota de crédito, spec 33)**, **creación de OC (spec 34)**, **recepción vinculada a OC → stock↑ + OC recibida por acumulado (spec 35)**, **conteo de inventario con diferencia → ajuste directo del DUEÑO (spec 36)**, **RRHH nómina → gasto de sueldo (spec 37)**, **envío propio → combustible → gasto (spec 38)**, **condonación de deuda CC / write-off (spec 39)**, **dar de baja incobrable con clave maestra (spec 40)**, **setear clave maestra hasheada con confirmación (spec 41)**.
 
 **▶ Backlog de módulos/funciones SIN e2e mutante todavía (priorizar plata/stock/fiscal = REGLA #0):**
-1. **Cheques** (pagar OC/gasto con Cheque → crea cheque; rechazo revierte el pago) — REGLA #0 contable.
-2. **Caja Fuerte UI** (ingreso/traspaso `ingreso_traspaso`, extracción de bóveda, arqueo de bóveda) — solo validado a nivel DB; falta el click-through.
-3. **Devolución a proveedor** (crédito CC / efectivo / reposición + rebaja stock) — REGLA #0.
-4. **OC completa** (creación + envío/aprobación + recepción vinculada con acumulado over/under) — solo se validó recepción sin OC.
-5. **Conteos de inventario** (conteo con diferencia → ajuste/autorización por rol; doble conteo; ABC).
-6. **NC (nota de crédito)** — emisión vía Devolver (CbtesAsoc) — REGLA #0 fiscal (runtime AFIP).
-7. **RRHH** (pagar nómina → gasto + recibo PDF; liquidación final; asistencia/fichado; vacaciones; anticipos).
-8. **Envíos** (crear envío, POD, hoja de ruta/reparto, envío propio→gasto, courier).
-9. **Clientes/CC avanzado** (crédito a favor, condonación incobrable con clave maestra, intereses CC).
+1. ✅ **Cheques** — VALIDADO (spec `31_cheque_gasto_rechazo_mutante`): gasto pendiente → pago con "Cheque" crea cheque propio vinculado → rechazo revierte el pago (gasto vuelve a pendiente, verificado en DB). *Falta el brazo OC del rechazo (revierte OC + ajuste en proveedor_cc) → cubrir en #4 OC completa.* **Fixture DEV:** se agregó el método "Cheque" a Almacén Jorgito (el seed no lo trae — ver observación en log).
+2. ✅ **Caja Fuerte UI** — VALIDADO el depósito caja→bóveda (spec `32_caja_fuerte_deposito_mutante`): 2 patas balanceadas (`egreso_traspaso` en caja + `ingreso_traspaso` en bóveda, verificado en DB). *Falta click-through de: extracción/envío de bóveda a caja (`retiro`), arqueo de bóveda, ingreso externo.*
+3. ✅ **Devolución a proveedor** — VALIDADO el brazo crédito en CC (spec `33_devolucion_proveedor_mutante`): rebaja stock FIFO (251→250, stock_actual 254→253) + `nota_credito` -1000 en CC del proveedor + `devoluciones_proveedor` confirmada (verificado en DB). *Faltan las formas **efectivo** (→ ingreso a caja) y **reposición** (→ OC borrador nueva).*
+4. ✅ **OC completa** — VALIDADO el core: **creación** de OC por UI (spec `34_oc_creacion_mutante` → OC borrador + ítem) + **recepción vinculada** (spec `35_recepcion_oc_vinculada_mutante` → stock↑ + OC pasa a `recibida` por el acumulado B5, verificado en DB: OC #14 recibida, Elite Pañuelos 134→139). *Pendientes parciales:* el **gate de pago de OC** (borrador→enviar→pagar/asignar a CC→confirmar; cruza Gastos→OC), el **brazo OC del rechazo de cheque** (revierte OC + ajuste en proveedor_cc), las **formas efectivo/reposición** de devolución a proveedor, y el **over/under-receipt** (B3/B4 con aprobación SUPERVISOR). **Fixture DEV:** OC #14 confirmada (Mayorista MAX, Elite x5) creada por SQL para saltear el gate de pago.
+5. ✅ **Conteos de inventario** — VALIDADO el core (spec `36_conteo_ajuste_mutante`): conteo "Por producto" con diferencia +1 → para el DUEÑO (modo `directo`, mig 228) ajusta el stock AL TOQUE (`reconciliarDelta` + `movimientos_stock ajuste_ingreso`), verificado en DB (Elite 139→140, conteo `finalizado`). *Pendientes parciales:* autorización por rol (rol ≠ DUEÑO → `autorizaciones_inventario` pendiente → aprobación), doble conteo (umbral de reconteo), ABC/cíclico.
+6. **NC (nota de crédito)** — emisión vía Devolver (CbtesAsoc) — REGLA #0 fiscal (runtime AFIP). **← SIGUIENTE** (requiere AFIP homologación).
+7. ✅ **RRHH** — VALIDADO el core nómina→gasto (spec `37_rrhh_nomina_gasto_mutante`): "Generar nómina del mes" + "Generar gasto" → gasto "Sueldo … — período" categoría Sueldos, monto=neto, pendiente, `rrhh_salarios.gasto_id` vinculado (verificado en DB; `deduce_ganancias` saneado a false por ser Monotributista, mig 227). *Pendientes:* pagar nómina (RPC `pagar_nomina_empleado` → caja/CC), cargas sociales, recibo PDF, liquidación final/indemnización, asistencia/fichado, vacaciones, anticipos.
+8. ✅ **Envíos** — VALIDADO envío propio → combustible → gasto (spec `38_envio_combustible_gasto_mutante`): gasto categoría Combustible $5000 pagado + `envios.gasto_combustible_id` vinculado (verificado en DB). Fixture DEV: recurso "Moto Reparto Test" asignado a envío #15 (el botón exige `courier='Envío propio' && recurso_id`). *Pendientes:* crear envío, POD, hoja de ruta/reparto, pago a courier (tercero→egreso).
+9. ✅ **Clientes/CC avanzado** — VALIDADO la condonación de deuda CC / write-off (spec `39_cc_condonacion_mutante`): venta #210 `monto_pagado` 0→4057 + tag 'Condonación CC' (excluido de ingresos), verificado en DB. **🔴 Bloqueado:** "dar de baja incobrable" (B6) exige la **clave maestra del tenant** (configurada, desconocida/hasheada) → no automatizable sin la clave real. *Pendientes:* crédito a favor (cliente_creditos vía devolución), intereses CC (sweep), incobrable B6.
 10. **Productos** (kits/recetas, variantes, mayoristas, estructura).
 11. **Presupuestos** (crear → convertir a venta; recurrentes/facturas recurrentes).
 12. **Config** (datos fiscales, métodos de pago, cuentas de origen, clave maestra, autorizaciones por rol UI).

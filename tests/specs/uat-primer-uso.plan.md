@@ -22,13 +22,13 @@
 La regla: **lo que se prueba en DEV tiene que ser idéntico en PROD.** Cualquier diferencia es un bug
 latente que va a explotar recién con un usuario real en PROD.
 
-| ID | Chequeo | Cómo | Esperado |
-|---|---|---|---|
-| PAR-01 | **CHECK constraints idénticos** | comparar `pg_get_constraintdef` de todos los CHECK en `public` entre DEV y PROD (ver SQL abajo) | Mismo set, misma definición. *(El bug de hoy: `caja_movimientos_tipo_check` difería.)* |
-| PAR-02 | **Policies RLS idénticas** | `md5(string_agg(...))` de `pg_policies` por tabla, DEV vs PROD | Mismo hash global (regla del CLAUDE.md). |
-| PAR-03 | **Columnas idénticas** | comparar `information_schema.columns` (tabla, columna, tipo, default, nullable) | Sin diferencias en tablas operativas. |
-| PAR-04 | **Triggers + funciones idénticos** | comparar `pg_trigger` + `pg_proc` (nombres) de `public` | Mismo set (incl. `fn_seed_tenant_defaults`, guards). |
-| PAR-05 | **Defaults del alta idénticos** | crear un tenant de prueba en DEV y en PROD y comparar lo seedeado (ver §B PU-03) | Mismo set de filas default. |
+| ID | Chequeo | Cómo | Esperado | Estado |
+|---|---|---|---|---|
+| PAR-01 | **CHECK constraints idénticos** | comparar `pg_get_constraintdef` de todos los CHECK en `public` entre DEV y PROD (ver SQL abajo) | Mismo set, misma definición. *(El bug de hoy: `caja_movimientos_tipo_check` difería.)* | ✅ mig 230 (hash `565c8f0…`, 97 CHECKs) |
+| PAR-02 | **Policies RLS idénticas** | `md5(string_agg(...))` de `pg_policies` por tabla, DEV vs PROD | Mismo hash global (regla del CLAUDE.md). | ✅ 2026-06-20 — 153 policies, hash idéntico `c974cded…` |
+| PAR-03 | **Columnas idénticas** | comparar `information_schema.columns` (tabla, columna, tipo, default, nullable) | Sin diferencias en tablas operativas. | ✅ **mig 231** — hallados 3 drifts (PROD no tenía `ventas.costo_envio`, `movimientos_stock.linea_id`, `clientes.notas`). Reconciliado → 1817 cols, hash idéntico `d482718f…` |
+| PAR-04 | **Triggers + funciones idénticos** | comparar `pg_trigger` + `pg_proc` (nombres+cuerpo) de `public` | Mismo set (incl. `fn_seed_tenant_defaults`, guards). | ✅ Triggers idénticos (50). Funciones: `ensure_rls`/`rls_auto_enable` faltaba en DEV + `autorizaciones_inventario.linea_id` quedó NOT NULL en DEV → reconciliado por **mig 231**. Resto del diff de cuerpos = **cosmético** (whitespace/CRLF/comentarios; verificadas las de inventario/contable/RLS — misma lógica) |
+| PAR-05 | **Defaults del alta idénticos** | crear un tenant de prueba en DEV y en PROD y comparar lo seedeado (ver §B PU-03) | Mismo set de filas default. | ✅ por equivalencia: funciones de seed (`fn_seed_tenant_defaults` + `fn_seed_*_new_tenant` + `seed_*`) **byte-idénticas** DEV=PROD + esquema ya idéntico ⇒ seed idéntico. Verificación viva = PU-03 |
 
 **SQL de comparación de CHECK constraints (correr en cada env, diffear el resultado):**
 ```sql
@@ -50,9 +50,9 @@ las dos vías de alta. Hacer las primeras acciones **sin entrar a Configuración
 
 | ID | Escenario | Pasos | Resultado esperado (CERO config) | Pri | Estado |
 |---|---|---|---|---|---|
-| PU-01 | **Alta email/password (Confirm email ON)** | Registro → datos del negocio → "revisá tu email" → confirmar | Tras confirmar, el negocio se crea solo y entra al dashboard. Sin error de RLS. (v1.80.1) | 🔴 | ⬜ |
-| PU-02 | **Alta Google OAuth** | Login Google → datos del negocio | Crea tenant + usuario DUEÑO; entra al dashboard | 🔴 | ⬜ |
-| PU-03 | **Seed del alta verificado** | Tras el alta, mirar la DB del tenant nuevo | Nace con: **modo básico**, **Sucursal 1**, **Caja Principal**, **estados** (Disponible/Bloqueado), **11 motivos**, **categorías de gasto**, **cuenta Efectivo** + **5 métodos de pago** con Efectivo vinculado, trial 14d. Suficiente para operar sin configurar | 🔴 | ⬜ |
+| PU-01 | **Alta email/password (Confirm email ON)** | Registro → datos del negocio → "revisá tu email" → confirmar | Tras confirmar, el negocio se crea solo y entra al dashboard. Sin error de RLS. (v1.80.1) | 🔴 | 🟡 code-audit ✅ (OnboardingPage: `crypto.randomUUID` evita RLS-SELECT, rollback si falla user, dedup por `users.id` PK, metadata→provision al confirmar, `loadUserData` antes de navegar). Falta runtime |
+| PU-02 | **Alta Google OAuth** | Login Google → datos del negocio | Crea tenant + usuario DUEÑO; entra al dashboard | 🔴 | 🟡 code-audit ✅ (mismo `provisionNegocio`; `existingAuthUser`→provision directo). Falta runtime |
+| PU-03 | **Seed del alta verificado** | Tras el alta, mirar la DB del tenant nuevo | Nace con: **modo básico**, **Sucursal 1**, **Caja Principal**, **estados** (Disponible/Bloqueado), **11 motivos**, **categorías de gasto**, **cuenta Efectivo** + **5 métodos de pago** con Efectivo vinculado, trial 14d. Suficiente para operar sin configurar | 🔴 | ✅ **verificado en DB (DEV, 2026-06-20)**: sucursales 1 · cajas 2 (Principal+Bóveda) · estados 2 · motivos 11 · categorías_gasto 16 · cuenta efectivo 1 · métodos_pago 5 · canales 7 · básico · trial. Seed fn byte-idéntica DEV=PROD |
 | PU-04 | **Dashboard sin datos** | Entrar al dashboard recién creado | Carga sin error, sin badges/alertas fantasma (cero "1" en Alertas) | 🟡 | ⬜ |
 | PU-05 | **Abrir caja** | Caja → abrir (monto 0 o el que sea) | Abre la sesión sin pedir configurar nada | 🔴 | ⬜ |
 | PU-06 | **Crear producto mínimo** | Productos → nuevo (solo nombre + precio) | Se crea; SKU autogenerado; sin exigir categoría/estructura | 🔴 | ⬜ |
@@ -92,5 +92,35 @@ las dos vías de alta. Hacer las primeras acciones **sin entrar a Configuración
   mig 230 deja **DEV == PROD** (mismo hash `565c8f0…`, 97 CHECKs): ventas con set completo,
   notificaciones sin CHECK (es clave de evento), y caja_sesiones/motivos agregados a DEV;
   inventario_lineas_cantidad_check eliminado (redundante con chk_cantidad_no_negativa).
-- ⏳ **Pendiente del plan (próxima sesión):** PAR-02..05 (policies/columnas/triggers/defaults) + el
-  smoke de primer uso PU-01→PU-17 sobre un tenant nuevo real, en PROD.
+- ✅ **PAR-02..05 CERRADOS (2026-06-20).** Policies idénticas (153, hash `c974cded…`). **mig 231 —
+  PAR-03/04:** la auditoría encontró que PROD NO tenía 3 columnas que la app v1.80.1 usa
+  (`ventas.costo_envio` 🔴 fiscal, `movimientos_stock.linea_id`, `clientes.notas`) → en PROD rompían
+  el alta/edición de clientes, la venta con costo de envío y el PDF de factura (no se había notado
+  porque nadie ejerció esos flujos en PROD todavía — app pre-primer-cliente). Además
+  `autorizaciones_inventario.linea_id` había quedado NOT NULL en DEV (drift; mig 103 la dejó nullable)
+  y el event trigger de seguridad `ensure_rls`/`rls_auto_enable` faltaba en DEV. **mig 231 reconcilió
+  todo en DEV+PROD** → columnas idénticas (1817, hash `d482718f…`), seed byte-idéntico. El resto del
+  diff de cuerpos de funciones es **cosmético** (whitespace/CRLF/comentarios; verificadas las de
+  inventario/contable/RLS = misma lógica). `schema_full.sql` actualizado (estaba lapsado desde mig 208).
+- ⚠️ **DEV adelantado a PROD por mig 233 (clave maestra hash) — DIFF ESPERADO, no drift (2026-06-21).**
+  mig 233 (DEV) reescribe `verificar_clave_maestra` (compara hash), agrega el RPC `set_clave_maestra`
+  y **hashea los valores** de `tenants.clave_maestra` (la columna sigue `text`; cambian los datos).
+  Hasta deployarla a PROD, PAR-04 (funciones) y los valores de `clave_maestra` van a diferir DEV vs
+  PROD — **es esperado**. Al aplicar mig 233 en PROD la paridad se restablece (las claves de PROD se
+  hashean preservando su valor). No reabrir PAR-04 por este diff.
+- ✅ **PU-01/PU-02 (alta) code-audit (2026-06-20):** `OnboardingPage.provisionNegocio` correcto —
+  `crypto.randomUUID()` (evita RLS-SELECT post-insert), rollback del tenant si falla el insert de
+  `users`, dedup por `existingUser.tenant_id` + el PK `users.id` (un 2º tenant se auto-borra),
+  `loadUserData()` antes de `navigate('/dashboard')`, seed vía trigger que falla-fuerte, email de
+  bienvenida no bloqueante. Sin bugs. Falta solo el runtime (confirmar email real).
+- ✅ **PU-03 (seed) verificado en DB (DEV, 2026-06-20):** un tenant nace con Sucursal(1) +
+  Caja Principal+Bóveda(2) + estados(2) + motivos(11) + categorías_gasto(16) + Efectivo(1) +
+  métodos_pago(5) + canales(7), modo básico, trial. La función de seed es byte-idéntica DEV=PROD.
+- 📝 **e2e PREPARADO, sin ejecutar (decisión GO):** `tests/e2e/26_primer_uso_smoke.spec.ts` cubre los
+  caminos que tenían el drift y no estaban en 19/20 — **clientes con notas** (PU-16, la columna que
+  faltaba) y **venta no-efectivo** (PU-09, `ingreso_informativo`), con stubs `test.fixme` para Caja
+  Fuerte (PU-11, `ingreso_traspaso`) y reserva con seña (PU-12, `ingreso_reserva`). **NO validado** —
+  se corre con el resto de la suite e2e al cerrar el desarrollo, junto con la re-corrida de paridad.
+- ⏳ **Pendiente del plan:** ejecutar el **smoke runtime PU-04→PU-17** (alta real + abrir caja + venta
+  efectivo/no-efectivo + gasto + Caja Fuerte + reserva + devolución + cierre) — al final del desarrollo,
+  vía la suite e2e (incl. `26_primer_uso_smoke`) o click-through manual en PROD.

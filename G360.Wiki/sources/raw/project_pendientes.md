@@ -7,13 +7,13 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### 🟢 ARRANCÁ ACÁ (2026-06-22 · handoff para /clear)
-> **Estado:** PROD = DEV = **v1.83.0 (migs 001-240)**. Repo limpio, todo pusheado, Vercel PROD READY. Build/typecheck verdes.
+> **Estado:** PROD = DEV = **v1.84.0 (migs 001-240)**. Repo limpio, todo pusheado, Vercel PROD READY. Build/typecheck verdes. (v1.84.0 = descuento por-ítem read-only + estado "sin clave" visible H3 + fix label Autorizaciones + specs 50/51/52; sin migración.)
 >
 > **▶ PRÓXIMA SESIÓN = UAT EXHAUSTIVO de TODA la app (norte de GO: cero issues para go-live).**
 > - **Método:** módulo por módulo de `tests/specs/uat-app.md`, validar cada flujo + cada flag configurado, autoreando e2e mutantes donde falte (aserción POSITIVA + efecto verificado en DB), priorizando plata/stock/fiscal (REGLA #0). **Correr en ≥2 tenants** (Jorgito + Familia Otranto) para cazar diferencias de config (multi-tenant = práctica permanente, pedido de GO).
 > - **Orden sugerido:** Ventas/POS → Caja/Bóveda → Inventario/Conteos → Compras/Recepciones → Clientes/CC → RRHH → Envíos → Config/Suscripción.
 > - **Harness e2e listo:** Jorgito (owner/cajero/supervisor/rrhh/deposito/contador) + **Familia Otranto De Porto** (tenant SIN clave/factura OFF) usuario `e2e.fotranto.sup@local.com`/`Test1234!` → project `chromium-fotranto-sup`. Specs 45-49 verdes. Correr: `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN --project=chromium[-supervisor|-fotranto-sup]`.
-> - **Follow-ups menores de código a meter durante la UAT:** (a) input de descuento **por-ítem read-only** (decisión: per-ítem = solo combos); (b) mostrar el estado "sin clave" en las acciones rol-only (H3).
+> - ✅ **Follow-ups menores de código HECHOS 2026-06-22 (frontend, sin commitear):** (a) input de descuento **por-ítem read-only** (per-ítem = solo combos; el manual va por "Descuento general"); (b) estado **"sin clave" VISIBLE** en las acciones rol-only (H3): toast 🔓 en VentasPage, nota en CajaPage (cierre ajeno), aclaración en InventarioPage (reconteo), badge en ConfigPage.
 > - **Gotchas e2e:** inputs `type=number` del POS controlados por React → native value-setter + `dispatchEvent('input',{bubbles:true})`; "Descuento general" solo en modo ≠ presupuesto; venta 100% CC → CTA "Despachar (cuenta corriente)"; en Familia Otranto el stock está sin ubicar (avanzado solo surte ubicado) y factura OFF (Cliente sin toggle "registrado").
 >
 > **v1.83.0 (PR #238, migs 239+240):** **Punto 6** — caja preferida **server-side** (mig 239 `users.caja_preferida_id`): antes solo localStorage (por dispositivo) → "no aparecía"; ahora persiste por usuario → auto-select SIEMPRE en POS+Caja. Depósito a Caja Fuerte desde una caja pre-selecciona la caja activa; traspaso caja→caja ya asumía la activa. **Punto 4** — mig 240 dropea 3 columnas inertes de `tenants`. **v1.82.0 previo:** `precio_redondeo` (H4 cerrado) + descuento máx hueco $ + H4 flags.
@@ -28,11 +28,14 @@ type: project
 > - ✅ **spec 49 — morosidad CC** (`chromium-fotranto-sup`, Familia Otranto): cliente con deuda vencida + `cc_morosidad_politica='bloqueo_total'` → "No puede comprar hasta saldar", venta NO creada. Capa UI del guard 234.
 > - Skip-guards (patrón 35/42) en las fixture-dependientes → el full-suite no falla sin fixtures.
 > - **🆕 Harness del tenant SIN clave (Familia Otranto De Porto `4cf85bbb-22b3-4760-91ee-15a24d9e4713`):** usuario de prueba **`e2e.fotranto.sup@local.com` / `Test1234!`** (SUPERVISOR), `auth.fotranto-sup.setup.ts` + project `chromium-fotranto-sup` (gated por `E2E_FOTRANTO_SUP_*`). **Fixtures persistidos en ese tenant (de prueba):** `descuento_max_supervisor_pct=10`, `cc_morosidad_politica='bloqueo_total'`, "Mantecol Clasico 111g" priceado+ubicado, cliente "ZZZ Morosidad Test" + venta CC vencida. **Hallazgos multi-tenant (validan robustez go-live):** stock **sin ubicar** (en avanzado el POS no surte stock no-ubicado, `soloUbicado`) + **facturación OFF** (la sección Cliente no tiene toggle "Cliente registrado", el buscador va directo) → diferencias reales vs Jorgito.
-> - ⏳ **Residual (alto costo de fixtures frágiles o externo; ya cubierto en impersonación/unit):**
->   - **§29 fiscal runtime AFIP** — ver bloque "AFIP" abajo (lo que falta es de GO, no de código).
->   - **pagar nómina** (RPC `pagar_nomina_empleado`): RRHH multi-paso.
->   - **over-receipt** (recepción > OC con aprobación SUPERVISOR): OC+recepción multi-paso.
->   - **ajuste por rol con 2 actores** (no-DUEÑO solicita → DUEÑO aprueba): spec 47 cubre "solicita"; "aprueba" necesita 2 sesiones.
+> - ✅ **CERRADOS 2026-06-22 (3 specs e2e nuevos, REGLA #0, validados por DB + DEV limpio; SIN commitear):**
+>   - ✅ **spec 50 — pagar nómina** (`pagar_nomina_empleado`, mig 145): pago efectivo desde Caja Principal → `rrhh_salarios.pagado`/`caja_movimiento_id` + `caja_movimientos` egreso (DB-verificado). Dato: FK `caja_movimiento_id→caja_movimientos` impide borrar el egreso de una nómina paga.
+>   - ✅ **spec 51 — ajuste por 2 actores** (mig 228): el DUEÑO aprueba una `ajuste_conteo` solicitada por un SUPERVISOR → stock muta SOLO al aprobar (línea 126→127, stock_actual 250→251, `aprobado_por`≠solicitante). **+🐛 fix UI:** la lista de Autorizaciones rotulaba `ajuste_conteo`/`bulk_edit` como "Eliminar LPN" (engañoso) → ahora "Diferencia de conteo"/"Edición masiva" + detalle esperado→contado.
+>   - ✅ **spec 52 — over-receipt bloquea** (B3 `superaOverReceipt`): `permite_over_receipt=false` + recibir 7 vs pedido 5 → BLOQUEA, NO crea recepción. Matriz CON/SIN ya en unit (`recepcionLogic.test.ts`); efecto stock+OC del éxito en spec 35.
+>   - Los 3 con skip-guard (patrón 45/48); navegación de tabs endurecida (cold-load). Re-sembrar el SQL de fixture para re-correr.
+> - ⏳ **Residual que QUEDA:**
+>   - **§29 fiscal runtime AFIP** — ver bloque "AFIP" abajo (bloqueado por trámite de GO: cert/token de PRODUCCIÓN + opcional CUIT RI de homologación).
+>   - **Tanda B** (sub-ítems menores): doble validación de nómina rol≠DUEÑO, B1c over/under requiere SUPERVISOR (no-supervisor recibe ≠ pedido → bloquea), over-receipt CON-dentro-de-tope con efecto stock por UI.
 >
 > **🔎 Hallazgo (spec 45) — RESUELTO (GO 2026-06-22):** el auto-combo que strippea descuentos por-ítem huérfanos es **by-design**. Decisión: **descuento por-ítem = SOLO combos; el manual va por "Descuento general"**. Follow-up menor (sesión UAT): hacer el input de descuento por-ítem **read-only** (solo combos lo escriben) — hoy en un tenant SIN combos un descuento por-ítem manual aún persistiría.
 >

@@ -6,6 +6,27 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-22] deploy | 🚀 v1.84.0 EN PROD — descuento por-ítem read-only + estado "sin clave" visible (H3) + fix label Autorizaciones + 3 specs residual Tanda A (sin migración)
+
+**Pedido de GO:** "sigamos con los pendientes" → residual Tanda A primero, luego orden sugerido del UAT → "pasá todo a DEV y PRD de vercel y luego vamos con el UAT". Todo frontend/specs, **sin migración** (PROD = DEV = migs 001-240). typecheck + build verdes. Bump APP_VERSION → v1.84.0; PR dev→main; release `v1.84.0`.
+
+**Follow-ups de código del handoff (frontend):**
+- **(a) Descuento por-ítem read-only** (`VentasPage`): decisión GO = per-ítem SOLO combos; el manual va por "Descuento general". El input del POS pasó a read-only (toggle %/$ deshabilitado, hint "auto (combos)"/"por combo"); lo escribe solo `aplicarCombo`/auto-combo. Cierra la inconsistencia: en un tenant SIN combos el auto-combo no corría (`if (!combosDisp.length) return`) y un valor manual persistía. La matemática de subtotal/IVA no cambió. e2e 45/48 usan "Descuento general" (`max="100"`) → no afectados.
+- **(b) Estado "sin clave" VISIBLE** (H3, decisión GO = rol-only + mostrar estado sin forzar): `pedirClaveMaestra` (VentasPage) emite toast 🔓 informativo cuando no hay clave (anular despachada / cambiar cliente / devolución cobrada); CajaPage muestra nota gris en cierre de caja ajena sin clave; InventarioPage aclara en el modal de saltar reconteo; ConfigPage muestra badge "○ Sin configurar — acciones sensibles autorizadas solo por rol".
+
+**Residual Tanda A — 3 specs e2e VERDES (REGLA #0), validados por DB + DEV dejado limpio:**
+- ✅ **spec 50 `50_rrhh_pagar_nomina_mutante`** — RPC `pagar_nomina_empleado` (mig 145): pago en efectivo de una liquidación impaga desde Caja Principal → toast "Nómina pagada" + DB `rrhh_salarios.pagado=true`/`medio_pago`/`caja_movimiento_id` + `caja_movimientos` egreso $100 "Nomina … - 06/2026". Fixture SQL = empleado inactivo "ZZZ Nomina Test" + salario neto $100. **Dato de integridad:** la FK `rrhh_salarios.caja_movimiento_id → caja_movimientos` impide borrar el egreso de una nómina paga.
+- ✅ **spec 51 `51_autorizacion_ajuste_aprobar_mutante`** — aprobación por 2 actores (mig 228): complementa la spec 47 ("solicita") con el "aprueba" → el DUEÑO aprueba una `ajuste_conteo` pendiente (esperado 126→contado 127, solicitada por "Supervisor Test") → stock muta SOLO al aprobar (`inventario_lineas.cantidad` 126→127, `stock_actual` 250→251, `movimientos_stock` ajuste_ingreso, `estado='aprobada'`/`aprobado_por`=DUEÑO≠solicitante). Fixture SQL = autorización pendiente sobre LPN-MNB85SGE de "Coca Cola 1.5L Original". El botón Aprobar usa `confirm()` nativo → el spec lo acepta.
+  - **🐛 Bug de UI hallado durante el e2e (CORREGIDO):** la lista de Autorizaciones (`InventarioPage`) rotulaba `ajuste_conteo` y `bulk_edit` como **"Eliminar LPN"** (el `tipoLabel` no los cubría → caía al `else`); un DUEÑO veía "Eliminar LPN" al aprobar algo que en realidad SUMA stock — engañoso (REGLA #0, inventario). Fix: label "Diferencia de conteo"/"Edición masiva" + color naranja/azul + detalle esperado→contado / campos.
+- ✅ **spec 52 `52_over_receipt_bloquea_mutante`** — over-receipt SIN tolerancia: con `permite_over_receipt=false`, recibir 7 contra una OC de pedido 5 (producto simple) → guard B3 (`superaOverReceipt` cableado en `RecepcionesPage.guardar`) BLOQUEA ("…supera lo permitido sobre lo pedido (5)") y NO crea recepción (DB: OC sigue `confirmada`, 0 recepciones). La matriz CON/SIN tope ya está en unit (`recepcionLogic.test.ts`); el efecto stock+OC del éxito en spec 35. Fixture SQL = OC #16 confirmada (Mayorista Pepe, Sprite x5).
+- Los 3 con **skip-guard** (patrón 45/48) → el full-suite no falla sin fixtures (re-sembrar el SQL para re-correr). Navegación de tabs endurecida (espera el tab visible) por flake de cold-load del dev server.
+
+**Residual Tanda A restante:** §29 fiscal AFIP (bloqueado por trámite de GO — cert/token de PRODUCCIÓN en ARCA + opcional CUIT RI de homologación). Sub-ítems menores → Tanda B (doble validación de nómina rol≠DUEÑO, B1c over/under requiere SUPERVISOR, camino CON-dentro-de-tope con efecto por UI).
+
+**Deploy:** commit en `dev` (solo los archivos de esta sesión; se dejan afuera `supabase/.temp/cli-latest` y untracked pre-existentes) → push (Vercel DEV) → PR dev→main → merge (Vercel PROD) → release `v1.84.0`. **▶ Próximo:** orden sugerido del UAT (Ventas/POS → Caja → Inventario → …), multi-tenant.
+
+---
+
 ## [2026-06-22] update | Decisión punto 2 (descuento por-ítem = solo combos) + handoff para /clear → próxima sesión = UAT exhaustivo
 
 **Decisión de GO:** **descuento por-ítem = SOLO combos; el manual va por "Descuento general".** ⇒ el auto-combo que strippea descuentos por-ítem huérfanos (hallazgo spec 45) es **by-design** — hallazgo CERRADO. **Follow-up menor para la sesión UAT:** hacer el input de descuento por-ítem **read-only** (hoy, en un tenant SIN combos, un descuento por-ítem manual aún persistiría).

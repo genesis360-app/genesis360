@@ -3061,7 +3061,19 @@ export default function CajaPage() {
             {(() => {
               const claveConfigurada = !!(tenant as any)?.clave_maestra
               const esCierreAjeno = sesionActiva?.usuario_id && sesionActiva.usuario_id !== user?.id
-              if (!claveConfigurada || !esCierreAjeno) return null
+              if (!esCierreAjeno) return null
+              // H3 — caja ajena SIN clave maestra configurada: el cierre queda autorizado
+              // solo por rol. Lo hacemos VISIBLE (sin forzar a configurar la clave).
+              if (!claveConfigurada) {
+                return (
+                  <div className="mb-5 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-xl p-3">
+                    <p className="text-xs text-gray-600 dark:text-gray-400 flex items-start gap-1.5">
+                      <Lock size={13} className="mt-0.5 shrink-0" />
+                      <span>Esta caja la abrió otra persona. Sin <strong>clave maestra</strong> configurada, el cierre queda autorizado solo por tu rol. Podés exigir un 2º factor configurándola en Configuración → Negocio.</span>
+                    </p>
+                  </div>
+                )
+              }
               return (
                 <div className="mb-5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-700 rounded-xl p-3 space-y-2">
                   <label className="block text-sm font-medium text-amber-800 dark:text-amber-300 flex items-center gap-1.5">

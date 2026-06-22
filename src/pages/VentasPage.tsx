@@ -210,9 +210,14 @@ export default function VentasPage() {
         : (msg || 'No se pudo enviar el email'), { duration: 8000 })
     } finally { setEmailTicketSending(false) }
   }
-  // VF3/J2 — pide la clave maestra (si está configurada) antes de ejecutar una acción sensible
+  // VF3/J2 — pide la clave maestra (si está configurada) antes de ejecutar una acción sensible.
+  // H3 — si el tenant NO tiene clave configurada, la acción queda autorizada solo por rol;
+  // lo hacemos VISIBLE con un aviso informativo (sin forzar a configurar la clave).
   const pedirClaveMaestra = (titulo: string, onOk: () => void) => {
-    if (!claveMaestraConfigurada) { onOk(); return }
+    if (!claveMaestraConfigurada) {
+      toast(`${titulo}: autorizado por tu rol (sin clave maestra configurada)`, { icon: '🔓' })
+      onOk(); return
+    }
     setClaveInput(''); setClaveReq({ titulo, onOk })
   }
   const confirmarClaveMaestra = async () => {
@@ -4485,41 +4490,27 @@ export default function VentasPage() {
                           </div>
                         </div>
 
-                        {/* Descuento con toggle % / $ */}
-                        {/* C3 (relevamiento Ventas A-D): CAJERO no puede colocar/editar descuentos
-                            por ítem ni global. Si necesita aplicar uno, lo hace un SUPERVISOR/DUEÑO. */}
+                        {/* Descuento por ítem — SOLO combos (decisión GO 2026-06-22).
+                            El descuento manual del operador va por "Descuento general".
+                            Este campo es read-only: lo escribe únicamente la lógica de combos
+                            (aplicarCombo / auto-combo). Así el comportamiento es consistente con
+                            o sin combos configurados (antes, sin combos, un valor manual persistía).
+                            C3 (relevamiento Ventas A-D): CAJERO tampoco edita descuentos. */}
                         <div className="flex flex-col items-end gap-0.5">
-                          <div className={`flex items-center border rounded-lg overflow-hidden w-28 ${
-                            (() => {
-                              if (descuentoBloqueadoCajero) return 'border-gray-200 dark:border-gray-700 opacity-60'
-                              // Acá solo llegan roles con permiso de descuento; únicamente el SUPERVISOR tiene tope.
-                              const limiteItem = user?.rol === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
-                              return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
-                                ? 'border-red-400 dark:border-red-500'
-                                : 'border-gray-200 dark:border-gray-700'
-                            })()
-                          }`}>
+                          <div className="flex items-center border rounded-lg overflow-hidden w-28 border-gray-200 dark:border-gray-700 opacity-70">
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={item.descuento}
-                              onChange={e => updateItem(idx, 'descuento', parseFloat(e.target.value) || 0)}
-                              disabled={descuentoBloqueadoCajero}
-                              title={descuentoBloqueadoCajero ? 'Descuentos: solo DUEÑO/SUPERVISOR/ADMIN.' : undefined}
-                              className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:cursor-not-allowed" placeholder="0" />
-                            <button onClick={() => updateItem(idx, 'descuento_tipo', item.descuento_tipo === 'pct' ? 'monto' : 'pct')}
-                              disabled={descuentoBloqueadoCajero}
-                              title={descuentoBloqueadoCajero ? 'Descuentos: solo DUEÑO/SUPERVISOR/ADMIN' : 'Cambiar tipo de descuento (% o $)'}
-                              className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 transition-colors disabled:cursor-not-allowed disabled:hover:bg-gray-100">
+                              readOnly
+                              title="El descuento por ítem se aplica automáticamente por combos. Para un descuento manual, usá «Descuento general»."
+                              className="w-full pl-2 pr-1 py-1.5 text-sm focus:outline-none bg-gray-50 dark:bg-gray-800 cursor-not-allowed select-none" placeholder="0" />
+                            <button type="button" disabled tabIndex={-1}
+                              title="El descuento por ítem lo aplican los combos. Descuento manual: «Descuento general»."
+                              className="px-2 py-1.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 text-xs font-bold border-l border-gray-200 dark:border-gray-700 cursor-not-allowed">
                               {item.descuento_tipo === 'pct' ? '%' : '$'}
                             </button>
                           </div>
-                          {(() => {
-                            if (descuentoBloqueadoCajero) {
-                              return <span className="text-[10px] text-gray-400 dark:text-gray-500">Bloqueado</span>
-                            }
-                            const limiteItem = user?.rol === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
-                            return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
-                              ? <span className="text-[10px] text-red-500 dark:text-red-400">máx {limiteItem}%</span>
-                              : null
-                          })()}
+                          {item.descuento > 0
+                            ? <span className="text-[10px] text-accent">por combo</span>
+                            : <span className="text-[10px] text-gray-400 dark:text-gray-500">auto (combos)</span>}
                         </div>
 
                         {/* Subtotal */}

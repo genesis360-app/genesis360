@@ -75,6 +75,16 @@ existentes corren un único camino feliz con el valor default de cada flag. **Ah
 >   autoriza; SIN clave → bloquea). `descuento_max_cajero_pct` sigue inerte (cajero 100% bloqueado) → su
 >   decisión queda en **H4**.
 > - **H3 (clave maestra CON vs SIN) — CONTRASTADO + validado server-side en DEV.** Ver la matriz §H3 abajo.
+>
+> **✅ 2026-06-22 (frontend, sin migración) — follow-up (a) descuento por-ítem read-only:**
+> Decisión de GO: **descuento por-ítem = SOLO combos; el descuento manual del operador va por "Descuento
+> general".** El input de descuento por-ítem del POS (`VentasPage`) pasó a **read-only** (toggle %/$ deshabilitado,
+> hint "auto (combos)" / "por combo"): lo escribe únicamente la lógica de combos (`aplicarCombo` / auto-combo).
+> Cierra la inconsistencia: antes, en un tenant **sin combos**, el auto-combo no corría (`if (!combosDisp.length) return`)
+> y un valor manual por-ítem persistía; con combos, el auto-combo lo strippeaba. Ahora es uniforme. La matemática
+> del subtotal/IVA (`getItemSubtotal`) no cambió. Los e2e 45/48 usan "Descuento general" (`max="100"`) → no afectados.
+> **UAT:** verificar que (1) el input por-ítem no acepta tipeo manual; (2) un combo de 1 SKU aplica su descuento y
+> se ve "por combo"; (3) el descuento manual sigue disponible vía "Descuento general" para DUEÑO/SUPERVISOR/ADMIN.
 
 ### H1 — Controles financieros SOLO client-side (choca con REGLA #0 obligación #3) 🟥🟥
 El enforcement de **límite CC, morosidad/bloqueo CC, condonación de deuda, baja por incobrable, descuentos
@@ -139,10 +149,16 @@ CAJERO + clave correcta → `42501 No autorizado: requiere rol DUEÑO/ADMIN` (el
 | Pago courier ≥ umbral | ídem | **BLOQUEA** + "configurá una clave" | RPC `marcar_envios_pagados` (238) |
 | Dar de baja incobrable | pide clave (rol DUEÑO/ADMIN) | **pasa sin clave** (solo rol) | RPC `marcar_incobrable` (236) |
 | Override de descuento sobre tope | pide clave → autoriza | **BLOQUEA** (no se puede exceder) | `VentasPage` (client) |
-| Anular venta despachada | pide clave | **pasa sin clave** (silencioso) | `VentasPage` (client) |
-| Cambiar cliente / devolución de venta cobrada | pide clave | **pasa sin clave** (silencioso) | `VentasPage` (client) |
-| Cerrar caja ajena / abrir con diferencia | pide clave | **pasa sin clave** (silencioso) | `CajaPage` (client) |
-| Saltar doble conteo (reconteo) | pide clave | **pasa sin clave** (solo rol) | `InventarioPage` (client) |
+| Anular venta despachada | pide clave | **pasa sin clave — ahora VISIBLE** (toast 🔓 "autorizado por tu rol") | `VentasPage` (client) |
+| Cambiar cliente / devolución de venta cobrada | pide clave | **pasa sin clave — ahora VISIBLE** (toast 🔓) | `VentasPage` (client) |
+| Cerrar caja ajena / abrir con diferencia | pide clave | **pasa sin clave — ahora VISIBLE** (note gris en el modal de cierre) | `CajaPage` (client) |
+| Saltar doble conteo (reconteo) | pide clave | **pasa sin clave — ahora VISIBLE** (texto del modal aclara "solo por tu rol") | `InventarioPage` (client) |
+
+> **✅ Follow-up (b) HECHO 2026-06-22 (frontend, sin migración):** el estado "sin clave" ahora es VISIBLE en las
+> acciones rol-only (decisión GO: rol-only + mostrar estado, sin forzar). `pedirClaveMaestra` (VentasPage)
+> emite un toast 🔓 informativo cuando no hay clave; CajaPage muestra una nota gris en el cierre de caja ajena;
+> InventarioPage aclara en el modal de reconteo; ConfigPage muestra el badge "○ Sin configurar — acciones
+> sensibles autorizadas solo por rol". typecheck + build verdes.
 
 **Patrón (NO es bug, es semántica a confirmar con GO):** la clave maestra es un **segundo factor OPT-IN**.
 Donde hay un **límite numérico configurado** que se está excediendo (umbral de doble firma, tope de descuento)
@@ -180,11 +196,11 @@ bloquean / otros siguen" no estaba documentada ni testeada → ahora sí.
 1. **§29 matriz fiscal RUNTIME** — `condicion_iva_emisor` RI/Mono/Exento × emitir CAE real (A/B/C) + rechazo 400 del guard FAC-27 / emisor↔letra (hoy solo en la EF, sin e2e). *(requiere AFIP homologación)*
 2. **Límite/morosidad CC** — `limite_cc_default` + `cc_enforcement_politica=bloquear` corta la venta CC sobre el tope (con efecto en DB). **+ evaluar guard server (H1).**
 3. **Clave maestra CON vs SIN** (H3) — ✅ contrato CON/SIN **documentado + validado server-side en DEV** (matriz §H3: primitivo `verificar_clave_maestra` + RPC `marcar_incobrable` por impersonación). *Falta solo el e2e click-through como usuario (toggle de clave del tenant) — incluir en esta Tanda A.*
-4. **Autorización de ajuste de inventario por rol ≠ DUEÑO** (2 actores: solicita→no muta→aprueba→muta).
+4. **Autorización de ajuste de inventario por rol ≠ DUEÑO** (2 actores: solicita→no muta→aprueba→muta). — ✅ **VALIDADO e2e (spec `51_autorizacion_ajuste_aprobar_mutante`, 2026-06-22):** spec 47 cubre "solicita" (SUPERVISOR→pendiente, sin mutar); ésta cubre "aprueba" → el DUEÑO aprueba una `ajuste_conteo` pendiente (esperado 126→contado 127, solicitada por "Supervisor Test") → DB: `inventario_lineas.cantidad` 126→127 + `stock_actual` 250→251 + `movimientos_stock` ajuste_ingreso x1 + `estado='aprobada'`/`aprobado_por`=DUEÑO≠solicitante (verificado). El stock muta **solo al aprobar**. Fixture SQL = autorización pendiente sobre LPN-MNB85SGE de "Coca Cola 1.5L Original" (re-sembrar; skip-guard si ausente). **🐛 Fix de UI hallado durante el e2e (2026-06-22):** la lista de Autorizaciones rotulaba `ajuste_conteo` y `bulk_edit` como **"Eliminar LPN"** (`tipoLabel` en `InventarioPage` no los cubría → caía al `else`); un DUEÑO veía "Eliminar LPN" al aprobar lo que en realidad SUMA stock. Corregido: label "Diferencia de conteo"/"Edición masiva" + color naranja/azul + detalle esperado→contado / campos. typecheck+build verdes.
 5. **Conteo gate por umbral + doble conteo (reconteo)** CON/SIN flag.
-6. **Over-receipt** (`permite_over_receipt`+pct) CON vs SIN (bloquea exceso) — efecto en stock + estado OC.
+6. **Over-receipt** (`permite_over_receipt`+pct) CON vs SIN (bloquea exceso) — ✅ **VALIDADO e2e (spec `52_over_receipt_bloquea_mutante`, 2026-06-22):** con `permite_over_receipt=false`, recibir 7 contra una OC de pedido 5 (producto simple, sin lote/venc) → guard B3 (`superaOverReceipt` cableado en `RecepcionesPage.guardar`) BLOQUEA con "…supera lo permitido sobre lo pedido (5)" y NO crea recepción (DB: OC sigue `confirmada`, 0 recepciones, recibido_acum=0 — sin inflar stock/costo). La **matriz de decisión CON/SIN tope** ya está en unit (`recepcionLogic.test.ts`: sin-exceso / exceso+no-permite / permitido-sin-tope / dentro-vs-fuera-del-pct); el **efecto stock+estado OC del éxito** ya está en spec 35. Fixture SQL = OC #16 confirmada (Mayorista Pepe, Sprite x5) sin recepciones (re-sembrar; skip-guard si ausente). *Falta (Tanda B): B1c over/under requiere SUPERVISOR (no-supervisor recibe ≠ pedido → bloquea) + camino CON-dentro-de-tope con efecto stock por UI.*
 7. **Gate de pago de OC** (efectivo→caja / no-efectivo→informativo / CC→deuda+límite; saldo no excedible) + **doble firma** (H2).
-8. **Pagar nómina** (RPC `pagar_nomina_empleado` → caja/CC, efectivo↔caja) + **doble validación** rol≠DUEÑO.
+8. **Pagar nómina** (RPC `pagar_nomina_empleado` → caja/CC, efectivo↔caja) — ✅ **VALIDADO e2e (spec `50_rrhh_pagar_nomina_mutante`, 2026-06-22):** pago en efectivo de una liquidación impaga desde Caja Principal → toast "Nómina pagada" + DB: `rrhh_salarios.pagado=true`/`medio_pago`/`caja_movimiento_id` + `caja_movimientos` egreso $100 "Nomina … - 06/2026" (verificado). Fixture SQL = empleado inactivo "ZZZ Nomina Test" + salario neto $100 (re-sembrar para re-correr; skip-guard si ausente). **FK `rrhh_salarios.caja_movimiento_id → caja_movimientos` impide borrar el egreso de una nómina paga (integridad OK).** *Falta (Tanda B): doble validación rol≠DUEÑO, medio no-efectivo, liquidación final.*
 9. **Descuento máx por rol** (`descuento_max_supervisor_pct`) bloquea sobre el tope. ✅ enforcement client-side cerrado (incl. descuentos por $ vía % efectivo, `validarDescuentosPorRol` + unit); *falta solo el e2e click-through (SUPERVISOR sobre tope → bloquea / clave autoriza).*
 10. **Devolución a proveedor formas efectivo (→caja) y reposición (→OC borrador)** · **crédito a favor de cliente** · **intereses CC (sweep)**.
 

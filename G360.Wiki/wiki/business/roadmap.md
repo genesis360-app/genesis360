@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.84.0 — 🔒 Descuento por-ítem read-only (solo combos) + estado "sin clave" visible (H3) + 🐛 fix label Autorizaciones (PROD ✅, sin migración)
+
+**Frontend-only** (sin migración; PROD = DEV = migs 001-240). **(a) Descuento por-ítem read-only** (`VentasPage`, decisión GO): el descuento por ítem lo escriben SOLO los combos (`aplicarCombo`/auto-combo); el descuento manual del operador va por "Descuento general". Cierra la inconsistencia de tenants sin combos. La matemática de subtotal/IVA no cambia. **(b) Estado "sin clave" VISIBLE (H3):** en las acciones rol-only sin clave maestra configurada se muestra el estado (toast 🔓 en VentasPage, nota en CajaPage cierre ajeno, aclaración en InventarioPage reconteo, badge en ConfigPage) — rol-only by-design, sin forzar a configurarla. **🐛 Fix:** la lista de Autorizaciones de inventario rotulaba `ajuste_conteo`/`bulk_edit` como "Eliminar LPN" (engañoso) → "Diferencia de conteo"/"Edición masiva" + detalle. **+3 specs e2e** (50 pagar nómina, 51 aprobación 2-actores, 52 over-receipt) que validan residual Tanda A (REGLA #0).
+
 ## v1.83.0 — 🏦 Caja preferida server-side + origen traspaso/depósito + 🧹 limpieza columnas inertes (PROD ✅, migs 239-240)
 
 **Punto 6 de GO:** la caja predeterminada se persiste **por usuario en DB** (mig 239 `users.caja_preferida_id`) en vez de localStorage → auto-selecciona **siempre** en POS + Caja, en cualquier dispositivo. Depósito a Caja Fuerte desde una caja pre-selecciona la caja activa como origen; traspaso caja→caja ya asumía la activa. Convertir presupuesto con 2+ cajas resuelve con la preferida. **Punto 4:** mig 240 dropea 3 columnas inertes de `tenants` (`descuento_max_cajero_pct`, `email_legal`, `recepcion_alerta_faltante_dias`). **PROD = DEV = migs 001-240.**

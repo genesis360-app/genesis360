@@ -107,7 +107,13 @@ doble-firma OC/envío). Falta el escenario que pruebe el comportamiento con clav
 | `rrhh_tardanza_modo`, `rrhh_horas_mes_base` (y otros `rrhh_*`) | **leídos** en RrhhPage, **sin setter** (tab RRHH de Config es placeholder vacío) | clavados en su default, no configurables |
 | `conteo_modo='elegir'` | semi-implementado | el runtime colapsa a rápido/guiado |
 
-→ **Decisión para GO por cada uno:** implementar el efecto, o quitar la opción de Config (no dejar promesas falsas).
+→ **GO (2026-06-21) decidió: implementar el efecto** de cada uno. Plan por flag (verificado el alcance real):
+> - **`precio_redondeo`** (none/10/50/100/500/1000): redondear el precio de venta al múltiplo. ⚠ Plata/fiscal + **amplio** — el precio entra por varios lados (retail `addToCart` precioBase `VentasPage:1278`, mayorista `precioListaItem:2120`, USD, edición manual). Implementar un helper puro `redondearPrecio(precio,modo)` (+ unit) y aplicarlo en el punto canónico del precio unitario efectivo para que la factura/IVA derive del precio ya redondeado (consistente). Requiere su propia sesión + tests (no rushear). **El más valioso.**
+> - **`email_legal`**: intención ambigua — el PDF usa `emisor_email = tenant.email`, NO `email_legal`. Definir con GO: ¿es el email que va en los comprobantes (entonces usarlo como `emisor_email` en `facturasPDF`/`presupuestoPDF`/`remitoPDF`) o un contacto legal interno? Según eso, cablear o quitar.
+> - **`boveda_umbral_caja`**: probable alerta "efectivo en caja supera el umbral → sugerir depósito a bóveda". Confirmar el comportamiento esperado con GO y engancharlo al sistema de alertas (fire-and-forget, sin mutar plata).
+> - **`rrhh_tardanza_modo` / `rrhh_horas_mes_base` / `rrhh_horas_extra_requiere_aprobacion` / `rrhh_doc_alerta_dias` / etc.**: se LEEN en RrhhPage pero el tab RRHH de Config es **placeholder vacío** → construir los inputs en ese tab (frontend, sin plata) para que sean configurables.
+> - **`descuento_max_cajero_pct`**: tope ilusorio (el CAJERO ya está 100% bloqueado de descuentos). Decidir: quitar la opción o re-significarla.
+> - **`conteo_modo='elegir'`**: semi-implementado (colapsa a rápido/guiado). Completar o quitar la opción 'elegir'.
 
 ### H5 — Otros (fiscal/stock)
 - **Kits — ✅ NO es bug (by-design, confirmado con GO 2026-06-21):** el rebaje de componentes ocurre **al ARMAR el kit** (kitting: reserva → rebaja componentes + ingresa 1 kit al stock, `InventarioPage.tsx:1360`); desarmar (des_kitting) reingresa componentes. **Vender el kit rebaja solo el stock del kit terminado** — los componentes ya se rebajaron al armar, volver a rebajarlos sería doble conteo. El hallazgo del agente era falso positivo.

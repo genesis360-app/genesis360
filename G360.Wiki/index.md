@@ -61,7 +61,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | 001–232 en DEV **y** PROD · descripción completa (230 CHECKs · 231 columnas/objetos — paridad DEV↔PROD · 232 fix regresión seed de alta) | ✅ |
+| [[wiki/database/migraciones]] | 001–233 en DEV **y** PROD · descripción completa (230 CHECKs · 231 columnas/objetos — paridad DEV↔PROD · 232 fix regresión seed de alta · **233 clave maestra HASHEADA bcrypt — v1.80.2**) | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 

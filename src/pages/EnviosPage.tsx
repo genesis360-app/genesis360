@@ -21,7 +21,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { buildWhatsAppUrl, expandirPlantilla, PLANTILLA_DEFAULT } from '@/lib/whatsapp'
 import { COURIERS, SERVICIOS_POR_COURIER, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, generarEnvioCourier, trackingEnvioCourier, type CotizacionOpcion } from '@/lib/couriers/api'
-import { agruparPagosPorCourier, desgloseIvaFlete, requiereDobleFirma, diffFactura } from '@/lib/enviosCourierPago'
+import { requiereDobleFirma, diffFactura } from '@/lib/enviosCourierPago'
 import SignaturePad from '@/components/SignaturePad'
 import { podFaltantes, SUBESTADOS_NO_ENTREGA, resolverNoEntrega, type SubestadoNoEntrega } from '@/lib/enviosPod'
 import { productividadRepartidor, cumplimientoDia, ordenarHojaRuta, tokenExpiraAt } from '@/lib/enviosReparto'
@@ -783,77 +783,34 @@ export default function EnviosPage() {
       const seleccionados = (enviosPendientesPago as any[]).filter(e => pagosSeleccion.has(e.id))
       const totalPago = seleccionados.reduce((s, e) => s + Number(e.costo_cotizado ?? 0), 0)
 
-      // C4 — doble firma por umbral (clave maestra del DUEÑO)
+      // C4 — doble firma: pre-check de UX (pedir la clave si hay umbral + clave configurada). El enforcement
+      // REAL —incluido "supera el umbral pero NO hay clave configurada"— vive en el RPC marcar_envios_pagados.
       const umbral = Number((tenant as any)?.envio_pago_doble_firma_umbral ?? 0)
-      if (requiereDobleFirma(totalPago, umbral) && (tenant as any)?.clave_maestra) {
-        if (!pagoClaveMaestra.trim()) {
-          toast.error(`Este pago supera el umbral de doble firma ($${umbral.toLocaleString('es-AR')}): ingresá la clave maestra.`)
-          setSavingPago(false); return
-        }
-        const { data: okClave } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: pagoClaveMaestra.trim() })
-        if (!okClave) { toast.error('Clave maestra incorrecta.'); setSavingPago(false); return }
+      if (requiereDobleFirma(totalPago, umbral) && (tenant as any)?.clave_maestra && !pagoClaveMaestra.trim()) {
+        toast.error(`Este pago supera el umbral de doble firma ($${umbral.toLocaleString('es-AR')}): ingresá la clave maestra.`)
+        setSavingPago(false); return
       }
 
       const generaGasto = (tenant as any)?.envio_courier_genera_gasto !== false
       const ivaPct = Number((tenant as any)?.envio_courier_iva_pct ?? 21)
       const esEfectivo = pagoMedio === 'Efectivo'
-      const fechaPago = pagoFecha || new Date().toISOString().split('T')[0]
 
-      // C2 — un gasto por courier (proveedor = courier) con IVA crédito fiscal
-      const grupos = agruparPagosPorCourier(seleccionados.map(e => ({
-        id: e.id, courier: e.courier, costo_cotizado: e.costo_cotizado, sucursal_id: e.sucursal_id,
-      })))
-
-      for (const g of grupos) {
-        let gastoId: string | null = null
-        if (generaGasto && g.total > 0) {
-          const { iva } = desgloseIvaFlete(g.total, ivaPct)
-          const numeros = seleccionados.filter(e => g.ids.includes(e.id)).map(e => `#${e.numero ?? e.id.slice(-6)}`).join(', ')
-          const { data: gastoIns, error: gErr } = await supabase.from('gastos').insert({
-            tenant_id: tenant!.id,
-            descripcion: `Flete ${g.courier} — ${g.ids.length} envío${g.ids.length > 1 ? 's' : ''}`,
-            monto: g.total,
-            categoria: 'Transporte y fletes',
-            categoria_id: categoriaFleteId ?? null,
-            tipo_iva: ivaPct > 0 ? String(ivaPct) : null,
-            iva_monto: iva > 0 ? iva : null,
-            alicuota_iva: ivaPct > 0 ? ivaPct : null,
-            iva_deducible: ivaPct > 0,
-            deduce_ganancias: true,
-            gasto_negocio: true,
-            medio_pago: JSON.stringify([{ tipo: pagoMedio, monto: g.total }]),
-            fecha: fechaPago,
-            sucursal_id: g.sucursalId,
-            usuario_id: user?.id ?? null,
-            monto_pagado: g.total,
-            estado_pago: 'pagado',
-            notas: `Pago a courier (Envíos): ${numeros}`,
-          }).select('id').single()
-          if (gErr) throw gErr
-          gastoId = gastoIns.id
-
-          // Caja: egreso (efectivo) / egreso_informativo (otros medios)
-          if (sesionCajaPago) {
-            const concepto = `Flete ${g.courier} — ${g.ids.length} envío(s)`
-            await supabase.from('caja_movimientos').insert({
-              tenant_id: tenant!.id, sesion_id: sesionCajaPago,
-              tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
-              concepto: esEfectivo ? concepto : `[${pagoMedio}] ${concepto}`,
-              monto: g.total, usuario_id: user?.id ?? null,
-            })
-          } else if (esEfectivo) {
-            toast(`⚠ Sin caja abierta — egreso de $${g.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no registrado en caja`, { icon: '⚠' })
-          }
-        }
-
-        const { error } = await supabase.from('envios').update({
-          costo_pagado: true,
-          fecha_pago_courier: pagoFecha || null,
-          medio_pago_courier: pagoMedio || null,
-          ...(gastoId ? { gasto_id: gastoId } : {}),
-        }).in('id', g.ids)
-        if (error) throw error
-      }
+      // Pago atómico y clave-gated server-side (mig 238 marcar_envios_pagados): agrupa por courier, genera
+      // un gasto por courier (con desglose de IVA) + su movimiento de caja y marca los envíos pagados, todo
+      // en una sola transacción, con la doble firma verificada en el server.
+      const { error } = await supabase.rpc('marcar_envios_pagados', {
+        p_envio_ids: seleccionados.map(e => e.id),
+        p_clave: pagoClaveMaestra.trim() || null,
+        p_medio: pagoMedio,
+        p_fecha: pagoFecha || null,
+        p_caja_sesion_id: sesionCajaPago ?? null,
+        p_genera_gasto: generaGasto,
+        p_iva_pct: ivaPct,
+        p_categoria_flete_id: categoriaFleteId ?? null,
+      })
+      if (error) throw error
+      if (!sesionCajaPago && esEfectivo)
+        toast(`⚠ Sin caja abierta — el egreso en efectivo no se registró en caja`, { icon: '⚠' })
 
       const n = seleccionados.length
       toast.success(`${n} envío${n > 1 ? 's' : ''} pagado${n > 1 ? 's' : ''}${generaGasto ? ' + gasto registrado' : ''}`)

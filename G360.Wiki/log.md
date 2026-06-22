@@ -6,6 +6,38 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-21] update | 🔍 Auditoría de cobertura (5 agentes) + 🔐 2 guards server-side de CC (migs 234/235 EN DEV)
+
+**Pedido de GO:** listar TODAS las funcionalidades y flags, cruzar contra los UAT, y endurecer con guards server-side. Decisiones de GO: un `uat-app.md` con tags por modo/flag; agentes para enumerar + yo autoría e2e; Tanda A (REGLA #0) primero; implementar el efecto de los flags huérfanos.
+
+**Auditoría F1 (5 agentes read-only en paralelo):** `tests/specs/cobertura/01-05.md` — **~264 lógicas + ~142 flags** de `tenants` con comportamiento CON/SIN, cruzados contra 52 unit + 44 e2e. Consolidado en **`tests/specs/uat-app.md`** (master con tags). **Patrón:** lógica pura bien cubierta por unit; runtime con efecto en DB + flags con/sin casi sin e2e.
+
+**Hallazgos REGLA #0 VERIFICADOS (en `uat-app.md` §2):** H1 controles financieros (límite CC, morosidad, condonación, incobrable, descuento, comprobante) **solo client-side**; H2 doble firma OC/courier bypasseable (se saltea sin clave); H4 **flags huérfanos** (set-only sin lector: `precio_redondeo`/`boveda_umbral_caja`/`email_legal`; ni-set-ni-read: `recepcion_alerta_faltante_dias`; read-sin-setter: `rrhh_tardanza_modo`/`rrhh_horas_mes_base`; ilusorio: `descuento_max_cajero_pct`; semi: `conteo_modo='elegir'`); H5 **kits = NO bug (by-design)** — el rebaje de componentes ocurre al ARMAR el kit, no al venderlo (confirmado con GO + código).
+
+**🔐 2 guards server-side implementados y testeados EN DEV (NO en PROD):**
+- **mig 234 `fn_ventas_cc_guard`** (BEFORE INSERT ventas): límite CC (B1) + morosidad (B4), espeja la lógica client-side. **8/8 escenarios verdes.** Computa la deuda **inline scopeada por `NEW.tenant_id`** porque `cliente_cc_estado` filtra por `auth.uid()` y devuelve 0 sin sesión (service-role/API/batch lo saltarían) — hallazgo importante.
+- **mig 235 `fn_ventas_writeoff_rol_guard`** (BEFORE UPDATE ventas): exige rol DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN cuando se agrega un tag `Condonación CC`/`Incobrable` nuevo. **4/4 verdes** (impersonando DUEÑO vs CAJERO). No afecta cobranza normal ni revertir.
+- ⚠ **DRIFT INTENCIONAL: DEV = migs 001-235, PROD = 001-233.** Los guards NO van a PROD hasta completar el set + OK de GO (cambian comportamiento: hard-block donde antes solo la UI).
+
+**Lo que NO es trigger-able (verificado, requiere frontend/RPC — NO se rusheó, REGLA #0):** doble firma + clave del incobrable (la clave se verifica, no se puede en un trigger → RPC); comprobante de gasto (`comprobante_url` se linkea en UPDATE post-INSERT → un trigger BEFORE INSERT rompería el alta de gastos → reordenar frontend). Plan por ítem en `uat-app.md`.
+
+**H4 flags huérfanos:** GO pidió implementar el efecto; tras verificar el alcance, cada uno necesita trabajo cuidadoso (precio_redondeo = feature de precios amplia+fiscal; email_legal/boveda = intención a definir; setters RRHH = construir UI). Plan por flag en `uat-app.md` §2/H4. **No se rusheó pricing al final de la sesión.**
+
+## [2026-06-21] update | 🚀 v1.80.2 EN PROD — clave maestra hash (mig 233) deployada + validación e2e #6/#10/#11
+
+**Deploy a PROD (v1.80.2, PR #235, release v1.80.2):**
+- **🔐 mig 233 (clave maestra hash) APLICADA EN PROD.** La `clave_maestra` deja de estar en TEXTO PLANO → bcrypt. El backfill hasheó la única clave plaintext de los 5 tenants (preservando el valor); `verificar_clave_maestra` compara por hash (con fallback compat); RPC `set_clave_maestra` (DUEÑO, mín 6) activo; `ConfigPage` con campo de confirmación + guarda vía el RPC. pgcrypto verificado en `extensions` de PROD. **PROD = DEV = migs 001-233.**
+- **🧹 Drift de branch corregido:** `origin/main` tenía archivos de migración solo hasta 230, pero PROD DB tenía 232 aplicadas (231/232 se habían aplicado directo a la DB sin que los archivos llegaran a main). El merge del PR #235 incorporó los archivos de migs **231/232/233** a main. Ahora repo `main` == PROD DB.
+
+**🧪 Validación e2e por click-through (aserción positiva + efecto verificado en DB) — cierra #6/#10/#11 del backlog:**
+- **#6 NC fiscal (spec `42_nc_fiscal_mutante`):** devolución de venta facturada (fixture sobre venta #239, Factura C #31) → botón "Emitir NC" → la EF `emitir-factura` emite la NC electrónica con `CbtesAsoc` referenciando la factura original → **CAE real de AFIP homologación**. Verificado en DB: NC-C #2 (`nc_cae 86250459279279`) + NC-C #3 (`86250459291162`), numeración consecutiva, sin error 10197/10040. Fixture armada (NC-239-3) para la próxima corrida. **AFIP homologación respondió OK.** *La devolución se siembra como fixture (su happy-path monetario es frágil y ya está cubierto por reachability en spec 22); lo que valida #6 es la EMISIÓN FISCAL de la NC.*
+- **#10 Productos (spec `43_producto_creacion_mutante`):** alta de producto por UI con alícuota **10,5%** → persiste `alicuota_iva=10.5` (NO 21). Ejercita end-to-end el camino del bug GRAVE v1.78.1 (`0 || 21` / numeric mal normalizado). Verificado en DB.
+- **#11 Presupuestos (spec `44_presupuesto_convertir_mutante`):** crear presupuesto con cliente (NO toca stock ni caja) → desde Historial "Finalizar (rebaja stock)" → modal de saldo con medio no-efectivo → despacha con **rebaje real** (PRES-08). Verificado en DB: Coca Cola Norte 250→247 (3 ciclos), ventas 241/242/243 desde presupuestos 15/16/17, cada una con su movimiento `rebaje`.
+
+**⚠️ Gotcha de UX detectado (anotado, NO bloqueante, NO es bug de plata/stock):** convertir un presupuesto a despachada **desde el Historial** con **2+ cajas operativas abiertas y sin caja preferida** dispara "Hay varias cajas abiertas. Seleccioná en cuál registrar" (`cambiarEstado`, VentasPage:3644) pero ese flujo (detalle de venta → Finalizar → modal de saldo) **no expone un selector de caja** → callejón sin salida. Bloquea con seguridad (no rompe nada), pero el usuario no puede finalizar hasta setear caja preferida o cerrar una caja. Sugerencia: exponer el selector de caja en el modal de saldo del convert, o resolver por caja preferida del user. (En el POS directo sí hay selector "Registrar en caja"; el hueco es solo el convert desde historial.)
+
+**Método e2e (recordatorio):** aserción POSITIVA del resultado (toast/efecto) + verificar la mutación en DB con SQL; nunca solo `.not.toBeVisible()`. Las fixtures por SQL para saltear pasos frágiles/cross-módulo (devolución, OC) son patrón aceptado (specs 35/42). El convert de presupuesto exige caja elegida cuando hay 2+ abiertas → seleccionar caja en el POS antes de cambiar a modo Presupuesto.
+
 ## [2026-06-20] update | 🔐 Clave maestra HASHEADA (mig 233) + confirmación/validación en Config — EN DEV (PROD pendiente)
 
 Disparado por GO: tenía guardada "12345678" pero la clave real era "123456". **Investigación:** la app NO trunca a 6 — la columna `tenants.clave_maestra` es `text`, el input de Config no tiene `maxLength`/`slice`, y es el único setter → lo guardado (123456) fue lo que efectivamente se tipeó. **PERO** se hallaron 3 huecos REGLA #0 (control/seguridad): (1) **sin campo de confirmación** + input enmascarado → se podía guardar una clave distinta a la querida sin aviso (lo que le pasó a GO); (2) **guardada en TEXTO PLANO** (comparación directa en `verificar_clave_maestra`) y viajaba al cliente en el objeto tenant; (3) sin mínimo de longitud. La clave gatea acciones patrimoniales (anular, abrir caja con diferencia, cerrar caja ajena, **dar de baja incobrable**, pago OC/courier sobre umbral). **GO eligió el endurecimiento completo (confirmación + hashear).**

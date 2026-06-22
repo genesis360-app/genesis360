@@ -115,7 +115,7 @@ type: project
 | `cliente_creacion_inline` | `true` | `VentasPage.tsx:145` | alta de cliente desde el POS | `false`→hay que ir a Clientes | 🔴gap |
 | `cliente_datos_minimos` | `'nombre'` | `VentasPage.tsx:147` | exige set de datos al crear inline | otros valores | 🔴gap |
 | `presupuesto_validez_dias` | `30` | `VentasPage.tsx:1686,5379,5669-5837,6307`; `ConfigPage.tsx:565,935` | presupuesto > N días = vencido → bloquea convertir + badge "vencido" | null/0 → nunca vence | 🔴gap e2e (escenario vencido) |
-| `reserva_sena_obligatoria` | `true` | `VentasPage.tsx:2446,6651`; `ConfigPage.tsx:572,940` | reservar exige seña real >0 (excluye CC) | `false`→reserva sin seña | 🟡unit · 🔴e2e |
+| `reserva_sena_obligatoria` | `true` | `VentasPage.tsx:2446,6651`; `ConfigPage.tsx:572,940` | reservar exige seña real >0 (excluye CC) | `false`→reserva sin seña | 🟡unit · ✅e2e 57 (CON: reservar sin seña → bloquea, no crea reserva; verificado DB) |
 | `reserva_sena_minima_pct` | `0` | `VentasPage.tsx:2448,6650`; `ConfigPage.tsx:574,941` | seña < N% del total → bloqueado | `0`→cualquier seña >0 vale | 🟡unit · 🔴e2e |
 | `reserva_penalidad_pct` | `0` | `VentasPage.tsx:6554-6555,6622`; `ConfigPage.tsx:580,943` | cancelar reserva retiene N% de la seña | `0`→devuelve todo | 🟡unit (cajaSeña) · 🔴e2e |
 | `reserva_vencimiento_dias` | `null` | `VentasPage.tsx:651`; `ConfigPage.tsx:577,942` | sweep vence reservas viejas | null→no vencen | 🔴gap |

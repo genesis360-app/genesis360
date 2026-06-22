@@ -43,7 +43,12 @@ test.describe('Límite de CC con política bloquear (mutante)', () => {
     await expect(clienteSearch).toBeVisible({ timeout: 5000 })
     await clienteSearch.fill('ZZZ CC Limite')
     await page.waitForTimeout(800)
-    await page.getByRole('button', { name: new RegExp(CLIENTE, 'i') }).first().click()
+    const clienteBtn = page.getByRole('button', { name: new RegExp(CLIENTE, 'i') }).first()
+    // Auto-omitir si la fixture no está sembrada (patrón specs 35/42): el cliente CC con límite=1
+    // y cc_enforcement_politica='bloquear' se siembran por SQL antes de correr.
+    test.skip(!(await clienteBtn.isVisible({ timeout: 4000 }).catch(() => false)),
+      'Fixture ausente: cliente "ZZZ CC Limite Test" (CC, límite=1) + tenant cc_enforcement_politica=bloquear')
+    await clienteBtn.click()
     await page.waitForTimeout(400)
 
     // 3) Medio de pago: Cuenta Corriente cubriendo el total (monto > límite=1 → supera)

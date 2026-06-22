@@ -6,6 +6,26 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-22] update | 🧪 Barrido UAT Ventas/POS — Tanda A REGLA #0 COMPLETA (specs 53-57 + FAC-27) — EN DEV (test-only, sin afectar PROD)
+
+**Pedido de GO:** tras deployar v1.84.0, "seguimos con más testing" → residual Tanda A (hecho: specs 50-52, ver entrada deploy v1.84.0) y luego **barrido del orden sugerido empezando por Ventas/POS**. Inventario maestro = `tests/specs/cobertura/01_ventas_productos_facturacion.md` (60 lógicas + matriz flags + gaps). Todos los specs verdes + **verificados en DB** + **DEV dejado limpio** (fixtures SQL reversibles). **Commits test-only en `dev`** (0f8abf94, 604cc7ac, 61c051b2): no van a PROD hasta el próximo deploy (no tocan app code).
+
+**Specs nuevos (e2e mutantes, REGLA #0):**
+- ✅ **53 `53_credito_a_favor_excede_mutante`** (L28): cliente con $1 de crédito, aplicar $100 de "Crédito a favor" → bloquea ("No podés aplicar más que eso"), venta NO creada, crédito intacto (DB).
+- ✅ **54 `54_tier_mayorista_mutante`** (L53): qty ≥ `cantidad_minima` → "Precio mayorista: $900/u" (lista $1.200 tachada). **Hallazgo (no-bug):** `updateItem` capa la cantidad al stock disponible → un tier con umbral > stock queda DORMIDO hasta restockear (Donuts: umbral 1000, stock 35) → el spec usa un fixture reversible que baja el umbral a 10.
+- ✅ **55 `55_venta_usd_conversion_mutante`** (L41): producto `moneda_venta='usd'` + `precio_usd=10` × `cotizacion_usd=1430` → "Precio USD 10 · convertido a $14.300" en el carrito. *Gotcha: el producto USD necesita stock para aparecer en el buscador.*
+- ✅ **56 `56_guard_emisor_letra_ef`** (L3, API directa a la EF): Mono+A→400, Mono+B→400 ("solo puede emitir tipo C"); **RI+C→400** ("RI no puede emitir tipo C") validado por flip reversible de `condicion_iva_emisor`. `venta_id` dummy (el guard precede al fetch de la venta). Skip-guard si faltan `VITE_SUPABASE_URL/ANON_KEY` (correr con `dotenv -e .env.local -e tests/e2e/.env.test.local`).
+- ✅ **57 `57_reserva_sin_sena_mutante`** (L45/`reserva_sena_obligatoria`): modo Reservar + cliente + sin medio de pago → guard E6 "No se puede reservar sin seña", no crea reserva (0 ventas reservada en DB). Cliente real "Fede Messina".
+- ✅ **FAC-27 server (L9)** — validado contra la EF DEV en vivo vía flip reversible Jorgito→RI: Factura B de $100.000 (≥ umbral 68305.16) sin cliente identificado → 400 "AFIP exige identificar al cliente con DNI o CUIT". **Sin spec committeado** (requiere emisor RI persistente; Jorgito=Mono → L3 bloquea B antes) → pendiente un tenant RI de homologación (ligado al trámite AFIP de GO, junto con §29).
+
+**Cobertura reconciliada:** de la Tanda A REGLA #0 de Ventas/POS (cobertura/01), **cerrados** L26/L27/L33 (specs 45-49), L28 (53), L53 (54), L41 (55), L3 (56), L9/FAC-27 (EF), + kit by-design. **Queda solo §29 AFIP runtime** (bloqueado por GO).
+
+**Gotchas e2e nuevos:** (1) `updateItem` capa la cantidad al stock disponible; (2) un producto USD necesita stock para aparecer en el buscador del POS; (3) el guard emisor↔letra de la EF corre ANTES de buscar la venta (venta_id dummy alcanza para probar el 400); (4) la anon key (pública) no está en `.env.test.local` → cargar `.env.local` para los tests de API a la EF.
+
+**▶ Próxima sesión:** seguir el barrido — **Ventas Tanda B** (`reserva_sena_minima_pct`, `reserva_penalidad_pct` cancelación, `cliente_obligatorio` 3 valores, `reglas_canal`, cuotas, presupuesto vencido) y/o **módulo Caja/Bóveda** (cobertura/03). Detalle/handoff en `project_pendientes.md`.
+
+---
+
 ## [2026-06-22] deploy | 🚀 v1.84.0 EN PROD — descuento por-ítem read-only + estado "sin clave" visible (H3) + fix label Autorizaciones + 3 specs residual Tanda A (sin migración)
 
 **Pedido de GO:** "sigamos con los pendientes" → residual Tanda A primero, luego orden sugerido del UAT → "pasá todo a DEV y PRD de vercel y luego vamos con el UAT". Todo frontend/specs, **sin migración** (PROD = DEV = migs 001-240). typecheck + build verdes. Bump APP_VERSION → v1.84.0; PR dev→main; release `v1.84.0`.

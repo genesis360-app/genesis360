@@ -3066,3 +3066,34 @@ ALTER TABLE clientes          ADD COLUMN IF NOT EXISTS notas TEXT;              
 -- Desde 2026-06-18 los tenants nuevos nacían sin sucursal/caja/unidades → no podían operar.
 -- mig 232 restaura el set COMPLETO en fn_seed_tenant_defaults + backfillea tenants afectados.
 -- (Detectado validando un alta desde cero; afectaba a "El muller" en PROD.)
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migration 233: clave maestra HASHEADA (bcrypt) + setter server-side (v1.80.2)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- tenants.clave_maestra pasa de texto plano a bcrypt (extensions.crypt/gen_salt('bf')).
+-- verificar_clave_maestra(tenant, clave) compara contra el hash (NULL/vacía → TRUE = sin clave).
+-- Nuevo set_clave_maestra(p_clave) SECURITY DEFINER: solo DUEÑO, mínimo 6 chars, hashea server-side.
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Migrations 234-238: guards server-side de PLATA (v1.81.0, REGLA #0 — cierra H1/H2 de uat-app.md)
+-- ─────────────────────────────────────────────────────────────────────────────
+-- El enforcement de los controles financieros vivía solo en el frontend (bypasseable). Estos guards
+-- lo mueven al servidor (defense-in-depth + atomicidad). Ver SQL completo en supabase/migrations/.
+--   234 fn_ventas_cc_guard()            — BEFORE INSERT ventas: límite CC (política 'bloquear') +
+--                                          morosidad ('bloqueo_total'/'bloqueo_cc'); deuda computada
+--                                          INLINE scopeada por NEW.tenant_id (no vía cliente_cc_estado,
+--                                          que filtra por auth.uid()→0 sin sesión). trg_ventas_cc_guard.
+--   235 fn_ventas_writeoff_rol_guard()  — BEFORE UPDATE ventas: exige rol DUEÑO/SUPERVISOR/SUPER_USUARIO/
+--                                          ADMIN al agregar tag nuevo 'Condonación CC'/'Incobrable'.
+--   236 marcar_incobrable(cliente,clave,motivo) RETURNS jsonb — SECURITY DEFINER: rol (DUEÑO/SUPER_USUARIO/
+--                                          ADMIN) + verificar_clave_maestra server-side + write-off atómico
+--                                          (condona toda la deuda CC + gasto "Deudor incobrable").
+--   237 registrar_pago_oc(oc,medios,descuento,clave,caja,cheque,dias,condiciones) RETURNS jsonb —
+--                                          SECURITY DEFINER: rol (no CONTADOR) + doble firma server-side
+--                                          sobre oc_pago_doble_firma_umbral (BLOQUEA si supera el umbral
+--                                          y no hay clave configurada) + saldo; escribe OC + proveedor_cc
+--                                          + cheque + caja_movimientos en una transacción.
+--   238 marcar_envios_pagados(envio_ids,clave,medio,fecha,caja,genera_gasto,iva_pct,categoria) RETURNS jsonb —
+--                                          SECURITY DEFINER: doble firma server-side; agrupa por courier,
+--                                          gasto con desglose de IVA + caja + marca envíos pagados, atómico.
+-- Todas REVOKE ALL FROM PUBLIC + GRANT EXECUTE TO authenticated. DEV + PROD ✅ (PR #236).

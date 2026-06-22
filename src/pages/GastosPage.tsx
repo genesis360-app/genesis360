@@ -716,14 +716,13 @@ export default function GastosPage() {
       const montoNoCc = mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente').reduce((s, m) => s + m.monto, 0)
       const montoTotalMedios = montoCC + montoNoCc
 
-      // D5 — permisos de pago de OC: CONTADOR es read-only; doble firma por umbral requiere clave maestra.
+      // D5 — permisos de pago de OC (pre-check de UX; el RPC registrar_pago_oc los re-valida server-side).
       if (!puedeRegistrarPagoOC(user?.rol)) { toast.error('El CONTADOR tiene acceso de solo lectura — no puede registrar pagos.'); setOcGuardando(false); return }
-      if (requiereDobleFirmaPago(montoTotalMedios, { umbral: (tenant as any)?.oc_pago_doble_firma_umbral })) {
-        if ((tenant as any)?.clave_maestra) {
-          if (!ocClaveMaestra.trim()) { toast.error('Este pago supera el umbral de doble firma: ingresá la clave maestra.'); setOcGuardando(false); return }
-          const { data: okClave } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: ocClaveMaestra.trim() })
-          if (!okClave) { toast.error('Clave maestra incorrecta.'); setOcGuardando(false); return }
-        }
+      // Doble firma: si supera el umbral y hay clave configurada, pedirla acá para evitar un round-trip.
+      // El enforcement REAL (incluido el caso "supera el umbral pero NO hay clave configurada") vive en el RPC.
+      if (requiereDobleFirmaPago(montoTotalMedios, { umbral: (tenant as any)?.oc_pago_doble_firma_umbral })
+          && (tenant as any)?.clave_maestra && !ocClaveMaestra.trim()) {
+        toast.error('Este pago supera el umbral de doble firma: ingresá la clave maestra.'); setOcGuardando(false); return
       }
 
       if (montoTotalMedios > saldo + 0.5) {
@@ -758,87 +757,32 @@ export default function GastosPage() {
         }
       }
 
-      const nuevoMontoPagado = Number(ocSeleccionada.monto_pagado ?? 0) + montoNoCc
-      const nuevoDescuento   = Number(ocSeleccionada.monto_descuento ?? 0) + descuentoNum
-      const nuevoEstadoPago = (nuevoMontoPagado + montoCC + nuevoDescuento) >= total - 0.5
-        ? (montoCC > 0 && montoNoCc === 0 ? 'cuenta_corriente' : 'pagada')
-        : 'pago_parcial'
-
-      let fechaVenc: string | null = ocSeleccionada.fecha_vencimiento_pago ?? null
-      let diasPlazo: number | null = ocSeleccionada.dias_plazo_pago ?? null
-      if (montoCC > 0) {
-        const dias = parseInt(ocPagoDias) || 30
-        const fv = new Date(); fv.setDate(fv.getDate() + dias)
-        fechaVenc = fv.toISOString().split('T')[0]; diasPlazo = dias
-      }
-
-      await supabase.from('ordenes_compra').update({
-        estado_pago: nuevoEstadoPago,
-        monto_pagado: nuevoMontoPagado,
-        monto_descuento: nuevoDescuento,
-        monto_total: total,
-        ...(montoCC > 0 ? { fecha_vencimiento_pago: fechaVenc, dias_plazo_pago: diasPlazo, condiciones_pago: ocPagoCondiciones || null } : {}),
-      }).eq('id', ocSeleccionada.id)
-
-      // Registro en proveedor_cc_movimientos (pago en cash/transferencia cancela deuda; CC suma nueva deuda)
-      if (montoNoCc > 0) {
-        await supabase.from('proveedor_cc_movimientos').insert({
-          tenant_id: tenant!.id, proveedor_id: ocSeleccionada.proveedor_id,
-          oc_id: ocSeleccionada.id, tipo: 'pago', monto: -montoNoCc, fecha: hoy,
-          medio_pago: JSON.stringify(mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente').map(m => ({ tipo: m.tipo, monto: m.monto }))),
-          descripcion: `Pago OC #${ocSeleccionada.numero}`,
-          caja_sesion_id: sesionId, created_by: user!.id,
-        })
-      }
-      if (montoCC > 0) {
-        await supabase.from('proveedor_cc_movimientos').insert({
-          tenant_id: tenant!.id, proveedor_id: ocSeleccionada.proveedor_id,
-          oc_id: ocSeleccionada.id, tipo: 'oc', monto: montoCC, fecha: hoy,
-          fecha_vencimiento: fechaVenc,
-          descripcion: `CC OC #${ocSeleccionada.numero} — ${diasPlazo}d`,
-          created_by: user!.id,
-        })
-      }
-
-      // Auditoría #5 — el cheque entregado queda registrado y linkeado (antes: doble carga manual)
-      if (montoCheque > 0) {
-        const { error: chqErr } = await supabase.from('cheques').insert({
-          tenant_id: tenant!.id,
-          tipo: 'propio',
-          estado: 'entregado',
-          monto: montoCheque,
-          nro_cheque: ocChequeNro.trim() || null,
-          banco: ocChequeBanco.trim() || null,
-          fecha_emision: hoy,
-          fecha_cobro: ocChequeFechaCobro,
-          proveedor_id: ocSeleccionada.proveedor_id ?? null,
-          oc_id: ocSeleccionada.id,
-          sucursal_id: sucursalId || null,
-          notas: `Generado por pago OC #${ocSeleccionada.numero}`,
-          created_by: user?.id ?? null,
-        })
-        if (chqErr) console.error('[cheques] alta por pago OC:', chqErr.message)
-        else toast(`Cheque por $${montoCheque.toLocaleString('es-AR', { maximumFractionDigits: 0 })} registrado en Gastos → Cheques`, { icon: '🧾' })
-      }
-
-      // ISS-136: Caja — egreso (efectivo) y egreso_informativo (no efectivo, sin CC)
-      const concepto = `Pago OC #${ocSeleccionada.numero} — ${ocSeleccionada.proveedores?.nombre}`
-      for (const m of mediosValidos.filter(m => m.tipo !== 'Cuenta Corriente')) {
-        const esEfectivo = m.tipo === 'Efectivo'
-        if (!sesionId) {
-          if (esEfectivo) toast(`⚠ Sin caja abierta — egreso de $${m.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no registrado en caja`, { icon: '⚠' })
-          continue
-        }
-        const { error: cajErr } = await supabase.from('caja_movimientos').insert({
-          tenant_id: tenant!.id, sesion_id: sesionId,
-          tipo: esEfectivo ? 'egreso' : 'egreso_informativo',
-          monto: m.monto,
-          concepto: esEfectivo ? concepto : `[${m.tipo}] ${concepto}`,
-          cuenta_origen_id: esEfectivo ? null : cuentaOrigenDeMetodo(m.tipo),
-          usuario_id: user?.id,
-        })
-        if (cajErr) console.error('caja_movimientos OC insert:', cajErr.message)
-      }
+      // Pago atómico y clave-gated server-side (mig 237 registrar_pago_oc). El RPC re-valida rol + doble
+      // firma (clave) sobre el umbral —incluido el caso "supera el umbral pero NO hay clave configurada"—
+      // + saldo, y hace TODAS las escrituras (OC, proveedor_cc, cheque, caja) en una sola transacción.
+      // Espeja exactamente la lógica previa; los medios van enriquecidos con cuenta_origen_id (la
+      // normalización de nombres se resuelve en el cliente, igual que antes).
+      const mediosRpc = mediosValidos.map(m => ({
+        tipo: m.tipo, monto: m.monto,
+        cuenta_origen_id: m.tipo === 'Efectivo' ? null : cuentaOrigenDeMetodo(m.tipo),
+      }))
+      const chequeObj = montoCheque > 0
+        ? { nro: ocChequeNro.trim() || null, banco: ocChequeBanco.trim() || null, fecha_cobro: ocChequeFechaCobro, sucursal_id: sucursalId || null }
+        : null
+      const { error: pagoErr } = await supabase.rpc('registrar_pago_oc', {
+        p_oc_id: ocSeleccionada.id,
+        p_medios: mediosRpc,
+        p_descuento_monto: descuentoNum,
+        p_clave: ocClaveMaestra.trim() || null,
+        p_caja_sesion_id: sesionId,
+        p_cheque: chequeObj,
+        p_pago_dias: parseInt(ocPagoDias) || 30,
+        p_pago_condiciones: ocPagoCondiciones || null,
+      })
+      if (pagoErr) throw pagoErr
+      if (montoCheque > 0) toast(`Cheque por $${montoCheque.toLocaleString('es-AR', { maximumFractionDigits: 0 })} registrado en Gastos → Cheques`, { icon: '🧾' })
+      if (!sesionId && mediosValidos.some(m => m.tipo === 'Efectivo'))
+        toast(`⚠ Sin caja abierta — el egreso en efectivo no se registró en caja`, { icon: '⚠' })
 
       toast.success('Pago registrado')
       qc.invalidateQueries({ queryKey: ['caja-movimientos'] })
@@ -1129,7 +1073,22 @@ export default function GastosPage() {
         mediosValidos.length === 0 ? 'pendiente' :
         Math.abs(montoPagado - monto) < 0.5 ? 'pagado' : 'parcial'
 
+      // Comprobante: subirlo ANTES del INSERT para que `comprobante_url` quede atómico en la fila.
+      // (Antes se subía en un UPDATE posterior; en el camino de autorización por umbral —que stashea
+      //  el payload y retorna temprano— ese UPDATE nunca corría → el comprobante del cajero se perdía.)
+      const gastoId = editandoId ?? crypto.randomUUID()
+      let comprobanteUrl: string | null = comprobanteExistente ?? null
+      if (comprobanteFile) {
+        const ext = comprobanteFile.name.split('.').pop()?.toLowerCase() ?? 'jpg'
+        const path = `${tenant!.id}/${gastoId}.${ext}`
+        const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, comprobanteFile, { upsert: true })
+        if (upErr) { toast.error('No se pudo subir el comprobante: ' + upErr.message); setGuardando(false); return }
+        comprobanteUrl = path
+      }
+
       const payload: any = {
+        id: gastoId,
+        comprobante_url: comprobanteUrl,
         tenant_id: tenant!.id,
         descripcion: form.descripcion.trim(), monto,
         tipo_comprobante: form.tipo_comprobante || null,
@@ -1177,7 +1136,6 @@ export default function GastosPage() {
         return
       }
 
-      let gastoId = editandoId
       if (editandoId) {
         // Bloqueo: si el gasto original cayó en período cerrado, no permitir edición (Fase 5)
         const origFecha = ([...gastos, ...historialGastos] as any[]).find(g => g.id === editandoId)?.fecha
@@ -1185,7 +1143,6 @@ export default function GastosPage() {
           toast.error(`Este gasto pertenece a un periodo contable cerrado (hasta ${ultimoCierre}). Generá una nota de corrección.`)
           return
         }
-        payload.comprobante_url = comprobanteExistente ?? null
         const { error } = await supabase.from('gastos').update(payload).eq('id', editandoId)
         if (error) {
           if (!manejarErrorPeriodoCerrado(error, toast.error)) throw error
@@ -1226,9 +1183,8 @@ export default function GastosPage() {
           if (efectivoGasto > saldo + 0.001)
             throw new Error(`No hay suficiente efectivo en caja ($${Math.round(saldo).toLocaleString('es-AR')}) para pagar $${Math.round(efectivoGasto).toLocaleString('es-AR')} en efectivo. Hacé un ingreso a la caja o pagá por otro medio.`)
         }
-        const { data: inserted, error } = await supabase.from('gastos').insert(payload).select('id').single()
+        const { error } = await supabase.from('gastos').insert(payload)
         if (error) throw error
-        gastoId = inserted.id
         toast.success('Gasto registrado')
         logActividad({ entidad: 'gasto', entidad_nombre: form.descripcion.trim(), accion: 'crear', valor_nuevo: `$${monto}`, pagina: '/gastos' })
 
@@ -1290,14 +1246,6 @@ export default function GastosPage() {
           monto_cuota: parseFloat(montoPorCuota.toFixed(2)),
           tasa_interes: tasa,
         }).eq('id', gastoId)
-      }
-
-      // Subir comprobante
-      if (comprobanteFile && gastoId) {
-        const ext = comprobanteFile.name.split('.').pop()?.toLowerCase() ?? 'jpg'
-        const path = `${tenant!.id}/${gastoId}.${ext}`
-        const { error: upErr } = await supabase.storage.from('comprobantes-gastos').upload(path, comprobanteFile, { upsert: true })
-        if (!upErr) await supabase.from('gastos').update({ comprobante_url: path }).eq('id', gastoId)
       }
 
       qc.invalidateQueries({ queryKey: ['gastos'] })

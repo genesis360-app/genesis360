@@ -555,39 +555,21 @@ export default function ClientesPage() {
 
   // B6 — Dar de baja incobrable: condona toda la deuda CC del cliente + gasto automático
   // "Deudores incobrables" + clave maestra del DUEÑO (si está configurada) + audit.
+  // El write-off (rol + clave + condonación de toda la deuda + gasto) se hace server-side en el RPC
+  // marcar_incobrable (mig 236, SECURITY DEFINER): la clave se verifica en el server, no en el cliente.
   const confirmarIncobrable = async () => {
     if (!incobrableCliente) return
     const claveConfigurada = !!(tenant as any)?.clave_maestra
-    if (claveConfigurada) {
-      if (!incobrableClave.trim()) { toast.error('Ingresá la clave maestra del dueño'); return }
-      const { data: ok } = await supabase.rpc('verificar_clave_maestra', { p_tenant_id: tenant!.id, p_clave: incobrableClave.trim() })
-      if (!ok) { toast.error('Clave maestra incorrecta'); return }
-    }
+    if (claveConfigurada && !incobrableClave.trim()) { toast.error('Ingresá la clave maestra del dueño'); return }
     setSavingIncobrable(true)
     try {
-      const pendientes = (ventasCC as any[]).filter((v: any) => v.cliente_id === incobrableCliente.id && !v.condonada)
-      let totalIncobrable = 0
-      for (const v of pendientes) {
-        let medios: any[] = []
-        try { medios = JSON.parse(v.medio_pago ?? '[]') } catch { medios = [] }
-        const saldo = (v.total ?? 0) - medios.filter((m: any) => m.tipo !== 'Cuenta Corriente').reduce((a: number, m: any) => a + (m.monto || 0), 0)
-        if (saldo > 0.5) {
-          medios.push({ tipo: 'Incobrable', monto: saldo, motivo: incobrableMotivo.trim() || null, por: user?.nombre_display ?? user?.id, at: new Date().toISOString() })
-          totalIncobrable += saldo
-        }
-        await supabase.from('ventas').update({ monto_pagado: v.total, medio_pago: JSON.stringify(medios) }).eq('id', v.id)
-      }
-      if (totalIncobrable > 0.5) {
-        // Gasto automático: registra la pérdida (deudor incobrable) para reportes/contador
-        await supabase.from('gastos').insert({
-          tenant_id: tenant!.id,
-          descripcion: `Deudor incobrable: ${incobrableCliente.nombre}${incobrableMotivo.trim() ? ' — ' + incobrableMotivo.trim() : ''}`,
-          monto: Math.round(totalIncobrable * 100) / 100,
-          categoria: 'Deudores incobrables',
-          fecha: new Date().toISOString().slice(0, 10),
-          usuario_id: user?.id,
-        })
-      }
+      const { data, error } = await supabase.rpc('marcar_incobrable', {
+        p_cliente_id: incobrableCliente.id,
+        p_clave: incobrableClave.trim() || null,
+        p_motivo: incobrableMotivo.trim() || null,
+      })
+      if (error) throw error
+      const totalIncobrable = Number((data as any)?.total_incobrable ?? 0)
       logActividad({ entidad: 'cliente', entidad_id: incobrableCliente.id, entidad_nombre: incobrableCliente.nombre,
         accion: 'incobrable', valor_nuevo: `Baja incobrable ${formatMoneda(totalIncobrable)}${incobrableMotivo.trim() ? ' — ' + incobrableMotivo.trim() : ''}`, pagina: '/clientes' })
       toast.success(`Deuda dada de baja como incobrable (${formatMoneda(totalIncobrable)})`)

@@ -6,6 +6,14 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-22] update | Decisión punto 2 (descuento por-ítem = solo combos) + handoff para /clear → próxima sesión = UAT exhaustivo
+
+**Decisión de GO:** **descuento por-ítem = SOLO combos; el manual va por "Descuento general".** ⇒ el auto-combo que strippea descuentos por-ítem huérfanos (hallazgo spec 45) es **by-design** — hallazgo CERRADO. **Follow-up menor para la sesión UAT:** hacer el input de descuento por-ítem **read-only** (hoy, en un tenant SIN combos, un descuento por-ítem manual aún persistiría).
+
+**Handoff /clear:** repo limpio + pusheado, PROD READY (v1.83.0). **Próxima sesión = UAT EXHAUSTIVO de toda la app, multi-tenant (Jorgito + Familia Otranto), cero issues go-live.** Plan + orden de módulos + harness + gotchas en `project_pendientes.md` (bloque "ARRANCÁ ACÁ"). Tanda A e2e: 6 specs verdes (45-49). Decisiones de los 9 puntos resueltas (ídem). Pendientes de código a meter durante la UAT: (a) input descuento por-ítem read-only; (b) mostrar estado "sin clave" en acciones rol-only (H3).
+
+---
+
 ## [2026-06-22] deploy | 🚀 v1.83.0 EN PROD — caja preferida server-side + origen traspaso/depósito + limpieza columnas (migs 239-240) + Tanda A specs 48/49
 
 **Pedido de GO (9 puntos + norte UAT):** dejar todo 100% funcional sin issues, multi-tenant. Resoluciones:

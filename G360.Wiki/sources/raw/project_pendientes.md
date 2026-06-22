@@ -6,12 +6,19 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-22)
-> **Estado:** PROD = DEV = **v1.83.0 (migs 001-240)**. **Norte actual de GO: UAT exhaustivo de TODA la app, multi-tenant, cero issues para go-live.** Build/typecheck verdes.
+> ### 🟢 ARRANCÁ ACÁ (2026-06-22 · handoff para /clear)
+> **Estado:** PROD = DEV = **v1.83.0 (migs 001-240)**. Repo limpio, todo pusheado, Vercel PROD READY. Build/typecheck verdes.
+>
+> **▶ PRÓXIMA SESIÓN = UAT EXHAUSTIVO de TODA la app (norte de GO: cero issues para go-live).**
+> - **Método:** módulo por módulo de `tests/specs/uat-app.md`, validar cada flujo + cada flag configurado, autoreando e2e mutantes donde falte (aserción POSITIVA + efecto verificado en DB), priorizando plata/stock/fiscal (REGLA #0). **Correr en ≥2 tenants** (Jorgito + Familia Otranto) para cazar diferencias de config (multi-tenant = práctica permanente, pedido de GO).
+> - **Orden sugerido:** Ventas/POS → Caja/Bóveda → Inventario/Conteos → Compras/Recepciones → Clientes/CC → RRHH → Envíos → Config/Suscripción.
+> - **Harness e2e listo:** Jorgito (owner/cajero/supervisor/rrhh/deposito/contador) + **Familia Otranto De Porto** (tenant SIN clave/factura OFF) usuario `e2e.fotranto.sup@local.com`/`Test1234!` → project `chromium-fotranto-sup`. Specs 45-49 verdes. Correr: `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN --project=chromium[-supervisor|-fotranto-sup]`.
+> - **Follow-ups menores de código a meter durante la UAT:** (a) input de descuento **por-ítem read-only** (decisión: per-ítem = solo combos); (b) mostrar el estado "sin clave" en las acciones rol-only (H3).
+> - **Gotchas e2e:** inputs `type=number` del POS controlados por React → native value-setter + `dispatchEvent('input',{bubbles:true})`; "Descuento general" solo en modo ≠ presupuesto; venta 100% CC → CTA "Despachar (cuenta corriente)"; en Familia Otranto el stock está sin ubicar (avanzado solo surte ubicado) y factura OFF (Cliente sin toggle "registrado").
 >
 > **v1.83.0 (PR #238, migs 239+240):** **Punto 6** — caja preferida **server-side** (mig 239 `users.caja_preferida_id`): antes solo localStorage (por dispositivo) → "no aparecía"; ahora persiste por usuario → auto-select SIEMPRE en POS+Caja. Depósito a Caja Fuerte desde una caja pre-selecciona la caja activa; traspaso caja→caja ya asumía la activa. **Punto 4** — mig 240 dropea 3 columnas inertes de `tenants`. **v1.82.0 previo:** `precio_redondeo` (H4 cerrado) + descuento máx hueco $ + H4 flags.
 >
-> **🗒️ Decisiones de GO (resueltas):** (1) H3 sin clave = rol-only by-design [pendiente menor: mostrar estado "sin clave"]; (2) descuento por-ítem: GO valida con socio — relevamiento G3 = cajero 100% bloqueado de descuentos, per-ítem solo roles autorizados [el auto-combo que strippea per-ítem manual está en tensión con G3, a decidir]; (3) AFIP: GO hace trámite PRODUCCIÓN + conseguirá CUIT RI homologación (su dueño genera/delega el cert); (4) limpieza HECHA; (5) performance 646 lints = backlog; (6) caja preferida HECHO; (7) Finanzas se mantiene (Bóveda = tesorería de-facto); (8) hard-delete diferido; (9) multi-tenant = práctica permanente.
+> **🗒️ Decisiones de GO (resueltas):** (1) H3 sin clave = rol-only by-design [pendiente menor: mostrar estado "sin clave"]; (2) **descuento por-ítem = SOLO combos; el manual va por "Descuento general" (RESUELTO por GO).** ⇒ el auto-combo que strippea descuentos por-ítem huérfanos es **by-design** (hallazgo cerrado). **Follow-up menor para la sesión UAT:** que el input de descuento por-ítem **no sea editable manualmente** (solo lo escriben los combos) — hoy en un tenant SIN combos un descuento por-ítem manual persistiría; hacerlo read-only cierra el caso; (3) AFIP: GO hace trámite PRODUCCIÓN + conseguirá CUIT RI homologación (su dueño genera/delega el cert); (4) limpieza HECHA; (5) performance 646 lints = backlog; (6) caja preferida HECHO; (7) Finanzas se mantiene (Bóveda = tesorería de-facto); (8) hard-delete diferido; (9) multi-tenant = práctica permanente.
 >
 > **▶ Tanda A e2e — 6 specs VERDES (REGLA #0); resto residual documentado:**
 > - ✅ **spec 45 — descuento SUPERVISOR sobre tope, CON clave** (`chromium-supervisor`, Jorgito): descuento 30% > tope 10% → gate de clave; clave incorrecta bloquea (server-side); correcta → override. Valida `validarDescuentosPorRol` (hueco $/%) + verificación server-side. Fixture `descuento_max_supervisor_pct=10`.
@@ -27,7 +34,7 @@ type: project
 >   - **over-receipt** (recepción > OC con aprobación SUPERVISOR): OC+recepción multi-paso.
 >   - **ajuste por rol con 2 actores** (no-DUEÑO solicita → DUEÑO aprueba): spec 47 cubre "solicita"; "aprueba" necesita 2 sesiones.
 >
-> **🔎 Hallazgo anotado (spec 45) — NO REGLA #0:** el efecto **auto-combo strippea cualquier descuento por-ítem que no venga de un combo** (`VentasPage` ~2200) → el descuento manual del operador vive en **"Descuento general"** (`descuentoTotal`). Errar hacia precio MÁS alto (no rompe plata/IVA), por eso no es crítico, pero **a confirmar con GO** si el comportamiento por-ítem es el deseado (probable by-design: per-ítem = combo-managed).
+> **🔎 Hallazgo (spec 45) — RESUELTO (GO 2026-06-22):** el auto-combo que strippea descuentos por-ítem huérfanos es **by-design**. Decisión: **descuento por-ítem = SOLO combos; el manual va por "Descuento general"**. Follow-up menor (sesión UAT): hacer el input de descuento por-ítem **read-only** (solo combos lo escriben) — hoy en un tenant SIN combos un descuento por-ítem manual aún persistiría.
 >
 > **Gotchas e2e (para los próximos specs):** (1) los inputs `type=number` del POS son **controlados por React** → ni `.fill` ni `pressSequentially` disparan su onChange; usar el **native value-setter + `dispatchEvent('input',{bubbles:true})`**. (2) "Descuento general" solo se renderiza en modo **NO presupuesto** (`modoVenta!=='pendiente'`). (3) el check de descuento corre **antes** que caja/cliente/pago → se alcanza el gate sin sembrar caja/cobro.
 >
@@ -43,7 +50,7 @@ type: project
 
 > ### ❓ DECISIONES / DUDAS ABIERTAS (consolidado — para revisar con tu socio)
 > 1. **H3 acciones gated "pasa sin clave"** (anular despachada, cerrar caja ajena, devolución cobrada, incobrable, saltar reconteo): ¿avisar/forzar configurar la clave, o rol-only by-design? (rec: rol-only + mostrar estado "sin clave").
-> 2. **Descuento por-ítem + combos** (hallazgo spec 45): el auto-combo **borra** un descuento por-ítem manual si no hay combo asociado → el descuento manual del operador va en "Descuento general". ¿By-design (per-ítem = combo-managed) o querés que el por-ítem manual persista?
+> 2. ~~**Descuento por-ítem + combos**~~ → **RESUELTO (GO):** per-ítem = SOLO combos; el manual va por "Descuento general". Follow-up menor: input per-ítem read-only en UI (sesión UAT).
 > 3. **AFIP** (ver bloque arriba): (a) ¿cuándo activamos PRODUCCIÓN (necesito cert/token de ARCA)? (b) ¿conseguís un CUIT RI de homologación para cerrar §29 con CAE real, o lo dejamos validado por lógica?
 > 4. **Columnas DB inertes** (`recepcion_alerta_faltante_dias`, `descuento_max_cajero_pct`, `email_legal`): ¿las limpiamos en una migración de limpieza?
 > 5. **Performance DB (646 lints):** envolver `auth.*()` en RLS con `(select …)` + índices en FKs. ¿Lo agendamos (migración DEV+PROD)? No urgente (deuda de escala).

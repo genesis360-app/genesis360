@@ -25,7 +25,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 **Deploy:** APP_VERSION → v1.82.0; commit `9609ced8` en dev; PR dev→main; release `v1.82.0` (--latest). EFs sin cambios. **PROD = DEV = v1.82.0, migs 001-238.**
 
-**▶ H4 CERRADO al 100%.** Próximo norte: **Tanda A e2e** (REGLA #0 sin e2e) — §29 fiscal runtime, límite/morosidad CC, clave maestra con/sin click-through, ajuste de inventario por rol≠DUEÑO, conteo gate + doble conteo, over-receipt, pagar nómina, descuento SUPERVISOR sobre tope.
+**▶ H4 CERRADO al 100%.** Próximo norte: **Tanda A e2e** (REGLA #0 sin e2e).
+
+**Tanda A e2e — primer spec EN VERDE (mismo día):**
+- ✅ **spec 45 `45_descuento_supervisor_tope_mutante`** (sesión SUPERVISOR, bajo `chromium-supervisor`): descuento general 30% > tope 10% → **gate de clave maestra** ("supera el límite del SUPERVISOR") → clave incorrecta **bloquea** ("Clave maestra incorrecta", server-side `verificar_clave_maestra`) → clave correcta **autoriza** (override, cierra el modal). Valida end-to-end `validarDescuentosPorRol` (hueco $/% cerrado en v1.81.0/v1.82.0) + la verificación server-side de la clave + el camino de override. Fixture `tenants.descuento_max_supervisor_pct=10` (Almacén Jorgito) seteado por SQL y **reseteado a null** tras correr.
+- **🔎 Hallazgo (NO REGLA #0):** el efecto auto-combo de `VentasPage` (~2200) **strippea el descuento por-ítem si no hay combo asociado** → el descuento manual del operador es el **"Descuento general"** (`descuentoTotal`); el por-ítem es combo-managed. Errar hacia precio más alto (no rompe plata/IVA). **A confirmar con GO** si es el comportamiento deseado.
+- **Gotchas e2e anotados:** inputs `type=number` del POS son controlados por React → usar native value-setter + `dispatchEvent('input',{bubbles:true})` (ni `.fill` ni `pressSequentially`); "Descuento general" solo en modo ≠ presupuesto; el check de descuento corre antes que caja/cliente/pago.
+- ⏳ **Resto de Tanda A pendiente** (ver `project_pendientes.md`): §29 fiscal runtime (AFIP homolog., externo/flaky), límite/morosidad CC (UI 'bloquear'; el guard server 234 ya validado 8/8), clave SIN configurar (requiere tenant sin clave), ajuste por rol≠DUEÑO (2 actores), conteo gate + doble conteo, over-receipt, pagar nómina.
 
 ---
 

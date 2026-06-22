@@ -57,6 +57,11 @@ export default defineConfig({
       name: 'setup-contador',
       testMatch: /auth\.contador\.setup\.ts/,
     }] : []),
+    // Setup SUPERVISOR de Familia Otranto (tenant SIN clave) — solo si hay credenciales
+    ...(process.env.E2E_FOTRANTO_SUP_EMAIL ? [{
+      name: 'setup-fotranto-sup',
+      testMatch: /auth\.fotranto-sup\.setup\.ts/,
+    }] : []),
 
     // ─── Tests OWNER (main)
     {
@@ -122,6 +127,17 @@ export default defineConfig({
       },
       dependencies: ['setup-contador'],
       testMatch: /18_rol_contador\.spec\.ts/,
+    }] : []),
+
+    // ─── Tests del tenant SIN clave (Familia Otranto) — solo si hay credenciales
+    ...(process.env.E2E_FOTRANTO_SUP_EMAIL ? [{
+      name: 'chromium-fotranto-sup',
+      use: {
+        ...devices['Desktop Chrome'],
+        storageState: path.join(__dirname, 'tests/e2e/.auth/fotranto_sup_session.json'),
+      },
+      dependencies: ['setup-fotranto-sup'],
+      testMatch: /48_descuento_sin_clave_bloquea_mutante\.spec\.ts/,
     }] : []),
   ],
 

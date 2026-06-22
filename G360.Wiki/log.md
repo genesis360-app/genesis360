@@ -6,6 +6,33 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-22] deploy | 🚀 v1.83.0 EN PROD — caja preferida server-side + origen traspaso/depósito + limpieza columnas (migs 239-240) + Tanda A specs 48/49
+
+**Pedido de GO (9 puntos + norte UAT):** dejar todo 100% funcional sin issues, multi-tenant. Resoluciones:
+
+**v1.83.0 (PR #238, migs 239+240, DEV+PROD = migs 001-240):**
+- **Punto 6 — caja preferida server-side (mig 239 `users.caja_preferida_id`):** la "caja predeterminada" vivía solo en localStorage (por dispositivo) → se perdía y "no aparecía" la auto-selección. Ahora se persiste **por usuario en DB** → auto-selecciona SIEMPRE en POS + Caja, en cualquier dispositivo. ★ en Caja escribe en DB + store (toggle on/off); lectura DB con fallback a localStorage. **Traspaso caja→caja**: ya asumía la caja activa como origen (sin selector) — confirmado. **Depósito a Caja Fuerte desde una caja**: pre-selecciona la caja activa. **Convertir presupuesto 2+ cajas**: con preferida resuelve solo + mensaje claro si no hay.
+- **Punto 4 — limpieza (mig 240):** DROP de `tenants.descuento_max_cajero_pct`, `email_legal`, `recepcion_alerta_faltante_dias` (0 referencias en frontend/EF/triggers, verificado). Tipos TS limpiados.
+- typecheck + build verdes. Migs aplicadas en PROD antes del merge (additive/cleanup, no rompen v1.82.0). El merge resolvió la divergencia de squash (merge `-s ours` de origin/main en dev: dev ya era superset).
+
+**Tanda A e2e — +2 specs VERDES (multi-tenant, en Familia Otranto De Porto = tenant SIN clave):**
+- ✅ **spec 48** — descuento sobre tope SIN clave → bloquea sin override ("Pedí autorización", no hay modal de clave). Cierra matriz H3 CON/SIN.
+- ✅ **spec 49** — morosidad CC: cliente con deuda vencida + `cc_morosidad_politica='bloqueo_total'` → "No puede comprar hasta saldar". Capa UI del guard 234.
+- Harness del tenant sin clave: usuario `e2e.fotranto.sup@local.com`/`Test1234!` + project `chromium-fotranto-sup`. Fixtures persistidos en ese tenant de prueba: `descuento_max_supervisor_pct=10`, `cc_morosidad_politica='bloqueo_total'`, "Mantecol Clasico 111g" priceado+ubicado, cliente "ZZZ Morosidad Test" + venta CC vencida. **Gotcha multi-tenant:** Familia Otranto tiene stock SIN ubicar (en avanzado el POS solo surte stock ubicado) y facturación OFF (la sección Cliente no tiene toggle "Cliente registrado") → diferencias reales vs Jorgito que validan robustez para go-live.
+
+**Resoluciones de los 9 puntos:**
+1. **H3 sin clave** → rol-only by-design (mi rec aceptada); pendiente menor: mostrar el estado "sin clave" en esas acciones (no fuerza configurarla).
+2. **Descuento por ítem** → GO valida con socio; relevamiento (G3): NO hay edición libre de precio, solo descuento por %; lo aplican SOLO DUEÑO/SUPERVISOR/ADMIN; el **CAJERO está 100% bloqueado** de descuentos (ítem y global), solo ve descuentos automáticos pre-autorizados (C3). ⇒ "el cajero no pone descuento" = correcto/ya implementado. El per-ítem manual SÍ existe para roles autorizados → el auto-combo que lo strippea (hallazgo spec 45) está en tensión con G3 (a decidir).
+3. **AFIP** → GO hace el trámite de PRODUCCIÓN; para RI de homologación, conseguir un CUIT RI y que su dueño genere/delegue el certificado (el CUIT solo NO alcanza). Ver respuesta detallada.
+4. **Limpieza columnas** → HECHO (mig 240).
+5. **Performance 646 lints** → agendado (backlog, ver después).
+6. **Caja preferida + traspaso** → HECHO (v1.83.0).
+7. **Finanzas/Tesorería** → se mantiene como está (Bóveda = tesorería de-facto) hasta requerir flujo de caja en el tiempo. Decisión registrada.
+8. **Hard delete tenant** → diferido.
+9. **Multi-tenant testing** → adoptado como práctica permanente (specs 48/49 ya corren en Familia Otranto).
+
+---
+
 ## [2026-06-22] deploy | 🚀 v1.82.0 EN PROD — precio_redondeo (H4 cerrado) + descuento máx hueco $ + H3 doc + H4 flags huérfanos (frontend, sin migración)
 
 **Pedido de GO:** "seguimos con precio_redondeo y luego pasás todo lo pendiente a PROD" — autónomo, con OK para deployar. Cierra el backlog de flags huérfanos (H4) y sube a PROD todo el frontend acumulado en `dev` desde el 21/06.

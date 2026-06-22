@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.83.0 — 🏦 Caja preferida server-side + origen traspaso/depósito + 🧹 limpieza columnas inertes (PROD ✅, migs 239-240)
+
+**Punto 6 de GO:** la caja predeterminada se persiste **por usuario en DB** (mig 239 `users.caja_preferida_id`) en vez de localStorage → auto-selecciona **siempre** en POS + Caja, en cualquier dispositivo. Depósito a Caja Fuerte desde una caja pre-selecciona la caja activa como origen; traspaso caja→caja ya asumía la activa. Convertir presupuesto con 2+ cajas resuelve con la preferida. **Punto 4:** mig 240 dropea 3 columnas inertes de `tenants` (`descuento_max_cajero_pct`, `email_legal`, `recepcion_alerta_faltante_dias`). **PROD = DEV = migs 001-240.**
+
 ## v1.82.0 — 🔢 precio_redondeo (H4 cerrado) + descuento máx hueco $ + H4 flags huérfanos (PROD ✅, sin migración)
 
 Cierra el backlog de **flags huérfanos (H4)**. **`precio_redondeo`** (REGLA #0, plata/fiscal): helper puro `redondearPrecio` (10/50/100/500/1000, round-half-up, fail-safe, default `none`) aplicado en el punto canónico `precioTierEfectivo` del POS → subtotal/IVA/`venta_items.precio_unitario`/factura derivan del mismo valor redondeado; también en `actualizarPrecios` (refresh de presupuesto). Sin migración (la columna ya existía). También sube a PROD lo acumulado en `dev` desde el 21/06: descuento máx por rol (cierre del hueco del descuento por $ que esquivaba el tope %), H3 (matriz clave CON/SIN documentada + validada server-side), H4 flags huérfanos (quitados `descuento_max_cajero_pct` y `email_legal`; alerta `boveda_umbral_caja`; tab RRHH de Config). **PROD = DEV = v1.82.0, migs 001-238.** Frontend-only.

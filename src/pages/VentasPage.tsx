@@ -614,14 +614,15 @@ export default function VentasPage() {
   const [cajaSeleccionadaId, setCajaSeleccionadaId] = useState<string | null>(null)
 
   // Sesión de la caja predeterminada del usuario (derivada de localStorage + sesiones abiertas)
+  // Caja preferida del usuario: server-side (mig 239) con fallback a localStorage (caché viejo).
   const cajaPrefKey = tenant?.id && user?.id ? `caja_preferida_${tenant.id}_${user.id}` : null
   const cajaPreferidaSesionId = useMemo<string | null>(() => {
-    if (sesionesAbiertas.length === 0 || !cajaPrefKey) return null
-    const cajaPrefId = localStorage.getItem(cajaPrefKey)
+    if (sesionesAbiertas.length === 0) return null
+    const cajaPrefId = (user as any)?.caja_preferida_id ?? (cajaPrefKey ? localStorage.getItem(cajaPrefKey) : null)
     if (!cajaPrefId) return null
     const sesion = (sesionesAbiertas as any[]).find(s => s.caja_id === cajaPrefId)
     return sesion?.id ?? null
-  }, [sesionesAbiertas, cajaPrefKey])
+  }, [sesionesAbiertas, cajaPrefKey, (user as any)?.caja_preferida_id])
 
   // sesión efectiva: selección explícita del user > caja preferida > única abierta
   const sesionCajaId = cajaSeleccionadaId
@@ -3650,7 +3651,7 @@ export default function VentasPage() {
       if (nuevoEstado === 'despachada' || nuevoEstado === 'reservada') {
         if (sesionesAbiertas.length === 0) throw new Error('No hay caja abierta. Abrí una caja antes de continuar.')
         if (nuevoEstado === 'despachada' && sesionesAbiertas.length > 1 && !sesionCajaId)
-          throw new Error('Hay varias cajas abiertas. Seleccioná en cuál registrar la venta desde el checkout.')
+          throw new Error('Hay varias cajas abiertas y no tenés una predeterminada. Marcá tu caja con la ★ en Caja (se auto-seleccionará siempre), o pasá una venta nueva por el POS eligiendo la caja.')
       }
 
       if (nuevoEstado === 'despachada') {

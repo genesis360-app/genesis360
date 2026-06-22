@@ -34,6 +34,7 @@ import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { redondearPrecio } from '@/lib/precioRedondeo'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales'
@@ -2116,9 +2117,11 @@ export default function VentasPage() {
     enabled: !!tenant,
   })
 
-  // Precio efectivo de un ítem según su cantidad: tier mayorista con mayor cantidad_minima
+  // Precio de lista/tier de un ítem según su cantidad: tier mayorista con mayor cantidad_minima
   // que la cantidad satisfaga; si ninguno aplica, precio minorista (precio_unitario base).
-  const precioTierEfectivo = (item: CartItem): number => {
+  // SIN redondeo (lo aplica precioTierEfectivo) — se usa para detectar si un tier mayorista
+  // bajó el precio respecto del minorista (display), independiente del redondeo configurado.
+  const precioTierBase = (item: CartItem): number => {
     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
@@ -2130,6 +2133,12 @@ export default function VentasPage() {
     for (const t of tiers) if (cant >= t.cantidad_minima) precio = t.precio  // tiers ya viene asc
     return precio
   }
+
+  // H4 — Precio unitario EFECTIVO (canónico): precio de lista/tier redondeado según
+  // `tenants.precio_redondeo`. Todo el cálculo de plata (subtotal, IVA, venta_items.precio_unitario,
+  // factura) deriva de acá → el redondeo se propaga de forma consistente. Default 'none' = sin cambios.
+  const precioTierEfectivo = (item: CartItem): number =>
+    redondearPrecio(precioTierBase(item), (tenant as any)?.precio_redondeo)
 
   const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
@@ -3024,7 +3033,8 @@ export default function VentasPage() {
       for (const item of (ventaDetalle.venta_items ?? [])) {
         const prod = precioMap[item.producto_id]
         if (!prod) continue
-        const nuevoPrecio = prod.precio_venta
+        // H4 — mismo redondeo de precio que el POS, para que el presupuesto refrescado quede consistente
+        const nuevoPrecio = redondearPrecio(prod.precio_venta, (tenant as any)?.precio_redondeo)
         const descu = item.descuento ?? 0
         const nuevoSubtotal = nuevoPrecio * item.cantidad * (1 - descu / 100)
         const ivaRate = prod.alicuota_iva / 100
@@ -4524,10 +4534,11 @@ export default function VentasPage() {
                         </p>
                       )}
 
-                      {/* G1/G2 — precio mayorista aplicado por cantidad */}
+                      {/* G1/G2 — precio mayorista aplicado por cantidad (compara el precio de lista
+                          SIN redondeo para no confundir el redondeo con un descuento mayorista) */}
                       {(() => {
+                        if (precioTierBase(item) >= item.precio_unitario) return null
                         const efectivo = precioTierEfectivo(item)
-                        if (efectivo >= item.precio_unitario) return null
                         return (
                           <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 font-medium">
                             <Tag size={11} /> Precio mayorista: ${efectivo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}/u

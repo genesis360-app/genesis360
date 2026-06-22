@@ -66,7 +66,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
       dependencies: ['setup-owner'],
-      testIgnore: /1[3-8]_rol_.*/,
+      testIgnore: /1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante/,
     },
 
     // ─── Tests CAJERO — solo si hay credenciales
@@ -88,7 +88,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/supervisor_session.json'),
       },
       dependencies: ['setup-supervisor'],
-      testMatch: /15_rol_supervisor\.spec\.ts/,
+      testMatch: /15_rol_supervisor\.spec\.ts|45_descuento_supervisor_tope_mutante\.spec\.ts/,
     }] : []),
 
     // ─── Tests RRHH — solo si hay credenciales

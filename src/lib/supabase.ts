@@ -42,7 +42,6 @@ export interface Tenant {
   session_timeout_minutes?: number | null
   permite_over_receipt?: boolean
   // Fase 2 — identidad y moneda
-  email_legal?: string | null
   precio_redondeo?: 'none' | '10' | '50' | '100' | '500' | '1000'
   // Fase 3 — cliente en POS
   cliente_obligatorio?: 'siempre' | 'reservas' | 'nunca'
@@ -50,7 +49,6 @@ export interface Tenant {
   cliente_consumidor_final?: boolean
   cliente_creacion_inline?: boolean
   // Fase 4 — descuentos y caja
-  descuento_max_cajero_pct?: number | null
   descuento_max_supervisor_pct?: number | null
   clave_maestra?: string | null
   boveda_umbral_caja?: number | null
@@ -77,6 +75,8 @@ export interface User {
   rol_custom_id?: string | null
   sucursal_id?: string | null
   puede_ver_todas?: boolean
+  /** Caja predeterminada del usuario (mig 239): se auto-selecciona en POS/Caja/traspasos */
+  caja_preferida_id?: string | null
   /** Permisos cargados en runtime desde roles_custom.permisos — no existe en DB directamente */
   permisos_custom?: Record<string, 'no_ver' | 'ver' | 'editar'> | null
   created_at: string

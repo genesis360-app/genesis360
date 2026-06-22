@@ -13,9 +13,44 @@ type: project
 > - **`precio_redondeo`** (último flag de H4, REGLA #0): helper puro `redondearPrecio` (none/10/50/100/500/1000, round-half-up, fail-safe, default `none`) aplicado en el punto canónico `precioTierEfectivo` del POS → subtotal/IVA/`venta_items.precio_unitario`/factura derivan del mismo valor redondeado; también en `actualizarPrecios`. +16 unit. La columna `tenants.precio_redondeo` ya existía (mig 123).
 > - Lo acumulado del 21+22/06: descuento máx por rol (hueco $ cerrado vía `validarDescuentosPorRol`, NO guard server), H3 (matriz clave CON/SIN documentada + validada server-side), H4 flags huérfanos (quitados `descuento_max_cajero_pct`+`email_legal`; alerta `boveda_umbral_caja`; tab RRHH de Config con 6 flags; `conteo_modo='elegir'` no era bug).
 >
-> **▶ ÚNICO pendiente para arrancar: Tanda A e2e** (REGLA #0 sin e2e) — ver §5 abajo. Prioridad: §29 fiscal runtime (AFIP homolog.), límite/morosidad CC, **clave maestra CON/SIN click-through** (el contrato server ya está validado, falta la UI), ajuste de inventario por rol≠DUEÑO, conteo gate + doble conteo, over-receipt, pagar nómina, **descuento SUPERVISOR sobre tope → bloquea / clave autoriza**.
+> **▶ Tanda A e2e — 4 specs VERDES (REGLA #0); resto residual documentado:**
+> - ✅ **spec 45 — descuento SUPERVISOR sobre tope, CON clave** (`chromium-supervisor`, Jorgito): descuento 30% > tope 10% → gate de clave; clave incorrecta bloquea (server-side); correcta → override. Valida `validarDescuentosPorRol` (hueco $/%) + verificación server-side. Fixture `descuento_max_supervisor_pct=10`.
+> - ✅ **spec 46 — límite de CC 'bloquear'** (`chromium`, Jorgito): cliente CC `limite_credito=1` + `cc_enforcement_politica='bloquear'` → venta 100% a CC → "Operación bloqueada", venta NO creada. Capa UI del guard server `fn_ventas_cc_guard` (mig 234). Fixtures reseteados.
+> - ✅ **spec 47 — conteo por rol ≠ DUEÑO → autorización pendiente** (`chromium-supervisor`, Jorgito): conteo con diferencia → "pendiente de aprobación" + fila `autorizaciones_inventario` (verificado en DB). Complementa spec 36. mig 228.
+> - ✅ **spec 48 — descuento sobre tope SIN clave** (`chromium-fotranto-sup`, **Familia Otranto De Porto = tenant SIN clave**): mismo tope, pero el tenant NO tiene clave → se BLOQUEA con "Descuento no autorizado… Pedí autorización" y **NO hay modal de clave** (sin override). Cierra la matriz H3 CON/SIN. **Multi-tenant**: corre en un 2º tenant (pedido de GO para levantar issues de go-live).
+> - Skip-guards (patrón 35/42) en las fixture-dependientes → el full-suite no falla sin fixtures.
+> - **🆕 Harness del tenant SIN clave (Familia Otranto De Porto `4cf85bbb-22b3-4760-91ee-15a24d9e4713`):** usuario de prueba **`e2e.fotranto.sup@local.com` / `Test1234!`** (SUPERVISOR), `auth.fotranto-sup.setup.ts` + project `chromium-fotranto-sup` (gated por `E2E_FOTRANTO_SUP_*`). **Fixtures persistidos en ese tenant (de prueba):** `descuento_max_supervisor_pct=10` + producto "Mantecol Clasico 111g" con precio. **Hallazgo del tenant:** su stock estaba **sin ubicar** → en avanzado el POS no surte stock no-ubicado (`soloUbicado`); se ubicó/priceó un producto para vender.
+> - ⏳ **Residual (alto costo de fixtures frágiles de plata/stock o externo; ya cubierto en impersonación/unit):**
+>   - **§29 fiscal runtime AFIP** — ver bloque "AFIP" abajo (lo que falta es de GO, no de código).
+>   - **morosidad CC** (deuda vencida → bloquea): fixture de venta CC vencida frágil. Ya validado por impersonación en el guard 234 (8/8 incl. morosidad). *(Se puede hacer en Familia Otranto sembrando una venta vencida.)*
+>   - **pagar nómina** (RPC `pagar_nomina_empleado`): RRHH multi-paso.
+>   - **over-receipt** (recepción > OC con aprobación SUPERVISOR): OC+recepción multi-paso.
+>   - **ajuste por rol con 2 actores** (no-DUEÑO solicita → DUEÑO aprueba): spec 47 cubre "solicita"; "aprueba" necesita 2 sesiones.
+>
+> **🔎 Hallazgo anotado (spec 45) — NO REGLA #0:** el efecto **auto-combo strippea cualquier descuento por-ítem que no venga de un combo** (`VentasPage` ~2200) → el descuento manual del operador vive en **"Descuento general"** (`descuentoTotal`). Errar hacia precio MÁS alto (no rompe plata/IVA), por eso no es crítico, pero **a confirmar con GO** si el comportamiento por-ítem es el deseado (probable by-design: per-ítem = combo-managed).
+>
+> **Gotchas e2e (para los próximos specs):** (1) los inputs `type=number` del POS son **controlados por React** → ni `.fill` ni `pressSequentially` disparan su onChange; usar el **native value-setter + `dispatchEvent('input',{bubbles:true})`**. (2) "Descuento general" solo se renderiza en modo **NO presupuesto** (`modoVenta!=='pendiente'`). (3) el check de descuento corre **antes** que caja/cliente/pago → se alcanza el gate sin sembrar caja/cobro.
 >
 > **Decisión abierta para GO (no bloqueante, H3):** ¿las acciones gated "pasa sin clave" (anular despachada, cerrar caja ajena, devolución cobrada) deberían avisar/forzar configurar la clave, o quedan rol-only by-design? (mi rec: rol-only + hacer visible el estado "sin clave", sin forzar).
+
+> ### 🧾 AFIP — qué puedo hacer y qué falta de GO (aclaración)
+> El tenant de pruebas (Almacén Jorgito) está **en HOMOLOGACIÓN** (`afip_produccion=false`, CUIT 23-32031506-9 Monotributista, `afipsdk_token` presente, PV 1).
+> - **Lo que YA funciona / puedo testear:** emisión de **CAE real contra AFIP homologación** para la **condición actual (Monotributista → Factura C)** — ya está en la spec 21 + spec 42 (NC). La lógica de qué comprobante construye la EF por cada condición está code-auditada y con unit tests.
+> - **Lo que NO puedo hacer yo (es de GO, trámite en AFIP/ARCA):**
+>   1. **PRODUCCIÓN real:** generar el **certificado + token de PRODUCCIÓN** en ARCA con tu clave fiscal (asociados a tu CUIT real) y subirlos → recién ahí se activa `afip_produccion`. No se puede generar sin tu clave fiscal de AFIP. Una vez subido, yo cableo/activo el toggle.
+>   2. **Matriz §29 completa (RI emite A/B, Exento) con CAE real:** AFIP valida la condición contra SU registro del CUIT. El CUIT de prueba es **Monotributo** en homologación → no puede emitir Factura A/B aunque cambie `condicion_iva_emisor` en nuestra DB. Para testear RI/Exento con CAE real necesito **un CUIT de prueba dado de alta como RI (y/o Exento) en el ambiente de homologación de AFIP** (lo das de alta vos en AFIP, o me confirmás uno). Sin eso, RI/Exento queda validado solo a nivel lógica (no CAE real).
+> - **Pendiente de tu lado (resumen):** (a) cert/token de PRODUCCIÓN + avisar para activar; (b) opcional: un CUIT RI de homologación para cerrar la matriz §29 con CAE real.
+
+> ### ❓ DECISIONES / DUDAS ABIERTAS (consolidado — para revisar con tu socio)
+> 1. **H3 acciones gated "pasa sin clave"** (anular despachada, cerrar caja ajena, devolución cobrada, incobrable, saltar reconteo): ¿avisar/forzar configurar la clave, o rol-only by-design? (rec: rol-only + mostrar estado "sin clave").
+> 2. **Descuento por-ítem + combos** (hallazgo spec 45): el auto-combo **borra** un descuento por-ítem manual si no hay combo asociado → el descuento manual del operador va en "Descuento general". ¿By-design (per-ítem = combo-managed) o querés que el por-ítem manual persista?
+> 3. **AFIP** (ver bloque arriba): (a) ¿cuándo activamos PRODUCCIÓN (necesito cert/token de ARCA)? (b) ¿conseguís un CUIT RI de homologación para cerrar §29 con CAE real, o lo dejamos validado por lógica?
+> 4. **Columnas DB inertes** (`recepcion_alerta_faltante_dias`, `descuento_max_cajero_pct`, `email_legal`): ¿las limpiamos en una migración de limpieza?
+> 5. **Performance DB (646 lints):** envolver `auth.*()` en RLS con `(select …)` + índices en FKs. ¿Lo agendamos (migración DEV+PROD)? No urgente (deuda de escala).
+> 6. **Gotcha UX:** convertir presupuesto desde el historial con 2+ cajas abiertas no expone selector de caja → falla "elegí una caja". ¿Lo arreglamos (mostrar selector en el convert)?
+> 7. **Módulo Finanzas/Tesorería consolidada:** diferido (la Bóveda es la tesorería de-facto). ¿Reevaluar?
+> 8. **Hard delete de tenant con grace period:** pendiente (pg_cron no habilitado → sweep externo). ¿Prioridad?
+> 9. **Multi-tenant testing (idea de GO):** seguir corriendo flujos en >1 tenant (Familia Otranto, etc.) para levantar issues de go-live. Confirmado como práctica.
 
 **✅ CERRADO el 2026-06-21 (v1.80.2 EN PROD):** #6 NC fiscal, #10 Productos, #11 Presupuestos validados por e2e click-through con efecto en DB (specs 42/43/44) + **deploy a PROD de mig 233 (clave maestra hash) + ConfigPage** (PR #235, release v1.80.2). **PROD = DEV = migs 001-233.** El merge también corrigió el drift de branch (los archivos de migs 231/232/233 no estaban en `main`). Detalle en `log.md` [2026-06-21].
 

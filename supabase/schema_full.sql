@@ -85,6 +85,7 @@ CREATE TABLE users (
   puede_ver_todas BOOLEAN NOT NULL DEFAULT FALSE,  -- mig 094: si false → el usuario queda restringido a sucursal_id
   nombre_display TEXT,
   activo         BOOLEAN DEFAULT TRUE,
+  caja_preferida_id UUID REFERENCES cajas(id) ON DELETE SET NULL,  -- mig 239: caja predeterminada del usuario (auto-select POS/Caja/traspasos)
   created_at     TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
@@ -2615,8 +2616,8 @@ ALTER TABLE recepcion_items ADD COLUMN IF NOT EXISTS motivo_faltante TEXT;      
 ALTER TABLE recepciones     ADD COLUMN IF NOT EXISTS remito_url TEXT;               -- B7
 ALTER TABLE tenants
   ADD COLUMN IF NOT EXISTS over_receipt_pct_max NUMERIC,                            -- B3 umbral % over-receipt
-  ADD COLUMN IF NOT EXISTS recepcion_remito_obligatorio BOOLEAN NOT NULL DEFAULT false,  -- B7
-  ADD COLUMN IF NOT EXISTS recepcion_alerta_faltante_dias INTEGER NOT NULL DEFAULT 7;    -- B4
+  ADD COLUMN IF NOT EXISTS recepcion_remito_obligatorio BOOLEAN NOT NULL DEFAULT false;  -- B7
+  -- recepcion_alerta_faltante_dias: DROPEADA en mig 240 (columna inerte, nunca se leyó). Ídem descuento_max_cajero_pct y email_legal.
 -- B5 robustez = recálculo del estado de la OC desde el acumulado de recepciones (en la app).
 -- B7 bucket privado 'remitos' (path <tenant_id>/<uuid>) + policies scoped por tenant.
 

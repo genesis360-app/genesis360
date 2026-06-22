@@ -55,7 +55,7 @@ function getTipoDisplay(tipo: string, concepto: string): string {
 
 export default function CajaPage() {
   const navigate = useNavigate()
-  const { tenant, user, sucursales } = useAuthStore()
+  const { tenant, user, sucursales, setUser } = useAuthStore()
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
@@ -420,23 +420,30 @@ export default function CajaPage() {
     enabled: !!tenant && (showTraspaso || showDepositoFuerte || showRetiroFuerte),
   })
 
-  // Auto-seleccionar caja (solo operativas, nunca caja fuerte)
+  // Auto-seleccionar caja (solo operativas, nunca caja fuerte).
+  // Preferida persistida en DB (mig 239) → server-side, funciona en cualquier dispositivo/sesión.
+  // localStorage queda como caché/fallback rápido (compat con preferidas viejas).
   const prefKey = tenant?.id && user?.id ? `caja_preferida_${tenant.id}_${user.id}` : null
+  const cajaPreferidaId = (user as any)?.caja_preferida_id ?? (prefKey ? localStorage.getItem(prefKey) : null)
   useEffect(() => {
     if (cajaSeleccionada !== null || cajasOperativas.length === 0) return
-    const preferida = prefKey ? localStorage.getItem(prefKey) : null
-    if (preferida && cajasOperativas.find((c: any) => c.id === preferida)) {
-      setCajaSeleccionada(preferida)
+    if (cajaPreferidaId && cajasOperativas.find((c: any) => c.id === cajaPreferidaId)) {
+      setCajaSeleccionada(cajaPreferidaId)
     } else if (cajasAbiertas.length > 0) {
       setCajaSeleccionada(cajasAbiertas[0])
     }
-  }, [cajasOperativas, cajasAbiertas, cajaSeleccionada, prefKey])
+  }, [cajasOperativas, cajasAbiertas, cajaSeleccionada, cajaPreferidaId])
 
-  function guardarCajaDefault(id: string) {
-    if (prefKey) {
-      localStorage.setItem(prefKey, id)
-      toast.success('Caja guardada como predeterminada')
-    }
+  async function guardarCajaDefault(id: string) {
+    if (!user?.id) return
+    const esQuitar = cajaPreferidaId === id
+    const nuevo = esQuitar ? null : id
+    // Persistir server-side (mig 239) + caché local + reflejar en el store al instante
+    const { error } = await supabase.from('users').update({ caja_preferida_id: nuevo }).eq('id', user.id)
+    if (error) { toast.error('No se pudo guardar la caja predeterminada'); return }
+    if (prefKey) { if (nuevo) localStorage.setItem(prefKey, nuevo); else localStorage.removeItem(prefKey) }
+    setUser({ ...(user as any), caja_preferida_id: nuevo })
+    toast.success(esQuitar ? 'Caja predeterminada quitada' : 'Caja guardada como predeterminada')
   }
 
   const cajaActual = cajasOperativas.find((c: any) => c.id === cajaSeleccionada) ?? cajasOperativas[0] ?? null
@@ -1496,7 +1503,7 @@ export default function CajaPage() {
               {cajasOperativas.map((c: any) => {
                 const abierta = cajasAbiertas.includes(c.id)
                 const activa = c.id === cajaId
-                const esPref = prefKey ? localStorage.getItem(prefKey) === c.id : false
+                const esPref = cajaPreferidaId === c.id
                 return (
                   <div key={c.id} className="flex items-center gap-0">
                     <button onClick={() => setCajaSeleccionada(c.id)}
@@ -1516,8 +1523,8 @@ export default function CajaPage() {
                       <span className={`w-2 h-2 rounded-full ${abierta ? 'bg-green-500' : 'bg-gray-300 dark:bg-gray-600'}`} />
                     </button>
                     <button
-                      onClick={() => cajaId && guardarCajaDefault(c.id)}
-                      title={esPref ? 'Predeterminada' : 'Establecer como predeterminada'}
+                      onClick={() => guardarCajaDefault(c.id)}
+                      title={esPref ? 'Predeterminada (click para quitar)' : 'Establecer como predeterminada'}
                       className={`px-2 py-1.5 rounded-r-xl text-xs border-y border-r transition-all
                         ${activa
                           ? 'border-accent bg-accent/10 text-accent hover:bg-accent/20'
@@ -1740,7 +1747,7 @@ export default function CajaPage() {
                 {cajaFuerte && (() => {
                   const cajaFuerteRoles: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
                   return accedeABoveda(user?.rol as any, (user as any)?.rol_custom_id, cajaFuerteRoles) ? (
-                    <button onClick={() => setShowDepositoFuerte(true)}
+                    <button onClick={() => { setDepositoFuenteSesionId(sesionActiva?.id ?? ''); setShowDepositoFuerte(true) }}
                       title="Depositar en Caja Fuerte"
                       className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-yellow-400 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 font-semibold rounded-xl transition-all">
                       🔒

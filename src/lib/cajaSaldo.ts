@@ -19,6 +19,29 @@ export function calcularSaldoEfectivo(
   return saldo
 }
 
+/** Sesiones de caja cuyo efectivo SUPERA el umbral de bóveda (H4 — alerta no-bloqueante:
+ *  "conviene depositar el efectivo en la Caja Fuerte"). Lógica pura, testeable.
+ *  `umbral` null/≤0 ⇒ alerta apagada → []. */
+export function cajasSobreUmbralBoveda(
+  sesiones: Array<{ id: string; monto_apertura: number | string; caja_nombre?: string | null }>,
+  movimientos: Array<{ sesion_id: string; tipo: string; monto: number | string }>,
+  umbral: number | null | undefined,
+): Array<{ sesionId: string; cajaNombre: string | null; efectivo: number }> {
+  const u = Number(umbral) || 0
+  if (u <= 0) return []
+  const porSesion = new Map<string, Array<{ tipo: string; monto: number | string }>>()
+  for (const m of movimientos) {
+    const arr = porSesion.get(m.sesion_id)
+    if (arr) arr.push(m); else porSesion.set(m.sesion_id, [m])
+  }
+  const out: Array<{ sesionId: string; cajaNombre: string | null; efectivo: number }> = []
+  for (const s of sesiones) {
+    const efectivo = calcularSaldoEfectivo(Number(s.monto_apertura) || 0, porSesion.get(s.id) ?? [])
+    if (efectivo > u) out.push({ sesionId: s.id, cajaNombre: s.caja_nombre ?? null, efectivo })
+  }
+  return out
+}
+
 /**
  * Saldo de EFECTIVO actual de una sesión de caja (apertura + ingresos − egresos en efectivo).
  * Usado para impedir egresos que dejarían la caja en negativo (gastos/devolución en efectivo).

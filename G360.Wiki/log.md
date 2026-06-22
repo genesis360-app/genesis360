@@ -6,6 +6,42 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-22] update | H4 — flags huérfanos resueltos (quitar 2, alerta de bóveda, tab RRHH de Config) — EN DEV, sin migración
+
+**Pedido de GO:** "vamos con H4". Decisiones tomadas por AskUserQuestion + recomendaciones. Sin migración (solo frontend). typecheck + build + 45 unit (ventasValidation + cajaSaldo) verdes. **Antes de tocar, verifiqué el estado REAL de cada flag** (no me fié del resumen del audit) → 2 findings del audit estaban **stale**.
+
+**Resoluciones por flag:**
+- **`descuento_max_cajero_pct` → QUITADO del frontend** (GO eligió quitar). El campo ni se renderizaba en Config (solo estado+save muertos); se sacó el estado, el save y los hints muertos en `VentasPage` (la rama CAJERO de los hints nunca se alcanza por `descuentoBloqueadoCajero`). El cajero queda siempre 100% bloqueado (regla C3/G3). La columna DB queda inerte.
+- **`email_legal` → QUITADO del frontend** (GO delegó; recomendé quitar). Razón: `tenant.email` ya cubre comprobantes + emails salientes; no hay caso de uso; ponerlo en comprobantes es fiscal-adjacent e inusual; un "contacto legal interno" sería feature que nadie pidió. Se sacó el input + estado + save de Config. Columna DB inerte.
+- **`boveda_umbral_caja` → IMPLEMENTADO como alerta no-bloqueante** (GO: "sí"). Cuando una caja operativa ABIERTA (excluye la Caja Fuerte permanente) tiene efectivo sobre el umbral → alerta "conviene depositar a la Caja Fuerte". Helper puro **`cajasSobreUmbralBoveda`** en `cajaSaldo.ts` (+4 unit, usa el mismo cálculo de efectivo que CajaPage) compartido por **`useAlertas`** (badge del sidebar) y **`AlertasPage`** (lista visible) vía `cajasSobreUmbralBovedaDelTenant` → no divergen (regla del badge mode-aware). Ambos modos. No muta plata, solo avisa. Validado el query contra datos reales de DEV (Caja Principal $35k / Caja1 $6k).
+- **Tab RRHH de Config → CONSTRUIDO** (GO: "sí"). Eran **6** flags huérfanos reales (no ~11 — los demás `rrhh_*` ya tenían setter dentro de RrhhPage): `rrhh_tardanza_modo` (registrar/proporcional/umbral), `rrhh_tardanza_tolerancia_min`, `rrhh_horas_mes_base`, `rrhh_horas_extra_requiere_aprobacion`, `rrhh_doc_alerta_dias`, `rrhh_nomina_supervisor_aprueba`. Tab con 3 secciones (Asistencia/tardanzas, Nómina, Documentos) + `handleSaveBiz`; se sacó el badge "pronto". Las 6 columnas existen en DB (verificado). `setTenant(data)` ya sincroniza el store post-save.
+- **`conteo_modo='elegir'` → NO ERA BUG** (finding stale). Verificado: Config ofrece las 3 opciones (`ConfigPage:2936`) y el runtime muestra el toggle Rápido/Guiado al crear el conteo (`InventarioPage:5040`). Cerrado sin tocar.
+- **`recepcion_alerta_faltante_dias`**: columna muerta (ni set ni read en src) → no se construyó (GO no la pidió, valor mínimo). Limpiar en una pasada de DB.
+- **`precio_redondeo` → DIFERIDO a su propia sesión** (el más valioso pero fiscal + amplio: el precio entra por retail/mayorista/USD/edición manual y la factura/IVA derivan de él). Plan: helper puro `redondearPrecio` + unit, en el punto canónico del precio unitario efectivo. No rushear entre otros 5.
+
+**Pendiente real de H4:** solo `precio_redondeo` (su sesión). Próximo: Tanda A e2e.
+
+---
+
+## [2026-06-21] update | Descuento máx por rol (hueco $ cerrado, sin guard) + H3 clave CON/SIN contrastado y validado server-side — EN DEV, sin migración
+
+**Pedido de GO:** "sigamos con lo de Descuento máx por rol y H3". Backlog residual del hardening (`uat-app.md` §2). Sin migración: solo frontend + validación SQL en DEV. typecheck + build + 34 unit de `ventasValidation` verdes.
+
+**1) Descuento máx por rol — decisión + fix:**
+- **Decisión: NO guard server-side.** Es el único ítem H1 que NO es cleanly-triggereable: (a) el override por clave maestra del DUEÑO autoriza un descuento sobre tope, pero la venta la crea igual el CAJERO → un hard-block en trigger rompería el flujo autorizado y no hay forma de que el trigger sepa que la clave se ingresó; (b) los descuentos por ítem viven en `venta_items` (insertados DESPUÉS de `ventas`) y los descuentos por **monto** se pliegan al `subtotal` → invisibles a un trigger BEFORE INSERT en `ventas`; (c) un descuento sobre tope **no rompe la integridad fiscal/contable** (la venta queda consistente: total, IVA, caja, CC) → fuera del scope estricto de la REGLA #0; es un control de autorización, no un invariante de plata.
+- **SÍ se cerró el HUECO REAL del enforcement client-side:** un descuento por **$ (monto)** esquivaba el tope **%** del SUPERVISOR/canal porque el check solo miraba `descuento_tipo==='pct'` (`VentasPage` registrarVenta). Ahora todo descuento se convierte a su **% efectivo** (`descuentoEfectivoPct` = monto/base×100) y se valida con **`validarDescuentosPorRol`** — lib pura nueva en `src/lib/ventasValidation.ts` con su batería de unit. El override por clave maestra queda igual (CON clave → autoriza; SIN clave → bloquea). `descuento_max_cajero_pct` sigue inerte (cajero 100% bloqueado de descuentos) → su decisión (quitar / re-significar) va a **H4**.
+
+**2) H3 — clave maestra CON vs SIN — contrastado + validado server-side en DEV:**
+- **Primitivo `verificar_clave_maestra` (mig 233) validado:** clave correcta → `true`; incorrecta → `false`; `NULL` → `false`; **tenant SIN clave configurada → `true` SIEMPRE** ("no hay clave = no se exige"). Todos los gates heredan el contrato.
+- **RPC `marcar_incobrable` (mig 236) validado por impersonación SQL (transacción + ROLLBACK, sin tocar datos):** DUEÑO + clave correcta → ejecuta; DUEÑO + clave incorrecta → `42501 Clave maestra incorrecta.`; CAJERO + clave correcta → `42501 No autorizado` (el rol se chequea ANTES que la clave). ⇒ el gate es **server-side real**, no bypasseable por bundle cacheado/API.
+- **Matriz CON/SIN completa** (8 acciones) documentada en `uat-app.md` §H3. **Hallazgo:** la clave es un **2º factor opt-in** y el comportamiento SIN clave NO es uniforme → donde hay **límite numérico** (umbral de doble firma de OC/courier, tope de descuento) SIN clave **bloquea** (el límite manda); donde es una **acción patrimonial discrecional sin umbral** (anular despachada, incobrable, cerrar caja ajena, saltar reconteo) SIN clave **el rol es el único gate**. Coherente, pero no estaba documentado ni testeado.
+- **▶ Decisión pendiente para GO (no bloqueante):** ¿las acciones "pasa sin clave" deberían avisar/forzar configurar la clave cuando el negocio quiere el 2º factor, o se dejan rol-only by-design?
+- Falta solo el **e2e click-through** de H3 (toggle de la clave del tenant) — va en **Tanda A**.
+
+**Próximo (a confirmar con GO):** H4 (flags huérfanos) y/o Tanda A e2e.
+
+---
+
 ## [2026-06-21] deploy | 🚀 v1.81.0 EN PROD — guards server-side de plata COMPLETOS (RPCs clave-gated: incobrable / pago OC / pago courier) + reorder comprobante
 
 **Pedido de GO:** "terminar los guards y pasarlos TODOS a PROD." Decisiones de scope (AskUserQuestion): doble firma OC/courier → **RPC completo** (no el fix client-side); comprobante de gasto → **reorder frontend sin trigger** (un trigger blanket rompería ~13 inserts de gastos automáticos —nómina/courier/devolución/incobrable— que legítimamente no llevan comprobante).

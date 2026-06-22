@@ -56,8 +56,25 @@ existentes corren un único camino feliz con el valor default de cada flag. **Ah
 > server-side+pago atómico, **cierra "se omite si no hay clave"**) · 238 `marcar_envios_pagados()` (ídem
 > courier). El **comprobante de gasto** se reordenó (sube antes del INSERT → `comprobante_url` atómico;
 > **GO eligió reorder sin trigger** porque un trigger blanket rompería ~13 inserts de gastos automáticos).
-> **Queda (residual, no bloqueante):** descuento máx por rol (bajo valor), H3 (clave CON/SIN end-to-end ya
-> contrastable), H4 flags huérfanos, Tanda A e2e. Detalle en `log.md` [2026-06-21] y `project_pendientes.md`.
+> **Queda (residual, no bloqueante):** ~~descuento máx por rol~~ ✅ + ~~H3 contrastado~~ ✅ (2026-06-21) +
+> ~~H4 flags huérfanos~~ ✅ mayormente (2026-06-22, ver §H4: solo `precio_redondeo` diferido a su sesión),
+> Tanda A e2e. Detalle en `log.md` [2026-06-21]/[2026-06-22] y `project_pendientes.md`.
+
+> **✅ 2026-06-21 (sesión siguiente, sin migración — solo frontend + validación):**
+> - **Descuento máx por rol — CERRADO (decisión: NO guard server-side, SÍ cerrar el hueco client-side):**
+>   se descartó un trigger/RPC porque (a) el override por clave maestra del DUEÑO no es replicable en un
+>   trigger (la venta la crea igual el CAJERO → un hard-block server rompería el flujo autorizado), (b) los
+>   descuentos por ítem viven en `venta_items` (insertados DESPUÉS de `ventas`) y los descuentos por **monto**
+>   se pliegan al `subtotal` → **invisibles** a un trigger BEFORE INSERT en `ventas`, y (c) un descuento sobre
+>   tope NO viola la integridad fiscal/contable (la venta queda consistente: total, IVA, caja y CC correctos)
+>   → fuera del scope estricto de la REGLA #0; es un control de autorización, no un invariante de plata.
+>   **En cambio se cerró el HUECO REAL del enforcement client-side:** un descuento por **$ (monto)** esquivaba
+>   el tope **%** del SUPERVISOR/canal (el check solo miraba `descuento_tipo==='pct'`). Ahora se convierte
+>   todo descuento a su **% efectivo** (`descuentoEfectivoPct`) y se valida con `validarDescuentosPorRol`
+>   (lib pura en `ventasValidation.ts`, +18 unit). El override por clave maestra sigue igual (CON clave →
+>   autoriza; SIN clave → bloquea). `descuento_max_cajero_pct` sigue inerte (cajero 100% bloqueado) → su
+>   decisión queda en **H4**.
+> - **H3 (clave maestra CON vs SIN) — CONTRASTADO + validado server-side en DEV.** Ver la matriz §H3 abajo.
 
 ### H1 — Controles financieros SOLO client-side (choca con REGLA #0 obligación #3) 🟥🟥
 El enforcement de **límite CC, morosidad/bloqueo CC, condonación de deuda, baja por incobrable, descuentos
@@ -72,7 +89,7 @@ y comprobante de gasto obligatorio** vive en el **frontend**. Server-side solo e
 > **Falta del set H1/H2 (NO cleanly-triggereables — necesitan cambio de frontend, agrupar como tanda "hardening frontend-coupled"):**
 > - **Comprobante de gasto obligatorio** — VERIFICADO 2026-06-21: en un gasto nuevo `comprobante_url` se setea en un UPDATE **posterior** al INSERT (sube el archivo con el `gastoId` ya creado, `GastosPage.tsx:1296-1300`). Un trigger BEFORE INSERT vería null y **bloquearía todo gasto con archivo**. Fix: reordenar el frontend (generar `gastoId` client-side + subir archivo + INSERT con `comprobante_url` ya seteado) y recién ahí un trigger puede enforzar; o RPC.
 > - **Doble firma OC/courier** (H2) + **clave del incobrable** — RPC clave-gated (ver H2).
-> - **Descuento máx por rol** — el descuento SÍ está en la venta al INSERT (sería trigger-able), pero es bajo valor: el CAJERO ya está 100% bloqueado de descuentos y el tope de SUPERVISOR se enforza client-side. Evaluar si vale un guard.
+> - **Descuento máx por rol** — ✅ **RESUELTO 2026-06-21 (NO guard server-side; hueco client-side cerrado).** Conclusión: no es cleanly-triggereable (override por clave no replicable en trigger; descuentos por ítem/monto invisibles a un trigger en `ventas`) y NO es un invariante de plata (la venta queda consistente). Se cerró el hueco real: descuentos por **$** ahora se convierten a **% efectivo** y se validan contra el tope %/canal (`validarDescuentosPorRol` + unit). Ver el bloque "✅ 2026-06-21" al inicio de §2.
 >
 > **Conclusión:** los 2 guards cleanly-triggereables (CC límite/morosidad + write-off rol) están HECHOS. El resto es frontend-coupled → tanda deliberada con su propia batería de tests, no triggers sueltos.
 
@@ -101,33 +118,59 @@ seteada**; si supera el umbral pero no configuró clave, el pago grande pasa **s
 > **Recomendación:** (A) como hardening real, agrupado con la clave-via-RPC del incobrable (mismo patrón) en
 > una tanda "RPCs clave-gated", hecha con calma + su propia batería de tests. (B) como mitigación inmediata.
 
-### H3 — Clave maestra CON vs SIN nunca contrastada 🟥
-Con `clave_maestra = null` se **apagan en silencio TODOS los gates** (cerrar caja ajena, anular, incobrable,
-doble-firma OC/envío). Falta el escenario que pruebe el comportamiento con clave seteada vs sin clave.
+### H3 — Clave maestra CON vs SIN — ✅ CONTRASTADO 2026-06-21
+Con `clave_maestra = null` se apaga el segundo factor; el comportamiento NO es uniforme (algunos gates
+bloquean igual, otros siguen de largo solo con el rol). Mapeado y validado server-side en DEV.
 
-### H4 — Flags huérfanos / rotos (configurables o leídos pero SIN efecto) 🟧 — VERIFICADO
-| Flag | Estado verificado | Efecto |
-|------|-------------------|--------|
-| `precio_redondeo` | set en ConfigPage, **ningún lector** | el "redondeo de precios" prometido en Config **no hace nada** |
-| `boveda_umbral_caja` | set en ConfigPage, **ningún lector** | umbral de bóveda inerte |
-| `email_legal` | set en ConfigPage, **ningún lector** en src | no sale en ningún lado |
-| `recepcion_alerta_faltante_dias` | **ni set ni read** en src (solo en DB) | alerta inexistente |
-| `descuento_max_cajero_pct` | set pero **nunca enforzado** (el cajero ya está 100% bloqueado de descuentos) | tope ilusorio |
-| `rrhh_tardanza_modo`, `rrhh_horas_mes_base` (y otros `rrhh_*`) | **leídos** en RrhhPage, **sin setter** (tab RRHH de Config es placeholder vacío) | clavados en su default, no configurables |
-| `conteo_modo='elegir'` | semi-implementado | el runtime colapsa a rápido/guiado |
+**Primitivo compartido `verificar_clave_maestra(tenant, clave)` (mig 233) — validado en DEV (Almacén Jorgito):**
+clave correcta → `true`; clave incorrecta → `false`; `NULL` → `false`; **tenant SIN clave configurada → `true`
+SIEMPRE** (contrato: "no hay clave = no se exige"). Todos los gates heredan este contrato.
 
-→ **GO (2026-06-21) decidió: implementar el efecto** de cada uno. Plan por flag (verificado el alcance real):
-> - **`precio_redondeo`** (none/10/50/100/500/1000): redondear el precio de venta al múltiplo. ⚠ Plata/fiscal + **amplio** — el precio entra por varios lados (retail `addToCart` precioBase `VentasPage:1278`, mayorista `precioListaItem:2120`, USD, edición manual). Implementar un helper puro `redondearPrecio(precio,modo)` (+ unit) y aplicarlo en el punto canónico del precio unitario efectivo para que la factura/IVA derive del precio ya redondeado (consistente). Requiere su propia sesión + tests (no rushear). **El más valioso.**
-> - **`email_legal`**: intención ambigua — el PDF usa `emisor_email = tenant.email`, NO `email_legal`. Definir con GO: ¿es el email que va en los comprobantes (entonces usarlo como `emisor_email` en `facturasPDF`/`presupuestoPDF`/`remitoPDF`) o un contacto legal interno? Según eso, cablear o quitar.
-> - **`boveda_umbral_caja`**: probable alerta "efectivo en caja supera el umbral → sugerir depósito a bóveda". Confirmar el comportamiento esperado con GO y engancharlo al sistema de alertas (fire-and-forget, sin mutar plata).
-> - **`rrhh_tardanza_modo` / `rrhh_horas_mes_base` / `rrhh_horas_extra_requiere_aprobacion` / `rrhh_doc_alerta_dias` / etc.**: se LEEN en RrhhPage pero el tab RRHH de Config es **placeholder vacío** → construir los inputs en ese tab (frontend, sin plata) para que sean configurables.
-> - **`descuento_max_cajero_pct`**: tope ilusorio (el CAJERO ya está 100% bloqueado de descuentos). Decidir: quitar la opción o re-significarla.
-> - **`conteo_modo='elegir'`**: semi-implementado (colapsa a rápido/guiado). Completar o quitar la opción 'elegir'.
+**RPC `marcar_incobrable` (mig 236) — validado por impersonación SQL en DEV (transacción + ROLLBACK):**
+DUEÑO + clave correcta → ejecuta · DUEÑO + clave incorrecta → `42501 Clave maestra incorrecta.` ·
+CAJERO + clave correcta → `42501 No autorizado: requiere rol DUEÑO/ADMIN` (el rol se chequea ANTES que la clave).
+⇒ el gate vive **server-side**, no es bypasseable por bundle cacheado/API.
+
+**Matriz CON vs SIN clave (verificada contra código/migs):**
+
+| Acción | CON clave configurada | SIN clave configurada | Dónde |
+|--------|----------------------|----------------------|-------|
+| Pago OC ≥ umbral doble firma | pide clave; incorrecta → bloquea | **BLOQUEA** + "configurá una clave" | RPC `registrar_pago_oc` (237) |
+| Pago courier ≥ umbral | ídem | **BLOQUEA** + "configurá una clave" | RPC `marcar_envios_pagados` (238) |
+| Dar de baja incobrable | pide clave (rol DUEÑO/ADMIN) | **pasa sin clave** (solo rol) | RPC `marcar_incobrable` (236) |
+| Override de descuento sobre tope | pide clave → autoriza | **BLOQUEA** (no se puede exceder) | `VentasPage` (client) |
+| Anular venta despachada | pide clave | **pasa sin clave** (silencioso) | `VentasPage` (client) |
+| Cambiar cliente / devolución de venta cobrada | pide clave | **pasa sin clave** (silencioso) | `VentasPage` (client) |
+| Cerrar caja ajena / abrir con diferencia | pide clave | **pasa sin clave** (silencioso) | `CajaPage` (client) |
+| Saltar doble conteo (reconteo) | pide clave | **pasa sin clave** (solo rol) | `InventarioPage` (client) |
+
+**Patrón (NO es bug, es semántica a confirmar con GO):** la clave maestra es un **segundo factor OPT-IN**.
+Donde hay un **límite numérico configurado** que se está excediendo (umbral de doble firma, tope de descuento)
+→ SIN clave **bloquea** (el límite manda; no se puede exceder sin el 2º factor). Donde es una **acción
+patrimonial discrecional sin umbral** (anular, incobrable, cerrar caja ajena, saltar reconteo) → SIN clave
+**el rol es el único gate** (la clave es endurecimiento opcional). Coherente, pero la inconsistencia "algunos
+bloquean / otros siguen" no estaba documentada ni testeada → ahora sí.
+
+> **▶ Decisión para GO (H3, no bloqueante):** ¿las acciones "pasa sin clave" (anular despachada, cerrar caja
+> ajena, devolución de venta cobrada) deberían **avisar/forzar configurar la clave** cuando el negocio
+> claramente quiere el 2º factor, o se dejan rol-only by-design? Hoy son rol-only si no hay clave. Los pagos
+> grandes (OC/courier sobre umbral) ya toman la postura fuerte (bloquean) porque ahí el dinero es mayor.
+
+### H4 — Flags huérfanos / rotos — ✅ MAYORMENTE CERRADO 2026-06-22 (sin migración, solo frontend)
+| Flag | Estado | Resolución 2026-06-22 |
+|------|--------|-----------------------|
+| `descuento_max_cajero_pct` | tope ilusorio (cajero 100% bloqueado) | ✅ **QUITADO del frontend** (Config + hints muertos en VentasPage). El cajero queda siempre bloqueado (regla C3/G3). Columna DB queda inerte. |
+| `email_legal` | sin lector | ✅ **QUITADO del frontend** (GO delegó la decisión; rec = quitar: `tenant.email` ya cubre comprobantes/emails, sin caso de uso). Columna DB queda inerte. |
+| `boveda_umbral_caja` | sin lector | ✅ **IMPLEMENTADO como alerta no-bloqueante**: cuando una caja operativa ABIERTA supera el umbral de efectivo → alerta "conviene depositar a la Caja Fuerte". Helper puro `cajasSobreUmbralBoveda` (+4 unit) compartido por `useAlertas` (badge) y `AlertasPage` (no divergen). Ambos modos. No muta plata. |
+| `rrhh_*` (6 flags: tardanza_modo, tardanza_tolerancia_min, horas_mes_base, horas_extra_requiere_aprobacion, doc_alerta_dias, nomina_supervisor_aprueba) | leídos en RrhhPage, sin setter | ✅ **TAB RRHH DE CONFIG CONSTRUIDO** (los inputs de esos 6). Los otros `rrhh_*` (doble_validacion, portal, notif_config, vacaciones_aviso/remanente) **YA tenían setter** dentro de RrhhPage — el audit sobreestimaba "~11". |
+| `conteo_modo='elegir'` | "semi-implementado" | ✅ **NO ERA BUG** — verificado: Config ofrece las 3 opciones y el runtime muestra el toggle Rápido/Guiado al crear el conteo (`InventarioPage:5040`). El finding estaba stale. |
+| `recepcion_alerta_faltante_dias` | ni set ni read en src (solo DB) | columna muerta — no se construyó (GO no la pidió, valor mínimo). Limpiar la columna en una pasada de DB. |
+| `precio_redondeo` | sin lector | ⏳ **DIFERIDO a su propia sesión** (fiscal + amplio — el precio entra por retail/mayorista/USD/edición manual y la factura/IVA derivan de él). Plan: helper puro `redondearPrecio(precio,modo)` + unit, aplicado en el punto canónico del precio unitario efectivo. **El más valioso, el más riesgoso → no rushear.** |
 
 ### H5 — Otros (fiscal/stock)
 - **Kits — ✅ NO es bug (by-design, confirmado con GO 2026-06-21):** el rebaje de componentes ocurre **al ARMAR el kit** (kitting: reserva → rebaja componentes + ingresa 1 kit al stock, `InventarioPage.tsx:1360`); desarmar (des_kitting) reingresa componentes. **Vender el kit rebaja solo el stock del kit terminado** — los componentes ya se rebajaron al armar, volver a rebajarlos sería doble conteo. El hallazgo del agente era falso positivo.
 - **EF descuento global solo `console.warn`:** si un descuento/recargo global no está prorrateado en ítems, la EF avisa pero **no bloquea** → riesgo de comprobante con total ≠ suma de ítems (AFIP 10048).
-- **ConfigPage:** los tabs `rrhh`/`alertas`/`notificaciones` son **placeholders vacíos** (flags sin UI de configuración). `handleSaveBiz` persiste ~100 columnas de golpe sin importar el tab (condiciona cómo se testea "guardar tab X").
+- **ConfigPage:** el tab `rrhh` **ya NO es placeholder** (construido 2026-06-22); quedan `alertas`/`notificaciones` como placeholders vacíos. `handleSaveBiz` persiste ~100 columnas de golpe sin importar el tab (condiciona cómo se testea "guardar tab X").
 
 ---
 
@@ -136,13 +179,13 @@ doble-firma OC/envío). Falta el escenario que pruebe el comportamiento con clav
 ### 🟥 Tanda A — REGLA #0 sin e2e (PRIMERO, decidido con GO)
 1. **§29 matriz fiscal RUNTIME** — `condicion_iva_emisor` RI/Mono/Exento × emitir CAE real (A/B/C) + rechazo 400 del guard FAC-27 / emisor↔letra (hoy solo en la EF, sin e2e). *(requiere AFIP homologación)*
 2. **Límite/morosidad CC** — `limite_cc_default` + `cc_enforcement_politica=bloquear` corta la venta CC sobre el tope (con efecto en DB). **+ evaluar guard server (H1).**
-3. **Clave maestra CON vs SIN** (H3) — gatea anular/incobrable/cierre ajeno/doble-firma con clave seteada vs sin.
+3. **Clave maestra CON vs SIN** (H3) — ✅ contrato CON/SIN **documentado + validado server-side en DEV** (matriz §H3: primitivo `verificar_clave_maestra` + RPC `marcar_incobrable` por impersonación). *Falta solo el e2e click-through como usuario (toggle de clave del tenant) — incluir en esta Tanda A.*
 4. **Autorización de ajuste de inventario por rol ≠ DUEÑO** (2 actores: solicita→no muta→aprueba→muta).
 5. **Conteo gate por umbral + doble conteo (reconteo)** CON/SIN flag.
 6. **Over-receipt** (`permite_over_receipt`+pct) CON vs SIN (bloquea exceso) — efecto en stock + estado OC.
 7. **Gate de pago de OC** (efectivo→caja / no-efectivo→informativo / CC→deuda+límite; saldo no excedible) + **doble firma** (H2).
 8. **Pagar nómina** (RPC `pagar_nomina_empleado` → caja/CC, efectivo↔caja) + **doble validación** rol≠DUEÑO.
-9. **Descuento máx por rol** (`descuento_max_supervisor_pct`) bloquea sobre el tope.
+9. **Descuento máx por rol** (`descuento_max_supervisor_pct`) bloquea sobre el tope. ✅ enforcement client-side cerrado (incl. descuentos por $ vía % efectivo, `validarDescuentosPorRol` + unit); *falta solo el e2e click-through (SUPERVISOR sobre tope → bloquea / clave autoriza).*
 10. **Devolución a proveedor formas efectivo (→caja) y reposición (→OC borrador)** · **crédito a favor de cliente** · **intereses CC (sweep)**.
 
 ### 🟧 Tanda B — operativo importante

@@ -690,7 +690,6 @@ export default function ConfigPage() {
   const [bizAlertaDifPct, setBizAlertaDifPct] = useState<string>(String((tenant as any)?.envio_alerta_diferencia_pct ?? 15))
 
   // Fase 2 — identidad
-  const [bizEmailLegal,      setBizEmailLegal]      = useState<string>(tenant?.email_legal ?? '')
   const [bizPrecioRedondeo,  setBizPrecioRedondeo]  = useState<string>(tenant?.precio_redondeo ?? 'none')
   // Moneda principal (v1.8.44)
   const [bizMoneda,          setBizMoneda]          = useState<string>((tenant as any)?.moneda ?? 'ARS')
@@ -702,12 +701,19 @@ export default function ConfigPage() {
   const [bizClienteCreacionInline,  setBizClienteCreacionInline]  = useState<boolean>(tenant?.cliente_creacion_inline ?? true)
 
   // Fase 4 — descuentos y caja
-  const [bizDescuentoMaxCajero,     setBizDescuentoMaxCajero]     = useState<string>(tenant?.descuento_max_cajero_pct != null ? String(tenant.descuento_max_cajero_pct) : '')
+  // (descuento_max_cajero_pct se quitó: el CAJERO está siempre bloqueado de descuentos — H4)
   const [bizDescuentoMaxSupervisor, setBizDescuentoMaxSupervisor] = useState<string>(tenant?.descuento_max_supervisor_pct != null ? String(tenant.descuento_max_supervisor_pct) : '')
   const [bizClaveMaestra,           setBizClaveMaestra]           = useState<string>('')
   const [bizClaveMaestraConfirm,    setBizClaveMaestraConfirm]    = useState<string>('')
   const [showClaveMaestra,          setShowClaveMaestra]          = useState(false)
   const [bizBovedaUmbral,           setBizBovedaUmbral]           = useState<string>(tenant?.boveda_umbral_caja != null ? String(tenant.boveda_umbral_caja) : '')
+  // RRHH (H4) — flags leídos en RrhhPage que antes no tenían UI de configuración
+  const [bizRrhhTardanzaModo,       setBizRrhhTardanzaModo]       = useState<'registrar' | 'proporcional' | 'umbral'>((tenant as any)?.rrhh_tardanza_modo ?? 'registrar')
+  const [bizRrhhTardanzaTol,        setBizRrhhTardanzaTol]        = useState<string>(String((tenant as any)?.rrhh_tardanza_tolerancia_min ?? 0))
+  const [bizRrhhHorasMesBase,       setBizRrhhHorasMesBase]       = useState<string>(String((tenant as any)?.rrhh_horas_mes_base ?? 200))
+  const [bizRrhhHorasExtraAprob,    setBizRrhhHorasExtraAprob]    = useState<boolean>(!!(tenant as any)?.rrhh_horas_extra_requiere_aprobacion)
+  const [bizRrhhDocAlertaDias,      setBizRrhhDocAlertaDias]      = useState<string>(String((tenant as any)?.rrhh_doc_alerta_dias ?? 30))
+  const [bizRrhhNominaSupAprueba,   setBizRrhhNominaSupAprueba]   = useState<boolean>(!!(tenant as any)?.rrhh_nomina_supervisor_aprueba)
   // Fase 2.1 — Diferencia de cierre (B1/B2/B3)
   const [bizDifUmbral, setBizDifUmbral] = useState<string>((tenant as any)?.diferencia_caja_umbral != null ? String((tenant as any).diferencia_caja_umbral) : '')
   const [bizDifRoles, setBizDifRoles] = useState<string[]>((tenant as any)?.diferencia_caja_alerta_roles ?? ['DUEÑO','SUPERVISOR'])
@@ -1010,7 +1016,6 @@ export default function ConfigPage() {
       domicilio_fiscal: bizDomicilioFiscal.trim() || null,
       umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
       // Fase 2
-      email_legal:           bizEmailLegal.trim() || null,
       precio_redondeo:       bizPrecioRedondeo,
       moneda:                bizMoneda,
       // Fase 3 — cliente en POS
@@ -1019,9 +1024,15 @@ export default function ConfigPage() {
       cliente_consumidor_final: bizClienteConsumidorFinal,
       cliente_creacion_inline:  bizClienteCreacionInline,
       // Fase 4 — descuentos y caja
-      descuento_max_cajero_pct:     bizDescuentoMaxCajero     ? parseFloat(bizDescuentoMaxCajero)     : null,
       descuento_max_supervisor_pct: bizDescuentoMaxSupervisor ? parseFloat(bizDescuentoMaxSupervisor) : null,
       boveda_umbral_caja:           bizBovedaUmbral           ? parseFloat(bizBovedaUmbral)           : null,
+      // RRHH (H4)
+      rrhh_tardanza_modo:                  bizRrhhTardanzaModo,
+      rrhh_tardanza_tolerancia_min:        Math.max(0, parseInt(bizRrhhTardanzaTol) || 0),
+      rrhh_horas_mes_base:                 Math.max(1, parseInt(bizRrhhHorasMesBase) || 200),
+      rrhh_horas_extra_requiere_aprobacion: bizRrhhHorasExtraAprob,
+      rrhh_doc_alerta_dias:                Math.max(1, parseInt(bizRrhhDocAlertaDias) || 30),
+      rrhh_nomina_supervisor_aprueba:      bizRrhhNominaSupAprueba,
     }
     if (bizAfipToken.trim()) updatePayload.afipsdk_token = bizAfipToken.trim()
 
@@ -2267,7 +2278,7 @@ export default function ConfigPage() {
         ...(modoAvanzado ? [{ id: 'envios' as Tab, label: 'Envíos', icon: Truck }] : []),
         { id: 'gastos',         label: 'Gastos',          icon: TrendingDown },
         { id: 'facturacion',    label: 'Facturación',     icon: Receipt },
-        { id: 'rrhh',           label: 'RRHH',            icon: UserCog, placeholder: true },
+        { id: 'rrhh',           label: 'RRHH',            icon: UserCog },
       ],
     },
     {
@@ -2393,14 +2404,6 @@ export default function ConfigPage() {
               <option value="60">1 hora</option>
             </select>
             <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si el usuario no tiene actividad por este tiempo, la sesión se cierra automáticamente.</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email legal / facturación</label>
-            <input type="email" value={bizEmailLegal} disabled={!canEdit}
-              onChange={e => setBizEmailLegal(e.target.value)}
-              placeholder="ej. admin@minegocio.com"
-              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Para notificaciones fiscales y envío de facturas.</p>
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5">
@@ -5859,7 +5862,89 @@ export default function ConfigPage() {
             </div>
           )}
           {tab === 'clientes' && <PlaceholderTab icon={Users} title="Configuración de Clientes" desc="Cuenta corriente, segmentación, límites de crédito y políticas de cobranza." />}
-          {tab === 'rrhh' && <PlaceholderTab icon={UserCog} title="Configuración de RRHH" desc="Turnos, horarios, liquidación y gestión de personal." />}
+          {tab === 'rrhh' && (
+            <div className="space-y-4">
+              {/* Asistencia / Tardanzas — afecta la liquidación de sueldos */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <div>
+                  <h2 className="font-semibold text-gray-700 dark:text-gray-300">Asistencia y tardanzas</h2>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Cómo se tratan las llegadas tarde al liquidar la nómina (usa las fichadas de entrada vs el horario del empleado).</p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tratamiento de la tardanza</label>
+                    <select value={bizRrhhTardanzaModo} disabled={!canEdit}
+                      onChange={e => setBizRrhhTardanzaModo(e.target.value as any)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                      <option value="registrar">Solo registrar (no descuenta del sueldo)</option>
+                      <option value="proporcional">Descontar proporcional (todos los minutos tarde)</option>
+                      <option value="umbral">Descontar pasada la tolerancia (solo lo que excede)</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tolerancia (min)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
+                      value={bizRrhhTardanzaTol} disabled={!canEdit || bizRrhhTardanzaModo !== 'umbral'}
+                      onChange={e => setBizRrhhTardanzaTol(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 disabled:opacity-60" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Minutos que no se descuentan. Solo aplica al modo "pasada la tolerancia".</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Horas/mes base</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
+                      value={bizRrhhHorasMesBase} disabled={!canEdit}
+                      onChange={e => setBizRrhhHorasMesBase(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Divisor para calcular el valor hora a partir del sueldo bruto (default 200).</p>
+                  </div>
+                </div>
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={bizRrhhHorasExtraAprob} disabled={!canEdit}
+                    onChange={e => setBizRrhhHorasExtraAprob(e.target.checked)}
+                    className="w-4 h-4 rounded accent-accent" />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Las horas extra requieren aprobación antes de liquidarse</span>
+                </label>
+              </div>
+
+              {/* Nómina */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Nómina</h2>
+                <label className="flex items-center gap-2.5 cursor-pointer">
+                  <input type="checkbox" checked={bizRrhhNominaSupAprueba} disabled={!canEdit}
+                    onChange={e => setBizRrhhNominaSupAprueba(e.target.checked)}
+                    className="w-4 h-4 rounded accent-accent" />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">El SUPERVISOR puede aprobar la nómina (cuenta como 2ª validación)</span>
+                </label>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Aplica solo si la doble validación de nómina está activada (se configura en RRHH → Nómina).</p>
+              </div>
+
+              {/* Documentos */}
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documentos del personal</h2>
+                <div className="sm:max-w-xs">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Avisar vencimientos con (días) de anticipación</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
+                    value={bizRrhhDocAlertaDias} disabled={!canEdit}
+                    onChange={e => setBizRrhhDocAlertaDias(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Cuántos días antes del vencimiento se muestra el documento como "por vencer" (default 30).</p>
+                </div>
+              </div>
+
+              {canEdit && (
+                <div className="flex justify-end">
+                  <button onClick={handleSaveBiz} disabled={savingBiz}
+                    className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                    {savingBiz ? 'Guardando...' : 'Guardar configuración de RRHH'}
+                  </button>
+                </div>
+              )}
+
+              <p className="text-xs text-gray-400 dark:text-gray-500 px-1">
+                Las políticas de vacaciones, portal del empleado y notificaciones se configuran en su sección dentro de <strong>RRHH</strong>.
+              </p>
+            </div>
+          )}
           {tab === 'alertas' && <PlaceholderTab icon={Bell} title="Configuración de Alertas" desc="Define qué eventos generan alertas y para qué roles." />}
           {tab === 'notificaciones' && <PlaceholderTab icon={Bell} title="Configuración de Notificaciones" desc="Canales de notificación (in-app, email, WhatsApp) por tipo de evento." />}
 

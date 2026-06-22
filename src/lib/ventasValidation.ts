@@ -76,6 +76,78 @@ export function calcularEfectivoCaja(mediosPago: MedioPagoItem[], total: number)
   return Math.max(0, efectivo - vuelto)
 }
 
+/** Convierte un descuento (ingresado como % o como monto fijo $) a su PORCENTAJE EFECTIVO
+ *  sobre `base` (precio efectivo × cantidad del ítem, o subtotal para el descuento global).
+ *  Necesario para validar los topes por rol/canal: están expresados en %, pero el usuario
+ *  puede ingresar el descuento en $ y así esquivar el tope si solo se compara el valor crudo. */
+export function descuentoEfectivoPct(descuento: number, tipo: 'pct' | 'monto', base: number): number {
+  if (!descuento || descuento <= 0) return 0
+  if (tipo === 'pct') return descuento
+  if (base <= 0) return 0   // un monto sobre base 0 no descuenta nada real (Math.max(0, base - desc) = 0)
+  return (descuento / base) * 100
+}
+
+export interface DescuentoItemCheck {
+  descuento: number
+  descuento_tipo: 'pct' | 'monto'
+  base: number   // precio efectivo × cantidad (para convertir monto → %)
+}
+
+export interface ValidarDescuentosArgs {
+  rol: string
+  /** rol sin permiso para aplicar NINGÚN descuento (CAJERO y otros fuera de DUEÑO/SUPERVISOR/ADMIN/SUPER_USUARIO) */
+  bloqueadoTotal: boolean
+  items: DescuentoItemCheck[]
+  /** descuento global: valor, tipo y subtotal sobre el que aplica */
+  global: { descuento: number; descuento_tipo: 'pct' | 'monto'; subtotal: number }
+  /** tope % del SUPERVISOR (solo aplica a ese rol); null = sin tope */
+  maxSupervisorPct?: number | null
+  /** tope % del canal de venta (aplica a cualquier rol con permiso); null = sin tope */
+  maxCanalPct?: number | null
+}
+
+const fmtPct = (p: number) => (Math.round(p * 10) / 10).toLocaleString('es-AR', { maximumFractionDigits: 1 })
+
+/** G3 + J2c — valida los descuentos de una venta contra el tope por rol y por canal.
+ *  Compara el % EFECTIVO (convierte los descuentos en $ a %) para que un descuento por monto
+ *  no esquive el tope. Retorna el mensaje de la primera violación, o null si está todo OK.
+ *  El override por clave maestra se maneja en el llamador (este check es puro). */
+export function validarDescuentosPorRol(a: ValidarDescuentosArgs): string | null {
+  const EPS = 0.01
+  const hayItem = a.items.some(i => i.descuento > 0)
+  const hayGlobal = a.global.descuento > 0
+  if (!hayItem && !hayGlobal) return null
+
+  // Rol sin permiso de descuento: cualquier descuento (item o global) está vedado.
+  if (a.bloqueadoTotal) return 'tu rol no puede aplicar descuentos'
+
+  const globalPct = () => descuentoEfectivoPct(a.global.descuento, a.global.descuento_tipo, a.global.subtotal)
+
+  // Tope del SUPERVISOR (solo ese rol; DUEÑO/ADMIN no tienen tope por rol).
+  if (a.rol === 'SUPERVISOR' && a.maxSupervisorPct != null) {
+    const tope = a.maxSupervisorPct
+    const itemExc = a.items.find(i => descuentoEfectivoPct(i.descuento, i.descuento_tipo, i.base) > tope + EPS)
+    if (itemExc) {
+      const pct = descuentoEfectivoPct(itemExc.descuento, itemExc.descuento_tipo, itemExc.base)
+      return `${fmtPct(pct)}% supera el límite del SUPERVISOR (${tope}%)`
+    }
+    if (globalPct() > tope + EPS) return `el descuento global (${fmtPct(globalPct())}%) supera el límite del SUPERVISOR (${tope}%)`
+  }
+
+  // Tope del canal (aplica a cualquier rol con permiso de descuento).
+  if (a.maxCanalPct != null) {
+    const tope = a.maxCanalPct
+    const itemExc = a.items.find(i => descuentoEfectivoPct(i.descuento, i.descuento_tipo, i.base) > tope + EPS)
+    if (itemExc) {
+      const pct = descuentoEfectivoPct(itemExc.descuento, itemExc.descuento_tipo, itemExc.base)
+      return `${fmtPct(pct)}% supera el máximo de este canal (${tope}%)`
+    }
+    if (globalPct() > tope + EPS) return `el descuento global (${fmtPct(globalPct())}%) supera el máximo de este canal (${tope}%)`
+  }
+
+  return null
+}
+
 export interface ComboRow { cantidad: number; descuento: number; descuento_tipo: 'pct' | 'monto' }
 
 /** Calcula el monto de descuento de un combo multi-SKU sobre el subtotal de sus productos */

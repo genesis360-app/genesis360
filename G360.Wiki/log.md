@@ -6,6 +6,29 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-22] deploy | 🚀 v1.82.0 EN PROD — precio_redondeo (H4 cerrado) + descuento máx hueco $ + H3 doc + H4 flags huérfanos (frontend, sin migración)
+
+**Pedido de GO:** "seguimos con precio_redondeo y luego pasás todo lo pendiente a PROD" — autónomo, con OK para deployar. Cierra el backlog de flags huérfanos (H4) y sube a PROD todo el frontend acumulado en `dev` desde el 21/06.
+
+**precio_redondeo (último flag de H4) — REGLA #0, plata/fiscal:**
+- Helper puro **`redondearPrecio(precio, modo)`** (`src/lib/precioRedondeo.ts`): redondea al múltiplo más cercano (10/50/100/500/1000), round-half-up, **fail-safe** (modo `none`/desconocido/precio inválido → sin cambios; default `none` ⇒ ningún tenant cambia sin configurarlo). +16 unit.
+- Aplicado en el **punto canónico**: se separó `precioTierBase` (precio de lista/tier, SIN redondeo, solo para el label "Precio mayorista") de **`precioTierEfectivo`** (= `redondearPrecio(base)`, redondeado). Como TODA la plata del POS pasa por `precioTierEfectivo` (subtotal, base de descuento, `venta_items.precio_unitario`), el redondeo se propaga **consistente** a subtotal → IVA → factura/NC (que leen `venta_items`). Sin doble redondeo aguas abajo.
+- También en `actualizarPrecios` (refresh de precios de un presupuesto desde el catálogo) → mismo redondeo, para que un presupuesto refrescado quede consistente con una venta nueva.
+- **Sin migración** (la columna `tenants.precio_redondeo` ya existía desde mig 123).
+- typecheck + build verdes; 97 unit money-path (precioRedondeo + ventasValidation + facturacion + cajaSaldo) verdes.
+
+**Lo que sube a PROD con v1.82.0 (todo frontend, migs 001-238 ya estaban en PROD):**
+- **precio_redondeo** (esta sesión).
+- **Descuento máx por rol** (21/06): cierre del hueco del descuento por **$** que esquivaba el tope **%** (`validarDescuentosPorRol`, lib pura). NO guard server-side (decisión: no rompe integridad fiscal/contable; es control de autorización).
+- **H3** (21/06): matriz clave maestra CON/SIN documentada + validada server-side por impersonación (solo doc/validación, sin cambio de código de prod salvo lo ya incluido).
+- **H4** (22/06): `descuento_max_cajero_pct` y `email_legal` QUITADOS del frontend (columnas DB inertes); `boveda_umbral_caja` → alerta no-bloqueante (`cajasSobreUmbralBoveda`, badge + AlertasPage); tab RRHH de Config CONSTRUIDO (6 flags); `conteo_modo='elegir'` no era bug.
+
+**Deploy:** APP_VERSION → v1.82.0; commit `9609ced8` en dev; PR dev→main; release `v1.82.0` (--latest). EFs sin cambios. **PROD = DEV = v1.82.0, migs 001-238.**
+
+**▶ H4 CERRADO al 100%.** Próximo norte: **Tanda A e2e** (REGLA #0 sin e2e) — §29 fiscal runtime, límite/morosidad CC, clave maestra con/sin click-through, ajuste de inventario por rol≠DUEÑO, conteo gate + doble conteo, over-receipt, pagar nómina, descuento SUPERVISOR sobre tope.
+
+---
+
 ## [2026-06-22] update | H4 — flags huérfanos resueltos (quitar 2, alerta de bóveda, tab RRHH de Config) — EN DEV, sin migración
 
 **Pedido de GO:** "vamos con H4". Decisiones tomadas por AskUserQuestion + recomendaciones. Sin migración (solo frontend). typecheck + build + 45 unit (ventasValidation + cajaSaldo) verdes. **Antes de tocar, verifiqué el estado REAL de cada flag** (no me fié del resumen del audit) → 2 findings del audit estaban **stale**.

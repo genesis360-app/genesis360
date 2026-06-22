@@ -7,13 +7,13 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### 🟢 ARRANCÁ ACÁ (2026-06-22)
-> **Estado:** PROD = DEV = **v1.81.0 (migs 001-238)**. Hay **cambios de frontend SIN COMMIT en `dev`** (sesiones 21+22/06: descuento máx por rol, H3 doc, H4) — **NO deployados, sin release, sin migración** (son solo frontend + validación). Build/typecheck/unit verdes en DEV.
+> **Estado:** PROD = DEV = **v1.82.0 (migs 001-238)**. **TODO el backlog de flags (H4) está CERRADO y EN PROD.** No quedan cambios de frontend sin deployar. Build/typecheck/unit verdes.
 >
-> **Los 2 pendientes para arrancar (en este orden):**
-> 1. **`precio_redondeo`** — único flag de H4 que falta. Su propia sesión (es **plata/fiscal + amplio**: el precio entra por retail/mayorista/USD/edición manual y la factura/IVA derivan de él). Plan: helper puro `redondearPrecio(precio, modo)` (none/10/50/100/500/1000) + unit, aplicado en el **punto canónico del precio unitario efectivo** para que el redondeo se propague consistente a subtotal/IVA/factura. No rushear, con tests (REGLA #0).
-> 2. **Tanda A e2e** (REGLA #0 sin e2e) — ver §3 abajo. Prioridad: §29 fiscal runtime (AFIP homolog.), límite/morosidad CC, **clave maestra CON/SIN click-through** (el contrato server ya está validado, falta la UI), ajuste de inventario por rol≠DUEÑO, conteo gate + doble conteo, over-receipt, pagar nómina, **descuento SUPERVISOR sobre tope → bloquea / clave autoriza**.
+> **v1.82.0 (PR dev→main, frontend-only, sin migración) — lo deployado:**
+> - **`precio_redondeo`** (último flag de H4, REGLA #0): helper puro `redondearPrecio` (none/10/50/100/500/1000, round-half-up, fail-safe, default `none`) aplicado en el punto canónico `precioTierEfectivo` del POS → subtotal/IVA/`venta_items.precio_unitario`/factura derivan del mismo valor redondeado; también en `actualizarPrecios`. +16 unit. La columna `tenants.precio_redondeo` ya existía (mig 123).
+> - Lo acumulado del 21+22/06: descuento máx por rol (hueco $ cerrado vía `validarDescuentosPorRol`, NO guard server), H3 (matriz clave CON/SIN documentada + validada server-side), H4 flags huérfanos (quitados `descuento_max_cajero_pct`+`email_legal`; alerta `boveda_umbral_caja`; tab RRHH de Config con 6 flags; `conteo_modo='elegir'` no era bug).
 >
-> **Ya hecho (no repetir) en 21+22/06, todo EN DEV:** descuento máx por rol (decisión: NO guard server; cerrado el hueco de descuento por **$** vía `validarDescuentosPorRol`), H3 (matriz CON/SIN documentada + validada server-side), H4 (quitados `descuento_max_cajero_pct`+`email_legal`; alerta `boveda_umbral_caja`; tab RRHH de Config con 6 flags; `conteo_modo='elegir'` no era bug). Detalle en los bloques de abajo + `log.md` [2026-06-21]/[2026-06-22].
+> **▶ ÚNICO pendiente para arrancar: Tanda A e2e** (REGLA #0 sin e2e) — ver §5 abajo. Prioridad: §29 fiscal runtime (AFIP homolog.), límite/morosidad CC, **clave maestra CON/SIN click-through** (el contrato server ya está validado, falta la UI), ajuste de inventario por rol≠DUEÑO, conteo gate + doble conteo, over-receipt, pagar nómina, **descuento SUPERVISOR sobre tope → bloquea / clave autoriza**.
 >
 > **Decisión abierta para GO (no bloqueante, H3):** ¿las acciones gated "pasa sin clave" (anular despachada, cerrar caja ajena, devolución cobrada) deberían avisar/forzar configurar la clave, o quedan rol-only by-design? (mi rec: rol-only + hacer visible el estado "sin clave", sin forzar).
 

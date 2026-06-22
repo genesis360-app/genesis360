@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.82.0 — 🔢 precio_redondeo (H4 cerrado) + descuento máx hueco $ + H4 flags huérfanos (PROD ✅, sin migración)
+
+Cierra el backlog de **flags huérfanos (H4)**. **`precio_redondeo`** (REGLA #0, plata/fiscal): helper puro `redondearPrecio` (10/50/100/500/1000, round-half-up, fail-safe, default `none`) aplicado en el punto canónico `precioTierEfectivo` del POS → subtotal/IVA/`venta_items.precio_unitario`/factura derivan del mismo valor redondeado; también en `actualizarPrecios` (refresh de presupuesto). Sin migración (la columna ya existía). También sube a PROD lo acumulado en `dev` desde el 21/06: descuento máx por rol (cierre del hueco del descuento por $ que esquivaba el tope %), H3 (matriz clave CON/SIN documentada + validada server-side), H4 flags huérfanos (quitados `descuento_max_cajero_pct` y `email_legal`; alerta `boveda_umbral_caja`; tab RRHH de Config). **PROD = DEV = v1.82.0, migs 001-238.** Frontend-only.
+
 ## v1.81.0 — 🔐 Guards server-side de plata: RPCs clave-gated (incobrable / pago OC / pago courier) + reorder comprobante (PROD ✅, PR #236, migs 234-238)
 
 Hardening server-side de los controles financieros (REGLA #0 obligación #3), cierra H1/H2 de `uat-app.md`. Migs **234** (cc_guard límite+morosidad) + **235** (rol write-off) — ya en DEV, ahora también en PROD — + **236** `marcar_incobrable()` (rol+clave server-side+write-off atómico) + **237** `registrar_pago_oc()` (doble firma server-side+pago atómico, cierra el hueco "se omite si no hay clave") + **238** `marcar_envios_pagados()` (ídem courier). Frontend: ClientesPage/GastosPage/EnviosPage llaman a los RPCs; comprobante de gasto se sube antes del INSERT (atómico). **PROD = DEV = migs 001-238.**

@@ -52,7 +52,7 @@ Configuración a nivel tenant — aplica a todo el negocio independientemente de
 |-------|-----|-------------|
 | Nombre | `tenants.nombre` | Nombre del negocio |
 | Tipo de comercio | `tenants.tipo_comercio` | Selector + campo libre "Otro" |
-| Redondeo de precios | `tenants.precio_redondeo` | none / $10 / $50 / $100 / $500 / $1.000 — ⚠ **el campo existe pero el redondeo aún NO se aplica** (lector pendiente, H4 diferido) |
+| Redondeo de precios | `tenants.precio_redondeo` | none / $10 / $50 / $100 / $500 / $1.000 — ✅ **aplicado (v1.82.0, H4)**: redondea el precio unitario efectivo del POS al múltiplo más cercano. Helper puro `redondearPrecio` (round-half-up, fail-safe, default none) en el punto canónico `precioTierEfectivo` → subtotal/IVA/`venta_items.precio_unitario`/factura derivan todos del mismo valor redondeado. No toca precios ya guardados del catálogo. |
 | Timeout de sesión | `tenants.session_timeout_minutes` | Cierre automático por inactividad |
 
 > [!NOTE] **Email legal QUITADO (H4, 2026-06-22):** el campo `email_legal` se removió del frontend — `tenants.email` ya cubre comprobantes y emails salientes; la columna DB queda inerte.

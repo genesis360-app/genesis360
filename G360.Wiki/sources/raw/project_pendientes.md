@@ -8,11 +8,19 @@ type: project
 
 **✅ CERRADO el 2026-06-21 (v1.80.2 EN PROD):** #6 NC fiscal, #10 Productos, #11 Presupuestos validados por e2e click-through con efecto en DB (specs 42/43/44) + **deploy a PROD de mig 233 (clave maestra hash) + ConfigPage** (PR #235, release v1.80.2). **PROD = DEV = migs 001-233.** El merge también corrigió el drift de branch (los archivos de migs 231/232/233 no estaban en `main`). Detalle en `log.md` [2026-06-21].
 
-**▶ LO PRIMERO de la próxima sesión — AUDITORÍA DE COBERTURA UAT (pedido de GO 2026-06-21):**
-1. **Inventario de TODAS las funcionalidades (lógicas distintas) de la app** + cruce contra los escenarios de los archivos UAT → detectar qué NO está cubierto. Norte: saber que probamos todo y que nada va a fallar.
-2. **Matriz de configuración/flags:** listar todo lo configurable (módulo Configuración + columnas de `tenants`) y por cada flag/setting testear **con** y **sin** → validar el comportamiento esperado en cada combinación. Complementar los UAT con estos escenarios.
-3. **Decidir estructura UAT:** ¿UAT de modo avanzado separado, o renombrar `uat-modo-basico.md` a uno general básico+avanzado? (recomendación inicial: UAT general con tags por modo).
-4. **Plan + primer inventario + recomendación de enfoque (yo vs agentes): `tests/specs/uat-cobertura.plan.md`** (creado 2026-06-21).
+**✅ AUDITORÍA DE COBERTURA F1 HECHA (2026-06-21):** 5 agentes enumeraron **~264 lógicas + ~142 flags** → `tests/specs/cobertura/01-05.md` + master **`tests/specs/uat-app.md`** (estructura aprobada: un UAT con tags `[BÁSICO]/[AVANZADO]/[AMBOS]` + `[CFG:flag]`). Hallazgos REGLA #0 verificados en `uat-app.md` §2.
+
+**✅ HARDENING server-side — 2 guards EN DEV (NO en PROD todavía):**
+- **mig 234** `fn_ventas_cc_guard` (BEFORE INSERT ventas): límite CC (B1) + morosidad (B4). 8/8 escenarios verdes. Computa la deuda **inline scopeada por tenant** (cliente_cc_estado filtra por auth.uid()→0 sin sesión).
+- **mig 235** `fn_ventas_writeoff_rol_guard` (BEFORE UPDATE ventas): exige rol DUEÑO/SUPERVISOR/ADMIN al agregar tag `Condonación CC`/`Incobrable`. 4/4 verdes.
+- ⚠ **DRIFT INTENCIONAL: DEV = migs 001-235, PROD = 001-233.** migs 234/235 **NO están en PROD** (cambian comportamiento: hard-block donde antes solo bloqueaba la UI → deploy con OK de GO). *(En el historial de DEV hay un entry duplicado "234 v2" por una corrección; el archivo de repo `234_ventas_cc_guard_server.sql` es la versión final única.)*
+
+**▶ LO PRIMERO de la próxima sesión — continuar el HARDENING + H4 (todo en `uat-app.md`):**
+1. **Tanda "RPCs clave-gated"** (no son trigger-ables — la clave se verifica, no se puede en trigger): **doble firma OC/courier** (`GastosPage:721`/`EnviosPage:788`, se saltea si no hay clave) + **clave del incobrable** (se omite si no está configurada). Refactor a RPC SECURITY DEFINER (verifica rol+clave+acción atómica) + cambio de frontend + re-test. Mitigación rápida alterna: fix UI (exigir clave si hay umbral).
+2. **Comprobante de gasto obligatorio** server-side: NO es trigger directo (el `comprobante_url` se linkea en UPDATE post-INSERT, `GastosPage:1296`) → reordenar frontend (subir archivo + INSERT con url) y ahí enforzar con trigger.
+3. **H4 flags huérfanos — implementar el efecto (GO lo pidió), plan por flag en `uat-app.md` §2/H4:** `precio_redondeo` (feature de precios amplia+fiscal → helper puro + wiring + tests, su propia sesión), `email_legal`/`boveda_umbral_caja` (definir intención con GO), setters RRHH (construir UI en el tab placeholder), `descuento_max_cajero_pct` (ilusorio), `conteo_modo='elegir'` (semi).
+4. **Deploy a PROD** del set de guards (234/235 + los que sigan) cuando esté completo + OK de GO.
+5. **Tanda A e2e** (post-guards): §29 fiscal runtime, límite CC, clave maestra con/sin, ajuste por rol≠DUEÑO, conteo gate, over-receipt, pagar nómina.
 
 **Método e2e (recordatorio):** aserción POSITIVA del resultado (toast/efecto) + verificar la mutación en DB con `execute_sql`; nunca solo `.not.toBeVisible()`. Correr con `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN_spec --project=chromium`. Tenant DEV = Almacén Jorgito (`3769b1db…`). Clave maestra del tenant = **12345678**. Las fixtures por SQL (devolución spec 42, OC spec 35) para saltear pasos frágiles/cross-módulo son patrón aceptado. Ver [[reference_e2e_validation_capability]].
 

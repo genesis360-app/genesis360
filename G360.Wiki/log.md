@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-21] update | 🔍 Auditoría de cobertura (5 agentes) + 🔐 2 guards server-side de CC (migs 234/235 EN DEV)
+
+**Pedido de GO:** listar TODAS las funcionalidades y flags, cruzar contra los UAT, y endurecer con guards server-side. Decisiones de GO: un `uat-app.md` con tags por modo/flag; agentes para enumerar + yo autoría e2e; Tanda A (REGLA #0) primero; implementar el efecto de los flags huérfanos.
+
+**Auditoría F1 (5 agentes read-only en paralelo):** `tests/specs/cobertura/01-05.md` — **~264 lógicas + ~142 flags** de `tenants` con comportamiento CON/SIN, cruzados contra 52 unit + 44 e2e. Consolidado en **`tests/specs/uat-app.md`** (master con tags). **Patrón:** lógica pura bien cubierta por unit; runtime con efecto en DB + flags con/sin casi sin e2e.
+
+**Hallazgos REGLA #0 VERIFICADOS (en `uat-app.md` §2):** H1 controles financieros (límite CC, morosidad, condonación, incobrable, descuento, comprobante) **solo client-side**; H2 doble firma OC/courier bypasseable (se saltea sin clave); H4 **flags huérfanos** (set-only sin lector: `precio_redondeo`/`boveda_umbral_caja`/`email_legal`; ni-set-ni-read: `recepcion_alerta_faltante_dias`; read-sin-setter: `rrhh_tardanza_modo`/`rrhh_horas_mes_base`; ilusorio: `descuento_max_cajero_pct`; semi: `conteo_modo='elegir'`); H5 **kits = NO bug (by-design)** — el rebaje de componentes ocurre al ARMAR el kit, no al venderlo (confirmado con GO + código).
+
+**🔐 2 guards server-side implementados y testeados EN DEV (NO en PROD):**
+- **mig 234 `fn_ventas_cc_guard`** (BEFORE INSERT ventas): límite CC (B1) + morosidad (B4), espeja la lógica client-side. **8/8 escenarios verdes.** Computa la deuda **inline scopeada por `NEW.tenant_id`** porque `cliente_cc_estado` filtra por `auth.uid()` y devuelve 0 sin sesión (service-role/API/batch lo saltarían) — hallazgo importante.
+- **mig 235 `fn_ventas_writeoff_rol_guard`** (BEFORE UPDATE ventas): exige rol DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN cuando se agrega un tag `Condonación CC`/`Incobrable` nuevo. **4/4 verdes** (impersonando DUEÑO vs CAJERO). No afecta cobranza normal ni revertir.
+- ⚠ **DRIFT INTENCIONAL: DEV = migs 001-235, PROD = 001-233.** Los guards NO van a PROD hasta completar el set + OK de GO (cambian comportamiento: hard-block donde antes solo la UI).
+
+**Lo que NO es trigger-able (verificado, requiere frontend/RPC — NO se rusheó, REGLA #0):** doble firma + clave del incobrable (la clave se verifica, no se puede en un trigger → RPC); comprobante de gasto (`comprobante_url` se linkea en UPDATE post-INSERT → un trigger BEFORE INSERT rompería el alta de gastos → reordenar frontend). Plan por ítem en `uat-app.md`.
+
+**H4 flags huérfanos:** GO pidió implementar el efecto; tras verificar el alcance, cada uno necesita trabajo cuidadoso (precio_redondeo = feature de precios amplia+fiscal; email_legal/boveda = intención a definir; setters RRHH = construir UI). Plan por flag en `uat-app.md` §2/H4. **No se rusheó pricing al final de la sesión.**
+
 ## [2026-06-21] update | 🚀 v1.80.2 EN PROD — clave maestra hash (mig 233) deployada + validación e2e #6/#10/#11
 
 **Deploy a PROD (v1.80.2, PR #235, release v1.80.2):**

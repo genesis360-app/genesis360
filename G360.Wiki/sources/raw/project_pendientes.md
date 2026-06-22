@@ -10,17 +10,20 @@ type: project
 
 **✅ AUDITORÍA DE COBERTURA F1 HECHA (2026-06-21):** 5 agentes enumeraron **~264 lógicas + ~142 flags** → `tests/specs/cobertura/01-05.md` + master **`tests/specs/uat-app.md`** (estructura aprobada: un UAT con tags `[BÁSICO]/[AVANZADO]/[AMBOS]` + `[CFG:flag]`). Hallazgos REGLA #0 verificados en `uat-app.md` §2.
 
-**✅ HARDENING server-side — 2 guards EN DEV (NO en PROD todavía):**
-- **mig 234** `fn_ventas_cc_guard` (BEFORE INSERT ventas): límite CC (B1) + morosidad (B4). 8/8 escenarios verdes. Computa la deuda **inline scopeada por tenant** (cliente_cc_estado filtra por auth.uid()→0 sin sesión).
-- **mig 235** `fn_ventas_writeoff_rol_guard` (BEFORE UPDATE ventas): exige rol DUEÑO/SUPERVISOR/ADMIN al agregar tag `Condonación CC`/`Incobrable`. 4/4 verdes.
-- ⚠ **DRIFT INTENCIONAL: DEV = migs 001-235, PROD = 001-233.** migs 234/235 **NO están en PROD** (cambian comportamiento: hard-block donde antes solo bloqueaba la UI → deploy con OK de GO). *(En el historial de DEV hay un entry duplicado "234 v2" por una corrección; el archivo de repo `234_ventas_cc_guard_server.sql` es la versión final única.)*
+**✅ HARDENING server-side COMPLETO — 5 guards EN PROD (v1.81.0, PR #236, 2026-06-21). PROD = DEV = migs 001-238.**
+- **mig 234** `fn_ventas_cc_guard` (BEFORE INSERT ventas): límite CC + morosidad, deuda inline scopeada por tenant.
+- **mig 235** `fn_ventas_writeoff_rol_guard` (BEFORE UPDATE ventas): rol DUEÑO/SUPERVISOR/ADMIN para condonar/incobrable.
+- **mig 236** `marcar_incobrable()` RPC SECURITY DEFINER: rol (DUEÑO/SUPER_USUARIO/ADMIN) + **clave server-side** + write-off atómico (condona deuda CC + gasto "Deudor incobrable"). Wiring `ClientesPage.confirmarIncobrable`.
+- **mig 237** `registrar_pago_oc()` RPC atómico: rol (no CONTADOR) + **doble firma server-side** + saldo; escribe OC + proveedor_cc + cheque + caja en una transacción. **Cierra el hueco "se omite si no hay clave"** (supera el umbral sin clave configurada → BLOQUEA y pide configurarla). Wiring `GastosPage.registrarPagoOC`.
+- **mig 238** `marcar_envios_pagados()` RPC atómico: doble firma server-side del pago a courier (agrupa por courier, gasto con IVA + caja + marca pagado). Wiring `EnviosPage.marcarPagados`.
+- **Comprobante de gasto:** reorder del frontend (sube antes del INSERT → `comprobante_url` atómico; arregla un bug latente: en el camino de autorización por umbral el archivo nunca se subía).
+- **Validación:** por rol/clave en DEV (transacción con ROLLBACK + verificación del efecto en DB), 4/4 RPCs verdes (incl. multi-courier, supera-saldo, sin-clave-configurada→bloquea). typecheck+build+82 unit verdes. **Check de seguridad PROD:** los 5 tenants en `cc_enforcement='avisar'` sin umbral de doble firma → los guards quedan dormidos hasta configurarse (cero impacto operativo). *(El historial DEV tiene un entry duplicado "234 v2"; el archivo de repo `234_*.sql` es la versión final única.)*
 
-**▶ LO PRIMERO de la próxima sesión — continuar el HARDENING + H4 (todo en `uat-app.md`):**
-1. **Tanda "RPCs clave-gated"** (no son trigger-ables — la clave se verifica, no se puede en trigger): **doble firma OC/courier** (`GastosPage:721`/`EnviosPage:788`, se saltea si no hay clave) + **clave del incobrable** (se omite si no está configurada). Refactor a RPC SECURITY DEFINER (verifica rol+clave+acción atómica) + cambio de frontend + re-test. Mitigación rápida alterna: fix UI (exigir clave si hay umbral).
-2. **Comprobante de gasto obligatorio** server-side: NO es trigger directo (el `comprobante_url` se linkea en UPDATE post-INSERT, `GastosPage:1296`) → reordenar frontend (subir archivo + INSERT con url) y ahí enforzar con trigger.
-3. **H4 flags huérfanos — implementar el efecto (GO lo pidió), plan por flag en `uat-app.md` §2/H4:** `precio_redondeo` (feature de precios amplia+fiscal → helper puro + wiring + tests, su propia sesión), `email_legal`/`boveda_umbral_caja` (definir intención con GO), setters RRHH (construir UI en el tab placeholder), `descuento_max_cajero_pct` (ilusorio), `conteo_modo='elegir'` (semi).
-4. **Deploy a PROD** del set de guards (234/235 + los que sigan) cuando esté completo + OK de GO.
-5. **Tanda A e2e** (post-guards): §29 fiscal runtime, límite CC, clave maestra con/sin, ajuste por rol≠DUEÑO, conteo gate, over-receipt, pagar nómina.
+**▶ LO PRIMERO de la próxima sesión — backlog que QUEDA del hardening + H4 (todo en `uat-app.md`):**
+1. **Descuento máx por rol** (H1 residual, bajo valor): el descuento está en la venta al INSERT (trigger-able) pero el CAJERO ya está 100% bloqueado de descuentos y el tope de SUPERVISOR es client-side → evaluar si vale un guard.
+2. **H3 — clave CON vs SIN:** ahora contrastable end-to-end con los guards nuevos (anular/incobrable/pago OC/courier sobre umbral con clave seteada vs sin).
+3. **H4 flags huérfanos — implementar el efecto:** `precio_redondeo` (feature amplia+fiscal, su propia sesión), `email_legal`/`boveda_umbral_caja` (definir intención con GO), setters RRHH (UI en el tab placeholder), `descuento_max_cajero_pct` (ilusorio), `conteo_modo='elegir'` (semi).
+4. **Tanda A e2e** (post-guards): §29 fiscal runtime, límite CC, clave maestra con/sin, ajuste por rol≠DUEÑO, conteo gate, over-receipt, pagar nómina.
 
 **Método e2e (recordatorio):** aserción POSITIVA del resultado (toast/efecto) + verificar la mutación en DB con `execute_sql`; nunca solo `.not.toBeVisible()`. Correr con `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN_spec --project=chromium`. Tenant DEV = Almacén Jorgito (`3769b1db…`). Clave maestra del tenant = **12345678**. Las fixtures por SQL (devolución spec 42, OC spec 35) para saltear pasos frágiles/cross-módulo son patrón aceptado. Ver [[reference_e2e_validation_capability]].
 

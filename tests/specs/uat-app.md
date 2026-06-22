@@ -50,6 +50,15 @@ existentes corren un único camino feliz con el valor default de cada flag. **Ah
 > Detectados por la auditoría y **verificados contra el código** (no asumidos). Varios conviene **arreglar
 > antes** de escribir e2e que validen el comportamiento (porque el comportamiento debería cambiar).
 
+> **✅ ESTADO 2026-06-21 (v1.81.0 EN PROD, PR #236, migs 234-238):** **H1 y H2 CERRADOS server-side.**
+> Guards: 234 `fn_ventas_cc_guard` (límite+morosidad) · 235 `fn_ventas_writeoff_rol_guard` (rol) · 236
+> `marcar_incobrable()` (rol+clave server-side+write-off atómico) · 237 `registrar_pago_oc()` (doble firma
+> server-side+pago atómico, **cierra "se omite si no hay clave"**) · 238 `marcar_envios_pagados()` (ídem
+> courier). El **comprobante de gasto** se reordenó (sube antes del INSERT → `comprobante_url` atómico;
+> **GO eligió reorder sin trigger** porque un trigger blanket rompería ~13 inserts de gastos automáticos).
+> **Queda (residual, no bloqueante):** descuento máx por rol (bajo valor), H3 (clave CON/SIN end-to-end ya
+> contrastable), H4 flags huérfanos, Tanda A e2e. Detalle en `log.md` [2026-06-21] y `project_pendientes.md`.
+
 ### H1 — Controles financieros SOLO client-side (choca con REGLA #0 obligación #3) 🟥🟥
 El enforcement de **límite CC, morosidad/bloqueo CC, condonación de deuda, baja por incobrable, descuentos
 y comprobante de gasto obligatorio** vive en el **frontend**. Server-side solo existen `fn_gastos_iva_guard`

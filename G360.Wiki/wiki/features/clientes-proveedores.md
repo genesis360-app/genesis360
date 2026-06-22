@@ -8,6 +8,8 @@ updated: 2026-06-03
 
 # Clientes y Proveedores
 
+> [!IMPORTANT] **Guard server-side de plata (v1.81.0, REGLA #0):** "dar de baja **incobrable**" (condona toda la deuda CC del cliente + genera el gasto "Deudor incobrable") se hace por el RPC `marcar_incobrable()` (mig 236, SECURITY DEFINER): verifica **rol** (DUEÑO/SUPER_USUARIO/ADMIN) + **clave maestra server-side** (antes la clave se validaba solo en el cliente) + el write-off atómico. La **condonación per-venta** sigue gateada por rol vía el trigger `fn_ventas_writeoff_rol_guard` (mig 235). El **límite/morosidad de CC** se enforza server-side al crear la venta (`fn_ventas_cc_guard`, mig 234).
+
 ---
 
 ## Módulo Clientes

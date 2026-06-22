@@ -11,6 +11,8 @@ updated: 2026-06-18
 **Página:** `src/pages/GastosPage.tsx` (`/gastos`)  
 **Acceso:** DUEÑO · SUPERVISOR · ADMIN · CONTADOR
 
+> [!IMPORTANT] **Guards server-side de plata (v1.81.0, REGLA #0):** el **pago de OC** se hace por el RPC atómico `registrar_pago_oc()` (mig 237): valida rol (no CONTADOR) + **doble firma server-side** sobre el umbral + saldo, y escribe OC + proveedor_cc + cheque + caja en una transacción. **Cierra el hueco "se omite si no hay clave"** (sobre el umbral sin clave configurada → BLOQUEA). El **comprobante de gasto** ahora se sube **ANTES** del INSERT (`comprobante_url` atómico; arregla un bug latente del camino de autorización por umbral, donde el archivo nunca se subía). El "dar de baja incobrable" usa `marcar_incobrable()` (mig 236) — ver [[wiki/features/clientes-proveedores]].
+
 > [!NOTE] La categoría "Sueldos y cargas sociales" fue eliminada de Gastos (v0.72.0). Los sueldos se registran desde RRHH → Nómina.
 
 ---

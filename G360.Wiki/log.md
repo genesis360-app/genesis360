@@ -6,6 +6,30 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-21] deploy | 🚀 v1.81.0 EN PROD — guards server-side de plata COMPLETOS (RPCs clave-gated: incobrable / pago OC / pago courier) + reorder comprobante
+
+**Pedido de GO:** "terminar los guards y pasarlos TODOS a PROD." Decisiones de scope (AskUserQuestion): doble firma OC/courier → **RPC completo** (no el fix client-side); comprobante de gasto → **reorder frontend sin trigger** (un trigger blanket rompería ~13 inserts de gastos automáticos —nómina/courier/devolución/incobrable— que legítimamente no llevan comprobante).
+
+**Cierra H1/H2 de `tests/specs/uat-app.md` (controles financieros solo client-side). 5 migraciones, DEV → PROD (PROD = DEV = migs 001-238):**
+- **234** `fn_ventas_cc_guard` + **235** `fn_ventas_writeoff_rol_guard` (estaban EN DEV desde el 21/06; ahora también en PROD).
+- **236 `marcar_incobrable()`** — RPC SECURITY DEFINER: rol (DUEÑO/SUPER_USUARIO/ADMIN) + **clave maestra verificada server-side** (antes solo client-side, y se omitía si no estaba configurada) + write-off atómico (condona toda la deuda CC del cliente + gasto "Deudor incobrable").
+- **237 `registrar_pago_oc()`** — RPC atómico del pago de OC: rol (no CONTADOR) + **doble firma server-side** sobre el umbral + saldo no excedible; escribe OC + proveedor_cc (pago/oc) + cheque + caja en UNA transacción. **Cierra el hueco "se omite si no hay clave":** si supera el umbral y el tenant NO tiene clave, BLOQUEA y pide configurarla.
+- **238 `marcar_envios_pagados()`** — ídem para el pago a courier (agrupa por courier, gasto con desglose de IVA + caja + marca pagado, doble firma server-side).
+
+**Frontend (v1.81.0):** `ClientesPage.confirmarIncobrable` / `GastosPage.registrarPagoOC` / `EnviosPage.marcarPagados` llaman a los RPCs (el pre-check de clave queda como UX; el enforcement real es el RPC). **Comprobante de gasto:** se sube **ANTES** del INSERT (`comprobante_url` atómico) — arregla un bug latente: en el camino de autorización por umbral el archivo del cajero **nunca se subía** (el INSERT+upload posterior nunca corría por el return temprano).
+
+**Validación en DEV (impersonando por rol, en transacción con ROLLBACK + verificación del efecto en DB):**
+- incobrable: CAJERO bloqueado / clave incorrecta bloqueada / DUEÑO+clave → venta marcada `Incobrable` + gasto creado. ✅
+- pago OC (7 escenarios): bajo umbral OK / sobre umbral sin clave bloquea / con clave OK / CONTADOR bloqueado / supera saldo bloquea / 100% CC → `cuenta_corriente` con vencimiento / **sin clave configurada → bloquea pidiendo configurarla**. Efectos en caja + proveedor_cc correctos. ✅
+- pago courier (6 escenarios): bajo umbral / sobre sin clave bloquea / con clave OK / **multi-courier → 2 grupos/2 gastos** / `genera_gasto=false` marca pagado sin gasto / **sin clave configurada bloquea**. ✅ (el `iva=null` en los gastos nuevos es el guard fiscal mig 227 saneando por Monotributista — esperado.)
+- typecheck + build verdes; 82 unit de libs relacionadas (comprasPermisos/enviosCourierPago/ccLogic) verdes.
+
+**Check de seguridad pre-deploy en PROD:** los 5 tenants usan `cc_enforcement_politica='avisar'` y **sin umbral de doble firma OC/courier** → los guards quedan **dormidos** (las ramas de hard-block recién actúan si un tenant configura `bloquear`/umbral) → cero impacto en la operación actual. Verificado: 2 triggers + 3 funciones presentes en PROD.
+
+**Deploy:** PR #236 dev→main (mergeado, commit `4c06033`), release `v1.81.0` (--latest). EFs sin cambios. **PROD = DEV = v1.81.0, migs 001-238.**
+
+**▶ Backlog del hardening que queda (no bloqueante):** descuento máx por rol (bajo valor; el CAJERO ya está 100% bloqueado de descuentos); H3 (clave CON vs SIN — ahora contrastable con los nuevos guards); H4 flags huérfanos (precio_redondeo/email_legal/boveda_umbral/setters RRHH); Tanda A e2e (§29 fiscal runtime, etc.). Todo en `tests/specs/uat-app.md`.
+
 ## [2026-06-21] update | 🔍 Auditoría de cobertura (5 agentes) + 🔐 2 guards server-side de CC (migs 234/235 EN DEV)
 
 **Pedido de GO:** listar TODAS las funcionalidades y flags, cruzar contra los UAT, y endurecer con guards server-side. Decisiones de GO: un `uat-app.md` con tags por modo/flag; agentes para enumerar + yo autoría e2e; Tanda A (REGLA #0) primero; implementar el efecto de los flags huérfanos.

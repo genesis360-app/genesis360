@@ -71,7 +71,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
       dependencies: ['setup-owner'],
-      testIgnore: /1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante/,
+      testIgnore: /1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante/,
     },
 
     // ─── Tests CAJERO — solo si hay credenciales
@@ -137,7 +137,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/fotranto_sup_session.json'),
       },
       dependencies: ['setup-fotranto-sup'],
-      testMatch: /48_descuento_sin_clave_bloquea_mutante\.spec\.ts/,
+      testMatch: /4[89]_(descuento_sin_clave_bloquea|morosidad_cc_bloquea)_mutante\.spec\.ts/,
     }] : []),
   ],
 

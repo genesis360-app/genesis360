@@ -5130,7 +5130,9 @@ export default function InventarioPage() {
                     </div>
                     <div className="p-5 space-y-3">
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Hay diferencias que superan el umbral de discrepancia. Para finalizar sin recontar, ingresá la clave maestra (SUPERVISOR/DUEÑO).
+                        {!!(tenant as any)?.clave_maestra
+                          ? 'Hay diferencias que superan el umbral de discrepancia. Para finalizar sin recontar, ingresá la clave maestra (SUPERVISOR/DUEÑO).'
+                          : 'Hay diferencias que superan el umbral de discrepancia. Sin clave maestra configurada, saltar el reconteo queda autorizado solo por tu rol (podés exigir un 2º factor configurándola en Configuración → Negocio).'}
                       </p>
                       {!!(tenant as any)?.clave_maestra && (
                         <input type="password" autoComplete="new-password" value={reconteoClave}
@@ -5615,10 +5617,15 @@ export default function InventarioPage() {
                 const linea = aut.inventario_lineas
                 const prod = linea?.productos
                 const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad'
+                  : aut.tipo === 'ajuste_conteo' ? 'Diferencia de conteo'
+                  : aut.tipo === 'bulk_edit' ? 'Edición masiva'
                   : aut.tipo === 'eliminar_serie' ? 'Eliminar serie'
                   : 'Eliminar LPN'
-                const tipoColor = aut.tipo === 'ajuste_cantidad'
+                // ajuste_* = orange (suma/resta stock), bulk_edit = blue (atributos), eliminar_* = red
+                const tipoColor = (aut.tipo === 'ajuste_cantidad' || aut.tipo === 'ajuste_conteo')
                   ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
+                  : aut.tipo === 'bulk_edit'
+                  ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
                   : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                 return (
                   <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
@@ -5646,6 +5653,19 @@ export default function InventarioPage() {
                           )}
                           {aut.tipo === 'eliminar_lpn' && (
                             <p>{aut.datos_cambio.cantidad} unidades a eliminar</p>
+                          )}
+                          {aut.tipo === 'ajuste_conteo' && (
+                            <p>
+                              Conteo: esperado <span className="line-through">{aut.datos_cambio.esperada_snapshot}</span>
+                              {' → '}
+                              contado <span className="font-semibold text-orange-600">{aut.datos_cambio.contada}</span>
+                              {' '}{prod?.unidad_medida}
+                            </p>
+                          )}
+                          {aut.tipo === 'bulk_edit' && (
+                            <p>
+                              {(aut.datos_cambio.linea_ids?.length ?? 0)} LPN(s) · campos: {Object.keys(aut.datos_cambio.campos ?? {}).join(', ') || '—'}
+                            </p>
                           )}
                           <p>Solicitado por: {aut.users?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
                           {aut.notas && <p>Notas: {aut.notas}</p>}

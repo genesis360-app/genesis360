@@ -5560,7 +5560,9 @@ export default function ConfigPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Contraseña maestra
-                    {(tenant as any)?.clave_maestra && <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-normal">✓ Configurada</span>}
+                    {(tenant as any)?.clave_maestra
+                      ? <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-normal">✓ Configurada</span>
+                      : <span className="ml-2 text-xs text-gray-500 dark:text-gray-400 font-normal">○ Sin configurar — acciones sensibles autorizadas solo por rol</span>}
                     {user?.rol !== 'DUEÑO' && <span className="ml-2 text-xs text-amber-600 dark:text-amber-400 font-normal">🔒 Solo DUEÑO puede modificarla</span>}
                   </label>
                   <div className="relative">

@@ -2,8 +2,30 @@ import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { cajasSobreUmbralBoveda } from '@/lib/cajaSaldo'
 
 const RESERVAS_DIAS_LIMITE = 3
+
+/** Cajas operativas ABIERTAS (excluye la Caja Fuerte permanente) cuyo efectivo supera el umbral
+ *  de bóveda. Compartido por el badge (useAlertas) y AlertasPage para que cuenten lo mismo.
+ *  Devuelve [] sin tocar la DB si el umbral no está configurado. */
+export async function cajasSobreUmbralBovedaDelTenant(tenantId: string, umbral: number | null | undefined) {
+  if (!(Number(umbral) > 0)) return []
+  const { data: sesiones } = await supabase.from('caja_sesiones')
+    .select('id, monto_apertura, cajas(nombre)')
+    .eq('tenant_id', tenantId).eq('estado', 'abierta')
+    .not('es_permanente', 'is', true)
+  if (!sesiones || sesiones.length === 0) return []
+  const ids = (sesiones as any[]).map(s => s.id)
+  const { data: movs } = await supabase.from('caja_movimientos')
+    .select('sesion_id, tipo, monto').in('sesion_id', ids)
+  const sesionesIn = (sesiones as any[]).map(s => ({ id: s.id, monto_apertura: s.monto_apertura, caja_nombre: s.cajas?.nombre ?? null }))
+  return cajasSobreUmbralBoveda(sesionesIn, (movs ?? []) as any[], umbral)
+}
+
+async function contarCajasSobreUmbral(tenantId: string, umbral: number | null | undefined): Promise<number> {
+  return (await cajasSobreUmbralBovedaDelTenant(tenantId, umbral)).length
+}
 
 export function useAlertas() {
   const { tenant } = useAuthStore()
@@ -102,7 +124,10 @@ export function useAlertas() {
         if (saldo >= 0.5 && v.cliente_id) clientesUnicos.add(v.cliente_id)
       }
 
-      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size + countVencidos + countOcVencidas + countOcProximas
+      // H4 — efectivo en caja sobre el umbral de bóveda (ambos modos). Solo si el tenant lo configuró.
+      const countBoveda = await contarCajasSobreUmbral(tenant!.id, (tenant as any)?.boveda_umbral_caja)
+
+      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size + countVencidos + countOcVencidas + countOcProximas + countBoveda
     },
     enabled: !!tenant,
     refetchInterval: 30000,

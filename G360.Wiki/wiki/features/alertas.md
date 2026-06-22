@@ -99,11 +99,19 @@ Desde **v1.67.0** el badge del sidebar (`useAlertas`) y `AlertasPage.totalAlerta
 | Reservas viejas (>3d) | ✅ | ✅ |
 | Productos sin categoría | ✅ | ✅ |
 | Clientes con deuda CC | ✅ | ✅ |
+| **Efectivo en caja sobre el umbral de bóveda** (H4) | ✅ | ✅ |
 | **LPN vencidos** (vencimiento de lote, WMS) | — | ✅ |
 | **OC vencidas / próximas ≤3d** (compras) | — | ✅ |
 | Inventario sin ubicación / sin proveedor (WMS) | — | ✅ |
 
 > [!IMPORTANT] Si tocás una de las fuentes avanzado-only, gateála en **ambos** lados (hook + página) o el badge vuelve a desincronizarse. Ver memoria `reference_alertas_badge_mode_aware`.
+
+## Efectivo en caja sobre el umbral de bóveda — H4 (2026-06-22)
+
+Sección **ámbar** en AlertasPage (ambos modos). Si una caja operativa **abierta** (excluye la Caja Fuerte permanente) tiene efectivo sobre `tenants.boveda_umbral_caja` → alerta "conviene depositar el excedente a la Caja Fuerte". Botón **"Ir a Caja"**.
+- Solo se evalúa si el tenant configuró el umbral (>0); si no, no toca la DB.
+- Lógica pura compartida: `cajasSobreUmbralBoveda` (`lib/cajaSaldo.ts`, mismo cálculo de efectivo que CajaPage) + helper `cajasSobreUmbralBovedaDelTenant` (`hooks/useAlertas.ts`) usado por el badge **y** la página → no divergen.
+- No muta plata (fire-and-forget, solo avisa).
 
 ---
 

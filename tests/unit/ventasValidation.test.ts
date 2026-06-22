@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { validarMediosPago } from '@/lib/ventasValidation'
+import { validarMediosPago, validarDescuentosPorRol, descuentoEfectivoPct, type ValidarDescuentosArgs } from '@/lib/ventasValidation'
 
 describe('Ventas — validación medios de pago', () => {
   const total = 1000
@@ -70,6 +70,108 @@ describe('Ventas — validación medios de pago', () => {
       const medios = [{ tipo: 'Efectivo', monto: '600' }, { tipo: '', monto: '400' }]
       expect(validarMediosPago('despachada', medios, total))
         .toBe('Seleccioná un método de pago para todos los montos')
+    })
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// descuentoEfectivoPct — % efectivo de un descuento (% o $ sobre una base)
+// ─────────────────────────────────────────────────────────────────────────────
+describe('descuentoEfectivoPct', () => {
+  it('descuento en % devuelve el % crudo', () => {
+    expect(descuentoEfectivoPct(10, 'pct', 1000)).toBe(10)
+  })
+  it('descuento en $ se convierte a % sobre la base', () => {
+    expect(descuentoEfectivoPct(300, 'monto', 1000)).toBe(30) // $300 sobre $1000 = 30%
+  })
+  it('descuento 0 o negativo → 0', () => {
+    expect(descuentoEfectivoPct(0, 'pct', 1000)).toBe(0)
+    expect(descuentoEfectivoPct(-5, 'monto', 1000)).toBe(0)
+  })
+  it('monto sobre base 0 → 0 (no descuenta nada real)', () => {
+    expect(descuentoEfectivoPct(500, 'monto', 0)).toBe(0)
+  })
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// validarDescuentosPorRol (G3 + J2c) — tope por rol y por canal, % EFECTIVO
+// ─────────────────────────────────────────────────────────────────────────────
+describe('validarDescuentosPorRol', () => {
+  const base: ValidarDescuentosArgs = {
+    rol: 'DUEÑO',
+    bloqueadoTotal: false,
+    items: [],
+    global: { descuento: 0, descuento_tipo: 'pct', subtotal: 1000 },
+    maxSupervisorPct: null,
+    maxCanalPct: null,
+  }
+
+  it('sin descuentos → null', () => {
+    expect(validarDescuentosPorRol(base)).toBeNull()
+  })
+
+  it('DUEÑO sin topes puede aplicar cualquier descuento', () => {
+    expect(validarDescuentosPorRol({ ...base, global: { descuento: 90, descuento_tipo: 'pct', subtotal: 1000 } })).toBeNull()
+  })
+
+  describe('rol bloqueado (CAJERO)', () => {
+    it('bloquea cualquier descuento por ítem', () => {
+      const r = validarDescuentosPorRol({
+        ...base, rol: 'CAJERO', bloqueadoTotal: true,
+        items: [{ descuento: 5, descuento_tipo: 'pct', base: 1000 }],
+      })
+      expect(r).toBe('tu rol no puede aplicar descuentos')
+    })
+    it('bloquea descuento global', () => {
+      const r = validarDescuentosPorRol({
+        ...base, rol: 'CAJERO', bloqueadoTotal: true,
+        global: { descuento: 100, descuento_tipo: 'monto', subtotal: 1000 },
+      })
+      expect(r).toBe('tu rol no puede aplicar descuentos')
+    })
+    it('sin descuentos no bloquea aunque esté bloqueado el rol', () => {
+      expect(validarDescuentosPorRol({ ...base, rol: 'CAJERO', bloqueadoTotal: true })).toBeNull()
+    })
+  })
+
+  describe('tope del SUPERVISOR', () => {
+    const sup = { ...base, rol: 'SUPERVISOR', maxSupervisorPct: 10 }
+    it('permite descuento por ítem en %  dentro del tope', () => {
+      expect(validarDescuentosPorRol({ ...sup, items: [{ descuento: 10, descuento_tipo: 'pct', base: 1000 }] })).toBeNull()
+    })
+    it('bloquea descuento por ítem en % sobre el tope', () => {
+      expect(validarDescuentosPorRol({ ...sup, items: [{ descuento: 15, descuento_tipo: 'pct', base: 1000 }] }))
+        .toContain('supera el límite del SUPERVISOR')
+    })
+    it('🔴 CLAVE: bloquea descuento por MONTO que esquiva el tope %', () => {
+      // $300 sobre base $1000 = 30% efectivo > tope 10% → debe bloquear (antes pasaba)
+      expect(validarDescuentosPorRol({ ...sup, items: [{ descuento: 300, descuento_tipo: 'monto', base: 1000 }] }))
+        .toContain('supera el límite del SUPERVISOR')
+    })
+    it('permite descuento por MONTO dentro del tope %', () => {
+      // $80 sobre $1000 = 8% < 10% → OK
+      expect(validarDescuentosPorRol({ ...sup, items: [{ descuento: 80, descuento_tipo: 'monto', base: 1000 }] })).toBeNull()
+    })
+    it('🔴 CLAVE: bloquea descuento GLOBAL por monto que esquiva el tope %', () => {
+      expect(validarDescuentosPorRol({ ...sup, global: { descuento: 250, descuento_tipo: 'monto', subtotal: 1000 } }))
+        .toContain('supera el límite del SUPERVISOR')
+    })
+    it('el tope del SUPERVISOR no aplica a un DUEÑO', () => {
+      expect(validarDescuentosPorRol({ ...base, rol: 'DUEÑO', maxSupervisorPct: 10, items: [{ descuento: 50, descuento_tipo: 'pct', base: 1000 }] })).toBeNull()
+    })
+  })
+
+  describe('tope del CANAL', () => {
+    it('aplica a cualquier rol con permiso (DUEÑO incluido)', () => {
+      expect(validarDescuentosPorRol({ ...base, rol: 'DUEÑO', maxCanalPct: 15, items: [{ descuento: 20, descuento_tipo: 'pct', base: 1000 }] }))
+        .toContain('supera el máximo de este canal')
+    })
+    it('bloquea descuento por monto que esquiva el tope del canal', () => {
+      expect(validarDescuentosPorRol({ ...base, rol: 'DUEÑO', maxCanalPct: 15, global: { descuento: 200, descuento_tipo: 'monto', subtotal: 1000 } }))
+        .toContain('supera el máximo de este canal')
+    })
+    it('permite dentro del tope del canal', () => {
+      expect(validarDescuentosPorRol({ ...base, rol: 'DUEÑO', maxCanalPct: 15, items: [{ descuento: 15, descuento_tipo: 'pct', base: 1000 }] })).toBeNull()
     })
   })
 })

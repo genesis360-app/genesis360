@@ -33,7 +33,8 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { redondearPrecio } from '@/lib/precioRedondeo'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales'
@@ -2116,9 +2117,11 @@ export default function VentasPage() {
     enabled: !!tenant,
   })
 
-  // Precio efectivo de un ítem según su cantidad: tier mayorista con mayor cantidad_minima
+  // Precio de lista/tier de un ítem según su cantidad: tier mayorista con mayor cantidad_minima
   // que la cantidad satisfaga; si ninguno aplica, precio minorista (precio_unitario base).
-  const precioTierEfectivo = (item: CartItem): number => {
+  // SIN redondeo (lo aplica precioTierEfectivo) — se usa para detectar si un tier mayorista
+  // bajó el precio respecto del minorista (display), independiente del redondeo configurado.
+  const precioTierBase = (item: CartItem): number => {
     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
@@ -2130,6 +2133,12 @@ export default function VentasPage() {
     for (const t of tiers) if (cant >= t.cantidad_minima) precio = t.precio  // tiers ya viene asc
     return precio
   }
+
+  // H4 — Precio unitario EFECTIVO (canónico): precio de lista/tier redondeado según
+  // `tenants.precio_redondeo`. Todo el cálculo de plata (subtotal, IVA, venta_items.precio_unitario,
+  // factura) deriva de acá → el redondeo se propaga de forma consistente. Default 'none' = sin cambios.
+  const precioTierEfectivo = (item: CartItem): number =>
+    redondearPrecio(precioTierBase(item), (tenant as any)?.precio_redondeo)
 
   const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
@@ -2355,24 +2364,22 @@ export default function VentasPage() {
     // G3 + J2c — validación de descuentos por rol/canal, con override por clave maestra
     const rol = user?.rol
     const reglaCanal = reglaDe(canalPOS)  // VF2/I2: reglas según clasificación del canal de venta
-    const hayDescuentoItem = cart.some(i => i.descuento > 0)
-    const hayDescuentoGlobal = descTotalVal > 0
     const maxSupervisor = (tenant as any)?.descuento_max_supervisor_pct
     const maxCanal = reglaCanal.descuento_max_pct
-    // Detectar la primera violación de descuento (si la hay)
-    let violacionDesc: string | null = null
-    if (descuentoBloqueadoCajero && (hayDescuentoItem || hayDescuentoGlobal)) {
-      violacionDesc = 'tu rol no puede aplicar descuentos'
-    } else if (rol === 'SUPERVISOR' && maxSupervisor != null) {
-      const itemExc = cart.find(i => i.descuento_tipo === 'pct' && i.descuento > maxSupervisor)
-      if (itemExc) violacionDesc = `${itemExc.descuento}% supera el límite del SUPERVISOR (${maxSupervisor}%)`
-      else if (descuentoTotalTipo === 'pct' && descTotalVal > maxSupervisor) violacionDesc = `el descuento global supera el límite del SUPERVISOR (${maxSupervisor}%)`
-    }
-    if (!violacionDesc && maxCanal != null && (hayDescuentoItem || hayDescuentoGlobal)) {
-      const itemExc = cart.find(i => i.descuento_tipo === 'pct' && i.descuento > maxCanal)
-      if (itemExc) violacionDesc = `${itemExc.descuento}% supera el máximo de este canal (${maxCanal}%)`
-      else if (descuentoTotalTipo === 'pct' && descTotalVal > maxCanal) violacionDesc = `el descuento global supera el máximo de este canal (${maxCanal}%)`
-    }
+    // Detectar la primera violación de descuento (si la hay). Se compara el % EFECTIVO
+    // (los descuentos en $ se convierten a %) para que un descuento por monto no esquive el tope.
+    const violacionDesc = validarDescuentosPorRol({
+      rol: rol ?? '',
+      bloqueadoTotal: descuentoBloqueadoCajero,
+      items: cart.map(i => ({
+        descuento: i.descuento,
+        descuento_tipo: i.descuento_tipo,
+        base: precioTierEfectivo(i) * (i.tiene_series ? i.series_seleccionadas.length : i.cantidad),
+      })),
+      global: { descuento: descTotalVal, descuento_tipo: descuentoTotalTipo, subtotal },
+      maxSupervisorPct: maxSupervisor,
+      maxCanalPct: maxCanal,
+    })
     // Si hay violación: con clave maestra configurada se puede autorizar (override); sin clave, bloquea.
     if (violacionDesc && !overrideDescuento) {
       if (claveMaestraConfigurada) {
@@ -3026,7 +3033,8 @@ export default function VentasPage() {
       for (const item of (ventaDetalle.venta_items ?? [])) {
         const prod = precioMap[item.producto_id]
         if (!prod) continue
-        const nuevoPrecio = prod.precio_venta
+        // H4 — mismo redondeo de precio que el POS, para que el presupuesto refrescado quede consistente
+        const nuevoPrecio = redondearPrecio(prod.precio_venta, (tenant as any)?.precio_redondeo)
         const descu = item.descuento ?? 0
         const nuevoSubtotal = nuevoPrecio * item.cantidad * (1 - descu / 100)
         const ivaRate = prod.alicuota_iva / 100
@@ -4483,8 +4491,8 @@ export default function VentasPage() {
                           <div className={`flex items-center border rounded-lg overflow-hidden w-28 ${
                             (() => {
                               if (descuentoBloqueadoCajero) return 'border-gray-200 dark:border-gray-700 opacity-60'
-                              const rolItem = user?.rol
-                              const limiteItem = rolItem === 'CAJERO' ? (tenant as any)?.descuento_max_cajero_pct : rolItem === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
+                              // Acá solo llegan roles con permiso de descuento; únicamente el SUPERVISOR tiene tope.
+                              const limiteItem = user?.rol === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
                               return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
                                 ? 'border-red-400 dark:border-red-500'
                                 : 'border-gray-200 dark:border-gray-700'
@@ -4506,8 +4514,7 @@ export default function VentasPage() {
                             if (descuentoBloqueadoCajero) {
                               return <span className="text-[10px] text-gray-400 dark:text-gray-500">Bloqueado</span>
                             }
-                            const rolItem = user?.rol
-                            const limiteItem = rolItem === 'CAJERO' ? (tenant as any)?.descuento_max_cajero_pct : rolItem === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
+                            const limiteItem = user?.rol === 'SUPERVISOR' ? (tenant as any)?.descuento_max_supervisor_pct : null
                             return (limiteItem != null && item.descuento_tipo === 'pct' && item.descuento > limiteItem)
                               ? <span className="text-[10px] text-red-500 dark:text-red-400">máx {limiteItem}%</span>
                               : null
@@ -4527,10 +4534,11 @@ export default function VentasPage() {
                         </p>
                       )}
 
-                      {/* G1/G2 — precio mayorista aplicado por cantidad */}
+                      {/* G1/G2 — precio mayorista aplicado por cantidad (compara el precio de lista
+                          SIN redondeo para no confundir el redondeo con un descuento mayorista) */}
                       {(() => {
+                        if (precioTierBase(item) >= item.precio_unitario) return null
                         const efectivo = precioTierEfectivo(item)
-                        if (efectivo >= item.precio_unitario) return null
                         return (
                           <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1 flex items-center gap-1 font-medium">
                             <Tag size={11} /> Precio mayorista: ${efectivo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}/u

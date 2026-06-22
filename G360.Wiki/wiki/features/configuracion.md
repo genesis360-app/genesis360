@@ -30,7 +30,7 @@ La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con se
 | **Inventario** | Sub-tabs: Reglas de stock · Categorías · Ubicaciones · Estados · Motivos · Unidades |
 | **Envíos** | Costo por km, plantilla WhatsApp |
 | **Facturación** | CUIT, condición IVA, razón social, domicilio fiscal, umbral factura B, token AFIP, certificados, puntos de venta |
-| **RRHH** | Placeholder — próximamente |
+| **RRHH** | Asistencia/tardanzas, Nómina, Documentos (v1.81.x, H4) |
 
 ### Grupo: Sistema
 
@@ -52,9 +52,10 @@ Configuración a nivel tenant — aplica a todo el negocio independientemente de
 |-------|-----|-------------|
 | Nombre | `tenants.nombre` | Nombre del negocio |
 | Tipo de comercio | `tenants.tipo_comercio` | Selector + campo libre "Otro" |
-| Email legal | `tenants.email_legal` | Para notificaciones fiscales |
-| Redondeo de precios | `tenants.precio_redondeo` | none / $10 / $50 / $100 / $500 / $1.000 |
+| Redondeo de precios | `tenants.precio_redondeo` | none / $10 / $50 / $100 / $500 / $1.000 — ✅ **aplicado (v1.82.0, H4)**: redondea el precio unitario efectivo del POS al múltiplo más cercano. Helper puro `redondearPrecio` (round-half-up, fail-safe, default none) en el punto canónico `precioTierEfectivo` → subtotal/IVA/`venta_items.precio_unitario`/factura derivan todos del mismo valor redondeado. No toca precios ya guardados del catálogo. |
 | Timeout de sesión | `tenants.session_timeout_minutes` | Cierre automático por inactividad |
+
+> [!NOTE] **Email legal QUITADO (H4, 2026-06-22):** el campo `email_legal` se removió del frontend — `tenants.email` ya cubre comprobantes y emails salientes; la columna DB queda inerte.
 
 ### Marketplace
 Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_webhook_url`)
@@ -74,9 +75,9 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 
 - **Combos de productos**: CRUD, 3 tipos de descuento (%, $ARS, USD), presets 3×2/2×1/2da unidad
 - **Descuento máximo por rol**:
-  - `tenants.descuento_max_cajero_pct`: límite para CAJERO sin autorización
-  - `tenants.descuento_max_supervisor_pct`: límite para SUPERVISOR
-  - DUEÑO nunca tiene límite
+  - **CAJERO** (y demás roles operativos): **100% bloqueado** de descuentos (regla C3/G3). El campo `descuento_max_cajero_pct` se **quitó** del frontend en H4 (2026-06-22) — era un tope ilusorio; la columna DB queda inerte.
+  - `tenants.descuento_max_supervisor_pct`: límite para SUPERVISOR (vacío = sin límite). Se valida el **% efectivo** (los descuentos en $ se convierten a % → no esquivan el tope, lib `validarDescuentosPorRol`).
+  - DUEÑO/ADMIN nunca tienen límite. Sobre el tope: con clave maestra configurada se autoriza (override); sin clave, bloquea.
 
 ### Sub-tab: Operativa
 
@@ -94,7 +95,7 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 | Campo | DB |
 |-------|-----|
 | Contraseña maestra | `tenants.clave_maestra` — requerida para cerrar caja ajena, abrir con diferencia, anular, dar de baja incobrable, pago OC/courier sobre umbral. **Guardada HASHEADA (bcrypt, mig 233)** — se setea vía el RPC `set_clave_maestra` (solo DUEÑO, mínimo 6 chars, con campo de confirmación); se verifica con `verificar_clave_maestra`. No se compara nunca en el cliente. |
-| Umbral bóveda | `tenants.boveda_umbral_caja` — alertar cuando el saldo supera este monto |
+| Umbral bóveda | `tenants.boveda_umbral_caja` — desde **H4 (2026-06-22)** genera una **alerta no-bloqueante**: cuando una caja operativa abierta tiene efectivo sobre este monto → "conviene depositar a la Caja Fuerte". Aparece en el badge del sidebar (`useAlertas`) y en `AlertasPage`. No mueve plata. Helper `cajasSobreUmbralBoveda` (`lib/cajaSaldo.ts`). |
 
 ---
 
@@ -136,6 +137,21 @@ Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs d
 | Token AfipSDK | `tenants.afipsdk_token` — de afipsdk.com |
 | Certificados | tabla `tenant_certificates` (crt + key) — upload via Storage |
 | Puntos de venta | tabla `puntos_venta_afip` — número + nombre |
+
+---
+
+## RRHH (H4 — v1.81.x, 2026-06-22)
+
+Tab construido para configurar los flags `rrhh_*` que RrhhPage lee pero antes no tenían UI (eran "placeholder vacío"). Los otros flags de RRHH (doble validación, portal del empleado, notificaciones, aviso/remanente de vacaciones) **ya se configuran dentro de RRHH** en su sección.
+
+| Sección | Campo | DB | Descripción |
+|---------|-------|-----|-------------|
+| Asistencia/tardanzas | Tratamiento de la tardanza | `tenants.rrhh_tardanza_modo` | `registrar` (no descuenta) / `proporcional` (descuenta todos los minutos) / `umbral` (descuenta lo que excede la tolerancia) — afecta la liquidación |
+| Asistencia/tardanzas | Tolerancia (min) | `tenants.rrhh_tardanza_tolerancia_min` | Minutos que no se descuentan. Solo aplica al modo `umbral`. |
+| Asistencia/tardanzas | Horas/mes base | `tenants.rrhh_horas_mes_base` | Divisor para el valor hora a partir del sueldo bruto (default 200) |
+| Asistencia/tardanzas | Horas extra requieren aprobación | `tenants.rrhh_horas_extra_requiere_aprobacion` | Bool |
+| Nómina | SUPERVISOR puede aprobar la nómina | `tenants.rrhh_nomina_supervisor_aprueba` | Cuenta como 2ª validación (si la doble validación está activada en RRHH → Nómina) |
+| Documentos | Avisar vencimientos con (días) | `tenants.rrhh_doc_alerta_dias` | Anticipación para marcar un documento como "por vencer" (default 30) |
 
 ---
 

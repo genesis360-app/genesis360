@@ -6,21 +6,47 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🟢 ARRANCÁ ACÁ (2026-06-22)
+> **Estado:** PROD = DEV = **v1.82.0 (migs 001-238)**. **TODO el backlog de flags (H4) está CERRADO y EN PROD.** No quedan cambios de frontend sin deployar. Build/typecheck/unit verdes.
+>
+> **v1.82.0 (PR dev→main, frontend-only, sin migración) — lo deployado:**
+> - **`precio_redondeo`** (último flag de H4, REGLA #0): helper puro `redondearPrecio` (none/10/50/100/500/1000, round-half-up, fail-safe, default `none`) aplicado en el punto canónico `precioTierEfectivo` del POS → subtotal/IVA/`venta_items.precio_unitario`/factura derivan del mismo valor redondeado; también en `actualizarPrecios`. +16 unit. La columna `tenants.precio_redondeo` ya existía (mig 123).
+> - Lo acumulado del 21+22/06: descuento máx por rol (hueco $ cerrado vía `validarDescuentosPorRol`, NO guard server), H3 (matriz clave CON/SIN documentada + validada server-side), H4 flags huérfanos (quitados `descuento_max_cajero_pct`+`email_legal`; alerta `boveda_umbral_caja`; tab RRHH de Config con 6 flags; `conteo_modo='elegir'` no era bug).
+>
+> **▶ ÚNICO pendiente para arrancar: Tanda A e2e** (REGLA #0 sin e2e) — ver §5 abajo. Prioridad: §29 fiscal runtime (AFIP homolog.), límite/morosidad CC, **clave maestra CON/SIN click-through** (el contrato server ya está validado, falta la UI), ajuste de inventario por rol≠DUEÑO, conteo gate + doble conteo, over-receipt, pagar nómina, **descuento SUPERVISOR sobre tope → bloquea / clave autoriza**.
+>
+> **Decisión abierta para GO (no bloqueante, H3):** ¿las acciones gated "pasa sin clave" (anular despachada, cerrar caja ajena, devolución cobrada) deberían avisar/forzar configurar la clave, o quedan rol-only by-design? (mi rec: rol-only + hacer visible el estado "sin clave", sin forzar).
+
 **✅ CERRADO el 2026-06-21 (v1.80.2 EN PROD):** #6 NC fiscal, #10 Productos, #11 Presupuestos validados por e2e click-through con efecto en DB (specs 42/43/44) + **deploy a PROD de mig 233 (clave maestra hash) + ConfigPage** (PR #235, release v1.80.2). **PROD = DEV = migs 001-233.** El merge también corrigió el drift de branch (los archivos de migs 231/232/233 no estaban en `main`). Detalle en `log.md` [2026-06-21].
 
 **✅ AUDITORÍA DE COBERTURA F1 HECHA (2026-06-21):** 5 agentes enumeraron **~264 lógicas + ~142 flags** → `tests/specs/cobertura/01-05.md` + master **`tests/specs/uat-app.md`** (estructura aprobada: un UAT con tags `[BÁSICO]/[AVANZADO]/[AMBOS]` + `[CFG:flag]`). Hallazgos REGLA #0 verificados en `uat-app.md` §2.
 
-**✅ HARDENING server-side — 2 guards EN DEV (NO en PROD todavía):**
-- **mig 234** `fn_ventas_cc_guard` (BEFORE INSERT ventas): límite CC (B1) + morosidad (B4). 8/8 escenarios verdes. Computa la deuda **inline scopeada por tenant** (cliente_cc_estado filtra por auth.uid()→0 sin sesión).
-- **mig 235** `fn_ventas_writeoff_rol_guard` (BEFORE UPDATE ventas): exige rol DUEÑO/SUPERVISOR/ADMIN al agregar tag `Condonación CC`/`Incobrable`. 4/4 verdes.
-- ⚠ **DRIFT INTENCIONAL: DEV = migs 001-235, PROD = 001-233.** migs 234/235 **NO están en PROD** (cambian comportamiento: hard-block donde antes solo bloqueaba la UI → deploy con OK de GO). *(En el historial de DEV hay un entry duplicado "234 v2" por una corrección; el archivo de repo `234_ventas_cc_guard_server.sql` es la versión final única.)*
+**✅ HARDENING server-side COMPLETO — 5 guards EN PROD (v1.81.0, PR #236, 2026-06-21). PROD = DEV = migs 001-238.**
+- **mig 234** `fn_ventas_cc_guard` (BEFORE INSERT ventas): límite CC + morosidad, deuda inline scopeada por tenant.
+- **mig 235** `fn_ventas_writeoff_rol_guard` (BEFORE UPDATE ventas): rol DUEÑO/SUPERVISOR/ADMIN para condonar/incobrable.
+- **mig 236** `marcar_incobrable()` RPC SECURITY DEFINER: rol (DUEÑO/SUPER_USUARIO/ADMIN) + **clave server-side** + write-off atómico (condona deuda CC + gasto "Deudor incobrable"). Wiring `ClientesPage.confirmarIncobrable`.
+- **mig 237** `registrar_pago_oc()` RPC atómico: rol (no CONTADOR) + **doble firma server-side** + saldo; escribe OC + proveedor_cc + cheque + caja en una transacción. **Cierra el hueco "se omite si no hay clave"** (supera el umbral sin clave configurada → BLOQUEA y pide configurarla). Wiring `GastosPage.registrarPagoOC`.
+- **mig 238** `marcar_envios_pagados()` RPC atómico: doble firma server-side del pago a courier (agrupa por courier, gasto con IVA + caja + marca pagado). Wiring `EnviosPage.marcarPagados`.
+- **Comprobante de gasto:** reorder del frontend (sube antes del INSERT → `comprobante_url` atómico; arregla un bug latente: en el camino de autorización por umbral el archivo nunca se subía).
+- **Validación:** por rol/clave en DEV (transacción con ROLLBACK + verificación del efecto en DB), 4/4 RPCs verdes (incl. multi-courier, supera-saldo, sin-clave-configurada→bloquea). typecheck+build+82 unit verdes. **Check de seguridad PROD:** los 5 tenants en `cc_enforcement='avisar'` sin umbral de doble firma → los guards quedan dormidos hasta configurarse (cero impacto operativo). *(El historial DEV tiene un entry duplicado "234 v2"; el archivo de repo `234_*.sql` es la versión final única.)*
 
-**▶ LO PRIMERO de la próxima sesión — continuar el HARDENING + H4 (todo en `uat-app.md`):**
-1. **Tanda "RPCs clave-gated"** (no son trigger-ables — la clave se verifica, no se puede en trigger): **doble firma OC/courier** (`GastosPage:721`/`EnviosPage:788`, se saltea si no hay clave) + **clave del incobrable** (se omite si no está configurada). Refactor a RPC SECURITY DEFINER (verifica rol+clave+acción atómica) + cambio de frontend + re-test. Mitigación rápida alterna: fix UI (exigir clave si hay umbral).
-2. **Comprobante de gasto obligatorio** server-side: NO es trigger directo (el `comprobante_url` se linkea en UPDATE post-INSERT, `GastosPage:1296`) → reordenar frontend (subir archivo + INSERT con url) y ahí enforzar con trigger.
-3. **H4 flags huérfanos — implementar el efecto (GO lo pidió), plan por flag en `uat-app.md` §2/H4:** `precio_redondeo` (feature de precios amplia+fiscal → helper puro + wiring + tests, su propia sesión), `email_legal`/`boveda_umbral_caja` (definir intención con GO), setters RRHH (construir UI en el tab placeholder), `descuento_max_cajero_pct` (ilusorio), `conteo_modo='elegir'` (semi).
-4. **Deploy a PROD** del set de guards (234/235 + los que sigan) cuando esté completo + OK de GO.
-5. **Tanda A e2e** (post-guards): §29 fiscal runtime, límite CC, clave maestra con/sin, ajuste por rol≠DUEÑO, conteo gate, over-receipt, pagar nómina.
+**✅ CERRADO 2026-06-21 (sesión siguiente, sin migración — solo frontend + validación, EN DEV):**
+1. **Descuento máx por rol** — decisión: **NO guard server-side** (el override por clave del DUEÑO no es replicable en trigger; los descuentos por ítem/monto son invisibles a un trigger en `ventas`; un descuento sobre tope NO rompe la integridad fiscal/contable → fuera del scope estricto REGLA #0, es control de autorización). **SÍ se cerró el hueco real client-side:** un descuento por **$ (monto)** esquivaba el tope **%** del SUPERVISOR/canal (el check solo miraba `descuento_tipo==='pct'`). Ahora todo descuento se convierte a su **% efectivo** y se valida con `validarDescuentosPorRol` (lib pura en `src/lib/ventasValidation.ts`, +18 unit). Override por clave intacto. `descuento_max_cajero_pct` sigue inerte → decisión va a **H4**.
+2. **H3 — clave CON vs SIN** — **contrastado + validado server-side en DEV.** Primitivo `verificar_clave_maestra` (clave OK→true, mala→false, NULL→false, **tenant sin clave→true SIEMPRE**) + RPC `marcar_incobrable` por impersonación SQL (DUEÑO+clave OK→ejecuta; DUEÑO+clave mala→`Clave maestra incorrecta.`; CAJERO→`No autorizado` por rol antes que clave). **Matriz CON/SIN completa documentada en `uat-app.md` §H3.** Hallazgo: la clave es **2º factor opt-in** — donde hay límite numérico (umbral doble firma, tope descuento) SIN clave **bloquea**; donde es acción discrecional (anular, incobrable, cerrar caja ajena, saltar reconteo) SIN clave **el rol es el único gate**. *Decisión para GO (no bloqueante): ¿las acciones rol-only sin clave deberían avisar/forzar configurar la clave?* Falta solo el e2e click-through (toggle de clave) → va en Tanda A.
+
+**✅ CERRADO 2026-06-22 (H4 flags huérfanos — sin migración, solo frontend, EN DEV):**
+3. **H4 mayormente resuelto.** Verifiqué el estado REAL de cada flag (2 findings del audit estaban stale). Decisiones de GO + recomendaciones:
+   - **`descuento_max_cajero_pct` → QUITADO** del frontend (cajero queda 100% bloqueado, regla C3/G3). Columna DB inerte.
+   - **`email_legal` → QUITADO** del frontend (rec: `tenant.email` ya cubre comprobantes/emails; sin caso de uso). Columna DB inerte.
+   - **`boveda_umbral_caja` → ALERTA no-bloqueante** "efectivo en caja sobre umbral → depositá a la Caja Fuerte". Helper puro `cajasSobreUmbralBoveda` (+4 unit) compartido por `useAlertas` (badge) + `AlertasPage`. Ambos modos. Query validado contra DEV.
+   - **Tab RRHH de Config → CONSTRUIDO** (6 flags reales: tardanza modo/tolerancia, horas mes base, horas extra aprobación, doc alerta días, nómina supervisor aprueba). Los otros `rrhh_*` ya tenían setter en RrhhPage (audit sobreestimaba "~11").
+   - **`conteo_modo='elegir'` → NO era bug** (finding stale; Config ofrece las 3 + runtime muestra el toggle). Cerrado.
+   - **`recepcion_alerta_faltante_dias`** → columna muerta, no se construyó (limpiar en pasada de DB).
+   - **`precio_redondeo` → DIFERIDO a su propia sesión** (fiscal + amplio; el precio entra por retail/mayorista/USD/edición manual → factura/IVA derivan de él). El más valioso, no rushear.
+
+**▶ LO PRIMERO de la próxima sesión — backlog que QUEDA (todo en `uat-app.md`):**
+4. **`precio_redondeo`** (único pendiente de H4) — su propia sesión: helper puro `redondearPrecio(precio,modo)` + unit, aplicado en el punto canónico del precio unitario efectivo (consistente con factura/IVA). Plata/fiscal → REGLA #0, con tests.
+5. **Tanda A e2e** (post-guards): §29 fiscal runtime, límite CC, **clave maestra con/sin (e2e click-through — el contrato server ya está validado)**, ajuste por rol≠DUEÑO, conteo gate, over-receipt, pagar nómina, **descuento SUPERVISOR sobre tope → bloquea / clave autoriza**.
 
 **Método e2e (recordatorio):** aserción POSITIVA del resultado (toast/efecto) + verificar la mutación en DB con `execute_sql`; nunca solo `.not.toBeVisible()`. Correr con `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN_spec --project=chromium`. Tenant DEV = Almacén Jorgito (`3769b1db…`). Clave maestra del tenant = **12345678**. Las fixtures por SQL (devolución spec 42, OC spec 35) para saltear pasos frágiles/cross-módulo son patrón aceptado. Ver [[reference_e2e_validation_capability]].
 

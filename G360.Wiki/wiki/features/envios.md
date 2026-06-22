@@ -8,6 +8,8 @@ updated: 2026-06-09
 
 # Módulo Envíos
 
+> [!IMPORTANT] **Guard server-side de plata (v1.81.0, REGLA #0):** el **pago a courier** ("marcar pagados") se hace por el RPC atómico `marcar_envios_pagados()` (mig 238): **doble firma server-side** sobre el umbral (cierra el hueco "se omite si no hay clave"); agrupa por courier, genera un gasto por courier (con desglose de IVA) + su movimiento de caja y marca los envíos pagados, todo en una transacción. Wiring `EnviosPage.marcarPagados`.
+
 > **🚚 Envío en modo BÁSICO (v1.78.0, 2026-06-18 — EN DEV):** en básico el envío es **solo un campo de costo** en el POS (se guarda en `ventas.costo_envio`, sale en ticket y factura). **NO** hay courier/reparto/dirección ni se crea registro en `envios` (la inserción está gateada por `modoAvanzado`) — el módulo de Envíos queda oculto en básico. La gestión completa que describe esta página aplica **solo a modo avanzado**. El costo de envío cobrado al cliente ahora también entra en la **factura AFIP** (ver [[project_facturacion]] / [[project_costo_envio_factura]]).
 
 Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.  

@@ -1,10 +1,11 @@
 // ─── AlertasPage ──────────────────────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX, ShoppingCart } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX, ShoppingCart, Vault } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { cajasSobreUmbralBovedaDelTenant } from '@/hooks/useAlertas'
 import { Link, useNavigate } from 'react-router-dom'
 import { capacidadCrearOC } from '@/lib/comprasPermisos'
 import { formatDistanceToNow } from 'date-fns'
@@ -259,6 +260,14 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
+  // H4 — efectivo en caja sobre el umbral de bóveda (ambos modos; solo si el tenant lo configuró).
+  const { data: cajasSobreUmbral = [] } = useQuery({
+    queryKey: ['cajas-sobre-umbral-boveda', tenant?.id, (tenant as any)?.boveda_umbral_caja],
+    queryFn: () => cajasSobreUmbralBovedaDelTenant(tenant!.id, (tenant as any)?.boveda_umbral_caja),
+    enabled: !!tenant && Number((tenant as any)?.boveda_umbral_caja) > 0,
+  })
+  const umbralBoveda = Number((tenant as any)?.boveda_umbral_caja) || 0
+
   const resolver = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase.from('alertas').update({ resuelta: true }).eq('id', id)
@@ -333,7 +342,7 @@ export default function AlertasPage() {
 
   // Las fuentes de WMS/compras (sin ubicación, sin proveedor, LPN vencidos, OC) solo
   // cuentan en modo avanzado — así el total coincide con el badge del sidebar (useAlertas).
-  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length
+  const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + cajasSobreUmbral.length
     + (modoAvanzado ? lineasSinUbicacion.length + lineasSinProveedor.length + lpnsVencidos.length + ocsVencidas.length + ocsProximas.length : 0)
   const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv || loadingVencidos || loadingOcsVenc || loadingOcsProx
 
@@ -355,6 +364,37 @@ export default function AlertasPage() {
         </div>
       ) : (
         <div className="space-y-6">
+
+          {/* H4 — efectivo en caja sobre el umbral de bóveda (ambos modos) */}
+          {cajasSobreUmbral.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-2">
+                <Vault size={14} />
+                Efectivo en caja sobre el umbral ({cajasSobreUmbral.length})
+              </h2>
+              {cajasSobreUmbral.map((c) => (
+                <div key={c.sesionId} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-amber-200 dark:border-amber-900/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Vault size={18} className="text-amber-500 dark:text-amber-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100">
+                        {c.cajaNombre ?? 'Caja'}
+                        <span className="font-normal text-gray-500 dark:text-gray-400"> — efectivo ${c.efectivo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Supera el umbral de ${umbralBoveda.toLocaleString('es-AR', { maximumFractionDigits: 0 })} — conviene depositar el excedente en la Caja Fuerte.
+                      </p>
+                    </div>
+                  </div>
+                  <Link to="/caja" className="flex-shrink-0 text-xs font-medium text-amber-600 dark:text-amber-400 border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-1.5 hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+                    Ir a Caja
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
 
           {/* OC vencidas (solo avanzado/compras) */}
           {modoAvanzado && ocsVencidas.length > 0 && (

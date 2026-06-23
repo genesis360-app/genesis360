@@ -38,8 +38,8 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 | L09 | Acciones individuales de LPN (editar/mover/ajustar cantidad) → directa o autorización por rol | `LpnAccionesModal.tsx:requiereAprobacion` (33) | 🛑 stock | 🔴 gap |
 | L10 | Rebaje masivo (MasivoModal) ordenando líneas por regla de inventario | `MasivoModal.tsx` (190, 358); `getRebajeSort` | 🛑 stock | 🟡 unit (rebajeSort) · 🔴 e2e |
 | L11 | **Orden de rebaje por regla de inventario** (FIFO/FEFO/LEFO/LIFO/Manual; jerarquía SKU > tenant > FIFO) | `rebajeSort.ts:getRebajeSort` (34-81) | 🛑 stock (qué stock sale) | ✅unit (rebajeSort.test, FEFO/LIFO/Manual/fallback) |
-| L12 | Kits — desarmar KIT devuelve componentes al stock | `InventarioPage.tsx` (~1290-1480) | 🛑 stock | 🔴 gap e2e |
-| L13 | Kits — armar KIT consume componentes (recetas) | `InventarioPage.tsx` (~1300-1380) | 🛑 stock | 🔴 gap e2e |
+| L12 | Kits — desarmar KIT devuelve componentes al stock | `InventarioPage.tsx:desarmarKit` (1441-1502) | 🛑 stock | ✅e2e 75 (desarmar 1 → KIT −1, componente +3 receta×3, `kitting_log`, DB) |
+| L13 | Kits — armar KIT consume componentes (recetas) | `InventarioPage.tsx:iniciarArmado` (~1294) | 🛑 stock | 🟡 cubierto-por-mecanismo (misma maquinaria kitting_log/stock que el desarmar e2e 75, inverso); flujo armado = 2 pasos reservar→confirmar |
 | L14 | Stock por sucursal de kits/componentes (no usa `stock_actual` global) | `InventarioPage.tsx:kStock` (561-571) | 🛑 stock | 🔴 gap |
 | L15 | **Conteo — alcance** (producto/ubicación/marca/categoría/sucursal) + snapshot esperada | `InventarioPage.tsx:conteoScopeFields` (1644-1654), carga (1555-1576) | 🛑 stock | ✅e2e 36 (solo "por producto") · 🔴 resto alcances |
 | L16 | Conteo — modo rápido (precarga esperada) vs guiado/ciego (arranca vacío) | `InventarioPage.tsx` (238-240, 1571); fuerza rápido en básico (238) | 🟠 | 🔴 gap (solo rápido en 36) |

@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC CERRADO 100% (specs 72/73 + incobrable SIN clave en Familia Otranto) — EN DEV
+
+**Pedido de GO:** cerrar Clientes/CC e Inventario al 100% usando los 2 tenants DEV (Jorgito + Familia Otranto, este último SIN clave) — "hacé y deshacé a gusto; mejor dejá la evidencia del UAT, no borres". ⇒ **a partir de acá NO se limpian los fixtures: quedan como evidencia.** (Al no deshacer, el stock queda naturalmente consistente — lo mutó la app, no SQL manual.)
+
+**Clientes/CC — los 3 residuales cerrados (REGLA #0, DB-verificado):**
+- ✅ **72 `72_cc_vencimiento_mutante`** (B3): venta 100% CC con `cc_dias_vencimiento=15` → `ventas.fecha_vencimiento_cc = hoy+15` (DB). Valida además el camino **CC EXITOSO** (crea la deuda), complemento de los bloqueos 46/49. Env `E2E_VENC_CC=1`. *Gotcha: con 2+ cajas abiertas el despacho exige elegir caja en "Registrar en caja" aunque sea 100% CC.*
+- ✅ **73 `73_credito_a_favor_positivo_mutante`** (E2): pagar con "Crédito a favor" $1.657 → fila negativa `cliente_creditos = −1.657` (origen `consumo_venta`), saldo 5.000→3.343 (DB). Complemento del guard negativo (spec 53). Env `E2E_CREDITO_POS=1`.
+- ✅ **incobrable SIN clave** — **DB-validated en Familia Otranto** (`4cf85bbb…`, sin clave) por impersonación del RPC `marcar_incobrable` (mig 236): **DUEÑO + clave vacía → procede** (`{total_incobrable:4000, ventas_afectadas:1}`; venta deuda→0 + tag "Incobrable" + gasto "Deudor incobrable" $4000 cat. "Deudores incobrables"). **Contraste: SUPERVISOR → rechazado por rol** ("requiere rol DUEÑO/ADMIN") aunque NO haya clave → el gate de rol es independiente del de clave. Complementa spec 40 (CON clave, Jorgito, UI). Evidencia queda en FO.
+
+**🔑 Lección REGLA #0 (limpieza de ventas):** al deshacer una venta por SQL, restaurar SOLO `inventario_lineas.cantidad` — el trigger recalcula `stock_actual`. Tocar `stock_actual` a mano lo duplica (lo dice el CLAUDE.md). *(Ya no aplica porque GO pidió no borrar, pero queda anotado.)*
+
+**▶ Sigue:** Inventario residual (over-receipt CON, conteo gate/reconteo, wall-to-wall cross-página, kits).
+
+---
+
 ## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC residual (documentado) + Inventario rebaje no-negativo (spec 71) — EN DEV
 
 **Pedido de GO:** "seguí con lo que queda de clientes y el siguiente módulo". Post-deploy v1.85.0.

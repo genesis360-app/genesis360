@@ -4,7 +4,7 @@
 > **Zona REGLA #0 (contable/fiscal).** Solo lectura — no se escribió código ni tests.
 > Fecha: 2026-06-21 · Repo @ dev (migs 001-233).
 >
-> **▶ Progreso del barrido (2026-06-23):** arrancó Caja/Bóveda. **✅ Cerrado: cierre con diferencia** (spec 64 — sobrante $100 → ajuste `ingreso` en DB, verificado). Varios gaps de este doc YA cerrados por el hardening posterior + specs de Ventas: **G1** (límite CC + morosidad) por mig 234 + e2e **46/49**; parte de **G2/G3** por **40/41/45/48**. **▶ Próximo incremento de Caja:** cierre **ajeno** con clave (CON/SIN), **extracción de Bóveda** (egreso real), `diferencia_caja_umbral` (alerta por umbral), doble validación B7.
+> **▶ Progreso del barrido (2026-06-23):** **Caja/Bóveda — gaps REGLA #0 contables CERRADOS por e2e:** cierre con diferencia (spec **64**, ajuste `ingreso` en DB), cierre **ajeno** con clave maestra (spec **65**, server-side mala/correcta), **extracción de Bóveda** (spec **66**, guard saldo insuficiente → no-negativo), **doble validación B7** (spec **67**, sin/invalid 2º usuario bloquea). `diferencia_caja_umbral` queda **cubierto por unit** (`superaUmbralDiferencia`, umbral 0 vs >0) — es ruteo de alerta, no integridad de plata. Varios gaps YA cerrados antes por hardening + Ventas: **G1** (límite CC + morosidad) por mig 234 + e2e **46/49**; parte de **G2/G3** por **40/41/45/48**. **▶ Siguiente módulo del barrido: Gastos** (comprobante obligatorio, período cerrado, eliminar→reversión, pago OC con clave).
 > Leyenda cobertura: ✅e2e (spec NN) · ✅unit (archivo) · ✅UAT(§) · 🟡parcial · 🔴gap · 🧠code-audit.
 > Convención de flags: **CON** = flag activo/valor distinto del default · **SIN** = ausente/default/null.
 
@@ -24,12 +24,12 @@
 | Ajuste contraparte de traspaso al corregir | `cajaArqueo.ts:tipoAjusteTraspaso` | ✅ | ✅unit |
 | Apertura de caja (propia/ajena) + dif. apertura + notif | `src/pages/CajaPage.tsx` abrirCaja (≈600-647) | ✅ | ✅e2e 20 (propia, happy) · 🔴 ajena |
 | Cierre con arqueo obligatorio + snapshot K2 + ajuste de diferencia | `CajaPage.tsx` cerrarCaja:650-765 | ✅ | ✅e2e 20 (sin dif) · ✅e2e 64 (sobrante $100 → ajuste `ingreso` en DB) |
-| Cierre AJENO exige clave maestra (si configurada) | `CajaPage.tsx:656-665` | ✅ | 🧠code-audit · 🔴 e2e CON/SIN |
-| Doble validación al cierre (B7, 2º usuario) | `CajaPage.tsx:666-698` + `cajaPermisos.ts:ConfigCaja.doble_validacion_cierre` | ✅ | 🔴gap (flag) |
+| Cierre AJENO exige clave maestra (si configurada) | `CajaPage.tsx:656-665` | ✅ | ✅e2e 65 (clave mala bloquea / correcta cierra, server-side) |
+| Doble validación al cierre (B7, 2º usuario) | `CajaPage.tsx:666-698` + `cajaPermisos.ts:ConfigCaja.doble_validacion_cierre` | ✅ | ✅e2e 67 (sin/invalid 2º usuario → bloquea) |
 | Alerta de diferencia a roles/canales (in-app + email) | `CajaPage.tsx:801-834` | ✅ | 🧠code-audit · 🔴 e2e |
 | Egreso no deja caja negativa (gastos/devolución) | `cajaSaldo.ts:saldoEfectivoSesion` usado en GastosPage:1225-1227 | ✅ | ✅unit (saldo) · ✅e2e 27 (happy) |
 | Depósito a Bóveda (2 patas: egreso_traspaso + ingreso_traspaso) | `CajaPage.tsx` traspasoBoveda:1022-1102 | ✅ | ✅e2e 32 |
-| Extracción de Bóveda (egreso real, no traspaso) | `CajaPage.tsx:extraerDeBoveda:306-360` | ✅ | 🔴gap |
+| Extracción de Bóveda (egreso real, no traspaso) | `CajaPage.tsx:extraerDeBoveda:306-360` | ✅ | ✅e2e 66 (guard saldo insuficiente → no negativo) |
 | Caja Fuerte como sesión permanente (`es_caja_fuerte`, excluida de operativas) | `CajaPage.tsx:152-153,179-180` | ✅ | 🧠code-audit |
 | Matriz de permisos por rol (abrir/cerrar/ingreso/traspaso/bóveda/anular) | `src/lib/cajaPermisos.ts:puede` + `MATRIZ` | ✅ | ✅unit (cajaPermisos) |
 | ¿Acción requiere clave maestra? (cerrar_ajena, anular_venta) | `cajaPermisos.ts:requiereClaveMaestra`/`ACCIONES_CON_CLAVE_MAESTRA` | ✅ | ✅unit |

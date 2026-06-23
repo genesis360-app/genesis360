@@ -6,6 +6,26 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] update | 🧪 Barrido UAT Ventas/POS — Tanda B CERRADA (specs 58-63) + 🐛 fix REGLA #0 picker de cuotas — EN DEV
+
+**Pedido de GO:** "sigamos" → tras cerrar Ventas/POS Tanda A, GO eligió seguir con **Ventas Tanda B** (cerrar Ventas al 100% antes de cambiar de módulo). 6 specs e2e nuevos (mutantes, aserción POSITIVA + efecto en DB), fixtures SQL **reversibles** (todos los flags de Jorgito restaurados a default, 0 fixtures residuales). Commits **test-only + 1 fix de app** en `dev` (no van a PROD hasta el próximo deploy).
+
+**Specs nuevos (e2e, REGLA #0):**
+- ✅ **58 `58_reserva_sena_minima_mutante`** (L46/`reserva_sena_minima_pct`): con flag=50, seña $1 < 50% del total → bloquea ("La seña mínima es 50%…"), no crea reserva. Env-gated (`E2E_SENA_MIN_FIXTURE`). Flag restaurado a 0.
+- ✅ **59 `59_reserva_penalidad_mutante`** (L47/`reserva_penalidad_pct`): **el de más valor (plata).** Fixture = reserva con seña $1000 + flag=20; cancelar con destino crédito → **`cliente_creditos=$800`** (1000×0.8), venta `cancelada`, stock reservado liberado — **verificado en DB**. Fixture borrado, flag restaurado.
+- ✅ **60 `60_cliente_obligatorio_siempre_mutante`** (L20): `cliente_obligatorio='siempre'` exige cliente hasta en una venta directa CF (que con el default `'reservas'` no lo exige) → bloquea, no crea venta. Aísla el flag manteniendo modo CF. Flag restaurado a 'reservas'.
+- ✅ **61 `61_reglas_canal_descuento_mutante`** (L39/`reglas_canal`): `descuento_max_pct=5` por canal topea el descuento **incluso al DUEÑO** (que no tiene tope de rol) → gate de clave con "supera el máximo de este canal (5%)". No se autoriza → no muta. `reglas_canal` restaurado a `{}`.
+- ✅ **62 `62_cuotas_interes_mutante`** (L40/`cuotas_bancos`): Banco Galicia 3x +0.5% sobre $10.000 → "3 cuotas de $3.350 = $10.050 total". Datos reales (no fixture). **Destapó el bug G0.5 (ver abajo).** Corre y pasa en el full-suite (guard de regresión del fix).
+- ✅ **63 `63_presupuesto_vencido_mutante`** (L44): presupuesto de 40 días (validez 30) → banner "Presupuesto vencido" + CTA "Finalizar (rebaja stock)"/"Reservar stock" **deshabilitados**. Read-only. Fixture borrado.
+
+**🐛 BUG REGLA #0 (plata) hallado y CORREGIDO (G0.5):** el picker de cuotas con interés (ISS-086, `VentasPage`) se gatillaba con `mp.tipo === 'Tarjeta crédito'` (sin "de"), pero el método canónico de Config/fallback/`metodos_pago` es **"Tarjeta de crédito"** (con "de") → con la config estándar **el picker NUNCA aparecía** y no se podía aplicar el interés de financiación en el POS. **Fix (frontend, sin migración):** helper `esTarjetaCredito` que detecta la tarjeta de crédito por normalización (reusa `normalizarNombreMetodo`, que ya saca "de"/tildes); aplicado a las 2 ramas del picker (badge + selector). **typecheck (tsc) + build verdes.** Spec 62 antes del fix skipeaba (picker no aparecía); ahora pasa. **⏳ EN DEV — recomiendo incluirlo en el próximo deploy a PROD (es plata).**
+
+**Gotchas e2e nuevos:** (1) el flag de seña mínima debe testearse con env-gate + restore (sin el flag, una seña baja CREARÍA la reserva → mutación); (2) `isPresupuestoVencido` usa `updated_at ?? created_at` → el fixture debe envejecer AMBAS fechas; (3) el tope de descuento por canal (`maxCanalPct`) aplica a CUALQUIER rol con permiso, incluido el DUEÑO (≠ tope de SUPERVISOR, que solo a ese rol); (4) `numero` de `ventas` lo pone el trigger → omitirlo en el INSERT del fixture.
+
+**▶ Próxima sesión:** seguir el orden sugerido — **Módulo Caja/Bóveda** (`cobertura/03`) y/o cerrar los opcionales de Ventas (cliente_consumidor_final=false, reglas_canal.requiere_cliente/lista_precio) + Productos Tanda B (max_productos, alícuotas 0/21/27, margen/variantes/bulk). **Decisión para GO:** ¿deployar el fix de cuotas (G0.5) ya, o bundlear con el resto del backlog de DEV? Detalle/handoff en `project_pendientes.md`.
+
+---
+
 ## [2026-06-22] update | 🧪 Barrido UAT Ventas/POS — Tanda A REGLA #0 COMPLETA (specs 53-57 + FAC-27) — EN DEV (test-only, sin afectar PROD)
 
 **Pedido de GO:** tras deployar v1.84.0, "seguimos con más testing" → residual Tanda A (hecho: specs 50-52, ver entrada deploy v1.84.0) y luego **barrido del orden sugerido empezando por Ventas/POS**. Inventario maestro = `tests/specs/cobertura/01_ventas_productos_facturacion.md` (60 lógicas + matriz flags + gaps). Todos los specs verdes + **verificados en DB** + **DEV dejado limpio** (fixtures SQL reversibles). **Commits test-only en `dev`** (0f8abf94, 604cc7ac, 61c051b2): no van a PROD hasta el próximo deploy (no tocan app code).

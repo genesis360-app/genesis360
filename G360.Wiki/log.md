@@ -6,6 +6,65 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] deploy | 🚀 v1.86.0 EN PROD — barrido UAT Clientes/CC 100% + Inventario residual (specs 69-76) — test-only, sin migración
+
+**Pedido de GO:** "pasemos todo a DEV y PROD así hacemos /clear y arrancamos nueva sesión con los pendientes." Deploy **test-only + wiki** — **NO hay cambios de `src/` desde v1.85.0** (el fix de cuotas G0.5 ya fue en v1.85.0). PROD = DEV = migs 001-240. Bump APP_VERSION → v1.86.0 (marca el hito del barrido; sin cambio de comportamiento). Build verde, PR dev→main, merge, release.
+
+**Qué entra (todo test-only, REGLA #0, DB-verificado en los 2 tenants DEV):**
+- **Clientes/CC 100%:** 69 revertir condonación, 72 vencimiento CC, 73 crédito a favor positivo, incobrable SIN clave (DB-validated Familia Otranto).
+- **Productos:** 70 alícuota Exento (0, no 21).
+- **Inventario/Conteos:** 71 rebaje no-negativo, 74 over-receipt CON, 75 kit desarmar, 76 wall-to-wall bloqueante.
+
+**Convención de evidencia (GO):** las transacciones de prueba (ventas/recepciones/write-offs/desarmados) se DEJAN en DEV como evidencia UAT; solo se quitan los estados bloqueantes activos (wall-to-wall).
+
+**▶ Próxima sesión (post-/clear):** módulos restantes del barrido — **Compras/OC/Envíos (cobertura/04)** y **RRHH/Config/Suscripción (cobertura/05)**. Residual menor no-crítico de Inventario (conteo gate flag, armar-kit 2 pasos, delta con venta intercalada, under-receipt por rol). Único bloqueo de terceros: **AFIP §29** (cert/token PRODUCCIÓN + CUIT RI homologación de GO).
+
+---
+
+## [2026-06-23] update | 🧪 Barrido UAT — Inventario residual cerrado (over-receipt CON, kits, wall-to-wall) specs 74-76 — EN DEV
+
+**Pedido de GO:** cerrar Inventario residual al 100% (dejando evidencia). REGLA #0 stock, DB-verificado.
+- ✅ **74 `74_over_receipt_con_tope_mutante`** (L34): `permite_over_receipt=true`+`over_receipt_pct_max=10`, recibir 11 vs pedido 10 → ACEPTA (within +10%), stock 0→11, OC `recibida` (DB). Complementa spec 52 (SIN→bloquea). Env `E2E_OVER_RECEIPT_CON=1`. OC fixture (Sprite) queda de evidencia.
+- ✅ **75 `75_kit_desarmar_mutante`** (L12): desarmar 1 "Elite Pañuelos Super Pack x3" → KIT 40→39, componente "Elite Pañuelos" 140→**143** (+3, receta×3), `kitting_log` desarmado (DB). Valida la maquinaria kitting↔stock. L13 armar = inverso (flujo 2 pasos reservar→confirmar), mismo mecanismo. Env `E2E_KIT_DESARMAR=1`.
+- ✅ **76 `76_wall_to_wall_bloqueante_mutante`** (L24, cross-página): un `inventario_conteos` borrador con `bloquea_movimientos=true` en Norte → "Venta directa" en el POS **bloqueada** ("conteo wall-to-wall en curso"). Valida la pata POS de `useConteoBloqueante` (inventario/traslados comparten el hook). Env `E2E_WALL_TO_WALL=1`. **El conteo bloqueante se BORRÓ tras el test** (un bloqueo activo deja la sucursal sin operar → NO es evidencia útil, a diferencia de las transacciones que sí se dejan).
+- **#2 conteo gate/reconteo** = cubierto por unit (`conteoAjuste`) + el resultado del gate (autorización 2-actores) por specs 36/47/51; el e2e del flag es refinamiento. **Residual menor (no REGLA #0 crítico):** delta con venta intercalada, under-receipt + ajuste por rol, 2 recepciones parciales.
+
+**Inventario/Conteos — gaps REGLA #0 stock cerrados** (36/47/51/52/71/74/75/76 + traslados 30 + recepción 29/35 + unit extensivo). **Convención evidencia (GO):** las transacciones de prueba (ventas, recepciones, write-offs, desarmados) se DEJAN como evidencia UAT; solo se quitan los **estados bloqueantes activos** (conteo wall-to-wall) que deshabilitarían el tenant.
+
+---
+
+## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC CERRADO 100% (specs 72/73 + incobrable SIN clave en Familia Otranto) — EN DEV
+
+**Pedido de GO:** cerrar Clientes/CC e Inventario al 100% usando los 2 tenants DEV (Jorgito + Familia Otranto, este último SIN clave) — "hacé y deshacé a gusto; mejor dejá la evidencia del UAT, no borres". ⇒ **a partir de acá NO se limpian los fixtures: quedan como evidencia.** (Al no deshacer, el stock queda naturalmente consistente — lo mutó la app, no SQL manual.)
+
+**Clientes/CC — los 3 residuales cerrados (REGLA #0, DB-verificado):**
+- ✅ **72 `72_cc_vencimiento_mutante`** (B3): venta 100% CC con `cc_dias_vencimiento=15` → `ventas.fecha_vencimiento_cc = hoy+15` (DB). Valida además el camino **CC EXITOSO** (crea la deuda), complemento de los bloqueos 46/49. Env `E2E_VENC_CC=1`. *Gotcha: con 2+ cajas abiertas el despacho exige elegir caja en "Registrar en caja" aunque sea 100% CC.*
+- ✅ **73 `73_credito_a_favor_positivo_mutante`** (E2): pagar con "Crédito a favor" $1.657 → fila negativa `cliente_creditos = −1.657` (origen `consumo_venta`), saldo 5.000→3.343 (DB). Complemento del guard negativo (spec 53). Env `E2E_CREDITO_POS=1`.
+- ✅ **incobrable SIN clave** — **DB-validated en Familia Otranto** (`4cf85bbb…`, sin clave) por impersonación del RPC `marcar_incobrable` (mig 236): **DUEÑO + clave vacía → procede** (`{total_incobrable:4000, ventas_afectadas:1}`; venta deuda→0 + tag "Incobrable" + gasto "Deudor incobrable" $4000 cat. "Deudores incobrables"). **Contraste: SUPERVISOR → rechazado por rol** ("requiere rol DUEÑO/ADMIN") aunque NO haya clave → el gate de rol es independiente del de clave. Complementa spec 40 (CON clave, Jorgito, UI). Evidencia queda en FO.
+
+**🔑 Lección REGLA #0 (limpieza de ventas):** al deshacer una venta por SQL, restaurar SOLO `inventario_lineas.cantidad` — el trigger recalcula `stock_actual`. Tocar `stock_actual` a mano lo duplica (lo dice el CLAUDE.md). *(Ya no aplica porque GO pidió no borrar, pero queda anotado.)*
+
+**▶ Sigue:** Inventario residual (over-receipt CON, conteo gate/reconteo, wall-to-wall cross-página, kits).
+
+---
+
+## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC residual (documentado) + Inventario rebaje no-negativo (spec 71) — EN DEV
+
+**Pedido de GO:** "seguí con lo que queda de clientes y el siguiente módulo". Post-deploy v1.85.0.
+
+**Clientes/CC residual — decisión (documentada, no se fuerza fixture riesgoso):** el núcleo CC ya está cubierto (morosidad 49, límite 46, condonar 39, **revertir 69**, incobrable CON clave 40, cobranza FIFO 28 + unit). Los 3 que quedan se **difieren** porque exigen mutar stock/deuda con reversa frágil — y restaurar stock a mano es justo lo que REGLA #0 prohíbe arriesgar:
+- **vencimiento CC** (`cc_dias_vencimiento`): one-liner `today + N`; el aging que lo consume está en unit. e2e requiere una venta CC que rebaja stock.
+- **crédito a favor positivo**: el guard negativo está en spec 53; el consumo positivo inserta una fila negativa en `cliente_creditos` — **mismo insert ya verificado en spec 59** (cancelación de reserva → crédito).
+- **incobrable SIN clave**: requiere un tenant sin clave con usuario **DUEÑO** (el harness de Familia Otranto es SUPERVISOR, que el RPC no autoriza). Falta harness.
+
+**Inventario/Conteos — siguiente módulo (cobertura/02):**
+- ✅ **spec 71 `71_rebaje_no_negativo_mutante`** (L02, REGLA #0 stock): rebajar 9.999.999 > disponible → guard "Stock disponible insuficiente: N u.", NO toca `inventario_lineas`/`movimientos_stock` (no deja stock negativo ni saca reservado). Datos reales, non-mutating → corre en full-suite. **Gotcha:** el modal de Rebaje tiene su propio buscador ("Buscar por nombre, SKU o código…") distinto del de la tab ("Buscar por producto o SKU…") — scopear al modal.
+- **Reconciliación cobertura/02:** los gaps top YA estaban cubiertos por specs previas — #1 autorización ajuste 2-actores = **47/51**, #3 over-receipt SIN = **52**, conteo+ajuste = **36**, traslados = **30**, recepción = **29/35**. Quedan menor-prioridad/fixtures-pesados: over-receipt CON, conteo gate/reconteo, wall-to-wall cross-página, delta con venta intercalada, kits.
+
+**▶ Próximo:** Inventario residual (over-receipt CON, conteo gate, wall-to-wall) si se quiere profundizar; luego Compras/OC/Envíos (cobertura/04), RRHH/Config/Suscripción (cobertura/05). AFIP §29 sigue bloqueado por trámite de GO.
+
+---
+
 ## [2026-06-23] deploy | 🚀 v1.85.0 EN PROD — fix REGLA #0 picker de cuotas + barrido UAT (specs 58-70) — sin migración
 
 **Pedido de GO:** tras el barrido de Clientes y Productos, "pasá todo a DEV y PROD". Deploy frontend-only (el único cambio de app es el fix de cuotas; el resto son specs e2e test-only). **Sin migraciones** (todo el trabajo en DB del barrido fue validación reversible, sin DDL). **PROD = DEV = migs 001-240.**

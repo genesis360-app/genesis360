@@ -28,7 +28,7 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 | # | Lógica | file:función / línea | ¿REGLA #0? | Cobertura actual |
 |---|--------|----------------------|:----------:|------------------|
 | L01 | Ingreso de stock (crea `inventario_lineas` + `movimientos_stock` tipo `ingreso`; mode-aware: básico LPN/ubic/estado NULL) | `InventarioPage.tsx:ingresoMutation` (1007-1149) | 🛑 stock | ✅e2e 23 (toast; no verifica DB) · 🟡 falta aserción DB |
-| L02 | Rebaje/quitar stock (no negativo; bloquea si `cant > cantidad − reservada`) | `InventarioPage.tsx:rebajeMutation` (1151-1199); `stock_despues: Math.max(0,…)` (1187) | 🛑 stock | 🔴 gap e2e (solo code-audit) |
+| L02 | Rebaje/quitar stock (no negativo; bloquea si `cant > cantidad − reservada`) | `InventarioPage.tsx:rebajeMutation` (1151-1199); `stock_despues: Math.max(0,…)` (1187) | 🛑 stock | ✅e2e 71 (rebajar 9.999.999 > disponible → "Stock disponible insuficiente", no muta) |
 | L03 | Guard mono-SKU en ubicación al ingresar | `InventarioPage.tsx` (1028-1051) | 🟠 inventario | 🔴 gap |
 | L04 | Unicidad de LPN por tenant al ingresar | `InventarioPage.tsx` (1053-1066) | 🟠 inventario | 🔴 gap |
 | L05 | Ingreso por series (1 línea + N `inventario_series`; 23505 → "ya existen") | `InventarioPage.tsx` (1096-1112) | 🟠 inventario | 🔴 gap |
@@ -38,8 +38,8 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 | L09 | Acciones individuales de LPN (editar/mover/ajustar cantidad) → directa o autorización por rol | `LpnAccionesModal.tsx:requiereAprobacion` (33) | 🛑 stock | 🔴 gap |
 | L10 | Rebaje masivo (MasivoModal) ordenando líneas por regla de inventario | `MasivoModal.tsx` (190, 358); `getRebajeSort` | 🛑 stock | 🟡 unit (rebajeSort) · 🔴 e2e |
 | L11 | **Orden de rebaje por regla de inventario** (FIFO/FEFO/LEFO/LIFO/Manual; jerarquía SKU > tenant > FIFO) | `rebajeSort.ts:getRebajeSort` (34-81) | 🛑 stock (qué stock sale) | ✅unit (rebajeSort.test, FEFO/LIFO/Manual/fallback) |
-| L12 | Kits — desarmar KIT devuelve componentes al stock | `InventarioPage.tsx` (~1290-1480) | 🛑 stock | 🔴 gap e2e |
-| L13 | Kits — armar KIT consume componentes (recetas) | `InventarioPage.tsx` (~1300-1380) | 🛑 stock | 🔴 gap e2e |
+| L12 | Kits — desarmar KIT devuelve componentes al stock | `InventarioPage.tsx:desarmarKit` (1441-1502) | 🛑 stock | ✅e2e 75 (desarmar 1 → KIT −1, componente +3 receta×3, `kitting_log`, DB) |
+| L13 | Kits — armar KIT consume componentes (recetas) | `InventarioPage.tsx:iniciarArmado` (~1294) | 🛑 stock | 🟡 cubierto-por-mecanismo (misma maquinaria kitting_log/stock que el desarmar e2e 75, inverso); flujo armado = 2 pasos reservar→confirmar |
 | L14 | Stock por sucursal de kits/componentes (no usa `stock_actual` global) | `InventarioPage.tsx:kStock` (561-571) | 🛑 stock | 🔴 gap |
 | L15 | **Conteo — alcance** (producto/ubicación/marca/categoría/sucursal) + snapshot esperada | `InventarioPage.tsx:conteoScopeFields` (1644-1654), carga (1555-1576) | 🛑 stock | ✅e2e 36 (solo "por producto") · 🔴 resto alcances |
 | L16 | Conteo — modo rápido (precarga esperada) vs guiado/ciego (arranca vacío) | `InventarioPage.tsx` (238-240, 1571); fuerza rápido en básico (238) | 🟠 | 🔴 gap (solo rápido en 36) |
@@ -50,7 +50,7 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 | L21 | **Conteo — reconciliación por delta** (nuevo = vivo + (contada − snapshot); respeta ventas intermedias; nunca negativo) | `conteoAjuste.ts:reconciliarDelta` (48-50); aplicado `InventarioPage.tsx:1810` | 🛑 stock | ✅unit (reconciliarDelta) · 🟡 e2e 36 (delta sin ventas intermedias) · 🔴 e2e con venta intercalada |
 | L22 | Conteo — aplicar ajuste finalizado (mov. `ajuste_ingreso/ajuste_rebaje`, motivo "Conteo de inventario", `stock_despues Math.max(0,…)`) | `InventarioPage.tsx:finalizarConteoYAplicar` (1752-1840) | 🛑 stock | ✅e2e 36 (+1, DUEÑO; DB manual) |
 | L23 | Conteo — aprobar/rechazar autorización pendiente (aplica delta al aprobar) | `InventarioPage.tsx` aprobar (~720-820), rechazar (~828-838) | 🛑 stock | 🔴 gap e2e |
-| L24 | **Conteo wall-to-wall bloqueante** (scope=sucursal + flag → borrador `bloquea_movimientos=true` bloquea POS+ingreso+rebaje+traslado de la sucursal) | `InventarioPage.tsx:iniciaBloqueante` (1527-1531, 1578-1589); consumido por `useConteoBloqueante` en `InventarioPage` (1011,1155), `VentasPage` (141), `TrasladosPanel` (45) | 🛑 stock | 🔴 gap e2e (crítico cross-página) |
+| L24 | **Conteo wall-to-wall bloqueante** (scope=sucursal + flag → borrador `bloquea_movimientos=true` bloquea POS+ingreso+rebaje+traslado de la sucursal) | `InventarioPage.tsx:iniciaBloqueante` (1527-1531, 1578-1589); consumido por `useConteoBloqueante` en `InventarioPage` (1011,1155), `VentasPage` (141), `TrasladosPanel` (45) | 🛑 stock | ✅e2e 76 (conteo borrador bloqueante → "Venta directa" en el POS bloqueada; no muta). Pata POS validada; ingreso/rebaje/traslado comparten el mismo `useConteoBloqueante` |
 | L25 | Conteo cíclico sugerido (ABC × última fecha de conteo × `conteo_ciclico_dias_a/b/c`) | `conteoAbc.ts:sugerirConteoCiclico` (85-107); `InventarioPage.tsx:5337-5339` | 🟢 | ✅unit (conteoAbc) |
 | L26 | Clase ABC (Pareto 80/95 por valor de movimiento) | `conteoAbc.ts:clasificarABC` (27-45) | 🟢 | ✅unit (conteoAbc) |
 | L27 | Reporte de exactitud/valorización del conteo | `conteoAbc.ts:reporteExactitud` (145-165) | 🟠 contable | ✅unit (conteoAbc) |
@@ -60,7 +60,7 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 | L31 | **Traslado — confirmar recepción** (entra stock destino, tipo `traslado`; destino o puedeVerTodas) | `trasladoLogic.ts:puedeConfirmarRecepcion` (21-32), `validarRecepcion`/`estadoDesdeRecepcion`/`totalFaltante` (64-82); `TrasladosPanel.tsx` | 🛑 stock | ✅unit · ✅e2e 30 (confirmar, DB) |
 | L32 | Traslado — recepción parcial → `recibido_parcial` + faltante auditado | `trasladoLogic.ts:estadoDesdeRecepcion/totalFaltante` (74-82) | 🛑 stock | ✅unit · 🔴 e2e parcial |
 | L33 | **Recepción → stock** (crea `inventario_lineas` + sube stock por trigger; sin OC exige proveedor) | `RecepcionesPage.tsx:guardar` (~504-640), B2 (455) | 🛑 stock | ✅e2e 29 (sin OC) · ✅e2e 35 (con OC) |
-| L34 | **Recepción — over-receipt** (B3: exceso s/tope permitido bloquea según flag + %) | `recepcionLogic.ts:superaOverReceipt` (41-51); aplicado `RecepcionesPage.tsx:488` | 🛑 stock | ✅unit (recepcionLogic) · 🔴 e2e CON/SIN |
+| L34 | **Recepción — over-receipt** (B3: exceso s/tope permitido bloquea según flag + %) | `recepcionLogic.ts:superaOverReceipt` (41-51); aplicado `RecepcionesPage.tsx:488` | 🛑 stock | ✅unit · ✅e2e 52 (SIN: bloquea) · ✅e2e 74 (CON +10%: acepta, stock 0→11, OC recibida, DB) |
 | L35 | **Recepción — under-receipt / faltante** (B4: faltante acumulado exige motivo) | `recepcionLogic.ts:tieneFaltante` (54-56); aplicado `RecepcionesPage.tsx:493` | 🛑 stock | ✅unit · 🔴 e2e |
 | L36 | **Recepción — ajuste de cantidad ≠ pedido requiere SUPERVISOR+** (B1c) | `recepcionLogic.ts:esAjusteCantidad` (59-61); aplicado `RecepcionesPage.tsx:466` (`esSupervisorPlus`) | 🛑 stock | ✅unit · 🔴 e2e rol cajero |
 | L37 | **Recepción — estado de OC por acumulado** (B5: recibida / recibida_parcial / sin_recibir entre múltiples recepciones) | `recepcionLogic.ts:estadoOCdesdeRecibido` (23-33); aplicado `RecepcionesPage.tsx:648` | 🛑 stock + compras | ✅unit · ✅e2e 35 (1 recepción) · 🔴 e2e 2 recepciones parciales |
@@ -114,6 +114,8 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 
 > Cada uno es un e2e **mutante** (aserción POSITIVA + verificar la mutación en DB con SQL). Orden por
 > riesgo fiscal/stock. Los marcados ⭐ son los de mayor impacto.
+>
+> **▶ Estado 2026-06-23:** **#1 (autorización ajuste 2 actores)** ✅ **47/51**. **#3 (over-receipt)** ✅ **52** (SIN bloquea) + **74** (CON +10% acepta, stock↑, OC recibida, DB). **#4 (wall-to-wall bloqueante)** ✅ **76** (POS bloqueado por conteo borrador). **#8 (rebaje no-negativo)** ✅ **71**. **#9 (kits)** ✅ **75** (desarmar: kit↔componente + log; armar = inverso by-mechanism). Conteo+ajuste ✅ **36**. Traslados ✅ **30**. Recepción ✅ **29/35**. **#2 (conteo gate/reconteo CON flag)** = cubierto por unit (`conteoAjuste`) + el RESULTADO del gate (autorización 2-actores) por **36/47/51**; el e2e del flag CON/SIN es refinamiento. **Residual menor:** delta con venta intercalada (#5), under-receipt + ajuste por rol (#6), 2 recepciones parciales (#7).
 
 1. **⭐ Autorización de ajuste por ROL ≠ DUEÑO, 2 actores** (L08/L09/L20, `ajusteAutorizacion.ts` +
    `InventarioPage:1794`/`882`, `LpnAccionesModal:33`). Cajero (modo default 'siempre') solicita un

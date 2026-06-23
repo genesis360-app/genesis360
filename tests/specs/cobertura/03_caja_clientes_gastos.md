@@ -58,10 +58,10 @@
 | Pseudo-métodos de pago (CC/condonación/incobrable excluidos de métricas) | `ccLogic.ts:PSEUDO_METODOS_PAGO`/`esMetodoRealPago` | ✅ | ✅unit |
 | Condonar deuda CC (write-off) | `ClientesPage.tsx:condonarDeudaCC:509-528` | ✅ | ✅e2e 39 |
 | Revertir condonación (restaurar deuda) | `ClientesPage.tsx:revertirDeudaCC:530-554` | ✅ | ✅e2e 69 (revierte condonada → deuda $5.000 restaurada, medio "Condonación CC" removido) |
-| Dar de baja INCOBRABLE (condona todo + gasto pérdida + clave maestra) | `ClientesPage.tsx:confirmarIncobrable:558-599` | ✅ | ✅e2e 40 (CON clave) · 🔴 SIN clave |
+| Dar de baja INCOBRABLE (condona todo + gasto pérdida + clave maestra) | `ClientesPage.tsx:confirmarIncobrable:558-599` + RPC `marcar_incobrable` (mig 236) | ✅ | ✅e2e 40 (CON clave, Jorgito) · ✅DB-validated SIN clave (Familia Otranto: DUEÑO+sin-clave → write-off + gasto "Deudor incobrable" $4000; SUPERVISOR → rechazado por rol, server-side) |
 | Estado de cuenta PDF + link público con token | `ClientesPage.tsx:descargarEstadoCuenta`/`generarLinkCuenta:609-628` | — | 🔴gap (capa C) |
-| Vencimiento de venta CC = hoy + cc_dias_vencimiento | `VentasPage.tsx:2523-2526` | ✅ | 🔴gap |
-| Crédito a favor del cliente (E2) | `VentasPage.tsx:2437-2444` | ✅ | 🔴gap |
+| Vencimiento de venta CC = hoy + cc_dias_vencimiento | `VentasPage.tsx:2523-2526` | ✅ | ✅e2e 72 (venta 100% CC con `cc_dias_vencimiento=15` → `fecha_vencimiento_cc = hoy+15` en DB; valida además el camino CC EXITOSO) |
+| Crédito a favor del cliente (E2) | `VentasPage.tsx:2437-2444` | ✅ | ✅e2e 53 (guard: no supera disponible) · ✅e2e 73 (positivo: pagar con crédito $1.657 → fila `cliente_creditos = −1.657`, saldo 5.000→3.343, DB) |
 | Notif CC al cliente (registro deuda / pago) por email | `src/lib/notificacionesCC.ts:notificarRegistroDeudaCC`/`notificarPagoCC` | — | 🔴gap |
 | Bloqueo CC con PROVEEDOR (OC vencida / límite) | `src/lib/ccProveedor.ts:chequearBloqueoCC` | ✅ | 🔴gap (no unit) |
 

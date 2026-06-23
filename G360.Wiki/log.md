@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] deploy | 🚀 v1.85.0 EN PROD — fix REGLA #0 picker de cuotas + barrido UAT (specs 58-70) — sin migración
+
+**Pedido de GO:** tras el barrido de Clientes y Productos, "pasá todo a DEV y PROD". Deploy frontend-only (el único cambio de app es el fix de cuotas; el resto son specs e2e test-only). **Sin migraciones** (todo el trabajo en DB del barrido fue validación reversible, sin DDL). **PROD = DEV = migs 001-240.**
+
+**Qué va a PROD:**
+- **🐛 Fix REGLA #0 (plata) — picker de cuotas:** `esTarjetaCredito` (normaliza "Tarjeta de crédito" vs "Tarjeta crédito") → el picker de cuotas con interés vuelve a aparecer en el POS con la config estándar. Antes no se podía cobrar el interés de financiación. Validado por spec 62 + build verde.
+- **13 specs e2e del barrido UAT** (58-70, REGLA #0, DB-verificados): Ventas Tanda B, Caja/Bóveda completo, Gastos, Clientes/CC revertir, Productos Exento. + guards server-side validados en DB (IVA crédito mig 227, período cerrado mig 135).
+
+**Flujo deploy:** bump APP_VERSION → v1.85.0 (`brand.ts`); build verde (tsc + vite); commit en dev; push; PR dev→main; merge (Vercel PROD); release `v1.85.0`. **Sin migraciones que aplicar en PROD.**
+
+**▶ Próximo:** seguir el barrido — Clientes/CC residual (crédito a favor positivo, vencimiento CC, incobrable SIN clave), Productos residual (max_productos, margen/bulk), luego Inventario/Conteos (cobertura/04), Compras, RRHH, Envíos. AFIP §29 sigue bloqueado por trámite de GO (cert/token PRODUCCIÓN + CUIT RI homologación).
+
+---
+
 ## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC (revertir condonación) + Productos (alícuota Exento) — EN DEV
 
 **Pedido de GO:** "seguí con clientes y productos y luego pasá todo a DEV y PROD". 2 specs nuevos (REGLA #0, DB-verificado, fixtures reversibles):

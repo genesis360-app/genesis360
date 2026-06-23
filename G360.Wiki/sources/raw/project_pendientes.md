@@ -6,8 +6,9 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-23 · post-barrido Ventas Tanda B)
-> **Estado:** PROD = **v1.84.0 (migs 001-240)**. DEV = v1.84.0 **+ commits adelantados** (specs 53-63 + cobertura **+ 1 fix de app: picker de cuotas G0.5**, NO en main hasta el próximo deploy). Repo limpio, todo pusheado. typecheck (tsc) + build verdes.
+> ### 🟢 ARRANCÁ ACÁ (2026-06-23 · post-deploy v1.85.0 + barrido Caja/Gastos/Clientes/Productos)
+> **Estado:** **PROD = DEV = v1.85.0 (migs 001-240)** — deploy frontend del fix de cuotas (G0.5, plata) + 13 specs e2e del barrido (test-only). **Sin migraciones nuevas** (todo el trabajo de DB del barrido fue validación reversible). Repo limpio, todo pusheado. build (tsc+vite) verde.
+> **Barrido UAT al día:** Ventas Tanda A+B ✅ · Caja/Bóveda ✅ (64-67) · Gastos ✅ (68 + guards server-side IVA/período-cerrado DB-validados) · Clientes/CC revertir ✅ (69) · Productos núcleo fiscal ✅ (43+70 alícuotas). **▶ Próximo barrido:** Clientes/CC residual (crédito a favor positivo, vencimiento CC, incobrable SIN clave) · Productos residual (max_productos/margen/bulk) · Inventario/Conteos (cobertura/04) · Compras/RRHH/Envíos.
 >
 > **🐛 PENDIENTE DE DEPLOY (REGLA #0 plata) — fix del picker de cuotas (G0.5):** el picker de cuotas con interés se gatillaba con `mp.tipo === 'Tarjeta crédito'` (sin "de") pero el método canónico es **"Tarjeta de crédito"** → con la config estándar **el picker nunca aparecía** (no se podía cobrar el interés de financiación). Fix frontend en `VentasPage` (`esTarjetaCredito` normaliza). **Decisión para GO: ¿deployar ya (es plata) o bundlear con el resto del backlog de DEV?**
 >

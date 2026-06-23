@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC residual (documentado) + Inventario rebaje no-negativo (spec 71) — EN DEV
+
+**Pedido de GO:** "seguí con lo que queda de clientes y el siguiente módulo". Post-deploy v1.85.0.
+
+**Clientes/CC residual — decisión (documentada, no se fuerza fixture riesgoso):** el núcleo CC ya está cubierto (morosidad 49, límite 46, condonar 39, **revertir 69**, incobrable CON clave 40, cobranza FIFO 28 + unit). Los 3 que quedan se **difieren** porque exigen mutar stock/deuda con reversa frágil — y restaurar stock a mano es justo lo que REGLA #0 prohíbe arriesgar:
+- **vencimiento CC** (`cc_dias_vencimiento`): one-liner `today + N`; el aging que lo consume está en unit. e2e requiere una venta CC que rebaja stock.
+- **crédito a favor positivo**: el guard negativo está en spec 53; el consumo positivo inserta una fila negativa en `cliente_creditos` — **mismo insert ya verificado en spec 59** (cancelación de reserva → crédito).
+- **incobrable SIN clave**: requiere un tenant sin clave con usuario **DUEÑO** (el harness de Familia Otranto es SUPERVISOR, que el RPC no autoriza). Falta harness.
+
+**Inventario/Conteos — siguiente módulo (cobertura/02):**
+- ✅ **spec 71 `71_rebaje_no_negativo_mutante`** (L02, REGLA #0 stock): rebajar 9.999.999 > disponible → guard "Stock disponible insuficiente: N u.", NO toca `inventario_lineas`/`movimientos_stock` (no deja stock negativo ni saca reservado). Datos reales, non-mutating → corre en full-suite. **Gotcha:** el modal de Rebaje tiene su propio buscador ("Buscar por nombre, SKU o código…") distinto del de la tab ("Buscar por producto o SKU…") — scopear al modal.
+- **Reconciliación cobertura/02:** los gaps top YA estaban cubiertos por specs previas — #1 autorización ajuste 2-actores = **47/51**, #3 over-receipt SIN = **52**, conteo+ajuste = **36**, traslados = **30**, recepción = **29/35**. Quedan menor-prioridad/fixtures-pesados: over-receipt CON, conteo gate/reconteo, wall-to-wall cross-página, delta con venta intercalada, kits.
+
+**▶ Próximo:** Inventario residual (over-receipt CON, conteo gate, wall-to-wall) si se quiere profundizar; luego Compras/OC/Envíos (cobertura/04), RRHH/Config/Suscripción (cobertura/05). AFIP §29 sigue bloqueado por trámite de GO.
+
+---
+
 ## [2026-06-23] deploy | 🚀 v1.85.0 EN PROD — fix REGLA #0 picker de cuotas + barrido UAT (specs 58-70) — sin migración
 
 **Pedido de GO:** tras el barrido de Clientes y Productos, "pasá todo a DEV y PROD". Deploy frontend-only (el único cambio de app es el fix de cuotas; el resto son specs e2e test-only). **Sin migraciones** (todo el trabajo en DB del barrido fue validación reversible, sin DDL). **PROD = DEV = migs 001-240.**

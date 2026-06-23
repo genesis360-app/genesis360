@@ -28,7 +28,7 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 | # | Lógica | file:función / línea | ¿REGLA #0? | Cobertura actual |
 |---|--------|----------------------|:----------:|------------------|
 | L01 | Ingreso de stock (crea `inventario_lineas` + `movimientos_stock` tipo `ingreso`; mode-aware: básico LPN/ubic/estado NULL) | `InventarioPage.tsx:ingresoMutation` (1007-1149) | 🛑 stock | ✅e2e 23 (toast; no verifica DB) · 🟡 falta aserción DB |
-| L02 | Rebaje/quitar stock (no negativo; bloquea si `cant > cantidad − reservada`) | `InventarioPage.tsx:rebajeMutation` (1151-1199); `stock_despues: Math.max(0,…)` (1187) | 🛑 stock | 🔴 gap e2e (solo code-audit) |
+| L02 | Rebaje/quitar stock (no negativo; bloquea si `cant > cantidad − reservada`) | `InventarioPage.tsx:rebajeMutation` (1151-1199); `stock_despues: Math.max(0,…)` (1187) | 🛑 stock | ✅e2e 71 (rebajar 9.999.999 > disponible → "Stock disponible insuficiente", no muta) |
 | L03 | Guard mono-SKU en ubicación al ingresar | `InventarioPage.tsx` (1028-1051) | 🟠 inventario | 🔴 gap |
 | L04 | Unicidad de LPN por tenant al ingresar | `InventarioPage.tsx` (1053-1066) | 🟠 inventario | 🔴 gap |
 | L05 | Ingreso por series (1 línea + N `inventario_series`; 23505 → "ya existen") | `InventarioPage.tsx` (1096-1112) | 🟠 inventario | 🔴 gap |
@@ -114,6 +114,8 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 
 > Cada uno es un e2e **mutante** (aserción POSITIVA + verificar la mutación en DB con SQL). Orden por
 > riesgo fiscal/stock. Los marcados ⭐ son los de mayor impacto.
+>
+> **▶ Estado 2026-06-23:** **#1 (autorización ajuste por rol, 2 actores)** ✅ specs **47** (solicita) + **51** (aprueba, stock muta solo al aprobar). **#3 (over-receipt SIN)** ✅ spec **52** (bloquea). **#8 (rebaje no-negativo)** ✅ spec **71** (rebajar > disponible → "Stock disponible insuficiente", no muta). Conteo por producto + ajuste ✅ spec **36**. Traslados ✅ spec **30**. Recepción ✅ specs **29/35**. **Quedan (menor prioridad o fixtures pesados):** over-receipt CON (#3, muta stock), conteo gate/reconteo CON flag (#2), wall-to-wall bloqueante cross-página (#4), delta con venta intercalada (#5), kits armar/desarmar (#9), under-receipt + ajuste por rol (#6), 2 recepciones parciales (#7).
 
 1. **⭐ Autorización de ajuste por ROL ≠ DUEÑO, 2 actores** (L08/L09/L20, `ajusteAutorizacion.ts` +
    `InventarioPage:1794`/`882`, `LpnAccionesModal:33`). Cajero (modo default 'siempre') solicita un

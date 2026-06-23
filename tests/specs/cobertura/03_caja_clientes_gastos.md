@@ -60,8 +60,8 @@
 | Revertir condonación (restaurar deuda) | `ClientesPage.tsx:revertirDeudaCC:530-554` | ✅ | ✅e2e 69 (revierte condonada → deuda $5.000 restaurada, medio "Condonación CC" removido) |
 | Dar de baja INCOBRABLE (condona todo + gasto pérdida + clave maestra) | `ClientesPage.tsx:confirmarIncobrable:558-599` | ✅ | ✅e2e 40 (CON clave) · 🔴 SIN clave |
 | Estado de cuenta PDF + link público con token | `ClientesPage.tsx:descargarEstadoCuenta`/`generarLinkCuenta:609-628` | — | 🔴gap (capa C) |
-| Vencimiento de venta CC = hoy + cc_dias_vencimiento | `VentasPage.tsx:2523-2526` | ✅ | 🔴gap |
-| Crédito a favor del cliente (E2) | `VentasPage.tsx:2437-2444` | ✅ | 🔴gap |
+| Vencimiento de venta CC = hoy + cc_dias_vencimiento | `VentasPage.tsx:2523-2526` | ✅ | 🟡 code-audit (one-liner `today + N`; aging que lo consume = unit). e2e requiere venta CC que rebaja stock → reversa frágil (REGLA #0). DIFERIDO |
+| Crédito a favor del cliente (E2) | `VentasPage.tsx:2437-2444` | ✅ | ✅e2e 53 (guard: no supera disponible) · positivo (consume `cliente_creditos` con fila negativa) = mismo insert verificado en spec 59 (cancelación). DIFERIDO el e2e de venta (rebaja stock) |
 | Notif CC al cliente (registro deuda / pago) por email | `src/lib/notificacionesCC.ts:notificarRegistroDeudaCC`/`notificarPagoCC` | — | 🔴gap |
 | Bloqueo CC con PROVEEDOR (OC vencida / límite) | `src/lib/ccProveedor.ts:chequearBloqueoCC` | ✅ | 🔴gap (no unit) |
 

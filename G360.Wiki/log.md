@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] update | 🧪 Barrido UAT — Módulo GASTOS cerrado (comprobante oblig. + guards fiscales server-side) — EN DEV
+
+**Pedido de GO:** "seguí sin parar hasta terminar un módulo y luego otro, ambos al 100%; las decisiones para el final; pasá a dev cada tanto sin preguntar". Tras cerrar Caja/Bóveda, se cierra **Gastos** (`cobertura/03` §Gastos). REGLA #0 fiscal/contable.
+
+**Cubierto:**
+- ✅ **Spec 68 `68_gasto_comprobante_obligatorio_mutante`**: con `gastos_comp_siempre=true`, alta de gasto sin adjunto → "Adjuntá el comprobante: la regla 'siempre obligatorio'…", no crea gasto. Las 4 reglas (`siempre`/`si_iva`/`si_deduce_ganancias`/`si_monto`) comparten el mismo OR. Env-gated `E2E_GASTO_COMP=1`, flag restaurado.
+- ✅ **Guard fiscal IVA crédito server-side** (`fn_gastos_iva_guard`, mig 227) — **DB-validated** (flip de `condicion_iva_emisor` reversible): **Mono + Factura A** → IVA NULLeado + `deduce_ganancias=false`; **RI + Factura A** → conserva `iva_monto=$21` + `iva_deducible` + `deduce_ganancias`; **RI + Factura B** → IVA NULLeado (no es A) + ganancias se mantiene (cond RI). Gastos de prueba borrados, condición restaurada a Monotributista.
+- ✅ **Período contable cerrado** (`trg_gastos_periodo_cerrado`, mig 135) — **DB-validated**: UPDATE de un gasto con fecha en período cerrado → `P0001 "Periodo contable cerrado hasta 2026-04-30 — usá una nota de corrección"`. **Dato:** Jorgito YA tiene cierres reales hasta **2026-04** (abril). El gasto de prueba se borró deshabilitando el trigger momentáneamente (el cierre real de abril quedó intacto).
+- Gasto efectivo→caja ya estaba en spec 27; umbral por rol en unit (`evaluarUmbralGasto`); pago OC doble firma en unit + RPC mig 237. Residual menor (no REGLA #0 crítico): eliminar→reversión en caja (simétrico a 27), gasto en cuotas.
+
+**Gotcha:** para validar triggers server-side de período cerrado, el gasto de prueba cae en período ya cerrado → no se puede borrar con DELETE normal; usar `ALTER TABLE gastos DISABLE TRIGGER trg_gastos_cierre` momentáneo (re-enable después). Nunca tocar los cierres reales del tenant.
+
+**▶ Siguiente:** Clientes/CC residual (revertir condonación, incobrable SIN clave, vencimiento CC, crédito a favor positivo) — varios ya cerrados (morosidad/límite 46/49, condonar 39, incobrable CON clave 40).
+
+---
+
 ## [2026-06-23] update | 🧪 Barrido UAT — arranca Módulo Caja/Bóveda: cierre con diferencia (spec 64) — EN DEV
 
 **Pedido de GO:** tras cerrar Ventas Tanda B, GO eligió "bundlear el fix de cuotas + seguir testeando" → siguiente módulo del orden sugerido = **Caja/Bóveda** (`cobertura/03`). Primer spec del módulo, REGLA #0 contable, verificado en DB, fixture reversible (la caja de prueba quedó restaurada a 0 sesiones del día).

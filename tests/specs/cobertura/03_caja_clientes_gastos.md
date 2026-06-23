@@ -4,7 +4,9 @@
 > **Zona REGLA #0 (contable/fiscal).** Solo lectura — no se escribió código ni tests.
 > Fecha: 2026-06-21 · Repo @ dev (migs 001-233).
 >
-> **▶ Progreso del barrido (2026-06-23):** **Caja/Bóveda — gaps REGLA #0 contables CERRADOS por e2e:** cierre con diferencia (spec **64**, ajuste `ingreso` en DB), cierre **ajeno** con clave maestra (spec **65**, server-side mala/correcta), **extracción de Bóveda** (spec **66**, guard saldo insuficiente → no-negativo), **doble validación B7** (spec **67**, sin/invalid 2º usuario bloquea). `diferencia_caja_umbral` queda **cubierto por unit** (`superaUmbralDiferencia`, umbral 0 vs >0) — es ruteo de alerta, no integridad de plata. Varios gaps YA cerrados antes por hardening + Ventas: **G1** (límite CC + morosidad) por mig 234 + e2e **46/49**; parte de **G2/G3** por **40/41/45/48**. **▶ Siguiente módulo del barrido: Gastos** (comprobante obligatorio, período cerrado, eliminar→reversión, pago OC con clave).
+> **▶ Progreso del barrido (2026-06-23):** **Caja/Bóveda — gaps REGLA #0 contables CERRADOS por e2e:** cierre con diferencia (spec **64**, ajuste `ingreso` en DB), cierre **ajeno** con clave maestra (spec **65**, server-side mala/correcta), **extracción de Bóveda** (spec **66**, guard saldo insuficiente → no-negativo), **doble validación B7** (spec **67**, sin/invalid 2º usuario bloquea). `diferencia_caja_umbral` queda **cubierto por unit** (`superaUmbralDiferencia`, umbral 0 vs >0) — es ruteo de alerta, no integridad de plata. Varios gaps YA cerrados antes por hardening + Ventas: **G1** (límite CC + morosidad) por mig 234 + e2e **46/49**; parte de **G2/G3** por **40/41/45/48**.
+>
+> **✅ GASTOS — gaps REGLA #0 fiscal/contable CERRADOS:** comprobante obligatorio (spec **68**, `gastos_comp_siempre` → bloquea sin adjunto; las 4 reglas comparten el OR), **guard fiscal IVA crédito** (`fn_gastos_iva_guard` mig 227, **DB-validated**: Mono+FacturaA→IVA NULL; RI+FacturaA→conserva $21+ganancias; RI+FacturaB→IVA NULL), **período contable cerrado** (`trg_gastos_periodo_cerrado` mig 135, **DB-validated**: UPDATE en período cerrado → P0001). Gasto efectivo→caja ya en spec 27; umbral por rol en unit (`evaluarUmbralGasto`); pago OC doble firma en unit (`comprasPago`) + RPC mig 237. Residual menor: eliminar→reversión en caja (simétrico a 27), gasto en cuotas. **▶ Siguiente: Clientes/CC residual** (revertir condonación, incobrable SIN clave, vencimiento CC, crédito a favor positivo).
 > Leyenda cobertura: ✅e2e (spec NN) · ✅unit (archivo) · ✅UAT(§) · 🟡parcial · 🔴gap · 🧠code-audit.
 > Convención de flags: **CON** = flag activo/valor distinto del default · **SIN** = ausente/default/null.
 
@@ -69,12 +71,12 @@
 |---|---|---|---|
 | Alta de gasto + medios de pago suman el monto | `src/pages/GastosPage.tsx:guardar` (≈1080-1311) | ✅ | ✅e2e 27 (efectivo) |
 | Gasto efectivo → egreso en caja (await + aviso si falla, no negativo) | `GastosPage.tsx:1225-1265` | ✅ | ✅e2e 27 |
-| Comprobante obligatorio (4 reglas OR: siempre/iva/ganancias/monto) | `GastosPage.tsx:1092-1112` (alta) + `1505-1525` (otra vía) | ✅ | 🔴gap (flags) |
-| Guard fiscal IVA crédito server-side (RI + Factura A) | trigger `fn_gastos_iva_guard` (mig 227) | ✅ | 🧠code-audit · 🔴 e2e runtime |
+| Comprobante obligatorio (4 reglas OR: siempre/iva/ganancias/monto) | `GastosPage.tsx:1092-1112` (alta) + `1505-1525` (otra vía) | ✅ | ✅e2e 68 (`gastos_comp_siempre` → bloquea sin adjunto; las 4 reglas comparten el OR) |
+| Guard fiscal IVA crédito server-side (RI + Factura A) | trigger `fn_gastos_iva_guard` (mig 227) | ✅ | ✅DB-validated (Mono+A→IVA NULL; RI+A→conserva $21+ganancias; RI+B→IVA NULL, ganancias ok) |
 | Umbral de gasto por rol (solicitud de autorización) | `src/lib/umbralGasto.ts:evaluarUmbralGasto` ← `GastosPage.tsx:1164-1178` | ✅ | ✅unit (umbralGasto) |
 | Eliminar gasto → reversión en caja (ingreso de corrección) | `GastosPage.tsx:eliminar:1314-1354` | ✅ | 🔴gap |
 | Edición que agrega medio de pago → asienta en caja | `GastosPage.tsx:1197-1214` | ✅ | 🔴gap |
-| Período contable cerrado bloquea edición/eliminación | `GastosPage.tsx:1184-1187,1317-1319` (`isPeriodoCerrado`) | ✅ | 🔴gap |
+| Período contable cerrado bloquea edición/eliminación | `GastosPage.tsx:1184-1187,1317-1319` (`isPeriodoCerrado`) + trigger `trg_gastos_periodo_cerrado` (mig 135) | ✅ | ✅DB-validated (UPDATE gasto en período cerrado → P0001 "Periodo contable cerrado") |
 | Gasto en cuotas (genera gasto_cuotas) | `GastosPage.tsx:1268-1293` | ✅ | 🔴gap |
 | Pago de OC: doble firma por umbral exige clave maestra | `GastosPage.tsx:719-727` (`requiereDobleFirmaPago`) | ✅ | ✅unit (comprasPago) · 🔴 e2e clave |
 | Pago de OC con cheque → crea cheque vinculado + fecha cobro | `GastosPage.tsx:734-739` | ✅ | ✅unit (comprasCheques) · ✅e2e 31 (gasto) |

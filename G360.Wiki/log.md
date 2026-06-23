@@ -6,6 +6,109 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] deploy | 🚀 v1.85.0 EN PROD — fix REGLA #0 picker de cuotas + barrido UAT (specs 58-70) — sin migración
+
+**Pedido de GO:** tras el barrido de Clientes y Productos, "pasá todo a DEV y PROD". Deploy frontend-only (el único cambio de app es el fix de cuotas; el resto son specs e2e test-only). **Sin migraciones** (todo el trabajo en DB del barrido fue validación reversible, sin DDL). **PROD = DEV = migs 001-240.**
+
+**Qué va a PROD:**
+- **🐛 Fix REGLA #0 (plata) — picker de cuotas:** `esTarjetaCredito` (normaliza "Tarjeta de crédito" vs "Tarjeta crédito") → el picker de cuotas con interés vuelve a aparecer en el POS con la config estándar. Antes no se podía cobrar el interés de financiación. Validado por spec 62 + build verde.
+- **13 specs e2e del barrido UAT** (58-70, REGLA #0, DB-verificados): Ventas Tanda B, Caja/Bóveda completo, Gastos, Clientes/CC revertir, Productos Exento. + guards server-side validados en DB (IVA crédito mig 227, período cerrado mig 135).
+
+**Flujo deploy:** bump APP_VERSION → v1.85.0 (`brand.ts`); build verde (tsc + vite); commit en dev; push; PR dev→main; merge (Vercel PROD); release `v1.85.0`. **Sin migraciones que aplicar en PROD.**
+
+**▶ Próximo:** seguir el barrido — Clientes/CC residual (crédito a favor positivo, vencimiento CC, incobrable SIN clave), Productos residual (max_productos, margen/bulk), luego Inventario/Conteos (cobertura/04), Compras, RRHH, Envíos. AFIP §29 sigue bloqueado por trámite de GO (cert/token PRODUCCIÓN + CUIT RI homologación).
+
+---
+
+## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC (revertir condonación) + Productos (alícuota Exento) — EN DEV
+
+**Pedido de GO:** "seguí con clientes y productos y luego pasá todo a DEV y PROD". 2 specs nuevos (REGLA #0, DB-verificado, fixtures reversibles):
+- ✅ **69 `69_cc_revertir_condonacion_mutante`** (Clientes/CC, ISS-151): revertir una venta CC condonada → quita el medio "Condonación CC" y recomputa `monto_pagado` con pagos reales → deuda restaurada ("falta pagar"). Fixture = cliente CC + venta condonada #247 ($5.000) + venta pendiente #248 ($3.000, para que el cliente aparezca en el tab CC). Env-gated `E2E_CC_REVERTIR=1`, fixture borrado. Complementa spec 39 (condonar).
+- ✅ **70 `70_producto_alicuota_exento_mutante`** (Productos, L49, REGLA #0 fiscal): alta de producto **Exento (0%)** → DB `alicuota_iva=0.00` (NO 21). Es el caso del bug `0 || 21` (0 falsy → 21%); el form usa `Number.isFinite(...) ? ... : 21`. Complementa spec 43 (10,5%). Producto de prueba borrado por SKU.
+
+**Cobertura:** Clientes/CC — revertir condonación cerrado; residual (crédito a favor positivo, vencimiento CC `cc_dias_vencimiento`, incobrable SIN clave) ya mayormente cubierto (morosidad/límite 46/49, condonar 39, incobrable CON clave 40) — necesitan fixtures de venta CC/POS pesados, documentados. Productos — núcleo fiscal de alícuotas cubierto (10,5 + 0); residual max_productos (límite de plan)/margen/variantes/bulk = no-fiscal, documentado.
+
+**▶ DEPLOY a PROD** (autorizado por GO): incluye el **fix de cuotas (G0.5, plata, frontend)** + los specs test-only acumulados. Sin migraciones nuevas. Ver entrada deploy abajo.
+
+---
+
+## [2026-06-23] update | 🧪 Barrido UAT — Módulo GASTOS cerrado (comprobante oblig. + guards fiscales server-side) — EN DEV
+
+**Pedido de GO:** "seguí sin parar hasta terminar un módulo y luego otro, ambos al 100%; las decisiones para el final; pasá a dev cada tanto sin preguntar". Tras cerrar Caja/Bóveda, se cierra **Gastos** (`cobertura/03` §Gastos). REGLA #0 fiscal/contable.
+
+**Cubierto:**
+- ✅ **Spec 68 `68_gasto_comprobante_obligatorio_mutante`**: con `gastos_comp_siempre=true`, alta de gasto sin adjunto → "Adjuntá el comprobante: la regla 'siempre obligatorio'…", no crea gasto. Las 4 reglas (`siempre`/`si_iva`/`si_deduce_ganancias`/`si_monto`) comparten el mismo OR. Env-gated `E2E_GASTO_COMP=1`, flag restaurado.
+- ✅ **Guard fiscal IVA crédito server-side** (`fn_gastos_iva_guard`, mig 227) — **DB-validated** (flip de `condicion_iva_emisor` reversible): **Mono + Factura A** → IVA NULLeado + `deduce_ganancias=false`; **RI + Factura A** → conserva `iva_monto=$21` + `iva_deducible` + `deduce_ganancias`; **RI + Factura B** → IVA NULLeado (no es A) + ganancias se mantiene (cond RI). Gastos de prueba borrados, condición restaurada a Monotributista.
+- ✅ **Período contable cerrado** (`trg_gastos_periodo_cerrado`, mig 135) — **DB-validated**: UPDATE de un gasto con fecha en período cerrado → `P0001 "Periodo contable cerrado hasta 2026-04-30 — usá una nota de corrección"`. **Dato:** Jorgito YA tiene cierres reales hasta **2026-04** (abril). El gasto de prueba se borró deshabilitando el trigger momentáneamente (el cierre real de abril quedó intacto).
+- Gasto efectivo→caja ya estaba en spec 27; umbral por rol en unit (`evaluarUmbralGasto`); pago OC doble firma en unit + RPC mig 237. Residual menor (no REGLA #0 crítico): eliminar→reversión en caja (simétrico a 27), gasto en cuotas.
+
+**Gotcha:** para validar triggers server-side de período cerrado, el gasto de prueba cae en período ya cerrado → no se puede borrar con DELETE normal; usar `ALTER TABLE gastos DISABLE TRIGGER trg_gastos_cierre` momentáneo (re-enable después). Nunca tocar los cierres reales del tenant.
+
+**▶ Siguiente:** Clientes/CC residual (revertir condonación, incobrable SIN clave, vencimiento CC, crédito a favor positivo) — varios ya cerrados (morosidad/límite 46/49, condonar 39, incobrable CON clave 40).
+
+---
+
+## [2026-06-23] update | 🧪 Barrido UAT — arranca Módulo Caja/Bóveda: cierre con diferencia (spec 64) — EN DEV
+
+**Pedido de GO:** tras cerrar Ventas Tanda B, GO eligió "bundlear el fix de cuotas + seguir testeando" → siguiente módulo del orden sugerido = **Caja/Bóveda** (`cobertura/03`). Primer spec del módulo, REGLA #0 contable, verificado en DB, fixture reversible (la caja de prueba quedó restaurada a 0 sesiones del día).
+
+**Specs nuevos (Caja/Bóveda — REGLA #0 contable, fixtures reversibles):**
+- ✅ **64 `64_caja_cierre_diferencia_mutante`** (B4, `CajaPage.cerrarCaja` + `clasificarAjusteDiferencia`): abrir una caja libre (Caja2) con $1.000 → arqueo → cerrar contando $1.100 → "Sobran $100" → Confirmar. **DB-verificado:** `caja_sesiones` `diferencia_cierre=100` + `caja_movimientos` de ajuste `tipo='ingreso'`, `monto=100`, concepto "[Diferencia caja] Sobrante en cierre". Env-gated (`E2E_CAJA_CIERRE_DIF=1`) porque abre/cierra una caja real y dispara el email de cierre al DUEÑO → NO corre en el full-suite. Sesión de prueba borrada tras verificar.
+- ✅ **65 `65_caja_cierre_ajeno_clave_mutante`** (B5): caja abierta por cajero1 (≠ OWNER) + clave del tenant configurada → cerrar exige clave maestra; **clave incorrecta → "Clave maestra incorrecta" (server-side `verificar_clave_maestra`), no cierra; clave correcta (12345678) → cierra** (DB `cerrado_por_id`=OWNER). Fixture sesión ajena + arqueo. Env-gated `E2E_CAJA_AJENA=1`. Limpiado.
+- ✅ **66 `66_boveda_extraccion_insuficiente_mutante`** (extraerDeBoveda): extraer $999.999.999 de una cuenta de la bóveda → guard **"Saldo insuficiente"**, NO inserta `boveda_retiros`/`caja_movimientos` (no deja la bóveda negativa). Datos reales (no fixture), non-mutating → corre en el full-suite.
+- ✅ **67 `67_caja_doble_validacion_cierre_mutante`** (B7, `config_caja.doble_validacion_cierre`): con la doble validación activa, cerrar **sin** 2º usuario → "Doble validación activada: ingresá email y contraseña…"; con **credenciales inválidas** → "Credenciales del 2do usuario inválidas" (auth contra Supabase con cliente temporal). No cierra. Fixture config + sesión propia, env-gated `E2E_CAJA_B7=1`, restaurado.
+- **`diferencia_caja_umbral`** queda **cubierto por unit** (`superaUmbralDiferencia`, umbral 0 vs >0): es ruteo de alerta a roles/canales, no integridad de plata (el ajuste contable de la diferencia ya lo cubre el spec 64).
+
+**Reconciliación cobertura/03:** Caja/Bóveda — gaps REGLA #0 contables cerrados (64-67). G1/G2/G3 ya parcialmente cerrados antes por mig 234 + specs 40/41/45/46/48/49. **Módulo Caja/Bóveda = cerrado para el barrido.** Siguiente: **Gastos**.
+
+**Reconciliación de cobertura/03 (dado 2026-06-21):** varios gaps YA cerrados por trabajo posterior — **G1** (límite CC + morosidad) por mig 234 + e2e 46/49; parte de **G2/G3** por specs 40/41/45/48. Nota de progreso agregada al tope de `cobertura/03`.
+
+**Gotcha e2e:** `puedeAbrirCaja = puedeAdministrarCaja || sin sesiones` → un DUEÑO PUEDE abrir una 2ª caja (el bloqueo "ya tenés una caja abierta" es solo para roles no-admin). El cierre exige ≥1 arqueo parcial. El toast "Caja cerrada" colisiona en strict-mode con el heading de caja-cerrada → desambiguar con `getByRole('status')`.
+
+**▶ Próximo incremento de Caja/Bóveda:** cierre **ajeno** con clave maestra (CON/SIN), **extracción de Bóveda** (egreso real), `diferencia_caja_umbral` (alerta por umbral), doble validación de cierre (B7). Detalle en `project_pendientes.md`.
+
+---
+
+## [2026-06-23] update | 🧪 Barrido UAT Ventas/POS — Tanda B CERRADA (specs 58-63) + 🐛 fix REGLA #0 picker de cuotas — EN DEV
+
+**Pedido de GO:** "sigamos" → tras cerrar Ventas/POS Tanda A, GO eligió seguir con **Ventas Tanda B** (cerrar Ventas al 100% antes de cambiar de módulo). 6 specs e2e nuevos (mutantes, aserción POSITIVA + efecto en DB), fixtures SQL **reversibles** (todos los flags de Jorgito restaurados a default, 0 fixtures residuales). Commits **test-only + 1 fix de app** en `dev` (no van a PROD hasta el próximo deploy).
+
+**Specs nuevos (e2e, REGLA #0):**
+- ✅ **58 `58_reserva_sena_minima_mutante`** (L46/`reserva_sena_minima_pct`): con flag=50, seña $1 < 50% del total → bloquea ("La seña mínima es 50%…"), no crea reserva. Env-gated (`E2E_SENA_MIN_FIXTURE`). Flag restaurado a 0.
+- ✅ **59 `59_reserva_penalidad_mutante`** (L47/`reserva_penalidad_pct`): **el de más valor (plata).** Fixture = reserva con seña $1000 + flag=20; cancelar con destino crédito → **`cliente_creditos=$800`** (1000×0.8), venta `cancelada`, stock reservado liberado — **verificado en DB**. Fixture borrado, flag restaurado.
+- ✅ **60 `60_cliente_obligatorio_siempre_mutante`** (L20): `cliente_obligatorio='siempre'` exige cliente hasta en una venta directa CF (que con el default `'reservas'` no lo exige) → bloquea, no crea venta. Aísla el flag manteniendo modo CF. Flag restaurado a 'reservas'.
+- ✅ **61 `61_reglas_canal_descuento_mutante`** (L39/`reglas_canal`): `descuento_max_pct=5` por canal topea el descuento **incluso al DUEÑO** (que no tiene tope de rol) → gate de clave con "supera el máximo de este canal (5%)". No se autoriza → no muta. `reglas_canal` restaurado a `{}`.
+- ✅ **62 `62_cuotas_interes_mutante`** (L40/`cuotas_bancos`): Banco Galicia 3x +0.5% sobre $10.000 → "3 cuotas de $3.350 = $10.050 total". Datos reales (no fixture). **Destapó el bug G0.5 (ver abajo).** Corre y pasa en el full-suite (guard de regresión del fix).
+- ✅ **63 `63_presupuesto_vencido_mutante`** (L44): presupuesto de 40 días (validez 30) → banner "Presupuesto vencido" + CTA "Finalizar (rebaja stock)"/"Reservar stock" **deshabilitados**. Read-only. Fixture borrado.
+
+**🐛 BUG REGLA #0 (plata) hallado y CORREGIDO (G0.5):** el picker de cuotas con interés (ISS-086, `VentasPage`) se gatillaba con `mp.tipo === 'Tarjeta crédito'` (sin "de"), pero el método canónico de Config/fallback/`metodos_pago` es **"Tarjeta de crédito"** (con "de") → con la config estándar **el picker NUNCA aparecía** y no se podía aplicar el interés de financiación en el POS. **Fix (frontend, sin migración):** helper `esTarjetaCredito` que detecta la tarjeta de crédito por normalización (reusa `normalizarNombreMetodo`, que ya saca "de"/tildes); aplicado a las 2 ramas del picker (badge + selector). **typecheck (tsc) + build verdes.** Spec 62 antes del fix skipeaba (picker no aparecía); ahora pasa. **⏳ EN DEV — recomiendo incluirlo en el próximo deploy a PROD (es plata).**
+
+**Gotchas e2e nuevos:** (1) el flag de seña mínima debe testearse con env-gate + restore (sin el flag, una seña baja CREARÍA la reserva → mutación); (2) `isPresupuestoVencido` usa `updated_at ?? created_at` → el fixture debe envejecer AMBAS fechas; (3) el tope de descuento por canal (`maxCanalPct`) aplica a CUALQUIER rol con permiso, incluido el DUEÑO (≠ tope de SUPERVISOR, que solo a ese rol); (4) `numero` de `ventas` lo pone el trigger → omitirlo en el INSERT del fixture.
+
+**▶ Próxima sesión:** seguir el orden sugerido — **Módulo Caja/Bóveda** (`cobertura/03`) y/o cerrar los opcionales de Ventas (cliente_consumidor_final=false, reglas_canal.requiere_cliente/lista_precio) + Productos Tanda B (max_productos, alícuotas 0/21/27, margen/variantes/bulk). **Decisión para GO:** ¿deployar el fix de cuotas (G0.5) ya, o bundlear con el resto del backlog de DEV? Detalle/handoff en `project_pendientes.md`.
+
+---
+
+## [2026-06-22] update | 🧪 Barrido UAT Ventas/POS — Tanda A REGLA #0 COMPLETA (specs 53-57 + FAC-27) — EN DEV (test-only, sin afectar PROD)
+
+**Pedido de GO:** tras deployar v1.84.0, "seguimos con más testing" → residual Tanda A (hecho: specs 50-52, ver entrada deploy v1.84.0) y luego **barrido del orden sugerido empezando por Ventas/POS**. Inventario maestro = `tests/specs/cobertura/01_ventas_productos_facturacion.md` (60 lógicas + matriz flags + gaps). Todos los specs verdes + **verificados en DB** + **DEV dejado limpio** (fixtures SQL reversibles). **Commits test-only en `dev`** (0f8abf94, 604cc7ac, 61c051b2): no van a PROD hasta el próximo deploy (no tocan app code).
+
+**Specs nuevos (e2e mutantes, REGLA #0):**
+- ✅ **53 `53_credito_a_favor_excede_mutante`** (L28): cliente con $1 de crédito, aplicar $100 de "Crédito a favor" → bloquea ("No podés aplicar más que eso"), venta NO creada, crédito intacto (DB).
+- ✅ **54 `54_tier_mayorista_mutante`** (L53): qty ≥ `cantidad_minima` → "Precio mayorista: $900/u" (lista $1.200 tachada). **Hallazgo (no-bug):** `updateItem` capa la cantidad al stock disponible → un tier con umbral > stock queda DORMIDO hasta restockear (Donuts: umbral 1000, stock 35) → el spec usa un fixture reversible que baja el umbral a 10.
+- ✅ **55 `55_venta_usd_conversion_mutante`** (L41): producto `moneda_venta='usd'` + `precio_usd=10` × `cotizacion_usd=1430` → "Precio USD 10 · convertido a $14.300" en el carrito. *Gotcha: el producto USD necesita stock para aparecer en el buscador.*
+- ✅ **56 `56_guard_emisor_letra_ef`** (L3, API directa a la EF): Mono+A→400, Mono+B→400 ("solo puede emitir tipo C"); **RI+C→400** ("RI no puede emitir tipo C") validado por flip reversible de `condicion_iva_emisor`. `venta_id` dummy (el guard precede al fetch de la venta). Skip-guard si faltan `VITE_SUPABASE_URL/ANON_KEY` (correr con `dotenv -e .env.local -e tests/e2e/.env.test.local`).
+- ✅ **57 `57_reserva_sin_sena_mutante`** (L45/`reserva_sena_obligatoria`): modo Reservar + cliente + sin medio de pago → guard E6 "No se puede reservar sin seña", no crea reserva (0 ventas reservada en DB). Cliente real "Fede Messina".
+- ✅ **FAC-27 server (L9)** — validado contra la EF DEV en vivo vía flip reversible Jorgito→RI: Factura B de $100.000 (≥ umbral 68305.16) sin cliente identificado → 400 "AFIP exige identificar al cliente con DNI o CUIT". **Sin spec committeado** (requiere emisor RI persistente; Jorgito=Mono → L3 bloquea B antes) → pendiente un tenant RI de homologación (ligado al trámite AFIP de GO, junto con §29).
+
+**Cobertura reconciliada:** de la Tanda A REGLA #0 de Ventas/POS (cobertura/01), **cerrados** L26/L27/L33 (specs 45-49), L28 (53), L53 (54), L41 (55), L3 (56), L9/FAC-27 (EF), + kit by-design. **Queda solo §29 AFIP runtime** (bloqueado por GO).
+
+**Gotchas e2e nuevos:** (1) `updateItem` capa la cantidad al stock disponible; (2) un producto USD necesita stock para aparecer en el buscador del POS; (3) el guard emisor↔letra de la EF corre ANTES de buscar la venta (venta_id dummy alcanza para probar el 400); (4) la anon key (pública) no está en `.env.test.local` → cargar `.env.local` para los tests de API a la EF.
+
+**▶ Próxima sesión:** seguir el barrido — **Ventas Tanda B** (`reserva_sena_minima_pct`, `reserva_penalidad_pct` cancelación, `cliente_obligatorio` 3 valores, `reglas_canal`, cuotas, presupuesto vencido) y/o **módulo Caja/Bóveda** (cobertura/03). Detalle/handoff en `project_pendientes.md`.
+
+---
+
 ## [2026-06-22] deploy | 🚀 v1.84.0 EN PROD — descuento por-ítem read-only + estado "sin clave" visible (H3) + fix label Autorizaciones + 3 specs residual Tanda A (sin migración)
 
 **Pedido de GO:** "sigamos con los pendientes" → residual Tanda A primero, luego orden sugerido del UAT → "pasá todo a DEV y PRD de vercel y luego vamos con el UAT". Todo frontend/specs, **sin migración** (PROD = DEV = migs 001-240). typecheck + build verdes. Bump APP_VERSION → v1.84.0; PR dev→main; release `v1.84.0`.

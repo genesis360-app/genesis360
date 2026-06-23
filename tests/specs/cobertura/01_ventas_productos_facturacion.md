@@ -59,18 +59,18 @@ type: project
 | L37 | Anular venta: bloqueado si tiene CAE (solo Devolver→NC) | `VentasPage.tsx` (oculta Anular con CAE); [[project_afip_produccion]] | 🔴(fiscal) | 🟡code-audit · 🔴e2e |
 | L38 | Cambiar cliente de la venta | `VentasPage.tsx` | 🔴(fiscal si facturada) | 🔴gap e2e |
 | L39 | Canal de venta POS + reglas por canal (descuento/lista/devolución/requiere cliente) | `useCanalesVenta.ts:reglaDe` (68); `VentasPage.tsx:2357,2398,2126` | 🟠 | 🔴gap e2e |
-| L40 | Cuotas por banco (tarjeta) + interés | `VentasPage.tsx:308-311,cuotasSeleccion` | 🔴(plata) | 🔴gap |
+| L40 | Cuotas por banco (tarjeta) + interés | `VentasPage.tsx:308-311,cuotasSeleccion`; `esTarjetaCredito` | 🔴(plata) | ✅e2e 62 · **🐛 G0.5 fix** (picker no aparecía con "Tarjeta de crédito") |
 | L41 | Venta producto en USD → convierte a moneda local a cotización vigente | `VentasPage.tsx:1274,4523` | 🔴(plata) | 🔴gap e2e |
 | L42 | Numeración venta/ticket por sucursal (set_venta_numero trigger) | `VentasPage.tsx:formatTicket` (151-168) | 🔴(fiscal) | ✅e2e 14 (coherencia números) |
 | **Presupuestos / Reservas** |
 | L43 | Presupuesto: crear sin tocar stock/caja → convertir con rebaje (PRES-08) | `VentasPage.tsx:registrarVenta('pendiente')` + convertir | 🔴(stock) | ✅e2e 44 |
-| L44 | Presupuesto vencido bloquea convertir hasta actualizar precios | `VentasPage.tsx:isPresupuestoVencido` (56), 5669-5837 | 🔴(plata) | 🔴gap e2e (escenario negativo) |
-| L45 | Reserva exige seña real (excluye CC) | `VentasPage.tsx:2446-2453,6650-6657` | 🔴(plata) | 🟡unit (cajaSeña) · 🔴e2e |
-| L46 | Seña mínima % del total al reservar/convertir | `VentasPage.tsx:2448-2457,6650-6656` | 🔴 | 🟡unit · 🔴e2e |
-| L47 | Cancelar reserva: penalidad % + destino (devolución/crédito) | `VentasPage.tsx:6551-6642` | 🔴(plata) | 🟡unit (cajaSeña) · 🔴e2e |
+| L44 | Presupuesto vencido bloquea convertir hasta actualizar precios | `VentasPage.tsx:isPresupuestoVencido` (56), 5669-5837 | 🔴(plata) | ✅e2e 63 (banner + CTA disabled) |
+| L45 | Reserva exige seña real (excluye CC) | `VentasPage.tsx:2446-2453,6650-6657` | 🔴(plata) | 🟡unit (cajaSeña) · ✅e2e 57 |
+| L46 | Seña mínima % del total al reservar/convertir | `VentasPage.tsx:2448-2457,6650-6656` | 🔴 | 🟡unit · ✅e2e 58 |
+| L47 | Cancelar reserva: penalidad % + destino (devolución/crédito) | `VentasPage.tsx:6551-6642` | 🔴(plata) | 🟡unit (cajaSeña) · ✅e2e 59 (crédito DB-verificado) |
 | L48 | Vencimiento de reservas (sweep) | `VentasPage.tsx:651`; cron-sweeps EF | 🔴(stock) | 🔴gap |
 | **Productos / Precios** |
-| L49 | Alta/edición producto + alícuota IVA (0/10,5/21/27); `Number.isFinite` no `||21` | `ProductoFormPage.tsx:384-441,960-967` | 🔴(fiscal) | ✅e2e 43 (10,5) · 🟡 resto alícuotas |
+| L49 | Alta/edición producto + alícuota IVA (0/10,5/21/27); `Number.isFinite` no `||21` | `ProductoFormPage.tsx:384-441,960-967` | 🔴(fiscal) | ✅e2e 43 (10,5) · ✅e2e 70 (**Exento 0% persiste 0, no 21** — el caso del bug `0\|\|21`) · 🟡 21/27 (mismo path) |
 | L50 | Margen (markup sobre neto) + precio sugerido por margen objetivo | `ProductoFormPage.tsx:321-337` | 🔴(plata) | 🔴gap |
 | L51 | Precio USD + cotización (toggle ARS/USD en form) | `ProductoFormPage.tsx:842-928`; `useCotizacion.ts` | 🔴(plata) | 🔴gap |
 | L52 | SKU autogenerado + unicidad por tenant | `ProductoFormPage.tsx:305-315,363-373`; `skuAuto.ts` | — | ✅unit (skuAuto) |
@@ -110,20 +110,20 @@ type: project
 
 | Flag | default | dónde se usa | CON | SIN / por valor | Cobertura |
 |------|---------|--------------|-----|-----------------|-----------|
-| `cliente_obligatorio` | `'reservas'` | `VentasPage.tsx:144,2394-2403`; `ConfigPage.tsx:699,1017` | `siempre`→toda venta exige cliente; `reservas`→presupuesto/reserva exigen | `nunca`→no exige (salvo factura no-CF / canal) | 🔴gap e2e (3 valores) |
+| `cliente_obligatorio` | `'reservas'` | `VentasPage.tsx:144,2394-2403`; `ConfigPage.tsx:699,1017` | `siempre`→toda venta exige cliente; `reservas`→presupuesto/reserva exigen | `nunca`→no exige (salvo factura no-CF / canal) | ✅e2e 60 (`siempre` exige en venta directa CF) · 🟡resto valores |
 | `cliente_consumidor_final` | `true` | `VentasPage.tsx:146,2393,2397` | permite vender como CF (sin cliente) | `false`→cliente obligatorio siempre | 🔴gap e2e |
 | `cliente_creacion_inline` | `true` | `VentasPage.tsx:145` | alta de cliente desde el POS | `false`→hay que ir a Clientes | 🔴gap |
 | `cliente_datos_minimos` | `'nombre'` | `VentasPage.tsx:147` | exige set de datos al crear inline | otros valores | 🔴gap |
-| `presupuesto_validez_dias` | `30` | `VentasPage.tsx:1686,5379,5669-5837,6307`; `ConfigPage.tsx:565,935` | presupuesto > N días = vencido → bloquea convertir + badge "vencido" | null/0 → nunca vence | 🔴gap e2e (escenario vencido) |
-| `reserva_sena_obligatoria` | `true` | `VentasPage.tsx:2446,6651`; `ConfigPage.tsx:572,940` | reservar exige seña real >0 (excluye CC) | `false`→reserva sin seña | 🟡unit · 🔴e2e |
-| `reserva_sena_minima_pct` | `0` | `VentasPage.tsx:2448,6650`; `ConfigPage.tsx:574,941` | seña < N% del total → bloqueado | `0`→cualquier seña >0 vale | 🟡unit · 🔴e2e |
-| `reserva_penalidad_pct` | `0` | `VentasPage.tsx:6554-6555,6622`; `ConfigPage.tsx:580,943` | cancelar reserva retiene N% de la seña | `0`→devuelve todo | 🟡unit (cajaSeña) · 🔴e2e |
+| `presupuesto_validez_dias` | `30` | `VentasPage.tsx:1686,5379,5669-5837,6307`; `ConfigPage.tsx:565,935` | presupuesto > N días = vencido → bloquea convertir + badge "vencido" | null/0 → nunca vence | ✅e2e 63 (40 días → banner + CTA disabled) |
+| `reserva_sena_obligatoria` | `true` | `VentasPage.tsx:2446,6651`; `ConfigPage.tsx:572,940` | reservar exige seña real >0 (excluye CC) | `false`→reserva sin seña | 🟡unit · ✅e2e 57 (CON: reservar sin seña → bloquea, no crea reserva; verificado DB) |
+| `reserva_sena_minima_pct` | `0` | `VentasPage.tsx:2448,6650`; `ConfigPage.tsx:574,941` | seña < N% del total → bloqueado | `0`→cualquier seña >0 vale | 🟡unit · ✅e2e 58 (seña $1 < 50% → bloquea) |
+| `reserva_penalidad_pct` | `0` | `VentasPage.tsx:6554-6555,6622`; `ConfigPage.tsx:580,943` | cancelar reserva retiene N% de la seña | `0`→devuelve todo | 🟡unit (cajaSeña) · ✅e2e 59 (20% → crédito $800, DB-verificado) |
 | `reserva_vencimiento_dias` | `null` | `VentasPage.tsx:651`; `ConfigPage.tsx:577,942` | sweep vence reservas viejas | null→no vencen | 🔴gap |
 | `moneda` | `'ARS'` | `formato.ts`; ~30 sitios (`FacturacionPage.tsx:39`, etc.) | símbolo/locale por moneda (NO convierte) | ARS default | 🟡 (visual; sin e2e dedicado) |
 | `cotizacion_usd` | `0` | `useCotizacion.ts:17`; `ProductoFormPage.tsx:39`; `VentasPage.tsx:1274` | habilita toggle USD + conversión venta USD→local | `0`→"Sin cotización USD"; venta USD usa ¿? | 🔴gap e2e (REGLA #0 plata) |
 | `precio_redondeo` | `'none'` | `ConfigPage.tsx:694,1014,2430` (**SOLO config**) | 🟥 **sin efecto**: no hay lógica que lo lea al calcular precios | — | 🟥 **gap funcional + cobertura** (flag muerto) |
-| `cuotas_bancos` | `[]` | `VentasPage.tsx:310-311`; `ConfigPage.tsx:1690-1697` | ofrece planes de cuotas por banco c/interés en tarjeta | vacío→sin cuotas | 🔴gap e2e |
-| `reglas_canal` | `{}` | `useCanalesVenta.ts:53-68`; `VentasPage.tsx:2357,2398,2126,2361` | por canal: tope descuento, lista mayorista/minorista, requiere_cliente, devolución_dias | sin reglas→sin restricción de canal | 🔴gap e2e |
+| `cuotas_bancos` | `[]` | `VentasPage.tsx:310-311`; `ConfigPage.tsx:1690-1697` | ofrece planes de cuotas por banco c/interés en tarjeta | vacío→sin cuotas | ✅e2e 62 (interés→total financiado) · **🐛 G0.5 fix** picker |
+| `reglas_canal` | `{}` | `useCanalesVenta.ts:53-68`; `VentasPage.tsx:2357,2398,2126,2361` | por canal: tope descuento, lista mayorista/minorista, requiere_cliente, devolución_dias | sin reglas→sin restricción de canal | ✅e2e 61 (tope desc canal al DUEÑO) · 🟡lista/requiere_cliente |
 | `descuento_max_cajero_pct` | `null` | `VentasPage.tsx:4487,4510` (UI badge; el bloqueo de CAJERO es total vía `descuentoBloqueadoCajero`) | marca "máx N%" / borde rojo | null→sin tope visual | 🟡unit · 🔴e2e |
 | `descuento_max_supervisor_pct` | `null` | `VentasPage.tsx:2360,2366-2369,4487,4510` | SUPERVISOR > N% bloquea (override por clave maestra) | null→sin tope | 🟡unit · 🔴e2e (override) |
 | `alerta_margen_negativo` | `true` | `VentasPage.tsx:2556`; `ConfigPage.tsx:568,936` | notifica si despacho con costo>total | `false`→silencioso | 🟡unit · 🔴e2e |
@@ -140,31 +140,34 @@ type: project
 ## 3) Gaps priorizados (orden REGLA #0: fiscal/plata/stock primero)
 
 ### 🟥 Tanda 0 — hallazgos a AVISAR a GO (REGLA #0 / flag muerto)
+- **G0.5 🐛 Picker de cuotas roto por mismatch de nombre del método (CORREGIDO 2026-06-23).** El picker de cuotas con interés (ISS-086) se gatillaba con `mp.tipo === 'Tarjeta crédito'` (sin "de"), pero el método canónico de Config/fallback/tenants es **"Tarjeta de crédito"** (con "de") → con la config estándar **el picker NUNCA aparecía** y no se podía aplicar el interés de financiación en el POS (plata). **Fix (frontend, sin migración):** helper `esTarjetaCredito` que detecta la tarjeta de crédito por normalización (reusa `normalizarNombreMetodo`, que ya saca "de"/tildes); aplicado a las 2 ramas del picker (badge + selector). Validado por **spec 62** (antes del fix: skip; después: pasa). **⏳ EN DEV — pendiente de deploy a PROD (recomendado, es plata).**
 - **G0.1 `precio_redondeo` no tiene efecto** (F-PR): se guarda en Config y se documenta "redondear al múltiplo más cercano", pero **ninguna lógica de precio lo consume** (búsqueda global: solo `ConfigPage.tsx` + tipo + migración). El cliente cree que redondea precios y no pasa. Decisión GO: cablearlo (en `precioTierEfectivo`/cálculo de venta + sugerido) o quitarlo de Config. (REGLA #0 plata.)
 - **G0.2 Kits sin explosión de componentes** (L54): vender un `es_kit` rebaja su propio `stock_actual` como producto normal; no hay BOM que rebaje componentes. Si la regla de negocio espera descontar componentes, el stock de insumos queda mal. Confirmar regla con GO antes de testear. (REGLA #0 stock.)
 - **G0.3 `email_legal`** sin consumidor de lectura en este grupo: confirmar para qué se usa (¿avisos legales/baja?) o es flag huérfano.
 - **G0.4 ImpTotal vs descuento global** (L7): el `console.warn` de la EF (`index.ts:236-238`) NO bloquea cuando un descuento/recargo global no está prorrateado en los ítems → el comprobante puede emitirse con total ≠ suma de ítems. Validar que el front siempre prorratea (o agregar guard).
 
 ### Tanda A — REGLA #0 sin e2e (plata/stock/fiscal)
-1. **§29 matriz fiscal RUNTIME** `condicion_iva_emisor` ∈ {RI, Mono, Exento} × emitir CAE real (A/B/C) + verificar `tipo_comprobante`, ImpIVA, array Iva en DB (homologación). Cubre L01/L02/L03/L06.
-2. **FAC-27 CON/SIN** (L9): Factura B con `venta.total` ≥ `umbral_factura_b` — sin DNI/CUIT bloquea (UI y EF 400); con DNI emite DocTipo 96. Llamar también la EF directa para el guard server.
-3. **Guard emisor↔letra server** (L3): POST directo a `emitir-factura` con RI+C y Mono+A → 400 con mensaje.
-4. **Límite CC + enforcement** (L27): venta CC sobre `limite_cc_default`/`limite_credito` con `cc_enforcement_politica` avisar vs bloquear (verificar deuda en DB).
-5. **Morosidad CC** (L26): `cc_morosidad_politica` bloqueo_cc vs bloqueo_total con deuda vencida.
-6. **Descuento máx por rol + override clave maestra** (L33): SUPERVISOR > `descuento_max_supervisor_pct` bloquea; con clave maestra autoriza y deja traza (`logVentaAuditoria` override_descuento).
-7. **Crédito a favor** (L28): aplicar crédito > disponible bloquea; aplicar válido descuenta `cliente_creditos`.
-8. **Venta producto USD** (L41): con `cotizacion_usd` > 0 convierte; con 0, comportamiento (verificar precio final en venta_items).
-9. **Tiers mayoristas** (L53): cantidad ≥ `cantidad_minima` aplica precio tier; `reglas_canal.lista_precio` fuerza minorista/mayorista.
-10. **Kit** (post-G0.2): según regla confirmada — rebaje de componentes o del propio stock.
+> **Estado de cobertura al 2026-06-22 (tras specs 45-52):** varios gaps de Tanda A YA cerrados por e2e — ver ✅ abajo. El barrido de Ventas/POS sigue por los gaps restantes.
+1. **§29 matriz fiscal RUNTIME** `condicion_iva_emisor` ∈ {RI, Mono, Exento} × emitir CAE real (A/B/C) + verificar `tipo_comprobante`, ImpIVA, array Iva en DB (homologación). Cubre L01/L02/L03/L06. — ⏳ **BLOQUEADO por trámite de GO** (cert/token de PRODUCCIÓN en ARCA + opcional CUIT RI de homologación; el de prueba es Monotributo→solo Factura C, ya cubierto specs 21/42).
+2. ✅ **FAC-27 server** (L9) — **VALIDADO contra la EF DEV en vivo (2026-06-22, vía flip reversible Jorgito→RI):** Factura B por una venta de $100.000 (≥ umbral 68305.16) sin cliente identificado (docNro=0) → **HTTP 400** "Factura B por $100.000 o más: AFIP exige identificar al cliente con DNI o CUIT." El guard corre tras buscar la venta y ANTES de AFIP (no emite CAE, no muta). Jorgito restaurado a Monotributista. **Sin spec committeado:** requiere emisor RI (Jorgito=Mono → L3 bloquea B antes), y no hay tenant RI persistente de prueba → un spec contra Jorgito siempre skipearía; queda pendiente un **tenant RI de homologación** (ligado al trámite AFIP de GO, junto con §29). El guard UI espejo está en `VentasPage` (requiereIdentFacturaB).
+3. ✅ **Guard emisor↔letra server** (L3) — **CERRADO: spec 56** (`56_guard_emisor_letra_ef`, API directa a la EF) + validación curl de ambas ramas contra la EF DEV en vivo: **Mono + A → 400** y **Mono + B → 400** ("solo puede emitir comprobantes tipo C"); **RI + C → 400** ("Responsable Inscripto no puede emitir tipo C", validado por flip reversible de `condicion_iva_emisor` RI↔Monotributista, restaurado). El guard corre ANTES de tocar AFIP (venta_id dummy alcanza). Spec usa `venta_id` dummy (el guard precede al fetch de la venta) + skip-guard si faltan env vars. No emite CAE, no muta.
+4. ✅ **Límite CC + enforcement** (L27) — **CERRADO: spec 46** (`46_cc_limite_bloquear_mutante`): `limite_credito=1` + `cc_enforcement_politica='bloquear'` → venta CC bloqueada, no creada.
+5. ✅ **Morosidad CC** (L26) — **CERRADO: spec 49** (`49_...`, Familia Otranto): `cc_morosidad_politica='bloqueo_total'` + deuda vencida → "No puede comprar hasta saldar".
+6. ✅ **Descuento máx por rol + override clave maestra** (L33) — **CERRADO: spec 45** (CON clave → gate + override) **+ spec 48** (SIN clave → bloquea sin modal). Incluye el hueco del descuento por $ (→ % efectivo, `validarDescuentosPorRol`).
+7. ✅ **Crédito a favor** (L28) — **CERRADO: spec 53** (`53_credito_a_favor_excede_mutante`): cliente con $1 de crédito, aplicar $100 de "Crédito a favor" → bloquea ("No podés aplicar más que eso"), venta NO creada, crédito intacto ($1, sin consumir — verificado DB). *Falta (positivo): aplicar crédito válido descuenta `cliente_creditos` (Tanda B).*
+8. ✅ **Venta producto USD** (L41) — **CERRADO: spec 55** (`55_venta_usd_conversion_mutante`): producto `moneda_venta='usd'` + `precio_usd=10` con `cotizacion_usd=1430` → al carrito muestra "Precio USD 10 · convertido a $14.300" (`round(precio_usd × cotizacion)` alimenta precio_unitario→subtotal/IVA/venta_items). Fixture SQL reversible (marca un producto con stock como USD y restaura a 'local'). *Gotcha: el producto USD necesita stock para aparecer en el buscador.*
+9. ✅ **Tiers mayoristas** (L53) — **CERRADO: spec 54** (`54_tier_mayorista_mutante`): con qty ≥ `cantidad_minima` aparece "Precio mayorista: $900/u" (lista $1.200 tachada) — `precioTierBase`/`precioTierEfectivo`, `precio_redondeo='none'`. Producto real "Donuts Orange Bitter". **Hallazgo:** `updateItem` capa la cantidad al stock disponible → un tier con umbral > stock es inalcanzable hasta restockear (el de Donuts es 1000 con 35 en stock); por eso el spec usa un fixture reversible que baja el umbral a 10. No es bug (correcto no vender más que el stock), pero el tier queda "dormido" hasta tener ≥ umbral de stock. *Falta (Tanda B): `reglas_canal.lista_precio` fuerza minorista/mayorista; persistencia a `venta_items` (sigue de `precioTierEfectivo` + spec 19).*
+10. **Kit** (post-G0.2): según regla confirmada (✅ NO es bug, by-design GO 2026-06-21: vender el kit rebaja su propio stock; los componentes se rebajaron al armar) → sin e2e adicional pendiente salvo el armado/desarmado.
 
 ### Tanda B — flags de Ventas/Reservas/Productos
-11. **Presupuesto vencido** (L44/`presupuesto_validez_dias`): convertir un presupuesto > N días bloqueado hasta actualizar precios (escenario negativo + fix del selector de caja con 2+ cajas — gotcha conocido).
-12. **Reservas** (L45-L47): `reserva_sena_obligatoria` CON/SIN; `reserva_sena_minima_pct` por debajo bloquea; `reserva_penalidad_pct` retiene al cancelar (verificar caja/crédito en DB).
-13. **`cliente_obligatorio`** (L20) los 3 valores × `cliente_consumidor_final` true/false.
-14. **`reglas_canal`** (L39): canal con tope descuento / requiere_cliente / lista mayorista.
-15. **`cuotas_bancos`** (L40): selección de cuotas con interés refleja total/medio_pago.
-16. **`max_productos`** (L57): al tope, alta bloqueada (modal); `-1` ilimitado.
-17. **Alícuotas restantes** en alta (L49): 0/21/27 además del 10,5 ya cubierto (e2e 43).
+> **Estado al 2026-06-23: Tanda B de Ventas CERRADA por e2e (specs 58-63).** Quedan solo los ítems de Productos (16-17).
+11. ✅ **Presupuesto vencido** (L44/`presupuesto_validez_dias`) — **CERRADO: spec 63** (`63_presupuesto_vencido_mutante`): presupuesto de 40 días (validez 30) → banner "Presupuesto vencido" + CTA "Finalizar (rebaja stock)" y "Reservar stock" **DESHABILITADOS** (no se puede convertir con precios viejos). Read-only (no muta). *(El fix del selector de caja con 2+ cajas sigue como gotcha UX abierto, ver pendientes.)*
+12. ✅ **Reservas** (L45-L47) — **CERRADO:** `reserva_sena_obligatoria` ✅ spec 57 (sin seña bloquea); **`reserva_sena_minima_pct` ✅ spec 58** (`58_reserva_sena_minima_mutante`: seña $1 < 50% del total → bloquea, no crea reserva); **`reserva_penalidad_pct` ✅ spec 59** (`59_reserva_penalidad_mutante`: penalidad 20% sobre seña $1000 → `cliente_creditos=$800`, venta cancelada, stock reservado liberado — **verificado en DB**).
+13. ✅ **`cliente_obligatorio`** (L20) — **CERRADO: spec 60** (`60_cliente_obligatorio_siempre_mutante`: `='siempre'` exige cliente hasta en una venta directa CF, que con el default `'reservas'` NO lo exige → aísla el flag manteniendo modo CF). *(Falta opcional: `cliente_consumidor_final=false` fuerza cliente — mismo efecto vía otra cláusula, `!permiteCF`.)*
+14. ✅ **`reglas_canal`** (L39) — **CERRADO (descuento): spec 61** (`61_reglas_canal_descuento_mutante`: `descuento_max_pct=5` por canal topea el descuento **incluso al DUEÑO** (que no tiene tope de rol) → gate de clave con "supera el máximo de este canal (5%)"). *(Falta opcional: `requiere_cliente` (mismo efecto que spec 60) y `lista_precio` mayorista/minorista.)*
+15. ✅ **`cuotas_bancos`** (L40) — **CERRADO: spec 62** (`62_cuotas_interes_mutante`: Banco Galicia 3x +0.5% sobre $10.000 → "3 cuotas de $3.350 = $10.050 total"). **🐛 Destapó un bug REGLA #0 (G0.5, corregido) — ver Tanda 0.**
+16. **`max_productos`** (L57): al tope, alta bloqueada (modal); `-1` ilimitado. *(Productos — fuera de Ventas.)*
+17. **Alícuotas restantes** en alta (L49): 0/21/27 además del 10,5 ya cubierto (e2e 43). *(Productos — fuera de Ventas.)*
 
 ### Tanda C — capa manual (no e2e)
 - PDFs/impresión: factura/NC/remito/presupuesto con `razon_social_fiscal`/`domicilio_fiscal`/`ingresos_brutos`/`inicio_actividades`/`leyenda_comprobante`/`banco`/`cbu`/`alias_cbu` (L18) + QR fiscal + MP-QR si saldo.

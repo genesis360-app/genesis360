@@ -3,6 +3,10 @@
 > Auditoría de cobertura de testing (F1 de `uat-cobertura.plan.md`). Grupo 3.
 > **Zona REGLA #0 (contable/fiscal).** Solo lectura — no se escribió código ni tests.
 > Fecha: 2026-06-21 · Repo @ dev (migs 001-233).
+>
+> **▶ Progreso del barrido (2026-06-23):** **Caja/Bóveda — gaps REGLA #0 contables CERRADOS por e2e:** cierre con diferencia (spec **64**, ajuste `ingreso` en DB), cierre **ajeno** con clave maestra (spec **65**, server-side mala/correcta), **extracción de Bóveda** (spec **66**, guard saldo insuficiente → no-negativo), **doble validación B7** (spec **67**, sin/invalid 2º usuario bloquea). `diferencia_caja_umbral` queda **cubierto por unit** (`superaUmbralDiferencia`, umbral 0 vs >0) — es ruteo de alerta, no integridad de plata. Varios gaps YA cerrados antes por hardening + Ventas: **G1** (límite CC + morosidad) por mig 234 + e2e **46/49**; parte de **G2/G3** por **40/41/45/48**.
+>
+> **✅ GASTOS — gaps REGLA #0 fiscal/contable CERRADOS:** comprobante obligatorio (spec **68**, `gastos_comp_siempre` → bloquea sin adjunto; las 4 reglas comparten el OR), **guard fiscal IVA crédito** (`fn_gastos_iva_guard` mig 227, **DB-validated**: Mono+FacturaA→IVA NULL; RI+FacturaA→conserva $21+ganancias; RI+FacturaB→IVA NULL), **período contable cerrado** (`trg_gastos_periodo_cerrado` mig 135, **DB-validated**: UPDATE en período cerrado → P0001). Gasto efectivo→caja ya en spec 27; umbral por rol en unit (`evaluarUmbralGasto`); pago OC doble firma en unit (`comprasPago`) + RPC mig 237. Residual menor: eliminar→reversión en caja (simétrico a 27), gasto en cuotas. **▶ Siguiente: Clientes/CC residual** (revertir condonación, incobrable SIN clave, vencimiento CC, crédito a favor positivo).
 > Leyenda cobertura: ✅e2e (spec NN) · ✅unit (archivo) · ✅UAT(§) · 🟡parcial · 🔴gap · 🧠code-audit.
 > Convención de flags: **CON** = flag activo/valor distinto del default · **SIN** = ausente/default/null.
 
@@ -21,13 +25,13 @@
 | ¿Diferencia supera umbral de alerta? | `cajaArqueo.ts:superaUmbralDiferencia` | ✅ | ✅unit (umbral 0 vs >0) |
 | Ajuste contraparte de traspaso al corregir | `cajaArqueo.ts:tipoAjusteTraspaso` | ✅ | ✅unit |
 | Apertura de caja (propia/ajena) + dif. apertura + notif | `src/pages/CajaPage.tsx` abrirCaja (≈600-647) | ✅ | ✅e2e 20 (propia, happy) · 🔴 ajena |
-| Cierre con arqueo obligatorio + snapshot K2 + ajuste de diferencia | `CajaPage.tsx` cerrarCaja:650-765 | ✅ | ✅e2e 20 (sin dif) · 🟡 con diferencia |
-| Cierre AJENO exige clave maestra (si configurada) | `CajaPage.tsx:656-665` | ✅ | 🧠code-audit · 🔴 e2e CON/SIN |
-| Doble validación al cierre (B7, 2º usuario) | `CajaPage.tsx:666-698` + `cajaPermisos.ts:ConfigCaja.doble_validacion_cierre` | ✅ | 🔴gap (flag) |
+| Cierre con arqueo obligatorio + snapshot K2 + ajuste de diferencia | `CajaPage.tsx` cerrarCaja:650-765 | ✅ | ✅e2e 20 (sin dif) · ✅e2e 64 (sobrante $100 → ajuste `ingreso` en DB) |
+| Cierre AJENO exige clave maestra (si configurada) | `CajaPage.tsx:656-665` | ✅ | ✅e2e 65 (clave mala bloquea / correcta cierra, server-side) |
+| Doble validación al cierre (B7, 2º usuario) | `CajaPage.tsx:666-698` + `cajaPermisos.ts:ConfigCaja.doble_validacion_cierre` | ✅ | ✅e2e 67 (sin/invalid 2º usuario → bloquea) |
 | Alerta de diferencia a roles/canales (in-app + email) | `CajaPage.tsx:801-834` | ✅ | 🧠code-audit · 🔴 e2e |
 | Egreso no deja caja negativa (gastos/devolución) | `cajaSaldo.ts:saldoEfectivoSesion` usado en GastosPage:1225-1227 | ✅ | ✅unit (saldo) · ✅e2e 27 (happy) |
 | Depósito a Bóveda (2 patas: egreso_traspaso + ingreso_traspaso) | `CajaPage.tsx` traspasoBoveda:1022-1102 | ✅ | ✅e2e 32 |
-| Extracción de Bóveda (egreso real, no traspaso) | `CajaPage.tsx:extraerDeBoveda:306-360` | ✅ | 🔴gap |
+| Extracción de Bóveda (egreso real, no traspaso) | `CajaPage.tsx:extraerDeBoveda:306-360` | ✅ | ✅e2e 66 (guard saldo insuficiente → no negativo) |
 | Caja Fuerte como sesión permanente (`es_caja_fuerte`, excluida de operativas) | `CajaPage.tsx:152-153,179-180` | ✅ | 🧠code-audit |
 | Matriz de permisos por rol (abrir/cerrar/ingreso/traspaso/bóveda/anular) | `src/lib/cajaPermisos.ts:puede` + `MATRIZ` | ✅ | ✅unit (cajaPermisos) |
 | ¿Acción requiere clave maestra? (cerrar_ajena, anular_venta) | `cajaPermisos.ts:requiereClaveMaestra`/`ACCIONES_CON_CLAVE_MAESTRA` | ✅ | ✅unit |
@@ -53,7 +57,7 @@
 | Aging de deuda por antigüedad (buckets) | `ccLogic.ts:agruparAgingCC` | ✅ | ✅unit |
 | Pseudo-métodos de pago (CC/condonación/incobrable excluidos de métricas) | `ccLogic.ts:PSEUDO_METODOS_PAGO`/`esMetodoRealPago` | ✅ | ✅unit |
 | Condonar deuda CC (write-off) | `ClientesPage.tsx:condonarDeudaCC:509-528` | ✅ | ✅e2e 39 |
-| Revertir condonación (restaurar deuda) | `ClientesPage.tsx:revertirDeudaCC:530-554` | ✅ | 🔴gap |
+| Revertir condonación (restaurar deuda) | `ClientesPage.tsx:revertirDeudaCC:530-554` | ✅ | ✅e2e 69 (revierte condonada → deuda $5.000 restaurada, medio "Condonación CC" removido) |
 | Dar de baja INCOBRABLE (condona todo + gasto pérdida + clave maestra) | `ClientesPage.tsx:confirmarIncobrable:558-599` | ✅ | ✅e2e 40 (CON clave) · 🔴 SIN clave |
 | Estado de cuenta PDF + link público con token | `ClientesPage.tsx:descargarEstadoCuenta`/`generarLinkCuenta:609-628` | — | 🔴gap (capa C) |
 | Vencimiento de venta CC = hoy + cc_dias_vencimiento | `VentasPage.tsx:2523-2526` | ✅ | 🔴gap |
@@ -67,12 +71,12 @@
 |---|---|---|---|
 | Alta de gasto + medios de pago suman el monto | `src/pages/GastosPage.tsx:guardar` (≈1080-1311) | ✅ | ✅e2e 27 (efectivo) |
 | Gasto efectivo → egreso en caja (await + aviso si falla, no negativo) | `GastosPage.tsx:1225-1265` | ✅ | ✅e2e 27 |
-| Comprobante obligatorio (4 reglas OR: siempre/iva/ganancias/monto) | `GastosPage.tsx:1092-1112` (alta) + `1505-1525` (otra vía) | ✅ | 🔴gap (flags) |
-| Guard fiscal IVA crédito server-side (RI + Factura A) | trigger `fn_gastos_iva_guard` (mig 227) | ✅ | 🧠code-audit · 🔴 e2e runtime |
+| Comprobante obligatorio (4 reglas OR: siempre/iva/ganancias/monto) | `GastosPage.tsx:1092-1112` (alta) + `1505-1525` (otra vía) | ✅ | ✅e2e 68 (`gastos_comp_siempre` → bloquea sin adjunto; las 4 reglas comparten el OR) |
+| Guard fiscal IVA crédito server-side (RI + Factura A) | trigger `fn_gastos_iva_guard` (mig 227) | ✅ | ✅DB-validated (Mono+A→IVA NULL; RI+A→conserva $21+ganancias; RI+B→IVA NULL, ganancias ok) |
 | Umbral de gasto por rol (solicitud de autorización) | `src/lib/umbralGasto.ts:evaluarUmbralGasto` ← `GastosPage.tsx:1164-1178` | ✅ | ✅unit (umbralGasto) |
 | Eliminar gasto → reversión en caja (ingreso de corrección) | `GastosPage.tsx:eliminar:1314-1354` | ✅ | 🔴gap |
 | Edición que agrega medio de pago → asienta en caja | `GastosPage.tsx:1197-1214` | ✅ | 🔴gap |
-| Período contable cerrado bloquea edición/eliminación | `GastosPage.tsx:1184-1187,1317-1319` (`isPeriodoCerrado`) | ✅ | 🔴gap |
+| Período contable cerrado bloquea edición/eliminación | `GastosPage.tsx:1184-1187,1317-1319` (`isPeriodoCerrado`) + trigger `trg_gastos_periodo_cerrado` (mig 135) | ✅ | ✅DB-validated (UPDATE gasto en período cerrado → P0001 "Periodo contable cerrado") |
 | Gasto en cuotas (genera gasto_cuotas) | `GastosPage.tsx:1268-1293` | ✅ | 🔴gap |
 | Pago de OC: doble firma por umbral exige clave maestra | `GastosPage.tsx:719-727` (`requiereDobleFirmaPago`) | ✅ | ✅unit (comprasPago) · 🔴 e2e clave |
 | Pago de OC con cheque → crea cheque vinculado + fecha cobro | `GastosPage.tsx:734-739` | ✅ | ✅unit (comprasCheques) · ✅e2e 31 (gasto) |

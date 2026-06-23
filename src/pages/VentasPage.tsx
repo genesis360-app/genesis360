@@ -605,6 +605,10 @@ export default function VentasPage() {
       .normalize('NFD').replace(/\p{Diacritic}/gu, '') // sin tildes
       .replace(/\sde\s/g, ' ')                          // sin preposición "de"
       .replace(/\s+/g, ' ').trim()
+  // ISS-086 fix — el método canónico es "Tarjeta de crédito" (Config/fallback), pero el picker de
+  // cuotas comparaba contra "Tarjeta crédito" (sin "de") → nunca aparecía. Normalizar para detectarlo.
+  const esTarjetaCredito = (tipo: string | null | undefined): boolean =>
+    normalizarNombreMetodo(tipo || '') === 'tarjeta credito'
   const cuentaOrigenDeMetodo = (nombreMetodo: string): string | null => {
     if (!nombreMetodo) return null
     const norm = normalizarNombreMetodo(nombreMetodo)
@@ -5155,7 +5159,7 @@ export default function VentasPage() {
                       </button>
                     )}
                     {/* ISS-086: indicador cuotas si ya seleccionó */}
-                    {mp.tipo === 'Tarjeta crédito' && cuotasSeleccion[idx] && (
+                    {esTarjetaCredito(mp.tipo) && cuotasSeleccion[idx] && (
                       <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 font-medium ${cuotasSeleccion[idx].sinInteres ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
                         {cuotasSeleccion[idx].cuotas}x
                       </span>
@@ -5167,7 +5171,7 @@ export default function VentasPage() {
                     )}
                   </div>
                   {/* ISS-086: picker de cuotas cuando es Tarjeta crédito y hay bancos config */}
-                  {mp.tipo === 'Tarjeta crédito' && cuotasBancos.length > 0 && parseFloat(mp.monto) > 0 && (() => {
+                  {esTarjetaCredito(mp.tipo) && cuotasBancos.length > 0 && parseFloat(mp.monto) > 0 && (() => {
                     const sel = cuotasSeleccion[idx]
                     const banco = cuotasBancos.find(b => b.nombre === sel?.banco) ?? cuotasBancos[0]
                     const montoCuota = sel && sel.cuotas > 0

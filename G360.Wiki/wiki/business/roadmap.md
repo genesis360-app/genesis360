@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.86.0 — 🧪 Barrido UAT — Clientes/CC 100% + Inventario residual (specs 69-76) (PROD ✅, sin migración, test-only)
+
+**Test-only + wiki (sin cambio de comportamiento de la app; PROD = DEV = migs 001-240).** Continuación del barrido UAT REGLA #0, todo DB-verificado con fixtures en los 2 tenants DEV (Jorgito + Familia Otranto). **Clientes/CC cerrado 100%:** spec **69** revertir condonación, **72** vencimiento CC (`fecha_vencimiento_cc=hoy+N`), **73** crédito a favor positivo (consume `cliente_creditos`), **incobrable SIN clave** (DB-validated en Familia Otranto: DUEÑO procede / SUPERVISOR rechazado por rol). **Productos:** spec **70** alícuota Exento persiste 0 (no 21). **Inventario/Conteos:** spec **71** rebaje no-negativo, **74** over-receipt CON tope (+10% acepta, stock↑), **75** kit desarmar (componentes↑), **76** wall-to-wall bloqueante (POS bloqueado). Convención: las transacciones de prueba quedan como evidencia UAT.
+
 ## v1.85.0 — 🐛 fix REGLA #0 picker de cuotas + barrido UAT (Caja/Bóveda, Gastos, Clientes/CC, Productos) (PROD ✅, sin migración)
 
 **Frontend-only** (sin migración; PROD = DEV = migs 001-240). **🐛 Fix REGLA #0 (plata):** el picker de cuotas con interés del POS (`VentasPage`, ISS-086) se gatillaba con `mp.tipo === 'Tarjeta crédito'` (sin "de"), pero el método canónico de Config/fallback/`metodos_pago` es **"Tarjeta de crédito"** → con la config estándar **el picker nunca aparecía** y no se podía aplicar el interés de financiación en el POS. Fix: helper `esTarjetaCredito` que detecta la tarjeta de crédito por normalización (reusa `normalizarNombreMetodo`). **+13 specs e2e del barrido UAT** (todos REGLA #0, DB-verificados, fixtures reversibles): Ventas Tanda B (58-63), Caja/Bóveda (64-67: cierre c/diferencia, cierre ajeno+clave, extracción no-negativo, doble validación B7), Gastos (68 comprobante obligatorio + guards fiscales server-side IVA/período-cerrado DB-validados), Clientes/CC (69 revertir condonación), Productos (70 alícuota Exento persiste 0 no 21). Hallado por el spec 62.

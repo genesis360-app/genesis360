@@ -6,13 +6,39 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-23 · post-deploy v1.85.0 + barrido Caja/Gastos/Clientes/Productos)
-> **Estado:** **PROD = DEV = v1.85.0 (migs 001-240)** — deploy frontend del fix de cuotas (G0.5, plata) + 13 specs e2e del barrido (test-only). **Sin migraciones nuevas** (todo el trabajo de DB del barrido fue validación reversible). Repo limpio, todo pusheado. build (tsc+vite) verde.
-> **Barrido UAT al día:** Ventas Tanda A+B ✅ · Caja/Bóveda ✅ (64-67) · Gastos ✅ (68 + guards server-side) · **Clientes/CC ✅ 100%** (46/49/39/69/40/28 + **72** vencimiento CC + **73** crédito positivo + **incobrable SIN clave** DB-validated FO) · Productos núcleo fiscal ✅ (43+70) · **Inventario/Conteos ✅** (36/47/51/52/71/**74**over-receipt-CON/**75**kits/**76**wall-to-wall + traslados 30 + recepción 29/35 + unit). **🆕 Convención evidencia (GO):** dejar las transacciones de prueba como evidencia UAT; solo quitar estados bloqueantes activos (wall-to-wall). **▶ Próximo barrido:** **Compras/OC/Envíos (cobertura/04)** · **RRHH/Config/Suscripción (cobertura/05)**. Residual menor Inventario (no-crítico): conteo gate flag e2e, delta con venta intercalada, under-receipt por rol, 2 recepciones parciales. Armar kit (L13) e2e (flujo 2 pasos).
+> ### 🟢 ARRANCÁ ACÁ (2026-06-23 · post-deploy v1.86.0 · handoff para /clear)
+> **Estado:** **PROD = DEV = v1.86.0 (migs 001-240)**. Repo limpio, todo pusheado. build (tsc+vite) verde. v1.86.0 = barrido UAT **test-only + wiki** (sin cambios de `src/` desde v1.85.0; el fix de cuotas G0.5 ya está en PROD desde v1.85.0).
 >
-> **🐛 PENDIENTE DE DEPLOY (REGLA #0 plata) — fix del picker de cuotas (G0.5):** el picker de cuotas con interés se gatillaba con `mp.tipo === 'Tarjeta crédito'` (sin "de") pero el método canónico es **"Tarjeta de crédito"** → con la config estándar **el picker nunca aparecía** (no se podía cobrar el interés de financiación). Fix frontend en `VentasPage` (`esTarjetaCredito` normaliza). **Decisión para GO: ¿deployar ya (es plata) o bundlear con el resto del backlog de DEV?**
+> **▶ DÓNDE QUEDAMOS — UAT EXHAUSTIVO, módulos CERRADOS al 100% REGLA #0** (todo DB-verificado, 2 tenants DEV):
+> - **Ventas/POS Tanda A+B** ✅ (45-63 + FAC-27; salvo §29 AFIP, bloqueado por GO).
+> - **Caja/Bóveda** ✅ (64-67).
+> - **Gastos** ✅ (68 + guards server-side IVA/período-cerrado DB-validated).
+> - **Clientes/CC** ✅ 100% (28/39/40/46/49 + **69** revertir + **72** vencimiento CC + **73** crédito positivo + **incobrable SIN clave** DB-validated en Familia Otranto).
+> - **Productos** núcleo fiscal ✅ (43 + **70** alícuota Exento).
+> - **Inventario/Conteos** ✅ (29/30/35/36/47/51/52 + **71** rebaje no-negativo + **74** over-receipt CON + **75** kit desarmar + **76** wall-to-wall + unit extensivo).
 >
-> **▶ DÓNDE QUEDAMOS: UAT EXHAUSTIVO — Ventas/POS Tandas A+B CERRADAS · Módulo Caja/Bóveda ARRANCADO.**
+> **▶ PRÓXIMA SESIÓN (lo que sigue del barrido):**
+> 1. **Compras/OC/Envíos** — `tests/specs/cobertura/04_compras_oc_envios.md`.
+> 2. **RRHH/Config/Suscripción** — `tests/specs/cobertura/05_rrhh_config_suscripcion.md`.
+> 3. **Residual menor no-crítico** (no REGLA #0 estricto, dejar para el final): Inventario — conteo gate flag e2e, armar-kit (flujo 2 pasos), delta con venta intercalada, under-receipt por rol, 2 recepciones parciales; Ventas — `cliente_consumidor_final=false`, `reglas_canal.requiere_cliente/lista_precio`, sweep reservas vencidas.
+>
+> **🧰 Harness e2e (2 tenants DEV, GO autoriza hacer/deshacer libremente):**
+> - **Almacén Jorgito** `3769b1db-10f4-46a6-bc7f-eb669307730d` — clave maestra **12345678**, facturación ON, Sucursal Norte `b56742a9-c3a2-488e-b344-086227ef396e`. Usuarios OWNER (`e2e@genesis360.test`, project `chromium`) + cajero/supervisor/rrhh/deposito/contador. **Cierres contables reales hasta 2026-04 (no tocar en fixtures).**
+> - **Familia Otranto De Porto** `4cf85bbb-22b3-4760-91ee-15a24d9e4713` — **SIN clave maestra**, facturación OFF, stock sin ubicar. DUEÑO `3d3mentes@gmail.com` (`d23aedbb-abb7-483c-8bed-0d78d27018d8`), SUPERVISOR harness `e2e.fotranto.sup@local.com`/`Test1234!` (project `chromium-fotranto-sup`). Ideal para escenarios sin-clave.
+> - **Correr un spec:** `npx dotenv -e tests/e2e/.env.test.local -- playwright test NN_spec --project=chromium`. Muchos specs mutantes son **env-gated** (E2E_*=1) para no correr en el full-suite.
+>
+> **🧠 Convenciones del barrido (REGLA #0):**
+> - **Evidencia UAT:** las transacciones de prueba (ventas/recepciones/write-offs/desarmados) se DEJAN como evidencia; solo se quitan **estados bloqueantes activos** (conteo wall-to-wall) que deshabilitan el tenant.
+> - **Limpieza de ventas (si hace falta):** restaurar SOLO `inventario_lineas.cantidad` — el trigger recalcula `stock_actual` (tocarlo a mano lo DUPLICA).
+> - **Método:** e2e mutante (aserción POSITIVA + verificar la mutación en DB con `execute_sql`); nunca solo `.not.toBeVisible()`. Guards server-side se validan por impersonación SQL (RPC) cuando el e2e UI no alcanza.
+> - **Gotcha POS:** con 2+ cajas abiertas el despacho exige elegir caja en "Registrar en caja" (incluso 100% CC).
+>
+> **🔓 Único bloqueo de terceros:** **AFIP §29** — cert/token de **PRODUCCIÓN** en ARCA + (opcional) CUIT RI de homologación (trámite de GO). Sin eso, RI/Exento quedan validados solo por lógica/EF.
+>
+> ---
+> **(Detalle histórico de las tandas abajo — referencia.)**
+>
+> **▶ DETALLE — UAT EXHAUSTIVO — Ventas/POS Tandas A+B CERRADAS · Caja/Bóveda · Gastos · Clientes/CC · Productos · Inventario.**
 > - **✅ Caja/Bóveda — MÓDULO CERRADO (specs 64-67, REGLA #0 contable, DB-verificado, fixtures reversibles):** **64** cierre con diferencia (sobrante $100 → ajuste `ingreso` en DB) · **65** cierre **ajeno** con clave maestra (mala bloquea/correcta cierra, server-side) · **66** extracción de Bóveda (guard saldo insuficiente → no-negativo) · **67** doble validación B7 (sin/invalid 2º usuario bloquea). `diferencia_caja_umbral` = cubierto por unit. G1/G2/G3 ya cerrados antes por mig 234 + specs 40/41/45/46/48/49.
 > - **✅ Módulo GASTOS CERRADO (REGLA #0 fiscal/contable):** comprobante obligatorio (spec **68**), **guard fiscal IVA crédito** (`fn_gastos_iva_guard` mig 227, DB-validated Mono/RI×FacturaA/B), **período contable cerrado** (`trg_gastos_periodo_cerrado` mig 135, DB-validated P0001). Gasto efectivo→caja=spec 27; umbral/pago-OC=unit+mig 237. Residual menor: eliminar→reversión (simétrico a 27), gasto cuotas.
 > - **▶ Siguiente: Clientes/CC residual** (`cobertura/03` §Clientes): revertir condonación, incobrable SIN clave, vencimiento CC (`cc_dias_vencimiento`), crédito a favor positivo. Ya cerrados: morosidad/límite (46/49), condonar (39), incobrable CON clave (40).

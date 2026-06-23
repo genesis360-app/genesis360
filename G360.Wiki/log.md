@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] deploy | 🚀 v1.86.0 EN PROD — barrido UAT Clientes/CC 100% + Inventario residual (specs 69-76) — test-only, sin migración
+
+**Pedido de GO:** "pasemos todo a DEV y PROD así hacemos /clear y arrancamos nueva sesión con los pendientes." Deploy **test-only + wiki** — **NO hay cambios de `src/` desde v1.85.0** (el fix de cuotas G0.5 ya fue en v1.85.0). PROD = DEV = migs 001-240. Bump APP_VERSION → v1.86.0 (marca el hito del barrido; sin cambio de comportamiento). Build verde, PR dev→main, merge, release.
+
+**Qué entra (todo test-only, REGLA #0, DB-verificado en los 2 tenants DEV):**
+- **Clientes/CC 100%:** 69 revertir condonación, 72 vencimiento CC, 73 crédito a favor positivo, incobrable SIN clave (DB-validated Familia Otranto).
+- **Productos:** 70 alícuota Exento (0, no 21).
+- **Inventario/Conteos:** 71 rebaje no-negativo, 74 over-receipt CON, 75 kit desarmar, 76 wall-to-wall bloqueante.
+
+**Convención de evidencia (GO):** las transacciones de prueba (ventas/recepciones/write-offs/desarmados) se DEJAN en DEV como evidencia UAT; solo se quitan los estados bloqueantes activos (wall-to-wall).
+
+**▶ Próxima sesión (post-/clear):** módulos restantes del barrido — **Compras/OC/Envíos (cobertura/04)** y **RRHH/Config/Suscripción (cobertura/05)**. Residual menor no-crítico de Inventario (conteo gate flag, armar-kit 2 pasos, delta con venta intercalada, under-receipt por rol). Único bloqueo de terceros: **AFIP §29** (cert/token PRODUCCIÓN + CUIT RI homologación de GO).
+
+---
+
 ## [2026-06-23] update | 🧪 Barrido UAT — Inventario residual cerrado (over-receipt CON, kits, wall-to-wall) specs 74-76 — EN DEV
 
 **Pedido de GO:** cerrar Inventario residual al 100% (dejando evidencia). REGLA #0 stock, DB-verificado.

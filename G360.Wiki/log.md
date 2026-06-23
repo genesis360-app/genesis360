@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] update | 🧪 Barrido UAT — arranca Módulo Caja/Bóveda: cierre con diferencia (spec 64) — EN DEV
+
+**Pedido de GO:** tras cerrar Ventas Tanda B, GO eligió "bundlear el fix de cuotas + seguir testeando" → siguiente módulo del orden sugerido = **Caja/Bóveda** (`cobertura/03`). Primer spec del módulo, REGLA #0 contable, verificado en DB, fixture reversible (la caja de prueba quedó restaurada a 0 sesiones del día).
+
+**Spec nuevo:**
+- ✅ **64 `64_caja_cierre_diferencia_mutante`** (B4, `CajaPage.cerrarCaja` + `clasificarAjusteDiferencia`): abrir una caja libre (Caja2) con $1.000 → arqueo → cerrar contando $1.100 → "Sobran $100" → Confirmar. **DB-verificado:** `caja_sesiones` `diferencia_cierre=100` + `caja_movimientos` de ajuste `tipo='ingreso'`, `monto=100`, concepto "[Diferencia caja] Sobrante en cierre". Env-gated (`E2E_CAJA_CIERRE_DIF=1`) porque abre/cierra una caja real y dispara el email de cierre al DUEÑO → NO corre en el full-suite. Sesión de prueba borrada (movimientos+arqueos+sesión) tras verificar.
+
+**Reconciliación de cobertura/03 (dado 2026-06-21):** varios gaps YA cerrados por trabajo posterior — **G1** (límite CC + morosidad) por mig 234 + e2e 46/49; parte de **G2/G3** por specs 40/41/45/48. Nota de progreso agregada al tope de `cobertura/03`.
+
+**Gotcha e2e:** `puedeAbrirCaja = puedeAdministrarCaja || sin sesiones` → un DUEÑO PUEDE abrir una 2ª caja (el bloqueo "ya tenés una caja abierta" es solo para roles no-admin). El cierre exige ≥1 arqueo parcial. El toast "Caja cerrada" colisiona en strict-mode con el heading de caja-cerrada → desambiguar con `getByRole('status')`.
+
+**▶ Próximo incremento de Caja/Bóveda:** cierre **ajeno** con clave maestra (CON/SIN), **extracción de Bóveda** (egreso real), `diferencia_caja_umbral` (alerta por umbral), doble validación de cierre (B7). Detalle en `project_pendientes.md`.
+
+---
+
 ## [2026-06-23] update | 🧪 Barrido UAT Ventas/POS — Tanda B CERRADA (specs 58-63) + 🐛 fix REGLA #0 picker de cuotas — EN DEV
 
 **Pedido de GO:** "sigamos" → tras cerrar Ventas/POS Tanda A, GO eligió seguir con **Ventas Tanda B** (cerrar Ventas al 100% antes de cambiar de módulo). 6 specs e2e nuevos (mutantes, aserción POSITIVA + efecto en DB), fixtures SQL **reversibles** (todos los flags de Jorgito restaurados a default, 0 fixtures residuales). Commits **test-only + 1 fix de app** en `dev` (no van a PROD hasta el próximo deploy).

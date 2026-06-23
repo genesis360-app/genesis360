@@ -3,6 +3,8 @@
 > Auditoría de cobertura de testing (F1 de `uat-cobertura.plan.md`). Grupo 3.
 > **Zona REGLA #0 (contable/fiscal).** Solo lectura — no se escribió código ni tests.
 > Fecha: 2026-06-21 · Repo @ dev (migs 001-233).
+>
+> **▶ Progreso del barrido (2026-06-23):** arrancó Caja/Bóveda. **✅ Cerrado: cierre con diferencia** (spec 64 — sobrante $100 → ajuste `ingreso` en DB, verificado). Varios gaps de este doc YA cerrados por el hardening posterior + specs de Ventas: **G1** (límite CC + morosidad) por mig 234 + e2e **46/49**; parte de **G2/G3** por **40/41/45/48**. **▶ Próximo incremento de Caja:** cierre **ajeno** con clave (CON/SIN), **extracción de Bóveda** (egreso real), `diferencia_caja_umbral` (alerta por umbral), doble validación B7.
 > Leyenda cobertura: ✅e2e (spec NN) · ✅unit (archivo) · ✅UAT(§) · 🟡parcial · 🔴gap · 🧠code-audit.
 > Convención de flags: **CON** = flag activo/valor distinto del default · **SIN** = ausente/default/null.
 
@@ -21,7 +23,7 @@
 | ¿Diferencia supera umbral de alerta? | `cajaArqueo.ts:superaUmbralDiferencia` | ✅ | ✅unit (umbral 0 vs >0) |
 | Ajuste contraparte de traspaso al corregir | `cajaArqueo.ts:tipoAjusteTraspaso` | ✅ | ✅unit |
 | Apertura de caja (propia/ajena) + dif. apertura + notif | `src/pages/CajaPage.tsx` abrirCaja (≈600-647) | ✅ | ✅e2e 20 (propia, happy) · 🔴 ajena |
-| Cierre con arqueo obligatorio + snapshot K2 + ajuste de diferencia | `CajaPage.tsx` cerrarCaja:650-765 | ✅ | ✅e2e 20 (sin dif) · 🟡 con diferencia |
+| Cierre con arqueo obligatorio + snapshot K2 + ajuste de diferencia | `CajaPage.tsx` cerrarCaja:650-765 | ✅ | ✅e2e 20 (sin dif) · ✅e2e 64 (sobrante $100 → ajuste `ingreso` en DB) |
 | Cierre AJENO exige clave maestra (si configurada) | `CajaPage.tsx:656-665` | ✅ | 🧠code-audit · 🔴 e2e CON/SIN |
 | Doble validación al cierre (B7, 2º usuario) | `CajaPage.tsx:666-698` + `cajaPermisos.ts:ConfigCaja.doble_validacion_cierre` | ✅ | 🔴gap (flag) |
 | Alerta de diferencia a roles/canales (in-app + email) | `CajaPage.tsx:801-834` | ✅ | 🧠code-audit · 🔴 e2e |

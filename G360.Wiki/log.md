@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] update | 🧪 Barrido UAT — Inventario residual cerrado (over-receipt CON, kits, wall-to-wall) specs 74-76 — EN DEV
+
+**Pedido de GO:** cerrar Inventario residual al 100% (dejando evidencia). REGLA #0 stock, DB-verificado.
+- ✅ **74 `74_over_receipt_con_tope_mutante`** (L34): `permite_over_receipt=true`+`over_receipt_pct_max=10`, recibir 11 vs pedido 10 → ACEPTA (within +10%), stock 0→11, OC `recibida` (DB). Complementa spec 52 (SIN→bloquea). Env `E2E_OVER_RECEIPT_CON=1`. OC fixture (Sprite) queda de evidencia.
+- ✅ **75 `75_kit_desarmar_mutante`** (L12): desarmar 1 "Elite Pañuelos Super Pack x3" → KIT 40→39, componente "Elite Pañuelos" 140→**143** (+3, receta×3), `kitting_log` desarmado (DB). Valida la maquinaria kitting↔stock. L13 armar = inverso (flujo 2 pasos reservar→confirmar), mismo mecanismo. Env `E2E_KIT_DESARMAR=1`.
+- ✅ **76 `76_wall_to_wall_bloqueante_mutante`** (L24, cross-página): un `inventario_conteos` borrador con `bloquea_movimientos=true` en Norte → "Venta directa" en el POS **bloqueada** ("conteo wall-to-wall en curso"). Valida la pata POS de `useConteoBloqueante` (inventario/traslados comparten el hook). Env `E2E_WALL_TO_WALL=1`. **El conteo bloqueante se BORRÓ tras el test** (un bloqueo activo deja la sucursal sin operar → NO es evidencia útil, a diferencia de las transacciones que sí se dejan).
+- **#2 conteo gate/reconteo** = cubierto por unit (`conteoAjuste`) + el resultado del gate (autorización 2-actores) por specs 36/47/51; el e2e del flag es refinamiento. **Residual menor (no REGLA #0 crítico):** delta con venta intercalada, under-receipt + ajuste por rol, 2 recepciones parciales.
+
+**Inventario/Conteos — gaps REGLA #0 stock cerrados** (36/47/51/52/71/74/75/76 + traslados 30 + recepción 29/35 + unit extensivo). **Convención evidencia (GO):** las transacciones de prueba (ventas, recepciones, write-offs, desarmados) se DEJAN como evidencia UAT; solo se quitan los **estados bloqueantes activos** (conteo wall-to-wall) que deshabilitarían el tenant.
+
+---
+
 ## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC CERRADO 100% (specs 72/73 + incobrable SIN clave en Familia Otranto) — EN DEV
 
 **Pedido de GO:** cerrar Clientes/CC e Inventario al 100% usando los 2 tenants DEV (Jorgito + Familia Otranto, este último SIN clave) — "hacé y deshacé a gusto; mejor dejá la evidencia del UAT, no borres". ⇒ **a partir de acá NO se limpian los fixtures: quedan como evidencia.** (Al no deshacer, el stock queda naturalmente consistente — lo mutó la app, no SQL manual.)

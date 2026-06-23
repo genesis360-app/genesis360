@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] update | 🧪 Barrido UAT — Clientes/CC (revertir condonación) + Productos (alícuota Exento) — EN DEV
+
+**Pedido de GO:** "seguí con clientes y productos y luego pasá todo a DEV y PROD". 2 specs nuevos (REGLA #0, DB-verificado, fixtures reversibles):
+- ✅ **69 `69_cc_revertir_condonacion_mutante`** (Clientes/CC, ISS-151): revertir una venta CC condonada → quita el medio "Condonación CC" y recomputa `monto_pagado` con pagos reales → deuda restaurada ("falta pagar"). Fixture = cliente CC + venta condonada #247 ($5.000) + venta pendiente #248 ($3.000, para que el cliente aparezca en el tab CC). Env-gated `E2E_CC_REVERTIR=1`, fixture borrado. Complementa spec 39 (condonar).
+- ✅ **70 `70_producto_alicuota_exento_mutante`** (Productos, L49, REGLA #0 fiscal): alta de producto **Exento (0%)** → DB `alicuota_iva=0.00` (NO 21). Es el caso del bug `0 || 21` (0 falsy → 21%); el form usa `Number.isFinite(...) ? ... : 21`. Complementa spec 43 (10,5%). Producto de prueba borrado por SKU.
+
+**Cobertura:** Clientes/CC — revertir condonación cerrado; residual (crédito a favor positivo, vencimiento CC `cc_dias_vencimiento`, incobrable SIN clave) ya mayormente cubierto (morosidad/límite 46/49, condonar 39, incobrable CON clave 40) — necesitan fixtures de venta CC/POS pesados, documentados. Productos — núcleo fiscal de alícuotas cubierto (10,5 + 0); residual max_productos (límite de plan)/margen/variantes/bulk = no-fiscal, documentado.
+
+**▶ DEPLOY a PROD** (autorizado por GO): incluye el **fix de cuotas (G0.5, plata, frontend)** + los specs test-only acumulados. Sin migraciones nuevas. Ver entrada deploy abajo.
+
+---
+
 ## [2026-06-23] update | 🧪 Barrido UAT — Módulo GASTOS cerrado (comprobante oblig. + guards fiscales server-side) — EN DEV
 
 **Pedido de GO:** "seguí sin parar hasta terminar un módulo y luego otro, ambos al 100%; las decisiones para el final; pasá a dev cada tanto sin preguntar". Tras cerrar Caja/Bóveda, se cierra **Gastos** (`cobertura/03` §Gastos). REGLA #0 fiscal/contable.

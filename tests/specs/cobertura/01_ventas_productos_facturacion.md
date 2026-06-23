@@ -70,7 +70,7 @@ type: project
 | L47 | Cancelar reserva: penalidad % + destino (devolución/crédito) | `VentasPage.tsx:6551-6642` | 🔴(plata) | 🟡unit (cajaSeña) · ✅e2e 59 (crédito DB-verificado) |
 | L48 | Vencimiento de reservas (sweep) | `VentasPage.tsx:651`; cron-sweeps EF | 🔴(stock) | 🔴gap |
 | **Productos / Precios** |
-| L49 | Alta/edición producto + alícuota IVA (0/10,5/21/27); `Number.isFinite` no `||21` | `ProductoFormPage.tsx:384-441,960-967` | 🔴(fiscal) | ✅e2e 43 (10,5) · 🟡 resto alícuotas |
+| L49 | Alta/edición producto + alícuota IVA (0/10,5/21/27); `Number.isFinite` no `||21` | `ProductoFormPage.tsx:384-441,960-967` | 🔴(fiscal) | ✅e2e 43 (10,5) · ✅e2e 70 (**Exento 0% persiste 0, no 21** — el caso del bug `0\|\|21`) · 🟡 21/27 (mismo path) |
 | L50 | Margen (markup sobre neto) + precio sugerido por margen objetivo | `ProductoFormPage.tsx:321-337` | 🔴(plata) | 🔴gap |
 | L51 | Precio USD + cotización (toggle ARS/USD en form) | `ProductoFormPage.tsx:842-928`; `useCotizacion.ts` | 🔴(plata) | 🔴gap |
 | L52 | SKU autogenerado + unicidad por tenant | `ProductoFormPage.tsx:305-315,363-373`; `skuAuto.ts` | — | ✅unit (skuAuto) |

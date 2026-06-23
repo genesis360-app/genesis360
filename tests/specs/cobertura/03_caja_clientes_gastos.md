@@ -57,7 +57,7 @@
 | Aging de deuda por antigüedad (buckets) | `ccLogic.ts:agruparAgingCC` | ✅ | ✅unit |
 | Pseudo-métodos de pago (CC/condonación/incobrable excluidos de métricas) | `ccLogic.ts:PSEUDO_METODOS_PAGO`/`esMetodoRealPago` | ✅ | ✅unit |
 | Condonar deuda CC (write-off) | `ClientesPage.tsx:condonarDeudaCC:509-528` | ✅ | ✅e2e 39 |
-| Revertir condonación (restaurar deuda) | `ClientesPage.tsx:revertirDeudaCC:530-554` | ✅ | 🔴gap |
+| Revertir condonación (restaurar deuda) | `ClientesPage.tsx:revertirDeudaCC:530-554` | ✅ | ✅e2e 69 (revierte condonada → deuda $5.000 restaurada, medio "Condonación CC" removido) |
 | Dar de baja INCOBRABLE (condona todo + gasto pérdida + clave maestra) | `ClientesPage.tsx:confirmarIncobrable:558-599` | ✅ | ✅e2e 40 (CON clave) · 🔴 SIN clave |
 | Estado de cuenta PDF + link público con token | `ClientesPage.tsx:descargarEstadoCuenta`/`generarLinkCuenta:609-628` | — | 🔴gap (capa C) |
 | Vencimiento de venta CC = hoy + cc_dias_vencimiento | `VentasPage.tsx:2523-2526` | ✅ | 🔴gap |

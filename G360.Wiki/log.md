@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-24] deploy | 🚀 v1.87.0 EN PROD — barrido UAT Compras + RRHH 100% REGLA #0 + fixes migs 241/242
+
+**PROD = DEV = v1.87.0 (migs 001-242).** Deploy completo: migs 241+242 aplicadas y **verificadas en PROD** (`pagar_nomina_empleado` con `egreso_informativo` + gate de rol; hay un overload legacy `(uuid,uuid)` inerte, el frontend usa la firma de 3 args). PR #242 dev→main squash-merged (`a15c4de3`), release `v1.87.0` (`--latest`), dev re-sincronizado con main. typecheck + build verdes. **Nota:** el MCP de Supabase se desconectó al cierre → próximas validaciones DB cuando reconecte.
+
+---
+
 ## [2026-06-23] update | 🧪 Barrido UAT — Compras/OC/Envíos + RRHH/Config/Suscripción CERRADOS 100% REGLA #0 + 🛑 fix mig 241 + 2 follow-ups (migs 241+242) (v1.87.0 EN DEV)
 
 **Pedido de GO:** "sigamos con los pendientes, hagamos 2 módulos más de UAT al 100% sin parar." ⇒ los 2 módulos restantes del barrido. **DEV = v1.87.0 (migs 001-242).** PROD sigue en v1.86.0 ⏳ (deploy recomendado por los fixes REGLA #0).

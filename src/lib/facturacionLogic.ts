@@ -161,6 +161,42 @@ export function calcularImportes(items: ItemFacturable[], tipoComprobante: strin
   return { impNeto: d.totalNeto, impIVA: d.totalIVA, impTotal: d.impTotal, iva: d.iva }
 }
 
+// ── Prorrateo de descuento global sobre las líneas (REGLA #0 fiscal) ─────────────
+//
+// El POS aplica el "Descuento general" y el multi-combo sobre el TOTAL de la venta, no por línea
+// (`venta.total = subtotal − descuento_general − multi_combo`), y NO los prorratea en `venta_items`.
+// Tanto la factura (suma `venta_items.subtotal`) como la NC (usa `precio_unitario × cantidad`) suman
+// los ítems a precio PRE-descuento → emiten el comprobante por MÁS de lo que pagó el cliente
+// (factura + IVA débito inflados; NC que sobre-acredita). `prorratearDescuentoGlobal` reparte el
+// descuento global sobre las líneas para que sumen EXACTO lo que el cliente paga, dejando la cadena
+// (caja ↔ factura ↔ NC ↔ Libro IVA) consistente sobre un único número.
+
+/**
+ * Reparte un descuento global sobre los `subtotal` de los ítems para que sumen EXACTO `totalObjetivo`
+ * (= lo que el cliente paga, sin el envío). Recalcula `precio_unitario = subtotal / cantidad` para que
+ * la línea quede coherente (la factura suma `subtotal`; la NC usa `precio_unitario × cantidad` → ambas
+ * dan el mismo neto). El resto del redondeo se asigna al último ítem para que Σ = `totalObjetivo` exacto
+ * (evita AFIP 10048 "ImpTotal ≠ Σ" y que la factura difiera de lo asentado en caja).
+ *
+ * No-op si no hay diferencia (sin descuento global) → no toca las ventas que ya están bien.
+ */
+export function prorratearDescuentoGlobal<T extends ItemFacturable>(items: T[], totalObjetivo: number): T[] {
+  if (!items.length) return items
+  const subtotales = items.map(it => Number(it.subtotal ?? Number(it.precio_unitario) * Number(it.cantidad)))
+  const bruto = r2(subtotales.reduce((s, x) => s + x, 0))
+  if (!(bruto > 0) || !(totalObjetivo >= 0) || Math.abs(bruto - totalObjetivo) < 0.005) return items
+  const factor = totalObjetivo / bruto
+  const nuevos = subtotales.map(s => r2(s * factor))
+  // Asignar el resto del redondeo al último ítem para que la suma sea exacta.
+  const suma = r2(nuevos.reduce((s, x) => s + x, 0))
+  const resto = r2(totalObjetivo - suma)
+  if (Math.abs(resto) >= 0.005) nuevos[nuevos.length - 1] = r2(nuevos[nuevos.length - 1] + resto)
+  return items.map((it, i) => {
+    const cant = Number(it.cantidad) || 1
+    return { ...it, subtotal: nuevos[i], precio_unitario: r2(nuevos[i] / cant) }
+  })
+}
+
 // ── Documento del receptor (DocTipo/DocNro) + condición IVA ──────────────────────
 
 export interface ClienteReceptor {

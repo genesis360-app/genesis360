@@ -7,6 +7,7 @@ import {
   esComprobanteSinIVA,
   determinarReceptor,
   buildQrAfipUrl,
+  prorratearDescuentoGlobal,
   UMBRAL_FACTURA_B_DEFAULT,
 } from '@/lib/facturacionLogic'
 
@@ -243,3 +244,75 @@ describe('buildQrAfipUrl', () => {
     expect(p.nroDocRec).toBe(0)
   })
 })
+
+// ── G0.6 — Prorrateo de descuento global (REGLA #0 fiscal: factura/NC no deben sobre-facturar) ──
+// "Prueba con Factura B" a nivel cálculo (espejo de emitir-factura). Simula una venta con
+// "Descuento general" y verifica que, prorrateado, la factura y la NC dan el monto REALMENTE pagado.
+describe('prorratearDescuentoGlobal (G0.6 — descuento general en la factura/NC)', () => {
+  // Venta Factura B (21% IVA incluido): 2 líneas de $1.000 = subtotal $2.000.
+  // "Descuento general" 10% → el cliente paga $1.800 (venta.total).
+  const itemsBruto = [
+    { cantidad: 1, precio_unitario: 1000, subtotal: 1000, alicuota_iva: '21.00' },
+    { cantidad: 1, precio_unitario: 1000, subtotal: 1000, alicuota_iva: '21.00' },
+  ]
+  const totalPagado = 1800
+
+  it('FAC-DESC-01 BUG sin prorrateo: la Factura B se emite por el monto SIN descuento (sobre-factura)', () => {
+    const imp = calcularImportes(itemsBruto, 'B')
+    // El bug: ImpTotal = $2.000 (pre-descuento), no $1.800 → el cliente queda facturado de más.
+    expect(imp.impTotal).toBe(2000)
+    expect(imp.impTotal).not.toBe(totalPagado)
+  })
+
+  it('FAC-DESC-02 FIX: prorrateado, la Factura B se emite por lo realmente pagado ($1.800) con IVA correcto', () => {
+    const items = prorratearDescuentoGlobal(itemsBruto, totalPagado)
+    const imp = calcularImportes(items, 'B')
+    expect(imp.impTotal).toBe(1800)
+    // IVA débito sobre el neto YA descontado: 1800 − 1800/1.21 = 312.40 (no 347.11 del bruto).
+    expect(imp.impIVA).toBeCloseTo(312.40, 2)
+    expect(r(imp.impNeto + imp.impIVA)).toBe(1800)
+  })
+
+  it('FAC-DESC-03 consistencia con la NC: precio_unitario × cantidad = subtotal (la NC usa precio×qty)', () => {
+    const items = prorratearDescuentoGlobal(itemsBruto, totalPagado)
+    for (const it of items) {
+      expect(r(Number(it.precio_unitario) * Number(it.cantidad))).toBe(r(Number(it.subtotal)))
+    }
+    // La NC (emitir-factura mapea subtotal = precio_unitario × cantidad) acreditaría exacto lo facturado.
+    const totalNC = r(items.reduce((s, it) => s + Number(it.precio_unitario) * Number(it.cantidad), 0))
+    expect(totalNC).toBe(1800)
+  })
+
+  it('FAC-DESC-04 redondeo: Σ subtotales = total objetivo EXACTO (resto al último ítem, anti AFIP 10048)', () => {
+    // 3 líneas de $1.000 (subtotal $3.000), descuento que deja $2.000 → factor 0.6667 con resto.
+    const tres = [
+      { cantidad: 1, precio_unitario: 1000, subtotal: 1000, alicuota_iva: '21' },
+      { cantidad: 1, precio_unitario: 1000, subtotal: 1000, alicuota_iva: '21' },
+      { cantidad: 1, precio_unitario: 1000, subtotal: 1000, alicuota_iva: '21' },
+    ]
+    const items = prorratearDescuentoGlobal(tres, 2000)
+    const suma = r(items.reduce((s, it) => s + Number(it.subtotal), 0))
+    expect(suma).toBe(2000)
+    expect(calcularImportes(items, 'B').impTotal).toBe(2000)
+  })
+
+  it('FAC-DESC-05 no-op sin descuento: si el total ya coincide, no toca los ítems', () => {
+    const items = prorratearDescuentoGlobal(itemsBruto, 2000)
+    expect(items).toEqual(itemsBruto)
+  })
+
+  it('FAC-DESC-06 multi-alícuota: prorratea proporcional y mantiene el desglose por alícuota', () => {
+    // Línea 21% $1.000 + línea 10,5% $1.000 = $2.000; descuento → $1.000 pagado.
+    const mixto = [
+      { cantidad: 1, precio_unitario: 1000, subtotal: 1000, alicuota_iva: '21' },
+      { cantidad: 1, precio_unitario: 1000, subtotal: 1000, alicuota_iva: '10.5' },
+    ]
+    const items = prorratearDescuentoGlobal(mixto, 1000)
+    const imp = calcularImportes(items, 'B')
+    expect(imp.impTotal).toBe(1000)
+    expect(imp.iva.length).toBe(2)          // sigue habiendo 2 alícuotas
+    expect(r(imp.impNeto + imp.impIVA)).toBe(1000)
+  })
+})
+
+function r(n: number): number { return Math.round(n * 100) / 100 }

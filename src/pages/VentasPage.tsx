@@ -3135,7 +3135,11 @@ export default function VentasPage() {
           producto_id: item.producto_id,
           nombre: item.productos?.nombre ?? '',
           cantidad_original: maxLinea,
-          precio_unitario: item.precio_unitario,
+          // REGLA #0 (plata + fiscal) — la devolución reembolsa (caja) y la NC acreditan al precio
+          // EFECTIVO pagado (`subtotal/cantidad`), no al de lista. Para un ítem con descuento (combo o
+          // general) `precio_unitario` puede ser el de lista → usar `subtotal/cantidad` evita reembolsar/
+          // acreditar de más. Es consistente con el prorrateo del descuento general (v1.88.0/G0.6).
+          precio_unitario: Number(item.cantidad) > 0 ? Math.round((Number(item.subtotal) / Number(item.cantidad)) * 100) / 100 : Number(item.precio_unitario),
           tiene_series: esSerie,
           venta_series: (item.venta_series ?? []).map((vs: any) => ({
             serie_id: vs.serie_id,

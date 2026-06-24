@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-24] deploy | 🚀 v1.88.0 EN PROD — 🛑 fix REGLA #0 fiscal G0.6 (descuento general prorrateado en venta_items)
+
+**PROD = DEV = v1.88.0.** Code-audit del módulo Facturación (A) destapó **G0.6**: el "Descuento general" / multi-combo del POS reducía `venta.total` pero **NO** se prorrateaba en `venta_items` → la factura (suma `subtotal`) y la NC (usa `precio_unitario × cantidad`) salían por el monto **SIN** descuento ⇒ **sobre-facturaban** (factura + IVA débito inflados; NC sobre-acreditaba). **Decisión de GO:** el precio efectivo va en `venta_items` (deja factura↔NC↔caja↔Libro IVA consistentes sobre un número).
+
+**Fix (frontend-only, sin EF/migración):** `prorratearDescuentoGlobal()` en `facturacionLogic.ts` (espejo EF) + cableado en `VentasPage.registrarVenta`: con descuento global los `venta_items` se guardan con el precio EFECTIVO (prorrateado a `venta.total`, `descuento=0`). **NO-OP** para ventas sin descuento global → bajo riesgo.
+
+**Validación:** 6 unit tests de Factura B (FAC-DESC-01..06, 42/42 verdes) + **smoke real por la app (spec 82, Jorgito):** venta #247 con 10% de descuento general → `Σ venta_items.subtotal = venta.total = $1.080` (precio_unitario $1.080, descuento 0) — DB-verificado. **AFIP:** Kiosco Buildi (RI en DEV, mismo CUIT) emite Factura B con CAE real de homologación (#46-53) → AFIP acepta B para ese CUIT (la nota vieja "Mono no emite B" era pesimista).
+
+**🆕 2 hallazgos SEPARADOS (no tocados, a tratar aparte):**
+- **NC con descuento POR-ÍTEM (combos):** sin descuento global los `venta_items` siguen con `precio_unitario=lista`+`descuento=%`, y la EF arma la NC con `precio_unitario × cantidad` → **la NC de un ítem con descuento de combo acredita de más**. Mismo principio de fix (precio efectivo) pero cambia el display de TODAS las ventas con combo → decisión aparte.
+- **EF no chequea el error del UPDATE post-CAE** (`emitir-factura/index.ts:354`): si el UPDATE de `ventas` falla después de que AFIP autorizó, queda factura autorizada en AFIP sin registrar → re-emisión posible (doble factura). En homologación se observó AFIP adelante de la DB en Buildi. En PROD sería grave → endurecer (chequear error + alertar/reintentar, nunca `ok` en silencio).
+
+**🔧 Nota de tooling:** el MCP de Supabase se desconectó a nivel sesión (servidor ✓ sano); se trabajó con **`supabase db query --linked`** (CLI) que da el mismo acceso a DB (impersonación + ROLLBACK). La emisión de CAE por **script directo** a la EF resultó poco fiable (CAE truncado + venta sin persistir, incluso con usuario real) — el flujo del navegador SÍ persiste; el smoke fiscal real conviene hacerlo por la app.
+
+---
+
 ## [2026-06-24] deploy | 🚀 v1.87.0 EN PROD — barrido UAT Compras + RRHH 100% REGLA #0 + fixes migs 241/242
 
 **PROD = DEV = v1.87.0 (migs 001-242).** Deploy completo: migs 241+242 aplicadas y **verificadas en PROD** (`pagar_nomina_empleado` con `egreso_informativo` + gate de rol; hay un overload legacy `(uuid,uuid)` inerte, el frontend usa la firma de 3 args). PR #242 dev→main squash-merged (`a15c4de3`), release `v1.87.0` (`--latest`), dev re-sincronizado con main. typecheck + build verdes. **Nota:** el MCP de Supabase se desconectó al cierre → próximas validaciones DB cuando reconecte.

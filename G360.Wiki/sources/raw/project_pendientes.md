@@ -7,11 +7,17 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### 🟢 ARRANCÁ ACÁ (2026-06-24 · barrido UAT Compras+RRHH EN PROD · handoff para /clear)
-> **Estado:** **PROD = DEV = v1.87.0 (migs 001-242)** ✅ deployado (PR #242, release v1.87.0; migs 241+242 aplicadas y verificadas en PROD). build (tsc+vite) verde. v1.87.0 = barrido UAT Compras/OC/Envíos + RRHH/Config/Suscripción **+ 1 fix REGLA #0 (mig 241) + 2 follow-ups (mig 242 + devolución efectivo exige caja)** + 5 specs e2e (77-81).
+> **Estado:** **PROD = DEV = v1.88.0 (migs 001-242)** ✅. v1.88.0 = **fix REGLA #0 fiscal G0.6** (descuento general prorrateado en `venta_items` — factura+NC = lo pagado; frontend-only) + spec 82. v1.87.0 = barrido UAT Compras + RRHH 100% REGLA #0 + migs 241/242. build (tsc+vite) verde.
 >
 > **⚠️ Nota de sesión:** durante el cierre el MCP de Supabase se desconectó → la validación por `execute_sql`/impersonación quedó no disponible. Para los próximos módulos retomar el patrón DB-impersonación cuando el MCP vuelva.
 >
-> **🛑 HALLAZGO REGLA #0 FISCAL ABIERTO (code-audit 2026-06-24, módulo A Facturación) — G0.6:** el **descuento general** y el **multi-combo** del POS reducen `venta.total` pero **NO** se prorratean en `venta_items` → la EF `emitir-factura` (que suma ítems) emite el CAE por el monto **SIN** descuento ⇒ una venta con "Descuento general" que se factura **sobre-factura** (factura e IVA A/B inflados vs lo que pagó el cliente). Detalle + 2 opciones de fix en `tests/specs/cobertura/01_…md` §Tanda 0 G0.6. **No tocado** (es fiscal: requiere decisión de GO sobre el tratamiento + smoke en homologación, bloqueado por MCP/AFIP). Mitigación: no combinar "Descuento general" con factura (usar descuentos por-ítem). **▶ DECISIÓN PARA GO:** (a) prorratear en `venta_items` al vender (frontend-only) o (b) prorratear en la EF (cambio fiscal + homologación).
+> **✅ G0.6 RESUELTO Y EN PROD (v1.88.0):** el descuento general/multi-combo ahora se **prorratea en `venta_items`** (precio efectivo, `descuento=0`) → factura y NC = lo que paga el cliente. Validado: 6 unit tests Factura B + smoke real app (spec 82, venta #247: `Σ venta_items = total = $1.080`). NO-OP sin descuento global. Detalle en `cobertura/01` §Tanda 0 G0.6.
+>
+> **🆕 2 HALLAZGOS FISCALES ABIERTOS (de la auditoría de Facturación, a tratar — NO bloqueantes):**
+> 1. **NC con descuento POR-ÍTEM (combos):** sin descuento global, la EF arma la NC con `precio_unitario × cantidad` a precio de LISTA → la NC de un ítem con descuento de combo **acredita de más**. Fix = mismo principio (precio efectivo en venta_items siempre) pero cambia el display de todas las ventas con combo → **decisión de GO**.
+> 2. **EF no chequea el error del UPDATE post-CAE** (`emitir-factura/index.ts:354`): si el UPDATE de `ventas` falla tras autorizar AFIP, queda **factura autorizada sin registrar** → re-emisión/doble factura posible. En homologación se vio AFIP adelante de la DB (Buildi). **Endurecer** (chequear error + alertar/reintentar). **REGLA #0 en PROD.**
+>
+> **🔧 Tooling:** MCP Supabase se cayó a nivel sesión (servidor OK) → usar **`supabase db query --linked`** (CLI, mismo acceso DB + impersonación/ROLLBACK). Emisión de CAE por **script directo** a la EF = poco fiable (CAE truncado, no persiste); el smoke fiscal real va por la **app** (navegador) o e2e.
 >
 > **🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — pago de nómina por medio NO-efectivo:** `pagar_nomina_empleado` asentaba SIEMPRE `caja_movimientos` **`egreso`** (afecta el arqueo de EFECTIVO) sin importar el medio. La UI ofrece efectivo/transferencia/MP → pagar por transferencia o MP **descuadraba el efectivo** de la caja (restaba plata que nunca salió del cajón). **Fix:** efectivo→`egreso`, no-efectivo→`egreso_informativo`. **DB-validado (los 3 medios) + spec 81.** ⇒ **deploy a PROD recomendado.**
 >

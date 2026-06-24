@@ -11,6 +11,8 @@ type: project
 >
 > **⚠️ Nota de sesión:** durante el cierre el MCP de Supabase se desconectó → la validación por `execute_sql`/impersonación quedó no disponible. Para los próximos módulos retomar el patrón DB-impersonación cuando el MCP vuelva.
 >
+> **🛑 HALLAZGO REGLA #0 FISCAL ABIERTO (code-audit 2026-06-24, módulo A Facturación) — G0.6:** el **descuento general** y el **multi-combo** del POS reducen `venta.total` pero **NO** se prorratean en `venta_items` → la EF `emitir-factura` (que suma ítems) emite el CAE por el monto **SIN** descuento ⇒ una venta con "Descuento general" que se factura **sobre-factura** (factura e IVA A/B inflados vs lo que pagó el cliente). Detalle + 2 opciones de fix en `tests/specs/cobertura/01_…md` §Tanda 0 G0.6. **No tocado** (es fiscal: requiere decisión de GO sobre el tratamiento + smoke en homologación, bloqueado por MCP/AFIP). Mitigación: no combinar "Descuento general" con factura (usar descuentos por-ítem). **▶ DECISIÓN PARA GO:** (a) prorratear en `venta_items` al vender (frontend-only) o (b) prorratear en la EF (cambio fiscal + homologación).
+>
 > **🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — pago de nómina por medio NO-efectivo:** `pagar_nomina_empleado` asentaba SIEMPRE `caja_movimientos` **`egreso`** (afecta el arqueo de EFECTIVO) sin importar el medio. La UI ofrece efectivo/transferencia/MP → pagar por transferencia o MP **descuadraba el efectivo** de la caja (restaba plata que nunca salió del cajón). **Fix:** efectivo→`egreso`, no-efectivo→`egreso_informativo`. **DB-validado (los 3 medios) + spec 81.** ⇒ **deploy a PROD recomendado.**
 >
 > **▶ DÓNDE QUEDAMOS — UAT EXHAUSTIVO, módulos CERRADOS al 100% REGLA #0** (todo DB-verificado, 2 tenants DEV):

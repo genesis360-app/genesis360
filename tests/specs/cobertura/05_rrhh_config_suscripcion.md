@@ -198,9 +198,12 @@ con montos ✅unit (no tocan caja/CC/stock/fiscal hasta pagarse por Gastos, que 
   `egreso_informativo` (no afecta efectivo) con concepto `[Transferencia]/[Mercado Pago] …`. **DB-validado**
   (impersonación + ROLLBACK, los 3 medios) + **spec 81** (regresión e2e) + spec 50 (efectivo, previo).
 - **G2/L31 — Doble validación de nómina** (`puedeAprobarNomina`, flags `rrhh_nomina_doble_validacion` +
-  `_supervisor_aprueba`): **gate client-side de autorización** (code-verified, `RrhhPage:1027-1037`). Consistente
-  con la decisión de descuento-por-rol: **autorización que NO rompe integridad** (la plata se asienta correcta
-  igual) queda client-side. *Decisión abierta para GO:* ¿hardening server-side del gate de nómina (como OC)?
+  `_supervisor_aprueba`): ✅ **HARDENING SERVER-SIDE (mig 242, v1.87.0):** el RPC `pagar_nomina_empleado` (que
+  mueve la plata) ahora **enforcea el gate en el server** — con el flag ON, solo DUEÑO/ADMIN (o SUPERVISOR si
+  `_supervisor_aprueba`) puede pagar; un CAJERO recibe "Requiere aprobación de DUEÑO/ADMIN". **DB-validado**:
+  CON flag CAJERO→bloqueado, DUEÑO→procede; SIN flag (default) cualquiera procede (backward-compat). Ya no es
+  bypasseable por bundle cacheado / API. (`generarGastoNomina`/`generarCargasSociales` siguen con gate
+  client-side: crean gastos PENDIENTES, no mueven caja → no es integridad estricta.)
 - **G3/L26 — Tardanza descontada en la liquidación** ✅ code-verified (`crearLiquidacion`:879-893 lee
   `rrhh_tardanza_modo/_tolerancia_min/_horas_mes_base` + fichadas del período → `minutosTardeFacturables` +
   `sueldoHora` + `descuentoTardanza`, todos ✅unit; empuja ítem DESCUENTO y recomputa neto). Sin caja.

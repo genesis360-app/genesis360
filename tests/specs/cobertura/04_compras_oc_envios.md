@@ -152,9 +152,11 @@ Todos los gaps de plata/stock del §3 quedaron cubiertos. Método: impersonació
   ✅unit). Como OWNER no aplica; un rol no-supervisor recibe ≠ pedido → bloquea.
 - **L24/L25 — Devolución credito_cc** ✅ spec 33.
 - **L26 — Devolución efectivo** ✅ **spec 77** (ingreso a caja + rebaja stock FIFO + `ajuste_rebaje`).
-  ⚠️ **HALLAZGO REGLA #0 (avisado a GO):** **sin caja abierta**, el reembolso en efectivo **NO se asienta**
-  (solo toast), pero la devolución igual se confirma → plata fuera del arqueo. Mismo patrón del bug venta #26
-  (v1.74.0). Rec: exigir caja abierta para efectivo (como cobranza CC `requiereCaja`) o asentar a la única caja.
+  ✅ **HALLAZGO RESUELTO (v1.87.0):** el reembolso en efectivo ahora **EXIGE una caja OPERATIVA abierta**
+  (excluye la bóveda) **ANTES** de rebajar stock; sin caja **BLOQUEA** con un toast que incluye un **link a Caja**
+  ("Abrí una caja") para abrir una en el momento (`ProveedoresPage.confirmarDevolucion`). Cierra el hueco de
+  "plata fuera del arqueo" (mismo patrón del bug venta #26). El reembolso se asienta en la caja operativa, no
+  en la bóveda (corregía un bug latente: `cajasAbiertasProv[0]` podía ser la bóveda).
 - **L27 — Devolución reposición** ✅ **spec 78** (crea OC borrador con ítems + rebaja stock + `oc_reposicion_id`).
 - **L14 — Rechazo de cheque (brazo OC)** ✅ **DB-validado** (réplica `ChequesPanel.cambiarEstado`/`reversionPagoOC`,
   ROLLBACK): OC `monto_pagado`→0, `estado_pago`→`pendiente_pago`, `proveedor_cc` `ajuste` (+monto, deuda

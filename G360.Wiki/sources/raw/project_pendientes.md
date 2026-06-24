@@ -19,10 +19,11 @@ type: project
 > - **🆕 Compras/OC/Envíos** ✅ **CERRADO** (`cobertura/04`): pago OC contable+doble firma (RPC mig237, matriz DB), pago courier+doble firma (RPC mig238, DB + nota fiscal IVA), over/under-receipt (52/74 + **79** motivo + rol code-verified), devolución efectivo/reposición (**77/78** + hallazgo no-caja), rechazo cheque brazo OC (**80** + DB + unit).
 > - **🆕 RRHH/Config/Suscripción** ✅ **CERRADO** (`cobertura/05`): pago nómina caja (spec50+**mig241 fix**+**81**), tardanza/cargas/SAC/liq-final (✅unit + gastos pending, sin caja), doble validación = autorización UI, plan/Config = gating/autorización client-side.
 >
+> **✅ 2 follow-ups de GO RESUELTOS (en v1.87.0, migs 241+242):** (a) **devolución a proveedor en efectivo** ahora **exige caja operativa abierta** (excluye bóveda) ANTES de rebajar stock; sin caja BLOQUEA con toast + **link a Caja** ("Abrí una caja"). (b) **doble validación de nómina** ahora **server-side** (mig 242: `pagar_nomina_empleado` enforcea rol con el flag ON; CAJERO bloqueado). Ambos DB-validados.
+>
 > **▶ PRÓXIMA SESIÓN (lo que queda del barrido):**
-> 1. **DEPLOY v1.87.0 a PROD** (mig 241 + specs) — recomendado por el fix REGLA #0. Checklist en CLAUDE.md.
+> 1. **DEPLOY v1.87.0 a PROD** (migs 241+242 + specs + 2 follow-ups) — recomendado por los fixes REGLA #0.
 > 2. **Residual menor no-crítico** (no REGLA #0 estricto): Inventario — conteo gate flag e2e, armar-kit (2 pasos), delta con venta intercalada, 2 recepciones parciales; Compras/Envíos — `oc_numeracion` por valor, `recepcion_remito_obligatorio`, costo→`precio_costo`, alerta anticipo-OC, cobro al cliente por política, `envio_identidad/notif/peso/rangos` (UX); Ventas — `cliente_consumidor_final=false`, `reglas_canal.requiere_cliente/lista_precio`, sweep reservas.
-> 3. **Decisiones abiertas para GO (no bloqueantes):** (a) devolución a proveedor en efectivo sin caja → ¿exigir caja como cobranza CC? (b) ¿hardening server-side del gate de doble validación de nómina (hoy client-side)?
 >
 > **🧰 Harness e2e (2 tenants DEV, GO autoriza hacer/deshacer libremente):**
 > - **Almacén Jorgito** `3769b1db-10f4-46a6-bc7f-eb669307730d` — clave maestra **12345678**, facturación ON, Sucursal Norte `b56742a9-c3a2-488e-b344-086227ef396e`. Usuarios OWNER (`e2e@genesis360.test`, project `chromium`) + cajero/supervisor/rrhh/deposito/contador. **Cierres contables reales hasta 2026-04 (no tocar en fixtures).**

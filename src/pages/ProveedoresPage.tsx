@@ -1200,6 +1200,30 @@ export default function ProveedoresPage() {
       items: itemsSel.map(x => ({ ...x, stockDisponible: stockMap[x.producto_id] ?? 0 })) })
     if (!val.ok) { toast.error(val.error!); return }
 
+    // REGLA #0 — el reembolso en EFECTIVO exige una caja OPERATIVA abierta (excluye la bóveda). Sin caja
+    // el ingreso no se asienta y queda plata fuera del arqueo → bloquear ANTES de rebajar stock, con link a Caja.
+    let cajaReembolsoId: string | null = null
+    if (devForma === 'efectivo') {
+      const { data: cajasOper } = await supabase.from('caja_sesiones')
+        .select('id, cajas(es_caja_fuerte)').eq('tenant_id', tenant!.id).is('cerrada_at', null)
+      cajaReembolsoId = (cajasOper ?? []).find((s: any) => !s.cajas?.es_caja_fuerte)?.id ?? null
+      if (!cajaReembolsoId) {
+        toast.error((t) => (
+          <span>
+            No hay una caja abierta para asentar el reembolso en efectivo.{' '}
+            <button
+              onClick={() => { toast.dismiss(t.id); navigate('/caja') }}
+              className="underline font-semibold"
+            >
+              Abrí una caja
+            </button>{' '}
+            y reintentá (o elegí otra forma de reembolso).
+          </span>
+        ), { duration: 9000 })
+        return
+      }
+    }
+
     setDevGuardando(true)
     try {
       const monto = montoDevolucion(itemsSel)
@@ -1238,16 +1262,13 @@ export default function ProveedoresPage() {
           descripcion: `Devolución a proveedor (OC #${oc.numero}) — crédito a favor`, created_by: user?.id,
         })
       } else if (devForma === 'efectivo') {
-        cajaSesionId = (cajasAbiertasProv as any[])[0]?.id ?? null
-        if (cajaSesionId) {
-          await supabase.from('caja_movimientos').insert({
-            tenant_id: tenant!.id, sesion_id: cajaSesionId, tipo: 'ingreso', monto,
-            concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
-            usuario_id: user?.id,
-          })
-        } else {
-          toast(`⚠ Sin caja abierta — el reembolso en efectivo de $${monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} no se registró en caja`, { icon: '⚠' })
-        }
+        // cajaReembolsoId está garantizada (el guard de arriba bloquea si no hay caja operativa abierta)
+        cajaSesionId = cajaReembolsoId
+        await supabase.from('caja_movimientos').insert({
+          tenant_id: tenant!.id, sesion_id: cajaSesionId, tipo: 'ingreso', monto,
+          concepto: `Reembolso devolución a proveedor — ${oc.proveedores?.nombre ?? ''} (OC #${oc.numero})`,
+          usuario_id: user?.id,
+        })
       } else if (devForma === 'reposicion') {
         const { data: newOC, error: ocErr } = await supabase.from('ordenes_compra').insert({
           tenant_id: tenant!.id, proveedor_id: oc.proveedor_id, numero: 0, estado: 'borrador',

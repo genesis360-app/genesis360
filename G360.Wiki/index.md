@@ -61,7 +61,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/database/schema-overview]] | Tablas principales, relaciones, convenciones | ✅ |
-| [[wiki/database/migraciones]] | DEV 001–241 · PROD 001–240 (⏳ 241) · descripción completa (231 paridad · 232 fix seed · 233 clave maestra HASHEADA — v1.80.2 · **234-238 guards server-side de plata — v1.81.0**: 234 cc_guard · 235 rol write-off · 236 `marcar_incobrable` · 237 `registrar_pago_oc` · 238 `marcar_envios_pagados` · 239 caja preferida · 240 limpieza · **241 🛑 FIX REGLA #0 pago nómina no-efectivo→`egreso_informativo` — v1.87.0**) | ✅ |
+| [[wiki/database/migraciones]] | DEV 001–242 · PROD 001–240 (⏳ 241-242) · descripción completa (231 paridad · 232 fix seed · 233 clave maestra HASHEADA — v1.80.2 · **234-238 guards server-side de plata — v1.81.0**: 234 cc_guard · 235 rol write-off · 236 `marcar_incobrable` · 237 `registrar_pago_oc` · 238 `marcar_envios_pagados` · 239 caja preferida · 240 limpieza · **241 🛑 FIX REGLA #0 pago nómina no-efectivo→`egreso_informativo` · 242 🔐 doble validación de nómina server-side — v1.87.0**) | ✅ |
 | [[wiki/database/rls-policies]] | Patrón subquery, funciones helper, Storage, Edge Functions | ✅ |
 | [[wiki/database/triggers]] | Stock, numeración, integraciones, nómina, stock mínimo | ✅ |
 

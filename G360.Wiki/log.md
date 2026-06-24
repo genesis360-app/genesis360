@@ -6,9 +6,13 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-23] update | 🧪 Barrido UAT — Compras/OC/Envíos + RRHH/Config/Suscripción CERRADOS 100% REGLA #0 + 🛑 fix mig 241 (v1.87.0 EN DEV)
+## [2026-06-23] update | 🧪 Barrido UAT — Compras/OC/Envíos + RRHH/Config/Suscripción CERRADOS 100% REGLA #0 + 🛑 fix mig 241 + 2 follow-ups (migs 241+242) (v1.87.0 EN DEV)
 
-**Pedido de GO:** "sigamos con los pendientes, hagamos 2 módulos más de UAT al 100% sin parar." ⇒ los 2 módulos restantes del barrido. **DEV = v1.87.0 (migs 001-241).** PROD sigue en v1.86.0 ⏳ (deploy recomendado por el fix REGLA #0).
+**Pedido de GO:** "sigamos con los pendientes, hagamos 2 módulos más de UAT al 100% sin parar." ⇒ los 2 módulos restantes del barrido. **DEV = v1.87.0 (migs 001-242).** PROD sigue en v1.86.0 ⏳ (deploy recomendado por los fixes REGLA #0).
+
+**✅ 2 follow-ups de GO RESUELTOS (mismo v1.87.0):**
+- **(a) Devolución a proveedor en efectivo exige caja** (`ProveedoresPage.confirmarDevolucion`): ahora chequea una caja OPERATIVA abierta (excluye la bóveda) **ANTES** de rebajar stock; sin caja **BLOQUEA** con un toast que lleva un **link a `/caja`** ("Abrí una caja"). Cierra el hueco de plata fuera del arqueo + corrige un bug latente (el reembolso podía asentarse en la bóveda porque `cajasAbiertasProv[0]` la incluía).
+- **(b) Doble validación de nómina server-side (mig 242):** `pagar_nomina_empleado` enforcea el rol en el server (flag ON → solo DUEÑO/ADMIN, o SUPERVISOR si `_supervisor_aprueba`; CAJERO bloqueado). DB-validado CON/SIN flag. Antes era solo client-side (bypasseable). Elegido como lo mejor para el cliente (un cajero no puede pagar nómina por API).
 
 **🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — pago de nómina por medio NO-efectivo:** `pagar_nomina_empleado` (mig 145) insertaba SIEMPRE un `caja_movimientos` **`egreso`** (que afecta el arqueo de EFECTIVO) sin importar `p_medio_pago`. La UI de RRHH ofrece efectivo/transferencia_banco/mp → pagar una nómina por **transferencia o MP descuadraba el efectivo** de la caja (restaba del cajón plata que nunca salió). **Fix:** efectivo→`egreso`; no-efectivo→`egreso_informativo` (no afecta efectivo) con concepto `[Transferencia]/[Mercado Pago] …` (espeja `registrar_pago_oc`/`marcar_envios_pagados`). **DB-validado** por impersonación+ROLLBACK los 3 medios (efectivo→egreso, transferencia→egreso_informativo, mp→egreso_informativo) + **spec 81** (regresión e2e). `schema_full.sql` actualizado a la def final (incluye también el saldo-traspasos de mig 145, que el dump tenía viejo).
 

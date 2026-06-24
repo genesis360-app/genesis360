@@ -6,6 +6,31 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-23] update | 🧪 Barrido UAT — Compras/OC/Envíos + RRHH/Config/Suscripción CERRADOS 100% REGLA #0 + 🛑 fix mig 241 (v1.87.0 EN DEV)
+
+**Pedido de GO:** "sigamos con los pendientes, hagamos 2 módulos más de UAT al 100% sin parar." ⇒ los 2 módulos restantes del barrido. **DEV = v1.87.0 (migs 001-241).** PROD sigue en v1.86.0 ⏳ (deploy recomendado por el fix REGLA #0).
+
+**🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — pago de nómina por medio NO-efectivo:** `pagar_nomina_empleado` (mig 145) insertaba SIEMPRE un `caja_movimientos` **`egreso`** (que afecta el arqueo de EFECTIVO) sin importar `p_medio_pago`. La UI de RRHH ofrece efectivo/transferencia_banco/mp → pagar una nómina por **transferencia o MP descuadraba el efectivo** de la caja (restaba del cajón plata que nunca salió). **Fix:** efectivo→`egreso`; no-efectivo→`egreso_informativo` (no afecta efectivo) con concepto `[Transferencia]/[Mercado Pago] …` (espeja `registrar_pago_oc`/`marcar_envios_pagados`). **DB-validado** por impersonación+ROLLBACK los 3 medios (efectivo→egreso, transferencia→egreso_informativo, mp→egreso_informativo) + **spec 81** (regresión e2e). `schema_full.sql` actualizado a la def final (incluye también el saldo-traspasos de mig 145, que el dump tenía viejo).
+
+**Compras/OC/Envíos — CERRADO (REGLA #0, DB-verificado, `cobertura/04`):**
+- **Pago de OC contable + doble firma** (RPC `registrar_pago_oc` mig 237) — matriz completa por impersonación+ROLLBACK: efectivo→`egreso`+`proveedor_cc` pago+OC estado; no-efectivo→`egreso_informativo`+cuenta_origen; CC→`oc` (+monto, venc) sin caja; saldo excedido bloquea; CONTADOR bloqueado por rol; doble firma clave mala/ok/**sin-clave→bloquea** (bug latente cerrado server-side).
+- **Pago a courier + doble firma** (RPC `marcar_envios_pagados` mig 238) — gasto Flete + caja `egreso` + marca pagado; `genera_gasto=false`→sin gasto/caja; doble firma idéntica. 📌 nota fiscal: el flete genera gasto sin `tipo_comprobante` → `fn_gastos_iva_guard` (mig 227) anula IVA crédito salvo RI+Factura A (correcto p/Monotributo, conservador p/RI).
+- **Recepción:** over-receipt 52/74; **79** under-receipt sin motivo→bloquea; ajuste-cantidad→SUPERVISOR+ code-verified (`RecepcionesPage:466`).
+- **Devolución a proveedor:** credito_cc 33; **77** efectivo (ingreso caja + rebaja FIFO); **78** reposición (OC borrador + rebaja). ⚠️ **HALLAZGO:** devolución efectivo **sin caja abierta** no asienta el reembolso (solo toast) → plata fuera del arqueo (mismo patrón venta #26). Decisión a GO: exigir caja como cobranza CC.
+- **Rechazo cheque (brazo OC)** (`ChequesPanel`/`reversionPagoOC`): **80** + DB-validado (OC monto_pagado→0, estado→pendiente_pago, `proveedor_cc` ajuste +monto) + ✅unit + spec 31 (brazo gasto).
+
+**RRHH/Config/Suscripción — CERRADO (REGLA #0, `cobertura/05`):**
+- **Pago de nómina (caja):** spec 50 (efectivo) + **mig 241 fix** (no-efectivo) + **81**. Único hueco de integridad del grupo (plata en caja) → encontrado y arreglado.
+- **Doble validación de nómina** (`puedeAprobarNomina`): gate **client-side de autorización** (code-verified) — consistente con la decisión de descuento-por-rol (autorización que no rompe integridad queda client-side). *Decisión a GO: ¿hardening server-side?*
+- **Tardanza descontada (G3):** code-verified (`crearLiquidacion` lee flags + fichadas → fns ✅unit → ítem DESCUENTO + neto recomputado). **Cargas/SAC/liq-final:** montos ✅unit → gastos pendientes (no caja). **Anticipos:** gasto pendiente.
+- **Suscripción/plan + Config:** gating/autorización client-side (`usePlanLimits` ✅unit + `PlanLimitModal`; `canEdit`=DUEÑO; clave maestra ✅ e2e 41). Tier de facturación, no integridad estricta.
+
+**Specs e2e nuevos (77-81, env-gated, parse-verified):** 77 devolución efectivo, 78 devolución reposición, 79 under-receipt motivo, 80 rechazo cheque OC, 81 nómina no-efectivo→egreso_informativo. Método: impersonación SQL del RPC (autoridad server-side) + specs e2e como regresión; fixtures documentados en cada spec.
+
+**▶ Sigue:** **deployar v1.87.0 a PROD** (mig 241, fix REGLA #0). Luego residual menor no-crítico. AFIP §29 sigue bloqueado por trámite de GO.
+
+---
+
 ## [2026-06-23] deploy | 🚀 v1.86.0 EN PROD — barrido UAT Clientes/CC 100% + Inventario residual (specs 69-76) — test-only, sin migración
 
 **Pedido de GO:** "pasemos todo a DEV y PROD así hacemos /clear y arrancamos nueva sesión con los pendientes." Deploy **test-only + wiki** — **NO hay cambios de `src/` desde v1.85.0** (el fix de cuotas G0.5 ya fue en v1.85.0). PROD = DEV = migs 001-240. Bump APP_VERSION → v1.86.0 (marca el hito del barrido; sin cambio de comportamiento). Build verde, PR dev→main, merge, release.

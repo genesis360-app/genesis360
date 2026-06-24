@@ -6,21 +6,23 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-23 · post-deploy v1.86.0 · handoff para /clear)
-> **Estado:** **PROD = DEV = v1.86.0 (migs 001-240)**. Repo limpio, todo pusheado. build (tsc+vite) verde. v1.86.0 = barrido UAT **test-only + wiki** (sin cambios de `src/` desde v1.85.0; el fix de cuotas G0.5 ya está en PROD desde v1.85.0).
+> ### 🟢 ARRANCÁ ACÁ (2026-06-23 · barrido UAT Compras+RRHH · v1.87.0 EN DEV · handoff para /clear)
+> **Estado:** **DEV = v1.87.0 (migs 001-241)**. **PROD = v1.86.0 (migs 001-240)** ⏳ **falta deployar v1.87.0 a PROD** (incluye **mig 241**, un fix REGLA #0 — ver abajo). build (tsc+vite) verde. v1.87.0 = barrido UAT Compras/OC/Envíos + RRHH/Config/Suscripción **+ 1 fix REGLA #0 real (mig 241)** + 5 specs e2e (77-81).
+>
+> **🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — pago de nómina por medio NO-efectivo:** `pagar_nomina_empleado` asentaba SIEMPRE `caja_movimientos` **`egreso`** (afecta el arqueo de EFECTIVO) sin importar el medio. La UI ofrece efectivo/transferencia/MP → pagar por transferencia o MP **descuadraba el efectivo** de la caja (restaba plata que nunca salió del cajón). **Fix:** efectivo→`egreso`, no-efectivo→`egreso_informativo`. **DB-validado (los 3 medios) + spec 81.** ⇒ **deploy a PROD recomendado.**
 >
 > **▶ DÓNDE QUEDAMOS — UAT EXHAUSTIVO, módulos CERRADOS al 100% REGLA #0** (todo DB-verificado, 2 tenants DEV):
 > - **Ventas/POS Tanda A+B** ✅ (45-63 + FAC-27; salvo §29 AFIP, bloqueado por GO).
-> - **Caja/Bóveda** ✅ (64-67).
-> - **Gastos** ✅ (68 + guards server-side IVA/período-cerrado DB-validated).
-> - **Clientes/CC** ✅ 100% (28/39/40/46/49 + **69** revertir + **72** vencimiento CC + **73** crédito positivo + **incobrable SIN clave** DB-validated en Familia Otranto).
-> - **Productos** núcleo fiscal ✅ (43 + **70** alícuota Exento).
-> - **Inventario/Conteos** ✅ (29/30/35/36/47/51/52 + **71** rebaje no-negativo + **74** over-receipt CON + **75** kit desarmar + **76** wall-to-wall + unit extensivo).
+> - **Caja/Bóveda** ✅ (64-67). **Gastos** ✅ (68 + guards IVA/período-cerrado).
+> - **Clientes/CC** ✅ (28/39/40/46/49 + 69/72/73 + incobrable SIN clave).
+> - **Productos** ✅ (43 + 70 Exento). **Inventario/Conteos** ✅ (29/30/35/36/47/51/52 + 71/74/75/76 + unit).
+> - **🆕 Compras/OC/Envíos** ✅ **CERRADO** (`cobertura/04`): pago OC contable+doble firma (RPC mig237, matriz DB), pago courier+doble firma (RPC mig238, DB + nota fiscal IVA), over/under-receipt (52/74 + **79** motivo + rol code-verified), devolución efectivo/reposición (**77/78** + hallazgo no-caja), rechazo cheque brazo OC (**80** + DB + unit).
+> - **🆕 RRHH/Config/Suscripción** ✅ **CERRADO** (`cobertura/05`): pago nómina caja (spec50+**mig241 fix**+**81**), tardanza/cargas/SAC/liq-final (✅unit + gastos pending, sin caja), doble validación = autorización UI, plan/Config = gating/autorización client-side.
 >
-> **▶ PRÓXIMA SESIÓN (lo que sigue del barrido):**
-> 1. **Compras/OC/Envíos** — `tests/specs/cobertura/04_compras_oc_envios.md`.
-> 2. **RRHH/Config/Suscripción** — `tests/specs/cobertura/05_rrhh_config_suscripcion.md`.
-> 3. **Residual menor no-crítico** (no REGLA #0 estricto, dejar para el final): Inventario — conteo gate flag e2e, armar-kit (flujo 2 pasos), delta con venta intercalada, under-receipt por rol, 2 recepciones parciales; Ventas — `cliente_consumidor_final=false`, `reglas_canal.requiere_cliente/lista_precio`, sweep reservas vencidas.
+> **▶ PRÓXIMA SESIÓN (lo que queda del barrido):**
+> 1. **DEPLOY v1.87.0 a PROD** (mig 241 + specs) — recomendado por el fix REGLA #0. Checklist en CLAUDE.md.
+> 2. **Residual menor no-crítico** (no REGLA #0 estricto): Inventario — conteo gate flag e2e, armar-kit (2 pasos), delta con venta intercalada, 2 recepciones parciales; Compras/Envíos — `oc_numeracion` por valor, `recepcion_remito_obligatorio`, costo→`precio_costo`, alerta anticipo-OC, cobro al cliente por política, `envio_identidad/notif/peso/rangos` (UX); Ventas — `cliente_consumidor_final=false`, `reglas_canal.requiere_cliente/lista_precio`, sweep reservas.
+> 3. **Decisiones abiertas para GO (no bloqueantes):** (a) devolución a proveedor en efectivo sin caja → ¿exigir caja como cobranza CC? (b) ¿hardening server-side del gate de doble validación de nómina (hoy client-side)?
 >
 > **🧰 Harness e2e (2 tenants DEV, GO autoriza hacer/deshacer libremente):**
 > - **Almacén Jorgito** `3769b1db-10f4-46a6-bc7f-eb669307730d` — clave maestra **12345678**, facturación ON, Sucursal Norte `b56742a9-c3a2-488e-b344-086227ef396e`. Usuarios OWNER (`e2e@genesis360.test`, project `chromium`) + cajero/supervisor/rrhh/deposito/contador. **Cierres contables reales hasta 2026-04 (no tocar en fixtures).**

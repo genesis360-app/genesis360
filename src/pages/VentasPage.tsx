@@ -17,7 +17,7 @@ import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type Fac
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
 import { FRECUENCIAS, frecuenciaLabel, proximaFecha, estaVencida, totalRecurrente, type RecurrenteItemSnapshot } from '@/lib/ventasRecurrentes'
-import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
+import { detectarTipoComprobante, tiposComprobantePermitidos, prorratearDescuentoGlobal } from '@/lib/facturacionLogic'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useGruposEstados } from '@/hooks/useGruposEstados'
@@ -2598,9 +2598,28 @@ export default function VentasPage() {
       }
 
       // ─── Fase 1: batch insert venta_items ────────────────────────────────────
-      const itemPayloads = cart.map(item => {
+      // G0.6 (REGLA #0 fiscal) — el "Descuento general" y el multi-combo reducen `total` pero no estaban
+      // en los `venta_items` → la factura (suma `subtotal`) y la NC (usa `precio_unitario × cantidad`)
+      // salían por el monto SIN descuento (sobre-facturaban). Acá se prorratea el descuento global sobre
+      // las líneas para que sumen EXACTO `total` (= lo que paga el cliente), dejando `precio_unitario` y
+      // `subtotal` como el precio EFECTIVO → factura, NC, caja y Libro IVA consistentes sobre un número.
+      const hayDescGlobal = (descTotalMonto + descCombosMulti) > 0.005
+      const subtotalesEfectivos = hayDescGlobal
+        ? prorratearDescuentoGlobal(
+            cart.map(item => ({
+              cantidad: item.tiene_series ? item.series_seleccionadas.length : item.cantidad,
+              precio_unitario: precioTierEfectivo(item),
+              subtotal: getItemSubtotal(item),
+              alicuota_iva: item.alicuota_iva ?? 21,
+            })),
+            total,
+          )
+        : null
+      const itemPayloads = cart.map((item, _i) => {
         const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
-        const itemSubtotal = getItemSubtotal(item)
+        // Con descuento global → usar el subtotal/precio prorrateado (efectivo); si no, el de siempre.
+        const itemSubtotal = subtotalesEfectivos ? Number(subtotalesEfectivos[_i].subtotal) : getItemSubtotal(item)
+        const precioUnit   = subtotalesEfectivos ? Number(subtotalesEfectivos[_i].precio_unitario) : precioTierEfectivo(item)
         const ivaRate = item.alicuota_iva ?? 21
         const ivaMonto = ivaRate > 0 ? itemSubtotal - itemSubtotal / (1 + ivaRate / 100) : 0
         let lineaId: string | null = item.linea_id ?? null
@@ -2618,8 +2637,11 @@ export default function VentasPage() {
           : null
         return {
           tenant_id: tenant!.id, venta_id: venta.id, producto_id: item.producto_id, linea_id: lineaId,
-          cantidad: cant, precio_unitario: precioTierEfectivo(item), precio_costo_historico: item.precio_costo || null,
-          descuento: item.descuento_tipo === 'pct' ? item.descuento : 0, subtotal: itemSubtotal,
+          cantidad: cant, precio_unitario: precioUnit, precio_costo_historico: item.precio_costo || null,
+          // Con descuento global el descuento ya está plegado en precio_unitario/subtotal → descuento=0
+          // (evita que la factura/NC/PDF lo apliquen DOS veces).
+          descuento: subtotalesEfectivos ? 0 : (item.descuento_tipo === 'pct' ? item.descuento : 0),
+          subtotal: itemSubtotal,
           alicuota_iva: ivaRate, iva_monto: parseFloat(ivaMonto.toFixed(2)),
           lpn_plan: lpnPlan,
         }

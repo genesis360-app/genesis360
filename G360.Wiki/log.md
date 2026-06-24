@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-24] deploy | 🚀 v1.89.0 EN PROD — devolución/NC al precio efectivo + EF hardening post-CAE + validación TODOS los medios de pago
+
+**PROD = DEV = v1.89.0** (frontend + EF `emitir-factura` en DEV **y** PROD; sin migración). Continuación de la auditoría fiscal de Facturación (los 2 hallazgos abiertos de v1.88.0 → resueltos):
+
+- **#1 — Devolución/NC al precio EFECTIVO (REGLA #0 plata+fiscal):** el reembolso a caja (`montoTotal`) y la NC armaban los ítems con `venta_items.precio_unitario` = **lista** → devolver un ítem con descuento (combo o general) **reembolsaba/acreditaba de más**. Fix: la devolución toma el precio efectivo pagado (`subtotal/cantidad`) al construir `devItems` (`VentasPage:3138`). Consistente con el prorrateo del descuento general (v1.88.0). No-op sin descuento.
+- **#2 — EF `emitir-factura` chequea la persistencia post-CAE (REGLA #0 fiscal):** el UPDATE de `ventas`/`devoluciones` tras obtener el CAE no chequeaba el error → si fallaba (AFIP ya autorizó), quedaba **factura autorizada sin registrar** → re-emisión/doble factura. Ahora `persistirCAE()` reintenta 3× y, si falla, **lanza un error con el CAE** (no `ok` en silencio) + `console.error`. La EF usa `service_role` (no es RLS). **Desplegada en DEV + PROD.**
+- **✅ Validación TODOS los medios de pago (pedido de GO) — spec 83:** se creó una venta por cada medio directo (Efectivo, Transferencia, Tarjeta débito/crédito, Mercado Pago, Cheque, Wallet USD) → 7 ventas (#249-255), **caja correcta DB-verificada** (Efectivo→`ingreso` ×1; no-efectivo→`ingreso_informativo` ×6). Confirma que el fix G0.6 (en `venta_items`) **no afecta ningún medio**. CC + Crédito a favor = specs 28/73. *Gotcha: los no-efectivo exigen el monto EXACTO (no admiten vuelto como el efectivo).* + **spec 82** (descuento general prorrateado, venta #247: `Σ venta_items = total = $1.080`).
+
+**🔧 Herramienta:** el MCP de Supabase quedó caído a nivel sesión (servidor sano) → se trabajó con **`supabase db query --linked`** (CLI). Emitir CAE por **script directo** a la EF es poco fiable (CAE truncado, no persiste) → el smoke fiscal real va por la app/navegador.
+
+---
+
 ## [2026-06-24] deploy | 🚀 v1.88.0 EN PROD — 🛑 fix REGLA #0 fiscal G0.6 (descuento general prorrateado en venta_items)
 
 **PROD = DEV = v1.88.0.** Code-audit del módulo Facturación (A) destapó **G0.6**: el "Descuento general" / multi-combo del POS reducía `venta.total` pero **NO** se prorrateaba en `venta_items` → la factura (suma `subtotal`) y la NC (usa `precio_unitario × cantidad`) salían por el monto **SIN** descuento ⇒ **sobre-facturaban** (factura + IVA débito inflados; NC sobre-acreditaba). **Decisión de GO:** el precio efectivo va en `venta_items` (deja factura↔NC↔caja↔Libro IVA consistentes sobre un número).

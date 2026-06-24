@@ -13,6 +13,14 @@ updated: 2026-05-29
 
 ---
 
+## v1.89.0 — Devolución/NC al precio efectivo + EF hardening post-CAE + validación todos los medios de pago (PROD ✅, frontend + EF)
+
+Continuación de la auditoría fiscal de Facturación. **#1** la devolución (reembolso a caja) y la NC usaban `precio_unitario` de **lista** → devolver un ítem con descuento (combo o general) reembolsaba/acreditaba de más; ahora usan el precio **efectivo** pagado (`subtotal/cantidad`). **#2** la EF `emitir-factura` ahora **chequea la persistencia del CAE** (`persistirCAE()` reintenta 3× + error con el CAE si falla, anti doble-factura; EF en DEV+PROD). **✅ Validación de TODOS los medios de pago** (spec 83): 7 medios (Efectivo/Transferencia/Tarjeta déb-créd/MP/Cheque/Wallet USD) crean venta + caja correcta. + spec 82.
+
+## v1.88.0 — 🛑 fix REGLA #0 fiscal G0.6: descuento general prorrateado en venta_items (PROD ✅, frontend-only)
+
+El "Descuento general" / multi-combo reducía `venta.total` pero **no** se prorrateaba en `venta_items` → la factura (suma `subtotal`) y la NC (usa `precio_unitario × cantidad`) salían por el monto **sin** descuento → sobre-facturaban. Fix: con descuento global los `venta_items` se guardan con el precio **efectivo** (prorrateado a `venta.total`, `descuento=0`); factura, NC, caja y Libro IVA consistentes. NO-OP sin descuento. 6 unit tests Factura B + smoke real (spec 82, venta #247). AFIP: Kiosco Buildi (RI) emite B con CAE real de homologación.
+
 ## v1.87.0 — 🧪 Barrido UAT Compras/OC/Envíos + RRHH/Config/Suscripción 100% REGLA #0 + fixes mig 241/242 (PROD ✅)
 
 Cierre de los 2 módulos restantes del barrido UAT REGLA #0 (`cobertura/04` y `cobertura/05`), todo DB-verificado. **🛑 Encontrado + arreglado un bug REGLA #0 real (mig 241):** `pagar_nomina_empleado` asentaba `egreso` (afecta arqueo de efectivo) para CUALQUIER medio → pagar nómina por transferencia/MP descuadraba el efectivo de la caja; ahora no-efectivo→`egreso_informativo`. **Compras/OC/Envíos:** pago OC contable + doble firma (RPC mig237), pago courier + doble firma (RPC mig238), over/under-receipt (52/74 + 79), devolución efectivo/reposición (77/78), rechazo cheque brazo OC (80), todo por impersonación SQL + ROLLBACK. **RRHH:** pago nómina caja (50+mig241+81), tardanza/cargas/SAC/liq-final (✅unit + gastos pending). **5 specs e2e nuevos (77-81, env-gated).** **Hallazgos a GO:** devolución efectivo sin caja no asienta el reembolso; doble validación de nómina es gate client-side. **Deploy a PROD recomendado por el fix REGLA #0.**

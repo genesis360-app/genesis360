@@ -7,17 +7,22 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### 🟢 ARRANCÁ ACÁ (2026-06-24 · barrido UAT Compras+RRHH EN PROD · handoff para /clear)
-> **Estado:** **PROD = DEV = v1.88.0 (migs 001-242)** ✅. v1.88.0 = **fix REGLA #0 fiscal G0.6** (descuento general prorrateado en `venta_items` — factura+NC = lo pagado; frontend-only) + spec 82. v1.87.0 = barrido UAT Compras + RRHH 100% REGLA #0 + migs 241/242. build (tsc+vite) verde.
+> **Estado:** **PROD = DEV = v1.89.0 (migs 001-242)** ✅. **v1.89.0** = devolución/NC al **precio efectivo** (no reembolsa/acredita de más) + EF `emitir-factura` **chequea persistencia post-CAE** (anti doble-factura, EF en DEV+PROD) + **validación TODOS los medios de pago** (spec 83: 7 medios OK, caja correcta). **v1.88.0** = fix G0.6 (descuento general prorrateado en `venta_items`) + spec 82. **v1.87.0** = barrido UAT Compras + RRHH + migs 241/242. build (tsc+vite) verde. Sin migración nueva desde la 242.
 >
 > **⚠️ Nota de sesión:** durante el cierre el MCP de Supabase se desconectó → la validación por `execute_sql`/impersonación quedó no disponible. Para los próximos módulos retomar el patrón DB-impersonación cuando el MCP vuelva.
 >
 > **✅ G0.6 RESUELTO Y EN PROD (v1.88.0):** el descuento general/multi-combo ahora se **prorratea en `venta_items`** (precio efectivo, `descuento=0`) → factura y NC = lo que paga el cliente. Validado: 6 unit tests Factura B + smoke real app (spec 82, venta #247: `Σ venta_items = total = $1.080`). NO-OP sin descuento global. Detalle en `cobertura/01` §Tanda 0 G0.6.
 >
-> **🆕 2 HALLAZGOS FISCALES ABIERTOS (de la auditoría de Facturación, a tratar — NO bloqueantes):**
-> 1. **NC con descuento POR-ÍTEM (combos):** sin descuento global, la EF arma la NC con `precio_unitario × cantidad` a precio de LISTA → la NC de un ítem con descuento de combo **acredita de más**. Fix = mismo principio (precio efectivo en venta_items siempre) pero cambia el display de todas las ventas con combo → **decisión de GO**.
-> 2. **EF no chequea el error del UPDATE post-CAE** (`emitir-factura/index.ts:354`): si el UPDATE de `ventas` falla tras autorizar AFIP, queda **factura autorizada sin registrar** → re-emisión/doble factura posible. En homologación se vio AFIP adelante de la DB (Buildi). **Endurecer** (chequear error + alertar/reintentar). **REGLA #0 en PROD.**
+> **✅ 2 HALLAZGOS FISCALES RESUELTOS (v1.89.0):** (1) devolución/NC al **precio efectivo** (`subtotal/cantidad`) — ya no reembolsa/acredita de más en ítems con descuento; (2) EF `emitir-factura` **chequea persistencia post-CAE** (`persistirCAE()` reintenta 3× + error con CAE, anti doble-factura). EF en DEV+PROD.
 >
-> **🔧 Tooling:** MCP Supabase se cayó a nivel sesión (servidor OK) → usar **`supabase db query --linked`** (CLI, mismo acceso DB + impersonación/ROLLBACK). Emisión de CAE por **script directo** a la EF = poco fiable (CAE truncado, no persiste); el smoke fiscal real va por la **app** (navegador) o e2e.
+> **✅ MEDIOS DE PAGO validados (spec 83):** 7 medios directos (Efectivo/Transferencia/Tarjeta déb-créd/MP/Cheque/Wallet USD) crean venta OK + caja correcta (efectivo→ingreso, no-efectivo→ingreso_informativo). CC+Crédito = specs 28/73.
+>
+> **🔧 Tooling:** MCP Supabase caído a nivel sesión (servidor OK) → usar **`supabase db query --linked`** (CLI: mismo acceso DB + impersonación/ROLLBACK + crear usuarios). Emitir CAE por **script directo** a la EF = poco fiable (CAE truncado, no persiste; aun con usuario real) → el smoke fiscal real va por la **app/navegador** o e2e. **Kiosco Buildi** `35bc3348-d2c1-40a3-91b2-3c7189ace70c` (RI en DEV, mismo CUIT que Jorgito 23-32031506-9) **emite Factura B con CAE real** de homologación.
+>
+> **▶ PRÓXIMA SESIÓN (UAT pendientes hasta finalizar):**
+> 1. **Módulo (B) Integraciones de cobro** (MODO/MercadoPago → webhook → conciliación de saldo de venta) — code-audit + validación (no necesita AFIP).
+> 2. **Residual menor no-crítico** (cobertura 01-05): Inventario (conteo gate flag, armar-kit 2 pasos, delta con venta intercalada, 2 recepciones parciales), Compras/Envíos (oc_numeracion, remito, costo→precio_costo, alerta anticipo-OC, cobro al cliente por política, envio UX flags), Ventas (cliente_consumidor_final, reglas_canal lista/requiere_cliente, sweep reservas).
+> 3. **AFIP §29** matriz fiscal A/B/C con CAE real — usar **Kiosco Buildi** (RI) para B real; falta solo un CUIT RI distinto si se quiere matriz completa (trámite de GO).
 >
 > **🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — pago de nómina por medio NO-efectivo:** `pagar_nomina_empleado` asentaba SIEMPRE `caja_movimientos` **`egreso`** (afecta el arqueo de EFECTIVO) sin importar el medio. La UI ofrece efectivo/transferencia/MP → pagar por transferencia o MP **descuadraba el efectivo** de la caja (restaba plata que nunca salió del cajón). **Fix:** efectivo→`egreso`, no-efectivo→`egreso_informativo`. **DB-validado (los 3 medios) + spec 81.** ⇒ **deploy a PROD recomendado.**
 >

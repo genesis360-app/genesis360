@@ -186,6 +186,41 @@ formulario en memoria. No es REGLA #0 pero conviene documentarlo para los e2e de
 
 ---
 
+## ✅ CIERRE REGLA #0 — barrido 2026-06-23 (módulo CERRADO, DB-verificado)
+
+Foco REGLA #0 del grupo = la **plata que toca caja** (pago de nómina). El resto crea **gastos pendientes**
+con montos ✅unit (no tocan caja/CC/stock/fiscal hasta pagarse por Gastos, que ya es medio-aware y validado).
+
+- **🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — G1/L30 `pagar_nomina_empleado`:** el RPC asentaba
+  SIEMPRE `caja_movimientos` **`egreso`** (afecta arqueo de efectivo) sin importar el medio. La UI ofrece 3
+  medios (efectivo/transferencia_banco/mp), así que pagar por **transferencia/MP descuadraba el efectivo**
+  (restaba del cajón plata que nunca salió). **Fix mig 241:** efectivo → `egreso`; no-efectivo →
+  `egreso_informativo` (no afecta efectivo) con concepto `[Transferencia]/[Mercado Pago] …`. **DB-validado**
+  (impersonación + ROLLBACK, los 3 medios) + **spec 81** (regresión e2e) + spec 50 (efectivo, previo).
+- **G2/L31 — Doble validación de nómina** (`puedeAprobarNomina`, flags `rrhh_nomina_doble_validacion` +
+  `_supervisor_aprueba`): ✅ **HARDENING SERVER-SIDE (mig 242, v1.87.0):** el RPC `pagar_nomina_empleado` (que
+  mueve la plata) ahora **enforcea el gate en el server** — con el flag ON, solo DUEÑO/ADMIN (o SUPERVISOR si
+  `_supervisor_aprueba`) puede pagar; un CAJERO recibe "Requiere aprobación de DUEÑO/ADMIN". **DB-validado**:
+  CON flag CAJERO→bloqueado, DUEÑO→procede; SIN flag (default) cualquiera procede (backward-compat). Ya no es
+  bypasseable por bundle cacheado / API. (`generarGastoNomina`/`generarCargasSociales` siguen con gate
+  client-side: crean gastos PENDIENTES, no mueven caja → no es integridad estricta.)
+- **G3/L26 — Tardanza descontada en la liquidación** ✅ code-verified (`crearLiquidacion`:879-893 lee
+  `rrhh_tardanza_modo/_tolerancia_min/_horas_mes_base` + fichadas del período → `minutosTardeFacturables` +
+  `sueldoHora` + `descuentoTardanza`, todos ✅unit; empuja ítem DESCUENTO y recomputa neto). Sin caja.
+- **G4/G5 — Cargas sociales / SAC** ✅ montos ✅unit → gastos pendientes por concepto / liquidación UNIQUE período.
+- **G6/L36 — Liquidación final** ✅ fórmulas ✅unit (`liquidacionFinal`) → gasto pendiente (cat. Sueldos). Sin caja.
+- **Anticipos/préstamos (L33)** ✅ crea gasto pendiente (no caja).
+- **G10 — Suscripción/plan límites** = gating **client-side** (`usePlanLimits` ✅unit + `PlanLimitModal`/`UpgradePrompt`),
+  trial→redirect (`SubscriptionGuard`). Tier de facturación, **no integridad estricta** (excederlo no corrompe
+  datos fiscales/contables). Cubierto por ✅unit + e2e 09.
+- **G13 — `canEdit` de Config = DUEÑO** ✅ code-verified (`ConfigPage` `canEdit = rol==='DUEÑO'`). Clave maestra
+  hash ✅ e2e 41. `session_timeout` = timer UI (capa manual).
+
+**Conclusión:** RRHH/Config/Suscripción **cerrado REGLA #0** — el único hueco de integridad (plata en caja) era
+el medio de pago de nómina, **encontrado y arreglado** (mig 241). El resto son montos ✅unit + gating/autorización.
+
+---
+
 ## 4) Gaps priorizados
 
 ### 🔴 Tanda A — REGLA #0 (plata) sin e2e mutante

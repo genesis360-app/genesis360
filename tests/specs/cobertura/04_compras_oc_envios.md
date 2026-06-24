@@ -127,6 +127,47 @@ cada flag y validar el comportamiento") está casi 100% abierto en la capa de ru
 
 ---
 
+## ✅ CIERRE REGLA #0 — barrido 2026-06-23 (módulo CERRADO, DB-verificado)
+
+Todos los gaps de plata/stock del §3 quedaron cubiertos. Método: impersonación SQL del RPC con ROLLBACK
+(autoridad server-side) + specs e2e mutantes (env-gated) como artefactos de regresión.
+
+- **L8/L11/L12 — Pago de OC contable** ✅ **DB-validado** (RPC `registrar_pago_oc`, mig 237, ROLLBACK):
+  efectivo → `caja_movimientos` **`egreso`** + `proveedor_cc` `pago` (−monto) + OC `monto_pagado`/`estado_pago`;
+  no-efectivo → **`egreso_informativo`** + `cuenta_origen`; CC → `proveedor_cc` `oc` (+monto, venc +Nd) sin caja;
+  **saldo no excedible** bloquea ("supera el saldo"); CONTADOR bloqueado por rol.
+- **L10 — Doble firma pago OC** ✅ **DB-validado** (matriz completa): umbral CON clave → mala bloquea / correcta
+  procesa; **umbral SIN clave configurada → BLOQUEA** ("configurá una clave maestra") — el bug latente del §2
+  está cerrado server-side; debajo del umbral procesa sin pedir clave.
+- **L35/L36 — Pago a courier** ✅ **DB-validado** (RPC `marcar_envios_pagados`, mig 238, ROLLBACK): genera 1
+  gasto "Flete {courier}" + caja **`egreso`** (efectivo) + marca `costo_pagado`/`gasto_id`; `genera_gasto=false`
+  → marca pagado **sin** gasto ni caja; doble firma idéntica a L10 (clave mala/ok/sin-clave). 📌 **Observación
+  fiscal (no bug):** el flete genera el gasto SIN `tipo_comprobante`, así que `fn_gastos_iva_guard` (mig 227)
+  **anula el IVA crédito** salvo RI+Factura A — para un Monotributo es correcto (sin crédito); para un RI que
+  quiera crédito sobre fletes, cargar la Factura A del courier como gasto detallado. Conservador/seguro.
+- **L18 — Over-receipt** ✅ specs 52 (SIN tope → bloquea) + 74 (CON tope → acepta dentro del +pct).
+- **L19 — Under-receipt motivo obligatorio** ✅ **spec 79** (recibir 5<10 sin motivo → "Indicá el motivo del
+  faltante", no crea recepción) — guard `RecepcionesPage:493` sobre `tieneFaltante` (✅unit).
+- **L20 — Ajuste de cantidad requiere SUPERVISOR+** ✅ code-verified (`RecepcionesPage:466`, `esAjusteCantidad`
+  ✅unit). Como OWNER no aplica; un rol no-supervisor recibe ≠ pedido → bloquea.
+- **L24/L25 — Devolución credito_cc** ✅ spec 33.
+- **L26 — Devolución efectivo** ✅ **spec 77** (ingreso a caja + rebaja stock FIFO + `ajuste_rebaje`).
+  ✅ **HALLAZGO RESUELTO (v1.87.0):** el reembolso en efectivo ahora **EXIGE una caja OPERATIVA abierta**
+  (excluye la bóveda) **ANTES** de rebajar stock; sin caja **BLOQUEA** con un toast que incluye un **link a Caja**
+  ("Abrí una caja") para abrir una en el momento (`ProveedoresPage.confirmarDevolucion`). Cierra el hueco de
+  "plata fuera del arqueo" (mismo patrón del bug venta #26). El reembolso se asienta en la caja operativa, no
+  en la bóveda (corregía un bug latente: `cajasAbiertasProv[0]` podía ser la bóveda).
+- **L27 — Devolución reposición** ✅ **spec 78** (crea OC borrador con ítems + rebaja stock + `oc_reposicion_id`).
+- **L14 — Rechazo de cheque (brazo OC)** ✅ **DB-validado** (réplica `ChequesPanel.cambiarEstado`/`reversionPagoOC`,
+  ROLLBACK): OC `monto_pagado`→0, `estado_pago`→`pendiente_pago`, `proveedor_cc` `ajuste` (+monto, deuda
+  reaparece). ✅unit (`reversionPagoOC`) + spec 31 (brazo gasto, mismo path) + **spec 80** (brazo OC, fixture).
+
+**Residual no-REGLA-#0 (UX/secundario):** `oc_numeracion` por valor (L5), `recepcion_remito_obligatorio` (L21),
+alerta de costo→`precio_costo` (L22), `gastos_dias_alerta_anticipo_oc` (L31), cobro al cliente por política→venta
+(L34), `envio_identidad/notif/peso/rangos` (UX). No tocan integridad fiscal/contable/inventario.
+
+---
+
 ## 3) Gaps priorizados REGLA #0 (plata / stock)
 
 > Cada uno: escenario CON el flag y SIN/por-valor, aserción POSITIVA + verificación de la mutación en DB.

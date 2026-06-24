@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.87.0 — 🧪 Barrido UAT Compras/OC/Envíos + RRHH/Config/Suscripción 100% REGLA #0 + 🛑 fix mig 241 (DEV ✅, PROD ⏳)
+
+Cierre de los 2 módulos restantes del barrido UAT REGLA #0 (`cobertura/04` y `cobertura/05`), todo DB-verificado. **🛑 Encontrado + arreglado un bug REGLA #0 real (mig 241):** `pagar_nomina_empleado` asentaba `egreso` (afecta arqueo de efectivo) para CUALQUIER medio → pagar nómina por transferencia/MP descuadraba el efectivo de la caja; ahora no-efectivo→`egreso_informativo`. **Compras/OC/Envíos:** pago OC contable + doble firma (RPC mig237), pago courier + doble firma (RPC mig238), over/under-receipt (52/74 + 79), devolución efectivo/reposición (77/78), rechazo cheque brazo OC (80), todo por impersonación SQL + ROLLBACK. **RRHH:** pago nómina caja (50+mig241+81), tardanza/cargas/SAC/liq-final (✅unit + gastos pending). **5 specs e2e nuevos (77-81, env-gated).** **Hallazgos a GO:** devolución efectivo sin caja no asienta el reembolso; doble validación de nómina es gate client-side. **Deploy a PROD recomendado por el fix REGLA #0.**
+
 ## v1.86.0 — 🧪 Barrido UAT — Clientes/CC 100% + Inventario residual (specs 69-76) (PROD ✅, sin migración, test-only)
 
 **Test-only + wiki (sin cambio de comportamiento de la app; PROD = DEV = migs 001-240).** Continuación del barrido UAT REGLA #0, todo DB-verificado con fixtures en los 2 tenants DEV (Jorgito + Familia Otranto). **Clientes/CC cerrado 100%:** spec **69** revertir condonación, **72** vencimiento CC (`fecha_vencimiento_cc=hoy+N`), **73** crédito a favor positivo (consume `cliente_creditos`), **incobrable SIN clave** (DB-validated en Familia Otranto: DUEÑO procede / SUPERVISOR rechazado por rol). **Productos:** spec **70** alícuota Exento persiste 0 (no 21). **Inventario/Conteos:** spec **71** rebaje no-negativo, **74** over-receipt CON tope (+10% acepta, stock↑), **75** kit desarmar (componentes↑), **76** wall-to-wall bloqueante (POS bloqueado). Convención: las transacciones de prueba quedan como evidencia UAT.

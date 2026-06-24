@@ -6,8 +6,10 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-23 · barrido UAT Compras+RRHH · v1.87.0 EN DEV · handoff para /clear)
-> **Estado:** **DEV = v1.87.0 (migs 001-241)**. **PROD = v1.86.0 (migs 001-240)** ⏳ **falta deployar v1.87.0 a PROD** (incluye **mig 241**, un fix REGLA #0 — ver abajo). build (tsc+vite) verde. v1.87.0 = barrido UAT Compras/OC/Envíos + RRHH/Config/Suscripción **+ 1 fix REGLA #0 real (mig 241)** + 5 specs e2e (77-81).
+> ### 🟢 ARRANCÁ ACÁ (2026-06-24 · barrido UAT Compras+RRHH EN PROD · handoff para /clear)
+> **Estado:** **PROD = DEV = v1.87.0 (migs 001-242)** ✅ deployado (PR #242, release v1.87.0; migs 241+242 aplicadas y verificadas en PROD). build (tsc+vite) verde. v1.87.0 = barrido UAT Compras/OC/Envíos + RRHH/Config/Suscripción **+ 1 fix REGLA #0 (mig 241) + 2 follow-ups (mig 242 + devolución efectivo exige caja)** + 5 specs e2e (77-81).
+>
+> **⚠️ Nota de sesión:** durante el cierre el MCP de Supabase se desconectó → la validación por `execute_sql`/impersonación quedó no disponible. Para los próximos módulos retomar el patrón DB-impersonación cuando el MCP vuelva.
 >
 > **🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — pago de nómina por medio NO-efectivo:** `pagar_nomina_empleado` asentaba SIEMPRE `caja_movimientos` **`egreso`** (afecta el arqueo de EFECTIVO) sin importar el medio. La UI ofrece efectivo/transferencia/MP → pagar por transferencia o MP **descuadraba el efectivo** de la caja (restaba plata que nunca salió del cajón). **Fix:** efectivo→`egreso`, no-efectivo→`egreso_informativo`. **DB-validado (los 3 medios) + spec 81.** ⇒ **deploy a PROD recomendado.**
 >

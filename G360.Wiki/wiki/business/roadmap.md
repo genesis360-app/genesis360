@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.87.0 — 🧪 Barrido UAT Compras/OC/Envíos + RRHH/Config/Suscripción 100% REGLA #0 + 🛑 fix mig 241 (DEV ✅, PROD ⏳)
+## v1.87.0 — 🧪 Barrido UAT Compras/OC/Envíos + RRHH/Config/Suscripción 100% REGLA #0 + fixes mig 241/242 (PROD ✅)
 
 Cierre de los 2 módulos restantes del barrido UAT REGLA #0 (`cobertura/04` y `cobertura/05`), todo DB-verificado. **🛑 Encontrado + arreglado un bug REGLA #0 real (mig 241):** `pagar_nomina_empleado` asentaba `egreso` (afecta arqueo de efectivo) para CUALQUIER medio → pagar nómina por transferencia/MP descuadraba el efectivo de la caja; ahora no-efectivo→`egreso_informativo`. **Compras/OC/Envíos:** pago OC contable + doble firma (RPC mig237), pago courier + doble firma (RPC mig238), over/under-receipt (52/74 + 79), devolución efectivo/reposición (77/78), rechazo cheque brazo OC (80), todo por impersonación SQL + ROLLBACK. **RRHH:** pago nómina caja (50+mig241+81), tardanza/cargas/SAC/liq-final (✅unit + gastos pending). **5 specs e2e nuevos (77-81, env-gated).** **Hallazgos a GO:** devolución efectivo sin caja no asienta el reembolso; doble validación de nómina es gate client-side. **Deploy a PROD recomendado por el fix REGLA #0.**
 

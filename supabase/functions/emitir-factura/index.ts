@@ -331,16 +331,32 @@ serve(async (req) => {
     console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id} [${isProduction ? 'PRODUCCIÓN' : 'homologación'}]`)
     const resultado = await eb.createVoucher(payload)
 
-    // 9. Guardar CAE
+    // 9. Guardar CAE (REGLA #0). AFIP YA autorizó el comprobante: si el UPDATE falla, la venta/devolución
+    //    quedaría SIN registro del CAE → re-emisión posible (DOBLE factura en AFIP). Por eso se reintenta
+    //    y, si igual falla, NO se devuelve `ok` en silencio: se lanza un error que incluye el CAE para
+    //    reconciliarlo a mano (y se loguea fuerte). El cliente usa service_role → no es RLS.
+    const persistirCAE = async (run: () => Promise<{ error: unknown }>, intentos = 3): Promise<void> => {
+      let lastErr: unknown = null
+      for (let i = 0; i < intentos; i++) {
+        const { error } = await run()
+        if (!error) return
+        lastErr = error
+        await new Promise(r => setTimeout(r, 250 * (i + 1)))
+      }
+      const msg = (lastErr as { message?: string })?.message ?? 'error desconocido'
+      console.error(`[emitir-factura] PERSISTENCIA DEL CAE FALLÓ tras autorizar en AFIP (CAE ${resultado.CAE}, N° ${proximo}, ${esNC ? `devolucion ${devolucion_id}` : `venta ${venta_id}`}): ${msg}`)
+      throw new Error(`Comprobante AUTORIZADO en AFIP (CAE ${resultado.CAE}, N° ${proximo}) pero NO se pudo guardar en el sistema: ${msg}. NO reintentar la emisión — registrá el CAE manualmente o avisá a soporte.`)
+    }
+
     if (esNC) {
       // NC: guardar en devoluciones
-      await supabase.from('devoluciones').update({
+      await persistirCAE(() => supabase.from('devoluciones').update({
         nc_cae:               resultado.CAE,
         nc_vencimiento_cae:   resultado.CAEFchVto,
         nc_numero_comprobante: proximo,
         nc_tipo:              tipo_comprobante,
         nc_punto_venta:       punto_venta,
-      }).eq('id', devolucion_id)
+      }).eq('id', devolucion_id))
     } else {
       // Factura normal: guardar en ventas. Si estaba 'despachada', pasa a 'facturada'
       // automáticamente (antes había que marcarla a mano desde el detalle de la venta).
@@ -351,7 +367,7 @@ serve(async (req) => {
         numero_comprobante: proximo,
       }
       if (venta.estado === 'despachada') ventaUpdate.estado = 'facturada'
-      await supabase.from('ventas').update(ventaUpdate).eq('id', venta_id)
+      await persistirCAE(() => supabase.from('ventas').update(ventaUpdate).eq('id', venta_id))
     }
 
     console.log(`CAE emitido: ${resultado.CAE} — ${esNC ? `NC devolucion ${devolucion_id}` : `Venta ${venta_id}`}`)

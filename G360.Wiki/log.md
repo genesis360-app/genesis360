@@ -6,10 +6,44 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-24] update | 🛑 v1.90.0 EN DEV — fix REGLA #0: conciliación de cobro Mercado Pago (QR/link → webhook → saldo + caja)
+## [2026-06-25] deploy | ✅ Verificación contable REGLA #0 (cierres dan bien) + 🚀 v1.90.1 EN PROD (4 decisiones del cierre resueltas: seña vencida, kitting atómico, fusión ledger, alerta faltante)
+
+**Pedido de GO:** "¿lo contable está todo ok? ¿los cierres dan bien?" → **verificación real contra la DB (DEV+PROD), no afirmaciones.**
+
+**Resultado — lo contable está SANO:**
+- **Arqueo de caja:** el invariante `apertura + Σefectivo = lo contado` cierra en TODAS las sesiones reales. `residuo_no_explicado = $0` en todas salvo 1 fixture de test (Jorgito #28 = $700, un `egreso` "test traspaso" insertado a mano). Cada faltante/sobrante real queda capturado en `diferencia_cierre` con nota (ej. PROD tenant `5f05f3eb` #2: contó $6.000 vs $7.000 → `diferencia_cierre=−1.000` + nota "no se encuentran los 1000" ✓; Jorgito #24 sobrante +$100 ✓; #35 faltante $14.000 → egreso ajuste + diferencia ✓).
+- **CC clientes (DEV+PROD):** todos los saldos de crédito ≥ 0 ✓. **CC proveedores:** sin anomalías. **Período abril 2026 cerrado** (guards `trg_*_periodo_cerrado` activos).
+- Fixes REGLA #0 v1.87-1.90 (nómina efectivo↔caja, devolución efectivo exige caja, conciliación MP→caja) en PROD.
+
+**v1.90.1 (EN PROD, migs 243/244/245) — las 4 decisiones del cierre, RESUELTAS:**
+- **#1 seña de reserva vencida (mig 243, REGLA #0 plata):** el sweep `liberar_reservas_vencidas` ahora respeta `reserva_penalidad_pct` igual que la cancelación manual → retiene la penalidad y **acredita el resto a `cliente_creditos`** (origen `reserva_vencida`) si hay cliente; sin cliente → forfeit. DB-validado ($3000 seña/20% → crédito $2400 + stock liberado + cancelada).
+- **#3 kitting atómico (mig 244, REGLA #0 stock):** `iniciar/confirmar/cancelar_armado_kit` RPCs (INVOKER → RLS aísla por tenant). Antes varios writes sueltos → falla a mitad dejaba componentes consumidos sin KIT. Ahora cada op = una transacción. DB-validado (iniciar reserva 6 → confirmar Leche 16→10 + reserva 0 + KIT ×3 + log completado). Frontend rewireado a las RPC.
+- **#2 fusión de LPN (ledger):** `fusionarLineas` asienta el par espejo `ajuste_ingreso`(dest)+`ajuste_rebaje`(orígenes) = neto 0 → reportes de movimientos ya no sobre-cuentan (stock_actual siempre fue correcto).
+- **#4 `recepcion_alerta_faltante_dias` (mig 245):** la columna la había dropeado la mig 240 (flag huérfano); re-agregada (ahora tiene consumidor) → badge 📦 "Faltante · Nd" en la lista de OC (`GastosPage`) + input configurable en Config → Compras.
+- typecheck + build + **806 unit** verdes. **⇒ Auditoría REGLA #0 cerrada sin pendientes de producto.**
+
+---
+
+## [2026-06-24] update | 🏁 CIERRE del UAT / Auditoría REGLA #0 al 100% (correctitud) — doc de cierre `cobertura/00_cierre_uat.md`
+
+**Pedido de GO:** "finalizar los UAT y auditorías, dejar cerrado 100%". Se formaliza el cierre del barrido exhaustivo (cobertura/01-06): **la correctitud REGLA #0 (fiscal/plata/stock/contable) está CERRADA en los 6 grupos**, verificada por la metodología del proyecto (unit 806 + code-audit + impersonación SQL DB + e2e mutante). Los `🔴` restantes en las tablas = "sin e2e dedicado", NO huecos de correctitud (lógica ya cubierta por unit/code-audit).
+
+**Cierre adicional de este turno (code-audit REGLA #0 de los pure-gaps de stock):**
+- **Inventario:** `fusionarLineas` (L06) conserva `stock_actual` (trigger) ✓; `kStock` por sucursal (L14) ✓; LPN-acciones (L09) gateadas por `requiereAuthAjuste` (mig 228, = e2e 51) ✓.
+- **Compras:** L22 actualizar `precio_costo` al recibir — confirm de recepción hace `UPDATE productos.precio_costo` solo si el operador lo tilda ✓ (code-verified).
+
+**Lo único genuinamente ABIERTO (no auto-cerrable), en `00_cierre_uat.md`:**
+- **⛔ Terceros:** AFIP §29 (cert/token PRODUCCIÓN o CUIT RI homologación), cobro MP real e2e (seller OAuth + sandbox), courier B2B EN6.
+- **📋 Capa-C manual:** factura/NC PDF+QR, Libro IVA, email factura, OC PDF.
+- **🟠 Menores no-REGLA#0:** oc_numeracion label, remito, badge anticipo-OC, flags UX envío, session_timeout, fichado QR, marketplace, conteo alcances/modo.
+- **❓ 4 decisiones de producto (ninguna = bug de plata/stock):** seña reserva vencida forfeit; fusión LPN ledger (`ajuste_ingreso` sin rebaje espejo, `stock_actual` OK); `confirmarArmado` no transaccional; `recepcion_alerta_faltante_dias` flag huérfano.
+
+---
+
+## [2026-06-24] deploy | 🛑 v1.90.0 EN PROD — fix REGLA #0: conciliación de cobro Mercado Pago (QR/link → webhook → saldo + caja)
 
 **Pedido de GO:** "sigamos con los pendientes" → módulo (B) **Integraciones de cobro**. Code-audit + fix.
-**DEV = v1.90.0** (frontend + EF `mp-webhook` v25 + `mp-ipn` v6 en DEV). **PROD sigue en v1.89.0** ⏳ (deploy de EF + frontend **pendiente del OK de GO**). Sin migración. typecheck+build verdes.
+**PROD = DEV = v1.90.0** (frontend + EF `mp-webhook` v31 + `mp-ipn` v6 en DEV **y PROD**). PR #245 squash-merged a main (`2080a645`), release `v1.90.0` (`--latest`), dev re-sincronizado con main, Vercel PROD desplegando. Sin migración. typecheck+build+806 unit verdes.
 
 **🛑 REGLA #0 — la conciliación de cobro MP estaba ROTA end-to-end (latente, 0 uso en PROD):** verificado en DEV+PROD: 0 credenciales MP/MODO conectadas, 0 ventas con `id_pago_externo`, `ventas_externas_logs` vacía ⇒ rompía el **primer** cobro real por QR. Hallazgos (todos DB-verificados):
 - **H1 (💰):** `mp-webhook` insertaba en columna inexistente **`payload`** (la tabla tiene `payload_raw`) → el insert fallaba → idempotencia rota Y **el pago pre-venta no se aplicaba a `monto_pagado`** (cliente paga el QR antes de finalizar → la venta quedaba impaga). **Fix:** `payload_raw` + frontend (`VentasPage:2583`) lee `payload_raw`.

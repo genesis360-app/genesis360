@@ -68,7 +68,7 @@ type: project
 | L45 | Reserva exige seña real (excluye CC) | `VentasPage.tsx:2446-2453,6650-6657` | 🔴(plata) | 🟡unit (cajaSeña) · ✅e2e 57 |
 | L46 | Seña mínima % del total al reservar/convertir | `VentasPage.tsx:2448-2457,6650-6656` | 🔴 | 🟡unit · ✅e2e 58 |
 | L47 | Cancelar reserva: penalidad % + destino (devolución/crédito) | `VentasPage.tsx:6551-6642` | 🔴(plata) | 🟡unit (cajaSeña) · ✅e2e 59 (crédito DB-verificado) |
-| L48 | Vencimiento de reservas (sweep) | `liberar_reservas_vencidas` RPC; `VentasPage.tsx:660` (lazy); cron-sweeps EF | 🔴(stock) | ✅DB (sim transaccional+ROLLBACK 2026-06-24: reservada vencida → stock reservado 3→0 + venta→cancelada; SECURITY DEFINER, FIFO, idempotente). ⚠️ obs: seña no se reembolsa/acredita (forfeit por defecto) — decisión de GO |
+| L48 | Vencimiento de reservas (sweep) — libera stock + cancela + **acredita seña** | `liberar_reservas_vencidas` RPC (mig 243); `VentasPage.tsx:660` (lazy); cron-sweeps EF | 🔴(stock+plata) | ✅DB (sim+ROLLBACK: reservada vencida → reservado 3→0 + cancelada; **mig 243: acredita seña×(1−penalidad%) a `cliente_credito` si hay cliente**, validado $3000 seña/20% → crédito $2400, consistente con cancelación manual spec 59). FIFO, error-isolado |
 | **Productos / Precios** |
 | L49 | Alta/edición producto + alícuota IVA (0/10,5/21/27); `Number.isFinite` no `||21` | `ProductoFormPage.tsx:384-441,960-967` | 🔴(fiscal) | ✅e2e 43 (10,5) · ✅e2e 70 (**Exento 0% persiste 0, no 21** — el caso del bug `0\|\|21`) · 🟡 21/27 (mismo path) |
 | L50 | Margen (markup sobre neto) + precio sugerido por margen objetivo | `ProductoFormPage.tsx:321-337` | 🔴(plata) | 🔴gap |

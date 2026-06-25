@@ -2990,6 +2990,10 @@ export default function GastosPage() {
                 const esAnticipo = Number(oc.monto_pagado ?? 0) > 0 && !recibida && oc.estado !== 'cancelada'
                 const diasDesdeOC = Math.floor((Date.now() - new Date(oc.created_at).getTime()) / 86400000)
                 const anticipoAlerta = esAnticipo && diasDesdeOC > diasAlertaAnticipo
+                // 📦 Recepción parcial con faltante sin completar hace N días (recepcion_alerta_faltante_dias)
+                const diasAlertaFaltante = (tenant as any)?.recepcion_alerta_faltante_dias ?? 7
+                const diasParcial = Math.floor((Date.now() - new Date(oc.updated_at ?? oc.created_at).getTime()) / 86400000)
+                const faltanteAnejo = oc.estado === 'recibida_parcial' && diasParcial >= diasAlertaFaltante
 
                 const expanded = ocExpandedId === oc.id
                 return (
@@ -3017,6 +3021,17 @@ export default function GastosPage() {
                                 ? `Anticipo: pago hace ${diasDesdeOC}d sin recibir mercadería (umbral ${diasAlertaAnticipo}d)`
                                 : 'Anticipo: pago realizado antes de la recepción'}>
                               💰 Anticipo{anticipoAlerta ? ` · ${diasDesdeOC}d` : ''}
+                            </span>
+                          )}
+                          {oc.estado === 'recibida_parcial' && (
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full font-medium ${faltanteAnejo
+                                ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400'
+                                : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'}`}
+                              title={faltanteAnejo
+                                ? `Recepción parcial sin completar hace ${diasParcial}d (umbral ${diasAlertaFaltante}d) — reclamá el faltante al proveedor`
+                                : 'Recepción parcial: falta recibir mercadería'}>
+                              📦 Faltante{faltanteAnejo ? ` · ${diasParcial}d` : ''}
                             </span>
                           )}
                           {(oc as any).es_derivada && (

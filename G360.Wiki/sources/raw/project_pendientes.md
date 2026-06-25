@@ -6,8 +6,21 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-24 · módulo (B) Integraciones de COBRO MP — fix REGLA #0 en DEV · deploy a PROD pendiente)
-> **Estado:** **DEV = v1.90.0** · **PROD = v1.89.0 (migs 001-242)** ⏳ — **deploy de v1.90.0 a PROD PENDIENTE de tu OK** (incluye **re-deploy de las EF `mp-webhook` + `mp-ipn` a PROD** + frontend). Sin migración. typecheck+build verdes.
+> ### 🟢 ARRANCÁ ACÁ (2026-06-25 · 🏁 UAT/auditoría REGLA #0 CERRADA + v1.90.1 EN PROD)
+> **Estado:** **PROD = DEV = v1.90.1 (migs 001-245)** ✅ — typecheck+build+806 unit verdes.
+>
+> **🏁 UAT / AUDITORÍA REGLA #0 CERRADA AL 100% (correctitud).** Doc: `tests/specs/cobertura/00_cierre_uat.md`. Los 6 grupos verificados (unit + code-audit + impersonación DB + e2e mutante). **Verificación contable real (DEV+PROD): los cierres dan bien** — arqueo de caja cuadra en todas las sesiones reales (`residuo_no_explicado=0` salvo 1 fixture de test), faltantes/sobrantes capturados en `diferencia_cierre` con nota, CC clientes ≥0, período abril cerrado.
+>
+> **✅ v1.90.1 — las 4 decisiones de producto del cierre, RESUELTAS (migs 243/244/245):**
+> - **#1 (mig 243, 💰):** sweep de reservas vencidas respeta `reserva_penalidad_pct` → acredita seña−penalidad a `cliente_creditos` (consistente con cancelación manual). DB-validado ($3000/20%→$2400).
+> - **#3 (mig 244, stock):** armado de KITs ATÓMICO (`iniciar/confirmar/cancelar_armado_kit` RPCs INVOKER). DB-validado.
+> - **#2:** fusión de LPN asienta par espejo ingreso+rebaje (ledger neto 0). **#4 (mig 245):** `recepcion_alerta_faltante_dias` re-agregada (la dropeó mig 240) + badge 📦 en lista OC + configurable en Config→Compras.
+>
+> **⛔ Único pendiente NO auto-cerrable (acción de GO / terceros):** AFIP §29 (cert/token PRODUCCIÓN o CUIT RI homologación), cobro MP real e2e (seller OAuth + sandbox), courier B2B EN6. + capa-C manual (PDF/email/print). Detalle en `00_cierre_uat.md`.
+>
+> ---
+> **(Detalle de v1.90.0 — fix REGLA #0 cobro MP — abajo.)**
+> **v1.90.0:** **PROD = DEV** ✅ — EF `mp-webhook` v31 + `mp-ipn` v6 en DEV **y PROD**; PR #245 merged, release v1.90.0.
 >
 > **🛑 v1.90.0 = fix REGLA #0 de la conciliación de cobro Mercado Pago (módulo B del barrido).** Estaba **rota end-to-end pero latente** (PROD: 0 credenciales MP/MODO conectadas, 0 ventas con `id_pago_externo` → nunca se ejerció). Arreglado ANTES de habilitar cobro real:
 > - **H1 (💰):** `mp-webhook` escribía en columna inexistente `payload` (la tabla tiene `payload_raw`) → insert fallaba → el pago **pre-venta no se aplicaba a `monto_pagado`** (cliente paga el QR antes de finalizar → venta impaga). Fix EF + frontend (`VentasPage:2583` lee `payload_raw`).
@@ -27,11 +40,13 @@ type: project
 >
 > **🔧 Tooling:** MCP Supabase caído a nivel sesión (servidor OK) → usar **`supabase db query --linked`** (CLI: mismo acceso DB + impersonación/ROLLBACK + crear usuarios). Emitir CAE por **script directo** a la EF = poco fiable (CAE truncado, no persiste; aun con usuario real) → el smoke fiscal real va por la **app/navegador** o e2e. **Kiosco Buildi** `35bc3348-d2c1-40a3-91b2-3c7189ace70c` (RI en DEV, mismo CUIT que Jorgito 23-32031506-9) **emite Factura B con CAE real** de homologación.
 >
-> **▶ PRÓXIMA SESIÓN (UAT pendientes hasta finalizar):**
-> 0. **DEPLOY v1.90.0 a PROD** (fix REGLA #0 cobro MP) — re-deploy EF `mp-webhook`+`mp-ipn` a PROD + frontend + tag/release. **Pendiente de tu OK.** (Latente, bajo riesgo: 0 uso de MP cobro en PROD.)
-> 1. ~~**Módulo (B) Integraciones de cobro**~~ ✅ **HECHO en DEV (v1.90.0)** — code-audit + fix REGLA #0 (H1-H6) + validación DB. Falta: deploy a PROD (item 0) y, cuando GO conecte una cuenta MP de prueba, el **e2e del cobro real** (hoy bloqueado por terceros). **MODO** sigue pendiente (stub, requiere credenciales reales).
-> 2. **Residual menor no-crítico** (cobertura 01-05): Compras/Envíos (oc_numeracion, remito, costo→precio_costo, alerta anticipo-OC, cobro al cliente por política, envio UX flags). **Inventario:** queda solo `conteo_gate_activo` e2e (✅unit) y L37 2-recepciones-parciales (✅unit + e2e 35 con 1). **✅ Ventas CERRADO (2026-06-24):** sweep reservas (L48 **✅DB**), `cliente_consumidor_final`/`reglas_canal.requiere_cliente`/`lista_precio` (✅code-verified); nota stale `precio_redondeo` corregida. **✅ Inventario/Conteos cerrado lo de stock (2026-06-24):** L21 delta-venta-intercalada (✅unit incluye el caso + code-verified: lee `vivo` fresco al aprobar), L23 aprobar-aplica-delta (✅code-verified + e2e 51), L20 2-actores (✅e2e 47+51), L13 armar-kit (✅code-verified reservar→confirmar→cancelar). ⚠️ obs a GO: seña de reserva vencida no se reembolsa (forfeit por defecto); writes de confirmar-armado no transaccionales (patrón app-wide).
-> 3. **AFIP §29** matriz fiscal A/B/C con CAE real — usar **Kiosco Buildi** (RI) para B real; falta solo un CUIT RI distinto si se quiere matriz completa (trámite de GO).
+> **🏁 UAT / AUDITORÍA REGLA #0 CERRADO AL 100% (correctitud) — 2026-06-24.** Doc de cierre formal:
+> **`tests/specs/cobertura/00_cierre_uat.md`**. Los 6 grupos (cobertura/01-06) verificados (unit 806 + code-audit
+> + impersonación DB + e2e mutante). Lo que queda NO es hueco de correctitud:
+> - **⛔ Bloqueado por terceros (acción de GO):** (1) **AFIP §29** matriz A/Exento con CAE real (cert/token PRODUCCIÓN o CUIT RI homologación distinto — Mono→C y RI→B ya validados); (2) **cobro MP real e2e** (seller OAuth + pago sandbox; lógica ya DB-validada v1.90); (3) **courier B2B (EN6)** (cuentas reales).
+> - **📋 Capa-C manual:** factura/NC PDF + QR, Libro IVA, email factura, OC PDF (data unit-cubierta; render/print/email = visual).
+> - **🟠 Menores no-REGLA#0:** oc_numeracion label, remito obligatorio, badge anticipo-OC, flags UX de envío, session_timeout, fichado QR, marketplace toggle, conteo alcances/modo.
+> - **❓ 4 decisiones de producto (§3 del doc, ninguna es bug de plata/stock):** (1) seña de reserva vencida = forfeit por defecto (¿o `cliente_credito`?); (2) fusión LPN registra `ajuste_ingreso` sin el rebaje espejo (ledger sobre-cuenta; `stock_actual` OK) — ¿ingreso+rebaje neto 0?; (3) `confirmarArmado` no transaccional (patrón app-wide) — ¿envolver kitting en RPC?; (4) `recepcion_alerta_faltante_dias` = flag huérfano (cablear o dropear).
 >
 > **🛑 BUG REGLA #0 ENCONTRADO + ARREGLADO (mig 241) — pago de nómina por medio NO-efectivo:** `pagar_nomina_empleado` asentaba SIEMPRE `caja_movimientos` **`egreso`** (afecta el arqueo de EFECTIVO) sin importar el medio. La UI ofrece efectivo/transferencia/MP → pagar por transferencia o MP **descuadraba el efectivo** de la caja (restaba plata que nunca salió del cajón). **Fix:** efectivo→`egreso`, no-efectivo→`egreso_informativo`. **DB-validado (los 3 medios) + spec 81.** ⇒ **deploy a PROD recomendado.**
 >

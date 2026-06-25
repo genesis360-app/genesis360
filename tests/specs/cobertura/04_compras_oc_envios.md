@@ -37,7 +37,7 @@
 | L19 | Under-receipt: motivo de faltante obligatorio | `recepcionLogic.ts:tieneFaltante` · uso `RecepcionesPage.tsx:493` | 🔴 | ✅unit · 🔴e2e |
 | L20 | Ajuste de cantidad (over/under) requiere SUPERVISOR+ | `recepcionLogic.ts:esAjusteCantidad` · uso `RecepcionesPage.tsx:466` | 🔴 | ✅unit · 🔴e2e (rol) |
 | L21 | Remito obligatorio al recibir (`recepcion_remito_obligatorio`) + subida a bucket `remitos` | `RecepcionesPage.tsx:500-516,1200` | 🟠 | 🔴gap |
-| L22 | Alerta de cambio de costo al recibir + actualizar `precio_costo` | `comprasCostos.ts:cambioCostoPct,superaAlertaCosto` · uso `RecepcionesPage.tsx:662,1443` | 🔴 **costo** | ✅unit · 🔴e2e (efecto en producto) |
+| L22 | Alerta de cambio de costo al recibir + actualizar `precio_costo` | `comprasCostos.ts:cambioCostoPct,superaAlertaCosto` · uso `RecepcionesPage.tsx:1443` (alerta), `656-671` (efecto) | 🔴 **costo** | ✅unit (umbral/pct) · ✅code-verified 2026-06-24 (confirm de recepción: `if (it.actualizar_costo && |nuevo−default|>0.001) UPDATE productos SET precio_costo=nuevo` + logActividad; si no tildado → no toca el costo + log "no actualizado". Operador decide, sin pisar silencioso) |
 | L23 | Costo total OC con accesorios | `comprasCostos.ts:totalOCconAccesorios` · `ocPDF.ts:totalOC` | 🟠 | ✅unit |
 | L24 | **Devolución a proveedor — rebaja stock FIFO + movimiento `ajuste_rebaje`** | `ProveedoresPage.tsx:1208-1229`; valida `devolucionProveedor.ts:validarDevolucion,montoDevolucion` | 🔴 **stock** | ✅unit (valida) · ✅e2e **33** (forma credito_cc) |
 | L25 | Devolución forma **credito_cc** → `nota_credito` negativa en `proveedor_cc_movimientos` | `ProveedoresPage.tsx:1234-1239` | 🔴 **plata** | ✅e2e **33** |

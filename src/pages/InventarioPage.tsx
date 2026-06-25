@@ -1311,52 +1311,16 @@ export default function InventarioPage() {
     mutationFn: async () => {
       const cant = parseFloat(kittingCantidad)
       if (!kittingKitId || isNaN(cant) || cant <= 0) throw new Error('Datos inválidos')
-      const recetas = recetasMap[kittingKitId] ?? []
-      if (recetas.length === 0) throw new Error('El KIT no tiene receta configurada')
-
-      // 1. Verificar stock disponible en la sucursal activa
-      for (const r of recetas) {
-        const comp = r.componente as any
-        const requerido = r.cantidad * cant
-        const disponible = kStock(r.comp_producto_id, comp?.stock_actual ?? 0)
-        if (disponible < requerido) {
-          throw new Error(`Stock insuficiente de ${comp?.nombre ?? r.comp_producto_id}: necesitás ${requerido} ${comp?.unidad_medida ?? ''}, hay ${disponible}${sucursalId ? ' (en esta sucursal)' : ''}`)
-        }
-      }
-
-      // 2. Reservar componentes (incrementar cantidad_reservada en sus líneas)
-      const componentesReservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = []
-      for (const r of recetas) {
-        const cantComp = r.cantidad * cant
-        let lineasQ = supabase.from('inventario_lineas')
-          .select('id, cantidad, cantidad_reservada')
-          .eq('tenant_id', tenant!.id).eq('producto_id', r.comp_producto_id).eq('activo', true)
-          .order('created_at', { ascending: true })
-        if (sucursalId) lineasQ = lineasQ.eq('sucursal_id', sucursalId)
-        const { data: lineas } = await lineasQ
-
-        let restante = cantComp
-        for (const linea of lineas ?? []) {
-          if (restante <= 0) break
-          const disponibleLinea = linea.cantidad - (linea.cantidad_reservada ?? 0)
-          const aReservar = Math.min(disponibleLinea, restante)
-          if (aReservar <= 0) continue
-          await supabase.from('inventario_lineas')
-            .update({ cantidad_reservada: (linea.cantidad_reservada ?? 0) + aReservar })
-            .eq('id', linea.id)
-          componentesReservados.push({ linea_id: linea.id, comp_producto_id: r.comp_producto_id, cantidad: aReservar })
-          restante -= aReservar
-        }
-      }
-
-      // 3. Crear kitting_log en estado 'en_armado'
-      await supabase.from('kitting_log').insert({
-        tenant_id: tenant!.id, kit_producto_id: kittingKitId,
-        cantidad_kits: cant, ubicacion_id: kittingUbicacionId || null,
-        usuario_id: user?.id ?? null, notas: kittingNotas || null,
-        tipo: 'armado', estado: 'en_armado',
-        componentes_reservados: componentesReservados,
+      // RPC ATÓMICA (mig 244): valida stock por componente, reserva FIFO y crea el kitting_log
+      // en una sola transacción → no quedan reservas huérfanas si algo falla a mitad.
+      const { error } = await supabase.rpc('iniciar_armado_kit', {
+        p_kit_producto_id: kittingKitId,
+        p_cantidad:        cant,
+        p_ubicacion_id:    kittingUbicacionId || null,
+        p_sucursal_id:     sucursalId || null,
+        p_notas:           kittingNotas || null,
       })
+      if (error) throw new Error(error.message)
     },
     onSuccess: () => {
       toast.success('Armado iniciado — componentes reservados')
@@ -1371,52 +1335,13 @@ export default function InventarioPage() {
 
   const confirmarArmado = useMutation({
     mutationFn: async (logId: string) => {
-      const log = kitsEnArmado.find((l: any) => l.id === logId) as any
-      if (!log) throw new Error('Armado no encontrado')
-      const reservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = log.componentes_reservados ?? []
-
-      // 1. Rebaje de componentes (descontar de cantidad + liberar reserva)
-      const cantsByComp: Record<string, number> = {}
-      for (const entry of reservados) {
-        const { data: linea } = await supabase.from('inventario_lineas')
-          .select('cantidad, cantidad_reservada').eq('id', entry.linea_id).single()
-        if (!linea) continue
-        await supabase.from('inventario_lineas').update({
-          cantidad: linea.cantidad - entry.cantidad,
-          cantidad_reservada: Math.max(0, (linea.cantidad_reservada ?? 0) - entry.cantidad),
-        }).eq('id', entry.linea_id)
-        cantsByComp[entry.comp_producto_id] = (cantsByComp[entry.comp_producto_id] ?? 0) + entry.cantidad
-      }
-      for (const [prodId, cantTotal] of Object.entries(cantsByComp)) {
-        const saComp = await getStockAntesSucursal(prodId, sucursalId)
-        await supabase.from('movimientos_stock').insert({
-          tenant_id: tenant!.id, producto_id: prodId,
-          tipo: 'rebaje', cantidad: cantTotal,
-          stock_antes: saComp, stock_despues: Math.max(0, saComp - cantTotal),
-          motivo: `Kitting x${log.cantidad_kits} [${log.kit_producto_id}]`,
-          usuario_id: user?.id ?? null,
-          sucursal_id: sucursalId || null,
-        })
-      }
-
-      // 2. Ingreso del KIT
-      await supabase.from('inventario_lineas').insert({
-        tenant_id: tenant!.id, producto_id: log.kit_producto_id,
-        cantidad: log.cantidad_kits, ubicacion_id: log.ubicacion_id ?? null, activo: true,
-        sucursal_id: sucursalId || null,
+      // RPC ATÓMICA (mig 244): rebaja componentes + libera reservas + ingresa el KIT + movimientos,
+      // todo en una transacción → nunca quedan componentes consumidos sin KIT.
+      const { error } = await supabase.rpc('confirmar_armado_kit', {
+        p_log_id:      logId,
+        p_sucursal_id: sucursalId || null,
       })
-      const saKit = await getStockAntesSucursal(log.kit_producto_id, sucursalId)
-      await supabase.from('movimientos_stock').insert({
-        tenant_id: tenant!.id, producto_id: log.kit_producto_id,
-        tipo: 'kitting', cantidad: log.cantidad_kits,
-        stock_antes: saKit, stock_despues: saKit + log.cantidad_kits,
-        motivo: log.notas || `Kitting x${log.cantidad_kits}`,
-        usuario_id: user?.id ?? null,
-        sucursal_id: sucursalId || null,
-      })
-
-      // 3. Marcar log como completado
-      await supabase.from('kitting_log').update({ estado: 'completado' }).eq('id', logId)
+      if (error) throw new Error(error.message)
     },
     onSuccess: () => {
       toast.success('KIT armado y stock ingresado')
@@ -1431,21 +1356,9 @@ export default function InventarioPage() {
 
   const cancelarArmado = useMutation({
     mutationFn: async (logId: string) => {
-      const log = kitsEnArmado.find((l: any) => l.id === logId) as any
-      if (!log) throw new Error('Armado no encontrado')
-      const reservados: { linea_id: string; comp_producto_id: string; cantidad: number }[] = log.componentes_reservados ?? []
-
-      // Liberar cantidad_reservada en cada línea
-      for (const entry of reservados) {
-        const { data: linea } = await supabase.from('inventario_lineas')
-          .select('cantidad_reservada').eq('id', entry.linea_id).single()
-        if (!linea) continue
-        await supabase.from('inventario_lineas').update({
-          cantidad_reservada: Math.max(0, (linea.cantidad_reservada ?? 0) - entry.cantidad),
-        }).eq('id', entry.linea_id)
-      }
-
-      await supabase.from('kitting_log').update({ estado: 'cancelado' }).eq('id', logId)
+      // RPC ATÓMICA (mig 244): libera las reservas y marca cancelado en una transacción.
+      const { error } = await supabase.rpc('cancelar_armado_kit', { p_log_id: logId })
+      if (error) throw new Error(error.message)
     },
     onSuccess: () => {
       toast.success('Armado cancelado — componentes liberados')

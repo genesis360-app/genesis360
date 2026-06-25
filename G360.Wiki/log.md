@@ -6,7 +6,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-25] update | ✅ Verificación contable REGLA #0 (cierres dan bien) + v1.90.1 (fix fusión-LPN ledger + cablear alerta faltante)
+## [2026-06-25] deploy | ✅ Verificación contable REGLA #0 (cierres dan bien) + 🚀 v1.90.1 EN PROD (4 decisiones del cierre resueltas: seña vencida, kitting atómico, fusión ledger, alerta faltante)
 
 **Pedido de GO:** "¿lo contable está todo ok? ¿los cierres dan bien?" → **verificación real contra la DB (DEV+PROD), no afirmaciones.**
 
@@ -15,10 +15,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 - **CC clientes (DEV+PROD):** todos los saldos de crédito ≥ 0 ✓. **CC proveedores:** sin anomalías. **Período abril 2026 cerrado** (guards `trg_*_periodo_cerrado` activos).
 - Fixes REGLA #0 v1.87-1.90 (nómina efectivo↔caja, devolución efectivo exige caja, conciliación MP→caja) en PROD.
 
-**v1.90.1 (EN DEV, código) — 2 de las 4 decisiones del cierre, accionadas:**
-- **#2 fusión de LPN (ledger):** `fusionarLineas` ahora asienta el par espejo `ajuste_ingreso`(dest)+`ajuste_rebaje`(orígenes) = neto 0 → los reportes de movimientos ya no sobre-cuentan la fusión (`stock_actual` siempre fue correcto por trigger).
-- **#4 `recepcion_alerta_faltante_dias` cableado** (era flag huérfano): badge 📦 "Faltante · Nd" en la lista de OC (`GastosPage`) — rojo si una OC `recibida_parcial` lleva ≥ N días sin actividad.
-- typecheck + build verdes. **Pendientes de GO:** #1 seña vencida (recomiendo que el sweep respete `reserva_penalidad_pct`); #3 envolver kitting en RPC atómico.
+**v1.90.1 (EN PROD, migs 243/244/245) — las 4 decisiones del cierre, RESUELTAS:**
+- **#1 seña de reserva vencida (mig 243, REGLA #0 plata):** el sweep `liberar_reservas_vencidas` ahora respeta `reserva_penalidad_pct` igual que la cancelación manual → retiene la penalidad y **acredita el resto a `cliente_creditos`** (origen `reserva_vencida`) si hay cliente; sin cliente → forfeit. DB-validado ($3000 seña/20% → crédito $2400 + stock liberado + cancelada).
+- **#3 kitting atómico (mig 244, REGLA #0 stock):** `iniciar/confirmar/cancelar_armado_kit` RPCs (INVOKER → RLS aísla por tenant). Antes varios writes sueltos → falla a mitad dejaba componentes consumidos sin KIT. Ahora cada op = una transacción. DB-validado (iniciar reserva 6 → confirmar Leche 16→10 + reserva 0 + KIT ×3 + log completado). Frontend rewireado a las RPC.
+- **#2 fusión de LPN (ledger):** `fusionarLineas` asienta el par espejo `ajuste_ingreso`(dest)+`ajuste_rebaje`(orígenes) = neto 0 → reportes de movimientos ya no sobre-cuentan (stock_actual siempre fue correcto).
+- **#4 `recepcion_alerta_faltante_dias` (mig 245):** la columna la había dropeado la mig 240 (flag huérfano); re-agregada (ahora tiene consumidor) → badge 📦 "Faltante · Nd" en la lista de OC (`GastosPage`) + input configurable en Config → Compras.
+- typecheck + build + **806 unit** verdes. **⇒ Auditoría REGLA #0 cerrada sin pendientes de producto.**
 
 ---
 

@@ -6,8 +6,21 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-24 · módulo (B) Integraciones de COBRO MP — fix REGLA #0 EN PROD)
-> **Estado:** **PROD = DEV = v1.90.0 (migs 001-242)** ✅ — EF `mp-webhook` v31 + `mp-ipn` v6 en DEV **y PROD**; PR #245 merged, release v1.90.0, Vercel PROD desplegando. Sin migración. typecheck+build+806 unit verdes.
+> ### 🟢 ARRANCÁ ACÁ (2026-06-25 · 🏁 UAT/auditoría REGLA #0 CERRADA + v1.90.1 EN PROD)
+> **Estado:** **PROD = DEV = v1.90.1 (migs 001-245)** ✅ — typecheck+build+806 unit verdes.
+>
+> **🏁 UAT / AUDITORÍA REGLA #0 CERRADA AL 100% (correctitud).** Doc: `tests/specs/cobertura/00_cierre_uat.md`. Los 6 grupos verificados (unit + code-audit + impersonación DB + e2e mutante). **Verificación contable real (DEV+PROD): los cierres dan bien** — arqueo de caja cuadra en todas las sesiones reales (`residuo_no_explicado=0` salvo 1 fixture de test), faltantes/sobrantes capturados en `diferencia_cierre` con nota, CC clientes ≥0, período abril cerrado.
+>
+> **✅ v1.90.1 — las 4 decisiones de producto del cierre, RESUELTAS (migs 243/244/245):**
+> - **#1 (mig 243, 💰):** sweep de reservas vencidas respeta `reserva_penalidad_pct` → acredita seña−penalidad a `cliente_creditos` (consistente con cancelación manual). DB-validado ($3000/20%→$2400).
+> - **#3 (mig 244, stock):** armado de KITs ATÓMICO (`iniciar/confirmar/cancelar_armado_kit` RPCs INVOKER). DB-validado.
+> - **#2:** fusión de LPN asienta par espejo ingreso+rebaje (ledger neto 0). **#4 (mig 245):** `recepcion_alerta_faltante_dias` re-agregada (la dropeó mig 240) + badge 📦 en lista OC + configurable en Config→Compras.
+>
+> **⛔ Único pendiente NO auto-cerrable (acción de GO / terceros):** AFIP §29 (cert/token PRODUCCIÓN o CUIT RI homologación), cobro MP real e2e (seller OAuth + sandbox), courier B2B EN6. + capa-C manual (PDF/email/print). Detalle en `00_cierre_uat.md`.
+>
+> ---
+> **(Detalle de v1.90.0 — fix REGLA #0 cobro MP — abajo.)**
+> **v1.90.0:** **PROD = DEV** ✅ — EF `mp-webhook` v31 + `mp-ipn` v6 en DEV **y PROD**; PR #245 merged, release v1.90.0.
 >
 > **🛑 v1.90.0 = fix REGLA #0 de la conciliación de cobro Mercado Pago (módulo B del barrido).** Estaba **rota end-to-end pero latente** (PROD: 0 credenciales MP/MODO conectadas, 0 ventas con `id_pago_externo` → nunca se ejerció). Arreglado ANTES de habilitar cobro real:
 > - **H1 (💰):** `mp-webhook` escribía en columna inexistente `payload` (la tabla tiene `payload_raw`) → insert fallaba → el pago **pre-venta no se aplicaba a `monto_pagado`** (cliente paga el QR antes de finalizar → venta impaga). Fix EF + frontend (`VentasPage:2583` lee `payload_raw`).

@@ -59,14 +59,16 @@
 2. ✅ **RESUELTO (v1.90.1) — Fusión de LPN ledger.** `fusionarLineas` ahora asienta el par espejo
    `ajuste_ingreso`(dest)+`ajuste_rebaje`(orígenes) = neto 0 → el ledger de movimientos ya no sobre-cuenta la
    fusión (`stock_actual` siempre fue correcto por el trigger).
-3. **`confirmarArmado` (kits) no es transaccional.** Son varios writes sin RPC → una falla a mitad podría dejar
-   componentes consumidos sin KIT. Patrón app-wide (no nuevo). **Recomendación: envolver `iniciar/confirmar/cancelar`
-   armado en un RPC plpgsql atómico** (REGLA #0 stock). Pendiente (cambio acotado con migración + validación DB).
+3. ✅ **RESUELTO (v1.90.1, mig 244) — kitting atómico.** `iniciar/confirmar/cancelar` armado son ahora RPCs
+   plpgsql (`iniciar_armado_kit`/`confirmar_armado_kit`/`cancelar_armado_kit`), cada una = una transacción →
+   nunca quedan componentes consumidos sin KIT ni reservas huérfanas. INVOKER (RLS aísla por tenant). DB-validado.
 4. ✅ **RESUELTO (v1.90.1) — `recepcion_alerta_faltante_dias` cableado.** Badge 📦 "Faltante · Nd" en la lista de
    OC (`GastosPage`): rojo si una OC `recibida_parcial` lleva ≥ N días sin actividad, ámbar si reciente.
-1bis. **Seña de reserva vencida = forfeit** (sin cambios aún). **Recomendación: que el sweep `liberar_reservas_vencidas`
-   respete `reserva_penalidad_pct`** igual que la cancelación manual (retener penalidad, acreditar el resto a
-   `cliente_credito`) → consistente y justo. Pendiente de OK de GO.
+1bis. ✅ **RESUELTO (v1.90.1, mig 243) — seña de reserva vencida.** El sweep `liberar_reservas_vencidas` ahora
+   respeta `reserva_penalidad_pct` igual que la cancelación manual: retiene la penalidad y **acredita el resto a
+   `cliente_credito`** (si hay cliente; sin cliente → forfeit). DB-validado ($3000 seña/20% → crédito $2400).
+
+**⇒ Las 4 decisiones del cierre quedaron resueltas (v1.90.1). Auditoría REGLA #0 cerrada sin pendientes de producto.**
 
 ---
 

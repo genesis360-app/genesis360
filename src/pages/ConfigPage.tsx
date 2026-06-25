@@ -770,6 +770,7 @@ export default function ConfigPage() {
   // CO3 — costos
   const [ocCostoAlertaPct,     setOcCostoAlertaPct]     = useState<string>(String((t142 as any)?.compras_costo_alerta_pct ?? 10))
   const [ocRemitoObligatorio,  setOcRemitoObligatorio]  = useState<boolean>(!!(t142 as any)?.recepcion_remito_obligatorio)
+  const [ocFaltanteAlertaDias, setOcFaltanteAlertaDias] = useState<string>(String((t142 as any)?.recepcion_alerta_faltante_dias ?? 7))
   const [ocOverReceiptPct,     setOcOverReceiptPct]     = useState<string>((t142 as any)?.over_receipt_pct_max != null ? String((t142 as any).over_receipt_pct_max) : '')
   // CO6 — cheques
   const [chequesAlertaDias,    setChequesAlertaDias]    = useState<string>(String((t142 as any)?.cheques_alerta_dias ?? 7))
@@ -1132,6 +1133,7 @@ export default function ConfigPage() {
       // CO3 — costos + recepción
       compras_costo_alerta_pct:        parseFloat(ocCostoAlertaPct) || 10,
       recepcion_remito_obligatorio:    ocRemitoObligatorio,
+      recepcion_alerta_faltante_dias:  Math.max(1, parseInt(ocFaltanteAlertaDias) || 7),
       over_receipt_pct_max:            ocOverReceiptPct !== '' ? parseFloat(ocOverReceiptPct) : null,
       // CO6 — cheques
       cheques_alerta_dias:             Math.max(1, parseInt(chequesAlertaDias) || 7),
@@ -4274,6 +4276,13 @@ export default function ConfigPage() {
                     <p className="font-medium text-gray-700 dark:text-gray-200 text-sm">Remito obligatorio</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">Exige adjuntar el remito del proveedor al confirmar una recepción.</p>
                   </div>
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Alerta de faltante de recepción (días)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365" value={ocFaltanteAlertaDias} disabled={!canEdit}
+                    onChange={e => setOcFaltanteAlertaDias(e.target.value)}
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si una OC queda con recepción parcial (faltante) y pasan N días sin actividad, el badge 📦 se pone en rojo.</p>
                 </div>
               </div>
             </div>

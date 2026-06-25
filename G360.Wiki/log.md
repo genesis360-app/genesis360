@@ -6,6 +6,36 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-24] update | 🛑 v1.90.0 EN DEV — fix REGLA #0: conciliación de cobro Mercado Pago (QR/link → webhook → saldo + caja)
+
+**Pedido de GO:** "sigamos con los pendientes" → módulo (B) **Integraciones de cobro**. Code-audit + fix.
+**DEV = v1.90.0** (frontend + EF `mp-webhook` v25 + `mp-ipn` v6 en DEV). **PROD sigue en v1.89.0** ⏳ (deploy de EF + frontend **pendiente del OK de GO**). Sin migración. typecheck+build verdes.
+
+**🛑 REGLA #0 — la conciliación de cobro MP estaba ROTA end-to-end (latente, 0 uso en PROD):** verificado en DEV+PROD: 0 credenciales MP/MODO conectadas, 0 ventas con `id_pago_externo`, `ventas_externas_logs` vacía ⇒ rompía el **primer** cobro real por QR. Hallazgos (todos DB-verificados):
+- **H1 (💰):** `mp-webhook` insertaba en columna inexistente **`payload`** (la tabla tiene `payload_raw`) → el insert fallaba → idempotencia rota Y **el pago pre-venta no se aplicaba a `monto_pagado`** (cliente paga el QR antes de finalizar → la venta quedaba impaga). **Fix:** `payload_raw` + frontend (`VentasPage:2583`) lee `payload_raw`.
+- **H2 (💰):** el cobro por webhook **no asentaba `ingreso_informativo` en caja** (no hay trigger; los demás no-efectivo sí, spec 83). **Fix:** el webhook (autoritativo para ventas existentes) asienta **un** `ingreso_informativo [Mercado Pago]` contra una sesión operativa abierta de la sucursal (excluye Bóveda; sin caja → no asienta + warn, saldo igual conciliado). Pre-venta: la caja la sigue asentando `registrarVenta` según el medio del carrito ⇒ **sin doble conteo** (el POS "Finalizar" del modal QR queda con `saldoMediosPago: []`).
+- **H3/H4:** `mp-webhook` y `mp-ipn` quedaron **espejadas** (misma conciliación + `payload_raw{monto,...}` normalizado) → el toast global "Pago MP confirmado" (AppLayout lee `payload_raw.monto`) ahora dispara.
+- **H5 (doc):** wiki afirmaba validación HMAC inexistente → corregido (lo que protege es el re-fetch a la API de MP).
+- **H6 (💰):** **MODO es un stub** (TODOs "cuando lleguen credenciales", 0 creds; su webhook no puede loguear el caso pre-venta sin tenant). **No tocado** (no se puede testear sin API real) → documentado como no-production-ready.
+
+**Idempotencia endurecida:** log `mp-payment-{id}` se inserta PRIMERO; el `UNIQUE` bloquea reintentos de MP. Error no-duplicado → throw (500, MP reintenta) sin tocar plata; `23505` → ya procesado.
+
+**Validación:** ✅ DB (DEV, Jorgito): bug original demostrado (`insert ... payload` → `undefined_column`); las 2 escrituras nuevas del webhook funcionan contra esquema+trigger reales (sesión operativa + `ingreso_informativo`; log con `payload_raw->>'monto'`=1234.5). Filas de prueba limpiadas. ✅ EF compilan (desplegadas a DEV). ⛔ **e2e del cobro real BLOQUEADO por terceros** (requiere seller MP OAuth + pago sandbox; la EF re-fetchea el pago a MP) — mismo bloqueo que AFIP §29. Detalle: `tests/specs/cobertura/06_integraciones_cobro.md`.
+
+**🧪 + Residual de Ventas CERRADO (mismo barrido, test/doc-only):**
+- **L48 — sweep de reservas vencidas** (`liberar_reservas_vencidas` RPC): ✅ **DB-validado** (simulación transaccional + ROLLBACK en DEV/Jorgito): una reserva vencida → stock reservado **3→0** + venta **cancelada**. SECURITY DEFINER, FIFO sobre `cantidad_reservada`, series por `reservado=false`, idempotente, error-isolado por reserva. **⚠️ obs a GO:** la seña de una reserva vencida **no se reembolsa ni acredita** (forfeit por defecto) — confirmar si es la política deseada.
+- **`cliente_consumidor_final=false`** + **`reglas_canal.requiere_cliente`**: ✅ code-verified (misma cláusula `clienteRequerido` que spec 60, `VentasPage:2414-2415`).
+- **`reglas_canal.lista_precio`** mayorista/minorista: ✅ code-verified (`precioTierBase` fuerza el tier → `venta_items.precio_unitario` → subtotal/IVA/factura; toca plata, correcto).
+- **Corrección de doc:** la nota de cobertura/01 que tildaba `precio_redondeo` de "flag muerto" estaba **stale** (lo lee `precioTierEfectivo`, cerrado en v1.82.0) → corregida.
+
+**🧪 + Residual de Inventario/Conteos (lo de stock) CERRADO (code-audit + unit + e2e existentes):**
+- **L21 — reconciliación por delta con venta intercalada:** ✅ el unit de `reconciliarDelta` YA cubre el caso (`reconciliarDelta(8,7,10)=5`); ✅ code-verified: ambos paths (`InventarioPage:1809` directo y `:779` al aprobar) leen el stock **vivo fresco** de `inventario_lineas.cantidad` y aplican `vivo + (contada − snapshot)` → la venta intercalada ya bajó el stock y el conteo solo aplica su delta, nunca pisa.
+- **L23 — aprobar ajuste_conteo aplica el delta:** ✅ code-verified (`:776-795`: `vivo` fresco → `reconciliarDelta` → `update cantidad` + `movimientos_stock` con `deltaReal` y `stock_antes/despues` frescos) + ✅ e2e 51. **L20** 2-actores (rol≠DUEÑO) ✅ e2e 47+51 (corregido: estaba marcado 🔴 stale).
+- **L13 — armar KIT:** ✅ code-verified (reservar `cantidad_reservada`↑ con validación de disponible → confirmar rebaja componentes + ingresa KIT + `movimientos_stock` → cancelar libera reserva; inverso del desarmar e2e 75). ⚠️ writes del confirmar NO transaccionales (patrón app-wide).
+- **Quedan (no stock-loss, ✅unit):** `conteo_gate_activo` e2e, L37 2-recepciones-parciales (✅unit + e2e 35 con 1).
+
+---
+
 ## [2026-06-24] deploy | 🚀 v1.89.0 EN PROD — devolución/NC al precio efectivo + EF hardening post-CAE + validación TODOS los medios de pago
 
 **PROD = DEV = v1.89.0** (frontend + EF `emitir-factura` en DEV **y** PROD; sin migración). Continuación de la auditoría fiscal de Facturación (los 2 hallazgos abiertos de v1.88.0 → resueltos):

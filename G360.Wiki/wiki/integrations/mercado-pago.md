@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-06-24
 ---
 
 # Integración Mercado Pago
@@ -74,7 +74,31 @@ El campo `external_reference` identifica al tenant en el webhook. Al recibir un 
 
 ### Toast global en AppLayout
 
-Cada 30s, si llega un pago MP, muestra un toast: `💳 monto · fecha · hora`.
+Cada 30s consulta `ventas_externas_logs` (MercadoPago, últimos 5 min) y, por cada log con
+`payload_raw.monto`, muestra un toast `💳 monto · fecha · hora`.
+
+### Conciliación del cobro (REGLA #0, v1.90.0)
+
+> Auditoría completa en `tests/specs/cobertura/06_integraciones_cobro.md`. El módulo nunca se ejerció en
+> PROD (0 credenciales MP conectadas) ⇒ los bugs eran latentes; se arreglaron antes de habilitar cobro real.
+
+**Tabla de idempotencia/conciliación:** `ventas_externas_logs` — columna de datos = **`payload_raw`** (JSONB),
+NO `payload`. Clave `webhook_external_id`: `mp-payment-{id}` (venta existente) o `mp-preventa-{id}` (pre-venta).
+`UNIQUE(tenant_id, integracion, webhook_external_id)` da la idempotencia ante reintentos de MP.
+
+**Dos flujos, dos puntos de asiento de caja (sin doble conteo):**
+
+1. **Venta directa (pre-venta):** el webhook llega antes de crear la venta → guarda `mp-preventa-{preVentaId}`
+   en `payload_raw`; `registrarVenta` lo lee y aplica `monto_pagado`. **La caja la asienta `registrarVenta`**
+   según el medio del carrito (el webhook NO toca caja).
+2. **Venta existente (saldo de reserva / CC por QR):** el **webhook es autoritativo** → setea
+   `id_pago_externo`/`money_release_date`, suma `monto_pagado` (cap al total) y asienta **un**
+   `ingreso_informativo [Mercado Pago] Venta #N` contra una sesión de caja **operativa** abierta de la sucursal
+   (excluye Bóveda; sin caja abierta → no asienta + warn, el saldo igual queda conciliado). El "Finalizar" del
+   modal QR solo flipea el estado (`saldoMediosPago: []`).
+
+`mp-webhook` y `mp-ipn` quedaron **espejadas** (misma conciliación + `payload_raw` normalizado). La registrada
+en el dashboard es `mp-webhook` (es la `notification_url` de `mp-crear-link-pago`).
 
 ---
 
@@ -170,7 +194,11 @@ Eventos: Pagos ✅ + Planes y suscripciones ✅
 
 ## Validación de webhooks
 
-Validación HMAC con `MP_WEBHOOK_SECRET`. La EF rechaza payloads sin firma correcta.
+> [!WARNING] **No hay validación HMAC** en `mp-webhook`/`mp-ipn` (a pesar de que exista el secret
+> `MP_WEBHOOK_SECRET`). Lo que da la garantía de autenticidad es que la EF **re-fetchea el pago a la API
+> de MP** (`GET /v1/payments/{id}`) con el `access_token` del seller: un payload falso con un `payment_id`
+> inválido devuelve no-aprobado/404 y no toca la DB. Si en el futuro se quiere endurecer, agregar validación
+> de firma `x-signature` con `MP_WEBHOOK_SECRET` ANTES del re-fetch.
 
 ---
 

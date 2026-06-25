@@ -2582,13 +2582,13 @@ export default function VentasPage() {
       if (preVentaId) {
         const { data: preLog } = await supabase
           .from('ventas_externas_logs')
-          .select('payload')
+          .select('payload_raw')
           .eq('tenant_id', tenant!.id)
           .eq('integracion', 'MercadoPago')
           .eq('webhook_external_id', `mp-preventa-${preVentaId}`)
           .maybeSingle()
-        if (preLog?.payload) {
-          const p = preLog.payload as any
+        if (preLog?.payload_raw) {
+          const p = preLog.payload_raw as any
           await supabase.from('ventas').update({
             monto_pagado: Math.min(Number(p.monto ?? 0), total),
             id_pago_externo: String(p.payment_id),

@@ -71,7 +71,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 
 | Página | Descripción | Estado |
 |--------|-------------|--------|
-| [[wiki/integrations/mercado-pago]] | Suscripciones, preapproval, webhooks, IPN, QR pagos | ✅ |
+| [[wiki/integrations/mercado-pago]] | Suscripciones, preapproval, webhooks, IPN, QR pagos + conciliación de cobro (v1.90.0, REGLA #0) | ✅ |
 | [[wiki/integrations/mercado-libre]] | OAuth, mapeo productos, webhooks órdenes, sync stock | ✅ |
 | [[wiki/integrations/tienda-nube]] | OAuth, mapeo, webhooks, sync worker, BATCH_SIZE 200 | ✅ |
 | [[wiki/features/facturacion-afip]] | ← Ver features/facturacion-afip (cubre integración AFIP) | ✅ |

@@ -6,8 +6,8 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-24 · módulo (B) Integraciones de COBRO MP — fix REGLA #0 en DEV · deploy a PROD pendiente)
-> **Estado:** **DEV = v1.90.0** · **PROD = v1.89.0 (migs 001-242)** ⏳ — **deploy de v1.90.0 a PROD PENDIENTE de tu OK** (incluye **re-deploy de las EF `mp-webhook` + `mp-ipn` a PROD** + frontend). Sin migración. typecheck+build verdes.
+> ### 🟢 ARRANCÁ ACÁ (2026-06-24 · módulo (B) Integraciones de COBRO MP — fix REGLA #0 EN PROD)
+> **Estado:** **PROD = DEV = v1.90.0 (migs 001-242)** ✅ — EF `mp-webhook` v31 + `mp-ipn` v6 en DEV **y PROD**; PR #245 merged, release v1.90.0, Vercel PROD desplegando. Sin migración. typecheck+build+806 unit verdes.
 >
 > **🛑 v1.90.0 = fix REGLA #0 de la conciliación de cobro Mercado Pago (módulo B del barrido).** Estaba **rota end-to-end pero latente** (PROD: 0 credenciales MP/MODO conectadas, 0 ventas con `id_pago_externo` → nunca se ejerció). Arreglado ANTES de habilitar cobro real:
 > - **H1 (💰):** `mp-webhook` escribía en columna inexistente `payload` (la tabla tiene `payload_raw`) → insert fallaba → el pago **pre-venta no se aplicaba a `monto_pagado`** (cliente paga el QR antes de finalizar → venta impaga). Fix EF + frontend (`VentasPage:2583` lee `payload_raw`).
@@ -28,8 +28,7 @@ type: project
 > **🔧 Tooling:** MCP Supabase caído a nivel sesión (servidor OK) → usar **`supabase db query --linked`** (CLI: mismo acceso DB + impersonación/ROLLBACK + crear usuarios). Emitir CAE por **script directo** a la EF = poco fiable (CAE truncado, no persiste; aun con usuario real) → el smoke fiscal real va por la **app/navegador** o e2e. **Kiosco Buildi** `35bc3348-d2c1-40a3-91b2-3c7189ace70c` (RI en DEV, mismo CUIT que Jorgito 23-32031506-9) **emite Factura B con CAE real** de homologación.
 >
 > **▶ PRÓXIMA SESIÓN (UAT pendientes hasta finalizar):**
-> 0. **DEPLOY v1.90.0 a PROD** (fix REGLA #0 cobro MP) — re-deploy EF `mp-webhook`+`mp-ipn` a PROD + frontend + tag/release. **Pendiente de tu OK.** (Latente, bajo riesgo: 0 uso de MP cobro en PROD.)
-> 1. ~~**Módulo (B) Integraciones de cobro**~~ ✅ **HECHO en DEV (v1.90.0)** — code-audit + fix REGLA #0 (H1-H6) + validación DB. Falta: deploy a PROD (item 0) y, cuando GO conecte una cuenta MP de prueba, el **e2e del cobro real** (hoy bloqueado por terceros). **MODO** sigue pendiente (stub, requiere credenciales reales).
+> 1. ~~**Módulo (B) Integraciones de cobro**~~ ✅ **HECHO Y EN PROD (v1.90.0)** — code-audit + fix REGLA #0 (H1-H6) + validación DB + deploy (EF v31/v6 en PROD, release v1.90.0). Falta solo, cuando GO conecte una cuenta MP de prueba, el **e2e del cobro real** (hoy bloqueado por terceros: seller MP OAuth + pago sandbox). **MODO** sigue pendiente (stub no-production-ready, requiere credenciales reales + verificar endpoints).
 > 2. **Residual menor no-crítico** (cobertura 01-05): Compras/Envíos (oc_numeracion, remito, costo→precio_costo, alerta anticipo-OC, cobro al cliente por política, envio UX flags). **Inventario:** queda solo `conteo_gate_activo` e2e (✅unit) y L37 2-recepciones-parciales (✅unit + e2e 35 con 1). **✅ Ventas CERRADO (2026-06-24):** sweep reservas (L48 **✅DB**), `cliente_consumidor_final`/`reglas_canal.requiere_cliente`/`lista_precio` (✅code-verified); nota stale `precio_redondeo` corregida. **✅ Inventario/Conteos cerrado lo de stock (2026-06-24):** L21 delta-venta-intercalada (✅unit incluye el caso + code-verified: lee `vivo` fresco al aprobar), L23 aprobar-aplica-delta (✅code-verified + e2e 51), L20 2-actores (✅e2e 47+51), L13 armar-kit (✅code-verified reservar→confirmar→cancelar). ⚠️ obs a GO: seña de reserva vencida no se reembolsa (forfeit por defecto); writes de confirmar-armado no transaccionales (patrón app-wide).
 > 3. **AFIP §29** matriz fiscal A/B/C con CAE real — usar **Kiosco Buildi** (RI) para B real; falta solo un CUIT RI distinto si se quiere matriz completa (trámite de GO).
 >

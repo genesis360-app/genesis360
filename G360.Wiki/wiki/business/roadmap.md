@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.90.0 — 🛑 fix REGLA #0: conciliación de cobro Mercado Pago (QR/link → webhook → saldo + caja) (DEV ✅, frontend + EF; PROD ⏳ pendiente OK de GO)
+## v1.90.0 — 🛑 fix REGLA #0: conciliación de cobro Mercado Pago (QR/link → webhook → saldo + caja) (PROD ✅, frontend + EF mp-webhook/mp-ipn)
 
 Módulo (B) del barrido UAT: **Integraciones de cobro**. Code-audit + fix de la conciliación cobro MP, que estaba **rota end-to-end pero latente** (PROD: 0 credenciales MP/MODO conectadas, 0 ventas con `id_pago_externo` → nunca se ejerció). **H1 (💰):** `mp-webhook` insertaba en columna inexistente `payload` (la tabla tiene `payload_raw`) → el pago pre-venta no se aplicaba a `monto_pagado`. **H2 (💰):** el cobro por webhook no asentaba `ingreso_informativo` en caja → ahora el webhook (autoritativo para ventas existentes) lo asienta contra una sesión operativa abierta de la sucursal; pre-venta lo asienta `registrarVenta` (sin doble conteo). **H3/H4:** `mp-webhook` y `mp-ipn` espejadas + `payload_raw` normalizado (toast global revive). **H5:** wiki HMAC corregido. **H6:** MODO = stub no-production-ready. Validación: DB (DEV) + EF compiladas; e2e del cobro real bloqueado por terceros (seller MP OAuth + pago sandbox). Detalle: `tests/specs/cobertura/06_integraciones_cobro.md`.
 

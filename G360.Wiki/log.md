@@ -6,10 +6,10 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-06-24] update | 🛑 v1.90.0 EN DEV — fix REGLA #0: conciliación de cobro Mercado Pago (QR/link → webhook → saldo + caja)
+## [2026-06-24] deploy | 🛑 v1.90.0 EN PROD — fix REGLA #0: conciliación de cobro Mercado Pago (QR/link → webhook → saldo + caja)
 
 **Pedido de GO:** "sigamos con los pendientes" → módulo (B) **Integraciones de cobro**. Code-audit + fix.
-**DEV = v1.90.0** (frontend + EF `mp-webhook` v25 + `mp-ipn` v6 en DEV). **PROD sigue en v1.89.0** ⏳ (deploy de EF + frontend **pendiente del OK de GO**). Sin migración. typecheck+build verdes.
+**PROD = DEV = v1.90.0** (frontend + EF `mp-webhook` v31 + `mp-ipn` v6 en DEV **y PROD**). PR #245 squash-merged a main (`2080a645`), release `v1.90.0` (`--latest`), dev re-sincronizado con main, Vercel PROD desplegando. Sin migración. typecheck+build+806 unit verdes.
 
 **🛑 REGLA #0 — la conciliación de cobro MP estaba ROTA end-to-end (latente, 0 uso en PROD):** verificado en DEV+PROD: 0 credenciales MP/MODO conectadas, 0 ventas con `id_pago_externo`, `ventas_externas_logs` vacía ⇒ rompía el **primer** cobro real por QR. Hallazgos (todos DB-verificados):
 - **H1 (💰):** `mp-webhook` insertaba en columna inexistente **`payload`** (la tabla tiene `payload_raw`) → el insert fallaba → idempotencia rota Y **el pago pre-venta no se aplicaba a `monto_pagado`** (cliente paga el QR antes de finalizar → la venta quedaba impaga). **Fix:** `payload_raw` + frontend (`VentasPage:2583`) lee `payload_raw`.

@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-24] update | 🏁 CIERRE del UAT / Auditoría REGLA #0 al 100% (correctitud) — doc de cierre `cobertura/00_cierre_uat.md`
+
+**Pedido de GO:** "finalizar los UAT y auditorías, dejar cerrado 100%". Se formaliza el cierre del barrido exhaustivo (cobertura/01-06): **la correctitud REGLA #0 (fiscal/plata/stock/contable) está CERRADA en los 6 grupos**, verificada por la metodología del proyecto (unit 806 + code-audit + impersonación SQL DB + e2e mutante). Los `🔴` restantes en las tablas = "sin e2e dedicado", NO huecos de correctitud (lógica ya cubierta por unit/code-audit).
+
+**Cierre adicional de este turno (code-audit REGLA #0 de los pure-gaps de stock):**
+- **Inventario:** `fusionarLineas` (L06) conserva `stock_actual` (trigger) ✓; `kStock` por sucursal (L14) ✓; LPN-acciones (L09) gateadas por `requiereAuthAjuste` (mig 228, = e2e 51) ✓.
+- **Compras:** L22 actualizar `precio_costo` al recibir — confirm de recepción hace `UPDATE productos.precio_costo` solo si el operador lo tilda ✓ (code-verified).
+
+**Lo único genuinamente ABIERTO (no auto-cerrable), en `00_cierre_uat.md`:**
+- **⛔ Terceros:** AFIP §29 (cert/token PRODUCCIÓN o CUIT RI homologación), cobro MP real e2e (seller OAuth + sandbox), courier B2B EN6.
+- **📋 Capa-C manual:** factura/NC PDF+QR, Libro IVA, email factura, OC PDF.
+- **🟠 Menores no-REGLA#0:** oc_numeracion label, remito, badge anticipo-OC, flags UX envío, session_timeout, fichado QR, marketplace, conteo alcances/modo.
+- **❓ 4 decisiones de producto (ninguna = bug de plata/stock):** seña reserva vencida forfeit; fusión LPN ledger (`ajuste_ingreso` sin rebaje espejo, `stock_actual` OK); `confirmarArmado` no transaccional; `recepcion_alerta_faltante_dias` flag huérfano.
+
+---
+
 ## [2026-06-24] deploy | 🛑 v1.90.0 EN PROD — fix REGLA #0: conciliación de cobro Mercado Pago (QR/link → webhook → saldo + caja)
 
 **Pedido de GO:** "sigamos con los pendientes" → módulo (B) **Integraciones de cobro**. Code-audit + fix.

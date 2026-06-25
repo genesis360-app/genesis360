@@ -56,14 +56,17 @@
 1. **Seña de reserva vencida = forfeit por defecto.** El sweep `liberar_reservas_vencidas` cancela la reserva y
    libera el stock, pero **no reembolsa ni acredita la seña** (queda como ingreso retenido). Política razonable
    (cliente abandonó), pero conviene confirmarla. *Decisión: ¿forfeit, o generar `cliente_credito`?*
-2. **Fusión de LPN — ledger de movimientos.** `fusionarLineas` registra un `movimientos_stock` `ajuste_ingreso`
-   por `totalTransfer` **sin el `ajuste_rebaje` espejo** de los LPN origen → `stock_actual` queda **correcto** (trigger),
-   pero el *ledger de movimientos* sobre-cuenta esa cantidad como ingreso. Traceability, no pérdida. *Decisión:
-   ¿registrar ingreso+rebaje (neto 0) o un tipo `fusion` neutral?*
+2. ✅ **RESUELTO (v1.90.1) — Fusión de LPN ledger.** `fusionarLineas` ahora asienta el par espejo
+   `ajuste_ingreso`(dest)+`ajuste_rebaje`(orígenes) = neto 0 → el ledger de movimientos ya no sobre-cuenta la
+   fusión (`stock_actual` siempre fue correcto por el trigger).
 3. **`confirmarArmado` (kits) no es transaccional.** Son varios writes sin RPC → una falla a mitad podría dejar
-   componentes consumidos sin KIT. Patrón app-wide (no nuevo). *Decisión: ¿envolver en RPC los flujos de kitting?*
-4. **`recepcion_alerta_faltante_dias` (default 7) = flag huérfano.** Definido en `tenants` pero **sin consumidor
-   en código** (ni front ni SQL). *Decisión: cablear la alerta de recepción parcial añeja, o dropear el flag.*
+   componentes consumidos sin KIT. Patrón app-wide (no nuevo). **Recomendación: envolver `iniciar/confirmar/cancelar`
+   armado en un RPC plpgsql atómico** (REGLA #0 stock). Pendiente (cambio acotado con migración + validación DB).
+4. ✅ **RESUELTO (v1.90.1) — `recepcion_alerta_faltante_dias` cableado.** Badge 📦 "Faltante · Nd" en la lista de
+   OC (`GastosPage`): rojo si una OC `recibida_parcial` lleva ≥ N días sin actividad, ámbar si reciente.
+1bis. **Seña de reserva vencida = forfeit** (sin cambios aún). **Recomendación: que el sweep `liberar_reservas_vencidas`
+   respete `reserva_penalidad_pct`** igual que la cancelación manual (retener penalidad, acreditar el resto a
+   `cliente_credito`) → consistente y justo. Pendiente de OK de GO.
 
 ---
 

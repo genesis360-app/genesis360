@@ -32,7 +32,7 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 | L03 | Guard mono-SKU en ubicación al ingresar | `InventarioPage.tsx` (1028-1051) | 🟠 inventario | 🔴 gap |
 | L04 | Unicidad de LPN por tenant al ingresar | `InventarioPage.tsx` (1053-1066) | 🟠 inventario | 🔴 gap |
 | L05 | Ingreso por series (1 línea + N `inventario_series`; 23505 → "ya existen") | `InventarioPage.tsx` (1096-1112) | 🟠 inventario | 🔴 gap |
-| L06 | Fusión de LPNs (suma al destino, desactiva orígenes, `movimientos_stock` ajuste_ingreso) | `InventarioPage.tsx:fusionarLineas` (929-976) | 🛑 stock | 🔴 gap |
+| L06 | Fusión de LPNs (suma al destino, desactiva orígenes) | `InventarioPage.tsx:fusionarLineas` (929-976) | 🛑 stock | ✅code-verified 2026-06-25 (`stock_actual` conservado por trigger; **fix v1.90.1: el ledger asienta el par espejo `ajuste_ingreso`(dest)+`ajuste_rebaje`(orígenes) = neto 0** → reportes de movimientos ya no sobre-cuentan la fusión) |
 | L07 | Asignar LPN madre / cambiar estado de línea | `InventarioPage.tsx:asignarMadre` (978-995), `cambiarEstadoLinea` (998-1005) | 🟠 inventario | 🔴 gap |
 | L08 | Edición masiva de LPN (campos lote/venc/sucursal/prov) → directa o a autorización por rol | `InventarioPage.tsx:bulkEditarAtributos` (878-926); `requiereAuthAjuste(rol,cfg,false)` (882) | 🛑 stock/inventario | 🔴 gap e2e |
 | L09 | Acciones individuales de LPN (editar/mover/ajustar cantidad) → directa o autorización por rol | `LpnAccionesModal.tsx:requiereAprobacion` (33) | 🛑 stock | 🔴 gap |
@@ -101,7 +101,7 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
 | `permite_over_receipt` | `false` (mig 051) | `recepcionLogic.ts:41-51`; `RecepcionesPage:119,488` | Permite recibir más que lo pedido en OC (sujeto a `over_receipt_pct_max`) | `false` → cualquier exceso sobre lo pedido bloquea la confirmación (B3) | ✅unit (superaOverReceipt) · 🔴 **e2e CON (acepta exceso) / SIN (bloquea)** |
 | `over_receipt_pct_max` | `null` (mig 183) | `recepcionLogic.ts:48-50`; `RecepcionesPage:119` | Con `permite=true`: tope = esperada·(1+pct/100); recibido acumulado por encima del tope bloquea | `null`/≤0 con permite=true → over-receipt **libre** (sin tope) | ✅unit (tope % exacto/excedido) · 🔴 e2e |
 | `recepcion_remito_obligatorio` | `false` (mig 183) | `RecepcionesPage:120,501` | Confirmar recepción exige adjuntar remito (sube a Storage `remitos`) | `false` → remito opcional | 🔴 **gap e2e CON/SIN** |
-| `recepcion_alerta_faltante_dias` | `7` (mig 183) | **definido en DB, sin consumidor en código (frontend/SQL)** | (esperado) alerta cuando una recepción parcial lleva N días con faltante | — | 🔴 **gap — flag huérfano: no está cableado** ⚠️ |
+| `recepcion_alerta_faltante_dias` | `7` (mig 183) | `GastosPage.tsx` (lista OC, badge 📦 Faltante) | OC `recibida_parcial` sin actividad ≥ N días → badge **rojo** "Faltante · Nd"; < N → badge ámbar | — | ✅ **CABLEADO v1.90.1** (antes flag huérfano). Proxy de fecha = `updated_at` de la OC |
 | `compras_costo_alerta_pct` | `10` (lectura `?? 10`) | `RecepcionesPage:121,669` | Alerta si el costo del remito difiere > pct del costo del producto (B6) | Lee 10 por defecto | 🔴 gap (fuera del scope estricto del grupo) |
 
 > **Roles (no son flags de tenant pero gobiernan recepción):** `esSupervisorPlus` (DUEÑO/SUPERVISOR/

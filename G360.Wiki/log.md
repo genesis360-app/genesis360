@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-25] update | ✅ Verificación contable REGLA #0 (cierres dan bien) + v1.90.1 (fix fusión-LPN ledger + cablear alerta faltante)
+
+**Pedido de GO:** "¿lo contable está todo ok? ¿los cierres dan bien?" → **verificación real contra la DB (DEV+PROD), no afirmaciones.**
+
+**Resultado — lo contable está SANO:**
+- **Arqueo de caja:** el invariante `apertura + Σefectivo = lo contado` cierra en TODAS las sesiones reales. `residuo_no_explicado = $0` en todas salvo 1 fixture de test (Jorgito #28 = $700, un `egreso` "test traspaso" insertado a mano). Cada faltante/sobrante real queda capturado en `diferencia_cierre` con nota (ej. PROD tenant `5f05f3eb` #2: contó $6.000 vs $7.000 → `diferencia_cierre=−1.000` + nota "no se encuentran los 1000" ✓; Jorgito #24 sobrante +$100 ✓; #35 faltante $14.000 → egreso ajuste + diferencia ✓).
+- **CC clientes (DEV+PROD):** todos los saldos de crédito ≥ 0 ✓. **CC proveedores:** sin anomalías. **Período abril 2026 cerrado** (guards `trg_*_periodo_cerrado` activos).
+- Fixes REGLA #0 v1.87-1.90 (nómina efectivo↔caja, devolución efectivo exige caja, conciliación MP→caja) en PROD.
+
+**v1.90.1 (EN DEV, código) — 2 de las 4 decisiones del cierre, accionadas:**
+- **#2 fusión de LPN (ledger):** `fusionarLineas` ahora asienta el par espejo `ajuste_ingreso`(dest)+`ajuste_rebaje`(orígenes) = neto 0 → los reportes de movimientos ya no sobre-cuentan la fusión (`stock_actual` siempre fue correcto por trigger).
+- **#4 `recepcion_alerta_faltante_dias` cableado** (era flag huérfano): badge 📦 "Faltante · Nd" en la lista de OC (`GastosPage`) — rojo si una OC `recibida_parcial` lleva ≥ N días sin actividad.
+- typecheck + build verdes. **Pendientes de GO:** #1 seña vencida (recomiendo que el sweep respete `reserva_penalidad_pct`); #3 envolver kitting en RPC atómico.
+
+---
+
 ## [2026-06-24] update | 🏁 CIERRE del UAT / Auditoría REGLA #0 al 100% (correctitud) — doc de cierre `cobertura/00_cierre_uat.md`
 
 **Pedido de GO:** "finalizar los UAT y auditorías, dejar cerrado 100%". Se formaliza el cierre del barrido exhaustivo (cobertura/01-06): **la correctitud REGLA #0 (fiscal/plata/stock/contable) está CERRADA en los 6 grupos**, verificada por la metodología del proyecto (unit 806 + code-audit + impersonación SQL DB + e2e mutante). Los `🔴` restantes en las tablas = "sin e2e dedicado", NO huecos de correctitud (lógica ya cubierta por unit/code-audit).

@@ -949,18 +949,36 @@ export default function InventarioPage() {
         .in('id', sources.map(l => l.id))
       if (e2) throw e2
 
-      await supabase.from('movimientos_stock').insert({
-        tenant_id: tenant!.id,
-        producto_id: dest.producto_id,
-        tipo: 'ajuste_ingreso',
-        cantidad: totalTransfer,
-        stock_antes: stockAntes,
-        stock_despues: stockAntes + totalTransfer,
-        motivo: `Fusión LPN — recibe de ${sources.map(l => l.lpn).join(', ')}`,
-        usuario_id: user?.id,
-        linea_id: dest.id,
-        sucursal_id: sucursalId || null,
-      })
+      // Ledger de movimientos: la fusión es una REDISTRIBUCIÓN interna (no cambia el stock total
+      // del producto). Para que los reportes que suman ingreso−rebaje NO sobre-cuenten, se asienta
+      // el par espejo: ingreso al LPN destino + rebaje de los LPN origen (neto 0). `stock_actual` ya
+      // queda correcto por el trigger; esto solo deja el ledger fiel a lo que pasó por cada LPN.
+      await supabase.from('movimientos_stock').insert([
+        {
+          tenant_id: tenant!.id,
+          producto_id: dest.producto_id,
+          tipo: 'ajuste_ingreso',
+          cantidad: totalTransfer,
+          stock_antes: stockAntes,
+          stock_despues: stockAntes + totalTransfer,
+          motivo: `Fusión LPN — ${dest.lpn} recibe de ${sources.map(l => l.lpn).join(', ')}`,
+          usuario_id: user?.id,
+          linea_id: dest.id,
+          sucursal_id: sucursalId || null,
+        },
+        {
+          tenant_id: tenant!.id,
+          producto_id: dest.producto_id,
+          tipo: 'ajuste_rebaje',
+          cantidad: totalTransfer,
+          stock_antes: stockAntes + totalTransfer,
+          stock_despues: stockAntes,
+          motivo: `Fusión LPN — ${sources.map(l => l.lpn).join(', ')} entrega(n) a ${dest.lpn}`,
+          usuario_id: user?.id,
+          linea_id: dest.id,
+          sucursal_id: sucursalId || null,
+        },
+      ])
     },
     onSuccess: () => {
       toast.success('LPNs fusionados correctamente')

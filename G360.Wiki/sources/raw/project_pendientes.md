@@ -18,6 +18,11 @@ type: project
 >
 > **⛔ Único pendiente NO auto-cerrable (acción de GO / terceros):** AFIP §29 (cert/token PRODUCCIÓN o CUIT RI homologación), cobro MP real e2e (seller OAuth + sandbox), courier B2B EN6. + capa-C manual (PDF/email/print). Detalle en `00_cierre_uat.md`.
 >
+> **▶ PRÓXIMA SESIÓN (elegir según prioridad de GO):**
+> 1. **Cerrar bloqueos de terceros** cuando GO consiga el acceso: (a) AFIP §29 con cert/token PRODUCCIÓN o un CUIT RI de homologación; (b) cobro MP real e2e conectando una cuenta MP de prueba (OAuth) + pago sandbox; (c) courier B2B (EN6) con cuentas Andreani/OCA.
+> 2. **Nuevas features / backlog** (la auditoría REGLA #0 ya está cerrada): hard-delete de tenant con grace period (pg_cron no habilitado → sweep externo), Finanzas/Tesorería consolidada (diferido), performance DB (646 lints — envolver `auth.*()` en `(select …)` + índices FK), o lo que priorice GO.
+> 3. **Smoke de go-live / primer cliente real** si se acerca el alta (correr `tests/specs/uat-primer-uso.plan.md` + paridad DEV/PROD antes del alta).
+>
 > ---
 > **(Detalle de v1.90.0 — fix REGLA #0 cobro MP — abajo.)**
 > **v1.90.0:** **PROD = DEV** ✅ — EF `mp-webhook` v31 + `mp-ipn` v6 en DEV **y PROD**; PR #245 merged, release v1.90.0.

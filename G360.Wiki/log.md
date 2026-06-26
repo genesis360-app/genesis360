@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-26] deploy | 📊 v1.93.0 EN PROD — Dashboard: Gráficos primero (landing) + "Todo › Gráficos" = todos los gráficos por sección
+
+PR #249 dev→main merged → release `v1.93.0` → Vercel desplegado (PROD `6f4062f1` building → READY). **PROD = DEV = v1.93.0** (migs 001-245, frontend-only sin migraciones). typecheck + build + **806 unit** + **e2e spec 84 (6/6)** verdes.
+
+**2 ajustes de GO sobre v1.92.0:**
+1. **Gráficos = primera sub-pestaña + landing por defecto** ("adelanto de todo"); Insights queda segunda. Orden: Gráficos · Insights · Métricas · Rentabilidad · Recomendaciones. `default subTab = 'graficos'`.
+2. **"Todo › Gráficos" = TODOS los gráficos del negocio por secciones** (antes solo La Balanza + Mix de Caja). Sección **General** + una `<section>` por cada módulo con sus charts.
+
+**Cómo (🛑 solo display, REGLA #0 intacta):** prop `embedded` en los 9 `Dash*Area` que oculta la barra de filtros/banners propios → embebidos en el agregado se ven solo los charts del módulo. `DashboardPage`: `MODULE_AREAS` (orden), `AreaModulo` pasa `embedded`, Envíos solo en modo avanzado. Ningún cálculo de plata tocado.
+
+**🟠 Follow-up abierto (GO):** la **barra de filtros por área** (período/moneda/canal de cada `Dash*Area` standalone) — GO la marcó como "no le ve un uso adecuado aún". Hoy es funcional (re-consulta los datos del módulo por período) y ya queda oculta en el agregado (`embedded`). Decidir: mantener / quitar de las vistas standalone de módulo / rehacerla. NO se tocó en este deploy (es feature funcional; requiere decisión).
+
+---
+
 ## [2026-06-26] deploy | 📊 v1.92.0 EN PROD — Dashboard completo: 5 sub-pestañas uniformes por área
 
 PR #248 dev→main merged → release `v1.92.0` → Vercel desplegado (PROD `2073f13b` **READY**, DEV ready). **PROD = DEV = v1.92.0** (migs 001-245, **frontend-only sin migraciones**). typecheck + build + **806 unit** verdes. **+ verificación e2e runtime (spec 84, 5/5 verdes)** contra datos fiscales reales (Jorgito/DEV): las 10 áreas × 5 sub-pestañas renderizan sin error boundary de área ni errores de JS; "Todo" distribuido OK (Insights=score, Métricas=Posición IVA, Gráficos=Balanza+MixCaja, sin "Próximamente"); Ventas sectorizado (Total Vendido/embudo, sin "en desarrollo") + Recomendaciones por módulo sin Score global.

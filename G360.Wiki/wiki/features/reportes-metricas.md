@@ -254,9 +254,9 @@ Sub-navegación en la pestaña "General". Cada área tiene filtros, KPIs, gráfi
 
 ---
 
-## Dashboard — 5 sub-pestañas uniformes por área (v1.92.0)
+## Dashboard — 5 sub-pestañas uniformes por área (v1.92.0 · reordenado v1.93.0)
 
-> **v1.92.0** completó el Dashboard: **las 5 sub-pestañas funcionan en TODAS las áreas** (antes solo en "Todo"; las áreas de módulo mostraban "Próximamente"). Se eliminó el `subTab='overview'` oculto; el landing por defecto pasó a **Insights**. **🛑 REGLA #0:** este cambio es **puro display** — no toca ningún cálculo de plata/fiscal (la base ya quedó auditada en v1.91.0); solo reorganiza *qué bloque ya calculado se muestra*.
+> **v1.92.0** completó el Dashboard: **las 5 sub-pestañas funcionan en TODAS las áreas** (antes solo en "Todo"; las áreas de módulo mostraban "Próximamente"). Se eliminó el `subTab='overview'` oculto. **v1.93.0:** **Gráficos** pasó a ser la **primera** sub-pestaña y el **landing por defecto** ("adelanto de todo"); además **"Todo › Gráficos" agrega TODOS los gráficos del negocio por secciones**. **🛑 REGLA #0:** todo este trabajo es **puro display** — no toca ningún cálculo de plata/fiscal (la base ya quedó auditada en v1.91.0); solo reorganiza *qué bloque ya calculado se muestra*.
 
 Dos filas de navegación:
 
@@ -266,20 +266,21 @@ Row 1 — Area tabs (pills):
 [Proveedores] [Facturación] [Envíos] [Marketing]
 
 Row 2 — Sub-tabs (underline) + Filtros (derecha, solo "Todo"):
-[Insights] [Métricas] [Rentabilidad] [Recomendaciones] [Gráficos]     [🎚 Filtros]
+[Gráficos] [Insights] [Métricas] [Rentabilidad] [Recomendaciones]     [🎚 Filtros]
 ```
 
 ### Area tabs (Row 1)
 - Estilo pill/badge. Area "Todo" = vista general; las otras 9 = mini-dashboard del módulo.
-- Cambiar de área **conserva** la sub-pestaña activa (default inicial = Insights). `Envíos` se oculta en modo básico.
+- Cambiar de área **conserva** la sub-pestaña activa (default inicial = **Gráficos**). `Envíos` se oculta en modo básico.
 
 ### Sub-tabs (Row 2)
-- Las 5 son **idénticas en todas las áreas**. Candado de plan en "Métricas" = solo para la `MetricasPage` global de "Todo" (los mini-dashboards de módulo son base, sin gate).
+- Las 5 son **idénticas en todas las áreas**, en orden **Gráficos · Insights · Métricas · Rentabilidad · Recomendaciones** (v1.93.0). Candado de plan en "Métricas" = solo para la `MetricasPage` global de "Todo" (los mini-dashboards de módulo son base, sin gate).
 
 ### Cómo se nutre cada sub-pestaña
 
 - **Áreas de módulo** (Ventas/Gastos/Productos/Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing):
-  - **Insights / Métricas / Gráficos** → el componente `DashXArea` con la prop `section` (`insights|metricas|graficos`) que gatea sus 3 bloques ya existentes (insights / KPIs / charts). Tipo en `src/components/dashAreaSection.ts`. El wrapper `AreaModulo` mantiene montado el componente al cambiar entre estas 3 (preserva sus filtros internos).
+  - **Insights / Métricas / Gráficos** → el componente `DashXArea` con la prop `section` (`insights|metricas|graficos`) que gatea sus 3 bloques ya existentes (insights / KPIs / charts). Tipo en `src/components/dashAreaSection.ts`. El wrapper `AreaModulo` mantiene montado el componente al cambiar entre estas 3 (preserva sus filtros internos). Prop `embedded` (v1.93.0) oculta la barra de filtros/banners propios (se usa en el agregado de "Todo › Gráficos").
+  - **🟠 Barra de filtros por área:** cada `DashXArea` standalone tiene su propio filtro (período/moneda/canal). GO la marcó como de uso poco claro (follow-up: mantener / quitar / rehacer).
   - **Rentabilidad** → `RentabilidadPage hideHeader` (consolidada del negocio; muestra una nota salvo en Ventas/Productos, donde es el ajuste natural).
   - **Recomendaciones** → `RecomendacionesPage hideHeader categoria={AREA_RECO_CAT[area]}` — recomendaciones del motor filtradas por categoría del área (ventas→`ventas`, inventario→`stock`, clientes→`clientes`, etc.); oculta el selector de categoría y el Score global.
   - 🟠 *Rentabilidad/Recomendaciones por módulo reusan vistas globales (real, honesto). Desglose propio por módulo = construir cálculos nuevos (revisión REGLA #0).*
@@ -289,11 +290,11 @@ Row 2 — Sub-tabs (underline) + Filtros (derecha, solo "Todo"):
 |---------|-----------|
 | Insights | Score de salud, "Lo que necesitás saber", stock inmovilizado, productos sin movimiento, sugerencia de pedido, proyección de cobertura, lista completa de recomendaciones |
 | Métricas | 4 KPIs ejecutivos (Ingreso Neto / Margen Contribución / Burn Rate / Posición IVA) + Fugas y Movimientos + Top productos + Movimientos recientes + `MetricasPage` (plan-gated) |
-| Gráficos | La Balanza (`VentasVsGastosChart`) + El Mix de Caja (`MixCajaChart`) |
+| Gráficos | **(v1.93.0) Agregado de TODOS los gráficos del negocio por secciones:** sección **General** (La Balanza `VentasVsGastosChart` + El Mix de Caja `MixCajaChart`) + una `<section>` por cada módulo que renderiza `<AreaModulo section="graficos" embedded/>` (sus charts, sin barra de filtros). Orden en `MODULE_AREAS`; Envíos solo en modo avanzado. |
 | Rentabilidad | `RentabilidadPage` (margen por producto) |
 | Recomendaciones | `RecomendacionesPage` completa |
 
-`AREA_COMPONENTS`, `AREA_RECO_CAT` y `AreaModulo` viven en `DashboardPage.tsx`.
+`AREA_COMPONENTS`, `AREA_RECO_CAT`, `MODULE_AREAS` y `AreaModulo` viven en `DashboardPage.tsx`.
 
 ---
 

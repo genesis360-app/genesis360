@@ -101,7 +101,16 @@ const AREA_LABELS: Record<AreaId, string> = {
 // Mini-dashboard real de cada módulo. Cada uno expone Insights/Métricas/Gráficos vía `section`
 // (sin alterar ningún cálculo: solo decide qué bloque ya calculado se muestra). `embedded` oculta
 // la barra de filtros/banners propios (para mostrar solo los charts en el agregado de "Todo › Gráficos").
-const AREA_COMPONENTS: Record<AreaModuloId, React.ComponentType<{ section?: DashSection; embedded?: boolean }>> = {
+type DashAreaProps = {
+  section?: DashSection
+  embedded?: boolean
+  // Filtro global del Dashboard (cuando embedded): gobierna el período/moneda del módulo.
+  gPeriodo?: PeriodoDash
+  gMoneda?: Moneda
+  gCustomDesde?: string
+  gCustomHasta?: string
+}
+const AREA_COMPONENTS: Record<AreaModuloId, React.ComponentType<DashAreaProps>> = {
   ventas: DashVentasArea, gastos: DashGastosArea, productos: DashProductosArea,
   inventario: DashInventarioArea, clientes: DashClientesArea, proveedores: DashProveedoresArea,
   facturacion: DashFacturacionArea, envios: DashEnviosArea, marketing: DashMarketingArea,
@@ -111,6 +120,11 @@ const AREA_COMPONENTS: Record<AreaModuloId, React.ComponentType<{ section?: Dash
 const MODULE_AREAS: AreaModuloId[] = [
   'ventas', 'gastos', 'productos', 'inventario', 'clientes', 'proveedores', 'facturacion', 'envios', 'marketing',
 ]
+
+// Áreas cuyo dato responde al filtro global de Período/Moneda. El resto (Inventario, Clientes,
+// Proveedores, Facturación, Envíos, Marketing) son snapshots de período fijo por diseño → el
+// filtro global no se muestra ahí (no haría nada).
+const AREAS_CON_PERIODO: AreaId[] = ['todo', 'ventas', 'gastos', 'productos']
 
 // Área → categorías del motor `useRecomendaciones` para scopear la sub-pestaña Recomendaciones.
 // Vacío = sin scope específico → muestra todas (fallback honesto; nunca fabrica datos).
@@ -122,9 +136,9 @@ const AREA_RECO_CAT: Record<AreaId, RecomendacionCategoria[]> = {
 
 // Wrapper estable: mantiene montado el mini-dashboard del módulo al cambiar entre
 // Insights/Métricas/Gráficos (preserva el estado de filtros internos del área).
-function AreaModulo({ area, section, embedded }: { area: AreaModuloId; section: DashSection; embedded?: boolean }) {
+function AreaModulo({ area, ...rest }: { area: AreaModuloId } & DashAreaProps) {
   const Comp = AREA_COMPONENTS[area]
-  return <Comp section={section} embedded={embedded} />
+  return <Comp {...rest} />
 }
 
 const PERIODO_LABELS_DASH: Record<PeriodoDash, string> = {
@@ -700,8 +714,10 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Filtro pill — solo en área 'todo' */}
-        {area === 'todo' && (
+        {/* Filtro global Período/Moneda — en las sub-pestañas de datos (Gráficos/Insights/Métricas)
+            de las áreas con período (Todo/Ventas/Gastos/Productos). No aplica a las áreas de período
+            fijo ni a Rentabilidad/Recomendaciones (período propio). */}
+        {(subTab === 'graficos' || subTab === 'insights' || subTab === 'metricas') && AREAS_CON_PERIODO.includes(area) && (
           <div className="flex items-center gap-2 flex-shrink-0" ref={filterRef}>
             {/* Summary text */}
             <p className="text-xs text-gray-400 dark:text-gray-500 hidden sm:block whitespace-nowrap">
@@ -800,7 +816,11 @@ export default function DashboardPage() {
           <RecomendacionesPage hideHeader categoria={AREA_RECO_CAT[area]} />
         ) : (
           <AreaErrorBoundary key={area} label={AREA_LABELS[area]}>
-            <AreaModulo area={area as AreaModuloId} section={subTab as DashSection} />
+            {/* Embebido (barra de período propia oculta + filtro global) solo en las áreas con
+                período; las de período fijo conservan sus controles propios (ej. toggle Vista). */}
+            <AreaModulo area={area as AreaModuloId} section={subTab as DashSection}
+              embedded={AREAS_CON_PERIODO.includes(area)}
+              gPeriodo={periodo} gMoneda={moneda} gCustomDesde={customDesde} gCustomHasta={customHasta} />
           </AreaErrorBoundary>
         )
       )}
@@ -1057,7 +1077,8 @@ export default function DashboardPage() {
                 <span className="w-1 h-4 bg-accent rounded-full" /> {AREA_LABELS[a]}
               </h2>
               <AreaErrorBoundary label={AREA_LABELS[a]}>
-                <AreaModulo area={a} section="graficos" embedded />
+                <AreaModulo area={a} section="graficos" embedded
+                  gPeriodo={periodo} gMoneda={moneda} gCustomDesde={customDesde} gCustomHasta={customHasta} />
               </AreaErrorBoundary>
             </section>
           ))}

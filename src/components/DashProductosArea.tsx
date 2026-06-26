@@ -161,7 +161,7 @@ export function DashProductosArea() {
         const CHUNK = 200
         for (let i = 0; i < ventaIds.length; i += CHUNK) {
           let q = supabase.from('venta_items')
-            .select('producto_id, cantidad, precio_unitario, precio_costo_historico, venta_id, productos(nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo)')
+            .select('producto_id, cantidad, precio_unitario, subtotal, iva_monto, precio_costo_historico, venta_id, productos(nombre, sku, categorias(nombre), precio_costo, precio_venta, stock_actual, stock_minimo)')
             .in('venta_id', ventaIds.slice(i, i + CHUNK))
           const { data } = await q
           itemsData = itemsData.concat(data ?? [])
@@ -240,9 +240,11 @@ export function DashProductosArea() {
         const pid = item.producto_id
         const prod = item.productos ?? {}
         const cant = item.cantidad ?? 0
-        const pu = item.precio_unitario ?? 0
-        const pc = item.precio_costo_historico ?? prod.precio_costo ?? 0
-        const margen = pu > 0 ? ((pu - pc) / pu) * 100 : 0
+        // Margen sobre NETO sin IVA: neto = subtotal (bruto facturado, post-desc) − iva_monto.
+        const sub = item.subtotal ?? ((item.precio_unitario ?? 0) * cant)
+        const neto = sub - (item.iva_monto ?? 0)
+        const pcTotal = (item.precio_costo_historico ?? prod.precio_costo ?? 0) * cant
+        const margen = neto > 0 ? ((neto - pcTotal) / neto) * 100 : 0
 
         if (!prodMap[pid]) prodMap[pid] = {
           nombre: prod.nombre ?? 'Sin nombre', sku: prod.sku ?? '',
@@ -253,7 +255,7 @@ export function DashProductosArea() {
           precio_venta_actual: prod.precio_venta ?? 0,
         }
         prodMap[pid].total_cantidad += cant
-        prodMap[pid].total_ingresos += pu * cant
+        prodMap[pid].total_ingresos += sub
         prodMap[pid].sum_margen_pon += margen * cant
         prodMap[pid].sum_cantidad_margen += cant
       }
@@ -269,17 +271,15 @@ export function DashProductosArea() {
       }))
 
       // ── KPI 1: Rentabilidad Promedio ──────────────────────────────────────
-      let totalPondIngresos = 0, totalPondMargen = 0
+      // Margen agregado sobre neto sin IVA: (Σneto − Σcosto) / Σneto.
+      let netoGlobal = 0, costoGlobal = 0
       for (const item of itemsData) {
-        const pu = item.precio_unitario ?? 0
-        const pc = item.precio_costo_historico ?? item.productos?.precio_costo ?? 0
         const cant = item.cantidad ?? 0
-        if (pu > 0) {
-          totalPondIngresos += pu * cant
-          totalPondMargen += ((pu - pc) / pu) * 100 * (pu * cant)
-        }
+        const sub = item.subtotal ?? ((item.precio_unitario ?? 0) * cant)
+        netoGlobal += sub - (item.iva_monto ?? 0)
+        costoGlobal += (item.precio_costo_historico ?? item.productos?.precio_costo ?? 0) * cant
       }
-      const margenGlobal = totalPondIngresos > 0 ? totalPondMargen / totalPondIngresos : null
+      const margenGlobal = netoGlobal > 0 ? ((netoGlobal - costoGlobal) / netoGlobal) * 100 : null
 
       // ── KPI 2: El Motor (Top Ingresos) ───────────────────────────────────
       const topMotor = productosConVentas.sort((a, b) => b.total_ingresos - a.total_ingresos)[0] ?? null
@@ -510,7 +510,7 @@ export function DashProductosArea() {
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-sm">
           <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
             <MapPin size={14} />
-            <span>Filtrando por <span className="font-semibold">{sucursalNombre}</span> — los datos de otras sucursales no se muestran.</span>
+            <span>Filtrando por <span className="font-semibold">{sucursalNombre}</span>. Ventas, márgenes y devoluciones se acotan a esta sucursal; Capital Dormido y Quiebre de stock se muestran consolidados de todas las sucursales.</span>
           </div>
           {puedeVerTodas && (
             <button onClick={() => setSucursal(null)}

@@ -7,7 +7,11 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### 🟢 ARRANCÁ ACÁ (2026-06-25 · 🏁 UAT/auditoría REGLA #0 CERRADA + v1.90.1 EN PROD)
-> **Estado:** **PROD = DEV = v1.90.1 (migs 001-245)** ✅ — typecheck+build+806 unit verdes.
+> **Estado:** **PROD = DEV = v1.91.0 (migs 001-245)** ✅. v1.91.0 = auditoría display REGLA #0 (Dashboard + Métricas/Rentabilidad + Marketing/Envíos + Caja + Billing + Libro IVA), frontend-only sin migraciones. typecheck+build+806 unit verdes.
+>
+> **📊 Auditoría Dashboard (2026-06-25, en DEV):** 5 hallazgos REGLA #0 fiscal + scope/UX, arreglados. **H1** Posición IVA/Débito contaba canceladas/devueltas (Buildi $20.306→$15.099); **H2** "Margen Contribución" era markup mal etiquetado sobre base pre-descuento c/IVA (Buildi 70%→39% real) — unificado a `(neto−costo)/neto` con `subtotal`; **H3** neto de Facturación sin ×cantidad; **H4** alícuota estimada (27%→21%) → columna real; **H5** tope Monotributo a tenants RI; **H6/H7** charts ignoraban sucursal+Custom; **H8** toggle s/IVA cosmético removido. Detalle en `log.md` 2026-06-25 + memoria `reference_dashboard_calculos_money`.
+>
+> **📈 Auditoría Métricas + Rentabilidad (2026-06-25, en DEV, continuación):** **R1** RentabilidadPage calculaba margen/ganancia/P&L sobre bruto c/IVA (Buildi 50%→39,5% real; Jorgito 28,4%→16,9%) → ahora neto + línea "IVA débito" en el P&L; **R2** RentabilidadPage excluía `facturada` (solo despachada) — Buildi ocultaba $51.000 de $89.000 → ahora despachada+facturada; **M1** MetricasPage usaba `precio_costo` actual, no histórico → `precio_costo_historico`; **M2** "Margen" era markup → margen sobre neto; **M3/M4** color typo + denominador neto. **Marketing/Envíos auditados** (neto POAS/ganancia sobre IVA real; antes `(precio_unitario−iva)×cantidad` roto y ganancia sobre bruto). **✅ Auditoría del módulo Dashboard COMPLETA** (overview + 9 áreas + Métricas + Rentabilidad). **Diferido (no bug de plata):** H9 (estimaciones sintéticas $ retenido/perdido en Inventario/Productos/Marketing — donut ganancia-por-canal y campañas son distribuciones prorrateadas, no reales), stock por sucursal real en Inventario/Productos. **✅ Auditoría Caja + Billing + Reportes (2026-06-25, en DEV):** Caja core SANO (arqueo efectivo, vistas consistentes); fix footer "Totales" de CajaReportes (no suma saldos puntuales). Billing: B1 plan-actual real, B4 límites `-1` ilimitado (pendiente GO: MP self-activate por URL + sin prorrateo). Reportes: Libro IVA correcto (CAE) → **alineé Posición IVA/Débito del Dashboard a `cae IS NOT NULL`** (antes base estado mostraba hasta 2x el Libro IVA). UI: SuscripciónPage fondo negro→violeta→cian (preview, pendiente verdict GO). **⚠️ Para deployar:** bump `APP_VERSION` + PR dev→main + release (sin migraciones nuevas). **Commits en `dev`:** dashboard 76cddbe0, metricas/rentab c8da9052, marketing/envios cf884a40, caja a8810837, billing d00110eb, IVA-libro b2085a7f, color d0a796cc.
 >
 > **🏁 UAT / AUDITORÍA REGLA #0 CERRADA AL 100% (correctitud).** Doc: `tests/specs/cobertura/00_cierre_uat.md`. Los 6 grupos verificados (unit + code-audit + impersonación DB + e2e mutante). **Verificación contable real (DEV+PROD): los cierres dan bien** — arqueo de caja cuadra en todas las sesiones reales (`residuo_no_explicado=0` salvo 1 fixture de test), faltantes/sobrantes capturados en `diferencia_cierre` con nota, CC clientes ≥0, período abril cerrado.
 >
@@ -17,6 +21,11 @@ type: project
 > - **#2:** fusión de LPN asienta par espejo ingreso+rebaje (ledger neto 0). **#4 (mig 245):** `recepcion_alerta_faltante_dias` re-agregada (la dropeó mig 240) + badge 📦 en lista OC + configurable en Config→Compras.
 >
 > **⛔ Único pendiente NO auto-cerrable (acción de GO / terceros):** AFIP §29 (cert/token PRODUCCIÓN o CUIT RI homologación), cobro MP real e2e (seller OAuth + sandbox), courier B2B EN6. + capa-C manual (PDF/email/print). Detalle en `00_cierre_uat.md`.
+>
+> **▶ PRÓXIMA SESIÓN (elegir según prioridad de GO):**
+> 1. **Cerrar bloqueos de terceros** cuando GO consiga el acceso: (a) AFIP §29 con cert/token PRODUCCIÓN o un CUIT RI de homologación; (b) cobro MP real e2e conectando una cuenta MP de prueba (OAuth) + pago sandbox; (c) courier B2B (EN6) con cuentas Andreani/OCA.
+> 2. **Nuevas features / backlog** (la auditoría REGLA #0 ya está cerrada): hard-delete de tenant con grace period (pg_cron no habilitado → sweep externo), Finanzas/Tesorería consolidada (diferido), performance DB (646 lints — envolver `auth.*()` en `(select …)` + índices FK), o lo que priorice GO.
+> 3. **Smoke de go-live / primer cliente real** si se acerca el alta (correr `tests/specs/uat-primer-uso.plan.md` + paridad DEV/PROD antes del alta).
 >
 > ---
 > **(Detalle de v1.90.0 — fix REGLA #0 cobro MP — abajo.)**

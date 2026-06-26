@@ -89,14 +89,17 @@ export function DashEnviosArea() {
         const CHUNK = 100
         for (let i = 0; i < ventaIds.length; i += CHUNK) {
           const { data } = await supabase.from('venta_items')
-            .select('venta_id, cantidad, precio_unitario, precio_costo_historico')
+            .select('venta_id, cantidad, subtotal, precio_costo_historico, iva_monto')
             .in('venta_id', ventaIds.slice(i, i + CHUNK))
           itemsData = itemsData.concat(data ?? [])
         }
       }
       const costoMap: Record<string, number> = {}
+      const netoMap: Record<string, number> = {}
       for (const vi of itemsData) {
         costoMap[vi.venta_id] = (costoMap[vi.venta_id] ?? 0) + (vi.precio_costo_historico ?? 0) * (vi.cantidad ?? 0)
+        // Neto sin IVA por línea (el IVA débito no es ganancia)
+        netoMap[vi.venta_id] = (netoMap[vi.venta_id] ?? 0) + ((vi.subtotal ?? 0) - (vi.iva_monto ?? 0))
       }
 
       // ── KPI 1: Costo Medio por Envío ─────────────────────────────────────
@@ -177,7 +180,8 @@ export function DashEnviosArea() {
         const costo = costoMap[e.venta_id] ?? 0
         const costoEnvio = e.costo_cotizado ?? 0
         const cobradoAlCliente = venta.costo_envio ?? 0
-        const gananciaNeta = venta.total - costo - (costoEnvio - cobradoAlCliente)
+        const neto = netoMap[e.venta_id] ?? (venta.total ?? 0)
+        const gananciaNeta = neto - costo - (costoEnvio - cobradoAlCliente)
         const subsidio = Math.max(0, costoEnvio - cobradoAlCliente)
         return { numero: e.numero, gananciaNeta: Math.round(gananciaNeta), costoEnvio: Math.round(subsidio), deficit: subsidio > gananciaNeta }
       }).filter(Boolean)

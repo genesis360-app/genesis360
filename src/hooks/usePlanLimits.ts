@@ -59,8 +59,9 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
       const max_usuarios = tenantRow?.max_users ?? 1
       const max_productos = tenantRow?.max_productos ?? 50
       // Inferir plan desde max_users (el webhook de MP actualiza este campo,
-      // no plan_id que es UUID FK y no matchea las keys de brand.ts)
-      const planId = max_usuarios >= 10 ? 'pro' : max_usuarios >= 2 ? 'basico' : 'free'
+      // no plan_id que es UUID FK y no matchea las keys de brand.ts).
+      // -1 = ilimitado (Enterprise) → tier máximo, no 'free'.
+      const planId = (max_usuarios === -1 || max_usuarios >= 10) ? 'pro' : max_usuarios >= 2 ? 'basico' : 'free'
       const addonMov = tenantRow?.addon_movimientos ?? 0
 
       // Base del plan + add-ons comprados
@@ -90,11 +91,11 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
         productos_actuales,
         movimientos_mes: movimientosMesActual,
         addon_movimientos: addonMov,
-        puede_crear_usuario: usuarios_actuales < max_usuarios,
-        puede_crear_producto: productos_actuales < max_productos,
+        puede_crear_usuario: max_usuarios === -1 || usuarios_actuales < max_usuarios,
+        puede_crear_producto: max_productos === -1 || productos_actuales < max_productos,
         puede_crear_movimiento: max_movimientos === -1 || movimientosMesActual < max_movimientos,
-        pct_usuarios: Math.round((usuarios_actuales / max_usuarios) * 100),
-        pct_productos: Math.round((productos_actuales / max_productos) * 100),
+        pct_usuarios: max_usuarios === -1 ? 0 : Math.round((usuarios_actuales / max_usuarios) * 100),
+        pct_productos: max_productos === -1 ? 0 : Math.round((productos_actuales / max_productos) * 100),
         pct_movimientos: max_movimientos === -1
           ? 0
           : Math.round((movimientosMesActual / max_movimientos) * 100),

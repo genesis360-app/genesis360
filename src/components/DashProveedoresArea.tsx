@@ -62,9 +62,10 @@ export function DashProveedoresArea() {
       qOcPendientes = dashFilter(qOcPendientes)
       const { data: ocPendientes = [] } = await qOcPendientes
 
-      // 2. OC próximas 48h
+      // 2. OC próximas 48h (desde hoy hasta +48h; las ya vencidas van al aging, no acá)
+      const hoyStr = hoy.toISOString().split('T')[0]
       const ocUrgentes = (ocPendientes ?? []).filter((oc: any) =>
-        oc.fecha_vencimiento_pago && oc.fecha_vencimiento_pago <= en48h && oc.fecha_vencimiento_pago >= inicioMes
+        oc.fecha_vencimiento_pago && oc.fecha_vencimiento_pago <= en48h && oc.fecha_vencimiento_pago >= hoyStr
       )
 
       // 3. Gastos fijos activos
@@ -177,7 +178,6 @@ export function DashProveedoresArea() {
         const saldo = Math.max(0, (oc.monto_total ?? 0) - (oc.monto_pagado ?? 0))
         if (saldo < 0.5) continue
         if (!oc.fecha_vencimiento_pago) { agingOC[0].monto += saldo; agingOC[0].count++; continue }
-        const hoyStr = hoy.toISOString().split('T')[0]
         const en7 = new Date(Date.now() + 7*86400000).toISOString().split('T')[0]
         if (oc.fecha_vencimiento_pago < hoyStr) { agingOC[2].monto += saldo; agingOC[2].count++ }
         else if (oc.fecha_vencimiento_pago <= en7) { agingOC[1].monto += saldo; agingOC[1].count++ }

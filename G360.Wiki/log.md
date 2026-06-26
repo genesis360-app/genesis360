@@ -6,6 +6,69 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-25] update | 🔎 Auditoría Caja + Suscripción/Billing + Reportes (Libro IVA) — fixes en DEV
+
+Continuación del barrido de auditoría (Caja → Billing → Reportes), verificado contra DB (Jorgito + Buildi).
+
+**Caja/Arqueos — core SANO:** el arqueo usa efectivo (excluye `*_informativo`), las vistas `vw_caja_*` leen los valores almacenados al cierre (misma base) y excluyen la bóveda; capital = `vw_boveda_cuentas`. **Único fix:** el footer "Totales" de `CajaReportes` sumaba columnas de saldo puntual (`saldo_sistema`, `conteo_real`, `apertura`, `máx`) entre días → no aditivas, podía leerse como "efectivo total". Ahora se muestran por fila pero no se totalizan.
+
+**Suscripción/Billing:** **B1** el badge "Plan actual" usaba `mp_subscription_id.includes(plan.id)` (el preapproval_id de MP no contiene la key del plan) → nunca marcaba el plan vigente, mostraba "Suscribirme" sobre él → ahora `subscription_status='active' && limits.plan_id===plan.id`. **B4 (latente):** `usePlanLimits` no manejaba `max_users/max_productos = -1` (ilimitado, Enterprise): `-1 >= 10` falso → detectaba 'free' y `actuales < -1` bloqueaba crear → ahora `-1` = ilimitado. **Pendiente GO (flujo MP, hoy no productivo):** `handleVerificarPago` self-activa desde params de URL sin verificación server; sin prorrateo al cambiar de plan (posible doble cobro).
+
+**Reportes/Exportaciones:** **Libro IVA Ventas/Compras CORRECTO** (filtra `cae IS NOT NULL` = comprobantes AFIP, neto=`subtotal−iva`, por alícuota). Esto reveló que las cards de "Débito fiscal/Posición IVA" del Dashboard (base `estado`, mi fix anterior) incluían despachadas SIN CAE → mostraban hasta **2x** el Libro IVA (Jorgito $21.299 vs $10.567; Buildi $18.571 vs $13.017). **Fix:** Posición IVA (DashboardPage) + panel fiscal (DashFacturacionArea) ahora usan `cae IS NOT NULL`, idéntico al Libro IVA. El **margen** del dashboard sigue sobre confirmadas (estado), correcto. Cierres contables = RPC `cerrar_periodo` server-side (UAT-verificado) + display.
+
+**🎨 UI:** fondo de SuscripciónPage cambiado a negro→violeta→cian (`bg-brand-gradient-hero-dark`, nueva utilidad de marca) — preview pendiente de verdict de GO. (Login usa `from-primary to-accent` = negro→violeta.)
+
+tsc + build + **806 unit** verdes. Todo EN DEV, pendiente de deploy a PROD.
+
+---
+
+## [2026-06-25] update | 📊 Auditoría Dashboard — Marketing + Envíos: neto/ganancia sobre IVA real (cierra el módulo) en DEV
+
+Cierre del barrido del Dashboard sobre las 2 áreas que habían quedado con pasada ligera. Bugs hallados por barrido dirigido (misma clase: neto con `precio_unitario`, ganancia sobre bruto):
+- **DashMarketingArea:** el "neto" para POAS/ganancia usaba `(precio_unitario − iva_monto) × cantidad` — dimensionalmente roto (precio_unitario es unitario, iva_monto por línea) → POAS mal, falsas alertas de "pérdida real por publicidad". Fix: `subtotal − iva_monto` por línea (mes + histórico).
+- **DashEnviosArea:** el scatter "subsidio vs ganancia neta" usaba `venta.total − costo − subsidio` con total **bruto c/IVA** → ganancia inflada. Fix: neto = `subtotal − iva_monto` por venta.
+- Verificado que **FacturacionPage** (`estado='despachada'` + `cae IS NULL` = borradores a facturar) y **HistorialPage** (detalle display) NO tienen el bug.
+
+typecheck + build + **806 unit** verdes. EN DEV, sin deployar. **Auditoría del módulo Dashboard COMPLETA** (overview + 9 áreas + Métricas + Rentabilidad).
+
+---
+
+## [2026-06-25] update | 📊 Auditoría Métricas + Rentabilidad — fixes REGLA #0 (IVA en P&L/margen, costo histórico, excluía facturadas) en DEV
+
+Continuación de la auditoría Dashboard sobre las dos páginas analíticas (también subtabs del Dashboard). Verificado contra DB (Jorgito + Buildi).
+
+**RentabilidadPage ("Rentabilidad Real" + subtab):**
+- **R1 (REGLA #0):** margen, "Ganancia bruta" y el P&L "Estado de resultados" se calculaban sobre ventas **brutas con IVA** → para un RI contaban el IVA débito como ingreso. Buildi mostraba 50% margen vs **39,5% real**; Jorgito 28,4% vs **16,9%**. Fix: cálculo sobre neto (`subtotal−iva_monto`); el P&L ahora muestra línea explícita "IVA débito" + "Ventas netas".
+- **R2 (REGLA #0):** filtraba solo `estado='despachada'`, **excluía `facturada`** → subcontaba. Buildi mostraba $38.000 ocultando $51.000 facturados (>50%); Jorgito ocultaba $72.045. Fix: incluir despachada+facturada. Labels "despachadas" → "confirmadas".
+
+**MetricasPage:**
+- **M1:** "Ganancia neta" y "Margen (top vendidos)" usaban `precio_costo` **actual** del producto, no el histórico al momento de la venta → fix a `precio_costo_historico`.
+- **M2:** "Margen de ganancia (top vendidos)" mostraba markup etiquetado como margen → ahora margen sobre neto.
+- **M3/M4:** typo color `/200` en barras; denominador del "margen neto %" pasa a neto.
+
+typecheck + build + **806 unit** verdes. EN DEV, sin deployar.
+
+---
+
+## [2026-06-25] update | 📊 Auditoría módulo Dashboard — hallazgos REGLA #0 fiscal + scope/UX, ARREGLADOS en DEV (sin deployar)
+
+**Pedido de GO:** auditoría tipo UAT del módulo Dashboard (cada card/tablero: lo que informa vs lo que debería declarar). Revisado a nivel código + verificado contra DB real (Almacén Jorgito + Kiosco Buildi, ambos RI).
+
+**🛑 REGLA #0 (fiscal) — ARREGLADOS:**
+- **H1 — Posición IVA / IVA Débito contaba comprobantes inválidos.** `venta_items` no tiene `estado` ni `sucursal_id`; el query sumaba IVA de ventas **canceladas/devueltas/pendientes/reservadas**. Medido: Buildi mostraba $20.306 vs $15.099 correcto (+34%). Fix: filtrar vía `ventas` confirmadas (`despachada`/`facturada`) + sucursal. Aplica a "Posición IVA" (DashboardPage) y "IVA Débito"/"Posición Estimada" (DashFacturacionArea).
+- **H2 — "Margen Contribución" mal definido.** Calculaba markup sobre costo etiquetándolo "Margen"; usaba `precio_unitario*cantidad` (pre-descuento) en vez de `subtotal`; "ganancia bruta" incluía IVA. Buildi mostraba 70% cuando el margen real es 39%. Fix: `(neto−costo)/neto` con base `subtotal` (neto = subtotal−iva_monto). Mismo criterio en "Rentabilidad Promedio" de Productos (calculaba margen sobre precio bruto c/IVA → inflado).
+- **H3 — Facturación "Neto" roto** (`Σ(precio_unitario−iva_monto)` sin ×cantidad) → ahora `subtotal−iva_monto`.
+- **H4 — Distribución de alícuotas** estimaba `iva/precio` (27% caía en 21%) → ahora columna real `alicuota_iva`.
+- **H5 — Tope de Monotributo** se mostraba a tenants RI → ahora solo a Monotributistas (`condicion_iva_emisor`); RI ven "Facturación del Año".
+
+**🟠 Scope/UX — ARREGLADOS:** H6/H7 (charts "La Balanza"/"Mix de Caja" ignoraban sucursal y período Custom → corregido; cards Margen/IVA del main ahora sucursal-scoped; banners Inventario/Productos honestos), H8 (toggle s/IVA cosmético removido por decisión de GO), H11/H12/H13 (Vencimiento 48h desde hoy, código muerto de rotación, color del dot de Movimientos).
+
+**Diferido (documentado, no bug de plata):** H9 ("$ retenido/perdido" = estimaciones sintéticas), H6 profundo (stock por sucursal real en Inventario/Productos = mini-feature), Envíos/Marketing (pasada ligera).
+
+**Verificación:** `tsc` ✅ · `build` ✅ · **806/806 unit** ✅ · números corregidos confirmados contra DB. 8 archivos `src/` tocados (DashboardPage + DashFacturacion/Productos/Inventario/Ventas/Proveedores Area + VentasVsGastosChart + MixCajaChart). **EN DEV, sin deployar** (espera OK de GO para PROD). Gotcha en memoria `reference_dashboard_calculos_money`.
+
+---
+
 ## [2026-06-25] deploy | ✅ Verificación contable REGLA #0 (cierres dan bien) + 🚀 v1.90.1 EN PROD (4 decisiones del cierre resueltas: seña vencida, kitting atómico, fusión ledger, alerta faltante)
 
 **Pedido de GO:** "¿lo contable está todo ok? ¿los cierres dan bien?" → **verificación real contra la DB (DEV+PROD), no afirmaciones.**

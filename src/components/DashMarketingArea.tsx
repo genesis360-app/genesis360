@@ -77,17 +77,19 @@ export function DashMarketingArea() {
       let itemsData: any[] = []
       if (ventaIds.length > 0) {
         const { data } = await supabase.from('venta_items')
-          .select('venta_id, cantidad, precio_unitario, precio_costo_historico, iva_monto')
+          .select('venta_id, cantidad, subtotal, precio_costo_historico, iva_monto')
           .in('venta_id', ventaIds.slice(0, 500))
         itemsData = data ?? []
       }
 
-      // Costo por venta
+      // Costo y neto por venta. Neto = subtotal − iva_monto (por línea); NO
+      // (precio_unitario − iva_monto) × cantidad: precio_unitario es unitario y el
+      // iva_monto es por línea, así que esa fórmula está dimensionalmente rota.
       const costoMap: Record<string, number> = {}
       const netoMap: Record<string, number> = {}
       for (const vi of itemsData) {
         costoMap[vi.venta_id] = (costoMap[vi.venta_id] ?? 0) + (vi.precio_costo_historico ?? 0) * (vi.cantidad ?? 0)
-        netoMap[vi.venta_id] = (netoMap[vi.venta_id] ?? 0) + ((vi.precio_unitario ?? 0) - (vi.iva_monto ?? 0)) * (vi.cantidad ?? 0)
+        netoMap[vi.venta_id] = (netoMap[vi.venta_id] ?? 0) + ((vi.subtotal ?? 0) - (vi.iva_monto ?? 0))
       }
 
       // Ganancia neta total
@@ -142,13 +144,13 @@ export function DashMarketingArea() {
       qVentasHist = dashFilter(qVentasHist)
       const { data: ventasHist = [] } = await qVentasHist
       const { data: viHist = [] } = await supabase.from('venta_items')
-        .select('venta_id, cantidad, precio_unitario, precio_costo_historico, iva_monto')
+        .select('venta_id, cantidad, subtotal, precio_costo_historico, iva_monto')
         .eq('tenant_id', tenant!.id).gte('created_at', seisMAtras).limit(2000)
       const costoHistMap: Record<string, number> = {}
       const netoHistMap: Record<string, number> = {}
       for (const vi of viHist ?? []) {
         costoHistMap[vi.venta_id] = (costoHistMap[vi.venta_id] ?? 0) + (vi.precio_costo_historico ?? 0) * (vi.cantidad ?? 0)
-        netoHistMap[vi.venta_id] = (netoHistMap[vi.venta_id] ?? 0) + ((vi.precio_unitario ?? 0) - (vi.iva_monto ?? 0)) * (vi.cantidad ?? 0)
+        netoHistMap[vi.venta_id] = (netoHistMap[vi.venta_id] ?? 0) + ((vi.subtotal ?? 0) - (vi.iva_monto ?? 0))
       }
       const monthlyMkt: Record<string, { inversion: number; gananciaNeta: number }> = {}
       for (const g of gastosHist ?? []) {

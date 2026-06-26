@@ -87,7 +87,7 @@ export default function SuscripcionPage() {
   // Pantalla de resultado de pago
   if (status) {
     return (
-      <div className="min-h-screen bg-brand-gradient-hero flex items-center justify-center p-4">
+      <div className="min-h-screen bg-brand-gradient-hero-dark flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
           {status === 'approved' ? (
             esAddon ? (
@@ -143,7 +143,7 @@ export default function SuscripcionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-gradient-hero">
+    <div className="min-h-screen bg-brand-gradient-hero-dark">
       {/* Barra superior */}
       <div className="px-4 pt-5 max-w-5xl mx-auto flex items-center justify-between">
         {tenant?.subscription_status === 'cancelled' ? (
@@ -200,7 +200,9 @@ export default function SuscripcionPage() {
         <div className="grid md:grid-cols-3 gap-6">
           {planesConPago.map(plan => {
             const mpPlanId = MP_PLAN_IDS[plan.id] ?? ''
-            const esActual = tenant?.mp_subscription_id?.includes(plan.id)
+            // El plan actual se infiere de los límites (max_users → plan), no del
+            // mp_subscription_id (que es el preapproval_id de MP y no contiene la key del plan).
+            const esActual = tenant?.subscription_status === 'active' && limits?.plan_id === plan.id
 
             return (
               <div key={plan.id}

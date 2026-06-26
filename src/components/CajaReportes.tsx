@@ -154,6 +154,13 @@ export default function CajaReportes() {
     'diferencia_neta_acumulada','diferencia_absoluta_acumulada','diferencia_maxima',
   ])
 
+  // Columnas de SALDO puntual / máximo: NO son aditivas entre filas (días, cajeros).
+  // Sumarlas en la fila "Totales" daría un número sin sentido (p.ej. sumar el cierre
+  // de cada día no es "el efectivo total"). Se muestran en cada fila pero no se totalizan.
+  const COLS_NO_ADITIVAS = new Set([
+    'total_apertura','saldo_sistema','conteo_real','diferencia_maxima',
+  ])
+
   const fmtCell = (val: any, col: string) => {
     if (val == null) return '—'
     if (COLS_MONETARIAS.has(col)) return formatMoneda(Number(val))
@@ -166,7 +173,7 @@ export default function CajaReportes() {
   const totales = useMemo(() => {
     const t: Record<string, number> = {}
     for (const col of columnas) {
-      if (COLS_MONETARIAS.has(col)) {
+      if (COLS_MONETARIAS.has(col) && !COLS_NO_ADITIVAS.has(col)) {
         t[col] = datos.reduce((acc: number, r: any) => acc + Number(r[col] || 0), 0)
       }
     }
@@ -352,7 +359,7 @@ export default function CajaReportes() {
                   <tr>
                     {columnas.map((c, idx) => (
                       <td key={c} className={`px-3 py-2 text-xs text-gray-700 dark:text-gray-200 ${COLS_MONETARIAS.has(c) ? 'text-right tabular-nums' : ''}`}>
-                        {idx === 0 ? 'Totales' : COLS_MONETARIAS.has(c) ? formatMoneda(totales[c]) : ''}
+                        {idx === 0 ? 'Totales' : (COLS_MONETARIAS.has(c) && !COLS_NO_ADITIVAS.has(c)) ? formatMoneda(totales[c]) : ''}
                       </td>
                     ))}
                   </tr>

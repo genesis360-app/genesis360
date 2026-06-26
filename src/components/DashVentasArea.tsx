@@ -17,7 +17,6 @@ import { Link } from 'react-router-dom'
 
 type VentasPeriodo = 'hoy' | '7d' | '15d' | '30d' | 'mes' | 'año' | 'custom'
 type Moneda = 'ARS' | 'USD'
-type IVAMode = 'incluido' | 'excluido'
 
 const PERIODO_LABELS: Record<VentasPeriodo, string> = {
   hoy: 'Hoy', '7d': '7D', '15d': '15D', '30d': '30D',
@@ -222,7 +221,6 @@ export function DashVentasArea() {
   const [filterOpen, setFilterOpen] = useState(false)
   const [periodo, setPeriodo] = useState<VentasPeriodo>('mes')
   const [moneda, setMoneda] = useState<Moneda>('ARS')
-  const [iva, setIva] = useState<IVAMode>('incluido')
   const [customDesde, setCustomDesde] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
   const [customHasta, setCustomHasta] = useState(() => new Date().toISOString())
   const [canal, setCanal] = useState('')
@@ -251,7 +249,7 @@ export function DashVentasArea() {
 
   // ─── Data query ──────────────────────────────────────────────────────────────
   const { data: vData, isLoading } = useQuery({
-    queryKey: ['dash-ventas-area', tenant?.id, desde, hasta, desdePrev, hastaPrev, canal, moneda, iva, sucursalId],
+    queryKey: ['dash-ventas-area', tenant?.id, desde, hasta, desdePrev, hastaPrev, canal, moneda, sucursalId],
     queryFn: async () => {
       // Ventas del período
       let q = supabase.from('ventas')
@@ -479,7 +477,6 @@ export function DashVentasArea() {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Mostrando <span className="font-medium text-primary">{PERIODO_LABELS[periodo].toLowerCase()}</span>
           {moneda === 'USD' && <span className="ml-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">USD</span>}
-          {iva === 'excluido' && <span className="ml-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">s/IVA</span>}
           {canal && <span className="ml-1 text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded">Canal: {CANAL_DISPLAY[canal] ?? canal}</span>}
         </p>
 
@@ -545,17 +542,6 @@ export function DashVentasArea() {
                         <button key={m} onClick={() => setMoneda(m)}
                           className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
                           {m}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Importe</p>
-                    <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
-                      {[{ key: 'incluido' as IVAMode, label: 'c/IVA' }, { key: 'excluido' as IVAMode, label: 's/IVA' }].map(opt => (
-                        <button key={opt.key} onClick={() => setIva(opt.key)}
-                          className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${iva === opt.key ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-                          {opt.label}
                         </button>
                       ))}
                     </div>

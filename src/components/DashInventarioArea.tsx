@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
+import type { DashSection } from '@/components/dashAreaSection'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -141,7 +142,10 @@ function CombosBloqueadosChart({ data, fmt }: { data: { name: string; kits_bloqu
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function DashInventarioArea() {
+export function DashInventarioArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
   const sucursalNombre = sucursalId ? (sucursales as any[]).find((s: any) => s.id === sucursalId)?.nombre : null
@@ -503,6 +507,7 @@ export function DashInventarioArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* ── Capa 1: 8 KPIs ──────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
@@ -635,6 +640,9 @@ export function DashInventarioArea() {
         )}
       </div>
 
+      </>)}
+
+      {showG && (<>
       {/* ── Capa 2: Gráficos ─────────────────────────────────────────────────── */}
 
       {/* Fila 1: Dona Patrimonio + Gauge Salud */}
@@ -788,6 +796,9 @@ export function DashInventarioArea() {
         </div>
       )}
 
+      </>)}
+
+      {showI && (<>
       {/* ── Capa 3: Insights ──────────────────────────────────────────────────── */}
       {insights.length > 0 && (
         <div>
@@ -809,6 +820,7 @@ export function DashInventarioArea() {
           </div>
         </div>
       )}
+      </>)}
     </div>
   )
 }

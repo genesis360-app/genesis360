@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
+import type { DashSection } from '@/components/dashAreaSection'
 
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444','#EC4899','#6B7280','#F97316']
@@ -25,7 +26,10 @@ function fmtCorto(v: number) {
 
 type Vista = 'consolidado' | 'mercaderia' | 'servicios'
 
-export function DashProveedoresArea() {
+export function DashProveedoresArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
 
@@ -236,6 +240,7 @@ export function DashProveedoresArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* 8 KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className={`bg-surface border rounded-xl p-5 shadow-sm ${(pData?.totalPorPagar ?? 0) > 0 ? 'border-orange-300 dark:border-orange-800' : 'border-border-ds'}`}>
@@ -295,6 +300,9 @@ export function DashProveedoresArea() {
         </div>
       </div>
 
+      </>)}
+
+      {showG && (<>
       {/* Charts fila 1 */}
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Donut Top proveedores */}
@@ -346,6 +354,9 @@ export function DashProveedoresArea() {
         ) : <p className="text-sm text-muted text-center py-8">Sin datos históricos</p>}
       </div>
 
+      </>)}
+
+      {showI && (<>
       {/* Insights */}
       {insights.length > 0 && (
         <div>
@@ -353,6 +364,7 @@ export function DashProveedoresArea() {
           <div className="grid sm:grid-cols-2 gap-3">{insights.map((ins, i) => { const Icon = INSIGHT_ICONS[ins.tipo]; return <InsightCard key={i} variant={ins.tipo} icon={<Icon size={15} />} title={ins.titulo} description={ins.impacto} action={{ label: ins.accion, onClick: () => { window.location.href = ins.link } }} /> })}</div>
         </div>
       )}
+      </>)}
     </div>
   )
 }

@@ -22,8 +22,6 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { getFechasDashboard, getFechasAnteriores, labelPeriodo } from '@/components/FilterBar'
 import type { PeriodoDash, Moneda } from '@/components/FilterBar'
 import { KPICard } from '@/components/KPICard'
-import { InsightCard } from '@/components/InsightCard'
-import type { InsightVariant } from '@/components/InsightCard'
 import { VentasVsGastosChart } from '@/components/VentasVsGastosChart'
 import { MixCajaChart } from '@/components/MixCajaChart'
 import { DashVentasArea } from '@/components/DashVentasArea'
@@ -35,6 +33,8 @@ import { DashProveedoresArea } from '@/components/DashProveedoresArea'
 import { DashFacturacionArea } from '@/components/DashFacturacionArea'
 import { DashEnviosArea } from '@/components/DashEnviosArea'
 import { DashMarketingArea } from '@/components/DashMarketingArea'
+import type { DashSection } from '@/components/dashAreaSection'
+import type { RecomendacionCategoria } from '@/hooks/useRecomendaciones'
 import { Component, type ReactNode } from 'react'
 
 // Error boundary local para áreas del Dashboard — no tira la página entera
@@ -89,12 +89,39 @@ const SEMAFORO_COLOR: Record<string, string> = {
 }
 
 type AreaId = 'todo' | 'ventas' | 'gastos' | 'productos' | 'inventario' | 'clientes' | 'proveedores' | 'facturacion' | 'envios' | 'marketing'
-type SubTabId = 'overview' | 'insights' | 'metricas' | 'rentabilidad' | 'recomendaciones' | 'graficos'
+type AreaModuloId = Exclude<AreaId, 'todo'>
+type SubTabId = 'insights' | 'metricas' | 'rentabilidad' | 'recomendaciones' | 'graficos'
 
 const AREA_LABELS: Record<AreaId, string> = {
   todo: 'Todo', ventas: 'Ventas', gastos: 'Gastos', productos: 'Productos',
   inventario: 'Inventario', clientes: 'Clientes', proveedores: 'Proveedores',
   facturacion: 'Facturación', envios: 'Envíos', marketing: 'Marketing',
+}
+
+// Mini-dashboard real de cada módulo. Cada uno expone Insights/Métricas/Gráficos vía `section`
+// (sin alterar ningún cálculo: solo decide qué bloque ya calculado se muestra).
+const AREA_COMPONENTS: Record<AreaModuloId, React.ComponentType<{ section?: DashSection }>> = {
+  ventas: DashVentasArea, gastos: DashGastosArea, productos: DashProductosArea,
+  inventario: DashInventarioArea, clientes: DashClientesArea, proveedores: DashProveedoresArea,
+  facturacion: DashFacturacionArea, envios: DashEnviosArea, marketing: DashMarketingArea,
+}
+
+// Área → categorías del motor `useRecomendaciones` para scopear la sub-pestaña Recomendaciones.
+// Vacío = sin scope específico → muestra todas (fallback honesto; nunca fabrica datos).
+const AREA_RECO_CAT: Record<AreaId, RecomendacionCategoria[]> = {
+  todo: [], ventas: ['ventas'], gastos: ['rentabilidad'], productos: ['stock', 'rentabilidad'],
+  inventario: ['stock'], clientes: ['clientes'], proveedores: ['operaciones'],
+  facturacion: ['ventas', 'datos'], envios: ['operaciones'], marketing: ['ventas', 'clientes'],
+}
+
+// Sub-pestañas que se nutren del mini-dashboard del módulo (las otras 2 reusan vistas globales).
+const SUBTABS_DE_MODULO: SubTabId[] = ['insights', 'metricas', 'graficos']
+
+// Wrapper estable: mantiene montado el mini-dashboard del módulo al cambiar entre
+// Insights/Métricas/Gráficos (preserva el estado de filtros internos del área).
+function AreaModulo({ area, section }: { area: AreaModuloId; section: DashSection }) {
+  const Comp = AREA_COMPONENTS[area]
+  return <Comp section={section} />
 }
 
 const PERIODO_LABELS_DASH: Record<PeriodoDash, string> = {
@@ -114,7 +141,7 @@ export default function DashboardPage() {
   const mostrarSugerenciaWms = !modoAvanzado && !sugerenciaWmsDismissed
     && user?.rol === 'DUEÑO' && sugiereModoAvanzado(tenant?.tipo_comercio)
   const [area, setArea] = useState<AreaId>('todo')
-  const [subTab, setSubTab] = useState<SubTabId>('overview')
+  const [subTab, setSubTab] = useState<SubTabId>('insights')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
@@ -136,10 +163,9 @@ export default function DashboardPage() {
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
-  // Resetear subTab al cambiar de área
+  // Al cambiar de área, conservar la sub-pestaña si tiene sentido; default = Insights (landing)
   const handleSetArea = (a: AreaId) => {
     setArea(a)
-    setSubTab('overview')
   }
 
   // Count filtros activos (para badge)
@@ -609,7 +635,9 @@ export default function DashboardPage() {
   // ─── Sub-tabs disponibles ────────────────────────────────────────────────────
   const subTabs: { id: SubTabId; label: string; lock?: boolean }[] = [
     { id: 'insights',        label: 'Insights' },
-    { id: 'metricas',        label: 'Métricas', lock: !!(limits && !limits.puede_metricas) },
+    // El candado aplica solo a la MetricasPage global de "Todo" (plan-gated). Los
+    // mini-dashboards de módulo (Insights/Métricas/Gráficos) son parte de la base, sin gate.
+    { id: 'metricas',        label: 'Métricas', lock: area === 'todo' && !!(limits && !limits.puede_metricas) },
     { id: 'rentabilidad',    label: 'Rentabilidad' },
     { id: 'recomendaciones', label: 'Recomendaciones' },
     { id: 'graficos',        label: 'Gráficos' },
@@ -750,37 +778,35 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* ── Contenido según area + subTab ──────────────────────────────────────── */}
+      {/* ── Contenido: 5 sub-pestañas uniformes por área ──────────────────────── */}
 
-      {/* Areas específicas — solo en subTab overview */}
-      {area === 'ventas'      && subTab === 'overview' && <AreaErrorBoundary label="Ventas"><DashVentasArea /></AreaErrorBoundary>}
-      {area === 'gastos'      && subTab === 'overview' && <AreaErrorBoundary label="Gastos"><DashGastosArea /></AreaErrorBoundary>}
-      {area === 'productos'   && subTab === 'overview' && <AreaErrorBoundary label="Productos"><DashProductosArea /></AreaErrorBoundary>}
-      {area === 'inventario'  && subTab === 'overview' && <AreaErrorBoundary label="Inventario"><DashInventarioArea /></AreaErrorBoundary>}
-      {area === 'clientes'    && subTab === 'overview' && <AreaErrorBoundary label="Clientes"><DashClientesArea /></AreaErrorBoundary>}
-      {area === 'proveedores' && subTab === 'overview' && <AreaErrorBoundary label="Proveedores"><DashProveedoresArea /></AreaErrorBoundary>}
-      {area === 'facturacion' && subTab === 'overview' && <AreaErrorBoundary label="Facturación"><DashFacturacionArea /></AreaErrorBoundary>}
-      {area === 'envios'      && subTab === 'overview' && <AreaErrorBoundary label="Envíos"><DashEnviosArea /></AreaErrorBoundary>}
-      {area === 'marketing'   && subTab === 'overview' && <AreaErrorBoundary label="Marketing"><DashMarketingArea /></AreaErrorBoundary>}
-
-      {/* Areas específicas — subTab distinto de overview → placeholder */}
-      {area !== 'todo' && subTab !== 'overview' && (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-          <BarChart2 size={40} className="mb-3 opacity-30" />
-          <p className="font-medium text-gray-500 dark:text-gray-400">Próximamente</p>
-          <p className="text-sm mt-1 text-center max-w-xs">
-            Insights de {AREA_LABELS[area]} en desarrollo
-          </p>
-        </div>
+      {/* ═══ Áreas de módulo — Insights/Métricas/Gráficos = mini-dashboard real del
+              módulo; Rentabilidad/Recomendaciones = vistas globales scopeadas ═══ */}
+      {area !== 'todo' && (
+        subTab === 'rentabilidad' ? (
+          <div className="space-y-4">
+            {area !== 'ventas' && area !== 'productos' && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800 border border-border-ds rounded-xl px-4 py-3">
+                Rentabilidad <strong>consolidada del negocio</strong> (por producto y categoría).
+                El desglose propio de {AREA_LABELS[area]} está en sus pestañas de <strong>Métricas</strong> y <strong>Gráficos</strong>.
+              </p>
+            )}
+            <RentabilidadPage hideHeader />
+          </div>
+        ) : subTab === 'recomendaciones' ? (
+          <RecomendacionesPage hideHeader categoria={AREA_RECO_CAT[area]} />
+        ) : (
+          <AreaErrorBoundary key={area} label={AREA_LABELS[area]}>
+            <AreaModulo area={area as AreaModuloId} section={subTab as DashSection} />
+          </AreaErrorBoundary>
+        )
       )}
 
-      {/* ── Área TODO — sub-tabs ──────────────────────────────────────────────── */}
+      {/* ── Área TODO — sub-pestañas ──────────────────────────────────────────── */}
 
-      {/* metricas */}
-      {area === 'todo' && subTab === 'metricas' && (
-        limits && !limits.puede_metricas
-          ? <UpgradePrompt feature="metricas" />
-          : <MetricasPage hideHeader />
+      {/* Métricas — plan-gate: si no tiene métricas, solo el upsell */}
+      {area === 'todo' && subTab === 'metricas' && limits && !limits.puede_metricas && (
+        <UpgradePrompt feature="metricas" />
       )}
 
       {/* rentabilidad */}
@@ -791,15 +817,6 @@ export default function DashboardPage() {
       {/* recomendaciones */}
       {area === 'todo' && subTab === 'recomendaciones' && (
         <RecomendacionesPage hideHeader />
-      )}
-
-      {/* graficos */}
-      {area === 'todo' && subTab === 'graficos' && (
-        <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
-          <BarChart2 size={40} className="mb-3 opacity-30" />
-          <p className="font-medium text-gray-500 dark:text-gray-400">Gráficos avanzados</p>
-          <p className="text-sm mt-1 text-center max-w-xs">Esta sección está en desarrollo. Próximamente encontrarás todos los gráficos del negocio en un solo lugar.</p>
-        </div>
       )}
 
       {/* insights */}
@@ -944,8 +961,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Área TODO + subTab overview — contenido principal ────────────────── */}
-      {area === 'todo' && subTab === 'overview' && (<>
+      {/* ── Área TODO › Métricas — KPIs ejecutivos ────────────────────────────── */}
+      {area === 'todo' && subTab === 'metricas' && (!limits || limits.puede_metricas) && (<>
 
       {/* ── 4 KPI Cards ─────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -999,6 +1016,10 @@ export default function DashboardPage() {
         />
       </div>
 
+      </>)}
+
+      {/* ── Área TODO › Gráficos ──────────────────────────────────────────────── */}
+      {area === 'todo' && subTab === 'graficos' && (<>
       {/* ── Gráficos: La Balanza + El Mix de Caja ───────────────────────────── */}
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
@@ -1019,41 +1040,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* ── Insights automáticos ─────────────────────────────────────────────── */}
-      {recomendaciones.length > 0 && (
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <Zap size={16} className="text-accent" />
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Insights automáticos</h2>
-              <span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{recomendaciones.length}</span>
-            </div>
-            <button onClick={() => setSubTab('insights')} className="text-xs text-accent hover:underline">Ver todos →</button>
-          </div>
-          <div className="grid sm:grid-cols-2 gap-3">
-            {recomendaciones.slice(0, 4).map(r => {
-              const iconMap = { danger: AlertTriangle, warning: Clock, success: CheckCircle, info: BarChart2 }
-              const Icon = iconMap[r.tipo]
-              return (
-                <InsightCard
-                  key={r.id}
-                  variant={r.tipo as InsightVariant}
-                  icon={<Icon size={16} />}
-                  title={r.titulo}
-                  description={r.impacto}
-                  action={{
-                    label: r.accion,
-                    onClick: () => r.link === '/metricas' ? setSubTab('metricas') : window.location.href = r.link,
-                  }}
-                />
-              )
-            })}
-          </div>
-        </div>
-      )}
+      </>)}
 
-      {/* ── Fugas y Movimientos ──────────────────────────────────────────────── */}
-      {fugasData.length > 0 && (
+      {/* ── Área TODO › Métricas — Fugas y Movimientos ────────────────────────── */}
+      {area === 'todo' && subTab === 'metricas' && (!limits || limits.puede_metricas) && fugasData.length > 0 && (
         <div className="bg-surface border border-border-ds rounded-xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-border-ds flex items-center gap-2">
             <ShoppingCart size={16} className="text-accent" />
@@ -1096,8 +1086,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* ── Productos sin movimiento — expandable ────────────────────────────── */}
-      {(stats?.cantStockMuerto ?? 0) > 0 && (
+      {/* ── Área TODO › Insights — Productos sin movimiento (expandable) ──────── */}
+      {area === 'todo' && subTab === 'insights' && (stats?.cantStockMuerto ?? 0) > 0 && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm dark:shadow-gray-900 overflow-hidden">
           <button
             onClick={() => setSinMovExpanded(v => !v)}
@@ -1138,62 +1128,8 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Score de Salud + Recomendaciones urgentes */}
-      {score && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Score widget */}
-          <Link to="/recomendaciones" className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900 hover:shadow-md transition-all flex items-center gap-4">
-            <div className="relative w-16 h-16 flex-shrink-0">
-              <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="40" fill="none" stroke="#f3f4f6" strokeWidth="12" />
-                <circle
-                  cx="50" cy="50" r="40" fill="none" strokeWidth="12"
-                  stroke={score.total >= 70 ? '#22c55e' : score.total >= 40 ? '#f59e0b' : '#ef4444'}
-                  strokeDasharray={`${2 * Math.PI * 40}`}
-                  strokeDashoffset={`${2 * Math.PI * 40 * (1 - score.total / 100)}`}
-                  strokeLinecap="round"
-                />
-              </svg>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <span className="text-lg font-bold text-gray-800 dark:text-gray-100">{score.total}</span>
-              </div>
-            </div>
-            <div>
-              <p className="font-semibold text-gray-800 dark:text-gray-100">Score de salud</p>
-              <p className={`text-sm font-medium ${score.total >= 70 ? 'text-green-600 dark:text-green-400' : score.total >= 40 ? 'text-amber-500 dark:text-amber-400' : 'text-red-500 dark:text-red-400'}`}>
-                {score.total >= 70 ? 'Negocio saludable' : score.total >= 40 ? 'Puede mejorar' : 'Necesita atención'}
-              </p>
-              <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5">Ver análisis completo →</p>
-            </div>
-          </Link>
-
-          {/* Recomendaciones urgentes (2 primeras) */}
-          {recomendaciones.slice(0, 2).map(r => {
-            return (
-              <Link
-                key={r.id}
-                to={r.link}
-                className={`rounded-xl p-4 shadow-sm hover:shadow-md transition-all
-                  ${r.tipo === 'danger' ? 'bg-red-50 dark:bg-red-900/20 border-l-4 border-l-red-500' :
-                    r.tipo === 'warning' ? 'bg-amber-50 dark:bg-amber-900/20 border-l-4 border-l-amber-500' :
-                    r.tipo === 'success' ? 'bg-green-50 dark:bg-green-900/20 border-l-4 border-l-green-500' :
-                    'bg-blue-50 dark:bg-blue-900/20 border-l-4 border-l-blue-400'}`}
-              >
-                <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm leading-snug">{r.titulo}</p>
-                <p className={`text-xs mt-1 font-medium
-                  ${r.tipo === 'danger' ? 'text-red-600 dark:text-red-400' : r.tipo === 'warning' ? 'text-amber-600 dark:text-amber-400' :
-                    r.tipo === 'success' ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
-                  {r.impacto}
-                </p>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 flex items-center gap-1">
-                  {r.accion} <ChevronRight size={11} />
-                </p>
-              </Link>
-            )
-          })}
-        </div>
-      )}
-
+      {/* ── Área TODO › Insights — Lo que necesitás saber + Sugerencia + Proyección ── */}
+      {area === 'todo' && subTab === 'insights' && (<>
       {/* Insights */}
       <div>
         <div className="flex items-center justify-between mb-3">
@@ -1334,6 +1270,10 @@ export default function DashboardPage() {
         </div>
       )}
 
+      </>)}
+
+      {/* ── Área TODO › Métricas — Top productos + Movimientos + detalle ──────── */}
+      {area === 'todo' && subTab === 'metricas' && (!limits || limits.puede_metricas) && (<>
       {/* Bottom grid */}
       <div className="grid lg:grid-cols-2 gap-6">
 
@@ -1391,7 +1331,10 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
-      </>)}  {/* end area === 'todo' && subTab === 'overview' */}
+
+      {/* Métricas detalladas del negocio */}
+      <MetricasPage hideHeader />
+      </>)}  {/* end Área TODO › Métricas */}
     </div>
   )
 }

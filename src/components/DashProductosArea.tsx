@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
+import type { DashSection } from '@/components/dashAreaSection'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -98,7 +99,10 @@ function TijeraTooltip({ active, payload, label, fmt }: any) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function DashProductosArea() {
+export function DashProductosArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { sucursalId, sucursales, setSucursal, puedeVerTodas } = useSucursalFilter()
   const sucursalNombre = sucursalId ? (sucursales as any[]).find((s: any) => s.id === sucursalId)?.nombre : null
@@ -619,6 +623,7 @@ export function DashProductosArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* ── Capa 1: 6 KPIs (2×3) ────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
 
@@ -723,6 +728,9 @@ export function DashProductosArea() {
         </div>
       </div>
 
+      </>)}
+
+      {showG && (<>
       {/* ── Capa 2: Gráficos ─────────────────────────────────────────────────── */}
 
       {/* Cuadrante Mágico + Categorías (fila 1) */}
@@ -861,6 +869,9 @@ export function DashProductosArea() {
         )}
       </div>
 
+      </>)}
+
+      {showI && (<>
       {/* ── Capa 3: Insights ──────────────────────────────────────────────────── */}
       {insights.length > 0 && (
         <div>
@@ -882,6 +893,8 @@ export function DashProductosArea() {
           </div>
         </div>
       )}
+
+      </>)}
 
       {!isLoading && (pData?.productosConVentas ?? []).length === 0 && (
         <div className="text-center py-12 text-muted">

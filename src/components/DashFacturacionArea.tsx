@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
+import type { DashSection } from '@/components/dashAreaSection'
 
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const IVA_COLORS: Record<string, string> = { '21': '#06B6D4', '10.5': '#F59E0B', '27': '#7B00FF', '0': '#9CA3AF' }
@@ -35,7 +36,10 @@ const MONOTRIB_LIMITES = [
   { cat: 'K', limite: 22_256_184 },
 ]
 
-export function DashFacturacionArea() {
+export function DashFacturacionArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
 
@@ -214,6 +218,7 @@ export function DashFacturacionArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* 6 KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div className={`bg-surface border rounded-xl p-5 shadow-sm ${(fData?.posicion ?? 0) > 0 ? 'border-orange-300 dark:border-orange-800' : 'border-blue-300 dark:border-blue-800'}`}>
@@ -269,6 +274,9 @@ export function DashFacturacionArea() {
         </div>
       </div>
 
+      </>)}
+
+      {showG && (<>
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Barras apiladas Neto + IVA */}
@@ -307,6 +315,9 @@ export function DashFacturacionArea() {
         </div>
       </div>
 
+      </>)}
+
+      {showI && (<>
       {/* Insights */}
       {insights.length > 0 && (
         <div>
@@ -314,6 +325,8 @@ export function DashFacturacionArea() {
           <div className="grid sm:grid-cols-2 gap-3">{insights.map((ins, i) => { const Icon = INSIGHT_ICONS[ins.tipo]; return <InsightCard key={i} variant={ins.tipo} icon={<Icon size={15} />} title={ins.titulo} description={ins.impacto} action={{ label: ins.accion, onClick: () => { window.location.href = ins.link } }} /> })}</div>
         </div>
       )}
+
+      </>)}
 
       {/* Footer legal */}
       <p className="text-[10px] text-gray-300 dark:text-gray-600 text-center">Estimaciones de gestión interna. Este reporte carece de validez legal y fiscal. Las estimaciones de impuestos no reemplazan el trabajo de un Contador Público Matriculado.</p>

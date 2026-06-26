@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
+import type { DashSection } from '@/components/dashAreaSection'
 
 const CANAL_COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444']
 const CANAL_DISPLAY: Record<string, string> = { POS: 'Presencial', pos: 'Presencial', tiendanube: 'TiendaNube', mercadolibre: 'MercadoLibre', whatsapp: 'WhatsApp' }
@@ -31,7 +32,10 @@ function PoasTooltip({ active, payload, label }: any) {
   )
 }
 
-export function DashMarketingArea() {
+export function DashMarketingArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
 
@@ -257,6 +261,7 @@ export function DashMarketingArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* 6 KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
@@ -297,6 +302,9 @@ export function DashMarketingArea() {
         </div>
       </div>
 
+      </>)}
+
+      {showG && (<>
       {/* Charts */}
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Evolución inversión vs ganancia */}
@@ -355,6 +363,9 @@ export function DashMarketingArea() {
         </div>
       )}
 
+      </>)}
+
+      {showI && (<>
       {/* Insights */}
       {insights.length > 0 && (
         <div>
@@ -362,6 +373,7 @@ export function DashMarketingArea() {
           <div className="grid sm:grid-cols-2 gap-3">{insights.map((ins, i) => { const Icon = INSIGHT_ICONS[ins.tipo]; return <InsightCard key={i} variant={ins.tipo} icon={<Icon size={15} />} title={ins.titulo} description={ins.impacto} action={{ label: ins.accion, onClick: () => { window.location.href = ins.link } }} /> })}</div>
         </div>
       )}
+      </>)}
 
       <p className="text-[10px] text-gray-300 dark:text-gray-600 text-center">Los datos de inversión se basan en gastos cargados manualmente. La ganancia neta es estimada por Génesis360 según los costos del inventario.</p>
     </div>

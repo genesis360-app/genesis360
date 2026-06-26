@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
+import type { DashSection } from '@/components/dashAreaSection'
 
 const COURIER_COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444','#6B7280']
 const ESTADO_COLORS: Record<string, string> = {
@@ -36,7 +37,10 @@ function EnvioTooltip({ active, payload }: any) {
   )
 }
 
-export function DashEnviosArea() {
+export function DashEnviosArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
 
@@ -239,6 +243,7 @@ export function DashEnviosArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* 6 KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
@@ -288,6 +293,9 @@ export function DashEnviosArea() {
         </div>
       </div>
 
+      </>)}
+
+      {showG && (<>
       {/* Funnel + Courier */}
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
@@ -347,6 +355,9 @@ export function DashEnviosArea() {
         </div>
       )}
 
+      </>)}
+
+      {showI && (<>
       {/* Insights */}
       {insights.length > 0 && (
         <div>
@@ -354,6 +365,7 @@ export function DashEnviosArea() {
           <div className="grid sm:grid-cols-2 gap-3">{insights.map((ins, i) => { const Icon = INSIGHT_ICONS[ins.tipo]; return <InsightCard key={i} variant={ins.tipo} icon={<Icon size={15} />} title={ins.titulo} description={ins.impacto} action={{ label: ins.accion, onClick: () => { window.location.href = ins.link } }} /> })}</div>
         </div>
       )}
+      </>)}
     </div>
   )
 }

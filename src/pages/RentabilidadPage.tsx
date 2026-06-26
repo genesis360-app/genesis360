@@ -57,12 +57,12 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
         .select(`
           id, numero, total, cliente_nombre, created_at,
           venta_items(
-            cantidad, precio_unitario, precio_costo_historico, subtotal,
+            cantidad, precio_unitario, precio_costo_historico, subtotal, iva_monto,
             productos(nombre, categoria_id, categorias(nombre))
           )
         `)
         .eq('tenant_id', tenant!.id)
-        .eq('estado', 'despachada')
+        .in('estado', ['despachada', 'facturada'])
         .gte('created_at', desde)
         .order('created_at', { ascending: false })
       if (error) throw error
@@ -94,20 +94,28 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
 
   // Computar métricas derivadas
   const { kpis, porVenta, porProducto } = useMemo(() => {
-    let totalVentas = 0
+    // Margen/ganancia sobre NETO sin IVA (el IVA débito no es ingreso del negocio).
+    let totalVentas = 0   // bruto facturado (Σ subtotal, c/IVA)
+    let totalIva = 0
     let totalCosto = 0
     let ventasConCosto = 0
 
     const ventaRows: any[] = []
-    const prodMap: Record<string, { nombre: string; venta: number; costo: number; cantidad: number }> = {}
+    const prodMap: Record<string, { nombre: string; venta: number; iva: number; costo: number; cantidad: number }> = {}
 
     for (const v of ventas) {
       let costoVenta = 0
+      let brutoVenta = 0
+      let ivaVenta = 0
       let hayAlgunCosto = false
 
       for (const item of (v.venta_items ?? []) as any[]) {
         const subtotal = item.subtotal ?? (item.precio_unitario * item.cantidad)
+        const ivaItem = item.iva_monto ?? 0
         totalVentas += subtotal
+        totalIva += ivaItem
+        brutoVenta += subtotal
+        ivaVenta += ivaItem
 
         if (item.precio_costo_historico) {
           const costo = item.precio_costo_historico * item.cantidad
@@ -117,16 +125,18 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
         }
 
         const nombre = item.productos?.nombre ?? 'Producto'
-        if (!prodMap[nombre]) prodMap[nombre] = { nombre, venta: 0, costo: 0, cantidad: 0 }
+        if (!prodMap[nombre]) prodMap[nombre] = { nombre, venta: 0, iva: 0, costo: 0, cantidad: 0 }
         prodMap[nombre].venta += subtotal
+        prodMap[nombre].iva += ivaItem
         if (item.precio_costo_historico) prodMap[nombre].costo += item.precio_costo_historico * item.cantidad
         prodMap[nombre].cantidad += item.cantidad
       }
 
       if (hayAlgunCosto) ventasConCosto++
 
-      const ganancia = costoVenta > 0 ? (v.total - costoVenta) : null
-      const margen = ganancia !== null && v.total > 0 ? (ganancia / v.total) * 100 : null
+      const netoVenta = brutoVenta - ivaVenta
+      const ganancia = costoVenta > 0 ? (netoVenta - costoVenta) : null
+      const margen = ganancia !== null && netoVenta > 0 ? (ganancia / netoVenta) * 100 : null
 
       ventaRows.push({
         id: v.id,
@@ -140,20 +150,24 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
       })
     }
 
-    const gananciaTotal = totalCosto > 0 ? totalVentas - totalCosto : null
-    const margenPromedio = gananciaTotal !== null && totalVentas > 0 ? (gananciaTotal / totalVentas) * 100 : null
+    const totalVentasNeto = totalVentas - totalIva
+    const gananciaTotal = totalCosto > 0 ? totalVentasNeto - totalCosto : null
+    const margenPromedio = gananciaTotal !== null && totalVentasNeto > 0 ? (gananciaTotal / totalVentasNeto) * 100 : null
 
     const porProducto = Object.values(prodMap)
-      .map(p => ({
-        ...p,
-        ganancia: p.costo > 0 ? p.venta - p.costo : null,
-        margen: p.costo > 0 && p.venta > 0 ? ((p.venta - p.costo) / p.venta) * 100 : null,
-      }))
+      .map(p => {
+        const neto = p.venta - p.iva
+        return {
+          ...p,
+          ganancia: p.costo > 0 ? neto - p.costo : null,
+          margen: p.costo > 0 && neto > 0 ? ((neto - p.costo) / neto) * 100 : null,
+        }
+      })
       .sort((a, b) => (b.ganancia ?? 0) - (a.ganancia ?? 0))
       .slice(0, 10)
 
     return {
-      kpis: { totalVentas, totalCosto, gananciaTotal, margenPromedio, ventasConCosto, totalVentasCount: ventas.length },
+      kpis: { totalVentas, totalVentasNeto, totalIva, totalCosto, gananciaTotal, margenPromedio, ventasConCosto, totalVentasCount: ventas.length },
       porVenta: ventaRows,
       porProducto,
     }
@@ -178,7 +192,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Rentabilidad Real</h1>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Margen y ganancia de tus ventas despachadas</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">Margen y ganancia de tus ventas confirmadas (despachadas o facturadas)</p>
           </div>
         </div>
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
@@ -199,7 +213,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
       ) : ventas.length === 0 ? (
         <div className="text-center py-16 text-gray-400 dark:text-gray-500">
           <ShoppingCart size={40} className="mx-auto mb-3 opacity-30" />
-          <p className="font-medium">Sin ventas despachadas en este período</p>
+          <p className="font-medium">Sin ventas confirmadas en este período</p>
         </div>
       ) : (
         <>
@@ -215,7 +229,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
             <KpiCard
               label="Ventas totales"
               value={formatMoneda(kpis.totalVentas)}
-              sub={`${kpis.totalVentasCount} ventas despachadas`}
+              sub={`${kpis.totalVentasCount} ventas confirmadas`}
               icon={ShoppingCart}
               color="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"
             />
@@ -251,9 +265,11 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Estado de resultados (período)</h2>
             </div>
             {(() => {
-              const ingresos = kpis.totalVentas
+              const ingresosBruto = kpis.totalVentas
+              const iva = kpis.totalIva
+              const ingresosNeto = kpis.totalVentasNeto
               const costoMercaderia = kpis.totalCosto
-              const gananciaBruta = ingresos - costoMercaderia
+              const gananciaBruta = ingresosNeto - costoMercaderia
               const otrosGastos = egresos.gastos
               const sueldos = egresos.sueldos
               const resultadoNeto = gananciaBruta - otrosGastos - sueldos
@@ -275,7 +291,9 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
               )
               return (
                 <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {row('Ventas despachadas', ingresos)}
+                  {row('Ventas (bruto facturado)', ingresosBruto)}
+                  {row('IVA débito', iva, { sign: '-', muted: !iva })}
+                  {row('Ventas netas', ingresosNeto, { muted: true })}
                   {row('Costo de mercadería vendida', costoMercaderia, { sign: '-', muted: !costoMercaderia })}
                   {row('Ganancia bruta', gananciaBruta, { strong: true })}
                   {row('Gastos operativos', otrosGastos, { sign: '-' })}
@@ -289,7 +307,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
               )
             })()}
             <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-3 italic">
-              Estimación basada en gastos registrados, liquidaciones pagadas y ventas despachadas del período. No reemplaza un balance contable formal.
+              Estimación basada en gastos registrados, liquidaciones pagadas y ventas confirmadas del período (netas de IVA). No reemplaza un balance contable formal.
             </p>
           </div>
 

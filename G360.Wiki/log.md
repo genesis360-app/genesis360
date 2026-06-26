@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-25] update | 📊 Auditoría Métricas + Rentabilidad — fixes REGLA #0 (IVA en P&L/margen, costo histórico, excluía facturadas) en DEV
+
+Continuación de la auditoría Dashboard sobre las dos páginas analíticas (también subtabs del Dashboard). Verificado contra DB (Jorgito + Buildi).
+
+**RentabilidadPage ("Rentabilidad Real" + subtab):**
+- **R1 (REGLA #0):** margen, "Ganancia bruta" y el P&L "Estado de resultados" se calculaban sobre ventas **brutas con IVA** → para un RI contaban el IVA débito como ingreso. Buildi mostraba 50% margen vs **39,5% real**; Jorgito 28,4% vs **16,9%**. Fix: cálculo sobre neto (`subtotal−iva_monto`); el P&L ahora muestra línea explícita "IVA débito" + "Ventas netas".
+- **R2 (REGLA #0):** filtraba solo `estado='despachada'`, **excluía `facturada`** → subcontaba. Buildi mostraba $38.000 ocultando $51.000 facturados (>50%); Jorgito ocultaba $72.045. Fix: incluir despachada+facturada. Labels "despachadas" → "confirmadas".
+
+**MetricasPage:**
+- **M1:** "Ganancia neta" y "Margen (top vendidos)" usaban `precio_costo` **actual** del producto, no el histórico al momento de la venta → fix a `precio_costo_historico`.
+- **M2:** "Margen de ganancia (top vendidos)" mostraba markup etiquetado como margen → ahora margen sobre neto.
+- **M3/M4:** typo color `/200` en barras; denominador del "margen neto %" pasa a neto.
+
+typecheck + build + **806 unit** verdes. EN DEV, sin deployar.
+
+---
+
 ## [2026-06-25] update | 📊 Auditoría módulo Dashboard — hallazgos REGLA #0 fiscal + scope/UX, ARREGLADOS en DEV (sin deployar)
 
 **Pedido de GO:** auditoría tipo UAT del módulo Dashboard (cada card/tablero: lo que informa vs lo que debería declarar). Revisado a nivel código + verificado contra DB real (Almacén Jorgito + Kiosco Buildi, ambos RI).

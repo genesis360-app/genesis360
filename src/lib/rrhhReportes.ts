@@ -5,18 +5,20 @@ function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100
 }
 
-export interface SalarioRep { empleado_id: string; departamento?: string | null; periodo: string; neto: number; pagado: boolean }
+export interface SalarioRep { empleado_id: string; departamento?: string | null; periodo: string; bruto?: number; neto: number; pagado: boolean }
 export interface AsistenciaRep { empleado_id: string; empleado?: string | null; estado: string }
 export interface SaldoVacRep { empleado?: string | null; dias_totales: number; dias_usados: number; remanente_anterior: number }
 export interface EmpleadoRep { id: string; nombre?: string | null; fecha_ingreso: string; fecha_egreso?: string | null; activo: boolean }
 
-/** G1 — Costo laboral (neto) por departamento. */
+/** G1 — Costo laboral por departamento = haberes BRUTOS que paga la empresa (`total_haberes`),
+ *  no el neto del empleado. NO incluye cargas patronales (se imputan como gasto en Gastos).
+ *  Fallback a `neto` si no viene el bruto (defensivo). */
 export function costoLaboralPorDepto(salarios: SalarioRep[]): { departamento: string; total: number; cantidad: number }[] {
   const map = new Map<string, { total: number; cantidad: number }>()
   for (const s of salarios ?? []) {
     const dep = (s.departamento ?? 'Sin departamento').trim() || 'Sin departamento'
     const acc = map.get(dep) ?? { total: 0, cantidad: 0 }
-    acc.total = round2(acc.total + (Number(s.neto) || 0)); acc.cantidad++
+    acc.total = round2(acc.total + (Number(s.bruto ?? s.neto) || 0)); acc.cantidad++
     map.set(dep, acc)
   }
   return [...map.entries()].map(([departamento, a]) => ({ departamento, ...a })).sort((a, b) => b.total - a.total)

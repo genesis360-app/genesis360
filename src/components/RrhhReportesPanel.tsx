@@ -58,9 +58,9 @@ export default function RrhhReportesPanel({ tenant }: { tenant: any }) {
     queryKey: ['rrhh-rep-salarios', tenant?.id, periodoMes],
     queryFn: async () => {
       const { data } = await supabase.from('rrhh_salarios')
-        .select('empleado_id, periodo, neto, pagado, empleado:empleados(departamento:rrhh_departamentos(nombre))')
+        .select('empleado_id, periodo, neto, total_haberes, pagado, empleado:empleados(departamento:rrhh_departamentos(nombre))')
         .eq('tenant_id', tenant!.id).eq('periodo', periodoMes)
-      return (data ?? []).map((s: any) => ({ empleado_id: s.empleado_id, periodo: s.periodo, neto: s.neto, pagado: s.pagado, departamento: s.empleado?.departamento?.nombre }))
+      return (data ?? []).map((s: any) => ({ empleado_id: s.empleado_id, periodo: s.periodo, neto: s.neto, bruto: s.total_haberes, pagado: s.pagado, departamento: s.empleado?.departamento?.nombre }))
     },
     enabled: !!tenant,
   })
@@ -126,9 +126,10 @@ export default function RrhhReportesPanel({ tenant }: { tenant: any }) {
         <div className={card}>
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-primary dark:text-white">Costo laboral por departamento (mes actual)</h3>
-            <ExportBtns titulo="Costo laboral" rows={costo} cols={[{ key: 'departamento', label: 'Departamento' }, { key: 'cantidad', label: 'Empleados' }, { key: 'total', label: 'Neto' }]} />
+            <ExportBtns titulo="Costo laboral" rows={costo} cols={[{ key: 'departamento', label: 'Departamento' }, { key: 'cantidad', label: 'Empleados' }, { key: 'total', label: 'Bruto' }]} />
           </div>
           {costo.length === 0 ? <p className="text-center text-gray-400 text-sm py-6">Sin liquidaciones este mes</p> : (
+            <>
             <table className="w-full text-sm"><tbody>
               {costo.map(c => (
                 <tr key={c.departamento} className="border-b border-gray-50 dark:border-gray-700/50">
@@ -137,8 +138,10 @@ export default function RrhhReportesPanel({ tenant }: { tenant: any }) {
                   <td className="text-right font-medium">{fmt$(c.total)}</td>
                 </tr>
               ))}
-              <tr className="font-bold text-primary dark:text-white"><td className="py-2">Total</td><td></td><td className="text-right">{fmt$(costo.reduce((s, c) => s + c.total, 0))}</td></tr>
+              <tr className="font-bold text-primary dark:text-white"><td className="py-2">Total bruto</td><td></td><td className="text-right">{fmt$(costo.reduce((s, c) => s + c.total, 0))}</td></tr>
             </tbody></table>
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2">Haberes <strong>brutos</strong> liquidados (lo que paga la empresa en sueldos). No incluye las <strong>cargas patronales</strong>, que se imputan como gasto en Gastos.</p>
+            </>
           )}
         </div>
       )}

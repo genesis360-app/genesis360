@@ -7,13 +7,21 @@ import {
 // RRHH RH8 — reportes
 
 describe('costoLaboralPorDepto (G1)', () => {
-  it('suma netos por departamento', () => {
+  it('suma haberes BRUTOS (total_haberes) por departamento, no el neto', () => {
     const r = costoLaboralPorDepto([
-      { empleado_id: '1', departamento: 'Ventas', periodo: '2026-06-01', neto: 100000, pagado: true },
-      { empleado_id: '2', departamento: 'Ventas', periodo: '2026-06-01', neto: 80000, pagado: false },
-      { empleado_id: '3', departamento: 'Depósito', periodo: '2026-06-01', neto: 90000, pagado: true },
+      { empleado_id: '1', departamento: 'Ventas', periodo: '2026-06-01', bruto: 130000, neto: 100000, pagado: true },
+      { empleado_id: '2', departamento: 'Ventas', periodo: '2026-06-01', bruto: 105000, neto: 80000, pagado: false },
+      { empleado_id: '3', departamento: 'Depósito', periodo: '2026-06-01', bruto: 117000, neto: 90000, pagado: true },
     ])
-    expect(r[0]).toMatchObject({ departamento: 'Ventas', total: 180000, cantidad: 2 })
+    // costo laboral = bruto (lo que paga la empresa), no el neto del empleado
+    expect(r[0]).toMatchObject({ departamento: 'Ventas', total: 235000, cantidad: 2 })
+  })
+
+  it('cae a neto si no viene el bruto (defensivo)', () => {
+    const r = costoLaboralPorDepto([
+      { empleado_id: '1', departamento: 'Ventas', periodo: '2026-06-01', neto: 90000, pagado: true },
+    ])
+    expect(r[0]).toMatchObject({ departamento: 'Ventas', total: 90000, cantidad: 1 })
   })
 })
 

@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-26] deploy | 📊 v1.94.0 EN PROD — Dashboard: filtro UNIFICADO (un solo Período/Moneda global)
+
+PR #250 dev→main merged → release `v1.94.0` → Vercel (PROD `f33d50b5`). **PROD = DEV = v1.94.0** (migs 001-245, frontend-only sin migraciones). typecheck + build + **806 unit** + **e2e spec 84 (7/7)** verdes. Cierra el follow-up de la barra de filtros por área (GO la marcó de uso poco claro → eligió **unificar**).
+
+**Qué:** UN solo control Período/Moneda (arriba) gobierna las áreas con período; fuera las barras por módulo.
+
+**Cómo (🛑 solo display/filtrado, REGLA #0 intacta):**
+- El filtro global se muestra en Gráficos/Insights/Métricas de las áreas **con período** (`AREAS_CON_PERIODO = Todo/Ventas/Gastos/Productos`). No aparece en las de período fijo ni en Rentabilidad/Recomendaciones (no haría nada → evita el filtro inerte).
+- **Ventas/Gastos/Productos** embebidos toman período/moneda del filtro global (props `gPeriodo/gMoneda/gCustomDesde/gCustomHasta` → helpers compartidos `getFechasDashboard`/`getFechasAnteriores`); su barra propia oculta (`embedded`). Standalone fuera del Dashboard conservarían su filtro interno (código vivo pero no expuesto).
+- **Hallazgo clave:** solo Ventas/Gastos/Productos tienen período real; las otras 6 (Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing) son **snapshots de período fijo** por diseño (mes actual / últimos N días / 12 meses). Por eso **no se embeben en standalone** → conservan sus controles propios (toggle **Vista** de Inventario [Todo/Mercadería/Recursos] y Proveedores [Consolidado/Mercadería/Servicios], labels, stub de Facturación). En el agregado de "Todo › Gráficos" sí se embeben (vista compacta).
+
+**🟠 Follow-up menor:** código muerto de las barras de período internas de V/G/P (ocultas al embeberse) podría limpiarse; en el agregado de Gráficos las áreas de período fijo no responden al global (esperado).
+
+---
+
 ## [2026-06-26] deploy | 📊 v1.93.0 EN PROD — Dashboard: Gráficos primero (landing) + "Todo › Gráficos" = todos los gráficos por sección
 
 PR #249 dev→main merged → release `v1.93.0` → Vercel desplegado (PROD `6f4062f1` building → READY). **PROD = DEV = v1.93.0** (migs 001-245, frontend-only sin migraciones). typecheck + build + **806 unit** + **e2e spec 84 (6/6)** verdes.

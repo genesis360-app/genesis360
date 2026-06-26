@@ -6,8 +6,13 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-26 · 📊 Dashboard v1.93.0 EN PROD)
-> **Estado:** **PROD = DEV = v1.93.0 (migs 001-245)** ✅ — frontend-only, sin migraciones, Vercel desplegado. typecheck+build+806 unit + e2e spec 84 (6/6) verdes. (PR #249, release v1.93.0.)
+> ### 🟢 ARRANCÁ ACÁ (2026-06-26 · 📊 Dashboard v1.94.0 EN PROD)
+> **Estado:** **PROD = DEV = v1.94.0 (migs 001-245)** ✅ — frontend-only, sin migraciones, Vercel desplegado. typecheck+build+806 unit + e2e spec 84 (7/7) verdes. (PR #250, release v1.94.0.)
+>
+> **📊 v1.94.0 — Dashboard, filtro UNIFICADO (cierra el follow-up de la barra de filtros).** GO la marcó como de uso poco claro y eligió unificar. Ahora **UN solo control Período/Moneda** (arriba) gobierna las áreas con período; fuera las barras por módulo. **Cómo (🛑 solo display, REGLA #0 intacta):** el filtro global se muestra en Gráficos/Insights/Métricas de las áreas **con período** (`AREAS_CON_PERIODO = Todo/Ventas/Gastos/Productos`); no aparece en las de período fijo ni en Rentabilidad/Recomendaciones. Ventas/Gastos/Productos embebidos toman período/moneda del global (props `gPeriodo/gMoneda/gCustom*` → helpers `getFechasDashboard`/`getFechasAnteriores`); su barra propia oculta. **Las 6 áreas de período fijo** (Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing) son snapshots por diseño → **no se embeben en standalone** (conservan sus controles propios, ej. toggle **Vista** de Inventario/Proveedores); en el agregado de "Todo › Gráficos" sí. e2e spec 84 (7/7). **🟠 Follow-up menor (no urgente):** en el agregado de Gráficos las áreas de período fijo no responden al global (es esperado: son snapshots); y se podría limpiar el código muerto de las barras de período internas (quedan en V/G/P pero ocultas al embeberse).
+>
+> ---
+> **(Detalle de v1.93.0 — abajo.)**
 >
 > **📊 v1.93.0 — Dashboard, 2 ajustes de GO (sobre v1.92.0):** (1) **Gráficos pasa a ser la PRIMERA sub-pestaña y el landing por defecto** ("adelanto de todo"); Insights queda segunda. (2) **"Todo › Gráficos" ahora muestra TODOS los gráficos del negocio**, separados por secciones (General + una por cada módulo), en vez de solo 2. **Cómo:** prop `embedded` en los 9 `Dash*Area` (oculta la barra de filtros/banners → embebidos se ven solo los charts); `Todo › Gráficos` = sección General (La Balanza + Mix de Caja) + `<section>` por módulo (`AreaModulo section="graficos" embedded`, orden en `MODULE_AREAS`, Envíos solo avanzado). **🛑 Solo display, REGLA #0 intacta.** Validado e2e (spec 84, 6/6). **🟠 Pendiente de revisar con GO:** la **barra de filtros por área** (período/moneda/canal en cada módulo) — GO la marcó como "no le ve un uso adecuado aún"; hoy funciona pero está oculta en el agregado; decidir si se mantiene o se quita de las vistas standalone de módulo.
 >

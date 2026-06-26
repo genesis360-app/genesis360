@@ -367,6 +367,17 @@ export default function DashboardPage() {
       ])
       const [viData, viPrevData] = await Promise.all([getItemsDe(ventaIds), getItemsDe(ventaIdsPrev)])
 
+      // Posición IVA = débito fiscal REAL: solo comprobantes con CAE (igual que el Libro IVA).
+      // Distinto de la base del margen (todas las confirmadas), porque una venta despachada
+      // sin facturar tiene IVA calculado pero todavía no es débito fiscal → query aparte.
+      let ivaFiscalQ = supabase.from('venta_items').select('iva_monto, ventas!inner(cae)')
+        .eq('ventas.tenant_id', tenant!.id)
+        .gte('ventas.created_at', desde).lte('ventas.created_at', hasta)
+        .not('ventas.cae', 'is', null)
+      if (sucursalId) ivaFiscalQ = ivaFiscalQ.eq('ventas.sucursal_id', sucursalId)
+      const { data: ivaFiscalRows } = await ivaFiscalQ
+      const ivaDebitoFiscal = (ivaFiscalRows ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
+
       // Ingreso Neto desde caja_movimientos
       let ingresoNeto = 0
       let ingresoNetoPrev = 0
@@ -422,7 +433,7 @@ export default function DashboardPage() {
         ingresoNeto, ingresoNetoPrev,
         margenContrib, margenContribPrev,
         burnRate, burnRatePrev,
-        ivaVentas,
+        ivaVentas, ivaDebitoFiscal,
         totalVentas, totalCosto, gananciaBruta,
       }
     },
@@ -977,13 +988,13 @@ export default function DashboardPage() {
         {/* Posición IVA Técnica */}
         <KPICard
           title="Posición IVA"
-          value={dashKpis && dashKpis.ivaVentas > 0 ? fmtARS(dashKpis.ivaVentas) : '—'}
-          badge={dashKpis && dashKpis.ivaVentas > 0
+          value={dashKpis && dashKpis.ivaDebitoFiscal > 0 ? fmtARS(dashKpis.ivaDebitoFiscal) : '—'}
+          badge={dashKpis && dashKpis.ivaDebitoFiscal > 0
             ? { label: 'Débito fiscal', color: 'warning' }
             : undefined}
-          sub={dashKpis && dashKpis.ivaVentas > 0
-            ? 'IVA ventas del período'
-            : 'Sin IVA discriminado'}
+          sub={dashKpis && dashKpis.ivaDebitoFiscal > 0
+            ? 'IVA facturado del período (con CAE)'
+            : 'Sin comprobantes con CAE'}
           icon={<div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"><Calculator size={20} /></div>}
         />
       </div>

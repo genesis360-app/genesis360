@@ -63,10 +63,11 @@ export function DashFacturacionArea() {
     queryFn: async () => {
       // 1. venta_items del mes (IVA Débito) — filtrado por sucursal via ventas
       // venta_items no tiene sucursal_id: primero obtenemos IDs de ventas filtradas
-      // REGLA #0: solo comprobantes VÁLIDOS ('despachada'/'facturada') cuentan como
-      // débito fiscal. Nunca cancelada/pendiente/reservada/devuelta.
+      // REGLA #0: el IVA débito = SOLO comprobantes con CAE (autorizados por AFIP),
+      // idéntico al Libro IVA de esta misma página. Una venta despachada sin facturar
+      // tiene iva_monto calculado pero NO es débito fiscal (no se emitió comprobante).
       let qVentasMes = supabase.from('ventas').select('id')
-        .eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)
+        .eq('tenant_id', tenant!.id).not('cae', 'is', null).gte('created_at', inicioMes)
       qVentasMes = dashFilter(qVentasMes)
       const { data: ventasMesRaw = [] } = await qVentasMes
       const ventaIdsMes = (ventasMesRaw ?? []).map((v: any) => v.id)
@@ -120,7 +121,7 @@ export function DashFacturacionArea() {
 
       // 6. Evolución mensual IVA (últimos 6 meses) — filtrado por sucursal via ventas
       let qVentasHist6m = supabase.from('ventas').select('id')
-        .eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', seisMAtras)
+        .eq('tenant_id', tenant!.id).not('cae', 'is', null).gte('created_at', seisMAtras)
       qVentasHist6m = dashFilter(qVentasHist6m)
       const { data: ventasHist6mRaw = [] } = await qVentasHist6m
       const ventaIdsHist6m = (ventasHist6mRaw ?? []).map((v: any) => v.id)

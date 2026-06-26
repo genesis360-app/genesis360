@@ -6,10 +6,21 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-26 · 📊 Dashboard v1.94.0 EN PROD)
-> **Estado:** **PROD = DEV = v1.94.0 (migs 001-245)** ✅ — frontend-only, sin migraciones, Vercel desplegado. typecheck+build+806 unit + e2e spec 84 (7/7) verdes. (PR #250, release v1.94.0.)
+> ### 🟢 ARRANCÁ ACÁ (2026-06-26 · 🔎 Auditoría report-panels + v1.95.0 EN PROD)
+> **Estado:** **PROD = DEV = v1.95.0 (migs 001-245)** ✅ — frontend-only, sin migraciones, Vercel desplegado. typecheck+build+**807 unit** + e2e spec 84 (7/7) verdes. (PR #251, release v1.95.0.)
+>
+> **🔎 v1.95.0 — Auditoría de report-panels (RRHH/Compras/Envíos) + 2 mejoras.** **Conclusión de la auditoría:** los 3 paneles **NO tienen bugs fiscales REGLA #0** (math sólida: bases correctas, `Number()` coerciona el `numeric` de PG, totales aditivos, excluyen cancelados). Único hallazgo de exactitud → **RRHH "Costo laboral" pasó de neto → bruto** (`total_haberes`; el neto subestimaba el costo real para la empresa; nota de que las cargas patronales se ven en Gastos). + **UX:** "Detalle por venta" (Todo › Rentabilidad) ahora pagina con **"Ver más"** (50 + incremental; antes dibujaba todas las ventas del período). Detalle + backlog (POS crédito-a-favor por defecto, cash-out de saldo a favor, exports PDF/ConfigPage) en el bloque **📋 PARA MÁS TARDE** de abajo.
+>
+> ---
+> **(Detalle de v1.94.0 — filtro unificado — abajo.)**
 >
 > **📊 v1.94.0 — Dashboard, filtro UNIFICADO (cierra el follow-up de la barra de filtros).** GO la marcó como de uso poco claro y eligió unificar. Ahora **UN solo control Período/Moneda** (arriba) gobierna las áreas con período; fuera las barras por módulo. **Cómo (🛑 solo display, REGLA #0 intacta):** el filtro global se muestra en Gráficos/Insights/Métricas de las áreas **con período** (`AREAS_CON_PERIODO = Todo/Ventas/Gastos/Productos`); no aparece en las de período fijo ni en Rentabilidad/Recomendaciones. Ventas/Gastos/Productos embebidos toman período/moneda del global (props `gPeriodo/gMoneda/gCustom*` → helpers `getFechasDashboard`/`getFechasAnteriores`); su barra propia oculta. **Las 6 áreas de período fijo** (Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing) son snapshots por diseño → **no se embeben en standalone** (conservan sus controles propios, ej. toggle **Vista** de Inventario/Proveedores); en el agregado de "Todo › Gráficos" sí. e2e spec 84 (7/7). **🟠 Follow-up menor (no urgente):** en el agregado de Gráficos las áreas de período fijo no responden al global (es esperado: son snapshots); y se podría limpiar el código muerto de las barras de período internas (quedan en V/G/P pero ocultas al embeberse).
+>
+> **📋 PARA MÁS TARDE (pedidos de GO, 2026-06-26):**
+> - **🆕 POS — crédito a favor por defecto:** al iniciar una venta para un cliente que **tiene saldo a favor** (`cliente_creditos` > 0), el medio de pago **"crédito a favor" debe aparecer pre-seleccionado/sugerido** por ese monto, para que lo use sin tener que elegirlo a mano. Si gasta **menos** que el crédito → el resto queda a favor (el ledger ya lo hace: solo consume lo aplicado). Si gasta **más** → pedir el **restante** por otro medio para finalizar (split normal). Hoy el crédito ya existe como medio de pago en el POS (`VentasPage`, consumo `origen='consumo_venta'`) pero NO se auto-sugiere. Frontend (POS). *(Verificar contra el guard que ya valida no exceder el disponible, spec 53.)*
+> - **🆕 Devolver saldo a favor en efectivo (gap):** no hay flujo para **retirar/cash-out** un `cliente_creditos` ya existente. Solo se consume aplicándolo a una venta. Si un cliente exige su crédito en efectivo, el cajero hoy haría un egreso "a mano" sin asentar el consumo → descalce del saldo. → mini-feature: botón "Devolver saldo a favor en efectivo" = egreso de caja **+** `cliente_creditos` negativo (origen nuevo ej. `retiro_efectivo`) atómico. (Decisión de GO si se hace.)
+> - ✅ **RESUELTO (v1.95.0):** "Detalle por venta" (Dashboard › Todo › Rentabilidad) ahora pagina con **"Ver más"** (50 + incremental, `RentabilidadPage`); antes dibujaba todas las ventas del período de un saque. La query sigue acotada por período (default 30d) — opcional futuro: `.limit()`/`.range()` server-side si hace falta.
+> - **(Auditoría report-panels, 2026-06-26):** ✅ Compras/Envíos/RRHH = sin bugs fiscales REGLA #0 (math sólida, `Number()` coerciona, totales aditivos). ✅ **RESUELTO (v1.95.0):** RRHH "Costo laboral" pasa de **neto → bruto** (`total_haberes`) + nota de cargas patronales (GO OK). Pendiente opcional: auditar exports PDF (`facturasPDF`/`estadoCuentaPDF`) + ConfigPage.
 >
 > ---
 > **(Detalle de v1.93.0 — abajo.)**

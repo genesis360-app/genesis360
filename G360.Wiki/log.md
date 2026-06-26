@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-25] update | 📊 Auditoría Dashboard — Marketing + Envíos: neto/ganancia sobre IVA real (cierra el módulo) en DEV
+
+Cierre del barrido del Dashboard sobre las 2 áreas que habían quedado con pasada ligera. Bugs hallados por barrido dirigido (misma clase: neto con `precio_unitario`, ganancia sobre bruto):
+- **DashMarketingArea:** el "neto" para POAS/ganancia usaba `(precio_unitario − iva_monto) × cantidad` — dimensionalmente roto (precio_unitario es unitario, iva_monto por línea) → POAS mal, falsas alertas de "pérdida real por publicidad". Fix: `subtotal − iva_monto` por línea (mes + histórico).
+- **DashEnviosArea:** el scatter "subsidio vs ganancia neta" usaba `venta.total − costo − subsidio` con total **bruto c/IVA** → ganancia inflada. Fix: neto = `subtotal − iva_monto` por venta.
+- Verificado que **FacturacionPage** (`estado='despachada'` + `cae IS NULL` = borradores a facturar) y **HistorialPage** (detalle display) NO tienen el bug.
+
+typecheck + build + **806 unit** verdes. EN DEV, sin deployar. **Auditoría del módulo Dashboard COMPLETA** (overview + 9 áreas + Métricas + Rentabilidad).
+
+---
+
 ## [2026-06-25] update | 📊 Auditoría Métricas + Rentabilidad — fixes REGLA #0 (IVA en P&L/margen, costo histórico, excluía facturadas) en DEV
 
 Continuación de la auditoría Dashboard sobre las dos páginas analíticas (también subtabs del Dashboard). Verificado contra DB (Jorgito + Buildi).

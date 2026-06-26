@@ -7,7 +7,7 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### 🟢 ARRANCÁ ACÁ (2026-06-25 · 🏁 UAT/auditoría REGLA #0 CERRADA + v1.90.1 EN PROD)
-> **Estado:** **PROD = v1.90.1 (migs 001-245)** ✅. **DEV adelantado:** auditoría del módulo **Dashboard** con fixes REGLA #0 fiscal (H1–H8) commiteados en `dev`, **sin deployar** (esperando OK de GO). typecheck+build+806 unit verdes.
+> **Estado:** **PROD = DEV = v1.91.0 (migs 001-245)** ✅. v1.91.0 = auditoría display REGLA #0 (Dashboard + Métricas/Rentabilidad + Marketing/Envíos + Caja + Billing + Libro IVA), frontend-only sin migraciones. typecheck+build+806 unit verdes.
 >
 > **📊 Auditoría Dashboard (2026-06-25, en DEV):** 5 hallazgos REGLA #0 fiscal + scope/UX, arreglados. **H1** Posición IVA/Débito contaba canceladas/devueltas (Buildi $20.306→$15.099); **H2** "Margen Contribución" era markup mal etiquetado sobre base pre-descuento c/IVA (Buildi 70%→39% real) — unificado a `(neto−costo)/neto` con `subtotal`; **H3** neto de Facturación sin ×cantidad; **H4** alícuota estimada (27%→21%) → columna real; **H5** tope Monotributo a tenants RI; **H6/H7** charts ignoraban sucursal+Custom; **H8** toggle s/IVA cosmético removido. Detalle en `log.md` 2026-06-25 + memoria `reference_dashboard_calculos_money`.
 >

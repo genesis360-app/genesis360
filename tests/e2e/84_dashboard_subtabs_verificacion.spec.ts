@@ -70,6 +70,13 @@ test.describe('Dashboard v1.92.0 — 5 sub-pestañas uniformes por área', () =>
     expect(jsErrors, `errores de JS sin capturar: ${jsErrors.join(' | ')}`).toEqual([])
   })
 
+  test('Gráficos es la sub-pestaña por defecto (landing) al abrir el Dashboard', async ({ page }) => {
+    await goto(page, '/dashboard')
+    await waitForApp(page)
+    // El landing es "Todo › Gráficos": debe verse La Balanza sin tocar nada.
+    await expect(page.getByText(/la balanza/i).first()).toBeVisible({ timeout: 10000 })
+  })
+
   test('Todo: el overview se distribuyó correctamente en las 5 sub-pestañas', async ({ page }) => {
     await goto(page, '/dashboard')
     await waitForApp(page)
@@ -83,11 +90,16 @@ test.describe('Dashboard v1.92.0 — 5 sub-pestañas uniformes por área', () =>
     await clickSub(page, 'Métricas')
     await expect(page.getByText(/posición iva/i).first()).toBeVisible({ timeout: 8000 })
 
-    // Gráficos = La Balanza + El Mix de Caja (antes era placeholder "Próximamente")
+    // Gráficos = agregado de TODO el negocio por secciones (antes mostraba solo 2 charts).
     await clickSub(page, 'Gráficos')
     await expect(page.getByText(/la balanza/i).first()).toBeVisible({ timeout: 8000 })
     await expect(page.getByText(/mix de caja/i).first()).toBeVisible()
     await expect(page.getByText(/próximamente/i)).toHaveCount(0)
+    // Secciones por área: encabezados General + módulos (Ventas, Gastos, …)
+    await expect(page.getByRole('heading', { name: 'General', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Ventas', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Gastos', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Clientes', exact: true })).toBeVisible()
   })
 
   test('Ventas: Insights/Métricas/Gráficos muestran el mini-dashboard del módulo (no "Próximamente")', async ({ page }) => {

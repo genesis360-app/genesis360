@@ -37,7 +37,7 @@ function EnvioTooltip({ active, payload }: any) {
   )
 }
 
-export function DashEnviosArea({ section }: { section?: DashSection } = {}) {
+export function DashEnviosArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -225,6 +225,7 @@ export function DashEnviosArea({ section }: { section?: DashSection } = {}) {
 
   return (
     <div className="space-y-5">
+      {!embedded && (<>
       {/* Filtros */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-gray-500 dark:text-gray-400">Envíos del mes actual · {eData?.totalEnvios ?? 0} operaciones</p>
@@ -242,6 +243,8 @@ export function DashEnviosArea({ section }: { section?: DashSection } = {}) {
           )}
         </div>
       </div>
+
+      </>)}
 
       {showM && (<>
       {/* 6 KPIs */}

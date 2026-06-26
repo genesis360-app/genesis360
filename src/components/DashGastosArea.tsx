@@ -112,7 +112,7 @@ function BarTooltipMensual({ active, payload, label, fmt }: any) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function DashGastosArea({ section }: { section?: DashSection } = {}) {
+export function DashGastosArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -476,6 +476,7 @@ export function DashGastosArea({ section }: { section?: DashSection } = {}) {
   return (
     <div className="space-y-5">
 
+      {!embedded && (<>
       {/* ── Barra: contexto + botón filtros ──────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -574,6 +575,8 @@ export function DashGastosArea({ section }: { section?: DashSection } = {}) {
           )}
         </div>
       </div>
+
+      </>)}
 
       {showM && (<>
       {/* ── Capa 1: 4 KPI cards ──────────────────────────────────────────────── */}

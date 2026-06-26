@@ -32,7 +32,7 @@ function PoasTooltip({ active, payload, label }: any) {
   )
 }
 
-export function DashMarketingArea({ section }: { section?: DashSection } = {}) {
+export function DashMarketingArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -232,6 +232,7 @@ export function DashMarketingArea({ section }: { section?: DashSection } = {}) {
 
   return (
     <div className="space-y-5">
+      {!embedded && (<>
       {/* Fórmula POAS */}
       <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 rounded-xl p-4">
         <p className="text-xs font-semibold text-accent mb-1">La fórmula del POAS (Rentabilidad Real)</p>
@@ -260,6 +261,8 @@ export function DashMarketingArea({ section }: { section?: DashSection } = {}) {
           )}
         </div>
       </div>
+
+      </>)}
 
       {showM && (<>
       {/* 6 KPIs */}

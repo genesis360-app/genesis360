@@ -13,6 +13,7 @@ import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import { Link } from 'react-router-dom'
 import type { DashSection } from '@/components/dashAreaSection'
+import { getFechasDashboard, getFechasAnteriores, labelPeriodo, type PeriodoDash } from '@/components/FilterBar'
 
 // ─── Tipos y helpers ──────────────────────────────────────────────────────────
 
@@ -208,7 +209,10 @@ function PieTooltipCustom({ active, payload, fmt }: any) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function DashVentasArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
+export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDesde, gCustomHasta }: {
+  section?: DashSection; embedded?: boolean
+  gPeriodo?: PeriodoDash; gMoneda?: Moneda; gCustomDesde?: string; gCustomHasta?: string
+} = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -239,14 +243,18 @@ export function DashVentasArea({ section, embedded }: { section?: DashSection; e
     return () => document.removeEventListener('mousedown', handler)
   }, [filterOpen])
 
-  const conv = moneda === 'USD' && cotizacion > 0 ? cotizacion : 1
-  const sym = moneda === 'USD' ? 'U$D ' : '$'
+  // Embebido en el Dashboard → período/moneda del filtro global; standalone → filtro interno.
+  const monedaEff = embedded ? (gMoneda ?? 'ARS') : moneda
+  const conv = monedaEff === 'USD' && cotizacion > 0 ? cotizacion : 1
+  const sym = monedaEff === 'USD' ? 'U$D ' : '$'
   const fmt = (v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
   const fmtPct = (v: number) => `${v.toFixed(1)}%`
 
   const customRange = { desde: customDesde, hasta: customHasta }
-  const { desde, hasta } = getVentasFechas(periodo, customRange)
-  const { desde: desdePrev, hasta: hastaPrev } = getVentasFechasPrev(periodo, customRange)
+  const gRange = { desde: gCustomDesde ?? customDesde, hasta: gCustomHasta ?? customHasta }
+  const { desde, hasta } = embedded ? getFechasDashboard(gPeriodo ?? 'mes', gRange) : getVentasFechas(periodo, customRange)
+  const { desde: desdePrev, hasta: hastaPrev } = embedded ? getFechasAnteriores(gPeriodo ?? 'mes', gRange) : getVentasFechasPrev(periodo, customRange)
+  const periodoLabel = embedded ? labelPeriodo(gPeriodo ?? 'mes') : PERIODO_LABELS[periodo]
 
   const activeFilters = [canal].filter(Boolean).length
   const hoy = new Date().toISOString().split('T')[0]
@@ -677,7 +685,7 @@ export function DashVentasArea({ section, embedded }: { section?: DashSection; e
           <div className="flex items-center gap-2 mb-4">
             <TrendingUp size={15} className="text-accent" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">El Camino de la Venta</h3>
-            <span className="ml-auto text-xs text-muted">Embudo · {PERIODO_LABELS[periodo]}</span>
+            <span className="ml-auto text-xs text-muted">Embudo · {periodoLabel}</span>
           </div>
           {isLoading ? (
             <div className="h-32 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" />
@@ -700,7 +708,7 @@ export function DashVentasArea({ section, embedded }: { section?: DashSection; e
           <div className="flex items-center gap-2 mb-4">
             <BarChart2 size={15} className="text-accent" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">¿Por dónde compran?</h3>
-            <span className="ml-auto text-xs text-muted">Canales · {PERIODO_LABELS[periodo]}</span>
+            <span className="ml-auto text-xs text-muted">Canales · {periodoLabel}</span>
           </div>
           {isLoading ? (
             <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" />
@@ -742,7 +750,7 @@ export function DashVentasArea({ section, embedded }: { section?: DashSection; e
         <div className="flex items-center gap-2 mb-4">
           <Clock size={15} className="text-accent" />
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tus mejores momentos</h3>
-          <span className="ml-auto text-xs text-muted">Días × Horarios · {PERIODO_LABELS[periodo]}</span>
+          <span className="ml-auto text-xs text-muted">Días × Horarios · {periodoLabel}</span>
         </div>
         {isLoading ? (
           <div className="h-36 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" />

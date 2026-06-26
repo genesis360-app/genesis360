@@ -14,6 +14,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
 import type { DashSection } from '@/components/dashAreaSection'
+import { getFechasDashboard, labelPeriodo, type PeriodoDash } from '@/components/FilterBar'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -99,7 +100,10 @@ function TijeraTooltip({ active, payload, label, fmt }: any) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function DashProductosArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
+export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, gCustomHasta }: {
+  section?: DashSection; embedded?: boolean
+  gPeriodo?: PeriodoDash; gCustomDesde?: string; gCustomHasta?: string
+} = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -139,7 +143,9 @@ export function DashProductosArea({ section, embedded }: { section?: DashSection
   }
 
   const customRange = { desde: customDesde, hasta: customHasta }
-  const { desde, hasta } = getProducFechas(periodo, customRange)
+  const gRange = { desde: gCustomDesde ?? customDesde, hasta: gCustomHasta ?? customHasta }
+  const { desde, hasta } = embedded ? getFechasDashboard(gPeriodo ?? 'mes', gRange) : getProducFechas(periodo, customRange)
+  const periodoLabel = embedded ? labelPeriodo(gPeriodo ?? 'mes') : PERIODO_LABELS[periodo]
   const hoy = new Date().toISOString().split('T')[0]
 
   const activeFilters = [categoriaFiltro, cicloVida, margenMin > 0 ? 'margen' : ''].filter(Boolean).length
@@ -744,7 +750,7 @@ export function DashProductosArea({ section, embedded }: { section?: DashSection
           <div className="flex items-center gap-2 mb-1">
             <Target size={15} className="text-accent" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">El Cuadrante Mágico</h3>
-            <span className="ml-auto text-xs text-muted">{PERIODO_LABELS[periodo]}</span>
+            <span className="ml-auto text-xs text-muted">{periodoLabel}</span>
           </div>
           <div className="flex items-center gap-4 mb-3 flex-wrap">
             {Object.entries({ estrella: '🟢 Estrella', trafico: '🔵 Tráfico', nicho: '🟡 Nicho', perro: '🔴 Perro' }).map(([k, l]) => (

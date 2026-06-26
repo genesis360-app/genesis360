@@ -120,6 +120,17 @@ test.describe('Dashboard v1.92.0 — 5 sub-pestañas uniformes por área', () =>
     await expect(page.getByText(/en desarrollo|próximamente/i)).toHaveCount(0)
   })
 
+  test('Filtro unificado: la barra de filtros propia del módulo está oculta (período global)', async ({ page }) => {
+    await goto(page, '/dashboard')
+    await waitForApp(page)
+    await clickArea(page, 'Ventas')
+    await clickSub(page, 'Métricas')
+    // "Mostrando <período>" es el texto de la barra interna de DashVentasArea → oculta al embeberse.
+    await expect(page.getByText(/Mostrando/i)).toHaveCount(0)
+    // El filtro global Período/Moneda sí está disponible.
+    await expect(page.getByRole('button', { name: /Filtros/ }).first()).toBeVisible()
+  })
+
   test('Ventas: Recomendaciones queda scopeada al módulo (sin Score global)', async ({ page }) => {
     await goto(page, '/dashboard')
     await waitForApp(page)

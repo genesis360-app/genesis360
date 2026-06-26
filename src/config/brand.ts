@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.93.0'
+export const APP_VERSION = 'v1.94.0'
 
 // Kill-switch del modo de operación Básico/Avanzado: en false, TODOS los tenants
 // operan en avanzado (la app completa, como antes de v1.55) sin importar

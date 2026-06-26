@@ -87,7 +87,7 @@ export default function SuscripcionPage() {
   // Pantalla de resultado de pago
   if (status) {
     return (
-      <div className="min-h-screen bg-brand-gradient-hero flex items-center justify-center p-4">
+      <div className="min-h-screen bg-brand-gradient-hero-dark flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
           {status === 'approved' ? (
             esAddon ? (
@@ -143,7 +143,7 @@ export default function SuscripcionPage() {
   }
 
   return (
-    <div className="min-h-screen bg-brand-gradient-hero">
+    <div className="min-h-screen bg-brand-gradient-hero-dark">
       {/* Barra superior */}
       <div className="px-4 pt-5 max-w-5xl mx-auto flex items-center justify-between">
         {tenant?.subscription_status === 'cancelled' ? (

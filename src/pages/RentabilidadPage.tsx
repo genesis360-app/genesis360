@@ -47,6 +47,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
   const { tenant } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const [periodo, setPeriodo] = useState<Periodo>('30d')
+  const [verVentas, setVerVentas] = useState(50)  // "Detalle por venta": mostrar de a 50, "ver más" incremental
 
   const { data: ventas = [], isLoading } = useQuery({
     queryKey: ['rentabilidad-ventas', tenant?.id, periodo],
@@ -353,7 +354,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-600">
-                  {porVenta.map((v: any) => (
+                  {porVenta.slice(0, verVentas).map((v: any) => (
                     <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="px-4 py-3 font-medium text-gray-700 dark:text-gray-300">#{v.numero ?? v.id.slice(-4)}</td>
                       <td className="px-4 py-3 text-gray-500 dark:text-gray-400">
@@ -373,6 +374,19 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
                 </tbody>
               </table>
             </div>
+            {porVenta.length > verVentas && (
+              <div className="p-3 border-t border-gray-100 dark:border-gray-700 flex items-center justify-center gap-3 text-sm">
+                <span className="text-gray-400 dark:text-gray-500">
+                  Mostrando {verVentas} de {porVenta.length} ventas
+                </span>
+                <button
+                  onClick={() => setVerVentas(v => v + 50)}
+                  className="px-3 py-1.5 rounded-lg font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                >
+                  Ver más
+                </button>
+              </div>
+            )}
           </div>
         </>
       )}

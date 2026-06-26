@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-26] deploy | 🚀 v1.91.0 EN PROD — auditoría display REGLA #0 (Dashboard/Métricas/Rentabilidad/Marketing/Envíos/Caja/Billing/Libro IVA)
+
+PR #247 dev→main merged → release `v1.91.0` → Vercel desplegado. **PROD = DEV = v1.91.0** (migs 001-245, **frontend-only sin migraciones**). Cierra la auditoría tipo UAT de toda la superficie de display de plata/fiscal (cada card/tablero: lo que informa vs lo que debería declarar), verificada contra DB real (Jorgito + Buildi). **Criterio unificado y aplicado en todo:** margen = `(neto−costo)/neto` con base `subtotal`; **débito fiscal / Posición IVA = `cae IS NOT NULL`** (= Libro IVA; base `estado` mostraba hasta 2x). Detalle en las entradas `update` 2026-06-25/26 (abajo) + roadmap v1.91.0 + memoria `reference_dashboard_calculos_money`. **🆕 Pendiente GO (flujo MP, hoy no productivo):** `handleVerificarPago` auto-activa la suscripción desde params de URL sin verificación server; sin prorrateo al cambiar de plan. typecheck+build+806 unit verdes.
+
+---
+
 ## [2026-06-25] update | 🔎 Auditoría Caja + Suscripción/Billing + Reportes (Libro IVA) — fixes en DEV
 
 Continuación del barrido de auditoría (Caja → Billing → Reportes), verificado contra DB (Jorgito + Buildi).

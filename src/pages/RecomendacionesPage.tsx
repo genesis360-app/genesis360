@@ -107,18 +107,27 @@ function ScoreCircle({ score }: { score: number }) {
   )
 }
 
-export default function RecomendacionesPage({ hideHeader = false }: { hideHeader?: boolean }) {
+export default function RecomendacionesPage({ hideHeader = false, categoria }: {
+  hideHeader?: boolean
+  /** Cuando se pasa, scopea las recomendaciones a esas categorías (sub-pestaña por área del Dashboard):
+   *  oculta el selector de categoría y el Score global (que es del negocio completo). */
+  categoria?: RecomendacionCategoria[]
+} = {}) {
   const { recomendaciones, score, isLoading } = useRecomendaciones()
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipo>('todas')
   const [filtroCat, setFiltroCat]   = useState<FiltroCat>('todas')
 
-  const filtradas = recomendaciones.filter(r =>
+  // Scope por área: si `categoria` viene seteado, restringe a ese conjunto antes de filtros de UI.
+  const scopeCats = categoria && categoria.length > 0 ? categoria : null
+  const baseRecos = scopeCats ? recomendaciones.filter(r => scopeCats.includes(r.categoria)) : recomendaciones
+
+  const filtradas = baseRecos.filter(r =>
     (filtroTipo === 'todas' || r.tipo === filtroTipo) &&
     (filtroCat  === 'todas' || r.categoria === filtroCat)
   )
 
   const conteo: Record<RecomendacionTipo, number> = { danger: 0, warning: 0, success: 0, info: 0 }
-  recomendaciones.forEach(r => conteo[r.tipo]++)
+  baseRecos.forEach(r => conteo[r.tipo]++)
 
   const TIPO_FILTROS: { key: FiltroTipo; label: string; color: string }[] = [
     { key: 'todas',   label: 'Todas',    color: 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300' },
@@ -154,8 +163,8 @@ export default function RecomendacionesPage({ hideHeader = false }: { hideHeader
         <p className="text-center text-gray-400 dark:text-gray-500 py-16">Analizando tu negocio...</p>
       ) : (
         <>
-          {/* Score + dimensiones */}
-          {score && (
+          {/* Score + dimensiones — solo en la vista global (no en sub-pestañas por área) */}
+          {score && !scopeCats && (
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-6 mb-6">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-5">Score de Salud del Negocio</h2>
               <div className="flex flex-col md:flex-row items-center gap-8">
@@ -201,18 +210,20 @@ export default function RecomendacionesPage({ hideHeader = false }: { hideHeader
                 )}
               </button>
             ))}
-            <div className="ml-auto">
-              <select
-                value={filtroCat}
-                onChange={e => setFiltroCat(e.target.value as FiltroCat)}
-                className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="todas">Todas las categorías</option>
-                {(Object.entries(CAT_LABELS) as [RecomendacionCategoria, { label: string }][]).map(([k, v]) => (
-                  <option key={k} value={k}>{v.label}</option>
-                ))}
-              </select>
-            </div>
+            {!scopeCats && (
+              <div className="ml-auto">
+                <select
+                  value={filtroCat}
+                  onChange={e => setFiltroCat(e.target.value as FiltroCat)}
+                  className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="todas">Todas las categorías</option>
+                  {(Object.entries(CAT_LABELS) as [RecomendacionCategoria, { label: string }][]).map(([k, v]) => (
+                    <option key={k} value={k}>{v.label}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Lista de recomendaciones */}

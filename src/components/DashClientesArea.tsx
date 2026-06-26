@@ -12,6 +12,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { InsightCard } from '@/components/InsightCard'
+import type { DashSection } from '@/components/dashAreaSection'
 
 const MESES_ES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic']
 const CANAL_COLORS = ['#7B00FF','#06B6D4','#F59E0B','#22C55E','#EF4444','#EC4899','#6B7280']
@@ -34,7 +35,10 @@ function CohortTooltip({ active, payload, label }: any) {
   )
 }
 
-export function DashClientesArea() {
+export function DashClientesArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
 
@@ -253,6 +257,7 @@ export function DashClientesArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* 6 KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
@@ -293,6 +298,9 @@ export function DashClientesArea() {
         </div>
       </div>
 
+      </>)}
+
+      {showG && (<>
       {/* Fila gráficos 1-2 */}
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Pirámide de Rentabilidad */}
@@ -375,6 +383,9 @@ export function DashClientesArea() {
         </div>
       )}
 
+      </>)}
+
+      {showI && (<>
       {/* Insights */}
       {insights.length > 0 && (
         <div>
@@ -384,6 +395,7 @@ export function DashClientesArea() {
           </div>
         </div>
       )}
+      </>)}
     </div>
   )
 }

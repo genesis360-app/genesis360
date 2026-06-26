@@ -14,6 +14,7 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
+import type { DashSection } from '@/components/dashAreaSection'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -111,7 +112,10 @@ function BarTooltipMensual({ active, payload, label, fmt }: any) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function DashGastosArea() {
+export function DashGastosArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { cotizacion } = useCotizacion()
   const { sucursalId } = useSucursalFilter()
@@ -571,6 +575,7 @@ export function DashGastosArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* ── Capa 1: 4 KPI cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
@@ -695,6 +700,9 @@ export function DashGastosArea() {
         </div>
       </a>
 
+      </>)}
+
+      {showG && (<>
       {/* ── Capa 2: Gráficos ─────────────────────────────────────────────────── */}
 
       {/* Fila 1: Pie categorías + Top 5 */}
@@ -828,6 +836,9 @@ export function DashGastosArea() {
         )}
       </div>
 
+      </>)}
+
+      {showI && (<>
       {/* ── Capa 3: Insights ──────────────────────────────────────────────────── */}
       {insights.length > 0 && (
         <div>
@@ -856,6 +867,8 @@ export function DashGastosArea() {
           </div>
         </div>
       )}
+
+      </>)}
 
       {!isLoading && (gData?.totalGastos ?? 0) === 0 && (
         <div className="text-center py-12 text-muted">

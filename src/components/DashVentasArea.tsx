@@ -12,6 +12,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import { Link } from 'react-router-dom'
+import type { DashSection } from '@/components/dashAreaSection'
 
 // ─── Tipos y helpers ──────────────────────────────────────────────────────────
 
@@ -207,7 +208,10 @@ function PieTooltipCustom({ active, payload, fmt }: any) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function DashVentasArea() {
+export function DashVentasArea({ section }: { section?: DashSection } = {}) {
+  const showM = !section || section === 'metricas'
+  const showG = !section || section === 'graficos'
+  const showI = !section || section === 'insights'
   const { tenant } = useAuthStore()
   const { cotizacion } = useCotizacion()
   const { sucursalId } = useSucursalFilter()
@@ -575,6 +579,7 @@ export function DashVentasArea() {
         </div>
       </div>
 
+      {showM && (<>
       {/* ── Capa 1: 4 KPI cards ───────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
@@ -656,6 +661,9 @@ export function DashVentasArea() {
         </div>
       </div>
 
+      </>)}
+
+      {showG && (<>
       {/* ── Capa 2: Gráficos ─────────────────────────────────────────────────── */}
 
       {/* Fila 1: Funnel + Pie (canales) */}
@@ -742,6 +750,9 @@ export function DashVentasArea() {
         )}
       </div>
 
+      </>)}
+
+      {showI && (<>
       {/* ── Capa 3: Insights ──────────────────────────────────────────────────── */}
       {insights.length > 0 && (
         <div>
@@ -770,6 +781,8 @@ export function DashVentasArea() {
           </div>
         </div>
       )}
+
+      </>)}
 
       {!isLoading && vData && vData.totalVendido === 0 && (
         <div className="text-center py-12 text-muted">

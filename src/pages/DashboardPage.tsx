@@ -20,7 +20,7 @@ import { sugiereModoAvanzado } from '@/lib/modoOperacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { getFechasDashboard, getFechasAnteriores, labelPeriodo } from '@/components/FilterBar'
-import type { PeriodoDash, Moneda, IVAMode } from '@/components/FilterBar'
+import type { PeriodoDash, Moneda } from '@/components/FilterBar'
 import { KPICard } from '@/components/KPICard'
 import { InsightCard } from '@/components/InsightCard'
 import type { InsightVariant } from '@/components/InsightCard'
@@ -119,7 +119,6 @@ export default function DashboardPage() {
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
   const [moneda, setMoneda] = useState<Moneda>('ARS')
-  const [iva, setIva] = useState<IVAMode>('incluido')
   const [customDesde, setCustomDesde] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString())
   const [customHasta, setCustomHasta] = useState(() => new Date().toISOString())
   const [filterOpen, setFilterOpen] = useState(false)
@@ -148,17 +147,15 @@ export default function DashboardPage() {
     let n = 0
     if (periodo !== 'mes') n++
     if (moneda !== 'ARS') n++
-    if (iva !== 'incluido') n++
     return n
-  }, [periodo, moneda, iva])
+  }, [periodo, moneda])
 
   // Texto summary del filtro activo
   const filterSummary = useMemo(() => {
     const p = PERIODO_LABELS_DASH[periodo]
     const m = moneda === 'USD' ? 'USD' : 'ARS'
-    const i = iva === 'excluido' ? 's/IVA' : 'c/IVA'
-    return `${p} · ${m} · ${i}`
-  }, [periodo, moneda, iva])
+    return `${p} · ${m}`
+  }, [periodo, moneda])
 
   const hoy = new Date().toISOString().split('T')[0]
 
@@ -334,13 +331,33 @@ export default function DashboardPage() {
         return q
       }
 
-      const [sessionsRes, sessionsPrevRes, viRes, viPrevRes, gastosRes, gastosPrevRes] = await Promise.all([
+      // Margen/IVA: venta_items NO tiene estado ni sucursal_id → se filtra vía ventas.
+      // REGLA #0: solo comprobantes VÁLIDOS ('despachada'/'facturada'); nunca cancelada/
+      // pendiente/reservada/devuelta (no son débito fiscal ni venta efectiva). Respeta sucursal.
+      const getVentaIdsConfirmadas = async (d1: string, d2: string) => {
+        let q = supabase.from('ventas').select('id').eq('tenant_id', tenant!.id)
+          .in('estado', ['despachada', 'facturada']).gte('created_at', d1).lte('created_at', d2)
+        if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+        const { data } = await q
+        return (data ?? []).map((v: any) => v.id as string)
+      }
+      const getItemsDe = async (ventaIds: string[]) => {
+        if (ventaIds.length === 0) return [] as any[]
+        let out: any[] = []
+        for (let i = 0; i < ventaIds.length; i += 300) {
+          const { data } = await supabase.from('venta_items')
+            .select('cantidad, subtotal, iva_monto, precio_costo_historico')
+            .in('venta_id', ventaIds.slice(i, i + 300))
+          out = out.concat(data ?? [])
+        }
+        return out
+      }
+
+      const [sessionsRes, sessionsPrevRes, ventaIds, ventaIdsPrev, gastosRes, gastosPrevRes] = await Promise.all([
         buildSesQ(desde, hasta),
         buildSesQ(desdePrev, hastaPrev),
-        supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
-          .eq('tenant_id', tenant!.id).gte('created_at', desde).lte('created_at', hasta),
-        supabase.from('venta_items').select('cantidad, precio_unitario, precio_costo_historico, iva_monto')
-          .eq('tenant_id', tenant!.id).gte('created_at', desdePrev).lte('created_at', hastaPrev),
+        getVentaIdsConfirmadas(desde, hasta),
+        getVentaIdsConfirmadas(desdePrev, hastaPrev),
         sucursalId
           ? supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdeDate).lte('fecha', hastaDate)
           : supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdeDate).lte('fecha', hastaDate),
@@ -348,6 +365,7 @@ export default function DashboardPage() {
           ? supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).eq('sucursal_id', sucursalId).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate)
           : supabase.from('gastos').select('monto').eq('tenant_id', tenant!.id).gte('fecha', desdePrevDate).lte('fecha', hastaPrevDate),
       ])
+      const [viData, viPrevData] = await Promise.all([getItemsDe(ventaIds), getItemsDe(ventaIdsPrev)])
 
       // Ingreso Neto desde caja_movimientos
       let ingresoNeto = 0
@@ -365,28 +383,28 @@ export default function DashboardPage() {
         movsPrev?.forEach(m => { ingresoNetoPrev += m.tipo === 'ingreso' ? (m.monto ?? 0) : -(m.monto ?? 0) })
       }
 
-      // Margen de contribución (markup sobre costo, usando neto sin IVA)
+      // Margen de contribución = (ventas netas − costo) / ventas netas.
+      // Base = subtotal (bruto facturado, post-descuento c/IVA); neto = subtotal − iva_monto.
       let totalVentas = 0, totalCosto = 0, ivaVentas = 0
       let totalVentasPrev = 0, totalCostoPrev = 0, ivaVentasPrev = 0
-      viRes.data?.forEach((vi: any) => {
-        const sub = (vi.precio_unitario ?? 0) * (vi.cantidad ?? 0)
-        totalVentas += sub
+      viData.forEach((vi: any) => {
+        totalVentas += vi.subtotal ?? 0
         if (vi.precio_costo_historico) totalCosto += vi.precio_costo_historico * vi.cantidad
         if (vi.iva_monto) ivaVentas += vi.iva_monto
       })
-      viPrevRes.data?.forEach((vi: any) => {
-        const sub = (vi.precio_unitario ?? 0) * (vi.cantidad ?? 0)
-        totalVentasPrev += sub
+      viPrevData.forEach((vi: any) => {
+        totalVentasPrev += vi.subtotal ?? 0
         if (vi.precio_costo_historico) totalCostoPrev += vi.precio_costo_historico * vi.cantidad
         if (vi.iva_monto) ivaVentasPrev += vi.iva_monto
       })
 
       const totalVentasNeto = totalVentas - ivaVentas
       const totalVentasNetoPrev = totalVentasPrev - ivaVentasPrev
+      const gananciaBruta = totalVentasNeto - totalCosto
       const margenContrib = totalVentasNeto > 0 && totalCosto > 0
-        ? ((totalVentasNeto - totalCosto) / totalCosto) * 100 : null
+        ? ((totalVentasNeto - totalCosto) / totalVentasNeto) * 100 : null
       const margenContribPrev = totalVentasNetoPrev > 0 && totalCostoPrev > 0
-        ? ((totalVentasNetoPrev - totalCostoPrev) / totalCostoPrev) * 100 : null
+        ? ((totalVentasNetoPrev - totalCostoPrev) / totalVentasNetoPrev) * 100 : null
 
       // Burn Rate diario
       const totalGastos = (gastosRes.data ?? []).reduce((a, g) => a + (g.monto ?? 0), 0)
@@ -405,7 +423,7 @@ export default function DashboardPage() {
         margenContrib, margenContribPrev,
         burnRate, burnRatePrev,
         ivaVentas,
-        totalVentas, totalCosto,
+        totalVentas, totalCosto, gananciaBruta,
       }
     },
     enabled: !!tenant,
@@ -567,10 +585,6 @@ export default function DashboardPage() {
   const fmtARS = (v: number) => `${sym}${(v / conv).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
   const fmtPct = (v: number) => `${v.toFixed(1)}%`
 
-  // Ajuste por IVA
-  const ajustarIva = (valor: number, ivaMontoAsoc = 0) =>
-    iva === 'excluido' ? valor - ivaMontoAsoc : valor
-
   // Badges comparativas
   const badgeVsAnterior = (actual: number | null, anterior: number | null, invertido = false) => {
     if (actual === null || anterior === null || anterior === 0) return undefined
@@ -704,7 +718,7 @@ export default function DashboardPage() {
                     )}
                   </div>
 
-                  {/* Moneda + IVA */}
+                  {/* Moneda */}
                   <div className="flex gap-3">
                     <div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Moneda</p>
@@ -713,17 +727,6 @@ export default function DashboardPage() {
                           <button key={m} onClick={() => setMoneda(m)}
                             className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${moneda === m ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
                             {m}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div>
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Importe</p>
-                      <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 rounded-lg">
-                        {[{ key: 'incluido' as IVAMode, label: 'c/IVA' }, { key: 'excluido' as IVAMode, label: 's/IVA' }].map(opt => (
-                          <button key={opt.key} onClick={() => setIva(opt.key)}
-                            className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${iva === opt.key ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400'}`}>
-                            {opt.label}
                           </button>
                         ))}
                       </div>
@@ -957,7 +960,7 @@ export default function DashboardPage() {
               color: m >= 30 ? 'success' : m >= 15 ? 'warning' : 'danger',
             } as const
           })()}
-          sub={dashKpis?.margenContrib == null ? 'Sin datos de costo' : `${fmtARS(ajustarIva(dashKpis.totalVentas - dashKpis.totalCosto))} ganancia bruta`}
+          sub={dashKpis?.margenContrib == null ? 'Sin datos de costo' : `${fmtARS(dashKpis.gananciaBruta)} ganancia bruta`}
           icon={<div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400"><TrendingUp size={20} /></div>}
           onClick={() => setSubTab('rentabilidad')}
         />
@@ -993,7 +996,7 @@ export default function DashboardPage() {
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">La Balanza</h2>
             <span className="ml-auto text-xs text-muted">Ventas vs Gastos · {labelPeriodo(periodo)}</span>
           </div>
-          <VentasVsGastosChart periodo={periodo} moneda={moneda} cotizacion={conv} />
+          <VentasVsGastosChart periodo={periodo} moneda={moneda} cotizacion={conv} customDesde={customDesde} customHasta={customHasta} />
         </div>
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
@@ -1001,7 +1004,7 @@ export default function DashboardPage() {
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">El Mix de Caja</h2>
             <span className="ml-auto text-xs text-muted">Origen de fondos · {labelPeriodo(periodo)}</span>
           </div>
-          <MixCajaChart periodo={periodo} moneda={moneda} cotizacion={conv} />
+          <MixCajaChart periodo={periodo} moneda={moneda} cotizacion={conv} customDesde={customDesde} customHasta={customHasta} />
         </div>
       </div>
 
@@ -1362,7 +1365,7 @@ export default function DashboardPage() {
               {movRecientes.map((m: any) => (
                 <div key={m.id} className="flex items-center justify-between text-sm">
                   <div className="flex items-center gap-2">
-                    <span className={`w-2 h-2 rounded-full ${m.tipo === 'ingreso' ? 'bg-green-50 dark:bg-green-900/200' : 'bg-blue-50 dark:bg-blue-900/200'}`} />
+                    <span className={`w-2 h-2 rounded-full ${m.tipo === 'ingreso' ? 'bg-green-500 dark:bg-green-400' : 'bg-blue-500 dark:bg-blue-400'}`} />
                     <span className="text-gray-700 dark:text-gray-300 truncate max-w-[160px]">{m.productos?.nombre}</span>
                   </div>
                   <div className="flex items-center gap-2 text-gray-400 dark:text-gray-400">

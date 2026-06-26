@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { PSEUDO_METODOS_PAGO } from '@/lib/ccLogic'
 import type { PeriodoDash, Moneda } from './FilterBar'
 import { getFechasDashboard } from './FilterBar'
@@ -14,6 +15,8 @@ interface Props {
   periodo: PeriodoDash
   moneda: Moneda
   cotizacion: number
+  customDesde?: string
+  customHasta?: string
 }
 
 // ISS-151: pseudo-métodos que NO son ingresos reales (deuda CC + write-offs).
@@ -59,8 +62,9 @@ const renderLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: an
   )
 }
 
-export function MixCajaChart({ periodo, moneda, cotizacion }: Props) {
+export function MixCajaChart({ periodo, moneda, cotizacion, customDesde, customHasta }: Props) {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
 
   const { data: metodosDB = [] } = useQuery({
     queryKey: ['metodos_pago', tenant?.id],
@@ -78,15 +82,18 @@ export function MixCajaChart({ periodo, moneda, cotizacion }: Props) {
   const getColor = (tipo: string) => colorMap[tipo] ?? FALLBACK_COLORS[tipo] ?? '#94a3b8'
 
   const { data: mixData = [], isLoading } = useQuery({
-    queryKey: ['mix-caja', tenant?.id, periodo],
+    queryKey: ['mix-caja', tenant?.id, periodo, customDesde, customHasta, sucursalId],
     queryFn: async () => {
-      const { desde, hasta } = getFechasDashboard(periodo)
-      const { data: ventas } = await supabase.from('ventas')
+      const custom = customDesde && customHasta ? { desde: customDesde, hasta: customHasta } : undefined
+      const { desde, hasta } = getFechasDashboard(periodo, custom)
+      let ventasQ = supabase.from('ventas')
         .select('medio_pago, total')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['despachada', 'facturada'])
         .gte('created_at', desde)
         .lte('created_at', hasta)
+      if (sucursalId) ventasQ = ventasQ.eq('sucursal_id', sucursalId)
+      const { data: ventas } = await ventasQ
 
       const metodos: Record<string, number> = {}
       ventas?.forEach(v => {

@@ -7,7 +7,9 @@ type: project
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
 > ### 🟢 ARRANCÁ ACÁ (2026-06-25 · 🏁 UAT/auditoría REGLA #0 CERRADA + v1.90.1 EN PROD)
-> **Estado:** **PROD = DEV = v1.90.1 (migs 001-245)** ✅ — typecheck+build+806 unit verdes.
+> **Estado:** **PROD = v1.90.1 (migs 001-245)** ✅. **DEV adelantado:** auditoría del módulo **Dashboard** con fixes REGLA #0 fiscal (H1–H8) commiteados en `dev`, **sin deployar** (esperando OK de GO). typecheck+build+806 unit verdes.
+>
+> **📊 Auditoría Dashboard (2026-06-25, en DEV):** 5 hallazgos REGLA #0 fiscal + scope/UX, arreglados. **H1** Posición IVA/Débito contaba canceladas/devueltas (Buildi $20.306→$15.099); **H2** "Margen Contribución" era markup mal etiquetado sobre base pre-descuento c/IVA (Buildi 70%→39% real) — unificado a `(neto−costo)/neto` con `subtotal`; **H3** neto de Facturación sin ×cantidad; **H4** alícuota estimada (27%→21%) → columna real; **H5** tope Monotributo a tenants RI; **H6/H7** charts ignoraban sucursal+Custom; **H8** toggle s/IVA cosmético removido. Detalle en `log.md` 2026-06-25 + memoria `reference_dashboard_calculos_money`. **Diferido:** H9 (estimaciones sintéticas $ retenido/perdido), stock por sucursal real en Inventario/Productos, auditar **Envíos/Marketing** en detalle. **⚠️ Para deployar:** bump `APP_VERSION` + PR dev→main + release (sin migraciones nuevas).
 >
 > **🏁 UAT / AUDITORÍA REGLA #0 CERRADA AL 100% (correctitud).** Doc: `tests/specs/cobertura/00_cierre_uat.md`. Los 6 grupos verificados (unit + code-audit + impersonación DB + e2e mutante). **Verificación contable real (DEV+PROD): los cierres dan bien** — arqueo de caja cuadra en todas las sesiones reales (`residuo_no_explicado=0` salvo 1 fixture de test), faltantes/sobrantes capturados en `diferencia_cierre` con nota, CC clientes ≥0, período abril cerrado.
 >

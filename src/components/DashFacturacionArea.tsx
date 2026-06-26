@@ -63,20 +63,24 @@ export function DashFacturacionArea() {
     queryFn: async () => {
       // 1. venta_items del mes (IVA Débito) — filtrado por sucursal via ventas
       // venta_items no tiene sucursal_id: primero obtenemos IDs de ventas filtradas
+      // REGLA #0: solo comprobantes VÁLIDOS ('despachada'/'facturada') cuentan como
+      // débito fiscal. Nunca cancelada/pendiente/reservada/devuelta.
       let qVentasMes = supabase.from('ventas').select('id')
-        .eq('tenant_id', tenant!.id).gte('created_at', inicioMes)
+        .eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', inicioMes)
       qVentasMes = dashFilter(qVentasMes)
       const { data: ventasMesRaw = [] } = await qVentasMes
       const ventaIdsMes = (ventasMesRaw ?? []).map((v: any) => v.id)
       let itemsMes: any[] = []
       if (ventaIdsMes.length > 0) {
         const { data } = await supabase.from('venta_items')
-          .select('cantidad, precio_unitario, iva_monto, created_at')
+          .select('cantidad, precio_unitario, subtotal, iva_monto, alicuota_iva, created_at')
           .in('venta_id', ventaIdsMes)
         itemsMes = data ?? []
       }
       const ivaDebito = itemsMes.reduce((a: number, vi: any) => a + (vi.iva_monto ?? 0), 0)
-      const netoVentas = itemsMes.reduce((a: number, vi: any) => a + ((vi.precio_unitario ?? 0) - (vi.iva_monto ?? 0)), 0)
+      // Neto = subtotal (bruto facturado c/IVA, por línea) − iva_monto. precio_unitario es
+      // unitario pre-descuento → NO sirve como neto de línea.
+      const netoVentas = itemsMes.reduce((a: number, vi: any) => a + ((vi.subtotal ?? 0) - (vi.iva_monto ?? 0)), 0)
 
       // 2. IVA Crédito desde gastos del mes (iva_deducible=true)
       const iniciomesDate = inicioMes.split('T')[0]
@@ -98,9 +102,13 @@ export function DashFacturacionArea() {
       const { data: ventasAnio = [] } = await qVentasAnio
       const totalAnio = (ventasAnio ?? []).reduce((a: number, v: any) => a + (v.total ?? 0), 0)
 
-      // Encontrar categoría de monotributo
-      const catMonotrib = MONOTRIB_LIMITES.find(c => totalAnio <= c.limite) ?? MONOTRIB_LIMITES[MONOTRIB_LIMITES.length - 1]
-      const pctLimite = Math.round((totalAnio / catMonotrib.limite) * 100)
+      // El tope de categoría de Monotributo NO aplica a un Responsable Inscripto.
+      const condEmisor = String((tenant as any)?.condicion_iva_emisor ?? '')
+      const esMonotributo = condEmisor.toLowerCase().startsWith('mono')
+      const catMonotrib = esMonotributo
+        ? (MONOTRIB_LIMITES.find(c => totalAnio <= c.limite) ?? MONOTRIB_LIMITES[MONOTRIB_LIMITES.length - 1])
+        : null
+      const pctLimite = catMonotrib ? Math.round((totalAnio / catMonotrib.limite) * 100) : 0
 
       // 5. Facturas con error (sin CAE o pendientes)
       const { data: ventasSinCAE = [] } = await supabase.from('ventas')
@@ -112,21 +120,21 @@ export function DashFacturacionArea() {
 
       // 6. Evolución mensual IVA (últimos 6 meses) — filtrado por sucursal via ventas
       let qVentasHist6m = supabase.from('ventas').select('id')
-        .eq('tenant_id', tenant!.id).gte('created_at', seisMAtras)
+        .eq('tenant_id', tenant!.id).in('estado', ['despachada', 'facturada']).gte('created_at', seisMAtras)
       qVentasHist6m = dashFilter(qVentasHist6m)
       const { data: ventasHist6mRaw = [] } = await qVentasHist6m
       const ventaIdsHist6m = (ventasHist6mRaw ?? []).map((v: any) => v.id)
       let itemsHist: any[] = []
       if (ventaIdsHist6m.length > 0) {
         const { data } = await supabase.from('venta_items')
-          .select('iva_monto, precio_unitario, created_at').in('venta_id', ventaIdsHist6m)
+          .select('iva_monto, precio_unitario, subtotal, created_at').in('venta_id', ventaIdsHist6m)
         itemsHist = data ?? []
       }
       const monthlyIVA: Record<string, { neto: number; iva: number }> = {}
       for (const vi of itemsHist ?? []) {
         const mes = (vi as any).created_at.slice(0, 7)
         if (!monthlyIVA[mes]) monthlyIVA[mes] = { neto: 0, iva: 0 }
-        monthlyIVA[mes].neto += (vi.precio_unitario ?? 0)
+        monthlyIVA[mes].neto += (vi.subtotal ?? 0)
         monthlyIVA[mes].iva += (vi.iva_monto ?? 0)
       }
       const evolData = Object.entries(monthlyIVA).sort(([a],[b]) => a.localeCompare(b)).map(([mes, d]) => {
@@ -134,15 +142,14 @@ export function DashFacturacionArea() {
         return { label: `${MESES_ES[parseInt(m,10)-1]} ${y.slice(2)}`, neto: d.neto - d.iva, iva: d.iva }
       })
 
-      // 7. Distribución alícuotas (del mes)
-      // Proxy: desde venta_items.iva_monto vs precio_unitario calcular alícuota estimada
+      // 7. Distribución de alícuotas (del mes) — usa la columna real alicuota_iva.
+      // (numeric de PG llega como string "21.00" → Number() antes de comparar — REGLA #0.)
       const alicMap: Record<string, number> = {}
       for (const vi of itemsMes ?? []) {
-        const pu = vi.precio_unitario ?? 0
         const ivm = vi.iva_monto ?? 0
-        if (pu <= 0) continue
-        const pct = Math.round((ivm / pu) * 100)
-        const key = pct <= 0 ? '0' : pct <= 12 ? '10.5' : pct <= 22 ? '21' : '27'
+        if (ivm <= 0) continue
+        const n = Number(vi.alicuota_iva ?? 0)
+        const key = n === 0 ? '0' : n === 27 ? '27' : n === 10.5 ? '10.5' : '21'
         alicMap[key] = (alicMap[key] ?? 0) + ivm
       }
       const alicTotal = Object.values(alicMap).reduce((a, b) => a + b, 0)
@@ -158,7 +165,7 @@ export function DashFacturacionArea() {
 
       return {
         ivaDebito, ivaCredito, posicion, netoVentas,
-        totalAnio, pctLimite, catMonotrib, sinCAE,
+        totalAnio, pctLimite, catMonotrib, esMonotributo, sinCAE,
         evolData, alicData, saldoFavor,
       }
     },
@@ -170,8 +177,8 @@ export function DashFacturacionArea() {
     if (!fData) return []
     const list: { tipo: 'danger'|'warning'|'success'|'info'; titulo: string; impacto: string; accion: string; link: string }[] = []
     if ((fData.sinCAE ?? 0) > 0) list.push({ tipo: 'danger', titulo: `${fData.sinCAE} factura${fData.sinCAE!==1?'s':''} sin CAE registrado`, impacto: 'Comprobantes que podrían no haberse autorizado en ARCA. Verificá el estado con tu contador.', accion: 'Ver facturación', link: '/facturacion' })
-    if (fData.pctLimite >= 90) list.push({ tipo: 'danger', titulo: `Estás al ${fData.pctLimite}% del límite estimado de categoría ${fData.catMonotrib.cat}`, impacto: `Según los comprobantes emitidos, estarías cerca del tope. Consultá con tu contador una posible recategorización.`, accion: 'Ver ventas', link: '/ventas' })
-    else if (fData.pctLimite >= 75) list.push({ tipo: 'warning', titulo: `Al ${fData.pctLimite}% del tope estimado (Cat. ${fData.catMonotrib.cat})`, impacto: 'Estimación administrativa. Verificá con tu estudio contable antes de actuar.', accion: 'Ver ventas', link: '/ventas' })
+    if (fData.esMonotributo && fData.catMonotrib && fData.pctLimite >= 90) list.push({ tipo: 'danger', titulo: `Estás al ${fData.pctLimite}% del límite estimado de categoría ${fData.catMonotrib.cat}`, impacto: `Según los comprobantes emitidos, estarías cerca del tope. Consultá con tu contador una posible recategorización.`, accion: 'Ver ventas', link: '/ventas' })
+    else if (fData.esMonotributo && fData.catMonotrib && fData.pctLimite >= 75) list.push({ tipo: 'warning', titulo: `Al ${fData.pctLimite}% del tope estimado (Cat. ${fData.catMonotrib.cat})`, impacto: 'Estimación administrativa. Verificá con tu estudio contable antes de actuar.', accion: 'Ver ventas', link: '/ventas' })
     if (fData.posicion > 0) list.push({ tipo: 'info', titulo: `Posición estimada a pagar: ${fmt(fData.posicion)}`, impacto: 'El IVA Débito supera al Crédito. Calculá la liquidación exacta con tu contador antes del vencimiento.', accion: 'Ver gastos', link: '/gastos' })
     if (fData.ivaCredito === 0 && fData.ivaDebito > 0) list.push({ tipo: 'warning', titulo: 'Sin gastos con IVA Crédito registrados este mes', impacto: 'No detectamos facturas de proveedores con IVA deducible. ¿Se olvidaron de cargar?', accion: 'Ver gastos', link: '/gastos' })
     return list.slice(0, 4)
@@ -236,13 +243,22 @@ export function DashFacturacionArea() {
           <p className="text-xs text-muted mt-1.5">Acumulado. No sincronizado con ARCA.</p>
         </div>
 
-        <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="mb-3"><div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${(fData?.pctLimite ?? 0) >= 85 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'}`}><AlertTriangle size={20} /></div></div>
-          <p className="text-sm font-medium text-muted">Proyección vs Tope Cat. {fData?.catMonotrib?.cat}</p>
-          <p className={`text-2xl font-semibold mt-1 tabular-nums ${(fData?.pctLimite ?? 0) >= 85 ? 'text-red-600 dark:text-red-400' : 'text-primary'}`}>{isLoading ? '—' : `${fData?.pctLimite ?? 0}%`}</p>
-          <div className="mt-2 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden"><div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, fData?.pctLimite ?? 0)}%`, backgroundColor: (fData?.pctLimite ?? 0) >= 90 ? '#EF4444' : (fData?.pctLimite ?? 0) >= 75 ? '#F59E0B' : '#22C55E' }} /></div>
-          <p className="text-xs text-muted mt-1">Tope estimado: {fmtCorto(fData?.catMonotrib?.limite ?? 0)}/año</p>
-        </div>
+        {fData?.esMonotributo ? (
+          <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
+            <div className="mb-3"><div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${(fData?.pctLimite ?? 0) >= 85 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'}`}><AlertTriangle size={20} /></div></div>
+            <p className="text-sm font-medium text-muted">Proyección vs Tope Cat. {fData?.catMonotrib?.cat}</p>
+            <p className={`text-2xl font-semibold mt-1 tabular-nums ${(fData?.pctLimite ?? 0) >= 85 ? 'text-red-600 dark:text-red-400' : 'text-primary'}`}>{isLoading ? '—' : `${fData?.pctLimite ?? 0}%`}</p>
+            <div className="mt-2 h-2 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden"><div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, fData?.pctLimite ?? 0)}%`, backgroundColor: (fData?.pctLimite ?? 0) >= 90 ? '#EF4444' : (fData?.pctLimite ?? 0) >= 75 ? '#F59E0B' : '#22C55E' }} /></div>
+            <p className="text-xs text-muted mt-1">Tope estimado: {fmtCorto(fData?.catMonotrib?.limite ?? 0)}/año</p>
+          </div>
+        ) : (
+          <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
+            <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400"><BarChart2 size={20} /></div></div>
+            <p className="text-sm font-medium text-muted">Facturación del Año</p>
+            <p className="text-2xl font-semibold text-primary mt-1 tabular-nums">{isLoading ? '—' : fmtCorto(fData?.totalAnio ?? 0)}</p>
+            <p className="text-xs text-muted mt-1.5">Responsable Inscripto: el tope de Monotributo no aplica.</p>
+          </div>
+        )}
 
         <div className={`bg-surface border rounded-xl p-5 shadow-sm ${(fData?.sinCAE ?? 0) > 0 ? 'border-red-300 dark:border-red-800' : 'border-border-ds'}`}>
           <div className="mb-3"><div className={`inline-flex items-center justify-center w-10 h-10 rounded-lg ${(fData?.sinCAE ?? 0) > 0 ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-400'}`}><Clock size={20} /></div></div>

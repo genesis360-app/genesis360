@@ -244,9 +244,9 @@ export function DashInventarioArea() {
       const totalCostoVendido365 = (movs365 ?? []).reduce((a: number, m: any) => a + (m.cantidad ?? 0), 0)
       const rotacion = capitalTrabajo > 0 ? totalCostoVendido365 / (capitalTrabajo / (productos ?? []).filter((p: any) => !p.es_kit && (p.precio_costo ?? 0) > 0).length || 1) : null
 
-      // Simpler rotation: turns = ventas_unidades_año / stock_promedio_unidades
+      // Rotación: unidades vendidas en el año / unidades en stock actual.
       const stockTotal = (productos ?? []).filter((p: any) => !p.es_kit).reduce((a: number, p: any) => a + (p.stock_actual ?? 0), 0)
-      const rotacionSimple = stockTotal > 0 ? (totalCostoVendido365 / 365 * 365) / stockTotal : null
+      const rotacionSimple = stockTotal > 0 ? totalCostoVendido365 / stockTotal : null
 
       // ── KPI 4: Runway (días de supervivencia) ─────────────────────────────
       const salidas30 = (movs30 ?? []).reduce((a: number, m: any) => a + (m.cantidad ?? 0), 0)
@@ -450,7 +450,7 @@ export function DashInventarioArea() {
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-sm">
           <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
             <MapPin size={14} />
-            <span>Filtrando por <span className="font-semibold">{sucursalNombre}</span> — los datos de otras sucursales no se muestran.</span>
+            <span>Filtrando por <span className="font-semibold">{sucursalNombre}</span>. Movimientos, reservas y antigüedad de LPN se acotan a esta sucursal; el valor de stock e indicadores de mercadería (Capital, Rotación, Runway, Kits) se muestran consolidados de todas las sucursales.</span>
           </div>
           {puedeVerTodas && (
             <button onClick={() => setSucursal(null)}

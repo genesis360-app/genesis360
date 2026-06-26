@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import type { PeriodoDash, Moneda } from './FilterBar'
 import { getFechasDashboard } from './FilterBar'
 
@@ -13,6 +14,8 @@ interface Props {
   periodo: PeriodoDash
   moneda: Moneda
   cotizacion: number
+  customDesde?: string
+  customHasta?: string
 }
 
 function formatK(v: number, moneda: Moneda) {
@@ -53,29 +56,34 @@ const CustomTooltip = ({ active, payload, label, moneda, cotizacion }: any) => {
   )
 }
 
-export function VentasVsGastosChart({ periodo, moneda, cotizacion }: Props) {
+export function VentasVsGastosChart({ periodo, moneda, cotizacion, customDesde, customHasta }: Props) {
   const { tenant } = useAuthStore()
+  const { sucursalId } = useSucursalFilter()
 
   const { data: chartData = [], isLoading } = useQuery({
-    queryKey: ['ventas-gastos-chart', tenant?.id, periodo],
+    queryKey: ['ventas-gastos-chart', tenant?.id, periodo, customDesde, customHasta, sucursalId],
     queryFn: async () => {
-      const { desde, hasta } = getFechasDashboard(periodo)
+      const custom = customDesde && customHasta ? { desde: customDesde, hasta: customHasta } : undefined
+      const { desde, hasta } = getFechasDashboard(periodo, custom)
       const desdeDate = desde.split('T')[0]
       const hastaDate = hasta.split('T')[0]
 
-      const [{ data: ventas }, { data: gastos }] = await Promise.all([
-        supabase.from('ventas')
-          .select('created_at, total')
-          .eq('tenant_id', tenant!.id)
-          .in('estado', ['despachada', 'facturada'])
-          .gte('created_at', desde)
-          .lte('created_at', hasta),
-        supabase.from('gastos')
-          .select('fecha, monto')
-          .eq('tenant_id', tenant!.id)
-          .gte('fecha', desdeDate)
-          .lte('fecha', hastaDate),
-      ])
+      let ventasQ = supabase.from('ventas')
+        .select('created_at, total')
+        .eq('tenant_id', tenant!.id)
+        .in('estado', ['despachada', 'facturada'])
+        .gte('created_at', desde)
+        .lte('created_at', hasta)
+      let gastosQ = supabase.from('gastos')
+        .select('fecha, monto')
+        .eq('tenant_id', tenant!.id)
+        .gte('fecha', desdeDate)
+        .lte('fecha', hastaDate)
+      if (sucursalId) {
+        ventasQ = ventasQ.eq('sucursal_id', sucursalId)
+        gastosQ = gastosQ.eq('sucursal_id', sucursalId)
+      }
+      const [{ data: ventas }, { data: gastos }] = await Promise.all([ventasQ, gastosQ])
 
       // Agregar por día
       const ventasMap: Record<string, number> = {}

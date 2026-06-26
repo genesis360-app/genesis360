@@ -200,7 +200,9 @@ export default function SuscripcionPage() {
         <div className="grid md:grid-cols-3 gap-6">
           {planesConPago.map(plan => {
             const mpPlanId = MP_PLAN_IDS[plan.id] ?? ''
-            const esActual = tenant?.mp_subscription_id?.includes(plan.id)
+            // El plan actual se infiere de los límites (max_users → plan), no del
+            // mp_subscription_id (que es el preapproval_id de MP y no contiene la key del plan).
+            const esActual = tenant?.subscription_status === 'active' && limits?.plan_id === plan.id
 
             return (
               <div key={plan.id}

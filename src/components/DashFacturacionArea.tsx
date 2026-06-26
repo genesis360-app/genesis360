@@ -36,7 +36,7 @@ const MONOTRIB_LIMITES = [
   { cat: 'K', limite: 22_256_184 },
 ]
 
-export function DashFacturacionArea({ section }: { section?: DashSection } = {}) {
+export function DashFacturacionArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -193,6 +193,7 @@ export function DashFacturacionArea({ section }: { section?: DashSection } = {})
 
   return (
     <div className="space-y-5">
+      {!embedded && (<>
       {/* Banner legal */}
       <div className="flex items-start gap-3 bg-gray-100 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3">
         <Shield size={16} className="text-gray-400 dark:text-gray-500 mt-0.5 flex-shrink-0" />
@@ -217,6 +218,8 @@ export function DashFacturacionArea({ section }: { section?: DashSection } = {})
           )}
         </div>
       </div>
+
+      </>)}
 
       {showM && (<>
       {/* 6 KPIs */}

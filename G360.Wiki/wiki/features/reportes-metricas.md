@@ -9,7 +9,8 @@ updated: 2026-05-20
 # Reportes y Métricas
 
 **Páginas:**
-- `src/pages/DashboardPage.tsx` — tabs: General / Insights / Métricas / Rentabilidad / Recomendaciones
+- `src/pages/DashboardPage.tsx` — 10 áreas (Todo + 9 módulos) × 5 sub-pestañas (Insights/Métricas/Rentabilidad/Recomendaciones/Gráficos), v1.92.0
+- `src/components/dashAreaSection.ts` — tipo `DashSection` (insights|metricas|graficos) que gatea los `DashXArea`
 - `src/pages/ReportesPage.tsx` (`/reportes`) — exportación Excel/PDF
 - `src/pages/MetricasPage.tsx` — KPIs históricos
 - `src/pages/RentabilidadPage.tsx` — análisis de margen
@@ -253,43 +254,46 @@ Sub-navegación en la pestaña "General". Cada área tiene filtros, KPIs, gráfi
 
 ---
 
-## Dashboard — nueva estructura de navegación (v1.8.31-dev)
+## Dashboard — 5 sub-pestañas uniformes por área (v1.92.0)
 
-La navegación del DashboardPage fue rediseñada con dos filas independientes:
+> **v1.92.0** completó el Dashboard: **las 5 sub-pestañas funcionan en TODAS las áreas** (antes solo en "Todo"; las áreas de módulo mostraban "Próximamente"). Se eliminó el `subTab='overview'` oculto; el landing por defecto pasó a **Insights**. **🛑 REGLA #0:** este cambio es **puro display** — no toca ningún cálculo de plata/fiscal (la base ya quedó auditada en v1.91.0); solo reorganiza *qué bloque ya calculado se muestra*.
+
+Dos filas de navegación:
 
 ```
 Row 1 — Area tabs (pills):
 [Todo] [Ventas] [Gastos] [Productos] [Inventario] [Clientes]
 [Proveedores] [Facturación] [Envíos] [Marketing]
 
-Row 2 — Sub-tabs (underline) + Filtros (derecha):
+Row 2 — Sub-tabs (underline) + Filtros (derecha, solo "Todo"):
 [Insights] [Métricas] [Rentabilidad] [Recomendaciones] [Gráficos]     [🎚 Filtros]
 ```
 
 ### Area tabs (Row 1)
-
-- Estilo pill/badge
-- Seleccionar un área resetea el sub-tab activo a "overview"
-- Area "Todo" = vista general del negocio
+- Estilo pill/badge. Area "Todo" = vista general; las otras 9 = mini-dashboard del módulo.
+- Cambiar de área **conserva** la sub-pestaña activa (default inicial = Insights). `Envíos` se oculta en modo básico.
 
 ### Sub-tabs (Row 2)
+- Las 5 son **idénticas en todas las áreas**. Candado de plan en "Métricas" = solo para la `MetricasPage` global de "Todo" (los mini-dashboards de módulo son base, sin gate).
 
-- Estilo underline (igual que antes)
-- Comunes para todas las áreas
-- Filtro pill visible solo en area "Todo" — igual patrón que `DashVentasArea` (período, moneda, IVA)
+### Cómo se nutre cada sub-pestaña
 
-### Comportamiento por combinación área + sub-tab
+- **Áreas de módulo** (Ventas/Gastos/Productos/Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing):
+  - **Insights / Métricas / Gráficos** → el componente `DashXArea` con la prop `section` (`insights|metricas|graficos`) que gatea sus 3 bloques ya existentes (insights / KPIs / charts). Tipo en `src/components/dashAreaSection.ts`. El wrapper `AreaModulo` mantiene montado el componente al cambiar entre estas 3 (preserva sus filtros internos).
+  - **Rentabilidad** → `RentabilidadPage hideHeader` (consolidada del negocio; muestra una nota salvo en Ventas/Productos, donde es el ajuste natural).
+  - **Recomendaciones** → `RecomendacionesPage hideHeader categoria={AREA_RECO_CAT[area]}` — recomendaciones del motor filtradas por categoría del área (ventas→`ventas`, inventario→`stock`, clientes→`clientes`, etc.); oculta el selector de categoría y el Score global.
+  - 🟠 *Rentabilidad/Recomendaciones por módulo reusan vistas globales (real, honesto). Desglose propio por módulo = construir cálculos nuevos (revisión REGLA #0).*
+- **Área "Todo"** (su antiguo overview, distribuido en las 5):
 
-| Área | Sub-tab | Contenido |
-|------|---------|-----------|
-| Todo | overview | KPIs, charts, fugas, cobertura (contenido general) |
-| Todo | Insights | Score de salud, recomendaciones expandidas |
-| Todo | Métricas | KPIs por período, margenProductos, gananciaNeta |
-| Todo | Rentabilidad | Margen por producto, precio_venta_neto vs costo |
-| Todo | Recomendaciones | Lista completa de insights con CTA |
-| Todo | Gráficos | Placeholder "Próximamente" |
-| Ventas / Gastos / … | overview | Componente `DashXArea` correspondiente |
-| Ventas / Gastos / … | otros sub-tabs | "Próximamente — Insights de {área} en desarrollo" |
+| Sub-tab | Contenido |
+|---------|-----------|
+| Insights | Score de salud, "Lo que necesitás saber", stock inmovilizado, productos sin movimiento, sugerencia de pedido, proyección de cobertura, lista completa de recomendaciones |
+| Métricas | 4 KPIs ejecutivos (Ingreso Neto / Margen Contribución / Burn Rate / Posición IVA) + Fugas y Movimientos + Top productos + Movimientos recientes + `MetricasPage` (plan-gated) |
+| Gráficos | La Balanza (`VentasVsGastosChart`) + El Mix de Caja (`MixCajaChart`) |
+| Rentabilidad | `RentabilidadPage` (margen por producto) |
+| Recomendaciones | `RecomendacionesPage` completa |
+
+`AREA_COMPONENTS`, `AREA_RECO_CAT` y `AreaModulo` viven en `DashboardPage.tsx`.
 
 ---
 

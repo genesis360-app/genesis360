@@ -26,7 +26,7 @@ function fmtCorto(v: number) {
 
 type Vista = 'consolidado' | 'mercaderia' | 'servicios'
 
-export function DashProveedoresArea({ section }: { section?: DashSection } = {}) {
+export function DashProveedoresArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -217,6 +217,7 @@ export function DashProveedoresArea({ section }: { section?: DashSection } = {})
 
   return (
     <div className="space-y-5">
+      {!embedded && (<>
       {/* Toggle Vista + Filtros */}
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
@@ -239,6 +240,8 @@ export function DashProveedoresArea({ section }: { section?: DashSection } = {})
           )}
         </div>
       </div>
+
+      </>)}
 
       {showM && (<>
       {/* 8 KPIs */}

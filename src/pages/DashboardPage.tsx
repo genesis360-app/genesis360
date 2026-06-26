@@ -99,12 +99,18 @@ const AREA_LABELS: Record<AreaId, string> = {
 }
 
 // Mini-dashboard real de cada módulo. Cada uno expone Insights/Métricas/Gráficos vía `section`
-// (sin alterar ningún cálculo: solo decide qué bloque ya calculado se muestra).
-const AREA_COMPONENTS: Record<AreaModuloId, React.ComponentType<{ section?: DashSection }>> = {
+// (sin alterar ningún cálculo: solo decide qué bloque ya calculado se muestra). `embedded` oculta
+// la barra de filtros/banners propios (para mostrar solo los charts en el agregado de "Todo › Gráficos").
+const AREA_COMPONENTS: Record<AreaModuloId, React.ComponentType<{ section?: DashSection; embedded?: boolean }>> = {
   ventas: DashVentasArea, gastos: DashGastosArea, productos: DashProductosArea,
   inventario: DashInventarioArea, clientes: DashClientesArea, proveedores: DashProveedoresArea,
   facturacion: DashFacturacionArea, envios: DashEnviosArea, marketing: DashMarketingArea,
 }
+
+// Orden de las áreas de módulo (para el agregado de gráficos en "Todo › Gráficos").
+const MODULE_AREAS: AreaModuloId[] = [
+  'ventas', 'gastos', 'productos', 'inventario', 'clientes', 'proveedores', 'facturacion', 'envios', 'marketing',
+]
 
 // Área → categorías del motor `useRecomendaciones` para scopear la sub-pestaña Recomendaciones.
 // Vacío = sin scope específico → muestra todas (fallback honesto; nunca fabrica datos).
@@ -114,14 +120,11 @@ const AREA_RECO_CAT: Record<AreaId, RecomendacionCategoria[]> = {
   facturacion: ['ventas', 'datos'], envios: ['operaciones'], marketing: ['ventas', 'clientes'],
 }
 
-// Sub-pestañas que se nutren del mini-dashboard del módulo (las otras 2 reusan vistas globales).
-const SUBTABS_DE_MODULO: SubTabId[] = ['insights', 'metricas', 'graficos']
-
 // Wrapper estable: mantiene montado el mini-dashboard del módulo al cambiar entre
 // Insights/Métricas/Gráficos (preserva el estado de filtros internos del área).
-function AreaModulo({ area, section }: { area: AreaModuloId; section: DashSection }) {
+function AreaModulo({ area, section, embedded }: { area: AreaModuloId; section: DashSection; embedded?: boolean }) {
   const Comp = AREA_COMPONENTS[area]
-  return <Comp section={section} />
+  return <Comp section={section} embedded={embedded} />
 }
 
 const PERIODO_LABELS_DASH: Record<PeriodoDash, string> = {
@@ -141,7 +144,7 @@ export default function DashboardPage() {
   const mostrarSugerenciaWms = !modoAvanzado && !sugerenciaWmsDismissed
     && user?.rol === 'DUEÑO' && sugiereModoAvanzado(tenant?.tipo_comercio)
   const [area, setArea] = useState<AreaId>('todo')
-  const [subTab, setSubTab] = useState<SubTabId>('insights')
+  const [subTab, setSubTab] = useState<SubTabId>('graficos')
   const [sinMovExpanded, setSinMovExpanded] = useState(false)
   const [coberturaExpanded, setCoberturaExpanded] = useState(false)
   const [periodo, setPeriodo] = useState<PeriodoDash>('mes')
@@ -634,13 +637,13 @@ export default function DashboardPage() {
 
   // ─── Sub-tabs disponibles ────────────────────────────────────────────────────
   const subTabs: { id: SubTabId; label: string; lock?: boolean }[] = [
+    { id: 'graficos',        label: 'Gráficos' },
     { id: 'insights',        label: 'Insights' },
     // El candado aplica solo a la MetricasPage global de "Todo" (plan-gated). Los
     // mini-dashboards de módulo (Insights/Métricas/Gráficos) son parte de la base, sin gate.
     { id: 'metricas',        label: 'Métricas', lock: area === 'todo' && !!(limits && !limits.puede_metricas) },
     { id: 'rentabilidad',    label: 'Rentabilidad' },
     { id: 'recomendaciones', label: 'Recomendaciones' },
-    { id: 'graficos',        label: 'Gráficos' },
   ]
 
   return (
@@ -1018,29 +1021,48 @@ export default function DashboardPage() {
 
       </>)}
 
-      {/* ── Área TODO › Gráficos ──────────────────────────────────────────────── */}
-      {area === 'todo' && subTab === 'graficos' && (<>
-      {/* ── Gráficos: La Balanza + El Mix de Caja ───────────────────────────── */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <Activity size={16} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">La Balanza</h2>
-            <span className="ml-auto text-xs text-muted">Ventas vs Gastos · {labelPeriodo(periodo)}</span>
-          </div>
-          <VentasVsGastosChart periodo={periodo} moneda={moneda} cotizacion={conv} customDesde={customDesde} customHasta={customHasta} />
-        </div>
-        <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <DollarSign size={16} className="text-accent" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">El Mix de Caja</h2>
-            <span className="ml-auto text-xs text-muted">Origen de fondos · {labelPeriodo(periodo)}</span>
-          </div>
-          <MixCajaChart periodo={periodo} moneda={moneda} cotizacion={conv} customDesde={customDesde} customHasta={customHasta} />
-        </div>
-      </div>
+      {/* ── Área TODO › Gráficos — TODOS los gráficos del negocio por sección ──── */}
+      {area === 'todo' && subTab === 'graficos' && (
+        <div className="space-y-8">
 
-      </>)}
+          {/* Sección General — visión consolidada (caja del negocio) */}
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-bold text-primary uppercase tracking-wide">
+              <span className="w-1 h-4 bg-accent rounded-full" /> General
+            </h2>
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <Activity size={16} className="text-accent" />
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">La Balanza</h3>
+                  <span className="ml-auto text-xs text-muted">Ventas vs Gastos · {labelPeriodo(periodo)}</span>
+                </div>
+                <VentasVsGastosChart periodo={periodo} moneda={moneda} cotizacion={conv} customDesde={customDesde} customHasta={customHasta} />
+              </div>
+              <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <DollarSign size={16} className="text-accent" />
+                  <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">El Mix de Caja</h3>
+                  <span className="ml-auto text-xs text-muted">Origen de fondos · {labelPeriodo(periodo)}</span>
+                </div>
+                <MixCajaChart periodo={periodo} moneda={moneda} cotizacion={conv} customDesde={customDesde} customHasta={customHasta} />
+              </div>
+            </div>
+          </section>
+
+          {/* Una sección por área de módulo: sus gráficos propios, sin la barra de filtros */}
+          {MODULE_AREAS.filter(a => modoAvanzado || a !== 'envios').map(a => (
+            <section key={a} className="space-y-3">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-primary uppercase tracking-wide">
+                <span className="w-1 h-4 bg-accent rounded-full" /> {AREA_LABELS[a]}
+              </h2>
+              <AreaErrorBoundary label={AREA_LABELS[a]}>
+                <AreaModulo area={a} section="graficos" embedded />
+              </AreaErrorBoundary>
+            </section>
+          ))}
+        </div>
+      )}
 
       {/* ── Área TODO › Métricas — Fugas y Movimientos ────────────────────────── */}
       {area === 'todo' && subTab === 'metricas' && (!limits || limits.puede_metricas) && fugasData.length > 0 && (

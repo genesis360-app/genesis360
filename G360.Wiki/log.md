@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-26] deploy | 📊 v1.92.0 EN PROD — Dashboard completo: 5 sub-pestañas uniformes por área
+
+PR #248 dev→main merged → release `v1.92.0` → Vercel desplegado (PROD `2073f13b` **READY**, DEV ready). **PROD = DEV = v1.92.0** (migs 001-245, **frontend-only sin migraciones**). typecheck + build + **806 unit** verdes. **+ verificación e2e runtime (spec 84, 5/5 verdes)** contra datos fiscales reales (Jorgito/DEV): las 10 áreas × 5 sub-pestañas renderizan sin error boundary de área ni errores de JS; "Todo" distribuido OK (Insights=score, Métricas=Posición IVA, Gráficos=Balanza+MixCaja, sin "Próximamente"); Ventas sectorizado (Total Vendido/embudo, sin "en desarrollo") + Recomendaciones por módulo sin Score global.
+
+**Qué:** el Dashboard estaba "a medio hacer" — solo la pestaña **Todo** tenía las sub-pestañas funcionando; las 9 áreas de módulo (Ventas/Gastos/Productos/Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing) mostraban "Próximamente". Ahora **cada pestaña de área expone las 5 sub-pestañas** — **Insights · Métricas · Rentabilidad · Recomendaciones · Gráficos** — con datos de ese módulo. Pedido directo de GO; GO eligió "mejor UX": reusar lo real sin inventar + distribuir el overview de Todo en las 5 (sin tab extra).
+
+**Cómo (🛑 REGLA #0 intacta — solo display, cero cálculos de plata tocados):**
+- **`Dash*Area` (×9):** nueva prop `section` (`insights|metricas|graficos`) que gatea cuál de los 3 bloques **ya calculados** (KPIs / charts / insights) se renderiza. El query y la matemática quedan idénticos. Tipo compartido en `src/components/dashAreaSection.ts`.
+- **`DashboardPage`:** render uniforme por área. Para módulos: Insights/Métricas/Gráficos = mini-dashboard real del módulo (`AreaModulo` wrapper estable → preserva filtros internos al cambiar de sub-pestaña); **Rentabilidad/Recomendaciones = vistas globales reusadas y scopeadas** (`RentabilidadPage` con nota "consolidada del negocio" salvo Ventas/Productos; `RecomendacionesPage` filtrada por `AREA_RECO_CAT`). **No se fabrican números** por módulo (coherente con difererir las estimaciones sintéticas). "Todo" distribuye su overview: 4 KPIs + Fugas + Top productos/Mov. → **Métricas**; La Balanza + Mix de Caja → **Gráficos**; score + insights + stock inmovilizado + sugerencia de pedido + proyección → **Insights**. Default landing = **Insights**. Se eliminó el `subTab='overview'` oculto.
+- **`RecomendacionesPage`:** prop `categoria?: RecomendacionCategoria[]` para scopear por área (oculta el selector de categoría + el Score global). El candado de plan en "Métricas" aplica solo a la `MetricasPage` global de "Todo" (los mini-dashboards de módulo siempre fueron base, sin gate).
+
+**Nota de merge:** dev venía con los commits originales de v1.91.0 y main con el squash de PR #247 → divergencia; se mergeó `origin/main` en dev (conflicto en brand.ts→v1.92.0 + wiki, resueltos) antes de mergear el PR. **🟠 Follow-up menor (no REGLA #0):** Rentabilidad/Recomendaciones por módulo reusan la vista global; un desglose propio por módulo implicaría cálculos nuevos (revisión REGLA #0). Ver memoria `reference_dashboard_calculos_money`.
+
+---
+
 ## [2026-06-26] deploy | 🚀 v1.91.0 EN PROD — auditoría display REGLA #0 (Dashboard/Métricas/Rentabilidad/Marketing/Envíos/Caja/Billing/Libro IVA)
 
 PR #247 dev→main merged → release `v1.91.0` → Vercel desplegado. **PROD = DEV = v1.91.0** (migs 001-245, **frontend-only sin migraciones**). Cierra la auditoría tipo UAT de toda la superficie de display de plata/fiscal (cada card/tablero: lo que informa vs lo que debería declarar), verificada contra DB real (Jorgito + Buildi). **Criterio unificado y aplicado en todo:** margen = `(neto−costo)/neto` con base `subtotal`; **débito fiscal / Posición IVA = `cae IS NOT NULL`** (= Libro IVA; base `estado` mostraba hasta 2x). Detalle en las entradas `update` 2026-06-25/26 (abajo) + roadmap v1.91.0 + memoria `reference_dashboard_calculos_money`. **🆕 Pendiente GO (flujo MP, hoy no productivo):** `handleVerificarPago` auto-activa la suscripción desde params de URL sin verificación server; sin prorrateo al cambiar de plan. typecheck+build+806 unit verdes.

@@ -6,8 +6,30 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-26 · 🔎 Auditoría display REGLA #0 COMPLETA + v1.91.0 EN PROD)
-> **Estado:** **PROD = DEV = v1.91.0 (migs 001-245)** ✅ — frontend-only, sin migraciones, Vercel desplegado. typecheck+build+806 unit verdes. (PR #247.)
+> ### 🟢 ARRANCÁ ACÁ (2026-06-26 · 📊 Dashboard completo v1.92.0 EN PROD)
+> **Estado:** **PROD = DEV = v1.92.0 (migs 001-245)** ✅ — frontend-only, sin migraciones, Vercel desplegado. typecheck+build+806 unit verdes. (PR #248, release v1.92.0.)
+>
+> **📊 v1.92.0 — Dashboard "a medio hacer" → COMPLETO (5 sub-pestañas uniformes por área).** Antes solo
+> la pestaña **Todo** tenía sub-pestañas funcionando; las 9 áreas de módulo (Ventas/Gastos/Productos/
+> Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing) mostraban "Próximamente". Ahora **cada
+> área expone las 5 sub-pestañas** — **Insights · Métricas · Rentabilidad · Recomendaciones · Gráficos** —
+> con datos del propio módulo. **🛑 REGLA #0 intacta: NO se tocó ningún cálculo de plata/fiscal**, solo se
+> reorganizó *qué bloque ya calculado se muestra* (consistente con la auditoría display de v1.91.0).
+> - **`Dash*Area` (×9):** prop `section` (insights|metricas|graficos) que gatea los 3 bloques que ya tenían
+>   (KPIs / charts / insights). Tipo en `src/components/dashAreaSection.ts`.
+> - **`DashboardPage`:** render uniforme. Módulos = mini-dashboard real (Insights/Métricas/Gráficos);
+>   **Rentabilidad/Recomendaciones = vistas globales reusadas y scopeadas** — `RentabilidadPage` con nota de
+>   "consolidada" salvo Ventas/Productos; `RecomendacionesPage` filtrada por `AREA_RECO_CAT` (ventas→ventas,
+>   inventario→stock, clientes→clientes, etc.). **No se fabrican números** (coherente con difererir las
+>   estimaciones sintéticas). "Todo" distribuye su antiguo overview en las 5 (KPIs+Fugas+Top→Métricas;
+>   Balanza/MixCaja→Gráficos; score+alertas+sugerencias+proyección→Insights). Landing = **Insights**.
+> - **`RecomendacionesPage`:** prop `categoria?: RecomendacionCategoria[]` (scope por área; oculta selector
+>   + score global). El candado de plan en "Métricas" aplica solo a la `MetricasPage` global de "Todo".
+> - **🟠 Follow-up menor (no REGLA #0):** Rentabilidad/Recomendaciones por módulo reusan la vista global
+>   (honesto, real); si GO quiere desglose propio por módulo = construir cálculos nuevos (revisión REGLA #0).
+>
+> ---
+> **(Detalle de v1.91.0 — auditoría display REGLA #0 — abajo.)**
 >
 > **🔎 Esta sesión = auditoría tipo UAT de TODA la superficie de display de plata/fiscal** (cada card/tablero: lo que informa vs lo que debería declarar), verificada contra DB real (Jorgito + Buildi). **Hilo conductor REGLA #0:** las read-models de plata/fiscal usaban bases equivocadas. **Criterio unificado, aplicado en TODO:** margen = `(neto−costo)/neto` con base `subtotal` (NO `precio_unitario`, que es unitario pre-descuento); **débito fiscal / Posición IVA = `cae IS NOT NULL`** (= Libro IVA, autoritativo; `estado` mostraba hasta 2x). `venta_items` NO tiene `estado`/`sucursal_id` → filtrar vía `ventas`. Ver memoria [[reference_dashboard_calculos_money]].
 > - **Dashboard (overview + 9 áreas):** Posición IVA contaba canceladas/devueltas y luego despachadas-sin-CAE → ahora CAE; "Margen Contribución" era markup s/bruto pre-descuento → margen s/neto; charts La Balanza/Mix Caja ignoraban sucursal+Custom; toggle s/IVA cosmético removido; Facturación neto/alícuota-real/tope-Monotributo-solo-Mono; Marketing POAS con neto roto; Envíos ganancia s/bruto.

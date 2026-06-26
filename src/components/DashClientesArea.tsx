@@ -35,7 +35,7 @@ function CohortTooltip({ active, payload, label }: any) {
   )
 }
 
-export function DashClientesArea({ section }: { section?: DashSection } = {}) {
+export function DashClientesArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -235,6 +235,7 @@ export function DashClientesArea({ section }: { section?: DashSection } = {}) {
 
   return (
     <div className="space-y-5">
+      {!embedded && (<>
       {/* Filtros */}
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-gray-500 dark:text-gray-400">Últimos 12 meses · Todos los clientes</p>
@@ -256,6 +257,8 @@ export function DashClientesArea({ section }: { section?: DashSection } = {}) {
           )}
         </div>
       </div>
+
+      </>)}
 
       {showM && (<>
       {/* 6 KPIs */}

@@ -99,7 +99,7 @@ function TijeraTooltip({ active, payload, label, fmt }: any) {
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
-export function DashProductosArea({ section }: { section?: DashSection } = {}) {
+export function DashProductosArea({ section, embedded }: { section?: DashSection; embedded?: boolean } = {}) {
   const showM = !section || section === 'metricas'
   const showG = !section || section === 'graficos'
   const showI = !section || section === 'insights'
@@ -509,6 +509,7 @@ export function DashProductosArea({ section }: { section?: DashSection } = {}) {
   return (
     <div className="space-y-5">
 
+      {!embedded && (<>
       {/* ── Aviso sucursal activa ─────────────────────────────────────────────── */}
       {sucursalId && sucursalNombre && (
         <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl text-sm">
@@ -622,6 +623,8 @@ export function DashProductosArea({ section }: { section?: DashSection } = {}) {
           )}
         </div>
       </div>
+
+      </>)}
 
       {showM && (<>
       {/* ── Capa 1: 6 KPIs (2×3) ────────────────────────────────────────────── */}

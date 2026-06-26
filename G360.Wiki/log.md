@@ -8,7 +8,7 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ## [2026-06-26] deploy | 📊 v1.92.0 EN PROD — Dashboard completo: 5 sub-pestañas uniformes por área
 
-PR #248 dev→main merged → release `v1.92.0` → Vercel desplegado (PROD building desde commit `2073f13b`, DEV ready). **PROD = DEV = v1.92.0** (migs 001-245, **frontend-only sin migraciones**). typecheck + build + **806 unit** verdes.
+PR #248 dev→main merged → release `v1.92.0` → Vercel desplegado (PROD `2073f13b` **READY**, DEV ready). **PROD = DEV = v1.92.0** (migs 001-245, **frontend-only sin migraciones**). typecheck + build + **806 unit** verdes. **+ verificación e2e runtime (spec 84, 5/5 verdes)** contra datos fiscales reales (Jorgito/DEV): las 10 áreas × 5 sub-pestañas renderizan sin error boundary de área ni errores de JS; "Todo" distribuido OK (Insights=score, Métricas=Posición IVA, Gráficos=Balanza+MixCaja, sin "Próximamente"); Ventas sectorizado (Total Vendido/embudo, sin "en desarrollo") + Recomendaciones por módulo sin Score global.
 
 **Qué:** el Dashboard estaba "a medio hacer" — solo la pestaña **Todo** tenía las sub-pestañas funcionando; las 9 áreas de módulo (Ventas/Gastos/Productos/Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing) mostraban "Próximamente". Ahora **cada pestaña de área expone las 5 sub-pestañas** — **Insights · Métricas · Rentabilidad · Recomendaciones · Gráficos** — con datos de ese módulo. Pedido directo de GO; GO eligió "mejor UX": reusar lo real sin inventar + distribuir el overview de Todo en las 5 (sin tab extra).
 

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.94.0 — 📊 Dashboard: filtro unificado (un solo Período/Moneda global) (PROD ✅, frontend-only, sin migración)
+
+Cierra el follow-up de la barra de filtros por área (GO la marcó de uso poco claro → eligió unificar). Ahora **un solo control Período/Moneda** (arriba) gobierna las áreas con período; fuera las barras por módulo. El filtro global se muestra en Gráficos/Insights/Métricas de `Todo/Ventas/Gastos/Productos` (`AREAS_CON_PERIODO`); no aparece en las de período fijo ni en Rentabilidad/Recomendaciones (evita el filtro inerte). Ventas/Gastos/Productos embebidos toman el período/moneda global (props `gPeriodo/gMoneda/gCustom*` → helpers `getFechasDashboard`/`getFechasAnteriores`); su barra propia oculta. Hallazgo: solo esas 3 tienen período real; las otras 6 (Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing) son snapshots de período fijo por diseño → no se embeben en standalone (conservan sus controles propios, ej. toggle Vista de Inventario/Proveedores); en el agregado de Gráficos sí. **🛑 Solo display/filtrado — REGLA #0 intacta.** typecheck + build + 806 unit + e2e spec 84 (7/7). Sin migraciones. PR #250.
+
+---
+
 ## v1.93.0 — 📊 Dashboard: Gráficos primero (landing) + "Todo › Gráficos" = todos los gráficos por sección (PROD ✅, frontend-only, sin migración)
 
 Dos ajustes de GO sobre el Dashboard v1.92.0: (1) **Gráficos** pasa a ser la **primera** sub-pestaña y el **landing por defecto** ("adelanto de todo"), Insights queda segunda; (2) **"Todo › Gráficos"** ahora muestra **TODOS los gráficos del negocio** separados por secciones (General + una por cada módulo), en vez de solo La Balanza + El Mix de Caja. Implementación: los 9 `Dash*Area` reciben una prop `embedded` que oculta su barra de filtros/banners → embebidos en el agregado se ven solo los charts; `Todo › Gráficos` compone la sección General + una `<section>` por módulo (`AreaModulo section="graficos" embedded`, orden en `MODULE_AREAS`, Envíos solo en modo avanzado). **🛑 Solo display — REGLA #0 intacta** (ningún cálculo tocado). Validado: typecheck + build + 806 unit + **e2e spec 84 (6/6)**. Sin migraciones. PR #249. **Follow-up abierto:** revisar con GO si se mantiene la barra de filtros por área de los módulos standalone (la marcó como de uso poco claro).

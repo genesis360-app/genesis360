@@ -104,6 +104,8 @@ BEGIN
 END;
 $$;
 
--- anon NO debe poder ejecutarla (viene heredado de PUBLIC); re-grant a authenticated/service_role
-REVOKE EXECUTE ON FUNCTION devolver_saldo_a_favor(uuid, numeric, uuid, text) FROM PUBLIC;
+-- anon NO debe poder ejecutarla. OJO: Supabase tiene DEFAULT PRIVILEGES que otorgan EXECUTE a
+-- `anon` DIRECTO sobre funciones nuevas de `public`, así que REVOKE FROM PUBLIC NO alcanza →
+-- hay que revocar de `anon` explícito (verificado: anon_exec pasa a false en DEV+PROD).
+REVOKE EXECUTE ON FUNCTION devolver_saldo_a_favor(uuid, numeric, uuid, text) FROM PUBLIC, anon;
 GRANT  EXECUTE ON FUNCTION devolver_saldo_a_favor(uuid, numeric, uuid, text) TO authenticated, service_role;

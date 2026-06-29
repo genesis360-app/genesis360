@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.95.0 — 🔎 Auditoría report-panels + RRHH costo laboral bruto + "Ver más" en Detalle por venta (PROD ✅, frontend-only, sin migración)
+
+Auditoría de display (misma clase que v1.91.0) sobre los 3 report-panels que muestran plata: **Compras** (`comprasReportes`), **Envíos** (`enviosReportes`), **RRHH** (`rrhhReportes`). **Conclusión: sin bugs fiscales REGLA #0** (math sólida, `Number()` coerciona el numeric de PG, totales aditivos, excluyen cancelados). Único hallazgo de exactitud → **RRHH "Costo laboral por departamento" pasó de NETO → BRUTO** (`total_haberes`): el neto (take-home) subestimaba el costo real para la empresa; ahora suma el bruto liquidado + nota de que las cargas patronales se ven en Gastos (`recibosResumen` sigue con neto). + **UX:** "Detalle por venta" (Dashboard › Todo › Rentabilidad) ahora pagina con **"Ver más"** (50 + incremental) en vez de dibujar todas las ventas del período de un saque. **🛑 Solo display — REGLA #0 intacta.** typecheck + build + 807 unit. Sin migraciones. PR #251. **Backlog (pedidos GO):** POS auto-sugerir crédito a favor; cash-out de saldo a favor; exports PDF/ConfigPage.
+
+---
+
 ## v1.94.0 — 📊 Dashboard: filtro unificado (un solo Período/Moneda global) (PROD ✅, frontend-only, sin migración)
 
 Cierra el follow-up de la barra de filtros por área (GO la marcó de uso poco claro → eligió unificar). Ahora **un solo control Período/Moneda** (arriba) gobierna las áreas con período; fuera las barras por módulo. El filtro global se muestra en Gráficos/Insights/Métricas de `Todo/Ventas/Gastos/Productos` (`AREAS_CON_PERIODO`); no aparece en las de período fijo ni en Rentabilidad/Recomendaciones (evita el filtro inerte). Ventas/Gastos/Productos embebidos toman el período/moneda global (props `gPeriodo/gMoneda/gCustom*` → helpers `getFechasDashboard`/`getFechasAnteriores`); su barra propia oculta. Hallazgo: solo esas 3 tienen período real; las otras 6 (Inventario/Clientes/Proveedores/Facturación/Envíos/Marketing) son snapshots de período fijo por diseño → no se embeben en standalone (conservan sus controles propios, ej. toggle Vista de Inventario/Proveedores); en el agregado de Gráficos sí. **🛑 Solo display/filtrado — REGLA #0 intacta.** typecheck + build + 806 unit + e2e spec 84 (7/7). Sin migraciones. PR #250.

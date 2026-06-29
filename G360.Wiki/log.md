@@ -6,6 +6,21 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-26] deploy | 🔎 v1.95.0 EN PROD — Auditoría report-panels (RRHH/Compras/Envíos) + RRHH costo laboral bruto + "Ver más" en Detalle por venta
+
+PR #251 dev→main merged → release `v1.95.0` → Vercel (PROD `b4aff7f8`). **PROD = DEV = v1.95.0** (migs 001-245, frontend-only sin migraciones). typecheck + build + **807 unit** verdes.
+
+**🔎 Auditoría de los 3 report-panels** (`comprasReportes`/`enviosReportes`/`rrhhReportes` + sus `*Panel.tsx`), misma clase que la auditoría display v1.91.0. **Conclusión: SIN bugs fiscales REGLA #0.** La math es sólida en los 3: bases correctas (Compras usa `precio_unitario` = costo de compra, base correcta; no el problema de ventas), `Number()` coerciona el `numeric` de PG (string), totales **aditivos** reales (a diferencia del bug viejo de CajaReportes), excluyen cancelados.
+- **Compras** (`ComprasReportesPanel`): sano. Obs (baja): sin selector de período ni filtro de sucursal → histórico total/consolidado (razonable para compras centralizadas).
+- **Envíos** (`EnviosReportesPanel`): sano, **sí filtra por sucursal**. `margenLogístico = costo_envio cobrado − costo_real courier` → **consistente** con el tratamiento del dashboard (`DashEnviosArea`, el fix v1.91.0 fue del margen de *producto* neto). Obs (baja): nuance net/gross consistente y pre-existente.
+- **RRHH** (`RrhhReportesPanel`): mes actual ✓, fila Total aditiva ✓. **Hallazgo (medio, resuelto):** "Costo laboral por departamento" mostraba el **NETO** (take-home del empleado), no el costo para la empresa → **fix: usa BRUTO (`total_haberes`)** + nota de que las cargas patronales se imputan en Gastos. `costoLaboralPorDepto` suma `bruto ?? neto` (defensivo); `recibosResumen` sigue con neto. +1 unit.
+
+**+ UX:** Dashboard › Todo › Rentabilidad — "Detalle por venta" ahora **pagina con "Ver más"** (50 + incremental). Antes `porVenta.map` dibujaba TODAS las ventas confirmadas del período en un scroll (cientos/miles en alto volumen); la query sigue acotada por período (default 30d).
+
+**📋 Backlog anotado (pedidos de GO):** (1) POS — auto-sugerir "crédito a favor" como medio de pago cuando el cliente tiene saldo a favor (consume lo aplicado; resto queda a favor; si gasta de más pide el restante); (2) flujo de **cash-out** de un saldo a favor existente (hoy solo se consume aplicándolo a ventas, no hay retiro en efectivo → riesgo de descalce si el cajero lo hace a mano); (3) auditar exports PDF + ConfigPage. **🛑 Investigación REGLA #0 del flujo `cliente_creditos`:** crear (devolución/cancelación reserva/reserva vencida/manual) → consumir (`consumo_venta` negativo en POS); cash directo solo al momento de la devolución/cancelación; "a cliente con deuda no se le da efectivo" + no-caja-negativa (CAJ-18).
+
+---
+
 ## [2026-06-26] deploy | 📊 v1.94.0 EN PROD — Dashboard: filtro UNIFICADO (un solo Período/Moneda global)
 
 PR #250 dev→main merged → release `v1.94.0` → Vercel (PROD `f33d50b5`). **PROD = DEV = v1.94.0** (migs 001-245, frontend-only sin migraciones). typecheck + build + **806 unit** + **e2e spec 84 (7/7)** verdes. Cierra el follow-up de la barra de filtros por área (GO la marcó de uso poco claro → eligió **unificar**).

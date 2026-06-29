@@ -291,7 +291,7 @@ Row 2 — Sub-tabs (underline) + Filtros (derecha, solo "Todo"):
 | Insights | Score de salud, "Lo que necesitás saber", stock inmovilizado, productos sin movimiento, sugerencia de pedido, proyección de cobertura, lista completa de recomendaciones |
 | Métricas | 4 KPIs ejecutivos (Ingreso Neto / Margen Contribución / Burn Rate / Posición IVA) + Fugas y Movimientos + Top productos + Movimientos recientes + `MetricasPage` (plan-gated) |
 | Gráficos | **(v1.93.0) Agregado de TODOS los gráficos del negocio por secciones:** sección **General** (La Balanza `VentasVsGastosChart` + El Mix de Caja `MixCajaChart`) + una `<section>` por cada módulo que renderiza `<AreaModulo section="graficos" embedded/>` (sus charts, sin barra de filtros). Orden en `MODULE_AREAS`; Envíos solo en modo avanzado. |
-| Rentabilidad | `RentabilidadPage` (margen por producto) |
+| Rentabilidad | `RentabilidadPage` (margen por producto). **v1.95.0:** la tabla "Detalle por venta" pagina con **"Ver más"** (50 + incremental, estado `verVentas`) — antes dibujaba todas las ventas confirmadas del período de un saque. |
 | Recomendaciones | `RecomendacionesPage` completa |
 
 `AREA_COMPONENTS`, `AREA_RECO_CAT`, `MODULE_AREAS` y `AreaModulo` viven en `DashboardPage.tsx`.

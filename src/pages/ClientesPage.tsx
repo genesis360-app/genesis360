@@ -298,6 +298,59 @@ export default function ClientesPage() {
     enabled: !!tenant,
   })
 
+  // E2-bis — cash-out de saldo a favor en efectivo (RPC devolver_saldo_a_favor, mig 246).
+  // Cierra el gap: hasta ahora el crédito SOLO se consumía aplicándolo a una venta.
+  const [retiro, setRetiro] = useState<{ id: string; nombre: string; saldo: number } | null>(null)
+  const [retiroMonto, setRetiroMonto] = useState('')
+  const [retiroCajaId, setRetiroCajaId] = useState('')
+  const [retirando, setRetirando] = useState(false)
+
+  const { data: cajasRetiro = [] } = useQuery({
+    queryKey: ['cajas-abiertas-retiro', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('caja_sesiones')
+        .select('id, cajas(nombre, es_caja_fuerte)')
+        .eq('tenant_id', tenant!.id).eq('estado', 'abierta')
+      return (data ?? []).filter((s: any) => !s.cajas?.es_caja_fuerte)
+        .map((s: any) => ({ id: s.id, nombre: s.cajas?.nombre ?? 'Caja' }))
+    },
+    enabled: !!tenant && !!retiro,
+  })
+
+  const abrirRetiro = (c: any) => {
+    if (moduloSoloLectura(user, 'clientes')) { toast.error('Tu rol tiene acceso de solo lectura en Clientes.'); return }
+    const saldo = creditoMap[c.id] ?? 0
+    if (saldo <= 0.5) return
+    setRetiro({ id: c.id, nombre: c.nombre, saldo })
+    setRetiroMonto(String(Math.round(saldo)))
+    setRetiroCajaId('')
+  }
+
+  const confirmarRetiro = async () => {
+    if (!retiro) return
+    const monto = parseFloat(retiroMonto)
+    if (!(monto > 0)) { toast.error('Ingresá un monto mayor a 0.'); return }
+    if (monto > retiro.saldo + 0.005) { toast.error('No podés devolver más que el saldo a favor disponible.'); return }
+    if (!retiroCajaId) { toast.error('Elegí la caja de donde sale el efectivo.'); return }
+    setRetirando(true)
+    try {
+      const { data, error } = await supabase.rpc('devolver_saldo_a_favor', {
+        p_cliente_id: retiro.id, p_monto: monto, p_sesion_id: retiroCajaId, p_nota: null,
+      })
+      if (error) throw error
+      const restante = (data as any)?.saldo_restante ?? 0
+      logActividad({ entidad: 'cliente', entidad_id: retiro.id, entidad_nombre: retiro.nombre, accion: 'editar',
+        valor_nuevo: `Devolución saldo a favor en efectivo: ${formatMoneda(monto)} (restante ${formatMoneda(restante)})`, pagina: '/clientes' })
+      toast.success(`Devolviste ${formatMoneda(monto)} en efectivo. Saldo a favor restante: ${formatMoneda(restante)}.`)
+      setRetiro(null)
+      qc.invalidateQueries({ queryKey: ['clientes-credito', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['cajas-abiertas-retiro', tenant?.id] })
+      qc.invalidateQueries({ queryKey: ['caja-sesiones-abiertas', tenant?.id] })
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo devolver el saldo a favor.')
+    } finally { setRetirando(false) }
+  }
+
   const { data: notasCliente = [], refetch: refetchNotas } = useQuery({
     queryKey: ['cliente-notas', expandedId],
     queryFn: async () => {
@@ -1363,9 +1416,11 @@ export default function ClientesPage() {
                         </span>
                       )}
                       {(creditoMap[c.id] ?? 0) > 0.5 && (
-                        <span className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium" title="Saldo a favor (crédito por cancelación de reserva)">
-                          🎁 Saldo a favor {formatMoneda(creditoMap[c.id])}
-                        </span>
+                        <button onClick={(e) => { e.stopPropagation(); abrirRetiro(c) }}
+                          className="text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40 px-1.5 py-0.5 rounded flex items-center gap-0.5 font-medium transition-colors"
+                          title="Devolver saldo a favor en efectivo">
+                          🎁 Saldo a favor {formatMoneda(creditoMap[c.id])} · 💵 Devolver
+                        </button>
                       )}
                       {Array.isArray(c.etiquetas) && c.etiquetas.map((et: string) => (
                         <span key={et} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-1.5 py-0.5 rounded flex items-center gap-0.5">
@@ -2100,6 +2155,51 @@ export default function ClientesPage() {
             <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end">
               <button onClick={() => setLinkCuenta(null)}
                 className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm">Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal — Devolver saldo a favor en efectivo (cash-out, RPC mig 246) */}
+      {retiro && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => !retirando && setRetiro(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-gray-100 dark:border-gray-700">
+              <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">💵 Devolver saldo a favor en efectivo</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">{retiro.nombre}</p>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="bg-amber-50 dark:bg-amber-900/20 rounded-xl px-4 py-2.5 text-sm flex items-center justify-between">
+                <span className="text-amber-700 dark:text-amber-400">Saldo a favor disponible</span>
+                <span className="font-bold text-amber-700 dark:text-amber-400">{formatMoneda(retiro.saldo)}</span>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto a devolver</label>
+                <input type="number" min="0" max={retiro.saldo} step="0.01" value={retiroMonto}
+                  onChange={e => setRetiroMonto(e.target.value)} autoFocus
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Caja (de donde sale el efectivo)</label>
+                {cajasRetiro.length === 0 ? (
+                  <p className="text-sm text-red-500 dark:text-red-400">No hay ninguna caja operativa abierta. Abrí una caja para devolver el efectivo.</p>
+                ) : (
+                  <select value={retiroCajaId} onChange={e => setRetiroCajaId(e.target.value)}
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent">
+                    <option value="">Elegí la caja…</option>
+                    {cajasRetiro.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500">Se asienta un egreso de efectivo en la caja y se descuenta del saldo a favor del cliente. No se permite dejar la caja en negativo.</p>
+            </div>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-2">
+              <button onClick={() => setRetiro(null)} disabled={retirando}
+                className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm disabled:opacity-50">Cancelar</button>
+              <button onClick={confirmarRetiro} disabled={retirando || cajasRetiro.length === 0}
+                className="bg-accent hover:bg-accent/90 text-white font-semibold px-4 py-2 rounded-xl text-sm disabled:opacity-50">
+                {retirando ? 'Devolviendo…' : 'Devolver en efectivo'}
+              </button>
             </div>
           </div>
         </div>

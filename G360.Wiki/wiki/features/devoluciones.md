@@ -12,6 +12,32 @@ Módulo de devoluciones de ventas. Implementado en v0.58.0 (migration 030).
 
 ---
 
+## Marco legal (Argentina) — base de la política de devoluciones
+
+> ⚠️ **Información general, NO asesoramiento legal.** Ley Nacional **24.240** (Defensa del Consumidor) + ley local **CABA 3281**. Puede cambiar con reformas y **varía por provincia**. Validar la política oficial con abogado/contador. Investigado 2026-06-26 (ver [log.md](../../log.md)).
+
+**Regla de fondo: hay 3 casos donde el cliente tiene derecho a la PLATA (no se le puede forzar el crédito/vale), y uno donde el crédito es válido.**
+
+| Caso | ¿Obligación de devolver dinero? | Plazo |
+|---|---|---|
+| **Producto fallado** (garantía legal, Art. 11-17) | **SÍ** — puede exigir el reintegro del importe pagado (Art. 17) si no se repara bien | **6 meses** (3 si usado) desde la entrega |
+| **Compra online/a distancia** — arrepentimiento (Art. 34) | **SÍ** — reintegro del dinero; flete de devolución a cargo del vendedor | **10 días corridos** desde la entrega |
+| **Cambio de opinión, presencial (fuera de CABA)** | **NO** hay obligación nacional → aceptar es política propia; puede condicionarse a crédito/cambio | Sin plazo legal |
+| **Cambio de opinión, presencial EN CABA** (no perecederos, Ley 3281) | Debe aceptar el cambio, **pero puede dar vale O efectivo a elección del comercio** | Cambio **30 días hábiles** · vale válido **≥90 días hábiles** |
+
+**Implicancia para el "crédito a favor":** si la devolución es por **fallado** o **arrepentimiento online ≤10 días**, aunque el cliente "elija" crédito conserva el derecho a la plata dentro del plazo. Si es **cambio de opinión presencial**, el crédito a favor / cambio es válido (en CABA el vale es expresamente legal).
+
+**Recomendaciones (a confirmar con abogado):**
+1. **Clasificar el motivo** (el modal ya guarda "motivo"): para **fallado / online ≤10 días** el **default debe ser DINERO** (mismo medio de pago), no empujar el crédito.
+2. **Documentar la libre elección** cuando el cliente opta por crédito sin estar obligado (origen + nota + conformidad).
+3. **Vencimiento del crédito:** si se aplica, **≥90 días hábiles** (piso CABA) y comunicado; plazos cortos pueden caer como cláusula abusiva (Art. 37). Lo más seguro: **sin vencimiento** o plazo amplio avisado.
+4. **Política de devoluciones escrita y visible** (cartel/web/ticket), revisada por el abogado, distinguiendo los casos.
+5. **Cubrir el reclamo posterior:** si el crédito nació de un caso donde correspondía dinero y el cliente después reclama la plata, hay que poder devolvérsela **asentada** → feature **cash-out de saldo a favor** (egreso de caja + `cliente_creditos` negativo atómico).
+
+**Fuentes:** [Ley 24.240 actualizada](https://www.argentina.gob.ar/normativa/nacional/ley-24240-638/actualizacion) · [Ley 3281 CABA](http://www2.cedom.gov.ar/es/legislacion/normas/leyes/ley3281.html) · [Mendoza: ¿obligación de cambios?](https://www.mendoza.gov.ar/prensa/defensa-del-consumidor-es-obligacion-del-comercio-admitir-cambios-o-devoluciones-de-productos/) · [Mendoza: plazo de garantía](https://www.mendoza.gov.ar/prensa/defensa-del-consumidor-cual-es-el-plazo-de-garantia-de-un-producto-nuevo/) · [Argentina.gob.ar: Voy de compras](https://www.argentina.gob.ar/justicia/derechofacil/aplicalaley/comprar).
+
+---
+
 ## Prerequisito de configuración
 
 Antes de usar devoluciones, configurar en ConfigPage:

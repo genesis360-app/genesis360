@@ -3112,3 +3112,9 @@ ALTER TABLE clientes          ADD COLUMN IF NOT EXISTS notas TEXT;              
 --                                          SECURITY DEFINER: doble firma server-side; agrupa por courier,
 --                                          gasto con desglose de IVA + caja + marca envíos pagados, atómico.
 -- Todas REVOKE ALL FROM PUBLIC + GRANT EXECUTE TO authenticated. DEV + PROD ✅ (PR #236).
+
+-- ── 246 — Cash-out de saldo a favor (cliente_creditos) en efectivo ─────────────
+-- devolver_saldo_a_favor(p_cliente_id, p_monto, p_sesion_id, p_nota) SECURITY INVOKER:
+-- atómico + guards server-side (monto ≤ saldo a favor SUM, sesión abierta+tenant, no caja
+-- negativa CAJ-18); asienta egreso de efectivo en caja + cliente_creditos negativo (origen
+-- 'retiro_efectivo'). REVOKE FROM PUBLIC + GRANT authenticated/service_role. (mig 246, v1.96.0)

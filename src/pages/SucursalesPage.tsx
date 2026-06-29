@@ -156,7 +156,7 @@ export default function SucursalesPage() {
           </div>
         </div>
         <button onClick={openCreate}
-          className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors">
+          className="flex items-center gap-2 bg-accent text-white px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity">
           <Plus size={16} /> Nueva sucursal
         </button>
       </div>
@@ -170,7 +170,7 @@ export default function SucursalesPage() {
           <Building2 size={40} className="mx-auto text-gray-300 dark:text-gray-600 mb-3" />
           <p className="text-gray-500 dark:text-gray-400 font-medium">Sin sucursales configuradas</p>
           <button onClick={openCreate}
-            className="mt-4 flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-xl text-sm font-medium hover:bg-primary/90 transition-colors mx-auto">
+            className="mt-4 flex items-center gap-2 bg-accent text-white px-4 py-2 rounded-xl text-sm font-medium hover:opacity-90 transition-opacity mx-auto">
             <Plus size={16} /> Nueva sucursal
           </button>
         </div>
@@ -423,7 +423,7 @@ export default function SucursalesPage() {
                 Cancelar
               </button>
               <button onClick={() => save.mutate()} disabled={save.isPending}
-                className="flex-1 bg-primary text-white rounded-xl py-2 text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60">
+                className="flex-1 bg-accent text-white rounded-xl py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-60">
                 {save.isPending ? 'Guardando…' : editId ? 'Guardar' : 'Crear'}
               </button>
             </div>

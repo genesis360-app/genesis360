@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.96.0 — 💵 Cash-out de saldo a favor en efectivo + marco legal devoluciones (PROD ✅, mig 246)
+
+Cierra el gap de `cliente_creditos`: hasta ahora un saldo a favor SOLO se consumía aplicándolo a una venta; ahora se puede **devolver en efectivo de forma asentada**. **🛑 REGLA #0 (caja + cliente_creditos):** mig 246 RPC `devolver_saldo_a_favor` SECURITY INVOKER, atómico + guards server-side (monto ≤ saldo a favor SUM, sesión de caja abierta+tenant, **no caja en negativo CAJ-18**); egreso de efectivo en caja + `cliente_creditos` negativo (origen `retiro_efectivo`). Verificado en DB DEV+PROD (happy + 2 guards, ROLLBACK). Frontend: badge "Saldo a favor" → botón "💵 Devolver" en `ClientesPage` + modal. Lib `saldoFavor.ts` + 6 unit (813 total). 🔐 Hallazgo: Supabase default-privileges dan EXECUTE a anon directo → `REVOKE FROM anon` explícito (no alcanza FROM PUBLIC); follow-up de hardening para los otros RPC de plata. **+ Marco legal AR de devoluciones documentado** (Ley 24.240 + CABA 3281): fallado/garantía 6m + arrepentimiento online 10d = derecho a dinero; cambio de opinión presencial = crédito/vale OK. mig en DEV+PROD. PR #252.
+
+---
+
 ## v1.95.0 — 🔎 Auditoría report-panels + RRHH costo laboral bruto + "Ver más" en Detalle por venta (PROD ✅, frontend-only, sin migración)
 
 Auditoría de display (misma clase que v1.91.0) sobre los 3 report-panels que muestran plata: **Compras** (`comprasReportes`), **Envíos** (`enviosReportes`), **RRHH** (`rrhhReportes`). **Conclusión: sin bugs fiscales REGLA #0** (math sólida, `Number()` coerciona el numeric de PG, totales aditivos, excluyen cancelados). Único hallazgo de exactitud → **RRHH "Costo laboral por departamento" pasó de NETO → BRUTO** (`total_haberes`): el neto (take-home) subestimaba el costo real para la empresa; ahora suma el bruto liquidado + nota de que las cargas patronales se ven en Gastos (`recibosResumen` sigue con neto). + **UX:** "Detalle por venta" (Dashboard › Todo › Rentabilidad) ahora pagina con **"Ver más"** (50 + incremental) en vez de dibujar todas las ventas del período de un saque. **🛑 Solo display — REGLA #0 intacta.** typecheck + build + 807 unit. Sin migraciones. PR #251. **Backlog (pedidos GO):** POS auto-sugerir crédito a favor; cash-out de saldo a favor; exports PDF/ConfigPage.

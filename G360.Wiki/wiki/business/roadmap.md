@@ -9,7 +9,19 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 13 de Junio, 2026
+**Última actualización:** 30 de Junio, 2026
+
+---
+
+## v1.98.0 — 🎁 POS auto-sugiere crédito a favor + 🎨 fondo de marca unificado (PROD ✅, frontend-only, sin migración)
+
+Dos pedidos de GO, frontend-only sin migración. **(1) POS — crédito a favor por defecto:** al seleccionar en una venta (despacho/reserva, no presupuesto) un cliente **con saldo a favor** (`cliente_creditos > 0`), el medio **"🎁 Crédito a favor" se auto-aplica** por `min(saldo, total)` + toast 🎁. Si gasta menos que el crédito, el resto queda a favor (el ledger solo consume lo aplicado); si gasta más, el faltante se pide por otro medio. **No pisa al usuario:** solo actúa si los medios están vírgenes o si la única línea es la que auto-aplicó (re-clampa al cambiar el total); si el usuario cargó pagos a mano, no interviene. **🛑 REGLA #0 intacta y verificada:** la sugerencia nunca supera el saldo (`montoSugeridoCredito`, respeta el guard server-aware de `registrarVenta` L2454) ni el total (no genera vuelto falso); el consumo está gateado por `estado !== 'pendiente'` (un presupuesto nunca consume crédito). Lib `saldoFavor.ts` + función pura `montoSugeridoCredito()` + 6 unit (819 total). **(2) Fondo de marca unificado:** nueva utilidad `.bg-brand-gradient-dark` (negro→violeta, 135°, "el fondo del login") en `index.css`; GO unificó TODO el branding oscuro full-screen en ese token: **Login** (canónica), **Suscripción** (era negro→violeta→cian), **Landing** (hero + CTA final, el hero era violeta→cian) y **Onboarding** (era violeta→cian). typecheck + build + 819 unit. Sin migraciones.
+
+---
+
+## v1.97.0 — 🎨 Ajustes visuales (píldoras Usuarios, ancho Recursos/Usuarios, botones Sucursales, submenu Config) (PROD ✅, frontend-only, sin migración)
+
+Pedidos de consistencia visual de GO (cero lógica): **Usuarios** — píldoras de filtro por rol con el formato de las del Dashboard; **Recursos + Usuarios** a ancho completo (saco `max-w`/`mx-auto` del contenedor raíz); **Sucursales** — botones primarios `bg-primary`→`bg-accent` (degradé violeta→cian); **Configuración** submenu lateral — seleccionado = estilo activo del sidebar (`bg-accent text-white` = degradé), hover = el color que antes tenía el seleccionado (`hover:bg-accent/10 hover:text-accent`). 💡 Nota: en `index.css` `.bg-accent` está redefinida como el degradé violeta→cian (= `bg-brand-gradient`). typecheck + build + 813 unit. PR #253.
 
 ---
 

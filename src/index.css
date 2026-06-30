@@ -57,6 +57,13 @@
   .bg-brand-gradient-hero-dark {
     background-image: linear-gradient(135deg, rgb(var(--color-primary)) 0%, rgb(var(--color-accent)) 50%, rgb(var(--color-accent-2)) 100%);
   }
+  /* Fondo del LOGIN: negro → violeta (2 stops, sin cian). Es el fondo que pidió GO
+     reutilizar en otras pantallas (suscripción, etc.). Equivale al viejo
+     `bg-gradient-to-br from-primary to-accent` de LoginPage, ahora con nombre propio
+     para que sea el único lugar donde vive ese degradé. */
+  .bg-brand-gradient-dark {
+    background-image: linear-gradient(135deg, rgb(var(--color-primary)) 0%, rgb(var(--color-accent)) 100%);
+  }
 }
 
 /* ─── Hover de marca para items de sidebar y tabs ─────────────────────────────

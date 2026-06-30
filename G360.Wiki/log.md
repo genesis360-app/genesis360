@@ -6,6 +6,37 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-30] deploy | 🎁 v1.98.0 EN PROD — POS auto-sugiere crédito a favor + 🎨 fondo de marca unificado
+
+PR dev→main → release `v1.98.0` → Vercel (PROD). **PROD = DEV = v1.98.0**. Frontend-only, sin migración. typecheck + build + **819 unit** verdes.
+
+Dos pedidos de GO:
+
+**(1) 🎁 POS — crédito a favor por defecto (cierra ítem del backlog).** Al seleccionar en una venta que cobra (despacho/reserva, NO presupuesto) un cliente con **saldo a favor** (`cliente_creditos > 0`), el medio **"🎁 Crédito a favor" se auto-aplica** por `min(saldo, total)` + toast 🎁 una vez por cliente. Gasta menos → el resto queda a favor (el ledger solo consume lo aplicado, `origen='consumo_venta'`); gasta más → faltante por otro medio (lo guía "Falta asignar $X").
+- **No pisa al usuario:** un `useEffect` (deps `clienteId/clienteCredito/totalConEnvio/modoVenta/mediosPago`) solo actúa si los medios están vírgenes o si la única línea es la que auto-aplicó antes (trackeado con `creditoAutoRef = {cliente, monto}`); re-clampa al cambiar el total; si el usuario cargó pagos a mano, no interviene. El ref se resetea al cambiar de cliente (en el efecto de carga del saldo, que además limpia `clienteCredito` a 0 para no aplicar el del cliente anterior mientras carga).
+- **🛑 REGLA #0 intacta y VERIFICADA contra el código real:** la sugerencia nunca supera el saldo (`montoSugeridoCredito()` clampea → respeta el guard server-aware `montoCredito > clienteCredito + 0.5` de `registrarVenta` L2454) ni el total (no genera vuelto falso ni dispara el error de sobrepago de `validarMediosPago`); el consumo del ledger está gateado por `estado !== 'pendiente'` (L2869) → un presupuesto NUNCA consume crédito aunque quede una línea colgada al cambiar de modo.
+- **Código:** `montoSugeridoCredito(saldo, total)` pura en `src/lib/saldoFavor.ts` (= `min`, ≥0, redondeo 2 dec) + 6 unit (gasta-menos / gasta-más / borde / sin-saldo / no-negativo) → 819 total. `import` en `VentasPage` + ref + efecto.
+
+**(2) 🎨 Fondo de marca unificado.** Nueva utilidad `.bg-brand-gradient-dark` en `src/index.css` = `linear-gradient(135deg, primary 0%, accent 100%)` = **negro→violeta** (2 stops, sin cian) = "el fondo del login que le gusta a GO" (era el inline `bg-gradient-to-br from-primary to-accent`). GO unificó TODO el branding oscuro full-screen en ese token:
+- **LoginPage** (fuente canónica), **SuscripcionPage** (era `bg-brand-gradient-hero-dark` = negro→violeta→cian, ×2 ocurrencias), **LandingPage** hero (era `bg-brand-gradient-hero` = violeta→cian) + CTA final (era `bg-gradient-to-r from-primary to-accent`, ahora 135° diagonal — confirmado por GO), **OnboardingPage** (ambos estados: form + "revisá tu email"; eran violeta→cian).
+- `bg-brand-gradient-hero` y `bg-brand-gradient-hero-dark` quedan definidas en index.css pero **sin uso**. Cards/sections chicas de Landing/Métricas conservan su `from-primary to-accent` inline (acentos, no fondos de página). Memoria [[reference_fondos_degrade_marca]].
+
+---
+
+## [2026-06-30] deploy | 🎨 v1.97.0 EN PROD — Ajustes visuales (píldoras Usuarios, ancho Recursos/Usuarios, botones Sucursales, submenu Config)
+
+PR #253 dev→main → release `v1.97.0` → Vercel (PROD `61d792f2`). **PROD = DEV = v1.97.0**. Frontend-only, sin migración, **cero lógica** (solo className/contenedores). typecheck + build + **813 unit** verdes.
+
+Pedidos de GO de consistencia visual:
+- **Usuarios:** las píldoras de filtro por rol (`filterRol`) pasan al **mismo formato que las píldoras de pestañas del Dashboard** (`rounded-full text-sm border`, activo `bg-accent text-white shadow-sm`, inactivo fondo blanco/gris con hover de borde) — antes eran `rounded-xl border-2 bg-blue-50`.
+- **Recursos + Usuarios — ancho completo:** se quitó el `max-w-5xl mx-auto` (`RecursosPage`) y `max-w-2xl mx-auto` (`UsuariosPage`) del contenedor raíz; antes el contenido quedaba centrado y comprimido al medio. Los modales internos (max-w-sm/lg) no se tocaron.
+- **Sucursales:** los 3 botones primarios (crear ×2 + guardar) pasan de `bg-primary` (negro `#0D0D0D`) a **`bg-accent`** — que en `index.css` es el **degradé violeta→cian** — igual al sidebar activo y a los ~67 botones `bg-accent` del resto de la app.
+- **Configuración (submenu lateral desktop, `ConfigPage` nav):** el tab **seleccionado** pasa de `bg-accent/10 text-accent` (violeta claro) al **estilo activo del sidebar** `bg-accent text-white` (degradé); el **hover** de los no-seleccionados pasa de gris a `hover:bg-accent/10 hover:text-accent` (el color que antes tenía el seleccionado), espejando el sidebar.
+
+**💡 Hallazgo reutilizable:** en `src/index.css` (`@layer utilities`) **`.bg-accent` está redefinida como `background-image: linear-gradient(135deg, accent→accent-2)`** — o sea el **degradé violeta→cian, idéntico a `.bg-brand-gradient`**. Por eso TODO botón `bg-accent` (y el sidebar activo `bg-accent text-white`) YA muestran el degradé de marca; no hace falta `bg-brand-gradient` para conseguirlo. (Ojo: `hover:bg-accent/90` es no-op sobre un background-image → usar `hover:opacity-90` para un hover visible.)
+
+---
+
 ## [2026-06-29] deploy | 💵 v1.96.0 EN PROD — Cash-out de saldo a favor en efectivo (mig 246) + marco legal devoluciones
 
 PR #252 dev→main merged → release `v1.96.0` → Vercel (PROD `4a510c6d`). **PROD = DEV = v1.96.0** (migs 001-**246**). **mig 246 aplicada en DEV + PROD** (antes del merge, regla DDL aditivo). typecheck + build + **813 unit** verdes.

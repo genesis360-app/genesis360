@@ -153,7 +153,7 @@ export default function LandingPage() {
       </nav>
 
       {/* ── HERO ── */}
-      <section className="bg-brand-gradient-hero text-white">
+      <section className="bg-brand-gradient-dark text-white">
         <div className="max-w-6xl mx-auto px-4 py-20 md:py-28 text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm mb-6">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
@@ -382,7 +382,7 @@ export default function LandingPage() {
       </section>
 
       {/* ── CTA FINAL ── */}
-      <section className="py-20 bg-gradient-to-r from-primary to-accent">
+      <section className="py-20 bg-brand-gradient-dark">
         <div className="max-w-3xl mx-auto px-4 text-center">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
             ¿Listo para tomar el control de tu inventario?

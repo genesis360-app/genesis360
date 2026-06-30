@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-29] deploy | 💵 v1.96.0 EN PROD — Cash-out de saldo a favor en efectivo (mig 246) + marco legal devoluciones
+
+PR #252 dev→main merged → release `v1.96.0` → Vercel (PROD `4a510c6d`). **PROD = DEV = v1.96.0** (migs 001-**246**). **mig 246 aplicada en DEV + PROD** (antes del merge, regla DDL aditivo). typecheck + build + **813 unit** verdes.
+
+**💵 Feature: devolver un saldo a favor (`cliente_creditos`) en efectivo.** Cierra el gap detectado en la investigación del flujo `cliente_creditos`: hasta ahora un saldo a favor SOLO se consumía aplicándolo a una venta (`consumo_venta`); no había forma de **retirarlo en efectivo asentado** (el cajero lo haría "a mano" → descalce).
+
+**🛑 REGLA #0 (toca caja + cliente_creditos) — guard server-side + atómico:**
+- **mig 246** `devolver_saldo_a_favor(p_cliente_id, p_monto, p_sesion_id, p_nota)` **SECURITY INVOKER**: valida monto>0 y ≤ saldo a favor (SUM), sesión de caja **abierta+tenant**, **no caja en negativo (CAJ-18)** (efectivo de la sesión ≥ monto, espeja `cajaSaldo.ts`); asienta egreso de efectivo en caja (afecta arqueo) + `cliente_creditos` negativo (origen `retiro_efectivo`), en una transacción.
+- **Verificado en DB (DEV + PROD)** por bloque transaccional con ROLLBACK: happy path ($25000→devolver $2000→saldo $23000, egreso+crédito negativo OK), guard over-saldo (bloquea $9.999.999), guard caja insuficiente (bloquea $18000 con efectivo $17080). Nada persistió.
+- **🔐 Seguridad — hallazgo:** la función nacía con `anon_exec=true`. **Supabase tiene DEFAULT PRIVILEGES que otorgan EXECUTE a `anon` DIRECTO** sobre funciones nuevas de `public` → `REVOKE FROM PUBLIC` NO alcanza; hay que `REVOKE EXECUTE ... FROM anon` explícito (aplicado DEV+PROD → `anon_exec=false`). La función es SECURITY INVOKER (RLS ya bloqueaba a anon: sin tenant → "Cliente no encontrado"), esto es least-privilege extra. **⚠️ Los RPC de plata existentes (marcar_incobrable/registrar_pago_oc/marcar_envios_pagados) TAMBIÉN tienen `anon_exec=true`** (mismo default-privileges; son SECURITY DEFINER con guards internos) → follow-up de hardening: revocar anon de todos.
+- **Frontend:** el badge "🎁 Saldo a favor" de `ClientesPage` pasa a botón "💵 Devolver" → modal (monto + caja operativa abierta, excluye bóveda) → RPC + audit log. Lib pura `src/lib/saldoFavor.ts` (espejo de los guards) + 6 unit (813 total).
+
+**+ 📋 Marco legal AR de devoluciones documentado** (`wiki/features/devoluciones.md` sección "Marco legal", a partir de búsqueda web Ley 24.240 + CABA 3281): **3 casos con derecho a DINERO** (producto fallado/garantía legal 6m Art. 17; arrepentimiento compra online/distancia 10 días corridos Art. 34; en CABA cambio de opinión presencial = el comercio puede dar vale O efectivo a su elección, vale ≥90 días hábiles) vs **cambio de opinión presencial fuera de CABA = sin obligación nacional** (crédito/cambio es política propia). Recomendaciones: clasificar el motivo (fallado/online → default dinero), documentar la libre elección del crédito, no vencimiento corto del vale (cláusula abusiva Art. 37). **No es asesoramiento legal — validar con abogado; varía por provincia.**
+
+---
+
 ## [2026-06-26] deploy | 🔎 v1.95.0 EN PROD — Auditoría report-panels (RRHH/Compras/Envíos) + RRHH costo laboral bruto + "Ver más" en Detalle por venta
 
 PR #251 dev→main merged → release `v1.95.0` → Vercel (PROD `b4aff7f8`). **PROD = DEV = v1.95.0** (migs 001-245, frontend-only sin migraciones). typecheck + build + **807 unit** verdes.

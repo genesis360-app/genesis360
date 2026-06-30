@@ -311,7 +311,7 @@ export default function UsuariosPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="space-y-6">
       {showLimitModal && limits && (
         <PlanLimitModal tipo="usuario" limits={limits} onClose={() => setShowLimitModal(false)} />
       )}
@@ -412,11 +412,10 @@ export default function UsuariosPage() {
           const count = r === 'TODOS' ? (usuarios as any[]).length : (usuarios as any[]).filter((u: any) => u.rol === r).length
           return (
             <button key={r} onClick={() => setFilterRol(r)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium border-2 transition-all
+              className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
                 ${filterRol === r
-                  ? 'border-accent bg-blue-50 dark:bg-blue-900/20 text-accent'
-                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-                }`}>
+                  ? 'bg-accent text-white border-accent shadow-sm'
+                  : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
               {r === 'TODOS' ? 'Todos' : cfg!.label} ({count})
             </button>
           )

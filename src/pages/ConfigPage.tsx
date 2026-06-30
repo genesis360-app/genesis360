@@ -2342,7 +2342,7 @@ export default function ConfigPage() {
               {group.items.map(({ id, label, icon: Icon, placeholder }) => (
                 <button key={id} onClick={() => setTab(id)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left
-                    ${tab === id ? 'bg-accent/10 text-accent' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 hover:text-gray-800 dark:hover:text-gray-200'}
+                    ${tab === id ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/10 hover:text-accent dark:hover:text-accent'}
                     ${placeholder ? 'opacity-60' : ''}`}>
                   <Icon size={15} className="flex-shrink-0" />
                   <span className="flex-1">{label}</span>

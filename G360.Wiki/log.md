@@ -6,6 +6,64 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-30] update | 🏁 Smoke de go-live / primer cliente — paridad DEV↔PROD a mig 248 + runtime e2e (TODO VERDE)
+
+Re-corrida del UAT `tests/specs/uat-primer-uso.plan.md` (capas A paridad + B smoke) a **mig 248, código v1.99.0**, antes de habilitar el primer cliente real. La causa-raíz histórica de los bugs de primer-uso es el **drift DEV≠PROD** (bitió 3 veces) → se re-verifica SIEMPRE antes de un alta.
+
+**A. Paridad DEV↔PROD RE-CONFIRMADA a mig 248 — IDÉNTICA.** Las migs 234-248 (incl. 247/248 de hoy) se aplicaron idénticas a ambos entornos. Hash global por categoría, **idéntico DEV == PROD**:
+- CHECKs: **97** · `1a1ebbfe…` · policies RLS: **153** · `a382c545…` · columnas: **1816** · `870b81c1…` · triggers: **53** · `a24a4b68…` · funciones: **93** · `140ef020…`.
+- ⇒ PAR-01..05 verdes. La seed fn entra en ese `fn_hash` idéntico → PU-03 (seed de alta) probado por equivalencia. **Cero drift introducido por las migs nuevas.**
+
+**B. Smoke runtime e2e contra DEV (código v1.99.0) — TODO VERDE.**
+- `26_primer_uso_smoke` **4/4** (PU-16 cliente con notas, PU-09 venta tarjeta→`ingreso_informativo`, PU-12 reserva con seña→`ingreso_reserva`; PU-11 Caja Fuerte = fixme DB-validado) + `19_flujo_venta_mutante` (PU-08 venta efectivo) + `20_caja_apertura_cierre` (PU-05 abrir / PU-14 arqueo+cierre). Los flujos que tenían los landmines del drift pasan en runtime.
+- **Confirma que la auto-sugerencia de crédito de v1.98.0 NO regresó venta/reserva.**
+
+**Sin regresión de v1.99.0 en el alta:** verificado en PROD (ROLLBACK) que el trigger `guard_subscription_status_active` (mig 247) **no dispara** en el INSERT 'trial' del onboarding ni en updates normales de tenant → alta y operación intactas.
+
+**⇒ Go-live técnicamente listo:** paridad garantizada + flujos operativos verdes en runtime. **Único pendiente = el alta runtime real (PU-01/02, confirmar email)** — acción de GO con un email real (el código del onboarding ya está code-auditado). Detalle en el plan, sección D (re-validación 2026-06-30).
+
+---
+
+## [2026-06-30] deploy | 🛟 v1.100.0 EN PROD — Soporte server-side (tickets a soporte@) + 📧 email rebrandeado + 🌐 fix link Landing
+
+PR dev→main → release `v1.100.0` → Vercel (PROD) + EF `send-email` rebrandeada (DEV v23 + PROD v26). **PROD = DEV = v1.100.0**. Frontend + EF, sin migración. typecheck + build + **823 unit** verdes.
+
+Validación tipo-UAT de **soporte y correos** (pedido GO) + branding de emails.
+
+**(1) 🛟 Tickets de soporte server-side.** El "Reportar un problema" del **Centro de Ayuda** (`AyudaModal`) mandaba por `mailto:soporte@genesis360.pro` → abría el cliente de correo LOCAL del usuario (no confiable; si no hay mail client configurado, no pasa nada y el toast igual decía "abrimos tu cliente"). Ahora invoca `send-email` (`type:'bug_report'`) a **`soporte@genesis360.pro`**, con user/tenant de `useAuthStore`, botón "Enviando…" y toast de error si falla.
+- 🐞 **Bug del Asistente IA arreglado:** `AiAssistant` invocaba `send-email` con el campo **`tipo`** cuando la EF destructura **`type`** → la EF tiraba `Tipo de email desconocido: undefined` (500), el mail **nunca se enviaba**, pero el `catch {}` silencioso igual marcaba `reportSent(true)` (el usuario creía que se envió). Ahora `type` + destino `soporte@` (antes `gaston.otranto@gmail.com` hardcodeado).
+
+**(2) 📧 Email rebrandeado (`send-email` templateBase).** Usaba navy `#1E3A5F` + tagline "El cerebro de tu negocio" → ahora **degradé de marca violeta→cian** (`#7B00FF`→`#06B6D4`, con `background:#7B00FF` de fallback para Outlook que no renderiza gradientes) + **logo** (`https://www.genesis360.pro/android-chrome-192x192.png`, URL directa 200 — `genesis360.pro` daba 308) + tagline correcta "El inventario inteligente para tu negocio" + `.btn`/`.tag`/`.total-row` en violeta. `bugReportTemplate` ahora genérico ("Nuevo reporte de soporte" + "Detalle:", ya no "asistente IA"/"Conversación").
+- **Encoding:** la plantilla YA tenía `<meta charset="UTF-8">` y los acentos viven en el source UTF-8 de la EF → **el app real renderiza bien acentos/emojis**. Los `�`/`?` que aparecieron en los tests eran **mangling del shell de Windows** al pasar UTF-8 inline por `curl -d`; con payload desde archivo (`--data-binary @file`) se ven perfectos. No había bug de encoding que arreglar.
+
+**(3) 🌐 Fix link del Landing.** Validados TODOS los links (anchors `#features`/`#precios`/`#faq` → secciones existen; rutas `/login`/`/onboarding` → existen; mailto footer OK). **Bug:** el botón "A consultar" del plan Enterprise usaba `<Link to={\`mailto:${BRAND.email}\`}>` de React Router → lo resolvía como ruta interna (`/mailto…` → catch-all → rebote al home, NO abría el correo) → pasado a `<a href="mailto:…">`. Guard nuevo `tests/unit/landingLinks.test.ts` (4 tests estáticos: anchors con sección, `<Link>` a rutas existentes, ningún mailto en `<Link>`, mailto a `@genesis360.pro`).
+
+**📧 Correos del proyecto (documentado en `00_cierre_uat.md`):**
+- `noreply@genesis360.pro` — FROM de TODOS los emails de la app (Resend, dominio verificado; envío testeado OK).
+- **`soporte@genesis360.pro`** — soporte. Recibe vía **Cloudflare Email Routing**, reenvía al **Google Group `genesis360-soporte@googlegroups.com`** (GO + socio; membresía manejada en el grupo, **fuera del código** — el código manda siempre a `soporte@`). El grupo ya acepta externos (test de Resend al grupo llegó OK). **🟠 Pendiente operativo de GO (no código):** verificar el grupo como Destination Address en Cloudflare + editar la regla `soporte@`→grupo. Cloudflare reenvía 1 regla→1 destino → el fan-out a varios se hace con el grupo.
+- `hola@genesis360.pro` — `BRAND.email`, contacto del Landing. Cloudflare → gmail de GO (ACTIVE).
+
+**Decisión de arquitectura (GO):** el código manda a UN "buzón de rol" fijo (`soporte@`); quién lo recibe se maneja afuera (Google Group) → cuando dejen de mirar los tickets, se cambia la membresía del grupo sin tocar código.
+
+---
+
+## [2026-06-30] update | 🔎 Auditoría display REGLA #0 — exports PDF + ConfigPage (SIN bugs, cierra la auditoría de display)
+
+Code-audit (sin cambios de código — nada que arreglar) de los 7 generadores de PDF (`src/lib/*PDF.ts`) y de `ConfigPage.tsx` — el último ítem de la auditoría de display REGLA #0 iniciada en v1.91.0. **Conclusión: 0 bugs REGLA #0.**
+
+- **`facturasPDF.ts` (fiscal, el más crítico):** math sólida — neto = `subtotal/(1+alic/100)`, IVA = `subtotal−neto`, "P. Unit. Neto" usa `subtotal/cantidad` (**precio efectivo post-descuento**, no `precio_unitario`), `totalNeto = total − ΣIVA`, QR RG 4291 con `data.total`, Ley 27.743 en B con IVA contenido. Los llamadores (FacturacionPage/VentasPage `buildFacturaPDFData*`) normalizan `Number(i.alicuota_iva ?? 21)` (nullish → preserva **Exento=0**, evita el bug numeric-string) y `Number(i.subtotal)`; `total = venta.total + envío` y los items (incl. línea de envío) suman a ese total (G0.6 prorratea el descuento global en `venta_items`). La NC reusa el mismo builder (devolución al precio efectivo, v1.89).
+- **`estadoCuentaPDF.ts` (CC):** footer `Total adeudado = Σ(saldo+interés)` = suma exacta de la columna "Saldo" mostrada; datos del RPC `cliente_cc_estado` (ya auditado).
+- **`ocPDF.ts` (compras):** `totalOC = Σ(cant×precio) + envío/aduana/comisión/otros`, `Number()` coerciona, anticipo/cuotas vía `comprasPago` (testeado). OC no es comprobante fiscal para el comprador → sin IVA es correcto.
+- **`reciboSueldoPDF.ts` (nómina):** display fiel de `totalHaberes/totalDescuentos/neto` que computa `rrhhNomina` (testeado).
+- **`presupuestoPDF.ts`:** no-fiscal (lo declara el pie); P.Unit lista + %Dto + Importe neto + TOTAL.
+- **`remitoPDF.ts` / `etiquetasEnvioPDF.ts`:** sin plata/fiscal (cantidades/direcciones) → fuera de alcance REGLA #0.
+- **`ConfigPage.tsx` (6208 líneas):** es **persistencia de config**, no computa fiscal/plata; guarda los knobs (condicion_iva_emisor, cuit, umbral_factura_b, %s, umbrales) fielmente — los leen módulos ya auditados. El preset de combo "2da unidad" (`X% → X/2` efectivo sobre el par) es conveniencia que pre-llena el form; la math real del combo vive en `calcularDescuentoComboMulti` (testeado).
+- **Observación menor (no bug):** `umbral_factura_b: parseFloat(x) || 68305.16` no deja setear exactamente 0 (revierte al default AFIP) — benigno (0 no es un umbral útil; el default ya es el valor correcto).
+
+Patrón confirmado (igual que v1.91.0/v1.95.0): las superficies de **display/persistencia** son fieles; la math de plata/fiscal vive en libs ya testeadas. Doc en `tests/specs/cobertura/00_cierre_uat.md`. **La superficie fiscal-crítica de display queda 100% cerrada** (Dashboard/Métricas/Rentabilidad/Caja/Libro IVA/Billing/report-panels/exports PDF/ConfigPage). Lo único que resta de "Capa C" es el render visual (impresión/email), no los números.
+
+---
+
 ## [2026-06-30] deploy | 🔐 v1.99.0 EN PROD — Hardening billing (activación verificada) + least-privilege anon en RPCs de plata
 
 PR dev→main → release `v1.99.0` → Vercel (PROD) + EF `mp-verificar-suscripcion` (DEV+PROD) + migs 247-248 (DEV+PROD). **PROD = DEV = v1.99.0**. typecheck + build + **819 unit** verdes.

@@ -43,6 +43,45 @@
 - **Email de factura** al cliente (`send-email`, fire-and-forget) — verificar entrega.
 - **OC PDF / texto WhatsApp** (`ocPDF.ts`) — texto/total unit-cubiertos; PDF visual manual.
 
+> **✅ Code-audit de la math de los exports PDF + ConfigPage (2026-06-30) — SIN bugs REGLA #0.**
+> Barrido del código de los 7 generadores de PDF y de ConfigPage (último ítem de la auditoría de display v1.91.0):
+> - **`facturasPDF.ts` (fiscal):** neto = `subtotal/(1+alic/100)`, IVA = `subtotal − neto`, P.Unit. Neto usa
+>   `subtotal/cantidad` (**precio efectivo post-descuento**, NO `precio_unitario`), `totalNeto = total − ΣIVA`,
+>   QR RG 4291 con `data.total`, Ley 27.743 en B con IVA contenido. Los llamadores (FacturacionPage/VentasPage)
+>   normalizan `Number(alicuota_iva ?? 21)` (preserva Exento=0, evita el bug numeric-string) y `Number(subtotal)`;
+>   `total = venta.total + envío`, los items suman a ese total (G0.6 prorratea el descuento en `venta_items`). **OK.**
+> - **`estadoCuentaPDF.ts` (CC):** footer `Total adeudado = Σ(saldo+interés)` = suma exacta de la columna mostrada;
+>   datos del RPC `cliente_cc_estado` (ya auditado). **OK.**
+> - **`ocPDF.ts` (compras):** `totalOC = Σ(cant×precio) + envío/aduana/comisión/otros`, `Number()` coerciona,
+>   anticipo/cuotas vía `comprasPago` (testeado). OC no es fiscal para el comprador → sin IVA correcto. **OK.**
+> - **`reciboSueldoPDF.ts` (nómina):** display fiel de `totalHaberes/totalDescuentos/neto` de `rrhhNomina` (testeado). **OK.**
+> - **`presupuestoPDF.ts`:** no-fiscal (lo dice el pie); P.Unit lista + %Dto + Importe neto + TOTAL. **OK.**
+> - **`remitoPDF.ts` / `etiquetasEnvioPDF.ts`:** sin plata/fiscal (cantidades/direcciones) → fuera de alcance.
+> - **`ConfigPage.tsx`:** persistencia de config (no computa fiscal/plata); guarda los knobs (condicion_iva_emisor,
+>   cuit, umbral_factura_b, %s) fielmente; otros módulos ya auditados los leen. El preset de combo "2da unidad"
+>   (`X% → X/2`) es conveniencia que pre-llena el form; la math real del combo está en `calcularDescuentoComboMulti`.
+> - **Observación menor (no bug):** `umbral_factura_b: parseFloat(x) || 68305.16` no deja setear 0 (revierte al
+>   default AFIP) — benigno (0 no es un umbral útil; el default ya es el valor correcto).
+> **⇒ Cierra el último ítem de la auditoría de display REGLA #0. Lo que queda de "Capa C" es solo el RENDER visual
+> (impresión/email), no los números.**
+
+### 🌐 Validación de la superficie pública — Landing + Soporte/Email (2026-06-30, pedido GO)
+- **Landing — links (todos validados):** anchors `#features`/`#precios`/`#faq` → sus 3 secciones existen ✅;
+  rutas `/login` y `/onboarding` → existen en App.tsx ✅; "Contacto" footer = `<a href="mailto:hola@genesis360.pro">` ✅.
+  **🐞 Bug encontrado y arreglado:** el botón **"A consultar" del plan Enterprise** usaba `<Link to={mailto}>`
+  de React Router → lo resolvía como ruta interna (`/mailto…` → catch-all → rebote al home, NO abría el correo).
+  Pasado a `<a href="mailto:…">` real. **Guard automatizado:** `tests/unit/landingLinks.test.ts` (4 tests, estático
+  sobre el source) valida que todo anchor tenga sección, toda ruta exista y **ningún mailto use `<Link>`**.
+- **Correos del proyecto:** `noreply@genesis360.pro` (FROM/remitente de todo, Resend, dominio verificado — envío
+  testeado OK 200) · `hola@genesis360.pro` (`BRAND.email`, contacto del landing; **ruta Cloudflare ACTIVE** → reenvía
+  a gaston.otranto@gmail.com) · `soporte@genesis360.pro` (soporte; **falta crear la regla de routing en Cloudflare**
+  → hoy se dropea). Recepción = Cloudflare Email Routing (reenvío, no buzón).
+- **🐞 Soporte — 2 hallazgos (pendiente de wiring server-side a soporte@):** (1) el "Reportar un problema" del Centro
+  de Ayuda (`AyudaModal`) usa `mailto:` → depende del mail-client local del usuario (poco confiable); (2) el reporte
+  del **Asistente IA** (`AiAssistant`) invoca `send-email` con el campo `tipo` cuando la EF espera `type` → la EF tira
+  500, el mail **nunca se manda** y el UI igual dice "enviado" (falla silenciosa); además apunta a un gmail hardcodeado.
+  **Fix propuesto:** ambos → `send-email` `type:'bug_report'` a `soporte@genesis360.pro` (una vez creada la regla).
+
 ### 🟠/🟢 Menores NO-REGLA#0 (bajo riesgo, gating UX / labels)
 - `oc_numeracion` (etiqueta `S-OC-0001` por valor tenant/sucursal/proveedor), `recepcion_remito_obligatorio`
   (adjuntar remito), badge alerta anticipo-OC (`gastos_dias_alerta_anticipo_oc`), flags UX de envío

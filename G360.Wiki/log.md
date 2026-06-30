@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-30] update | 🏁 Smoke de go-live / primer cliente — paridad DEV↔PROD a mig 248 + runtime e2e (TODO VERDE)
+
+Re-corrida del UAT `tests/specs/uat-primer-uso.plan.md` (capas A paridad + B smoke) a **mig 248, código v1.99.0**, antes de habilitar el primer cliente real. La causa-raíz histórica de los bugs de primer-uso es el **drift DEV≠PROD** (bitió 3 veces) → se re-verifica SIEMPRE antes de un alta.
+
+**A. Paridad DEV↔PROD RE-CONFIRMADA a mig 248 — IDÉNTICA.** Las migs 234-248 (incl. 247/248 de hoy) se aplicaron idénticas a ambos entornos. Hash global por categoría, **idéntico DEV == PROD**:
+- CHECKs: **97** · `1a1ebbfe…` · policies RLS: **153** · `a382c545…` · columnas: **1816** · `870b81c1…` · triggers: **53** · `a24a4b68…` · funciones: **93** · `140ef020…`.
+- ⇒ PAR-01..05 verdes. La seed fn entra en ese `fn_hash` idéntico → PU-03 (seed de alta) probado por equivalencia. **Cero drift introducido por las migs nuevas.**
+
+**B. Smoke runtime e2e contra DEV (código v1.99.0) — TODO VERDE.**
+- `26_primer_uso_smoke` **4/4** (PU-16 cliente con notas, PU-09 venta tarjeta→`ingreso_informativo`, PU-12 reserva con seña→`ingreso_reserva`; PU-11 Caja Fuerte = fixme DB-validado) + `19_flujo_venta_mutante` (PU-08 venta efectivo) + `20_caja_apertura_cierre` (PU-05 abrir / PU-14 arqueo+cierre). Los flujos que tenían los landmines del drift pasan en runtime.
+- **Confirma que la auto-sugerencia de crédito de v1.98.0 NO regresó venta/reserva.**
+
+**Sin regresión de v1.99.0 en el alta:** verificado en PROD (ROLLBACK) que el trigger `guard_subscription_status_active` (mig 247) **no dispara** en el INSERT 'trial' del onboarding ni en updates normales de tenant → alta y operación intactas.
+
+**⇒ Go-live técnicamente listo:** paridad garantizada + flujos operativos verdes en runtime. **Único pendiente = el alta runtime real (PU-01/02, confirmar email)** — acción de GO con un email real (el código del onboarding ya está code-auditado). Detalle en el plan, sección D (re-validación 2026-06-30).
+
+---
+
 ## [2026-06-30] update | 🔎 Auditoría display REGLA #0 — exports PDF + ConfigPage (SIN bugs, cierra la auditoría de display)
 
 Code-audit (sin cambios de código — nada que arreglar) de los 7 generadores de PDF (`src/lib/*PDF.ts`) y de `ConfigPage.tsx` — el último ítem de la auditoría de display REGLA #0 iniciada en v1.91.0. **Conclusión: 0 bugs REGLA #0.**

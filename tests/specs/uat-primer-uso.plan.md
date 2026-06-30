@@ -124,3 +124,19 @@ las dos vías de alta. Hacer las primeras acciones **sin entrar a Configuración
 - ⏳ **Pendiente del plan:** ejecutar el **smoke runtime PU-04→PU-17** (alta real + abrir caja + venta
   efectivo/no-efectivo + gasto + Caja Fuerte + reserva + devolución + cierre) — al final del desarrollo,
   vía la suite e2e (incl. `26_primer_uso_smoke`) o click-through manual en PROD.
+
+### 🟢 RE-VALIDACIÓN go-live 2026-06-30 (a mig 248, código v1.99.0) — TODO VERDE
+- **✅ Paridad DEV↔PROD RE-CONFIRMADA a mig 248** (las migs 234-248, incl. 247/248, se aplicaron idénticas a
+  ambos). Hash global por categoría, **idéntico DEV == PROD**: CHECKs **97** (`1a1ebbfe…`), policies RLS **153**
+  (`a382c545…`), columnas **1816** (`870b81c1…`), triggers **53** (`a24a4b68…`), funciones **93** (`140ef020…`).
+  ⇒ PAR-01..05 verdes. La seed fn entra en ese `fn_hash` idéntico ⇒ PU-03 (seed) probado por equivalencia.
+- **✅ Smoke runtime e2e contra DEV (código v1.99.0)** — `26_primer_uso_smoke` **4/4** (PU-16 cliente con notas,
+  PU-09 venta tarjeta→`ingreso_informativo`, PU-12 reserva con seña→`ingreso_reserva`; PU-11 skip fixme) +
+  `19_flujo_venta_mutante` (PU-08 venta efectivo) + `20_caja_apertura_cierre` (PU-05 abrir / PU-14 arqueo+cierre).
+  **Confirma que la auto-sugerencia de crédito de v1.98.0 NO regresó venta/reserva.**
+- **✅ Sin regresión de v1.99.0 en el alta:** verificado en PROD (ROLLBACK) que el trigger `guard_subscription_status_active`
+  (mig 247, `BEFORE UPDATE ... WHEN subscription_status→'active'`) **no dispara** en el INSERT 'trial' del onboarding
+  ni en updates normales de tenant (cambio de nombre, trial→trial). El alta y la operación no se ven afectadas.
+- **Conclusión:** la causa-raíz (drift DEV≠PROD) está descartada a mig 248 y los flujos operativos que tenían los
+  landmines (`ingreso_informativo`/`ingreso_reserva`/`ingreso_traspaso`, `ventas.estado='devuelta'`, `clientes.notas`)
+  pasan en runtime. **Falta solo el alta runtime real (PU-01/02, confirmar email) — acción de GO con un email real.**

@@ -34,6 +34,7 @@ import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { montoSugeridoCredito } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
 import toast from 'react-hot-toast'
 
@@ -284,6 +285,8 @@ export default function VentasPage() {
   const [clienteTelefono, setClienteTelefono] = useState('')
   const [clienteCCEnabled, setClienteCCEnabled] = useState(false)
   const [clienteCredito, setClienteCredito] = useState(0)  // E2 — saldo a favor del cliente (cliente_creditos)
+  // E2 — auto-sugerencia de crédito a favor como medio de pago (último monto auto-aplicado por cliente)
+  const creditoAutoRef = useRef<{ cliente: string; monto: string } | null>(null)
   // B5 — cobranza de deuda CC desde el POS
   const [clienteCCDeuda, setClienteCCDeuda] = useState(0)
   const [cobrarCCOpen, setCobrarCCOpen] = useState(false)
@@ -672,7 +675,11 @@ export default function VentasPage() {
 
   // E2 — saldo a favor del cliente seleccionado (cliente_creditos)
   useEffect(() => {
-    if (!clienteId || !tenant?.id) { setClienteCredito(0); return }
+    // Cambió el cliente → resetear el saldo (evita aplicar el crédito del cliente
+    // anterior mientras carga el del nuevo) y habilitar una nueva auto-sugerencia.
+    creditoAutoRef.current = null
+    setClienteCredito(0)
+    if (!clienteId || !tenant?.id) return
     let cancelado = false
     supabase.from('cliente_creditos').select('monto').eq('tenant_id', tenant.id).eq('cliente_id', clienteId)
       .then(({ data }) => {
@@ -2347,6 +2354,34 @@ export default function VentasPage() {
   const modoCC = montoCC > 0
   // E2: crédito a favor aplicado como pago (cuenta como pagado, NO entra a caja)
   const montoCredito = mediosPago.filter(m => m.tipo === 'Crédito a favor').reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0)
+
+  // E2 — auto-sugerir el crédito a favor como medio de pago cuando el cliente tiene saldo.
+  // Pre-llena "Crédito a favor" por min(saldo, total) sin pisar lo que el usuario haya cargado:
+  // solo actúa si los medios están vírgenes o si la única línea es la que auto-aplicamos antes
+  // (re-clampa al cambiar el total). Nunca supera el saldo → respeta el guard de `registrarVenta`.
+  // Es solo una sugerencia de UI; la consumición real y su validación siguen server-aware.
+  useEffect(() => {
+    if (!clienteId || clienteCredito <= 0 || modoVenta === 'pendiente' || totalConEnvio <= 0.5) return
+    const sugerido = montoSugeridoCredito(clienteCredito, totalConEnvio)
+    if (sugerido <= 0) return
+    const nuevo = String(sugerido)
+    const auto = creditoAutoRef.current
+    const esPristino = mediosPago.length === 1 && !mediosPago[0].tipo && !mediosPago[0].monto
+    const soloCreditoAuto = !!auto && auto.cliente === clienteId
+      && mediosPago.length === 1
+      && mediosPago[0].tipo === 'Crédito a favor'
+      && mediosPago[0].monto === auto.monto
+    if (!esPristino && !soloCreditoAuto) return   // el usuario tomó el control → no intervenir
+    if (soloCreditoAuto && auto!.monto === nuevo) return   // ya está aplicado con el monto correcto
+    const primeraVez = !auto
+    setMediosPago([{ tipo: 'Crédito a favor', monto: nuevo }])
+    setCommittedAsignado(sugerido)
+    creditoAutoRef.current = { cliente: clienteId, monto: nuevo }
+    if (primeraVez) {
+      const resto = Math.round((clienteCredito - sugerido) * 100) / 100
+      toast(`Saldo a favor aplicado: $${sugerido.toLocaleString('es-AR', { maximumFractionDigits: 0 })}${resto > 0.5 ? ` · quedan $${resto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} a favor` : ''}`, { icon: '🎁' })
+    }
+  }, [clienteId, clienteCredito, totalConEnvio, modoVenta, mediosPago])
 
   const registrarVenta = async (estado: 'pendiente' | 'reservada' | 'despachada') => {
     if (savingRef.current) return   // reentrada (doble-click/Enter+click) — ya hay una venta en curso

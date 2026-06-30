@@ -26,3 +26,18 @@ export function validarRetiroSaldoFavor(
   }
   return { ok: true }
 }
+
+/**
+ * Monto de crédito a favor a auto-sugerir como medio de pago en el POS.
+ * = min(saldo disponible, total a cobrar), nunca negativo.
+ *  - si el cliente gasta MENOS que su crédito → el resto queda a favor (el ledger
+ *    sólo consume lo efectivamente aplicado, no hace cash-out).
+ *  - si gasta MÁS → el faltante se cubre con otro medio (split normal).
+ * Nunca supera el saldo disponible, así que respeta el guard server-aware de
+ * `registrarVenta` (no se puede aplicar más crédito del que el cliente tiene).
+ */
+export function montoSugeridoCredito(saldoDisponible: number, totalACobrar: number): number {
+  const saldo = Math.max(0, Number(saldoDisponible) || 0)
+  const total = Math.max(0, Number(totalACobrar) || 0)
+  return Math.round(Math.min(saldo, total) * 100) / 100
+}

@@ -44,7 +44,7 @@ export default function SuscripcionPage() {
     if (!tenant) return
     setLoading('verificando')
     try {
-      // Consultar estado actual del tenant (el webhook MP puede haber actuado ya)
+      // 1. El webhook MP puede haber activado ya la suscripción.
       const { data } = await supabase.from('tenants').select('subscription_status').eq('id', tenant.id).single()
       if (data?.subscription_status === 'active') {
         toast.success('¡Suscripción activada!')
@@ -52,18 +52,23 @@ export default function SuscripcionPage() {
         window.location.href = '/dashboard'
         return
       }
-      // Fallback: activar manualmente con el preapproval_id del redirect
+      // 2. Respaldo: verificación SERVER-SIDE contra MP (NO se activa desde el
+      //    cliente; la EF consulta el preapproval con el token de la plataforma y
+      //    solo activa si está autorizado y pertenece a este tenant).
       if (preapprovalId) {
-        await supabase.from('tenants').update({
-          subscription_status: 'active',
-          mp_subscription_id: preapprovalId,
-        }).eq('id', tenant.id)
-        toast.success('¡Suscripción activada!')
-        window.location.href = '/dashboard'
-      } else {
-        toast('Tu pago está siendo procesado. En breve recibirás confirmación.', { icon: '⏳' })
-        window.location.href = '/dashboard'
+        const { data: verif } = await supabase.functions.invoke('mp-verificar-suscripcion', {
+          body: { preapproval_id: preapprovalId },
+        })
+        if (verif?.activated) {
+          toast.success('¡Suscripción activada!')
+          if (user?.id) await loadUserData(user.id)
+          window.location.href = '/dashboard'
+          return
+        }
       }
+      // 3. Aún no confirmado por MP → queda procesando (el webhook lo activará).
+      toast('Tu pago está siendo procesado. En breve recibirás confirmación.', { icon: '⏳' })
+      window.location.href = '/dashboard'
     } catch {
       toast.error('Error al verificar el pago. Contactá soporte.')
       setLoading(null)

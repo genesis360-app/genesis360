@@ -6,6 +6,26 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-30] deploy | 🔐 v1.99.0 EN PROD — Hardening billing (activación verificada) + least-privilege anon en RPCs de plata
+
+PR dev→main → release `v1.99.0` → Vercel (PROD) + EF `mp-verificar-suscripcion` (DEV+PROD) + migs 247-248 (DEV+PROD). **PROD = DEV = v1.99.0**. typecheck + build + **819 unit** verdes.
+
+Dos hardenings de seguridad (REGLA #0, del barrido pendiente #4/#5):
+
+**(4) 🔐 Activación de suscripción verificada server-side.** **Agujero:** el fallback de `SuscripcionPage.handleVerificarPago` activaba la suscripción con `UPDATE tenants SET subscription_status='active'` **directo desde el navegador** a partir del redirect de MP (`?status=approved&preapproval_id=X`), **sin verificar nada** → cualquier usuario podía auto-activarse el plan pago (o bypassear la UI con un PATCH directo a PostgREST, ya que RLS dejaba al DUEÑO escribir esa columna).
+- **EF nueva `mp-verificar-suscripcion`** (verify_jwt): autentica al usuario (anon key + auth header → `users.tenant_id`), consulta `GET /preapproval/{id}` en MP con `MP_ACCESS_TOKEN`, y activa (service role) **solo si** `status==='authorized'` Y `external_reference===tenant del caller`. **Prorrateo:** si el tenant tenía otro `mp_subscription_id`, lo cancela en MP (`PUT {status:cancelled}`, best-effort) antes de quedarse con el nuevo → evita doble cobro al cambiar de plan. Espeja la lógica del webhook `mp-webhook` (que sigue siendo el camino autoritativo).
+- **Cliente:** `handleVerificarPago` ahora (1) chequea si el webhook ya activó, (2) si no, llama a la EF, (3) si MP aún no confirmó → "procesando". Ya **no** hace el UPDATE directo.
+- **Guard server-side (mig 247):** trigger `BEFORE UPDATE ON tenants` (`guard_subscription_status_active`) que bloquea pasar `subscription_status` a `'active'` salvo `auth.role()='service_role'` (webhook/EF) o `get_user_role()='ADMIN'` (staff Genesis360 vía AdminPage; los roles de tenant son DUEÑO/SUPERVISOR/… — no pueden auto-asignarse ADMIN). Otras transiciones (cancelled/trial) sin tocar → cancelar desde "Mi cuenta" sigue OK.
+- **Verificado por impersonación DB (DEV, ROLLBACK):** DUEÑO autenticado→active **BLOQUEADO** (con el mensaje del guard); service_role→active **OK**; DUEÑO→cancelled **OK**.
+- **🟠 Pendiente (bloqueado por terceros):** e2e real del cobro MP (seller OAuth + sandbox). La lógica ya está verificada server-side; PROD hoy tiene 0 suscripciones MP conectadas.
+
+**(5) 🔐 Least-privilege anon en RPCs de plata (mig 248).** Por los DEFAULT PRIVILEGES de Supabase, varias funciones SECURITY DEFINER quedaban con EXECUTE para `anon`. Auditada toda la superficie (`pg_proc` + `has_function_privilege('anon',…)`) para distinguir las que SÍ son anon a propósito de las que no.
+- **Revocadas de anon:** `marcar_incobrable`, `registrar_pago_oc`, `marcar_envios_pagados`, `set_clave_maestra` (mantienen authenticated+service_role; las llaman ClientesPage/GastosPage/EnviosPage/ConfigPage) + sweeps cross-tenant `liberar_reservas_vencidas_all`/`recalcular_intereses_cc_all` (solo service_role; los llama `cron-sweeps`).
+- **NO tocadas (a propósito):** funciones públicas por token/QR (`get_*_by_token`, `fichar_qr`, `generar/verificar_otp_envio`, etc.) y **helpers usados dentro de policies RLS** (`get_user_tenant_id`/`get_user_role`/`is_admin`/`auth_user_sucursal`/… — revocarles anon **rompería** el RLS de tablas que anon evalúa) y los trigger-guards (`fn_*_guard`, no chequean EXECUTE).
+- **Verificado:** anon=false en las 6; authenticated intacto en las 4 del cliente; sweeps solo service_role.
+
+---
+
 ## [2026-06-30] deploy | 🎁 v1.98.0 EN PROD — POS auto-sugiere crédito a favor + 🎨 fondo de marca unificado
 
 PR dev→main → release `v1.98.0` → Vercel (PROD). **PROD = DEV = v1.98.0**. Frontend-only, sin migración. typecheck + build + **819 unit** verdes.

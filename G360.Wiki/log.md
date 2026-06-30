@@ -6,6 +6,23 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-30] update | 🔎 Auditoría display REGLA #0 — exports PDF + ConfigPage (SIN bugs, cierra la auditoría de display)
+
+Code-audit (sin cambios de código — nada que arreglar) de los 7 generadores de PDF (`src/lib/*PDF.ts`) y de `ConfigPage.tsx` — el último ítem de la auditoría de display REGLA #0 iniciada en v1.91.0. **Conclusión: 0 bugs REGLA #0.**
+
+- **`facturasPDF.ts` (fiscal, el más crítico):** math sólida — neto = `subtotal/(1+alic/100)`, IVA = `subtotal−neto`, "P. Unit. Neto" usa `subtotal/cantidad` (**precio efectivo post-descuento**, no `precio_unitario`), `totalNeto = total − ΣIVA`, QR RG 4291 con `data.total`, Ley 27.743 en B con IVA contenido. Los llamadores (FacturacionPage/VentasPage `buildFacturaPDFData*`) normalizan `Number(i.alicuota_iva ?? 21)` (nullish → preserva **Exento=0**, evita el bug numeric-string) y `Number(i.subtotal)`; `total = venta.total + envío` y los items (incl. línea de envío) suman a ese total (G0.6 prorratea el descuento global en `venta_items`). La NC reusa el mismo builder (devolución al precio efectivo, v1.89).
+- **`estadoCuentaPDF.ts` (CC):** footer `Total adeudado = Σ(saldo+interés)` = suma exacta de la columna "Saldo" mostrada; datos del RPC `cliente_cc_estado` (ya auditado).
+- **`ocPDF.ts` (compras):** `totalOC = Σ(cant×precio) + envío/aduana/comisión/otros`, `Number()` coerciona, anticipo/cuotas vía `comprasPago` (testeado). OC no es comprobante fiscal para el comprador → sin IVA es correcto.
+- **`reciboSueldoPDF.ts` (nómina):** display fiel de `totalHaberes/totalDescuentos/neto` que computa `rrhhNomina` (testeado).
+- **`presupuestoPDF.ts`:** no-fiscal (lo declara el pie); P.Unit lista + %Dto + Importe neto + TOTAL.
+- **`remitoPDF.ts` / `etiquetasEnvioPDF.ts`:** sin plata/fiscal (cantidades/direcciones) → fuera de alcance REGLA #0.
+- **`ConfigPage.tsx` (6208 líneas):** es **persistencia de config**, no computa fiscal/plata; guarda los knobs (condicion_iva_emisor, cuit, umbral_factura_b, %s, umbrales) fielmente — los leen módulos ya auditados. El preset de combo "2da unidad" (`X% → X/2` efectivo sobre el par) es conveniencia que pre-llena el form; la math real del combo vive en `calcularDescuentoComboMulti` (testeado).
+- **Observación menor (no bug):** `umbral_factura_b: parseFloat(x) || 68305.16` no deja setear exactamente 0 (revierte al default AFIP) — benigno (0 no es un umbral útil; el default ya es el valor correcto).
+
+Patrón confirmado (igual que v1.91.0/v1.95.0): las superficies de **display/persistencia** son fieles; la math de plata/fiscal vive en libs ya testeadas. Doc en `tests/specs/cobertura/00_cierre_uat.md`. **La superficie fiscal-crítica de display queda 100% cerrada** (Dashboard/Métricas/Rentabilidad/Caja/Libro IVA/Billing/report-panels/exports PDF/ConfigPage). Lo único que resta de "Capa C" es el render visual (impresión/email), no los números.
+
+---
+
 ## [2026-06-30] deploy | 🔐 v1.99.0 EN PROD — Hardening billing (activación verificada) + least-privilege anon en RPCs de plata
 
 PR dev→main → release `v1.99.0` → Vercel (PROD) + EF `mp-verificar-suscripcion` (DEV+PROD) + migs 247-248 (DEV+PROD). **PROD = DEV = v1.99.0**. typecheck + build + **819 unit** verdes.

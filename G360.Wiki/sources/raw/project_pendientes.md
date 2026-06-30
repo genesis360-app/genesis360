@@ -6,8 +6,13 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-06-29 · 💵 Cash-out saldo a favor + marco legal devoluciones · v1.96.0 EN PROD)
-> **Estado:** **PROD = DEV = v1.96.0 (migs 001-246)** ✅ — Vercel desplegado. typecheck+build+**813 unit** verdes. (PR #252, release v1.96.0.) **🆕 mig 246** (RPC `devolver_saldo_a_favor`, aplicada DEV+PROD).
+> ### 🟢 ARRANCÁ ACÁ (2026-06-30 · 🎨 Ajustes visuales v1.97.0 + Cash-out saldo a favor v1.96.0 · EN PROD)
+> **Estado:** **PROD = DEV = v1.97.0 (migs 001-246)** ✅ — Vercel desplegado. typecheck+build+**813 unit** verdes. (PR #253, release v1.97.0.)
+>
+> **🎨 v1.97.0 — Ajustes visuales (pedidos de GO, frontend-only sin migración, cero lógica):** (1) **Usuarios** — píldoras de filtro por rol con el formato de las del Dashboard (`rounded-full`, activo `bg-accent text-white shadow-sm`). (2) **Recursos + Usuarios** a **ancho completo** (saqué `max-w-5xl`/`max-w-2xl` + `mx-auto` del contenedor raíz). (3) **Sucursales** — botones primarios `bg-primary`→`bg-accent` (degradé violeta→cian). (4) **Configuración** submenu lateral — seleccionado pasa al estilo activo del sidebar (`bg-accent text-white` = degradé), hover usa el color que antes tenía el seleccionado (`hover:bg-accent/10 hover:text-accent`). **💡 Dato útil:** en `src/index.css` `.bg-accent` está **redefinido como el degradé violeta→cian** (igual que `.bg-brand-gradient`), por eso `bg-accent` = el look de marca; el sidebar activo es `bg-accent text-white`.
+>
+> ---
+> **(Detalle de v1.96.0 — cash-out saldo a favor — abajo.)**
 >
 > **💵 v1.96.0 — Cash-out de saldo a favor en efectivo (mig 246) + marco legal de devoluciones documentado.** Cierra el gap de `cliente_creditos`: hasta ahora un saldo a favor SOLO se consumía aplicándolo a una venta; ahora se puede **devolver en efectivo de forma asentada**. **🛑 REGLA #0 (caja + cliente_creditos):** RPC `devolver_saldo_a_favor` SECURITY INVOKER, atómico + guards server-side (monto ≤ saldo a favor SUM, sesión de caja abierta+tenant, **no caja en negativo CAJ-18**); asienta egreso de efectivo + `cliente_creditos` negativo (origen `retiro_efectivo`). **Verificado en DB DEV+PROD** (happy + over-saldo + caja insuficiente, ROLLBACK; `anon_exec=false` — ojo: Supabase default-privileges dan EXECUTE a anon directo, hay que `REVOKE FROM anon` explícito, no alcanza FROM PUBLIC). Frontend: badge "Saldo a favor" → botón "💵 Devolver" en `ClientesPage` + modal. Lib `saldoFavor.ts` + 6 unit. **+ Marco legal AR documentado** en `wiki/features/devoluciones.md` (Ley 24.240 + CABA 3281): fallado/garantía 6m + arrepentimiento online 10d corridos = derecho a DINERO; cambio de opinión presencial = crédito/vale OK. **🟠 Follow-up de seguridad:** los otros RPC de plata (marcar_incobrable/registrar_pago_oc/marcar_envios_pagados) también tienen `anon_exec=true` (default-privileges) — vale una pasada de hardening para revocar anon de todos.
 >

@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.97.0 — 🎨 Ajustes visuales (píldoras Usuarios, ancho Recursos/Usuarios, botones Sucursales, submenu Config) (PROD ✅, frontend-only, sin migración)
+
+Pedidos de consistencia visual de GO (cero lógica): **Usuarios** — píldoras de filtro por rol con el formato de las del Dashboard; **Recursos + Usuarios** a ancho completo (saco `max-w`/`mx-auto` del contenedor raíz); **Sucursales** — botones primarios `bg-primary`→`bg-accent` (degradé violeta→cian); **Configuración** submenu lateral — seleccionado = estilo activo del sidebar (`bg-accent text-white` = degradé), hover = el color que antes tenía el seleccionado (`hover:bg-accent/10 hover:text-accent`). 💡 Nota: en `index.css` `.bg-accent` está redefinida como el degradé violeta→cian (= `bg-brand-gradient`). typecheck + build + 813 unit. PR #253.
+
+---
+
 ## v1.96.0 — 💵 Cash-out de saldo a favor en efectivo + marco legal devoluciones (PROD ✅, mig 246)
 
 Cierra el gap de `cliente_creditos`: hasta ahora un saldo a favor SOLO se consumía aplicándolo a una venta; ahora se puede **devolver en efectivo de forma asentada**. **🛑 REGLA #0 (caja + cliente_creditos):** mig 246 RPC `devolver_saldo_a_favor` SECURITY INVOKER, atómico + guards server-side (monto ≤ saldo a favor SUM, sesión de caja abierta+tenant, **no caja en negativo CAJ-18**); egreso de efectivo en caja + `cliente_creditos` negativo (origen `retiro_efectivo`). Verificado en DB DEV+PROD (happy + 2 guards, ROLLBACK). Frontend: badge "Saldo a favor" → botón "💵 Devolver" en `ClientesPage` + modal. Lib `saldoFavor.ts` + 6 unit (813 total). 🔐 Hallazgo: Supabase default-privileges dan EXECUTE a anon directo → `REVOKE FROM anon` explícito (no alcanza FROM PUBLIC); follow-up de hardening para los otros RPC de plata. **+ Marco legal AR de devoluciones documentado** (Ley 24.240 + CABA 3281): fallado/garantía 6m + arrepentimiento online 10d = derecho a dinero; cambio de opinión presencial = crédito/vale OK. mig en DEV+PROD. PR #252.

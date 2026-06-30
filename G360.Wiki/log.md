@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-06-30] deploy | 🎨 v1.97.0 EN PROD — Ajustes visuales (píldoras Usuarios, ancho Recursos/Usuarios, botones Sucursales, submenu Config)
+
+PR #253 dev→main → release `v1.97.0` → Vercel (PROD `61d792f2`). **PROD = DEV = v1.97.0**. Frontend-only, sin migración, **cero lógica** (solo className/contenedores). typecheck + build + **813 unit** verdes.
+
+Pedidos de GO de consistencia visual:
+- **Usuarios:** las píldoras de filtro por rol (`filterRol`) pasan al **mismo formato que las píldoras de pestañas del Dashboard** (`rounded-full text-sm border`, activo `bg-accent text-white shadow-sm`, inactivo fondo blanco/gris con hover de borde) — antes eran `rounded-xl border-2 bg-blue-50`.
+- **Recursos + Usuarios — ancho completo:** se quitó el `max-w-5xl mx-auto` (`RecursosPage`) y `max-w-2xl mx-auto` (`UsuariosPage`) del contenedor raíz; antes el contenido quedaba centrado y comprimido al medio. Los modales internos (max-w-sm/lg) no se tocaron.
+- **Sucursales:** los 3 botones primarios (crear ×2 + guardar) pasan de `bg-primary` (negro `#0D0D0D`) a **`bg-accent`** — que en `index.css` es el **degradé violeta→cian** — igual al sidebar activo y a los ~67 botones `bg-accent` del resto de la app.
+- **Configuración (submenu lateral desktop, `ConfigPage` nav):** el tab **seleccionado** pasa de `bg-accent/10 text-accent` (violeta claro) al **estilo activo del sidebar** `bg-accent text-white` (degradé); el **hover** de los no-seleccionados pasa de gris a `hover:bg-accent/10 hover:text-accent` (el color que antes tenía el seleccionado), espejando el sidebar.
+
+**💡 Hallazgo reutilizable:** en `src/index.css` (`@layer utilities`) **`.bg-accent` está redefinida como `background-image: linear-gradient(135deg, accent→accent-2)`** — o sea el **degradé violeta→cian, idéntico a `.bg-brand-gradient`**. Por eso TODO botón `bg-accent` (y el sidebar activo `bg-accent text-white`) YA muestran el degradé de marca; no hace falta `bg-brand-gradient` para conseguirlo. (Ojo: `hover:bg-accent/90` es no-op sobre un background-image → usar `hover:opacity-90` para un hover visible.)
+
+---
+
 ## [2026-06-29] deploy | 💵 v1.96.0 EN PROD — Cash-out de saldo a favor en efectivo (mig 246) + marco legal devoluciones
 
 PR #252 dev→main merged → release `v1.96.0` → Vercel (PROD `4a510c6d`). **PROD = DEV = v1.96.0** (migs 001-**246**). **mig 246 aplicada en DEV + PROD** (antes del merge, regla DDL aditivo). typecheck + build + **813 unit** verdes.

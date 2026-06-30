@@ -99,8 +99,8 @@ export function AiAssistant({ className = '' }: { className?: string }) {
           'Authorization': `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
-          tipo: 'bug_report',
-          to: 'gaston.otranto@gmail.com',
+          type: 'bug_report',
+          to: 'soporte@genesis360.pro',
           data: {
             usuario: user?.nombre_display ?? 'Usuario',
             tenant: tenant?.nombre ?? '-',

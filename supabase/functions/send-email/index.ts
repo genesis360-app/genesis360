@@ -19,21 +19,21 @@ function templateBase(content: string) {
 <style>
   body { margin:0; padding:0; background:#f4f6f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
   .wrap { max-width:560px; margin:32px auto; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.08); }
-  .header { background:#1E3A5F; padding:28px 32px; }
+  .header { background:#7B00FF; background-image:linear-gradient(135deg,#7B00FF 0%,#06B6D4 100%); padding:22px 32px; }
   .header h1 { margin:0; color:#fff; font-size:22px; font-weight:700; letter-spacing:-0.3px; }
-  .header p { margin:4px 0 0; color:#90b4d8; font-size:13px; }
+  .header p { margin:3px 0 0; color:rgba(255,255,255,.82); font-size:13px; }
   .body { padding:28px 32px; }
   .body p { margin:0 0 14px; color:#374151; font-size:15px; line-height:1.6; }
-  .btn { display:inline-block; background:#1E3A5F; color:#fff !important; text-decoration:none; padding:12px 24px; border-radius:8px; font-weight:600; font-size:14px; margin:8px 0 16px; }
+  .btn { display:inline-block; background:#7B00FF; color:#fff !important; text-decoration:none; padding:12px 24px; border-radius:8px; font-weight:600; font-size:14px; margin:8px 0 16px; }
   .divider { border:none; border-top:1px solid #e5e7eb; margin:20px 0; }
   .footer { background:#f9fafb; padding:16px 32px; }
   .footer p { margin:0; color:#9ca3af; font-size:12px; line-height:1.5; }
-  .tag { display:inline-block; background:#eff6ff; color:#1d4ed8; padding:2px 8px; border-radius:4px; font-size:13px; font-weight:600; }
+  .tag { display:inline-block; background:#f3e8ff; color:#7B00FF; padding:2px 8px; border-radius:4px; font-size:13px; font-weight:600; }
   .table { width:100%; border-collapse:collapse; margin:12px 0; font-size:14px; }
   .table th { text-align:left; color:#6b7280; font-weight:500; padding:6px 0; border-bottom:1px solid #e5e7eb; }
   .table td { padding:8px 0; color:#374151; border-bottom:1px solid #f3f4f6; }
   .table .right { text-align:right; }
-  .total-row td { font-weight:700; color:#1E3A5F; border-bottom:none; padding-top:12px; }
+  .total-row td { font-weight:700; color:#7B00FF; border-bottom:none; padding-top:12px; }
   .alert-box { background:#fef3c7; border:1px solid #fcd34d; border-radius:8px; padding:16px; margin:12px 0; }
   .alert-box p { margin:0; color:#92400e; }
 </style>
@@ -41,8 +41,10 @@ function templateBase(content: string) {
 <body>
 <div class="wrap">
   <div class="header">
-    <h1>${BRAND}</h1>
-    <p>El cerebro de tu negocio</p>
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td style="vertical-align:middle"><img src="https://www.genesis360.pro/android-chrome-192x192.png" width="40" height="40" alt="${BRAND}" style="display:block;border-radius:9px"></td>
+      <td style="vertical-align:middle;padding-left:12px"><h1>${BRAND}</h1><p>El inventario inteligente para tu negocio</p></td>
+    </tr></table>
   </div>
   <div class="body">${content}</div>
   <div class="footer">
@@ -213,12 +215,12 @@ function bugReportTemplate(data: { usuario: string; tenant: string; resumen: str
   return {
     subject: `🐛 Bug Report — ${data.tenant} (${data.usuario})`,
     html: templateBase(`
-      <p>Nuevo reporte enviado desde el asistente IA de Genesis360.</p>
+      <p>Nuevo reporte de soporte enviado desde Genesis360.</p>
       <div class="alert-box">
         <p><strong>Usuario:</strong> ${data.usuario}</p>
         <p style="margin-top:4px"><strong>Negocio:</strong> ${data.tenant}</p>
       </div>
-      <p><strong>Conversación:</strong></p>
+      <p><strong>Detalle:</strong></p>
       <pre style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:12px;font-size:13px;color:#374151;white-space:pre-wrap;word-break:break-word">${data.resumen}</pre>
     `),
   }

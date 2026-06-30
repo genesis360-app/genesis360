@@ -65,6 +65,23 @@
 > **⇒ Cierra el último ítem de la auditoría de display REGLA #0. Lo que queda de "Capa C" es solo el RENDER visual
 > (impresión/email), no los números.**
 
+### 🌐 Validación de la superficie pública — Landing + Soporte/Email (2026-06-30, pedido GO)
+- **Landing — links (todos validados):** anchors `#features`/`#precios`/`#faq` → sus 3 secciones existen ✅;
+  rutas `/login` y `/onboarding` → existen en App.tsx ✅; "Contacto" footer = `<a href="mailto:hola@genesis360.pro">` ✅.
+  **🐞 Bug encontrado y arreglado:** el botón **"A consultar" del plan Enterprise** usaba `<Link to={mailto}>`
+  de React Router → lo resolvía como ruta interna (`/mailto…` → catch-all → rebote al home, NO abría el correo).
+  Pasado a `<a href="mailto:…">` real. **Guard automatizado:** `tests/unit/landingLinks.test.ts` (4 tests, estático
+  sobre el source) valida que todo anchor tenga sección, toda ruta exista y **ningún mailto use `<Link>`**.
+- **Correos del proyecto:** `noreply@genesis360.pro` (FROM/remitente de todo, Resend, dominio verificado — envío
+  testeado OK 200) · `hola@genesis360.pro` (`BRAND.email`, contacto del landing; **ruta Cloudflare ACTIVE** → reenvía
+  a gaston.otranto@gmail.com) · `soporte@genesis360.pro` (soporte; **falta crear la regla de routing en Cloudflare**
+  → hoy se dropea). Recepción = Cloudflare Email Routing (reenvío, no buzón).
+- **🐞 Soporte — 2 hallazgos (pendiente de wiring server-side a soporte@):** (1) el "Reportar un problema" del Centro
+  de Ayuda (`AyudaModal`) usa `mailto:` → depende del mail-client local del usuario (poco confiable); (2) el reporte
+  del **Asistente IA** (`AiAssistant`) invoca `send-email` con el campo `tipo` cuando la EF espera `type` → la EF tira
+  500, el mail **nunca se manda** y el UI igual dice "enviado" (falla silenciosa); además apunta a un gmail hardcodeado.
+  **Fix propuesto:** ambos → `send-email` `type:'bug_report'` a `soporte@genesis360.pro` (una vez creada la regla).
+
 ### 🟠/🟢 Menores NO-REGLA#0 (bajo riesgo, gating UX / labels)
 - `oc_numeracion` (etiqueta `S-OC-0001` por valor tenant/sucursal/proveedor), `recepcion_remito_obligatorio`
   (adjuntar remito), badge alerta anticipo-OC (`gastos_dias_alerta_anticipo_oc`), flags UX de envío

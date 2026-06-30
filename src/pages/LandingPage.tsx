@@ -358,13 +358,18 @@ export default function LandingPage() {
                   ))}
                 </ul>
 
-                <Link to={plan.precio === null ? `mailto:${BRAND.email}` : '/onboarding'}
-                  className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
-                    ${plan.destacado
+                {(() => {
+                  const ctaClass = `block text-center font-semibold py-3 rounded-xl transition-all text-sm ${
+                    plan.destacado
                       ? 'bg-white text-primary hover:bg-accent/10'
-                      : 'bg-primary text-white hover:bg-accent'}`}>
-                  {plan.precio === null ? 'Contactar' : plan.precio === 0 ? 'Empezar gratis' : 'Probar 7 días gratis'}
-                </Link>
+                      : 'bg-primary text-white hover:bg-accent'}`
+                  // Enterprise (precio === null) → el contacto va por mailto y DEBE ser un
+                  // <a> real: un Link de React Router con un destino mailto lo resuelve como
+                  // ruta interna (navega a /mailto... → catch-all → rebota al home, no abre el correo).
+                  return plan.precio === null
+                    ? <a href={`mailto:${BRAND.email}`} className={ctaClass}>Contactar</a>
+                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 7 días gratis'}</Link>
+                })()}
               </div>
             ))}
           </div>

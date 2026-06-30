@@ -24,6 +24,29 @@ Re-corrida del UAT `tests/specs/uat-primer-uso.plan.md` (capas A paridad + B smo
 
 ---
 
+## [2026-06-30] deploy | 🛟 v1.100.0 EN PROD — Soporte server-side (tickets a soporte@) + 📧 email rebrandeado + 🌐 fix link Landing
+
+PR dev→main → release `v1.100.0` → Vercel (PROD) + EF `send-email` rebrandeada (DEV v23 + PROD v26). **PROD = DEV = v1.100.0**. Frontend + EF, sin migración. typecheck + build + **823 unit** verdes.
+
+Validación tipo-UAT de **soporte y correos** (pedido GO) + branding de emails.
+
+**(1) 🛟 Tickets de soporte server-side.** El "Reportar un problema" del **Centro de Ayuda** (`AyudaModal`) mandaba por `mailto:soporte@genesis360.pro` → abría el cliente de correo LOCAL del usuario (no confiable; si no hay mail client configurado, no pasa nada y el toast igual decía "abrimos tu cliente"). Ahora invoca `send-email` (`type:'bug_report'`) a **`soporte@genesis360.pro`**, con user/tenant de `useAuthStore`, botón "Enviando…" y toast de error si falla.
+- 🐞 **Bug del Asistente IA arreglado:** `AiAssistant` invocaba `send-email` con el campo **`tipo`** cuando la EF destructura **`type`** → la EF tiraba `Tipo de email desconocido: undefined` (500), el mail **nunca se enviaba**, pero el `catch {}` silencioso igual marcaba `reportSent(true)` (el usuario creía que se envió). Ahora `type` + destino `soporte@` (antes `gaston.otranto@gmail.com` hardcodeado).
+
+**(2) 📧 Email rebrandeado (`send-email` templateBase).** Usaba navy `#1E3A5F` + tagline "El cerebro de tu negocio" → ahora **degradé de marca violeta→cian** (`#7B00FF`→`#06B6D4`, con `background:#7B00FF` de fallback para Outlook que no renderiza gradientes) + **logo** (`https://www.genesis360.pro/android-chrome-192x192.png`, URL directa 200 — `genesis360.pro` daba 308) + tagline correcta "El inventario inteligente para tu negocio" + `.btn`/`.tag`/`.total-row` en violeta. `bugReportTemplate` ahora genérico ("Nuevo reporte de soporte" + "Detalle:", ya no "asistente IA"/"Conversación").
+- **Encoding:** la plantilla YA tenía `<meta charset="UTF-8">` y los acentos viven en el source UTF-8 de la EF → **el app real renderiza bien acentos/emojis**. Los `�`/`?` que aparecieron en los tests eran **mangling del shell de Windows** al pasar UTF-8 inline por `curl -d`; con payload desde archivo (`--data-binary @file`) se ven perfectos. No había bug de encoding que arreglar.
+
+**(3) 🌐 Fix link del Landing.** Validados TODOS los links (anchors `#features`/`#precios`/`#faq` → secciones existen; rutas `/login`/`/onboarding` → existen; mailto footer OK). **Bug:** el botón "A consultar" del plan Enterprise usaba `<Link to={\`mailto:${BRAND.email}\`}>` de React Router → lo resolvía como ruta interna (`/mailto…` → catch-all → rebote al home, NO abría el correo) → pasado a `<a href="mailto:…">`. Guard nuevo `tests/unit/landingLinks.test.ts` (4 tests estáticos: anchors con sección, `<Link>` a rutas existentes, ningún mailto en `<Link>`, mailto a `@genesis360.pro`).
+
+**📧 Correos del proyecto (documentado en `00_cierre_uat.md`):**
+- `noreply@genesis360.pro` — FROM de TODOS los emails de la app (Resend, dominio verificado; envío testeado OK).
+- **`soporte@genesis360.pro`** — soporte. Recibe vía **Cloudflare Email Routing**, reenvía al **Google Group `genesis360-soporte@googlegroups.com`** (GO + socio; membresía manejada en el grupo, **fuera del código** — el código manda siempre a `soporte@`). El grupo ya acepta externos (test de Resend al grupo llegó OK). **🟠 Pendiente operativo de GO (no código):** verificar el grupo como Destination Address en Cloudflare + editar la regla `soporte@`→grupo. Cloudflare reenvía 1 regla→1 destino → el fan-out a varios se hace con el grupo.
+- `hola@genesis360.pro` — `BRAND.email`, contacto del Landing. Cloudflare → gmail de GO (ACTIVE).
+
+**Decisión de arquitectura (GO):** el código manda a UN "buzón de rol" fijo (`soporte@`); quién lo recibe se maneja afuera (Google Group) → cuando dejen de mirar los tickets, se cambia la membresía del grupo sin tocar código.
+
+---
+
 ## [2026-06-30] update | 🔎 Auditoría display REGLA #0 — exports PDF + ConfigPage (SIN bugs, cierra la auditoría de display)
 
 Code-audit (sin cambios de código — nada que arreglar) de los 7 generadores de PDF (`src/lib/*PDF.ts`) y de `ConfigPage.tsx` — el último ítem de la auditoría de display REGLA #0 iniciada en v1.91.0. **Conclusión: 0 bugs REGLA #0.**

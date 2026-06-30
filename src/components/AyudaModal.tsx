@@ -4,6 +4,8 @@ import {
 } from 'lucide-react'
 import { useState } from 'react'
 import toast from 'react-hot-toast'
+import { useAuthStore } from '@/store/authStore'
+import { supabase } from '@/lib/supabase'
 
 interface AyudaModalProps {
   isOpen: boolean
@@ -51,9 +53,11 @@ type ReportForm = {
 }
 
 export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) {
+  const { user, tenant } = useAuthStore()
   const [search, setSearch] = useState('')
   const [openFaq, setOpenFaq] = useState<number | null>(null)
   const [form, setForm] = useState<ReportForm>({ tipo: 'bug', urgencia: 'media', asunto: '', descripcion: '' })
+  const [sending, setSending] = useState(false)
 
   // FAQs del módulo actual o las default
   const moduleFaqs = FAQS[currentModule ?? ''] ?? FAQS.default
@@ -64,16 +68,37 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
       )
     : moduleFaqs
 
-  const handleSendReport = () => {
+  // El reporte se envía SERVER-SIDE a soporte@genesis360.pro vía la EF send-email
+  // (Resend), no por mailto: — así no depende de que el usuario tenga un cliente de
+  // correo configurado y el ticket llega siempre. Reusa el template `bug_report`.
+  const handleSendReport = async () => {
     if (!form.asunto.trim() || !form.descripcion.trim()) {
       toast.error('Completá asunto y descripción')
       return
     }
-    const subject = encodeURIComponent(`[${form.tipo.toUpperCase()}][${form.urgencia}] ${form.asunto}`)
-    const body = encodeURIComponent(`Descripción:\n${form.descripcion}\n\nMódulo: ${currentModule ?? 'N/A'}`)
-    window.open(`mailto:soporte@genesis360.pro?subject=${subject}&body=${body}`, '_blank')
-    toast.success('Abrimos tu cliente de correo para enviar el reporte.')
-    setForm({ tipo: 'bug', urgencia: 'media', asunto: '', descripcion: '' })
+    setSending(true)
+    const resumen = `[${form.tipo.toUpperCase()}] [urgencia: ${form.urgencia}] ${form.asunto}\n\n` +
+      `Descripción:\n${form.descripcion}\n\nMódulo: ${currentModule ?? 'N/A'}`
+    try {
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          type: 'bug_report',
+          to: 'soporte@genesis360.pro',
+          data: {
+            usuario: user?.nombre_display ?? 'Usuario',
+            tenant: tenant?.nombre ?? '-',
+            resumen,
+          },
+        },
+      })
+      if (error) throw error
+      toast.success('¡Reporte enviado a soporte! Gracias.')
+      setForm({ tipo: 'bug', urgencia: 'media', asunto: '', descripcion: '' })
+    } catch {
+      toast.error('No se pudo enviar el reporte. Escribinos a soporte@genesis360.pro')
+    } finally {
+      setSending(false)
+    }
   }
 
   if (!isOpen) return null
@@ -216,10 +241,11 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
               </div>
               <button
                 onClick={handleSendReport}
-                className="w-full bg-accent hover:bg-accent/90 text-white text-sm font-medium py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors"
+                disabled={sending}
+                className="w-full bg-accent hover:bg-accent/90 text-white text-sm font-medium py-2.5 rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <Send size={14} />
-                Enviar reporte
+                {sending ? 'Enviando…' : 'Enviar reporte'}
               </button>
             </div>
           </div>

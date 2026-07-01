@@ -19,7 +19,10 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 
 ## Decisión técnica
 
-**Integración propia con AFIP WSFE** (sin intermediario):
+> ### ⚠ Cómo está implementado HOY (verificado 2026-06-30) — NO es WSFE directo
+> A pesar del título "sin intermediario" de abajo (que fue la **intención**), lo deployado **usa AfipSDK (su nube), no una integración directa al WSFE**. En `emitir-factura`: `import Afip from 'npm:@afipsdk/afip.js'`, el `tenant.afipsdk_token` es **obligatorio** (línea 74), el CAE se pide con `eb.createVoucher()` (método de AfipSDK) y la firma WSAA se hace "en su nube". Verificado: **cero** rastro de WSFE directo en el repo (`wsaa.afip`/`servicios1.afip`/`wsfev1`/`FECAESolicitar`/`LoginCms`). El cert del tenant se pasa a AfipSDK pero el request **pasa por ellos**. **Costo:** AFIP/ARCA = $0; AfipSDK = free tier + pago por volumen, token **por tenant** (si cada cliente trae su cuenta, el costo es del cliente). **GO decidió (2026-06-30) migrar a WSFE 100% propio** (TRA + firma CMS → WSAA `LoginCms` → TA cacheado → WSFEv1 SOAP directo → sacar AfipSDK) — **backlog** en `sources/raw/project_pendientes.md`. Primero homologación, después PROD. Ver [[reference_pricing_planes_costos]].
+
+**Integración propia con AFIP WSFE** *(← INTENCIÓN documentada; hoy usa AfipSDK, ver nota de arriba)*:
 - Break-even vs. servicio tercero (~$300 USD/mes a 20 tenants) en 6-8 meses
 - SDK: `@afipsdk/afip.js` vía `npm:` en Deno (no requiere certificados propios por ahora)
 - Acceso: AfipSDK cloud service + `access_token` por tenant

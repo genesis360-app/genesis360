@@ -24,6 +24,27 @@ Re-corrida del UAT `tests/specs/uat-primer-uso.plan.md` (capas A paridad + B smo
 
 ---
 
+## [2026-06-30] query | 💵 Análisis pricing/costos + hallazgo AfipSDK + T&C pendiente (sin código)
+
+Sesión de análisis para definir planes/precios/costos (post-v1.100.0). **Sin cambios de código** — solo docs/decisiones. Handoff antes de un `/clear`.
+
+**🔢 Mecánica de límites de planes (verificada contra código):**
+- **Movimiento** = fila en `movimientos_stock` = **solo inventario** (venta/rebaja, ingreso, ajuste, traslado, devolución, kits). **NO** cuentan facturar ni gastos. **Por TENANT** (no sucursal), mes calendario. **Masivo de N productos = N movimientos.** Enforce solo client-side (sin guard server-side → bypasseable por API).
+- **Variante (talla/color) = producto SEPARADO** (cada una cuenta; "generar combinaciones" 3×2 crea 6 `productos`).
+- **Storage por tenant despreciable** (~$0,02/GB/mes Supabase; Pro a tope ~1,5-3GB ≈ $0,06/mes). Facturas/presupuestos/remitos NO se guardan (regenerados on-demand).
+
+**💵 Snapshot de costos (GO):** hoy solo paga **Claude Code US$23/mes + dominio ~US$15/año**; Supabase/Vercel/Resend/Cloudflare en **free tier**; **MP retiene ~4,3%** (4900→4689,16); cobra en **ARS**; **0 clientes PROD**. El doc de escalado (`reference_escalabilidad.md`) tiene umbrales pero le falta la capa de $ — se arma cuando GO fije precios.
+
+**🧾 HALLAZGO — Facturación usa AfipSDK, NO WSFE directo (corrige suposición de GO).** GO creía que la conexión a ARCA era 100% propia/sin terceros. Verificado a fondo: `emitir-factura` usa `@afipsdk/afip.js` con `tenant.afipsdk_token` obligatorio + `eb.createVoucher()` (firma WSAA "en su nube"); **cero** integración directa al WSFE en el repo (ni `wsaa.afip`/`wsfev1`/`FECAESolicitar`/`LoginCms`; ni rama ni commit). El cert del tenant se pasa a AfipSDK pero el request pasa por ellos. **AFIP/ARCA = $0**; el token es por-tenant (costo del cliente si trae su cuenta). **GO decidió migrar a WSFE 100% propio → backlog anotado** (TRA+CMS→WSAA→WSFEv1 SOAP directo, sacar AfipSDK; homologación primero). Nota de corrección agregada en `facturacion-afip.md`.
+
+**📄 T&C / Privacidad / marketing — ⏸️ decisión PENDIENTE.** No existe T&C ni política de privacidad ni checkbox de aceptación en el registro (solo el disclaimer FISCAL de Facturación). GO quiere que el cliente acepte guardar datos para marketing. **Decisión abierta que frena la implementación:** opt-in separado opcional (recomendado, Ley 25.326) vs bundled requerido (más cobertura, legalmente más débil). GO va a definir. Requiere revisión de abogado.
+
+**🟠 Soporte/correos (operativo GO):** GO completó Cloudflare (soporte@ → Google Group verificado, Active). En sus pruebas manuales desde `buildify.info@gmail.com` el 1° llegó y los siguientes no → **antispam de Google Groups** con remitente externo repetido (revisar cola de Spam del grupo + Spam de Gmail). Los tickets REALES salen de `noreply@genesis360.pro` (SPF/DKIM) → no deberían filtrarse igual. Ver [[reference_email_soporte_correos]].
+
+Doc completa en memoria [[reference_pricing_planes_costos]].
+
+---
+
 ## [2026-06-30] deploy | 🛟 v1.100.0 EN PROD — Soporte server-side (tickets a soporte@) + 📧 email rebrandeado + 🌐 fix link Landing
 
 PR dev→main → release `v1.100.0` → Vercel (PROD) + EF `send-email` rebrandeada (DEV v23 + PROD v26). **PROD = DEV = v1.100.0**. Frontend + EF, sin migración. typecheck + build + **823 unit** verdes.

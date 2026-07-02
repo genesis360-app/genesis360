@@ -9,7 +9,13 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 30 de Junio, 2026
+**Última actualización:** 2 de Julio, 2026
+
+---
+
+## v1.101.0 — 📄 T&C/Privacidad + 🧾 dual-provider AFIP (adapter) + 💠 Pricing 2026 F0+F1 (PROD ✅, migs 249-252)
+
+Release triple. **(1) T&C + Privacidad + consentimiento de marketing (mig 249):** páginas públicas `/terminos` y `/privacidad` (`LegalLayout`) + 2 checkboxes en el onboarding (T&C **requerido** + marketing **opt-in** separado, Ley 25.326); el consentimiento viaja por el metadata del `signUp` (path confirm-email) → `tenants.terminos_aceptados_at`/`terminos_version`/`marketing_consent`. Links en el footer del Landing. ⚠ **Texto legal EN VIVO pero pendiente de revisión de abogado** (GO decidió publicar igual) + falta razón social/CUIT del responsable. **(2) Dual-provider AFIP — Fase 1 adapter (mig 250):** `emitir-factura` refactorizado a patrón adapter (`AfipSdkProvider` + `WsfePropioProvider` stub), selector por-tenant `tenants.afip_provider` (default `'afipsdk'`, comportamiento idéntico; rollback por flag), lógica fiscal compartida + `ventas/devoluciones.afip_provider_usado`. **La EF NO se deployó** (refactor sin probar en runtime → PROD sigue con la EF actual). **(3) Pricing 2026 — Fase 0 modelo + Fase 1 enforcement (migs 251-252):** `tenants.plan_tier` (desacopla el tier de `max_users`) + tabla `tenant_addons` + `fn_plan_base_limite`/`fn_tenant_limite` (límite efectivo = base + Σ add-ons activos; trial→pro); `brand.ts` con **precios nuevos $60k/$100k**, `PLAN_BASE_LIMITS`, `ADDON_PACKS`, `PLAN_DESCUENTOS`; `usePlanLimits` reescrito (efectivo + sucursales); **enforcement server-side** (triggers en productos/users/sucursales; movimientos diferido por hot-path). ⚠ **Mismatch precio↔MP EN VIVO** (los planes de MP siguen a precio viejo → reconfigurar antes de suscripciones reales, Fase 3). typecheck + build + **826 unit** verdes. Enforcement verificado por impersonación; PROD 5 tenants, 0 sobre-límite. **Pendiente:** F2 (add-on temporal movimientos), F3 (add-ons fijos + downgrade guiado + reconfig MP + EFs), F4 (configurador), F5 (multi-CUIT).
 
 ---
 

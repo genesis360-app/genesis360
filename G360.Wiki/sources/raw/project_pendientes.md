@@ -6,7 +6,20 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-07-01 · 💠 Pricing 2026 FASE 0+1 — modelo + enforcement · EN DEV, migs 251-252, SIN deploy)
+> ### 🚀 ARRANCÁ ACÁ (2026-07-02 · v1.101.0 DEPLOYADO A PROD · DEV = PROD)
+> **Estado:** **PROD = DEV = v1.101.0** (migs 001-252 en ambos, 826 unit). Deployado: frontend (Vercel main) + migs 249-252. Release `v1.101.0` + tag creados. **Los 3 tracks de las sesiones 2026-07-01/02 quedaron EN PROD** (T&C, adapter dual-provider en DB, pricing F0+F1).
+>
+> **⚠️ RIESGOS VIVOS EN PROD (GO decidió deployar igual — resolver YA):**
+> 1. **Precio ↔ MP mismatch:** la Landing/Suscripción muestran **$60k/$100k** pero los **planes de MP (preapproval) siguen a precio VIEJO** ($4.900/$9.900). **NO habilitar suscripciones reales hasta reconfigurar los planes MP** (Fase 3). Hoy no bloquea porque el cobro MP e2e no está activo, pero es lo primero a cerrar.
+> 2. **T&C sin revisión legal EN VIVO:** `/terminos` y `/privacidad` están publicados y el onboarding los exige. **Falta:** revisión de abogado + razón social/CUIT del responsable (comentarios ⚖️ en `TerminosPage`/`PrivacidadPage`) + evaluar registro AAIP.
+>
+> **NO deployado a PROD (a propósito):** la **EF `emitir-factura`** (refactor dual-provider) — PROD sigue con la EF actual (AfipSDK), intacta. El adapter vive en el repo + las columnas en DB; se deploya la EF tras probarla en homologación.
+>
+> **PRÓXIMO (nueva sesión): Fase 2 y Fase 3 del pricing** — F2 add-on temporal de movimientos (patrón `addon_movimientos`, bajo riesgo); F3 add-ons fijos + downgrade guiado + **reconfigurar planes MP + actualizar EFs `mp-webhook`/`mp-verificar-suscripcion` para setear `plan_tier` + crear `tenant_addons`** (cierra el riesgo #1) + enforcement de movimientos. Luego F4 configurador Landing + F5 multi-CUIT. Ver `wiki/business/planes-pricing.md`.
+>
+> ---
+>
+> ### 🟢 (2026-07-01 · 💠 Pricing 2026 FASE 0+1 — modelo + enforcement · EN PROD v1.101.0)
 > **Estado:** código+migs en **DEV** (251-252). **NO deployado a PROD** ni EFs. typecheck+build+**unit verdes** (arreglados brand/planLimits por límites nuevos). Enforcement verificado por impersonación (ROLLBACK).
 >
 > **Qué se hizo (Fase 0 = modelo, Fase 1 = enforcement; los 2 pasos fundacionales):**
@@ -19,7 +32,7 @@ type: project
 >
 > ---
 >
-> ### 🟢 (2026-07-01 · 🧾 Dual-provider AFIP — FASE 1 · EN DEV, mig 250, SIN deploy)
+> ### 🟢 (2026-07-01 · 🧾 Dual-provider AFIP — FASE 1 · mig 250 EN PROD; EF NO deployada)
 > **Estado:** código en **DEV** (mig 250 solo en DEV). **NO deployado a PROD** ni el EF. typecheck frontend EXIT 0; 10/10 tenants en `'afipsdk'` (comportamiento idéntico).
 >
 > **Qué se hizo (fase 1 = pasos seguros que NO tocan la emisión real):**
@@ -31,7 +44,7 @@ type: project
 >
 > ---
 >
-> ### 🟢 (2026-07-01 · 📄 T&C + Privacidad + consentimiento marketing · EN DEV, mig 249, SIN deploy)
+> ### 🟢 (2026-07-01 · 📄 T&C + Privacidad + consentimiento marketing · EN PROD v1.101.0; ⚠ pendiente abogado)
 > **Estado:** código en **DEV** (mig 249 aplicada solo en DEV). **NO deployado a PROD** — espera OK legal de GO. typecheck+build+**823 unit** verdes.
 >
 > **Qué se hizo (opción recomendada de GO: dos checkboxes SEPARADOS):**

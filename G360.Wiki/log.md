@@ -18,6 +18,22 @@ Relevamiento de 5 competidores AR (pedido GO) para fijar precios/planes/límites
 
 ---
 
+## [2026-07-02] deploy | 🚀 v1.101.0 EN PROD — T&C/Privacidad + dual-provider AFIP (adapter) + Pricing 2026 (F0+F1)
+
+PR #257 dev→main → merge → release `v1.101.0` + tag → Vercel (PROD). Migs 249-252 aplicadas en **DEV + PROD** (antes del merge). **PROD = DEV = v1.101.0** (migs 001-252). typecheck + build + **826 unit** verdes. GO eligió deploy completo asumiendo 2 riesgos (flagged).
+
+**Deployado a PROD:** frontend (Vercel main) + migs 249 (T&C) + 250 (afip_provider) + 251 (modelo pricing) + 252 (enforcement). Verificado en PROD: 5 tenants (todos plan_tier `basico`), **0 sobre-límite** → enforcement no bloquea a nadie.
+
+**NO deployado (a propósito):** la EF `emitir-factura` (refactor dual-provider) — sin probar en runtime, toca CAE (REGLA #0) → PROD sigue con la EF actual (AfipSDK). El adapter vive en el repo + las columnas en DB; se deploya tras homologación.
+
+**⚠️ 2 RIESGOS VIVOS EN PROD (GO decidió publicar igual — resolver en Fase 3):**
+1. **Precio↔MP mismatch:** Landing/Suscripción muestran $60k/$100k pero los planes MP (preapproval) siguen a precio viejo. **No habilitar suscripciones reales hasta reconfigurar MP.**
+2. **T&C sin revisión legal EN VIVO:** `/terminos` + `/privacidad` publicados y exigidos en onboarding; falta abogado + razón social/CUIT.
+
+**Próximo (nueva sesión):** Fase 2 (add-on temporal movimientos) + Fase 3 (add-ons fijos + downgrade guiado + reconfig planes MP + EFs `mp-webhook`/`mp-verificar-suscripcion` para setear `plan_tier`+`tenant_addons`). Ver `wiki/business/planes-pricing.md`.
+
+---
+
 ## [2026-07-01] update | 💠 Pricing 2026 — FASE 0 (modelo) + FASE 1 (enforcement) EN DEV, migs 251-252, sin deploy
 
 Implementación de los 2 pasos fundacionales del modelo de pricing/add-ons (los seguros: no tocan billing ni la UI de cobro). typecheck + build + unit verdes (arreglé `brand.test`/`planLimits.test` por los límites nuevos + agregué coherencia de `PLAN_BASE_LIMITS`). Enforcement verificado por impersonación DB (ROLLBACK). **NO deployado.**

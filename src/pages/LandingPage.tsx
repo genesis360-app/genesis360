@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { BRAND, PLANES } from '@/config/brand'
+import PricingConfigurator from '@/components/PricingConfigurator'
 import {
   Package, BarChart2, ShoppingCart, Users, Shield, Zap,
   Check, X, ArrowRight, Star, ChevronDown, Menu
@@ -372,6 +373,11 @@ export default function LandingPage() {
                 })()}
               </div>
             ))}
+          </div>
+
+          {/* Configurador de precios (Fase 4) — estimador plan base + add-ons */}
+          <div className="mt-14">
+            <PricingConfigurator />
           </div>
         </div>
       </section>

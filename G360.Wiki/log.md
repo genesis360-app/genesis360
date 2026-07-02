@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-02] deploy | 🚀 v1.103.0 EN PROD — Pricing FASE 4: configurador de precios en la Landing (frontend-only)
+
+`PricingConfigurator` en la sección Precios del Landing: estimador público plan base (Básico/Pro) + add-ons fijos (SKU/sucursales/usuarios) → total mensual en vivo (reusa `src/lib/addons.ts`, mismo precio que el server). No cobra. typecheck + build + unit verdes; sin migración ni EF. Deploy: frontend (Vercel main), bump a v1.103.0. **Falta F5 (multi-CUIT — track grande, requiere relevamiento, va después del WSFE propio).** Recordatorio operativo de GO sigue vivo: reconfigurar los planes base de MP a $60k/$100k + sandbox (RIESGO #1).
+
+---
+
 ## [2026-07-02] deploy | 🚀 v1.102.0 EN PROD — Pricing FASE 2 (add-on temporal) + FASE 3 (add-ons fijos + EFs tier-aware + downgrade guiado)
 
 Continuación del pricing (F0/F1 en v1.101.0). **F2 + F3 DEPLOYADAS A PROD** (v1.102.0): mig 253 (DEV+PROD) + 4 EFs (`mp-addon`, `mp-webhook`, `mp-verificar-suscripcion`, `mp-addon-fijo`) en DEV+PROD + frontend (Vercel main). typecheck + build + **839 unit** verdes. Verificación DB por impersonación (ROLLBACK): add-on temporal suma al límite efectivo + idempotencia OK; guard de downgrade OK. **🛑 GO deployó el billing ASUMIENDO el riesgo** — le flagué que el cobro MP NO es e2e-testeable (sin sandbox/seller) y que RIESGO #1 (planes base MP a precio viejo) sigue vivo hasta que los reconfigure.

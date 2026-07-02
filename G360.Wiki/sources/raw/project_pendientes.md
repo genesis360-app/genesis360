@@ -6,8 +6,8 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-07-02 · Pricing FASE 2 + FASE 3 DEPLOYADO A PROD · v1.102.0 · DEV = PROD)
-> **Estado:** **PROD = DEV = v1.102.0** (migs 001-253, **839 unit**). Deployado: **mig 253 (DEV+PROD)** + **4 EFs (`mp-addon`, `mp-webhook`, `mp-verificar-suscripcion`, `mp-addon-fijo`) en DEV+PROD** + frontend (Vercel main). Verificación DB por impersonación (ROLLBACK): add-on temporal suma al límite efectivo + idempotencia OK; guard de downgrade OK. **🛑 GO decidió deployar el billing ASUMIENDO el riesgo** (le flagué que el cobro MP NO es e2e-testeable + RIESGO #1 sigue vivo).
+> ### 🚀 ARRANCÁ ACÁ (2026-07-02 · Pricing FASE 2/3/4 DEPLOYADO A PROD · v1.103.0 · DEV = PROD)
+> **Estado:** **PROD = DEV = v1.103.0** (migs 001-253, **839 unit**). **F2/F3 (v1.102.0):** mig 253 (DEV+PROD) + 4 EFs MP (DEV+PROD) + frontend. **F4 (v1.103.0):** `PricingConfigurator` en la Landing (estimador público plan base + add-ons fijos, frontend-only, no cobra). Verificación DB por impersonación (ROLLBACK): add-on temporal suma al límite + idempotencia + guard de downgrade OK. **🛑 GO decidió deployar el billing ASUMIENDO el riesgo** (le flagué que el cobro MP NO es e2e-testeable + RIESGO #1 sigue vivo).
 >
 > **✅ Qué se hizo (F2 + F3, todo en DEV):**
 > - **F2 — Add-on TEMPORAL de movimientos (bajo riesgo):** `src/lib/addons.ts` (packs + serialización del `external_reference` + downgrade + precio fijo, unit-tested) · **EF `mp-addon`** parametrizado (packs 1.000/5.000/20.000, **revalida precio server-side**, ref `${t}|addon|movimientos|${cant}|temporal`) · **EF `mp-webhook`** inserta en `tenant_addons` (temporal, vence 30d, **idempotente por `mp_payment_id`**) · **`SuscripcionPage`** selector de 3 packs · **mig 253** (uq index `mp_payment_id`, evita doble acreditación en reintentos de MP) · `brand.ts` sacó `ADDON_MOVIMIENTOS` legacy.
@@ -19,9 +19,10 @@ type: project
 > 1. **RIESGO #1 (precio↔MP) — medio cerrado:** las EFs ya setean el tier correcto, PERO **los planes base de MP (preapproval) SIGUEN a precio viejo** → GO debe **reconfigurarlos a $60k/$100k en el panel de MP** antes de habilitar suscripciones/add-ons reales. Los add-ons fijos (`mp-addon-fijo`) hacen `PUT transaction_amount` sobre ese preapproval → depende de que el base esté bien.
 > 2. **T&C sin revisión legal EN VIVO** (sin cambios; sigue pendiente abogado + razón social/CUIT + AAIP).
 >
-> **🟠 PENDIENTE OPERATIVO DE GO (NO código — para poder cobrar de verdad):**
-> - **Reconfigurar los planes base de MP a $60k/$100k** en el panel (RIESGO #1: hoy siguen a precio viejo → una suscripción real cobraría mal). Los add-ons fijos (`mp-addon-fijo`) hacen `PUT transaction_amount` sobre ese preapproval → depende de que el base esté bien.
+> **🟢 RIESGO #1 RESUELTO (2026-07-02): GO editó los montos de los planes base de MP a $60k/$100k** (mismos IDs `836c7829…`/`cb3bcdaa…` → sin cambio de código). Ya no hay mismatch precio↔MP.
+> **🟠 PENDIENTE OPERATIVO DE GO (NO código):**
 > - **Validar en sandbox** el flujo real de cobro: el `PUT transaction_amount` sobre un preapproval basado en plan (comportamiento de MP a confirmar) + el pago único del add-on temporal. **El código está EN PROD pero el cobro nunca se ejerció e2e** — antes de habilitar suscripciones/add-ons a un cliente real, probar con una cuenta MP de prueba.
+> - **🔴 BUG REGLA #0 REPORTADO (2026-07-02, EN AUDITORÍA): cancelación de suscripción NO cancela en MP.** GO canceló la suscripción de un tenant (Fede Messina) pero sigue apareciendo suscripto y aparentemente NO se canceló el preapproval en MP. Auditar el flujo de cancelación (¿llama a MP a cancelar el preapproval? ¿solo actualiza `subscription_status` local?) + UAT. Ver entrada del log.
 >
 > **PRÓXIMO:** F4 (configurador en Landing) · F5 (multi-CUIT). Ver `wiki/business/planes-pricing.md`.
 >

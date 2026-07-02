@@ -12,6 +12,8 @@ import { ErrorBoundary } from '@/components/ErrorBoundary'
 const LoginPage        = lazy(() => import('@/pages/LoginPage'))
 const LandingPage      = lazy(() => import('@/pages/LandingPage'))
 const OnboardingPage   = lazy(() => import('@/pages/OnboardingPage'))
+const TerminosPage     = lazy(() => import('@/pages/TerminosPage'))
+const PrivacidadPage   = lazy(() => import('@/pages/PrivacidadPage'))
 const DashboardPage    = lazy(() => import('@/pages/DashboardPage'))
 const ProductosPage    = lazy(() => import('@/pages/ProductosPage'))
 const InventarioPage   = lazy(() => import('@/pages/InventarioPage'))
@@ -121,6 +123,8 @@ function App() {
             } />
             <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/terminos" element={<TerminosPage />} />
+            <Route path="/privacidad" element={<PrivacidadPage />} />
             <Route path="/suscripcion" element={<SuscripcionPage />} />
             {/* Ruta pública para transportistas — sin auth */}
             <Route path="/transporte/:token" element={<TransportistePage />} />

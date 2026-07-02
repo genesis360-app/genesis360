@@ -1,23 +1,27 @@
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { MAX_MOVIMIENTOS_POR_PLAN, FEATURES_POR_PLAN } from '@/config/brand'
+import { PLAN_BASE_LIMITS, FEATURES_POR_PLAN } from '@/config/brand'
 
 export interface PlanLimits {
-  plan_id: string
+  plan_id: string                // tier real del tenant (free/basico/pro/enterprise)
   max_usuarios: number
   max_productos: number
-  max_movimientos: number      // -1 = ilimitado
+  max_movimientos: number        // -1 = ilimitado
+  max_sucursales: number
   usuarios_actuales: number
   productos_actuales: number
-  movimientos_mes: number      // movimientos del mes en curso
-  addon_movimientos: number    // extra comprado
+  movimientos_mes: number        // movimientos del mes en curso
+  sucursales_actuales: number
+  addon_movimientos: number      // extra de movimientos (legacy + add-ons)
   puede_crear_usuario: boolean
   puede_crear_producto: boolean
   puede_crear_movimiento: boolean
+  puede_crear_sucursal: boolean
   pct_usuarios: number
   pct_productos: number
-  pct_movimientos: number      // 0–100 (0 si ilimitado)
+  pct_movimientos: number        // 0–100 (0 si ilimitado)
+  pct_sucursales: number
   // Feature flags por plan
   puede_reportes: boolean
   puede_historial: boolean
@@ -28,6 +32,8 @@ export interface PlanLimits {
   puede_marketplace: boolean
   puede_wms: boolean
 }
+
+type Addon = { dimension: string; cantidad: number; tipo: string; vence_at: string | null }
 
 export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean } {
   const { tenant } = useAuthStore()
@@ -42,63 +48,80 @@ export function usePlanLimits(): { limits: PlanLimits | null; loading: boolean }
       const [
         { count: usuarios },
         { count: productos },
+        { count: sucursales },
         { count: movimientosMes },
         { data: tenantRow },
+        { data: addonRows },
       ] = await Promise.all([
         supabase.from('users').select('id', { count: 'exact', head: true })
           .eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('productos').select('id', { count: 'exact', head: true })
           .eq('tenant_id', tenant!.id).eq('activo', true),
+        supabase.from('sucursales').select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant!.id).eq('activo', true),
         supabase.from('movimientos_stock').select('id', { count: 'exact', head: true })
           .eq('tenant_id', tenant!.id)
           .gte('created_at', inicioMes.toISOString()),
-        supabase.from('tenants').select('plan_id, max_users, max_productos, addon_movimientos, subscription_status, trial_ends_at')
+        supabase.from('tenants').select('plan_tier, addon_movimientos, subscription_status, trial_ends_at')
           .eq('id', tenant!.id).single(),
+        supabase.from('tenant_addons').select('dimension, cantidad, tipo, vence_at')
+          .eq('tenant_id', tenant!.id),
       ])
 
-      const max_usuarios = tenantRow?.max_users ?? 1
-      const max_productos = tenantRow?.max_productos ?? 50
-      // Inferir plan desde max_users (el webhook de MP actualiza este campo,
-      // no plan_id que es UUID FK y no matchea las keys de brand.ts).
-      // -1 = ilimitado (Enterprise) → tier máximo, no 'free'.
-      const planId = (max_usuarios === -1 || max_usuarios >= 10) ? 'pro' : max_usuarios >= 2 ? 'basico' : 'free'
-      const addonMov = tenantRow?.addon_movimientos ?? 0
-
-      // Base del plan + add-ons comprados
-      const basePlanMax = MAX_MOVIMIENTOS_POR_PLAN[planId] ?? MAX_MOVIMIENTOS_POR_PLAN['free']
-      const max_movimientos = basePlanMax === -1 ? -1 : basePlanMax + addonMov
-
-      const usuarios_actuales = usuarios ?? 0
-      const productos_actuales = productos ?? 0
-      const movimientosMesActual = movimientosMes ?? 0
-
-      // Durante trial activo → features de Pro completo
+      // Tier efectivo (ESPEJO de fn_tenant_limite, mig 251): trial activo → 'pro'.
+      const planTier = (tenantRow?.plan_tier as string) ?? 'free'
       const enTrialActivo =
         tenantRow?.subscription_status === 'trial' &&
-        tenantRow?.trial_ends_at &&
+        !!tenantRow?.trial_ends_at &&
         new Date(tenantRow.trial_ends_at) >= new Date()
+      const effTier = enTrialActivo ? 'pro' : planTier
+      const base = PLAN_BASE_LIMITS[effTier] ?? PLAN_BASE_LIMITS['free']
 
-      const featuresKey = enTrialActivo ? 'pro' : planId
-      const features = FEATURES_POR_PLAN[featuresKey] ?? FEATURES_POR_PLAN['free']
+      // Suma de add-ons activos por dimensión (fijos + temporales no vencidos).
+      const now = new Date()
+      const addons = (addonRows ?? []) as Addon[]
+      const addonSum = (dim: string) => addons
+        .filter(a => a.dimension === dim && (a.tipo === 'fijo' || (a.vence_at && new Date(a.vence_at) > now)))
+        .reduce((s, a) => s + (a.cantidad ?? 0), 0)
+
+      // Límite efectivo = base + add-ons (−1 = ilimitado, no se le suma nada).
+      const addonMovLegacy = tenantRow?.addon_movimientos ?? 0
+      const eff = (dim: 'sku' | 'movimientos' | 'sucursales' | 'usuarios', legacy = 0) =>
+        base[dim] === -1 ? -1 : base[dim] + addonSum(dim) + legacy
+
+      const max_productos   = eff('sku')
+      const max_usuarios    = eff('usuarios')
+      const max_sucursales  = eff('sucursales')
+      const max_movimientos = eff('movimientos', addonMovLegacy)
+
+      const usuarios_actuales   = usuarios ?? 0
+      const productos_actuales  = productos ?? 0
+      const sucursales_actuales = sucursales ?? 0
+      const movimientos_mesAct  = movimientosMes ?? 0
+
+      const features = FEATURES_POR_PLAN[effTier] ?? FEATURES_POR_PLAN['free']
       const tiene = (f: string) => features.includes(f)
+      const pct = (act: number, max: number) => max === -1 ? 0 : Math.round((act / max) * 100)
 
       return {
-        plan_id: planId,
+        plan_id: planTier,
         max_usuarios,
         max_productos,
         max_movimientos,
+        max_sucursales,
         usuarios_actuales,
         productos_actuales,
-        movimientos_mes: movimientosMesActual,
-        addon_movimientos: addonMov,
-        puede_crear_usuario: max_usuarios === -1 || usuarios_actuales < max_usuarios,
-        puede_crear_producto: max_productos === -1 || productos_actuales < max_productos,
-        puede_crear_movimiento: max_movimientos === -1 || movimientosMesActual < max_movimientos,
-        pct_usuarios: max_usuarios === -1 ? 0 : Math.round((usuarios_actuales / max_usuarios) * 100),
-        pct_productos: max_productos === -1 ? 0 : Math.round((productos_actuales / max_productos) * 100),
-        pct_movimientos: max_movimientos === -1
-          ? 0
-          : Math.round((movimientosMesActual / max_movimientos) * 100),
+        movimientos_mes: movimientos_mesAct,
+        sucursales_actuales,
+        addon_movimientos: addonMovLegacy + addonSum('movimientos'),
+        puede_crear_usuario:   max_usuarios === -1   || usuarios_actuales   < max_usuarios,
+        puede_crear_producto:  max_productos === -1  || productos_actuales  < max_productos,
+        puede_crear_movimiento: max_movimientos === -1 || movimientos_mesAct < max_movimientos,
+        puede_crear_sucursal:  max_sucursales === -1 || sucursales_actuales < max_sucursales,
+        pct_usuarios:   pct(usuarios_actuales, max_usuarios),
+        pct_productos:  pct(productos_actuales, max_productos),
+        pct_movimientos: pct(movimientos_mesAct, max_movimientos),
+        pct_sucursales: pct(sucursales_actuales, max_sucursales),
         puede_reportes:   tiene('reportes'),
         puede_historial:  tiene('historial'),
         puede_metricas:   tiene('metricas'),

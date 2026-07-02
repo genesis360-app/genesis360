@@ -28,7 +28,13 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.100.0'
+export const APP_VERSION = 'v1.101.0'
+
+// Versión del texto legal (Términos y Condiciones + Política de Privacidad).
+// Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
+// cambia de forma sustancial, bumpear esta fecha para poder detectar quién aceptó qué
+// versión (y eventualmente re-pedir aceptación). Formato ISO YYYY-MM-DD.
+export const LEGAL_VERSION = '2026-07-01'
 
 // Kill-switch del modo de operación Básico/Avanzado: en false, TODOS los tenants
 // operan en avanzado (la app completa, como antes de v1.55) sin importar
@@ -68,6 +74,8 @@ export const BRAND = {
   },
 }
 
+// ⚠ Límites/precios 2026 (propuesta GO, ver G360.Wiki/wiki/business/planes-pricing.md).
+// Los límites BASE viven también en SQL (fn_plan_base_limite, mig 251) → mantener en sync con PLAN_BASE_LIMITS.
 export const PLANES = [
   {
     id: 'free',
@@ -79,18 +87,19 @@ export const PLANES = [
       usuarios: 1,
       productos: 50,
       movimientos_mes: 200,
+      sucursales: 1,
     },
     features: [
       '1 usuario',
       'Hasta 50 productos',
       '200 movimientos/mes',
-      'Gestión de inventario',
-      'Movimientos de stock',
+      '1 sucursal',
+      'Gestión de inventario · Ventas · Caja',
+      'Facturación electrónica AFIP',
       'Alertas de stock mínimo',
     ],
     noIncluye: [
       'Reportes',
-      'Historial de actividad',
       'Métricas avanzadas',
       'Importación masiva',
       'RRHH',
@@ -100,53 +109,55 @@ export const PLANES = [
   {
     id: 'basico',
     nombre: 'Básico',
-    precio: 4900,
-    descripcion: 'Para pequeños comercios',
+    precio: 60000,
+    descripcion: 'Para comercios en marcha',
     destacado: false,
     limites: {
-      usuarios: 2,
-      productos: 500,
-      movimientos_mes: 2000,
+      usuarios: 5,
+      productos: 2000,
+      movimientos_mes: 5000,
+      sucursales: 1,
     },
     features: [
-      '2 usuarios',
-      'Hasta 500 productos',
-      '2.000 movimientos/mes',
+      '5 usuarios',
+      'Hasta 2.000 productos',
+      '5.000 movimientos/mes',
+      '1 sucursal',
       'Todo lo del plan Free',
-      'Reportes',
-      'Historial de actividad',
-      'Métricas avanzadas',
+      'Facturación electrónica AFIP',
+      'Reportes · Historial · Métricas',
       'Soporte por email',
     ],
     noIncluye: [
-      'Importación masiva',
-      'RRHH',
-      'Aging profiles',
-      'Marketplace',
       'Modo avanzado (WMS)',
+      'RRHH',
+      'Compras (OC + Recepciones) y Envíos',
+      'Importación masiva',
+      'Marketplace',
     ],
   },
   {
     id: 'pro',
     nombre: 'Pro',
-    precio: 9900,
+    precio: 100000,
     descripcion: 'Para negocios en crecimiento',
     destacado: true,
     limites: {
-      usuarios: 10,
-      productos: 5000,
-      movimientos_mes: -1, // ilimitado
+      usuarios: 15,
+      productos: 8000,
+      movimientos_mes: 20000,
+      sucursales: 4,
     },
     features: [
-      'Hasta 10 usuarios',
-      'Hasta 5.000 productos',
-      'Movimientos ilimitados',
+      '15 usuarios',
+      'Hasta 8.000 productos',
+      '20.000 movimientos/mes',
+      '4 sucursales',
       'Todo lo del plan Básico',
-      'Importación masiva (CSV/Excel)',
+      'Modo avanzado (WMS): lotes, series, vencimientos, FIFO/FEFO',
+      'Compras (OC + Recepciones) y Envíos',
       'RRHH completo',
-      'Aging profiles',
-      'Marketplace',
-      'Modo avanzado (WMS): lotes, series, vencimientos, FIFO/FEFO, OC y envíos',
+      'Importación masiva (CSV/Excel) · Marketplace',
       'Soporte prioritario',
     ],
     noIncluye: [],
@@ -161,20 +172,42 @@ export const PLANES = [
       usuarios: -1, // ilimitado
       productos: -1,
       movimientos_mes: -1, // ilimitado
+      sucursales: -1,
     },
     features: [
       'Usuarios ilimitados',
       'Productos ilimitados',
-      'Movimientos ilimitados',
+      'Movimientos y sucursales ilimitados',
+      'Multi-CUIT / multi-razón social',
       'Todo lo del plan Pro',
-      'Onboarding personalizado',
-      'SLA garantizado',
+      'Onboarding personalizado · SLA',
       'Integraciones a medida',
       'Soporte 24/7',
     ],
     noIncluye: [],
   },
 ]
+
+// Límites BASE por tier (espejo de fn_plan_base_limite en SQL, mig 251). -1 = ilimitado.
+// El límite EFECTIVO = base + Σ add-ons activos (ver ADDON_PACKS + tabla tenant_addons).
+export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number; sucursales: number; usuarios: number }> = {
+  free:       { sku: 50,   movimientos: 200,   sucursales: 1,  usuarios: 1 },
+  basico:     { sku: 2000, movimientos: 5000,  sucursales: 1,  usuarios: 5 },
+  pro:        { sku: 8000, movimientos: 20000, sucursales: 4,  usuarios: 15 },
+  enterprise: { sku: -1,   movimientos: -1,    sucursales: -1, usuarios: -1 },
+}
+
+// Packs de add-on por dimensión (ARS, precio de lista sin descuentos). Se suman al límite base.
+// SKU / sucursales / usuarios = SOLO 'fijo' (recurrente). Movimientos = 'fijo' o 'temporal' (vence 30d).
+export const ADDON_PACKS: Record<string, { tipos: Array<'fijo' | 'temporal'>; packs: Array<{ cantidad: number; precio: number }> }> = {
+  sku:         { tipos: ['fijo'],            packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
+  sucursales:  { tipos: ['fijo'],            packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },
+  usuarios:    { tipos: ['fijo'],            packs: [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }] },
+  movimientos: { tipos: ['fijo', 'temporal'], packs: [{ cantidad: 1000, precio: 5000 }, { cantidad: 5000, precio: 10000 }, { cantidad: 20000, precio: 15000 }] },
+}
+
+// Descuentos sobre el precio del plan base (propuesta GO). Definir si se acumulan.
+export const PLAN_DESCUENTOS = { debito_automatico: 0.10, anual: 0.30 }
 
 // Features habilitadas por plan (para usePlanLimits y UpgradePrompt)
 // Cada plan incluye todas las features del anterior.
@@ -191,11 +224,11 @@ export const PLAN_REQUERIDO: Record<string, string> = {
   importar: 'pro', rrhh: 'pro', aging: 'pro', marketplace: 'pro', wms: 'pro',
 }
 
-// Límites de movimientos por plan (para uso en usePlanLimits)
+// Límites de movimientos por plan (espejo de PLAN_BASE_LIMITS.movimientos / fn_plan_base_limite).
 export const MAX_MOVIMIENTOS_POR_PLAN: Record<string, number> = {
   free:       200,
-  basico:     2000,
-  pro:        -1,   // ilimitado
+  basico:     5000,
+  pro:        20000,
   enterprise: -1,   // ilimitado
 }
 

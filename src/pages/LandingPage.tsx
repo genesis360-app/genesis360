@@ -410,10 +410,12 @@ export default function LandingPage() {
               <img src={BRAND.logo} alt={BRAND.name} className="w-7 h-7 rounded-lg object-contain" />
               <span className="font-bold text-white">{BRAND.name}</span>
             </div>
-            <div className="flex gap-6 text-sm">
+            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-sm">
               <a href="#features" className="hover:text-white transition-colors">Funciones</a>
               <a href="#precios" className="hover:text-white transition-colors">Precios</a>
               <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
+              <Link to="/terminos" className="hover:text-white transition-colors">Términos</Link>
+              <Link to="/privacidad" className="hover:text-white transition-colors">Privacidad</Link>
               <a href={`mailto:${BRAND.email}`} className="hover:text-white transition-colors">Contacto</a>
             </div>
             <p className="text-xs text-blue-300">© {new Date().getFullYear()} {BRAND.name}. Todos los derechos reservados.</p>

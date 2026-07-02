@@ -6,6 +6,69 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-01] query | 💵 Análisis de competencia + propuesta de pricing (sin código)
+
+Relevamiento de 5 competidores AR (pedido GO) para fijar precios/planes/límites. **Sin código — análisis + registro** en `wiki/business/planes-pricing.md` (nueva sección de competencia + propuesta + modelo de límites + infra).
+
+- **Competencia (c/IVA, jul-2026) — 7 competidores:** PUBLICAN → **Xubio** (Estándar débito $27.951 / Ilimitado $113.256), **Contabilium** (contable-puro: $147.620/$216.590/$296.450), **Netegia** (competidor MÁS directo, ERP PyME: **$96.182/$232.272/$389.537**, 4.000-15.000 artíc + comprob + 2-10 sucursales + CUITs), **Ninox** (indumentaria/variantes: $24.000/$46.000/$94.000, 2.000-10.000 artíc + terminales POS). NO publican → **Zeus ERP** (POS-first+AFIP, débito obligatorio+6m), **Neuralsoft MyLogic** (enterprise+IA), **Aconpy** (contable+sueldos +200 convenios).
+- **Posicionamiento G360:** gana en operativo (WMS/LPN, POS, caja/bóveda, compras, envíos, multi-sucursal); liviano en contabilidad pura y sueldos con convenios. No competir contra el contador.
+- **Propuesta GO evaluada:** Free 30d · Básico $60k c/IVA (5u/3.000mov/100SKU) · Pro $100k (15u/10.000mov/300SKU) · Enterprise consultar; desc. débito −10% + anual −30%. **Veredicto: precios MUY bien / conservadores** (Básico $60k POR DEBAJO de Netegia Pyme Lite $96k, el competidor más directo; Pro $100k < ½ de Netegia Premium $232k y Contabilium Pro $217k). 🚩 **SKU 100/300 INUSABLES — confirmado por TODA la competencia** (Ninox 2.000 y Netegia 4.000 en su plan MÁS barato; variante=producto separado) → subir a 2.000-4.000 / 15.000-∞. Gap: sin multi-CUIT (Netegia/Zeus/Contabilium sí) → Enterprise.
+- **Recomendaciones:** monetizar por **módulos+usuarios+sucursales** (no SKU/mov artificiales); **comprobantes ilimitados** como diferenciador (costo $0, AFIP no cobra CAE); **infra NO aprieta** a 0-100 clientes (primer techo = Resend 3.000 emails/mes ~50-100 tenants). Precios `brand.ts` ($4.900/$9.900) desactualizados ~5-25x → actualizar al cerrar. Ver [[reference_pricing_planes_costos]].
+- **Update (2026-07-01) — modelo de ADD-ONS CERRADO + multi-CUIT + plan de fases (GO):** límites base Básico 2.000 SKU/5.000 mov/1 suc/5 users · Pro **8.000**/20.000/4/15. Add-ons: SKU/usuarios/**sucursales ($15k/$35k/$55k)** = solo fijos; **movimientos = fijo o temporal (30d)**. Decisiones: **downgrade GUIADO** (la app indica cuántos recursos DESACTIVAR —no borrar, REGLA #0, alerta SKU— para bajar el add-on), configurador (no planilla), enforcement server-side obligatorio. **Plan de fases 0-5** (F0 datos/`brand.ts` → F1 enforcement → F2 add-on temporal mov → F3 add-ons fijos+downgrade+MP → F4 configurador → F5 multi-CUIT). **GO decidió desarrollar multi-CUIT** (paridad). Todo en `project_pendientes.md` BACKLOG + `wiki/business/planes-pricing.md` (+ HTML). **NO se tocó la app — espera OK de GO.**
+
+---
+
+## [2026-07-01] update | 💠 Pricing 2026 — FASE 0 (modelo) + FASE 1 (enforcement) EN DEV, migs 251-252, sin deploy
+
+Implementación de los 2 pasos fundacionales del modelo de pricing/add-ons (los seguros: no tocan billing ni la UI de cobro). typecheck + build + unit verdes (arreglé `brand.test`/`planLimits.test` por los límites nuevos + agregué coherencia de `PLAN_BASE_LIMITS`). Enforcement verificado por impersonación DB (ROLLBACK). **NO deployado.**
+
+- **Mig 251 (Fase 0 — modelo):** `tenants.plan_tier` (`free/basico/pro/enterprise`, fuente de verdad — **desacopla el tier de `max_users`**, que con add-ons de usuarios dejaba de ser confiable; backfill desde la inferencia actual) + tabla **`tenant_addons`** (dimension sku/movimientos/sucursales/usuarios, cantidad, tipo fijo|temporal, vence_at; RLS SELECT propio, escritura solo service_role) + `fn_plan_base_limite(tier,dim)` (base por tier) + **`fn_tenant_limite(tenant,dim)`** (límite EFECTIVO = base + Σ add-ons activos; **trial vigente → límites de 'pro'**; -1 ilimitado). Verificado: trial→pro (8000/4/15/20000), trial vencido→base del tier, enterprise→-1.
+- **`brand.ts`:** precios **$60k/$100k**, `PLAN_BASE_LIMITS` (SKU 2.000/8.000 · mov 5.000/20.000 · suc 1/4 · users 5/15), `MAX_MOVIMIENTOS_POR_PLAN` (5.000/20.000), `ADDON_PACKS` (sucursal $15k/$35k/$55k; sku/usuarios/mov), `PLAN_DESCUENTOS` (débito 10% / anual 30%). `PLANES` con `sucursales` + Facturación AFIP en Free/Básico (gancho).
+- **`usePlanLimits` reescrito:** deriva de `plan_tier` (no más inferencia por max_users) + calcula límite efectivo (base + add-ons de `tenant_addons`, fijos + temporales no vencidos) + agrega **sucursales** (max/actuales/puede_crear/pct). Espeja exactamente `fn_tenant_limite` → cliente y server coinciden.
+- **Mig 252 (Fase 1 — enforcement):** `fn_enforce_limite()` SECURITY DEFINER + triggers `BEFORE INSERT OR UPDATE OF activo` en **productos (sku)** / **users (usuarios)** / **sucursales**: bloquean CREAR sobre `fn_tenant_limite` (recursos existentes intactos; solo cuenta activos). **Movimientos DIFERIDO** (contar en cada insert de `movimientos_stock` = hot-path → contador/RPC aparte). Verificado por impersonación (ROLLBACK): seed de alta entra bajo free (1 sucursal), producto bajo límite pasa, 2ª sucursal sobre límite BLOQUEADA. Límites base nuevos ≥ viejos → cero bloqueo a tenants existentes.
+- **🟠 Falta:** F2 (add-on temporal movimientos) · F3 (add-ons fijos + downgrade guiado + **actualizar EFs `mp-webhook`/`mp-verificar-suscripcion` para setear `plan_tier` + crear `tenant_addons`** — hoy setean max_users/max_productos viejos + MP preapproval variable) · F4 (configurador Landing) · F5 (multi-CUIT) · enforcement de movimientos. **Deploy requiere OK de GO** (precios nuevos visibles + migs 251-252 a PROD). Ver `wiki/business/planes-pricing.md`.
+
+---
+
+## [2026-07-01] update | 🧾 Dual-provider AFIP — FASE 1 (adapter + flag por-tenant) EN DEV, sin deploy
+
+Arranque de la implementación dual-provider decidida hoy (ver la entrada `query` de abajo). **Fase 1 = los pasos seguros que NO tocan la emisión real**: selector + refactor a adapter, comportamiento **idéntico** (todos los tenants siguen en AfipSDK). typecheck frontend EXIT 0; 10/10 tenants DEV en `'afipsdk'`.
+
+- **Mig 250 (DEV):** `tenants.afip_provider` (`'afipsdk'|'propio'`, default `'afipsdk'`, CHECK) + `ventas.afip_provider_usado` + `devoluciones.afip_provider_usado`. Aditiva/idempotente. Mismo patrón de flag por-tenant que `afip_produccion` (mig 210) → rollback = volver a `'afipsdk'`.
+- **`supabase/functions/emitir-factura/providers.ts` (nuevo):** interfaz `AfipProvider` (`getLastVoucher`/`createVoucher`) + `AfipSdkProvider` (envuelve `@afipsdk/afip.js` con las MISMAS llamadas que antes) + `WsfePropioProvider` (**stub** que falla claro — fase 3). Factory `makeAfipProvider(name, opts)`.
+- **`emitir-factura/index.ts` (refactor no-funcional):** saca el `import Afip` (→ providers.ts), agrega `afip_provider` al select del tenant, y reemplaza `new Afip(...)`+`eb.getLastVoucher`/`eb.createVoucher` por el provider elegido por-tenant (default seguro `'afipsdk'`). **La lógica fiscal (payload WSFE, importes, guards A/B/C, persistencia del CAE) queda intacta y compartida** → REGLA #0 no se bifurca. Persiste `afip_provider_usado` en venta/devolución (trazabilidad).
+- **🛑 Límite honesto:** refactor **code-review**, NO runtime — deno no está instalado local y **NO se deployó el EF** (requiere OK de GO). La prueba real es una emisión de test en **homologación** con la EF deployada (debe dar el mismo flujo de CAE). **Antes de deployar el EF: aplicar mig 250 en PROD** (la EF nueva selecciona `afip_provider`).
+- **Próximo:** fase 2 ya está incluida acá (el adapter). Fase 3 = implementar `WsfePropioProvider` (WSAA+WSFEv1) contra homologación; fase 4 = tenant piloto.
+
+---
+
+## [2026-07-01] query | 🧾 Decisión: WSFE propio + AfipSDK EN PARALELO (dual-provider con rollback) — sin código
+
+Consulta estratégica de GO sobre migrar de AfipSDK a conexión propia con ARCA. **Sin cambios de código — decisión + registro.**
+
+**Análisis del mantenimiento por cambios de ARCA (respuesta a la duda de GO):** es **simétrico** entre las dos opciones. Hay 2 capas: (1) **transporte** WSAA/WSFEv1 SOAP — es lo único que AfipSDK tapa, y es **muy estable** (sin cambios que rompan desde ~2012); (2) **reglas fiscales** (campos obligatorios nuevos ej. RG 5616 condición IVA receptor, leyendas Ley 27.743, alícuotas) — **pegan igual con o sin SDK** porque el SDK no rellena campos de negocio. Frecuencia baja (un puñado/año, muchos años cero, anunciados con meses); complejidad baja (agregar 1 campo / refrescar un `FEParamGet` / una leyenda). **No requiere personal full-time vigilando ARCA** — solo suscribirse a novedades de WS de AFIP + probar en homologación ante un cambio. Ejes reales de la decisión: soberanía+costo $0 (propio) vs inversión inicial de la firma WSAA (una vez); contra-riesgo de AfipSDK = vendor risk (si sube precios/cae/cierra → no facturás = REGLA #0).
+
+**Decisión de GO:** construir el circuito propio **sin romper AfipSDK y mantener AMBOS**, con **rollback** a AfipSDK, hasta validar estabilidad; después evaluar sacar AfipSDK. **Diseño registrado** (patrón strangler + adapter; interfaz común con `AfipSdkProvider` + `WsfePropioProvider`; lógica fiscal compartida; selector por-tenant `tenants.afip_provider` = mismo patrón que `afip_produccion` mig 210 → rollback por flag; numeración vía `FECompUltimoAutorizado`; **🛑 NO fallback automático en la emisión** = riesgo de CAE duplicado/salto de número, rollback manual + reconciliar; fases: homologación → tenant piloto → validar → decidir). Detalle en `project_pendientes.md` (BACKLOG ANOTADO) + `wiki/features/facturacion-afip.md` (Estrategia de migración). Ver [[reference_pricing_planes_costos]].
+
+---
+
+## [2026-07-01] update | 📄 T&C + Política de Privacidad + consentimiento de marketing (EN DEV, mig 249, sin deploy)
+
+GO definió la decisión que estaba abierta desde el 2026-06-30: **dos checkboxes SEPARADOS** en el alta (la opción recomendada) — T&C+Privacidad **requerido** + marketing **opt-in opcional** (Ley 25.326: consentimiento libre, informado, separado y revocable). Implementado en **DEV**; **NO deployado a PROD** (espera OK legal de GO). typecheck + build + **823 unit** verdes.
+
+**Qué se hizo:**
+- **Páginas legales públicas** `/terminos` (`TerminosPage.tsx`) y `/privacidad` (`PrivacidadPage.tsx`) con layout compartido `LegalLayout.tsx`. Texto AR: Ley 25.326 (datos personales, derechos art. 14/16, AAIP, marketing revocable), Ley 24.240 (consumidor), y disclaimer de que **la responsabilidad fiscal AFIP es del contribuyente** (el Servicio solo facilita la emisión). Rutas públicas en `App.tsx` (lazy) + links en el footer del Landing (pasan el guard `landingLinks.test.ts`).
+- **`OnboardingPage` — 2 checkboxes en el paso "Negocio":** T&C+Privacidad **REQUERIDO** (gatea `handleFinalSubmit` + deshabilita el botón "Crear negocio") + marketing **opcional**. El consentimiento se persiste en `provisionNegocio`; en el path **"confirm email ON"** (sin sesión al confirmar) viaja por el **metadata del `signUp`** (`ob_terminos`/`ob_marketing`) y se lee en el `useEffect` de provisión. Cubre email/password y Google OAuth (ambos pasan por "Negocio").
+- **DB (mig 249, solo DEV):** `tenants` + `terminos_aceptados_at` (TIMESTAMPTZ) + `terminos_version` (TEXT) + `marketing_consent` (BOOLEAN DEFAULT FALSE). Aditiva/idempotente; NO reescribe tenants existentes (quedan NULL/FALSE = no consintieron algo que no se les mostró). `LEGAL_VERSION='2026-07-01'` en `brand.ts` → se guarda en `terminos_version` al aceptar (trazabilidad si el texto cambia).
+
+**🟠 Pendiente antes de PROD (no código, acción de GO):** (1) revisión de un **abogado** de ambos textos; (2) completar **razón social/CUIT del responsable** de la base (hoy genérico "el titular de Genesis360" + `hola@genesis360.pro`; comentarios ⚖️ en las páginas) + evaluar **registro ante la AAIP**; (3) **aplicar mig 249 en PROD + deploy** (bump de versión) cuando GO dé el OK legal. Ver [[reference_pricing_planes_costos]].
+
+**📄 Además — preview del sistema + consolidación de overviews:**
+- Actualizado el **preview del sistema** `sources/raw/genesis360_overview.html` (documento de producto / "todas las funcionalidades") de **App v0.75.0 (Abril) → v1.100.0 (Julio)**: cover, TOC, secciones 1-6 reescritas con el set actual (facturación AFIP, Caja Fuerte/Bóveda, Compras/OC+Recepciones, Envíos 2.0, RRHH 2.0 con fichado QR, Dashboard 5 sub-pestañas, saldo a favor, devoluciones con NC, modo Básico/Avanzado, multi-sucursal RLS server-side, 9 roles, T&C), planes (trial 7 días), REGLA #0, integraciones (AfipSDK, Resend verificado, Cloudflare, Google Maps), testing (823 unit / 249 migs) y roadmap real. **Portada** cambiada al degradé de marca **negro→violeta** (`#0D0D0D`→`#7B00FF`, igual que el login/onboarding, pedido GO).
+- **Consolidación de los 3 archivos de overview (eliminada la duplicación, roles delimitados):** cada uno queda con UNA capa. `wiki/overview/genesis360-overview.md` → **hub/índice** puro (tabla de módulos con `[[links]]`, cross-links a los hermanos; **sin** cifras volátiles — versión/migs/tests viven solo en `project_pendientes.md`/`roadmap.md`). `wiki/overview/app-reference.md` → **referencia técnica ruta-por-ruta**; **auditado sección por sección contra el código** (App.tsx, `AppLayout.tsx`, `ai-assistant` EF, AyudaPage/Modal). Verificado que el **sidebar §2 coincide** con `AppLayout` y que el **Asistente IA sí usa Groq/Llama** (correcto). Corregido lo stale: §1 (sacado `shadcn/ui` que NO se usa + logo/versión), **§3.1 Dashboard reescrito** al modelo de 5 sub-pestañas por área con Gráficos como landing (antes decía "Próximamente"), §4.11 Ayuda (la página es placeholder pero el `AyudaModal` del header **sí** manda tickets server-side a `soporte@`), §3.15 RRHH (fichado QR, nómina contable doble validación, evaluaciones, Mi Portal), AFIP en PROD vía AfipSDK, Resend `noreply@` + Cloudflare, "pg_cron" → sweeps externos (§5.5/§7), `OWNER`→`DUEÑO` en toda la prosa (9 roles), onboarding con T&C + seeds, rutas públicas por token + `/terminos`/`/privacidad` agregadas, footer v1.8.x → v1.100.0. El HTML → **documento de producto presentable**. Regla nueva: los datos que cambian seguido viven en una sola fuente y los overviews apuntan ahí.
+
+---
+
 ## [2026-06-30] update | 🏁 Smoke de go-live / primer cliente — paridad DEV↔PROD a mig 248 + runtime e2e (TODO VERDE)
 
 Re-corrida del UAT `tests/specs/uat-primer-uso.plan.md` (capas A paridad + B smoke) a **mig 248, código v1.99.0**, antes de habilitar el primer cliente real. La causa-raíz histórica de los bugs de primer-uso es el **drift DEV≠PROD** (bitió 3 veces) → se re-verifica SIEMPRE antes de un alta.
@@ -21,6 +84,27 @@ Re-corrida del UAT `tests/specs/uat-primer-uso.plan.md` (capas A paridad + B smo
 **Sin regresión de v1.99.0 en el alta:** verificado en PROD (ROLLBACK) que el trigger `guard_subscription_status_active` (mig 247) **no dispara** en el INSERT 'trial' del onboarding ni en updates normales de tenant → alta y operación intactas.
 
 **⇒ Go-live técnicamente listo:** paridad garantizada + flujos operativos verdes en runtime. **Único pendiente = el alta runtime real (PU-01/02, confirmar email)** — acción de GO con un email real (el código del onboarding ya está code-auditado). Detalle en el plan, sección D (re-validación 2026-06-30).
+
+---
+
+## [2026-06-30] query | 💵 Análisis pricing/costos + hallazgo AfipSDK + T&C pendiente (sin código)
+
+Sesión de análisis para definir planes/precios/costos (post-v1.100.0). **Sin cambios de código** — solo docs/decisiones. Handoff antes de un `/clear`.
+
+**🔢 Mecánica de límites de planes (verificada contra código):**
+- **Movimiento** = fila en `movimientos_stock` = **solo inventario** (venta/rebaja, ingreso, ajuste, traslado, devolución, kits). **NO** cuentan facturar ni gastos. **Por TENANT** (no sucursal), mes calendario. **Masivo de N productos = N movimientos.** Enforce solo client-side (sin guard server-side → bypasseable por API).
+- **Variante (talla/color) = producto SEPARADO** (cada una cuenta; "generar combinaciones" 3×2 crea 6 `productos`).
+- **Storage por tenant despreciable** (~$0,02/GB/mes Supabase; Pro a tope ~1,5-3GB ≈ $0,06/mes). Facturas/presupuestos/remitos NO se guardan (regenerados on-demand).
+
+**💵 Snapshot de costos (GO):** hoy solo paga **Claude Code US$23/mes + dominio ~US$15/año**; Supabase/Vercel/Resend/Cloudflare en **free tier**; **MP retiene ~4,3%** (4900→4689,16); cobra en **ARS**; **0 clientes PROD**. El doc de escalado (`reference_escalabilidad.md`) tiene umbrales pero le falta la capa de $ — se arma cuando GO fije precios.
+
+**🧾 HALLAZGO — Facturación usa AfipSDK, NO WSFE directo (corrige suposición de GO).** GO creía que la conexión a ARCA era 100% propia/sin terceros. Verificado a fondo: `emitir-factura` usa `@afipsdk/afip.js` con `tenant.afipsdk_token` obligatorio + `eb.createVoucher()` (firma WSAA "en su nube"); **cero** integración directa al WSFE en el repo (ni `wsaa.afip`/`wsfev1`/`FECAESolicitar`/`LoginCms`; ni rama ni commit). El cert del tenant se pasa a AfipSDK pero el request pasa por ellos. **AFIP/ARCA = $0**; el token es por-tenant (costo del cliente si trae su cuenta). **GO decidió migrar a WSFE 100% propio → backlog anotado** (TRA+CMS→WSAA→WSFEv1 SOAP directo, sacar AfipSDK; homologación primero). Nota de corrección agregada en `facturacion-afip.md`.
+
+**📄 T&C / Privacidad / marketing — ⏸️ decisión PENDIENTE.** No existe T&C ni política de privacidad ni checkbox de aceptación en el registro (solo el disclaimer FISCAL de Facturación). GO quiere que el cliente acepte guardar datos para marketing. **Decisión abierta que frena la implementación:** opt-in separado opcional (recomendado, Ley 25.326) vs bundled requerido (más cobertura, legalmente más débil). GO va a definir. Requiere revisión de abogado.
+
+**🟠 Soporte/correos (operativo GO):** GO completó Cloudflare (soporte@ → Google Group verificado, Active). En sus pruebas manuales desde `buildify.info@gmail.com` el 1° llegó y los siguientes no → **antispam de Google Groups** con remitente externo repetido (revisar cola de Spam del grupo + Spam de Gmail). Los tickets REALES salen de `noreply@genesis360.pro` (SPF/DKIM) → no deberían filtrarse igual. Ver [[reference_email_soporte_correos]].
+
+Doc completa en memoria [[reference_pricing_planes_costos]].
 
 ---
 

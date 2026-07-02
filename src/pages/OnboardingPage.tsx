@@ -1,4 +1,4 @@
-import { BRAND } from '@/config/brand'
+import { BRAND, LEGAL_VERSION } from '@/config/brand'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
@@ -27,18 +27,26 @@ export default function OnboardingPage() {
     nombre: '', tipo_comercio: '', pais: 'AR', telefono: '',
   })
   const [tipoPersonalizado, setTipoPersonalizado] = useState('')
+  // Consentimiento en el alta: T&C + Privacidad (REQUERIDO) y marketing (OPCIONAL, opt-in separado).
+  const [aceptaTerminos, setAceptaTerminos] = useState(false)
+  const [aceptaMarketing, setAceptaMarketing] = useState(false)
   // "Confirm email" ON: tras signUp NO hay sesión → se muestra "revisá tu email" y el negocio
   // se crea al confirmar (el useEffect detecta la sesión + el metadata del alta).
   const [emailEnviado, setEmailEnviado] = useState(false)
   const [emailPendiente, setEmailPendiente] = useState('')
 
   // Crea el tenant + el usuario DUEÑO. REQUIERE sesión activa (la RLS de tenants exige auth.uid()).
-  const provisionNegocio = async (userId: string, email: string, displayName: string, nombre: string, tipo: string, pais: string) => {
+  // `marketingConsent` = opt-in separado y opcional (Ley 25.326); el T&C se acepta siempre (gateado
+  // en el submit) → se asienta `terminos_aceptados_at` + la versión legal vigente.
+  const provisionNegocio = async (userId: string, email: string, displayName: string, nombre: string, tipo: string, pais: string, marketingConsent: boolean) => {
     const tenantId = crypto.randomUUID()  // UUID en cliente: evita el SELECT post-insert (RLS)
     const { error: tenantError } = await supabase.from('tenants').insert({
       id: tenantId, nombre, tipo_comercio: tipo, pais,
       subscription_status: 'trial', max_users: 2,
       regla_inventario: 'Manual', session_timeout_minutes: null,
+      terminos_aceptados_at: new Date().toISOString(),
+      terminos_version: LEGAL_VERSION,
+      marketing_consent: marketingConsent,
     })
     if (tenantError) throw tenantError
     const { error: userError } = await supabase.from('users').insert({
@@ -66,7 +74,9 @@ export default function OnboardingPage() {
       if (md.ob_nombre && md.ob_pais) {
         try {
           setLoading(true)
-          await provisionNegocio(u.id, u.email ?? '', md.full_name ?? md.name ?? (u.email ?? ''), md.ob_nombre, md.ob_tipo ?? '', md.ob_pais)
+          // El consentimiento se capturó al hacer signUp y viajó en el metadata (T&C requerido → siempre
+          // aceptado; marketing = opt-in que puede venir true/false).
+          await provisionNegocio(u.id, u.email ?? '', md.full_name ?? md.name ?? (u.email ?? ''), md.ob_nombre, md.ob_tipo ?? '', md.ob_pais, md.ob_marketing === true)
           await loadUserData(u.id)
           navigate('/dashboard')
           return
@@ -94,6 +104,10 @@ export default function OnboardingPage() {
 
   const handleFinalSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!aceptaTerminos) {
+      toast.error('Para crear tu negocio tenés que aceptar los Términos y Condiciones y la Política de Privacidad')
+      return
+    }
     setLoading(true)
 
     try {
@@ -104,7 +118,7 @@ export default function OnboardingPage() {
 
       if (existingAuthUser) {
         // Ya tiene sesión (Google OAuth, o volvió de confirmar) → crear el negocio ahora
-        await provisionNegocio(existingAuthUser.id, existingAuthUser.email, existingAuthUser.name || existingAuthUser.email, bizData.nombre, tipoFinal, bizData.pais)
+        await provisionNegocio(existingAuthUser.id, existingAuthUser.email, existingAuthUser.name || existingAuthUser.email, bizData.nombre, tipoFinal, bizData.pais, aceptaMarketing)
         provisionedUserId = existingAuthUser.id
       } else {
         // Registro email/password. Los datos del negocio viajan en el metadata para poder crear
@@ -114,7 +128,10 @@ export default function OnboardingPage() {
           email: accountData.email,
           password: accountData.password,
           options: {
-            data: { full_name: accountData.name, ob_nombre: bizData.nombre, ob_tipo: tipoFinal, ob_pais: bizData.pais },
+            // El consentimiento viaja en el metadata: al confirmar el email todavía no hay sesión,
+            // el tenant se crea después en el useEffect y necesita saber qué se aceptó. `ob_terminos`
+            // siempre true (gateado arriba); `ob_marketing` = opt-in.
+            data: { full_name: accountData.name, ob_nombre: bizData.nombre, ob_tipo: tipoFinal, ob_pais: bizData.pais, ob_terminos: true, ob_marketing: aceptaMarketing },
             emailRedirectTo: `${window.location.origin}/onboarding`,
           },
         })
@@ -129,7 +146,7 @@ export default function OnboardingPage() {
           return
         }
         // "Confirm email" OFF → signUp ya devolvió sesión → crear el negocio ahora
-        await provisionNegocio(authData.user.id, accountData.email, accountData.name, bizData.nombre, tipoFinal, bizData.pais)
+        await provisionNegocio(authData.user.id, accountData.email, accountData.name, bizData.nombre, tipoFinal, bizData.pais, aceptaMarketing)
         provisionedUserId = authData.user.id
       }
 
@@ -311,13 +328,40 @@ export default function OnboardingPage() {
                 </div>
               </div>
 
+              {/* Consentimiento: T&C requerido + marketing opt-in opcional (Ley 25.326) */}
+              <div className="space-y-3 pt-1">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox" checked={aceptaTerminos}
+                    onChange={e => setAceptaTerminos(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-accent focus:ring-accent/40"
+                  />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 leading-snug">
+                    Acepto los{' '}
+                    <a href="/terminos" target="_blank" rel="noopener noreferrer" className="text-accent font-medium hover:underline">Términos y Condiciones</a>
+                    {' '}y la{' '}
+                    <a href="/privacidad" target="_blank" rel="noopener noreferrer" className="text-accent font-medium hover:underline">Política de Privacidad</a>.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox" checked={aceptaMarketing}
+                    onChange={e => setAceptaMarketing(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-accent focus:ring-accent/40"
+                  />
+                  <span className="text-xs text-gray-600 dark:text-gray-400 leading-snug">
+                    Quiero recibir novedades, promociones y consejos por email <span className="text-gray-400 dark:text-gray-500">(opcional)</span>.
+                  </span>
+                </label>
+              </div>
+
               <div className="flex gap-3">
                 <button type="button" onClick={() => setStep('account')}
                   className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold py-3 rounded-xl hover:border-gray-300 dark:border-gray-600 transition-all">
                   Atrás
                 </button>
-                <button type="submit" disabled={loading}
-                  className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-60">
+                <button type="submit" disabled={loading || !aceptaTerminos}
+                  className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all disabled:opacity-60 disabled:cursor-not-allowed">
                   {loading ? 'Registrando...' : 'Crear negocio'}
                 </button>
               </div>

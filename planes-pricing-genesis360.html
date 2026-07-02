@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Genesis360 — Planes, Pricing y Comparativa de Competencia</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', Arial, sans-serif; font-size: 11pt; color: #1a1a2e; background: #f5f5f7; line-height: 1.6; }
+  .page { max-width: 900px; margin: 0 auto; background: #fff; }
+
+  .cover {
+    background: linear-gradient(135deg, #0D0D0D 0%, #7B00FF 100%);
+    color: #fff; padding: 44px 48px;
+  }
+  .cover h1 { font-size: 26pt; font-weight: 800; letter-spacing: -0.5px; }
+  .cover .sub { font-size: 12pt; opacity: 0.85; margin-top: 6px; }
+  .cover .meta { font-size: 9.5pt; opacity: 0.65; margin-top: 18px; }
+
+  .body { padding: 32px 48px 48px; }
+  h2 { font-size: 15pt; color: #6d28d9; border-bottom: 2px solid #6d28d9; padding-bottom: 6px; margin: 34px 0 14px; }
+  h3 { font-size: 12pt; color: #4f46e5; margin: 20px 0 8px; font-weight: 700; }
+  p { margin-bottom: 10px; }
+  ul { margin: 6px 0 12px 22px; }
+  li { margin-bottom: 5px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 18px; font-size: 9.5pt; }
+  th { background: #6d28d9; color: #fff; padding: 8px 10px; text-align: left; font-weight: 600; }
+  td { padding: 7px 10px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  tr:nth-child(even) td { background: #faf9ff; }
+  td strong, th { white-space: normal; }
+
+  .g360 td { background: #ede9fe !important; font-weight: 600; }
+  .star { color: #d97706; }
+
+  .callout { border-left: 4px solid #6d28d9; background: #ede9fe; padding: 12px 16px; margin: 14px 0; border-radius: 0 6px 6px 0; font-size: 10pt; }
+  .warn { background: #fef3c7; border-left-color: #d97706; }
+  .warn strong { color: #92400e; }
+  .ok { background: #dcfce7; border-left-color: #16a34a; }
+  .ok strong { color: #166534; }
+
+  .flag { color: #b91c1c; font-weight: 700; }
+  .legacy { opacity: 0.6; }
+  .footer { padding: 18px 48px; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 9pt; }
+
+  @media print {
+    body { background: #fff; font-size: 10pt; }
+    .page { max-width: none; }
+    .cover { padding: 32px 36px; }
+    .body { padding: 24px 36px; }
+    h2 { page-break-after: avoid; }
+    table { page-break-inside: avoid; }
+    .no-print { display: none; }
+  }
+  .no-print { background: #ede9fe; border: 1px solid #6d28d9; border-radius: 8px; padding: 10px 14px; margin: 16px 48px 0; font-size: 9.5pt; color: #4c1d95; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="cover">
+    <h1>Planes, Pricing y Competencia</h1>
+    <div class="sub">Genesis360 — análisis para fijar precios, planes y límites</div>
+    <div class="meta">Documento de trabajo · jul-2026 · Confidencial · valores con IVA (21%) salvo aclaración</div>
+  </div>
+
+  <div class="no-print">📄 Para PDF: Imprimir (Ctrl/Cmd+P) → Guardar como PDF. Este recuadro no se imprime.</div>
+
+  <div class="body">
+
+  <div class="callout warn">
+    <strong>⚠️ Los precios de la app hoy están desactualizados</strong> ($4.900 / $9.900, ~5-25x por debajo del mercado 2026). Este documento define la propuesta nueva. Al cerrar los números se actualiza <code>src/config/brand.ts</code>.
+  </div>
+
+  <!-- ══════════════ COMPETENCIA ══════════════ -->
+  <h2>1. Comparativa de competencia</h2>
+  <p><strong>Contexto:</strong> Xubio, Contabilium, Netegia y Ninox <strong>publican</strong> precios; Neuralsoft, Aconpy y Zeus ERP los <strong>esconden</strong> ("contactanos"). Publicar precio transparente self-serve puede ser diferenciador para el comercio chico.</p>
+
+  <h3>Precios publicados (con IVA salvo aclaración)</h3>
+  <table>
+    <tr><th>Producto</th><th>Enfoque</th><th>Plan entrada</th><th>Plan medio</th><th>Plan alto</th></tr>
+    <tr>
+      <td><strong>Ninox</strong> (indumentaria)</td>
+      <td>Gestión + factura, especialista ropa/variantes</td>
+      <td>Emprendedor <strong>$24.000</strong> · 2.000 artíc · 1 terminal</td>
+      <td>Comercio <strong>$46.000</strong> · 5.000 artíc · 3 term</td>
+      <td>Empresa <strong>$94.000</strong> · 10.000 artíc · 5 term <em>(IVA no aclarado; +suc $25k, +integr $30k)</em></td>
+    </tr>
+    <tr>
+      <td><strong>Xubio</strong> (Emprendedores)</td>
+      <td>Facturación + gestión liviana</td>
+      <td>Estándar débito <strong>$27.951</strong> (otros medios $72.842) · 1.000 comprob · 2 users</td>
+      <td>—</td>
+      <td>Ilimitado débito <strong>$113.256</strong> · ∞</td>
+    </tr>
+    <tr>
+      <td><strong>Netegia</strong> (ERP PyME) <span class="star">★ más directo</span></td>
+      <td>Facturación + inventario + multi-suc + CRM + POS</td>
+      <td>Pyme Lite <strong>$96.182</strong> · 4.000 comprob · 4.000 artíc · 2 suc · 2 CUIT · 4 users</td>
+      <td>Premium <strong>$232.272</strong> · 10.000 comprob · 10.000 artíc · 6 suc · 10 users</td>
+      <td>Premium+ <strong>$389.537</strong> · 15.000 comprob · 15.000 artíc · 10 suc · 15 users <em>(20% off anual)</em></td>
+    </tr>
+    <tr>
+      <td><strong>Contabilium</strong></td>
+      <td>Contable puro (plan de cuentas, asientos, multi-CUIT)</td>
+      <td>Standard <strong>$147.620</strong> · 2.500 comprob · 5.000 SKU · 2 users</td>
+      <td>Pro <strong>$216.590</strong> · 5.000 comprob · 10.000 SKU · 10 users</td>
+      <td>Full <strong>$296.450</strong> · 10.000 comprob · 20.000 SKU · ∞</td>
+    </tr>
+  </table>
+
+  <h3>Competidores sin precio público</h3>
+  <table>
+    <tr><th>Producto</th><th>Qué es</th><th>Relevancia</th></tr>
+    <tr><td><strong>Zeus ERP &amp; POS</strong></td><td>Cloud POS-first + factura AFIP (QR), multi-razón-social, verticalizado (pinturerías/jugueterías/electrónica). Débito obligatorio + permanencia 6 meses.</td><td>Directo (POS+AFIP). Bloquea bots.</td></tr>
+    <tr><td><strong>Neuralsoft MyLogic</strong></td><td>ERP enterprise con IA: WMS, POS, producción, contabilidad, CRM. Cloud privada, "tarifa plana por usuario".</td><td>Ancla alta (Enterprise).</td></tr>
+    <tr><td><strong>Aconpy</strong></td><td>Contable + liquidación de sueldos con +200 convenios, libro IVA, facturación. Target contadores/estudios.</td><td>Su RRHH/sueldos es más profundo que el nuestro.</td></tr>
+  </table>
+
+  <h3>Cómo cobra la competencia (metering)</h3>
+  <ul>
+    <li><strong>Netegia:</strong> comprobantes + artículos + sucursales + CUITs + proveedores + integraciones + usuarios (multi-dimensional; 4.000 artíc en el plan más barato).</li>
+    <li><strong>Ninox:</strong> artículos + terminales POS + sucursales (extra $25k/suc); 2.000 artíc en el más barato.</li>
+    <li><strong>Contabilium:</strong> comprobantes + SKU (5.000-20.000) + usuarios + CUITs.</li>
+    <li>⇒ <strong>SKU/artículos SÍ es dimensión válida, pero a niveles de MILES</strong>, no cientos. Sucursales y usuarios son palancas comunes.</li>
+  </ul>
+
+  <h3>Posicionamiento de Genesis360</h3>
+  <ul>
+    <li><strong>Gana:</strong> WMS real (LPN/lotes/series/FIFO-FEFO), POS + caja/bóveda, compras (OC+recep), envíos con reparto propio, multi-sucursal server-side. Nadie del segmento SMB junta todo (Netegia es el que más se acerca, y es 1,6-2,3x más caro).</li>
+    <li><strong>Liviano:</strong> contabilidad pura (sin plan de cuentas/asientos) y sueldos con convenios. No es la pelea: competir contra "el comercio que quiere operar + facturar sin 3 sistemas", no contra el contador.</li>
+    <li><strong>Multi-CUIT / multi-razón-social:</strong> Netegia/Zeus/Contabilium lo tienen (2-10 CUITs), nosotros no → <strong>GO decidió desarrollarlo</strong> (paridad; candidato Enterprise / dimensión de pricing). Alcance grande (cert + numeración de comprobantes por CUIT). En backlog.</li>
+  </ul>
+
+  <!-- ══════════════ PROPUESTA ══════════════ -->
+  <h2>2. Propuesta de pricing (en discusión)</h2>
+  <p>Propuesta de GO + ajustes recomendados. <strong>No cerrada.</strong></p>
+  <table>
+    <tr><th>Plan</th><th>Precio propuesto (c/IVA)</th><th>Users</th><th>Movimientos/mes</th><th>SKU</th><th>Sucursales</th></tr>
+    <tr class="g360"><td><strong>Free</strong></td><td>$0 — 30 días <em>(¿trial o permanente? definir)</em></td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+    <tr class="g360"><td><strong>Básico</strong></td><td><strong>$60.000/mes</strong> (débito −10%, anual −30%)</td><td>5</td><td>5.000</td><td>2.000</td><td>1</td></tr>
+    <tr class="g360"><td><strong>Pro</strong></td><td><strong>$100.000/mes</strong> (mismos desc.)</td><td>15</td><td>20.000</td><td>8.000</td><td>4</td></tr>
+    <tr class="g360"><td><strong>Enterprise</strong></td><td>A consultar (según complejidad)</td><td>—</td><td>—</td><td>—</td><td>—</td></tr>
+  </table>
+
+  <div class="callout ok">
+    <strong>✅ Los precios están MUY bien (incluso conservadores).</strong> Básico $60k queda <strong>por debajo de Netegia Pyme Lite ($96k, el competidor más directo)</strong> y de Contabilium; arriba de Ninox Comercio (~$46-56k) y Xubio débito. Pro $100k ≈ Ninox Empresa ($94k) y Xubio Ilimitado ($113k), pero <strong>menos de la mitad de Netegia Premium ($232k) y Contabilium Pro ($217k)</strong> → wedge de valor agresivo. Se podría empujar Pro más arriba.
+  </div>
+  <div class="callout warn">
+    <strong>🚩 Los SKU 100/300 son inusables — confirmado por toda la competencia.</strong> El plan más barato de Ninox da 2.000 artículos ($24k) y el de Netegia 4.000 ($96k); Contabilium 5.000. Ibas a cobrar $60k por <strong>100</strong> (20-40x menos que cualquiera). Y <strong>cada variante = un producto separado</strong> (tienda de ropa 50×5×4 = 1.000 SKU). El SKU no cuesta nada. Subir a <strong>2.000-4.000 (Básico) / 15.000-∞ (Pro)</strong>.
+  </div>
+  <p><strong>Definiciones pendientes:</strong></p>
+  <ul>
+    <li><strong>Descuentos:</strong> débito −10% + anual −30% son sanos (costo marginal ~$0). Definir si se <strong>acumulan</strong> (¿40%?) o el anual es el tope.</li>
+    <li><strong>Free "30 días":</strong> definir si es trial (hoy la app usa <strong>7 días</strong> → cambio) o un tier permanente limitado para lead-gen (recomendado tener ambos: trial 30d de Pro + Free permanente acotado).</li>
+  </ul>
+
+  <h3>Add-ons por dimensión (propuesta GO)</h3>
+  <p>Modelo multi-dimensional (como Netegia): 4 dimensiones metered, cada una con packs que se suman a la factura del plan base.</p>
+  <table>
+    <tr><th>Dimensión</th><th>Pack A</th><th>Pack B</th><th>Pack C</th><th>Tipo</th><th>$/unidad</th></tr>
+    <tr><td><strong>SKU</strong></td><td>500 × $5.000</td><td>2.000 × $10.000</td><td>8.000 × $25.000</td><td>Solo fijo</td><td>10 / 5 / 3,13 ✓</td></tr>
+    <tr><td><strong>Sucursales</strong></td><td>1 × $15.000</td><td>3 × $35.000</td><td>5 × $55.000</td><td>Solo fijo</td><td>15.000 / 11.667 / 11.000 ✓</td></tr>
+    <tr><td><strong>Movimientos</strong></td><td>1.000 × $5.000</td><td>5.000 × $10.000</td><td>20.000 × $15.000</td><td>Fijo o temporal</td><td>5 / 2 / 0,75 ✓</td></tr>
+    <tr><td><strong>Usuarios</strong></td><td>1 × $5.000</td><td>3 × $10.000</td><td>5 × $15.000</td><td>Solo fijo</td><td>5.000 / 3.333 / 3.000 ✓</td></tr>
+  </table>
+  <ul>
+    <li><strong>Fijo (recurrente):</strong> se suma a la factura mes a mes. Para bajarlo, el usuario debe <strong>desactivar</strong> recursos hasta la cantidad cubierta por el base (la app lo guía). SKU/sucursales/usuarios = <strong>solo fijo</strong>.</li>
+    <li><strong>Temporal (one-time):</strong> pago en el momento, vence a <strong>30 días</strong> del pago, independiente del ciclo mensual. <strong>Solo para movimientos</strong>.</li>
+  </ul>
+  <p><strong>Ejemplo:</strong> Pro con 10.000 SKU (base 8.000 + add-on 2.000×$10k) = <strong>$110.000/mes</strong>. Básico + 2ª sucursal (1×$15k) = <strong>$75.000/mes</strong>.</p>
+
+  <div class="callout ok">
+    <strong>✅ Decisiones GO (2026-07-01):</strong>
+    <ul style="margin-top:6px;">
+      <li><strong>Downgrade guiado (no borrado) — REGLA #0:</strong> al bajar de un add-on fijo, la app indica cuántos recursos debe <strong>DESACTIVAR</strong> el usuario para poder bajarlo; en SKU alerta "desactivar ≠ eliminar" (preservar trazabilidad). El usuario ejecuta, guiado.</li>
+      <li><strong>Sucursal:</strong> precios finales 1×$15.000 / 3×$35.000 / 5×$55.000 (per-unit decreciente ✓).</li>
+      <li><strong>Temporal solo para movimientos</strong>; SKU/sucursal/usuario = solo fijo.</li>
+      <li><strong>Pro base SKU = 8.000</strong> (subido de 6.000).</li>
+      <li><strong>UX = configurador</strong> (plan base + selectores), no planilla.</li>
+    </ul>
+  </div>
+  <div class="callout warn">
+    <strong>🔧 Pendiente de implementación (antes de lanzar):</strong> enforcement server-side del límite efectivo (hoy client-side, bypasseable) · flujo de downgrade guiado · billing MP (add-ons fijos = actualizar preapproval; temporales = pago único ya existente) · actualizar <code>brand.ts</code> + Landing.
+  </div>
+
+  <h3>Plan de implementación por fases</h3>
+  <table>
+    <tr><th>Fase</th><th>Qué</th><th>Riesgo</th></tr>
+    <tr><td><strong>0 — Datos + límites base</strong></td><td>Tabla <code>tenant_addons</code> + límites base nuevos en <code>brand.ts</code> + helper "límite efectivo = base + Σ add-ons activos".</td><td>Bajo</td></tr>
+    <tr><td><strong>1 — Enforcement server-side</strong></td><td>Guards en INSERT de productos/users/sucursales (activos ≤ límite efectivo) + contador mensual de movimientos. Trigger/RPC autoritativo.</td><td>Medio</td></tr>
+    <tr><td><strong>2 — Add-on temporal (movimientos)</strong></td><td>Reusar patrón <code>addon_movimientos</code> (pago único MP + vence 30d), nuevos packs.</td><td>Bajo</td></tr>
+    <tr><td><strong>3 — Add-ons fijos + downgrade guiado + MP</strong></td><td>Recurrentes: actualizar preapproval MP al alta/baja. UI de downgrade guiado (desactivar, no borrar).</td><td>Alto</td></tr>
+    <tr><td><strong>4 — Configurador (Landing + Suscripción)</strong></td><td>UI plan base + selectores que calculan el total en vivo.</td><td>Bajo</td></tr>
+    <tr><td><strong>5 — Multi-CUIT</strong></td><td>Track aparte, grande (cert + numeración por CUIT). Después del WSFE propio.</td><td>Alto</td></tr>
+  </table>
+
+  <!-- ══════════════ MODELO DE LÍMITES ══════════════ -->
+  <h2>3. Modelo de límites recomendado</h2>
+  <p><strong>Correr la monetización de "recursos artificiales" (SKU/movimientos) a VALOR real (módulos + usuarios + sucursales).</strong></p>
+  <ul>
+    <li><strong>SKU y comprobantes → generosos o ilimitados</strong> (cuestan ~$0; sirven de marketing: "productos ilimitados", "facturación ilimitada").</li>
+    <li><strong>Movimientos → límite suave</strong> (opaco para el cliente; hoy sin guard server-side).</li>
+    <li><strong>Palancas fuertes de precio:</strong> módulos avanzados (WMS, RRHH, Compras, Envíos), cantidad de usuarios y sucursales, integraciones.</li>
+  </ul>
+
+  <h3>Módulos por plan (sugerido — ya casi implementado)</h3>
+  <table>
+    <tr><th>Módulo</th><th>Free</th><th>Básico</th><th>Pro</th><th>Enterprise</th></tr>
+    <tr><td>Inventario básico · Ventas/POS · Caja · Gastos · Clientes</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td><strong>Facturación AFIP</strong> (gancho vs Xubio, costo $0)</td><td>✓</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td>Reportes · Historial · Métricas</td><td>—</td><td>✓</td><td>✓</td><td>✓</td></tr>
+    <tr><td><strong>Modo Avanzado (WMS)</strong> · RRHH · Recursos · Compras · Envíos</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+    <tr><td>Importación masiva · Marketplace · Multi-sucursal</td><td>—</td><td>—</td><td>✓</td><td>✓</td></tr>
+    <tr><td>API · integraciones a medida · SLA · onboarding</td><td>—</td><td>—</td><td>—</td><td>✓</td></tr>
+  </table>
+
+  <!-- ══════════════ INFRA + COMPROBANTES ══════════════ -->
+  <h2>4. ¿Los límites aprietan la infra? (Supabase/Vercel/Resend)</h2>
+  <p><strong>No.</strong> A 0-100 clientes los límites son 100% palanca comercial, no restricción de infra.</p>
+  <ul>
+    <li>SKU / movimientos / usuarios = filas Postgres + auth → baratísimo (100k productos ≈ decenas de MB).</li>
+    <li>Lo que escala el costo (en orden), recién con decenas-cientos de tenants activos: <strong>(1) Resend</strong> (free 3.000 emails/mes → ~50-100 tenants lo rompen → US$20/mes 50k); <strong>(2) Supabase storage/egress</strong> (imágenes de producto); <strong>(3) DB size</strong> (movimientos, años a este ritmo).</li>
+    <li><strong>Riesgo real = límites demasiado BAJOS</strong> (los 100 SKU), no quedarse sin infra.</li>
+  </ul>
+
+  <h2>5. ¿Comprobantes como límite? Costo por comprobante = $0</h2>
+  <p>AFIP/ARCA no cobra por CAE. Con AfipSDK el token es por-tenant (lo paga el cliente); con el WSFE propio (en construcción) → $0 marginal nuestro. <strong>Recomendación: NO limitar como tope punitivo → usar "facturación ilimitada" como diferenciador</strong> (Xubio capa 1.000/mes, Contabilium 2.500-10.000).</p>
+
+  <h2>6. Costos propios (para el margen)</h2>
+  <ul>
+    <li><strong>Storage: despreciable</strong> (~US$0,02/GB/mes; un Pro a tope ≈ US$0,06/mes). Facturas/remitos no se guardan (se regeneran).</li>
+    <li><strong>Facturación AFIP: $0</strong> de AFIP/ARCA. AfipSDK = token por-tenant (costo del cliente); WSFE propio = $0.</li>
+    <li><strong>Comisión Mercado Pago: ~4,3%</strong> de cada cobro de suscripción. Cobro en ARS.</li>
+    <li><strong>Hoy:</strong> solo Claude Code (US$23/mes) + dominio (~US$15/año); resto en free tier; 0 clientes en PROD.</li>
+  </ul>
+
+  <p style="margin-top:24px;font-size:9pt;color:#9ca3af;"><em>Precios de competencia relevados el 1-jul-2026; en Argentina se mueven con inflación (re-chequear cada par de meses). Este documento es un marco de decisión, no un precio fijado.</em></p>
+
+  </div>
+
+  <div class="footer">
+    Genesis360 · Planes &amp; Pricing · jul-2026 · Confidencial · Fuente: <code>G360.Wiki/wiki/business/planes-pricing.md</code>
+  </div>
+
+</div>
+</body>
+</html>

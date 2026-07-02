@@ -19,7 +19,21 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 
 ## Decisión técnica
 
-**Integración propia con AFIP WSFE** (sin intermediario):
+> ### ⚠ Cómo está implementado HOY (verificado 2026-06-30) — NO es WSFE directo
+> A pesar del título "sin intermediario" de abajo (que fue la **intención**), lo deployado **usa AfipSDK (su nube), no una integración directa al WSFE**. En `emitir-factura`: `import Afip from 'npm:@afipsdk/afip.js'`, el `tenant.afipsdk_token` es **obligatorio** (línea 74), el CAE se pide con `eb.createVoucher()` (método de AfipSDK) y la firma WSAA se hace "en su nube". Verificado: **cero** rastro de WSFE directo en el repo (`wsaa.afip`/`servicios1.afip`/`wsfev1`/`FECAESolicitar`/`LoginCms`). El cert del tenant se pasa a AfipSDK pero el request **pasa por ellos**. **Costo:** AFIP/ARCA = $0; AfipSDK = free tier + pago por volumen, token **por tenant** (si cada cliente trae su cuenta, el costo es del cliente).
+
+> ### 🎯 Estrategia de migración: DUAL-PROVIDER con rollback (decisión GO 2026-07-01)
+> **✅ Fase 1 IMPLEMENTADA EN DEV (2026-07-01, mig 250, sin deploy):** adapter + flag por-tenant, refactor **no-funcional** (todos en `'afipsdk'`, comportamiento idéntico). Falta: aplicar mig 250 en PROD + deploy del EF (OK de GO) + prueba runtime en homologación. Fase 3 = implementar `WsfePropioProvider`.
+> GO decidió **construir el WSFE propio SIN romper AfipSDK y mantener AMBOS** (no big-bang), con vuelta atrás si el propio falla, hasta validar estabilidad. Diseño:
+> - **Adapter/provider:** interfaz común (`emitirComprobante`/`ultimoAutorizado`/`emitirNC`) con `AfipSdkProvider` (actual) + `WsfePropioProvider` (nuevo: TRA + firma CMS/PKCS#7 → WSAA `LoginCms` → TA cacheado ~12h → WSFEv1 SOAP `FECAESolicitar`/`FECompUltimoAutorizado`). **La lógica fiscal (payload A/B/C, alícuotas, condición IVA receptor, `ImpTotal`) se comparte** — solo cambia el transporte, así REGLA #0 no se bifurca.
+> - **Selector `tenants.afip_provider` (`'afipsdk'|'propio'`)** — mismo patrón que `afip_produccion` (mig 210): migración por-tenant + rollback instantáneo (flip de flag, sin deploy). Guardar `afip_provider_usado` en el comprobante.
+> - **Numeración:** ambos piden el próximo número a `FECompUltimoAutorizado` de AFIP (no contador local) → se alternan sin saltear/duplicar.
+> - **🛑 NO fallback automático en la EMISIÓN** (el propio pudo haber obtenido CAE aunque la respuesta falle → duplicado/salto de número). Rollback manual; reconciliar con `FECompUltimoAutorizado` ante error dudoso. Auto-fallback solo en lecturas.
+> - **Fases:** homologación (reusar matriz A/B/C) → tenant piloto PROD → validar estabilidad → decidir si se saca AfipSDK. **Backlog** en `sources/raw/project_pendientes.md`. Ver [[reference_pricing_planes_costos]].
+>
+> **Nota sobre mantenimiento por cambios de ARCA:** es **simétrico** entre ambas opciones. WSAA/WSFEv1 (el transporte que tapa AfipSDK) es muy estable (sin cambios que rompan desde ~2012); lo que sí obliga a tocar código son **reglas fiscales** (campos obligatorios nuevos, leyendas, alícuotas) que pegan **igual** con o sin SDK. Frecuencia baja (un puñado/año, anunciados), complejidad baja. No requiere personal dedicado a vigilar ARCA — solo suscribirse a novedades de WS de AFIP + probar en homologación.
+
+**Integración propia con AFIP WSFE** *(← INTENCIÓN documentada; hoy usa AfipSDK, ver nota de arriba)*:
 - Break-even vs. servicio tercero (~$300 USD/mes a 20 tenants) en 6-8 meses
 - SDK: `@afipsdk/afip.js` vía `npm:` en Deno (no requiere certificados propios por ahora)
 - Acceso: AfipSDK cloud service + `access_token` por tenant

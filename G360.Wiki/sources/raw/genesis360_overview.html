@@ -10,7 +10,7 @@
 
   .cover {
     display: flex; flex-direction: column; justify-content: center; align-items: center;
-    min-height: 100vh; background: linear-gradient(135deg, #6d28d9 0%, #4f46e5 100%);
+    min-height: 100vh; background: linear-gradient(135deg, #0D0D0D 0%, #7B00FF 100%);
     color: white; text-align: center; padding: 40px; page-break-after: always;
   }
   .cover h1 { font-size: 42pt; font-weight: 800; letter-spacing: -1px; margin-bottom: 8px; }
@@ -86,19 +86,23 @@
 <!-- PORTADA -->
 <div class="cover">
   <h1>Genesis360</h1>
-  <div class="tagline">"El cerebro del negocio físico"</div>
-  <p style="font-size:12pt; opacity:0.8; max-width:480px; line-height:1.7;">
-    Plataforma SaaS de gestión para comercios físicos. No solo muestra datos — dice qué hacer.
+  <div class="tagline">"El inventario inteligente para tu negocio"</div>
+  <p style="font-size:12pt; opacity:0.8; max-width:520px; line-height:1.7;">
+    Plataforma SaaS integral de gestión para comercios: inventario, ventas, caja, facturación
+    electrónica AFIP, compras, envíos, clientes, RRHH y analítica. No solo muestra datos — dice qué hacer.
   </p>
-  <div style="margin-top:48px; display:flex; gap:24px; flex-wrap:wrap; justify-content:center;">
-    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Inventario</span>
-    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Ventas</span>
-    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Caja</span>
+  <div style="margin-top:48px; display:flex; gap:16px; flex-wrap:wrap; justify-content:center; max-width:640px;">
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Inventario / WMS</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Ventas / POS</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Facturación AFIP</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Caja / Bóveda</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Compras / Recepciones</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Envíos</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Clientes / CC</span>
     <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">RRHH</span>
-    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Reportes</span>
-    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Alertas IA</span>
+    <span style="background:rgba(255,255,255,0.15); padding:8px 16px; border-radius:8px; font-size:10pt;">Dashboard / Insights</span>
   </div>
-  <div class="version">Versión del documento: Draft v1.2 — Abril 2026 · App v0.75.0</div>
+  <div class="version">Versión del documento: v2.0 — Julio 2026 · App v1.100.0</div>
   <div class="meta">Genesis360 · app.genesis360.pro · Confidencial</div>
 </div>
 
@@ -107,25 +111,26 @@
   <h2>Contenido</h2>
   <ol>
     <li>Visión general del producto
-      <ul class="toc-sub"><li>Propuesta de valor · Stack tecnológico · Arquitectura</li></ul>
+      <ul class="toc-sub"><li>Propuesta de valor · Stack · Modo Básico/Avanzado · Multi-tenant · Roles</li></ul>
     </li>
     <li>Planes y precios
-      <ul class="toc-sub"><li>Tabla de planes · Límites · Matriz de funcionalidades</li></ul>
+      <ul class="toc-sub"><li>Tabla de planes · Límites · Matriz de funcionalidades · Add-ons</li></ul>
     </li>
-    <li>Módulos actuales (implementados)
+    <li>Módulos actuales (implementados en PROD)
       <ul class="toc-sub">
-        <li>Inventario · Movimientos · Ventas · Caja · Gastos · Clientes</li>
-        <li>Reportes · Alertas · Dashboard · RRHH · Configuración</li>
+        <li>Inventario/WMS · Movimientos · Ventas/POS · Facturación AFIP · Caja/Bóveda · Gastos</li>
+        <li>Compras · Proveedores · Clientes/CC · Envíos · Alertas · Dashboard/Insights</li>
+        <li>Reportes/Métricas · RRHH · Recursos · Configuración · Multi-sucursal · Ayuda/Soporte</li>
       </ul>
     </li>
-    <li>Reglas de negocio relevadas
-      <ul class="toc-sub"><li>Caja · Ventas · Clientes</li></ul>
+    <li>Reglas de negocio e integridad
+      <ul class="toc-sub"><li>REGLA #0 (fiscal/contable/inventario) · Caja · Ventas · Clientes CC</li></ul>
     </li>
-    <li>Roadmap — Features en desarrollo y planificadas
-      <ul class="toc-sub"><li>Corto plazo · Mediano plazo · Ideas futuras</li></ul>
+    <li>Roadmap — Implementado y próximo
+      <ul class="toc-sub"><li>Hitos v0.76→v1.100 · Pendientes y backlog</li></ul>
     </li>
     <li>Arquitectura técnica
-      <ul class="toc-sub"><li>Multi-tenant · Multi-sucursal · Seguridad · Integraciones</li></ul>
+      <ul class="toc-sub"><li>Multi-tenant · Multi-sucursal · Seguridad · Integraciones · Testing</li></ul>
     </li>
   </ol>
 </div>
@@ -135,10 +140,10 @@
   <h2>1. Visión general del producto</h2>
 
   <h3>Propuesta de valor</h3>
-  <p>Genesis360 es una plataforma SaaS de gestión para comercios físicos (retail, almacenes, distribuidoras, etc.). Su diferencial no es mostrar datos — es <strong>decirle al dueño qué hacer</strong>: qué producto reponer, qué margen está bajando, qué empleado cumpleaños tiene esta semana, qué caja tiene diferencia.</p>
+  <p>Genesis360 es una plataforma SaaS <strong>integral</strong> de gestión para comercios (retail, almacenes, ferreterías, tiendas de ropa, distribuidoras, etc.). Cubre de punta a punta inventario, ventas, facturación electrónica AFIP, caja, compras, envíos, clientes con cuenta corriente, RRHH y analítica. Su diferencial no es mostrar datos — es <strong>decirle al dueño qué hacer</strong>: qué producto reponer, qué margen está bajando, qué caja tiene diferencia, qué cliente debe.</p>
 
   <div class="callout">
-    <strong>"El cerebro del negocio físico"</strong> — Insights automáticos, alertas proactivas y gestión integral en una sola plataforma.
+    <strong>"El inventario inteligente para tu negocio"</strong> — Insights automáticos, alertas proactivas y gestión integral en una sola plataforma, con integridad fiscal y contable de grado productivo.
   </div>
 
   <h3>Stack tecnológico</h3>
@@ -147,44 +152,58 @@
       <h4>Frontend</h4>
       <ul>
         <li>React 18 + TypeScript</li>
-        <li>Vite (build tool)</li>
-        <li>Tailwind CSS + shadcn/ui</li>
+        <li>Vite (build tool) + PWA (offline / instalable)</li>
+        <li>Tailwind CSS</li>
         <li>Zustand (estado global)</li>
         <li>React Query (cache/fetching)</li>
-        <li>Recharts (gráficos)</li>
+        <li>Recharts (gráficos) · jsPDF + xlsx (exports)</li>
       </ul>
     </div>
     <div>
-      <h4>Backend</h4>
+      <h4>Backend / Infra</h4>
       <ul>
         <li>Supabase (PostgreSQL + Auth)</li>
-        <li>Row Level Security (RLS)</li>
+        <li>Row Level Security (RLS) en toda la data</li>
         <li>Edge Functions (Deno)</li>
-        <li>Storage (archivos/imágenes)</li>
+        <li>Storage privado (imágenes / documentos)</li>
         <li>Vercel (deploy frontend)</li>
-        <li>Mercado Pago (suscripciones)</li>
+        <li>Mercado Pago · Resend · Cloudflare · AfipSDK · Google Maps</li>
       </ul>
     </div>
   </div>
 
   <h3>Dominios</h3>
   <ul>
-    <li><strong>www.genesis360.pro</strong> — Landing page (marketing)</li>
+    <li><strong>genesis360.pro</strong> — Landing page (marketing) + páginas legales (/terminos, /privacidad)</li>
     <li><strong>app.genesis360.pro</strong> — Aplicación (usuarios autenticados)</li>
+    <li><strong>admin.genesis360.pro</strong> — Plataforma interna de administración y soporte (repo separado)</li>
   </ul>
 
+  <h3>Modo Básico vs. Avanzado (WMS)</h3>
+  <p>Cada tenant opera en uno de dos modos, que <strong>gatean la interfaz sin tocar los datos</strong>:</p>
+  <ul>
+    <li><strong>Básico</strong> — comercio simple: inventario por cantidad, ventas, caja, gastos, clientes, facturación. Sin ubicaciones, lotes, series ni depósito.</li>
+    <li><strong>Avanzado (WMS)</strong> — depósito completo: líneas de stock (LPN), ubicaciones, lotes, vencimientos, series, FIFO/FEFO, órdenes de compra, recepciones y envíos.</li>
+  </ul>
+  <div class="callout callout-info">El modo se cambia en Configuración (kill-switch global disponible). Las consultas de stock son "mode-aware": en básico no exigen ubicación/estado. El modo nunca oculta ni altera información fiscal/contable.</div>
+
   <h3>Arquitectura multi-tenant + multi-sucursal</h3>
-  <p>Cada cliente es un <strong>tenant</strong> con datos completamente aislados. Todas las tablas tienen <code>tenant_id</code> con Row Level Security (RLS) en PostgreSQL. Desde v0.42.0, cada tenant puede tener múltiples <strong>sucursales</strong>, con filtrado por sucursal en inventario, ventas, caja, gastos y clientes.</p>
+  <p>Cada cliente es un <strong>tenant</strong> con datos completamente aislados. Todas las tablas tienen <code>tenant_id</code> con Row Level Security (RLS) en PostgreSQL. Cada tenant puede tener múltiples <strong>sucursales</strong>, con aislamiento por sucursal aplicado <strong>server-side</strong> (RLS en 23 tablas operativas): los usuarios quedan fijados a su sucursal salvo el DUEÑO y roles habilitados a "ver todas".</p>
 
   <h3>Roles de usuario</h3>
   <table>
     <tr><th>Rol</th><th>Descripción</th><th>Accesos principales</th></tr>
-    <tr><td><strong>OWNER</strong></td><td>Dueño del negocio</td><td>Todo. Único que puede configurar y acceder a datos sensibles.</td></tr>
-    <tr><td><strong>SUPERVISOR</strong></td><td>Encargado / gerente</td><td>Operaciones + cierre de cualquier caja + aprobación de vacaciones.</td></tr>
-    <tr><td><strong>CAJERO</strong></td><td>Vendedor / cajero</td><td>Ventas, caja propia, gastos. Sin acceso a config ni reportes avanzados.</td></tr>
+    <tr><td><strong>DUEÑO</strong></td><td>Dueño del negocio</td><td>Todo. Único con acceso global por defecto; configura y ve datos sensibles.</td></tr>
+    <tr><td><strong>SUPER_USUARIO</strong></td><td>Mano derecha del dueño</td><td>Operación amplia; ve todas las sucursales por defecto.</td></tr>
+    <tr><td><strong>SUPERVISOR</strong></td><td>Encargado / gerente</td><td>Operaciones + cierre de cualquier caja + aprobación de vacaciones de su equipo.</td></tr>
+    <tr><td><strong>CAJERO</strong></td><td>Vendedor / cajero</td><td>Ventas, caja propia, gastos. Fijado a su sucursal; sin config ni reportes avanzados.</td></tr>
+    <tr><td><strong>DEPOSITO</strong></td><td>Operario de depósito</td><td>Inventario, movimientos, recepciones, envíos (WMS). Sin caja ni fiscal.</td></tr>
     <tr><td><strong>RRHH</strong></td><td>Recursos humanos</td><td>Módulo RRHH (empleados, nómina, vacaciones, asistencia). Sin caja.</td></tr>
-    <tr><td><strong>ADMIN</strong></td><td>Administrador Genesis360</td><td>Acceso global para soporte/administración de la plataforma.</td></tr>
+    <tr><td><strong>CONTADOR</strong></td><td>Contable</td><td>Vistas fiscales/contables y reportes. Perfil de lectura/gestión contable.</td></tr>
+    <tr><td><strong>VIEWER</strong></td><td>Solo lectura</td><td>Consulta sin editar; ve todas las sucursales por defecto.</td></tr>
+    <tr><td><strong>ADMIN</strong></td><td>Staff Genesis360</td><td>Acceso global para soporte/administración de la plataforma (no es del tenant).</td></tr>
   </table>
+  <div class="callout callout-info">Convención: <code>ownerOnly</code> = DUEÑO+ADMIN · <code>supervisorOnly</code> = DUEÑO+SUPERVISOR+ADMIN. Existe además una autorización de ajustes de inventario configurable por rol.</div>
 </div>
 
 <!-- 2. PLANES Y PRECIOS -->
@@ -200,114 +219,157 @@
   </table>
 
   <div class="callout-info callout">
-    <strong>Trial:</strong> 14 días con acceso Pro completo para nuevos usuarios. Se activa al completar el onboarding.
+    <strong>Trial:</strong> 7 días gratis con acceso completo para nuevos negocios. Se activa al completar el onboarding (registro del negocio). Al vencer, se solicita suscripción vía Mercado Pago.
   </div>
+  <p style="font-size:9pt;color:#6b7280;">Un <strong>movimiento</strong> = una fila en <code>movimientos_stock</code> (solo inventario: venta/rebaje, ingreso, ajuste, traslado, devolución, kits). Facturar y registrar gastos <strong>no</strong> consumen movimientos. Cada <strong>variante</strong> (talla/color) cuenta como un producto separado.</p>
 
   <h3>Matriz de funcionalidades por plan</h3>
   <table>
     <tr><th>Funcionalidad</th><th>Free</th><th>Básico</th><th>Pro</th><th>Enterprise</th></tr>
-    <tr><td>Inventario</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Movimientos (ingreso/rebaje)</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Alertas de stock</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Ventas + carrito</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Caja + gastos</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Clientes</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Reportes</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Historial completo</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Métricas avanzadas</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Importación masiva</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Inventario + movimientos + alertas de stock</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Ventas / POS + carrito</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Caja + gastos + clientes</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Facturación electrónica AFIP</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Reportes · Historial · Métricas avanzadas</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Importación masiva (CSV/Excel)</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
     <tr><td>RRHH completo</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Aging profiles</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Marketplace API</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
-    <tr><td>Multi-sucursal</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Modo Avanzado (WMS): lotes, series, vencimientos, FIFO/FEFO, OC y envíos</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Aging profiles · Marketplace API</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+    <tr><td>Onboarding personalizado · SLA · integraciones a medida</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td></tr>
   </table>
+  <p style="font-size:9pt;color:#6b7280;">Multi-sucursal está disponible en todos los planes (según cantidad de usuarios). Los límites de plan se aplican hoy en el cliente; se están reforzando con guards server-side.</p>
 
   <h3>Add-ons disponibles</h3>
   <ul>
-    <li><strong>+500 movimientos/mes</strong> — $990 ARS (acumulable). Para planes Free y Básico.</li>
+    <li><strong>+500 movimientos/mes</strong> — $990 ARS (acumulable), pago único vía Mercado Pago. Para planes con límite de movimientos (Free y Básico).</li>
   </ul>
 </div>
 
 <!-- 3. MÓDULOS ACTUALES -->
 <div class="section page-break">
   <h2>3. Módulos actuales</h2>
+  <p style="font-size:9pt;color:#6b7280;margin-bottom:16px;"><em>Todo lo listado en esta sección está implementado y en producción (v1.100.0), salvo aclaración expresa.</em></p>
 
   <div class="module-card">
-    <h3>📦 Inventario</h3>
-    <p>Gestión de productos con múltiples líneas de stock (LPN — License Plate Number). Soporta productos serializados (número de serie único) y no serializados. Cada línea tiene ubicación, vencimiento, lote, cantidad reservada y estado.</p>
+    <h3>📦 Inventario / WMS</h3>
+    <p>Gestión de productos que se adapta al modo del tenant. En <strong>básico</strong>: stock por cantidad. En <strong>avanzado (WMS)</strong>: múltiples líneas de stock (LPN — License Plate Number), serializados (serie única) y no serializados, cada línea con ubicación, vencimiento, lote, cantidad reservada y estado.</p>
     <ul>
       <li>Reglas de selección: FIFO / LIFO / FEFO / LEFO / Manual (por SKU o por negocio)</li>
-      <li>Prioridad de ubicación: sort por prioridad en picking</li>
-      <li>Aging profiles: cambio automático de estado según días transcurridos</li>
-      <li>Importación masiva por Excel (productos + series)</li>
-      <li>Scanner de código de barras (cámara, iOS/Android/Desktop)</li>
-      <li>Scan con IA: foto del producto → reconocimiento automático vía Claude Haiku + Open Food Facts</li>
+      <li>Ubicaciones con prioridad de picking · estados personalizados · aging profiles (cambio de estado por antigüedad)</li>
+      <li>Variantes (talla/color) y grupos de variantes · estructura de producto (unidad/caja/pallet)</li>
+      <li>KITs / kitting atómico (armar y desarmar componentes)</li>
+      <li>Conteos de inventario (cycle counting) con autorización de ajustes configurable por rol</li>
+      <li>Traslados entre sucursales/ubicaciones · reingresos · consolidación de líneas</li>
+      <li>Importación masiva por Excel (productos + series) · códigos de barras y GS1</li>
+      <li>Scanner de código de barras (cámara, iOS/Android/Desktop) + scan con IA (foto → reconocimiento vía Claude)</li>
     </ul>
+    <div class="callout callout-warn"><strong>Integridad de stock (REGLA #0):</strong> el stock nunca queda negativo en silencio; los triggers recalculan <code>stock_actual</code>; toda rebaja valida disponibilidad server-side.</div>
   </div>
 
   <div class="module-card">
     <h3>🔄 Movimientos de stock</h3>
-    <p>Registro de ingresos y rebajes de inventario con trazabilidad completa.</p>
+    <p>Registro de ingresos, rebajes, ajustes, traslados y devoluciones con trazabilidad completa (ledger inmutable write-time con snapshots).</p>
     <ul>
       <li>Motivos predefinidos configurables + campo libre "Otro"</li>
-      <li>Vinculación a línea de inventario (LPN) y serie</li>
-      <li>Límite de movimientos por plan (con barra de progreso y bloqueo)</li>
-      <li>Banner de alerta al acercarse al límite</li>
+      <li>Vinculación a línea de inventario (LPN) y serie · movimientos masivos multi-SKU</li>
+      <li>Límite de movimientos por plan (barra de progreso, banner de alerta y bloqueo)</li>
     </ul>
   </div>
 
   <div class="module-card">
-    <h3>🛒 Ventas</h3>
-    <p>Punto de venta con carrito, combos, descuentos y múltiples métodos de pago.</p>
+    <h3>🛒 Ventas / POS</h3>
+    <p>Punto de venta con carrito, combos, descuentos, múltiples métodos de pago y facturación integrada.</p>
     <ul>
-      <li>Estados: pendiente → reservada → despachada / cancelada</li>
-      <li>Carrito con descuento por ítem y descuento general</li>
-      <li>Combos: descuento por porcentaje, monto ARS o monto USD</li>
-      <li>Múltiples métodos de pago: Efectivo / Tarjeta / Transferencia / Mercado Pago</li>
-      <li>Trazabilidad LPN→venta (qué línea de inventario se usó)</li>
-      <li>Vista lista + galería de productos</li>
-      <li>Ticket de venta imprimible</li>
-      <li>Historial con filtros por estado, fecha y categoría</li>
+      <li>Estados: pendiente → reservada → despachada → facturada · cancelada · devuelta</li>
+      <li>Carrito con descuento por ítem y descuento general (prorrateado en los ítems)</li>
+      <li>Combos: descuento por porcentaje, monto ARS o monto USD · presupuestos y ventas recurrentes</li>
+      <li>Split de pago: Efectivo / Tarjeta / Transferencia / Mercado Pago / Cuenta corriente / Crédito a favor</li>
+      <li><strong>Saldo a favor</strong>: se auto-sugiere el crédito del cliente al cobrar (sin pisar lo cargado a mano)</li>
+      <li>Trazabilidad LPN→venta · despacho desde varios LPN (<code>venta_item_despachos</code>)</li>
+      <li>Devoluciones: total/parcial, reingreso de stock, Nota de Crédito si el origen fue facturado, devolución de efectivo asentada en caja</li>
+      <li>Ticket / comprobante imprimible · historial con filtros por estado, fecha y categoría</li>
     </ul>
     <div class="callout">
-      <strong>Regla clave:</strong> Reserva/despacho requieren cliente registrado (excepto despacho directo). El monto total debe estar cubierto al despachar.
+      <strong>Regla clave:</strong> reserva/despacho requieren cliente registrado (excepto despacho directo). El monto total debe estar cubierto al despachar. Todo efectivo se asienta en caja.
     </div>
   </div>
 
   <div class="module-card">
-    <h3>💰 Caja</h3>
-    <p>Gestión de caja física con sesiones de apertura/cierre, movimientos manuales y conciliación automática con ventas.</p>
+    <h3>🧾 Facturación electrónica AFIP</h3>
+    <p>Emisión de comprobantes electrónicos ante AFIP/ARCA con CAE, integrada a ventas.</p>
     <ul>
-      <li>Múltiples cajas por sucursal (límite según plan)</li>
-      <li>Apertura con monto inicial · Cierre con conteo real</li>
-      <li>Ingresos manuales (con motivo) · Egresos manuales (con motivo)</li>
-      <li>Solo Efectivo afecta el saldo; otros medios son informativos</li>
-      <li>Ingreso automático al despachar venta con efectivo</li>
-      <li>Egreso automático al registrar gasto en efectivo</li>
-      <li>Widget de estado de caja en header (punto verde/rojo)</li>
-      <li>Multi-usuario: badge si sesión abierta por otro usuario</li>
-      <li>Shortcuts: Shift+I ingreso · Shift+O egreso</li>
+      <li>Factura A / B / C, Notas de Crédito y Débito según la condición fiscal del emisor</li>
+      <li>Alícuotas de IVA (0 / 10,5 / 21 / 27%), percepciones, comprobantes asociados (<code>CbtesAsoc</code>)</li>
+      <li>CAE + QR (RG 4291) · leyenda Ley 27.743 en Factura B · umbral de Factura B con identificación</li>
+      <li>Comprobantes A4 con paridad Xubio: factura / presupuesto / remito, logo y datos del emisor</li>
+      <li>Costo de envío facturado como ítem (Concepto 3) · datos del emisor (IIBB, inicio de actividades, CBU/alias)</li>
+      <li>Flag de producción AFIP por tenant (homologación ↔ producción, un cliente a la vez)</li>
+    </ul>
+    <div class="callout callout-warn"><strong>Nota técnica:</strong> hoy la emisión usa AfipSDK (firma WSAA en su nube; token por tenant). AFIP/ARCA no cobra por el CAE. Está en backlog migrar a WSFE 100% propio (sin terceros). La responsabilidad fiscal es del contribuyente.</div>
+  </div>
+
+  <div class="module-card">
+    <h3>💰 Caja + Caja Fuerte / Bóveda</h3>
+    <p>Gestión de caja física con sesiones de apertura/cierre, arqueos, movimientos manuales y conciliación automática con ventas y gastos.</p>
+    <ul>
+      <li>Múltiples cajas por sucursal · apertura con monto inicial · cierre con conteo real y diferencia registrada</li>
+      <li>Arqueo parcial sin cerrar la sesión · ticket de cierre imprimible + reimpresión desde historial</li>
+      <li>CAJERO cierra solo su caja; DUEÑO/SUPERVISOR cualquiera (con clave maestra para caja ajena)</li>
+      <li>Solo Efectivo afecta el saldo real; otros medios son informativos</li>
+      <li>Ingreso/egreso automático al despachar venta / registrar gasto / pagar nómina en efectivo (siempre asentado)</li>
+      <li><strong>Caja Fuerte / Bóveda</strong>: cuenta de capital con sesión permanente, traspasos entre cajas y bóveda, vista de capital consolidado</li>
+      <li>Cuentas de origen (método de pago desacoplado del destino contable) · cheques · conciliaciones</li>
+      <li>Widget de estado de caja en header · shortcuts de ingreso/egreso</li>
     </ul>
   </div>
 
   <div class="module-card">
     <h3>💸 Gastos</h3>
-    <p>Registro de gastos del negocio con integración automática a caja cuando el medio es efectivo.</p>
+    <p>Registro de gastos del negocio con integración a caja y cómputo de IVA crédito.</p>
     <ul>
-      <li>Categorías y proveedores configurables</li>
-      <li>Bloqueo si medio es efectivo y no hay caja abierta</li>
-      <li>Egreso automático en caja_movimientos (fire-and-forget)</li>
+      <li>Categorías y proveedores configurables · adjunto de comprobante</li>
+      <li>IVA crédito según la condición fiscal del tenant al momento del gasto (no se re-escribe histórico)</li>
+      <li>Bloqueo si el medio es efectivo y no hay caja abierta · egreso automático asentado en caja</li>
     </ul>
   </div>
 
   <div class="module-card">
-    <h3>👥 Clientes</h3>
-    <p>Base de clientes del negocio con cuenta corriente.</p>
+    <h3>🧾 Compras — Órdenes de Compra + Recepciones</h3>
+    <p>Ciclo de abastecimiento completo (modo avanzado).</p>
     <ul>
-      <li>Datos: nombre, DNI (único), teléfono, email, dirección</li>
-      <li>Importación masiva por Excel/CSV</li>
-      <li>Cuenta corriente: saldo de deuda sin interés ni vencimiento</li>
-      <li>Filtro por sucursal</li>
+      <li>Órdenes de compra a proveedores con ítems, envío/aduana/comisiones, anticipos y cuotas</li>
+      <li>Recepciones contra OC (parciales/totales) → ingreso de stock trazable</li>
+      <li>Pagos a proveedores · alerta de faltante por días configurable · PDF de OC</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🚚 Envíos</h3>
+    <p>Gestión de reparto y logística de salida.</p>
+    <ul>
+      <li>Creación de envíos desde ventas · tarifas · reparto propio con hoja de ruta</li>
+      <li>Prueba de entrega (POD) robusta · portal público del transportista y de la hoja de ruta (por token)</li>
+      <li>Pagos de courier · reportes de envíos · (integración courier B2B Andreani/OCA en backlog)</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>👥 Clientes + Cuenta Corriente</h3>
+    <p>Base de clientes del negocio con cuenta corriente, saldo a favor y portal.</p>
+    <ul>
+      <li>Datos: nombre, documento, teléfono, email, múltiples domicilios · notas · importación masiva Excel/CSV</li>
+      <li>Cuenta corriente: deuda con interés configurable, estado de cuenta y PDF · cobranzas (efectivo siempre a caja)</li>
+      <li><strong>Saldo a favor</strong> (<code>cliente_creditos</code>): se aplica a ventas o se devuelve en efectivo de forma asentada</li>
+      <li>Marcado de incobrable · alertas de deuda con link a ficha · portal del cliente (cuenta por token)</li>
+      <li>Aislamiento por sucursal</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🏢 Proveedores</h3>
+    <p>Base de proveedores con cuenta corriente propia, integrada a Compras y Gastos.</p>
+    <ul>
+      <li>Datos fiscales y de contacto · CC de proveedores (saldos, pagos) · vinculación a OC y gastos</li>
     </ul>
   </div>
 </div>
@@ -316,50 +378,34 @@
 
   <div class="module-card">
     <h3>🔔 Alertas</h3>
-    <p>Sistema de alertas automáticas para gestión proactiva del negocio.</p>
+    <p>Sistema de alertas automáticas para gestión proactiva del negocio (badge mode-aware).</p>
     <ul>
-      <li>Stock mínimo: productos por debajo del umbral configurado</li>
-      <li>Stock cero: productos sin unidades disponibles</li>
-      <li>Productos sin categoría asignada</li>
-      <li>Ventas pendientes (sin fecha de vencimiento, requieren gestión manual)</li>
-      <li>Clientes con deuda pendiente (con link directo a ficha)</li>
-      <li>Diferencia de cierre de caja (notificación a OWNER/SUPERVISOR)</li>
+      <li>Stock mínimo · stock cero · productos sin categoría · LPN sin ubicación/proveedor (WMS)</li>
+      <li>Ventas pendientes · reservas por vencer · clientes con deuda (link directo a ficha)</li>
+      <li>Diferencia de cierre de caja · faltante de recepción · cumpleaños de empleados</li>
     </ul>
   </div>
 
   <div class="module-card">
     <h3>📊 Dashboard e Insights</h3>
-    <p>Panel principal con métricas del negocio e insights automáticos generados por reglas de negocio.</p>
-    <h4>Tab General</h4>
+    <p>Panel principal con analítica del negocio. Un filtro unificado de Período/Moneda gobierna las áreas con período. Cada área expone hasta 5 sub-pestañas: <strong>Insights · Métricas · Rentabilidad · Recomendaciones · Gráficos</strong>.</p>
     <ul>
-      <li>KPIs: ventas del período, ganancia neta, gastos, stock crítico</li>
-      <li>Proyección de cobertura (semáforo: rojo ≤7d / ámbar ≤14d / verde >14d)</li>
-      <li>Sugerencia de pedido para productos críticos</li>
+      <li><strong>Áreas:</strong> Todo · Ventas · Gastos · Productos · Inventario · Clientes · Proveedores · Facturación · Envíos · Marketing</li>
+      <li>KPIs: ventas, ganancia neta (base neto, margen = (neto−costo)/neto), gastos, stock crítico, Posición IVA (Libro IVA: CAE emitido)</li>
+      <li>Proyección de cobertura (semáforo) · sugerencia de pedido · La Balanza · Mix de Caja</li>
+      <li>Score de salud del negocio + reglas automáticas (cobertura crítica, margen bajo, día flojo, stock sin movimiento, etc.)</li>
+      <li>Rentabilidad por venta (paginada) · recomendaciones por categoría</li>
     </ul>
-    <h4>Tab Métricas</h4>
-    <ul>
-      <li>Top productos por ventas · Ranking por margen</li>
-      <li>Productos sin movimiento · Insights de margen vs. objetivo</li>
-      <li>Breakdown de movimientos por tipo/motivo</li>
-      <li>Valor de inventario por ubicación</li>
-      <li>Rango de fechas personalizable (7d / 30d / 90d / mes / custom)</li>
-      <li>Filtro por categoría</li>
-    </ul>
-    <h4>Tab Insights (IA de reglas)</h4>
-    <ul>
-      <li>Score de salud del negocio (Rotación / Rentabilidad / Reservas / Crecimiento / Datos)</li>
-      <li>11 reglas automáticas: cobertura crítica, margen bajo, día flojo, cumpleaños del mes, stock sin movimiento, etc.</li>
-    </ul>
+    <div class="callout callout-warn"><strong>REGLA #0 (display):</strong> toda la superficie de plata/fiscal fue auditada contra datos reales; débito fiscal se computa por CAE emitido (autoritativo), no por estado.</div>
   </div>
 
   <div class="module-card">
-    <h3>📋 Reportes</h3>
-    <p>Exportación de datos a Excel y PDF. Disponible desde plan Básico.</p>
+    <h3>📋 Reportes · Métricas · Exports</h3>
+    <p>Exportación de datos a Excel (.xlsx) y PDF (jsPDF). Disponible desde plan Básico.</p>
     <ul>
-      <li>Stock actual (con N° Lote, vencimiento, series)</li>
-      <li>Ventas del período (con breakdown por método de pago)</li>
-      <li>Estados de inventario</li>
-      <li>Exportación a Excel (.xlsx) y PDF (jsPDF)</li>
+      <li>Stock actual (lote, vencimiento, series) · ventas del período (breakdown por método de pago) · estados de inventario</li>
+      <li>PDF: factura/NC (fiscal), presupuesto, remito, estado de cuenta CC, orden de compra, recibo de sueldo, etiquetas de envío</li>
+      <li>Historial de actividad completo · reportes de caja / envíos / compras / RRHH</li>
     </ul>
   </div>
 
@@ -370,131 +416,113 @@
       <div>
         <h4>Gestión de personal</h4>
         <ul>
-          <li>Empleados (DNI, contacto, puesto, depto, supervisor)</li>
-          <li>Puestos y departamentos</li>
-          <li>Árbol organizacional</li>
+          <li>Empleados · puestos y departamentos · árbol organizacional</li>
           <li>Documentos (contratos, CVs, fotos) — storage privado</li>
-          <li>Capacitaciones con certificados</li>
+          <li>Capacitaciones y evaluaciones con certificados</li>
         </ul>
       </div>
       <div>
         <h4>Operaciones</h4>
         <ul>
-          <li>Asistencia: entrada/salida/estado/motivo</li>
+          <li>Asistencia + <strong>fichado por QR</strong> (portal público por token)</li>
           <li>Vacaciones: solicitud + aprobación + saldo anual</li>
-          <li>Nómina: liquidación mensual + conceptos + pago desde caja</li>
-          <li>Cumpleaños: alerta automática diaria (GitHub Actions)</li>
+          <li>Nómina contable: liquidación, conceptos, doble validación server-side y pago desde caja</li>
+          <li>Cumpleaños: alerta automática diaria</li>
         </ul>
       </div>
     </div>
-    <h4>Dashboard RRHH</h4>
+    <h4>Dashboard RRHH + Supervisor Self-Service</h4>
     <ul>
-      <li>KPIs: empleados activos, asistencia del mes, vacaciones pendientes, nómina</li>
-      <li>Breakdown por departamento</li>
-      <li>Exportación Excel: asistencia mensual + nómina histórica</li>
+      <li>KPIs (activos, asistencia, vacaciones, costo laboral bruto) + breakdown por departamento + exports</li>
+      <li>Tab "Mi Equipo": el SUPERVISOR ve/gestiona solo su equipo (restringido por RLS server-side)</li>
     </ul>
-    <h4>Supervisor Self-Service</h4>
+  </div>
+
+  <div class="module-card">
+    <h3>📚 Recursos · Biblioteca</h3>
+    <p>Gestión de recursos del negocio y material de referencia interno.</p>
     <ul>
-      <li>Tab "Mi Equipo": SUPERVISOR ve solo su equipo</li>
-      <li>Puede registrar asistencia y aprobar/rechazar vacaciones de su equipo</li>
-      <li>RLS a nivel de base de datos restringe el acceso automáticamente</li>
+      <li>Recursos/activos del negocio · biblioteca de documentos y guías</li>
     </ul>
   </div>
 
   <div class="module-card">
     <h3>⚙️ Configuración</h3>
     <ul>
-      <li>Datos del negocio (nombre, logo, tipo de comercio)</li>
-      <li>Categorías y proveedores</li>
-      <li>Ubicaciones con prioridad de picking</li>
-      <li>Estados personalizados de inventario</li>
-      <li>Motivos de movimiento (por tipo)</li>
-      <li>Combos de productos</li>
-      <li>Grupos de estados</li>
-      <li>Aging Profiles (reglas de cambio de estado por antigüedad)</li>
-      <li>Sucursales (OWNER)</li>
+      <li>Datos del negocio (nombre, logo, tipo de comercio) y del emisor fiscal (CUIT, IIBB, condición IVA, punto de venta, cert AFIP)</li>
+      <li>Modo de operación (Básico/Avanzado) · sucursales · usuarios y roles</li>
+      <li>Categorías, proveedores, ubicaciones, estados y grupos de estados, motivos de movimiento, combos, aging profiles</li>
+      <li>Reglas por módulo: inventario (autorización de ajustes por rol), compras (alerta de faltante), caja, ventas, RRHH</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🌿 Multi-sucursal</h3>
+    <p>Operación con varias sucursales, con aislamiento aplicado en la base de datos.</p>
+    <ul>
+      <li>RLS por sucursal server-side en 23 tablas operativas · usuarios fijados a su sucursal</li>
+      <li>Vista "Todas" solo para DUEÑO y roles habilitados · el stock filtra siempre por sucursal</li>
+    </ul>
+  </div>
+
+  <div class="module-card">
+    <h3>🛟 Ayuda / Soporte + 🖥️ Plataforma de administración</h3>
+    <ul>
+      <li>Centro de Ayuda in-app (FAQ, guías) + "Reportar un problema" → ticket server-side a <code>soporte@genesis360.pro</code></li>
+      <li>Asistente IA integrado · emails transaccionales rebrandeados (Resend, dominio verificado)</li>
+      <li><strong>Plataforma interna</strong> (admin.genesis360.pro, repo separado): gestión de tenants y soporte por el staff de Genesis360</li>
     </ul>
   </div>
 </div>
 
 <!-- 4. REGLAS DE NEGOCIO -->
 <div class="section page-break">
-  <h2>4. Reglas de negocio relevadas</h2>
+  <h2>4. Reglas de negocio e integridad</h2>
+
+  <div class="callout callout-warn">
+    <strong>🛑 REGLA #0 — Integridad FISCAL, CONTABLE y de INVENTARIO (no negociable).</strong>
+    Lo fiscal (AFIP/facturación, IVA, CAE, NC/ND), lo contable (caja, cuenta corriente, capital/bóveda, cheques,
+    medios de pago) y el inventario (stock, movimientos, trazabilidad) deben funcionar sin errores. Guards
+    server-side además de la UI; todo efectivo se asienta en caja; el stock nunca queda negativo en silencio;
+    nunca se reescriben registros fiscales/contables históricos. Verificado con unit + auditoría de código +
+    impersonación en base + e2e.
+  </div>
 
   <h3>Módulo: Caja</h3>
-
-  <h4>Límites y acceso</h4>
   <ul>
-    <li>Roles con acceso: OWNER, SUPERVISOR, CAJERO. RRHH sin acceso.</li>
-    <li>Un cajero solo puede tener <strong>una caja abierta a la vez</strong>.</li>
-    <li>Cajas por sucursal: Free=1, Básico=2, Pro=3, Premium=5, Enterprise=10.</li>
-  </ul>
-
-  <h4>Apertura y cierre</h4>
-  <ul>
-    <li>Saldo sugerido al abrir = último cierre de esa caja específica (no la más reciente del sistema).</li>
-    <li>CAJERO solo puede cerrar su propia caja. OWNER/SUPERVISOR cierran cualquiera.</li>
-    <li>Cierre de caja ajena requiere <strong>contraseña maestra</strong> definida por el OWNER (pendiente implementar).</li>
-    <li>Al cerrar: se registra conteo real del cajero. Si hay diferencia → solo se registra + alerta a OWNER/SUPERVISOR. Sin bloqueo ni flujo de aprobación.</li>
-  </ul>
-
-  <h4>Ticket de cierre</h4>
-  <ul>
-    <li>Se genera comprobante/ticket de cierre imprimible (PDF).</li>
-    <li>Incluye: fecha/hora apertura y cierre, cajero, saldo inicial, ingresos, egresos, saldo sistema, conteo real, diferencia.</li>
-    <li>Puede reimprimirse desde el historial de sesiones (pendiente implementar).</li>
-  </ul>
-
-  <h4>Arqueo parcial</h4>
-  <ul>
-    <li>El cajero puede consultar si el efectivo físico cuadra con el sistema <strong>sin cerrar la sesión</strong>.</li>
-    <li>No queda registrado. Es una consulta momentánea (pendiente implementar).</li>
-  </ul>
-
-  <h4>Integración con ventas y gastos</h4>
-  <ul>
-    <li>Solo Efectivo afecta el saldo real de caja. Otros medios = registro informativo.</li>
-    <li>Sin caja abierta: no se puede despachar venta en efectivo ni registrar gasto en efectivo.</li>
-    <li>Venta despachada con efectivo → ingreso automático en caja.</li>
-    <li>Gasto en efectivo → egreso automático en caja.</li>
-    <li>Nómina en efectivo → egreso automático + verificación de saldo.</li>
+    <li>Roles con acceso: DUEÑO, SUPERVISOR, CAJERO (RRHH sin acceso). Un cajero tiene <strong>una caja abierta a la vez</strong>.</li>
+    <li>Saldo sugerido al abrir = último cierre de <em>esa</em> caja. CAJERO cierra solo la suya; DUEÑO/SUPERVISOR cualquiera (con clave maestra para caja ajena).</li>
+    <li>Al cerrar se registra el conteo real; la diferencia se asienta (<code>diferencia_cierre</code>) + alerta a DUEÑO/SUPERVISOR.</li>
+    <li>✅ Implementado: ticket de cierre imprimible + reimpresión desde historial · arqueo parcial sin cerrar · clave maestra · Caja Fuerte/Bóveda + traspasos.</li>
+    <li>Solo Efectivo afecta el saldo real; otros medios son informativos. Sin caja abierta no se despacha venta ni se registra gasto en efectivo. Venta/gasto/nómina en efectivo → ingreso/egreso automático y verificado.</li>
   </ul>
 
   <h3>Módulo: Ventas</h3>
-
   <table>
     <tr><th>Estado</th><th>Cliente requerido</th><th>Pago requerido</th><th>Editable</th></tr>
     <tr><td>Pendiente</td><td>✅ Obligatorio</td><td>No</td><td>✅ Sí</td></tr>
-    <tr><td>Reservada</td><td>✅ Obligatorio</td><td>Parcial o total</td><td>✅ Sí</td></tr>
+    <tr><td>Reservada</td><td>✅ Obligatorio</td><td>Parcial o total (seña)</td><td>✅ Sí</td></tr>
     <tr><td>Despachada</td><td>❌ Opcional</td><td>100% obligatorio</td><td>❌ No</td></tr>
+    <tr><td>Facturada</td><td>Según comprobante</td><td>100%</td><td>❌ No</td></tr>
+    <tr><td>Devuelta</td><td>—</td><td>Reintegro / NC</td><td>❌ No</td></tr>
   </table>
-
-  <h4>Pago parcial en reservas</h4>
   <ul>
-    <li>Se puede registrar una reserva con pago parcial o total.</li>
-    <li>El pago entra a la caja inmediatamente con motivo "Pago de reserva de venta #X".</li>
-    <li>Al despachar, el sistema calcula y muestra automáticamente el <strong>saldo pendiente</strong> (total − ya pagado).</li>
-  </ul>
-
-  <h4>Registro de cliente inline</h4>
-  <ul>
-    <li>Si el cliente no existe, se puede registrar directamente desde la pantalla de venta.</li>
-    <li>Campos obligatorios: nombre completo, DNI (identificador único), teléfono.</li>
-    <li>Email: opcional.</li>
-  </ul>
-
-  <h4>Ventas pendientes</h4>
-  <ul>
-    <li>No vencen automáticamente. Aparecen en Alertas para gestión manual.</li>
+    <li>Reserva con seña: el pago entra a caja al instante; al despachar se muestra el saldo pendiente (total − pagado). El sweep de reservas vencidas acredita seña − penalidad al saldo a favor del cliente.</li>
+    <li>Registro de cliente inline desde la venta (nombre, documento, teléfono obligatorios; email opcional).</li>
+    <li>Ventas pendientes no vencen automáticamente: aparecen en Alertas para gestión manual.</li>
+    <li>El presupuesto nunca consume stock ni crédito a favor (solo el despacho/reserva lo hace).</li>
   </ul>
 
   <h3>Módulo: Clientes — Cuenta corriente</h3>
   <ul>
-    <li>Un cliente puede generar deuda (llevar mercadería con pago parcial o sin pagar).</li>
-    <li>La deuda no tiene vencimiento ni interés (por ahora).</li>
-    <li>Se salda desde la ficha del cliente.</li>
-    <li>Alertas automáticas de clientes con deuda + link directo a ficha.</li>
-    <li>Dashboard: total deuda a cobrar + % ventas pagadas vs. en deuda.</li>
+    <li>Un cliente puede generar deuda (mercadería con pago parcial o sin pagar); la deuda admite <strong>interés configurable</strong> y se salda desde su ficha (cobranza en efectivo siempre asentada en caja).</li>
+    <li><strong>Saldo a favor</strong>: se aplica a ventas o se devuelve en efectivo (RPC atómico con guards; no deja la caja en negativo).</li>
+    <li>Marcado de incobrable · alertas de deuda con link a ficha · Dashboard con total a cobrar y % pagado vs. en deuda.</li>
+  </ul>
+
+  <h3>Registro / Legal</h3>
+  <ul>
+    <li>Onboarding con 7 días de prueba. En el alta: aceptación de <strong>Términos y Condiciones + Política de Privacidad</strong> (requerido) y consentimiento de <strong>marketing</strong> (opt-in separado, Ley 25.326). <span class="badge badge-amber">En DEV — pendiente revisión legal antes de PROD</span></li>
   </ul>
 </div>
 
@@ -502,209 +530,105 @@
 <div class="section page-break">
   <h2>5. Roadmap</h2>
 
-  <p style="margin-bottom:16px;font-size:10pt;color:#555;"><em>Documento actualizado a v0.75.0 · Abril 2026. Las features marcadas ✅ ya están implementadas en PROD.</em></p>
+  <p style="margin-bottom:16px;font-size:10pt;color:#555;"><em>Documento actualizado a v1.100.0 · Julio 2026. La app pasó de v0.75 (Abril) a v1.100 con ~25 releases de features grandes. Las marcadas ✅ están en PROD.</em></p>
 
-  <h3>Implementado recientemente (v0.74–v0.75)</h3>
-
-  <div class="module-card">
-    <h4>Fix overselling crítico ✅ (v0.75.0)</h4>
-    <ul>
-      <li>Rebaje ahora descuenta <code>cantidad_reservada</code> correctamente (antes ignoraba reservas activas)</li>
-      <li>Pre-flight validation: error antes de intentar el rebaje si stock insuficiente</li>
-      <li>Cart: cantidad máxima en carrito limitada al stock real disponible</li>
-      <li>Barcode scan: usa stock disponible real (no stock_actual de DB)</li>
-      <li>DB-level safety net: CHECK constraints en <code>inventario_lineas</code> (migration 047)</li>
-      <li>RPC <code>stock_disponible_producto()</code> SECURITY DEFINER para validaciones externas</li>
-    </ul>
-    <span class="badge badge-red">Crítico</span> <span class="badge badge-purple">Implementado</span>
-  </div>
+  <h3>Hitos implementados desde v0.76 (todos en PROD, salvo aclaración)</h3>
 
   <div class="module-card">
-    <h4>Nuevas alertas y filtros de inventario ✅ (v0.75.0)</h4>
+    <h4>🧾 Fiscal y comprobantes ✅</h4>
     <ul>
-      <li>AlertasPage: sección violeta "LPNs sin ubicación asignada" — líneas activas sin <code>ubicacion_id</code></li>
-      <li>AlertasPage: sección teal "LPNs sin proveedor asignado" — líneas activas sin <code>proveedor_id</code></li>
-      <li>InventarioPage: filtros por categoría / ubicación / estado / proveedor</li>
-      <li>Filtro especial <code>__sin__</code> muestra solo ítems sin X asignado en cada dimensión</li>
+      <li>Facturación electrónica AFIP con CAE (Factura A/B/C, NC/ND, QR RG 4291, Ley 27.743, percepciones)</li>
+      <li>Comprobantes 2.0 con paridad Xubio (logo, A4, presupuesto/remito, datos del emisor, recurrentes, QR MP)</li>
+      <li>Costo de envío facturado como ítem (Concepto 3) · flag de producción AFIP por tenant</li>
+      <li>Devoluciones con Nota de Crédito + marco legal (Ley 24.240)</li>
     </ul>
     <span class="badge badge-purple">Implementado</span>
   </div>
 
   <div class="module-card">
-    <h4>Mejoras Caja y Ventas ✅ (v0.74.x–v0.75.0)</h4>
+    <h4>💰 Contable y caja ✅</h4>
     <ul>
-      <li>CAJERO: ve cajas abiertas por otros usuarios (nombre + punto verde) pero sin acceso al contenido</li>
-      <li>Caja: totales por método de pago corregidos — un registro por método (antes combinados)</li>
-      <li>Carrito: badge LPN muestra nombre de ubicación en azul claro junto al LPN</li>
-      <li>Reporte "Ficha de productos": 20 campos completos exportable en xlsx/PDF</li>
+      <li>Caja Fuerte / Bóveda con capital consolidado y traspasos · cuentas de origen · cheques</li>
+      <li>Cuenta corriente de clientes con interés · saldo a favor (aplicar / devolver en efectivo asentado)</li>
+      <li>Relevamiento de Caja completo · hardening de billing (activación verificada server-side + prorrateo)</li>
     </ul>
     <span class="badge badge-purple">Implementado</span>
   </div>
 
   <div class="module-card">
-    <h4>Conversión de unidades de medida (v0.75.0)</h4>
+    <h4>📦 Inventario / WMS y operaciones ✅</h4>
     <ul>
-      <li><code>src/lib/unidades.ts</code>: helper para conversiones internas kg↔gr, lt↔ml</li>
-      <li><code>convertirUnidad(cantidad, desde, hasta)</code> → retorna null si no hay conversión disponible</li>
-      <li>Pendiente: integrar en UI de movimientos e ingreso de cantidades</li>
-    </ul>
-    <span class="badge badge-amber">En progreso</span>
-  </div>
-
-  <h3>Implementado anteriormente (v0.52–v0.57)</h3>
-
-  <div class="module-card">
-    <h4>Mejoras en Clientes y Ventas ✅</h4>
-    <ul>
-      <li>DNI y teléfono obligatorios + registro inline desde la venta ✅</li>
-      <li>Pago parcial en reservas + modal de saldo al despachar ✅</li>
-      <li>Modificar productos de una reserva activa (cancela y recrea) ✅</li>
-      <li>Alertas: clientes con deuda + link a ficha del cliente ✅</li>
-      <li>Dashboard: deuda total pendiente con link a alertas ✅</li>
+      <li>Modo Básico/Avanzado (kill-switch) · Conteos 2.0 (cycle counting) · KITs/kitting atómico</li>
+      <li>Compras: Órdenes de Compra + Recepciones (CO1–CO8) · Envíos 2.0 (reparto, tarifas, POD, portal transportista)</li>
+      <li>Códigos GS1 · autorización de ajustes de inventario configurable por rol · trazabilidad grado WMS (ledger write-time)</li>
     </ul>
     <span class="badge badge-purple">Implementado</span>
   </div>
 
   <div class="module-card">
-    <h4>WMS Fase 1 — Estructura de producto ✅ (v0.57.0)</h4>
+    <h4>👔 RRHH 2.0 · 📊 Dashboard · 🌿 Multi-sucursal ✅</h4>
     <ul>
-      <li>Tabla <code>producto_estructuras</code>: N estructuras por SKU, una sola default</li>
-      <li>Niveles: unidad / caja / pallet con peso (kg) y dimensiones (cm)</li>
-      <li>Conversiones: <code>unidades_por_caja</code>, <code>cajas_por_pallet</code></li>
-      <li>Partial unique index garantiza un solo default por producto en DB</li>
-      <li>CRUD en tab "Estructura" de ProductosPage + resumen en panel expandible</li>
+      <li>RRHH 2.0: fichado por QR, vacaciones, asistencia, nómina contable con doble validación</li>
+      <li>Dashboard completo: 5 sub-pestañas por área + filtro unificado + auditoría de display REGLA #0</li>
+      <li>RLS por sucursal server-side (23 tablas) · relevamientos Ventas/Clientes con sus mejoras</li>
     </ul>
     <span class="badge badge-purple">Implementado</span>
   </div>
 
   <div class="module-card">
-    <h4>Ingreso y Rebaje Masivo ✅ (v0.57.0)</h4>
+    <h4>🛟 Plataforma, soporte y correos ✅</h4>
     <ul>
-      <li>Modal multi-SKU para N productos en una sola operación</li>
-      <li>Ingreso: no serializados (cantidad + opcionales) + serializados (textarea series)</li>
-      <li>Rebaje: auto-FIFO/FEFO desde líneas existentes; serializados excluidos con aviso</li>
-      <li>Scanner integrado + preview stock resultante</li>
+      <li>Plataforma de administración interna (admin.genesis360.pro) + tickets de soporte server-side</li>
+      <li>Emails rebrandeados (Resend, dominio verificado noreply@) · Centro de Ayuda + Asistente IA</li>
+      <li>Landing + páginas legales; <strong>T&C + Privacidad + consentimiento de marketing</strong> <span class="badge badge-amber">en DEV, pendiente OK legal</span></li>
     </ul>
-    <span class="badge badge-purple">Implementado</span>
+    <span class="badge badge-purple">Implementado (T&C en DEV)</span>
   </div>
 
-  <h3>Próximas features (corto plazo)</h3>
-
-  <div class="module-card">
-    <h4>Mejoras en Caja</h4>
-    <ul>
-      <li>Ticket de cierre imprimible (PDF) con todos los datos del turno</li>
-      <li>Reimprimir ticket de cierre desde historial de sesiones</li>
-      <li>Arqueo parcial: consulta de diferencia sin cerrar sesión</li>
-      <li>Contraseña maestra para cierre de caja ajena</li>
-      <li>Bóveda: módulo separado con saldo propio</li>
-      <li>Transferencias entre cajas / caja ↔ bóveda</li>
-    </ul>
-    <span class="badge badge-amber">Planificado</span>
-  </div>
-
-  <div class="module-card">
-    <h4>IVA informativo</h4>
-    <ul>
-      <li>Campo <code>alicuota_iva</code> por producto (0% / 10.5% / 21% / 27%)</li>
-      <li>Estimación de IVA en checkout, ticket y reportes</li>
-      <li>No es facturación ni integración con AFIP — solo referencia interna</li>
-      <li>Disclaimer claro en UI: "Valores informativos únicamente"</li>
-    </ul>
-    <span class="badge badge-gray">Draft relevado</span>
-  </div>
-
-  <h3>Mediano plazo</h3>
+  <h3>Pendientes y backlog</h3>
 
   <div class="two-col">
     <div class="module-card">
-      <h4>Cupones de descuento</h4>
-      <p>Códigos de descuento por porcentaje o monto fijo. Con límite de usos, fechas de validez y productos aplicables.</p>
+      <h4>🧾 Facturación WSFE 100% propia</h4>
+      <p>Migrar de AfipSDK a integración directa con AFIP (TRA + firma CMS → WSAA → WSFEv1 SOAP), sin terceros. Homologación primero, después producción.</p>
+      <span class="badge badge-amber">Backlog priorizado</span>
+    </div>
+    <div class="module-card">
+      <h4>📄 T&C / Privacidad / marketing → PROD</h4>
+      <p>Ya implementado en DEV (2 checkboxes separados, mig 249). Falta: revisión de un abogado, razón social/CUIT del responsable, registro AAIP y deploy a PROD.</p>
+      <span class="badge badge-amber">En DEV</span>
+    </div>
+    <div class="module-card">
+      <h4>🚚 Courier B2B</h4>
+      <p>Integración con couriers (Andreani/OCA) para etiquetas y tracking. Bloqueado por alta de cuentas B2B.</p>
+      <span class="badge badge-gray">Bloqueado (terceros)</span>
+    </div>
+    <div class="module-card">
+      <h4>💳 Cobro MP real e2e</h4>
+      <p>Verificación server-side ya implementada; falta el e2e del cobro con cuenta MP de prueba (seller OAuth + sandbox).</p>
+      <span class="badge badge-gray">Bloqueado (terceros)</span>
+    </div>
+    <div class="module-card">
+      <h4>🗑️ Hard-delete de tenant + grace period</h4>
+      <p><code>delete_scheduled_at</code> + CASCADE vía sweep externo (pg_cron no habilitado en el proyecto).</p>
       <span class="badge badge-gray">Backlog</span>
     </div>
     <div class="module-card">
-      <h4>Marketplace API</h4>
-      <p>API pública por tenant para exponer catálogo a plataformas externas. Con rate limiting, webhooks de actualización de stock y configuración de precio diferenciado.</p>
-      <span class="badge badge-purple">Implementado (activación manual)</span>
-    </div>
-    <div class="module-card">
-      <h4>Permisos por rol parametrizables</h4>
-      <p>El OWNER puede configurar qué puede hacer cada rol dentro de su tenant. Actualmente los permisos son fijos por rol.</p>
+      <h4>🔐 Permisos por rol parametrizables</h4>
+      <p>Que el DUEÑO configure qué puede hacer cada rol dentro de su tenant (hoy los permisos son fijos por rol).</p>
       <span class="badge badge-gray">Backlog (feature grande)</span>
     </div>
     <div class="module-card">
-      <h4>WhatsApp / notificaciones</h4>
-      <p>Resumen diario del negocio por WhatsApp. Alertas de stock crítico. Confirmación de ventas a clientes.</p>
-      <span class="badge badge-gray">Idea</span>
+      <h4>💬 WhatsApp / IA chat / benchmark</h4>
+      <p>Resumen diario y alertas por WhatsApp · asistente conversacional del negocio · benchmark por rubro.</p>
+      <span class="badge badge-gray">Ideas</span>
     </div>
     <div class="module-card">
-      <h4>IA chat interno</h4>
-      <p>Asistente conversacional integrado para consultas sobre el negocio: "¿Cuánto vendí esta semana?", "¿Qué producto tiene mejor margen?"</p>
-      <span class="badge badge-gray">Idea</span>
-    </div>
-    <div class="module-card">
-      <h4>Benchmark por rubro</h4>
-      <p>Comparación de métricas del negocio con promedios del rubro (márgenes, rotación, etc.).</p>
-      <span class="badge badge-gray">Idea</span>
+      <h4>⚡ Performance DB</h4>
+      <p>Envolver <code>auth.*()</code> en subqueries e índices FK (lints de performance) a medida que escale la base.</p>
+      <span class="badge badge-gray">Mejora continua</span>
     </div>
   </div>
-
-  <h3>WMS — Fases planificadas</h3>
-  <div class="two-col">
-    <div class="module-card">
-      <h4>Fase 2 — Dimensiones en ubicaciones</h4>
-      <p>Agregar <code>alto_cm</code>, <code>ancho_cm</code>, <code>largo_cm</code>, <code>peso_max_kg</code>, <code>tipo_ubicacion</code> (picking/bulk/estiba/camara/cross_dock), <code>capacidad_pallets</code>. El sistema sugerirá dónde almacenar cada SKU en base a sus dimensiones vs disponibilidad en ubicaciones (putaway dirigido).</p>
-      <span class="badge badge-amber">Planificado</span>
-    </div>
-    <div class="module-card">
-      <h4>Fase 2.5 — KITs / Kitting</h4>
-      <p>Proceso de armado de kits: N productos componentes → 1 SKU compuesto. Tabla <code>kit_recetas</code>. Movimiento tipo <code>kitting</code> rebaja componentes e ingresa el KIT. Desarmado inverso disponible.</p>
-      <span class="badge badge-amber">Planificado</span>
-    </div>
-    <div class="module-card">
-      <h4>Fase 3 — Tareas WMS y Picking</h4>
-      <p>Tabla <code>wms_tareas</code> (putaway/picking/replenishment/conteo). Listas de picking dirigidas por pedido, calculando ruta óptima en el depósito y respetando FIFO/FEFO/lote/serie.</p>
-      <span class="badge badge-gray">Backlog</span>
-    </div>
-    <div class="module-card">
-      <h4>Fase 4 — Cross-docking y KPIs</h4>
-      <p>Reposición automática bulk→picking. Cross-docking (entrante → despacho directo). KPIs de eficiencia: tasa de error de picking, tiempo por tarea, utilización de ubicaciones.</p>
-      <span class="badge badge-gray">Largo plazo</span>
-    </div>
-  </div>
-
-  <h3>Centro de Soporte / Ayuda</h3>
-  <div class="module-card">
-    <h4>Página /ayuda — Centro de Soporte integrado</h4>
-    <ul>
-      <li>Acceso desde botón "Ayuda" en el header (actualmente mailto)</li>
-      <li>Secciones: FAQ por módulo · Chat WhatsApp/Email · Buenas Prácticas</li>
-      <li>Guías populares interactivas: "Crear tu primer producto", "Gestionar una venta de principio a fin", etc.</li>
-      <li>Reportar un Problema: form con tipo, urgencia, asunto, descripción y adjunto</li>
-      <li>Cursos y recursos (links a YouTube / blog)</li>
-    </ul>
-    <span class="badge badge-amber">Planificado</span>
-  </div>
-
-  <h3>Devoluciones</h3>
-  <div class="module-card">
-    <h4>Módulo de devoluciones (migration 030)</h4>
-    <ul>
-      <li>Botón "Devolver" en ventas despachadas/facturadas → modal de devolución → comprobante imprimible</li>
-      <li>NC (Nota de Crédito) solo si origen=facturada</li>
-      <li>Stock no serializado → nueva línea en ubicación DEV · serializado → reactiva serie existente</li>
-      <li>Efectivo devuelto → egreso automático en caja (requiere sesión abierta)</li>
-    </ul>
-    <span class="badge badge-blue">En diseño (alta prioridad)</span>
-  </div>
-
-  <h3>RRHH — Fases futuras</h3>
-  <ul>
-    <li>Registro de asistencia por QR (sin intervención manual)</li>
-    <li>Liquidación automática de nómina según país (actualmente semi-manual)</li>
-    <li>Feriados configurables por país para cálculo de días hábiles</li>
-    <li>Remanente de vacaciones configurable por tenant (actualmente 50%)</li>
-  </ul>
 </div>
 
 <!-- 6. ARQUITECTURA TÉCNICA -->
@@ -719,47 +643,48 @@
   <p>Las funciones helper <code>is_admin()</code> e <code>is_rrhh()</code> son SECURITY DEFINER para evitar recursión en RLS.</p>
 
   <h3>Multi-sucursal</h3>
-  <p>Desde v0.42.0, 6 tablas operativas tienen <code>sucursal_id UUID nullable</code>: inventario_lineas, movimientos_stock, ventas, caja_sesiones, gastos, clientes. Sin sucursal seleccionada = vista global de todos los datos.</p>
+  <p>El aislamiento por sucursal se aplica <strong>server-side</strong> vía RLS en 23 tablas operativas (helpers <code>auth_ve_todas_sucursales()</code> / <code>auth_user_sucursal()</code>). Los usuarios quedan fijados a su sucursal; la vista "Todas" es solo para DUEÑO y roles habilitados. El stock filtra siempre por sucursal.</p>
 
-  <h3>Seguridad</h3>
+  <h3>Seguridad e integridad</h3>
   <ul>
-    <li>RLS en todas las tablas de datos de negocio</li>
-    <li>Triggers SECURITY DEFINER para operaciones que necesitan privilegios elevados</li>
-    <li>Edge Functions con JWT verificado (excepto webhooks públicos)</li>
-    <li>Variables de entorno en Vercel (frontend) y Supabase secrets (Edge Functions)</li>
-    <li>Repo público: sin credenciales en código</li>
+    <li>RLS en todas las tablas de datos de negocio (paridad de policies DEV↔PROD auditada por hash)</li>
+    <li>Guards server-side además de la UI para todo lo fiscal/contable/inventario (REGLA #0): triggers, RPCs SECURITY DEFINER con least-privilege (REVOKE de <code>anon</code>), verificación de activación de suscripción</li>
+    <li>Edge Functions con JWT verificado (excepto webhooks públicos y portales por token)</li>
+    <li>Todo cambio de DB va por migración versionada (anti-drift); secrets en Vercel y Supabase; repo público sin credenciales</li>
   </ul>
 
   <h3>Integraciones</h3>
   <table>
     <tr><th>Servicio</th><th>Uso</th><th>Estado</th></tr>
-    <tr><td>Mercado Pago</td><td>Suscripciones (preapproval) + add-ons (pago único)</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
-    <tr><td>Resend</td><td>Emails transaccionales (bienvenida, ventas, alertas)</td><td><span class="badge badge-amber">FROM temporal (resend.dev)</span></td></tr>
-    <tr><td>Claude (Anthropic)</td><td>Scan de producto por imagen (Haiku)</td><td><span class="badge badge-amber">Requiere créditos</span></td></tr>
-    <tr><td>Open Food Facts</td><td>Info nutricional por código de barras</td><td><span class="badge badge-green">Activo</span></td></tr>
-    <tr><td>GitHub Actions</td><td>Tests CI + cumpleaños automáticos (cron diario)</td><td><span class="badge badge-green">Activo</span></td></tr>
+    <tr><td>Mercado Pago</td><td>Suscripciones (preapproval) + add-ons (pago único), verificación server-side</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+    <tr><td>AfipSDK</td><td>Emisión de comprobantes electrónicos ante AFIP/ARCA (CAE)</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+    <tr><td>Resend</td><td>Emails transaccionales (FROM noreply@genesis360.pro, dominio verificado)</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
+    <tr><td>Cloudflare Email Routing</td><td>Recepción de correo (soporte@ → Google Group; hola@)</td><td><span class="badge badge-green">Activo</span></td></tr>
+    <tr><td>Claude (Anthropic)</td><td>Scan de producto por imagen + Asistente IA</td><td><span class="badge badge-green">Activo</span></td></tr>
+    <tr><td>Google Maps</td><td>Autocompletado de direcciones + distancias (envíos)</td><td><span class="badge badge-green">Activo</span></td></tr>
+    <tr><td>GitHub Actions</td><td>CI (unit tests) + sweeps/cron externos (cumpleaños, reservas, intereses)</td><td><span class="badge badge-green">Activo</span></td></tr>
     <tr><td>Vercel</td><td>Deploy frontend + preview branches</td><td><span class="badge badge-green">PROD ✅</span></td></tr>
   </table>
 
   <h3>Automatizaciones en base de datos</h3>
   <ul>
-    <li><strong>Triggers</strong>: recálculo de stock_actual automático, número de venta secuencial por tenant, recálculo de totales de nómina</li>
-    <li><strong>Funciones SQL</strong>: pagar_nomina_empleado(), aprobar_vacacion(), process_aging_profiles(), calcular_dias_habiles()</li>
-    <li><strong>Aging profiles</strong>: proceso batch via Edge Function (botón manual + scheduler pendiente)</li>
-    <li><strong>Check_stock_minimo</strong>: SECURITY DEFINER para poder insertar en alertas desde contexto de trigger</li>
+    <li><strong>Triggers</strong>: recálculo de <code>stock_actual</code>, número de venta secuencial por tenant, totales de nómina, seed de alta de tenant (SECURITY DEFINER), guard de activación de suscripción</li>
+    <li><strong>Funciones/RPC</strong>: registrar venta, devolver saldo a favor, pagar nómina, aprobar vacación, aging profiles, kitting atómico, sweeps cross-tenant (vía EF <code>cron-sweeps</code>)</li>
+    <li><strong>Nota:</strong> pg_cron / pg_net no habilitados → los jobs programados corren por sweep lazy o cron externo (GitHub Actions)</li>
   </ul>
 
   <h3>Testing</h3>
   <ul>
-    <li><strong>Unit tests</strong> (Vitest): 61 tests sobre funciones puras — reglas de selección de inventario, planes, límites, insights, validación de pagos</li>
-    <li><strong>E2E tests</strong> (Playwright): 12 archivos spec contra entorno DEV con usuario real</li>
-    <li><strong>CI</strong>: GitHub Actions ejecuta unit tests en cada push a <code>dev</code></li>
+    <li><strong>Unit</strong> (Vitest): <strong>823 tests</strong> en 55 archivos sobre lógica pura (<code>src/lib</code>), incluyendo espejos JS de RPCs SQL de plata/fiscal</li>
+    <li><strong>E2E</strong> (Playwright): specs contra entorno DEV con usuario real (metodología mutante: aserción positiva + efecto en DB)</li>
+    <li><strong>Base de datos</strong>: 249 migraciones versionadas · auditoría de paridad DEV↔PROD por hash antes de cada alta</li>
+    <li><strong>CI</strong>: GitHub Actions ejecuta los unit tests en cada push a <code>dev</code></li>
   </ul>
 </div>
 
 <!-- FOOTER -->
 <div class="footer">
-  Genesis360 · Draft v1.1 · Abril 2026 · Confidencial · app.genesis360.pro
+  Genesis360 · Documento de producto v2.0 · Julio 2026 · App v1.100.0 · Confidencial · app.genesis360.pro
 </div>
 
 </body>

@@ -4,7 +4,7 @@
  * Verifican que los límites y feature flags son coherentes.
  */
 import { describe, test, expect } from 'vitest'
-import { PLANES, FEATURES_POR_PLAN, MAX_MOVIMIENTOS_POR_PLAN, PLAN_REQUERIDO } from '@/config/brand'
+import { PLANES, FEATURES_POR_PLAN, MAX_MOVIMIENTOS_POR_PLAN, PLAN_REQUERIDO, PLAN_BASE_LIMITS } from '@/config/brand'
 
 describe('PLANES — estructura y coherencia', () => {
   test('existen los 4 planes requeridos', () => {
@@ -74,13 +74,35 @@ describe('MAX_MOVIMIENTOS_POR_PLAN', () => {
     expect(MAX_MOVIMIENTOS_POR_PLAN['free']).toBe(200)
   })
 
-  test('basico tiene límite medio (2000)', () => {
-    expect(MAX_MOVIMIENTOS_POR_PLAN['basico']).toBe(2000)
+  test('basico tiene límite medio (5000)', () => {
+    expect(MAX_MOVIMIENTOS_POR_PLAN['basico']).toBe(5000)
   })
 
-  test('pro y enterprise son ilimitados (-1)', () => {
-    expect(MAX_MOVIMIENTOS_POR_PLAN['pro']).toBe(-1)
+  test('pro tiene 20.000 y enterprise ilimitado (-1)', () => {
+    expect(MAX_MOVIMIENTOS_POR_PLAN['pro']).toBe(20000)
     expect(MAX_MOVIMIENTOS_POR_PLAN['enterprise']).toBe(-1)
+  })
+})
+
+describe('PLAN_BASE_LIMITS — coherencia (espejo de fn_plan_base_limite, mig 251)', () => {
+  const dims = ['sku', 'movimientos', 'sucursales', 'usuarios'] as const
+
+  test('movimientos espeja MAX_MOVIMIENTOS_POR_PLAN', () => {
+    for (const t of ['free', 'basico', 'pro', 'enterprise']) {
+      expect(PLAN_BASE_LIMITS[t].movimientos).toBe(MAX_MOVIMIENTOS_POR_PLAN[t])
+    }
+  })
+
+  test('pro > basico en cada dimensión', () => {
+    for (const d of dims) {
+      expect(PLAN_BASE_LIMITS['pro'][d]).toBeGreaterThan(PLAN_BASE_LIMITS['basico'][d])
+    }
+  })
+
+  test('enterprise es ilimitado (-1) en todas las dimensiones', () => {
+    for (const d of dims) {
+      expect(PLAN_BASE_LIMITS['enterprise'][d]).toBe(-1)
+    }
   })
 })
 

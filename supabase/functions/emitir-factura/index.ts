@@ -1,7 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-// @ts-ignore — npm: import para Deno
-import Afip from 'npm:@afipsdk/afip.js'
+// Dual-provider AFIP (fase 1): el transporte (AfipSDK vs WSFE propio) se elige por-tenant.
+// La lógica fiscal de este archivo es compartida por ambos providers. Ver providers.ts.
+import { makeAfipProvider, type AfipProviderName } from './providers.ts'
 
 // Mapeo condicion_iva → CondicionIVAReceptorId (RG 5616)
 const IVA_RECEPTOR_ID: Record<string, number> = {
@@ -67,7 +68,7 @@ serve(async (req) => {
 
     // 1. Fetch config del tenant
     const { data: tenant, error: tErr } = await supabase.from('tenants')
-      .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b, afip_produccion')
+      .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b, afip_produccion, afip_provider')
       .eq('id', tenant_id).single()
     if (tErr || !tenant) throw new Error('Tenant no encontrado')
     if (!tenant.cuit) throw new Error('El tenant no tiene CUIT configurado')
@@ -273,15 +274,18 @@ serve(async (req) => {
       }
     }
 
-    const afip = new Afip({
-      CUIT: cuit,
+    // Provider por-tenant (dual-provider). Default seguro = 'afipsdk' (circuito actual).
+    // El WSFE propio ('propio') es un stub por ahora → si un tenant estuviera en 'propio'
+    // sin implementación, falla claro ANTES de tocar AFIP (no emite nada a medias).
+    const providerName: AfipProviderName = tenant.afip_provider === 'propio' ? 'propio' : 'afipsdk'
+    const provider = makeAfipProvider(providerName, {
+      cuit,
       production: isProduction,
-      access_token: tenant.afipsdk_token,
-      ...(certPem && keyPem ? { cert: certPem, key: keyPem } : {}),
+      accessToken: tenant.afipsdk_token,
+      certPem,
+      keyPem,
     })
-
-    const eb = afip.ElectronicBilling
-    const ultimo   = await eb.getLastVoucher(punto_venta, cbteTipo)
+    const ultimo   = await provider.getLastVoucher(punto_venta, cbteTipo)
     const proximo  = ultimo + 1
 
     // 7. Payload WSFE
@@ -328,8 +332,8 @@ serve(async (req) => {
     }
 
     // 8. Emitir
-    console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id} [${isProduction ? 'PRODUCCIÓN' : 'homologación'}]`)
-    const resultado = await eb.createVoucher(payload)
+    console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id} [${isProduction ? 'PRODUCCIÓN' : 'homologación'}] via ${providerName}`)
+    const resultado = await provider.createVoucher(payload)
 
     // 9. Guardar CAE (REGLA #0). AFIP YA autorizó el comprobante: si el UPDATE falla, la venta/devolución
     //    quedaría SIN registro del CAE → re-emisión posible (DOBLE factura en AFIP). Por eso se reintenta
@@ -356,6 +360,7 @@ serve(async (req) => {
         nc_numero_comprobante: proximo,
         nc_tipo:              tipo_comprobante,
         nc_punto_venta:       punto_venta,
+        afip_provider_usado:  providerName,
       }).eq('id', devolucion_id))
     } else {
       // Factura normal: guardar en ventas. Si estaba 'despachada', pasa a 'facturada'
@@ -365,6 +370,7 @@ serve(async (req) => {
         vencimiento_cae:   resultado.CAEFchVto,
         tipo_comprobante:  `Factura ${tipo_comprobante}`,
         numero_comprobante: proximo,
+        afip_provider_usado: providerName,
       }
       if (venta.estado === 'despachada') ventaUpdate.estado = 'facturada'
       await persistirCAE(() => supabase.from('ventas').update(ventaUpdate).eq('id', venta_id))

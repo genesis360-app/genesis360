@@ -116,9 +116,9 @@ describe('calcularLimites — plan Básico', () => {
     expect(l.puede_importar).toBe(false)
   })
 
-  test('límite de movimientos es 2000', () => {
+  test('límite de movimientos es 5000', () => {
     const l = calcularLimites(base)
-    expect(l.max_movimientos).toBe(2000)
+    expect(l.max_movimientos).toBe(5000)
   })
 })
 
@@ -137,10 +137,12 @@ describe('calcularLimites — plan Pro', () => {
     expect(l.puede_marketplace).toBe(true)
   })
 
-  test('movimientos ilimitados (pct = 0 siempre)', () => {
-    const l = calcularLimites({ ...base, movimientos_mes: 99999 })
-    expect(l.puede_crear_movimiento).toBe(true)
-    expect(l.pct_movimientos).toBe(0)
+  test('movimientos limitados a 20.000 (Pro ya no es ilimitado en el modelo 2026)', () => {
+    const bajoLimite = calcularLimites({ ...base, movimientos_mes: 19000 })
+    expect(bajoLimite.max_movimientos).toBe(20000)
+    expect(bajoLimite.puede_crear_movimiento).toBe(true)
+    const sobreLimite = calcularLimites({ ...base, movimientos_mes: 25000 })
+    expect(sobreLimite.puede_crear_movimiento).toBe(false)
   })
 })
 

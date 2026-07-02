@@ -69,6 +69,13 @@ CREATE TABLE tenants (
   alerta_margen_negativo    BOOLEAN NOT NULL DEFAULT TRUE,       -- VF4/K2 (mig 170)
   alerta_devoluciones_n     INT,                                -- VF4/K2 (mig 170) — NULL = off
   alerta_devoluciones_dias  INT NOT NULL DEFAULT 30,            -- VF4/K2 (mig 170)
+  terminos_aceptados_at     TIMESTAMPTZ,                        -- mig 249 — aceptación T&C + Privacidad en el alta
+  terminos_version          TEXT,                               -- mig 249 — versión legal aceptada (BRAND.LEGAL_VERSION)
+  marketing_consent         BOOLEAN NOT NULL DEFAULT FALSE,     -- mig 249 — opt-in marketing separado/opcional (Ley 25.326)
+  afip_provider             TEXT NOT NULL DEFAULT 'afipsdk'     -- mig 250 — circuito AFIP: 'afipsdk' | 'propio' (dual-provider con rollback)
+    CHECK (afip_provider IN ('afipsdk','propio')),
+  plan_tier                 TEXT NOT NULL DEFAULT 'free'        -- mig 251 — tier del plan (fuente de verdad, desacoplado de max_users)
+    CHECK (plan_tier IN ('free','basico','pro','enterprise')),
   created_at                TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
@@ -2060,7 +2067,8 @@ ALTER TABLE ventas
   ADD COLUMN IF NOT EXISTS vencimiento_cae DATE,
   ADD COLUMN IF NOT EXISTS tipo_comprobante TEXT,
   ADD COLUMN IF NOT EXISTS numero_comprobante TEXT,
-  ADD COLUMN IF NOT EXISTS link_factura_pdf TEXT;
+  ADD COLUMN IF NOT EXISTS link_factura_pdf TEXT,
+  ADD COLUMN IF NOT EXISTS afip_provider_usado TEXT;   -- mig 250 — provider que emitió el CAE (dual-provider)
 
 -- origen: de dónde vino la venta (canal). Constraint eliminada en mig 174:
 -- desde mig 168 el canal es configurable por tenant (catálogo canales_venta),
@@ -3118,3 +3126,83 @@ ALTER TABLE clientes          ADD COLUMN IF NOT EXISTS notas TEXT;              
 -- atómico + guards server-side (monto ≤ saldo a favor SUM, sesión abierta+tenant, no caja
 -- negativa CAJ-18); asienta egreso de efectivo en caja + cliente_creditos negativo (origen
 -- 'retiro_efectivo'). REVOKE FROM PUBLIC + GRANT authenticated/service_role. (mig 246, v1.96.0)
+
+-- ============================================================
+-- PRICING 2026 — límites por plan + add-ons + enforcement (migs 251-252)
+-- ============================================================
+-- tenants.plan_tier ya está en la definición de la tabla (arriba).
+CREATE TABLE IF NOT EXISTS public.tenant_addons (
+  id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id     UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  dimension     TEXT NOT NULL CHECK (dimension IN ('sku','movimientos','sucursales','usuarios')),
+  cantidad      INT  NOT NULL CHECK (cantidad > 0),
+  tipo          TEXT NOT NULL CHECK (tipo IN ('fijo','temporal')),
+  vence_at      TIMESTAMPTZ,          -- NULL para 'fijo'; fecha (pago + 30d) para 'temporal'
+  mp_payment_id TEXT,
+  created_at    TIMESTAMPTZ DEFAULT NOW(),
+  CHECK (tipo = 'fijo' OR vence_at IS NOT NULL)
+);
+ALTER TABLE public.tenant_addons ENABLE ROW LEVEL SECURITY;
+CREATE INDEX IF NOT EXISTS idx_tenant_addons_tenant ON public.tenant_addons(tenant_id, dimension);
+CREATE POLICY tenant_addons_select ON public.tenant_addons FOR SELECT
+  USING (tenant_id = public.get_user_tenant_id() OR public.is_admin());
+REVOKE ALL ON public.tenant_addons FROM PUBLIC, anon;
+GRANT SELECT ON public.tenant_addons TO authenticated;
+GRANT ALL   ON public.tenant_addons TO service_role;
+
+-- Base de límites por tier (espejo de PLAN_BASE_LIMITS en src/config/brand.ts). -1 = ilimitado.
+CREATE OR REPLACE FUNCTION public.fn_plan_base_limite(p_tier TEXT, p_dim TEXT)
+RETURNS INT LANGUAGE SQL IMMUTABLE AS $$
+  SELECT CASE p_tier
+    WHEN 'enterprise' THEN -1
+    WHEN 'pro' THEN CASE p_dim
+      WHEN 'sku' THEN 8000 WHEN 'movimientos' THEN 20000 WHEN 'sucursales' THEN 4 WHEN 'usuarios' THEN 15 ELSE 0 END
+    WHEN 'basico' THEN CASE p_dim
+      WHEN 'sku' THEN 2000 WHEN 'movimientos' THEN 5000 WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 5 ELSE 0 END
+    ELSE CASE p_dim  -- free
+      WHEN 'sku' THEN 50 WHEN 'movimientos' THEN 200 WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 1 ELSE 0 END
+  END
+$$;
+
+-- Límite EFECTIVO = base(tier) + Σ add-ons activos. Trial activo → tier 'pro'.
+CREATE OR REPLACE FUNCTION public.fn_tenant_limite(p_tenant_id UUID, p_dim TEXT)
+RETURNS INT LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_tier TEXT; v_status TEXT; v_trial TIMESTAMPTZ; v_base INT; v_addons INT;
+BEGIN
+  SELECT plan_tier, subscription_status, trial_ends_at INTO v_tier, v_status, v_trial
+    FROM public.tenants WHERE id = p_tenant_id;
+  IF v_tier IS NULL THEN RETURN 0; END IF;
+  IF v_status = 'trial' AND v_trial IS NOT NULL AND v_trial >= now() THEN v_tier := 'pro'; END IF;
+  v_base := public.fn_plan_base_limite(v_tier, p_dim);
+  IF v_base = -1 THEN RETURN -1; END IF;
+  SELECT COALESCE(SUM(cantidad), 0) INTO v_addons FROM public.tenant_addons
+    WHERE tenant_id = p_tenant_id AND dimension = p_dim
+      AND (tipo = 'fijo' OR (tipo = 'temporal' AND vence_at > now()));
+  RETURN v_base + v_addons;
+END $$;
+REVOKE ALL ON FUNCTION public.fn_tenant_limite(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fn_tenant_limite(UUID, TEXT) TO authenticated, service_role;
+
+-- Enforcement server-side (mig 252): bloquea CREAR por encima del límite efectivo.
+-- Dimensiones de estado (sku/usuarios/sucursales). Movimientos (hot-path) se difiere.
+CREATE OR REPLACE FUNCTION public.fn_enforce_limite()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE v_dim TEXT := TG_ARGV[0]; v_limite INT; v_count INT;
+BEGIN
+  IF NEW.activo IS DISTINCT FROM TRUE THEN RETURN NEW; END IF;
+  IF TG_OP = 'UPDATE' AND OLD.activo IS TRUE THEN RETURN NEW; END IF;
+  v_limite := public.fn_tenant_limite(NEW.tenant_id, v_dim);
+  IF v_limite = -1 THEN RETURN NEW; END IF;
+  EXECUTE format('SELECT count(*) FROM public.%I WHERE tenant_id = $1 AND activo = true', TG_TABLE_NAME)
+    INTO v_count USING NEW.tenant_id;
+  IF v_count >= v_limite THEN
+    RAISE EXCEPTION 'Límite del plan alcanzado: % (tenés % de % permitidos). Subí de plan o agregá un add-on.',
+      v_dim, v_count, v_limite USING ERRCODE = 'check_violation';
+  END IF;
+  RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION public.fn_enforce_limite() FROM PUBLIC, anon;
+CREATE TRIGGER trg_enforce_sku        BEFORE INSERT OR UPDATE OF activo ON public.productos  FOR EACH ROW EXECUTE FUNCTION public.fn_enforce_limite('sku');
+CREATE TRIGGER trg_enforce_usuarios   BEFORE INSERT OR UPDATE OF activo ON public.users      FOR EACH ROW EXECUTE FUNCTION public.fn_enforce_limite('usuarios');
+CREATE TRIGGER trg_enforce_sucursales BEFORE INSERT OR UPDATE OF activo ON public.sucursales FOR EACH ROW EXECUTE FUNCTION public.fn_enforce_limite('sucursales');

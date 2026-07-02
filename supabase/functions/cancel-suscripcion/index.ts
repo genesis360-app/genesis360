@@ -39,9 +39,19 @@ serve(async (req) => {
     const { data: { user }, error: userErr } = await userClient.auth.getUser()
     if (userErr || !user) return json({ error: 'No autorizado' }, 401)
 
-    const { data: userRow } = await userClient.from('users').select('tenant_id').eq('id', user.id).single()
-    const tenantId = userRow?.tenant_id
-    if (!tenantId) return json({ error: 'Tenant no encontrado' }, 400)
+    const { data: userRow } = await userClient.from('users').select('tenant_id, rol').eq('id', user.id).single()
+    const callerTenantId = userRow?.tenant_id
+    if (!callerTenantId) return json({ error: 'Tenant no encontrado' }, 400)
+
+    // Target: por defecto el propio tenant del caller. Un STAFF ADMIN (is_admin: rol='ADMIN')
+    // puede cancelar la suscripción de OTRO tenant (AdminPage) pasando { tenant_id }.
+    const body = await req.json().catch(() => ({}))
+    const requested = body?.tenant_id ? String(body.tenant_id) : null
+    let tenantId = callerTenantId
+    if (requested && requested !== callerTenantId) {
+      if (userRow?.rol !== 'ADMIN') return json({ error: 'No autorizado para cancelar otra cuenta' }, 403)
+      tenantId = requested
+    }
 
     const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
     if (!mpToken) return json({ error: 'MP no configurado' }, 500)

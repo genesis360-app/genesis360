@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.106.0 — 🛟 Cancelar suscripción desde el panel interno (admin.genesis360.pro) (PROD ✅, EF admin-api + repo genesis360-admin)
+
+Cierra el follow-up de v1.104.0. EF `admin-api` (repo principal): acción `billing.cancel_subscription` (módulo billing) que cancela el preapproval del tenant en MP (helper `cancelarSubMP`, fail-closed, mismo circuito que `cancel-suscripcion`) + marca `subscription_status='cancelled'` + audita; `customers.get` devuelve `subscription_status`. Panel `genesis360-admin`: botón "Cancelar suscripción" en `CustomerDetailPage` (gateado por rol billing/admin). EF DEV+PROD; panel buildea. Ahora se puede cancelar clientes desde `admin.genesis360.pro`.
+
+---
+
 ## v1.105.0 — 🔴 Seguridad REGLA #0: bloquear escalada a rol ADMIN (aislamiento multi-tenant) (PROD ✅, mig 254 + EF invite-user)
 
 Hallazgo (auditando el guard de `/admin`): un DUEÑO podía auto-asignarse `rol='ADMIN'` (staff, `is_admin()` → ve TODOS los tenants) vía el EF `invite-user` (rol sin whitelist) o un `UPDATE users SET rol` directo (`UsuariosPage.updateRol`). Fix defensa en profundidad: `invite-user` valida `rol` contra `ROLES_ASIGNABLES` (sin ADMIN) + **mig 254** trigger `trg_guard_rol_admin` que rechaza setear `rol='ADMIN'` desde contexto de usuario JWT no-admin (permite service_role/SQL + ADMIN existente). Verificado por impersonación. El guard de la ruta `/admin` ya existía (`AuthGuard requireRole="ADMIN"` + check in-page).

@@ -36,12 +36,52 @@ const ACTION_MODULE: Record<string, string> = {
   'agents.create': 'users',
   'agents.update': 'users',
   'billing.overview': 'billing',
+  'billing.cancel_subscription': 'billing',
   'crm.leads.list': 'crm',
   'crm.leads.create': 'crm',
   'crm.leads.update': 'crm',
 }
 const ROLES = ['admin', 'support', 'marketing', 'billing']
 const DAY = 86400000
+const MP = 'https://api.mercadopago.com'
+const MP_VIVOS = ['authorized', 'pending', 'paused']
+
+// Cancela el/los preapproval(s) del tenant en Mercado Pago (mismo circuito que el EF
+// cancel-suscripcion): busca por external_reference (el filtro de MP se ignora → se filtra
+// client-side + pagina) + el id guardado, verifica pertenencia, PUT status:'cancelled'.
+// Fail-closed: devuelve errores si algún vivo no se pudo cancelar (el caller NO marca cancelado).
+async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promise<{ mp_cancelled: number; errores: string[] }> {
+  const H = { Authorization: `Bearer ${mpToken}` }
+  const { data: t } = await svc.from('tenants').select('mp_subscription_id').eq('id', tenantId).single()
+  const cand = new Set<string>()
+  if (t?.mp_subscription_id) cand.add(String(t.mp_subscription_id))
+  try {
+    for (let off = 0; off < 1000; off += 100) {
+      const r = await fetch(`${MP}/preapproval/search?external_reference=${encodeURIComponent(tenantId)}&limit=100&offset=${off}`, { headers: H })
+      if (!r.ok) break
+      const s = await r.json()
+      const results = s?.results ?? []
+      for (const x of results) if (x?.id && x?.external_reference === tenantId) cand.add(String(x.id))
+      if (results.length < 100) break
+    }
+  } catch (_) { /* best-effort */ }
+  let mp_cancelled = 0
+  const errores: string[] = []
+  for (const id of cand) {
+    const g = await fetch(`${MP}/preapproval/${id}`, { headers: H })
+    if (!g.ok) continue
+    const pre = await g.json()
+    if (pre?.external_reference !== tenantId) continue      // no es de este tenant
+    if (pre?.status === 'cancelled') { mp_cancelled++; continue }
+    if (!MP_VIVOS.includes(pre?.status)) continue
+    const put = await fetch(`${MP}/preapproval/${id}`, {
+      method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'cancelled' }),
+    })
+    if (put.ok) mp_cancelled++
+    else errores.push(`${id}:${put.status}`)
+  }
+  return { mp_cancelled, errores }
+}
 
 // MRR + distribución por plan (join tenants→planes). Paga = plan_id no nulo y fuera de trial.
 async function computeBilling(svc: any) {
@@ -133,6 +173,23 @@ Deno.serve(async (req) => {
         return json({ mrr, por_plan })
       }
 
+      case 'billing.cancel_subscription': {
+        if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
+        const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
+        if (!mpToken) return json({ error: 'MP no configurado' }, 500)
+        const { mp_cancelled, errores } = await cancelarSubMP(svc, p.tenantId, mpToken)
+        // Fail-closed (REGLA #0): si algún preapproval vivo no se pudo cancelar, NO
+        // marcamos cancelada la cuenta (seguiría cobrando y el panel mentiría).
+        if (errores.length) {
+          await audit({ tenantId: p.tenantId, errores })
+          return json({ error: 'No se pudo cancelar en Mercado Pago. Reintentá o revisá el panel de MP.', detalle: errores }, 502)
+        }
+        const { error } = await svc.from('tenants').update({ subscription_status: 'cancelled' }).eq('id', p.tenantId)
+        if (error) return json({ error: 'Se canceló en MP pero no se pudo actualizar la cuenta.' }, 500)
+        await audit({ tenantId: p.tenantId, mp_cancelled })
+        return json({ ok: true, mp_cancelled })
+      }
+
       case 'crm.leads.list': {
         const { data, error } = await svc.from('leads')
           .select('id, nombre, empresa, email, telefono, estado, valor_estimado, origen, asignado_a, created_at, updated_at')
@@ -176,7 +233,7 @@ Deno.serve(async (req) => {
       case 'customers.get': {
         if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
         const { data: tenant, error } = await svc.from('tenants')
-          .select('id, nombre, plan_id, modo_operacion, created_at, trial_ends_at, inicio_actividades')
+          .select('id, nombre, plan_id, modo_operacion, created_at, trial_ends_at, inicio_actividades, subscription_status')
           .eq('id', p.tenantId).maybeSingle()
         if (error) throw error
         if (!tenant) return json({ error: 'Tenant no encontrado' }, 404)

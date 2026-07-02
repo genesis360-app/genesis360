@@ -6,6 +6,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-02] deploy | 🛟 Cancelar suscripción desde el panel interno (admin.genesis360.pro) · v1.106.0 (EF admin-api) + panel
+
+Cierra el follow-up: el panel separado (`admin.genesis360.pro`, repo `genesis360-admin`) mostraba el cliente pero NO tenía cómo cancelarle la suscripción. **Backend (repo principal, EF `admin-api`):** nueva acción **`billing.cancel_subscription`** (módulo `billing` → roles admin/billing) que cancela el/los preapproval(s) del tenant en MP (helper `cancelarSubMP`: busca por `external_reference` + id guardado, filtra client-side, PUT `status:'cancelled'`, **fail-closed**) y marca `subscription_status='cancelled'`; audita en `admin_audit_log`. `customers.get` ahora devuelve `subscription_status`. **Frontend (repo `genesis360-admin`):** botón "Cancelar suscripción" en `CustomerDetailPage` (gateado por `canSee(rol,'billing')` + solo si no está ya cancelada; confirm + mensaje). Build del panel verde; EF `admin-api` deployado DEV+PROD. Mismo circuito de cancelación que el EF `cancel-suscripcion` (v1.104.0). Bump repo principal v1.106.0.
+
+---
+
 ## [2026-07-02] deploy | 🔴 SEGURIDAD (REGLA #0) — bloquear escalada a rol ADMIN (aislamiento multi-tenant) · v1.105.0 EN PROD
 
 Auditoría del guard de `/admin` (a pedido de GO) reveló que el guard de la ruta YA existía (`AuthGuard requireRole="ADMIN"` + check in-page en `AdminPage`), PERO un hallazgo mayor: **un DUEÑO podía auto-escalarse a `rol='ADMIN'`** (el rol de STAFF cuyo `is_admin()` da acceso a TODOS los tenants vía `tenants_select`/`tenants_update`). Dos vías: (1) el EF **`invite-user`** usaba el `rol` del request **sin whitelist** (la UI no ofrece ADMIN, pero por API sí se podía mandar); (2) **`UsuariosPage.updateRol`** es un `UPDATE users SET rol` directo → un DUEÑO podía PATCHear PostgREST con `{rol:'ADMIN'}`. Ruptura de aislamiento multi-tenant.

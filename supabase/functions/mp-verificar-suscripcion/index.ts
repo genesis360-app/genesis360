@@ -16,10 +16,16 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Límites por plan MP (preapproval_plan_id → límites) — espejo de mp-webhook.
-const MP_PLAN_LIMITS: Record<string, { max_users: number; max_productos: number }> = {
-  [Deno.env.get('MP_PLAN_BASICO') ?? '']: { max_users: 2,  max_productos: 500 },
-  [Deno.env.get('MP_PLAN_PRO')    ?? '']: { max_users: 10, max_productos: 5000 },
+// preapproval_plan_id (MP) → tier del plan (espejo de mp-webhook). plan_tier es la
+// FUENTE DE VERDAD de los límites (fn_tenant_limite, mig 251). Los legacy max_users/
+// max_productos se setean al BASE del tier solo por consistencia, no gobiernan límites.
+const MP_PLAN_TIER: Record<string, 'basico' | 'pro'> = {
+  [Deno.env.get('MP_PLAN_BASICO') ?? '']: 'basico',
+  [Deno.env.get('MP_PLAN_PRO')    ?? '']: 'pro',
+}
+const TIER_BASE: Record<string, { max_users: number; max_productos: number }> = {
+  basico: { max_users: 5,  max_productos: 2000 },
+  pro:    { max_users: 15, max_productos: 8000 },
 }
 
 const json = (body: unknown, status = 200) =>
@@ -100,13 +106,14 @@ serve(async (req) => {
       }
     }
 
-    const planLimits = MP_PLAN_LIMITS[sub.preapproval_plan_id] ?? {}
+    const tier = MP_PLAN_TIER[sub.preapproval_plan_id]
     const { error: updErr } = await admin.from('tenants').update({
       subscription_status: 'active',
       mp_subscription_id: preapproval_id,
-      ...(planLimits.max_users ? {
-        max_users: planLimits.max_users,
-        max_productos: planLimits.max_productos,
+      ...(tier ? {
+        plan_tier: tier,
+        max_users: TIER_BASE[tier].max_users,
+        max_productos: TIER_BASE[tier].max_productos,
       } : {}),
     }).eq('id', tenantId)
     if (updErr) {

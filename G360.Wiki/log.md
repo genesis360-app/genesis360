@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-02] deploy | 🚀 v1.102.0 EN PROD — Pricing FASE 2 (add-on temporal) + FASE 3 (add-ons fijos + EFs tier-aware + downgrade guiado)
+
+Continuación del pricing (F0/F1 en v1.101.0). **F2 + F3 DEPLOYADAS A PROD** (v1.102.0): mig 253 (DEV+PROD) + 4 EFs (`mp-addon`, `mp-webhook`, `mp-verificar-suscripcion`, `mp-addon-fijo`) en DEV+PROD + frontend (Vercel main). typecheck + build + **839 unit** verdes. Verificación DB por impersonación (ROLLBACK): add-on temporal suma al límite efectivo + idempotencia OK; guard de downgrade OK. **🛑 GO deployó el billing ASUMIENDO el riesgo** — le flagué que el cobro MP NO es e2e-testeable (sin sandbox/seller) y que RIESGO #1 (planes base MP a precio viejo) sigue vivo hasta que los reconfigure.
+
+- **F2 — Add-on TEMPORAL de movimientos:** `src/lib/addons.ts` (packs/ref/downgrade/precio, unit-tested, fuente de verdad UI↔webhook) · EF `mp-addon` parametrizado (packs 1.000/5.000/20.000, **revalida precio server-side**, ref `${t}|addon|movimientos|${cant}|temporal`) · EF `mp-webhook` inserta `tenant_addons` (temporal, vence 30d, **idempotente por `mp_payment_id`** — el flujo legacy no lo era y una re-notificación de MP duplicaba movimientos, REGLA #0) · `SuscripcionPage` selector de 3 packs · **mig 253** (uq index parcial `mp_payment_id`) · `brand.ts` saca `ADDON_MOVIMIENTOS` legacy.
+- **F3a — EFs tier-aware:** `mp-webhook` + `mp-verificar-suscripcion` setean **`plan_tier`** (mapeo `preapproval_plan_id`→tier) en vez de los `max_users/max_productos` viejos (bug: `usePlanLimits` ya no lee esos legacy). **Cierra medio RIESGO #1.**
+- **F3b — Enforcement movimientos = SOFT (decisión REGLA #0):** no se agrega trigger de corte (tabla hot-path/compartida; un movimiento no es comprobante fiscal → sin implicancia legal/contable; nunca cortar una venta). El gate client-side de Inventario ya usa el límite efectivo + upsell; los dientes duros quedan en SKU/users/sucursales (F1/mig 252).
+- **F3c — Add-ons FIJOS + downgrade guiado (alto riesgo, NO deployado):** lib `precioMensualAddonsFijos`/`evaluarDowngrade` (unit-tested) · **EF nueva `mp-addon-fijo`** (alta/baja; `PUT transaction_amount` del preapproval MP por **delta** preservando descuento base; **fail-closed** si MP falla; baja revalida downgrade guiado server-side `fn_tenant_limite`−cantidad vs uso activo) · `SuscripcionPage` **configurador** (packs sku/sucursales/usuarios + total en vivo + modal downgrade guiado "desactivá N; SKU: no eliminar").
+- **🟠 Pendiente OPERATIVO de GO** (no código, para cobrar de verdad): **reconfigurar los planes base de MP a $60k/$100k** (RIESGO #1 sigue vivo hasta eso) + **validar en sandbox** el `PUT transaction_amount` y el pago único del add-on temporal (el código está en PROD pero el cobro nunca se ejerció e2e). Ver `wiki/business/planes-pricing.md`.
+
+---
+
 ## [2026-07-01] query | 💵 Análisis de competencia + propuesta de pricing (sin código)
 
 Relevamiento de 5 competidores AR (pedido GO) para fijar precios/planes/límites. **Sin código — análisis + registro** en `wiki/business/planes-pricing.md` (nueva sección de competencia + propuesta + modelo de límites + infra).

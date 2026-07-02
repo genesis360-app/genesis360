@@ -6,8 +6,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-const ADDON_CANTIDAD = 500
-const ADDON_PRECIO   = 990 // ARS
+// ── Catálogo de packs (ESPEJO server-side de ADDON_PACKS en src/config/brand.ts) ──
+// 🛑 El precio SIEMPRE sale de acá, nunca del cliente (REGLA #0: no cobrar montos
+// arbitrarios). En Fase 2 este EF solo emite el add-on TEMPORAL de movimientos
+// (pago único, vence a 30d). Los add-ons FIJOS (sku/sucursales/usuarios) cambian el
+// monto del preapproval MP → Fase 3, otro flujo.
+const ADDON_PACKS: Record<string, { tipos: string[]; packs: Array<{ cantidad: number; precio: number }> }> = {
+  sku:         { tipos: ['fijo'],             packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
+  sucursales:  { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },
+  usuarios:    { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }] },
+  movimientos: { tipos: ['fijo', 'temporal'], packs: [{ cantidad: 1000, precio: 5000 }, { cantidad: 5000, precio: 10000 }, { cantidad: 20000, precio: 15000 }] },
+}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -37,21 +46,42 @@ serve(async (req) => {
     if (userRowErr || !userRow) throw new Error('Tenant no encontrado')
 
     const tenantId = userRow.tenant_id
-    const appUrl = Deno.env.get('APP_URL') ?? 'https://genesis360.pro'
+
+    // ── Pack solicitado (con back-compat: sin body = 500 movimientos legacy) ──────
+    // Fase 2: solo add-on TEMPORAL de movimientos por este flujo (pago único).
+    const body = await req.json().catch(() => ({}))
+    const dimension = String(body?.dimension ?? 'movimientos')
+    const cantidad  = Number(body?.cantidad ?? 500)
+
+    if (dimension !== 'movimientos') {
+      throw new Error(`Add-on de ${dimension} no disponible en este flujo (solo movimientos)`)
+    }
+
+    // Revalidar el pack contra el catálogo server-side (precio NUNCA del cliente).
+    // 500 se sigue aceptando por compatibilidad con links viejos.
+    const legacy = cantidad === 500 ? { cantidad: 500, precio: 990 } : null
+    const pack = legacy ?? ADDON_PACKS.movimientos.packs.find(p => p.cantidad === cantidad)
+    if (!pack) throw new Error(`Pack de movimientos inválido: ${cantidad}`)
+
+    const appUrl = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
     const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
     if (!mpToken) throw new Error('MP_ACCESS_TOKEN no configurado')
+
+    // external_reference nuevo: `${tenant}|addon|movimientos|${cantidad}|temporal`.
+    // El webhook lo parsea y crea la fila en tenant_addons (tipo temporal, vence 30d).
+    const externalRef = `${tenantId}|addon|movimientos|${pack.cantidad}|temporal`
 
     // Crear preferencia MP (pago único)
     const preferenceBody = {
       items: [{
-        id: 'addon_movimientos_500',
-        title: `+${ADDON_CANTIDAD} movimientos extra`,
-        description: 'Pack adicional de movimientos de stock — válido hasta fin de mes',
+        id: `addon_movimientos_${pack.cantidad}`,
+        title: `+${pack.cantidad.toLocaleString('es-AR')} movimientos extra`,
+        description: 'Pack adicional de movimientos de stock — válido por 30 días',
         quantity: 1,
-        unit_price: ADDON_PRECIO,
+        unit_price: pack.precio,
         currency_id: 'ARS',
       }],
-      external_reference: `${tenantId}|addon_movimientos`,
+      external_reference: externalRef,
       back_urls: {
         success: `${appUrl}/suscripcion?status=approved&type=addon`,
         failure: `${appUrl}/suscripcion?status=failure&type=addon`,
@@ -59,7 +89,7 @@ serve(async (req) => {
       },
       auto_return: 'approved',
       notification_url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/mp-webhook`,
-      statement_descriptor: 'STOKIO ADDON',
+      statement_descriptor: 'GENESIS360 ADDON',
     }
 
     const mpRes = await fetch('https://api.mercadopago.com/checkout/preferences', {
@@ -77,7 +107,7 @@ serve(async (req) => {
     }
 
     const preference = await mpRes.json()
-    console.log('Preference created:', preference.id, 'for tenant:', tenantId)
+    console.log('Preference created:', preference.id, 'for tenant:', tenantId, 'pack:', pack.cantidad)
 
     return new Response(JSON.stringify({ init_point: preference.init_point, id: preference.id }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

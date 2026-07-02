@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.101.0'
+export const APP_VERSION = 'v1.102.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
@@ -232,8 +232,6 @@ export const MAX_MOVIMIENTOS_POR_PLAN: Record<string, number> = {
   enterprise: -1,   // ilimitado
 }
 
-// Precio y cantidad del add-on de movimientos
-export const ADDON_MOVIMIENTOS = {
-  cantidad: 500,
-  precio: 990, // ARS
-}
+// NOTA: el add-on de movimientos ya NO es un pack único fijo. Los packs viven en
+// ADDON_PACKS.movimientos (1.000/5.000/20.000) y se compran como add-on TEMPORAL
+// (pago único, vence a 30d) vía la EF mp-addon → tenant_addons (Pricing 2026, Fase 2).

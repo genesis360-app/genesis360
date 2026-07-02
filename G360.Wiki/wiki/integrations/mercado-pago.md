@@ -102,16 +102,48 @@ en el dashboard es `mp-webhook` (es la `notification_url` de `mp-crear-link-pago
 
 ---
 
-## 3. Add-on de movimientos (v0.40.0)
+## 3. Add-ons (Pricing 2026)
+
+### 3.a Add-on TEMPORAL de movimientos (Fase 2, 2026-07-02)
 
 ```
-Usuario quiere +500 movimientos
-  → EF mp-addon crea preference de pago único
-  → mp-webhook detecta |addon_movimientos| en external_reference
-  → INCREMENT tenants.addon_movimientos += 500
+Usuario elige pack 1.000 / 5.000 / 20.000 movimientos
+  → EF mp-addon (revalida el precio contra el catálogo server-side)
+    crea preference de PAGO ÚNICO
+    external_reference = `${tenant}|addon|movimientos|${cantidad}|temporal`
+  → mp-webhook parsea la ref (parseAddonRef)
+    INSERT tenant_addons (dimension='movimientos', tipo='temporal', vence_at = pago+30d,
+                          mp_payment_id=<paymentId>)
+  → idempotente por uq_tenant_addons_mp_payment (mig 253): reintento de MP = 23505 ignorado
 ```
 
-`tenants.addon_movimientos INT DEFAULT 0` — se acumula.
+El límite EFECTIVO lo calcula `fn_tenant_limite` (base + Σ add-ons activos, temporales no vencidos).
+`usePlanLimits` lo espeja en el cliente. **El add-on temporal ya NO usa `tenants.addon_movimientos`**
+(esa columna legacy queda solo para packs viejos de 500; back-compat en el webhook).
+
+### 3.b Add-ons FIJOS (recurrentes) + downgrade guiado (Fase 3, 2026-07-02 · NO deployado)
+
+```
+Alta:  EF mp-addon-fijo (action='agregar', dimension sku/sucursales/usuarios, cantidad)
+  → lee el transaction_amount ACTUAL del preapproval (GET /preapproval/{id})
+  → PUT /preapproval/{id} auto_recurring.transaction_amount = actual + precio_pack  (DELTA)
+  → fail-closed: si el PUT falla, NO se otorga el add-on
+  → INSERT tenant_addons (tipo='fijo', vence_at=NULL)
+Baja:  EF mp-addon-fijo (action='quitar', addon_id)
+  → downgrade GUIADO server-side: fn_tenant_limite(dim) − cantidad vs uso activo;
+    si uso > nuevo límite → 200 {blocked:true, excedente, ...} (el usuario desactiva recursos primero)
+  → PUT transaction_amount = actual − precio_pack ; DELETE tenant_addons
+```
+
+> [!WARNING] **NO deployado / no e2e-testeable.** Requiere reconfigurar los planes base de MP a
+> $60k/$100k + validar en **sandbox** el `PUT` de `transaction_amount` sobre un preapproval basado en
+> plan (comportamiento real de MP a confirmar). El precio SIEMPRE sale del catálogo server-side (REGLA #0).
+
+### 3.c EFs tier-aware (Fase 3a)
+
+`mp-webhook` y `mp-verificar-suscripcion` ahora setean **`tenants.plan_tier`** (mapeo
+`preapproval_plan_id`→`basico`/`pro`, env `MP_PLAN_BASICO`/`MP_PLAN_PRO`) al activar, en vez de los
+`max_users`/`max_productos` viejos (que `usePlanLimits` ya no lee). Cierra medio RIESGO #1.
 
 ---
 
@@ -120,10 +152,12 @@ Usuario quiere +500 movimientos
 | Función | JWT | Propósito |
 |---------|-----|-----------|
 | `crear-suscripcion` | Sí | Deprecated (se usa init_point directo ahora) |
-| `mp-webhook` | No | Eventos de pagos Y suscripciones |
+| `mp-webhook` | No | Eventos de pagos Y suscripciones (setea `plan_tier`; add-on temporal → `tenant_addons`) |
 | `mp-ipn` | No | IPN alternativo para pagos de ventas |
 | `mp-crear-link-pago` | Sí | Genera preference de pago por venta |
-| `mp-addon` | Sí | Genera preference de add-on |
+| `mp-addon` | Sí | Add-on TEMPORAL de movimientos (pago único, packs 1.000/5.000/20.000) |
+| `mp-addon-fijo` | Sí | Add-on FIJO (alta/baja + `PUT transaction_amount` del preapproval) — **NO deployado** |
+| `mp-verificar-suscripcion` | Sí | Verifica el preapproval server-side y activa (setea `plan_tier`) |
 | `mp-oauth-callback` | No | OAuth de la cuenta del seller |
 
 ### Routing en `mp-webhook`

@@ -6,16 +6,24 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-07-02 · v1.101.0 DEPLOYADO A PROD · DEV = PROD)
-> **Estado:** **PROD = DEV = v1.101.0** (migs 001-252 en ambos, 826 unit). Deployado: frontend (Vercel main) + migs 249-252. Release `v1.101.0` + tag creados. **Los 3 tracks de las sesiones 2026-07-01/02 quedaron EN PROD** (T&C, adapter dual-provider en DB, pricing F0+F1).
+> ### 🚀 ARRANCÁ ACÁ (2026-07-02 · Pricing FASE 2 + FASE 3 DEPLOYADO A PROD · v1.102.0 · DEV = PROD)
+> **Estado:** **PROD = DEV = v1.102.0** (migs 001-253, **839 unit**). Deployado: **mig 253 (DEV+PROD)** + **4 EFs (`mp-addon`, `mp-webhook`, `mp-verificar-suscripcion`, `mp-addon-fijo`) en DEV+PROD** + frontend (Vercel main). Verificación DB por impersonación (ROLLBACK): add-on temporal suma al límite efectivo + idempotencia OK; guard de downgrade OK. **🛑 GO decidió deployar el billing ASUMIENDO el riesgo** (le flagué que el cobro MP NO es e2e-testeable + RIESGO #1 sigue vivo).
 >
-> **⚠️ RIESGOS VIVOS EN PROD (GO decidió deployar igual — resolver YA):**
-> 1. **Precio ↔ MP mismatch:** la Landing/Suscripción muestran **$60k/$100k** pero los **planes de MP (preapproval) siguen a precio VIEJO** ($4.900/$9.900). **NO habilitar suscripciones reales hasta reconfigurar los planes MP** (Fase 3). Hoy no bloquea porque el cobro MP e2e no está activo, pero es lo primero a cerrar.
-> 2. **T&C sin revisión legal EN VIVO:** `/terminos` y `/privacidad` están publicados y el onboarding los exige. **Falta:** revisión de abogado + razón social/CUIT del responsable (comentarios ⚖️ en `TerminosPage`/`PrivacidadPage`) + evaluar registro AAIP.
+> **✅ Qué se hizo (F2 + F3, todo en DEV):**
+> - **F2 — Add-on TEMPORAL de movimientos (bajo riesgo):** `src/lib/addons.ts` (packs + serialización del `external_reference` + downgrade + precio fijo, unit-tested) · **EF `mp-addon`** parametrizado (packs 1.000/5.000/20.000, **revalida precio server-side**, ref `${t}|addon|movimientos|${cant}|temporal`) · **EF `mp-webhook`** inserta en `tenant_addons` (temporal, vence 30d, **idempotente por `mp_payment_id`**) · **`SuscripcionPage`** selector de 3 packs · **mig 253** (uq index `mp_payment_id`, evita doble acreditación en reintentos de MP) · `brand.ts` sacó `ADDON_MOVIMIENTOS` legacy.
+> - **F3a — EFs tier-aware (cierra MEDIO RIESGO #1):** `mp-webhook` + `mp-verificar-suscripcion` ahora setean **`plan_tier`** (mapeo `preapproval_plan_id`→tier) en vez de los `max_users/max_productos` viejos (`usePlanLimits` ya no lee esos legacy — deriva de `plan_tier`).
+> - **F3b — Enforcement de movimientos = SOFT (decisión, REGLA #0):** NO se agrega trigger que corte movimientos (la tabla es hot-path y compartida por ventas/recepciones/kits/devoluciones/traslados/conteos → un edge case rompería una operación). Un movimiento NO es comprobante fiscal → cero implicancia legal/contable. Nunca se corta una venta. El gate client-side de Inventario (ingreso/rebaje manual + import masivo) ya usa el límite EFECTIVO (incluye add-ons de F2) + upsell. Los dientes DUROS quedan donde importan (SKU/users/sucursales, ya server-side en F1/mig 252).
+> - **F3c — Add-ons FIJOS + downgrade guiado (alto riesgo, NO deployado):** lib `precioMensualAddonsFijos`/`evaluarDowngrade` (unit-tested) · **EF nueva `mp-addon-fijo`** (alta/baja, **cambia el `transaction_amount` del preapproval MP en vivo por delta** preservando el descuento base; **fail-closed**: si MP falla no otorga; en baja revalida el downgrade guiado server-side vía `fn_tenant_limite`−cantidad vs uso activo) · **`SuscripcionPage` configurador** (packs sku/sucursales/usuarios + total en vivo + modal de downgrade guiado "desactivá N, para SKU no elimines").
 >
-> **NO deployado a PROD (a propósito):** la **EF `emitir-factura`** (refactor dual-provider) — PROD sigue con la EF actual (AfipSDK), intacta. El adapter vive en el repo + las columnas en DB; se deploya la EF tras probarla en homologación.
+> **⚠️ RIESGOS / PENDIENTES:**
+> 1. **RIESGO #1 (precio↔MP) — medio cerrado:** las EFs ya setean el tier correcto, PERO **los planes base de MP (preapproval) SIGUEN a precio viejo** → GO debe **reconfigurarlos a $60k/$100k en el panel de MP** antes de habilitar suscripciones/add-ons reales. Los add-ons fijos (`mp-addon-fijo`) hacen `PUT transaction_amount` sobre ese preapproval → depende de que el base esté bien.
+> 2. **T&C sin revisión legal EN VIVO** (sin cambios; sigue pendiente abogado + razón social/CUIT + AAIP).
 >
-> **PRÓXIMO (nueva sesión): Fase 2 y Fase 3 del pricing** — F2 add-on temporal de movimientos (patrón `addon_movimientos`, bajo riesgo); F3 add-ons fijos + downgrade guiado + **reconfigurar planes MP + actualizar EFs `mp-webhook`/`mp-verificar-suscripcion` para setear `plan_tier` + crear `tenant_addons`** (cierra el riesgo #1) + enforcement de movimientos. Luego F4 configurador Landing + F5 multi-CUIT. Ver `wiki/business/planes-pricing.md`.
+> **🟠 PENDIENTE OPERATIVO DE GO (NO código — para poder cobrar de verdad):**
+> - **Reconfigurar los planes base de MP a $60k/$100k** en el panel (RIESGO #1: hoy siguen a precio viejo → una suscripción real cobraría mal). Los add-ons fijos (`mp-addon-fijo`) hacen `PUT transaction_amount` sobre ese preapproval → depende de que el base esté bien.
+> - **Validar en sandbox** el flujo real de cobro: el `PUT transaction_amount` sobre un preapproval basado en plan (comportamiento de MP a confirmar) + el pago único del add-on temporal. **El código está EN PROD pero el cobro nunca se ejerció e2e** — antes de habilitar suscripciones/add-ons a un cliente real, probar con una cuenta MP de prueba.
+>
+> **PRÓXIMO:** F4 (configurador en Landing) · F5 (multi-CUIT). Ver `wiki/business/planes-pricing.md`.
 >
 > ---
 >

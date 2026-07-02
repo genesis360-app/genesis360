@@ -6,10 +6,32 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-signature, x-request-id',
 }
 
-// Límites por plan MP (preapproval_plan_id → límites)
-const MP_PLAN_LIMITS: Record<string, { max_users: number; max_productos: number }> = {
-  [Deno.env.get('MP_PLAN_BASICO') ?? '']: { max_users: 2,  max_productos: 500 },
-  [Deno.env.get('MP_PLAN_PRO')    ?? '']: { max_users: 10, max_productos: 5000 },
+// preapproval_plan_id (MP) → tier del plan. plan_tier es la FUENTE DE VERDAD de los
+// límites (fn_tenant_limite, mig 251); usePlanLimits ya no infiere por max_users. Los
+// legacy max_users/max_productos se setean al valor BASE del tier solo por consistencia
+// (AdminPage / tipos), NO gobiernan límites.
+const MP_PLAN_TIER: Record<string, 'basico' | 'pro'> = {
+  [Deno.env.get('MP_PLAN_BASICO') ?? '']: 'basico',
+  [Deno.env.get('MP_PLAN_PRO')    ?? '']: 'pro',
+}
+const TIER_BASE: Record<string, { max_users: number; max_productos: number }> = {
+  basico: { max_users: 5,  max_productos: 2000 },
+  pro:    { max_users: 15, max_productos: 8000 },
+}
+
+// Espejo Deno de src/lib/addons.ts (las EF no importan del bundle del frontend).
+// external_reference de add-on: `${tenantId}|addon|${dimension}|${cantidad}|${tipo}`.
+type ParsedAddonRef = { tenantId: string; dimension: string; cantidad: number; tipo: string }
+function parseAddonRef(ref: string): ParsedAddonRef | null {
+  const parts = ref.split('|')
+  if (parts.length !== 5 || parts[1] !== 'addon') return null
+  const [tenantId, , dimension, cantidadStr, tipo] = parts
+  const cantidad = Number(cantidadStr)
+  if (!tenantId) return null
+  if (!Number.isInteger(cantidad) || cantidad <= 0) return null
+  if (!['sku', 'movimientos', 'sucursales', 'usuarios'].includes(dimension)) return null
+  if (!['fijo', 'temporal'].includes(tipo)) return null
+  return { tenantId, dimension, cantidad, tipo }
 }
 
 /**
@@ -90,16 +112,17 @@ serve(async (req) => {
 
       const tenantId = subscription.external_reference
       if (tenantId) {
-        const planLimits = MP_PLAN_LIMITS[subscription.preapproval_plan_id] ?? {}
+        const tier = MP_PLAN_TIER[subscription.preapproval_plan_id]
         await supabase.from('tenants').update({
           subscription_status: newStatus,
           mp_subscription_id: subscriptionId,
-          ...(newStatus === 'active' && planLimits.max_users ? {
-            max_users: planLimits.max_users,
-            max_productos: planLimits.max_productos,
+          ...(newStatus === 'active' && tier ? {
+            plan_tier: tier,
+            max_users: TIER_BASE[tier].max_users,
+            max_productos: TIER_BASE[tier].max_productos,
           } : {}),
         }).eq('id', tenantId)
-        console.log(`Tenant ${tenantId} → ${newStatus}`, planLimits)
+        console.log(`Tenant ${tenantId} → ${newStatus}`, tier ?? '(sin tier)')
       }
     }
 
@@ -197,7 +220,32 @@ serve(async (req) => {
           }
         } else {
           // ── Pago de PLATAFORMA (suscripción / add-on) ───────────────────
-          if (ref.endsWith('|addon_movimientos')) {
+          const addon = parseAddonRef(ref)
+          if (addon && addon.tipo === 'temporal') {
+            // Add-on TEMPORAL (Fase 2, hoy solo movimientos): fila en tenant_addons
+            // que vence a 30d del pago. Idempotente por mp_payment_id (uq index, mig 253):
+            // MP reenvía notificaciones → un reintento no acredita de más (REGLA #0).
+            const vence = new Date(Date.now() + 30 * 86400000).toISOString()
+            const { error: insErr } = await supabase.from('tenant_addons').insert({
+              tenant_id:     addon.tenantId,
+              dimension:     addon.dimension,
+              cantidad:      addon.cantidad,
+              tipo:          'temporal',
+              vence_at:      vence,
+              mp_payment_id: String(paymentId),
+            })
+            if (insErr) {
+              if ((insErr as any).code === '23505') {
+                console.log('Add-on temporal ya acreditado (idempotente):', paymentId)
+              } else {
+                console.error('mp-webhook: error insertando add-on temporal', insErr)
+                throw new Error(`tenant_addons: ${insErr.message}`)
+              }
+            } else {
+              console.log(`Tenant ${addon.tenantId} +${addon.cantidad} ${addon.dimension} (temporal, vence ${vence})`)
+            }
+          } else if (ref.endsWith('|addon_movimientos')) {
+            // Back-compat: links de pago viejos (pack fijo de 500, columna legacy).
             const tenantId = ref.replace('|addon_movimientos', '')
             const { data: tenantRow } = await supabase.from('tenants')
               .select('addon_movimientos').eq('id', tenantId).single()

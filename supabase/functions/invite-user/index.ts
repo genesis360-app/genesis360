@@ -6,6 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// 🛑 REGLA #0 (aislamiento multi-tenant): roles que un tenant PUEDE asignar. ADMIN NO
+// está — es rol de STAFF de Genesis360 (is_admin() → ve TODOS los tenants). Sin este
+// whitelist, un DUEÑO podía invitar con rol:'ADMIN' por API directa y escalar a admin
+// de plataforma. Espejo del selector de UsuariosPage; reforzado por trigger en DB (mig 254).
+const ROLES_ASIGNABLES = ['DUEÑO', 'SUPER_USUARIO', 'SUPERVISOR', 'CAJERO', 'RRHH', 'CONTADOR', 'DEPOSITO', 'VIEWER']
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -17,6 +23,9 @@ serve(async (req) => {
     const redirectTo = redirect_to ?? 'https://app.genesis360.pro/dashboard'
     if (!email || !rol || !tenant_id) {
       throw new Error('Faltan parámetros: email, rol, tenant_id')
+    }
+    if (!ROLES_ASIGNABLES.includes(rol)) {
+      throw new Error('Rol inválido')  // bloquea ADMIN / cualquier rol no asignable por un tenant
     }
 
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!

@@ -117,6 +117,20 @@ RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER AS $$
   )
 $$;
 
+-- Guard: bloquear que un tenant (usuario JWT no-admin) se asigne rol='ADMIN' (mig 254).
+CREATE OR REPLACE FUNCTION public.fn_guard_rol_admin()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.rol = 'ADMIN' AND auth.uid() IS NOT NULL AND NOT public.is_admin() THEN
+    RAISE EXCEPTION 'No autorizado a asignar el rol ADMIN' USING ERRCODE = 'insufficient_privilege';
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_guard_rol_admin ON public.users;
+CREATE TRIGGER trg_guard_rol_admin
+  BEFORE INSERT OR UPDATE OF rol ON public.users
+  FOR EACH ROW EXECUTE FUNCTION public.fn_guard_rol_admin();
+
 -- RLS por sucursal (mig 216). Espejan authStore.puedeVerTodas para no desincronizarse.
 CREATE OR REPLACE FUNCTION public.auth_ve_todas_sucursales()
 RETURNS BOOLEAN LANGUAGE SQL STABLE SECURITY DEFINER SET search_path = public AS $$

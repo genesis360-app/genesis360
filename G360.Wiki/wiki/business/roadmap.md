@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.104.0 — 🔴 Fix REGLA #0: cancelación de suscripción no cancelaba en MP (EF `cancel-suscripcion`) (EF en DEV · PROD pendiente OK GO)
+
+Bug reportado por GO (Fede Messina cancelado pero seguía cobrándose en MP). **Causa:** el EF `cancel-suscripcion` que llamaba `MiCuentaPage` no existía, y el tenant tenía `mp_subscription_id=NULL` pese a una suscripción viva en MP (drift DB↔MP) → la cancelación nunca tocaba MP. **Fix:** EF nuevo `cancel-suscripcion` que cancela el/los preapproval(s) en MP (`PUT status:'cancelled'`, verifica `external_reference===tenant`), **robusto al drift** (si falta el id, busca por `external_reference` en `/preapproval/search`), **fail-closed** (solo marca la cuenta cancelada si MP confirmó); `MiCuentaPage` siempre pasa por el EF. typecheck + build verdes; EF en DEV. **Pendiente:** deploy EF a PROD + release + reconciliar fila de Fede (OK de GO). Follow-up: cancelación desde AdminPage/admin-platform no propaga a MP.
+
+---
+
 ## v1.103.0 — 💠 Pricing 2026 FASE 4 — configurador de precios en la Landing (PROD ✅, frontend-only)
 
 `PricingConfigurator` (`src/components/PricingConfigurator.tsx`) en la sección Precios del Landing: estimador público que combina **plan base (Básico/Pro) + add-ons fijos (SKU/sucursales/usuarios)** y calcula el **total mensual en vivo** (reusa `packsDe`/`precioMensualAddonsFijos` de `src/lib/addons.ts` → mismo precio que cobra el server). Nota de que los movimientos extra se compran puntuales desde la app (add-on temporal). CTA → onboarding. No cobra nada (marketing/comercial). typecheck + build + unit verdes. Sin migración ni EF. **Pendiente:** F5 (multi-CUIT — track grande, requiere relevamiento, va después del WSFE propio).

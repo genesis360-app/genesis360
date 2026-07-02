@@ -173,21 +173,16 @@ export default function MiCuentaPage() {
   }
 
   // ── Cancelar suscripción MP ────────────────────────────────────────────────
+  // SIEMPRE server-side (EF cancel-suscripcion): cancela el preapproval en MP —lo
+  // busca por external_reference aunque la DB no tenga el id— y recién ahí marca la
+  // cuenta como cancelada (fail-closed: si MP no confirma, no dice "cancelado"). El EF
+  // deriva el tenant del JWT; no se le pasa nada sensible desde el cliente.
   const handleCancelarSuscripcion = async () => {
     if (!tenant || !confirm('¿Cancelar tu suscripción? Tu plan pasará a Free al finalizar el período.')) return
     setCancelando(true)
     try {
-      const mpSubId = (tenant as any).mp_subscription_id
-      if (mpSubId) {
-        // Llamar a la Edge Function que cancela el preapproval en MP
-        const { error } = await supabase.functions.invoke('cancel-suscripcion', {
-          body: { preapproval_id: mpSubId, tenant_id: tenant.id },
-        })
-        if (error) throw error
-      } else {
-        // Sin ID de MP: solo marcar en la DB
-        await supabase.from('tenants').update({ subscription_status: 'cancelled', mp_subscription_id: null }).eq('id', tenant.id)
-      }
+      const { data, error } = await supabase.functions.invoke('cancel-suscripcion', { body: {} })
+      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo cancelar la suscripción')
       await loadUserData(user!.id)
       toast.success('Suscripción cancelada. Tu plan pasará a Free al finalizar el período.')
     } catch (err: any) {

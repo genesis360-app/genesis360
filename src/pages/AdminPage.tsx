@@ -94,14 +94,30 @@ export default function AdminPage() {
   const updateTenant = useMutation({
     mutationFn: async () => {
       if (!editTenant) return
-      const updates: any = {
-        subscription_status: editForm.subscription_status,
-        max_users: editForm.max_users,
-      }
+      const pasaACancelado =
+        editForm.subscription_status === 'cancelled' && editTenant.subscription_status !== 'cancelled'
+
+      const otros: any = { max_users: editForm.max_users }
       if (editForm.trial_days > 0) {
-        updates.trial_ends_at = new Date(Date.now() + editForm.trial_days * 86400000).toISOString()
+        otros.trial_ends_at = new Date(Date.now() + editForm.trial_days * 86400000).toISOString()
       }
-      const { error } = await supabase.from('tenants').update(updates).eq('id', editTenant.id)
+
+      if (pasaACancelado) {
+        // Cancelar en MP server-side ANTES de tocar la DB (REGLA #0). El EF cancela el
+        // preapproval del tenant (lo busca por external_reference si falta el id) y lo
+        // marca 'cancelled'; fail-closed: si MP no confirma, tira error y no se cancela.
+        const { data, error } = await supabase.functions.invoke('cancel-suscripcion', {
+          body: { tenant_id: editTenant.id },
+        })
+        if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo cancelar en Mercado Pago')
+        // El status ya lo dejó el EF; solo persistimos el resto de los campos.
+        const { error: e2 } = await supabase.from('tenants').update(otros).eq('id', editTenant.id)
+        if (e2) throw e2
+        return
+      }
+
+      const { error } = await supabase.from('tenants')
+        .update({ subscription_status: editForm.subscription_status, ...otros }).eq('id', editTenant.id)
       if (error) throw error
     },
     onSuccess: () => {
@@ -109,7 +125,7 @@ export default function AdminPage() {
       qc.invalidateQueries({ queryKey: ['admin-tenants'] })
       setEditTenant(null)
     },
-    onError: () => toast.error('Error al actualizar'),
+    onError: (e: any) => toast.error(e?.message ?? 'Error al actualizar'),
   })
 
   const openEdit = (t: TenantRow) => {

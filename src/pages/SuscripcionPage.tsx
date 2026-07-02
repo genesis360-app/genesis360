@@ -1,14 +1,27 @@
 import { useState, useEffect } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { BRAND, PLANES, ADDON_MOVIMIENTOS, MP_PLAN_IDS } from '@/config/brand'
+import { BRAND, PLANES, MP_PLAN_IDS } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
+import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
 import {
-  Package, Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut,
+  Check, X, CheckCircle, XCircle, Clock,
+  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut, Plus, Trash2, SlidersHorizontal,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+// Dimensiones de add-on FIJO expuestas en el configurador (movimientos va por el flujo
+// temporal de arriba). Etiquetas para la UI.
+const DIMS_FIJAS: Array<{ dim: AddonDimension; label: string }> = [
+  { dim: 'sku',        label: 'Productos (SKU)' },
+  { dim: 'sucursales', label: 'Sucursales' },
+  { dim: 'usuarios',   label: 'Usuarios' },
+]
+
+const labelDim = (dim: string) =>
+  dim === 'sku' ? 'productos' : dim === 'sucursales' ? 'sucursales' : dim === 'usuarios' ? 'usuarios' : dim
 
 
 export default function SuscripcionPage() {
@@ -16,8 +29,76 @@ export default function SuscripcionPage() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
-  const [loadingAddon, setLoadingAddon] = useState(false)
+  const [loadingAddon, setLoadingAddon] = useState<number | null>(null)
   const { limits } = usePlanLimits()
+  const queryClient = useQueryClient()
+
+  const packsMovimientos = packsDe('movimientos')
+  const esActivo = tenant?.subscription_status === 'active'
+
+  // Add-ons FIJOS activos del tenant (configurador — solo con suscripción activa).
+  const { data: addonsFijos = [] } = useQuery<Array<AddonRow & { id: string }>>({
+    queryKey: ['addons-fijos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('tenant_addons')
+        .select('id, dimension, cantidad, tipo')
+        .eq('tenant_id', tenant!.id).eq('tipo', 'fijo')
+      return (data ?? []) as Array<AddonRow & { id: string }>
+    },
+    enabled: !!tenant && esActivo,
+    staleTime: 30000,
+  })
+
+  const [addonBusy, setAddonBusy] = useState(false)
+  // Estado del downgrade guiado bloqueado (el usuario debe desactivar recursos primero).
+  const [downgrade, setDowngrade] = useState<{ dimension: string; excedente: number; nuevoLimite: number } | null>(null)
+
+  const planActual = PLANES.find(p => p.id === limits?.plan_id)
+  const precioBase = planActual?.precio ?? 0
+  const precioAddonsFijos = precioMensualAddonsFijos(addonsFijos as any)
+  const totalMensual = precioBase + precioAddonsFijos
+
+  const refetchAddons = async () => {
+    await queryClient.invalidateQueries({ queryKey: ['addons-fijos', tenant?.id] })
+    await queryClient.invalidateQueries({ queryKey: ['plan-limits', tenant?.id] })
+  }
+
+  const agregarAddonFijo = async (dimension: AddonDimension, cantidad: number) => {
+    setAddonBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('mp-addon-fijo', {
+        body: { action: 'agregar', dimension, cantidad },
+      })
+      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo agregar')
+      toast.success('Add-on agregado. Se ajustó tu suscripción mensual.')
+      await refetchAddons()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al agregar el add-on')
+    } finally {
+      setAddonBusy(false)
+    }
+  }
+
+  const quitarAddonFijo = async (addon: { id: string; dimension: string; cantidad: number }) => {
+    setAddonBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('mp-addon-fijo', {
+        body: { action: 'quitar', addon_id: addon.id },
+      })
+      if (data?.blocked) {
+        // Downgrade guiado: hay que desactivar recursos antes de poder bajar.
+        setDowngrade({ dimension: data.dimension, excedente: data.excedente, nuevoLimite: data.nuevo_limite })
+        return
+      }
+      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo quitar')
+      toast.success('Add-on quitado. Se ajustó tu suscripción mensual.')
+      await refetchAddons()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al quitar el add-on')
+    } finally {
+      setAddonBusy(false)
+    }
+  }
 
   // Resultado de pago redirigido desde MP
   const status = searchParams.get('status')
@@ -75,15 +156,17 @@ export default function SuscripcionPage() {
     }
   }
 
-  const handleComprarAddon = async () => {
-    setLoadingAddon(true)
+  const handleComprarAddon = async (cantidad: number) => {
+    setLoadingAddon(cantidad)
     try {
-      const { data, error } = await supabase.functions.invoke('mp-addon', {})
+      const { data, error } = await supabase.functions.invoke('mp-addon', {
+        body: { dimension: 'movimientos', cantidad },
+      })
       if (error || !data?.init_point) throw new Error(error?.message ?? 'No se obtuvo link de pago')
       window.location.href = data.init_point
     } catch (e: any) {
       toast.error(e.message ?? 'Error al iniciar el pago')
-      setLoadingAddon(false)
+      setLoadingAddon(null)
     }
   }
 
@@ -100,7 +183,7 @@ export default function SuscripcionPage() {
                 <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Add-on activado!</h1>
                 <p className="text-gray-500 dark:text-gray-400 mb-6">
-                  Se agregaron <strong>+{ADDON_MOVIMIENTOS.cantidad} movimientos</strong> a tu cuenta. Ya podés usarlos.
+                  Se agregaron tus <strong>movimientos extra</strong> a la cuenta (válidos por 30 días). Ya podés usarlos.
                 </p>
                 <Link to="/dashboard"
                   className="w-full block text-center bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all">
@@ -317,32 +400,114 @@ export default function SuscripcionPage() {
           </div>
         )}
 
-        {/* Add-ons */}
+        {/* Add-ons de movimientos (temporales, pago único, vencen a 30 días) */}
         {limits && limits.max_movimientos !== -1 && (
-          <div className="mt-8 max-w-sm mx-auto">
-            <p className="text-white font-semibold text-center mb-4">¿Necesitás más sin cambiar de plan?</p>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 text-center">
-              <div className="inline-flex items-center justify-center w-12 h-12 bg-accent/10 rounded-xl mb-3">
-                <Zap size={22} className="text-accent" />
+          <div className="mt-8 max-w-3xl mx-auto">
+            <p className="text-white font-semibold text-center mb-1">¿Necesitás más movimientos sin cambiar de plan?</p>
+            <p className="text-blue-200 text-xs text-center mb-4">Pago único · se acreditan automáticamente · válidos por 30 días</p>
+            <div className="grid sm:grid-cols-3 gap-4">
+              {packsMovimientos.map(pack => (
+                <div key={pack.cantidad} className="bg-white dark:bg-gray-800 rounded-2xl p-5 text-center flex flex-col">
+                  <div className="inline-flex items-center justify-center w-12 h-12 bg-accent/10 rounded-xl mb-3 mx-auto">
+                    <Zap size={22} className="text-accent" />
+                  </div>
+                  <p className="font-bold text-gray-800 dark:text-gray-100 text-lg">
+                    +{pack.cantidad.toLocaleString('es-AR')}
+                  </p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">movimientos</p>
+                  <p className="text-2xl font-bold text-primary dark:text-white mt-2">
+                    ${pack.precio.toLocaleString('es-AR')}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">pago único · 30 días</p>
+                  <button
+                    onClick={() => handleComprarAddon(pack.cantidad)}
+                    disabled={loadingAddon !== null}
+                    className="mt-auto flex items-center justify-center gap-2 w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all text-sm disabled:opacity-60"
+                  >
+                    {loadingAddon === pack.cantidad
+                      ? <><RefreshCw size={15} className="animate-spin" /> Redirigiendo...</>
+                      : <><Zap size={15} /> Comprar</>}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Configurador de add-ons FIJOS (recurrentes) — requiere suscripción activa */}
+        {esActivo && limits && (
+          <div className="mt-10 max-w-3xl mx-auto">
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <SlidersHorizontal size={18} className="text-white" />
+              <p className="text-white font-semibold">Ampliá tu plan con add-ons</p>
+            </div>
+            <p className="text-blue-200 text-xs text-center mb-4">
+              Se suman a tu suscripción mensual. Para quitar un add-on, primero desactivá los recursos que sobren.
+            </p>
+
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6">
+              {/* Resumen de precio en vivo */}
+              <div className="flex items-center justify-between text-sm border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">
+                <span className="text-gray-500 dark:text-gray-400">
+                  Plan {planActual?.nombre} (${precioBase.toLocaleString('es-AR')}) + add-ons (${precioAddonsFijos.toLocaleString('es-AR')})
+                </span>
+                <span className="font-bold text-primary dark:text-white text-lg">
+                  ${totalMensual.toLocaleString('es-AR')}/mes
+                </span>
               </div>
-              <p className="font-bold text-gray-800 dark:text-gray-100 text-lg">
-                +{ADDON_MOVIMIENTOS.cantidad.toLocaleString()} movimientos
+
+              {DIMS_FIJAS.map(({ dim, label }) => {
+                const activos = (addonsFijos as any[]).filter(a => a.dimension === dim)
+                return (
+                  <div key={dim} className="py-3 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+                    <p className="font-semibold text-gray-700 dark:text-gray-200 text-sm mb-2">{label}</p>
+                    {activos.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {activos.map(a => (
+                          <span key={a.id} className="inline-flex items-center gap-1.5 bg-accent/10 text-accent text-xs font-medium px-2.5 py-1 rounded-full">
+                            +{a.cantidad.toLocaleString('es-AR')}
+                            <button onClick={() => quitarAddonFijo(a)} disabled={addonBusy} title="Quitar add-on" className="hover:text-red-500 disabled:opacity-50">
+                              <Trash2 size={12} />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="flex flex-wrap gap-2">
+                      {packsDe(dim).map(pack => (
+                        <button key={pack.cantidad} onClick={() => agregarAddonFijo(dim, pack.cantidad)} disabled={addonBusy}
+                          className="inline-flex items-center gap-1 border border-gray-200 dark:border-gray-600 hover:border-accent text-gray-600 dark:text-gray-300 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50">
+                          <Plus size={12} /> {pack.cantidad.toLocaleString('es-AR')} · ${pack.precio.toLocaleString('es-AR')}/mes
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Modal de downgrade guiado (REGLA #0: desactivar, no eliminar) */}
+        {downgrade && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setDowngrade(null)}>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-2 mb-3">
+                <AlertTriangle size={22} className="text-amber-500" />
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Todavía no podés bajar este add-on</h3>
+              </div>
+              <p className="text-gray-600 dark:text-gray-400 text-sm mb-3">
+                Tenés <strong>{downgrade.excedente}</strong> {labelDim(downgrade.dimension)} activos de más para el nuevo límite
+                (<strong>{downgrade.nuevoLimite}</strong>). Desactivá {downgrade.excedente} para poder quitar el add-on.
               </p>
-              <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">Pack único</p>
-              <p className="text-2xl font-bold text-primary dark:text-white mt-2">
-                ${ADDON_MOVIMIENTOS.precio.toLocaleString('es-AR')}
-              </p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">pago único · válido hasta fin de mes</p>
-              <button
-                onClick={handleComprarAddon}
-                disabled={loadingAddon}
-                className="flex items-center justify-center gap-2 w-full bg-accent hover:bg-accent/90 text-white font-semibold py-3 rounded-xl transition-all text-sm disabled:opacity-60"
-              >
-                {loadingAddon
-                  ? <><RefreshCw size={15} className="animate-spin" /> Redirigiendo...</>
-                  : <><Zap size={15} /> Pagar con Mercado Pago</>}
+              {downgrade.dimension === 'sku' && (
+                <p className="text-amber-600 dark:text-amber-400 text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 mb-4">
+                  ⚠️ Desactivá los productos (no los elimines) para conservar su historial y trazabilidad.
+                </p>
+              )}
+              <button onClick={() => setDowngrade(null)} className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm">
+                Entendido
               </button>
-              <p className="text-xs text-gray-400 dark:text-gray-500 mt-2">Pago único · se acredita automáticamente</p>
             </div>
           </div>
         )}

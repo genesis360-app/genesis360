@@ -6,6 +6,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-02] deploy | 🚀 v1.102.0 EN PROD — Pricing FASE 2 (add-on temporal) + FASE 3 (add-ons fijos + EFs tier-aware + downgrade guiado)
+
+Continuación del pricing (F0/F1 en v1.101.0). **F2 + F3 DEPLOYADAS A PROD** (v1.102.0): mig 253 (DEV+PROD) + 4 EFs (`mp-addon`, `mp-webhook`, `mp-verificar-suscripcion`, `mp-addon-fijo`) en DEV+PROD + frontend (Vercel main). typecheck + build + **839 unit** verdes. Verificación DB por impersonación (ROLLBACK): add-on temporal suma al límite efectivo + idempotencia OK; guard de downgrade OK. **🛑 GO deployó el billing ASUMIENDO el riesgo** — le flagué que el cobro MP NO es e2e-testeable (sin sandbox/seller) y que RIESGO #1 (planes base MP a precio viejo) sigue vivo hasta que los reconfigure.
+
+- **F2 — Add-on TEMPORAL de movimientos:** `src/lib/addons.ts` (packs/ref/downgrade/precio, unit-tested, fuente de verdad UI↔webhook) · EF `mp-addon` parametrizado (packs 1.000/5.000/20.000, **revalida precio server-side**, ref `${t}|addon|movimientos|${cant}|temporal`) · EF `mp-webhook` inserta `tenant_addons` (temporal, vence 30d, **idempotente por `mp_payment_id`** — el flujo legacy no lo era y una re-notificación de MP duplicaba movimientos, REGLA #0) · `SuscripcionPage` selector de 3 packs · **mig 253** (uq index parcial `mp_payment_id`) · `brand.ts` saca `ADDON_MOVIMIENTOS` legacy.
+- **F3a — EFs tier-aware:** `mp-webhook` + `mp-verificar-suscripcion` setean **`plan_tier`** (mapeo `preapproval_plan_id`→tier) en vez de los `max_users/max_productos` viejos (bug: `usePlanLimits` ya no lee esos legacy). **Cierra medio RIESGO #1.**
+- **F3b — Enforcement movimientos = SOFT (decisión REGLA #0):** no se agrega trigger de corte (tabla hot-path/compartida; un movimiento no es comprobante fiscal → sin implicancia legal/contable; nunca cortar una venta). El gate client-side de Inventario ya usa el límite efectivo + upsell; los dientes duros quedan en SKU/users/sucursales (F1/mig 252).
+- **F3c — Add-ons FIJOS + downgrade guiado (alto riesgo, NO deployado):** lib `precioMensualAddonsFijos`/`evaluarDowngrade` (unit-tested) · **EF nueva `mp-addon-fijo`** (alta/baja; `PUT transaction_amount` del preapproval MP por **delta** preservando descuento base; **fail-closed** si MP falla; baja revalida downgrade guiado server-side `fn_tenant_limite`−cantidad vs uso activo) · `SuscripcionPage` **configurador** (packs sku/sucursales/usuarios + total en vivo + modal downgrade guiado "desactivá N; SKU: no eliminar").
+- **🟠 Pendiente OPERATIVO de GO** (no código, para cobrar de verdad): **reconfigurar los planes base de MP a $60k/$100k** (RIESGO #1 sigue vivo hasta eso) + **validar en sandbox** el `PUT transaction_amount` y el pago único del add-on temporal (el código está en PROD pero el cobro nunca se ejerció e2e). Ver `wiki/business/planes-pricing.md`.
+
+---
+
 ## [2026-07-01] query | 💵 Análisis de competencia + propuesta de pricing (sin código)
 
 Relevamiento de 5 competidores AR (pedido GO) para fijar precios/planes/límites. **Sin código — análisis + registro** en `wiki/business/planes-pricing.md` (nueva sección de competencia + propuesta + modelo de límites + infra).
@@ -15,6 +27,22 @@ Relevamiento de 5 competidores AR (pedido GO) para fijar precios/planes/límites
 - **Propuesta GO evaluada:** Free 30d · Básico $60k c/IVA (5u/3.000mov/100SKU) · Pro $100k (15u/10.000mov/300SKU) · Enterprise consultar; desc. débito −10% + anual −30%. **Veredicto: precios MUY bien / conservadores** (Básico $60k POR DEBAJO de Netegia Pyme Lite $96k, el competidor más directo; Pro $100k < ½ de Netegia Premium $232k y Contabilium Pro $217k). 🚩 **SKU 100/300 INUSABLES — confirmado por TODA la competencia** (Ninox 2.000 y Netegia 4.000 en su plan MÁS barato; variante=producto separado) → subir a 2.000-4.000 / 15.000-∞. Gap: sin multi-CUIT (Netegia/Zeus/Contabilium sí) → Enterprise.
 - **Recomendaciones:** monetizar por **módulos+usuarios+sucursales** (no SKU/mov artificiales); **comprobantes ilimitados** como diferenciador (costo $0, AFIP no cobra CAE); **infra NO aprieta** a 0-100 clientes (primer techo = Resend 3.000 emails/mes ~50-100 tenants). Precios `brand.ts` ($4.900/$9.900) desactualizados ~5-25x → actualizar al cerrar. Ver [[reference_pricing_planes_costos]].
 - **Update (2026-07-01) — modelo de ADD-ONS CERRADO + multi-CUIT + plan de fases (GO):** límites base Básico 2.000 SKU/5.000 mov/1 suc/5 users · Pro **8.000**/20.000/4/15. Add-ons: SKU/usuarios/**sucursales ($15k/$35k/$55k)** = solo fijos; **movimientos = fijo o temporal (30d)**. Decisiones: **downgrade GUIADO** (la app indica cuántos recursos DESACTIVAR —no borrar, REGLA #0, alerta SKU— para bajar el add-on), configurador (no planilla), enforcement server-side obligatorio. **Plan de fases 0-5** (F0 datos/`brand.ts` → F1 enforcement → F2 add-on temporal mov → F3 add-ons fijos+downgrade+MP → F4 configurador → F5 multi-CUIT). **GO decidió desarrollar multi-CUIT** (paridad). Todo en `project_pendientes.md` BACKLOG + `wiki/business/planes-pricing.md` (+ HTML). **NO se tocó la app — espera OK de GO.**
+
+---
+
+## [2026-07-02] deploy | 🚀 v1.101.0 EN PROD — T&C/Privacidad + dual-provider AFIP (adapter) + Pricing 2026 (F0+F1)
+
+PR #257 dev→main → merge → release `v1.101.0` + tag → Vercel (PROD). Migs 249-252 aplicadas en **DEV + PROD** (antes del merge). **PROD = DEV = v1.101.0** (migs 001-252). typecheck + build + **826 unit** verdes. GO eligió deploy completo asumiendo 2 riesgos (flagged).
+
+**Deployado a PROD:** frontend (Vercel main) + migs 249 (T&C) + 250 (afip_provider) + 251 (modelo pricing) + 252 (enforcement). Verificado en PROD: 5 tenants (todos plan_tier `basico`), **0 sobre-límite** → enforcement no bloquea a nadie.
+
+**NO deployado (a propósito):** la EF `emitir-factura` (refactor dual-provider) — sin probar en runtime, toca CAE (REGLA #0) → PROD sigue con la EF actual (AfipSDK). El adapter vive en el repo + las columnas en DB; se deploya tras homologación.
+
+**⚠️ 2 RIESGOS VIVOS EN PROD (GO decidió publicar igual — resolver en Fase 3):**
+1. **Precio↔MP mismatch:** Landing/Suscripción muestran $60k/$100k pero los planes MP (preapproval) siguen a precio viejo. **No habilitar suscripciones reales hasta reconfigurar MP.**
+2. **T&C sin revisión legal EN VIVO:** `/terminos` + `/privacidad` publicados y exigidos en onboarding; falta abogado + razón social/CUIT.
+
+**Próximo (nueva sesión):** Fase 2 (add-on temporal movimientos) + Fase 3 (add-ons fijos + downgrade guiado + reconfig planes MP + EFs `mp-webhook`/`mp-verificar-suscripcion` para setear `plan_tier`+`tenant_addons`). Ver `wiki/business/planes-pricing.md`.
 
 ---
 

@@ -3144,6 +3144,8 @@ CREATE TABLE IF NOT EXISTS public.tenant_addons (
 );
 ALTER TABLE public.tenant_addons ENABLE ROW LEVEL SECURITY;
 CREATE INDEX IF NOT EXISTS idx_tenant_addons_tenant ON public.tenant_addons(tenant_id, dimension);
+-- Idempotencia del webhook MP: 1 add-on por pago (evita doble acreditación en reintentos). Mig 253.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_addons_mp_payment ON public.tenant_addons(mp_payment_id) WHERE mp_payment_id IS NOT NULL;
 CREATE POLICY tenant_addons_select ON public.tenant_addons FOR SELECT
   USING (tenant_id = public.get_user_tenant_id() OR public.is_admin());
 REVOKE ALL ON public.tenant_addons FROM PUBLIC, anon;

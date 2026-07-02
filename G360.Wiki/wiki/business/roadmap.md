@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.104.0 — 🔴 Fix REGLA #0: cancelación de suscripción no cancelaba en MP (EF `cancel-suscripcion`) (EF en DEV · PROD pendiente OK GO)
+## v1.104.0 — 🔴 Fix REGLA #0: cancelación de suscripción no cancelaba en MP (EF `cancel-suscripcion`) (PROD ✅)
 
 Bug reportado por GO (Fede Messina cancelado pero seguía cobrándose en MP). **Causa:** el EF `cancel-suscripcion` que llamaba `MiCuentaPage` no existía, y el tenant tenía `mp_subscription_id=NULL` pese a una suscripción viva en MP (drift DB↔MP) → la cancelación nunca tocaba MP. **Fix:** EF nuevo `cancel-suscripcion` que cancela el/los preapproval(s) en MP (`PUT status:'cancelled'`, verifica `external_reference===tenant`), **robusto al drift** (si falta el id, busca por `external_reference` en `/preapproval/search`), **fail-closed** (solo marca la cuenta cancelada si MP confirmó); `MiCuentaPage` siempre pasa por el EF. typecheck + build verdes; EF en DEV. **Pendiente:** deploy EF a PROD + release + reconciliar fila de Fede (OK de GO). Follow-up: cancelación desde AdminPage/admin-platform no propaga a MP.
 

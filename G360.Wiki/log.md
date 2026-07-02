@@ -6,7 +6,9 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-07-02] fix | 🔴 REGLA #0 — cancelación de suscripción NO cancelaba en MP (bug Fede Messina) · v1.104.0 (EF en DEV; PROD pendiente OK)
+## [2026-07-02] deploy | 🔴 REGLA #0 FIX EN PROD — cancelación de suscripción no cancelaba en MP (bug Fede Messina) · v1.104.0
+
+**EN PROD:** EF `cancel-suscripcion` (DEV+PROD) + frontend (Vercel main). PR #260, release v1.104.0. **UAT sandbox (token de prueba de GO):** `/preapproval/search` → 200 `{paging,results}` ✅ pero el filtro `external_reference` se ignora → el EF filtra client-side por el `external_reference` que viene en cada resultado + pagina (sigue seguro por la re-verificación por-id). `POST /preapproval` da 500 por API en sandbox (el alta real necesita el checkout del navegador) → e2e de alta lo corre GO en el browser (usuarios+tarjetas de prueba, nombre del titular `APRO`=aprobado). El `PUT cancel` ya estaba probado en prod (mp-verificar). **🟠 Falta:** reconciliar la fila de Fede (`456dbf20…` sigue `active` en DB; GO ya lo canceló en MP) — se puede desde AdminPage (ahora invoca el EF) o con `UPDATE tenants SET subscription_status='cancelled' WHERE id='456dbf20-355f-49af-afa1-300f50d8d3f4'`. Además nota de costos: **repo privado en GitHub = gratis (Free), no hace falta GitHub Pro** (`planes-pricing.md`).
 
 Auditoría pedida por GO: canceló a Fede Messina pero seguía suscripto y cobrándose en MP.
 

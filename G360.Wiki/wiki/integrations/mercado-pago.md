@@ -158,6 +158,7 @@ Baja:  EF mp-addon-fijo (action='quitar', addon_id)
 | `mp-addon` | Sí | Add-on TEMPORAL de movimientos (pago único, packs 1.000/5.000/20.000) |
 | `mp-addon-fijo` | Sí | Add-on FIJO (alta/baja + `PUT transaction_amount` del preapproval) — **NO deployado** |
 | `mp-verificar-suscripcion` | Sí | Verifica el preapproval server-side y activa (setea `plan_tier`) |
+| `cancel-suscripcion` | Sí | **Cancela** el/los preapproval(s) en MP (`PUT status:'cancelled'`) + marca la cuenta cancelada. Robusto al drift: si falta `mp_subscription_id`, busca por `external_reference` en `/preapproval/search`. Fail-closed. (v1.104.0) |
 | `mp-oauth-callback` | No | OAuth de la cuenta del seller |
 
 ### Routing en `mp-webhook`

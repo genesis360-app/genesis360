@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-02] fix | 🔴 REGLA #0 — cancelación de suscripción NO cancelaba en MP (bug Fede Messina) · v1.104.0 (EF en DEV; PROD pendiente OK)
+
+Auditoría pedida por GO: canceló a Fede Messina pero seguía suscripto y cobrándose en MP.
+
+**Diagnóstico (2 bugs):** (1) el EF **`cancel-suscripcion`** que llamaba `MiCuentaPage` **NO EXISTÍA** (no en repo ni en PROD) → con `mp_subscription_id` la cancelación fallaba; sin él hacía un UPDATE local a ciegas (nunca tocaba MP). (2) El tenant de Fede (`mrdfxsdf`, `456dbf20…`) tenía **`mp_subscription_id = NULL`** pese a haber una suscripción VIVA en MP (Genesis360 Basico) → drift DB↔MP: la app no tenía el id para cancelar. Neto: **un usuario no podía cancelar su suscripción de MP desde la app → MP seguía cobrando.** (RLS/guard no eran el problema; el agujero era que no se llamaba a MP.)
+
+**Fix (v1.104.0):** **EF nuevo `cancel-suscripcion`** — cancela el/los preapproval(s) en MP (`PUT status:'cancelled'`) verificando `external_reference === tenant`; **robusto al drift**: si falta el id en la DB, **busca el preapproval por `external_reference` en `/preapproval/search`** y cancela el que esté vivo; **fail-closed** (si MP no confirma, NO marca la cuenta como cancelada); recién con MP OK setea `subscription_status='cancelled'` (service_role). `MiCuentaPage` ahora SIEMPRE pasa por el EF (deriva el tenant del JWT; se sacó el UPDATE local a ciegas). typecheck + build verdes; **EF en DEV**. GO canceló a Fede manualmente en el panel de MP (cobro frenado). **🟠 Pendiente OK de GO:** deploy EF a PROD + release frontend + reconciliar la fila de Fede a `cancelled` (bloqueado por guardrail de PROD). **Limitación conocida:** la cancelación desde `AdminPage`/admin-platform sobre otro tenant sigue sin propagar a MP (usar el panel de MP) — follow-up.
+
+---
+
 ## [2026-07-02] deploy | 🚀 v1.103.0 EN PROD — Pricing FASE 4: configurador de precios en la Landing (frontend-only)
 
 `PricingConfigurator` en la sección Precios del Landing: estimador público plan base (Básico/Pro) + add-ons fijos (SKU/sucursales/usuarios) → total mensual en vivo (reusa `src/lib/addons.ts`, mismo precio que el server). No cobra. typecheck + build + unit verdes; sin migración ni EF. Deploy: frontend (Vercel main), bump a v1.103.0. **Falta F5 (multi-CUIT — track grande, requiere relevamiento, va después del WSFE propio).** Recordatorio operativo de GO sigue vivo: reconfigurar los planes base de MP a $60k/$100k + sandbox (RIESGO #1).

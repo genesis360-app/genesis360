@@ -65,18 +65,23 @@ serve(async (req) => {
     const { data: tenantRow } = await admin
       .from('tenants').select('mp_subscription_id').eq('id', tenantId).single()
 
-    // 1) Juntar candidatos: el id guardado + los que MP tenga por external_reference.
+    // 1) Juntar candidatos: el id guardado + los que MP tenga con este external_reference.
+    //    ⚠️ Verificado en sandbox: el filtro ?external_reference= de /preapproval/search
+    //    NO filtra (devuelve todos). Por eso filtramos client-side por el external_reference
+    //    que SÍ viene en cada resultado, y paginamos. Downstream se re-verifica por-id.
     const candidatos = new Set<string>()
     if (tenantRow?.mp_subscription_id) candidatos.add(String(tenantRow.mp_subscription_id))
     try {
-      const searchRes = await fetch(`${MP}/preapproval/search?external_reference=${encodeURIComponent(tenantId)}`, { headers: mpHeaders })
-      if (searchRes.ok) {
+      const LIMIT = 100
+      for (let offset = 0; offset < 1000; offset += LIMIT) {
+        const searchRes = await fetch(`${MP}/preapproval/search?external_reference=${encodeURIComponent(tenantId)}&limit=${LIMIT}&offset=${offset}`, { headers: mpHeaders })
+        if (!searchRes.ok) { console.warn('cancel-suscripcion: search MP', searchRes.status); break }
         const s = await searchRes.json()
-        for (const r of (s?.results ?? s?.elements ?? [])) {
-          if (r?.id) candidatos.add(String(r.id))
+        const results = s?.results ?? s?.elements ?? []
+        for (const r of results) {
+          if (r?.id && r?.external_reference === tenantId) candidatos.add(String(r.id))
         }
-      } else {
-        console.warn('cancel-suscripcion: search MP', searchRes.status)
+        if (results.length < LIMIT) break
       }
     } catch (e) {
       console.error('cancel-suscripcion: error en search MP', e)

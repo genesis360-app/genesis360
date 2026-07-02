@@ -1,132 +1,71 @@
 ---
 title: Genesis360 — Overview
 category: overview
-tags: [saas, wms, inventario, argentina, overview]
-sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-04-30
+tags: [saas, wms, inventario, argentina, overview, hub]
+sources: [CLAUDE.md, project_pendientes.md]
+updated: 2026-07-01
 ---
 
 # Genesis360 — Overview
 
-**Genesis360** es un SaaS de gestión de inventario (WMS) para pequeños comercios físicos de Argentina. Tagline: *"El cerebro del negocio físico"*. La propuesta central no es solo mostrar datos, sino **recomendar acciones**.
+> **Punto de entrada del wiki.** Qué es Genesis360 y el mapa de módulos con enlaces al detalle.
+> Las cifras que cambian seguido (versión, migraciones, Edge Functions, tests, estado DEV/PROD)
+> **no viven acá** para no duplicarse: están en `sources/raw/project_pendientes.md` y [[roadmap]].
 
-**Versión actual:** v1.8.37 en PROD · v1.8.37 en DEV (al 2026-05-19)
+**Genesis360** es un SaaS **integral** de gestión para comercios físicos de Argentina (retail, ferreterías, almacenes, tiendas de ropa, distribuidoras). Tagline: *"El inventario inteligente para tu negocio"*. La propuesta central no es solo mostrar datos, sino **recomendar acciones**.
 
----
-
-## Qué es
-
-Sistema de gestión todo-en-uno diseñado para:
-- Almacenes / despensas / ferreterías
-- Kioscos y minimercados
-- Cualquier negocio físico con stock, caja y empleados
-
-Combina: POS · Inventario WMS · RRHH · Métricas · Facturación AFIP · Marketplace · Envíos en una sola app.
+Combina **POS · Inventario/WMS · Facturación AFIP · Caja/Bóveda · Compras · Envíos · Clientes/CC · RRHH · Analítica** en una sola app, **multi-tenant** y **multi-sucursal**, con dos modos de operación (Básico / Avanzado — ver [[modo-basico-avanzado]]).
 
 ---
 
-## Stack tecnológico
+## Documentos hermanos (cada uno con su rol — no duplicar)
 
-| Capa | Tecnología |
-|------|-----------|
-| Frontend | React 18 + Vite + TypeScript + Tailwind CSS |
-| State | Zustand (`authStore`) + TanStack React Query v5 |
-| Backend | Supabase (PostgreSQL + Auth + RLS + Storage) |
-| Serverless | 26 Edge Functions (Deno) |
-| Pagos plataforma | Mercado Pago (preapproval mensual) |
-| Pagos ventas | Mercado Pago QR / Link de pago |
-| Deploy | Vercel (frontend) + Supabase (backend) |
-| PWA | vite-plugin-pwa |
-| Testing | Vitest (154+ unit tests) + Playwright (E2E todos los roles) |
+| Documento | Rol | Para quién |
+|-----------|-----|-----------|
+| **Este archivo** (`genesis360-overview.md`) | Hub / índice del wiki con enlaces | Equipo / IA navegando el wiki |
+| [[app-reference]] (`app-reference.md`) | Referencia técnica **ruta-por-ruta** (cada `/ruta`, flujos, WMS, seguridad) | IA / equipo (contexto técnico) |
+| `sources/raw/genesis360_overview.html` | **Documento de producto** presentable / imprimible | Externos (pitch, clientes) |
+| `sources/raw/project_pendientes.md` + [[roadmap]] | **Estado, versión y pendientes** (fuente única de cifras volátiles) | Equipo |
+| [[planes-pricing]] / [[suscripciones-planes]] | Planes, precios y límites | Negocio / producto |
 
 ---
 
-## Dominios de producción
+## Mapa de módulos (en producción)
 
-- `www.genesis360.pro` → Landing page (marketing)
-- `app.genesis360.pro` → Aplicación autenticada
-
----
-
-## Módulos completos en producción
-
-| Módulo | Página | Descripción |
-|--------|--------|-------------|
-| **Inventario** | [[wiki/features/inventario-stock]] | LPNs, WMS, KITs, conteos, autorizaciones |
-| **Ventas / POS** | [[wiki/features/ventas-pos]] | 3 modos, pago parcial, combos, CC |
-| **Caja** | [[wiki/features/caja]] | Multi-caja, traspasos, arqueos |
-| **Gastos** | [[wiki/features/gastos]] | Variables, fijos, IVA, comprobantes |
-| **Devoluciones** | [[wiki/features/devoluciones]] | Serializado/no-serializado, NC |
-| **Clientes** | [[wiki/features/clientes-proveedores]] | CRM, CC, domicilios, notas |
-| **Proveedores** | [[wiki/features/clientes-proveedores]] | OC, servicios, presupuestos |
-| **Facturación AFIP** | [[wiki/features/facturacion-afip]] | A/B/C, AfipSDK, CAE, PDF con QR AFIP |
-| **Notificaciones** | [[wiki/features/notificaciones]] | Campana real, emails, diferencia caja |
-| **Envíos** | [[wiki/features/envios]] | Estados, remito PDF, WA Click-to-Chat |
-| **RRHH** | [[wiki/features/rrhh]] | 5 fases: nómina, vacaciones, asistencia |
-| **Alertas** | [[wiki/features/alertas]] | Stock, vencidos, deuda, sin categoría |
-| **Reportes** | [[wiki/features/reportes-metricas]] | Dashboard 5 tabs, KPIs, exportación |
-| **WMS** | [[wiki/features/wms]] | Estructuras, ubicaciones, KITs, ASN |
-| **Marketplace** | [[wiki/features/marketplace]] | API pública, sync MeLi/TN |
-| **Suscripciones** | [[wiki/features/suscripciones-planes]] | Free/Básico/Pro/Enterprise |
+| Módulo | Página del wiki | Descripción |
+|--------|-----------------|-------------|
+| **Inventario / WMS** | [[inventario-stock]] · [[wms]] | LPNs, ubicaciones, lotes, series, FIFO/FEFO, KITs, conteos, autorizaciones |
+| **Productos / Variantes** | [[productos]] · [[grupos-variantes]] | SKUs, variantes (talla/color), estructura, escaneo ([[escaneo-barcode]]) |
+| **Ventas / POS** | [[ventas-pos]] | Estados, seña/reserva, combos, split de pago, saldo a favor, CC |
+| **Facturación AFIP** | [[facturacion-afip]] | A/B/C, NC/ND, CAE, QR RG 4291, Ley 27.743 (vía AfipSDK) |
+| **Devoluciones** | [[devoluciones]] | Total/parcial, reingreso de stock, Nota de Crédito, reintegro |
+| **Caja / Bóveda** | [[caja]] | Multi-caja, arqueos, ticket de cierre, Caja Fuerte/capital, traspasos |
+| **Gastos** | [[gastos]] | Categorías, proveedores, IVA crédito, egreso automático a caja |
+| **Compras (OC + Recepciones)** | *(ver [[app-reference]] §3.10–3.11)* | Órdenes de compra, recepciones, pagos a proveedores |
+| **Clientes / Proveedores** | [[clientes-proveedores]] | CRM, cuenta corriente, domicilios, saldo a favor, portal por token |
+| **Envíos** | [[envios]] | Reparto propio, tarifas, POD, hoja de ruta y portal del transportista |
+| **RRHH** | [[rrhh]] | Empleados, fichado QR, vacaciones, asistencia, nómina contable |
+| **Alertas / Notificaciones** | [[alertas]] · [[notificaciones]] | Stock, vencimientos, deuda, diferencia de caja, cumpleaños |
+| **Dashboard / Reportes** | [[reportes-metricas]] | 5 sub-pestañas por área, KPIs, rentabilidad, recomendaciones, exports |
+| **Multi-sucursal** | [[multi-sucursal]] | Aislamiento por sucursal server-side (RLS en 23 tablas) |
+| **Recursos / Biblioteca** | [[recursos]] | Activos del negocio y material de referencia |
+| **Marketplace** | [[marketplace]] | API pública por tenant, sync (activación manual) |
+| **Suscripciones** | [[suscripciones-planes]] | Free / Básico / Pro / Enterprise + add-ons |
+| **Config / Onboarding** | [[configuracion]] · [[autenticacion-onboarding]] | Datos del negocio y fiscales, usuarios/roles, modo de operación |
 
 ---
 
-## Arquitectura de alto nivel
+## Arquitectura (resumen — detalle en las páginas de architecture)
 
-```
-Usuario
-  ↓
-Vercel (React SPA + PWA)
-  ↓
-Supabase
-  ├── PostgreSQL (110 migraciones, multi-tenant RLS)
-  ├── Auth (Google OAuth + Email/Password)
-  ├── Storage (productos, avatares, empleados, certificados AFIP, etc.)
-  └── 26 Edge Functions (Deno)
-        ├── Mercado Pago (suscripciones + pagos ventas + add-ons)
-        ├── AFIP (emitir-factura via AfipSDK)
-        ├── Mercado Libre (oauth, webhook, stock-worker)
-        ├── TiendaNube (oauth, webhook, stock-worker)
-        ├── Email (Resend — send-email + monitoring-check)
-        ├── IA (scan-product → Claude Haiku)
-        └── Monitoring (monitoring-check diario 9 AM AR)
-```
-
----
-
-## Estado del proyecto al 2026-05-15
-
-| Métrica | Valor |
-|---------|-------|
-| Versión PROD | v1.8.37 · DEV v1.8.37 |
-| Migraciones DB | 126 + 086b (DEV y PROD) |
-| Edge Functions | ~26 |
-| Unit tests | 154+ (Vitest) |
-| Archivos TS/TSX | ~100 |
-| Supabase PROD | `jjffnbrdjchquexdfgwq` |
-| Supabase DEV | `gcmhzdedrkmmzfzfveig` |
-
----
-
-## Planes
-
-| Plan | Usuarios | Productos | Precio |
-|------|----------|-----------|--------|
-| Free | 1 | 50 | $0 |
-| Básico | 2 | 500 | $4.900 ARS/mes |
-| Pro | 10 | 5.000 | $9.900 ARS/mes |
-| Enterprise | ∞ | ∞ | A consultar |
-
-Trial: 14 días acceso Pro sin tarjeta.
+- **Frontend:** React 18 + Vite + TypeScript + Tailwind (PWA). Estado: Zustand + React Query. → [[frontend-stack]]
+- **Backend:** Supabase (PostgreSQL + Auth + RLS + Edge Functions + Storage). Deploy: Vercel. → [[backend-supabase]] · [[edge-functions]]
+- **Multi-tenant:** aislamiento por `tenant_id` con RLS en toda la data. → [[multi-tenant-rls]]
+- **Integraciones:** Mercado Pago, AfipSDK, Resend, Cloudflare Email Routing, Claude (Anthropic), Google Maps.
 
 ---
 
 ## Links relacionados
 
-- [[wiki/architecture/frontend-stack]]
-- [[wiki/architecture/backend-supabase]]
-- [[wiki/architecture/multi-tenant-rls]]
-- [[wiki/architecture/estado-global]]
-- [[wiki/business/modelo-negocio]]
-- [[wiki/business/roadmap]]
-- [[wiki/development/deploy]]
+- [[frontend-stack]] · [[backend-supabase]] · [[edge-functions]] · [[multi-tenant-rls]] · [[estado-global]] · [[pwa-config]] · [[escalabilidad]]
+- [[modelo-negocio]] · [[mercado-objetivo]] · [[planes-pricing]] · [[roadmap]]
+- [[app-reference]] — referencia técnica completa ruta-por-ruta

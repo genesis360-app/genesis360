@@ -2,12 +2,13 @@
 title: Referencia completa de funcionalidades — Genesis360
 category: overview
 tags: [referencia, módulos, funcionalidades, procesos, flujos]
-updated: 2026-05-14
+updated: 2026-07-01
 ---
 
 # Genesis360 — Referencia completa de funcionalidades
 
-> Documento de contexto para IA y equipo. Describe todos los módulos, acciones, flujos y relaciones de la app.
+> **Rol de este documento:** referencia técnica **ruta-por-ruta** para IA y equipo (cada `/ruta`, flujos, WMS, seguridad). Es el único a este nivel de detalle. El *hub* del wiki es [[genesis360-overview]]; el documento de producto presentable es `sources/raw/genesis360_overview.html`.
+> No repite cifras volátiles (versión/migraciones/tests): esas viven en `sources/raw/project_pendientes.md`.
 > Actualizar cada vez que se agregue o modifique una funcionalidad relevante.
 
 ---
@@ -16,12 +17,13 @@ updated: 2026-05-14
 
 Genesis360 es el **sistema operativo del negocio físico**. No solo muestra datos: indica qué hacer y cuándo. Orientado a comercios con stock, ventas presenciales, múltiples empleados y/o múltiples sucursales.
 
-- **Frontend:** React 18 + Vite + TypeScript + Tailwind + shadcn/ui
-- **Backend:** Supabase (PostgreSQL + Auth + RLS + Edge Functions)
+- **Frontend:** React 18 + Vite + TypeScript + Tailwind (sin shadcn/ui) + PWA
+- **Backend:** Supabase (PostgreSQL + Auth + RLS + Edge Functions + Storage)
 - **Multi-tenant:** cada negocio tiene datos completamente aislados via RLS
-- **Multi-sucursal:** cada módulo operativo filtra por sucursal activa (selector en header por módulo)
-- **Logo:** Ícono G azul (sidebar + favicon + PWA icons — v1.8.26)
-- **Versión actual:** v1.8.22 PROD / v1.8.26 DEV
+- **Multi-sucursal:** aislamiento por sucursal aplicado server-side (RLS); selector en header por módulo
+- **Modo de operación:** Básico / Avanzado (WMS) por tenant — gatea UI, nunca datos. Ver [[modo-basico-avanzado]]
+- **Marca:** logo/tagline centralizados en `src/config/brand.ts` (logo violeta Genesis360; fondo negro→violeta)
+- **Versión / estado:** en `sources/raw/project_pendientes.md` (no se duplica acá)
 
 ---
 
@@ -64,10 +66,14 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 | `/importar/inventario` | Carga masiva de stock |
 | `/importar/master` | Carga masiva de datos maestros |
 | `/mi-cuenta` | Perfil y configuración personal |
+| `/mi-portal` | Portal del empleado (fichado / datos personales) — visible en sidebar según rol |
 | `/suscripcion` | Gestión de plan y pagos |
-| `/ayuda` | Centro de soporte |
+| `/caja/panel` | Panel de cajero |
+| `/ayuda` | Centro de soporte (página placeholder; el flujo real es el `AyudaModal` del header) |
 | `/admin` | Panel de administración de plataforma (solo ADMIN global) |
 | `/onboarding` | Flujo de registro inicial |
+
+**Rutas públicas (sin login):** `/` (landing) · `/login` · `/onboarding` · `/terminos` · `/privacidad` · portales por token: `/transporte/:token` · `/hoja-ruta/:token` · `/cuenta/:token` (cliente) · `/fichar/:token` (empleado).
 
 ### Header (izquierda → derecha)
 - **Selector de sucursal**: comportamiento diferenciado por módulo y rol:
@@ -91,28 +97,25 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
 
 ### 3.1 Dashboard (`/dashboard`)
 
-Vista de control general del negocio con 9 áreas analíticas independientes. Filtra por sucursal activa con filtro inclusivo (sucursal seleccionada + datos históricos sin sucursal asignada).
+Vista de control general del negocio, organizada en **áreas** (Todo + una por módulo), cada una con **5 sub-pestañas uniformes**. Un **filtro unificado de Período/Moneda** (arriba) gobierna las áreas con período. Filtra por sucursal activa con filtro inclusivo (sucursal seleccionada + datos históricos sin sucursal asignada).
 
-**Tab "General" — sub-navegación de áreas:**
+**Áreas:** Todo · Ventas · Gastos · Productos · Inventario · Clientes · Proveedores · Facturación · Envíos · Marketing (Envíos solo en modo avanzado).
 
-| Área | Contenido principal |
-|------|---------------------|
-| **Todo** | KPIs globales del día: ventas, ticket promedio, margen, stock crítico |
-| **Ventas** | Funnel (presupuestado/pendiente/pagado), heatmap días×horas, pie canales, insights |
-| **Gastos** | Burn rate diario, rigidez del gasto (fijos vs. variables), pie categoría, barras mensuales |
-| **Productos** | Cuadrante mágico (scatter), pareto ingresos, participación por categoría, tijera de precios |
-| **Inventario** | Capital de trabajo, gauge salud depósito, aging del capital, recursos por categoría, kits bloqueados |
-| **Clientes** | RFM, cohort retención, origen de clientes, aging cuenta corriente |
-| **Proveedores** | Donut proveedores, aging OC, evolución gastos 6 meses |
-| **Facturación** | IVA débito/crédito, alícuotas, topes Monotributo (con banner legal) |
-| **Envíos** | Funnel envíos, courier dominante, scatter subsidio/ganancia |
-| **Marketing** | POAS real, evolución, donut canal, radar campañas |
+**Sub-pestañas por área** (landing = **Gráficos**):
 
-**Tab "Gráficos":** placeholder "Próximamente".
+| Sub-pestaña | Contenido |
+|-------------|-----------|
+| **Gráficos** | Primera y por defecto: todos los gráficos del área. En "Todo" muestra General (La Balanza + Mix de Caja) + una sección por módulo |
+| **Insights** | Score de salud + reglas automáticas (cobertura crítica, margen bajo, día flojo, stock sin movimiento, cumpleaños…) |
+| **Métricas** | KPIs del área (ventas, ticket, margen neto, stock crítico, Posición IVA por CAE emitido, etc.) |
+| **Rentabilidad** | P&L / margen neto; en Todo, "Detalle por venta" paginado |
+| **Recomendaciones** | Recomendaciones scopeadas por categoría del área |
 
-**Tab "IA / Recomendaciones":** panel de `RecomendacionesPage`.
+**Contenido destacado por área (Gráficos/Métricas):** Ventas (funnel, heatmap días×horas, canales) · Gastos (burn rate, fijos vs. variables) · Productos (cuadrante scatter, pareto, tijera de precios) · Inventario (capital de trabajo, salud de depósito, aging) · Clientes (RFM, cohort, aging CC) · Proveedores (aging OC, evolución 6m) · Facturación (IVA débito/crédito por CAE, alícuotas, tope Monotributo con banner legal) · Envíos (funnel, subsidio/ganancia) · Marketing (POAS).
 
-**Relaciones:** consume datos de ventas, inventario, clientes, gastos, envíos, OC. Cada área tiene su propio filtro de período + sub-filtros adicionales.
+> 🛑 REGLA #0 (display): toda la superficie de plata/fiscal fue auditada contra datos reales. Margen = (neto−costo)/neto con base `subtotal`; débito fiscal/Posición IVA = `cae IS NOT NULL` (Libro IVA autoritativo). Las estimaciones sintéticas quedaron diferidas por diseño.
+
+**Relaciones:** consume datos de ventas, inventario, clientes, gastos, envíos, OC. Reusa `RentabilidadPage` / `RecomendacionesPage` scopeadas por área.
 
 ---
 
@@ -364,7 +367,7 @@ Barra de acciones con LPNs seleccionados ofrece:
 **Tab Autorizaciones:**
 - Lista de solicitudes pendientes generadas por usuarios DEPOSITO
 - Tipos: cambio de cantidad, eliminación de LPN, cambio de serie
-- Acciones: Aprobar / Rechazar (roles OWNER, SUPERVISOR, ADMIN)
+- Acciones: Aprobar / Rechazar (roles DUEÑO, SUPERVISOR, ADMIN)
 
 **Relaciones:** Ventas consumen stock de aquí. Recepciones agregan stock. Movimientos registra cada cambio. ProductosPage calcula badge de stock disponible desde `inventario_lineas`.
 
@@ -526,7 +529,7 @@ Registro del patrimonio y activos del negocio, filtrado por sucursal activa. Sol
 
 ### 3.13 Biblioteca (`/biblioteca`)
 
-Gestor de documentos y archivos del negocio. Solo OWNER.
+Gestor de documentos y archivos del negocio. Solo DUEÑO (modo avanzado).
 
 **Tipos de archivos:** certificado_afip_crt, certificado_afip_key, contrato, factura_proveedor, manual, otro.
 
@@ -563,23 +566,27 @@ Todas las secciones filtran por **sucursal activa**. Solo la sección de alertas
 
 ### 3.15 RRHH (`/rrhh`)
 
-Gestión de recursos humanos. Solo OWNER (plan Pro o superior).
+Gestión de recursos humanos. Solo DUEÑO / RRHH (plan Pro o superior).
 
 **Tabs:**
-- **Empleados**: listado con nombre, DNI, cargo, fecha de ingreso, sucursal, sueldo base, estado
-- **Nómina**: liquidaciones por período
-- **Asistencia**: entradas/salidas del personal
-- **Vacaciones**: solicitudes y aprobaciones
-- **Capacitaciones**: registro de cursos y certificaciones
+- **Empleados**: listado con nombre, DNI, cargo, fecha de ingreso, sucursal, sueldo base, estado; puestos, departamentos y árbol organizacional
+- **Nómina**: liquidaciones por período (nómina **contable** con conceptos)
+- **Asistencia**: entradas/salidas del personal + **fichado por QR**
+- **Vacaciones**: solicitudes, aprobaciones y saldo anual
+- **Capacitaciones / Evaluaciones**: registro de cursos, certificaciones y evaluaciones de desempeño
 - **Feriados**: calendario de feriados configurables por país
 
-**Empleados:** CRUD completo. Upload de documentos (contratos, certificados). Historial de cambios salariales.
+**Empleados:** CRUD completo. Upload de documentos (contratos, certificados) a Storage privado. Historial de cambios salariales.
 
-**Nómina:** generar liquidación individual o masiva. Ítems: sueldo base, horas extra, descuentos, SAC. Exportar a PDF.
+**Nómina:** liquidación individual o masiva. Ítems: sueldo base, horas extra, descuentos, SAC. **Doble validación server-side** del pago (con flag: solo DUEÑO/ADMIN, o SUPERVISOR si está habilitado); pago desde caja (efectivo → egreso asentado + verificación de saldo). Recibo de sueldo en PDF.
 
-**Asistencia:** check-in/check-out manual. Reporte de ausencias.
+**Asistencia:** check-in/check-out manual **o por QR** (portal público del empleado por token). Reporte de ausencias.
 
-**Relaciones:** independiente de los otros módulos operativos. Los empleados pueden o no tener acceso al sistema.
+**Fichado QR / Portal del empleado:** el empleado accede por un token (`/fichar/:token`) para registrar asistencia sin cuenta en la app. Los usuarios con acceso ven **Mi Portal** en el sidebar.
+
+**Supervisor Self-Service:** el SUPERVISOR ve y gestiona solo su equipo (asistencia + aprobar/rechazar vacaciones), restringido por RLS server-side.
+
+**Relaciones:** pago de nómina impacta Caja. Independiente del resto de módulos operativos.
 
 ---
 
@@ -647,7 +654,7 @@ Cada integración (TN, MP, ML) tiene credenciales independientes por sucursal.
 
 ### 3.19 Usuarios (`/usuarios`)
 
-Gestión de accesos. Solo OWNER y ADMIN.
+Gestión de accesos. Solo DUEÑO y ADMIN.
 
 **Listado:** nombre, email, rol, sucursal asignada, fecha de creación. Filtro por rol.
 
@@ -681,7 +688,7 @@ Gestión de accesos. Solo OWNER y ADMIN.
 
 ### 3.20 Configuración (`/configuracion`)
 
-Setup completo del negocio y sus parámetros. Solo OWNER.
+Setup completo del negocio y sus parámetros. Solo DUEÑO.
 
 **Tabs:**
 - **Negocio**: nombre, logo, tipo de comercio, CUIT, datos fiscales, contacto, moneda principal
@@ -861,23 +868,15 @@ Gestión del plan de pago.
 
 ### 4.11 Ayuda (`/ayuda`)
 
-Centro de soporte. **Estado actual: en desarrollo (placeholder)**.
+Centro de soporte. **La página `/ayuda` sigue siendo placeholder** — secciones con badge "Próximamente" (FAQ, chat, buenas prácticas, reportar problema, guías, cursos) + link a `soporte@genesis360.pro`.
 
-Secciones planificadas (todas con badge "Próximamente"):
-- Preguntas frecuentes
-- Chat de soporte
-- Buenas prácticas de uso
-- Reportar un problema
-- Guías interactivas
-- Cursos y recursos
-
-Por ahora solo muestra link a email de soporte.
+> ⚠️ Distinción importante: el flujo de soporte **que sí funciona** es el **Centro de Ayuda del header** (`AyudaModal`, ícono `?`), no esta página. Ahí, "Reportar un problema" invoca `send-email` (`type: 'bug_report'`) → ticket **server-side** a `soporte@genesis360.pro` (con user/tenant de `useAuthStore`, botón "Enviando…", aviso si falla). El Asistente IA del header también puede derivar la conversación a soporte por el mismo canal.
 
 ---
 
 ### 4.12 Admin (`/admin`)
 
-Panel de administración de la plataforma. **Solo para el rol ADMIN del sistema** (no OWNER de tenant).
+Panel de administración de la plataforma **dentro de la app**. **Solo para el rol ADMIN del sistema** (staff Genesis360, no DUEÑO de tenant). Existe además una **plataforma de administración separada** en `admin.genesis360.pro` (repo aparte) para el soporte del staff.
 
 **Funciones:**
 - Listado de todos los tenants registrados
@@ -886,7 +885,7 @@ Panel de administración de la plataforma. **Solo para el rol ADMIN del sistema*
 - Estadísticas por tenant: cantidad de usuarios, cantidad de productos
 - Editar tenant: `subscription_status`, `max_users`, `trial_days`
 
-**No accesible** para ningún rol de tenant regular (OWNER, CAJERO, etc.).
+**No accesible** para ningún rol de tenant regular (DUEÑO, CAJERO, etc.).
 
 ---
 
@@ -898,10 +897,11 @@ Flujo de registro inicial para nuevos tenants.
 - Email, contraseña, nombre de display
 
 **Paso 2 — Negocio:**
-- Razón social del negocio, tipo de comercio (lista configurable), país (AR/CL/UY/MX/CO/PE), teléfono
+- Nombre del negocio, tipo de comercio (lista configurable), país (AR/CL/UY/MX/CO/PE), teléfono
 - Opción de tipo personalizado si no está en la lista
+- **Consentimiento:** checkbox **T&C + Privacidad (requerido)** + marketing (opt-in separado, Ley 25.326). En "confirm email ON" viaja por el metadata del `signUp`. *(En DEV — mig 249; pendiente revisión legal antes de PROD.)*
 
-**Al completar:** crea el tenant, inicializa grupos de estados por defecto, redirige al Dashboard.
+**Al completar:** crea el tenant (trial 7 días) + user DUEÑO + seed de defaults vía trigger `SECURITY DEFINER` (Sucursal 1, Caja Principal, unidades de medida, estados/grupos, categorías, caja fuerte) → `loadUserData()` → Dashboard. Ver [[autenticacion-onboarding]].
 
 ---
 
@@ -991,8 +991,8 @@ Flujo de registro inicial para nuevos tenants.
   → Requiere cliente con CC habilitada
   → Genera deuda (monto + fecha de vencimiento)
 
-[Cron pg_cron diario 09:00 AR]
-  → fn_notificar_cc_vencidas() detecta cuotas vencidas
+[Sweep externo/lazy — pg_cron NO habilitado]
+  → recálculo de intereses + detección de cuotas vencidas (EF cron-sweeps / al operar)
   → Crea notificación en tabla notificaciones
 
 [Header] Campana
@@ -1008,7 +1008,7 @@ Flujo de registro inicial para nuevos tenants.
 
 ```
 authStore.loadUserData():
-  Si rol = OWNER o ADMIN → puedeVerTodas = true (hardcoded)
+  Si rol = DUEÑO o ADMIN → puedeVerTodas = true (hardcoded)
   Si otro rol → puedeVerTodas = users.puede_ver_todas (DB)
   Si !puedeVerTodas → sucursalId = users.sucursal_id (ignora localStorage)
 
@@ -1078,12 +1078,8 @@ LPNs donde `estado_id` tiene `es_disponible_tn = true`.
 - Badge = conteo de no leídas
 - Al hacer clic → panel desplegable con listado. Marcar como leída/todas.
 
-### Alertas automáticas (pg_cron)
-| Cron | Frecuencia | Función |
-|------|------------|---------|
-| `notif-cc-vencidas` | Diario 09:00 AR | Detecta cuotas CC vencidas → genera notificaciones |
-| `tn-stock-sync` | Cada 5 min | Sincroniza stock disponible con TiendaNube |
-| `meli-stock-sync` | Cada 5 min | Sincroniza stock con MercadoLibre |
+### Tareas programadas (sin pg_cron)
+**pg_cron / pg_net NO están habilitados** en el proyecto → los jobs corren por **sweep lazy** (al operar) o por **cron externo** (GitHub Actions) que invoca la Edge Function `cron-sweeps`. Ejemplos: cuotas CC vencidas, liberar reservas vencidas (acredita seña−penalidad al saldo a favor), recalcular intereses de CC, cumpleaños de empleados. Ver [[pg_cron_no_habilitado]].
 
 ### Página Alertas (`/alertas`)
 Alertas operativas sin resolver: stock crítico, reservas antiguas, productos sin categoría, próximos a vencer. Cada alerta tiene acción contextual y botón "Resolver".
@@ -1107,14 +1103,17 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 - Gestión de suscripciones Genesis360 (modelo preapproval — `init_point` construido en frontend).
 
 ### Resend
-- Invitaciones de usuario, notificaciones de sistema.
-- Template `bug_report`: conversación del asistente IA → email al admin.
-- FROM pendiente configurar a `noreply@genesis360.pro`.
+- Emails transaccionales (bienvenida, ventas, alertas) + tickets de soporte (`type: 'bug_report'` del Centro de Ayuda / Asistente IA → `soporte@genesis360.pro`).
+- **FROM = `noreply@genesis360.pro`** (dominio verificado, plantilla rebrandeada degradé violeta→cian). Ver [[resend-email]].
 
-### AFIP (parcial)
-- Configuración de certificados en `/configuracion`.
-- Generación de PDF con QR AFIP (RG 4291) desde ventas.
-- Worker de emisión electrónica: pendiente completar.
+### Cloudflare Email Routing
+- Recepción de correo (Resend solo envía): `soporte@` → Google Group `genesis360-soporte@googlegroups.com`; `hola@` → gmail de GO.
+
+### AFIP (en PROD, vía AfipSDK)
+- Configuración de certificados / condición fiscal / punto de venta en `/configuracion`.
+- Emisión electrónica **operativa**: `emitir-factura` (Edge Function) usa AfipSDK → CAE (Factura A/B/C, NC/ND). Flag `afip_produccion` por tenant (homologación ↔ producción).
+- PDF con QR AFIP (RG 4291) + Ley 27.743 en Factura B. Ver [[facturacion-afip]].
+- **Backlog:** migrar a WSFE 100% propio (sin AfipSDK).
 
 ### API externa
 - `api_keys` table: claves generadas en `/configuracion` → tab API.
@@ -1151,7 +1150,8 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 
 ### Onboarding
 - Paso 1: crear cuenta (omitido con Google OAuth)
-- Paso 2: crear negocio → genera tenant, crea user con rol OWNER, inicializa estados por defecto
+- Paso 2: crear negocio → genera tenant, crea user con rol **DUEÑO**, seedea defaults (sucursal, caja, unidades, estados) vía trigger `SECURITY DEFINER`. Trial de 7 días.
+- Consentimiento en el alta: **T&C + Privacidad (requerido)** + marketing (opt-in separado, Ley 25.326) → columnas `terminos_aceptados_at` / `terminos_version` / `marketing_consent` (mig 249). *En DEV — pendiente revisión legal antes de PROD.* Ver [[autenticacion-onboarding]].
 
 ### RLS (Row Level Security)
 - Todas las tablas: `tenant_id IN (SELECT tenant_id FROM users WHERE id = auth.uid())`
@@ -1159,18 +1159,21 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 - 7 warnings de Security Advisor aceptados por diseño (documentados)
 
 ### Control de acceso por rol
+Roles del tenant: **DUEÑO** · SUPER_USUARIO · SUPERVISOR · CAJERO · DEPOSITO · RRHH · CONTADOR · VIEWER. (**ADMIN** = staff Genesis360, no es del tenant.)
 ```
-OWNER/ADMIN: acceso total
+DUEÑO / ADMIN: acceso total
+SUPER_USUARIO: operación amplia, ve todas las sucursales por defecto
 SUPERVISOR: sin /configuracion, /usuarios, /sucursales, /rrhh
 CONTADOR: solo /dashboard, /gastos, /reportes, /historial, /metricas
-CAJERO: solo /ventas, /caja, /clientes, /envios
+CAJERO: solo /ventas, /caja, /clientes, /envios (fijado a su sucursal)
 DEPOSITO: solo /inventario, /productos, /alertas, /recepciones
+VIEWER: solo lectura
 ```
-Permisos granulares por módulo overrideables por usuario individual (Sliders en Usuarios).
+Convención de flags: `ownerOnly` = DUEÑO+ADMIN · `supervisorOnly` = DUEÑO+SUPERVISOR+ADMIN. Permisos granulares por módulo overrideables por usuario individual (Sliders en Usuarios). El aislamiento por sucursal se aplica **server-side** (RLS, helpers `auth_ve_todas_sucursales()` / `auth_user_sucursal()`).
 
 ### Session timeout
 - `useInactivityTimeout()`: bloquea la app por inactividad. Muestra modal de re-autenticación.
 
 ---
 
-*Última actualización: 2026-05-15 — v1.8.26 DEV / v1.8.22 PROD*
+*Última actualización: 2026-07-01 — App v1.100.0 (PROD = DEV). Cifras de estado (versión/migraciones/tests) en `sources/raw/project_pendientes.md`.*

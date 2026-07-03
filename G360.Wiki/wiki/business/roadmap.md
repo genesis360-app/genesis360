@@ -9,7 +9,13 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 2 de Julio, 2026
+**Última actualización:** 3 de Julio, 2026
+
+---
+
+## v1.107.0 — 🔗 Fase 1 billing MP: linkeo por payer_email + fail-closed (PROD ✅)
+
+**Causa raíz (REGLA #0):** MP **no persiste `external_reference`** en checkout por plan (`preapproval_plan_id`) → ningún tenant se linkeaba (`mp_subscription_id` NULL en toda la plataforma) y la cancelación **fail-abría** (marcaba cancelled sin cancelar en MP). **Fix (4 EFs):** `mp-verificar-suscripcion` (pertenencia por `payer_email` + guarda `mp_subscription_id`), `cancel-suscripcion` (cancela por id guardado + fail-closed real + MP-C7), `mp-webhook` (resuelve tenant por `mp_subscription_id`), `admin-api`/`cancelarSubMP` (mismo bug duplicado). Botón "Ya pagué / Verificar" en `SuscripcionPage`. UAT 43 escenarios (`tests/specs/mp-suscripciones-pagos.plan.md`). **Sin migraciones.** **✅ CANCELACIÓN validada e2e en PROD con Fede** (el bug original probado muerto). **❌ ACTIVACIÓN por UI ROTA** — confirmado con datos reales que MP tampoco manda `payer_email` en checkout por plan (10/10 vacíos) → email-search inútil; y el retorno del checkout falla (401 de sesión / `tenant` no cargado + `useEffect` sin reintento / pantalla "activó" estática que miente) → **Fase 2 = rework del flujo de activación (prioridad, revenue)**. Seguridad: removido rol ADMIN god-access a Fede → 0 ADMINs en PROD.
 
 ---
 

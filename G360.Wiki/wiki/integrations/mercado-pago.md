@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-06-24
+updated: 2026-07-03
 ---
 
 # Integración Mercado Pago
@@ -31,6 +31,10 @@ Usuario hace clic en "Suscribirse"
 ```
 
 > [!WARNING] **No usar** `POST /preapproval` vía Edge Function — MP requiere `card_token_id` que no tenemos en este flujo. El `init_point` se construye en el frontend directo.
+
+> [!CAUTION] **🔴 CRÍTICO (confirmado 2026-07-03 en PROD): MP NO persiste `external_reference` NI `payer_email` en los checkout por PLAN** (`preapproval_plan_id`). El preapproval queda con "Código de referencia" y email de pagador VACÍOS (verificado: 10/10 preapprovals reales). Por eso el linkeo preapproval↔tenant **no puede** hacerse por esos campos — el ÚNICO link confiable es el **`preapproval_id`** que MP devuelve en el redirect (`/suscripcion?status=approved&preapproval_id=...`).
+>
+> **Estado (v1.107.0, Fase 1):** ✅ **Cancelación** arreglada + validada e2e en PROD (linkeo por `mp_subscription_id` guardado + **fail-closed**: la DB solo pasa a `cancelled` si MP confirmó). ❌ **Activación por UI ROTA** — el fix por `payer_email` no sirve (email vacío), y el retorno del checkout falla: **(a)** 401 de sesión (verify se llama antes de que la sesión esté lista en el redirect); **(b)** `handleVerificarPago` hace `if (!tenant) return` y el `useEffect [status]` no reintenta si el tenant no cargó; **(c)** la pantalla "¡Pago aprobado! se activó correctamente" es ESTÁTICA (se muestra por `status=approved`, no refleja el estado real → MIENTE). Neto: el cliente paga, MP lo registra, pero la app nunca linkea. **FASE 2 pendiente = rework de `SuscripcionPage`:** esperar sesión+`tenant` + **reintentar** el verify con el `preapproval_id`; pantalla que refleje el estado REAL; **quitar el botón "Verificar/Ya pagué"** (email-search, inútil sin `payer_email`). El EF `mp-verificar-suscripcion` YA activa bien dado un `preapproval_id`; el problema es 100% frontend.
 
 ### IDs de planes PROD
 

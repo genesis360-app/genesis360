@@ -47,14 +47,17 @@ const MP = 'https://api.mercadopago.com'
 const MP_VIVOS = ['authorized', 'pending', 'paused']
 
 // Cancela el/los preapproval(s) del tenant en Mercado Pago (mismo circuito que el EF
-// cancel-suscripcion): busca por external_reference (el filtro de MP se ignora → se filtra
-// client-side + pagina) + el id guardado, verifica pertenencia, PUT status:'cancelled'.
-// Fail-closed: devuelve errores si algún vivo no se pudo cancelar (el caller NO marca cancelado).
+// cancel-suscripcion). Camino principal: el id GUARDADO (mp_subscription_id, verificado al
+// activar). ⚠️ En checkout por plan MP NO guarda el external_reference, así que la pertenencia
+// del id guardado NO se puede gatear por él (bug histórico que fail-abría: dejaba la cuenta
+// 'cancelled' sin cancelar en MP). Fail-closed: si hay id guardado y no se confirma que quedó
+// fuera de cobro, agrega 'no_confirmado' a errores → el caller NO marca cancelado.
 async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promise<{ mp_cancelled: number; errores: string[] }> {
   const H = { Authorization: `Bearer ${mpToken}` }
   const { data: t } = await svc.from('tenants').select('mp_subscription_id').eq('id', tenantId).single()
+  const storedId = t?.mp_subscription_id ? String(t.mp_subscription_id) : null
   const cand = new Set<string>()
-  if (t?.mp_subscription_id) cand.add(String(t.mp_subscription_id))
+  if (storedId) cand.add(storedId)
   try {
     for (let off = 0; off < 1000; off += 100) {
       const r = await fetch(`${MP}/preapproval/search?external_reference=${encodeURIComponent(tenantId)}&limit=100&offset=${off}`, { headers: H })
@@ -67,19 +70,26 @@ async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promi
   } catch (_) { /* best-effort */ }
   let mp_cancelled = 0
   const errores: string[] = []
+  // 🛑 Fail-closed real: si hay un preapproval GUARDADO, exigimos confirmar que quedó fuera
+  // de cobro (o ya estaba cancelado / no vivo) antes de que el caller marque 'cancelled'.
+  let storedConfirmado = storedId ? false : true
   for (const id of cand) {
     const g = await fetch(`${MP}/preapproval/${id}`, { headers: H })
-    if (!g.ok) continue
+    if (!g.ok) { if (id === storedId) errores.push(`${id}:get_${g.status}`); continue }
     const pre = await g.json()
-    if (pre?.external_reference !== tenantId) continue      // no es de este tenant
-    if (pre?.status === 'cancelled') { mp_cancelled++; continue }
-    if (!MP_VIVOS.includes(pre?.status)) continue
+    // Pertenencia: por external_reference (histórico) O por ser el id guardado del tenant
+    // (verificado al activar; en checkout por plan external_reference viene vacío).
+    const esDelTenant = pre?.external_reference === tenantId || id === storedId
+    if (!esDelTenant) continue                                    // no es de este tenant
+    if (pre?.status === 'cancelled') { mp_cancelled++; if (id === storedId) storedConfirmado = true; continue }
+    if (!MP_VIVOS.includes(pre?.status)) { if (id === storedId) storedConfirmado = true; continue }
     const put = await fetch(`${MP}/preapproval/${id}`, {
       method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'cancelled' }),
     })
-    if (put.ok) mp_cancelled++
+    if (put.ok) { mp_cancelled++; if (id === storedId) storedConfirmado = true }
     else errores.push(`${id}:${put.status}`)
   }
+  if (storedId && !storedConfirmado) errores.push('no_confirmado')
   return { mp_cancelled, errores }
 }
 

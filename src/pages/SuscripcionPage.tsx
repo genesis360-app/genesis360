@@ -156,6 +156,27 @@ export default function SuscripcionPage() {
     }
   }
 
+  // "Ya pagué" / respaldo: verifica la suscripción SIN preapproval_id (el EF la busca en
+  // MP por payer_email del usuario logueado). Cierra el caso "pagó y no se activó" cuando
+  // el usuario cerró la pestaña del checkout antes de volver a la app.
+  const handleYaPague = async () => {
+    setLoading('verificando')
+    try {
+      const { data } = await supabase.functions.invoke('mp-verificar-suscripcion', { body: {} })
+      if (data?.activated) {
+        toast.success('¡Suscripción activada!')
+        if (user?.id) await loadUserData(user.id)
+        window.location.href = '/dashboard'
+        return
+      }
+      toast('No encontramos un pago activo a tu nombre. Si acabás de pagar, esperá unos minutos y reintentá.', { icon: '⏳' })
+      setLoading(null)
+    } catch {
+      toast.error('Error al verificar la suscripción. Contactá soporte.')
+      setLoading(null)
+    }
+  }
+
   const handleComprarAddon = async (cantidad: number) => {
     setLoadingAddon(cantidad)
     try {
@@ -281,6 +302,10 @@ export default function SuscripcionPage() {
             ? 'Activá tu suscripción para seguir usando Genesis360 sin interrupciones'
             : 'Todos los planes incluyen 7 días de prueba gratuita'}
         </p>
+        <button onClick={handleYaPague} disabled={loading === 'verificando'}
+          className="mt-4 text-sm text-blue-200 underline underline-offset-4 hover:text-white disabled:opacity-50">
+          {loading === 'verificando' ? 'Verificando…' : '¿Ya pagaste y no se activó? Verificar mi suscripción'}
+        </button>
       </div>
 
       {/* Planes */}

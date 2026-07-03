@@ -110,7 +110,16 @@ serve(async (req) => {
         default:           newStatus = 'inactive'
       }
 
-      const tenantId = subscription.external_reference
+      // external_reference viene VACÍO en checkouts por plan (MP no lo persiste). Si no
+      // vino, resolvemos el tenant por el preapproval ya LINKEADO (mp_subscription_id, que
+      // guarda mp-verificar-suscripcion al activar), así los eventos siguientes (cambios
+      // de estado, cancelación desde el panel de MP) igual sincronizan la DB.
+      let tenantId = subscription.external_reference || null
+      if (!tenantId) {
+        const { data: t } = await supabase
+          .from('tenants').select('id').eq('mp_subscription_id', subscriptionId).maybeSingle()
+        tenantId = t?.id ?? null
+      }
       if (tenantId) {
         const tier = MP_PLAN_TIER[subscription.preapproval_plan_id]
         await supabase.from('tenants').update({

@@ -145,6 +145,30 @@ Baja:  EF mp-addon-fijo (action='quitar', addon_id)
 `preapproval_plan_id`→`basico`/`pro`, env `MP_PLAN_BASICO`/`MP_PLAN_PRO`) al activar, en vez de los
 `max_users`/`max_productos` viejos (que `usePlanLimits` ya no lee). Cierra medio RIESGO #1.
 
+### 3.d Cancelación de suscripción (v1.104.0 / v1.106.0)
+
+```
+Usuario (Mi Cuenta) o AdminPage → EF cancel-suscripcion (deriva tenant del JWT;
+  admin puede pasar { tenant_id })
+Panel admin.genesis360.pro → EF admin-api acción billing.cancel_subscription
+  → ambos: buscar preapproval(s) del tenant (mp_subscription_id + /preapproval/search
+    por external_reference, filtrado client-side) → verificar external_reference===tenant
+    → PUT /preapproval/{id} { status: 'cancelled' }
+  → FAIL-CLOSED: solo marca subscription_status='cancelled' si MP confirmó
+```
+
+**Bug histórico (Fede Messina, 2026-07-02):** el EF `cancel-suscripcion` NO existía → `MiCuentaPage`
+fallaba (con id) o hacía un UPDATE local a ciegas (sin id) → MP seguía cobrando. Fix: EF nuevo +
+`MiCuentaPage`/`AdminPage`/panel siempre pasan por un EF.
+
+> [!WARNING] **`/preapproval/search?external_reference=X` NO filtra** (devuelve todos, 200) → se filtra
+> client-side por el `external_reference` que trae cada resultado + se pagina. El `PUT cancel` sí es fiable.
+
+> [!WARNING] **No se puede sandbox-testear el ALTA del app en vivo.** Los planes `836c…`/`cb3b…` viven en
+> la cuenta REAL de GO → pagar con un *Buyer Test User* da **"una de las partes es de prueba"** (test+prod).
+> Test real: bajar el plan a un monto chico, que un TERCERO real pague desde la app, cancelar, devolver, y
+> volver el plan a $60k (y **vos como vendedor no podés pagarte a vos mismo**).
+
 ---
 
 ## Edge Functions

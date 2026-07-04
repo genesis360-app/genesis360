@@ -10,15 +10,16 @@ import { clasificarVerificacion, mensajeErrorVerif } from '@/lib/suscripcionActi
 import {
   Check, X, CheckCircle, XCircle, Clock,
   ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut, Plus, Trash2, SlidersHorizontal,
+  Box, Building2, User, type LucideIcon,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 // Dimensiones de add-on FIJO expuestas en el configurador (movimientos va por el flujo
-// temporal de arriba). Etiquetas para la UI.
-const DIMS_FIJAS: Array<{ dim: AddonDimension; label: string }> = [
-  { dim: 'sku',        label: 'Productos (SKU)' },
-  { dim: 'sucursales', label: 'Sucursales' },
-  { dim: 'usuarios',   label: 'Usuarios' },
+// temporal de arriba). Etiquetas + iconos para la UI.
+const DIMS_FIJAS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: string; Icon: LucideIcon }> = [
+  { dim: 'sku',        label: 'Productos',  unidad: 'productos',  sub: 'Sumá más productos a tu plan',  Icon: Box },
+  { dim: 'sucursales', label: 'Sucursales', unidad: 'sucursales', sub: 'Sumá más sucursales a tu plan', Icon: Building2 },
+  { dim: 'usuarios',   label: 'Usuarios',   unidad: 'usuarios',   sub: 'Sumá más usuarios a tu plan',   Icon: User },
 ]
 
 const labelDim = (dim: string) =>
@@ -518,45 +519,75 @@ export default function SuscripcionPage() {
               Se suman a tu suscripción mensual. Para quitar un add-on, primero desactivá los recursos que sobren.
             </p>
 
-            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6">
+            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0b14] p-6 shadow-2xl">
+              <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-56 w-56 rounded-full bg-accent opacity-20 blur-[100px]" />
+
               {/* Resumen de precio en vivo */}
-              <div className="flex items-center justify-between text-sm border-b border-gray-100 dark:border-gray-700 pb-3 mb-4">
-                <span className="text-gray-500 dark:text-gray-400">
+              <div className="relative flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 mb-5">
+                <span className="text-sm text-gray-400">
                   Plan {planActual?.nombre} (${precioBase.toLocaleString('es-AR')}) + add-ons (${precioAddonsFijos.toLocaleString('es-AR')})
                 </span>
-                <span className="font-bold text-primary dark:text-white text-lg">
-                  ${totalMensual.toLocaleString('es-AR')}/mes
+                <span className="text-lg font-bold text-white">
+                  ${totalMensual.toLocaleString('es-AR')}<span className="text-sm font-medium text-gray-500">/mes</span>
                 </span>
               </div>
 
-              {DIMS_FIJAS.map(({ dim, label }) => {
-                const activos = (addonsFijos as any[]).filter(a => a.dimension === dim)
-                return (
-                  <div key={dim} className="py-3 border-b border-gray-50 dark:border-gray-700/50 last:border-0">
-                    <p className="font-semibold text-gray-700 dark:text-gray-200 text-sm mb-2">{label}</p>
-                    {activos.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mb-2">
-                        {activos.map(a => (
-                          <span key={a.id} className="inline-flex items-center gap-1.5 bg-accent/10 text-accent text-xs font-medium px-2.5 py-1 rounded-full">
-                            +{a.cantidad.toLocaleString('es-AR')}
-                            <button onClick={() => quitarAddonFijo(a)} disabled={addonBusy} title="Quitar add-on" className="hover:text-red-500 disabled:opacity-50">
-                              <Trash2 size={12} />
-                            </button>
-                          </span>
-                        ))}
+              <div className="relative grid gap-4 md:grid-cols-3">
+                {DIMS_FIJAS.map(({ dim, label, unidad, sub, Icon }) => {
+                  const activos = (addonsFijos as any[]).filter(a => a.dimension === dim)
+                  return (
+                    <div key={dim} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
+                          <Icon size={20} className="text-accent" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-white leading-tight">{label}</p>
+                          <p className="text-xs text-gray-400 leading-tight">{sub}</p>
+                        </div>
                       </div>
-                    )}
-                    <div className="flex flex-wrap gap-2">
-                      {packsDe(dim).map(pack => (
-                        <button key={pack.cantidad} onClick={() => agregarAddonFijo(dim, pack.cantidad)} disabled={addonBusy}
-                          className="inline-flex items-center gap-1 border border-gray-200 dark:border-gray-600 hover:border-accent text-gray-600 dark:text-gray-300 text-xs font-medium px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-50">
-                          <Plus size={12} /> {pack.cantidad.toLocaleString('es-AR')} · ${pack.precio.toLocaleString('es-AR')}/mes
-                        </button>
-                      ))}
+                      <div className="grid grid-cols-3 gap-2">
+                        {packsDe(dim).map(pack => {
+                          const activosDePack = activos.filter(a => a.cantidad === pack.cantidad)
+                          const count = activosDePack.length
+                          const selected = count > 0
+                          return (
+                            <div key={pack.cantidad}
+                              className={`relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition-all
+                                ${selected
+                                  ? 'border-transparent bg-accent text-white shadow-lg shadow-accent/30'
+                                  : 'border-white/10 bg-white/[0.02] text-gray-300 hover:border-accent/60'}`}>
+                              {selected && (
+                                <button onClick={() => quitarAddonFijo(activosDePack[0])} disabled={addonBusy}
+                                  title="Quitar un add-on"
+                                  className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-accent shadow hover:text-red-500 disabled:opacity-50">
+                                  <Trash2 size={11} />
+                                </button>
+                              )}
+                              {/* Botón principal: agrega uno más de este pack */}
+                              <button onClick={() => agregarAddonFijo(dim, pack.cantidad)} disabled={addonBusy}
+                                title={selected ? 'Agregar otro' : 'Agregar add-on'}
+                                className="flex w-full flex-col items-center justify-center gap-1.5 disabled:opacity-50">
+                                {selected
+                                  ? <span className="text-xs font-bold">{count > 1 ? `×${count}` : ''}<Plus size={16} className="inline text-white/90" /></span>
+                                  : <Plus size={18} className="text-gray-500" />}
+                                <span className={`text-[11px] leading-tight ${selected ? 'text-white' : 'text-gray-300'}`}>
+                                  +{pack.cantidad.toLocaleString('es-AR')} {unidad}
+                                </span>
+                                <span className="text-sm font-bold">${pack.precio.toLocaleString('es-AR')}</span>
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
+
+              <p className="relative mt-5 text-center text-xs text-gray-500">
+                ¿Necesitás más movimientos puntuales? Se compran por 30 días desde la app.
+              </p>
             </div>
           </div>
         )}

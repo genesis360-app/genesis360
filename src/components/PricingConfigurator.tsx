@@ -1,18 +1,28 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { PLANES } from '@/config/brand'
+import { PLANES, BRAND } from '@/config/brand'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
-import { Check, Sparkles } from 'lucide-react'
+import { Check, Box, Building2, User, Shield, Rocket, Headphones, Lock, type LucideIcon } from 'lucide-react'
 
 // Configurador de precios PÚBLICO (Landing) — Pricing 2026, Fase 4.
 // Solo estima: plan base + add-ons FIJOS (recurrentes) → total mensual en vivo.
 // Los movimientos extra (add-on temporal) se muestran aparte porque son pago único.
 // Reusa el catálogo y la suma de src/lib/addons.ts (mismo precio que cobra el server).
+//
+// Diseño "Armá tu plan": panel oscuro + degradé de marca violeta→cian (mismos tokens
+// que el resto de la app: .bg-accent / --color-accent / --color-accent-2).
 
-const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string }> = [
-  { dim: 'sku',        label: 'Productos', unidad: 'productos' },
-  { dim: 'sucursales', label: 'Sucursales', unidad: 'sucursales' },
-  { dim: 'usuarios',   label: 'Usuarios', unidad: 'usuarios' },
+const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: string; Icon: LucideIcon }> = [
+  { dim: 'sku',        label: 'Productos',  unidad: 'productos',  sub: 'Sumá más productos a tu plan',  Icon: Box },
+  { dim: 'sucursales', label: 'Sucursales', unidad: 'sucursales', sub: 'Sumá más sucursales a tu plan', Icon: Building2 },
+  { dim: 'usuarios',   label: 'Usuarios',   unidad: 'usuarios',   sub: 'Sumá más usuarios a tu plan',   Icon: User },
+]
+
+const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
+  { Icon: Shield,     titulo: '7 días gratis',        sub: 'Sin tarjeta de crédito' },
+  { Icon: Rocket,     titulo: 'Activación inmediata', sub: 'Comenzá a usarlo hoy' },
+  { Icon: Headphones, titulo: 'Soporte cercano',      sub: 'Siempre estamos para ayudarte' },
+  { Icon: Lock,       titulo: 'Tus datos seguros',    sub: 'Encriptados y respaldados' },
 ]
 
 export default function PricingConfigurator() {
@@ -33,57 +43,102 @@ export default function PricingConfigurator() {
     setSel(prev => ({ ...prev, [dim]: prev[dim] === cant ? 0 : cant }))
 
   return (
-    <div className="max-w-4xl mx-auto bg-white rounded-2xl border-2 border-gray-100 shadow-sm p-6 md:p-8">
-      <div className="flex items-center justify-center gap-2 mb-1">
-        <Sparkles size={18} className="text-accent" />
-        <h3 className="font-bold text-primary text-xl">Armá tu plan</h3>
-      </div>
-      <p className="text-gray-500 text-sm text-center mb-6">Estimá tu precio mensual sumando lo que necesites.</p>
+    <div className="relative max-w-5xl mx-auto overflow-hidden rounded-3xl border border-white/10 bg-[#0b0b14] p-6 sm:p-8 md:p-10 shadow-2xl">
+      {/* Glow de marca (violeta) detrás del encabezado */}
+      <div className="pointer-events-none absolute -top-28 left-1/2 -translate-x-1/2 h-72 w-72 rounded-full bg-accent opacity-25 blur-[110px]" />
 
-      {/* Plan base */}
-      <div className="flex justify-center gap-2 mb-6">
-        {planes.map(p => (
-          <button key={p.id} onClick={() => setPlanId(p.id)}
-            className={`px-5 py-2 rounded-xl text-sm font-semibold border-2 transition-all
-              ${planId === p.id ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
-            {p.nombre} · ${(p.precio ?? 0).toLocaleString('es-AR')}
-          </button>
-        ))}
+      {/* Encabezado */}
+      <div className="relative text-center">
+        <img src={BRAND.logo} alt={BRAND.name} className="mx-auto h-12 w-12 mb-4" />
+        <h3 className="text-3xl font-bold text-white">Armá tu plan</h3>
+        <p className="mt-2 text-sm text-gray-400">Elegí el plan que mejor se adapta a tu negocio y sumá los add-ons que necesités.</p>
       </div>
+
+      {/* Toggle de plan base */}
+      <div className="relative mt-7 flex justify-center">
+        <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+          {planes.map(p => (
+            <button key={p.id} onClick={() => setPlanId(p.id)}
+              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all
+                ${planId === p.id ? 'bg-accent text-white shadow-lg shadow-accent/30' : 'text-gray-300 hover:text-white'}`}>
+              {p.nombre} · ${(p.precio ?? 0).toLocaleString('es-AR')}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="relative my-8 border-t border-white/10" />
+
+      <p className="relative text-center text-sm font-semibold text-white mb-5">Personalizá tu plan con add-ons</p>
 
       {/* Add-ons fijos por dimensión */}
-      <div className="space-y-4">
-        {DIMS.map(({ dim, label, unidad }) => (
-          <div key={dim} className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <span className="text-sm font-semibold text-gray-700 w-28 shrink-0">+ {label}</span>
-            <div className="flex flex-wrap gap-2">
-              {packsDe(dim).map(pack => (
-                <button key={pack.cantidad} onClick={() => setPack(dim, pack.cantidad)}
-                  className={`text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors
-                    ${sel[dim] === pack.cantidad
-                      ? 'border-accent bg-accent/10 text-accent'
-                      : 'border-gray-200 text-gray-600 hover:border-accent'}`}>
-                  +{pack.cantidad.toLocaleString('es-AR')} {unidad} · ${pack.precio.toLocaleString('es-AR')}
-                </button>
-              ))}
+      <div className="relative grid gap-4 md:grid-cols-3">
+        {DIMS.map(({ dim, label, unidad, sub, Icon }) => (
+          <div key={dim} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
+                <Icon size={20} className="text-accent" />
+              </div>
+              <div>
+                <p className="font-semibold text-white leading-tight">{label}</p>
+                <p className="text-xs text-gray-400 leading-tight">{sub}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {packsDe(dim).map(pack => {
+                const activo = sel[dim] === pack.cantidad
+                return (
+                  <button key={pack.cantidad} onClick={() => setPack(dim, pack.cantidad)}
+                    className={`relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition-all
+                      ${activo
+                        ? 'border-transparent bg-accent text-white shadow-lg shadow-accent/30'
+                        : 'border-white/10 bg-white/[0.02] text-gray-300 hover:border-accent/60'}`}>
+                    {activo && (
+                      <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-accent shadow">
+                        <Check size={12} strokeWidth={3} />
+                      </span>
+                    )}
+                    <Icon size={18} className={activo ? 'text-white/90' : 'text-gray-500'} />
+                    <span className={`text-[11px] leading-tight ${activo ? 'text-white' : 'text-gray-300'}`}>
+                      +{pack.cantidad.toLocaleString('es-AR')} {unidad}
+                    </span>
+                    <span className="text-sm font-bold">${pack.precio.toLocaleString('es-AR')}</span>
+                  </button>
+                )
+              })}
             </div>
           </div>
         ))}
       </div>
 
-      {/* Total */}
-      <div className="mt-6 pt-5 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      {/* Total + CTA */}
+      <div className="relative mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-gray-500 text-xs">Plan {plan.nombre} (${base.toLocaleString('es-AR')}) + add-ons (${precioAddons.toLocaleString('es-AR')})</p>
-          <p className="text-3xl font-bold text-primary">
-            ${total.toLocaleString('es-AR')}<span className="text-base text-gray-400 font-medium">/mes</span>
+          <p className="text-xs text-gray-400">Plan {plan.nombre} (${base.toLocaleString('es-AR')}) + add-ons (${precioAddons.toLocaleString('es-AR')})</p>
+          <p className="text-4xl font-bold text-white">
+            ${total.toLocaleString('es-AR')}<span className="text-base font-medium text-gray-500">/mes</span>
           </p>
-          <p className="text-gray-400 text-xs mt-1">¿Necesitás más movimientos puntuales? Se compran por 30 días desde la app.</p>
+          <p className="mt-1 text-xs text-gray-500">¿Necesitás más movimientos puntuales? Se compran por 30 días desde la app.</p>
         </div>
         <Link to="/onboarding"
-          className="inline-flex items-center justify-center gap-2 bg-primary text-white font-semibold px-6 py-3 rounded-xl hover:bg-accent transition-all text-sm shrink-0">
-          <Check size={16} /> Probar 7 días gratis
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0">
+          <Check size={18} /> Probar 7 días gratis
         </Link>
+      </div>
+
+      {/* Beneficios */}
+      <div className="relative mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {BENEFICIOS.map(({ Icon, titulo, sub }) => (
+          <div key={titulo} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
+              <Icon size={18} className="text-accent" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-white leading-tight">{titulo}</p>
+              <p className="text-xs text-gray-400 leading-tight truncate">{sub}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   )

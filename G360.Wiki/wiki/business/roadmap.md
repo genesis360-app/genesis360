@@ -9,7 +9,13 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 3 de Julio, 2026
+**Última actualización:** 4 de Julio, 2026
+
+---
+
+## v1.111.0 — 🎨 Rediseño configurador add-ons "Armá tu plan" (Landing + in-app) — **EN DEV** (frontend-only)
+
+Port de un diseño de referencia al configurador de add-ons (Pricing Fase 4), **respetando la paleta de marca** (degradé violeta→cian, tokens `--color-accent`/`--color-accent-2`; nada hardcodeado del mockup). **Landing (`PricingConfigurator`):** rediseño completo — panel oscuro con glow, toggle Básico/Pro, grid de tarjetas seleccionables por dimensión (Productos/Sucursales/Usuarios) con badge ✓, barra de total en vivo + CTA, fila de beneficios. **In-app (`SuscripcionPage`):** mismo lenguaje visual, semántica in-app (add-ons activos como tarjeta seleccionada + botón quitar, sin toggle ni CTA de prueba); **lógica de compra MP intacta** (REGLA #0). Sin migraciones. typecheck+build verdes, screenshot del Landing OK. **🟠 Sin deployar (main = v1.110.0).** Dudas abiertas para GO: "Soporte 24/7"→"Soporte cercano" (claim real), revisión visual in-app pendiente. Ver `wiki/business/planes-pricing.md` (Fase 4) + `log.md`.
 
 ---
 

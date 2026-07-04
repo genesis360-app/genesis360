@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-04] update | 🎨 Rediseño configurador add-ons "Armá tu plan" (Landing + in-app) · v1.111.0 EN DEV
+
+**Qué:** GO pidió portar un diseño de referencia (panel "Armá tu plan" con grid de tarjetas seleccionables) al configurador de add-ons, **respetando nuestros colores**, y aplicarlo también al Landing. Frontend-only, **sin migraciones, SIN tocar lógica de compra MP** (REGLA #0).
+
+**Landing (`src/components/PricingConfigurator.tsx`) — rediseño completo:** panel oscuro `#0b0b14` con glow violeta detrás del logo, toggle Básico/Pro en píldora (activo con degradé), 3 sub-cards (Productos/Sucursales/Usuarios) con ícono + grid de packs; tarjeta seleccionada = degradé de marca **violeta→cian** (tokens `--color-accent`/`--color-accent-2`, `.bg-accent`, nada hardcodeado del mockup) + badge ✓; barra de total en vivo + CTA "Probar 7 días gratis"; fila de 4 beneficios. **Verificado con screenshot real en `/`** (total en vivo OK: Pro + 3 add-ons = $125.000). Usa datos reales de `ADDON_PACKS` (ej. Sucursales +5 = $55.000, no el $35.000 del mockup).
+
+**In-app (`src/pages/SuscripcionPage.tsx`) — adaptado:** MISMO lenguaje visual (grid de tarjetas, glow, barra de total) pero con la semántica in-app: sin toggle de plan ni CTA de prueba; add-ons activos se muestran como tarjeta **seleccionada** (degradé) con botón 🗑 quitar (badge ×N si hay varios del mismo pack); tocar la tarjeta agrega otro. **`agregarAddonFijo`/`quitarAddonFijo` (invocan la EF `mp-addon-fijo`) y el modal de downgrade guiado quedaron intactos.** `DIMS_FIJAS` extendido con ícono/unidad/sub.
+
+**Verificación:** `tsc --noEmit` limpio + `npm run build` verde. **Screenshot del Landing OK.**
+
+**🟠 Dudas/definiciones abiertas para GO:** (1) beneficio "Soporte 24/7" del mockup → lo puse **"Soporte cercano"** (los planes reales dan soporte por email/prioritario, no 24/7 → sería claim falso); GO decide si vuelve a "24/7". (2) La vista **in-app no fue revisada visualmente por GO** (el screenshot es solo del Landing; el configurador in-app requiere suscripción activa para renderizar). (3) Movimientos sigue como flujo temporal aparte (no como 4ª tarjeta), igual que el mockup.
+
+**Estado:** EN DEV, sin deployar a PROD (main = v1.110.0). Falta: revisión visual in-app + definir "Soporte 24/7" + PR dev→main + release cuando GO dé OK.
+
+---
+
 ## [2026-07-04] deploy | 🛑 Fix REGLA #0 eliminar-cuenta + MP-C9 grace period + Fase 4 tests · v1.110.0 EN PROD
 
 **🛑 BUG REGLA #0 (money) — eliminar cuenta no cancelaba la suscripción en MP.** `MiCuentaPage.handleDeleteAccount` marcaba el tenant `cancelled` con un UPDATE directo pero **nunca cancelaba el preapproval en MP** → un usuario con suscripción **activa** que eliminaba su cuenta **seguía siendo cobrado por MP para siempre** (mismo fail-open que v1.104.0, vivo en el flujo de delete). Además el UPDATE corría DESPUÉS de borrar el `users` row → fallaba por RLS. **Fix:** si `active`, invocar `cancel-suscripcion` (fail-closed) ANTES de borrar; si MP no confirma, **abortar**; reordenado. Auditados los otros puntos: `AdminPage` ya pasa por el EF ✅, `SuscripcionPage` solo lectura.

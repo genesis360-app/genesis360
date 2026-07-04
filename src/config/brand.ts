@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.110.0'
+export const APP_VERSION = 'v1.111.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
@@ -40,6 +40,15 @@ export const LEGAL_VERSION = '2026-07-01'
 // operan en avanzado (la app completa, como antes de v1.55) sin importar
 // tenants.modo_operacion ni el plan, y el toggle desaparece de Configuración.
 export const MODO_BASICO_ENABLED = true
+
+// 🛑 Kill-switch del configurador de add-ons FIJOS in-app (SKU/sucursales/usuarios).
+// Agregar/quitar un add-on fijo dispara un PUT /preapproval que CAMBIA EL MONTO RECURRENTE
+// que MP le cobra al cliente (mp-addon-fijo). Ese flujo NUNCA se validó e2e en sandbox
+// (comportamiento del PUT transaction_amount sobre un preapproval basado en plan = a confirmar).
+// REGLA #0: no exponer un cobro sin validar → OFF hasta que GO lo pruebe en sandbox con una
+// suscripción real y confirme el cobro. El estimador PÚBLICO del Landing (PricingConfigurator)
+// NO depende de esto (solo estima, no cobra). El add-on TEMPORAL de movimientos tampoco.
+export const ADDON_FIJO_ENABLED = false
 
 export const MP_PLAN_IDS: Record<string, string> = {
   basico: '836c7829f7e944c9ac58d7c0c67a513b',

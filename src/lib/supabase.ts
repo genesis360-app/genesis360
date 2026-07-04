@@ -31,6 +31,8 @@ export interface Tenant {
   max_users: number
   max_productos: number
   mp_subscription_id?: string
+  // MP-C9: fin del período pagado (se setea al cancelar). El acceso perdura hasta acá.
+  subscription_period_end?: string | null
   logo_url?: string
   cotizacion_usd?: number
   cotizacion_usd_updated_at?: string

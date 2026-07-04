@@ -50,8 +50,9 @@ export default function TerminosPage() {
           actualizarse; los cambios de precio no afectan el período ya abonado. Los pagos se procesan
           a través de proveedores de pago externos (por ejemplo, Mercado Pago). La suscripción se
           renueva automáticamente por períodos equivalentes hasta que la canceles. Podés cancelar en
-          cualquier momento desde tu cuenta; la cancelación surte efecto al finalizar el período
-          vigente y no genera reembolsos por períodos ya iniciados, salvo que la ley aplicable
+          cualquier momento desde tu cuenta: se interrumpe la renovación y no se te vuelve a cobrar,
+          pero conservás el acceso al plan contratado hasta el final del período que ya abonaste. La
+          cancelación no genera reembolsos por períodos ya iniciados, salvo que la ley aplicable
           disponga lo contrario.
         </p>
       </LegalSection>

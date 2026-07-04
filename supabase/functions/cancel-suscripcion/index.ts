@@ -121,6 +121,9 @@ serve(async (req) => {
     // 2) Cancelar en MP los que pertenezcan al tenant y estén vivos.
     let mpCancelled = 0
     const errores: string[] = []
+    // MP-C9: fin del período ya pagado (grace period). Al cancelar una sub paga, el acceso
+    // perdura hasta acá (el cliente pagó el período). MP lo trae como next_payment_date.
+    let periodEnd: string | null = null
     // Si hay un preapproval GUARDADO, exigimos CONFIRMAR que quedó fuera de cobro antes
     // de decir "cancelado" (fail-closed). Sin id guardado (tenant legacy sin link) →
     // best-effort: reflejamos la baja aunque no encontremos nada que cancelar.
@@ -136,6 +139,12 @@ serve(async (req) => {
       // tenant (verificado al activar; en checkouts por plan external_reference viene vacío).
       const esDelTenant = pre?.external_reference === tenantId || id === storedId || ownedByEmail.has(id)
       if (!esDelTenant) continue                                   // no es de este tenant → NO tocar
+      // MP-C9: capturar el fin del período pagado del preapproval del tenant (el más lejano).
+      const npd = pre?.next_payment_date ?? pre?.summarized?.next_payment_date
+      if (npd) {
+        const d = new Date(npd)
+        if (!isNaN(d.getTime()) && (!periodEnd || d.getTime() > new Date(periodEnd).getTime())) periodEnd = d.toISOString()
+      }
       if (pre?.status === 'cancelled') { mpCancelled++; if (id === storedId) storedConfirmado = true; continue }
       if (!VIVOS.includes(pre?.status)) { if (id === storedId) storedConfirmado = true; continue } // no está cobrando
       const putRes = await fetch(`${MP}/preapproval/${id}`, {
@@ -158,15 +167,18 @@ serve(async (req) => {
 
     // 3) Marcar la cuenta como cancelada (service_role). La intención del usuario es
     //    cancelar; si no había preapproval vivo (ya cancelado o nunca existió), igual
-    //    reflejamos la baja. El acceso se mantiene hasta fin de período (no se toca plan_tier).
+    //    reflejamos la baja. MP-C9: el acceso se mantiene hasta fin de período pagado
+    //    (subscription_period_end = next_payment_date de MP, fallback now()+30d); el
+    //    SubscriptionGuard lo respeta. No se toca plan_tier.
+    const graceEnd = periodEnd ?? new Date(Date.now() + 30 * 86400000).toISOString()
     const { error: updErr } = await admin.from('tenants')
-      .update({ subscription_status: 'cancelled' }).eq('id', tenantId)
+      .update({ subscription_status: 'cancelled', subscription_period_end: graceEnd }).eq('id', tenantId)
     if (updErr) {
       console.error('cancel-suscripcion: update tenant', updErr)
       return json({ error: 'Se canceló en MP pero no se pudo actualizar la cuenta. Contactá soporte.' }, 500)
     }
 
-    return json({ cancelled: true, mp_cancelled: mpCancelled })
+    return json({ cancelled: true, mp_cancelled: mpCancelled, period_end: graceEnd })
   } catch (e) {
     console.error('cancel-suscripcion error', e)
     return json({ error: (e as Error).message ?? 'Error' }, 500)

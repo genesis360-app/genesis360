@@ -68,7 +68,12 @@ export default function MiCuentaPage() {
       if (end > hoy) return `Trial hasta ${format(end, 'dd/MM/yyyy', { locale: es })}`
       return 'Trial vencido'
     }
-    if (s === 'cancelled') return 'Cancelada'
+    if (s === 'cancelled') {
+      // MP-C9: si todavía queda período pagado, el acceso perdura hasta esa fecha.
+      const pe = tenant.subscription_period_end ? new Date(tenant.subscription_period_end) : null
+      if (pe && pe > new Date()) return `Cancelada · acceso hasta ${format(pe, 'dd/MM/yyyy', { locale: es })}`
+      return 'Cancelada'
+    }
     if (s === 'inactive') return 'Inactiva'
     return s
   }
@@ -178,13 +183,16 @@ export default function MiCuentaPage() {
   // cuenta como cancelada (fail-closed: si MP no confirma, no dice "cancelado"). El EF
   // deriva el tenant del JWT; no se le pasa nada sensible desde el cliente.
   const handleCancelarSuscripcion = async () => {
-    if (!tenant || !confirm('¿Cancelar tu suscripción? Tu plan pasará a Free al finalizar el período.')) return
+    if (!tenant || !confirm('¿Cancelar tu suscripción? Se cancela el cobro en Mercado Pago, pero mantenés el acceso hasta el fin del período que ya pagaste.')) return
     setCancelando(true)
     try {
       const { data, error } = await supabase.functions.invoke('cancel-suscripcion', { body: {} })
       if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo cancelar la suscripción')
       await loadUserData(user!.id)
-      toast.success('Suscripción cancelada. Tu plan pasará a Free al finalizar el período.')
+      const hasta = data?.period_end ? new Date(data.period_end).toLocaleDateString('es-AR') : null
+      toast.success(hasta
+        ? `Suscripción cancelada. Mantenés el acceso hasta el ${hasta}.`
+        : 'Suscripción cancelada. Mantenés el acceso hasta el fin del período pagado.')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al cancelar suscripción')
     } finally {
@@ -198,11 +206,25 @@ export default function MiCuentaPage() {
     if (confirmText !== tenant.nombre) { toast.error(`Escribí exactamente: ${tenant.nombre}`); return }
     setDeleting(true)
     try {
-      // Eliminar registro en public.users primero — si esto falla no seguimos
+      // 🛑 REGLA #0: si hay suscripción ACTIVA, cancelar el cobro en MP ANTES de borrar nada.
+      // Si no, el usuario elimina la cuenta y Mercado Pago le SIGUE COBRANDO (el preapproval
+      // queda vivo). El EF cancel-suscripcion deriva el tenant del JWT y es fail-closed: si MP
+      // no confirma la cancelación, tira error y ABORTAMOS la eliminación (mejor no borrar que
+      // dejar un cobro vivo). Debe correr mientras el registro de `users` todavía existe.
+      if (tenant.subscription_status === 'active') {
+        const { data, error } = await supabase.functions.invoke('cancel-suscripcion', { body: {} })
+        if (error || data?.error) {
+          throw new Error(data?.error ?? error?.message ??
+            'No se pudo cancelar tu suscripción en Mercado Pago. Cancelala primero para no seguir siendo cobrado y volvé a intentar.')
+        }
+        // El EF ya dejó subscription_status='cancelled'.
+      } else if (tenant.subscription_status !== 'cancelled') {
+        // trial/free/inactive: marcar cancelado (soft delete) mientras el users row aún existe (RLS).
+        await supabase.from('tenants').update({ subscription_status: 'cancelled' }).eq('id', tenant.id)
+      }
+      // Recién ahora eliminar el registro en public.users.
       const { error: userDeleteError } = await supabase.from('users').delete().eq('id', user.id)
       if (userDeleteError) throw userDeleteError
-      // Marcar tenant como cancelado (soft delete)
-      await supabase.from('tenants').update({ subscription_status: 'cancelled' }).eq('id', tenant.id)
       toast.success('Negocio eliminado correctamente')
       await signOut()
       navigate('/login')

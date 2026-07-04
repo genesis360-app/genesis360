@@ -37,6 +37,7 @@ const ACTION_MODULE: Record<string, string> = {
   'agents.update': 'users',
   'billing.overview': 'billing',
   'billing.cancel_subscription': 'billing',
+  'billing.link_subscription': 'billing',
   'crm.leads.list': 'crm',
   'crm.leads.create': 'crm',
   'crm.leads.update': 'crm',
@@ -45,6 +46,18 @@ const ROLES = ['admin', 'support', 'marketing', 'billing']
 const DAY = 86400000
 const MP = 'https://api.mercadopago.com'
 const MP_VIVOS = ['authorized', 'pending', 'paused']
+
+// preapproval_plan_id (MP) → tier. Espejo de mp-verificar-suscripcion / mp-webhook.
+// plan_tier es la fuente de verdad de los límites (fn_tenant_limite); los max_users/
+// max_productos se setean al BASE del tier solo por consistencia.
+const MP_PLAN_TIER: Record<string, 'basico' | 'pro'> = {
+  [Deno.env.get('MP_PLAN_BASICO') ?? '']: 'basico',
+  [Deno.env.get('MP_PLAN_PRO')    ?? '']: 'pro',
+}
+const TIER_BASE: Record<string, { max_users: number; max_productos: number }> = {
+  basico: { max_users: 5,  max_productos: 2000 },
+  pro:    { max_users: 15, max_productos: 8000 },
+}
 
 // Cancela el/los preapproval(s) del tenant en Mercado Pago (mismo circuito que el EF
 // cancel-suscripcion). Camino principal: el id GUARDADO (mp_subscription_id, verificado al
@@ -198,6 +211,69 @@ Deno.serve(async (req) => {
         if (error) return json({ error: 'Se canceló en MP pero no se pudo actualizar la cuenta.' }, 500)
         await audit({ tenantId: p.tenantId, mp_cancelled })
         return json({ ok: true, mp_cancelled })
+      }
+
+      case 'billing.link_subscription': {
+        // Soporte: linkear a un tenant una suscripción MP que quedó HUÉRFANA (activa en MP
+        // pero sin linkear en la app). Pasa cuando el checkout-return falló o el cliente cerró
+        // la pestaña; como MP manda payer_email/external_reference VACÍOS en checkout por plan,
+        // la app no puede autorrecuperarla → soporte la linkea a mano con el preapproval_id.
+        // 🛑 REGLA #0: verifica contra MP (authorized + plan nuestro + no reclamada) ANTES de
+        // activar, y cancela una suscripción anterior DISTINTA para evitar doble cobro.
+        const tenantId = String(p.tenantId ?? '')
+        const preId = String(p.preapprovalId ?? '').trim()
+        if (!tenantId || !preId) return json({ error: 'Faltan tenantId y preapprovalId' }, 400)
+        const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
+        if (!mpToken) return json({ error: 'MP no configurado' }, 500)
+        const H = { Authorization: `Bearer ${mpToken}` }
+
+        const { data: tRow } = await svc.from('tenants').select('id, mp_subscription_id').eq('id', tenantId).maybeSingle()
+        if (!tRow) return json({ error: 'Tenant no encontrado' }, 404)
+
+        // 1) Traer el preapproval de MP
+        const gr = await fetch(`${MP}/preapproval/${preId}`, { headers: H })
+        if (!gr.ok) return json({ error: `No se encontró el preapproval en Mercado Pago (${gr.status}).` }, 404)
+        const sub = await gr.json()
+        // 2) Debe estar autorizado (cobrando)
+        if (sub?.status !== 'authorized') {
+          return json({ error: `El preapproval no está autorizado (estado: ${sub?.status ?? 'desconocido'}). No se activa.` }, 409)
+        }
+        // 3) Debe ser un plan NUESTRO
+        const tier = sub?.preapproval_plan_id ? MP_PLAN_TIER[sub.preapproval_plan_id] : undefined
+        if (!tier) return json({ error: `Plan no reconocido (${sub?.preapproval_plan_id ?? 'sin plan'}).` }, 400)
+        // 4) Claim exclusivo: no puede estar linkeado a OTRO tenant
+        const { data: otro } = await svc.from('tenants')
+          .select('id').eq('mp_subscription_id', preId).neq('id', tenantId).maybeSingle()
+        if (otro) return json({ error: `Ese preapproval ya está asociado a otro negocio (${otro.id}).` }, 409)
+
+        // 5) Evitar doble cobro: cancelar en MP una suscripción anterior DISTINTA y viva
+        let prev_cancel_error: string | null = null
+        const prevId = tRow.mp_subscription_id ? String(tRow.mp_subscription_id) : null
+        if (prevId && prevId !== preId) {
+          try {
+            const pg = await fetch(`${MP}/preapproval/${prevId}`, { headers: H })
+            const prev = pg.ok ? await pg.json() : null
+            if (prev && MP_VIVOS.includes(prev.status)) {
+              const put = await fetch(`${MP}/preapproval/${prevId}`, {
+                method: 'PUT', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'cancelled' }),
+              })
+              if (!put.ok) prev_cancel_error = `${prevId}:${put.status}`
+            }
+          } catch (_) { prev_cancel_error = `${prevId}:excepcion` }
+        }
+
+        // 6) Activar (service_role: bypassa el guard server-side de tenants, mig 247)
+        const { error: updErr } = await svc.from('tenants').update({
+          subscription_status: 'active',
+          mp_subscription_id: preId,
+          plan_tier: tier,
+          max_users: TIER_BASE[tier].max_users,
+          max_productos: TIER_BASE[tier].max_productos,
+        }).eq('id', tenantId)
+        if (updErr) return json({ error: 'Se verificó en MP pero no se pudo activar la cuenta.' }, 500)
+
+        await audit({ tenantId, preapproval_id: preId, tier, prev_cancel_error })
+        return json({ ok: true, tier, prev_cancel_error })
       }
 
       case 'crm.leads.list': {

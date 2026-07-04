@@ -6,6 +6,16 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-04] build | 🔧 Soporte: linkear suscripción MP huérfana por preapproval_id (⏳ pendiente deploy EF)
+
+Sale del caso Fede (2026-07-03): una suscripción puede quedar **activa en MP pero sin linkear** en la app (checkout-return falló / pestaña cerrada) y **no se puede autorrecuperar** porque MP manda `payer_email` y `external_reference` **vacíos** en checkout por plan. Herramienta de soporte para linkearla a mano con el `preapproval_id`.
+
+**Backend (repo principal, EF `admin-api`):** nueva acción **`billing.link_subscription`** (`{ tenantId, preapprovalId }`, módulo `billing`). 🛑 REGLA #0: **verifica contra MP** (`status:'authorized'` + `preapproval_plan_id` de un plan nuestro vía `MP_PLAN_TIER` + **no reclamada** por otro tenant = claim exclusivo) y **cancela una suscripción anterior distinta y viva** (evita doble cobro) ANTES de activar (`subscription_status='active'` + `mp_subscription_id` + `plan_tier` + base de límites). Audita en `admin_audit_log`. Mismo criterio que `mp-verificar-suscripcion`. **Frontend (repo `genesis360-admin`):** botón **"Linkear suscripción"** en `CustomerDetailPage` (gateado por `canSee(rol,'billing')`) → input del `preapproval_id` + confirm; `adminApi.linkSubscription`. Build admin verde (tsc+vite). Doc en `wiki/integrations/mercado-pago.md` §3.f.
+
+**⏳ Pendiente:** deploy del EF `admin-api` a DEV+PROD (requiere OK de GO) + deploy del panel (Vercel del repo admin). No es necesario para recuperar a Fede mañana (esa va por la Opción A del app URL) — es una herramienta general de soporte reusable.
+
+---
+
 ## [2026-07-03] deploy | 🔁 Fase 2 billing MP — rework del flujo de activación · v1.108.0 EN PROD
 
 **Contexto (REGLA #0, revenue):** el test real con Fede (v1.107.0) probó que **la activación por UI no funcionaba** (un cliente paga y no se activa solo). Tres causas en `SuscripcionPage`: (1) el retorno del checkout invocaba la EF con el **JWT posiblemente sin restaurar** (el redirect de MP recarga la app de cero → 401) y el `handleVerificarPago` hacía `if (!tenant) return` con el `useEffect` en deps `[status]` → **no reintentaba nunca**; (2) la pantalla de resultado era **estática y mentía** ("tu suscripción se activó") sin verificar; (3) el botón email-search era inútil porque MP manda `payer_email` **vacío** en checkout por plan.

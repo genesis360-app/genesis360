@@ -197,6 +197,22 @@ por estado real + `loadUserData` antes de navegar (evita rebote de `Subscription
 > [!IMPORTANT] La activación **solo se valida en PROD con un pago real** — el token MP de DEV es de otra
 > cuenta y no ve las subs reales. Con `payer_email` vacío la EF activa por `preapproval_id` + claim exclusivo.
 
+### 3.f Recuperar una suscripción HUÉRFANA (soporte, panel admin)
+
+Si una suscripción quedó **activa en MP pero sin linkear** en la app (el checkout-return falló, o el
+cliente cerró la pestaña), **no se puede autorrecuperar** desde la app: MP manda `payer_email` y
+`external_reference` **vacíos** en checkout por plan → no hay por dónde buscarla salvo el `preapproval_id`.
+
+**Herramienta de soporte:** en `admin.genesis360.pro` → ficha del cliente → **"Linkear suscripción"**: se
+pega el `preapproval_id` (del panel de MP → Suscriptores → Ver detalles) y se invoca `admin-api` acción
+**`billing.link_subscription`** (módulo `billing`). La EF **verifica contra MP** (`status:'authorized'` +
+`preapproval_plan_id` de un plan nuestro + **no reclamada** por otro tenant), **cancela una suscripción
+anterior distinta** para evitar doble cobro, y recién ahí activa (`subscription_status='active'` +
+`mp_subscription_id` + `plan_tier`). Mismo criterio de pertenencia que `mp-verificar-suscripcion`.
+
+> [!TIP] Alternativa sin panel: que el cliente (logueado, con v1.108.0) abra
+> `/suscripcion?status=approved&preapproval_id=<ID>` → dispara el mismo camino verificado.
+
 ---
 
 ## Edge Functions

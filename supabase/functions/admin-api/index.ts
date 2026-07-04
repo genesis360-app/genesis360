@@ -65,12 +65,14 @@ const TIER_BASE: Record<string, { max_users: number; max_productos: number }> = 
 // del id guardado NO se puede gatear por él (bug histórico que fail-abría: dejaba la cuenta
 // 'cancelled' sin cancelar en MP). Fail-closed: si hay id guardado y no se confirma que quedó
 // fuera de cobro, agrega 'no_confirmado' a errores → el caller NO marca cancelado.
-async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promise<{ mp_cancelled: number; errores: string[] }> {
+async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promise<{ mp_cancelled: number; errores: string[]; periodEnd: string | null }> {
   const H = { Authorization: `Bearer ${mpToken}` }
   const { data: t } = await svc.from('tenants').select('mp_subscription_id').eq('id', tenantId).single()
   const storedId = t?.mp_subscription_id ? String(t.mp_subscription_id) : null
   const cand = new Set<string>()
   if (storedId) cand.add(storedId)
+  // MP-C9: fin del período pagado (grace al cancelar). MP lo trae como next_payment_date.
+  let periodEnd: string | null = null
   try {
     for (let off = 0; off < 1000; off += 100) {
       const r = await fetch(`${MP}/preapproval/search?external_reference=${encodeURIComponent(tenantId)}&limit=100&offset=${off}`, { headers: H })
@@ -94,6 +96,11 @@ async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promi
     // (verificado al activar; en checkout por plan external_reference viene vacío).
     const esDelTenant = pre?.external_reference === tenantId || id === storedId
     if (!esDelTenant) continue                                    // no es de este tenant
+    const npd = pre?.next_payment_date ?? pre?.summarized?.next_payment_date
+    if (npd) {
+      const d = new Date(npd)
+      if (!isNaN(d.getTime()) && (!periodEnd || d.getTime() > new Date(periodEnd).getTime())) periodEnd = d.toISOString()
+    }
     if (pre?.status === 'cancelled') { mp_cancelled++; if (id === storedId) storedConfirmado = true; continue }
     if (!MP_VIVOS.includes(pre?.status)) { if (id === storedId) storedConfirmado = true; continue }
     const put = await fetch(`${MP}/preapproval/${id}`, {
@@ -103,7 +110,7 @@ async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promi
     else errores.push(`${id}:${put.status}`)
   }
   if (storedId && !storedConfirmado) errores.push('no_confirmado')
-  return { mp_cancelled, errores }
+  return { mp_cancelled, errores, periodEnd }
 }
 
 // MRR + distribución por plan (join tenants→planes). Paga = plan_id no nulo y fuera de trial.
@@ -200,17 +207,20 @@ Deno.serve(async (req) => {
         if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
         const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
         if (!mpToken) return json({ error: 'MP no configurado' }, 500)
-        const { mp_cancelled, errores } = await cancelarSubMP(svc, p.tenantId, mpToken)
+        const { mp_cancelled, errores, periodEnd } = await cancelarSubMP(svc, p.tenantId, mpToken)
         // Fail-closed (REGLA #0): si algún preapproval vivo no se pudo cancelar, NO
         // marcamos cancelada la cuenta (seguiría cobrando y el panel mentiría).
         if (errores.length) {
           await audit({ tenantId: p.tenantId, errores })
           return json({ error: 'No se pudo cancelar en Mercado Pago. Reintentá o revisá el panel de MP.', detalle: errores }, 502)
         }
-        const { error } = await svc.from('tenants').update({ subscription_status: 'cancelled' }).eq('id', p.tenantId)
+        // MP-C9: el acceso perdura hasta el fin del período pagado.
+        const graceEnd = periodEnd ?? new Date(Date.now() + 30 * 86400000).toISOString()
+        const { error } = await svc.from('tenants')
+          .update({ subscription_status: 'cancelled', subscription_period_end: graceEnd }).eq('id', p.tenantId)
         if (error) return json({ error: 'Se canceló en MP pero no se pudo actualizar la cuenta.' }, 500)
-        await audit({ tenantId: p.tenantId, mp_cancelled })
-        return json({ ok: true, mp_cancelled })
+        await audit({ tenantId: p.tenantId, mp_cancelled, period_end: graceEnd })
+        return json({ ok: true, mp_cancelled, period_end: graceEnd })
       }
 
       case 'billing.link_subscription': {

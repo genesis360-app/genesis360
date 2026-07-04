@@ -13,6 +13,16 @@ updated: 2026-05-29
 
 ---
 
+## v1.110.0 — 🛑 Fix REGLA #0 eliminar-cuenta + ⏳ MP-C9 grace period + Fase 4 tests (PROD ✅, mig 255 + 2 EFs)
+
+**Bug REGLA #0 (money):** `MiCuentaPage.handleDeleteAccount` marcaba el tenant `cancelled` con un UPDATE directo pero **NO cancelaba el preapproval en MP** → eliminar la cuenta con sub activa dejaba a MP cobrando para siempre (fail-open, como v1.104.0 pero en delete; además el UPDATE post-borrado-de-users fallaba por RLS). **Fix:** cancelar en MP (`cancel-suscripcion`, fail-closed) ANTES de borrar; abortar si MP no confirma; reordenado. `AdminPage` ya OK (EF), `SuscripcionPage` solo lectura.
+
+**MP-C9 — grace period al cancelar (pedido GO, REGLA #0 fairness):** el cliente que pagó conserva el acceso hasta el fin del período abonado (antes el guard cortaba al instante). **mig 255** `tenants.subscription_period_end`; `cancel-suscripcion` + `admin-api` guardan el `next_payment_date` de MP (fallback `now()+30d`) al cancelar; `SubscriptionGuard` permite `cancelled && now < period_end`; `MiCuentaPage` muestra "acceso hasta DD/MM". **T&C sección 4** ya lo prometía (sin reembolsos por período iniciado) — se explicitó "conservás el acceso hasta el fin del período abonado". El código ahora CUMPLE el contrato.
+
+**Fase 4 (test-only, patrón ccLogic):** `suscripcionActivacion.ts` (usado por `SuscripcionPage`) + `mpPertenencia.ts` (espejo pertenencia, crux `payer_email` vacío) + `mpCancelacion.ts` (espejo fail-closed) + 34 tests. typecheck + build + 873 unit verdes. **🟠 e2e del grace lo valida GO con una cancelación real.**
+
+---
+
 ## v1.109.0 — 🔧 Soporte: linkear suscripción MP huérfana por preapproval_id (PROD ✅, EF admin-api + panel)
 
 Sale del caso Fede: una suscripción puede quedar **activa en MP pero sin linkear** en la app (checkout-return falló / pestaña cerrada) y **no se puede autorrecuperar** — MP manda `payer_email`/`external_reference` **vacíos** en checkout por plan → la app no tiene por dónde encontrarla salvo el `preapproval_id`. **Backend (EF `admin-api`):** acción **`billing.link_subscription`** (módulo `billing`) que **verifica contra MP** (`authorized` + plan nuestro + **no reclamada** por otro tenant) y **cancela una anterior distinta y viva** (anti doble-cobro) antes de activar (`active` + `mp_subscription_id` + `plan_tier`); audita. **Panel (`genesis360-admin`):** botón "Linkear suscripción" en `CustomerDetailPage` (rol `billing`) → pegar `preapproval_id` + confirm. EF DEV+PROD (CLI); panel a su Vercel. Frontend de la app sin cambios (bump de versión por convención). **🟠 e2e real** lo hace GO desde el panel (no testeable en DEV). Ver `wiki/integrations/mercado-pago.md` §3.f.

@@ -6,13 +6,27 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-04] deploy | 🛑 Fix REGLA #0 eliminar-cuenta + MP-C9 grace period + Fase 4 tests · v1.110.0 EN PROD
+
+**🛑 BUG REGLA #0 (money) — eliminar cuenta no cancelaba la suscripción en MP.** `MiCuentaPage.handleDeleteAccount` marcaba el tenant `cancelled` con un UPDATE directo pero **nunca cancelaba el preapproval en MP** → un usuario con suscripción **activa** que eliminaba su cuenta **seguía siendo cobrado por MP para siempre** (mismo fail-open que v1.104.0, vivo en el flujo de delete). Además el UPDATE corría DESPUÉS de borrar el `users` row → fallaba por RLS. **Fix:** si `active`, invocar `cancel-suscripcion` (fail-closed) ANTES de borrar; si MP no confirma, **abortar**; reordenado. Auditados los otros puntos: `AdminPage` ya pasa por el EF ✅, `SuscripcionPage` solo lectura.
+
+**⏳ MP-C9 — GRACE PERIOD al cancelar (pedido GO, REGLA #0 fairness).** Antes, al cancelar una sub PAGA el `SubscriptionGuard` cortaba el acceso AL INSTANTE — pero el cliente pagó el período, le corresponde hasta el fin (el propio EF ya lo comentaba pero el guard no lo cumplía; y el T&C sección 4 ya lo promete). **Fix:** **mig 255** `tenants.subscription_period_end`; `cancel-suscripcion` + `admin-api` capturan el `next_payment_date` del preapproval de MP (fallback `now()+30d`) y lo guardan al cancelar; `SubscriptionGuard` permite `cancelled && now < subscription_period_end`; `MiCuentaPage` muestra "acceso hasta DD/MM" + mensajes de grace. **T&C:** la cláusula ya estaba (sección 4: "surte efecto al finalizar el período vigente, sin reembolsos por períodos iniciados") — se hizo explícita ("conservás el acceso hasta el fin del período abonado"). Ahora el código CUMPLE el contrato.
+
+**🧪 Fase 4 — tests de regresión billing (test-only, patrón ccLogic):** `suscripcionActivacion.ts` (usado por `SuscripcionPage`) + `mpPertenencia.ts` (espejo pertenencia, crux `payer_email` vacío) + `mpCancelacion.ts` (espejo fail-closed) + 34 tests.
+
+**Deploy:** mig 255 (DEV+PROD) + EFs `cancel-suscripcion`/`admin-api` (DEV+PROD) + frontend (Vercel main) + release v1.110.0. typecheck + build + **873 unit** verdes. **🟠 e2e del grace/next_payment_date lo valida GO con una cancelación real** (no testeable en DEV).
+
+---
+
 ## [2026-07-04] deploy | 🔧 Soporte: linkear suscripción MP huérfana por preapproval_id · v1.109.0 EN PROD
 
 Sale del caso Fede (2026-07-03): una suscripción puede quedar **activa en MP pero sin linkear** en la app (checkout-return falló / pestaña cerrada) y **no se puede autorrecuperar** porque MP manda `payer_email` y `external_reference` **vacíos** en checkout por plan. Herramienta de soporte para linkearla a mano con el `preapproval_id`.
 
 **Backend (repo principal, EF `admin-api`):** nueva acción **`billing.link_subscription`** (`{ tenantId, preapprovalId }`, módulo `billing`). 🛑 REGLA #0: **verifica contra MP** (`status:'authorized'` + `preapproval_plan_id` de un plan nuestro vía `MP_PLAN_TIER` + **no reclamada** por otro tenant = claim exclusivo) y **cancela una suscripción anterior distinta y viva** (evita doble cobro) ANTES de activar (`subscription_status='active'` + `mp_subscription_id` + `plan_tier` + base de límites). Audita en `admin_audit_log`. Mismo criterio que `mp-verificar-suscripcion`. **Frontend (repo `genesis360-admin`):** botón **"Linkear suscripción"** en `CustomerDetailPage` (gateado por `canSee(rol,'billing')`) → input del `preapproval_id` + confirm; `adminApi.linkSubscription`. Doc en `wiki/integrations/mercado-pago.md` §3.f.
 
-**Deploy:** EF `admin-api` a **DEV+PROD** (CLI, `verify_jwt` preservado; smoke PROD 401 sin auth = arriba+protegido) + panel a su Vercel (PR dev→main repo admin) + repo principal PR dev→main + release **v1.109.0** (bump APP_VERSION; frontend de la app sin cambios). **🟠 e2e real** (linkear una sub verdadera) lo hace GO desde el panel — no testeable en DEV (token MP de DEV es de otra cuenta). Puede servir de alternativa para recuperar a Fede.
+**Deploy:** EF `admin-api` a **DEV+PROD** (CLI, `verify_jwt` preservado; smoke PROD 401 sin auth = arriba+protegido) + panel a su Vercel (PR dev→main repo admin) + repo principal PR dev→main + release **v1.109.0** (bump APP_VERSION; frontend de la app sin cambios).
+
+**✅ VALIDADO e2e en PROD (2026-07-04):** GO linkeó desde el panel la sub huérfana de Fede (`b3b190925eb74d28940a453e9240e771`) → tenant `456dbf20…` quedó `active`+`basico`+`mp_subscription_id` correcto (DB PROD confirmado); audit `billing.link_subscription` por `soporte@genesis360.pro` con `prev_cancel_error=null` (sin doble cobro). **Es la PRIMERA prueba e2e real del camino de activación server-side** (verificar contra MP→plan→activar) con una sub MP verdadera; el checkout-return de v1.108.0 usa el mismo EF → resta probar solo el frontend del retorno con un suscriptor fresco.
 
 ---
 

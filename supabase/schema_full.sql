@@ -58,6 +58,7 @@ CREATE TABLE tenants (
   max_users                 INT NOT NULL DEFAULT 2,
   max_productos             INT NOT NULL DEFAULT 50,
   mp_subscription_id        TEXT,
+  subscription_period_end   TIMESTAMPTZ,  -- MP-C9 (mig 255) — grace period: acceso hasta fin del período pagado al cancelar
   logo_url                  TEXT,
   cotizacion_usd            DECIMAL(14,2),
   cotizacion_usd_updated_at TIMESTAMPTZ,

@@ -32,10 +32,14 @@ export function SubscriptionGuard() {
 
   const now = new Date()
   const trialEnd = new Date(tenant.trial_ends_at)
+  // MP-C9: al cancelar una sub PAGA, el acceso perdura hasta el fin del período ya pagado
+  // (subscription_period_end, seteado por el EF cancel-suscripcion). Pagaron el período → les corresponde.
+  const periodEnd = tenant.subscription_period_end ? new Date(tenant.subscription_period_end) : null
 
   const isActive =
     tenant.subscription_status === 'active' ||
-    (tenant.subscription_status === 'trial' && now < trialEnd)
+    (tenant.subscription_status === 'trial' && now < trialEnd) ||
+    (tenant.subscription_status === 'cancelled' && periodEnd !== null && now < periodEnd)
 
   if (!isActive) return <Navigate to="/suscripcion" replace />
 

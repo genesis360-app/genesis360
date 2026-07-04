@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
+import { clasificarVerificacion, mensajeErrorVerif } from '@/lib/suscripcionActivacion'
 import {
   Check, X, CheckCircle, XCircle, Clock,
   ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut, Plus, Trash2, SlidersHorizontal,
@@ -22,20 +23,6 @@ const DIMS_FIJAS: Array<{ dim: AddonDimension; label: string }> = [
 
 const labelDim = (dim: string) =>
   dim === 'sku' ? 'productos' : dim === 'sucursales' ? 'sucursales' : dim === 'usuarios' ? 'usuarios' : dim
-
-// Mensaje al usuario según el `reason` terminal que devuelve mp-verificar-suscripcion.
-const mensajeErrorVerif = (reason: string | null) => {
-  switch (reason) {
-    case 'owner_mismatch':
-      return 'El pago figura a nombre de otra cuenta de Mercado Pago. Pagá desde la misma cuenta con la que verificás, o escribinos.'
-    case 'ya_reclamada':
-      return 'Esta suscripción ya está asociada a otro negocio. Escribinos y lo resolvemos.'
-    case 'plan_desconocido':
-      return 'No reconocimos el plan pagado. Escribinos y lo resolvemos enseguida.'
-    default:
-      return 'Tuvimos un problema al confirmar tu pago. Si ya pagaste, no vuelvas a pagar: reintentá o escribinos.'
-  }
-}
 
 
 export default function SuscripcionPage() {
@@ -132,19 +119,16 @@ export default function SuscripcionPage() {
     const { data, error } = await supabase.functions.invoke('mp-verificar-suscripcion', {
       body: preapprovalId ? { preapproval_id: preapprovalId } : {},
     })
+    // Si hubo error HTTP (4xx/5xx), intentar leer el `reason` del body para el mensaje.
+    let errorReason: string | undefined
     if (error) {
-      // 4xx/5xx = terminal (owner_mismatch, ya_reclamada, plan_desconocido, error server).
-      let reason: string | undefined
       try {
         const ctx: any = (error as any).context
         const body = ctx && typeof ctx.json === 'function' ? await ctx.json() : null
-        reason = body?.reason
+        errorReason = body?.reason
       } catch { /* el body ya se consumió o no es JSON */ }
-      return { estado: 'error', reason }
     }
-    if (data?.activated) return { estado: 'ok' }
-    // 200 con activated:false → MP todavía no confirmó (no_encontrado / no_autorizado).
-    return { estado: 'pendiente', reason: data?.reason }
+    return clasificarVerificacion(data, !!error, errorReason)
   }
 
   // Al volver de MP con status=approved: esperar la sesión (el redirect recarga la app de

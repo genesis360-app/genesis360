@@ -13,6 +13,12 @@ updated: 2026-05-29
 
 ---
 
+## v1.109.0 — 🔧 Soporte: linkear suscripción MP huérfana por preapproval_id (PROD ✅, EF admin-api + panel)
+
+Sale del caso Fede: una suscripción puede quedar **activa en MP pero sin linkear** en la app (checkout-return falló / pestaña cerrada) y **no se puede autorrecuperar** — MP manda `payer_email`/`external_reference` **vacíos** en checkout por plan → la app no tiene por dónde encontrarla salvo el `preapproval_id`. **Backend (EF `admin-api`):** acción **`billing.link_subscription`** (módulo `billing`) que **verifica contra MP** (`authorized` + plan nuestro + **no reclamada** por otro tenant) y **cancela una anterior distinta y viva** (anti doble-cobro) antes de activar (`active` + `mp_subscription_id` + `plan_tier`); audita. **Panel (`genesis360-admin`):** botón "Linkear suscripción" en `CustomerDetailPage` (rol `billing`) → pegar `preapproval_id` + confirm. EF DEV+PROD (CLI); panel a su Vercel. Frontend de la app sin cambios (bump de versión por convención). **🟠 e2e real** lo hace GO desde el panel (no testeable en DEV). Ver `wiki/integrations/mercado-pago.md` §3.f.
+
+---
+
 ## v1.108.0 — 🔁 Fase 2 billing MP: rework del flujo de activación (PROD ✅, frontend-only)
 
 **Contexto (REGLA #0, revenue):** tras el test real con Fede (v1.107.0) se confirmó que **la activación por UI no funcionaba** — un cliente pagaba y no se activaba solo. Tres causas en `SuscripcionPage`: (1) el retorno del checkout invocaba la EF con el **JWT posiblemente sin restaurar** (el redirect recarga la app de cero) → 401; el `handleVerificarPago` hacía `if (!tenant) return` y el `useEffect` (deps `[status]`) **no reintentaba nunca**; (2) la pantalla de resultado era **estática y mentía** ("tu suscripción se activó") sin verificar nada; (3) el botón email-search no podía andar porque MP manda `payer_email` **vacío** en checkout por plan.

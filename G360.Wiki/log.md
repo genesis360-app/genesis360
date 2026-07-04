@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-04] update | ✅ e2e PROD noche: MP-C9b + MP-C8 confirmados · checkout-return recuperado (MP-W6 en vivo) · Fede re-activo
+
+**Qué:** GO + Fede corrieron parte del runbook §11 del UAT en PROD, misma noche. Resultados (detalle en `tests/specs/mp-suscripciones-pagos.plan.md` §11):
+
+1. **Cancelación real ✅ (MP-C1 + MP-C9b + MP-C8):** Fede canceló desde Mi Cuenta → MP `cancelled`, DB `cancelled` + `subscription_period_end=2026-08-03 22:10:19`. Forense de logs: el EF corrió 22:49:40 UTC → si fuera el fallback sería +30d exactos (22:49:40) → **la fecha es el `next_payment_date` REAL de MP** (incógnita de v1.110 respondida: el grace usa la fecha real; el fallback queda de red). Bonus: 300ms después llegó el webhook `subscription_preapproval` y sincronizó (**MP-C8 validado en vivo**). El grace funcionó (Fede siguió entrando).
+
+2. **Re-suscripción ⚠️→✅ (MP-A12 con asterisco + MP-W6 confirmado):** Fede re-pagó $1.000 (preapproval nuevo `1619ea40…`) pero el retorno orgánico del checkout **no invocó `mp-verificar-suscripcion`** (0 llamadas en los logs; hipótesis: PWA cacheada al momento del pago — no confirmada). Los webhooks del pago llegaron TODOS (200) pero no pudieron linkear (`external_reference` vacío + `mp_subscription_id` guardado era el viejo) → **MP-W6 "el pago se pierde en silencio" confirmado con plata real**. **Recuperación:** URL de retorno reconstruida con el `preapproval_id` de los logs → "Verificando… → ¡Suscripción activada!" → DB `active` + `mp_subscription_id=1619ea40…` + tier/límites OK. El flujo v1.108 **funciona cuando corre**; también ejercitó MP-A10 (canceló la sub anterior, ya cancelada → no-op).
+
+3. **Deuda que sube de prioridad:** sweep de reconciliación (preapprovals `authorized` sin tenant linkeado) + forzar actualización del service worker en deploys de billing + higiene: limpiar `subscription_period_end` al activar (hoy queda el valor viejo, inerte).
+
+4. **Corrección misma sesión al head-to-head Netegia** (`planes-pricing.md`): la primera versión negaba las integraciones e-commerce — **falso**: ML+TN+MODO están vivas en PROD (OAuth, stock bidireccional, precios, pedidos idempotentes, workers cada 5 min — se vieron en los logs). El gap real es el circuito fiscal de pedidos ML (facturación masiva+picking+etiquetas), WooCommerce/TornadoStore y multi-CUIT. Commit `cedbab9f`.
+
+**Queda del §11:** paso 2 (add-on fijo sobre `1619ea40…`) → `ADDON_FIJO_ENABLED=true` · paso 4 (refunds ×2 + plan Básico a $60.000 + decidir sub de Fede).
+
 ## [2026-07-04] update | 🧪 UAT billing MP robusto (48 escenarios + runbook §11) + espejos mpAddonFijo/accesoSuscripcion (904 tests) + head-to-head Netegia
 
 **Qué:** GO pidió "revisar el UAT de cobros MP de suscripciones/add-ons, complementarlo para que sea robusto y testear todo". Sesión **test-only + docs** — todo en `dev`, **sin migraciones, sin tocar EFs deployados, sin deploy a PROD** (PROD sigue v1.111.0).

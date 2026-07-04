@@ -995,6 +995,34 @@ WHERE subscription_status = 'cancelled' AND subscription_period_end IS NULL;
 aún) · un tercero real con cuenta MP cuyo email de MP puede diferir del de registro (no importa:
 la activación por `preapproval_id` no exige match si `payer_email` viene vacío, que es lo normal).
 
+> **📋 RESULTADOS 2026-07-04 (noche, GO + Fede):**
+> - **Paso 3 ✅ ANTES que el 1 (se invirtió el orden a propósito):** Fede canceló su sub vieja
+>   (`b3b19092…`) desde Mi Cuenta → MP `cancelled` + DB `cancelled` + **`subscription_period_end
+>   = 2026-08-03 22:10:19` ≠ momento-de-cancelación+30d → ES el `next_payment_date` REAL de MP,
+>   NO el fallback → MP-C9b ✅ CONFIRMADO**. Bonus: 300ms después llegó el webhook
+>   `subscription_preapproval` y sincronizó → **MP-C8 ✅ validado en vivo**.
+> - **Paso 1 ⚠️ MITAD:** Fede re-pagó ($1.000, preapproval nuevo `1619ea40…`) pero el
+>   checkout-return **NO invocó `mp-verificar-suscripcion`** (0 llamadas en logs) → quedó
+>   `cancelled` con la sub vieja linkeada. Los webhooks del pago llegaron todos (200) pero no
+>   pudieron linkear (**MP-W6 ✅ CONFIRMADO EN VIVO**: `external_reference` vacío + el
+>   `mp_subscription_id` guardado era el viejo → pago ignorado en silencio). **Recuperación:** se
+>   le pasó a Fede la URL de retorno reconstruida
+>   (`/suscripcion?status=approved&preapproval_id=1619ea40…`) → "Verificando… → ¡Activada!" →
+>   DB `active` + id nuevo + tier/límites OK → **el código del flujo v1.108 (MP-A12) funciona**;
+>   lo que falló fue que el redirect orgánico de MP no lo disparó en su cliente (hipótesis: PWA
+>   cacheada al momento del pago, o no volvió por el redirect; no confirmado). De paso se
+>   ejercitó MP-A10 (el EF canceló la sub anterior — ya estaba cancelada, no-op limpio).
+> - **Residuo menor detectado:** al reactivar, `subscription_period_end` queda con el valor viejo
+>   (inerte: el guard solo lo mira en `cancelled`, y una cancelación futura lo pisa). Higiene
+>   opcional: que la activación lo limpie (`subscription_period_end=null`).
+> - **⏭ Falta:** paso 2 (add-on fijo sobre `1619ea40…`) y paso 4 (refunds ×2 · plan a $60.000 ·
+>   decidir sub de Fede · recién ahí `ADDON_FIJO_ENABLED=true`).
+> - **Lección MP-W6/MP-A12:** el webhook NUNCA rescata un checkout-return perdido (no puede
+>   linkear); la única red es el usuario volviendo a la URL con `preapproval_id` o soporte con
+>   `billing.link_subscription`. Sube la prioridad del **sweep de reconciliación** (buscar
+>   preapprovals authorized sin tenant) y de forzar la actualización del service worker en
+>   deploys de billing.
+
 **Paso 1 — Checkout-return con suscriptor FRESCO (valida el frontend v1.108 — MP-A12).**
 El tercero se registra en `app.genesis360.pro`, se suscribe al plan Básico ($1.000) y **NO cierra
 la pestaña**: al volver del checkout debe ver "Verificando…" → "¡Suscripción activada!" → dashboard.

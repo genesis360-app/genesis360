@@ -6,7 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
-import { clasificarVerificacion, mensajeErrorVerif } from '@/lib/suscripcionActivacion'
+import { clasificarVerificacion, mensajeErrorVerif, mensajeErrorEF } from '@/lib/suscripcionActivacion'
 import {
   Check, X, CheckCircle, XCircle, Clock,
   ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut, Plus, Trash2, SlidersHorizontal,
@@ -24,20 +24,6 @@ const DIMS_FIJAS: Array<{ dim: AddonDimension; label: string; unidad: string; su
 
 const labelDim = (dim: string) =>
   dim === 'sku' ? 'productos' : dim === 'sucursales' ? 'sucursales' : dim === 'usuarios' ? 'usuarios' : dim
-
-// supabase-js NO parsea el body cuando el EF devuelve 4xx/5xx: el error llega como
-// FunctionsHttpError con message genérico ("Edge Function returned a non-2xx status code")
-// y `data` en null. El body real (`{ error: '…' }`) viaja en `error.context` (un Response).
-// Sin esto el usuario ve el mensaje críptico en vez del real (ej. "Necesitás una suscripción activa…").
-async function mensajeErrorEF(error: any, data: any, fallback: string): Promise<string> {
-  if (data?.error) return data.error
-  try {
-    const body = await error?.context?.json?.()
-    if (body?.error) return body.error
-  } catch { /* body no-JSON o ya consumido → cae al fallback */ }
-  return error?.message ?? fallback
-}
-
 
 export default function SuscripcionPage() {
   const { tenant, user, loadUserData, signOut } = useAuthStore()

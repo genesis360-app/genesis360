@@ -35,6 +35,22 @@ export function clasificarVerificacion(
   return { estado: 'pendiente', reason: data?.reason }
 }
 
+/**
+ * Mensaje de error REAL de una invocación a un EF (UAT MP-AD10). supabase-js NO parsea el
+ * body cuando el EF devuelve 4xx/5xx: el error llega como FunctionsHttpError con message
+ * genérico ("Edge Function returned a non-2xx status code") y `data` en null; el body real
+ * (`{ error: '…' }`) viaja en `error.context` (un Response). Orden: data.error → body del
+ * context → error.message → fallback.
+ */
+export async function mensajeErrorEF(error: any, data: any, fallback: string): Promise<string> {
+  if (data?.error) return data.error
+  try {
+    const body = await error?.context?.json?.()
+    if (body?.error) return body.error
+  } catch { /* body no-JSON o ya consumido → cae al fallback */ }
+  return error?.message ?? fallback
+}
+
 /** Mensaje al usuario según el `reason` terminal que devuelve mp-verificar-suscripcion. */
 export function mensajeErrorVerif(reason: string | null | undefined): string {
   switch (reason) {

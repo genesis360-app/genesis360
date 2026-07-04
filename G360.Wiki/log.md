@@ -6,6 +6,31 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-04] update | 🧪 UAT billing MP robusto (48 escenarios + runbook §11) + espejos mpAddonFijo/accesoSuscripcion (904 tests) + head-to-head Netegia
+
+**Qué:** GO pidió "revisar el UAT de cobros MP de suscripciones/add-ons, complementarlo para que sea robusto y testear todo". Sesión **test-only + docs** — todo en `dev`, **sin migraciones, sin tocar EFs deployados, sin deploy a PROD** (PROD sigue v1.111.0).
+
+**Re-auditoría del UAT `tests/specs/mp-suscripciones-pagos.plan.md` contra el código real v1.108→v1.111** (releídos los EFs `mp-verificar-suscripcion`, `cancel-suscripcion`, `mp-addon-fijo`, `admin-api`, y `SuscripcionPage`/`MiCuentaPage`/`AuthGuard`). El plan pasó de **43 a 48 escenarios**:
+- **Nuevos:** **MP-A12** (checkout-return v1.108: sesión restaurada + reintentos + clasificación honesta), **MP-A13** (`billing.link_subscription` v1.109, validado e2e PROD con la sub de Fede), **MP-C11** (eliminar cuenta cancela MP fail-closed antes de borrar, v1.110), **MP-AD9** (kill-switch `ADDON_FIJO_ENABLED`, v1.111), **MP-AD10** (helper `mensajeErrorEF`).
+- **Actualizados:** **MP-C7** (ahora MITIGADO en `cancel-suscripcion` vía búsqueda por `payer_email`; el panel `admin-api` NO tiene ese fallback → hallazgo **H8**), **MP-C9** (marcado ✅ IMPLEMENTADO v1.110 + sub-escenarios C9b/c/d de grace period), MP-C1, hallazgo H3 (resuelto), conteos y cobertura del resumen.
+- **Hallazgos nuevos:** **H7** (el kill-switch `ADDON_FIJO_ENABLED` es **frontend-only** — el EF `mp-addon-fijo` sigue invocable server-side; riesgo aceptado documentado mientras dure la validación) y **H8** (drift entre las dos copias de `cancelarSubMP`: `cancel-suscripcion` tiene el fallback por `payer_email`, `admin-api` no).
+- **Query nueva DRIFT 7** (suscripciones `cancelled` sin `subscription_period_end`, pre-mig-255).
+- **Sección 11 nueva — RUNBOOK de validaciones e2e con plata real en PROD (las corre GO, no automatizables):** paso 1 checkout-return con suscriptor fresco (valida MP-A12) → paso 2 add-on fijo sobre esa sub real (`GET`/`PUT preapproval`, valida la incógnita del `PUT transaction_amount`) → paso 3 cancelación real (valida `next_payment_date`→grace MP-C9) → paso 4 cierre (refund + volver el plan Básico a $60.000 + decidir la sub de Fede + recién ahí `ADDON_FIJO_ENABLED=true`).
+
+**Código (extracciones test-only, sin cambio de comportamiento):**
+- `src/lib/mpAddonFijo.ts` NUEVO — espejo puro del EF `mp-addon-fijo` (alta fail-closed MP-AD3, revert si insert falla MP-AD4, baja con downgrade guiado MP-AD5, delta MP-AD6, documenta race MP-AD7) + `tests/unit/mpAddonFijo.test.ts` (18 tests).
+- `src/lib/accesoSuscripcion.ts` NUEVO — `tieneAccesoVigente()` extraída del `SubscriptionGuard` (**`AuthGuard.tsx` AHORA LA IMPORTA**, lo testeado es lo que corre) + `tests/unit/accesoSuscripcion.test.ts` (10 tests, bordes de grace MP-C9).
+- `mensajeErrorEF` movido de `SuscripcionPage.tsx` a `src/lib/suscripcionActivacion.ts` (exportado) + 4 tests nuevos en `suscripcionActivacion.test.ts`.
+- **Suite: 904 unit tests verdes (antes 873, +31)** + `tsc --noEmit` limpio + `npm run build` verde.
+
+**Análisis competitivo "Netegia head-to-head honesto"** agregado a `wiki/business/planes-pricing.md` (sección nueva: respuesta sin marketing a "¿por qué alguien elegiría Netegia?" — qué tienen ellos que nosotros no, qué tenemos nosotros que ellos no, lectura estratégica).
+
+**🟠 Pendientes GO (sin cambios de fondo — ahora con el paso a paso en `tests/specs/mp-suscripciones-pagos.plan.md` §11):** (1) validar en sandbox el `PUT transaction_amount` del add-on fijo con una sub real → recién ahí `ADDON_FIJO_ENABLED=true`; (2) confirmar que MP devuelve `next_payment_date` en una cancelación real; (3) checkout-return con un suscriptor fresco; (4) volver el plan Básico de MP a $60.000; (5) decidir la sub de Fede. **(H8)** unificar `admin-api.cancelarSubMP` con el fallback de `cancel-suscripcion`.
+
+**Estado:** todo en `dev`, sin deploy. **PROD sigue v1.111.0.**
+
+---
+
 ## [2026-07-04] deploy | 🎨 Rediseño configurador add-ons "Armá tu plan" + 🛑 kill-switch add-on fijo (REGLA #0) · v1.111.0 EN PROD
 
 **Qué:** GO pidió portar un diseño de referencia (panel "Armá tu plan" con grid de tarjetas seleccionables) al configurador de add-ons, **respetando nuestros colores**, y aplicarlo también al Landing. Frontend-only, **sin migraciones, SIN tocar lógica de compra MP** (REGLA #0).

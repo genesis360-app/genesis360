@@ -17,6 +17,19 @@
 > - `src/lib/addons.ts`, `src/config/brand.ts` (`MP_PLAN_IDS`, `ADDON_PACKS`, `PLAN_BASE_LIMITS`)
 > - `src/hooks/usePlanLimits.ts`
 > - `supabase/schema_full.sql` (RLS `tenants_update`, `ventas_externas_logs` UNIQUE, `tenant_addons` UNIQUE)
+>
+> **Re-auditoría 2026-07-04 (v1.108 → v1.111):** se re-leyó el código tras los cambios de billing
+> y se actualizó este plan. Cambios que este plan ahora refleja:
+> - **v1.108** — rework del checkout-return en `SuscripcionPage` (`getSession()` antes de invocar,
+>   `verifState` con 4 reintentos, `clasificarVerificacion` extraída a `src/lib/suscripcionActivacion.ts`).
+> - **v1.109** — `admin-api` acción `billing.link_subscription` (linkear sub huérfana por soporte).
+> - **v1.110** — MP-C9 IMPLEMENTADO (mig 255 `tenants.subscription_period_end` + grace en
+>   `SubscriptionGuard`) · fix eliminar-cuenta cancela MP fail-closed (`MiCuentaPage`) · espejos
+>   `mpPertenencia`/`mpCancelacion`/`suscripcionActivacion` en `src/lib` + 34 tests.
+> - **v1.111** — kill-switch `ADDON_FIJO_ENABLED=false` en `brand.ts` (oculta el configurador de
+>   add-ons fijos in-app) + gate por `mp_subscription_id` + helper `mensajeErrorEF`.
+> - **Esta sesión (2026-07-04 cont.)** — espejo `src/lib/mpAddonFijo.ts` (alta/baja fail-closed +
+>   delta + revert) y `src/lib/accesoSuscripcion.ts` (grace period del `SubscriptionGuard`) + tests.
 
 ## Hallazgos relevantes durante la lectura de código (antes de los escenarios)
 
@@ -38,11 +51,24 @@
   tiempo, o simplemente generar ruido/DoS de invocaciones. Severidad media (no crítico porque el
   GET a MP es la verdadera fuente de verdad), pero es una superficie sin el guard estándar de
   webhooks. Ver escenario **WH-SIG**.
-- **H3 — `mp-addon-fijo` tiene comentario "NO deployado / NO activado hasta que GO reconfigure
-  planes a $60k/$100k"** pero según MEMORY.md los planes YA están en $60k/$100k desde la sesión
-  2026-07-02 (F3 ya en v1.102). Si el comentario quedó desactualizado, confirmar con GO que el
-  flujo de add-ons fijos está realmente habilitado en PROD antes de dar por bueno cualquier
-  escenario de esa sección.
+- **H3 — ✅ RESUELTO (v1.111, 2026-07-04).** `mp-addon-fijo` SÍ está deployado en DEV y PROD (mismo
+  sha) y el configurador estuvo vivo en PROD desde v1.106 **sin validación e2e del cobro** —
+  hallazgo REGLA #0 de la sesión 2026-07-04. Mitigación actual: kill-switch **`ADDON_FIJO_ENABLED
+  =false`** en `brand.ts` oculta el configurador in-app hasta que GO valide el `PUT
+  transaction_amount` en una sub real (ver H7 y sección 11). El comentario del EF quedó viejo.
+- **H7 — El kill-switch `ADDON_FIJO_ENABLED` es FRONTEND-ONLY: el EF `mp-addon-fijo` sigue vivo
+  server-side.** Un caller autenticado con suscripción activa puede invocarlo por curl aunque el
+  flag esté apagado. No es un vector de fraude (solo puede SUBIR el monto de su propia suscripción,
+  con precio del catálogo server-side), pero significa que "el flujo está apagado" solo es cierto
+  para la UI. Si se quisiera un apagado real, el flag debería existir también como env var del EF.
+  Documentado como riesgo aceptado mientras dure la validación (escenario MP-AD9).
+- **H8 — `admin-api.cancelarSubMP` volvió a divergir de `cancel-suscripcion`:** el EF de la app
+  ganó el fallback MP-C7 por `payer_email` (busca la sub viva del caller cuando `mp_subscription_id`
+  es NULL) pero la copia del panel NO lo tiene — un tenant nunca-linkeado cancelado desde el panel
+  sigue fail-abriendo (best-effort sin nada que confirmar). Es exactamente el drift que "Candidatos
+  a extracción #2" predijo. Pendiente conocido (unificar); mientras tanto, para tenants sin
+  `mp_subscription_id` cancelar DESDE LA APP (no desde el panel), o linkear primero con
+  `billing.link_subscription` y cancelar después.
 - **H4 — Add-ons FIJOS no tienen webhook/confirmación server-to-server**: el PUT del monto y el
   insert en `tenant_addons` ocurren en la MISMA invocación síncrona de `mp-addon-fijo` (no hay
   paso "pending" + webhook). Si el usuario cierra la pestaña justo después del PUT exitoso pero
@@ -194,6 +220,42 @@
   este `catch` dispare una alerta/log de severidad alta distinguible (hoy es un `console.error` más
   entre muchos). Guard: bloque `if (prevSubId && prevSubId !== sub.id)`.
 
+### CRÍTICO (agregados en la re-auditoría 2026-07-04)
+
+**MP-A12 — Checkout-return (v1.108): sesión restaurada + reintentos + clasificación honesta**
+- Given un usuario paga en MP y vuelve a `/suscripcion?status=approved&preapproval_id=X` — el
+  redirect recarga la app de cero, el JWT puede no estar restaurado todavía.
+- When corre el `useEffect` de verificación de `SuscripcionPage`.
+- Then: (a) espera `supabase.auth.getSession()` ANTES de invocar (mata el 401 histórico); (b) NO
+  depende del `tenant` del store (el EF deriva el tenant del JWT); (c) hace hasta 4 intentos cada
+  2,5s mientras el resultado sea `pendiente`; (d) clasifica con `clasificarVerificacion`
+  (`activated:true`→ok · `200 activated:false`→pendiente · `4xx/5xx`→error con `reason`); (e) en
+  `ok` hace `loadUserData(uid)` ANTES de `navigate('/dashboard')` (evita el rebote del
+  `SubscriptionGuard` con store viejo); (f) la pantalla refleja el estado REAL (nunca dice
+  "activado" sin confirmación server-side).
+- Severidad: crítico (es el fix de "pagó y no se activó" — revenue). Automatizable: **vitest-unit
+  ✅ CUBIERTO** (`tests/unit/suscripcionActivacion.test.ts`, 12 tests — `SuscripcionPage` importa el
+  módulo, lo testeado = lo que corre). **UAT-manual PENDIENTE**: checkout-return con un suscriptor
+  FRESCO en PROD (ver sección 11 — es el único tramo sin validación real; el server-side ya quedó
+  validado vía el caso Fede/link_subscription).
+
+**MP-A13 — Link de suscripción huérfana por soporte (`billing.link_subscription`, v1.109)**
+- Given una sub activa en MP pero sin linkear en la app (checkout-return falló / pestaña cerrada;
+  MP manda `payer_email` y `external_reference` VACÍOS en checkout por plan → la app no puede
+  autorrecuperarla). Soporte tiene el `preapproval_id` (se lo pasa el cliente o se ve en el panel MP).
+- When un agente con rol `admin`/`billing` ejecuta `billing.link_subscription {tenantId, preapprovalId}`.
+- Then, en orden y TODOS obligatorios: (1) GET al preapproval — si no existe → 404, no toca nada;
+  (2) `status !== 'authorized'` → 409, NO activa; (3) plan no reconocido en `MP_PLAN_TIER` → 400;
+  (4) claim exclusivo — reclamado por OTRO tenant → 409; (5) si el tenant tenía una sub anterior
+  DISTINTA y viva → PUT cancelarla en MP (best-effort, `prev_cancel_error` en el audit si falla —
+  evita doble cobro); (6) activa: `subscription_status='active'` + `mp_subscription_id` +
+  `plan_tier` + base de límites; (7) audit en `admin_audit_log`.
+- Severidad: crítico (activa cuentas a mano — mismo poder que el EF de activación). **✅ VALIDADO
+  e2e EN PROD (2026-07-04)** con la sub real de Fede (`b3b19092…` → tenant `456dbf20…` activo,
+  `prev_cancel_error=null`). Automatizable: vitest-unit (la cadena de guards es la MISMA de
+  `decidirPertenencia` con `exigirPayerEmail=false` — ✅ cubierta en `tests/unit/mpPertenencia.test.ts`).
+  Guard: cadena 1-4 ANTES de cualquier escritura.
+
 ### MEDIO
 
 **MP-A11 — `/preapproval/search` sin `mp-verificar-suscripcion` puede devolver >100 resultados**
@@ -317,8 +379,8 @@
 - Given un tenant `active` con `mp_subscription_id='sub123'`, `sub123` está `authorized` en MP.
 - When el DUEÑO hace clic en "Cancelar suscripción" → `cancel-suscripcion` con `body: {}`.
 - Then MP: PUT a `preapproval/sub123` → `status: 'cancelled'`. DB: `tenants.subscription_status
-  ='cancelled'`. `plan_tier` **NO se toca** (acceso hasta fin de período). Response
-  `{cancelled: true, mp_cancelled: 1}`.
+  ='cancelled'` **+ `subscription_period_end`** (MP-C9, v1.110). `plan_tier` **NO se toca** (acceso
+  hasta fin de período). Response `{cancelled: true, mp_cancelled: 1, period_end: <iso>}`.
 - Severidad: crítico. Automatizable: vitest-unit (lógica de candidatos/pertenencia/fail-closed
   extraída — hoy inline) + UAT-manual con preapproval real. Guard: `storedId` = camino principal +
   fail-closed check.
@@ -403,17 +465,16 @@
   `external_reference=tenantId` (histórico, probablemente vacío en checkout-por-plan) — si no
   encuentra nada, `candidatos` queda vacío, el loop no corre, `errores=[]`,
   `storedConfirmado=true` → pasa el gate → `UPDATE tenants SET subscription_status='cancelled'`.
-- Severidad: **alto — posible fail-OPEN residual**: si este tenant en realidad SÍ tiene un
-  preapproval vivo en MP (pagando) pero nunca se linkeó (`mp_subscription_id` sigue NULL) y su
-  `external_reference` tampoco lo tiene (checkout por plan), **la cancelación en DB "tiene éxito"
-  sin haber cancelado nada en MP** → el tenant sigue siendo cobrado en MP pero la app dice
-  "cancelado". Este es exactamente el mismo agujero estructural del bug original, para el
-  subconjunto de tenants que jamás pasaron por `mp-verificar-suscripcion` con éxito. Automatizable:
-  vitest-unit (confirmar el comportamiento actual del código) + **recomendación urgente**: correr
-  la auditoría SQL de la sección 8 para identificar si existen tenants `active` con
-  `mp_subscription_id IS NULL` HOY en PROD, y si existen, resolverlos manualmentes antes de que
-  alguno intente cancelar y quede fail-open. Guard actual: NINGUNO adicional — depende 100% de que
-  el linkeo haya ocurrido antes.
+- Severidad: alto. **⚠ ACTUALIZADO 2026-07-04 — MITIGADO en `cancel-suscripcion` (la app):** si
+  NO hay `mp_subscription_id` guardado y el caller es el PROPIO tenant, el EF ahora busca en MP la
+  suscripción viva por `payer_email` del caller (mismo patrón que `mp-verificar-suscripcion`) y la
+  cancela — el fail-open residual solo persiste si el pagador usó OTRO email en MP distinto del de
+  su cuenta Genesis360. **PERO la copia del panel (`admin-api.cancelarSubMP`) NO tiene este
+  fallback** (ver H8): un nunca-linkeado cancelado desde el panel sigue fail-abriendo. Mitigación
+  operativa: linkear primero (`billing.link_subscription`, MP-A13) y cancelar después.
+  Automatizable: vitest-unit (✅ el fail-closed base está cubierto en `mpCancelacion.test.ts`; el
+  fallback por email es rama de I/O del EF — cubrir su decisión pura si se extrae). Guard actual:
+  búsqueda `ownedByEmail` en `cancel-suscripcion` (solo app, solo caller propio).
 
 **MP-C8 — Cancelación desde el panel de MP directo (fuera de la app) → webhook sincroniza DB**
 - Given el usuario cancela su preapproval directamente desde su cuenta de Mercado Pago (fuera de
@@ -431,22 +492,48 @@
 
 ### ALTO
 
-**MP-C9 — Acceso se mantiene hasta fin de período (no se toca `plan_tier` al cancelar)**
-- Given un tenant Pro cancela su suscripción a mitad de ciclo de facturación.
-- When `cancel-suscripcion` marca `subscription_status='cancelled'`.
-- Then `plan_tier` sigue `'pro'` en DB — el UPDATE de cancelación **solo** toca
-  `subscription_status`. `usePlanLimits`/`fn_tenant_limite` deben seguir dando límites Pro hasta
-  que expire el período (dependiendo de cómo el resto del sistema interprete `cancelled` +
-  `plan_tier`).
-- Severidad: alto — **falta verificar** si existe algún guard adicional en `usePlanLimits`/
-  `AuthGuard`/`SubscriptionGuard` que trate `cancelled` como "sin acceso inmediato" vs
-  "acceso degradado hasta tal fecha" (no se ve un campo tipo `access_until` en el `UPDATE`).
-  Riesgo: si `SubscriptionGuard` bloquea apenas ve `cancelled` (sin mirar fecha), el usuario pierde
-  acceso INMEDIATO pese a "hasta fin de período" prometido en el toast (`'Tu plan pasará a Free al
-  finalizar el período'`) — contradicción potencial UX↔lógica real. **Acción**: leer
-  `SubscriptionGuard`/`AuthGuard.tsx` para confirmar el comportamiento real y agregar un escenario
-  específico (candidato a plan aparte si no está cubierto). Automatizable: vitest-unit (una vez
-  confirmada la lógica real) o playwright-e2e.
+**MP-C9 — ✅ IMPLEMENTADO (v1.110, mig 255): acceso hasta fin del período pagado (grace period)**
+- Given un tenant Pro `active` cancela a mitad de ciclo; su preapproval en MP tiene
+  `next_payment_date` (o `summarized.next_payment_date`) = fecha del próximo cobro.
+- When `cancel-suscripcion` (o `admin-api billing.cancel_subscription`) cancela con éxito.
+- Then DB: `subscription_status='cancelled'` **+ `subscription_period_end` = el
+  `next_payment_date` más lejano** de los preapprovals del tenant (fallback `now()+30d` si MP no
+  lo trae — favorable al cliente, nunca corta antes). `plan_tier` NO se toca. `SubscriptionGuard`
+  permite el acceso mientras `cancelled && now < subscription_period_end`. `MiCuentaPage` muestra
+  "Mantenés el acceso hasta el DD/MM". El T&C (sección 4) promete exactamente esto — el código
+  ahora CUMPLE el contrato.
+- Sub-escenarios:
+  - **MP-C9b** — MP no devuelve `next_payment_date` en el GET del preapproval → `periodEnd=null` →
+    fallback `now()+30d`. Seguro (a favor del cliente). **UAT-manual pendiente (GO)**: confirmar
+    con una cancelación real si MP lo devuelve (sección 11).
+  - **MP-C9c** — Pasado `subscription_period_end`, `SubscriptionGuard` corta: `cancelled` con
+    `periodEnd` en el pasado → redirect a `/suscripcion`. Borde exacto: `now === periodEnd` corta
+    (la condición es `<` estricta).
+  - **MP-C9d** — Tenant `cancelled` SIN `subscription_period_end` (cancelado antes de v1.110/mig
+    255) → `periodEnd=null` → sin grace, corta al instante (comportamiento pre-v1.110 preservado;
+    ver query DRIFT 7).
+- Severidad: alto. Automatizable: **vitest-unit ✅ CUBIERTO en esta sesión** —
+  `src/lib/accesoSuscripcion.ts` (extracción de la condición real del `SubscriptionGuard`, que
+  ahora la importa) + `tests/unit/accesoSuscripcion.test.ts` (bordes de trial, grace, period_end
+  null/pasado/futuro). Guard: mig 255 + condición en `AuthGuard.tsx` + captura de
+  `next_payment_date` en ambos EFs de cancelación.
+
+**MP-C11 — Eliminar cuenta con suscripción ACTIVA cancela MP ANTES de borrar (fail-closed, v1.110)**
+- Given un DUEÑO con `subscription_status='active'` y preapproval vivo elimina su cuenta desde
+  `MiCuentaPage` (escribe el nombre del negocio para confirmar).
+- When corre `handleDeleteAccount`.
+- Then, EN ORDEN: (1) invoca `cancel-suscripcion` (fail-closed) MIENTRAS el row de `users` todavía
+  existe (el EF deriva el tenant del JWT); (2) si MP NO confirma la cancelación → **ABORTA la
+  eliminación** (mejor no borrar que dejar un cobro vivo) con mensaje explícito; (3) solo si MP
+  confirmó (o el estado era `trial`/`free` → soft-cancel local) borra el row de `users`, `signOut`
+  y navega a `/login`.
+- Regresión que cubre: el bug v1.110 — antes marcaba `cancelled` con UPDATE directo local (sin
+  tocar MP → **seguía cobrando para siempre**) y encima DESPUÉS de borrar `users` (fallaba por
+  RLS). Mismo fail-open de v1.104 en el flujo de delete.
+- Severidad: **crítico** (plata real de por vida del preapproval). Automatizable: vitest-unit del
+  orden de decisión (candidato a extracción) + playwright-e2e con mock; el tramo MP real es
+  UAT-manual. Guard: `if (tenant.subscription_status === 'active')` + throw→abort en
+  `MiCuentaPage.handleDeleteAccount` (corre ANTES del delete de `users`).
 
 ### MEDIO
 
@@ -584,6 +671,35 @@ riesgo es el DOBLE COBRO si la cancelación best-effort de `prevSubId` falla sil
   `UPDATE tenants SET ... WHERE mp_subscription_id=X AND <version>` o serializar por
   `advisory_lock` en `tenantId`) antes de habilitar este flujo a escala. Guard actual: NINGUNO
   server-side (solo `addonBusy` en el cliente, bypasseable).
+
+**MP-AD9 — Kill-switch `ADDON_FIJO_ENABLED` (v1.111): el configurador de add-ons fijos está OCULTO**
+- Given `ADDON_FIJO_ENABLED === false` en `src/config/brand.ts` (estado actual — el cobro del
+  add-on fijo NUNCA se validó e2e; ver H3/H7 y sección 11).
+- When un tenant `active` entra a `/suscripcion`.
+- Then el configurador de add-ons FIJOS no se renderiza (condición en `SuscripcionPage`:
+  `ADDON_FIJO_ENABLED && esActivo && limits && tenant?.mp_subscription_id`) → no hay camino de UI
+  que dispare `mp-addon-fijo`. El estimador público del Landing (`PricingConfigurator`) y el
+  add-on TEMPORAL de movimientos NO dependen del flag (el estimador no cobra; el temporal es pago
+  único ya validado por webhook idempotente).
+- Cuando el flag se prenda, el gate por `mp_subscription_id` sigue: un tenant `active` SIN
+  `mp_subscription_id` real (ej. activado a mano) no ve el configurador — antes caía en el
+  fail-closed 400 del EF con mensaje críptico (ver MP-AD10).
+- Severidad: crítico mientras el cobro no esté validado (es LA mitigación de REGLA #0). ⚠ Recordar
+  H7: el flag NO apaga el EF server-side. Automatizable: vitest-unit del render condicional
+  (bajo ROI) — el valor real es el checklist: **antes de prender el flag, completar la sección 11**.
+  Guard: flag + gate `mp_subscription_id` en `SuscripcionPage:533`.
+
+**MP-AD10 — Errores 4xx/5xx del EF muestran el mensaje REAL (`mensajeErrorEF`, v1.111)**
+- Given supabase-js NO parsea el body cuando un EF devuelve 4xx/5xx (el error llega como
+  `FunctionsHttpError` con message genérico "Edge Function returned a non-2xx status code" y el
+  body real `{error:'…'}` viaja en `error.context`).
+- When `agregarAddonFijo`/`quitarAddonFijo` (o cualquier flujo que use el helper) recibe un error.
+- Then `mensajeErrorEF(error, data, fallback)` devuelve, en orden: `data.error` → el `error` del
+  body parseado de `error.context.json()` → `error.message` → fallback. El usuario ve "Necesitás
+  una suscripción activa para agregar o quitar add-ons." en vez del críptico.
+- Severidad: medio (diagnóstico/UX — fue lo que enmascaró el hallazgo REGLA #0 de v1.111: GO veía
+  el mensaje genérico en vez del fail-closed real del EF). Automatizable: vitest-unit (mock de
+  `error.context`). Guard: helper en `SuscripcionPage.tsx:32`.
 
 ### MEDIO
 
@@ -779,6 +895,12 @@ HAVING count(*) > 1;
 SELECT count(*), min(vence_at), max(vence_at)
 FROM tenant_addons
 WHERE tipo = 'temporal' AND vence_at < now() - interval '90 days';
+
+-- DRIFT 7 (v1.110+): cancelados SIN subscription_period_end — pre-mig-255 (sin grace, corta al
+-- instante: comportamiento viejo preservado, OK) o un EF que dejó de setearlo (regresión: revisar).
+SELECT id, nombre, subscription_status, subscription_period_end, updated_at
+FROM tenants
+WHERE subscription_status = 'cancelled' AND subscription_period_end IS NULL;
 ```
 
 - Severidad: crítico (DRIFT 1/2/3/5 — plata/acceso). DRIFT 4 alto (plata, pero requiere cruce manual
@@ -861,6 +983,63 @@ WHERE tipo = 'temporal' AND vence_at < now() - interval '90 days';
 
 ---
 
+## 11. 🧭 RUNBOOK — Validaciones e2e con plata REAL en PROD (las corre GO; no automatizables)
+
+> Estado al 2026-07-04: TODO el server-side de activación quedó validado e2e (caso Fede vía
+> `billing.link_subscription`). Lo que falta ejercita **cobros reales de MP** — no se puede correr
+> desde DEV (token MP de otra cuenta) ni con test users (MP rechaza "una de las partes es de
+> prueba" contra planes reales). Secuencia pensada para que UN solo suscriptor fresco cubra las 4
+> validaciones pendientes, mientras el plan Básico sigue en $1.000 (temporal).
+
+**Precondiciones:** plan Básico de MP todavía en $1.000 · `ADDON_FIJO_ENABLED=false` (no prender
+aún) · un tercero real con cuenta MP cuyo email de MP puede diferir del de registro (no importa:
+la activación por `preapproval_id` no exige match si `payer_email` viene vacío, que es lo normal).
+
+**Paso 1 — Checkout-return con suscriptor FRESCO (valida el frontend v1.108 — MP-A12).**
+El tercero se registra en `app.genesis360.pro`, se suscribe al plan Básico ($1.000) y **NO cierra
+la pestaña**: al volver del checkout debe ver "Verificando…" → "¡Suscripción activada!" → dashboard.
+Verificar en DB PROD: `subscription_status='active'` + `mp_subscription_id` + `plan_tier='basico'`.
+Si queda en "pendiente": esperar <1min (webhook) y tocar "Reintentar". Si algo falla, capturar
+pantalla + logs del EF `mp-verificar-suscripcion`.
+
+**Paso 2 — Add-on FIJO sobre esa sub real (valida el `PUT transaction_amount` — MP-AD3/AD6, H3).**
+Con la sub del paso 1 viva ($1.000/mes):
+1. GET del preapproval (GO, con el MP_ACCESS_TOKEN de la plataforma):
+   `curl https://api.mercadopago.com/preapproval/<preapproval_id> -H "Authorization: Bearer $TOKEN"`
+   → anotar `auto_recurring.transaction_amount` (=1000), `status`, y **si viene `next_payment_date`**
+   (esto ya adelanta la respuesta de MP-C9b sin cancelar nada).
+2. Disparar el ALTA del add-on por el camino REAL (el EF, no curl directo a MP): con el JWT del
+   suscriptor fresco, invocar `mp-addon-fijo {action:'agregar', dimension:'usuarios', cantidad:1}`
+   (pack más barato, $5.000). Alternativa sin curl: prender `ADDON_FIJO_ENABLED=true` SOLO en un
+   build local apuntando a PROD y clickear el add-on desde ahí (no deployar el flag todavía).
+3. Verificar: response `{ok:true, monto_mensual:6000}` · GET del preapproval → `transaction_amount
+   =6000` · fila nueva en `tenant_addons` (tipo fijo, vence_at NULL) · **en el panel de MP**: qué
+   fecha y monto muestra el próximo cobro (¿prorratea? ¿cobra $6.000 recién el mes próximo? — ESTA
+   es la incógnita de comportamiento de MP que motiva todo el runbook).
+4. BAJA: invocar `{action:'quitar', addon_id}` → monto vuelve a $1.000, fila borrada (MP-AD6).
+5. Si el PUT de MP falla en 2: el EF debe responder 502 SIN otorgar nada (MP-AD3 en vivo).
+
+**Paso 3 — Cancelación real (valida `next_payment_date` → grace period — MP-C9b).**
+El suscriptor cancela desde Mi Cuenta → verificar: sub `cancelled` en MP (panel de GO) ·
+`subscription_status='cancelled'` + `subscription_period_end` en DB · el toast dice "acceso hasta
+DD/MM" con la fecha REAL de MP (si muestra hoy+30d exacto, MP no devolvió `next_payment_date` y
+cayó al fallback — anotarlo, es la respuesta a la incógnita) · el suscriptor SIGUE entrando al
+dashboard (grace vigente).
+
+**Paso 4 — Cierre (⚠ NO saltear, plata real).**
+1. Refund de los $1.000 del paso 1 (+ lo que MP haya cobrado de add-on si prorrateó) desde el
+   panel de MP.
+2. **VOLVER el plan Básico de MP a $60.000** (hoy $1.000 temporal — riesgo abierto: cualquier
+   desconocido que se suscriba ahora paga $1.000 por un plan completo).
+3. Decidir la sub de Fede (hoy activa cobrando $1.000/mes): dejarla como cuenta de cortesía o
+   cancelar+refund.
+4. Verificar RG0-2: tras el refund, el tenant de prueba NO debe reactivarse solo (el webhook
+   ignora `status:'refunded'`); dejar el tenant en el estado final deseado a mano.
+5. Recién con los pasos 1-3 verdes: **`ADDON_FIJO_ENABLED=true`** + bump + deploy + revisar la
+   vista in-app del configurador (pendiente de revisión visual de GO).
+
+---
+
 ## Candidatos a extracción (lógica pura hoy inline en Edge Functions Deno)
 
 Las EFs no pueden importar `src/lib/` (bundle de frontend, runtime distinto), así que la extracción
@@ -891,9 +1070,9 @@ real implica crear un módulo compartido (o duplicarlo deliberadamente como ya s
 
 ## Resumen
 
-**Total de escenarios: 43** (39 de ciclo de vida MP + 4 en la sección de auditoría SQL contadas
-como un bloque UAT-manual único DRIFT 1-6, aquí contadas individualmente donde aplica severidad
-distinta).
+**Total de escenarios: 48** (43 del plan original 2026-07-02 + 5 agregados en la re-auditoría
+2026-07-04: MP-A12, MP-A13, MP-C11, MP-AD9, MP-AD10; los sub-escenarios MP-C9b/c/d cuentan dentro
+de MP-C9. La auditoría SQL DRIFT 1-7 cuenta como un bloque UAT-manual).
 
 | # | Escenario | Severidad | Tipo | Guard actual |
 |---|---|---|---|---|
@@ -908,6 +1087,8 @@ distinta).
 | MP-A9 | Sin preapproval_id ni email resoluble | alto | unit | `if (!sub?.id)` |
 | MP-A10 | Cambio de plan cancela sub anterior (evita doble cobro) | alto | unit | bloque `prevSubId` (best-effort, sin alerta en fallo) |
 | MP-A11 | Búsqueda payer_email con >100 resultados | medio | unit | paginación (techo 1000) |
+| MP-A12 | Checkout-return v1.108 (sesión+reintentos+clasificación honesta) | crítico | unit ✅ + UAT-manual pendiente | `getSession` + `verifState` + `clasificarVerificacion` |
+| MP-A13 | Link de sub huérfana por soporte (v1.109) | crítico | unit ✅ + e2e ✅ PROD | cadena authorized+plan+claim antes de activar |
 | MP-W1 | Webhook authorized → activa tenant | crítico | unit + UAT-manual | bloque `subscription_preapproval` |
 | MP-W2 | Pago rechazado → no toca tenant (ciclo de reintentos MP sin manejo explícito) | crítico | UAT-manual | filtro `status === 'approved'` (gap: sin acción explícita en rejected) |
 | MP-W3 | Idempotencia add-on temporal (reenvío MP) | crítico | unit | `uq_tenant_addons_mp_payment` + catch 23505 |
@@ -921,10 +1102,11 @@ distinta).
 | MP-C4 | Cancelación desde admin-api | crítico | unit + UAT-manual | `cancelarSubMP` (espejo) |
 | MP-C5 | STAFF ADMIN cancela tenant ajeno | crítico | unit + e2e | check `rol === 'ADMIN'` |
 | MP-C6 | Doble cancelación idempotente | alto | unit | check `status === 'cancelled'` pre-PUT |
-| MP-C7 | Cancelar sin preapproval vivo (legacy sin link) | alto | unit | NINGUNO adicional (riesgo fail-open residual) |
+| MP-C7 | Cancelar sin preapproval vivo (legacy sin link) | alto | unit | MITIGADO en app (búsqueda payer_email); panel sin fallback (H8) |
 | MP-C8 | Cancelación desde panel MP → webhook sincroniza | crítico | unit + UAT-manual | fallback `mp_subscription_id` en webhook |
-| MP-C9 | Acceso hasta fin de período (plan_tier no se toca) | alto | pendiente confirmar en SubscriptionGuard | UPDATE solo toca `subscription_status` |
+| MP-C9 | ✅ Grace period hasta fin de período (v1.110, + C9b/c/d) | alto | unit ✅ (`accesoSuscripcion`) + UAT-manual (C9b) | mig 255 + `SubscriptionGuard` + captura `next_payment_date` |
 | MP-C10 | MP_ACCESS_TOKEN no configurado | medio | unit | `if (!mpToken)` |
+| MP-C11 | Eliminar cuenta cancela MP fail-closed antes de borrar (v1.110) | crítico | unit (extracción pendiente) + UAT-manual | orden cancelar→confirmar→borrar en `MiCuentaPage` |
 | MP-P1 | Básico→Pro sin doble cobro | alto | unit | = MP-A10 |
 | MP-P2 | Pro→Básico sin guard de downgrade de plan | alto | pendiente decisión de producto | NINGUNO (gap) |
 | MP-AD1 | Add-on temporal se acredita y vence a 30d | crítico | unit (parcial en addons.test.ts) | `parseAddonRef` + `vence_at` |
@@ -935,6 +1117,8 @@ distinta).
 | MP-AD6 | Add-on fijo BAJA ajusta monto por delta | alto | unit | cálculo delta |
 | MP-AD7 | Add-on fijo sin idempotencia server-side (race doble clic) | alto | unit (reproducir) | NINGUNO server-side (gap) |
 | MP-AD8 | Add-on legacy `\|addon_movimientos` sin idempotencia | medio | unit (documentar riesgo) | NINGUNO |
+| MP-AD9 | Kill-switch ADDON_FIJO_ENABLED oculta configurador (v1.111) | crítico | checklist (sección 11 antes de prender) | flag + gate `mp_subscription_id` (frontend-only, ver H7) |
+| MP-AD10 | mensajeErrorEF muestra el error real del EF | medio | unit | helper `SuscripcionPage:32` |
 | WH-SIG | Webhook no valida x-signature | alto | UAT-manual | NINGUNO (mitigado indirectamente por GET a MP) |
 | WH-LEGACY | Rama else final activa sin guard/idempotencia | alto | unit (documentar) | NINGUNO |
 | WH-DIST | No confundir pago de venta con pago de plataforma | alto | unit | lookup `mercadopago_credentials` por seller_id |
@@ -947,25 +1131,35 @@ distinta).
 | MT-3 | tenantId siempre del JWT, nunca del body | crítico | unit (regresión) | diseño del EF |
 | ENV-1 | Webhook apunta a un solo entorno (DEV≠PROD) | alto | UAT-manual (checklist) | ninguno automático |
 
-**Conteo:**
-- Por severidad: **17 crítico**, **17 alto**, **6 medio** (DRIFT cuenta aparte, mixta).
-- Por tipo: **~30 vitest-unit** (mayoría con extracción previa recomendada), **~8 UAT-manual puro**
-  (requieren MP real o son config de entorno), **~7 playwright-e2e** (aislamiento/RLS/rol), varios
-  escenarios son unit+e2e combinados.
-- **Cubiertos hoy**: solo la lógica de `src/lib/addons.ts` (packs, serialización de ref, cálculo de
-  downgrade, precio mensual) vía `tests/unit/addons.test.ts` — cubre parcialmente MP-AD1/AD2/AD5.
-  **Ningún escenario de activación, cancelación, webhook o cobro recurrente tiene test hoy** — toda
-  la lógica crítica vive sin cobertura dentro de las Edge Functions Deno.
-- **Gaps de guard identificados (no solo falta de test, falta de protección real)**: MP-A10 (revert
-  silencioso sin alerta), MP-C7 (fail-open residual en tenants nunca linkeados), MP-P2 (downgrade
-  de plan sin guard), MP-AD4 (revert best-effort), MP-AD7 (sin idempotencia server-side en add-on
-  fijo), MP-W2/W6 (webhook sin manejo explícito de rechazo/pérdida silenciosa), WH-SIG (sin
-  validación de firma), WH-LEGACY (rama heredada sin guard), RG0-2 (refund sin reversión
-  automática) — recomendado priorizar estos para `test-author` + posible ida y vuelta con GO antes
-  de escribir los tests, ya que varios son decisiones de producto/arquitectura, no solo tests
-  faltantes.
+**Conteo (actualizado 2026-07-04):**
+- Por severidad: **21 crítico**, **17 alto**, **8 medio** (DRIFT cuenta aparte, mixta).
+- **Cobertura vitest REAL a hoy** (patrón ccLogic — espejos puros en `src/lib` + tests; el espejo
+  puede driftear del EF: si se toca un EF, actualizar espejo y tests en el MISMO cambio):
+  - `tests/unit/addons.test.ts` — packs, `parseAddonRef`, `evaluarDowngrade`,
+    `precioMensualAddonsFijos` → MP-AD1/AD2/AD5 (parcial).
+  - `tests/unit/suscripcionActivacion.test.ts` (12) — `clasificarVerificacion` + `mensajeErrorVerif`
+    → MP-A12 (NO es espejo: `SuscripcionPage` importa el módulo real).
+  - `tests/unit/mpPertenencia.test.ts` (12) — espejo de la cadena de pertenencia de
+    `mp-verificar-suscripcion` (crux `payer_email` vacío) → MP-A3/A4/A5/A6/A7/A9 + MP-A13.
+  - `tests/unit/mpCancelacion.test.ts` (10) — espejo del fail-closed de cancelación →
+    MP-C2/C3/C6/C7-base + MP-C4b (regresión).
+  - `tests/unit/mpAddonFijo.test.ts` (esta sesión) — espejo de alta/baja del add-on fijo →
+    MP-AD2/AD3/AD4/AD6 + documentación del race MP-AD7.
+  - `tests/unit/accesoSuscripcion.test.ts` (esta sesión) — condición REAL del `SubscriptionGuard`
+    (el guard importa el módulo) → MP-C9/C9c/C9d.
+- **Sin cobertura automatizada (por diseño o pendiente)**: los EFs Deno en sí (los espejos cubren
+  la DECISIÓN, no el I/O), el webhook completo (MP-W*/WH-*, espejo pendiente), MP-C11 (extracción
+  pendiente), y todo lo UAT-manual de la sección 11.
+- **Gaps de GUARD vigentes (falta protección real, no solo test)**: MP-A10 (cancelación de sub
+  anterior best-effort sin alerta), MP-P2 (downgrade de PLAN sin guard — decisión de producto),
+  MP-AD4 (revert best-effort), MP-AD7 (sin idempotencia server-side en add-on fijo — mitigado por
+  `addonBusy` + configurador oculto por MP-AD9), MP-W2/W6 (webhook sin manejo explícito de
+  rechazo/pérdida silenciosa — W6 mitigado por MP-A12+A13), WH-SIG (sin validación de firma),
+  WH-LEGACY (rama heredada sin guard, atada a H1), RG0-2 (refund sin reversión automática),
+  **H8 (admin-api sin fallback payer_email — unificar copias)**.
+- ~~MP-C7 fail-open residual~~ → mitigado en la app (v1.107+); ~~MP-C9 pendiente decisión~~ →
+  implementado v1.110.
 
-**Siguiente paso sugerido**: antes de que `test-author` escriba tests, resolver con GO los gaps
-marcados como "pendiente decisión de producto" (MP-C9, MP-P2) y confirmar el estado real de H1
-(crear-suscripcion) y H3 (mp-addon-fijo deployado o no) para no testear código muerto ni dejar sin
-cubrir código vivo mal etiquetado como legacy.
+**Siguiente paso**: completar la **sección 11** (validaciones con plata real — las corre GO) →
+recién ahí `ADDON_FIJO_ENABLED=true`. En código: unificar `cancelarSubMP` con `cancel-suscripcion`
+(H8), decidir MP-P2, y evaluar espejo del webhook (MP-W1/W3/WH-DIST son las ramas con más plata).

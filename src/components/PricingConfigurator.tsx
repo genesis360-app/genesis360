@@ -21,7 +21,7 @@ const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: str
 const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
   { Icon: Shield,     titulo: '7 días gratis',        sub: 'Sin tarjeta de crédito' },
   { Icon: Rocket,     titulo: 'Activación inmediata', sub: 'Comenzá a usarlo hoy' },
-  { Icon: Headphones, titulo: 'Soporte cercano',      sub: 'Siempre estamos para ayudarte' },
+  { Icon: Headphones, titulo: 'Soporte dedicado',     sub: 'Siempre estamos para ayudarte' },
   { Icon: Lock,       titulo: 'Tus datos seguros',    sub: 'Encriptados y respaldados' },
 ]
 

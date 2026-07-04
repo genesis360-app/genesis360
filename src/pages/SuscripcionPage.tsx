@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link, useSearchParams, useNavigate } from 'react-router-dom'
-import { BRAND, PLANES, MP_PLAN_IDS } from '@/config/brand'
+import { BRAND, PLANES, MP_PLAN_IDS, ADDON_FIJO_ENABLED } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -24,6 +24,19 @@ const DIMS_FIJAS: Array<{ dim: AddonDimension; label: string; unidad: string; su
 
 const labelDim = (dim: string) =>
   dim === 'sku' ? 'productos' : dim === 'sucursales' ? 'sucursales' : dim === 'usuarios' ? 'usuarios' : dim
+
+// supabase-js NO parsea el body cuando el EF devuelve 4xx/5xx: el error llega como
+// FunctionsHttpError con message genérico ("Edge Function returned a non-2xx status code")
+// y `data` en null. El body real (`{ error: '…' }`) viaja en `error.context` (un Response).
+// Sin esto el usuario ve el mensaje críptico en vez del real (ej. "Necesitás una suscripción activa…").
+async function mensajeErrorEF(error: any, data: any, fallback: string): Promise<string> {
+  if (data?.error) return data.error
+  try {
+    const body = await error?.context?.json?.()
+    if (body?.error) return body.error
+  } catch { /* body no-JSON o ya consumido → cae al fallback */ }
+  return error?.message ?? fallback
+}
 
 
 export default function SuscripcionPage() {
@@ -74,7 +87,7 @@ export default function SuscripcionPage() {
       const { data, error } = await supabase.functions.invoke('mp-addon-fijo', {
         body: { action: 'agregar', dimension, cantidad },
       })
-      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo agregar')
+      if (error || data?.error) throw new Error(await mensajeErrorEF(error, data, 'No se pudo agregar'))
       toast.success('Add-on agregado. Se ajustó tu suscripción mensual.')
       await refetchAddons()
     } catch (e: any) {
@@ -95,7 +108,7 @@ export default function SuscripcionPage() {
         setDowngrade({ dimension: data.dimension, excedente: data.excedente, nuevoLimite: data.nuevo_limite })
         return
       }
-      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo quitar')
+      if (error || data?.error) throw new Error(await mensajeErrorEF(error, data, 'No se pudo quitar'))
       toast.success('Add-on quitado. Se ajustó tu suscripción mensual.')
       await refetchAddons()
     } catch (e: any) {
@@ -513,8 +526,11 @@ export default function SuscripcionPage() {
           </div>
         )}
 
-        {/* Configurador de add-ons FIJOS (recurrentes) — requiere suscripción activa */}
-        {esActivo && limits && (
+        {/* Configurador de add-ons FIJOS (recurrentes) — requiere una suscripción MP REAL.
+            Los add-ons fijos modifican el monto del preapproval de MP (`mp_subscription_id`),
+            así que NO tiene sentido mostrarlos a tenants activos sin suscripción MP (Enterprise
+            "a consultar", cuentas activadas a mano): sin preapproval, la EF fail-closea con 400. */}
+        {ADDON_FIJO_ENABLED && esActivo && limits && tenant?.mp_subscription_id && (
           <div className="mt-10 max-w-3xl mx-auto">
             <div className="flex items-center justify-center gap-2 mb-1">
               <SlidersHorizontal size={18} className="text-white" />

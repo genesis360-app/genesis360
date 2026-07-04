@@ -374,11 +374,12 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
+        </div>
 
-          {/* Configurador de precios (Fase 4) — estimador plan base + add-ons */}
-          <div className="mt-14">
-            <PricingConfigurator />
-          </div>
+        {/* Configurador de precios (Fase 4) — estimador plan base + add-ons.
+            Va FUERA del max-w-6xl de los planes para ocupar ~80% del viewport (más protagonismo). */}
+        <div className="mt-14 mx-auto w-[92%] lg:w-[80%] max-w-[1600px]">
+          <PricingConfigurator />
         </div>
       </section>
 

@@ -236,8 +236,8 @@ export default function SuscripcionPage() {
               <>
                 <XCircle size={48} className="text-red-500 mx-auto mb-4" />
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">No pudimos confirmar tu pago</h1>
-                <p className="text-gray-500 dark:text-gray-400 mb-6">{mensajeErrorVerif(verifReason)}</p>
-                <div className="flex flex-col gap-2">
+                <p className="text-gray-500 dark:text-gray-400 mb-8">{mensajeErrorVerif(verifReason)}</p>
+                <div className="flex flex-col gap-3 mt-2">
                   <button onClick={reintentarVerificacion}
                     className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
                     Reintentar
@@ -252,10 +252,10 @@ export default function SuscripcionPage() {
               <>
                 <Clock size={48} className="text-yellow-500 mx-auto mb-4" />
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Estamos confirmando tu pago</h1>
-                <p className="text-gray-500 dark:text-gray-400 mb-6">
+                <p className="text-gray-500 dark:text-gray-400 mb-8">
                   Mercado Pago todavía no nos confirmó el pago. Puede tardar unos minutos y te avisaremos por email cuando se active. <strong>No hace falta que pagues de nuevo.</strong>
                 </p>
-                <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-3 mt-2">
                   <button onClick={reintentarVerificacion}
                     className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
                     Verificar de nuevo
@@ -418,8 +418,13 @@ export default function SuscripcionPage() {
                 </ul>
 
                 {esActual ? (
-                  <div className={`text-center py-3 rounded-xl text-sm font-semibold
-                    ${plan.destacado ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-white dark:bg-gray-800/20 text-white'}`}>
+                  // "Plan actual": badge de estado. En la tarjeta destacada (fondo blanco) va verde
+                  // sobre claro; en las no destacadas (tarjeta oscura/frosted) NO puede ser blanco
+                  // sobre blanco → tinte de marca (accent) con texto blanco, siempre legible.
+                  <div className={`text-center py-3 rounded-xl text-sm font-semibold border
+                    ${plan.destacado
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-transparent'
+                      : 'bg-accent/25 text-white border-accent/50'}`}>
                     ✓ Plan actual
                   </div>
                 ) : plan.precio === null ? (

@@ -968,3 +968,28 @@ Se manejó la app como usuario (Playwright vs DEV, tenant Almacén Jorgito) cubr
 **⚠️ Escenario NEGATIVO a documentar (gotcha UX, PRES-E2E-01):** convertir un presupuesto a despachada **desde el Historial** con **2+ cajas operativas abiertas y sin caja preferida** dispara "Hay varias cajas abiertas. Seleccioná en cuál registrar" (`cambiarEstado`) pero ese modal **no expone selector de caja** → callejón sin salida. Bloquea con seguridad (no es bug de plata/stock) pero impide finalizar hasta setear caja preferida o cerrar una caja. *Workaround en el e2e: seleccionar caja en el POS antes de cambiar a modo Presupuesto. Fix sugerido: exponer el selector de caja en el modal de saldo del convert.*
 
 **✅ CERRADO #6/#10/#11 (2026-06-21, v1.80.2 EN PROD):** NC fiscal (spec 42), Productos alícuota (spec 43), Presupuestos crear→convertir (spec 44). **▶ Próximo norte: AUDITORÍA DE COBERTURA — ver `tests/specs/uat-cobertura.plan.md`** (inventario de funcionalidades + matriz de ~140 flags de `tenants` con/sin + decisión de estructura UAT). Parciales pendientes: autorización de conteo por rol ≠ DUEÑO, RRHH pagar nómina/recibo/liquidación final, gate de pago de OC, brazo OC del rechazo de cheque, formas efectivo/reposición de devolución.
+
+---
+
+# 🎨 §31 — Auditoría de CONTRASTE / VISIBILIDAD de botones y estados (UI, reusable)
+
+**Objetivo:** ningún botón, badge o CTA puede quedar **invisible** (texto del mismo color que su fondo, o fondo del mismo color que la superficie donde está), y todos deben verse **con los colores de la marca** (violeta `--color-accent` → cian `--color-accent-2`; oscuro `--color-primary`). Correr esta auditoría **cada vez que se toquen pantallas con fondo oscuro** (`bg-brand-gradient-dark`: Login, Suscripción, Onboarding, Landing) o se agregue/cambie un estado de botón.
+
+**Método (barato, repetible):**
+1. **Grep de combinaciones peligrosas** sobre `src/`:
+   - `bg-white` + `text-white` en el mismo `className` (el bug clásico) → `rg "bg-white[^\"]*text-white|text-white[^\"]*bg-white" src`.
+   - Botón/badge con `bg-white`/`bg-gray-*` dentro de una tarjeta translúcida (`bg-white/10`, `bg-white/[0.0x]`) sobre página oscura → revisar a mano.
+   - Estados condicionales `${cond ? A : B}` en botones: verificar que **ambas ramas** contrasten (el bug de "Plan actual" estaba solo en la rama `else`, la del plan NO destacado).
+2. **Verificación visual** (Playwright screenshot de la pantalla en cada estado; ver `_shot_tmp.mjs` pattern) con el ojo puesto en: hover, `disabled` (opacity), y estados que cambian el label (ej. `Suscribirme` → `✓ Plan actual`, `Comprar` → `Redirigiendo…`).
+
+**Checklist por pantalla de fondo oscuro (marcar OK / 🐞):**
+| Pantalla | Elemento / estado | Regla | Estado |
+|---|---|---|---|
+| Suscripción | Badge **`✓ Plan actual`** en plan **no destacado** (tarjeta oscura) | NO `bg-white text-white`; usar `bg-accent/25 text-white border-accent/50` | ✅ **fix v1.111.0** (era blanco/blanco → invisible) |
+| Suscripción | CTA `Suscribirme` / `Contactar` (destacado vs no destacado) | destacado `bg-primary text-white`; no destacado `bg-white text-primary` (ambos contrastan) | ✅ |
+| Suscripción | Botones de resultado (`Reintentar`/`Verificar de nuevo`) en el card blanco | `bg-primary text-white` + links `text-gray-500` | ✅ (+ espaciado v1.111.0) |
+| Suscripción | Configurador add-ons in-app (tarjetas seleccionadas/no) | seleccionada = degradé de marca + texto blanco; no = `border-white/10 text-gray-300` | ✅ v1.111.0 |
+| Landing | Configurador "Armá tu plan" (packs, toggle, CTA) | activo = degradé marca + badge ✓; CTA `bg-accent text-white` | ✅ v1.111.0 |
+| Login / Onboarding | Botones primarios/secundarios sobre degradé oscuro | primario `bg-accent text-white`; secundario con borde/texto legible | ⬜ revisar en próxima corrida |
+
+**🐞 Hallazgo semilla (fix v1.111.0):** en `SuscripcionPage`, al pasar a `active` el CTA del plang no destacado se reemplazaba por el badge `✓ Plan actual` con `bg-white … text-white` → **texto blanco sobre fondo blanco, ilegible**. El plan destacado (fondo blanco) sí se veía (verde). Arreglado a `bg-accent/25 text-white border-accent/50` (tinte de marca, legible sobre la tarjeta oscura). **Lección:** cuando un botón/badge cambia según un booleano (`destacado`, `esActual`, `disabled`), auditar **todas** las ramas, no solo la que se ve primero.

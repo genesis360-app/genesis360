@@ -43,7 +43,7 @@ export default function PricingConfigurator() {
     setSel(prev => ({ ...prev, [dim]: prev[dim] === cant ? 0 : cant }))
 
   return (
-    <div className="relative max-w-5xl mx-auto overflow-hidden rounded-3xl border border-white/10 bg-[#0b0b14] p-6 sm:p-8 md:p-10 shadow-2xl">
+    <div className="relative w-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0b14] p-6 sm:p-10 md:p-14 shadow-2xl">
       {/* Glow de marca (violeta) detrás del encabezado */}
       <div className="pointer-events-none absolute -top-28 left-1/2 -translate-x-1/2 h-72 w-72 rounded-full bg-accent opacity-25 blur-[110px]" />
 

@@ -173,6 +173,30 @@ fallaba (con id) o hacía un UPDATE local a ciegas (sin id) → MP seguía cobra
 > Test real: bajar el plan a un monto chico, que un TERCERO real pague desde la app, cancelar, devolver, y
 > volver el plan a $60k (y **vos como vendedor no podés pagarte a vos mismo**).
 
+### 3.e Flujo de activación al volver del checkout (Fase 2, v1.108.0)
+
+```
+Checkout MP → back_url /suscripcion?status=approved&preapproval_id=XXX
+SuscripcionPage useEffect([status, esAddon, preapprovalId]):
+  await supabase.auth.getSession()          # el redirect recarga la app → el JWT puede no estar listo (401)
+  loop 4× (cada 2,5s):
+    invoke mp-verificar-suscripcion { preapproval_id }   # la EF deriva el tenant del JWT
+      200 { activated:true }        → 'ok'  → loadUserData(uid) ANTES de navigate('/dashboard')
+      200 { activated:false, reason } (no_encontrado/no_autorizado) → 'pendiente' → reintentar
+      4xx/5xx (owner_mismatch/ya_reclamada/plan_desconocido/500)    → 'error' (mensaje por reason)
+  agotados los reintentos sin 'ok'/'error' → 'pendiente'
+```
+
+**Bug histórico (v1.108.0, revenue):** un cliente pagaba y **no se activaba solo**. Tres causas, todas en
+`SuscripcionPage` (el EF ya activaba bien): (1) invocaba la EF con el JWT sin restaurar (401) y `if (!tenant)
+return` con `useEffect` en `[status]` → **no reintentaba**; (2) la pantalla de resultado era **estática y
+mentía** ("se activó") sin verificar; (3) el botón email-search era inútil (MP manda `payer_email` **vacío**
+en checkout por plan). Fix: esperar la sesión + no depender del `tenant` del store + reintentos + pantalla
+por estado real + `loadUserData` antes de navegar (evita rebote de `SubscriptionGuard`) + se quitó el botón.
+
+> [!IMPORTANT] La activación **solo se valida en PROD con un pago real** — el token MP de DEV es de otra
+> cuenta y no ve las subs reales. Con `payer_email` vacío la EF activa por `preapproval_id` + claim exclusivo.
+
 ---
 
 ## Edge Functions

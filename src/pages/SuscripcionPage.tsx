@@ -23,6 +23,20 @@ const DIMS_FIJAS: Array<{ dim: AddonDimension; label: string }> = [
 const labelDim = (dim: string) =>
   dim === 'sku' ? 'productos' : dim === 'sucursales' ? 'sucursales' : dim === 'usuarios' ? 'usuarios' : dim
 
+// Mensaje al usuario según el `reason` terminal que devuelve mp-verificar-suscripcion.
+const mensajeErrorVerif = (reason: string | null) => {
+  switch (reason) {
+    case 'owner_mismatch':
+      return 'El pago figura a nombre de otra cuenta de Mercado Pago. Pagá desde la misma cuenta con la que verificás, o escribinos.'
+    case 'ya_reclamada':
+      return 'Esta suscripción ya está asociada a otro negocio. Escribinos y lo resolvemos.'
+    case 'plan_desconocido':
+      return 'No reconocimos el plan pagado. Escribinos y lo resolvemos enseguida.'
+    default:
+      return 'Tuvimos un problema al confirmar tu pago. Si ya pagaste, no vuelvas a pagar: reintentá o escribinos.'
+  }
+}
+
 
 export default function SuscripcionPage() {
   const { tenant, user, loadUserData, signOut } = useAuthStore()
@@ -30,6 +44,9 @@ export default function SuscripcionPage() {
   const [searchParams] = useSearchParams()
   const [loading, setLoading] = useState<string | null>(null)
   const [loadingAddon, setLoadingAddon] = useState<number | null>(null)
+  // Estado REAL de la verificación de activación al volver del checkout de MP.
+  const [verifState, setVerifState] = useState<'verificando' | 'ok' | 'pendiente' | 'error'>('verificando')
+  const [verifReason, setVerifReason] = useState<string | null>(null)
   const { limits } = usePlanLimits()
   const queryClient = useQueryClient()
 
@@ -106,75 +123,82 @@ export default function SuscripcionPage() {
   const preapprovalId = searchParams.get('preapproval_id')
   const esAddon = paymentType === 'addon'
 
-  // Auto-verificar y redirigir al dashboard cuando MP redirige con status=approved
-  useEffect(() => {
-    if (status === 'approved' && !esAddon) {
-      handleVerificarPago()
+  // ── Verificación REAL de la activación al volver del checkout de MP ────────────
+  // Antes esta pantalla MENTÍA: mostraba "tu suscripción se activó" sin verificar nada.
+  // Ahora se consulta server-side (EF mp-verificar-suscripcion, que deriva el tenant del
+  // JWT y solo activa si el preapproval está 'authorized' y pertenece al usuario) y la UI
+  // refleja el estado real. Una pasada de verificación:
+  const verificarUnaVez = async (): Promise<{ estado: 'ok' | 'pendiente' | 'error'; reason?: string }> => {
+    const { data, error } = await supabase.functions.invoke('mp-verificar-suscripcion', {
+      body: preapprovalId ? { preapproval_id: preapprovalId } : {},
+    })
+    if (error) {
+      // 4xx/5xx = terminal (owner_mismatch, ya_reclamada, plan_desconocido, error server).
+      let reason: string | undefined
+      try {
+        const ctx: any = (error as any).context
+        const body = ctx && typeof ctx.json === 'function' ? await ctx.json() : null
+        reason = body?.reason
+      } catch { /* el body ya se consumió o no es JSON */ }
+      return { estado: 'error', reason }
     }
-  }, [status])
+    if (data?.activated) return { estado: 'ok' }
+    // 200 con activated:false → MP todavía no confirmó (no_encontrado / no_autorizado).
+    return { estado: 'pendiente', reason: data?.reason }
+  }
+
+  // Al volver de MP con status=approved: esperar la sesión (el redirect recarga la app de
+  // cero → el JWT puede no estar listo → 401), verificar y reintentar (MP/webhook tarda).
+  useEffect(() => {
+    if (status !== 'approved' || esAddon) return
+    let cancelado = false
+    ;(async () => {
+      setVerifState('verificando')
+      await supabase.auth.getSession()
+      for (let intento = 0; intento < 4 && !cancelado; intento++) {
+        const { estado, reason } = await verificarUnaVez()
+        if (cancelado) return
+        if (estado === 'ok') { setVerifState('ok'); return }
+        if (estado === 'error') { setVerifReason(reason ?? null); setVerifState('error'); return }
+        if (intento < 3) await new Promise(r => setTimeout(r, 2500)) // pendiente → reintentar
+      }
+      if (!cancelado) setVerifState('pendiente')
+    })()
+    return () => { cancelado = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, esAddon, preapprovalId])
+
+  // Activada: refrescar el store (tenant → active, evita que SubscriptionGuard rebote a
+  // /suscripcion con datos viejos) y llevar al dashboard tras mostrar el cartel de éxito.
+  useEffect(() => {
+    if (verifState !== 'ok') return
+    const t = setTimeout(async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      const uid = session?.user?.id ?? user?.id
+      if (uid) await loadUserData(uid)
+      navigate('/dashboard')
+    }, 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verifState])
+
+  const reintentarVerificacion = async () => {
+    setVerifReason(null)
+    setVerifState('verificando')
+    await supabase.auth.getSession()
+    const { estado, reason } = await verificarUnaVez()
+    if (estado === 'ok') { setVerifState('ok'); return }
+    if (estado === 'error') { setVerifReason(reason ?? null); setVerifState('error'); return }
+    setVerifState('pendiente')
+  }
 
   const handleSuscribir = (planId: string, mpPlanId: string) => {
     if (!mpPlanId) { toast.error('Plan no configurado'); return }
     if (!tenant?.id) { toast.error('No se encontró el tenant'); return }
+    setLoading(planId)
     const appUrl = import.meta.env.VITE_APP_URL ?? 'https://app.genesis360.pro'
     const initPoint = `https://www.mercadopago.com.ar/subscriptions/checkout?preapproval_plan_id=${mpPlanId}&external_reference=${tenant.id}&back_url=${encodeURIComponent(appUrl + '/suscripcion')}`
     window.location.href = initPoint
-  }
-
-  const handleVerificarPago = async () => {
-    if (!tenant) return
-    setLoading('verificando')
-    try {
-      // 1. El webhook MP puede haber activado ya la suscripción.
-      const { data } = await supabase.from('tenants').select('subscription_status').eq('id', tenant.id).single()
-      if (data?.subscription_status === 'active') {
-        toast.success('¡Suscripción activada!')
-        if (user?.id) await loadUserData(user.id)
-        window.location.href = '/dashboard'
-        return
-      }
-      // 2. Respaldo: verificación SERVER-SIDE contra MP (NO se activa desde el
-      //    cliente; la EF consulta el preapproval con el token de la plataforma y
-      //    solo activa si está autorizado y pertenece a este tenant).
-      if (preapprovalId) {
-        const { data: verif } = await supabase.functions.invoke('mp-verificar-suscripcion', {
-          body: { preapproval_id: preapprovalId },
-        })
-        if (verif?.activated) {
-          toast.success('¡Suscripción activada!')
-          if (user?.id) await loadUserData(user.id)
-          window.location.href = '/dashboard'
-          return
-        }
-      }
-      // 3. Aún no confirmado por MP → queda procesando (el webhook lo activará).
-      toast('Tu pago está siendo procesado. En breve recibirás confirmación.', { icon: '⏳' })
-      window.location.href = '/dashboard'
-    } catch {
-      toast.error('Error al verificar el pago. Contactá soporte.')
-      setLoading(null)
-    }
-  }
-
-  // "Ya pagué" / respaldo: verifica la suscripción SIN preapproval_id (el EF la busca en
-  // MP por payer_email del usuario logueado). Cierra el caso "pagó y no se activó" cuando
-  // el usuario cerró la pestaña del checkout antes de volver a la app.
-  const handleYaPague = async () => {
-    setLoading('verificando')
-    try {
-      const { data } = await supabase.functions.invoke('mp-verificar-suscripcion', { body: {} })
-      if (data?.activated) {
-        toast.success('¡Suscripción activada!')
-        if (user?.id) await loadUserData(user.id)
-        window.location.href = '/dashboard'
-        return
-      }
-      toast('No encontramos un pago activo a tu nombre. Si acabás de pagar, esperá unos minutos y reintentá.', { icon: '⏳' })
-      setLoading(null)
-    } catch {
-      toast.error('Error al verificar la suscripción. Contactá soporte.')
-      setLoading(null)
-    }
   }
 
   const handleComprarAddon = async (cantidad: number) => {
@@ -211,18 +235,62 @@ export default function SuscripcionPage() {
                   Ir al dashboard
                 </Link>
               </>
-            ) : (
+            ) : verifState === 'ok' ? (
               <>
                 <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
-                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Pago aprobado!</h1>
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Suscripción activada!</h1>
                 <p className="text-gray-500 dark:text-gray-400 mb-6">
-                  {loading === 'verificando'
-                    ? 'Activando tu cuenta...'
-                    : 'Tu suscripción se activó correctamente.'}
+                  Tu plan quedó activo. Ya podés usar {BRAND.name} sin límites de prueba.
                 </p>
                 <div className="flex items-center justify-center gap-2 text-accent font-medium">
                   <RefreshCw size={16} className="animate-spin" />
                   <span>Redirigiendo al dashboard...</span>
+                </div>
+              </>
+            ) : verifState === 'error' ? (
+              <>
+                <XCircle size={48} className="text-red-500 mx-auto mb-4" />
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">No pudimos confirmar tu pago</h1>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">{mensajeErrorVerif(verifReason)}</p>
+                <div className="flex flex-col gap-2">
+                  <button onClick={reintentarVerificacion}
+                    className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
+                    Reintentar
+                  </button>
+                  <a href={`mailto:${BRAND.email}?subject=${encodeURIComponent('Problema con mi suscripción')}`}
+                    className="w-full block text-center text-gray-500 dark:text-gray-400 font-medium py-2 rounded-xl hover:text-primary transition-all text-sm">
+                    Contactar soporte
+                  </a>
+                </div>
+              </>
+            ) : verifState === 'pendiente' ? (
+              <>
+                <Clock size={48} className="text-yellow-500 mx-auto mb-4" />
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Estamos confirmando tu pago</h1>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
+                  Mercado Pago todavía no nos confirmó el pago. Puede tardar unos minutos y te avisaremos por email cuando se active. <strong>No hace falta que pagues de nuevo.</strong>
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button onClick={reintentarVerificacion}
+                    className="w-full bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
+                    Verificar de nuevo
+                  </button>
+                  <Link to="/dashboard"
+                    className="w-full block text-center text-gray-500 dark:text-gray-400 font-medium py-2 rounded-xl hover:text-primary transition-all text-sm">
+                    Ir al dashboard
+                  </Link>
+                </div>
+              </>
+            ) : (
+              <>
+                <RefreshCw size={48} className="text-accent mx-auto mb-4 animate-spin" />
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Verificando tu pago…</h1>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
+                  Estamos confirmando tu suscripción con Mercado Pago. Esto puede tardar unos segundos.
+                </p>
+                <div className="flex items-center justify-center gap-2 text-accent font-medium">
+                  <RefreshCw size={16} className="animate-spin" />
+                  <span>Un momento…</span>
                 </div>
               </>
             )
@@ -302,10 +370,6 @@ export default function SuscripcionPage() {
             ? 'Activá tu suscripción para seguir usando Genesis360 sin interrupciones'
             : 'Todos los planes incluyen 7 días de prueba gratuita'}
         </p>
-        <button onClick={handleYaPague} disabled={loading === 'verificando'}
-          className="mt-4 text-sm text-blue-200 underline underline-offset-4 hover:text-white disabled:opacity-50">
-          {loading === 'verificando' ? 'Verificando…' : '¿Ya pagaste y no se activó? Verificar mi suscripción'}
-        </button>
       </div>
 
       {/* Planes */}

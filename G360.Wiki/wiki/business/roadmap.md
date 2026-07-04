@@ -9,7 +9,21 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 2 de Julio, 2026
+**Última actualización:** 3 de Julio, 2026
+
+---
+
+## v1.108.0 — 🔁 Fase 2 billing MP: rework del flujo de activación (PROD ✅, frontend-only)
+
+**Contexto (REGLA #0, revenue):** tras el test real con Fede (v1.107.0) se confirmó que **la activación por UI no funcionaba** — un cliente pagaba y no se activaba solo. Tres causas en `SuscripcionPage`: (1) el retorno del checkout invocaba la EF con el **JWT posiblemente sin restaurar** (el redirect recarga la app de cero) → 401; el `handleVerificarPago` hacía `if (!tenant) return` y el `useEffect` (deps `[status]`) **no reintentaba nunca**; (2) la pantalla de resultado era **estática y mentía** ("tu suscripción se activó") sin verificar nada; (3) el botón email-search no podía andar porque MP manda `payer_email` **vacío** en checkout por plan.
+
+**Fix (todo en `src/pages/SuscripcionPage.tsx`, sin tocar el EF):** se espera `supabase.auth.getSession()` **antes** de invocar (mata el 401) y ya **no se depende del `tenant` del store** (la EF `mp-verificar-suscripcion` deriva el tenant del JWT). Nuevo estado real `verifState: verificando|ok|pendiente|error` con **reintentos** (4× cada 2,5s, porque MP/webhook tarda en confirmar) y clasificación de la respuesta de la EF (`activated:true`→ok · `200 activated:false`→pendiente · `4xx/5xx`→error con mensaje por `reason`). **Pantalla honesta** por estado (spinner "verificando", éxito+redirect, "estamos confirmando / no pagues de nuevo", error+reintentar/soporte). Al activar, `loadUserData(uid)` **antes** de navegar → refresca `tenant` a `active` y el `SubscriptionGuard` no rebota a `/suscripcion`. Se **quitó** el botón "¿Ya pagaste?" (email-search inútil). **Sin migraciones.** typecheck+build+**839 unit** verdes. **🟠 Pendiente:** validación e2e del pago real en PROD (GO/Fede) — no testeable en DEV (token MP de otra cuenta).
+
+---
+
+## v1.107.0 — 🔗 Fase 1 billing MP: linkeo por payer_email + fail-closed (PROD ✅)
+
+**Causa raíz (REGLA #0):** MP **no persiste `external_reference`** en checkout por plan (`preapproval_plan_id`) → ningún tenant se linkeaba (`mp_subscription_id` NULL en toda la plataforma) y la cancelación **fail-abría** (marcaba cancelled sin cancelar en MP). **Fix (4 EFs):** `mp-verificar-suscripcion` (pertenencia por `payer_email` + guarda `mp_subscription_id`), `cancel-suscripcion` (cancela por id guardado + fail-closed real + MP-C7), `mp-webhook` (resuelve tenant por `mp_subscription_id`), `admin-api`/`cancelarSubMP` (mismo bug duplicado). Botón "Ya pagué / Verificar" en `SuscripcionPage`. UAT 43 escenarios (`tests/specs/mp-suscripciones-pagos.plan.md`). **Sin migraciones.** **✅ CANCELACIÓN validada e2e en PROD con Fede** (el bug original probado muerto). **❌ ACTIVACIÓN por UI ROTA** — confirmado con datos reales que MP tampoco manda `payer_email` en checkout por plan (10/10 vacíos) → email-search inútil; y el retorno del checkout falla (401 de sesión / `tenant` no cargado + `useEffect` sin reintento / pantalla "activó" estática que miente) → **Fase 2 = rework del flujo de activación (prioridad, revenue)**. Seguridad: removido rol ADMIN god-access a Fede → 0 ADMINs en PROD.
 
 ---
 

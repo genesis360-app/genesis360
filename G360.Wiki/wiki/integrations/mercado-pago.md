@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-06-24
+updated: 2026-07-03
 ---
 
 # Integración Mercado Pago
@@ -31,6 +31,10 @@ Usuario hace clic en "Suscribirse"
 ```
 
 > [!WARNING] **No usar** `POST /preapproval` vía Edge Function — MP requiere `card_token_id` que no tenemos en este flujo. El `init_point` se construye en el frontend directo.
+
+> [!CAUTION] **🔴 CRÍTICO (confirmado 2026-07-03 en PROD): MP NO persiste `external_reference` NI `payer_email` en los checkout por PLAN** (`preapproval_plan_id`). El preapproval queda con "Código de referencia" y email de pagador VACÍOS (verificado: 10/10 preapprovals reales). Por eso el linkeo preapproval↔tenant **no puede** hacerse por esos campos — el ÚNICO link confiable es el **`preapproval_id`** que MP devuelve en el redirect (`/suscripcion?status=approved&preapproval_id=...`).
+>
+> **Estado (v1.107.0, Fase 1):** ✅ **Cancelación** arreglada + validada e2e en PROD (linkeo por `mp_subscription_id` guardado + **fail-closed**: la DB solo pasa a `cancelled` si MP confirmó). ❌ **Activación por UI ROTA** — el fix por `payer_email` no sirve (email vacío), y el retorno del checkout falla: **(a)** 401 de sesión (verify se llama antes de que la sesión esté lista en el redirect); **(b)** `handleVerificarPago` hace `if (!tenant) return` y el `useEffect [status]` no reintenta si el tenant no cargó; **(c)** la pantalla "¡Pago aprobado! se activó correctamente" es ESTÁTICA (se muestra por `status=approved`, no refleja el estado real → MIENTE). Neto: el cliente paga, MP lo registra, pero la app nunca linkea. **FASE 2 pendiente = rework de `SuscripcionPage`:** esperar sesión+`tenant` + **reintentar** el verify con el `preapproval_id`; pantalla que refleje el estado REAL; **quitar el botón "Verificar/Ya pagué"** (email-search, inútil sin `payer_email`). El EF `mp-verificar-suscripcion` YA activa bien dado un `preapproval_id`; el problema es 100% frontend.
 
 ### IDs de planes PROD
 
@@ -168,6 +172,30 @@ fallaba (con id) o hacía un UPDATE local a ciegas (sin id) → MP seguía cobra
 > la cuenta REAL de GO → pagar con un *Buyer Test User* da **"una de las partes es de prueba"** (test+prod).
 > Test real: bajar el plan a un monto chico, que un TERCERO real pague desde la app, cancelar, devolver, y
 > volver el plan a $60k (y **vos como vendedor no podés pagarte a vos mismo**).
+
+### 3.e Flujo de activación al volver del checkout (Fase 2, v1.108.0)
+
+```
+Checkout MP → back_url /suscripcion?status=approved&preapproval_id=XXX
+SuscripcionPage useEffect([status, esAddon, preapprovalId]):
+  await supabase.auth.getSession()          # el redirect recarga la app → el JWT puede no estar listo (401)
+  loop 4× (cada 2,5s):
+    invoke mp-verificar-suscripcion { preapproval_id }   # la EF deriva el tenant del JWT
+      200 { activated:true }        → 'ok'  → loadUserData(uid) ANTES de navigate('/dashboard')
+      200 { activated:false, reason } (no_encontrado/no_autorizado) → 'pendiente' → reintentar
+      4xx/5xx (owner_mismatch/ya_reclamada/plan_desconocido/500)    → 'error' (mensaje por reason)
+  agotados los reintentos sin 'ok'/'error' → 'pendiente'
+```
+
+**Bug histórico (v1.108.0, revenue):** un cliente pagaba y **no se activaba solo**. Tres causas, todas en
+`SuscripcionPage` (el EF ya activaba bien): (1) invocaba la EF con el JWT sin restaurar (401) y `if (!tenant)
+return` con `useEffect` en `[status]` → **no reintentaba**; (2) la pantalla de resultado era **estática y
+mentía** ("se activó") sin verificar; (3) el botón email-search era inútil (MP manda `payer_email` **vacío**
+en checkout por plan). Fix: esperar la sesión + no depender del `tenant` del store + reintentos + pantalla
+por estado real + `loadUserData` antes de navegar (evita rebote de `SubscriptionGuard`) + se quitó el botón.
+
+> [!IMPORTANT] La activación **solo se valida en PROD con un pago real** — el token MP de DEV es de otra
+> cuenta y no ve las subs reales. Con `payer_email` vacío la EF activa por `preapproval_id` + claim exclusivo.
 
 ---
 

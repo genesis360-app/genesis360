@@ -6,6 +6,30 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-03] deploy | 🔁 Fase 2 billing MP — rework del flujo de activación · v1.108.0 EN PROD
+
+**Contexto (REGLA #0, revenue):** el test real con Fede (v1.107.0) probó que **la activación por UI no funcionaba** (un cliente paga y no se activa solo). Tres causas en `SuscripcionPage`: (1) el retorno del checkout invocaba la EF con el **JWT posiblemente sin restaurar** (el redirect de MP recarga la app de cero → 401) y el `handleVerificarPago` hacía `if (!tenant) return` con el `useEffect` en deps `[status]` → **no reintentaba nunca**; (2) la pantalla de resultado era **estática y mentía** ("tu suscripción se activó") sin verificar; (3) el botón email-search era inútil porque MP manda `payer_email` **vacío** en checkout por plan.
+
+**Fix (frontend-only, `src/pages/SuscripcionPage.tsx`, SIN tocar el EF):** se espera `supabase.auth.getSession()` **antes** de invocar (mata el 401) y ya **no se depende del `tenant` del store** (la EF `mp-verificar-suscripcion` deriva el tenant del JWT + activa por `preapproval_id` con `payer_email` vacío vía claim exclusivo). Nuevo estado real `verifState: verificando|ok|pendiente|error` con **reintentos** (4× cada 2,5s) y clasificación de la respuesta (`activated:true`→ok · `200 activated:false` = no_encontrado/no_autorizado→pendiente · `4xx/5xx` = owner_mismatch/ya_reclamada/plan_desconocido→error con mensaje). **Pantalla honesta** por estado (spinner, éxito+redirect, "estamos confirmando / no pagues de nuevo"+reintentar, error+reintentar/soporte). Al activar: `loadUserData(uid)` **antes** de `navigate` → refresca `tenant` a `active` (evita que `SubscriptionGuard` rebote a `/suscripcion`). Se **quitó** el botón "¿Ya pagaste?". **Sin migraciones.** typecheck+build+**839 unit** verdes. PR dev→main + release v1.108.0.
+
+**🟠 Pendiente:** validación e2e del pago real en PROD (GO + Fede) — la activación no es testeable en DEV (el token MP de DEV es de otra cuenta y no ve las subs reales). **Aparte (follow-up menor):** unificar `admin-api.cancelarSubMP` (repo `genesis360-admin`) con el fallback MP-C7 por `payer_email`. Ver [[reference_mp_suscripcion_cancel]].
+
+---
+
+## [2026-07-03] deploy | 🔗 Fase 1 billing MP — linkeo por payer_email + fail-closed · v1.107.0 EN PROD
+
+**Causa raíz (REGLA #0):** MP **no persiste `external_reference`** en los checkout por plan (`preapproval_plan_id`) → el preapproval queda con "Código de referencia" vacío → ningún tenant se linkeaba (`mp_subscription_id` NULL en toda la plataforma) y la cancelación **fail-abría** (marcaba `cancelled` sin cancelar en MP → seguía cobrando). Rompía **activación y cancelación** para clientes reales. Diagnóstico con la sub real de Fede (DEV) + logs de PROD (los webhooks de MP van a PROD).
+
+**Fix (4 EFs, DEV+PROD):** `mp-verificar-suscripcion` (pertenencia por **`payer_email`** + claim exclusivo, guarda `mp_subscription_id`, busca por payer_email si no vino `preapproval_id`) · `cancel-suscripcion` (cancela por id guardado + **fail-closed real**; MP-C7 busca por payer_email) · `mp-webhook` (resuelve tenant por `mp_subscription_id` cuando external_reference vacío) · `admin-api`/`cancelarSubMP` (mismo bug duplicado/fail-open — regresión MP-C4b). **Frontend:** botón "Ya pagué / Verificar mi suscripción" (`SuscripcionPage`). **UAT:** `tests/specs/mp-suscripciones-pagos.plan.md` (43 escenarios + auditoría anti-drift; generado por spec-extractor). Sin migraciones. PR #263 → main → release v1.107.0.
+
+**Validado en vivo por HTTP contra DEV** (usuario e2e, token minteado por password-grant): fail-closed MP-C3 (502 sin marcar cancelado), search email, no-link. **Hallazgo clave:** el **token MP del DEV es de OTRA cuenta** (no ve las subs reales) → la activación e2e **solo se valida en PROD**. **RIESGO ABIERTO:** confirmar que el preapproval trae `payer_email` (a validar con el test PROD de Fede). **Auditoría de exposición:** en PROD 0 clientes pagos reales activos afectados (se agarró pre-launch).
+
+**Seguridad:** se removió `rol='ADMIN'` (god-access cross-tenant) de `fedemessina2411@gmail.com` en PROD (data test vieja) → 0 ADMINs en PROD.
+
+**Pendiente:** validación e2e PROD con Fede (activación + cancel + payer_email) + refund · Fase 2 (idempotencia add-on fijo, deprecar `crear-suscripcion`) · Fase 3 (downgrade plan guiado, acceso hasta fin de período) · Fase 4 (vitest de regresión).
+
+---
+
 ## [2026-07-02] deploy | 🛟 Cancelar suscripción desde el panel interno (admin.genesis360.pro) · v1.106.0 (EF admin-api) + panel
 
 Cierra el follow-up: el panel separado (`admin.genesis360.pro`, repo `genesis360-admin`) mostraba el cliente pero NO tenía cómo cancelarle la suscripción. **Backend (repo principal, EF `admin-api`):** nueva acción **`billing.cancel_subscription`** (módulo `billing` → roles admin/billing) que cancela el/los preapproval(s) del tenant en MP (helper `cancelarSubMP`: busca por `external_reference` + id guardado, filtra client-side, PUT `status:'cancelled'`, **fail-closed**) y marca `subscription_status='cancelled'`; audita en `admin_audit_log`. `customers.get` ahora devuelve `subscription_status`. **Frontend (repo `genesis360-admin`):** botón "Cancelar suscripción" en `CustomerDetailPage` (gateado por `canSee(rol,'billing')` + solo si no está ya cancelada; confirm + mensaje). Build del panel verde; EF `admin-api` deployado DEV+PROD. Mismo circuito de cancelación que el EF `cancel-suscripcion` (v1.104.0). Bump repo principal v1.106.0.

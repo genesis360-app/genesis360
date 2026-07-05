@@ -112,13 +112,13 @@ describe('evaluarBajaAddonFijo — baja con downgrade guiado (MP-AD5/AD6)', () =
     expect(r.quitado).toBe(true)
   })
 
-  test('dimensión sin guard de estado (movimientos, límite null) NO bloquea la baja', () => {
+  test('dimensión sin guard de estado (comprobantes, límite null) NO bloquea la baja', () => {
     const r = evaluarBajaAddonFijo({
-      ...BAJA_OK, dimension: 'movimientos', cantidad: 1000, limiteEfectivo: null, uso: 99999,
-      montoActual: 65000,
+      ...BAJA_OK, dimension: 'comprobantes', cantidad: 1000, limiteEfectivo: null, uso: 99999,
+      montoActual: 70000,
     })
     expect(r.quitado).toBe(true)
-    expect(r.nuevoMonto).toBe(60000) // pack movimientos 1000 = $5.000
+    expect(r.nuevoMonto).toBe(60000) // pack comprobantes 1000 = $10.000 (pricing v2)
   })
 
   test('🛑 PUT a MP FALLA → NO se quita el add-on (el monto no bajó) — fail-closed', () => {

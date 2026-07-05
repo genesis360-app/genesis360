@@ -2,7 +2,8 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PLANES, BRAND } from '@/config/brand'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
-import { Check, Box, Building2, User, Shield, Rocket, Headphones, Lock, type LucideIcon } from 'lucide-react'
+import { precioSel, DIMS_BATCH, type PackSel } from '@/lib/mpAddonBatch'
+import { Check, Box, Building2, User, FileText, Shield, Rocket, Headphones, Lock, RefreshCw, type LucideIcon } from 'lucide-react'
 
 // Configurador de precios PÚBLICO (Landing) — Pricing 2026, Fase 4.
 // Solo estima: plan base + add-ons FIJOS (recurrentes) → total mensual en vivo.
@@ -13,9 +14,10 @@ import { Check, Box, Building2, User, Shield, Rocket, Headphones, Lock, type Luc
 // que el resto de la app: .bg-accent / --color-accent / --color-accent-2).
 
 const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: string; Icon: LucideIcon }> = [
-  { dim: 'sku',        label: 'Productos',  unidad: 'productos',  sub: 'Sumá más productos a tu plan',  Icon: Box },
-  { dim: 'sucursales', label: 'Sucursales', unidad: 'sucursales', sub: 'Sumá más sucursales a tu plan', Icon: Building2 },
-  { dim: 'usuarios',   label: 'Usuarios',   unidad: 'usuarios',   sub: 'Sumá más usuarios a tu plan',   Icon: User },
+  { dim: 'sku',          label: 'Productos',    unidad: 'productos',    sub: 'Sumá más productos a tu plan',       Icon: Box },
+  { dim: 'sucursales',   label: 'Sucursales',   unidad: 'sucursales',   sub: 'Sumá más sucursales a tu plan',      Icon: Building2 },
+  { dim: 'usuarios',     label: 'Usuarios',     unidad: 'usuarios',     sub: 'Sumá más usuarios a tu plan',        Icon: User },
+  { dim: 'comprobantes', label: 'Comprobantes', unidad: 'comprob./mes', sub: 'Sumá más comprobantes mensuales',    Icon: FileText },
 ]
 
 const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
@@ -25,20 +27,35 @@ const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
   { Icon: Lock,       titulo: 'Tus datos seguros',    sub: 'Encriptados y respaldados' },
 ]
 
-// Reusable: en el Landing el CTA manda al onboarding (default); en la app (SuscripcionPage)
-// se pasa `onCta` y el botón dispara la suscripción al plan base elegido. Los add-ons acá
-// SIEMPRE son estimación pura (no cobran nada — la compra real de add-ons fijos vive detrás
-// de ADDON_FIJO_ENABLED).
+// Reusable en 3 modos:
+//  • Landing (default): estimador puro, CTA → onboarding.
+//  • `onCta`: estimador dentro de la app SIN suscripción activa — el CTA suscribe al plan base.
+//  • `app`: modo BATCH para suscriptos (diseño configurador-addons-batch.md): arranca con el
+//    plan y los packs ACTUALES tildados; el total muestra el recurrente NUEVO (delta sobre el
+//    monto real de MP — preserva descuentos); NADA se aplica hasta confirmar. El cobro/guard
+//    real lo hace el EF mp-addon-batch (acá solo se estima y se arma el batch).
+export interface AppBatchMode {
+  planNombre: string
+  /** auto_recurring.transaction_amount actual del preapproval (preview del EF). */
+  montoActualMP: number
+  /** Packs FIJOS actuales (selDesdeAddons de tenant_addons). */
+  initialSel: PackSel
+  confirmando?: boolean
+  onConfirm: (packsObjetivo: PackSel) => void
+}
+
 interface PricingConfiguratorProps {
   ctaLabel?: string
   onCta?: (planId: string) => void
   ctaLoading?: boolean
+  app?: AppBatchMode
 }
 
-export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading }: PricingConfiguratorProps = {}) {
+export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app }: PricingConfiguratorProps = {}) {
   const planes = PLANES.filter(p => p.id === 'basico' || p.id === 'pro')
   const [planId, setPlanId] = useState('pro')
-  const [sel, setSel] = useState<Record<string, number>>({})  // dimension → cantidad elegida (0 = ninguno)
+  // dimension → cantidad elegida (0 = ninguno). En modo app arranca en los packs ACTUALES.
+  const [sel, setSel] = useState<Record<string, number>>(() => (app ? { ...app.initialSel } as Record<string, number> : {}))
 
   const plan = planes.find(p => p.id === planId) ?? planes[0]
   const base = plan.precio ?? 0
@@ -47,7 +64,12 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading }: Pri
     .filter(([, cant]) => cant > 0)
     .map(([dim, cant]) => ({ dimension: dim as AddonDimension, cantidad: cant, tipo: 'fijo' }))
   const precioAddons = precioMensualAddonsFijos(addonsFijos)
-  const total = base + precioAddons
+
+  // Modo app: total = recurrente NUEVO = montoActualMP − precio(actuales) + precio(elegidos).
+  const totalApp = app ? Math.max(0, app.montoActualMP - precioSel(app.initialSel) + precioSel(sel as PackSel)) : 0
+  const deltaApp = app ? totalApp - app.montoActualMP : 0
+  const sinCambios = app ? DIMS_BATCH.every(d => (app.initialSel[d] ?? 0) === (sel[d] ?? 0)) : true
+  const total = app ? totalApp : base + precioAddons
 
   const setPack = (dim: string, cant: number) =>
     setSel(prev => ({ ...prev, [dim]: prev[dim] === cant ? 0 : cant }))
@@ -64,17 +86,24 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading }: Pri
         <p className="mt-2 text-sm text-gray-400">Elegí el plan que mejor se adapta a tu negocio y sumá los add-ons que necesités.</p>
       </div>
 
-      {/* Toggle de plan base */}
+      {/* Toggle de plan base (Landing/estimador). En modo app el plan es el ACTUAL del
+          tenant — el cambio de PLAN va por las tarjetas de planes (Fase 2 del batch). */}
       <div className="relative mt-7 flex justify-center">
-        <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
-          {planes.map(p => (
-            <button key={p.id} onClick={() => setPlanId(p.id)}
-              className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all
-                ${planId === p.id ? 'bg-accent text-white shadow-lg shadow-accent/30' : 'text-gray-300 hover:text-white'}`}>
-              {p.nombre} · ${(p.precio ?? 0).toLocaleString('es-AR')}
-            </button>
-          ))}
-        </div>
+        {app ? (
+          <div className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-6 py-2.5 text-sm font-semibold text-white">
+            <Check size={15} className="text-accent" /> Tu plan: {app.planNombre} · ${app.montoActualMP.toLocaleString('es-AR')}/mes
+          </div>
+        ) : (
+          <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+            {planes.map(p => (
+              <button key={p.id} onClick={() => setPlanId(p.id)}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all
+                  ${planId === p.id ? 'bg-accent text-white shadow-lg shadow-accent/30' : 'text-gray-300 hover:text-white'}`}>
+                {p.nombre} · ${(p.precio ?? 0).toLocaleString('es-AR')}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="relative my-8 border-t border-white/10" />
@@ -82,7 +111,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading }: Pri
       <p className="relative text-center text-sm font-semibold text-white mb-5">Personalizá tu plan con add-ons</p>
 
       {/* Add-ons fijos por dimensión */}
-      <div className="relative grid gap-4 md:grid-cols-3">
+      <div className="relative grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {DIMS.map(({ dim, label, unidad, sub, Icon }) => (
           <div key={dim} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <div className="flex items-center gap-3 mb-4">
@@ -124,13 +153,37 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading }: Pri
       {/* Total + CTA */}
       <div className="relative mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs text-gray-400">Plan {plan.nombre} (${base.toLocaleString('es-AR')}) + add-ons (${precioAddons.toLocaleString('es-AR')})</p>
+          {app ? (
+            <p className="text-xs text-gray-400">
+              Venís pagando ${app.montoActualMP.toLocaleString('es-AR')}/mes
+              {!sinCambios && (deltaApp > 0
+                ? <> · hoy pagás la diferencia: <span className="font-semibold text-white">${deltaApp.toLocaleString('es-AR')}</span></>
+                : <> · sin cargos hoy — tu próxima factura ya llega por el monto nuevo</>)}
+            </p>
+          ) : (
+            <p className="text-xs text-gray-400">Plan {plan.nombre} (${base.toLocaleString('es-AR')}) + add-ons (${precioAddons.toLocaleString('es-AR')})</p>
+          )}
           <p className="text-4xl font-bold text-white">
             ${total.toLocaleString('es-AR')}<span className="text-base font-medium text-gray-500">/mes</span>
           </p>
-          <p className="mt-1 text-xs text-gray-500">¿Necesitás más movimientos puntuales? Se compran por 30 días desde la app.</p>
+          <p className="mt-1 text-xs text-gray-500">
+            {app
+              ? 'Los cambios se aplican recién al confirmar. ¿Un pico puntual? Comprá comprobantes por 30 días más abajo.'
+              : '¿Un pico puntual de comprobantes? También hay packs por 30 días desde la app.'}
+          </p>
         </div>
-        {onCta ? (
+        {app ? (
+          <button onClick={() => app.onConfirm(sel as PackSel)} disabled={sinCambios || app.confirmando}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0 disabled:opacity-50">
+            {app.confirmando
+              ? <><RefreshCw size={16} className="animate-spin" /> Procesando…</>
+              : sinCambios
+                ? <><Check size={18} /> Sin cambios</>
+                : deltaApp > 0
+                  ? <><Check size={18} /> Pagar diferencia ${deltaApp.toLocaleString('es-AR')}</>
+                  : <><Check size={18} /> Confirmar cambios</>}
+          </button>
+        ) : onCta ? (
           <button onClick={() => onCta(planId)} disabled={ctaLoading}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0 disabled:opacity-60">
             <Check size={18} /> {ctaLabel ?? `Suscribirme al plan ${plan.nombre}`}

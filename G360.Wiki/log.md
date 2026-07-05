@@ -6,7 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-07-05] deploy | 🧪 v1.114.0 — ADDON_FIJO_ENABLED=true (test e2e de add-on fijo EN CURSO)
+## [2026-07-05] update | 🧩 v1.115.0 (DEV) — Batch de add-ons con delta + pricing v2 COMPROBANTES (Fase 1 implementada)
+
+**Qué:** el test del add-on fijo (v1.114.0) **salió bien** pero GO descartó la lógica "un click = un cobro" y pidió el rediseño BATCH (diseño cerrado en `wiki/features/configurador-addons-batch.md`, decisiones Q1-Q4 tomadas). Además **pricing v2**: la dimensión de flujo pasa de movimientos (ahora free/-1) a **COMPROBANTES** (venta finalizada; Básico 6.000/mes · Pro 14.000/mes · packs +1.000=$10k/+5.000=$30k/+10.000=$50k, fijo Y temporal; enforcement SOFT — nunca se bloquea una venta).
+
+**Implementado (Fase 1, EN DEV):** migs **258** (`addon_batch_changes` + `fn_aplicar_addon_batch` atómica + un-pack-fijo-por-dimensión + dimensión comprobantes) y **259** (`fn_plan_base_limite` v2) aplicadas en DEV · **EF `mp-addon-batch`** (preview/confirmar: suba → preference por el DELTA + el webhook aplica al pagar [fail-closed]; baja → PUT + aplicación inmediata, sin cobro; guard batch server-side; solo DUEÑO) · `mp-webhook` rama `|addonbatch|` (claim idempotente por mp_payment_id; pagado-sin-aplicar → `fallido` + email a soporte) · `mp-addon` temporal ahora de comprobantes · catálogo v2 en `brand.ts`/`addons.ts` (planes 6k/14k comprobantes, movimientos sin packs) · `usePlanLimits` +comprobantes (barra soft) · `SuscripcionPage` panel ÚNICO (el viejo "Ampliá tu plan" eliminado; `PricingConfigurator` modo `app`: plan+packs actuales tildados, total = recurrente nuevo por delta real de MP, botón "Pagar diferencia $X"/"Confirmar cambios", modal de bloqueos batch, retorno `type=addonbatch` con poll) · espejo `src/lib/mpAddonBatch.ts` + tests (ejemplos GO exactos). **924 unit verdes · tsc limpio · build verde.** UAT §10.b nuevo (MP-B1..B8). EFs `mp-addon-batch`/`mp-addon`/`mp-webhook` deployados a DEV.
+
+**🟠 PENDIENTE:** OK de GO para PROD (migs 258-259 + 3 EFs + PR v1.115.0) → test e2e GO+Fede del batch (suba con delta + baja + guard). `mp-addon-fijo` queda deprecado (la UI ya no lo llama; borrarlo en una limpieza futura). Landing/planes ya muestran comprobantes.
+
+## [2026-07-05] deploy | 🧪 v1.114.0 — ADDON_FIJO_ENABLED=true (test e2e de add-on fijo EN CURSO — resultado: ✅ funcionó, flujo luego reemplazado por el BATCH v1.115)
 
 **Qué:** GO autorizó prender el configurador de add-ons FIJOS in-app (`brand.ts`) para correr el paso 2 del runbook (`mp-suscripciones-pagos.plan.md` §11) con la suscripción real de Fede (`1619ea40…`, $1.000/mes). Exposición acotada: solo tenants `active` con `mp_subscription_id` (hoy solo Fede). Plan: alta Usuarios+1 ($5.000) → verificar `tenant_addons`+límites (DB) y monto $6.000 + próximo cobro en el panel MP (la incógnita del `PUT transaction_amount`) → baja → $1.000. Rollback = flag `false` + redeploy. PR #271 + release v1.114.0. **Resultado del test: pendiente de registrar acá.**
 

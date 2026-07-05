@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.114.0'
+export const APP_VERSION = 'v1.115.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
@@ -97,13 +97,13 @@ export const PLANES = [
     limites: {
       usuarios: 1,
       productos: 50,
-      movimientos_mes: 200,
+      comprobantes_mes: 200,
       sucursales: 1,
     },
     features: [
       '1 usuario',
       'Hasta 50 productos',
-      '200 movimientos/mes',
+      '200 comprobantes/mes',
       '1 sucursal',
       'Gestión de inventario · Ventas · Caja',
       'Facturación electrónica AFIP',
@@ -126,13 +126,13 @@ export const PLANES = [
     limites: {
       usuarios: 5,
       productos: 2000,
-      movimientos_mes: 5000,
+      comprobantes_mes: 6000,
       sucursales: 1,
     },
     features: [
       '5 usuarios',
       'Hasta 2.000 productos',
-      '5.000 movimientos/mes',
+      '6.000 comprobantes/mes',
       '1 sucursal',
       'Todo lo del plan Free',
       'Facturación electrónica AFIP',
@@ -156,13 +156,13 @@ export const PLANES = [
     limites: {
       usuarios: 15,
       productos: 8000,
-      movimientos_mes: 20000,
+      comprobantes_mes: 14000,
       sucursales: 4,
     },
     features: [
       '15 usuarios',
       'Hasta 8.000 productos',
-      '20.000 movimientos/mes',
+      '14.000 comprobantes/mes',
       '4 sucursales',
       'Todo lo del plan Básico',
       'Modo avanzado (WMS): lotes, series, vencimientos, FIFO/FEFO',
@@ -182,13 +182,13 @@ export const PLANES = [
     limites: {
       usuarios: -1, // ilimitado
       productos: -1,
-      movimientos_mes: -1, // ilimitado
+      comprobantes_mes: -1, // ilimitado
       sucursales: -1,
     },
     features: [
       'Usuarios ilimitados',
       'Productos ilimitados',
-      'Movimientos y sucursales ilimitados',
+      'Comprobantes y sucursales ilimitados',
       'Multi-CUIT / multi-razón social',
       'Todo lo del plan Pro',
       'Onboarding personalizado · SLA',
@@ -201,20 +201,26 @@ export const PLANES = [
 
 // Límites BASE por tier (espejo de fn_plan_base_limite en SQL, mig 251). -1 = ilimitado.
 // El límite EFECTIVO = base + Σ add-ons activos (ver ADDON_PACKS + tabla tenant_addons).
-export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number; sucursales: number; usuarios: number }> = {
-  free:       { sku: 50,   movimientos: 200,   sucursales: 1,  usuarios: 1 },
-  basico:     { sku: 2000, movimientos: 5000,  sucursales: 1,  usuarios: 5 },
-  pro:        { sku: 8000, movimientos: 20000, sucursales: 4,  usuarios: 15 },
-  enterprise: { sku: -1,   movimientos: -1,    sucursales: -1, usuarios: -1 },
+// ⚠ Pricing v2 (GO 2026-07-05): la dimensión metered de FLUJO es COMPROBANTES (toda venta
+// finalizada del mes; presupuestos y canceladas no cuentan; enforcement SOFT — nunca se
+// bloquea una venta). Movimientos dejó de ser límite (-1 = free, queda como telemetría).
+export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number; comprobantes: number; sucursales: number; usuarios: number }> = {
+  free:       { sku: 50,   movimientos: -1, comprobantes: 200,   sucursales: 1,  usuarios: 1 },
+  basico:     { sku: 2000, movimientos: -1, comprobantes: 6000,  sucursales: 1,  usuarios: 5 },
+  pro:        { sku: 8000, movimientos: -1, comprobantes: 14000, sucursales: 4,  usuarios: 15 },
+  enterprise: { sku: -1,   movimientos: -1, comprobantes: -1,    sucursales: -1, usuarios: -1 },
 }
 
 // Packs de add-on por dimensión (ARS, precio de lista sin descuentos). Se suman al límite base.
-// SKU / sucursales / usuarios = SOLO 'fijo' (recurrente). Movimientos = 'fijo' o 'temporal' (vence 30d).
+// SKU / sucursales / usuarios = SOLO 'fijo' (recurrente, UN pack por dimensión — el batch lo
+// reemplaza, no se acumulan). Comprobantes = 'fijo' o 'temporal' (pago único, vence 30d, para
+// picos puntuales; los temporales SÍ se acumulan). Los packs de movimientos se eliminaron
+// (pricing v2) — las filas históricas `dimension='movimientos'` en tenant_addons no se tocan.
 export const ADDON_PACKS: Record<string, { tipos: Array<'fijo' | 'temporal'>; packs: Array<{ cantidad: number; precio: number }> }> = {
-  sku:         { tipos: ['fijo'],            packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
-  sucursales:  { tipos: ['fijo'],            packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },
-  usuarios:    { tipos: ['fijo'],            packs: [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }] },
-  movimientos: { tipos: ['fijo', 'temporal'], packs: [{ cantidad: 1000, precio: 5000 }, { cantidad: 5000, precio: 10000 }, { cantidad: 20000, precio: 15000 }] },
+  sku:          { tipos: ['fijo'],             packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
+  sucursales:   { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },
+  usuarios:     { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }] },
+  comprobantes: { tipos: ['fijo', 'temporal'], packs: [{ cantidad: 1000, precio: 10000 }, { cantidad: 5000, precio: 30000 }, { cantidad: 10000, precio: 50000 }] },
 }
 
 // Descuentos sobre el precio del plan base (propuesta GO). Definir si se acumulan.
@@ -235,13 +241,8 @@ export const PLAN_REQUERIDO: Record<string, string> = {
   importar: 'pro', rrhh: 'pro', aging: 'pro', marketplace: 'pro', wms: 'pro',
 }
 
-// Límites de movimientos por plan (espejo de PLAN_BASE_LIMITS.movimientos / fn_plan_base_limite).
-export const MAX_MOVIMIENTOS_POR_PLAN: Record<string, number> = {
-  free:       200,
-  basico:     5000,
-  pro:        20000,
-  enterprise: -1,   // ilimitado
-}
+// (MAX_MOVIMIENTOS_POR_PLAN eliminado en pricing v2 — movimientos ya no es límite; el
+//  metering de flujo es PLAN_BASE_LIMITS.comprobantes.)
 
 // NOTA: el add-on de movimientos ya NO es un pack único fijo. Los packs viven en
 // ADDON_PACKS.movimientos (1.000/5.000/20.000) y se compran como add-on TEMPORAL

@@ -29,7 +29,7 @@ function parseAddonRef(ref: string): ParsedAddonRef | null {
   const cantidad = Number(cantidadStr)
   if (!tenantId) return null
   if (!Number.isInteger(cantidad) || cantidad <= 0) return null
-  if (!['sku', 'movimientos', 'sucursales', 'usuarios'].includes(dimension)) return null
+  if (!['sku', 'comprobantes', 'sucursales', 'usuarios', 'movimientos'].includes(dimension)) return null
   if (!['fijo', 'temporal'].includes(tipo)) return null
   return { tenantId, dimension, cantidad, tipo }
 }
@@ -248,6 +248,64 @@ serve(async (req) => {
               payload_raw:         { payment_id: paymentId, monto, pre_venta_id: ref, money_release_date: releaseDate },
             })
             if (preErr && (preErr as any).code !== '23505') console.error('mp-webhook: error guardando pago pre-venta', preErr)
+          }
+        } else if (ref.includes('|addonbatch|')) {
+          // ── BATCH de add-ons FIJOS pagado (delta): aplicar el cambio ─────────────
+          // (diseño: wiki/features/configurador-addons-batch.md). El cliente pagó la
+          // DIFERENCIA como pago único → recién ahora: (1) PUT del recurrente nuevo,
+          // (2) sync atómico de tenant_addons (fn_aplicar_addon_batch).
+          // Idempotente: claim por mp_payment_id (uq index) — reintentos de MP no re-aplican.
+          const [batchTenantId, , changeId] = ref.split('|')
+          const { data: claimed } = await supabase.from('addon_batch_changes')
+            .update({ mp_payment_id: String(paymentId) })
+            .eq('id', changeId).eq('tenant_id', batchTenantId)
+            .eq('estado', 'pendiente_pago').is('mp_payment_id', null)
+            .select('id, monto_recurrente_nuevo').maybeSingle()
+          if (!claimed) {
+            console.log(`addonbatch ${changeId}: ya procesado o inexistente (idempotente)`)
+          } else {
+            // 🛑 El cliente YA PAGÓ: cualquier falla de acá en más es prioridad máxima de
+            // conciliación (estado 'fallido' + email a soporte) — nunca silenciosa.
+            const marcarFallido = async (detalle: string) => {
+              console.error(`addonbatch ${changeId} FALLIDO tras pago ${paymentId}: ${detalle}`)
+              await supabase.from('addon_batch_changes')
+                .update({ estado: 'fallido', error_detalle: detalle }).eq('id', changeId)
+              const rk = Deno.env.get('RESEND_API_KEY')
+              if (rk) {
+                await fetch('https://api.resend.com/emails', {
+                  method: 'POST',
+                  headers: { Authorization: `Bearer ${rk}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    from: 'Genesis360 <noreply@genesis360.pro>', to: ['soporte@genesis360.pro'],
+                    subject: `🛑 Batch de add-ons PAGADO sin aplicar — tenant ${batchTenantId}`,
+                    html: `<p>El pago <b>${paymentId}</b> del batch <b>${changeId}</b> (tenant ${batchTenantId}) se acreditó pero el cambio NO se aplicó: <b>${detalle}</b>.</p><p>Resolver a mano: verificar el monto del preapproval en MP y la tabla addon_batch_changes.</p>`,
+                  }),
+                }).catch(() => {})
+              }
+            }
+            const { data: bt } = await supabase.from('tenants')
+              .select('mp_subscription_id').eq('id', batchTenantId).maybeSingle()
+            const preId = bt?.mp_subscription_id
+            if (!preId) {
+              await marcarFallido('tenant sin mp_subscription_id')
+            } else {
+              const putRes = await fetch(`https://api.mercadopago.com/preapproval/${preId}`, {
+                method: 'PUT',
+                headers: { Authorization: `Bearer ${mpToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ auto_recurring: { transaction_amount: Number(claimed.monto_recurrente_nuevo), currency_id: 'ARS' } }),
+              })
+              if (!putRes.ok) {
+                await marcarFallido(`PUT preapproval ${putRes.status}: ${await putRes.text()}`)
+              } else {
+                const { data: aplicado, error: rpcErr } = await supabase
+                  .rpc('fn_aplicar_addon_batch', { p_tenant_id: batchTenantId, p_change_id: changeId })
+                if (rpcErr || aplicado !== true) {
+                  await marcarFallido(`fn_aplicar_addon_batch: ${rpcErr?.message ?? 'devolvió false'}`)
+                } else {
+                  console.log(`addonbatch ${changeId} APLICADO: tenant ${batchTenantId} → recurrente ${claimed.monto_recurrente_nuevo}`)
+                }
+              }
+            }
           }
         } else {
           // ── Pago de PLATAFORMA (suscripción / add-on) ───────────────────

@@ -1019,9 +1019,17 @@ la activación por `preapproval_id` no exige match si `payer_email` viene vacío
 >   decidir sub de Fede · recién ahí `ADDON_FIJO_ENABLED=true`).
 > - **Lección MP-W6/MP-A12:** el webhook NUNCA rescata un checkout-return perdido (no puede
 >   linkear); la única red es el usuario volviendo a la URL con `preapproval_id` o soporte con
->   `billing.link_subscription`. Sube la prioridad del **sweep de reconciliación** (buscar
->   preapprovals authorized sin tenant) y de forzar la actualización del service worker en
->   deploys de billing.
+>   `billing.link_subscription`.
+> - **✅ RESUELTO (v1.112.0, misma noche):** (a) **sweep de reconciliación `mp-reconciliacion`**
+>   (EF nuevo + mig 256 `mp_billing_alertas` + GitHub Actions horario): detecta huérfanas +
+>   drift_mp_cobra + drift_acceso_gratis y alerta a soporte por email con dedupe — NUNCA activa
+>   solo (REGLA #0); espejo testeado `src/lib/mpReconciliacion.ts`. Smoke PROD: 12 preapprovals,
+>   0 hallazgos (consistente). (b) **SW update forzado** (`registerSW` en `main.tsx`: chequeo
+>   cada 30 min + al volver el foco; `autoUpdate` recarga solo) — mata el vector "PWA vieja no
+>   corre el checkout-return". (c) **grace period también vía webhook** (cancelación desde el
+>   panel de MP ahora setea `subscription_period_end`; fallback +30d solo si no había). (d)
+>   **activación limpia `subscription_period_end`** (los 3 caminos: verificar/link/webhook).
+>   (e) **H8 RESUELTO**: `admin-api.cancelarSubMP` ganó el fallback por `payer_email` del DUEÑO.
 
 **Paso 1 — Checkout-return con suscriptor FRESCO (valida el frontend v1.108 — MP-A12).**
 El tercero se registra en `app.genesis360.pro`, se suscribe al plan Básico ($1.000) y **NO cierra

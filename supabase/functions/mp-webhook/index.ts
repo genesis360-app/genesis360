@@ -122,9 +122,31 @@ serve(async (req) => {
       }
       if (tenantId) {
         const tier = MP_PLAN_TIER[subscription.preapproval_plan_id]
+        // MP-C9 (grace period) también en el camino webhook: si el usuario cancela DESDE EL
+        // PANEL DE MP (sin pasar por cancel-suscripcion), el acceso igual perdura hasta el
+        // fin del período pagado. next_payment_date viene en el propio preapproval; fallback
+        // now()+30d SOLO si el tenant no tenía ya un period_end (no extender en re-entregas).
+        let periodEndUpdate: Record<string, unknown> = {}
+        if (newStatus === 'cancelled') {
+          const npd = subscription?.next_payment_date ?? subscription?.summarized?.next_payment_date
+          const d = npd ? new Date(npd) : null
+          if (d && !isNaN(d.getTime())) {
+            periodEndUpdate = { subscription_period_end: d.toISOString() }
+          } else {
+            const { data: t } = await supabase
+              .from('tenants').select('subscription_period_end').eq('id', tenantId).maybeSingle()
+            if (!t?.subscription_period_end) {
+              periodEndUpdate = { subscription_period_end: new Date(Date.now() + 30 * 86400000).toISOString() }
+            }
+          }
+        } else if (newStatus === 'active') {
+          // Al (re)activar, limpiar el grace de una cancelación anterior (higiene MP-C9).
+          periodEndUpdate = { subscription_period_end: null }
+        }
         await supabase.from('tenants').update({
           subscription_status: newStatus,
           mp_subscription_id: subscriptionId,
+          ...periodEndUpdate,
           ...(newStatus === 'active' && tier ? {
             plan_tier: tier,
             max_users: TIER_BASE[tier].max_users,

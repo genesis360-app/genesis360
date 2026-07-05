@@ -3,12 +3,17 @@ title: Suscripciones y Planes
 category: features
 tags: [suscripcion, planes, mercado-pago, trial, billing]
 sources: []
-updated: 2026-04-30
+updated: 2026-07-05
 ---
 
 # Suscripciones y Planes
 
 Genesis360 usa un modelo freemium con 4 planes de suscripción. Los pagos se procesan con Mercado Pago.
+
+> [!NOTE] Esta página quedó desactualizada en precios/límites (modelo Pricing 2026 con add-ons por
+> dimensión: SKU/movimientos/sucursales/usuarios). La fuente de verdad de planes/precios/límites es
+> [[wiki/business/planes-pricing]]; el detalle técnico de billing (activación/cancelación/reconciliación)
+> vive en [[wiki/integrations/mercado-pago]].
 
 ---
 
@@ -27,9 +32,14 @@ Los límites se verifican en el hook `src/hooks/usePlanLimits.ts`.
 
 ## Trial
 
-- 14 días de trial gratuito para negocios nuevos
+- **30 días** de trial gratuito para negocios nuevos (✅ v1.113.0, 2026-07-05, mig 257 — antes eran 7 días; ver [[wiki/business/planes-pricing]] "Trial")
 - Acceso completo al plan Pro durante el trial
 - Al vencer, se muestra pantalla de upgrade
+
+**Estimador "Armá tu plan" (`PricingConfigurator`):** disponible tanto en el Landing público como embebido
+en `/suscripcion` (v1.113.0, visible para todos los usuarios, suscriptos o no). Es una **estimación pura**
+del total mensual (plan base + add-ons) — no cobra nada; la compra real de add-ons fijos sigue detrás del
+kill-switch `ADDON_FIJO_ENABLED` (ver [[wiki/integrations/mercado-pago]] §3.b).
 
 ---
 

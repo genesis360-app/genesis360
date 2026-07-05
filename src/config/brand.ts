@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.113.0'
+export const APP_VERSION = 'v1.114.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
@@ -43,12 +43,14 @@ export const MODO_BASICO_ENABLED = true
 
 // 🛑 Kill-switch del configurador de add-ons FIJOS in-app (SKU/sucursales/usuarios).
 // Agregar/quitar un add-on fijo dispara un PUT /preapproval que CAMBIA EL MONTO RECURRENTE
-// que MP le cobra al cliente (mp-addon-fijo). Ese flujo NUNCA se validó e2e en sandbox
-// (comportamiento del PUT transaction_amount sobre un preapproval basado en plan = a confirmar).
-// REGLA #0: no exponer un cobro sin validar → OFF hasta que GO lo pruebe en sandbox con una
-// suscripción real y confirme el cobro. El estimador PÚBLICO del Landing (PricingConfigurator)
-// NO depende de esto (solo estima, no cobra). El add-on TEMPORAL de movimientos tampoco.
-export const ADDON_FIJO_ENABLED = false
+// que MP le cobra al cliente (mp-addon-fijo). PRENDIDO el 2026-07-05 (decisión GO) para la
+// validación e2e del runbook (tests/specs/mp-suscripciones-pagos.plan.md §11 paso 2) con la
+// suscripción real de Fede: alta de Usuarios+1 → monto $1.000→$6.000 en MP → baja → $1.000.
+// Exposición acotada: el configurador solo lo ven tenants `active` CON `mp_subscription_id`
+// real (hoy en PROD: solo Fede). Si la validación falla → volver a false y redeployar.
+// El estimador PÚBLICO del Landing (PricingConfigurator) NO depende de esto (solo estima),
+// y el add-on TEMPORAL de movimientos tampoco (pago único ya validado).
+export const ADDON_FIJO_ENABLED = true
 
 export const MP_PLAN_IDS: Record<string, string> = {
   basico: '836c7829f7e944c9ac58d7c0c67a513b',

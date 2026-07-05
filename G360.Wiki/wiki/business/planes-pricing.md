@@ -37,6 +37,22 @@ updated: 2026-07-01
 - **Contabilium:** comprobantes + SKU (5.000-20.000) + usuarios + CUITs.
 - ⇒ **SKU/artículos SÍ es dimensión válida, pero a niveles de MILES**, no cientos. Sucursales y usuarios son palancas comunes.
 
+### 🥊 Netegia head-to-head honesto (2026-07-04, fuentes: netegia.com)
+
+Respuesta sin marketing a "¿por qué alguien elegiría Netegia?" (pedido GO):
+
+> ⚠ Corrección misma sesión: la primera versión de esta sección decía que Genesis360 no tenía
+> integraciones e-commerce — FALSO (ML+TN+MODO vivas en PROD: OAuth, stock bidireccional, precios,
+> pedidos idempotentes vía `ventas_externas_logs`, workers cada 5 min). Corregido abajo.
+
+**Por qué HOY un comercio racional podría elegir Netegia:** (1) **Trayectoria**: +1.500 empresas activas, años en el mercado, contadores que ya lo conocen — Genesis360 tiene ~1 cliente real y el riesgo percibido "¿y si desaparece?" es legítimo; (2) **circuito ML más profundo en lo fiscal**: facturación masiva de pedidos ML con subida del PDF, picking list y etiquetas desde el sistema (nosotros sincronizamos stock/precios e ingestamos pedidos, pero las ventas externas se registran en `ventas_externas_logs`, no como ventas facturables del circuito normal — ver roadmap-apis); (3) **multi-CUIT** (2-10 razones sociales — patrón muy común en PyME argentina); (4) **contabilidad formal + sueldos** (el contador puede vivir adentro); (5) integraciones bancarias; (6) soporte con consultor asignado (Premium+); (7) madurez: +300 funcionalidades pulidas por años de feedback real.
+
+**Qué tiene Netegia que NO tenemos:** facturación masiva/picking/etiquetas de pedidos ML · WooCommerce y TornadoStore · multi-CUIT · contabilidad (plan de cuentas/asientos/balances; nuestra caja/CC/capital es operativa, no contable-formal) · sueldos · integraciones bancarias · **listas de precios múltiples** (4-10 por plan; nosotros: mayorista por cantidad, listas = roadmap VF2) · límites altos de clientes/proveedores · app/interfaz móvil dedicada (nosotros PWA).
+
+**Qué tenemos que Netegia NO:** **WMS real** (LPN, ubicaciones, lotes/vencimiento, series, FIFO/FEFO, conteos cíclicos/ABC/doble conteo, trazabilidad ledger inmutable, kits — Netegia es stock multi-depósito plano) · **caja profunda** (sesiones/arqueos por cajero, bóveda con arqueo, cuentas de origen, diferencias por cajero, cadena de cierre con 2º usuario) · **envíos con reparto propio** (rutas, Google Maps, choferes) · **aislamiento por sucursal server-side** (RLS real, no solo filtro de UI) · **modo Básico/Avanzado** (crece sin migrar de sistema) · **comprobantes ilimitados** (Netegia corta a 4.000-15.000/mes) · **MODO** como medio de pago · reservas/señas con crédito · GS1/scan · **precio 1,6-2,3x menor** ($60k/$100k vs $96k/$232k) · soporte directo del equipo que construye el producto.
+
+**Lectura estratégica:** en e-commerce estamos casi a la par (ML/TN stock+precios+pedidos ✓); el gap real ahí es el **circuito fiscal de los pedidos ML** (facturación masiva + etiquetas) — cerrable, está en `roadmap-apis.md`. Los gaps estructurales son **multi-CUIT** (candidato Enterprise) y la percepción de trayectoria. Contabilidad/sueldos NO es la pelea (integrarse al contador, no reemplazarlo). Nosotros ganamos PROFUNDIDAD operativa (depósito+caja+sucursales) y precio.
+
 ### Posicionamiento de Genesis360
 - **Gana:** WMS real (LPN/lotes/series/FIFO-FEFO), POS+caja/bóveda, compras (OC+recep), envíos con reparto propio, multi-sucursal server-side. Nadie del segmento SMB junta todo (Netegia es el que más se acerca, y es 1,6-2,3x más caro).
 - **Liviano:** contabilidad pura (sin plan de cuentas/asientos) y **multi-CUIT/multi-razón-social** (Netegia/Zeus/Contabilium sí lo tienen, 2-10 CUITs → candidato Enterprise) y sueldos con convenios. **No es la pelea** — competir contra "el comercio que quiere operar + facturar sin 3 sistemas", no contra el contador.

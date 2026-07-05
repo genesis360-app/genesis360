@@ -1,0 +1,21 @@
+name: Reconciliación billing MP (huérfanas + drift DB↔MP)
+
+on:
+  schedule:
+    # Cada hora al minuto 17 (evita la congestión de crons en :00)
+    - cron: '17 * * * *'
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  reconciliacion:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call mp-reconciliacion Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/mp-reconciliacion" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

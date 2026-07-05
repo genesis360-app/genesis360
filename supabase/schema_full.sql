@@ -3223,3 +3223,21 @@ REVOKE ALL ON FUNCTION public.fn_enforce_limite() FROM PUBLIC, anon;
 CREATE TRIGGER trg_enforce_sku        BEFORE INSERT OR UPDATE OF activo ON public.productos  FOR EACH ROW EXECUTE FUNCTION public.fn_enforce_limite('sku');
 CREATE TRIGGER trg_enforce_usuarios   BEFORE INSERT OR UPDATE OF activo ON public.users      FOR EACH ROW EXECUTE FUNCTION public.fn_enforce_limite('usuarios');
 CREATE TRIGGER trg_enforce_sucursales BEFORE INSERT OR UPDATE OF activo ON public.sucursales FOR EACH ROW EXECUTE FUNCTION public.fn_enforce_limite('sucursales');
+
+-- Alertas del sweep de reconciliacion de billing MP (mig 256, UAT MP-W6 / DRIFT 1-2).
+-- Solo service_role (EF mp-reconciliacion); detecta huerfanas y drift DB<->MP, alerta a soporte.
+CREATE TABLE IF NOT EXISTS mp_billing_alertas (
+  id             BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  tipo           TEXT NOT NULL CHECK (tipo IN ('huerfana', 'drift_mp_cobra', 'drift_acceso_gratis')),
+  preapproval_id TEXT NOT NULL,
+  tenant_id      UUID REFERENCES tenants(id) ON DELETE SET NULL,
+  detalle        JSONB,
+  first_seen     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resolved_at    TIMESTAMPTZ,
+  UNIQUE (tipo, preapproval_id)
+);
+ALTER TABLE mp_billing_alertas ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON mp_billing_alertas FROM PUBLIC;
+REVOKE ALL ON mp_billing_alertas FROM anon;
+REVOKE ALL ON mp_billing_alertas FROM authenticated;
+GRANT ALL ON mp_billing_alertas TO service_role;

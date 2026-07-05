@@ -5,7 +5,7 @@
  * un error terminal NO debe quedar en loop de reintentos ni mentir "activado".
  */
 import { describe, test, expect } from 'vitest'
-import { clasificarVerificacion, mensajeErrorVerif } from '@/lib/suscripcionActivacion'
+import { clasificarVerificacion, mensajeErrorVerif, mensajeErrorEF } from '@/lib/suscripcionActivacion'
 
 describe('clasificarVerificacion', () => {
   test('200 { activated:true } → ok (activar + redirigir)', () => {
@@ -65,5 +65,33 @@ describe('mensajeErrorVerif', () => {
     for (const r of ['algo_raro', null, undefined]) {
       expect(mensajeErrorVerif(r as any)).toMatch(/no vuelvas a pagar/i)
     }
+  })
+})
+
+// ─── mensajeErrorEF (UAT MP-AD10, v1.111) ───────────────────────────────────────
+// supabase-js no parsea el body en 4xx/5xx → el error real viaja en error.context.
+describe('mensajeErrorEF — mensaje real del EF en errores 4xx/5xx (MP-AD10)', () => {
+  test('data.error presente (200 con error de negocio) → gana data.error', async () => {
+    const msg = await mensajeErrorEF(null, { error: 'Pack inválido: 999' }, 'fallback')
+    expect(msg).toBe('Pack inválido: 999')
+  })
+
+  test('FunctionsHttpError con body JSON en context → devuelve el error del body, no el genérico', async () => {
+    const error = {
+      message: 'Edge Function returned a non-2xx status code',
+      context: { json: async () => ({ error: 'Necesitás una suscripción activa para agregar o quitar add-ons.' }) },
+    }
+    const msg = await mensajeErrorEF(error, null, 'fallback')
+    expect(msg).toBe('Necesitás una suscripción activa para agregar o quitar add-ons.')
+  })
+
+  test('context.json() explota (body no-JSON / ya consumido) → cae a error.message', async () => {
+    const error = { message: 'non-2xx', context: { json: async () => { throw new Error('boom') } } }
+    expect(await mensajeErrorEF(error, null, 'fallback')).toBe('non-2xx')
+  })
+
+  test('sin nada útil → fallback', async () => {
+    expect(await mensajeErrorEF(null, null, 'No se pudo agregar')).toBe('No se pudo agregar')
+    expect(await mensajeErrorEF({}, {}, 'No se pudo agregar')).toBe('No se pudo agregar')
   })
 })

@@ -1,8 +1,30 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import * as Sentry from '@sentry/react'
+import { registerSW } from 'virtual:pwa-register'
 import App from './App.tsx'
 import './index.css'
+
+// ── Actualización FORZADA del service worker ─────────────────────────────────────
+// Gotcha real (reference_pwa_cache_post_deploy + caso Fede 2026-07-04): con el registro
+// inyectado por defecto, la PWA solo chequea updates al cargar la página → una pestaña/
+// PWA abierta se queda con la versión vieja indefinidamente (Fede pagó con el frontend
+// viejo y el checkout-return nunca corrió). Con registerType 'autoUpdate', cuando un
+// chequeo encuentra SW nuevo se activa y recarga solo. Acá agregamos los chequeos que
+// faltaban: cada 30 min + cada vez que la app vuelve a foco (el momento típico en que
+// un usuario retoma una PWA dormida con versión vieja).
+const SW_CHECK_MS = 30 * 60 * 1000
+registerSW({
+  immediate: true,
+  onRegisteredSW(_swUrl, registration) {
+    if (!registration) return
+    const check = () => registration.update().catch(() => { /* offline/transitorio */ })
+    setInterval(check, SW_CHECK_MS)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') check()
+    })
+  },
+})
 
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,

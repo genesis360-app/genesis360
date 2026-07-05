@@ -83,6 +83,37 @@ async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promi
       if (results.length < 100) break
     }
   } catch (_) { /* best-effort */ }
+  // H8/MP-C7 (unificado con cancel-suscripcion): si el tenant NUNCA se linkeó
+  // (mp_subscription_id NULL — pre-fix), buscar su suscripción viva en MP por el
+  // payer_email del DUEÑO para poder frenar el cobro igual. Sin esto, cancelar desde
+  // el panel un tenant sin link "tenía éxito" sin cancelar nada en MP (fail-open).
+  const ownedByEmail = new Set<string>()
+  if (!storedId) {
+    try {
+      const { data: owner } = await svc.from('users')
+        .select('id').eq('tenant_id', tenantId).eq('rol', 'DUEÑO').limit(1).maybeSingle()
+      let ownerEmail: string | null = null
+      if (owner?.id) {
+        const { data: au } = await svc.auth.admin.getUserById(owner.id)
+        ownerEmail = au?.user?.email ? String(au.user.email).toLowerCase().trim() : null
+      }
+      if (ownerEmail) {
+        for (let off = 0; off < 1000; off += 100) {
+          const r = await fetch(`${MP}/preapproval/search?limit=100&offset=${off}`, { headers: H })
+          if (!r.ok) break
+          const s = await r.json()
+          const results = s?.results ?? []
+          for (const p of results) {
+            const pe = (p?.payer_email ?? '').toLowerCase().trim()
+            if (p?.id && pe && pe === ownerEmail && MP_VIVOS.includes(p?.status)) {
+              cand.add(String(p.id)); ownedByEmail.add(String(p.id))
+            }
+          }
+          if (results.length < 100) break
+        }
+      }
+    } catch (_) { /* best-effort */ }
+  }
   let mp_cancelled = 0
   const errores: string[] = []
   // 🛑 Fail-closed real: si hay un preapproval GUARDADO, exigimos confirmar que quedó fuera
@@ -93,8 +124,8 @@ async function cancelarSubMP(svc: any, tenantId: string, mpToken: string): Promi
     if (!g.ok) { if (id === storedId) errores.push(`${id}:get_${g.status}`); continue }
     const pre = await g.json()
     // Pertenencia: por external_reference (histórico) O por ser el id guardado del tenant
-    // (verificado al activar; en checkout por plan external_reference viene vacío).
-    const esDelTenant = pre?.external_reference === tenantId || id === storedId
+    // (verificado al activar) O hallado por payer_email del DUEÑO (H8, tenants sin link).
+    const esDelTenant = pre?.external_reference === tenantId || id === storedId || ownedByEmail.has(id)
     if (!esDelTenant) continue                                    // no es de este tenant
     const npd = pre?.next_payment_date ?? pre?.summarized?.next_payment_date
     if (npd) {
@@ -279,6 +310,7 @@ Deno.serve(async (req) => {
           plan_tier: tier,
           max_users: TIER_BASE[tier].max_users,
           max_productos: TIER_BASE[tier].max_productos,
+          subscription_period_end: null, // limpiar el grace de una cancelación anterior (higiene MP-C9)
         }).eq('id', tenantId)
         if (updErr) return json({ error: 'Se verificó en MP pero no se pudo activar la cuenta.' }, 500)
 

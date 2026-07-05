@@ -173,6 +173,7 @@ serve(async (req) => {
       plan_tier: tier,
       max_users: TIER_BASE[tier].max_users,
       max_productos: TIER_BASE[tier].max_productos,
+      subscription_period_end: null, // limpiar el grace de una cancelación anterior (higiene MP-C9)
     }).eq('id', tenantId)
     if (updErr) {
       console.error('mp-verificar: error activando tenant', updErr)

@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-07-03
+updated: 2026-07-04
 ---
 
 # Integración Mercado Pago
@@ -125,7 +125,7 @@ El límite EFECTIVO lo calcula `fn_tenant_limite` (base + Σ add-ons activos, te
 `usePlanLimits` lo espeja en el cliente. **El add-on temporal ya NO usa `tenants.addon_movimientos`**
 (esa columna legacy queda solo para packs viejos de 500; back-compat en el webhook).
 
-### 3.b Add-ons FIJOS (recurrentes) + downgrade guiado (Fase 3, 2026-07-02 · NO deployado)
+### 3.b Add-ons FIJOS (recurrentes) + downgrade guiado (Fase 3, 2026-07-02 · deployado, oculto por kill-switch)
 
 ```
 Alta:  EF mp-addon-fijo (action='agregar', dimension sku/sucursales/usuarios, cantidad)
@@ -139,9 +139,13 @@ Baja:  EF mp-addon-fijo (action='quitar', addon_id)
   → PUT transaction_amount = actual − precio_pack ; DELETE tenant_addons
 ```
 
-> [!WARNING] **NO deployado / no e2e-testeable.** Requiere reconfigurar los planes base de MP a
-> $60k/$100k + validar en **sandbox** el `PUT` de `transaction_amount` sobre un preapproval basado en
-> plan (comportamiento real de MP a confirmar). El precio SIEMPRE sale del catálogo server-side (REGLA #0).
+> [!WARNING] **EF deployada DEV+PROD, pero `PUT transaction_amount` NUNCA validado e2e en sandbox.**
+> El configurador in-app de add-ons fijos está **oculto detrás del kill-switch `ADDON_FIJO_ENABLED=false`**
+> (`brand.ts`, v1.111.0) hasta que GO valide el cobro real (ver sección 3.g y el runbook §11 del UAT).
+> **H7 (hallazgo 2026-07-04): el kill-switch es frontend-only** — el EF sigue invocable server-side
+> (riesgo aceptado, documentado, mientras dure la validación). El estimador público del Landing y el
+> add-on temporal de movimientos NO dependen del flag. El precio SIEMPRE sale del catálogo server-side
+> (REGLA #0). Los planes base de MP ya están en $60k/$100k (RIESGO #1 resuelto 2026-07-02).
 
 ### 3.c EFs tier-aware (Fase 3a)
 
@@ -213,6 +217,33 @@ anterior distinta** para evitar doble cobro, y recién ahí activa (`subscriptio
 > [!TIP] Alternativa sin panel: que el cliente (logueado, con v1.108.0) abra
 > `/suscripcion?status=approved&preapproval_id=<ID>` → dispara el mismo camino verificado.
 
+### 3.g UAT re-auditado + espejos de test (2026-07-04, test-only, sin deploy)
+
+A pedido de GO ("revisar el UAT de cobros MP, complementarlo para que sea robusto y testear todo"),
+se releyó `tests/specs/mp-suscripciones-pagos.plan.md` contra el código real v1.108→v1.111 (los EFs
+de arriba + `SuscripcionPage`/`MiCuentaPage`/`AuthGuard`). Pasó de **43 a 48 escenarios**:
+
+- **Nuevos:** MP-A12 (checkout-return v1.108), MP-A13 (`billing.link_subscription` v1.109, e2e ✅
+  PROD), MP-C11 (eliminar cuenta cancela MP fail-closed antes de borrar, v1.110), MP-AD9 (kill-switch
+  `ADDON_FIJO_ENABLED` v1.111), MP-AD10 (`mensajeErrorEF`).
+- **Actualizados:** MP-C7 (MITIGADO en `cancel-suscripcion` por `payer_email`; `admin-api` sin ese
+  fallback → hallazgo **H8**), MP-C9 (✅ IMPLEMENTADO v1.110 + sub-escenarios grace period).
+- **Hallazgos nuevos:** **H7** (`ADDON_FIJO_ENABLED` es frontend-only — el EF `mp-addon-fijo` sigue
+  invocable server-side; riesgo aceptado documentado) y **H8** (drift entre `cancel-suscripcion` y
+  `admin-api.cancelarSubMP`: solo el primero tiene el fallback por `payer_email`).
+- **Sección 11 nueva:** RUNBOOK de validaciones e2e con plata real en PROD (checkout-return fresco →
+  add-on fijo sobre esa sub → cancelación real → cierre/refund/volver plan a $60k).
+
+**Espejos de test agregados** (patrón ccLogic, lógica pura + vitest, sin cambiar el EF):
+- `src/lib/mpAddonFijo.ts` — espejo de `mp-addon-fijo` (alta fail-closed, revert si insert falla, baja
+  con downgrade guiado, delta de precio, race documentada) + 18 tests.
+- `src/lib/accesoSuscripcion.ts` — `tieneAccesoVigente()` extraída del `SubscriptionGuard`; **el propio
+  `AuthGuard.tsx` la importa** (lo testeado es lo que corre) + 10 tests (bordes de grace MP-C9).
+- `mensajeErrorEF` (parsea `error.context` de un `FunctionsHttpError`) exportado desde
+  `src/lib/suscripcionActivacion.ts` + 4 tests.
+
+Suite: **904 unit tests** (antes 873). Detalle completo del plan en `tests/specs/mp-suscripciones-pagos.plan.md`.
+
 ---
 
 ## Edge Functions
@@ -224,7 +255,7 @@ anterior distinta** para evitar doble cobro, y recién ahí activa (`subscriptio
 | `mp-ipn` | No | IPN alternativo para pagos de ventas |
 | `mp-crear-link-pago` | Sí | Genera preference de pago por venta |
 | `mp-addon` | Sí | Add-on TEMPORAL de movimientos (pago único, packs 1.000/5.000/20.000) |
-| `mp-addon-fijo` | Sí | Add-on FIJO (alta/baja + `PUT transaction_amount` del preapproval) — **NO deployado** |
+| `mp-addon-fijo` | Sí | Add-on FIJO (alta/baja + `PUT transaction_amount` del preapproval) — deployada DEV+PROD, **configurador in-app oculto por kill-switch `ADDON_FIJO_ENABLED` hasta validar el cobro en sandbox** (ver 3.g, H7) |
 | `mp-verificar-suscripcion` | Sí | Verifica el preapproval server-side y activa (setea `plan_tier`) |
 | `cancel-suscripcion` | Sí | **Cancela** el/los preapproval(s) en MP (`PUT status:'cancelled'`) + marca la cuenta cancelada. Robusto al drift: si falta `mp_subscription_id`, busca por `external_reference` en `/preapproval/search`. Fail-closed. (v1.104.0) |
 | `mp-oauth-callback` | No | OAuth de la cuenta del seller |

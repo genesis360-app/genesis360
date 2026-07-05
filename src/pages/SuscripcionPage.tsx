@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
 import { clasificarVerificacion, mensajeErrorVerif, mensajeErrorEF } from '@/lib/suscripcionActivacion'
+import PricingConfigurator from '@/components/PricingConfigurator'
 import {
   Check, X, CheckCircle, XCircle, Clock,
   ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut, Plus, Trash2, SlidersHorizontal,
@@ -352,7 +353,7 @@ export default function SuscripcionPage() {
         <p className="text-blue-200">
           {tenant?.subscription_status === 'trial'
             ? 'Activá tu suscripción para seguir usando Genesis360 sin interrupciones'
-            : 'Todos los planes incluyen 7 días de prueba gratuita'}
+            : 'Todos los planes incluyen 30 días de prueba gratuita'}
         </p>
       </div>
 
@@ -429,7 +430,7 @@ export default function SuscripcionPage() {
                 ) : plan.precio === null ? (
                   <a href={`mailto:${BRAND.email}?subject=Plan Enterprise`}
                     className={`block text-center font-semibold py-3 rounded-xl transition-all text-sm
-                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white dark:bg-gray-800 text-primary hover:bg-accent/10'}`}>
+                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white dark:bg-gray-800 text-primary dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
                     Contactar
                   </a>
                 ) : (
@@ -437,7 +438,7 @@ export default function SuscripcionPage() {
                     onClick={() => handleSuscribir(plan.id, mpPlanId)}
                     disabled={!!loading}
                     className={`w-full font-semibold py-3 rounded-xl transition-all text-sm disabled:opacity-60 flex items-center justify-center gap-2
-                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white dark:bg-gray-800 text-primary hover:bg-accent/10'}`}>
+                      ${plan.destacado ? 'bg-primary text-white hover:bg-accent' : 'bg-white dark:bg-gray-800 text-primary dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
                     {loading === plan.id
                       ? <><RefreshCw size={15} className="animate-spin" /> Redirigiendo...</>
                       : <><ArrowRight size={15} /> Suscribirme</>}
@@ -446,6 +447,18 @@ export default function SuscripcionPage() {
               </div>
             )
           })}
+        </div>
+
+        {/* Estimador "Armá tu plan" — el MISMO panel del Landing (grande, full-bleed).
+            Visible para todos (suscriptos o no): es estimación pura (plan base + add-ons),
+            NO cobra nada — la compra real de add-ons fijos sigue detrás de ADDON_FIJO_ENABLED.
+            El CTA dispara la suscripción al plan base elegido (flujo existente handleSuscribir). */}
+        <div className="mt-12 relative left-1/2 -translate-x-1/2 w-[94vw] lg:w-[80vw] max-w-[1600px]">
+          <PricingConfigurator
+            ctaLabel={esActivo ? 'Cambiar a este plan' : 'Suscribirme a este plan'}
+            ctaLoading={loading !== null}
+            onCta={(planId) => handleSuscribir(planId, MP_PLAN_IDS[planId] ?? '')}
+          />
         </div>
 
         {/* Uso actual de movimientos */}

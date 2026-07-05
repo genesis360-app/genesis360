@@ -53,7 +53,7 @@ CREATE TABLE tenants (
   pais                      TEXT DEFAULT 'AR',
   subscription_status       TEXT NOT NULL DEFAULT 'trial'
     CHECK (subscription_status IN ('trial','active','inactive','cancelled')),
-  trial_ends_at             TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '7 days'),
+  trial_ends_at             TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '30 days'),  -- mig 257: trial 30 días
   plan_id                   UUID REFERENCES planes(id),
   max_users                 INT NOT NULL DEFAULT 2,
   max_productos             INT NOT NULL DEFAULT 50,

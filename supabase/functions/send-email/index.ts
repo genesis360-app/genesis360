@@ -61,7 +61,7 @@ function welcomeTemplate(data: { nombre: string; negocio: string }) {
     html: templateBase(`
       <p>Hola <strong>${data.nombre}</strong>,</p>
       <p>¡Ya está todo listo! Tu negocio <strong>${data.negocio}</strong> fue creado exitosamente en ${BRAND}.</p>
-      <p>Tenés <strong>7 días de prueba gratis</strong> con acceso a todas las funcionalidades. Empezá cargando tus productos.</p>
+      <p>Tenés <strong>30 días de prueba gratis</strong> con acceso a todas las funcionalidades. Empezá cargando tus productos.</p>
       <a href="${APP_URL}/dashboard" class="btn">Ir al dashboard →</a>
       <hr class="divider">
       <p style="font-size:13px;color:#6b7280">¿Dudas? Respondé este email y te ayudamos.</p>

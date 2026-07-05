@@ -19,13 +19,23 @@ const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: str
 ]
 
 const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
-  { Icon: Shield,     titulo: '7 días gratis',        sub: 'Sin tarjeta de crédito' },
+  { Icon: Shield,     titulo: '30 días gratis',       sub: 'Sin tarjeta de crédito' },
   { Icon: Rocket,     titulo: 'Activación inmediata', sub: 'Comenzá a usarlo hoy' },
   { Icon: Headphones, titulo: 'Soporte dedicado',     sub: 'Siempre estamos para ayudarte' },
   { Icon: Lock,       titulo: 'Tus datos seguros',    sub: 'Encriptados y respaldados' },
 ]
 
-export default function PricingConfigurator() {
+// Reusable: en el Landing el CTA manda al onboarding (default); en la app (SuscripcionPage)
+// se pasa `onCta` y el botón dispara la suscripción al plan base elegido. Los add-ons acá
+// SIEMPRE son estimación pura (no cobran nada — la compra real de add-ons fijos vive detrás
+// de ADDON_FIJO_ENABLED).
+interface PricingConfiguratorProps {
+  ctaLabel?: string
+  onCta?: (planId: string) => void
+  ctaLoading?: boolean
+}
+
+export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading }: PricingConfiguratorProps = {}) {
   const planes = PLANES.filter(p => p.id === 'basico' || p.id === 'pro')
   const [planId, setPlanId] = useState('pro')
   const [sel, setSel] = useState<Record<string, number>>({})  // dimension → cantidad elegida (0 = ninguno)
@@ -120,10 +130,17 @@ export default function PricingConfigurator() {
           </p>
           <p className="mt-1 text-xs text-gray-500">¿Necesitás más movimientos puntuales? Se compran por 30 días desde la app.</p>
         </div>
-        <Link to="/onboarding"
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0">
-          <Check size={18} /> Probar 7 días gratis
-        </Link>
+        {onCta ? (
+          <button onClick={() => onCta(planId)} disabled={ctaLoading}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0 disabled:opacity-60">
+            <Check size={18} /> {ctaLabel ?? `Suscribirme al plan ${plan.nombre}`}
+          </button>
+        ) : (
+          <Link to="/onboarding"
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0">
+            <Check size={18} /> {ctaLabel ?? 'Probar 30 días gratis'}
+          </Link>
+        )}
       </div>
 
       {/* Beneficios */}

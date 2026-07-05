@@ -993,3 +993,62 @@ Se manejó la app como usuario (Playwright vs DEV, tenant Almacén Jorgito) cubr
 | Login / Onboarding | Botones primarios/secundarios sobre degradé oscuro | primario `bg-accent text-white`; secundario con borde/texto legible | ⬜ revisar en próxima corrida |
 
 **🐞 Hallazgo semilla (fix v1.111.0):** en `SuscripcionPage`, al pasar a `active` el CTA del plang no destacado se reemplazaba por el badge `✓ Plan actual` con `bg-white … text-white` → **texto blanco sobre fondo blanco, ilegible**. El plan destacado (fondo blanco) sí se veía (verde). Arreglado a `bg-accent/25 text-white border-accent/50` (tinte de marca, legible sobre la tarjeta oscura). **Lección:** cuando un botón/badge cambia según un booleano (`destacado`, `esActual`, `disabled`), auditar **todas** las ramas, no solo la que se ve primero.
+
+---
+
+## 🎨 §31.b — ESCENARIOS formales de contraste (modo CLARO y OSCURO) — agregado 2026-07-04
+
+> Cada escenario se corre DOS veces cuando la pantalla reacciona al tema (`dark:`): una con
+> `<html class="">` (claro) y otra con `<html class="dark">`. Las pantallas públicas de diseño
+> fijo (Landing: secciones claras + héroes oscuros; paneles `bg-[#0b0b14]`) se corren una vez,
+> pero verificando cada sección contra SU PROPIO fondo local, no el de la página.
+
+**C1 — Texto ≠ fondo en TODOS los estados del botón (reposo / hover / active / disabled / loading).**
+- Given cualquier botón/CTA/badge. When se inspecciona cada estado. Then el texto contrasta con
+  el fondo EFECTIVO de ese estado. 🛑 Crux del hover: si el fondo de reposo es sólido
+  (`bg-white`) y el hover lo REEMPLAZA por uno translúcido (`hover:bg-accent/10`), el fondo
+  efectivo pasa a ser el de la SUPERFICIE de abajo — sobre superficie oscura, un texto oscuro
+  queda ilegible. Regla: **un botón claro sobre superficie oscura debe seguir claro en hover**
+  (`hover:bg-white/90`, `hover:bg-blue-50`), nunca volverse translúcido.
+- Grep: `rg "bg-white[^\"']*hover:bg-accent/10|hover:bg-accent/10[^\"']*bg-white" src` y revisar
+  a mano cuáles viven sobre superficie oscura (`bg-brand-gradient-dark`, `bg-primary`,
+  `bg-[#0b0b14]`, tarjetas `bg-white/10`).
+
+**C2 — Ramas condicionales completas.** Given un className con `${cond ? A : B}` (destacado /
+esActual / activo / disabled). Then TODAS las ramas cumplen C1 sobre la superficie real en la que
+renderizan (la lección del badge "Plan actual").
+
+**C3 — `dark:` cambia el fondo ⇒ debe cambiar el texto.** Given una clase con `dark:bg-*`.
+Then existe el `dark:text-*` correspondiente (o el texto ya contrasta con ambos fondos).
+🛑 Crux: `bg-white dark:bg-gray-800 text-primary` — primary (violeta oscuro) es legible sobre
+blanco pero NO sobre gray-800 → falta `dark:text-white`/`dark:text-gray-100`.
+- Grep: `rg "dark:bg-gray-8\d\d[^\"']*text-primary|text-primary[^\"']*dark:bg-gray-8" src`.
+
+**C4 — Pantallas públicas sin `dark:` son INMUNES al tema de la app (por diseño).** Given
+Landing/Términos/Privacidad. When el usuario tiene la app en modo oscuro y navega a la pública.
+Then la página se ve igual que en claro (no hay clases `dark:` a medio aplicar). Si algún
+componente compartido CON `dark:` se monta en una pública, auditarlo en ambos temas.
+
+**C5 — Outline-accent solo sobre superficies claras.** El patrón `border-accent text-accent
+hover:bg-accent/10` es válido SOLO sobre fondo claro (blanco/gris muy claro). Sobre fondo oscuro
+usar `border-white/30 text-white hover:bg-white/10` (como el "Ver funciones" del hero).
+
+**C6 — Estados de loading/disabled legibles.** `disabled:opacity-*` no debe bajar el contraste
+por debajo de lo legible sobre la superficie real; spinners (`animate-spin`) del mismo color que
+el texto del botón.
+
+**C7 — Colores de MARCA, no hardcodeados.** Todo color nuevo sale de los tokens
+(`--color-accent`/`--color-accent-2`/`--color-primary`/`.bg-accent`); un hex suelto
+(`text-[#7DB9E8]`) es hallazgo de deuda aunque contraste bien.
+
+**C8 — Verificación visual (cierre).** Screenshot Playwright de la pantalla en claro y (si
+aplica) oscuro, con hover forzado sobre los CTAs principales (`page.hover(...)` + screenshot).
+
+### 📋 Corrida 2026-07-04 sobre el LANDING (+ Suscripción, pedida por GO)
+| # | Dónde | Bug | Escenario | Fix |
+|---|---|---|---|---|
+| 1 | `LandingPage:172` hero "Empezar gratis" | `bg-white text-primary hover:bg-accent/10` sobre `bg-brand-gradient-dark` → en hover el fondo blanco desaparece y queda violeta-oscuro sobre oscuro | C1 | `hover:bg-white/90` ✅ v1.113.0 |
+| 2 | `LandingPage:365` CTA del plan DESTACADO (card `bg-primary`) | mismo patrón — en hover texto primary sobre card primary | C1+C2 | `hover:bg-white/90` ✅ v1.113.0 |
+| 3 | `LandingPage:406` CTA final "Crear cuenta gratis" | mismo patrón sobre `bg-brand-gradient-dark` | C1 | `hover:bg-white/90` ✅ v1.113.0 |
+| 4 | `SuscripcionPage:433/441` CTA plan NO destacado (card translúcida oscura) | (a) hover pierde el `bg-white` → primary sobre oscuro; (b) en modo oscuro `dark:bg-gray-800` + `text-primary` = bajo contraste PERMANENTE | C1+C3 | `dark:text-white` + `hover:bg-gray-100 dark:hover:bg-gray-700` ✅ v1.113.0 |
+| 5 | `LandingPage:165` `text-[#7DB9E8]` en el H1 | hex hardcodeado (contrasta OK — deuda, no bug visible) | C7 | anotado, sin cambio |

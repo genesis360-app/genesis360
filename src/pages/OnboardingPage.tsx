@@ -198,7 +198,7 @@ export default function OnboardingPage() {
             <img src={BRAND.logo} alt={BRAND.name} className="w-20 h-20 object-contain drop-shadow-lg" />
           </div>
           <h1 className="text-3xl font-bold text-white">{BRAND.name}</h1>
-          <p className="text-blue-200 mt-1">Registrá tu negocio — 7 días gratis</p>
+          <p className="text-blue-200 mt-1">Registrá tu negocio — 30 días gratis</p>
         </div>
 
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">

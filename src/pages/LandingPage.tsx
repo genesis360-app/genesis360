@@ -68,7 +68,7 @@ const FAQ = [
   },
   {
     q: '¿Puedo probar antes de pagar?',
-    a: 'Sí, todos los planes tienen 7 días de prueba gratuita sin necesidad de tarjeta de crédito.',
+    a: 'Sí, todos los planes tienen 30 días de prueba gratuita sin necesidad de tarjeta de crédito.',
   },
   {
     q: '¿Mis datos están seguros?',
@@ -158,7 +158,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4 py-20 md:py-28 text-center">
           <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm mb-6">
             <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            7 días gratis · Sin tarjeta de crédito
+            30 días gratis · Sin tarjeta de crédito
           </div>
           <h1 className="text-4xl md:text-6xl font-bold leading-tight mb-6">
             El inventario que<br />
@@ -169,7 +169,7 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <Link to="/onboarding"
-              className="flex items-center justify-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl hover:bg-accent/10 transition-all text-lg shadow-lg">
+              className="flex items-center justify-center gap-2 bg-white text-primary font-bold px-8 py-4 rounded-xl hover:bg-white/90 transition-all text-lg shadow-lg">
               Empezar gratis <ArrowRight size={20} />
             </Link>
             <a href="#features"
@@ -362,14 +362,14 @@ export default function LandingPage() {
                 {(() => {
                   const ctaClass = `block text-center font-semibold py-3 rounded-xl transition-all text-sm ${
                     plan.destacado
-                      ? 'bg-white text-primary hover:bg-accent/10'
+                      ? 'bg-white text-primary hover:bg-white/90'
                       : 'bg-primary text-white hover:bg-accent'}`
                   // Enterprise (precio === null) → el contacto va por mailto y DEBE ser un
                   // <a> real: un Link de React Router con un destino mailto lo resuelve como
                   // ruta interna (navega a /mailto... → catch-all → rebota al home, no abre el correo).
                   return plan.precio === null
                     ? <a href={`mailto:${BRAND.email}`} className={ctaClass}>Contactar</a>
-                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 7 días gratis'}</Link>
+                    : <Link to="/onboarding" className={ctaClass}>{plan.precio === 0 ? 'Empezar gratis' : 'Probar 30 días gratis'}</Link>
                 })()}
               </div>
             ))}
@@ -400,10 +400,10 @@ export default function LandingPage() {
             ¿Listo para tomar el control de tu inventario?
           </h2>
           <p className="text-blue-100 text-lg mb-8">
-            Empezá hoy. 7 días gratis, sin tarjeta de crédito.
+            Empezá hoy. 30 días gratis, sin tarjeta de crédito.
           </p>
           <Link to="/onboarding"
-            className="inline-flex items-center gap-2 bg-white text-primary font-bold px-10 py-4 rounded-xl hover:bg-accent/10 transition-all text-lg shadow-lg">
+            className="inline-flex items-center gap-2 bg-white text-primary font-bold px-10 py-4 rounded-xl hover:bg-white/90 transition-all text-lg shadow-lg">
             Crear cuenta gratis <ArrowRight size={20} />
           </Link>
         </div>

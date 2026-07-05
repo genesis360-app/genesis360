@@ -6,6 +6,10 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-05] deploy | 🧪 v1.114.0 — ADDON_FIJO_ENABLED=true (test e2e de add-on fijo EN CURSO)
+
+**Qué:** GO autorizó prender el configurador de add-ons FIJOS in-app (`brand.ts`) para correr el paso 2 del runbook (`mp-suscripciones-pagos.plan.md` §11) con la suscripción real de Fede (`1619ea40…`, $1.000/mes). Exposición acotada: solo tenants `active` con `mp_subscription_id` (hoy solo Fede). Plan: alta Usuarios+1 ($5.000) → verificar `tenant_addons`+límites (DB) y monto $6.000 + próximo cobro en el panel MP (la incógnita del `PUT transaction_amount`) → baja → $1.000. Rollback = flag `false` + redeploy. PR #271 + release v1.114.0. **Resultado del test: pendiente de registrar acá.**
+
 ## [2026-07-05] deploy | 🎯 Trial 30 días + estimador "Armá tu plan" en /suscripcion + UAT §31.b contraste (4 bugs) · v1.113.0 EN PROD
 
 **Qué:** PR #270 mergeado + release + Vercel; EF `send-email` deployada DEV+PROD con OK de GO.

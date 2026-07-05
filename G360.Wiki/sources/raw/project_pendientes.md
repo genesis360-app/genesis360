@@ -6,7 +6,11 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-07-05 · cierre nocturno: sweep reconciliación + SW forzado + grace completo + H8 + trial 30d + estimador en /suscripcion · **PROD = v1.113.0, migs 001-257**)
+> ### 🧪 ARRANCÁ ACÁ (2026-07-05 · **v1.114.0 EN PROD: `ADDON_FIJO_ENABLED=true`** — TEST DE ADD-ON FIJO EN CURSO · migs 001-257)
+> **🛑 v1.114.0 (PR #271, decisión GO): se PRENDIÓ el configurador de add-ons fijos in-app** para la validación e2e del runbook §11 paso 2 con la sub real de Fede (`1619ea40…`, $1.000/mes). Exposición acotada: solo lo ven tenants `active` con `mp_subscription_id` real (hoy solo Fede). **Plan del test:** Fede agrega Usuarios+1 ($5.000) → toast OK + fila `tenant_addons` + límite 6 users (verifica Claude en DB) → GO mira en su panel MP que el preapproval diga **$6.000** y ANOTA qué fecha/monto muestra el próximo cobro (LA incógnita: ¿prorratea o cobra $6.000 el 3/8?) → Fede lo quita → vuelve a $1.000. **Si falla: flag a `false` + redeploy (rollback de 1 línea).** Si sale bien: el flag queda prendido + GO revisa visualmente la vista in-app (pendiente v1.111).
+> **🟠 QUEDAN (GO):** volver el plan Básico de MP a **$60.000** (¡sigue en $1.000!) · refunds ×2 de Fede · decidir su sub (recomendación: dejarla como banco de pruebas). Pendientes código: MP-P2, WH-LEGACY/H1, WH-SIG, MP-AD7 idempotencia server-side (relevante ahora que el flag está ON — el guard actual es `addonBusy` client-side), Dependabot 18 vulns (4 high).
+>
+> ### ✅ (2026-07-05 · cierre nocturno: sweep reconciliación + SW forzado + grace completo + H8 + trial 30d + estimador en /suscripcion · v1.112.0 + v1.113.0)
 > **Dos releases a PROD esta madrugada, cerrando lo que dejó abierto el test real con Fede (bloque anterior, abajo).**
 >
 > **v1.112.0 (PR #268 mergeado + release + Vercel READY + EFs DEV+PROD con OK de GO)** — cierra los 3 huecos que expuso el test e2e real con Fede:

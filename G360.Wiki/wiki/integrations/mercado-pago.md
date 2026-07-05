@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-07-04
+updated: 2026-07-05
 ---
 
 # Integración Mercado Pago
@@ -169,6 +169,21 @@ Panel admin.genesis360.pro → EF admin-api acción billing.cancel_subscription
 fallaba (con id) o hacía un UPDATE local a ciegas (sin id) → MP seguía cobrando. Fix: EF nuevo +
 `MiCuentaPage`/`AdminPage`/panel siempre pasan por un EF.
 
+> [!TIP] **H8 RESUELTO (v1.112.0):** `admin-api.cancelarSubMP` (panel `genesis360-admin`) tenía el mismo
+> circuito pero **sin** el fallback por `payer_email` de `cancel-suscripcion` (drift entre las 2 copias,
+> hallazgo del UAT 2026-07-04) → cancelar desde el panel un tenant nunca-linkeado (`mp_subscription_id`
+> NULL) fail-abría. Ahora `admin-api` busca el owner en `users` (rol='DUEÑO') → `auth.admin.getUserById` →
+> search en MP por `payer_email`, unificado con `cancel-suscripcion`.
+
+> [!TIP] **Grace period también al cancelar DESDE EL PANEL DE MP (v1.112.0):** hasta v1.110.0 el grace
+> period (`subscription_period_end`) solo se guardaba cuando la cancelación pasaba por `cancel-suscripcion`
+> o `admin-api` — si el cliente cancelaba **directo en el panel de Mercado Pago** (sin pasar por la app), el
+> `mp-webhook` marcaba `cancelled` pero **cortaba el acceso al instante** (sin grace). Ahora `mp-webhook`
+> también captura el `next_payment_date` del preapproval y setea `subscription_period_end` (fallback +30d
+> solo si no había valor — no extiende en re-entregas del webhook). La **activación** limpia
+> `subscription_period_end` en los 3 caminos (`mp-verificar-suscripcion`, `admin-api.link_subscription`,
+> `mp-webhook`) para no dejar un valor viejo inerte.
+
 > [!WARNING] **`/preapproval/search?external_reference=X` NO filtra** (devuelve todos, 200) → se filtra
 > client-side por el `external_reference` que trae cada resultado + se pagina. El `PUT cancel` sí es fiable.
 
@@ -244,6 +259,33 @@ de arriba + `SuscripcionPage`/`MiCuentaPage`/`AuthGuard`). Pasó de **43 a 48 es
 
 Suite: **904 unit tests** (antes 873). Detalle completo del plan en `tests/specs/mp-suscripciones-pagos.plan.md`.
 
+### 3.h Sweep de reconciliación (`mp-reconciliacion`, v1.112.0)
+
+El test real con Fede (§3.e/§3.f) mostró que un preapproval puede quedar **`authorized` en MP pero sin
+linkear** en la app durante horas si el checkout-return no dispara (PWA cacheada, pestaña cerrada, red) —
+nadie se entera hasta que el cliente reclama. **Sweep automático que cierra ese blind spot:**
+
+```
+Cron horario (.github/workflows/mp-reconciliacion.yml, :17 + dispatch manual)
+  → EF mp-reconciliacion (service_role, --no-verify-jwt)
+    1. Lista preapprovals recientes vía /preapproval/search (paginado, filtra client-side)
+    2. Para cada uno, cruza contra tenants (mp_subscription_id / subscription_status)
+    3. Clasifica 3 tipos de hallazgo:
+       - huerfana:            preapproval authorized SIN tenant linkeado (caso Fede)
+       - drift_mp_cobra:       MP cobra (authorized) pero el tenant NO está 'active' en DB
+       - drift_acceso_gratis:  tenant 'active' en DB pero el preapproval está muerto en MP
+    4. INSERT en mp_billing_alertas (mig 256) — UNIQUE(tipo, preapproval_id) dedupe
+       (si ya existe sin resolver, NO reenvía el mail; si el hallazgo desaparece, marca resuelto_at)
+    5. Email a soporte@genesis360.pro (Resend) por cada hallazgo NUEVO
+```
+
+> [!CAUTION] **🛑 REGLA #0 — el sweep SOLO detecta y alerta, NUNCA activa ni linkea automáticamente.**
+> Sin `payer_email` confiable (§ arriba: MP no lo persiste en checkout por plan) no hay matching seguro
+> para decidir a qué tenant pertenece una huérfana → la resolución sigue siendo **humana**, vía el panel
+> (`billing.link_subscription`, §3.f). Espejo puro testeado en `src/lib/mpReconciliacion.ts` +
+> `tests/unit/mpReconciliacion.test.ts` (8 tests). **Smoke real en PROD (2026-07-05):** 12 preapprovals
+> revisados, 0 hallazgos (DB↔MP consistente en ese momento).
+
 ---
 
 ## Edge Functions
@@ -258,6 +300,7 @@ Suite: **904 unit tests** (antes 873). Detalle completo del plan en `tests/specs
 | `mp-addon-fijo` | Sí | Add-on FIJO (alta/baja + `PUT transaction_amount` del preapproval) — deployada DEV+PROD, **configurador in-app oculto por kill-switch `ADDON_FIJO_ENABLED` hasta validar el cobro en sandbox** (ver 3.g, H7) |
 | `mp-verificar-suscripcion` | Sí | Verifica el preapproval server-side y activa (setea `plan_tier`) |
 | `cancel-suscripcion` | Sí | **Cancela** el/los preapproval(s) en MP (`PUT status:'cancelled'`) + marca la cuenta cancelada. Robusto al drift: si falta `mp_subscription_id`, busca por `external_reference` en `/preapproval/search`. Fail-closed. (v1.104.0) |
+| `mp-reconciliacion` | No (`--no-verify-jwt`, service_role) | Sweep de reconciliación cron (huérfanas / drift_mp_cobra / drift_acceso_gratis) — **solo detecta y alerta a soporte@, nunca activa/linkea sola** (v1.112.0, ver 3.h) |
 | `mp-oauth-callback` | No | OAuth de la cuenta del seller |
 
 ### Routing en `mp-webhook`

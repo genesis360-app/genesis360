@@ -9,7 +9,27 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 4 de Julio, 2026
+**Última actualización:** 5 de Julio, 2026
+
+---
+
+## v1.113.0 — 🎯 Trial 30 días + estimador "Armá tu plan" en /suscripcion + UAT §31.b contraste (PROD ✅, mig 257 + EF send-email)
+
+**Trial 7→30 días** (decisión GO): **mig 257** `trial_ends_at DEFAULT now()+30d` (solo tenants nuevos) + textos en Landing (badge hero/FAQ/CTAs), `OnboardingPage`, `SuscripcionPage`, `PricingConfigurator` y el email de bienvenida. Resuelve la duda "Free 30 días ¿trial o permanente?" de `wiki/business/planes-pricing.md` — es trial de 30 días, sin conflicto con los T&C (no fijan duración numérica).
+
+**Estimador también en `/suscripcion`** (pedido GO): `PricingConfigurator` gana props `ctaLabel`/`onCta`/`ctaLoading` — en el Landing sigue igual, en `SuscripcionPage` se embebe full-bleed (94vw/80vw, máx 1600px) y visible para todos (suscriptos o no); sigue siendo estimación pura (`ADDON_FIJO_ENABLED` intacto, no cobra add-ons).
+
+**UAT §31.b nuevo** (`tests/specs/uat-modo-basico.md`): escenarios formales C1-C8 de contraste claro+oscuro. Corrida sobre el Landing a pedido de GO: **4 bugs de contraste encontrados y arreglados** (hover ilegible en 3 CTAs blancos del Landing sobre fondo oscuro + `dark:bg` sin `dark:text` en el CTA no-destacado de `SuscripcionPage`). Deuda anotada: `text-[#7DB9E8]` hardcodeado en el H1 del hero.
+
+**Deploy:** mig 257 (DEV+PROD) + EF `send-email` (DEV+PROD) + frontend (Vercel main) + release v1.113.0. PR #270.
+
+---
+
+## v1.112.0 — 🛑 Sweep de reconciliación billing MP + SW update forzado + grace period completo + H8 resuelto (PROD ✅, mig 256 + 4 EFs)
+
+Cierra los 3 huecos que expuso el test e2e real con Fede (v1.111.0, ver `log.md`). **(1)** EF nueva `mp-reconciliacion` + **mig 256** `mp_billing_alertas` + workflow `.github/workflows/mp-reconciliacion.yml` (cron horario + manual) — detecta huérfanas/drift_mp_cobra/drift_acceso_gratis y alerta a `soporte@` una vez por hallazgo; **SOLO alerta, nunca activa/linkea sola** (REGLA #0). **(2)** `registerSW` explícito en `main.tsx` (chequeo cada 30 min + al volver el foco) — mata el vector "PWA cacheada" que complicó el diagnóstico con Fede. **(3)** `mp-webhook` ahora setea `subscription_period_end` también cuando la cancelación viene DESDE EL PANEL DE MP (antes solo cubría cancelar desde la app/soporte); la activación limpia `period_end` en los 3 caminos. **(4) H8 resuelto:** `admin-api.cancelarSubMP` ganó el fallback por `payer_email`, unificado con `cancel-suscripcion`.
+
+**Deploy:** mig 256 (DEV+PROD) + EFs `mp-reconciliacion`/`mp-verificar-suscripcion`/`admin-api`/`mp-webhook` (DEV+PROD) + frontend + release v1.112.0. PR #268. **912 unit verdes** (antes 904). UAT §11 de `mp-suscripciones-pagos.plan.md` actualizado con "RESUELTO v1.112.0".
 
 ---
 

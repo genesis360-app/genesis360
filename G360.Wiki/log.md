@@ -6,6 +6,35 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-05] deploy | 🎯 Trial 30 días + estimador "Armá tu plan" en /suscripcion + UAT §31.b contraste (4 bugs) · v1.113.0 EN PROD
+
+**Qué:** PR #270 mergeado + release + Vercel; EF `send-email` deployada DEV+PROD con OK de GO.
+
+1. **Trial 7→30 días (decisión GO):** **mig 257** `tenants.trial_ends_at DEFAULT now()+30d` (DEV+PROD, solo tenants nuevos) + textos actualizados en Landing (badge hero, FAQ, CTAs de planes, CTA final), `OnboardingPage`, `SuscripcionPage`, `PricingConfigurator` (beneficio "30 días gratis" + CTA), y el email de bienvenida del EF `send-email`. Los T&C no fijan duración numérica ("período de prueba gratuito") → sin conflicto legal. Resuelve la duda abierta en `wiki/business/planes-pricing.md` ("Free 30 días ¿trial o permanente?") — queda como trial de 30 días.
+2. **Estimador "Armá tu plan" también en `/suscripcion` (pedido GO):** `PricingConfigurator` acepta ahora props `ctaLabel`/`onCta`/`ctaLoading`; en el Landing sigue igual (CTA → onboarding); en `SuscripcionPage` se embebe full-bleed (94vw/80vw, máx 1600px, mismo tamaño que el Landing), visible para TODOS los usuarios (suscriptos o no); el CTA dispara `handleSuscribir` del plan base elegido. Es **estimación pura — NO cobra add-ons** (`ADDON_FIJO_ENABLED` intacto; el configurador de COMPRA de add-ons fijos sigue oculto).
+3. **UAT §31.b NUEVO en `tests/specs/uat-modo-basico.md`:** escenarios formales C1-C8 de contraste claro+oscuro (crux: hover que reemplaza fondo sólido por translúcido sobre superficie oscura; `dark:bg` sin `dark:text`; ramas condicionales; `outline-accent` solo sobre claro; verificación Playwright con hover real). **Corrida sobre el Landing pedida por GO: 4 bugs encontrados y arreglados**: (a,b,c) Landing hero/plan destacado/CTA final — `bg-white text-primary hover:bg-accent/10` sobre fondo oscuro = ilegible en hover → `hover:bg-white/90`; (d) `SuscripcionPage` CTA del plan no destacado — `dark:bg-gray-800` sin `dark:text-*` (bajo contraste permanente en modo oscuro) → `dark:text-white` + hover seguro. Verificado con screenshots reales (vite preview + Playwright hover). **Deuda anotada (C7):** `text-[#7DB9E8]` hardcodeado en el H1 del hero (no es token de marca).
+
+**Deploy:** mig 257 (DEV+PROD) + EF `send-email` (DEV+PROD, texto trial actualizado) + frontend (Vercel main) + release v1.113.0.
+
+**Estado:** **v1.113.0 EN PROD.**
+
+---
+
+## [2026-07-05] deploy | 🛑 Sweep de reconciliación billing MP + SW update forzado + grace period completo + H8 resuelto · v1.112.0 EN PROD
+
+**Qué:** PR #268 mergeado + release + Vercel READY + EFs deployados DEV+PROD con OK de GO. Cierra los 3 huecos que expuso el test e2e real con Fede (entrada de log anterior, misma noche):
+
+1. **Sweep de reconciliación billing MP (anti MP-W6 / DRIFT 1-2):** EF nueva **`mp-reconciliacion`** + **mig 256** `mp_billing_alertas` (DEV+PROD; tabla solo `service_role`, `UNIQUE(tipo, preapproval_id)` para dedupe) + workflow nuevo `.github/workflows/mp-reconciliacion.yml` (cron horario `:17` + dispatch manual, ya corrido en verde). Detecta 3 tipos: **huérfanas** (preapproval `authorized` sin tenant linkeado — el caso Fede), **drift_mp_cobra** (MP cobra y el tenant no está `active`), **drift_acceso_gratis** (tenant `active` con preapproval muerto). Alerta a `soporte@genesis360.pro` por email (Resend) UNA vez por hallazgo (dedupe) y marca resueltos los que dejan de detectarse. **🛑 REGLA #0: el sweep SOLO detecta y alerta, NUNCA activa/linkea solo** (el `payer_email` viene vacío → no hay matching confiable; la resolución sigue siendo humana vía `billing.link_subscription`). Espejo testeado `src/lib/mpReconciliacion.ts` + `tests/unit/mpReconciliacion.test.ts` (8 tests). **Smoke real en PROD:** 12 preapprovals revisados, 0 hallazgos (DB↔MP consistente).
+2. **SW update forzado (mata el vector "PWA vieja" del caso Fede):** `registerSW` explícito en `main.tsx` (chequeo cada 30 min + al volver el foco a la pestaña; `registerType: autoUpdate` recarga solo). `tsconfig` + tipo `vite-plugin-pwa/client`.
+3. **Grace period completo + higiene de `period_end`:** `mp-webhook` ahora setea `subscription_period_end` cuando la cancelación viene **DESDE EL PANEL DE MP** (usa el `next_payment_date` del preapproval; fallback +30d solo si no había valor — no extiende en re-entregas del webhook) — antes ese camino cortaba el acceso al instante (el grace de v1.110.0 solo cubría cancelar desde la app/panel de soporte). La **activación** limpia `subscription_period_end` en los 3 caminos (`mp-verificar-suscripcion`, `admin-api.link_subscription`, `mp-webhook`).
+4. **H8 RESUELTO:** `admin-api.cancelarSubMP` ganó el fallback por `payer_email` del DUEÑO (busca el owner en `users` rol=`DUEÑO` → `auth.admin.getUserById` → search en MP) — unificado con `cancel-suscripcion`; cancelar desde el panel un tenant nunca-linkeado ya no fail-abre.
+
+**Deploy:** EFs `mp-reconciliacion`/`mp-verificar-suscripcion`/`admin-api`/`mp-webhook` a DEV+PROD (`--no-verify-jwt` en `mp-reconciliacion`) + mig 256 (DEV+PROD) + frontend. **912 unit verdes** (antes 904). UAT `tests/specs/mp-suscripciones-pagos.plan.md` §11 actualizado con "RESUELTO v1.112.0" en los 4 ítems de arriba.
+
+**Estado:** **v1.112.0 EN PROD.**
+
+---
+
 ## [2026-07-04] update | ✅ e2e PROD noche: MP-C9b + MP-C8 confirmados · checkout-return recuperado (MP-W6 en vivo) · Fede re-activo
 
 **Qué:** GO + Fede corrieron parte del runbook §11 del UAT en PROD, misma noche. Resultados (detalle en `tests/specs/mp-suscripciones-pagos.plan.md` §11):

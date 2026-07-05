@@ -3,7 +3,7 @@ title: PWA — Configuración
 category: architecture
 tags: [pwa, service-worker, wasm, manifest, offline]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-07-05
 ---
 
 # PWA — Progressive Web App
@@ -90,6 +90,23 @@ export default defineConfig({
   ]
 }
 ```
+
+---
+
+## Registro explícito del Service Worker (v1.112.0, anti-caché-vieja)
+
+> [!WARNING] **Gotcha de PROD (caso Fede, 2026-07-04/05):** con `registerType: 'autoUpdate'` el SW se
+> actualiza solo, pero **si la pestaña queda abierta mucho tiempo o el usuario no navega**, el nuevo SW
+> puede tardar en tomar control → un cliente real siguió operando contra una versión vieja durante un
+> deploy de billing (posible causa de que el checkout-return no invocara la EF de verificación, MP-W6).
+
+**Fix:** registro explícito de `registerSW` en `src/main.tsx` (en vez de dejarlo 100% implícito al plugin):
+chequea updates **cada 30 minutos** + **al volver el foco a la pestaña** (`visibilitychange`); con
+`registerType: 'autoUpdate'` el nuevo SW se activa y recarga solo cuando encuentra una versión nueva.
+`tsconfig` agrega el tipo `vite-plugin-pwa/client`. Reduce (no elimina del todo) la ventana en la que un
+usuario real queda en una versión cacheada tras un deploy — ver también
+[[reference_pwa_cache_post_deploy]] (memoria: "sigue fallando" puede ser caché, pedir hard-refresh antes
+de re-diagnosticar).
 
 ---
 

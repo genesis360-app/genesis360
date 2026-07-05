@@ -3,7 +3,7 @@ title: Planes y Pricing
 category: business
 tags: [planes, pricing, free, basic, pro, enterprise, limites, competencia]
 sources: [xubio.com, contabilium.com, netegia.com, neuralsoft.com, aconpy.com]
-updated: 2026-07-01
+updated: 2026-07-05
 ---
 
 # Planes y Pricing
@@ -65,7 +65,7 @@ Propuesta de GO + ajustes recomendados. **No cerrada.**
 
 | Plan | Precio propuesto GO (c/IVA) | Users | Movimientos/mes | SKU | Sucursales |
 |---|---|---|---|---|---|
-| **Free** | $0 — **30 días** (¿trial o permanente? definir) | — | — | — | — |
+| **Free** | $0 — **30 días de trial** (✅ RESUELTO 2026-07-05, mig 257 — ver "Trial" abajo) | — | — | — | — |
 | **Básico** | **$60.000/mes** (débito −10%, anual −30%) | 5 | 5.000 | 2.000 | 1 |
 | **Pro** | **$100.000/mes** (mismos desc.) | 15 | 20.000 | 8.000 | 4 |
 | **Enterprise** | A consultar (según complejidad) | — | — | — | — |
@@ -76,7 +76,7 @@ Propuesta de GO + ajustes recomendados. **No cerrada.**
 - ✅ **Los PRECIOS están MUY bien (incluso conservadores):** Básico $60k queda **por debajo de Netegia Pyme Lite ($96k, el competidor más directo)** y de Contabilium; arriba de Ninox Comercio (~$46-56k) y Xubio débito. Pro $100k ≈ Ninox Empresa ($94k) y Xubio Ilimitado ($113k), pero **menos de la mitad de Netegia Premium ($232k) y Contabilium Pro ($217k)** → wedge de valor agresivo. Se podría empujar Pro más arriba; $100k como "value vs Netegia" es buena historia. Riesgo de entrada (producto nuevo) mitigado con trial largo + descuentos + descuento fundador.
 - 🚩 **Los SKU 100/300 son INUSABLES — CONFIRMADO por toda la competencia:** el plan más barato de **Ninox da 2.000 artículos ($24k)** y el de **Netegia 4.000 ($96k)**; Contabilium 5.000. Vos ibas a cobrar $60k por **100** (20-40x menos que cualquiera). Y **cada variante = un producto separado** (tienda de ropa 50×5×4 = 1.000 SKU). El SKU no cuesta nada (fila en Postgres). **Subir a 2.000-4.000 (Básico) / 15.000-∞ (Pro)** para estar a la par.
 - **Descuentos:** débito −10% + anual −30% sanos (anual agresivo vs Contabilium 10%, pero costo marginal ~$0). **Definir si se acumulan** (¿40%?) o el anual es el tope.
-- **Free "30 días":** definir si es trial (hoy la app tiene trial de **7 días**, `trial_ends_at NOW()+7`; pasar a 30 = cambio de default + texto onboarding) o un tier permanente limitado para lead-gen (recomendado tener AMBOS: trial de 30d de Pro + Free permanente acotado).
+- **Free "30 días" — ✅ RESUELTO (2026-07-05, v1.113.0, mig 257):** GO decidió que es **trial** (no un tier permanente) → `trial_ends_at` pasó su `DEFAULT` de `now()+7d` a `now()+30d` (solo tenants nuevos) + textos actualizados en Landing/Onboarding/Suscripción/email de bienvenida. Queda pendiente (no bloqueante) evaluar si además conviene un tier Free permanente acotado para lead-gen — no se implementó.
 
 ---
 
@@ -164,7 +164,7 @@ AFIP/ARCA no cobra por CAE. Con AfipSDK el token es por-tenant (lo paga el clien
 
 ## Trial (actual en código)
 
-- **Duración real:** **7 días** (`tenants.trial_ends_at DEFAULT NOW()+7`, texto onboarding "7 días gratis"). La propuesta de GO es 30 días → cambio pendiente.
+- **Duración real:** **30 días** (✅ v1.113.0, 2026-07-05 — mig 257 `tenants.trial_ends_at DEFAULT NOW()+30d`, solo tenants nuevos; texto onboarding/Landing/Suscripción/email de bienvenida actualizados a "30 días gratis"). Antes eran 7 días; la propuesta de GO de subir a 30 quedó implementada. Tenants existentes NO se re-escriben (sin cambio retroactivo).
 - **Acceso:** equivalente al plan Pro · sin tarjeta al inicio.
 
 ---

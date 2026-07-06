@@ -3,7 +3,7 @@ title: Planes y Pricing
 category: business
 tags: [planes, pricing, free, basic, pro, enterprise, limites, competencia]
 sources: [xubio.com, contabilium.com, netegia.com, neuralsoft.com, aconpy.com]
-updated: 2026-07-05
+updated: 2026-07-06
 ---
 
 # Planes y Pricing
@@ -63,14 +63,15 @@ Respuesta sin marketing a "¿por qué alguien elegiría Netegia?" (pedido GO):
 
 Propuesta de GO + ajustes recomendados. **No cerrada.**
 
-| Plan | Precio propuesto GO (c/IVA) | Users | Movimientos/mes | SKU | Sucursales |
+| Plan | Precio propuesto GO (c/IVA) | Users | Comprobantes/mes 🆕 | SKU | Sucursales |
 |---|---|---|---|---|---|
-| **Free** | $0 — **30 días de trial** (✅ RESUELTO 2026-07-05, mig 257 — ver "Trial" abajo) | — | — | — | — |
-| **Básico** | **$60.000/mes** (débito −10%, anual −30%) | 5 | 5.000 | 2.000 | 1 |
-| **Pro** | **$100.000/mes** (mismos desc.) | 15 | 20.000 | 8.000 | 4 |
-| **Enterprise** | A consultar (según complejidad) | — | — | — | — |
+| **Free** | $0 — **30 días de trial** (✅ RESUELTO 2026-07-05, mig 257 — ver "Trial" abajo) | — | 200 | — | — |
+| **Básico** | **$60.000/mes** (débito −10%, anual −30%) | 5 | 6.000 | 2.000 | 1 |
+| **Pro** | **$100.000/mes** (mismos desc.) | 15 | 14.000 | 8.000 | 4 |
+| **Enterprise** | A consultar (según complejidad) | — | ilimitado | — | — |
 
 > Límites base **actualizados con la propuesta de add-ons de GO (2026-07-01)** — el SKU 100/300 quedó descartado (subió a 2.000/6.000). Detalle de add-ons + revisión abajo (§ "Límites base + Add-ons").
+> **✅ IMPLEMENTADO v1.115.0 (2026-07-06):** la dimensión de flujo pasó de **movimientos** a **comprobantes** (toda venta finalizada del mes = 1 comprobante, con o sin factura AFIP; presupuestos y canceladas no cuentan). Movimientos quedó **free/ilimitado (solo telemetría)** — sus packs de add-on se eliminaron. Detalle completo en `wiki/features/configurador-addons-batch.md` y `wiki/integrations/mercado-pago.md` §3.
 
 **Veredicto (análisis 2026-07-01, actualizado con Netegia/Ninox reales):**
 - ✅ **Los PRECIOS están MUY bien (incluso conservadores):** Básico $60k queda **por debajo de Netegia Pyme Lite ($96k, el competidor más directo)** y de Contabilium; arriba de Ninox Comercio (~$46-56k) y Xubio débito. Pro $100k ≈ Ninox Empresa ($94k) y Xubio Ilimitado ($113k), pero **menos de la mitad de Netegia Premium ($232k) y Contabilium Pro ($217k)** → wedge de valor agresivo. Se podría empujar Pro más arriba; $100k como "value vs Netegia" es buena historia. Riesgo de entrada (producto nuevo) mitigado con trial largo + descuentos + descuento fundador.
@@ -80,29 +81,46 @@ Propuesta de GO + ajustes recomendados. **No cerrada.**
 
 ---
 
-## 💠 Límites base + Add-ons (propuesta GO 2026-07-01)
+## 💠 Límites base + Add-ons (propuesta GO 2026-07-01 · pricing v2 IMPLEMENTADO v1.115.0)
 
-Modelo multi-dimensional (como Netegia): 4 dimensiones metered (SKU · Movimientos · Sucursales · Usuarios), cada una con packs de add-on que se suman a la factura del plan base.
+Modelo multi-dimensional (como Netegia): 4 dimensiones metered (SKU · Comprobantes · Sucursales · Usuarios), cada una con packs de add-on que se suman a la factura del plan base.
 
-### Límites base por plan
-| Dimensión | Básico ($60k) | Pro ($100k) |
-|---|---|---|
-| **SKU** (productos activos) | 2.000 | 8.000 |
-| **Movimientos**/mes | 5.000 | 20.000 |
-| **Sucursales** | 1 | 4 |
-| **Usuarios** | 5 | 15 |
+> [!NOTE] **✅ IMPLEMENTADO v1.115.0 (2026-07-06, migs 258-259):** la dimensión de flujo pasó de
+> **movimientos** a **COMPROBANTES** (decisión GO 2026-07-05, diseño en
+> `wiki/features/configurador-addons-batch.md`). Movimientos queda **free/ilimitado (solo
+> telemetría)** — sus packs de add-on se ELIMINARON del catálogo. Las tablas de abajo reflejan
+> el modelo YA IMPLEMENTADO; el texto histórico de la propuesta 2026-07-01 (Decisiones GO,
+> pendientes) se conserva más abajo para referencia.
+
+### Límites base por plan (v2, implementado)
+| Dimensión | Free | Básico ($60k) | Pro ($100k) | Enterprise |
+|---|---|---|---|---|
+| **SKU** (productos activos) | — | 2.000 | 8.000 | ilimitado |
+| **Comprobantes**/mes 🆕 | 200 | 6.000 | 14.000 | ilimitado |
+| ~~Movimientos~~/mes | — | ilimitado (telemetría) | ilimitado (telemetría) | ilimitado |
+| **Sucursales** | — | 1 | 4 | ilimitado |
+| **Usuarios** | — | 5 | 15 | ilimitado |
 
 ### Add-ons (ARS, se suman a la facturación mensual del plan)
 | Dimensión | Pack A | Pack B | Pack C | Tipo | $/unidad |
 |---|---|---|---|---|---|
 | **SKU** | 500 × $5.000 | 2.000 × $10.000 | 8.000 × $25.000 | **Solo fijo** | 10 / 5 / 3,13 ✓ |
 | **Sucursales** | 1 × $15.000 | 3 × $35.000 | 5 × $55.000 | **Solo fijo** | 15.000 / 11.667 / 11.000 ✓ |
-| **Movimientos** | 1.000 × $5.000 | 5.000 × $10.000 | 20.000 × $15.000 | **Fijo o temporal** | 5 / 2 / 0,75 ✓ |
+| **Comprobantes** 🆕 | 1.000 × $10.000 | 5.000 × $30.000 | 10.000 × $50.000 | **Fijo Y temporal** | 10 / 6 / 5 ✓ |
 | **Usuarios** | 1 × $5.000 | 3 × $10.000 | 5 × $15.000 | **Solo fijo** | 5.000 / 3.333 / 3.000 ✓ |
+| ~~Movimientos~~ | ~~eliminado~~ | ~~eliminado~~ | ~~eliminado~~ | — | — |
+
+**Enforcement de comprobantes: SOFT** (decisión Q2 de GO, 2026-07-05) — banner de upsell al 80%
+del límite, aviso fuerte + email al 100%, pero la venta **SIEMPRE sale** (nunca se bloquea un
+cobro en el mostrador, coherente con la decisión F3b del 2026-07-02). Métrica: toda **venta
+finalizada** del mes calendario = 1 comprobante (ticket interno o factura AFIP, da igual);
+presupuestos y ventas canceladas NO cuentan.
+
+**Un pack FIJO por dimensión** (elegir otro pack lo reemplaza, no se acumulan — `uq_tenant_addons_fijo_dim`, mig 258). Los packs **temporales** de comprobantes sí pueden acumularse (compras puntuales, como eran los de movimientos).
 
 **Tipos de add-on:**
-- **Fijo (recurrente):** se suma a la factura mes a mes. Para bajarlo, el usuario debe **desactivar** recursos (SKU/sucursal/usuario) hasta la cantidad cubierta por el plan base (la app lo guía, ver Decisión #1). **SKU / sucursales / usuarios = SOLO fijo.**
-- **Temporal (one-time):** pago en el momento, **vence a 30 días del día del pago**, independiente del ciclo de facturación mensual. **Solo para movimientos** (flujo mensual que se resetea).
+- **Fijo (recurrente):** se suma a la factura mes a mes. Para bajarlo, el usuario arma el batch en el panel "Armá tu plan" y confirma; si el uso activo excede el límite resultante, la app bloquea con el detalle de cuánto **desactivar** (SKU/sucursal/usuario) — ver `configurador-addons-batch.md` "Guard de baja a nivel batch". **SKU / sucursales / usuarios = SOLO fijo.**
+- **Temporal (one-time):** pago en el momento, **vence a 30 días del día del pago**, independiente del ciclo de facturación mensual. **Solo para comprobantes** (antes era para movimientos; flujo mensual que se resetea).
 
 **Ejemplo de factura:** Pro con 10.000 SKU (base 8.000 + add-on 2.000×$10k) = **$110.000/mes**. Básico + 2ª sucursal (add-on 1×$15k) = **$75.000/mes**.
 
@@ -158,7 +176,14 @@ Modelo multi-dimensional (como Netegia): 4 dimensiones metered (SKU · Movimient
 - **Riesgo real = límites demasiado BAJOS** (los 100 SKU), no quedarse sin infra. El costo es función de #tenants activos + imágenes/emails, no de SKU por tenant.
 
 ## ❓ ¿Comprobantes como límite? Costo por comprobante = $0
-AFIP/ARCA no cobra por CAE. Con AfipSDK el token es por-tenant (lo paga el cliente); con el **WSFE propio** (en construcción) → $0 marginal nuestro. **Recomendación: NO limitar como tope punitivo → usar "facturación ilimitada" como diferenciador** (Xubio capa 1.000/mes, Contabilium 2.500-10.000).
+AFIP/ARCA no cobra por CAE. Con AfipSDK el token es por-tenant (lo paga el cliente); con el **WSFE propio** (en construcción) → $0 marginal nuestro. **Recomendación original: NO limitar como tope punitivo → usar "facturación ilimitada" como diferenciador** (Xubio capa 1.000/mes, Contabilium 2.500-10.000).
+
+> [!NOTE] **✅ DECISIÓN GO 2026-07-05 (v1.115.0): comprobantes SÍ se metering, pero NUNCA punitivo.**
+> Se adoptó comprobantes como dimensión de flujo (reemplaza a movimientos, ver arriba) con
+> **enforcement SOFT** — banner de upsell al 80%, aviso fuerte+email al 100%, pero **la venta
+> SIEMPRE sale** (nunca se corta un cobro en el mostrador). Es un metering comercial (upsell),
+> no un tope duro como Xubio/Contabilium — sigue siendo defendible como "no te vamos a cortar
+> las ventas nunca", solo empuja a subir de plan/pack cuando el volumen crece.
 
 ---
 
@@ -188,9 +213,10 @@ El `SubscriptionGuard` en `src/components/AuthGuard.tsx` bloquea acceso a featur
 
 ---
 
-## Cómo se cuentan los límites (mecánica real, 2026-06-30)
+## Cómo se cuentan los límites (mecánica real, actualizado v1.115.0)
 
-- **Movimiento (`movimientos_mes`):** una fila en **`movimientos_stock`** = **solo movimiento de INVENTARIO** (venta/rebaja, ingreso, ajuste, traslado, devolución, kits). **NO cuentan** facturar ni agregar un gasto. Se cuenta **por tenant** (no por sucursal), del **mes calendario** en curso (se resetea el 1°). **Un ingreso masivo de N productos = N movimientos** (1 fila por SKU); una venta de N ítems ≈ N. Límites: Free **200** · Básico **2.000** · Pro/Enterprise **ilimitado** + `addon_movimientos`. ⚠ Enforce **solo client-side** (`usePlanLimits`) — sin guard server-side, se puede exceder por API (a endurecer si el pricing depende de esto).
+- **Comprobante (`comprobantes_mes`) 🆕 — la dimensión de flujo real, reemplaza a movimientos:** toda **venta finalizada** del mes calendario = 1 comprobante (ticket interno o factura AFIP, da igual); presupuestos y ventas canceladas **NO cuentan**. Se cuenta **por tenant** (no por sucursal), se resetea el 1° de cada mes. Límites: Free **200** · Básico **6.000** · Pro **14.000** · Enterprise **ilimitado** + pack de add-on (fijo o temporal). **Enforcement SOFT** (mig 259) — banner de upsell al 80%, aviso fuerte+email al 100%, la venta **SIEMPRE sale** (nunca se bloquea un cobro en el mostrador).
+- **Movimiento — ✅ RESUELTO (v1.115.0): ahora free/ilimitado, solo telemetría.** Hasta v1.114.0 una fila en `movimientos_stock` (venta/rebaja, ingreso, ajuste, traslado, devolución, kits — NO facturar/gastos) contaba contra un límite (Free 200 · Básico 2.000-5.000 · Pro/Enterprise ilimitado). Se eliminó el límite y los packs de add-on de movimientos: la dimensión de flujo que se factura pasó a ser **comprobantes** (arriba). El conteo de `movimientos_stock` sigue existiendo como telemetría/diagnóstico, sin gatear nada.
 - **Producto:** cada fila en `productos` (`activo=true`). **Cada variante (talla/color) cuenta como un producto separado** — "generar combinaciones" 3 talles × 2 colores crea **6 productos**. El grupo de variantes es solo agrupación visual.
 
 ## Costo para nosotros (para el margen)

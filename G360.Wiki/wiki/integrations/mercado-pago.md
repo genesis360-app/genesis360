@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-07-05
+updated: 2026-07-06
 ---
 
 # Integración Mercado Pago
@@ -108,7 +108,12 @@ en el dashboard es `mp-webhook` (es la `notification_url` de `mp-crear-link-pago
 
 ## 3. Add-ons (Pricing 2026)
 
-### 3.a Add-on TEMPORAL de movimientos (Fase 2, 2026-07-02)
+### 3.a Add-on TEMPORAL de movimientos (Fase 2, 2026-07-02) — histórico, ver 3.i
+
+> [!NOTE] **Superseded v1.115.0 (2026-07-06):** el mismo mecanismo (misma EF `mp-addon`, mismo
+> patrón de ref+webhook) hoy vende el temporal de **comprobantes**, no de movimientos (pricing
+> v2, packs 1.000/5.000/10.000 → $10k/$30k/$50k). El flujo de abajo queda documentado tal cual
+> corrió para movimientos (histórico/idempotencia); ver §3.i para el catálogo vigente.
 
 ```
 Usuario elige pack 1.000 / 5.000 / 20.000 movimientos
@@ -286,6 +291,47 @@ Cron horario (.github/workflows/mp-reconciliacion.yml, :17 + dispatch manual)
 > `tests/unit/mpReconciliacion.test.ts` (8 tests). **Smoke real en PROD (2026-07-05):** 12 preapprovals
 > revisados, 0 hallazgos (DB↔MP consistente en ese momento).
 
+### 3.i Batch de add-ons con cobro por delta (`mp-addon-batch`, v1.115.0, 2026-07-06)
+
+**Reemplaza** el flujo "un click = un cobro" de `mp-addon-fijo` (§3.b) — validado e2e el
+2026-07-05 pero **descartado por decisión de producto** (GO). Diseño completo + decisiones
+Q1-Q4 en `wiki/features/configurador-addons-batch.md`.
+
+```
+Panel único "Armá tu plan" (SuscripcionPage + PricingConfigurator modo `app`)
+  → usuario arma el batch (plan+packs objetivo; UN pack fijo por dimensión, mig 258)
+  → EF mp-addon-batch action:'preview' (recalcula todo server-side: delta, recurrente_nuevo,
+      next_payment_date, guard de baja por dimensión)
+  → Confirmar → EF mp-addon-batch action:'confirmar'
+      delta > 0 (sube el recurrente): preference de PAGO ÚNICO por el DELTA,
+        external_reference = "{tenant}|addonbatch|{change_id}", fila addon_batch_changes
+        'pendiente_pago' (mig 258) → el webhook aplica el batch RECIÉN AL PAGAR (fail-closed)
+      delta ≤ 0 (baja o neutro): SIN cobro — PUT transaction_amount inmediato (fail-closed) →
+        fn_aplicar_addon_batch → "tu próxima factura del DD/MM llega por $X"
+  → mp-webhook rama |addonbatch| (idempotente por mp_payment_id): pago aprobado →
+      PUT transaction_amount → fn_aplicar_addon_batch (sync tenant_addons ATÓMICO, mig 258)
+      si el PUT falla DESPUÉS del pago → change → 'fallido' + mp_billing_alertas
+      (tipo nuevo batch_pagado_sin_aplicar) + email a soporte (el cliente YA PAGÓ, prioridad
+      máxima de conciliación)
+```
+
+**Guard de baja a nivel BATCH:** antes de aplicar cualquier baja se compara el uso activo real
+(SKU/usuarios/sucursales) contra el límite resultante (`base(plan) + pack_objetivo`); si el uso
+excede, bloquea con el detalle de cuánto desactivar (para SKU: "desactivar ≠ eliminar").
+
+**`mp-addon` ahora vende el add-on TEMPORAL de COMPROBANTES** (reemplaza el temporal de
+movimientos — pricing v2, mig 259 — packs +1.000=$10k · +5.000=$30k · +10.000=$50k, vence a 30
+días del pago).
+
+> [!WARNING] **`mp-addon-fijo` (§3.b) queda DEPRECADO** — sigue deployada (código intacto, por
+> histórico/idempotencia de add-ons fijos ya otorgados) pero **la UI ya no la invoca**; se borra
+> en una limpieza futura (Fase 3 del diseño).
+
+**Deploy:** migs 258-259 + EFs `mp-addon-batch` (nueva) / `mp-addon` / `mp-webhook` — DEV+PROD,
+PR #272 mergeado + release v1.115.0. Espejo de test `src/lib/mpAddonBatch.ts` + UAT §10.b
+(`mp-suscripciones-pagos.plan.md`, MP-B1..B8). **🟠 Pendiente:** test e2e GO+Fede (suba con delta
+real cobrado + baja sin cobro + guard de baja); Fase 2 = cambio de PLAN por el mismo toggle.
+
 ---
 
 ## Edge Functions
@@ -296,8 +342,9 @@ Cron horario (.github/workflows/mp-reconciliacion.yml, :17 + dispatch manual)
 | `mp-webhook` | No | Eventos de pagos Y suscripciones (setea `plan_tier`; add-on temporal → `tenant_addons`) |
 | `mp-ipn` | No | IPN alternativo para pagos de ventas |
 | `mp-crear-link-pago` | Sí | Genera preference de pago por venta |
-| `mp-addon` | Sí | Add-on TEMPORAL de movimientos (pago único, packs 1.000/5.000/20.000) |
-| `mp-addon-fijo` | Sí | Add-on FIJO (alta/baja + `PUT transaction_amount` del preapproval) — deployada DEV+PROD, **configurador in-app oculto por kill-switch `ADDON_FIJO_ENABLED` hasta validar el cobro en sandbox** (ver 3.g, H7) |
+| `mp-addon` | Sí | Add-on TEMPORAL de **comprobantes** (pago único, packs 1.000/5.000/10.000 — reemplaza el temporal de movimientos, v1.115.0) |
+| `mp-addon-batch` | Sí | **v1.115.0** — Batch de add-ons con cobro por delta (`preview`/`confirmar`): suba → preference por el delta (aplica al pagar vía `mp-webhook`); baja → `PUT` inmediato sin cobro; guard de baja batch server-side. Reemplaza `mp-addon-fijo` (ver 3.i) |
+| ~~`mp-addon-fijo`~~ | Sí | **DEPRECADA (v1.115.0)** — sigue deployada (histórico/idempotencia de add-ons ya otorgados) pero la UI ya no la invoca; reemplazada por `mp-addon-batch`. Antes: Add-on FIJO (alta/baja + `PUT transaction_amount` del preapproval), oculta por kill-switch `ADDON_FIJO_ENABLED` (ver 3.g, H7) |
 | `mp-verificar-suscripcion` | Sí | Verifica el preapproval server-side y activa (setea `plan_tier`) |
 | `cancel-suscripcion` | Sí | **Cancela** el/los preapproval(s) en MP (`PUT status:'cancelled'`) + marca la cuenta cancelada. Robusto al drift: si falta `mp_subscription_id`, busca por `external_reference` en `/preapproval/search`. Fail-closed. (v1.104.0) |
 | `mp-reconciliacion` | No (`--no-verify-jwt`, service_role) | Sweep de reconciliación cron (huérfanas / drift_mp_cobra / drift_acceso_gratis) — **solo detecta y alerta a soporte@, nunca activa/linkea sola** (v1.112.0, ver 3.h) |

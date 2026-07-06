@@ -3,18 +3,23 @@ title: Configurador de add-ons BATCH con cobro por delta (diseño)
 category: features
 tags: [billing, addons, mercadopago, pricing, comprobantes, delta]
 sources: [src/pages/SuscripcionPage.tsx, src/components/PricingConfigurator.tsx, supabase/functions/mp-addon-fijo, supabase/functions/mp-webhook, tests/specs/mp-suscripciones-pagos.plan.md]
-updated: 2026-07-05
+updated: 2026-07-06
 ---
 
-# 🧩 Configurador de add-ons BATCH + cobro por delta — DISEÑO (pre-implementación)
+# 🧩 Configurador de add-ons BATCH + cobro por delta
 
-> Estado: **DISEÑO EN REVISIÓN por GO** (2026-07-05). Reemplaza el flujo v1.106-v1.114 de
-> add-ons fijos "un click = un cobro" (`mp-addon-fijo`), validado e2e el 2026-07-05 pero
-> descartado por decisión de producto. Decisiones ya tomadas por GO: **(1)** cobro del delta
-> HOY como pago único + recurrente nuevo desde el próximo ciclo; **(2)** metering por
-> **COMPROBANTES** (reemplaza movimientos): Básico 6.000/mes · Pro 14.000/mes · packs
+> Estado: **✅ FASE 1 EN PROD (v1.115.0, 2026-07-06)** — migs 258-259 + EFs `mp-addon-batch`/
+> `mp-addon`/`mp-webhook` deployadas DEV+PROD, PR #272 mergeado + release + Vercel OK. Reemplaza
+> el flujo v1.106-v1.114 de add-ons fijos "un click = un cobro" (`mp-addon-fijo`), validado e2e
+> el 2026-07-05 pero descartado por decisión de producto. Decisiones ya tomadas por GO: **(1)**
+> cobro del delta HOY como pago único + recurrente nuevo desde el próximo ciclo; **(2)** metering
+> por **COMPROBANTES** (reemplaza movimientos): Básico 6.000/mes · Pro 14.000/mes · packs
 > +1.000=$10.000 · +5.000=$30.000 · +10.000=$50.000; **(3)** el toggle de PLAN queda para
-> Fase 2 (hoy el cambio de plan sigue por las tarjetas de planes/checkout).
+> Fase 2 (hoy el cambio de plan sigue por las tarjetas de planes/checkout). **🟠 Pendiente:**
+> test e2e GO+Fede del batch (suba con delta + baja + guard); deprecación efectiva de
+> `mp-addon-fijo`; Fase 2 (cambio de plan por el toggle). El detalle de implementación de las
+> secciones de abajo (diseño pre-implementación) se mantiene como referencia técnica — el
+> comportamiento real vigente está resumido en `wiki/integrations/mercado-pago.md` §3.i.
 
 ## 1. Experiencia (lo que pidió GO)
 

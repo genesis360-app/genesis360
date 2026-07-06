@@ -983,6 +983,48 @@ WHERE subscription_status = 'cancelled' AND subscription_period_end IS NULL;
 
 ---
 
+## 10.b 🧩 BATCH de add-ons con delta + pricing v2 COMPROBANTES (v1.115.0 — diseño en
+## wiki/features/configurador-addons-batch.md; espejo testeado src/lib/mpAddonBatch.ts)
+
+> Reemplaza el flujo "un click = un cobro" de `mp-addon-fijo` (validado e2e 2026-07-05 y
+> descartado por producto). Decisiones GO: delta HOY · comprobantes 6k/14k (packs $10k/$30k/$50k,
+> fijo Y temporal) · movimientos free · un pack fijo por dimensión · enforcement soft.
+
+**MP-B1 — Suba cobra SOLO la diferencia (ejemplos GO exactos).** Básico $60k + SKU+500 → paga
+$5.000 hoy, recurrente $65.000. Venía $65k y cambia pack SKU $5k→$10k → paga $5.000, queda $70k.
+✅ unit (`mpAddonBatch.test.ts`); e2e PROD pendiente (GO+Fede). Guard: preference por el delta +
+change `pendiente_pago`; el webhook aplica SOLO tras pago aprobado (fail-closed).
+
+**MP-B2 — Delta preserva descuentos.** Preapproval promocional ($1.000) + SKU+500 → $6.000, NUNCA
+el precio de lista. ✅ unit. Guard: `nuevo = montoActualMP − precio(actuales) + precio(objetivo)`.
+
+**MP-B3 — Baja sin cobro ni reembolso, efectiva próxima factura.** Quita pack → PUT fail-closed →
+aplica → responde `next_payment_date` ("tu factura del DD/MM llega por $X"). ✅ unit (delta=0);
+PUT fail-closed espejado en MP-AD3.
+
+**MP-B4 — Guard de baja a nivel BATCH (caso GO).** 2.001 SKUs, Básico(2.000): quitar +2.000 →
+blocked excedente 1; cambiar a +500 → permitido. Reporta TODAS las dims en falta. Aplica a
+sku/sucursales/usuarios; comprobantes (flujo) sin guard. ✅ unit + revalidación server-side en
+preview Y confirmar.
+
+**MP-B5 — Idempotencia/concurrencia.** Un solo change `pendiente_pago` por tenant (uq index) +
+claim del webhook por `mp_payment_id` (uq) → reintentos de MP no re-aplican; dos confirmaciones
+concurrentes no duplican (resuelve MP-AD7 para el flujo nuevo). Guard: migs 258.
+
+**MP-B6 — 🛑 Pagado-sin-aplicar = alerta máxima.** Si tras el pago el PUT o `fn_aplicar` fallan:
+change `fallido` + email inmediato a soporte + pantalla honesta al cliente ("tu pago se acreditó,
+lo estamos resolviendo, no pagues de nuevo"). Guard: `marcarFallido` en el webhook.
+
+**MP-B7 — Solo DUEÑO confirma batches** (403 para otros roles). Guard: check de rol en el EF.
+
+**MP-B8 — Comprobantes v2.** Métrica = ventas del mes no-canceladas no-presupuesto (estado TEXT
+configurable → predicado robusto). Enforcement SOFT: al 80% aviso, al 100% aviso fuerte — la
+venta SIEMPRE sale (F3b). Temporal de comprobantes reemplaza al de movimientos (mismo webhook
+idempotente MP-W3). `fn_plan_base_limite` v2 (mig 259): movimientos→-1. ✅ unit
+(`planLimits.test.ts`, `brand.test.ts`, `addons.test.ts` actualizados).
+
+---
+
 ## 11. 🧭 RUNBOOK — Validaciones e2e con plata REAL en PROD (las corre GO; no automatizables)
 
 > Estado al 2026-07-04: TODO el server-side de activación quedó validado e2e (caso Fede vía

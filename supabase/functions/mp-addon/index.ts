@@ -8,14 +8,15 @@ const corsHeaders = {
 
 // ── Catálogo de packs (ESPEJO server-side de ADDON_PACKS en src/config/brand.ts) ──
 // 🛑 El precio SIEMPRE sale de acá, nunca del cliente (REGLA #0: no cobrar montos
-// arbitrarios). En Fase 2 este EF solo emite el add-on TEMPORAL de movimientos
-// (pago único, vence a 30d). Los add-ons FIJOS (sku/sucursales/usuarios) cambian el
-// monto del preapproval MP → Fase 3, otro flujo.
+// arbitrarios). Pricing v2 (GO 2026-07-05): este EF emite el add-on TEMPORAL de
+// COMPROBANTES (pago único, vence a 30d, para picos puntuales del mes) — reemplaza al
+// de movimientos, que dejó de ser dimensión metered. Los add-ons FIJOS van por el
+// flujo BATCH (EF mp-addon-batch).
 const ADDON_PACKS: Record<string, { tipos: string[]; packs: Array<{ cantidad: number; precio: number }> }> = {
-  sku:         { tipos: ['fijo'],             packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
-  sucursales:  { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },
-  usuarios:    { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }] },
-  movimientos: { tipos: ['fijo', 'temporal'], packs: [{ cantidad: 1000, precio: 5000 }, { cantidad: 5000, precio: 10000 }, { cantidad: 20000, precio: 15000 }] },
+  sku:          { tipos: ['fijo'],             packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
+  sucursales:   { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },
+  usuarios:     { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }] },
+  comprobantes: { tipos: ['fijo', 'temporal'], packs: [{ cantidad: 1000, precio: 10000 }, { cantidad: 5000, precio: 30000 }, { cantidad: 10000, precio: 50000 }] },
 }
 
 serve(async (req) => {
@@ -47,36 +48,33 @@ serve(async (req) => {
 
     const tenantId = userRow.tenant_id
 
-    // ── Pack solicitado (con back-compat: sin body = 500 movimientos legacy) ──────
-    // Fase 2: solo add-on TEMPORAL de movimientos por este flujo (pago único).
+    // ── Pack solicitado — solo add-on TEMPORAL de comprobantes (pago único, 30d) ──
     const body = await req.json().catch(() => ({}))
-    const dimension = String(body?.dimension ?? 'movimientos')
-    const cantidad  = Number(body?.cantidad ?? 500)
+    const dimension = String(body?.dimension ?? 'comprobantes')
+    const cantidad  = Number(body?.cantidad ?? 0)
 
-    if (dimension !== 'movimientos') {
-      throw new Error(`Add-on de ${dimension} no disponible en este flujo (solo movimientos)`)
+    if (dimension !== 'comprobantes') {
+      throw new Error(`Add-on de ${dimension} no disponible en este flujo (solo comprobantes temporales)`)
     }
 
     // Revalidar el pack contra el catálogo server-side (precio NUNCA del cliente).
-    // 500 se sigue aceptando por compatibilidad con links viejos.
-    const legacy = cantidad === 500 ? { cantidad: 500, precio: 990 } : null
-    const pack = legacy ?? ADDON_PACKS.movimientos.packs.find(p => p.cantidad === cantidad)
-    if (!pack) throw new Error(`Pack de movimientos inválido: ${cantidad}`)
+    const pack = ADDON_PACKS.comprobantes.packs.find(p => p.cantidad === cantidad)
+    if (!pack) throw new Error(`Pack de comprobantes inválido: ${cantidad}`)
 
     const appUrl = Deno.env.get('APP_URL') ?? 'https://app.genesis360.pro'
     const mpToken = Deno.env.get('MP_ACCESS_TOKEN')
     if (!mpToken) throw new Error('MP_ACCESS_TOKEN no configurado')
 
-    // external_reference nuevo: `${tenant}|addon|movimientos|${cantidad}|temporal`.
+    // external_reference: `${tenant}|addon|comprobantes|${cantidad}|temporal`.
     // El webhook lo parsea y crea la fila en tenant_addons (tipo temporal, vence 30d).
-    const externalRef = `${tenantId}|addon|movimientos|${pack.cantidad}|temporal`
+    const externalRef = `${tenantId}|addon|comprobantes|${pack.cantidad}|temporal`
 
     // Crear preferencia MP (pago único)
     const preferenceBody = {
       items: [{
-        id: `addon_movimientos_${pack.cantidad}`,
-        title: `+${pack.cantidad.toLocaleString('es-AR')} movimientos extra`,
-        description: 'Pack adicional de movimientos de stock — válido por 30 días',
+        id: `addon_comprobantes_${pack.cantidad}`,
+        title: `+${pack.cantidad.toLocaleString('es-AR')} comprobantes extra`,
+        description: 'Pack adicional de comprobantes — válido por 30 días',
         quantity: 1,
         unit_price: pack.precio,
         currency_id: 'ARS',

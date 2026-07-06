@@ -5,23 +5,15 @@ import { BRAND, PLANES, MP_PLAN_IDS, ADDON_FIJO_ENABLED } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
-import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
+import { packsDe, type AddonRow } from '@/lib/addons'
+import { selDesdeAddons, type PackSel, type BatchBloqueo } from '@/lib/mpAddonBatch'
 import { clasificarVerificacion, mensajeErrorVerif, mensajeErrorEF } from '@/lib/suscripcionActivacion'
 import PricingConfigurator from '@/components/PricingConfigurator'
 import {
   Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut, Plus, Trash2, SlidersHorizontal,
-  Box, Building2, User, type LucideIcon,
+  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
-
-// Dimensiones de add-on FIJO expuestas en el configurador (movimientos va por el flujo
-// temporal de arriba). Etiquetas + iconos para la UI.
-const DIMS_FIJAS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: string; Icon: LucideIcon }> = [
-  { dim: 'sku',        label: 'Productos',  unidad: 'productos',  sub: 'Sumá más productos a tu plan',  Icon: Box },
-  { dim: 'sucursales', label: 'Sucursales', unidad: 'sucursales', sub: 'Sumá más sucursales a tu plan', Icon: Building2 },
-  { dim: 'usuarios',   label: 'Usuarios',   unidad: 'usuarios',   sub: 'Sumá más usuarios a tu plan',   Icon: User },
-]
 
 const labelDim = (dim: string) =>
   dim === 'sku' ? 'productos' : dim === 'sucursales' ? 'sucursales' : dim === 'usuarios' ? 'usuarios' : dim
@@ -38,10 +30,11 @@ export default function SuscripcionPage() {
   const { limits } = usePlanLimits()
   const queryClient = useQueryClient()
 
-  const packsMovimientos = packsDe('movimientos')
+  const packsComprobantes = packsDe('comprobantes')
   const esActivo = tenant?.subscription_status === 'active'
+  const tieneSubMP = esActivo && !!tenant?.mp_subscription_id
 
-  // Add-ons FIJOS activos del tenant (configurador — solo con suscripción activa).
+  // Add-ons FIJOS activos del tenant → estado inicial del panel batch (packs tildados).
   const { data: addonsFijos = [] } = useQuery<Array<AddonRow & { id: string }>>({
     queryKey: ['addons-fijos', tenant?.id],
     queryFn: async () => {
@@ -53,63 +46,107 @@ export default function SuscripcionPage() {
     enabled: !!tenant && esActivo,
     staleTime: 30000,
   })
+  const packsActuales: PackSel = selDesdeAddons(addonsFijos)
 
-  const [addonBusy, setAddonBusy] = useState(false)
-  // Estado del downgrade guiado bloqueado (el usuario debe desactivar recursos primero).
-  const [downgrade, setDowngrade] = useState<{ dimension: string; excedente: number; nuevoLimite: number } | null>(null)
+  // Monto recurrente REAL del preapproval (preview del EF — preserva descuentos). Es la
+  // base del total del panel batch: total = montoActual − precio(actuales) + precio(elegidos).
+  const { data: batchPreview = null } = useQuery<{ monto_actual: number; next_payment_date: string | null } | null>({
+    queryKey: ['batch-preview', tenant?.id, addonsFijos.length],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('mp-addon-batch', {
+        body: { action: 'preview', packs_objetivo: Object.entries(packsActuales).map(([dimension, cantidad]) => ({ dimension, cantidad })) },
+      })
+      if (error || data?.error) return null
+      return { monto_actual: Number(data?.monto_actual ?? 0), next_payment_date: data?.next_payment_date ?? null }
+    },
+    enabled: !!tenant && tieneSubMP && ADDON_FIJO_ENABLED,
+    staleTime: 60000,
+  })
 
-  const planActual = PLANES.find(p => p.id === limits?.plan_id)
-  const precioBase = planActual?.precio ?? 0
-  const precioAddonsFijos = precioMensualAddonsFijos(addonsFijos as any)
-  const totalMensual = precioBase + precioAddonsFijos
+  const [confirmandoBatch, setConfirmandoBatch] = useState(false)
+  // Guard de baja del batch: dimensiones donde el uso activo excede el límite resultante.
+  const [bloqueos, setBloqueos] = useState<BatchBloqueo[] | null>(null)
 
   const refetchAddons = async () => {
     await queryClient.invalidateQueries({ queryKey: ['addons-fijos', tenant?.id] })
     await queryClient.invalidateQueries({ queryKey: ['plan-limits', tenant?.id] })
+    await queryClient.invalidateQueries({ queryKey: ['batch-preview', tenant?.id] })
   }
 
-  const agregarAddonFijo = async (dimension: AddonDimension, cantidad: number) => {
-    setAddonBusy(true)
+  // ── Confirmar el BATCH (diseño configurador-addons-batch.md) ─────────────────────
+  // delta > 0 → redirect al checkout del delta (el webhook aplica al pagar).
+  // delta ≤ 0 → se aplica ya (PUT fail-closed) y avisamos con la fecha de la próxima factura.
+  const handleConfirmarBatch = async (packsObjetivo: PackSel) => {
+    setConfirmandoBatch(true)
     try {
-      const { data, error } = await supabase.functions.invoke('mp-addon-fijo', {
-        body: { action: 'agregar', dimension, cantidad },
+      const { data, error } = await supabase.functions.invoke('mp-addon-batch', {
+        body: {
+          action: 'confirmar',
+          packs_objetivo: Object.entries(packsObjetivo)
+            .filter(([, cantidad]) => (cantidad ?? 0) > 0)
+            .map(([dimension, cantidad]) => ({ dimension, cantidad })),
+        },
       })
-      if (error || data?.error) throw new Error(await mensajeErrorEF(error, data, 'No se pudo agregar'))
-      toast.success('Add-on agregado. Se ajustó tu suscripción mensual.')
-      await refetchAddons()
-    } catch (e: any) {
-      toast.error(e.message ?? 'Error al agregar el add-on')
-    } finally {
-      setAddonBusy(false)
-    }
-  }
-
-  const quitarAddonFijo = async (addon: { id: string; dimension: string; cantidad: number }) => {
-    setAddonBusy(true)
-    try {
-      const { data, error } = await supabase.functions.invoke('mp-addon-fijo', {
-        body: { action: 'quitar', addon_id: addon.id },
-      })
-      if (data?.blocked) {
-        // Downgrade guiado: hay que desactivar recursos antes de poder bajar.
-        setDowngrade({ dimension: data.dimension, excedente: data.excedente, nuevoLimite: data.nuevo_limite })
+      if (data?.blocked && Array.isArray(data?.bloqueos)) {
+        setBloqueos(data.bloqueos.map((b: any) => ({
+          dimension: b.dimension, nuevoLimite: b.nuevo_limite, uso: b.uso, excedente: b.excedente,
+        })))
         return
       }
-      if (error || data?.error) throw new Error(await mensajeErrorEF(error, data, 'No se pudo quitar'))
-      toast.success('Add-on quitado. Se ajustó tu suscripción mensual.')
+      if (error || data?.error) throw new Error(await mensajeErrorEF(error, data, 'No se pudo aplicar el cambio'))
+      if (data?.init_point) {
+        // Suba: pagar la diferencia en MP (el cambio se aplica al confirmarse el pago).
+        window.location.href = data.init_point
+        return
+      }
+      // Baja/neutro: aplicado ya. Confirmar el monto y la fecha de la próxima factura.
+      const hasta = data?.next_payment_date ? new Date(data.next_payment_date).toLocaleDateString('es-AR') : null
+      toast.success(hasta
+        ? `Listo. Tu factura del ${hasta} llega por $${Number(data?.recurrente_nuevo ?? 0).toLocaleString('es-AR')}.`
+        : `Listo. Tu suscripción pasa a $${Number(data?.recurrente_nuevo ?? 0).toLocaleString('es-AR')}/mes.`)
       await refetchAddons()
     } catch (e: any) {
-      toast.error(e.message ?? 'Error al quitar el add-on')
+      toast.error(e.message ?? 'Error al aplicar el cambio')
     } finally {
-      setAddonBusy(false)
+      setConfirmandoBatch(false)
     }
   }
 
   // Resultado de pago redirigido desde MP
   const status = searchParams.get('status')
-  const paymentType = searchParams.get('type') // 'addon' | null (suscripción)
+  const paymentType = searchParams.get('type') // 'addon' | 'addonbatch' | null (suscripción)
   const preapprovalId = searchParams.get('preapproval_id')
+  const changeId = searchParams.get('change_id')
   const esAddon = paymentType === 'addon'
+  const esAddonBatch = paymentType === 'addonbatch'
+
+  // ── Retorno del checkout del BATCH: poll del estado del change (lo aplica el webhook) ──
+  const [batchState, setBatchState] = useState<'verificando' | 'ok' | 'pendiente' | 'error'>('verificando')
+  const [batchMonto, setBatchMonto] = useState<number | null>(null)
+  useEffect(() => {
+    if (status !== 'approved' || !esAddonBatch || !changeId) return
+    let cancelado = false
+    ;(async () => {
+      setBatchState('verificando')
+      await supabase.auth.getSession()
+      for (let intento = 0; intento < 6 && !cancelado; intento++) {
+        const { data } = await supabase.from('addon_batch_changes')
+          .select('estado, monto_recurrente_nuevo').eq('id', changeId).maybeSingle()
+        if (cancelado) return
+        if (data?.estado === 'aplicado') {
+          setBatchMonto(Number(data.monto_recurrente_nuevo))
+          setBatchState('ok')
+          await refetchAddons()
+          return
+        }
+        if (data?.estado === 'fallido') { setBatchState('error'); return }
+        if (intento < 5) await new Promise(r => setTimeout(r, 2500)) // el webhook puede tardar
+      }
+      if (!cancelado) setBatchState('pendiente')
+    })()
+    return () => { cancelado = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, esAddonBatch, changeId])
 
   // ── Verificación REAL de la activación al volver del checkout de MP ────────────
   // Antes esta pantalla MENTÍA: mostraba "tu suscripción se activó" sin verificar nada.
@@ -135,7 +172,7 @@ export default function SuscripcionPage() {
   // Al volver de MP con status=approved: esperar la sesión (el redirect recarga la app de
   // cero → el JWT puede no estar listo → 401), verificar y reintentar (MP/webhook tarda).
   useEffect(() => {
-    if (status !== 'approved' || esAddon) return
+    if (status !== 'approved' || esAddon || esAddonBatch) return
     let cancelado = false
     ;(async () => {
       setVerifState('verificando')
@@ -190,7 +227,7 @@ export default function SuscripcionPage() {
     setLoadingAddon(cantidad)
     try {
       const { data, error } = await supabase.functions.invoke('mp-addon', {
-        body: { dimension: 'movimientos', cantidad },
+        body: { dimension: 'comprobantes', cantidad },
       })
       if (error || !data?.init_point) throw new Error(error?.message ?? 'No se obtuvo link de pago')
       window.location.href = data.init_point
@@ -208,12 +245,60 @@ export default function SuscripcionPage() {
       <div className="min-h-screen bg-brand-gradient-dark flex items-center justify-center p-4">
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md p-8 text-center">
           {status === 'approved' ? (
-            esAddon ? (
+            esAddonBatch ? (
+              batchState === 'ok' ? (
+                <>
+                  <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
+                  <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Tu plan quedó actualizado!</h1>
+                  <p className="text-gray-500 dark:text-gray-400 mb-6">
+                    Se aplicaron tus add-ons. Tu suscripción pasa a{' '}
+                    <strong>${(batchMonto ?? 0).toLocaleString('es-AR')}/mes</strong> desde el próximo ciclo.
+                  </p>
+                  <Link to="/suscripcion"
+                    className="w-full block text-center bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all">
+                    Ver mi plan
+                  </Link>
+                </>
+              ) : batchState === 'error' ? (
+                <>
+                  <XCircle size={48} className="text-red-500 mx-auto mb-4" />
+                  <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Tu pago se acreditó pero el cambio no se aplicó</h1>
+                  <p className="text-gray-500 dark:text-gray-400 mb-8">
+                    Ya avisamos a soporte y lo estamos resolviendo — no hace falta que pagues de nuevo.
+                  </p>
+                  <a href={`mailto:${BRAND.email}?subject=${encodeURIComponent('Cambio de plan pagado sin aplicar')}`}
+                    className="w-full block text-center bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
+                    Contactar soporte
+                  </a>
+                </>
+              ) : batchState === 'pendiente' ? (
+                <>
+                  <Clock size={48} className="text-yellow-500 mx-auto mb-4" />
+                  <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Estamos confirmando tu pago</h1>
+                  <p className="text-gray-500 dark:text-gray-400 mb-8">
+                    Mercado Pago todavía no nos confirmó el pago de la diferencia. Suele tardar menos de un minuto.
+                    <strong> No hace falta que pagues de nuevo.</strong>
+                  </p>
+                  <Link to="/suscripcion"
+                    className="w-full block text-center bg-primary text-white font-bold py-3 rounded-xl hover:bg-accent transition-all">
+                    Volver a mi plan
+                  </Link>
+                </>
+              ) : (
+                <>
+                  <RefreshCw size={48} className="text-accent mx-auto mb-4 animate-spin" />
+                  <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Aplicando tu cambio de plan…</h1>
+                  <p className="text-gray-500 dark:text-gray-400 mb-6">
+                    Confirmamos tu pago con Mercado Pago y actualizamos tu suscripción. Unos segundos…
+                  </p>
+                </>
+              )
+            ) : esAddon ? (
               <>
                 <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Add-on activado!</h1>
                 <p className="text-gray-500 dark:text-gray-400 mb-6">
-                  Se agregaron tus <strong>movimientos extra</strong> a la cuenta (válidos por 30 días). Ya podés usarlos.
+                  Se agregaron tus <strong>comprobantes extra</strong> a la cuenta (válidos por 30 días). Ya podés usarlos.
                 </p>
                 <Link to="/dashboard"
                   className="w-full block text-center bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all">
@@ -449,55 +534,66 @@ export default function SuscripcionPage() {
           })}
         </div>
 
-        {/* Estimador "Armá tu plan" — el MISMO panel del Landing (grande, full-bleed).
-            Visible para todos (suscriptos o no): es estimación pura (plan base + add-ons),
-            NO cobra nada — la compra real de add-ons fijos sigue detrás de ADDON_FIJO_ENABLED.
-            El CTA dispara la suscripción al plan base elegido (flujo existente handleSuscribir). */}
+        {/* Panel ÚNICO "Armá tu plan" (diseño configurador-addons-batch.md):
+            • Suscripto con sub MP real → modo BATCH: arranca con su plan + packs tildados,
+              el total muestra el recurrente nuevo, y NADA se aplica hasta "Confirmar"
+              (suba → paga la diferencia hoy; baja → próxima factura menor).
+            • Sin suscripción → estimador con CTA que suscribe al plan base elegido. */}
         <div className="mt-12 relative left-1/2 -translate-x-1/2 w-[94vw] lg:w-[80vw] max-w-[1600px]">
-          <PricingConfigurator
-            ctaLabel={esActivo ? 'Cambiar a este plan' : 'Suscribirme a este plan'}
-            ctaLoading={loading !== null}
-            onCta={(planId) => handleSuscribir(planId, MP_PLAN_IDS[planId] ?? '')}
-          />
+          {ADDON_FIJO_ENABLED && tieneSubMP && batchPreview && batchPreview.monto_actual > 0 ? (
+            <PricingConfigurator
+              key={`batch-${JSON.stringify(packsActuales)}-${batchPreview.monto_actual}`}
+              app={{
+                planNombre: PLANES.find(p => p.id === limits?.plan_id)?.nombre ?? 'actual',
+                montoActualMP: batchPreview.monto_actual,
+                initialSel: packsActuales,
+                confirmando: confirmandoBatch,
+                onConfirm: handleConfirmarBatch,
+              }}
+            />
+          ) : (
+            <PricingConfigurator
+              ctaLabel={esActivo ? 'Cambiar a este plan' : 'Suscribirme a este plan'}
+              ctaLoading={loading !== null}
+              onCta={(planId) => handleSuscribir(planId, MP_PLAN_IDS[planId] ?? '')}
+            />
+          )}
         </div>
 
-        {/* Uso actual de movimientos */}
-        {limits && limits.max_movimientos !== -1 && (
+        {/* Uso actual de comprobantes (pricing v2 — enforcement SOFT: solo aviso/upsell) */}
+        {limits && limits.max_comprobantes !== -1 && (
           <div className="mt-8 bg-white/10 rounded-2xl p-6 max-w-md mx-auto">
             <p className="text-white font-semibold mb-3 text-center">Tu uso este mes</p>
             <div className="flex items-center justify-between text-sm text-blue-200 mb-2">
-              <span>Movimientos</span>
+              <span>Comprobantes</span>
               <span className="font-medium text-white">
-                {limits.movimientos_mes.toLocaleString()} / {limits.max_movimientos.toLocaleString()}
+                {limits.comprobantes_mes.toLocaleString()} / {limits.max_comprobantes.toLocaleString()}
               </span>
             </div>
             <div className="h-2 bg-white/20 rounded-full overflow-hidden">
               <div
-                className={`h-full rounded-full transition-all ${limits.pct_movimientos >= 100 ? 'bg-red-400' : limits.pct_movimientos >= 80 ? 'bg-amber-400' : 'bg-green-400'}`}
-                style={{ width: `${Math.min(100, limits.pct_movimientos)}%` }}
+                className={`h-full rounded-full transition-all ${limits.pct_comprobantes >= 100 ? 'bg-red-400' : limits.pct_comprobantes >= 80 ? 'bg-amber-400' : 'bg-green-400'}`}
+                style={{ width: `${Math.min(100, limits.pct_comprobantes)}%` }}
               />
             </div>
-            {limits.pct_movimientos >= 80 && (
+            {limits.pct_comprobantes >= 80 && (
               <p className="text-amber-300 text-xs text-center mt-2 flex items-center justify-center gap-1">
                 <AlertTriangle size={12} />
-                {limits.pct_movimientos >= 100 ? 'Límite alcanzado — upgrade o comprá extra' : 'Cerca del límite — considerá ampliar'}
-              </p>
-            )}
-            {limits.addon_movimientos > 0 && (
-              <p className="text-blue-200 text-xs text-center mt-1">
-                Incluye {limits.addon_movimientos} movimientos extra comprados
+                {limits.pct_comprobantes >= 100
+                  ? 'Límite alcanzado — tus ventas siguen saliendo; ampliá tu plan o comprá un pack'
+                  : 'Cerca del límite — considerá ampliar'}
               </p>
             )}
           </div>
         )}
 
-        {/* Add-ons de movimientos (temporales, pago único, vencen a 30 días) */}
-        {limits && limits.max_movimientos !== -1 && (
+        {/* Packs TEMPORALES de comprobantes (pago único, vencen a 30 días — picos puntuales) */}
+        {limits && limits.max_comprobantes !== -1 && (
           <div className="mt-8 max-w-3xl mx-auto">
-            <p className="text-white font-semibold text-center mb-1">¿Necesitás más movimientos sin cambiar de plan?</p>
+            <p className="text-white font-semibold text-center mb-1">¿Un pico puntual? Comprá comprobantes por 30 días</p>
             <p className="text-blue-200 text-xs text-center mb-4">Pago único · se acreditan automáticamente · válidos por 30 días</p>
             <div className="grid sm:grid-cols-3 gap-4">
-              {packsMovimientos.map(pack => (
+              {packsComprobantes.map(pack => (
                 <div key={pack.cantidad} className="bg-white dark:bg-gray-800 rounded-2xl p-5 text-center flex flex-col">
                   <div className="inline-flex items-center justify-center w-12 h-12 bg-accent/10 rounded-xl mb-3 mx-auto">
                     <Zap size={22} className="text-accent" />
@@ -505,7 +601,7 @@ export default function SuscripcionPage() {
                   <p className="font-bold text-gray-800 dark:text-gray-100 text-lg">
                     +{pack.cantidad.toLocaleString('es-AR')}
                   </p>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">movimientos</p>
+                  <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">comprobantes</p>
                   <p className="text-2xl font-bold text-primary dark:text-white mt-2">
                     ${pack.precio.toLocaleString('es-AR')}
                   </p>
@@ -525,111 +621,27 @@ export default function SuscripcionPage() {
           </div>
         )}
 
-        {/* Configurador de add-ons FIJOS (recurrentes) — requiere una suscripción MP REAL.
-            Los add-ons fijos modifican el monto del preapproval de MP (`mp_subscription_id`),
-            así que NO tiene sentido mostrarlos a tenants activos sin suscripción MP (Enterprise
-            "a consultar", cuentas activadas a mano): sin preapproval, la EF fail-closea con 400. */}
-        {ADDON_FIJO_ENABLED && esActivo && limits && tenant?.mp_subscription_id && (
-          <div className="mt-10 max-w-3xl mx-auto">
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <SlidersHorizontal size={18} className="text-white" />
-              <p className="text-white font-semibold">Ampliá tu plan con add-ons</p>
-            </div>
-            <p className="text-blue-200 text-xs text-center mb-4">
-              Se suman a tu suscripción mensual. Para quitar un add-on, primero desactivá los recursos que sobren.
-            </p>
-
-            <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-[#0b0b14] p-6 shadow-2xl">
-              <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 h-56 w-56 rounded-full bg-accent opacity-20 blur-[100px]" />
-
-              {/* Resumen de precio en vivo */}
-              <div className="relative flex items-center justify-between rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3 mb-5">
-                <span className="text-sm text-gray-400">
-                  Plan {planActual?.nombre} (${precioBase.toLocaleString('es-AR')}) + add-ons (${precioAddonsFijos.toLocaleString('es-AR')})
-                </span>
-                <span className="text-lg font-bold text-white">
-                  ${totalMensual.toLocaleString('es-AR')}<span className="text-sm font-medium text-gray-500">/mes</span>
-                </span>
-              </div>
-
-              <div className="relative grid gap-4 md:grid-cols-3">
-                {DIMS_FIJAS.map(({ dim, label, unidad, sub, Icon }) => {
-                  const activos = (addonsFijos as any[]).filter(a => a.dimension === dim)
-                  return (
-                    <div key={dim} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-                      <div className="flex items-center gap-3 mb-4">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
-                          <Icon size={20} className="text-accent" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-white leading-tight">{label}</p>
-                          <p className="text-xs text-gray-400 leading-tight">{sub}</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-3 gap-2">
-                        {packsDe(dim).map(pack => {
-                          const activosDePack = activos.filter(a => a.cantidad === pack.cantidad)
-                          const count = activosDePack.length
-                          const selected = count > 0
-                          return (
-                            <div key={pack.cantidad}
-                              className={`relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition-all
-                                ${selected
-                                  ? 'border-transparent bg-accent text-white shadow-lg shadow-accent/30'
-                                  : 'border-white/10 bg-white/[0.02] text-gray-300 hover:border-accent/60'}`}>
-                              {selected && (
-                                <button onClick={() => quitarAddonFijo(activosDePack[0])} disabled={addonBusy}
-                                  title="Quitar un add-on"
-                                  className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-accent shadow hover:text-red-500 disabled:opacity-50">
-                                  <Trash2 size={11} />
-                                </button>
-                              )}
-                              {/* Botón principal: agrega uno más de este pack */}
-                              <button onClick={() => agregarAddonFijo(dim, pack.cantidad)} disabled={addonBusy}
-                                title={selected ? 'Agregar otro' : 'Agregar add-on'}
-                                className="flex w-full flex-col items-center justify-center gap-1.5 disabled:opacity-50">
-                                {selected
-                                  ? <span className="text-xs font-bold">{count > 1 ? `×${count}` : ''}<Plus size={16} className="inline text-white/90" /></span>
-                                  : <Plus size={18} className="text-gray-500" />}
-                                <span className={`text-[11px] leading-tight ${selected ? 'text-white' : 'text-gray-300'}`}>
-                                  +{pack.cantidad.toLocaleString('es-AR')} {unidad}
-                                </span>
-                                <span className="text-sm font-bold">${pack.precio.toLocaleString('es-AR')}</span>
-                              </button>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-
-              <p className="relative mt-5 text-center text-xs text-gray-500">
-                ¿Necesitás más movimientos puntuales? Se compran por 30 días desde la app.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Modal de downgrade guiado (REGLA #0: desactivar, no eliminar) */}
-        {downgrade && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setDowngrade(null)}>
+        {/* Modal de baja bloqueada del BATCH (REGLA #0: desactivar, no eliminar). Lista TODAS
+            las dimensiones donde el uso activo excede el límite resultante del batch. */}
+        {bloqueos && bloqueos.length > 0 && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setBloqueos(null)}>
             <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
               <div className="flex items-center gap-2 mb-3">
                 <AlertTriangle size={22} className="text-amber-500" />
-                <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Todavía no podés bajar este add-on</h3>
+                <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Todavía no podés aplicar este cambio</h3>
               </div>
-              <p className="text-gray-600 dark:text-gray-400 text-sm mb-3">
-                Tenés <strong>{downgrade.excedente}</strong> {labelDim(downgrade.dimension)} activos de más para el nuevo límite
-                (<strong>{downgrade.nuevoLimite}</strong>). Desactivá {downgrade.excedente} para poder quitar el add-on.
-              </p>
-              {downgrade.dimension === 'sku' && (
+              {bloqueos.map(b => (
+                <p key={b.dimension} className="text-gray-600 dark:text-gray-400 text-sm mb-3">
+                  Tenés <strong>{b.excedente}</strong> {labelDim(b.dimension)} activos de más para el nuevo límite
+                  (<strong>{b.nuevoLimite}</strong>, usás {b.uso}). Desactivá {b.excedente} para poder confirmar.
+                </p>
+              ))}
+              {bloqueos.some(b => b.dimension === 'sku') && (
                 <p className="text-amber-600 dark:text-amber-400 text-xs bg-amber-50 dark:bg-amber-900/20 rounded-lg p-3 mb-4">
                   ⚠️ Desactivá los productos (no los elimines) para conservar su historial y trazabilidad.
                 </p>
               )}
-              <button onClick={() => setDowngrade(null)} className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm">
+              <button onClick={() => setBloqueos(null)} className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm">
                 Entendido
               </button>
             </div>

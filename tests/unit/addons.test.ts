@@ -12,30 +12,37 @@ import {
 const TENANT = '5f05f3eb-6757-4f60-b9d2-8853fdfae806'
 
 describe('packs por dimensión', () => {
-  test('movimientos tiene 3 packs (1.000 / 5.000 / 20.000)', () => {
-    expect(packsDe('movimientos').map(p => p.cantidad)).toEqual([1000, 5000, 20000])
+  test('comprobantes tiene 3 packs (1.000/$10k · 5.000/$30k · 10.000/$50k) — pricing v2 GO', () => {
+    expect(packsDe('comprobantes')).toEqual([
+      { cantidad: 1000, precio: 10000 },
+      { cantidad: 5000, precio: 30000 },
+      { cantidad: 10000, precio: 50000 },
+    ])
   })
 
-  test('movimientos admite fijo Y temporal; sucursales solo fijo', () => {
-    expect(tiposDe('movimientos')).toEqual(['fijo', 'temporal'])
+  test('comprobantes admite fijo Y temporal; sucursales solo fijo; movimientos ya NO está en catálogo', () => {
+    expect(tiposDe('comprobantes')).toEqual(['fijo', 'temporal'])
     expect(tiposDe('sucursales')).toEqual(['fijo'])
-    expect(tipoValido('movimientos', 'temporal')).toBe(true)
+    expect(tipoValido('comprobantes', 'temporal')).toBe(true)
     expect(tipoValido('sucursales', 'temporal')).toBe(false)
     expect(tipoValido('usuarios', 'temporal')).toBe(false)
     expect(tipoValido('sku', 'temporal')).toBe(false)
+    expect(packsDe('movimientos')).toEqual([])           // sin packs → no se puede comprar más
+    expect(tipoValido('movimientos', 'temporal')).toBe(false)
   })
 })
 
 describe('findAddonPack — el precio SOLO sale del catálogo', () => {
   test('cantidad exacta devuelve el precio de lista', () => {
-    expect(findAddonPack('movimientos', 5000)).toEqual({ cantidad: 5000, precio: 10000 })
+    expect(findAddonPack('comprobantes', 5000)).toEqual({ cantidad: 5000, precio: 30000 })
     expect(findAddonPack('sucursales', 1)).toEqual({ cantidad: 1, precio: 15000 })
   })
 
   test('cantidad inexistente → null (precio no confiable, no cobrar)', () => {
-    expect(findAddonPack('movimientos', 3333)).toBeNull()
-    expect(findAddonPack('movimientos', 0)).toBeNull()
+    expect(findAddonPack('comprobantes', 3333)).toBeNull()
+    expect(findAddonPack('comprobantes', 0)).toBeNull()
     expect(findAddonPack('sucursales', 2)).toBeNull()
+    expect(findAddonPack('movimientos', 5000)).toBeNull() // catálogo v2: sin packs de movimientos
   })
 })
 

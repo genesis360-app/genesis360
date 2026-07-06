@@ -4,7 +4,7 @@
  * Verifican que los límites y feature flags son coherentes.
  */
 import { describe, test, expect } from 'vitest'
-import { PLANES, FEATURES_POR_PLAN, MAX_MOVIMIENTOS_POR_PLAN, PLAN_REQUERIDO, PLAN_BASE_LIMITS } from '@/config/brand'
+import { PLANES, FEATURES_POR_PLAN, PLAN_REQUERIDO, PLAN_BASE_LIMITS } from '@/config/brand'
 
 describe('PLANES — estructura y coherencia', () => {
   test('existen los 4 planes requeridos', () => {
@@ -69,38 +69,28 @@ describe('FEATURES_POR_PLAN — reglas de acceso', () => {
   })
 })
 
-describe('MAX_MOVIMIENTOS_POR_PLAN', () => {
-  test('free tiene límite bajo (200)', () => {
-    expect(MAX_MOVIMIENTOS_POR_PLAN['free']).toBe(200)
+describe('PLAN_BASE_LIMITS — pricing v2 (espejo de fn_plan_base_limite, migs 251+259)', () => {
+  test('comprobantes: free 200 · basico 6.000 · pro 14.000 · enterprise -1 (decisión GO 2026-07-05)', () => {
+    expect(PLAN_BASE_LIMITS['free'].comprobantes).toBe(200)
+    expect(PLAN_BASE_LIMITS['basico'].comprobantes).toBe(6000)
+    expect(PLAN_BASE_LIMITS['pro'].comprobantes).toBe(14000)
+    expect(PLAN_BASE_LIMITS['enterprise'].comprobantes).toBe(-1)
   })
 
-  test('basico tiene límite medio (5000)', () => {
-    expect(MAX_MOVIMIENTOS_POR_PLAN['basico']).toBe(5000)
-  })
-
-  test('pro tiene 20.000 y enterprise ilimitado (-1)', () => {
-    expect(MAX_MOVIMIENTOS_POR_PLAN['pro']).toBe(20000)
-    expect(MAX_MOVIMIENTOS_POR_PLAN['enterprise']).toBe(-1)
-  })
-})
-
-describe('PLAN_BASE_LIMITS — coherencia (espejo de fn_plan_base_limite, mig 251)', () => {
-  const dims = ['sku', 'movimientos', 'sucursales', 'usuarios'] as const
-
-  test('movimientos espeja MAX_MOVIMIENTOS_POR_PLAN', () => {
+  test('movimientos dejó de ser límite: -1 en TODOS los tiers (pricing v2)', () => {
     for (const t of ['free', 'basico', 'pro', 'enterprise']) {
-      expect(PLAN_BASE_LIMITS[t].movimientos).toBe(MAX_MOVIMIENTOS_POR_PLAN[t])
+      expect(PLAN_BASE_LIMITS[t].movimientos).toBe(-1)
     }
   })
 
-  test('pro > basico en cada dimensión', () => {
-    for (const d of dims) {
+  test('pro > basico en cada dimensión metered', () => {
+    for (const d of ['sku', 'comprobantes', 'sucursales', 'usuarios'] as const) {
       expect(PLAN_BASE_LIMITS['pro'][d]).toBeGreaterThan(PLAN_BASE_LIMITS['basico'][d])
     }
   })
 
   test('enterprise es ilimitado (-1) en todas las dimensiones', () => {
-    for (const d of dims) {
+    for (const d of ['sku', 'movimientos', 'comprobantes', 'sucursales', 'usuarios'] as const) {
       expect(PLAN_BASE_LIMITS['enterprise'][d]).toBe(-1)
     }
   })

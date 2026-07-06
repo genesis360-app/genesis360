@@ -6,6 +6,10 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-06] query | 💳 Decisión: cambio de cuenta MP + dual pricing auto/manual (planeado, sin código)
+
+**Qué:** GO decidió (1) **mover los cobros de la plataforma a OTRA cuenta de MP** y (2) agregar **dual pricing**: suscripción automática con −10% vs pago manual mensual (cualquier medio: efectivo/transferencia/tarjeta) a precio de lista. Se armó el runbook completo del cambio de cuenta (pasos GO: app+token, 2 planes nuevos, webhook, secret; pasos Claude: MP_PLAN_IDS+secrets+deploy+smoke+re-suscripción de Fede) y el esbozo del motor de facturación manual (Fase B: `billing_mode`+`paid_until`+recordatorios+gracia). **Orden: cambio de cuenta ANTES del test del batch** (absorbe los pendientes "plan a $60k" y "refunds Fede": los planes viejos mueren con la cuenta vieja). Detalle completo en `project_pendientes.md` "💳 ARRANCÁ ACÁ". Pendiente de GO: precio de los planes nuevos ($60k/$100k lista vs $54k/$90k con descuento) + token + plan IDs. Sin código esta vez.
+
 ## [2026-07-05] deploy | 🧩 v1.115.0 (DEV) — Batch de add-ons con delta + pricing v2 COMPROBANTES (Fase 1 implementada)
 
 **Qué:** el test del add-on fijo (v1.114.0) **salió bien** pero GO descartó la lógica "un click = un cobro" y pidió el rediseño BATCH (diseño cerrado en `wiki/features/configurador-addons-batch.md`, decisiones Q1-Q4 tomadas). Además **pricing v2**: la dimensión de flujo pasa de movimientos (ahora free/-1) a **COMPROBANTES** (venta finalizada; Básico 6.000/mes · Pro 14.000/mes · packs +1.000=$10k/+5.000=$30k/+10.000=$50k, fijo Y temporal; enforcement SOFT — nunca se bloquea una venta).

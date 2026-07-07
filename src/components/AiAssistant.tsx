@@ -89,7 +89,7 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
         }),
       })
       const data = await res.json()
-      setMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? 'Error al responder.' }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? data.error ?? 'Error al responder.' }])
     } catch {
       setMessages(prev => [...prev, { role: 'assistant', content: 'No pude conectarme. Revisá tu conexión e intentá de nuevo.' }])
     } finally {

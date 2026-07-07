@@ -13,7 +13,11 @@ updated: 2026-05-29
 
 ---
 
-## v1.117.0 — 🤖 Asistente IA: conocimiento desde el wiki + contexto real del usuario (Fases 1+2; EF en DEV, pendiente OK a PROD)
+## v1.118.0 — 🤖 Asistente IA Fases 3+4: fallback de modelo + batería de preguntas doradas (PROD ✅)
+
+Fase 3: fallback 70B→8B ante 429/5xx (cupos separados en Groq free), boost por título, aviso estructural en secciones de módulos que el usuario no ve, anti prompt-injection. Fase 4: `tests/specs/asistente-ia.plan.md` (AI-G1..G9) + `npm run ai:smoke` — la primera corrida cazó 2 bugs reales (injection + fuga de menú), corregidos y re-validados en DEV. 939 unit.
+
+## v1.117.0 — 🤖 Asistente IA: conocimiento desde el wiki + contexto real del usuario (Fases 1+2; PROD ✅)
 
 Reescritura del Asistente IA del header (antes: prompt estático desactualizado que inventaba botones y desconocía modo básico/roles). Ahora: conocimiento **generado desde `app-reference.md`** (`npm run ai:knowledge` → 44 secciones, commiteado) + **contexto real del usuario** (rol, modo, plan, ruta, menú visible calculado con `navVisibility`) + guardrails anti-alucinación + Llama 3.3 70B. Espejo `src/lib/aiAssistant.ts` (11 tests). Validado e2e en DEV con CAJERO modo básico. Detalle: `wiki/features/asistente-ia.md`. Paso 5 nuevo en el checklist de deploy.
 

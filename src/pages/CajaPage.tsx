@@ -1444,7 +1444,9 @@ export default function CajaPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Caja</h1>
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            <DollarSign size={22} className="text-accent" /> Caja
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná la caja de tu negocio</p>
         </div>
         {/* M3 — acceso al panel de cajero simplificado (tablets/touch) */}

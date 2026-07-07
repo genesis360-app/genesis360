@@ -634,7 +634,9 @@ export default function ReportesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-primary">Reportes</h1>
+        <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+          <BarChart2 size={22} className="text-accent" /> Reportes
+        </h1>
         <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Exportá tus datos en Excel o PDF</p>
       </div>
 

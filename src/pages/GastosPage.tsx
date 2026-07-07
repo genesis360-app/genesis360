@@ -1670,7 +1670,9 @@ export default function GastosPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Gastos</h1>
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            <TrendingDown size={22} className="text-accent" /> Gastos
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             {tab === 'gastos' ? 'Últimos 30 días' : tab === 'historial' ? 'Historial completo con filtros' : 'Gastos estimados recurrentes'}
           </p>
@@ -1693,11 +1695,11 @@ export default function GastosPage() {
       <PageTabs
         tabs={[
           { id: 'gastos', label: 'Gastos variables', icon: Receipt },
-          { id: 'historial', label: 'Historial', icon: History },
           { id: 'fijos', label: 'Gastos fijos', icon: Repeat },
           // OC + Reportes de compras + Recursos = modo avanzado
           ...(modoAvanzado ? [{ id: 'oc', label: 'Órdenes de Compra', icon: ShoppingCart }] : []),
           { id: 'cheques', label: 'Cheques', icon: FileCheck, badge: chequesAlertaCount },
+          { id: 'historial', label: 'Historial', icon: History },
           ...(modoAvanzado ? [{ id: 'reportes-compras', label: 'Reportes', icon: BarChart3 }] : []),
           ...(modoAvanzado ? [{ id: 'recursos', label: 'Recursos', icon: Landmark }] : []),
           ...(puedeAprobarRoles ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: AlertCircle, badge: autorizacionesPendientesCount }] : []),

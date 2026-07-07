@@ -38,12 +38,19 @@ Usuario hace clic en "Suscribirse"
 
 ### IDs de planes PROD
 
+> **💳 CAMBIO DE CUENTA (v1.119.0, 2026-07-07):** los cobros pasaron a la cuenta MP de **Fede Messina**
+> (collector `478332282`, app `2672033309404649`). Los planes viejos (`836c7829…`/`cb3bcdaa…`, cuenta
+> `2118612146`) quedaron huérfanos con la cuenta anterior. DEV y PROD usan el MISMO token nuevo.
+> ⚠ Gotchas: el JSON de `POST /preapproval_plan` con tildes devuelve 400 (mandar ASCII) · Fede NO puede
+> suscribirse desde su propia cuenta (pagador=cobrador) · `/preapproval/search` con este token también
+> lista las subs donde Fede es PAGADOR (filtrar por `collector_id`).
+
 ```
-Básico: 836c7829f7e944c9ac58d7c0c67a513b  ($4.900 ARS/mes)
-Pro:    cb3bcdaa39bc444da4e17a517d5eadd1  ($9.900 ARS/mes)
+Básico: 142aefe11ad64fb887b5949db005f8f8  ($54.000 ARS/mes — lista $60k con −10% débito automático)
+Pro:    f06b269057254b9da0e4a60cb89d1544  ($90.000 ARS/mes — lista $100k con −10% débito automático)
 ```
 
-Definidos en `brand.ts` → `MP_PLAN_IDS`.
+Definidos en `brand.ts` → `MP_PLAN_IDS` + secrets `MP_PLAN_BASICO`/`MP_PLAN_PRO` (tier en EFs).
 
 ### `external_reference` = `tenant_id`
 

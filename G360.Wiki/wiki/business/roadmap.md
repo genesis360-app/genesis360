@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.119.0 — 💳 Cambio de cuenta MP (planes $54.000/$90.000) + dependencias a 0 vulnerabilidades (PROD ✅)
+
+Cobros de la plataforma migrados a la cuenta MP nueva (Fede Messina, user 478332282): planes nuevos creados por API con el −10% de débito automático incluido, `MP_PLAN_IDS` + secrets en DEV y PROD, smoke de reconciliación verde. Pendiente GO: webhook en el panel + cierre de la cuenta vieja + test de checkout (no puede hacerlo Fede: pagador=cobrador). Además: 18 vulnerabilidades Dependabot → 0 (Vite 5→7, PWA plugin 1.x, sin top-level-await).
+
 ## v1.118.0 — 🤖 Asistente IA Fases 3+4: fallback de modelo + batería de preguntas doradas (PROD ✅)
 
 Fase 3: fallback 70B→8B ante 429/5xx (cupos separados en Groq free), boost por título, aviso estructural en secciones de módulos que el usuario no ve, anti prompt-injection. Fase 4: `tests/specs/asistente-ia.plan.md` (AI-G1..G9) + `npm run ai:smoke` — la primera corrida cazó 2 bugs reales (injection + fuga de menú), corregidos y re-validados en DEV. 939 unit.

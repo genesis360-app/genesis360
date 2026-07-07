@@ -1,0 +1,782 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Manual: Tienda Camila Ropa con Genesis360</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #1a1a2e;
+    background: #fff;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px 48px;
+  }
+
+  /* ── Portada ────────────────────────────────────────────── */
+  .cover {
+    text-align: center;
+    padding: 80px 0 60px;
+    border-bottom: 3px solid #e879a0;
+    margin-bottom: 48px;
+    page-break-after: always;
+  }
+  .cover .logo { font-size: 11px; font-weight: 700; letter-spacing: 3px; color: #e879a0; text-transform: uppercase; margin-bottom: 32px; }
+  .cover h1 { font-size: 32px; font-weight: 800; color: #0D0D0D; line-height: 1.2; margin-bottom: 16px; }
+  .cover .subtitle { font-size: 16px; color: #6b7280; margin-bottom: 40px; }
+  .cover .biz-card {
+    display: inline-block;
+    background: #fdf2f8;
+    border: 1px solid #f9a8d4;
+    border-radius: 16px;
+    padding: 20px 40px;
+    font-size: 13px;
+    color: #831843;
+    line-height: 2.2;
+  }
+  .cover .biz-card strong { color: #be185d; }
+  .cover .channels {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    margin-top: 24px;
+    flex-wrap: wrap;
+  }
+  .cover .ch-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 14px;
+    border-radius: 99px;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .cover .ch-local   { background: #f3f4f6; color: #374151; }
+  .cover .ch-meli    { background: #fef3c7; color: #92400e; }
+  .cover .ch-tn      { background: #dbeafe; color: #1e40af; }
+  .cover .ch-ig      { background: #fce7f3; color: #9d174d; }
+  .cover .version { margin-top: 32px; font-size: 11px; color: #9ca3af; }
+
+  h1 { font-size: 24px; font-weight: 800; color: #0D0D0D; margin: 40px 0 16px; }
+  h2 { font-size: 17px; font-weight: 700; color: #0D0D0D; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #e879a0; }
+  h3 { font-size: 14px; font-weight: 600; color: #374151; margin: 20px 0 8px; }
+  p  { margin-bottom: 10px; color: #374151; }
+
+  .part-header {
+    background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 40px 0 24px;
+    page-break-before: always;
+  }
+  .part-header:first-of-type { page-break-before: avoid; }
+  .part-header .part-number { font-size: 10px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #e879a0; margin-bottom: 4px; }
+  .part-header h2 { font-size: 18px; font-weight: 800; color: #fff; margin: 0; padding: 0; border: none; }
+
+  .step {
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid #e879a0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .step .step-number { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #be185d; margin-bottom: 4px; }
+  .step h3 { margin: 0 0 8px; font-size: 14px; color: #111; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 12.5px; }
+  th { background: #e879a0; color: #fff; padding: 8px 12px; text-align: left; font-weight: 600; }
+  th:first-child { border-radius: 6px 0 0 6px; }
+  th:last-child  { border-radius: 0 6px 6px 0; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  tr:nth-child(even) td { background: #fdf2f8; }
+  tr:last-child td { border-bottom: none; }
+
+  pre {
+    background: #1e1b4b;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 11.5px;
+    line-height: 1.8;
+    margin: 12px 0;
+  }
+  code { background: #fdf2f8; color: #be185d; padding: 1px 6px; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 11.5px; }
+
+  .tip   { background: #fffbeb; border: 1px solid #fcd34d; border-left: 4px solid #f59e0b; border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 12.5px; color: #92400e; }
+  .info  { background: #f0f9ff; border: 1px solid #bae6fd; border-left: 4px solid #0284c7; border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 12.5px; color: #0c4a6e; }
+  .success { background: #f0fdf4; border: 1px solid #bbf7d0; border-left: 4px solid #16a34a; border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 12.5px; color: #14532d; }
+  .alert { background: #fff1f2; border: 1px solid #fecdd3; border-left: 4px solid #ef4444; border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 12.5px; color: #991b1b; }
+
+  .channel-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 10px; border-radius: 99px; font-size: 11px; font-weight: 700;
+    margin: 2px;
+  }
+  .ch-pill-local { background: #f3f4f6; color: #374151; }
+  .ch-pill-meli  { background: #fef3c7; color: #92400e; }
+  .ch-pill-tn    { background: #dbeafe; color: #1e40af; }
+  .ch-pill-ig    { background: #fce7f3; color: #9d174d; }
+  .ch-pill-wp    { background: #dcfce7; color: #166534; }
+
+  ul, ol { padding-left: 20px; margin: 8px 0 12px; }
+  li { margin-bottom: 4px; color: #374151; }
+  li strong { color: #111; }
+
+  .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+  .summary-card { background: #fdf2f8; border: 1px solid #f9a8d4; border-radius: 10px; padding: 16px; }
+  .summary-card h4 { font-size: 12px; font-weight: 700; color: #be185d; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .summary-card ul { margin: 0; padding-left: 16px; }
+  .summary-card li { font-size: 12px; color: #374151; margin-bottom: 3px; }
+
+  .flow-box { border: 1px solid #e5e7eb; border-radius: 10px; padding: 16px; margin: 12px 0; background: #fafafa; }
+  .flow-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; font-size: 12.5px; color: #374151; }
+  .flow-arrow { color: #e879a0; font-weight: 700; font-size: 14px; }
+
+  .footer { text-align: center; margin-top: 48px; padding-top: 24px; border-top: 1px solid #e5e7eb; font-size: 11px; color: #9ca3af; }
+
+  @media print {
+    body { padding: 20px 32px; font-size: 12px; }
+    .part-header { page-break-before: always; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cover { page-break-after: always; }
+    pre, table, .step { page-break-inside: avoid; }
+    @page { margin: 20mm 15mm; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ PORTADA ══════════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="logo">Genesis360</div>
+  <h1>Tienda Camila<br/>con Genesis360</h1>
+  <p class="subtitle">Manual completo para gestionar una tienda de ropa<br/>con local físico, MercadoLibre y TiendaNube</p>
+  <div class="biz-card">
+    <strong>Tienda Camila — Moda Femenina</strong><br/>
+    Camila Ríos — Dueña<br/>
+    Sofía — Vendedora / Instagram<br/>
+    Martín — Depósito y despachos e-comm<br/>
+    Local Palermo Hollywood
+  </div>
+  <div class="channels">
+    <span class="ch-badge ch-local">🏪 Local Palermo</span>
+    <span class="ch-badge ch-meli">🛒 MercadoLibre</span>
+    <span class="ch-badge ch-tn">🌐 TiendaNube</span>
+    <span class="ch-badge ch-ig">📸 Instagram</span>
+  </div>
+  <p class="version">Mayo 2026 · Genesis360 v1.8</p>
+</div>
+
+<!-- ══ INTRO ═════════════════════════════════════════════════════════════════ -->
+<h2>El desafío de vender ropa por múltiples canales</h2>
+<p>Vender ropa en el local es relativamente simple. El problema empieza cuando también vendés por MercadoLibre y TiendaNube: el mismo jean talles 36 al 44 tiene que estar sincronizado en tres lugares a la vez, y si vendés la última talles 38 en el local y no actualizás el e-comm, vendés algo que no tenés y el cliente se enoja. Genesis360 centraliza todo.</p>
+
+<table>
+  <thead><tr><th>Genesis360</th><th>En Tienda Camila</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Producto / SKU</strong></td><td>Jean Oxford Talle 38 / Azul oscuro</td></tr>
+    <tr><td><strong>Grupo de variantes</strong></td><td>Jean Oxford → padre de todas las tallas y colores</td></tr>
+    <tr><td><strong>Inventario / LPN</strong></td><td>Stock físico de cada talle × color en el local y depósito</td></tr>
+    <tr><td><strong>Canal de venta</strong></td><td>Presencial / MercadoLibre / TiendaNube / Instagram / WhatsApp</td></tr>
+    <tr><td><strong>Sync de stock</strong></td><td>Genesis360 actualiza automáticamente MeLi y TN cuando vendés en el local</td></tr>
+    <tr><td><strong>POS</strong></td><td>Venta mostrador — con selector de canal (para ventas de Instagram pagadas en el local)</td></tr>
+    <tr><td><strong>Envíos</strong></td><td>Envíos propios a domicilio + couriers (OCA, Andreani) para e-comm</td></tr>
+    <tr><td><strong>Cuenta Corriente</strong></td><td>Clientas fieles que pagan cada quincena</td></tr>
+    <tr><td><strong>Devoluciones</strong></td><td>Cambio de talle — devuelve stock al inventario</td></tr>
+    <tr><td><strong>Dashboard Ventas</strong></td><td>¿Qué canal vende más? ¿Qué talle se agota primero?</td></tr>
+  </tbody>
+</table>
+
+<!-- ══ PARTE 1 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 1</div>
+  <h2>Configuración inicial</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 1</div>
+  <h3>Crear el negocio y los usuarios</h3>
+  <pre>Nombre del negocio: Tienda Camila
+Tipo de comercio:   Indumentaria / Moda
+País:               Argentina</pre>
+
+  <table>
+    <thead><tr><th>Usuario</th><th>Rol</th><th>Acceso</th></tr></thead>
+    <tbody>
+      <tr><td>Camila</td><td>DUEÑO</td><td>Todo — finanzas, stock, e-comm, reportes</td></tr>
+      <tr><td>Sofía</td><td>CAJERO</td><td>Ventas en local, clientes — solo su sucursal</td></tr>
+      <tr><td>Martín</td><td>DEPÓSITO</td><td>Inventario, recepciones, despachos — sin precios de costo</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 2</div>
+  <h3>Categorías y ubicaciones</h3>
+  <p><strong>Categorías de productos:</strong></p>
+  <pre>👗  Vestidos
+👖  Pantalones y jeans
+👚  Remeras y tops
+🧥  Abrigos y camperas
+👙  Bikinis y beachwear
+🧦  Accesorios y complementos
+👟  Calzado</pre>
+
+  <p><strong>Ubicaciones físicas:</strong></p>
+  <pre>SALON    Salón — ropa en exhibición (disponible para venta)
+DEP-A    Depósito A — stock sin exhibir (tallas repetidas)
+DEP-B    Depósito B — colecciones anteriores / saldo
+VIDAD    Vidrieras y maniquíes (muestra — no disponible)
+DESP     Mesa de despacho (empaquetado para e-comm)</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 3</div>
+  <h3>Estados de inventario</h3>
+  <table>
+    <thead><tr><th>Estado</th><th>Color</th><th>Uso</th></tr></thead>
+    <tbody>
+      <tr><td>Disponible</td><td>🟢 Verde</td><td>En salón, disponible en todos los canales</td></tr>
+      <tr><td>Solo local</td><td>🔵 Azul</td><td>Disponible en local pero NO publicado en e-comm</td></tr>
+      <tr><td>Reservado</td><td>🟣 Violeta</td><td>Apartado para una clienta, no disponible para otros</td></tr>
+      <tr><td>Muestra</td><td>🟠 Naranja</td><td>En maniquí / vidriera — no para venta</td></tr>
+      <tr><td>Saldo / Oferta</td><td>🟡 Amarillo</td><td>Colección anterior, precio rebajado</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 4</div>
+  <h3>Configurar TiendaNube y MercadoLibre (Configuración → Integraciones)</h3>
+  <p>Este es el paso más importante. Una vez conectados, Genesis360 sincroniza el stock automáticamente en ambas direcciones.</p>
+  <p><strong>TiendaNube:</strong></p>
+  <ul>
+    <li>Ir a Configuración → Integraciones → TiendaNube</li>
+    <li>Conectar con tu cuenta TN (OAuth — sin copiar contraseñas)</li>
+    <li>Genesis360 recibe los pedidos de TN automáticamente</li>
+    <li>Cada venta en TN descuenta el stock en Genesis360</li>
+    <li>Cada venta en el local actualiza el stock en TN</li>
+  </ul>
+  <p><strong>MercadoLibre:</strong></p>
+  <ul>
+    <li>Ir a Configuración → Integraciones → MercadoLibre</li>
+    <li>Conectar con tu cuenta ML (OAuth)</li>
+    <li>Mapear tus publicaciones de MeLi con los SKUs de Genesis360</li>
+    <li>El sync de stock corre cada 5 minutos automáticamente</li>
+  </ul>
+  <div class="alert">⚠️ <strong>Paso crítico:</strong> el mapeo MeLi → SKU debe hacerse correctamente. Un Jean Oxford Talle 38 en MeLi debe mapear al SKU Jean-Oxford-38-Azul de Genesis360. Si el mapeo está mal, el stock no sincroniza.</div>
+</div>
+
+<!-- ══ PARTE 2 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 2</div>
+  <h2>El catálogo — productos con variantes de talle y color</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 5</div>
+  <h3>Crear un grupo de variantes (Módulo Productos → Grupos)</h3>
+  <p>En ropa, <strong>nunca</strong> cargás un producto individual por cada talle. Usás el sistema de <strong>Grupos de Variantes</strong>: un "Jean Oxford" padre que genera automáticamente todos los talles y colores.</p>
+
+  <p><strong>Módulo Productos → botón "Grupos" → Nuevo grupo:</strong></p>
+  <pre>Nombre del grupo: Jean Oxford Mujer
+Descripción:      Jean mom fit, tiro medio, tela denim premium
+Categoría:        Pantalones y jeans
+Precio base:      $28.000
+
+Atributos:
+  Talle:  [ 34 ] [ 36 ] [ 38 ] [ 40 ] [ 42 ] [ 44 ]
+  Color:  [ Azul oscuro ] [ Negro ] [ Celeste ]</pre>
+
+  <p>→ Botón <strong>"Generar 18 variantes"</strong> (6 talles × 3 colores)</p>
+  <p>Se crean automáticamente 18 SKUs:</p>
+  <pre>Jean Oxford Mujer — 34 / Azul oscuro    SKU: JOX-34-AZ  $28.000
+Jean Oxford Mujer — 34 / Negro           SKU: JOX-34-NE  $28.000
+Jean Oxford Mujer — 34 / Celeste         SKU: JOX-34-CE  $28.000
+Jean Oxford Mujer — 36 / Azul oscuro    SKU: JOX-36-AZ  $28.000
+... (15 SKUs más)
+Jean Oxford Mujer — 44 / Negro           SKU: JOX-44-NE  $28.000</pre>
+
+  <div class="tip">💡 Si el talle 44 tiene precio diferente (ej. +$2.000 por tela extra), entrás al SKU específico y modificás el precio. El precio base es herencia, el precio propio lo sobreescribe.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 6</div>
+  <h3>Datos de cada variante (SKU individual)</h3>
+  <p>Cada variante generada es un producto completo. Completás los datos adicionales:</p>
+  <pre>SKU: JOX-38-AZ — Jean Oxford Mujer / Talle 38 / Azul oscuro
+
+Precio costo:     $14.000  (precio de compra al mayorista)
+Precio venta:     $28.000  (precio de local)
+Precio MeLi:      $32.000  (precio en MercadoLibre — 14% mayor por comisiones)
+Código de barras: 7791234567890
+Stock mínimo:     2 unidades (alerta si quedan 2 o menos)
+Ubicación:        SALON</pre>
+
+  <div class="info">📊 <strong>Margen real:</strong> Costo $14.000 → Venta $28.000 = 100% de margen bruto. En el Dashboard podés ver el margen real después de restar comisiones de MeLi, envíos y gastos.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 7</div>
+  <h3>Más ejemplos de grupos de variantes</h3>
+  <pre>Vestido Floral Verano
+  Atributos: Talle (S, M, L, XL) × Color (Blanco, Rosa, Verde)
+  → 12 variantes · Precio base: $22.000
+
+Campera Denim Oversize
+  Atributos: Talle (S/M, M/L, L/XL)   ← talles únicos
+  → 3 variantes · Precio base: $45.000
+
+Bikini Push Up
+  Atributos: Talle corpiño (32B, 34B, 34C, 36C) × Talle bombacha (XS, S, M, L)
+  → 16 variantes · Precio base: $18.500
+
+Remera Básica
+  Atributos: Talle (S, M, L, XL, XXL) × Color (Blanco, Negro, Bordo, Verde, Azul)
+  → 25 variantes · Precio base: $8.500</pre>
+</div>
+
+<!-- ══ PARTE 3 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 3</div>
+  <h2>Inventario — el stock centralizado de todos los canales</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 8</div>
+  <h3>Ingresar la colección nueva (Módulo Inventario → Agregar Stock)</h3>
+  <p>Llega la colección de otoño-invierno. Martín registra toda la mercadería:</p>
+
+  <pre>Producto: Jean Oxford Mujer 38 / Azul oscuro
+  Cantidad: 8 unidades
+  Lote: OI-2026-A   ← número de lote de la colección
+  Ubicación: DEP-A  (pasan a salón cuando se van agotando)
+  Motivo: Compra a proveedor — colección OI2026</pre>
+
+  <div class="tip">💡 <strong>Ingreso masivo con escáner:</strong> Si los artículos tienen código de barras (muchos mayoristas de ropa los incluyen), usá el modo masivo con cámara. Escaneás cada unidad, confirmás cantidad y listo — mucho más rápido que cargar uno por uno.</div>
+
+  <p><strong>Una vez ingresado el stock en Genesis360, ocurre automáticamente:</strong></p>
+  <ul>
+    <li>Stock disponible en el local: visible para venta en POS</li>
+    <li>Stock publicado en TiendaNube: se actualiza automáticamente</li>
+    <li>Stock publicado en MercadoLibre: se actualiza automáticamente</li>
+  </ul>
+
+  <div class="success">✅ <strong>Una sola carga, tres canales sincronizados.</strong> No hay que actualizar el stock en MeLi y TN por separado nunca más.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 9</div>
+  <h3>Ver el stock en tiempo real</h3>
+  <p><strong>Módulo Inventario → tab Inventario → buscar "Jean Oxford":</strong></p>
+  <pre>Jean Oxford Mujer — Talle 36 / Azul oscuro    8 und.  📦 DEP-A
+Jean Oxford Mujer — Talle 38 / Azul oscuro    5 und.  📦 DEP-A + 2 und. SALON
+Jean Oxford Mujer — Talle 40 / Azul oscuro    0 und.  ← AGOTADO
+Jean Oxford Mujer — Talle 42 / Azul oscuro    3 und.  📦 DEP-A
+Jean Oxford Mujer — Talle 38 / Negro           7 und.  📦 DEP-A</pre>
+
+  <p>El talle 40 Azul está en 0. Genesis360 ya actualizó MeLi y TN para que aparezca como "sin stock" automáticamente. No hace falta que nadie entre a editar la publicación.</p>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 10</div>
+  <h3>Mover stock del depósito al salón</h3>
+  <p>Sofía le avisa a Martín que quedan pocas remeras talle M en el salón. Martín repone:</p>
+  <p><strong>Inventario → LPN → tab Mover → origen: DEP-A → destino: SALON</strong></p>
+  <p>El movimiento queda registrado con fecha, hora y usuario. Camila puede ver desde el Dashboard cuántas veces al día se reabastece el salón.</p>
+</div>
+
+<!-- ══ PARTE 4 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 4</div>
+  <h2>Ventas — local, MercadoLibre, TiendaNube e Instagram</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 11</div>
+  <h3>Venta en el local (Módulo Ventas → POS)</h3>
+  <p>Sofía atiende a una clienta en el salón:</p>
+
+  <div class="flow-box">
+    <div class="flow-row"><span class="flow-arrow">→</span> Buscá "jean oxford" → elige talle 38 Azul oscuro → lo agrega al carrito</div>
+    <div class="flow-row"><span class="flow-arrow">→</span> Clienta también quiere una remera básica talle M negra</div>
+    <div class="flow-row"><span class="flow-arrow">→</span> Canal: <span class="channel-pill ch-pill-local">🏪 Presencial</span> (default)</div>
+    <div class="flow-row"><span class="flow-arrow">→</span> Medio de pago: $28.000 tarjeta débito + $8.500 efectivo</div>
+    <div class="flow-row"><span class="flow-arrow">→</span> Confirmar → ticket impreso → stock descontado → MeLi y TN actualizados</div>
+  </div>
+
+  <p><strong>Si vino por Instagram y paga en el local:</strong><br/>
+  Canal: <span class="channel-pill ch-pill-ig">📸 Instagram</span> → así el Dashboard muestra cuánto generó cada canal.</p>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 12</div>
+  <h3>Pedidos de TiendaNube — llegan solos</h3>
+  <p>A las 3am, una clienta compró un vestido floral talle S Rosa en la tienda online. Al otro día Martín entra a Genesis360:</p>
+
+  <div class="flow-box">
+    <div class="flow-row"><span class="flow-arrow">→</span> Módulo Ventas → tab Canales → pedido de TiendaNube: Vestido Floral S/Rosa</div>
+    <div class="flow-row"><span class="flow-arrow">→</span> Estado: "pendiente" (pago verificado)</div>
+    <div class="flow-row"><span class="flow-arrow">→</span> Martín lo despacha: lo busca en el depósito → lo empaqueta → genera envío</div>
+    <div class="flow-row"><span class="flow-arrow">→</span> Registra tracking de OCA → TiendaNube recibe el tracking automáticamente</div>
+    <div class="flow-row"><span class="flow-arrow">→</span> Venta queda en "despachada" → stock descontado en todos los canales</div>
+  </div>
+
+  <div class="info">📦 <strong>Stock reservado:</strong> Cuando llega un pedido de TN o MeLi, ese stock queda "reservado" automáticamente en Genesis360 para que no lo vendas en el local mientras lo estás preparando para despachar.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 13</div>
+  <h3>Pedidos de MercadoLibre — el flujo</h3>
+  <p>La lógica es idéntica a TiendaNube. Los pedidos de MeLi llegan a Genesis360 y aparecen en el módulo de Ventas como canal "MercadoLibre". Diferencias importantes:</p>
+  <ul>
+    <li>MeLi cobra comisión de ~14%. El margen real lo ves en el Dashboard</li>
+    <li>Muchos pedidos de MeLi ya incluyen el envío pagado por el comprador (Mercado Envíos) — se despacha igual</li>
+    <li>Genesis360 rastrea el ingreso neto real (precio − comisión MeLi − costo envío)</li>
+  </ul>
+  <pre>Venta en MeLi: Jean Oxford 38 Azul
+  Precio MeLi:         $32.000
+  Comisión MeLi (14%): −$4.480
+  Costo envío:         −$1.200
+  Ingreso neto real:   $26.320   ← esto es lo que realmente entra</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 14</div>
+  <h3>Ventas por Instagram / WhatsApp — con envío a domicilio</h3>
+  <p>Sofía atiende por Instagram DM. La clienta elige un vestido y pide que se lo manden:</p>
+
+  <div class="flow-box">
+    <div class="flow-row"><span class="flow-arrow">1.</span> Módulo Ventas → POS → canal: <span class="channel-pill ch-pill-ig">📸 Instagram</span></div>
+    <div class="flow-row"><span class="flow-arrow">2.</span> Carga el vestido talle M Rosa $22.000</div>
+    <div class="flow-row"><span class="flow-arrow">3.</span> Selecciona clienta → activa "Requiere envío"</div>
+    <div class="flow-row"><span class="flow-arrow">4.</span> Pago: transferencia $22.000 + costo envío $1.500 = total $23.500</div>
+    <div class="flow-row"><span class="flow-arrow">5.</span> Confirma → se crea la venta + se genera el envío automáticamente</div>
+    <div class="flow-row"><span class="flow-arrow">6.</span> Martín va al Módulo Envíos → completa dirección → asigna courier → genera tracking</div>
+    <div class="flow-row"><span class="flow-arrow">7.</span> Sistema envía WhatsApp automático con el tracking ← (¡la clienta lo recibe sola!)</div>
+  </div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 15</div>
+  <h3>Venta con cuenta corriente — clientas VIP</h3>
+  <p>Valentina es clienta VIP que compra $80.000/mes y paga cada 15 días:</p>
+  <pre>Cliente: Valentina Torres
+CC habilitada: ✅
+Límite de crédito: $150.000
+Plazo de pago: 15 días
+
+Compra hoy: Campera $45.000 + Jean $28.000 = $73.000
+→ Medio de pago: Cuenta Corriente
+→ Deuda queda en la ficha de la clienta
+→ En 15 días, Valentina paga con transferencia</pre>
+</div>
+
+<!-- ══ PARTE 5 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 5</div>
+  <h2>Envíos — local, couriers y Mercado Envíos</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 16</div>
+  <h3>Configurar las tarifas de envío (Configuración → Sucursales)</h3>
+  <pre>Sucursal Local Palermo:
+  Dirección: Av. Santa Fe 1234, CABA  ← para calcular distancia
+  Costo por km (envío propio): $120/km
+
+Couriers configurados:
+  OCA Express:   $1.800 (hasta 1kg en AMBA)
+  Andreani:      $2.100 (hasta 1kg en AMBA)
+  Correo Arg.:   $1.500 (hasta 1kg, más lento)</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 17</div>
+  <h3>Gestionar los envíos del día (Módulo Envíos)</h3>
+  <p>Martín llega a la mañana y tiene 7 pedidos para despachar:</p>
+  <ul>
+    <li>3 de TiendaNube con OCA</li>
+    <li>2 de MercadoLibre con Mercado Envíos (ya tienen el código)</li>
+    <li>1 de Instagram con envío propio (Palermo, 2.3 km)</li>
+    <li>1 de WhatsApp con Andreani</li>
+  </ul>
+  <p>Por cada uno: completa el courier, pega el tracking, cambia el estado a "despachado". El sistema notifica al cliente automáticamente con el número de seguimiento.</p>
+  <div class="tip">💡 <strong>Envío propio:</strong> Para el de Instagram en Palermo, el sistema calcula automáticamente $120 × 2.3km = $276. Lo podés cobrar o absorberlo como gasto de envío.</div>
+</div>
+
+<!-- ══ PARTE 6 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 6</div>
+  <h2>Devoluciones y cambios de talle</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 18</div>
+  <h3>Cambio de talle en el local</h3>
+  <p>La clienta compró un jean talle 38 pero le quedó grande, quiere el 36:</p>
+  <p><strong>Módulo Ventas → historial → la venta original → botón "Devolver"</strong></p>
+  <pre>Devolución: Jean Oxford 38 Azul × 1
+Estado producto devuelto: Disponible (está en buen estado)
+→ Stock del talle 38 sube 1 unidad
+→ Nota de crédito generada: $28.000
+
+Nueva venta: Jean Oxford 36 Azul × 1 = $28.000
+→ Descuenta la nota de crédito: $0 a cobrar
+→ Cambio realizado sin movimiento de dinero</pre>
+  <div class="info">🔄 El jean talle 38 vuelve al inventario y queda disponible nuevamente en MeLi y TN automáticamente.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 19</div>
+  <h3>Devolución de e-comm — el cliente envió el producto de vuelta</h3>
+  <p>Un comprador de TiendaNube dice que la remera le llegó con un defecto:</p>
+  <ul>
+    <li>Se registra la devolución en Ventas → historial de esa venta → Devolver</li>
+    <li>Cuando llega el paquete: Martín lo revisa → confirma el estado del producto</li>
+    <li>Si está OK: vuelve al stock disponible</li>
+    <li>Si tiene defecto real: va a estado "Dañado" → reclamo al proveedor</li>
+    <li>El reintegro al cliente se gestiona desde TiendaNube o MeLi (según corresponda)</li>
+  </ul>
+</div>
+
+<!-- ══ PARTE 7 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 7</div>
+  <h2>Compras al mayorista — reposición de colecciones</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 20</div>
+  <h3>Hacer un pedido de reposición</h3>
+  <p>Las alertas de stock mínimo muestran que el Jean Oxford 38 y 40 están por agotarse. Camila hace el pedido:</p>
+
+  <p><strong>Opción A — desde las alertas:</strong> Dashboard → productos en stock crítico → agrega a OC del proveedor mayorista.</p>
+
+  <p><strong>Opción B — desde el Dashboard de Inventario:</strong></p>
+  <pre>Dashboard → tab Inventario → "Sugerencia de reposición"
+El sistema muestra:
+  Jean Oxford 38 Azul: quedan 2, vende 8/semana → sugerido pedir 32
+  Jean Oxford 40 Azul: quedan 1, vende 5/semana → sugerido pedir 20
+  Jean Oxford 38 Negro: quedan 3, vende 6/semana → sugerido pedir 24</pre>
+
+  <pre>OC al Mayorista Las Flores:
+  Jean Oxford 38 (los 3 colores) × 10 c/u   $14.000 c/u   = $420.000
+  Jean Oxford 40 (los 3 colores) × 6 c/u    $14.000 c/u   = $252.000
+  Vestido Floral S (4 colores)   × 8 c/u    $11.000 c/u   = $352.000
+  ────────────────────────────────────────────────────────────────────
+  TOTAL OC: $1.024.000 (pago 30% transferencia + 70% CC a 30 días)</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 21</div>
+  <h3>Recibir la mercadería</h3>
+  <p>Llega el pedido del mayorista. Martín la recibe y registra:</p>
+  <p><strong>Módulo Recepciones → Nueva → vinculada a la OC</strong></p>
+  <ul>
+    <li>Los ítems de la OC ya están precargados</li>
+    <li>Martín confirma cantidades por talle y color</li>
+    <li>Asigna lote: "OI2026-B" (colección otoño-invierno lote B)</li>
+    <li>Ubica: DEP-A (depósito, repone salón cuando sea necesario)</li>
+    <li>Al confirmar: stock sube en Genesis360 → MeLi y TN actualizados → gasto creado automáticamente</li>
+  </ul>
+</div>
+
+<!-- ══ PARTE 8 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 8</div>
+  <h2>Caja y gastos operativos</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 22</div>
+  <h3>Caja diaria del local</h3>
+  <pre>9:30am — Sofía abre la caja
+  Monto apertura: $10.000 (fondo de caja)
+
+Durante el día:
+  Ventas en efectivo → ingresan automáticamente
+  Pagos de CC clientas → ingresan
+  Gastos en efectivo (bolsas, café) → egresan
+
+19:00 — Cierre de caja:
+  Sistema dice:   $87.200
+  Sofía cuenta:   $87.200 ✅ (sin diferencia)
+  Envía a Bóveda: $77.200 (deja el fondo de $10.000)</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 23</div>
+  <h3>Gastos fijos de la tienda</h3>
+  <table>
+    <thead><tr><th>Gasto</th><th>Frecuencia</th><th>Monto</th></tr></thead>
+    <tbody>
+      <tr><td>Alquiler local</td><td>Mensual</td><td>$320.000</td></tr>
+      <tr><td>Luz (Edenor)</td><td>Mensual</td><td>$28.000</td></tr>
+      <tr><td>Internet + teléfono</td><td>Mensual</td><td>$7.500</td></tr>
+      <tr><td>Sueldo Sofía</td><td>Mensual</td><td>$180.000</td></tr>
+      <tr><td>Sueldo Martín</td><td>Mensual</td><td>$160.000</td></tr>
+      <tr><td>Cuota plan TiendaNube</td><td>Mensual</td><td>$12.000</td></tr>
+      <tr><td>Seguro comercio</td><td>Mensual</td><td>$18.000</td></tr>
+      <tr><td>Bolsas y packaging</td><td>Mensual</td><td>$15.000</td></tr>
+    </tbody>
+  </table>
+
+  <div class="tip">💡 Los sueldos los registrás en Gastos o en el módulo RRHH (si usás nómina). En RRHH quedan el historial de sueldos, los conceptos, y el egreso de caja queda registrado automáticamente.</div>
+</div>
+
+<!-- ══ PARTE 9 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 9</div>
+  <h2>Dashboard — entender los números reales del negocio</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 24</div>
+  <h3>Lo que Camila mira cada día (10 minutos)</h3>
+
+  <p><strong>Dashboard → tab Todo → período: este mes:</strong></p>
+  <pre>Mayo 2026 — Tienda Camila
+
+💰 Ventas totales:      $1.284.000
+📦 Unidades vendidas:   127 prendas
+📈 Margen bruto:        52%
+🔥 Burn rate diario:    $22.800
+
+Ventas por canal:
+  🏪 Presencial:         $580.000  (45%)
+  🛒 MercadoLibre:       $420.000  (33%)
+  🌐 TiendaNube:         $180.000  (14%)
+  📸 Instagram/WA:        $104.000  (8%)
+
+Deuda clientas CC:      $245.000
+Vencida (>15 días):      $38.000 ← Valentina!</pre>
+
+  <p><strong>Dashboard → tab Ventas → Heatmap:</strong><br/>
+  Los sábados son el pico del local (10am-14pm). El e-comm vende más de jueves a domingo, 20-23hs. Camila contrata refuerzo solo los sábados de mañana.</p>
+
+  <p><strong>Dashboard → tab Productos → cuadrante mágico:</strong></p>
+  <pre>⭐ La mina de oro (alto margen, alta venta):
+   → Jean Oxford 38 Azul — margen 102%, 18 und. mes
+
+💰 Estrella (bajo margen, alta venta):
+   → Remera Básica M Negra — margen 41%, 24 und. mes
+
+🎯 Nicho (alto margen, baja venta):
+   → Campera Denim Oversize M/L — margen 85%, 3 und. mes
+
+🐕 Perros (bajo margen, baja venta):
+   → Bikini Talle 32B — margen 28%, 1 und. mes → candidata a liquidar</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 25</div>
+  <h3>Fin de temporada — liquidar el saldo</h3>
+  <p>Terminó el verano y quedan 23 bikinis sin vender. Camila liquida:</p>
+  <ol>
+    <li>Selecciona todos los SKUs de la categoría Bikinis (checkbox en ProductosPage)</li>
+    <li>Barra bulk → botón "Precio" → baja todos un 40% de una vez</li>
+    <li>Cambia el estado a "Saldo / Oferta" (amarillo) para diferenciarlos visualmente</li>
+    <li>Los precios actualizados sincronizan a MeLi y TN automáticamente</li>
+  </ol>
+</div>
+
+<!-- ══ PARTE 10 ════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 10</div>
+  <h2>Rutina operativa — cómo funciona cada día</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 26</div>
+  <h3>El día a día de Tienda Camila</h3>
+  <table>
+    <thead><tr><th>Momento</th><th>Quién</th><th>Acción</th><th>Tiempo</th></tr></thead>
+    <tbody>
+      <tr><td><strong>9:30am</strong></td><td>Sofía</td><td>Abrir caja → ver pedidos de e-comm de la noche → alertas de stock</td><td>5 min</td></tr>
+      <tr><td><strong>10am</strong></td><td>Martín</td><td>Preparar los despachos del día (TN + MeLi) → empaquetar → registrar trackings</td><td>40-60 min</td></tr>
+      <tr><td><strong>Durante la mañana</strong></td><td>Sofía</td><td>Vender con POS → escanear si hay código → elegir talle/color → cobrar</td><td>Continuo</td></tr>
+      <tr><td><strong>Cuando llega el mayorista</strong></td><td>Martín</td><td>Recepción → confirmar prendas × talle × color → stock sube en todos los canales</td><td>30-45 min</td></tr>
+      <tr><td><strong>Cambio de talle</strong></td><td>Sofía</td><td>Devolver en la venta original → nueva venta → diferencia = $0 si mismo precio</td><td>3 min</td></tr>
+      <tr><td><strong>Pedido Instagram</strong></td><td>Sofía</td><td>POS canal Instagram → cliente con envío → Martín despacha → sistema avisa al cliente</td><td>8 min</td></tr>
+      <tr><td><strong>Cobro de CC</strong></td><td>Sofía</td><td>Clienta → Módulo Clientes → CC → Registrar pago → actualiza deuda automáticamente</td><td>2 min</td></tr>
+      <tr><td><strong>19:00</strong></td><td>Sofía</td><td>Cerrar caja → contar efectivo → Bóveda</td><td>10 min</td></tr>
+      <tr><td><strong>Lunes 9am</strong></td><td>Camila</td><td>Dashboard 10 min: ventas semana, canal más rentable, stock crítico, OC si necesario</td><td>10 min</td></tr>
+      <tr><td><strong>Fin de mes</strong></td><td>Camila</td><td>Reportes → ventas por canal → margen real post-comisiones → gastos → IVA</td><td>1 hora</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══ RESUMEN ════════════════════════════════════════════════════════════════ -->
+<h2>El diferencial de tener todo centralizado</h2>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <h4>🔄 Sin Genesis360</h4>
+    <ul>
+      <li>Vendés el último jean 38 en el local</li>
+      <li>Te olvidás de bajar el stock en MeLi</li>
+      <li>Un comprador de MeLi lo compra</li>
+      <li>No tenés el producto → reclamo → reputación baja</li>
+      <li>Tarda 1 semana en resolverse</li>
+    </ul>
+  </div>
+  <div class="summary-card">
+    <h4>✅ Con Genesis360</h4>
+    <ul>
+      <li>Vendés el último jean 38 en el local</li>
+      <li>Stock en MeLi y TN baja a 0 automáticamente</li>
+      <li>La publicación se pausa sola</li>
+      <li>Sin reclamos, sin problemas de reputación</li>
+      <li>Tarda 5 segundos en sincronizar</li>
+    </ul>
+  </div>
+</div>
+
+<div class="summary-grid" style="margin-top:0;">
+  <div class="summary-card">
+    <h4>📊 Antes de tener datos</h4>
+    <ul>
+      <li>"¿Qué canal vende más?" — no sé</li>
+      <li>"¿Cuál es mi margen real en MeLi?" — no sé</li>
+      <li>"¿Qué talle se agota primero?" — el que deja de verse</li>
+      <li>"¿Cuánto me deben las clientas CC?" — cuaderno</li>
+    </ul>
+  </div>
+  <div class="summary-card">
+    <h4>📊 Con el Dashboard</h4>
+    <ul>
+      <li>Canal más rentable: presencial (sin comisión MeLi)</li>
+      <li>Margen MeLi real: 38% (vs 52% en local)</li>
+      <li>Talle más vendido: 38 y 40 (pedir más)</li>
+      <li>CC vencida: $38.000 de Valentina — WhatsApp</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Lo que NO hace todavía (próximamente)</h2>
+<div class="alert">
+  <ul style="margin:0;padding-left:16px;">
+    <li><strong>No publica automáticamente en MeLi:</strong> las publicaciones se crean en MeLi y se mapean a Genesis360. No genera publicaciones nuevas desde la app.</li>
+    <li><strong>No sincroniza fotos ni descripciones:</strong> las imágenes y textos de las publicaciones se gestionan directamente en MeLi y TN.</li>
+    <li><strong>No tiene módulo de looks / outfits:</strong> combinar prendas para mostrar en el e-comm es externo a la app.</li>
+    <li><strong>Sync de precios a MeLi/TN:</strong> actualmente el precio de MeLi lo actualizás desde MeLi. La integración de precios está en el roadmap.</li>
+  </ul>
+</div>
+
+<div class="footer">
+  Genesis360 · El cerebro del negocio físico · genesis360.pro<br/>
+  Este manual fue generado en mayo 2026 · v1.8
+</div>
+
+</body>
+</html>

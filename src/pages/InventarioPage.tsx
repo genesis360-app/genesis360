@@ -2478,26 +2478,14 @@ export default function InventarioPage() {
       {/* ═══════════ TABS: AGREGAR / QUITAR / HISTORIAL ═══════════════════ */}
       {(tab === 'agregar' || tab === 'quitar' || tab === 'historial') && (
         <>
-          {/* Barra de uso de movimientos — solo en agregar/quitar */}
+          {/* Barra de uso de COMPROBANTES (la dimensión real del plan desde pricing v2;
+              movimientos es ilimitado y su barra acá era ruido). Soft: solo avisa. */}
           {tab !== 'historial' && limits && (
-            limits.max_movimientos === -1 ? (
-              // Plan ilimitado: mostrar solo el contador sin barra de límite
-              <div className="flex items-center gap-3 rounded-xl px-4 py-2.5 border border-border-ds bg-surface text-sm">
-                <div className="flex-1 min-w-0">
-                  <span className="text-muted font-medium">
-                    {limits.movimientos_mes.toLocaleString()} movimiento{limits.movimientos_mes !== 1 ? 's' : ''} este mes
-                  </span>
-                  <span className="ml-2 text-xs text-green-600 dark:text-green-400">· Sin límite en tu plan</span>
-                </div>
-              </div>
-            ) : (
-              <PlanProgressBar
-                actual={limits.movimientos_mes}
-                max={limits.max_movimientos}
-                label="movimientos este mes"
-                addonInfo={limits.addon_movimientos > 0 ? `(incluye ${limits.addon_movimientos} extra)` : undefined}
-              />
-            )
+            <PlanProgressBar
+              actual={limits.comprobantes_mes}
+              max={limits.max_comprobantes}
+              label="comprobantes este mes"
+            />
           )}
 
           {/* ── MASIVO INLINE VIEW (solo agregar) ─── */}

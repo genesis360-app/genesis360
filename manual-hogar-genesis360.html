@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Manual: Administrando tu Casa con Genesis360</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #1a1a2e;
+    background: #fff;
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 40px 48px;
+  }
+
+  /* ── Portada ────────────────────────────────────────────── */
+  .cover {
+    text-align: center;
+    padding: 80px 0 60px;
+    border-bottom: 3px solid #7B00FF;
+    margin-bottom: 48px;
+    page-break-after: always;
+  }
+  .cover .logo {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #7B00FF;
+    text-transform: uppercase;
+    margin-bottom: 32px;
+  }
+  .cover h1 {
+    font-size: 32px;
+    font-weight: 800;
+    color: #0D0D0D;
+    line-height: 1.2;
+    margin-bottom: 16px;
+  }
+  .cover .subtitle {
+    font-size: 16px;
+    color: #6b7280;
+    margin-bottom: 40px;
+  }
+  .cover .family-card {
+    display: inline-block;
+    background: #F5F0FF;
+    border: 1px solid #e9d5ff;
+    border-radius: 16px;
+    padding: 20px 32px;
+    font-size: 13px;
+    color: #6b21a8;
+    line-height: 2;
+  }
+  .cover .family-card strong { color: #7B00FF; }
+  .cover .version {
+    margin-top: 48px;
+    font-size: 11px;
+    color: #9ca3af;
+  }
+
+  /* ── Tipografía ─────────────────────────────────────────── */
+  h1 { font-size: 24px; font-weight: 800; color: #0D0D0D; margin: 40px 0 16px; }
+  h2 { font-size: 17px; font-weight: 700; color: #0D0D0D; margin: 32px 0 12px; padding-bottom: 6px; border-bottom: 2px solid #7B00FF; }
+  h3 { font-size: 14px; font-weight: 600; color: #374151; margin: 20px 0 8px; }
+  p  { margin-bottom: 10px; color: #374151; }
+
+  /* ── Secciones / Partes ─────────────────────────────────── */
+  .part-header {
+    background: linear-gradient(135deg, #0D0D0D 0%, #1a1a2e 100%);
+    color: #fff;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin: 40px 0 24px;
+    page-break-before: always;
+  }
+  .part-header:first-of-type { page-break-before: avoid; }
+  .part-header .part-number {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #7B00FF;
+    margin-bottom: 4px;
+  }
+  .part-header h2 {
+    font-size: 18px;
+    font-weight: 800;
+    color: #fff;
+    margin: 0;
+    padding: 0;
+    border: none;
+  }
+
+  /* ── Paso ───────────────────────────────────────────────── */
+  .step {
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    border-left: 4px solid #7B00FF;
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin: 16px 0;
+  }
+  .step .step-number {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #7B00FF;
+    margin-bottom: 4px;
+  }
+  .step h3 { margin: 0 0 8px; font-size: 14px; color: #111; }
+
+  /* ── Tabla de conceptos ─────────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 12.5px; }
+  th { background: #7B00FF; color: #fff; padding: 8px 12px; text-align: left; font-weight: 600; }
+  th:first-child { border-radius: 6px 0 0 6px; }
+  th:last-child  { border-radius: 0 6px 6px 0; }
+  td { padding: 8px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+  tr:nth-child(even) td { background: #f9f5ff; }
+  tr:last-child td { border-bottom: none; }
+
+  /* ── Code blocks ────────────────────────────────────────── */
+  pre {
+    background: #0D0D0D;
+    color: #e2e8f0;
+    border-radius: 8px;
+    padding: 16px 20px;
+    font-family: 'Courier New', monospace;
+    font-size: 11.5px;
+    line-height: 1.8;
+    margin: 12px 0;
+    overflow-x: auto;
+  }
+  code {
+    background: #F5F0FF;
+    color: #7B00FF;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 11.5px;
+  }
+
+  /* ── Callouts ───────────────────────────────────────────── */
+  .tip {
+    background: #fffbeb;
+    border: 1px solid #fcd34d;
+    border-left: 4px solid #f59e0b;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 12.5px;
+    color: #92400e;
+  }
+  .tip strong { color: #b45309; }
+
+  .info {
+    background: #F5F0FF;
+    border: 1px solid #e9d5ff;
+    border-left: 4px solid #7B00FF;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 12.5px;
+    color: #4c1d95;
+  }
+
+  .alert {
+    background: #fff1f2;
+    border: 1px solid #fecdd3;
+    border-left: 4px solid #ef4444;
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 12px 0;
+    font-size: 12.5px;
+    color: #991b1b;
+  }
+
+  /* ── Listas ─────────────────────────────────────────────── */
+  ul, ol { padding-left: 20px; margin: 8px 0 12px; }
+  li { margin-bottom: 4px; color: #374151; }
+  li strong { color: #111; }
+
+  /* ── Flujo visual ───────────────────────────────────────── */
+  .flow {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 16px 0;
+  }
+  .flow-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 10px 0;
+    border-left: 2px solid #7B00FF;
+    padding-left: 16px;
+    margin-left: 8px;
+    position: relative;
+  }
+  .flow-item::before {
+    content: '';
+    position: absolute;
+    left: -5px;
+    top: 14px;
+    width: 8px;
+    height: 8px;
+    background: #7B00FF;
+    border-radius: 50%;
+  }
+  .flow-item:last-child { border-left-color: transparent; }
+  .flow-arrow { font-size: 11px; color: #7B00FF; font-weight: 700; }
+
+  /* ── Resumen final ──────────────────────────────────────── */
+  .summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin: 16px 0;
+  }
+  .summary-card {
+    background: #F5F0FF;
+    border: 1px solid #e9d5ff;
+    border-radius: 10px;
+    padding: 16px;
+  }
+  .summary-card h4 {
+    font-size: 12px;
+    font-weight: 700;
+    color: #7B00FF;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 8px;
+  }
+  .summary-card ul { margin: 0; padding-left: 16px; }
+  .summary-card li { font-size: 12px; color: #374151; margin-bottom: 3px; }
+
+  /* ── Footer ─────────────────────────────────────────────── */
+  .footer {
+    text-align: center;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #e5e7eb;
+    font-size: 11px;
+    color: #9ca3af;
+  }
+
+  /* ── Print ──────────────────────────────────────────────── */
+  @media print {
+    body { padding: 20px 32px; font-size: 12px; }
+    .part-header { page-break-before: always; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .cover { page-break-after: always; }
+    pre, table, .step { page-break-inside: avoid; }
+    @page { margin: 20mm 15mm; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ PORTADA ══════════════════════════════════════════════════════════════ -->
+<div class="cover">
+  <div class="logo">Genesis360</div>
+  <h1>Administrando tu Casa<br/>con Genesis360</h1>
+  <p class="subtitle">Manual paso a paso para gestionar el hogar,<br/>la despensa, los gastos y las compras familiares</p>
+  <div class="family-card">
+    <strong>La Familia García</strong><br/>
+    Rodrigo (papá) · Valentina (mamá)<br/>
+    Tomás (15 años) · Sofía (10 años)
+  </div>
+  <p class="version">Mayo 2026 · Genesis360 v1.8</p>
+</div>
+
+<!-- ══ CONCEPTOS ════════════════════════════════════════════════════════════ -->
+<h2>Conceptos clave antes de arrancar</h2>
+<p>Genesis360 fue diseñado para comercios físicos, pero su lógica de inventario, gastos, proveedores y alertas aplica perfectamente al hogar. Este es el glosario de equivalencias:</p>
+
+<table>
+  <thead><tr><th>Genesis360</th><th>En tu casa</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Negocio / Tenant</strong></td><td>La Familia García</td></tr>
+    <tr><td><strong>Sucursal</strong></td><td>Casa principal / Casa de verano</td></tr>
+    <tr><td><strong>Producto</strong></td><td>Todo lo que hay en casa (alimentos, limpieza, medicamentos)</td></tr>
+    <tr><td><strong>Inventario / LPN</strong></td><td>El stock real: lo que hay en la heladera, la despensa, el botiquín</td></tr>
+    <tr><td><strong>Proveedor</strong></td><td>Carrefour, Coto, farmacia, Netflix</td></tr>
+    <tr><td><strong>Orden de Compra</strong></td><td>Lista del supermercado</td></tr>
+    <tr><td><strong>Recepción</strong></td><td>Registrar lo que compraste cuando llegás a casa</td></tr>
+    <tr><td><strong>Gasto</strong></td><td>Factura de luz, gas, colegios, nafta</td></tr>
+    <tr><td><strong>Caja</strong></td><td>El efectivo de la billetera y la caja de emergencias</td></tr>
+    <tr><td><strong>Alertas</strong></td><td>Vencimientos, stock mínimo agotándose, facturas por vencer</td></tr>
+    <tr><td><strong>Dashboard</strong></td><td>Panorama financiero del mes</td></tr>
+  </tbody>
+</table>
+
+<!-- ══ PARTE 1 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 1</div>
+  <h2>Configuración inicial — 30 minutos, una sola vez</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 1</div>
+  <h3>Crear el negocio familiar</h3>
+  <p>Al registrarse, completar:</p>
+  <ul>
+    <li><strong>Nombre del negocio:</strong> Familia García</li>
+    <li><strong>Tipo de comercio:</strong> Otro → escribir "Hogar"</li>
+    <li><strong>País:</strong> Argentina</li>
+  </ul>
+  <p>Esto crea automáticamente la <strong>Sucursal 1</strong> (renombrala a "Casa Principal" en Configuración → Sucursales), la <strong>Caja Principal</strong> y los motivos de movimiento básicos.</p>
+  <div class="tip">💡 Si tenés casa de verano o departamento, agregá una segunda sucursal "Casa de Mar del Plata". Cada una tiene su propio inventario y caja.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 2</div>
+  <h3>Crear categorías (Configuración → Categorías)</h3>
+  <pre>🥩  Alimentos frescos
+🥫  Despensa / almacén
+🧹  Limpieza y hogar
+💊  Salud y medicamentos
+👕  Ropa y calzado
+📚  Educación
+🎮  Entretenimiento
+🚗  Transporte y auto
+🔌  Servicios (luz, gas, internet)
+💰  Varios</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 3</div>
+  <h3>Crear ubicaciones (Configuración → Ubicaciones)</h3>
+  <p>Las ubicaciones son los lugares físicos de tu casa donde guardás las cosas:</p>
+  <pre>🧊  Heladera
+❄️  Freezer
+🍞  Despensa — estante 1 (secos)
+🥫  Despensa — estante 2 (latas / conservas)
+🧴  Bajo la pileta (limpieza)
+💊  Botiquín
+🚗  Auto (aceite, líquido de frenos, repuestos)</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 4</div>
+  <h3>Crear estados de inventario (Configuración → Estados)</h3>
+  <table>
+    <thead><tr><th>Estado</th><th>Color</th><th>Uso</th></tr></thead>
+    <tbody>
+      <tr><td>Disponible</td><td>🟢 Verde</td><td>En consumo normal</td></tr>
+      <tr><td>Por vencer pronto</td><td>🟠 Naranja</td><td>Menos de 7 días para vencer</td></tr>
+      <tr><td>Vencido</td><td>🔴 Rojo</td><td>No consumir, a desechar</td></tr>
+      <tr><td>Reservado</td><td>🔵 Azul</td><td>Guardado para una fecha especial</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 5</div>
+  <h3>Crear motivos de movimiento (Configuración → Motivos)</h3>
+  <p><strong>Ingresos (compras):</strong> Compra supermercado · Compra farmacia · Regalo / donación · Producción propia (huerta)</p>
+  <p><strong>Rebajes (consumos/salidas):</strong> Consumo diario · Vencido / a desechar · Donado / regalado · Roto / descartado</p>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 6</div>
+  <h3>Crear proveedores principales (Módulo Prov./Servicios)</h3>
+  <pre>Carrefour        — supermercado principal
+Coto             — supermercado alternativo
+Farmacity        — farmacia
+Edenor           — electricidad
+Metrogas         — gas
+Telecentro       — internet y TV
+Colegio San Martín — educación Tomás
+Colegio Belgrano   — educación Sofía
+YPF              — nafta
+Netflix / Disney+ — streaming</pre>
+</div>
+
+<!-- ══ PARTE 2 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 2</div>
+  <h2>Inventario del hogar — cargar lo que tenés en casa</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 7</div>
+  <h3>Crear los productos del hogar (Módulo Productos → Nuevo producto)</h3>
+  <p>Rodrigo hace el inventario de la despensa un sábado. Empezá con los 20-30 productos que más usás y que tienen vencimiento o stock mínimo importante.</p>
+
+  <p><strong>Ejemplo: Aceite girasol</strong></p>
+  <pre>Nombre:           Aceite Girasol Natura 1.5L
+SKU:              ACE-001 (o dejar auto-generar)
+Categoría:        Despensa / almacén
+Proveedor:        Carrefour
+Unidad de medida: litro
+Tiene vencimiento: ✅ SÍ
+Vida útil (días): 730 (2 años)
+Stock mínimo:     1 (alerta cuando queda 1 botella)
+Ubicación:        Despensa — estante 2</pre>
+
+  <p><strong>Ejemplo: Ibuprofeno 400mg</strong></p>
+  <pre>Nombre:           Ibuprofeno 400mg x 20 comp
+SKU:              MED-001
+Categoría:        Salud y medicamentos
+Proveedor:        Farmacity
+Tiene vencimiento: ✅ SÍ
+Vida útil (días): 1095 (3 años)
+Stock mínimo:     1 caja
+Ubicación:        Botiquín</pre>
+
+  <div class="tip">💡 <strong>Consejo:</strong> No cargues TODO de golpe. Empezá solo con los productos que tienen fecha de vencimiento (lácteos, medicamentos, conservas) y los que más frecuentemente se agotan. En dos semanas tenés el inventario completo sin agobiarte.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 8</div>
+  <h3>Ingresar el stock actual (Módulo Inventario → Agregar Stock)</h3>
+  <p>Con los productos creados, cargás lo que ya tenés en casa ahora mismo.</p>
+  <div class="flow">
+    <div class="flow-item">Buscás "Aceite Girasol" → lo seleccionás (aparece con chip violeta en el formulario)</div>
+    <div class="flow-item">Cantidad: 2 botellas</div>
+    <div class="flow-item">Fecha de vencimiento: 03/2027</div>
+    <div class="flow-item">Ubicación: Despensa — estante 2 (ya viene por default desde el producto)</div>
+    <div class="flow-item">Motivo: Ingreso inicial</div>
+    <div class="flow-item">→ Confirmar → el stock queda registrado</div>
+  </div>
+  <div class="info">📦 <strong>Modo masivo:</strong> Para cargar muchos productos a la vez usá <strong>Inventario → Agregar Stock → Masivo</strong>. Escaneás el código de barras de cada producto, completás cantidad y vencimiento en la grilla y un solo "Procesar N ingresos" al final.</div>
+</div>
+
+<!-- ══ PARTE 3 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 3</div>
+  <h2>Lista del supermercado como Orden de Compra</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 9</div>
+  <h3>Crear la lista del súper (Módulo Prov./Servicios → tab OC → Nueva OC)</h3>
+  <p>El jueves a la noche, Valentina revisa qué falta y crea la lista:</p>
+  <pre>Proveedor: Carrefour
+Fecha esperada: sábado 20/01
+
+Ítems:
+  Aceite girasol 1.5L × 2         $1.800 c/u
+  Leche La Serenísima 1L × 6      $850 c/u
+  Detergente Magistral 750ml × 2  $1.200 c/u
+  Fideos Don Spaghetti 500g × 4   $450 c/u
+  Papel higiénico Higienol × 1    $3.200</pre>
+  <p>Guarda como <strong>borrador</strong>. El sábado antes de salir, lo revisa y lo <strong>envía</strong> (cambia estado) para no olvidar nada.</p>
+  <div class="tip">💡 <strong>La lista inteligente:</strong> el Dashboard → Alertas ya te muestra qué productos están por debajo del stock mínimo. Eso es tu lista de compras automática — solo confirmás y agregás lo adicional.</div>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 10</div>
+  <h3>Registrar la compra al volver (Módulo Recepciones)</h3>
+  <p>Rodrigo vuelve del súper. En vez de guardar todo sin registrar:</p>
+  <p><strong>Módulo Recepciones → Nueva recepción → vinculada a la OC de Carrefour</strong></p>
+  <p>El sistema pre-carga todos los ítems de la lista. Por cada uno confirmás:</p>
+  <ul>
+    <li>La cantidad recibida (si faltaba algo en el súper, corregís)</li>
+    <li>La fecha de vencimiento (especialmente importante para frescos)</li>
+    <li>La ubicación ya viene por default desde la configuración del producto</li>
+  </ul>
+  <div class="info">🎯 Al confirmar la recepción pasan dos cosas automáticamente:<br/>
+    1. El <strong>stock se actualiza</strong> en inventario<br/>
+    2. Se crea un <strong>gasto automático</strong> por el total (categoría: Alimentos)
+  </div>
+  <div class="tip">💡 Si compraste algo de oferta que no estaba en la lista, lo agregás como ítem adicional directamente en la recepción.</div>
+</div>
+
+<!-- ══ PARTE 4 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 4</div>
+  <h2>Gastos del hogar — facturas, servicios y más</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 11</div>
+  <h3>Registrar facturas y gastos puntuales (Módulo Gastos → Nuevo gasto)</h3>
+
+  <p><strong>Factura de luz (Edenor):</strong></p>
+  <pre>Descripción:   Factura luz - Enero 2026
+Monto:         $18.500
+Categoría:     Servicios
+Proveedor:     Edenor
+Fecha:         15/01/2026
+Medio de pago: Transferencia bancaria
+Comprobante:   📎 (foto de la factura adjunta)</pre>
+
+  <p><strong>Carga de nafta:</strong></p>
+  <pre>Descripción:   Nafta premium - YPF Palermo
+Monto:         $12.000
+Categoría:     Transporte y auto
+Fecha:         hoy
+Medio de pago: Efectivo</pre>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 12</div>
+  <h3>Configurar los gastos fijos mensuales (Módulo Gastos → Gastos fijos)</h3>
+  <p>Se definen una sola vez. El sistema te avisa cuando están por vencer y los genera con un click:</p>
+  <table>
+    <thead><tr><th>Gasto</th><th>Frecuencia</th><th>Vence el</th><th>Monto aprox.</th></tr></thead>
+    <tbody>
+      <tr><td>Luz (Edenor)</td><td>Mensual</td><td>Día 15</td><td>$18.500</td></tr>
+      <tr><td>Gas (Metrogas)</td><td>Bimestral</td><td>Día 20</td><td>$9.200</td></tr>
+      <tr><td>Internet (Telecentro)</td><td>Mensual</td><td>Día 5</td><td>$4.800</td></tr>
+      <tr><td>Colegio Tomás</td><td>Mensual</td><td>Día 1</td><td>$38.000</td></tr>
+      <tr><td>Colegio Sofía</td><td>Mensual</td><td>Día 1</td><td>$31.000</td></tr>
+      <tr><td>Netflix</td><td>Mensual</td><td>Día 3</td><td>$3.200</td></tr>
+      <tr><td>Expensas</td><td>Mensual</td><td>Día 10</td><td>$22.000</td></tr>
+      <tr><td>Gym Rodrigo</td><td>Mensual</td><td>Día 1</td><td>$8.500</td></tr>
+    </tbody>
+  </table>
+  <p>Cuando llega el día: botón <strong>"Generar hoy"</strong> → crea el gasto del mes con un click y queda en el historial.</p>
+</div>
+
+<!-- ══ PARTE 5 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 5</div>
+  <h2>La Caja del Hogar — administrando el efectivo</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 13</div>
+  <h3>Abrir y manejar la caja mensual (Módulo Caja)</h3>
+  <p><strong>Caja Principal</strong> = el efectivo disponible en billetera/casa<br/>
+  <strong>Caja Fuerte / Bóveda</strong> = el sobre con "plata de emergencias" que no se toca</p>
+
+  <p><strong>Apertura del mes:</strong></p>
+  <pre>Caja Principal → Abrir con $15.000 (el efectivo que hay en casa ahora)</pre>
+
+  <p>Cada gasto en efectivo registra un egreso automático:</p>
+  <ul>
+    <li>Nafta $12.000 en efectivo → caja queda en $3.000</li>
+    <li>Verdulería $800 → caja queda en $2.200</li>
+    <li>Farmacia $1.500 → caja queda en $700</li>
+  </ul>
+
+  <div class="info">🔒 <strong>Caja Fuerte:</strong> Si receptan efectivo extra para emergencias, lo "depositan" en la Bóveda. Cuando necesitan, hacen un traspaso de Bóveda → Caja Principal. Queda el registro completo de cuándo y por qué se usaron los ahorros de emergencia.</div>
+</div>
+
+<!-- ══ PARTE 6 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 6</div>
+  <h2>Alertas automáticas — el sistema que trabaja solo</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 14</div>
+  <h3>Qué te avisa el sistema sin que hagas nada (Módulo Alertas)</h3>
+  <pre>🔴 STOCK CRÍTICO (3 productos)
+   • Aceite girasol — quedan 0 unidades (mínimo configurado: 1)
+   • Jabón de manos Palmolive — quedan 0 (mínimo: 1)
+   • Detergente Magistral — quedan 1 (mínimo: 2)
+
+⚠️ PRÓXIMOS A VENCER (2 ítems)
+   • Yogur Ser × 2 — vence en 3 días (18/01/2026)
+   • Queso cremoso — vence en 5 días (20/01/2026)
+
+📋 GASTOS FIJOS QUE VENCEN ESTA SEMANA
+   • Internet Telecentro — vence en 2 días ($4.800)
+   • Colegio Tomás — vence en 5 días ($38.000)</pre>
+
+  <p><strong>¿Qué hacés con cada alerta?</strong></p>
+  <ul>
+    <li>Yogur vence en 3 días → lo usás mañana en el desayuno, no comprás más</li>
+    <li>Aceite en 0 → lo agregás a la próxima OC del súper</li>
+    <li>Factura internet vence en 2 días → la generás y pagás hoy</li>
+  </ul>
+</div>
+
+<!-- ══ PARTE 7 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 7</div>
+  <h2>Dashboard familiar — entender las finanzas del hogar</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 15</div>
+  <h3>Revisar las finanzas del mes (Módulo Dashboard)</h3>
+
+  <p><strong>Tab Gastos — ¿en qué fue el dinero?</strong></p>
+  <pre>Enero 2026 — Familia García
+
+💸 Total gastado este mes:  $187.300
+📈 Burn rate diario:        $6.043 / día
+
+Por categoría:
+  📚 Educación:      $76.000  (41%)
+  🥩 Alimentos:      $68.500  (37%)
+  🔌 Servicios:      $42.800  (23%)
+
+Gastos fijos del mes:   $158.800
+Gastos variables:        $28.500</pre>
+
+  <p><strong>Tab Inventario — ¿cuánto vale lo que tenemos en casa?</strong></p>
+  <pre>Capital almacenado en el hogar:
+  🥫 Alimentos (despensa + heladera): $45.200
+  🧹 Limpieza y hogar:                 $8.300
+  💊 Medicamentos (botiquín):          $12.100
+  ─────────────────────────────────────────
+  TOTAL EN CASA (a precio de compra): $65.600
+
+⚠️ Próximos a vencer: 4 ítems
+🔴 Stock crítico: 3 productos</pre>
+</div>
+
+<!-- ══ PARTE 8 ══════════════════════════════════════════════════════════════ -->
+<div class="part-header">
+  <div class="part-number">Parte 8</div>
+  <h2>Rutina semanal — 15 minutos por semana</h2>
+</div>
+
+<div class="step">
+  <div class="step-number">Paso 16</div>
+  <h3>El flujo semanal real</h3>
+
+  <table>
+    <thead><tr><th>Cuándo</th><th>Quién</th><th>Qué hacer</th><th>Tiempo</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Domingo a la noche</strong></td>
+        <td>Valentina</td>
+        <td>Revisar alertas de stock · Crear OC del súper · Ver gastos fijos de la semana</td>
+        <td>10 min</td>
+      </tr>
+      <tr>
+        <td><strong>Al volver del súper</strong></td>
+        <td>Rodrigo</td>
+        <td>Crear recepción vinculada a la OC · Cargar vencimientos de frescos · El gasto se registra solo</td>
+        <td>10 min</td>
+      </tr>
+      <tr>
+        <td><strong>Al pagar una factura</strong></td>
+        <td>Cualquiera</td>
+        <td>Generar el gasto fijo del mes · Subir foto del comprobante</td>
+        <td>2 min</td>
+      </tr>
+      <tr>
+        <td><strong>Al consumir algo</strong></td>
+        <td>Cualquiera</td>
+        <td>Inventario → Quitar stock · Motivo: Consumo diario (opcional, solo para control fino)</td>
+        <td>1 min</td>
+      </tr>
+      <tr>
+        <td><strong>Fin de mes</strong></td>
+        <td>Rodrigo</td>
+        <td>Cerrar sesión de caja · Revisar Dashboard · Comparar con mes anterior</td>
+        <td>5 min</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- ══ RESUMEN FINAL ═════════════════════════════════════════════════════════ -->
+<h2>Resumen del flujo completo</h2>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <h4>🛒 Compra</h4>
+    <ul>
+      <li>OC al proveedor (lista del súper)</li>
+      <li>Recepción al llegar a casa</li>
+      <li>Stock se actualiza solo</li>
+      <li>Gasto se registra solo</li>
+    </ul>
+  </div>
+  <div class="summary-card">
+    <h4>🍽️ Consumo</h4>
+    <ul>
+      <li>Inventario → Quitar stock</li>
+      <li>Motivo: Consumo diario</li>
+      <li>O al vencer: Vencido / desechar</li>
+      <li>Stock se actualiza automáticamente</li>
+    </ul>
+  </div>
+  <div class="summary-card">
+    <h4>💳 Pagos</h4>
+    <ul>
+      <li>Gastos fijos: 1 click por mes</li>
+      <li>Comprobante adjunto en PDF/foto</li>
+      <li>Efectivo descuenta de la caja</li>
+      <li>Historial disponible siempre</li>
+    </ul>
+  </div>
+  <div class="summary-card">
+    <h4>📊 Control</h4>
+    <ul>
+      <li>Alertas avisan qué falta y vence</li>
+      <li>Dashboard muestra en qué va el dinero</li>
+      <li>Caja rastrea el efectivo disponible</li>
+      <li>Comparativa mes a mes automática</li>
+    </ul>
+  </div>
+</div>
+
+<h2>Qué NO hace la app (límites honestos)</h2>
+<div class="alert">
+  <ul style="margin:0;padding-left:16px;">
+    <li><strong>No conecta con tu banco</strong> — los gastos los registrás vos (por ahora)</li>
+    <li><strong>No hace presupuesto mensual</strong> — podés comparar gastos pero no fijar límites automáticos</li>
+    <li><strong>No actualiza precios de productos automáticamente</strong> — los cargás vos al comprar</li>
+    <li><strong>No gestiona deudas entre personas de la familia</strong> — la CC es entre la familia y un proveedor externo</li>
+  </ul>
+</div>
+
+<div class="info" style="margin-top:24px;font-size:13px;line-height:1.7;">
+  La app fue diseñada para comercios físicos, pero la lógica de inventario, gastos, proveedores y alertas aplica perfectamente al hogar. En una familia con hábitos de compra regulares, evita el <em>"¿qué nos falta?"</em>, el <em>"se venció la leche"</em>, el <em>"¿cuánto gastamos este mes?"</em> y el <em>"¿pagamos la luz?"</em>. <strong>15 minutos por semana para tener el hogar completamente bajo control.</strong>
+</div>
+
+<div class="footer">
+  Genesis360 · El cerebro del negocio físico · genesis360.pro<br/>
+  Este manual fue generado en mayo 2026 · v1.8
+</div>
+
+</body>
+</html>

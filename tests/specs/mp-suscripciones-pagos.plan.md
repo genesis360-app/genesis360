@@ -56,12 +56,12 @@
   hallazgo REGLA #0 de la sesión 2026-07-04. Mitigación actual: kill-switch **`ADDON_FIJO_ENABLED
   =false`** en `brand.ts` oculta el configurador in-app hasta que GO valide el `PUT
   transaction_amount` en una sub real (ver H7 y sección 11). El comentario del EF quedó viejo.
-- **H7 — El kill-switch `ADDON_FIJO_ENABLED` es FRONTEND-ONLY: el EF `mp-addon-fijo` sigue vivo
-  server-side.** Un caller autenticado con suscripción activa puede invocarlo por curl aunque el
-  flag esté apagado. No es un vector de fraude (solo puede SUBIR el monto de su propia suscripción,
-  con precio del catálogo server-side), pero significa que "el flujo está apagado" solo es cierto
-  para la UI. Si se quisiera un apagado real, el flag debería existir también como env var del EF.
-  Documentado como riesgo aceptado mientras dure la validación (escenario MP-AD9).
+- **H7 — ✅ CERRADO (2026-07-07): el EF `mp-addon-fijo` fue ELIMINADO de DEV y PROD** (deprecado por
+  el batch v1.115; la UI no lo invocaba desde entonces). El riesgo era: un caller autenticado podía
+  invocarlo por curl aunque `ADDON_FIJO_ENABLED` estuviera apagado. Con la EF borrada el vector no
+  existe. Los escenarios MP-AD* de add-on fijo quedan HISTÓRICOS (el espejo `mpAddonFijo.ts` y sus
+  18 tests se eliminaron con la EF); el flujo vigente es el BATCH (§10.b). `ADDON_FIJO_ENABLED`
+  sigue existiendo pero ahora gatea el panel del batch en `SuscripcionPage`.
 - **H8 — `admin-api.cancelarSubMP` volvió a divergir de `cancel-suscripcion`:** el EF de la app
   ganó el fallback MP-C7 por `payer_email` (busca la sub viva del caller cuando `mp_subscription_id`
   es NULL) pero la copia del panel NO lo tiene — un tenant nunca-linkeado cancelado desde el panel

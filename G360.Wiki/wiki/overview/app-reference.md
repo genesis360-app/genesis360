@@ -182,11 +182,13 @@ Caja registradora principal. Permite ventas, presupuestos y devoluciones.
 
 Registro y seguimiento de todos los gastos del negocio.
 
-**Tabs:**
-- **Gastos**: listado de gastos variables del período (filtrado por sucursal activa)
-- **Fijos**: gastos recurrentes configurados (alquiler, servicios, etc.)
-- **OC**: órdenes de compra pendientes de pago (filtradas por sucursal activa via `ordenes_compra.sucursal_id`)
+**Tabs** (orden v1.116.0):
+- **Gastos variables**: listado de gastos variables del período (filtrado por sucursal activa)
+- **Gastos fijos**: gastos recurrentes configurados (alquiler, servicios, etc.)
+- **OC** (modo avanzado): órdenes de compra pendientes de pago (filtradas por sucursal activa via `ordenes_compra.sucursal_id`)
+- **Cheques**: cheques emitidos/recibidos (badge de próximos a cobrar)
 - **Historial**: todos los gastos con filtro de rango de fechas
+- **Reportes** (modo avanzado) · **Recursos** (modo avanzado) · **Autorizaciones** (roles aprobadores) · **Cierres contables** (según permiso)
 
 **Gastos variables — acciones:**
 - **+ Nuevo gasto** (esquina superior derecha): modal con título, monto, categoría de gasto, proveedor opcional, fecha, notas, medio de pago, sucursal

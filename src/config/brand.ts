@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.118.0'
+export const APP_VERSION = 'v1.119.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
@@ -52,9 +52,12 @@ export const MODO_BASICO_ENABLED = true
 // y el add-on TEMPORAL de movimientos tampoco (pago único ya validado).
 export const ADDON_FIJO_ENABLED = true
 
+// Planes de la cuenta MP nueva (collector 478332282, app 2672033309404649) — 2026-07-07.
+// Precio con el −10% de débito automático incluido ($54k/$90k); el pago manual (lista)
+// no usa planes de MP. Los planes viejos murieron con la cuenta anterior.
 export const MP_PLAN_IDS: Record<string, string> = {
-  basico: '836c7829f7e944c9ac58d7c0c67a513b',
-  pro:    'cb3bcdaa39bc444da4e17a517d5eadd1',
+  basico: '142aefe11ad64fb887b5949db005f8f8',
+  pro:    'f06b269057254b9da0e4a60cb89d1544',
 }
 
 export const BRAND = {

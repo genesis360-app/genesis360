@@ -15,9 +15,14 @@ updated: 2026-07-06
 > cobro del delta HOY como pago único + recurrente nuevo desde el próximo ciclo; **(2)** metering
 > por **COMPROBANTES** (reemplaza movimientos): Básico 6.000/mes · Pro 14.000/mes · packs
 > +1.000=$10.000 · +5.000=$30.000 · +10.000=$50.000; **(3)** el toggle de PLAN queda para
-> Fase 2 (hoy el cambio de plan sigue por las tarjetas de planes/checkout). **🟠 Pendiente:**
-> test e2e GO+Fede del batch (suba con delta + baja + guard); deprecación efectiva de
-> `mp-addon-fijo`; Fase 2 (cambio de plan por el toggle). El detalle de implementación de las
+> Fase 2 (hoy el cambio de plan sigue por las tarjetas de planes/checkout).
+> **✅ TEST E2E VALIDADO CON PLATA REAL (GO, 2026-07-07, cuenta MP nueva, tenant "Test GO"):**
+> suba con delta $5.000 aplicada por el webhook en 22s · baja sin cobro · **cambio de pack
+> +1→+3 con delta** · guard en ambas direcciones (bloqueó con 6/6 users, pasó tras desactivar
+> uno) · temporal de comprobantes acreditado con vencimiento · cancelación fail-closed + grace
+> real. `mp-addon-fijo` ELIMINADA de DEV+PROD (2026-07-07, cierra H7). **🟠 Pendiente:** Fase 2
+> (cambio de plan — spec de GO en §4) y backlog BATCH-BAJA-VIGENCIA (la baja quita el cupo al
+> instante aunque el mes esté pagado → evaluar vigencia hasta fin de período). El detalle de implementación de las
 > secciones de abajo (diseño pre-implementación) se mantiene como referencia técnica — el
 > comportamiento real vigente está resumido en `wiki/integrations/mercado-pago.md` §3.i.
 

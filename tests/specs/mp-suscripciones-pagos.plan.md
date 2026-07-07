@@ -989,6 +989,14 @@ WHERE subscription_status = 'cancelled' AND subscription_period_end IS NULL;
 > Reemplaza el flujo "un click = un cobro" de `mp-addon-fijo` (validado e2e 2026-07-05 y
 > descartado por producto). Decisiones GO: delta HOY · comprobantes 6k/14k (packs $10k/$30k/$50k,
 > fijo Y temporal) · movimientos free · un pack fijo por dimensión · enforcement soft.
+>
+> **✅ VALIDADO E2E CON PLATA REAL (GO, 2026-07-07, cuenta MP nueva, tenant "Test GO"):**
+> MP-B1 suba delta $5.000 (webhook aplicó en 22s, payment 167681422238) · MP-B baja sin cobro ·
+> cambio de pack +1→+3 usuarios con delta (escenario extra) · guard ambas direcciones (modal con
+> 6/6, pasa tras desactivar el 6º; bonus: `fn_enforce_limite()` bloquea INSERT SQL directo =
+> límite duro DB) · temporal +1.000 acreditado con vencimiento · cancelación fail-closed + grace
+> real (2026-08-07). Gotcha operativo: rotar `MP_ACCESS_TOKEN` exige REDEPLOY de las EFs de
+> billing (instancias calientes no toman el secret — causó 502 en `mp-addon-batch`).
 
 **MP-B1 — Suba cobra SOLO la diferencia (ejemplos GO exactos).** Básico $60k + SKU+500 → paga
 $5.000 hoy, recurrente $65.000. Venía $65k y cambia pack SKU $5k→$10k → paga $5.000, queda $70k.

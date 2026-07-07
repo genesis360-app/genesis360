@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Test Google Maps Places Autocomplete</title>
+<style>
+  body { font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 0 20px; }
+  #status { padding: 10px; border-radius: 8px; margin-bottom: 16px; font-weight: bold; }
+  .ok { background: #d1fae5; color: #065f46; }
+  .error { background: #fee2e2; color: #991b1b; }
+  .loading { background: #fef3c7; color: #92400e; }
+  input { width: 100%; box-sizing: border-box; padding: 10px 12px; font-size: 16px;
+          border: 2px solid #d1d5db; border-radius: 8px; outline: none; }
+  input:focus { border-color: #7c3aed; }
+  #result { margin-top: 12px; padding: 10px; background: #f3f4f6; border-radius: 8px;
+            font-size: 14px; min-height: 40px; color: #374151; }
+</style>
+</head>
+<body>
+<h2>Test Autocomplete Google Places</h2>
+<div id="status" class="loading">Cargando Maps JS API…</div>
+<input id="addr" type="text" placeholder="Escribí una dirección (ej: Av. Triunvirato)…" disabled />
+<div id="result">Seleccioná una sugerencia para ver el resultado acá.</div>
+
+<script>
+  const KEY = 'AIzaSyBXIJiMfHnlHGxPMRy9YER_5PvjxcFZLKA'
+  const statusEl = document.getElementById('status')
+  const input    = document.getElementById('addr')
+  const result   = document.getElementById('result')
+
+  window.gm_authFailure = () => {
+    statusEl.textContent = '❌ Error de autenticación — la key no tiene Maps JS API habilitada'
+    statusEl.className = 'error'
+  }
+
+  window.initMaps = () => {
+    try {
+      const ac = new google.maps.places.Autocomplete(input, {
+        types: ['address'],
+        componentRestrictions: { country: 'ar' },
+        fields: ['formatted_address', 'place_id'],
+      })
+      ac.addListener('place_changed', () => {
+        const place = ac.getPlace()
+        result.textContent = '✅ Seleccionaste: ' + (place.formatted_address || input.value)
+        result.style.background = '#d1fae5'
+      })
+      statusEl.textContent = '✅ Maps JS API OK — empezá a escribir una dirección'
+      statusEl.className = 'ok'
+      input.disabled = false
+      input.focus()
+    } catch(e) {
+      statusEl.textContent = '❌ Error al inicializar Places: ' + e.message
+      statusEl.className = 'error'
+    }
+  }
+
+  const script = document.createElement('script')
+  script.src = `https://maps.googleapis.com/maps/api/js?key=${KEY}&libraries=places&callback=initMaps&language=es`
+  script.onerror = () => {
+    statusEl.textContent = '❌ No se pudo cargar el script de Maps'
+    statusEl.className = 'error'
+  }
+  document.head.appendChild(script)
+</script>
+</body>
+</html>

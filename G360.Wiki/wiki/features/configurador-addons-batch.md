@@ -168,7 +168,29 @@ sincroniza `tenant_addons` (delete fijos + insert desde `packs_objetivo`) y marc
 2. **Fase 2:** cambio de PLAN desde el toggle con el mismo modelo de delta. Requiere decidir
    cómo derivar el tier cuando `preapproval_plan_id` ya no matchea el tier real (hoy 3 EFs
    mapean tier desde el plan de MP — cambiarlo tiene riesgo REGLA #0 y va con diseño propio).
-3. **Fase 3 (limpieza):** borrar `mp-addon-fijo`/packs de movimientos del código + wiki.
+
+   **📋 SPEC de GO (2026-07-07) — dos escenarios de UPGRADE de plan:**
+   - **E1 — Upgrade inmediato (Básico→Pro):** paga HOY la diferencia de plan (pago único,
+     mismo modelo delta del batch), el recurrente pasa al monto del plan nuevo (PUT
+     `transaction_amount` — NO toca `next_payment_date`, validado e2e v1.114), el sistema
+     se habilita como Pro al confirmarse el pago (fail-closed, mismo patrón `|addonbatch|`),
+     y la **fecha de cobro original se mantiene**.
+   - **E2 — Upgrade PROGRAMADO:** opción "cambiar en mi próxima fecha de cobro": se agenda
+     el cambio (tabla/campo `plan_cambio_programado`), NO se cobra nada hoy; en la ventana
+     previa al próximo cobro un sweep (sin pg_cron → `cron-sweeps`/GH Actions, patrón
+     `mp-reconciliacion`) hace el PUT del monto nuevo para que ESE cobro ya salga por el
+     plan nuevo; el tier se habilita recién cuando el webhook confirma el pago del monto
+     nuevo (si el cobro falla → no se habilita, fail-closed). La fecha de cobro nunca cambia.
+   - **⚠ Prerrequisito técnico (el riesgo ya anotado):** las EFs que derivan tier de
+     `preapproval_plan_id` deben pasar a derivarlo de `tenants.plan_tier` (fuente DB), porque
+     tras el upgrade el preapproval sigue apuntando al plan MP original (solo cambia el monto).
+   - Downgrade de plan: fuera de esta spec — se diseña junto con MP-P2 (guiado/bloqueante,
+     reusa el guard batch por dimensión).
+3. **Fase 3 (limpieza):** ~~borrar `mp-addon-fijo`~~ ✅ HECHO 2026-07-07 (EF eliminada de
+   DEV+PROD, cierra H7). Integración UX 2026-07-07 (v1.120.0): el pack TEMPORAL de
+   comprobantes se COMPRA desde la tarjeta de Comprobantes del panel (toggle "Mensual /
+   30 días" + barra de uso integrada) — se eliminaron la sección suelta y el widget "Tu uso
+   este mes" de `/suscripcion` (parecían un duplicado del fijo; decisión GO).
 
 ## 5. ✅ Decisiones GO (2026-07-05 — diseño CERRADO, en implementación)
 - **Q1 — Métrica:** toda **venta finalizada** = 1 comprobante (ticket interno o factura AFIP,

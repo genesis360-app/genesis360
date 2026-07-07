@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.120.0 — 🧪 Temporal de comprobantes integrado al panel + barra de comprobantes en Inventario (PROD ✅)
+
+Toggle "Mensual / 30 días" en la tarjeta de Comprobantes del configurador (el temporal deja de ser sección suelta) + barra de uso integrada; Inventario agregar/quitar muestra comprobantes del mes en vez de movimientos ilimitados. Mismo release en que se validó el BATCH e2e con plata real (suba delta $5.000 aplicada por webhook en 22s + baja sin cobro) y se descubrió el límite duro `fn_enforce_limite()` en DB.
+
 ## v1.119.0 — 💳 Cambio de cuenta MP (planes $54.000/$90.000) + dependencias a 0 vulnerabilidades (PROD ✅)
 
 Cobros de la plataforma migrados a la cuenta MP nueva (Fede Messina, user 478332282): planes nuevos creados por API con el −10% de débito automático incluido, `MP_PLAN_IDS` + secrets en DEV y PROD, smoke de reconciliación verde. Pendiente GO: webhook en el panel + cierre de la cuenta vieja + test de checkout (no puede hacerlo Fede: pagador=cobrador). Además: 18 vulnerabilidades Dependabot → 0 (Vite 5→7, PWA plugin 1.x, sin top-level-await).

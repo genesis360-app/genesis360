@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { PLANES, BRAND } from '@/config/brand'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
 import { precioSel, DIMS_BATCH, type PackSel } from '@/lib/mpAddonBatch'
-import { Check, Box, Building2, User, FileText, Shield, Rocket, Headphones, Lock, RefreshCw, type LucideIcon } from 'lucide-react'
+import { Check, Box, Building2, User, FileText, Shield, Rocket, Headphones, Lock, RefreshCw, Zap, type LucideIcon } from 'lucide-react'
 
 // Configurador de precios PÚBLICO (Landing) — Pricing 2026, Fase 4.
 // Solo estima: plan base + add-ons FIJOS (recurrentes) → total mensual en vivo.
@@ -44,14 +44,25 @@ export interface AppBatchMode {
   onConfirm: (packsObjetivo: PackSel) => void
 }
 
+/** Pack TEMPORAL de comprobantes (pago único, 30 días) integrado a la tarjeta de
+ *  Comprobantes vía toggle "Mensual / 30 días" — mismo catálogo, otro producto:
+ *  NO toca el recurrente ni participa del batch (compra inmediata vía mp-addon). */
+export interface TemporalComprobantes {
+  usoMes: number
+  maxMes: number                 // -1 = ilimitado → el toggle y la barra no se muestran
+  comprando?: number | null      // cantidad en curso de compra (spinner)
+  onComprar: (cantidad: number) => void
+}
+
 interface PricingConfiguratorProps {
   ctaLabel?: string
   onCta?: (planId: string) => void
   ctaLoading?: boolean
   app?: AppBatchMode
+  temporal?: TemporalComprobantes
 }
 
-export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app }: PricingConfiguratorProps = {}) {
+export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, temporal }: PricingConfiguratorProps = {}) {
   const planes = PLANES.filter(p => p.id === 'basico' || p.id === 'pro')
   const [planId, setPlanId] = useState('pro')
   // dimension → cantidad elegida (0 = ninguno). En modo app arranca en los packs ACTUALES.
@@ -73,6 +84,12 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app }
 
   const setPack = (dim: string, cant: number) =>
     setSel(prev => ({ ...prev, [dim]: prev[dim] === cant ? 0 : cant }))
+
+  // Toggle Mensual / Por 30 días en la tarjeta de Comprobantes (solo si hay temporal)
+  const temporalVisible = !!temporal && temporal.maxMes !== -1
+  const [modoComprobantes, setModoComprobantes] = useState<'mensual' | 'temporal'>('mensual')
+  const pctUso = temporalVisible && temporal!.maxMes > 0
+    ? Math.min(100, Math.round((temporal!.usoMes / temporal!.maxMes) * 100)) : 0
 
   return (
     <div className="relative w-full overflow-hidden rounded-3xl border border-white/10 bg-[#0b0b14] p-6 sm:p-10 md:p-14 shadow-2xl">
@@ -110,21 +127,56 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app }
 
       <p className="relative text-center text-sm font-semibold text-white mb-5">Personalizá tu plan con add-ons</p>
 
-      {/* Add-ons fijos por dimensión */}
+      {/* Add-ons fijos por dimensión. La tarjeta de Comprobantes suma el toggle
+          "Mensual / 30 días": mismo catálogo, DOS productos — el fijo entra al batch
+          (recurrente), el temporal es pago único inmediato vía mp-addon. */}
       <div className="relative grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {DIMS.map(({ dim, label, unidad, sub, Icon }) => (
+        {DIMS.map(({ dim, label, unidad, sub, Icon }) => {
+          const conTemporal = dim === 'comprobantes' && temporalVisible
+          const enTemporal = conTemporal && modoComprobantes === 'temporal'
+          return (
           <div key={dim} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <div className="flex items-center gap-3 mb-4">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
                 <Icon size={20} className="text-accent" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="font-semibold text-white leading-tight">{label}</p>
-                <p className="text-xs text-gray-400 leading-tight">{sub}</p>
+                <p className="text-xs text-gray-400 leading-tight">
+                  {enTemporal ? 'Pico puntual: pago único, válidos 30 días' : sub}
+                </p>
               </div>
+              {conTemporal && (
+                <div className="ml-auto inline-flex shrink-0 rounded-full border border-white/10 bg-white/5 p-0.5">
+                  {(['mensual', 'temporal'] as const).map(m => (
+                    <button key={m} onClick={() => setModoComprobantes(m)}
+                      className={`px-2 py-1 rounded-full text-[10px] font-semibold transition-all
+                        ${modoComprobantes === m ? 'bg-accent text-white' : 'text-gray-400 hover:text-white'}`}>
+                      {m === 'mensual' ? 'Mensual' : '30 días'}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-3 gap-2">
               {packsDe(dim).map(pack => {
+                if (enTemporal) {
+                  const comprando = temporal!.comprando === pack.cantidad
+                  return (
+                    <button key={pack.cantidad} onClick={() => temporal!.onComprar(pack.cantidad)}
+                      disabled={temporal!.comprando != null}
+                      className="relative flex flex-col items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-center text-gray-300 transition-all hover:border-accent/60 disabled:opacity-60">
+                      {comprando
+                        ? <RefreshCw size={18} className="animate-spin text-accent" />
+                        : <Zap size={18} className="text-accent" />}
+                      <span className="text-[11px] leading-tight text-gray-300">
+                        +{pack.cantidad.toLocaleString('es-AR')} {unidad}
+                      </span>
+                      <span className="text-sm font-bold">${pack.precio.toLocaleString('es-AR')}</span>
+                      <span className="text-[10px] text-gray-500 leading-none">único · 30 días</span>
+                    </button>
+                  )
+                }
                 const activo = sel[dim] === pack.cantidad
                 return (
                   <button key={pack.cantidad} onClick={() => setPack(dim, pack.cantidad)}
@@ -146,8 +198,22 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app }
                 )
               })}
             </div>
+            {conTemporal && (
+              <div className="mt-3">
+                <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                  <span>Usados este mes</span>
+                  <span>{temporal!.usoMes.toLocaleString('es-AR')} / {temporal!.maxMes.toLocaleString('es-AR')}</span>
+                </div>
+                <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${pctUso >= 100 ? 'bg-red-400' : pctUso >= 80 ? 'bg-amber-400' : 'bg-accent'}`}
+                    style={{ width: `${pctUso}%` }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
-        ))}
+        )})}
       </div>
 
       {/* Total + CTA */}
@@ -168,7 +234,7 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app }
           </p>
           <p className="mt-1 text-xs text-gray-500">
             {app
-              ? 'Los cambios se aplican recién al confirmar. ¿Un pico puntual? Comprá comprobantes por 30 días más abajo.'
+              ? `Los cambios se aplican recién al confirmar.${temporalVisible ? ' ¿Un pico puntual? Pasá la tarjeta Comprobantes a «30 días».' : ''}`
               : '¿Un pico puntual de comprobantes? También hay packs por 30 días desde la app.'}
           </p>
         </div>

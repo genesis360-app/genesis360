@@ -5,13 +5,13 @@ import { BRAND, PLANES, MP_PLAN_IDS, ADDON_FIJO_ENABLED } from '@/config/brand'
 import { useAuthStore } from '@/store/authStore'
 import { supabase } from '@/lib/supabase'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
-import { packsDe, type AddonRow } from '@/lib/addons'
+import { type AddonRow } from '@/lib/addons'
 import { selDesdeAddons, type PackSel, type BatchBloqueo } from '@/lib/mpAddonBatch'
 import { clasificarVerificacion, mensajeErrorVerif, mensajeErrorEF } from '@/lib/suscripcionActivacion'
 import PricingConfigurator from '@/components/PricingConfigurator'
 import {
   Check, X, CheckCircle, XCircle, Clock,
-  ArrowRight, ArrowLeft, Shield, RefreshCw, Zap, AlertTriangle, LogOut,
+  ArrowRight, ArrowLeft, Shield, RefreshCw, AlertTriangle, LogOut,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 
@@ -30,7 +30,6 @@ export default function SuscripcionPage() {
   const { limits } = usePlanLimits()
   const queryClient = useQueryClient()
 
-  const packsComprobantes = packsDe('comprobantes')
   const esActivo = tenant?.subscription_status === 'active'
   const tieneSubMP = esActivo && !!tenant?.mp_subscription_id
 
@@ -238,6 +237,17 @@ export default function SuscripcionPage() {
   }
 
   const planesConPago = PLANES.filter(p => p.precio !== null && p.precio > 0)
+
+  // Pack TEMPORAL de comprobantes integrado a la tarjeta del configurador (toggle "30 días").
+  // Sin sección propia: mismo catálogo que el fijo pero pago único vía mp-addon.
+  const temporalProps = limits && limits.max_comprobantes !== -1
+    ? {
+        usoMes: limits.comprobantes_mes,
+        maxMes: limits.max_comprobantes,
+        comprando: loadingAddon,
+        onComprar: handleComprarAddon,
+      }
+    : undefined
 
   // Pantalla de resultado de pago
   if (status) {
@@ -550,76 +560,17 @@ export default function SuscripcionPage() {
                 confirmando: confirmandoBatch,
                 onConfirm: handleConfirmarBatch,
               }}
+              temporal={temporalProps}
             />
           ) : (
             <PricingConfigurator
               ctaLabel={esActivo ? 'Cambiar a este plan' : 'Suscribirme a este plan'}
               ctaLoading={loading !== null}
               onCta={(planId) => handleSuscribir(planId, MP_PLAN_IDS[planId] ?? '')}
+              temporal={temporalProps}
             />
           )}
         </div>
-
-        {/* Uso actual de comprobantes (pricing v2 — enforcement SOFT: solo aviso/upsell) */}
-        {limits && limits.max_comprobantes !== -1 && (
-          <div className="mt-8 bg-white/10 rounded-2xl p-6 max-w-md mx-auto">
-            <p className="text-white font-semibold mb-3 text-center">Tu uso este mes</p>
-            <div className="flex items-center justify-between text-sm text-blue-200 mb-2">
-              <span>Comprobantes</span>
-              <span className="font-medium text-white">
-                {limits.comprobantes_mes.toLocaleString()} / {limits.max_comprobantes.toLocaleString()}
-              </span>
-            </div>
-            <div className="h-2 bg-white/20 rounded-full overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all ${limits.pct_comprobantes >= 100 ? 'bg-red-400' : limits.pct_comprobantes >= 80 ? 'bg-amber-400' : 'bg-green-400'}`}
-                style={{ width: `${Math.min(100, limits.pct_comprobantes)}%` }}
-              />
-            </div>
-            {limits.pct_comprobantes >= 80 && (
-              <p className="text-amber-300 text-xs text-center mt-2 flex items-center justify-center gap-1">
-                <AlertTriangle size={12} />
-                {limits.pct_comprobantes >= 100
-                  ? 'Límite alcanzado — tus ventas siguen saliendo; ampliá tu plan o comprá un pack'
-                  : 'Cerca del límite — considerá ampliar'}
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Packs TEMPORALES de comprobantes (pago único, vencen a 30 días — picos puntuales) */}
-        {limits && limits.max_comprobantes !== -1 && (
-          <div className="mt-8 max-w-3xl mx-auto">
-            <p className="text-white font-semibold text-center mb-1">¿Un pico puntual? Comprá comprobantes por 30 días</p>
-            <p className="text-blue-200 text-xs text-center mb-4">Pago único · se acreditan automáticamente · válidos por 30 días</p>
-            <div className="grid sm:grid-cols-3 gap-4">
-              {packsComprobantes.map(pack => (
-                <div key={pack.cantidad} className="bg-white dark:bg-gray-800 rounded-2xl p-5 text-center flex flex-col">
-                  <div className="inline-flex items-center justify-center w-12 h-12 bg-accent/10 rounded-xl mb-3 mx-auto">
-                    <Zap size={22} className="text-accent" />
-                  </div>
-                  <p className="font-bold text-gray-800 dark:text-gray-100 text-lg">
-                    +{pack.cantidad.toLocaleString('es-AR')}
-                  </p>
-                  <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">comprobantes</p>
-                  <p className="text-2xl font-bold text-primary dark:text-white mt-2">
-                    ${pack.precio.toLocaleString('es-AR')}
-                  </p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">pago único · 30 días</p>
-                  <button
-                    onClick={() => handleComprarAddon(pack.cantidad)}
-                    disabled={loadingAddon !== null}
-                    className="mt-auto flex items-center justify-center gap-2 w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all text-sm disabled:opacity-60"
-                  >
-                    {loadingAddon === pack.cantidad
-                      ? <><RefreshCw size={15} className="animate-spin" /> Redirigiendo...</>
-                      : <><Zap size={15} /> Comprar</>}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* Modal de baja bloqueada del BATCH (REGLA #0: desactivar, no eliminar). Lista TODAS
             las dimensiones donde el uso activo excede el límite resultante del batch. */}

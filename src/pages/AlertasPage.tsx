@@ -1,6 +1,6 @@
 // ─── AlertasPage ──────────────────────────────────────────────────────────────
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX, ShoppingCart, Vault } from 'lucide-react'
+import { AlertTriangle, CheckCircle, Clock, Tag, DollarSign, MapPin, Truck, CalendarX, ShoppingCart, Vault, Bell } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -349,7 +349,9 @@ export default function AlertasPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-primary">Alertas</h1>
+        <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+          <Bell size={22} className="text-accent" /> Alertas
+        </h1>
         <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{totalAlertas} alerta{totalAlertas !== 1 ? 's' : ''} activa{totalAlertas !== 1 ? 's' : ''}</p>
       </div>
 

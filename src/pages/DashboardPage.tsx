@@ -4,7 +4,7 @@ import {
   Package, AlertTriangle, ArrowDown, TrendingUp, TrendingDown,
   ShoppingCart, DollarSign, CheckCircle, Zap, ChevronRight, Clock, BarChart2,
   ChevronDown, ChevronUp, Truck, Hourglass, Lock,
-  Wallet, Flame, Calculator, Activity, SlidersHorizontal, X,
+  Wallet, Flame, Calculator, Activity, SlidersHorizontal, X, LayoutDashboard,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -665,7 +665,9 @@ export default function DashboardPage() {
 
       {/* ── Row 1 — Header + Area tabs ─────────────────────────────────────────── */}
       <div className="space-y-3">
-        <h1 className="text-2xl font-bold text-primary">{tenant?.nombre ?? 'Dashboard'}</h1>
+        <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+          <LayoutDashboard size={22} className="text-accent" /> {tenant?.nombre ?? 'Dashboard'}
+        </h1>
 
         {/* F3 — sugerencia de modo avanzado según tipo de comercio */}
         {mostrarSugerenciaWms && (

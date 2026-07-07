@@ -149,7 +149,7 @@ export default function SucursalesPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Building2 size={24} className="text-primary dark:text-blue-400" />
+          <Building2 size={24} className="text-accent" />
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Sucursales</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">Gestioná las sucursales y tarifas de envío</p>

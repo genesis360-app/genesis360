@@ -998,7 +998,9 @@ export default function ProductosPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Productos</h1>
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            <Package size={22} className="text-accent" /> Productos
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{productos.length} productos registrados</p>
         </div>
         <div className="flex gap-2">

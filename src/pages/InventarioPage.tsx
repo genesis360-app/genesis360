@@ -6,7 +6,7 @@ import {
   User, Clock, Package, TrendingDown, TrendingUp, AlertTriangle, Camera,
   MapPin, Tag, Settings2, ExternalLink, Combine, Trash2, ChevronUp, Play, RotateCcw, Copy, LayoutList, Building, Upload,
   ShoppingBasket, CheckCircle2, ChevronLeft, ClipboardList, Check, SlidersHorizontal, ScanBarcode,
-  Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock, ArrowRightLeft,
+  Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock, ArrowRightLeft, Boxes,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { ActionMenu } from '@/components/ActionMenu'
@@ -2385,7 +2385,9 @@ export default function InventarioPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Inventario</h1>
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            <Boxes size={22} className="text-accent" /> Inventario
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             {tab === 'inventario' ? 'Líneas de stock y LPNs' :
              tab === 'agregar' ? 'Ingresá mercadería al stock' :

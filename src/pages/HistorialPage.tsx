@@ -354,7 +354,7 @@ export default function HistorialPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <ClipboardList size={22} /> Historial de actividad
+            <ClipboardList size={22} className="text-accent" /> Historial de actividad
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Todo lo que pasó en tu negocio — quién, qué, cuándo</p>
         </div>

@@ -1846,7 +1846,7 @@ export default function VentasPage() {
         notas: v.notas ?? null,
       })
       if (error) throw error
-      toast.success('Plantilla recurrente creada')
+      toast.success('Plantilla creada — la vas a encontrar en el botón "Recurrentes" arriba a la derecha')
       setConvertirRecModal(null); setRecNombre('')
       qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
     } catch (e: any) {
@@ -4265,10 +4265,12 @@ export default function VentasPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Ventas</h1>
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            <ShoppingCart size={22} className="text-accent" /> Ventas
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Registrá y gestioná tus ventas</p>
         </div>
-        {!esContador && (
+        {!esContador && (recurrentes as any[]).length > 0 && (
           <button onClick={() => setRecPanelOpen(true)}
             className="relative flex items-center gap-2 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 px-3 sm:px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
             <RotateCcw size={15} /> <span className="hidden sm:inline">Recurrentes</span>

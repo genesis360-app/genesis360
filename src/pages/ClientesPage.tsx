@@ -823,7 +823,9 @@ export default function ClientesPage() {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Clientes</h1>
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            <Users size={22} className="text-accent" /> Clientes
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{clientes.length} registrado{clientes.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="flex gap-2">

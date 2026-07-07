@@ -9,7 +9,21 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 5 de Julio, 2026
+**Última actualización:** 6 de Julio, 2026
+
+---
+
+## v1.115.0 — 🧩 Batch de add-ons con cobro por delta + pricing v2 COMPROBANTES (PROD ✅, migs 258-259 + 3 EFs)
+
+**Contexto:** el add-on fijo "un click = un cobro" (`mp-addon-fijo`, v1.106-v1.114) se validó e2e con Fede el 2026-07-05 pero GO **descartó esa lógica** y pidió un rediseño BATCH (diseño cerrado con decisiones Q1-Q4 en `wiki/features/configurador-addons-batch.md`).
+
+**Panel único "Armá tu plan" en `/suscripcion`:** se elimina el segundo panel "Ampliá tu plan con add-ons"; al entrar, el toggle queda preseleccionado en el plan actual + add-ons activos tildados + total = lo que viene pagando. El usuario arma el cambio libremente (un pack por dimensión) y **nada se aplica hasta "Confirmar"** (batch). Al confirmar: **suba del recurrente → paga SOLO la diferencia HOY** (preference de pago único; el webhook aplica el cambio recién cuando MP confirma el pago, fail-closed) y el recurrente pasa al total nuevo desde el próximo ciclo; **baja o neutro → sin cobro**, `PUT` inmediato del recurrente + aviso "tu próxima factura del DD/MM llega por $X". **Guard de baja a nivel batch:** antes de confirmar se compara el uso activo real (SKU/usuarios/sucursales) contra el límite resultante del batch objetivo — si excede, bloquea con el detalle de cuánto desactivar (para SKU: "desactivar ≠ eliminar").
+
+**Pricing v2 — COMPROBANTES reemplaza a movimientos:** toda venta finalizada del mes (ticket o factura AFIP, presupuestos y canceladas NO cuentan) = 1 comprobante. Básico **6.000/mes** · Pro **14.000/mes** · packs **+1.000=$10.000 · +5.000=$30.000 · +10.000=$50.000** (fijo Y temporal — el add-on temporal pasa de movimientos a comprobantes). Enforcement **SOFT** (banner de upsell al 80%, aviso fuerte+email al 100%, la venta SIEMPRE sale — coherente con la decisión F3b de nunca frenar un cobro en el mostrador). Movimientos pasa a **-1 (ilimitado/telemetría)**.
+
+**Implementación:** **mig 258** (`addon_batch_changes` + `fn_aplicar_addon_batch` atómica + un-pack-fijo-por-dimensión + dimensión comprobantes) + **mig 259** (`fn_plan_base_limite` v2) + EF nueva **`mp-addon-batch`** (preview/confirmar, revalida todo server-side, cálculo de delta preservando descuentos del preapproval) + rama `|addonbatch|` en `mp-webhook` (claim idempotente; pagado-sin-aplicar → `fallido` + alerta a soporte) + `mp-addon` ahora vende el temporal de comprobantes + catálogo v2 en `brand.ts`/`addons.ts` + `usePlanLimits` con comprobantes + `SuscripcionPage` panel único + `PricingConfigurator` modo `app` (retorno `type=addonbatch` con poll) + espejo `mpAddonBatch.ts` + tests. `mp-addon-fijo` queda **DEPRECADO** (la UI ya no lo llama; se borra en una limpieza futura).
+
+**Deploy:** migs 258-259 (DEV+PROD) + EFs `mp-addon-batch`/`mp-addon`/`mp-webhook` (DEV+PROD) + frontend (Vercel main) + release v1.115.0. PR #272. **924 unit verdes.** UAT §10.b nuevo (MP-B1..B8). **🟠 Pendiente:** test e2e GO+Fede del batch (suba con delta + baja + guard); deprecar `mp-addon-fijo`; Fase 2 = cambio de PLAN por el toggle.
 
 ---
 

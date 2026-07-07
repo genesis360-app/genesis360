@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -2323,7 +2323,9 @@ export default function ConfigPage() {
     <div className="max-w-5xl mx-auto space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Configuración</h1>
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            <Settings size={22} className="text-accent" /> Configuración
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Administrá los datos de tu negocio</p>
         </div>
         <Link to="/configuracion/importar"

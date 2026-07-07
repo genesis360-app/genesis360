@@ -318,7 +318,9 @@ export default function UsuariosPage() {
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-primary">Usuarios</h1>
+          <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+            <Shield size={22} className="text-accent" /> Usuarios
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná el equipo de tu negocio</p>
         </div>
         {canManage && !showInvitar && (

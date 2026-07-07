@@ -13,6 +13,10 @@ updated: 2026-05-29
 
 ---
 
+## v1.117.0 — 🤖 Asistente IA: conocimiento desde el wiki + contexto real del usuario (Fases 1+2; EF en DEV, pendiente OK a PROD)
+
+Reescritura del Asistente IA del header (antes: prompt estático desactualizado que inventaba botones y desconocía modo básico/roles). Ahora: conocimiento **generado desde `app-reference.md`** (`npm run ai:knowledge` → 44 secciones, commiteado) + **contexto real del usuario** (rol, modo, plan, ruta, menú visible calculado con `navVisibility`) + guardrails anti-alucinación + Llama 3.3 70B. Espejo `src/lib/aiAssistant.ts` (11 tests). Validado e2e en DEV con CAJERO modo básico. Detalle: `wiki/features/asistente-ia.md`. Paso 5 nuevo en el checklist de deploy.
+
 ## v1.116.0 — 🎨 UI polish: íconos de página + tab Historial de Gastos + Recurrentes condicional (PROD ✅, frontend-only)
 
 Sin migraciones ni EFs. PR #273 + release v1.116.0.

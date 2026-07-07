@@ -6,6 +6,17 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-07] update | 🤖 v1.117.0 (DEV) — Asistente IA reescrito: conocimiento desde el wiki + contexto real del usuario (Fases 1+2)
+
+**Qué:** GO preguntó cómo funciona el Asistente IA del header y reportó que "manda a botones del sidebar que no existen". Diagnóstico: la EF `ai-assistant` respondía desde un **prompt estático hardcodeado** (desactualizado: tabs viejos de Gastos, sin noción de modo Básico/Avanzado ni de roles → guiaba a módulos que el usuario no ve) con Llama 3.1 8B. **Rediseño en 4 fases** (diseño en `wiki/features/asistente-ia.md`); esta sesión implementó **Fase 1+2**:
+
+- **Fase 1 — conocimiento generado desde el wiki:** `scripts/build-ai-knowledge.mjs` (`npm run ai:knowledge`) parsea `app-reference.md` → `knowledge.generated.ts` (44 secciones con keywords/sinónimos es-AR; sanity checks anti-formato-roto). El wiki es la única fuente. **⚠ nuevo paso 5 del checklist de deploy (CLAUDE.md):** si se tocó `app-reference.md` → regenerar + redeploy EF.
+- **Fase 2 — contexto real del usuario:** `AppLayout` comparte el ctx de `navVisibility` (la misma lógica del sidebar real) y `AiAssistant.tsx` manda `{rol, modoAvanzado, plan, ruta, módulos visibles+bloqueadoPorPlan}`; la EF arma el prompt dinámico (secciones de la ruta actual + top por score, tope 14k chars) con reglas anti-alucinación (menú EXACTO del usuario; módulos que no ve → "lo gestiona el DUEÑO"; off-topic siempre declinado; sin respuesta → reporte a soporte). Modelo → **Llama 3.3 70B** (Groq free), temp 0.2. Backward-compatible (sin contexto → fallback conservador).
+- **Espejo + tests:** `src/lib/aiAssistant.ts` + `tests/unit/aiAssistant.test.ts` (11 tests) — patrón ccLogic. **935 unit · tsc · build verdes.**
+- **Validación e2e en DEV (login real CAJERO modo básico):** "¿cómo emito una factura?" → guió por Ventas→Historial→"Emitir factura AFIP" (real) aclarando que la config AFIP la hace el DUEÑO; off-topic declinado 2/2. Gotcha free tier: 2 requests en el mismo minuto pueden dar 429 (12k TPM) — a ritmo humano no pasa.
+
+**Estado deploy:** EF `ai-assistant` **deployada en DEV** ✅. **🟠 PENDIENTE OK GO:** deploy EF a PROD + merge PR v1.117.0 (frontend inocuo sin la EF nueva: el contexto extra es ignorado por la EF vieja).
+
 ## [2026-07-07] deploy | 🎨 v1.116.0 EN PROD — UI polish (íconos de página, tab Historial de Gastos, Recurrentes condicional) + avance cambio de cuenta MP (bloqueado por token)
 
 **Qué (código, frontend-only, PR #273 + release v1.116.0, sin migs ni EFs):** (1) **íconos de módulo en los títulos de página** — los mismos del menú lateral, `text-accent` — en Dashboard, Productos, Inventario, Ventas, Gastos, Caja, Clientes, Alertas, Reportes, Usuarios y Configuración; color unificado en Historial (sin color) y Sucursales (azul); (2) **Gastos**: tab Historial reubicado entre Cheques y Reportes; (3) **Ventas**: GO preguntó qué era el botón "Recurrentes" (paridad Xubio, mig 213, no salió del relevamiento) → decisión: la feature QUEDA pero el botón de la toolbar solo aparece si el tenant tiene plantillas (documentado en `wiki/features/ventas-pos.md`, sección nueva); (4) limpieza: borrado `src/pages/AppLayout.tsx` huérfano ("StockApp" hardcodeado, nadie lo importaba). 924 unit · tsc · build verdes.

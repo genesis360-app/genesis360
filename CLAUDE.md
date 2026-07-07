@@ -88,6 +88,7 @@ Objetivo: evitar consumo innecesario de tokens leyendo código que ya está resu
 2. PR `dev → main` con título `vX.Y.Z — Descripción`
 3. GitHub release sobre `main` con tag `vX.Y.Z`
 4. Actualizar `G360.Wiki/sources/raw/project_pendientes.md` + `G360.Wiki/log.md` + `G360.Wiki/wiki/business/roadmap.md`
+5. Si la sesión tocó `G360.Wiki/wiki/overview/app-reference.md` → `npm run ai:knowledge` + redeploy EF `ai-assistant` (DEV y PROD) — el Asistente IA aprende del wiki solo al redeployar
 
 ## Supabase
 

@@ -209,6 +209,24 @@ export function AppLayout() {
   // quedar en "Todas" y el stock reingresado (devolución/anulación) "desaparecía" de la vista.
   const sucursalUnicaBasico = !modoAvanzado && sucursales.length === 1
 
+  // Contexto de visibilidad del nav — compartido entre el render del sidebar y el
+  // Asistente IA (que le pasa a la EF el menú REAL que ve este usuario).
+  const navVisibilityCtx = {
+    rol: user?.rol,
+    permisosCustom: user?.permisos_custom,
+    modoAvanzado,
+    rrhhPortalEmpleado: (tenant as any)?.rrhh_portal_empleado,
+    facturacionHabilitada: (tenant as any)?.facturacion_habilitada,
+    sucursalesCount: sucursales.length,
+  }
+  const modulosVisibles = navItems
+    .filter((item: any) => navItemVisible(item, navVisibilityCtx))
+    .map((item: any) => ({
+      label: item.label as string,
+      ruta: item.to as string,
+      ...(navItemLocked(item, limits as any) ? { bloqueadoPorPlan: true } : {}),
+    }))
+
   // Auto-seleccionar la primera sucursal si nunca se configuró preferencia
   useEffect(() => {
     const saved = localStorage.getItem('sucursal-id')
@@ -295,14 +313,7 @@ export function AppLayout() {
         <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-2'}`}>
           {navItems.map((item: any) => {
             const { to, icon: Icon, label, badge, modulo } = item
-            if (!navItemVisible(item, {
-              rol: user?.rol,
-              permisosCustom: user?.permisos_custom,
-              modoAvanzado,
-              rrhhPortalEmpleado: (tenant as any)?.rrhh_portal_empleado,
-              facturacionHabilitada: (tenant as any)?.facturacion_habilitada,
-              sucursalesCount: sucursales.length,
-            })) return null
+            if (!navItemVisible(item, navVisibilityCtx)) return null
             const locked = navItemLocked(item, limits as any)
             return (
               <NavLink
@@ -514,7 +525,12 @@ export function AppLayout() {
             <RefreshButton className={hBtn} />
 
             {/* Notificaciones */}
-            <AiAssistant className={hBtn} />
+            <AiAssistant className={hBtn} contexto={{
+              rol: user?.rol ?? '',
+              modoAvanzado,
+              plan: (tenant as any)?.plan ?? undefined,
+              modulos: modulosVisibles,
+            }} />
             <NotificacionesButton className={hBtn} />
 
             {/* Dark / Light */}

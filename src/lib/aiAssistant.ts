@@ -1,27 +1,26 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { KNOWLEDGE_SECTIONS, type KnowledgeSection } from './knowledge.generated.ts'
+// ─── Espejo puro de la EF ai-assistant (selección de conocimiento + prompt) ───
+// La EF supabase/functions/ai-assistant/index.ts contiene ESTA MISMA lógica
+// (copiada — Deno no importa de src/). Si cambiás algo acá, cambialo allá.
+// El conocimiento lo genera scripts/build-ai-knowledge.mjs desde el wiki.
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+export interface KnowledgeSection {
+  id: string
+  titulo: string
+  ruta: string | null
+  keywords: string[]
+  contenido: string
 }
 
-const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const MODEL = 'llama-3.3-70b-versatile'
-const MAX_KNOWLEDGE_CHARS = 14000
-
-interface ContextoUsuario {
+export interface ContextoUsuario {
   rol?: string
   modoAvanzado?: boolean
   plan?: string
   ruta?: string
-  // Lo que el usuario VE en su sidebar (calculado por el frontend con navVisibility — la misma
-  // lógica que renderiza el menú real). Es solo para guiar; no otorga permisos (RLS manda).
   modulos?: { label: string; ruta: string; bloqueadoPorPlan?: boolean }[]
 }
 
-// ── Selección de conocimiento (espejo testeado en src/lib/aiAssistant.ts) ──────
+export const MAX_KNOWLEDGE_CHARS = 14000
+
 const norm = (s: string) =>
   s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
 
@@ -64,7 +63,11 @@ export function seleccionarSecciones(
   return elegidas
 }
 
-export function construirSystemPrompt(ctx: ContextoUsuario | undefined, textoUsuario: string): string {
+export function construirSystemPrompt(
+  secciones: KnowledgeSection[],
+  ctx: ContextoUsuario | undefined,
+  textoUsuario: string,
+): string {
   const partes: string[] = []
 
   partes.push(`Sos el asistente integrado de Genesis360, un sistema de gestión para negocios argentinos (stock, ventas, caja, facturación AFIP/ARCA, clientes, gastos). Guiás a los usuarios por la app y los ayudás a reportar problemas.
@@ -93,13 +96,13 @@ ${menu}`)
 No se recibió el contexto (app desactualizada). No asumas qué módulos ve: preguntale su rol y si usa modo básico o avanzado antes de indicar rutas del menú.`)
   }
 
-  const secciones = seleccionarSecciones(KNOWLEDGE_SECTIONS, ctx?.ruta, textoUsuario)
-  if (secciones.length) {
+  const elegidas = seleccionarSecciones(secciones, ctx?.ruta, textoUsuario)
+  if (elegidas.length) {
     partes.push('## CONOCIMIENTO (extraído de la documentación oficial — tu única fuente sobre la UI)\n\n' +
-      secciones.map(s => `### ${s.titulo}${s.ruta ? ` (${s.ruta})` : ''}\n${s.contenido}`).join('\n\n'))
+      elegidas.map(s => `### ${s.titulo}${s.ruta ? ` (${s.ruta})` : ''}\n${s.contenido}`).join('\n\n'))
   }
 
-  const indice = KNOWLEDGE_SECTIONS
+  const indice = secciones
     .filter(s => s.ruta)
     .map(s => `${s.titulo} (${s.ruta})`)
     .join(' · ')
@@ -115,62 +118,3 @@ Si el usuario quiere reportar un problema, preguntale de forma conversacional (d
 
   return partes.join('\n\n')
 }
-
-serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405, headers: corsHeaders })
-
-  const authHeader = req.headers.get('Authorization')
-  if (!authHeader) return new Response('Unauthorized', { status: 401, headers: corsHeaders })
-
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_ANON_KEY')!,
-    { global: { headers: { Authorization: authHeader } } }
-  )
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) return new Response('Unauthorized', { status: 401, headers: corsHeaders })
-
-  const { messages, contexto } = await req.json()
-  if (!Array.isArray(messages) || messages.length === 0) {
-    return new Response('Bad request', { status: 400, headers: corsHeaders })
-  }
-
-  const groqKey = Deno.env.get('GROQ_API_KEY')
-  if (!groqKey) {
-    return new Response(JSON.stringify({ error: 'Asistente no configurado' }), {
-      status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  // Texto para retrieval: últimos 2 mensajes del usuario (la consulta vigente + su contexto corto)
-  const userTexts = messages.filter((m: any) => m?.role === 'user').map((m: any) => String(m.content ?? ''))
-  const textoUsuario = userTexts.slice(-2).join('\n')
-  const systemPrompt = construirSystemPrompt(contexto, textoUsuario)
-
-  const groqRes = await fetch(GROQ_URL, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [{ role: 'system', content: systemPrompt }, ...messages.slice(-12)],
-      max_tokens: 700,
-      temperature: 0.2,
-    }),
-  })
-
-  if (!groqRes.ok) {
-    const err = await groqRes.text()
-    console.error('Groq error:', err)
-    return new Response(JSON.stringify({ error: 'Error al consultar el asistente. Intentá de nuevo.' }), {
-      status: 502, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  }
-
-  const data = await groqRes.json()
-  const reply = data.choices?.[0]?.message?.content ?? 'No pude generar una respuesta. Intentá de nuevo.'
-
-  return new Response(JSON.stringify({ reply }), {
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  })
-})

@@ -172,6 +172,12 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 
 - En el detalle de un presupuesto **no vencido** hay un botón "Actualizar presupuesto (precios + validez)" que recrea con precios actuales y **resetea el contador de validez** (vía `updated_at`, base de `isPresupuestoVencido`). La validez sigue siendo `tenants.presupuesto_validez_dias` (config existente).
 
+## Facturas recurrentes (plantillas · mig 213)
+
+- Origen: paridad Xubio (Comprobantes 2.0). **Plantillas de venta que se repiten**: desde el detalle de una venta, "Convertir en recurrente" guarda un snapshot de los ítems + frecuencia (semanal a anual) + cliente en `ventas_recurrentes`. Helpers puros en `src/lib/ventasRecurrentes.ts`.
+- El botón **"Recurrentes"** de la toolbar abre el panel de plantillas, con badge de vencidas (`proximo_at <= hoy`). **Desde v1.116.0 el botón solo aparece si el tenant tiene al menos una plantilla** (toolbar limpia para quien no usa la feature; el punto de entrada es "Convertir en recurrente").
+- "Generar" crea un **PRESUPUESTO** (`pendiente`) y corre `proximo_at` al ciclo siguiente. Generación 100% manual (sin cron); **nunca toca stock/caja/AFIP** por sí sola — el presupuesto se revisa, finaliza y factura como cualquier venta.
+
 ## Precios mayoristas por cantidad (G1/G2)
 
 - Cada producto puede tener **tiers** en `producto_precios_mayorista` (`cantidad_minima` + `precio` + etiqueta), editables en el form de producto (accordion "Precios mayoristas", solo `canEdit`).

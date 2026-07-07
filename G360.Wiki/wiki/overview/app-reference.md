@@ -82,7 +82,7 @@ Genesis360 es el **sistema operativo del negocio físico**. No solo muestra dato
   - **Sin selector** (Sucursales, Usuarios).
   - Usuarios sin `puedeVerTodas`: ven siempre un label fijo con su sucursal asignada (sin dropdown).
 - **Refresh manual**: recarga datos de la página actual sin recargar la SPA
-- **Asistente IA** (ícono chat): panel flotante de chat con Groq/Llama 3.1 (gratis, 14.400 req/día). Responde preguntas sobre la app, guía al usuario por los módulos. Tiene flujo de bug report que envía la conversación formateada al admin por email.
+- **Asistente IA** (ícono chat): panel flotante de chat con Groq/Llama 3.3 70B. Su conocimiento se genera desde ESTE documento (`npm run ai:knowledge`) y recibe el contexto real del usuario (rol, modo, menú visible, pantalla actual) para no indicar UI inexistente — detalle en `wiki/features/asistente-ia.md`. Tiene flujo de bug report que envía la conversación a soporte por email.
 - **Campana de notificaciones**: muestra alertas de stock crítico y cuotas de CC vencidas. Badge con contador de no leídas.
 - **Dark/Light mode**
 - **Botón ayuda** (ícono `?`): abre `/ayuda`
@@ -182,11 +182,13 @@ Caja registradora principal. Permite ventas, presupuestos y devoluciones.
 
 Registro y seguimiento de todos los gastos del negocio.
 
-**Tabs:**
-- **Gastos**: listado de gastos variables del período (filtrado por sucursal activa)
-- **Fijos**: gastos recurrentes configurados (alquiler, servicios, etc.)
-- **OC**: órdenes de compra pendientes de pago (filtradas por sucursal activa via `ordenes_compra.sucursal_id`)
+**Tabs** (orden v1.116.0):
+- **Gastos variables**: listado de gastos variables del período (filtrado por sucursal activa)
+- **Gastos fijos**: gastos recurrentes configurados (alquiler, servicios, etc.)
+- **OC** (modo avanzado): órdenes de compra pendientes de pago (filtradas por sucursal activa via `ordenes_compra.sucursal_id`)
+- **Cheques**: cheques emitidos/recibidos (badge de próximos a cobrar)
 - **Historial**: todos los gastos con filtro de rango de fechas
+- **Reportes** (modo avanzado) · **Recursos** (modo avanzado) · **Autorizaciones** (roles aprobadores) · **Cierres contables** (según permiso)
 
 **Gastos variables — acciones:**
 - **+ Nuevo gasto** (esquina superior derecha): modal con título, monto, categoría de gasto, proveedor opcional, fecha, notas, medio de pago, sucursal

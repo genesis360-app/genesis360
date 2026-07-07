@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useLocation } from 'react-router-dom'
 import { Bot, X, Send, AlertCircle, RotateCcw, CheckCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -6,6 +7,14 @@ import { useAuthStore } from '@/store/authStore'
 interface Message {
   role: 'user' | 'assistant'
   content: string
+}
+
+/** Contexto real del usuario (rol/modo/menú visible) que la EF usa para no inventar UI. */
+export interface AsistenteContexto {
+  rol: string
+  modoAvanzado: boolean
+  plan?: string
+  modulos: { label: string; ruta: string; bloqueadoPorPlan?: boolean }[]
 }
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
@@ -17,8 +26,9 @@ const QUICK_ACTIONS = [
   { label: '¿Qué roles existen?', prompt: '¿Qué roles de usuario existen y qué puede hacer cada uno?' },
 ]
 
-export function AiAssistant({ className = '' }: { className?: string }) {
+export function AiAssistant({ className = '', contexto }: { className?: string; contexto?: AsistenteContexto }) {
   const { user, tenant } = useAuthStore()
+  const { pathname } = useLocation()
   const [open, setOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
@@ -73,7 +83,10 @@ export function AiAssistant({ className = '' }: { className?: string }) {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({
+          messages: newMessages,
+          contexto: contexto ? { ...contexto, ruta: pathname } : undefined,
+        }),
       })
       const data = await res.json()
       setMessages(prev => [...prev, { role: 'assistant', content: data.reply ?? 'Error al responder.' }])

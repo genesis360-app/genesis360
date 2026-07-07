@@ -9,9 +9,22 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 6 de Julio, 2026
+**Última actualización:** 7 de Julio, 2026
 
 ---
+
+## v1.117.0 — 🤖 Asistente IA: conocimiento desde el wiki + contexto real del usuario (Fases 1+2; EF en DEV, pendiente OK a PROD)
+
+Reescritura del Asistente IA del header (antes: prompt estático desactualizado que inventaba botones y desconocía modo básico/roles). Ahora: conocimiento **generado desde `app-reference.md`** (`npm run ai:knowledge` → 44 secciones, commiteado) + **contexto real del usuario** (rol, modo, plan, ruta, menú visible calculado con `navVisibility`) + guardrails anti-alucinación + Llama 3.3 70B. Espejo `src/lib/aiAssistant.ts` (11 tests). Validado e2e en DEV con CAJERO modo básico. Detalle: `wiki/features/asistente-ia.md`. Paso 5 nuevo en el checklist de deploy.
+
+## v1.116.0 — 🎨 UI polish: íconos de página + tab Historial de Gastos + Recurrentes condicional (PROD ✅, frontend-only)
+
+Sin migraciones ni EFs. PR #273 + release v1.116.0.
+
+- **Íconos de módulo en los títulos de página** (los mismos del menú lateral, `text-accent`): Dashboard, Productos, Inventario, Ventas, Gastos, Caja, Clientes, Alertas, Reportes, Usuarios y Configuración. Color unificado en Historial (estaba sin color) y Sucursales (estaba en azul).
+- **Gastos**: tab Historial reubicado entre Cheques y Reportes.
+- **Ventas**: botón "Recurrentes" de la toolbar visible solo si el tenant tiene plantillas (decisión GO: la feature queda, se limpia la toolbar); toast de creación indica dónde encontrarlas.
+- Limpieza: borrado `src/pages/AppLayout.tsx` huérfano (el real es `components/layout/AppLayout.tsx`).
 
 ## v1.115.0 — 🧩 Batch de add-ons con cobro por delta + pricing v2 COMPROBANTES (PROD ✅, migs 258-259 + 3 EFs)
 

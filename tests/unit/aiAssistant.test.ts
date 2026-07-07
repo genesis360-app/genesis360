@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  scoreSeccion, seleccionarSecciones, construirSystemPrompt,
+  scoreSeccion, seleccionarSecciones, construirSystemPrompt, esReintentable,
   type KnowledgeSection, type ContextoUsuario,
 } from '@/lib/aiAssistant'
 
@@ -28,6 +28,26 @@ describe('scoreSeccion', () => {
   it('ignora keywords cortas (<4) para evitar falsos positivos', () => {
     const s = sec({ keywords: ['cc'] })
     expect(scoreSeccion(s, 'la cc del cliente')).toBe(0)
+  })
+
+  it('nombrar el módulo por su título suma boost (aunque no haya keywords)', () => {
+    const FACT = sec({ titulo: 'Facturación', keywords: [] })
+    expect(scoreSeccion(FACT, '¿dónde está facturación?')).toBe(2)
+  })
+
+  it('el boost de título recorta lo que sigue a "(" y "/"', () => {
+    // "Ventas / POS" → boost por "ventas" solo
+    expect(scoreSeccion(sec({ titulo: 'Ventas / POS', keywords: [] }), 'el módulo de ventas')).toBe(2)
+  })
+})
+
+describe('esReintentable (fallback de modelo)', () => {
+  it('429 y 5xx reintentan; 4xx comunes no', () => {
+    expect(esReintentable(429)).toBe(true)
+    expect(esReintentable(500)).toBe(true)
+    expect(esReintentable(503)).toBe(true)
+    expect(esReintentable(400)).toBe(false)
+    expect(esReintentable(401)).toBe(false)
   })
 })
 
@@ -88,6 +108,18 @@ describe('construirSystemPrompt', () => {
     expect(p).toContain('Ventas / POS')
     expect(p).toContain('NUNCA inventes botones')
     expect(p).toContain('Enviar reporte al equipo')
+  })
+
+  it('marca las secciones de módulos que el usuario NO ve (anti "andá a Inventario" a un CAJERO)', () => {
+    const p = construirSystemPrompt(TODAS, ctx, 'cuánto stock tengo')
+    // Inventario matchea por keyword pero no está en el menú del CAJERO → lleva el aviso
+    const idx = p.indexOf('### Inventario')
+    expect(idx).toBeGreaterThan(-1)
+    // El aviso va en la línea inmediata al header de la sección
+    expect(p.slice(idx).split('\n')[1]).toContain('NO ESTÁ EN EL MENÚ DE ESTE USUARIO')
+    // Ventas SÍ está en su menú → sin aviso
+    const idxV = p.indexOf('### Ventas / POS')
+    expect(p.slice(idxV).split('\n')[1]).not.toContain('NO ESTÁ EN EL MENÚ')
   })
 
   it('sin contexto: fallback que instruye a NO asumir el menú', () => {

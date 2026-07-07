@@ -206,6 +206,7 @@ Plan de escenarios testeables por módulo, generado por el agente `spec-extracto
 - `tests/specs/caja.plan.md` — 38 escenarios de Caja (arqueo de cierre/apertura, umbral de alerta, ajuste de traspaso, matriz de permisos J3/B5/B6).
 - `tests/specs/inventario.plan.md` — 17 escenarios de conversión de unidades (kg↔gr / lt↔ml).
 - `tests/specs/ventas.plan.md` — 22 escenarios de gaps de Ventas (descuento de combo, visibilidad de costo G4, umbral de gasto + cadena de aprobación).
+- `tests/specs/asistente-ia.plan.md` — 9 preguntas doradas del Asistente IA (guía dentro del menú del usuario, off-topic, prompt injection, honestidad). Semiautomático: `npm run ai:smoke` contra DEV con login real; criterios evaluados a ojo (respuestas LLM no determinísticas). Ver [[wiki/features/asistente-ia]].
 
 ## Funciones puras en `cajaArqueo.ts` (arqueo de Caja · v1.23.2)
 

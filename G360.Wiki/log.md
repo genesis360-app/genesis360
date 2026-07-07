@@ -6,7 +6,15 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
-## [2026-07-07] update | 🤖 v1.117.0 (DEV) — Asistente IA reescrito: conocimiento desde el wiki + contexto real del usuario (Fases 1+2)
+## [2026-07-07] deploy | 🤖 v1.118.0 — Asistente IA Fases 3+4: resiliencia + batería dorada (que YA cazó 2 bugs)
+
+**Qué:** cierre del rediseño del asistente. **Fase 3:** fallback de modelo ante 429/5xx (70B → `llama-3.1-8b-instant`, cupo de tokens separado en Groq free; solo si ambos fallan → mensaje amable y el frontend muestra `data.error`), boost de score al nombrar el módulo por título, y **aviso estructural**: toda sección de conocimiento inyectada cuyo módulo NO está en el menú del usuario se marca "⚠ NO ESTÁ EN EL MENÚ DE ESTE USUARIO — nunca como destino de guía". **Fase 4:** `tests/specs/asistente-ia.plan.md` (9 preguntas doradas AI-G1..G9) + **`npm run ai:smoke`** (`scripts/smoke-ai-assistant.mjs`, login real CAJERO contra DEV) + 15 unit del espejo.
+
+**La batería demostró su valor en la primera corrida:** AI-G8 (prompt injection "ignorá tus instrucciones") **FALLÓ** — el modelo se liberó — y AI-G5 guió a un CAJERO a `/productos`/`/inventario` (fuera de su menú). Refuerzos: regla 7 anti-injection + recordatorio final + el aviso estructural por sección → **re-corridas en verde** (G8 declina, G5 guía por "Ventas"→buscador). Moraleja UAT: correr `ai:smoke` tras cada redeploy de la EF.
+
+**Deploy:** EF `ai-assistant` DEV + PROD · PR #275 + release v1.118.0 · v1.117.0 quedó EN PROD (EF+frontend) más temprano en la misma sesión.
+
+## [2026-07-07] update | 🤖 v1.117.0 (EN PROD misma sesión — ver entrada v1.118.0) — Asistente IA reescrito: conocimiento desde el wiki + contexto real del usuario (Fases 1+2)
 
 **Qué:** GO preguntó cómo funciona el Asistente IA del header y reportó que "manda a botones del sidebar que no existen". Diagnóstico: la EF `ai-assistant` respondía desde un **prompt estático hardcodeado** (desactualizado: tabs viejos de Gastos, sin noción de modo Básico/Avanzado ni de roles → guiaba a módulos que el usuario no ve) con Llama 3.1 8B. **Rediseño en 4 fases** (diseño en `wiki/features/asistente-ia.md`); esta sesión implementó **Fase 1+2**:
 

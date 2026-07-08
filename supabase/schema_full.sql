@@ -78,6 +78,12 @@ CREATE TABLE tenants (
   plan_tier                 TEXT NOT NULL DEFAULT 'free'        -- mig 251 — tier del plan (fuente de verdad, desacoplado de max_users)
     CHECK (plan_tier IN ('free','basico','pro','enterprise')),
   primera_compra_at         TIMESTAMPTZ,                        -- mig 260 — primera activación PAGA (trigger fn_set_primera_compra); arrepentimiento = +10 días
+  billing_mode              TEXT NOT NULL DEFAULT 'auto'        -- mig 262 — 'auto' (MP recurrente, -10%) | 'manual' (lista, mes a mes)
+    CHECK (billing_mode IN ('auto','manual')),
+  manual_monto_mensual      NUMERIC(12,2),                       -- mig 262 — precio de lista congelado al pasar a manual
+  manual_paid_until         TIMESTAMPTZ,                         -- mig 262 — hasta cuándo está pago (modo manual)
+  manual_ultimo_recordatorio_tipo TEXT,                          -- mig 262 — dedupe de emails del sweep
+  manual_ultimo_recordatorio_at   TIMESTAMPTZ,                   -- mig 262
   created_at                TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
@@ -3349,3 +3355,144 @@ REVOKE ALL ON public.billing_cancelaciones FROM PUBLIC;
 REVOKE ALL ON public.billing_cancelaciones FROM anon;
 REVOKE ALL ON public.billing_cancelaciones FROM authenticated;
 GRANT ALL ON public.billing_cancelaciones TO service_role;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Facturación de PLATAFORMA (mig 261) + Pago manual (mig 262) — plan aprobado
+-- 2026-07-08 (facturación de Fede + pago manual).
+-- ────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.platform_billers (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre               TEXT NOT NULL,
+  cuit                 BIGINT NOT NULL,
+  razon_social_fiscal  TEXT NOT NULL,
+  domicilio_fiscal     TEXT NOT NULL,
+  condicion_iva_emisor TEXT NOT NULL DEFAULT 'Monotributista'
+    CHECK (condicion_iva_emisor IN ('Monotributista','Exento','RI')),
+  punto_venta          INT NOT NULL,
+  afip_provider        TEXT NOT NULL DEFAULT 'afipsdk' CHECK (afip_provider IN ('afipsdk','propio')),
+  afipsdk_token        TEXT,
+  afip_produccion      BOOLEAN NOT NULL DEFAULT FALSE,
+  cert_crt_path        TEXT,
+  cert_key_path        TEXT,
+  umbral_facturacion_anual NUMERIC(14,2),
+  activo               BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.platform_billers ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.platform_billers FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.platform_billers TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.platform_facturas (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  biller_id           UUID NOT NULL REFERENCES public.platform_billers(id) ON DELETE RESTRICT,
+  tenant_origen_id    UUID REFERENCES public.tenants(id) ON DELETE SET NULL,
+  monto               NUMERIC(12,2) NOT NULL,
+  concepto            TEXT NOT NULL,
+  punto_venta         INT NOT NULL,
+  numero_comprobante  INT NOT NULL,
+  tipo_comprobante    TEXT NOT NULL DEFAULT 'C',
+  cae                 TEXT NOT NULL,
+  cae_vencimiento     TEXT NOT NULL,
+  afip_provider_usado TEXT NOT NULL,
+  origen_pago         TEXT NOT NULL CHECK (origen_pago IN ('mp_recurrente','mp_manual','manual_staff')),
+  payment_ref         TEXT,
+  error_detalle       TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_platform_facturas_biller_fecha ON public.platform_facturas(biller_id, created_at DESC);
+ALTER TABLE public.platform_facturas ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.platform_facturas FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.platform_facturas TO service_role;
+
+-- Idempotencia PREVIA a llamar a AFIP (claim-before-emit) — ver emitir-factura-plataforma.
+CREATE TABLE IF NOT EXISTS public.platform_facturas_claims (
+  payment_ref TEXT PRIMARY KEY,
+  claimed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.platform_facturas_claims ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.platform_facturas_claims FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.platform_facturas_claims TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.billing_manual_pagos (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  monto          NUMERIC(12,2) NOT NULL,
+  medio          TEXT NOT NULL CHECK (medio IN ('transferencia','efectivo','tarjeta_mp','otro')),
+  referencia     TEXT,
+  periodo_desde  TIMESTAMPTZ NOT NULL,
+  periodo_hasta  TIMESTAMPTZ NOT NULL,
+  registrado_por UUID REFERENCES public.support_agents(id) ON DELETE SET NULL,  -- NULL = automático (MP)
+  mp_payment_id  TEXT,
+  notas          TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_manual_pagos_mp_payment
+  ON public.billing_manual_pagos(mp_payment_id) WHERE mp_payment_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_billing_manual_pagos_tenant ON public.billing_manual_pagos(tenant_id, created_at DESC);
+ALTER TABLE public.billing_manual_pagos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY billing_manual_pagos_select ON public.billing_manual_pagos FOR SELECT
+  USING (tenant_id = public.get_user_tenant_id() OR public.is_admin());
+REVOKE ALL ON public.billing_manual_pagos FROM PUBLIC, anon;
+GRANT SELECT ON public.billing_manual_pagos TO authenticated;
+GRANT ALL ON public.billing_manual_pagos TO service_role;
+
+-- Única puerta de escritura de un pago manual — extiende manual_paid_until desde el mayor
+-- entre "ahora" y el paid_until actual, y reactiva subscription_status si estaba inactive.
+CREATE OR REPLACE FUNCTION public.fn_registrar_pago_manual(
+  p_tenant_id UUID, p_monto NUMERIC, p_medio TEXT, p_referencia TEXT,
+  p_registrado_por UUID, p_mp_payment_id TEXT, p_notas TEXT
+) RETURNS TIMESTAMPTZ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_desde TIMESTAMPTZ;
+  v_hasta TIMESTAMPTZ;
+BEGIN
+  SELECT GREATEST(now(), COALESCE(manual_paid_until, now())) INTO v_desde
+    FROM public.tenants WHERE id = p_tenant_id FOR UPDATE;
+  IF v_desde IS NULL THEN RAISE EXCEPTION 'Tenant % no encontrado', p_tenant_id; END IF;
+  v_hasta := v_desde + INTERVAL '1 month';
+
+  INSERT INTO public.billing_manual_pagos (
+    tenant_id, monto, medio, referencia, periodo_desde, periodo_hasta,
+    registrado_por, mp_payment_id, notas
+  ) VALUES (
+    p_tenant_id, p_monto, p_medio, p_referencia, v_desde, v_hasta,
+    p_registrado_por, p_mp_payment_id, p_notas
+  );
+
+  UPDATE public.tenants SET
+    manual_paid_until = v_hasta,
+    subscription_status = CASE WHEN subscription_status = 'inactive' THEN 'active' ELSE subscription_status END,
+    manual_ultimo_recordatorio_tipo = NULL,
+    manual_ultimo_recordatorio_at = NULL
+  WHERE id = p_tenant_id;
+
+  RETURN v_hasta;
+END $$;
+REVOKE ALL ON FUNCTION public.fn_registrar_pago_manual(UUID,NUMERIC,TEXT,TEXT,UUID,TEXT,TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_registrar_pago_manual(UUID,NUMERIC,TEXT,TEXT,UUID,TEXT,TEXT) TO service_role;
+
+-- Cambiar a modo manual: el monto NUNCA sale del cliente — se deriva server-side del
+-- plan_tier (espejo de PRECIO_LISTA en brand.ts). Solo el DUEÑO del tenant puede llamarla.
+CREATE OR REPLACE FUNCTION public.fn_activar_billing_manual(p_tenant_id UUID)
+RETURNS NUMERIC LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_tier TEXT;
+  v_precio NUMERIC;
+  v_es_dueño BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM public.users WHERE id = auth.uid() AND tenant_id = p_tenant_id AND rol = 'DUEÑO'
+  ) INTO v_es_dueño;
+  IF NOT v_es_dueño THEN RAISE EXCEPTION 'Solo el dueño puede cambiar el modo de pago'; END IF;
+
+  SELECT plan_tier INTO v_tier FROM public.tenants WHERE id = p_tenant_id;
+  v_precio := CASE v_tier WHEN 'basico' THEN 60000 WHEN 'pro' THEN 100000 ELSE NULL END;
+  IF v_precio IS NULL THEN RAISE EXCEPTION 'Plan % no tiene precio de lista para modo manual', v_tier; END IF;
+
+  UPDATE public.tenants SET billing_mode = 'manual', manual_monto_mensual = v_precio WHERE id = p_tenant_id;
+  RETURN v_precio;
+END $$;
+REVOKE ALL ON FUNCTION public.fn_activar_billing_manual(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fn_activar_billing_manual(UUID) TO authenticated;

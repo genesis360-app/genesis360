@@ -38,6 +38,10 @@ const ACTION_MODULE: Record<string, string> = {
   'billing.overview': 'billing',
   'billing.cancel_subscription': 'billing',
   'billing.link_subscription': 'billing',
+  'billing.manual_tenants_list': 'billing',
+  'billing.manual_record_payment': 'billing',
+  'billing.manual_history': 'billing',
+  'billing.platform_facturas_stats': 'billing',
   'crm.leads.list': 'crm',
   'crm.leads.create': 'crm',
   'crm.leads.update': 'crm',
@@ -324,6 +328,71 @@ Deno.serve(async (req) => {
         const tierFinal = mismaSubConTier ? tierDB : tier
         await audit({ tenantId, preapproval_id: preId, tier: tierFinal, prev_cancel_error })
         return json({ ok: true, tier: tierFinal, prev_cancel_error })
+      }
+
+      // ── Pago manual (billing_mode='manual') — plan aprobado 2026-07-08 ──────────
+      case 'billing.manual_tenants_list': {
+        const { data, error } = await svc.from('tenants')
+          .select('id, nombre, plan_tier, subscription_status, manual_monto_mensual, manual_paid_until')
+          .eq('billing_mode', 'manual').order('manual_paid_until', { ascending: true, nullsFirst: true })
+        if (error) throw error
+        return json({ tenants: data ?? [] })
+      }
+
+      case 'billing.manual_history': {
+        if (!p.tenantId) return json({ error: 'Falta tenantId' }, 400)
+        const { data, error } = await svc.from('billing_manual_pagos')
+          .select('id, monto, medio, referencia, periodo_desde, periodo_hasta, registrado_por, mp_payment_id, notas, created_at')
+          .eq('tenant_id', p.tenantId).order('created_at', { ascending: false }).limit(50)
+        if (error) throw error
+        return json({ pagos: data ?? [] })
+      }
+
+      case 'billing.manual_record_payment': {
+        const tenantId = String(p.tenantId ?? '')
+        const monto = Number(p.monto ?? 0)
+        const medio = String(p.medio ?? '')
+        if (!tenantId || !(monto > 0)) return json({ error: 'Faltan tenantId y monto' }, 400)
+        if (!['transferencia', 'efectivo', 'tarjeta_mp', 'otro'].includes(medio)) {
+          return json({ error: 'Medio inválido' }, 400)
+        }
+        const { data: t } = await svc.from('tenants').select('billing_mode, nombre').eq('id', tenantId).maybeSingle()
+        if (!t) return json({ error: 'Tenant no encontrado' }, 404)
+        if (t.billing_mode !== 'manual') return json({ error: 'Ese tenant no está en modo de pago manual.' }, 400)
+
+        const { data: hasta, error: rpcErr } = await svc.rpc('fn_registrar_pago_manual', {
+          p_tenant_id: tenantId, p_monto: monto, p_medio: medio,
+          p_referencia: p.referencia ?? null, p_registrado_por: uid,
+          p_mp_payment_id: null, p_notas: p.notas ?? null,
+        })
+        if (rpcErr) return json({ error: `No se pudo registrar el pago: ${rpcErr.message}` }, 500)
+
+        // Facturación automática de plataforma (fail-open: no bloquea el registro del pago).
+        try {
+          await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/emitir-factura-plataforma`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              monto, origen_pago: 'manual_staff', tenant_origen_id: tenantId,
+              payment_ref: `staff-${tenantId}-${Date.now()}`,
+              concepto: `Suscripción Genesis360 — ${t.nombre ?? tenantId} — pago manual (${medio})`,
+            }),
+          })
+        } catch (e) {
+          console.error('billing.manual_record_payment: emitir-factura-plataforma falló', e)
+        }
+
+        await audit({ tenantId, monto, medio, manual_paid_until: hasta })
+        return json({ ok: true, manual_paid_until: hasta })
+      }
+
+      case 'billing.platform_facturas_stats': {
+        const desdeAnio = new Date(new Date().getFullYear(), 0, 1).toISOString()
+        const { data, error } = await svc.from('platform_facturas')
+          .select('monto').gte('created_at', desdeAnio)
+        if (error) throw error
+        const total = (data ?? []).reduce((s: number, f: any) => s + Number(f.monto ?? 0), 0)
+        return json({ facturado_anio_actual: total, cantidad: data?.length ?? 0 })
       }
 
       case 'crm.leads.list': {

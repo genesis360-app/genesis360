@@ -35,6 +35,10 @@ export interface Tenant {
   subscription_period_end?: string | null
   // mig 260: primera activación PAGA — ventana de arrepentimiento = +10 días corridos.
   primera_compra_at?: string | null
+  // mig 262: modo de pago — 'auto' (MP recurrente, -10%) | 'manual' (lista, mes a mes).
+  billing_mode?: 'auto' | 'manual'
+  manual_monto_mensual?: number | null
+  manual_paid_until?: string | null
   logo_url?: string
   cotizacion_usd?: number
   cotizacion_usd_updated_at?: string

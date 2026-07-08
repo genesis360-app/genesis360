@@ -6,7 +6,52 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🏗 ARRANCÁ ACÁ (2026-07-07 noche · **v1.121.0 EN DEV, SIN deploy a PROD/Vercel** — Fase 2 cambio de PLAN + ARREPENTIMIENTO legal)
+> ### 🧾 ARRANCÁ ACÁ (2026-07-08 · **v1.122.0 EN DEV, SIN deploy a PROD/Vercel** — Facturación de plataforma (Fede) + pago manual + precio dual)
+> **Implementado y dejado LISTO EN DEV (mig 261+262 aplicadas en DEV · 7 EFs deployadas a DEV:
+> `emitir-factura-plataforma`/`platform-facturacion-sweep`/`billing-manual-pagar`/
+> `billing-manual-avisar-pago`/`billing-manual-sweep` NUEVAS + `mp-webhook`/`admin-api`
+> modificadas · smoke verde (incl. el import cruzado a `emitir-factura/providers.ts`
+> confirmado resuelto en runtime) · `genesis360-admin` BillingPage extendida, build verde ·
+> **970 unit +12 · tsc · build** · `schema_full.sql` al día):**
+> 1. **Facturación automática de Fede** (monotributista, CUIT `20-42237416-8`, AfipSDK vía el
+>    flag dual-provider ya existente): tabla `platform_billers` (NO es un `tenants`) +
+>    `platform_facturas` + EF `emitir-factura-plataforma` (Factura C ad-hoc, Concepto=2
+>    Servicios, fail-open ante error AFIP) + sweep `platform-facturacion-sweep` que reconcilia
+>    los cobros RECURRENTES de MP (los webhooks de renovación vienen con `external_reference`
+>    vacío — MP-W6 — así que se factura por sweep horario, no por webhook) contra
+>    `platform_facturas`. Contador "Facturado a Fede este año" en `genesis360-admin` para
+>    vigilar el techo de Categoría A.
+> 2. **Motor de pago manual** (`tenants.billing_mode`): alternativa a la suscripción MP
+>    automática (-10%) a precio de lista, mes a mes. 3 formas de pagar (MP pago único /
+>    transferencia+"avisé que pagué" / carga manual de staff), todas disparan la factura de
+>    Fede. Sweep de vencimiento (`billing-manual-sweep`) con recordatorios 5d/1d + gracia 5d +
+>    suspensión. **El gate de acceso sigue siendo `subscription_status`** — cero cambios en
+>    `SubscriptionGuard`/`accesoSuscripcion.ts`.
+> 3. **Precio dual visible en toda la app**: Landing, `/suscripcion` y el estimador muestran
+>    $54k/$90k (auto, -10%) Y $60k/$100k (lista, otros medios) lado a lado.
+> 4. **Conciliación de extracto bancario**: solo documentada (import de CSV), no implementada —
+>    falta un export real de Banco Galicia para confirmar el formato de columnas.
+> 5. **Fuera de alcance (documentado en memoria, no acá):** panel interno multi-empresa con IA
+>    (Soporte/Ventas/Marketing/Legales/Dev centralizados) — iniciativa propia, diferida.
+>
+> **🟠 QUEDA ANTES DE PASAR A dev/prd DE VERCEL:**
+> 1. **Bloqueante real — operativo de Fede (no código):** token de AfipSDK + certificado + punto
+>    de venta en ARCA para su CUIT `20-42237416-8`. Sin esto, `emitir-factura-plataforma` alerta
+>    a soporte y no emite (fail-open, no bloquea el cobro) — pero NINGUNA factura real sale hasta
+>    que se cargue una fila en `platform_billers` con esos datos.
+> 2. **Validación e2e en DEV**: registrar un pago manual de prueba desde `admin-api` (staff) y
+>    confirmar el flujo completo hasta el intento de `emitir-factura-plataforma` (con
+>    `platform_billers` vacío, debe alertar a soporte con reason `sin_biller` — no probado aún
+>    en vivo, solo por smoke directo del sweep).
+> 3. **Decisiones de GO pendientes**: ¿wording final del email de recordatorio/suspensión? ¿el
+>    `concepto` de la factura tal como quedó redactado está bien para mostrar en el comprobante?
+> 4. **Deploy a PROD (con OK de GO, y solo después de 1-2)**: mig 261+262 en PROD → 7 EFs a PROD
+>    → sumar `platform-facturacion-sweep`+`billing-manual-sweep` al workflow de PROD → PR
+>    dev→main v1.122.0 → release → Vercel.
+> 5. Backlog: conciliación CSV de extracto bancario (Parte 4) · downgrade de plan MP-P2 · WSFE
+>    propio (fase 3, proyecto aparte) · panel multi-empresa (proyecto aparte).
+>
+> ### 🏗 (2026-07-07 noche · **v1.121.0 EN DEV, SIN deploy a PROD/Vercel** — Fase 2 cambio de PLAN + ARREPENTIMIENTO legal)
 > **Implementado y dejado LISTO EN DEV (mig 260 aplicada en DEV · 6 EFs deployadas a DEV: `mp-addon-batch`/`mp-batch-sweep` NUEVA/`mp-webhook`/`mp-verificar-suscripcion`/`admin-api`/`cancel-suscripcion` · smoke sweep verde · 945 unit +24 · tsc · build · schema_full al día · UAT §10.c/§10.d):**
 > 1. **Fase 2 del batch — cambio de PLAN Básico→Pro** (spec GO §4 de `configurador-addons-batch.md`): **E1 inmediato** (paga el delta de plan hoy — precios reales de los planes MP, delta relativo que preserva descuentos custom — mismo circuito `|addonbatch|`, fail-closed, fecha de cobro intacta) + **E2 programado** (change `programado` → sweep horario `mp-batch-sweep` en el workflow de mp-reconciliacion hace el PUT 36h antes del cobro → tier habilitado SOLO con el cobro nuevo aprobado; timeout 7d → fallido+email). **Prerrequisito resuelto:** las 3 EFs de activación ya NO pisan `plan_tier` (tier de DB manda si el tenant está linkeado a la misma sub). UI: toggle de plan en el configurador + modal E1/E2 + banner de cambio programado con cancelación.
 > 2. **Arrepentimiento (Ley 24.240 / click-to-cancel):** `tenants.primera_compra_at` (trigger 1ª activación paga) + ventana de **10 días corridos** → botón destacado en Mi Cuenta → **refund TOTAL idempotente fail-closed** (cuotas+deltas+temporales) → cancela MP → **acceso revocado YA**. Cancelación estándar ahora con modal + **fecha exacta** del fin de ciclo (`action:'preview'`). Log legal en `billing_cancelaciones`. PIN de verificación (Disp. 3/2026, opcional) NO implementado — **decidir GO**.
@@ -15,7 +60,7 @@ type: project
 > 1. **Validación e2e en DEV con usuario real** (tenant dev): (a) upgrade E1 con la sub de test (necesita una sub activa en DEV — hoy no hay); (b) E2 programado + corrida del sweep; (c) arrepentimiento con un pago real chico (o validar en PROD con el tenant "Test GO" re-suscripto); (d) MP-F3: re-verificar la sub tras upgrade → debe seguir Pro.
 > 2. **Decisiones GO:** ¿PIN por email para el arrepentimiento (Disp. 3/2026)? · ¿texto legal del modal ok? · ¿la ventana es 10 días corridos desde la PRIMERA compra (no se resetea)? — así quedó implementado.
 > 3. **Deploy a PROD (con OK de GO):** mig 260 en PROD → 6 EFs a PROD → PR dev→main v1.121.0 → release → Vercel. ⚠ El workflow `mp-reconciliacion.yml` ya llama a `mp-batch-sweep` — en PROD el EF nuevo debe estar deployado ANTES del próximo tick horario tras el merge (si no, el step del workflow falla con 404).
-> 4. **Pendientes operativos que siguen vivos (de la sesión anterior):** plan Básico MP ⚠ sigue $15 (volver a $54k, Claude por API) · refunds de los tests (GO) · checkout orgánico MP-A12 (paso 5) · limpiar `test123` de "Familia Otranto" · limpieza dummies "Test GO".
+> 4. **Pendientes operativos que siguen vivos (de la sesión anterior):** **✅ display de la app ya muestra Básico $54k** (`PLANES.basico.precio` en `brand.ts`, 100% estático — Landing/Suscripción/estimador — nunca lee de MP) · **⚠ el plan REAL en MP sigue en $15** (decisión GO: lo maneja él a mano desde el panel MP mientras testea, y lo vuelve a $54k cuando termine — así separa "lo que la app muestra" de "lo que MP realmente cobra"). **🛑 Ojo con esto mientras el plan MP siga en $15:** la Fase 2 (upgrade Básico→Pro, arriba) calcula el delta leyendo el precio REAL del plan en MP (`GET /preapproval_plan`) — con Básico a $15 y Pro a su precio real, el delta que se calcule/cobre en un upgrade va a salir inflado/incorrecto (ej. ~$89.985 en vez de ~$36.000). No afecta nada más (ni Landing, ni el resto del batch de add-ons, ni el checkout normal) — es específico del flujo de cambio de PLAN nuevo. Mientras no haya clientes reales en Básico (hoy: solo "Test GO"), el blast radius es cero salvo que GO mismo pruebe el upgrade de plan con el precio de test puesto. · refunds de los tests (GO) · checkout orgánico MP-A12 (paso 5) · limpiar `test123` de "Familia Otranto" · limpieza dummies "Test GO".
 > 5. Backlog: BATCH-BAJA-VIGENCIA · MP-P2 (downgrade de plan — reusa el guard batch) · dual pricing Fase B · WH-SIG · rollout ActionMenu.
 >
 > ### ✅ (2026-07-07 cierre · **BILLING COMPLETO VALIDADO E2E EN LA CUENTA NUEVA** — PROD v1.120.0)

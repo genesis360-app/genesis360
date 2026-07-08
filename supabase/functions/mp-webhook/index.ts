@@ -313,6 +313,37 @@ serve(async (req) => {
               }
             }
           }
+        } else if (ref.includes('|manualpago|')) {
+          // ── Pago único de un tenant en modo MANUAL ("Pagar ahora") ───────────────
+          // Plan aprobado 2026-07-08. Idempotente por mp_payment_id (uq index, mig 262):
+          // un reintento de MP no extiende el acceso dos veces (fn_registrar_pago_manual
+          // aborta con unique_violation, código 23505, si ya se procesó este paymentId).
+          const [manualTenantId] = ref.split('|')
+          const monto = Number(payment.transaction_amount ?? 0)
+          const { data: hasta, error: rpcErr } = await supabase.rpc('fn_registrar_pago_manual', {
+            p_tenant_id: manualTenantId, p_monto: monto, p_medio: 'tarjeta_mp',
+            p_referencia: null, p_registrado_por: null,
+            p_mp_payment_id: String(paymentId), p_notas: null,
+          })
+          if (rpcErr) {
+            if ((rpcErr as any).code === '23505') {
+              console.log(`manualpago: pago ${paymentId} ya procesado (idempotente)`)
+            } else {
+              console.error(`manualpago: fn_registrar_pago_manual falló para tenant ${manualTenantId}`, rpcErr)
+            }
+          } else {
+            console.log(`manualpago: tenant ${manualTenantId} pagó $${monto}, acceso hasta ${hasta}`)
+            const { data: tRow } = await supabase.from('tenants').select('nombre').eq('id', manualTenantId).maybeSingle()
+            fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/emitir-factura-plataforma`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                monto, origen_pago: 'mp_manual', tenant_origen_id: manualTenantId,
+                payment_ref: String(paymentId),
+                concepto: `Suscripción Genesis360 — ${tRow?.nombre ?? manualTenantId} — pago manual`,
+              }),
+            }).catch(e => console.error('manualpago: emitir-factura-plataforma falló', e))
+          }
         } else {
           // ── Pago de PLATAFORMA (suscripción / add-on) ───────────────────
           const addon = parseAddonRef(ref)

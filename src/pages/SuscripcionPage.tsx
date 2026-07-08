@@ -174,6 +174,7 @@ export default function SuscripcionPage() {
   const changeId = searchParams.get('change_id')
   const esAddon = paymentType === 'addon'
   const esAddonBatch = paymentType === 'addonbatch'
+  const esManualPago = paymentType === 'manualpago'
 
   // ── Retorno del checkout del BATCH: poll del estado del change (lo aplica el webhook) ──
   const [batchState, setBatchState] = useState<'verificando' | 'ok' | 'pendiente' | 'error'>('verificando')
@@ -227,7 +228,7 @@ export default function SuscripcionPage() {
   // Al volver de MP con status=approved: esperar la sesión (el redirect recarga la app de
   // cero → el JWT puede no estar listo → 401), verificar y reintentar (MP/webhook tarda).
   useEffect(() => {
-    if (status !== 'approved' || esAddon || esAddonBatch) return
+    if (status !== 'approved' || esAddon || esAddonBatch || esManualPago) return
     let cancelado = false
     ;(async () => {
       setVerifState('verificando')
@@ -365,6 +366,18 @@ export default function SuscripcionPage() {
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Add-on activado!</h1>
                 <p className="text-gray-500 dark:text-gray-400 mb-6">
                   Se agregaron tus <strong>comprobantes extra</strong> a la cuenta (válidos por 30 días). Ya podés usarlos.
+                </p>
+                <Link to="/dashboard"
+                  className="w-full block text-center bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all">
+                  Ir al dashboard
+                </Link>
+              </>
+            ) : esManualPago ? (
+              <>
+                <CheckCircle size={48} className="text-green-500 mx-auto mb-4" />
+                <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">¡Pago recibido!</h1>
+                <p className="text-gray-500 dark:text-gray-400 mb-6">
+                  Confirmamos tu pago con Mercado Pago. Tu acceso ya está renovado por otro mes.
                 </p>
                 <Link to="/dashboard"
                   className="w-full block text-center bg-accent hover:bg-accent/90 text-white font-bold py-3 rounded-xl transition-all">
@@ -548,6 +561,11 @@ export default function SuscripcionPage() {
                           ${plan.precio.toLocaleString('es-AR')}
                         </span>
                         <span className={`text-sm ml-1 ${plan.destacado ? 'text-gray-400 dark:text-gray-500' : 'text-blue-200'}`}>/mes</span>
+                        {'precioManual' in plan && (
+                          <p className={`text-xs mt-1 ${plan.destacado ? 'text-gray-400 dark:text-gray-500' : 'text-blue-200'}`}>
+                            con débito automático · ${(plan as any).precioManual.toLocaleString('es-AR')} con otros medios
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

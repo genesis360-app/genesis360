@@ -6,6 +6,83 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-08] deploy | 🧾 v1.122.0 (EN DEV) — Facturación automática de plataforma (Fede, monotributo) + motor de pago manual + precio dual
+
+**Contexto:** Fede se hizo monotributista (CUIT `20-42237416-8`, Categoría A, Locaciones de
+Servicios) para poder facturar legalmente los cobros de suscripción que le entran a su cuenta
+MP/banco — esa plata YA se cobra en producción desde v1.119.0 **sin facturar**. En la misma
+sesión, GO pidió sumar un modo de pago **manual** (transferencia/efectivo/MP sin auto-débito, a
+precio de lista) como alternativa a la suscripción automática (-10%), con el precio dual visible
+en toda la app. Diseño completo aprobado en plan de sesión — ver `wiki/features/facturacion-plataforma.md`
+y `wiki/features/pago-manual.md`.
+
+**1) Facturación automática de Fede (Factura C, AfipSDK) — mig 261:**
+- Tabla nueva `platform_billers` (config AFIP de quien factura ingresos de PLATAFORMA — **NO es
+  un `tenants`**, para no ensuciar `customers.list`/sweeps de negocios reales) + `platform_facturas`
+  (comprobantes emitidos) + `platform_facturas_claims` (idempotencia **previa** a llamar a AFIP —
+  reclama el `payment_ref` antes de pedir CAE, así un reintento de webhook nunca duplica una
+  factura, irreversible sin NC). Un emisor Monotributista siempre factura tipo C y la C nunca
+  exige identificar al comprador (Consumidor Final) — confirmado en `facturacionLogic.ts`.
+- **EF nueva `emitir-factura-plataforma`**: reusa el transporte AfipSDK probado
+  (`emitir-factura/providers.ts`, `makeAfipProvider`) pero con un payload ad-hoc (monto+concepto,
+  sin `ventas`) — Concepto=2 (Servicios). **Fail-OPEN ante error de AFIP** (a propósito, distinto
+  del resto de REGLA #0): el cobro ya se confirmó, no hay que bloquear el webhook — alerta a
+  soporte para facturar a mano.
+- **EF nueva `platform-facturacion-sweep`**: los webhooks de renovación de MP vienen con
+  `external_reference` vacío (mismo gotcha MP-W6) — en vez de adivinar el payload exacto del
+  webhook, un sweep horario reconcilia pagos aprobados reales (`authorized_payments/search`,
+  mismo endpoint que `mp-batch-sweep`) contra `platform_facturas` y factura lo que falte. Cubre
+  tanto altas nuevas como renovaciones mensuales sin distinguir el evento.
+- Contador "Facturado a Fede este año" en `genesis360-admin` (BillingPage) para vigilar el techo
+  de Categoría A (aviso, no bloqueo).
+- **Decisión de arquitectura:** se usa AfipSDK (el circuito que ya funciona), NO el motor propio
+  (WSAA+WSFEv1 directo) — sigue siendo un stub (`WsfePropioProvider`, fase 3 nunca implementada).
+  Cambiar a Fede a `'propio'` cuando esté listo es solo tocar el flag `platform_billers.afip_provider`.
+
+**2) Motor de pago manual (`billing_mode`) — mig 262:**
+- `tenants += billing_mode ('auto'|'manual')`, `manual_monto_mensual`, `manual_paid_until` +
+  columnas de dedupe de recordatorios. **El único gate de acceso sigue siendo
+  `subscription_status`** — `accesoSuscripcion.ts`/`SubscriptionGuard` NO se tocaron.
+- Tabla `billing_manual_pagos` + función única de escritura `fn_registrar_pago_manual`
+  (SECURITY DEFINER, extiende desde el mayor entre "ahora" y el vencimiento actual).
+- `fn_activar_billing_manual`: el monto **nunca sale del cliente** — se deriva server-side del
+  `plan_tier` (mismo gotcha de REGLA #0 que motivó cerrar este hueco antes de escribir la UI).
+- **3 formas de pagar:** (a) "Pagar ahora" — EF `billing-manual-pagar`, pago único de MP (no
+  recurrente), confirmado por la rama nueva `|manualpago|` en `mp-webhook`; (b) transferencia a
+  la cuenta de Fede (alias `DIA.SIGNO.CHASIS`) + botón "Avisé que ya pagué" — EF
+  `billing-manual-avisar-pago`, crea un ticket en la cola de soporte que `genesis360-admin` ya
+  tiene (no extiende el acceso por sí solo); (c) carga manual de staff — 3 acciones nuevas en
+  `admin-api` (`billing.manual_tenants_list/record_payment/history`) + UI en `BillingPage.tsx`.
+  Los 3 caminos disparan la facturación automática de Fede al confirmar.
+- **EF nueva `billing-manual-sweep`**: recordatorio 5d y 1d antes del vencimiento (email),
+  gracia de 5 días, suspensión (`subscription_status='inactive'`) sin pago nuevo. Lógica pura
+  testeada en `src/lib/facturacionManual.ts` (`decidirSweepManual`) — 12 unit tests, incluye un
+  bug real encontrado y corregido (el recordatorio de 5 días podía "revivir" después de mandado
+  el de 1 día; ahora se queda con el tier más urgente ya alcanzado).
+
+**3) Precio dual en toda la app:** `PLANES[].precio` (con -10%, destacado) + `precioManual`
+(lista) en `brand.ts` — Landing, tarjetas de `/suscripcion` y el estimador "Armá tu plan"
+muestran ambos números lado a lado. El modo `app` del configurador (Fase 2 del batch, que usa
+precios reales de MP) no se tocó.
+
+**4) Conciliación de extracto bancario — documentada, NO implementada.** Se evaluó y descartó
+una integración bancaria en vivo (Argentina no tiene open banking estándar accesible); queda
+como diseño (import de CSV con referencia por tenant) para cuando haya un export real de Galicia
+que confirme el formato de columnas — no bloquea el resto.
+
+**Fuera de alcance (documentado en memoria, no en este plan):** GO planteó en la misma sesión un
+panel interno multi-empresa con IA para centralizar Soporte/Ventas/Marketing/Legales/Dev — es una
+iniciativa de otro orden de magnitud, queda diferida para su propia sesión de diseño.
+
+**Estado:** mig 261+262 aplicadas en DEV · 7 EFs deployadas en DEV (4 nuevas + `mp-webhook` +
+`admin-api` modificadas, `emitir-factura-plataforma` verificada con import cruzado resuelto) +
+`BillingPage`/`adminApi` de `genesis360-admin` con build verde · **970 unit verdes (+12
+facturacionManual +2 brand) · tsc · build**. `schema_full.sql` al día. **SIN deploy a PROD ni
+Vercel** — bloqueado en la práctica hasta que Fede tenga token AfipSDK + certificado + punto de
+venta configurados en `platform_billers` (código listo, solo falta la config operativa de él).
+
+---
+
 ## [2026-07-07] update | 🏗 v1.121.0 (EN DEV) — Fase 2 batch: cambio de PLAN (E1 inmediato + E2 programado) + flujo de ARREPENTIMIENTO legal (refund total ≤10 días)
 
 **Dos features en una sesión, TODO en DEV (mig 260 aplicada en DEV + 6 EFs deployadas a DEV + smoke verde). SIN deploy a PROD ni Vercel — pendiente OK de GO.**

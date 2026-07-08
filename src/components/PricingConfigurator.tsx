@@ -158,6 +158,11 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
           </div>
         )}
       </div>
+      {!app && (
+        <p className="relative mt-2 text-center text-[11px] text-gray-500">
+          ${(plan.precio ?? 0).toLocaleString('es-AR')} con débito automático (-10%) · ${((plan as any).precioManual ?? plan.precio ?? 0).toLocaleString('es-AR')} con otros medios de pago
+        </p>
+      )}
 
       <div className="relative my-8 border-t border-white/10" />
 

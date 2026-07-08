@@ -31,6 +31,15 @@ describe('PLANES — estructura y coherencia', () => {
     const pro    = PLANES.find(p => p.id === 'pro')!
     expect(pro.limites.productos).toBeGreaterThan(basico.limites.productos)
   })
+
+  test('dual pricing: precioManual (lista) siempre > precio (con -10% débito automático)', () => {
+    for (const id of ['basico', 'pro']) {
+      const plan = PLANES.find(p => p.id === id) as any
+      expect(plan.precioManual).toBeGreaterThan(plan.precio)
+      // El -10% exacto: precio = precioManual * 0.9
+      expect(plan.precio).toBe(Math.round(plan.precioManual * 0.9))
+    }
+  })
 })
 
 describe('FEATURES_POR_PLAN — reglas de acceso', () => {

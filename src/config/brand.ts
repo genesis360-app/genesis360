@@ -123,7 +123,7 @@ export const PLANES = [
   {
     id: 'basico',
     nombre: 'Básico',
-    precio: 60000,
+    precio: 54000,
     descripcion: 'Para comercios en marcha',
     destacado: false,
     limites: {

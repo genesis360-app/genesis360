@@ -49,14 +49,30 @@ export default function SuscripcionPage() {
 
   // Monto recurrente REAL del preapproval (preview del EF — preserva descuentos). Es la
   // base del total del panel batch: total = montoActual − precio(actuales) + precio(elegidos).
-  const { data: batchPreview = null } = useQuery<{ monto_actual: number; next_payment_date: string | null } | null>({
+  // Fase 2: trae además el tier actual, los precios reales de los planes MP (para el toggle
+  // de upgrade) y el cambio programado/en curso si existe.
+  interface CambioEnCurso {
+    id: string; estado: string; plan_objetivo: string | null
+    monto_recurrente_nuevo: number; programado_para: string | null
+  }
+  const { data: batchPreview = null } = useQuery<{
+    monto_actual: number; next_payment_date: string | null; plan_actual: string
+    planes_mp: { basico: number | null; pro: number | null } | null
+    cambio_en_curso: CambioEnCurso | null
+  } | null>({
     queryKey: ['batch-preview', tenant?.id, addonsFijos.length],
     queryFn: async () => {
       const { data, error } = await supabase.functions.invoke('mp-addon-batch', {
         body: { action: 'preview', packs_objetivo: Object.entries(packsActuales).map(([dimension, cantidad]) => ({ dimension, cantidad })) },
       })
       if (error || data?.error) return null
-      return { monto_actual: Number(data?.monto_actual ?? 0), next_payment_date: data?.next_payment_date ?? null }
+      return {
+        monto_actual: Number(data?.monto_actual ?? 0),
+        next_payment_date: data?.next_payment_date ?? null,
+        plan_actual: String(data?.plan_actual ?? 'free'),
+        planes_mp: data?.planes_mp ?? null,
+        cambio_en_curso: data?.cambio_en_curso ?? null,
+      }
     },
     enabled: !!tenant && tieneSubMP && ADDON_FIJO_ENABLED,
     staleTime: 60000,
@@ -72,10 +88,16 @@ export default function SuscripcionPage() {
     await queryClient.invalidateQueries({ queryKey: ['batch-preview', tenant?.id] })
   }
 
+  // Fase 2: al confirmar un batch CON cambio de plan, el usuario elige E1 (ahora, paga la
+  // diferencia hoy) o E2 (programado a la próxima fecha de cobro, sin pagos hoy).
+  const [planModal, setPlanModal] = useState<{ packs: PackSel; plan: 'pro' } | null>(null)
+
   // ── Confirmar el BATCH (diseño configurador-addons-batch.md) ─────────────────────
   // delta > 0 → redirect al checkout del delta (el webhook aplica al pagar).
   // delta ≤ 0 → se aplica ya (PUT fail-closed) y avisamos con la fecha de la próxima factura.
-  const handleConfirmarBatch = async (packsObjetivo: PackSel) => {
+  // modo 'programado' (E2, solo cambio de plan) → queda agendado; lo procesa el sweep.
+  const confirmarBatch = async (packsObjetivo: PackSel, planObjetivo: 'pro' | null, modo: 'ahora' | 'programado') => {
+    setPlanModal(null)
     setConfirmandoBatch(true)
     try {
       const { data, error } = await supabase.functions.invoke('mp-addon-batch', {
@@ -84,6 +106,7 @@ export default function SuscripcionPage() {
           packs_objetivo: Object.entries(packsObjetivo)
             .filter(([, cantidad]) => (cantidad ?? 0) > 0)
             .map(([dimension, cantidad]) => ({ dimension, cantidad })),
+          ...(planObjetivo ? { plan_objetivo: planObjetivo, modo } : {}),
         },
       })
       if (data?.blocked && Array.isArray(data?.bloqueos)) {
@@ -98,6 +121,13 @@ export default function SuscripcionPage() {
         window.location.href = data.init_point
         return
       }
+      if (data?.programado) {
+        // E2: agendado a la próxima fecha de cobro — nada se cobra ni cambia hoy.
+        const fecha = data?.programado_para ? new Date(data.programado_para).toLocaleDateString('es-AR') : 'tu próxima fecha de cobro'
+        toast.success(`Listo. Tu cambio a Pro queda programado para el ${fecha}: ese cobro ya llega por $${Number(data?.recurrente_nuevo ?? 0).toLocaleString('es-AR')} y ahí se habilita el plan nuevo.`, { duration: 8000 })
+        await refetchAddons()
+        return
+      }
       // Baja/neutro: aplicado ya. Confirmar el monto y la fecha de la próxima factura.
       const hasta = data?.next_payment_date ? new Date(data.next_payment_date).toLocaleDateString('es-AR') : null
       toast.success(hasta
@@ -108,6 +138,32 @@ export default function SuscripcionPage() {
       toast.error(e.message ?? 'Error al aplicar el cambio')
     } finally {
       setConfirmandoBatch(false)
+    }
+  }
+
+  const handleConfirmarBatch = async (packsObjetivo: PackSel, planObjetivo: 'pro' | null) => {
+    if (planObjetivo) {
+      setPlanModal({ packs: packsObjetivo, plan: planObjetivo }) // elegir E1/E2 primero
+      return
+    }
+    await confirmarBatch(packsObjetivo, null, 'ahora')
+  }
+
+  // E2: cancelar un cambio programado que todavía no entró en ventana.
+  const [cancelandoProgramado, setCancelandoProgramado] = useState(false)
+  const handleCancelarProgramado = async () => {
+    setCancelandoProgramado(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('mp-addon-batch', {
+        body: { action: 'cancelar_programado' },
+      })
+      if (error || data?.error) throw new Error(await mensajeErrorEF(error, data, 'No se pudo cancelar el cambio programado'))
+      toast.success('Cambio programado cancelado. Tu plan sigue como está.')
+      await refetchAddons()
+    } catch (e: any) {
+      toast.error(e.message ?? 'Error al cancelar el cambio programado')
+    } finally {
+      setCancelandoProgramado(false)
     }
   }
 
@@ -550,11 +606,36 @@ export default function SuscripcionPage() {
               (suba → paga la diferencia hoy; baja → próxima factura menor).
             • Sin suscripción → estimador con CTA que suscribe al plan base elegido. */}
         <div className="mt-12 relative left-1/2 -translate-x-1/2 w-[94vw] lg:w-[80vw] max-w-[1600px]">
+          {/* E2: cambio programado / esperando cobro — banner informativo + cancelación */}
+          {ADDON_FIJO_ENABLED && tieneSubMP && batchPreview?.cambio_en_curso && (
+            <div className="mb-4 rounded-2xl border border-accent/40 bg-accent/10 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+              <Clock size={20} className="text-accent shrink-0" />
+              <p className="text-sm text-white flex-1">
+                {batchPreview.cambio_en_curso.estado === 'programado' ? (
+                  <>Tenés un cambio de plan programado para el{' '}
+                    <strong>{batchPreview.cambio_en_curso.programado_para ? new Date(batchPreview.cambio_en_curso.programado_para).toLocaleDateString('es-AR') : 'tu próximo cobro'}</strong>:
+                    {' '}tu suscripción pasa a <strong>${Number(batchPreview.cambio_en_curso.monto_recurrente_nuevo).toLocaleString('es-AR')}/mes</strong> y ahí se habilita el plan nuevo.</>
+                ) : (
+                  <>Tu cambio de plan está <strong>esperando la confirmación del cobro</strong>
+                    {batchPreview.cambio_en_curso.programado_para ? <> del {new Date(batchPreview.cambio_en_curso.programado_para).toLocaleDateString('es-AR')}</> : null}.
+                    {' '}Se habilita solo cuando Mercado Pago lo acredite.</>
+                )}
+              </p>
+              {batchPreview.cambio_en_curso.estado === 'programado' && (
+                <button onClick={handleCancelarProgramado} disabled={cancelandoProgramado}
+                  className="shrink-0 text-sm font-semibold text-white border border-white/30 rounded-xl px-4 py-2 hover:bg-white/10 disabled:opacity-50 transition-all">
+                  {cancelandoProgramado ? 'Cancelando…' : 'Cancelar cambio'}
+                </button>
+              )}
+            </div>
+          )}
           {ADDON_FIJO_ENABLED && tieneSubMP && batchPreview && batchPreview.monto_actual > 0 ? (
             <PricingConfigurator
               key={`batch-${JSON.stringify(packsActuales)}-${batchPreview.monto_actual}`}
               app={{
                 planNombre: PLANES.find(p => p.id === limits?.plan_id)?.nombre ?? 'actual',
+                planTier: batchPreview.plan_actual,
+                planesMp: batchPreview.planes_mp,
                 montoActualMP: batchPreview.monto_actual,
                 initialSel: packsActuales,
                 confirmando: confirmandoBatch,
@@ -571,6 +652,41 @@ export default function SuscripcionPage() {
             />
           )}
         </div>
+
+        {/* Modal E1/E2 (Fase 2): con cambio de plan, elegir CUÁNDO se aplica. */}
+        {planModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => setPlanModal(null)}>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg mb-1">¿Cuándo cambiamos tu plan a Pro?</h3>
+              <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
+                Tu fecha de cobro no cambia en ningún caso
+                {batchPreview?.next_payment_date ? <> (próximo cobro: <strong>{new Date(batchPreview.next_payment_date).toLocaleDateString('es-AR')}</strong>)</> : null}.
+              </p>
+              <button
+                onClick={() => confirmarBatch(planModal.packs, planModal.plan, 'ahora')}
+                className="w-full text-left rounded-xl border border-accent/40 bg-accent/5 hover:bg-accent/10 p-4 mb-3 transition-all">
+                <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Cambiar ahora</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Pagás hoy la diferencia (pago único) y el plan Pro se habilita apenas se acredite.
+                </p>
+              </button>
+              <button
+                onClick={() => confirmarBatch(planModal.packs, planModal.plan, 'programado')}
+                className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700/50 p-4 mb-4 transition-all">
+                <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">
+                  En mi próxima fecha de cobro{batchPreview?.next_payment_date ? ` (${new Date(batchPreview.next_payment_date).toLocaleDateString('es-AR')})` : ''}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  No pagás nada hoy: ese cobro ya sale por el monto del plan nuevo y ahí se habilita Pro.
+                </p>
+              </button>
+              <button onClick={() => setPlanModal(null)}
+                className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 py-1 transition-colors">
+                Volver
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Modal de baja bloqueada del BATCH (REGLA #0: desactivar, no eliminar). Lista TODAS
             las dimensiones donde el uso activo excede el límite resultante del batch. */}

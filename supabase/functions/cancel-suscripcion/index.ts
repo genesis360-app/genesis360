@@ -14,6 +14,17 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 // 'cancelled' si confirmó en MP que el preapproval linkeado quedó fuera de cobro.
 // MP-C7: si el tenant nunca se linkeó (mp_subscription_id NULL — tenants viejos pre-fix) y
 // es el propio caller, busca su suscripción viva por payer_email para frenar el cobro igual.
+//
+// Acciones (mig 260 — Ley 24.240 art. 34 / click-to-cancel; espejo: src/lib/arrepentimiento.ts):
+//   • (default) cancelación ESTÁNDAR: sin reembolso; acceso hasta fin del ciclo (grace MP-C9).
+//   • 'preview': fecha exacta del fin del ciclo + elegibilidad de arrepentimiento (para
+//     que la UI muestre el botón/fecha correctos SIN lógica cacheada del lado del cliente).
+//   • 'arrepentimiento' (≤10 días corridos de la PRIMERA compra, tenants.primera_compra_at):
+//     reembolso TOTAL de todos los pagos de plataforma (cuotas + deltas de batch + packs
+//     temporales; idempotente: los ya reembolsados se saltean) → si TODO refund salió,
+//     cancela en MP y revoca el acceso YA (subscription_period_end = now()). Fail-closed:
+//     un refund fallido aborta sin cancelar nada.
+//   • Toda solicitud queda logueada en billing_cancelaciones (tenant, user, tipo, detalle).
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -65,8 +76,100 @@ serve(async (req) => {
     )
 
     const { data: tenantRow } = await admin
-      .from('tenants').select('mp_subscription_id').eq('id', tenantId).single()
+      .from('tenants').select('mp_subscription_id, primera_compra_at').eq('id', tenantId).single()
     const storedId = tenantRow?.mp_subscription_id ? String(tenantRow.mp_subscription_id) : null
+
+    const action = body?.action ? String(body.action) : 'cancelar'
+    // Ventana de arrepentimiento: 10 días corridos desde la PRIMERA compra (espejo
+    // elegibleArrepentimiento). Sin primera_compra_at (nunca pagó) → no elegible.
+    const ARREPENTIMIENTO_DIAS = 10
+    const primeraCompra = tenantRow?.primera_compra_at ? new Date(tenantRow.primera_compra_at).getTime() : NaN
+    const arrepHasta = Number.isFinite(primeraCompra) ? primeraCompra + ARREPENTIMIENTO_DIAS * 86400000 : NaN
+    const elegibleArrep = Number.isFinite(arrepHasta) && Date.now() <= arrepHasta
+
+    // ── action 'preview': datos para los modales de la UI (sin efectos) ────────────
+    if (action === 'preview') {
+      let periodEndPreview: string | null = null
+      if (storedId) {
+        const r = await fetch(`${MP}/preapproval/${storedId}`, { headers: mpHeaders })
+        if (r.ok) {
+          const pre = await r.json()
+          const npd = pre?.next_payment_date ?? pre?.summarized?.next_payment_date
+          const d = npd ? new Date(npd) : null
+          if (d && !isNaN(d.getTime())) periodEndPreview = d.toISOString()
+        }
+      }
+      return json({
+        period_end_estimado: periodEndPreview,
+        elegible_arrepentimiento: elegibleArrep,
+        arrepentimiento_hasta: Number.isFinite(arrepHasta) ? new Date(arrepHasta).toISOString() : null,
+      })
+    }
+
+    // ── action 'arrepentimiento': refund TOTAL fail-closed ANTES de cancelar ───────
+    const esArrepentimiento = action === 'arrepentimiento'
+    const refundsHechos: Array<{ payment_id: string; monto: number }> = []
+    if (esArrepentimiento) {
+      if (tenantId !== callerTenantId) return json({ error: 'El arrepentimiento es solo sobre la propia cuenta.' }, 403)
+      if (userRow?.rol !== 'DUEÑO') return json({ error: 'Solo el dueño puede solicitar el reembolso.' }, 403)
+      if (!elegibleArrep) {
+        return json({
+          error: 'La ventana de arrepentimiento (10 días desde tu primera compra) ya venció. Podés cancelar la suscripción normalmente: mantenés el acceso hasta el fin del período pagado.',
+          reason: 'fuera_de_plazo',
+        }, 400)
+      }
+
+      // Todos los pagos de plataforma del tenant: cuotas del preapproval + deltas de
+      // batch + packs temporales (la ventana es ≤10 días de la primera compra → todo
+      // pago del tenant cae adentro).
+      const paymentIds = new Set<string>()
+      if (storedId) {
+        const r = await fetch(`${MP}/authorized_payments/search?preapproval_id=${encodeURIComponent(storedId)}&limit=50`, { headers: mpHeaders })
+        if (!r.ok) return json({ error: 'No se pudieron leer los pagos de tu suscripción en Mercado Pago. Reintentá.' }, 502)
+        const s = await r.json()
+        for (const inv of (s?.results ?? s?.elements ?? [])) {
+          const pid = inv?.payment?.id
+          if (pid) paymentIds.add(String(pid))
+        }
+      }
+      const { data: batchPagos } = await admin.from('addon_batch_changes')
+        .select('mp_payment_id').eq('tenant_id', tenantId).not('mp_payment_id', 'is', null)
+      for (const b of batchPagos ?? []) paymentIds.add(String(b.mp_payment_id))
+      const { data: temporales } = await admin.from('tenant_addons')
+        .select('mp_payment_id').eq('tenant_id', tenantId).not('mp_payment_id', 'is', null)
+      for (const a of temporales ?? []) paymentIds.add(String(a.mp_payment_id))
+
+      // 🛑 REGLA #0: refund total idempotente (aprobado y no reembolsado → refund; el
+      // resto se saltea) y FAIL-CLOSED: cualquier falla aborta ANTES de cancelar nada
+      // (el retry saltea los ya devueltos — nunca se reembolsa dos veces).
+      const fallas: string[] = []
+      for (const pid of paymentIds) {
+        const gr = await fetch(`${MP}/v1/payments/${pid}`, { headers: mpHeaders })
+        if (!gr.ok) { fallas.push(`${pid}:get_${gr.status}`); continue }
+        const pago = await gr.json()
+        const total = Number(pago?.transaction_amount ?? 0)
+        const yaDevuelto = Number(pago?.transaction_amount_refunded ?? 0)
+        if (pago?.status !== 'approved' || yaDevuelto >= total) continue
+        const rr = await fetch(`${MP}/v1/payments/${pid}/refunds`, {
+          method: 'POST',
+          headers: { ...mpHeaders, 'Content-Type': 'application/json', 'X-Idempotency-Key': `arrep-${tenantId}-${pid}` },
+          body: JSON.stringify({}),
+        })
+        if (!rr.ok) {
+          fallas.push(`${pid}:refund_${rr.status}`)
+          console.error('cancel-suscripcion: refund falló', pid, rr.status, await rr.text())
+          continue
+        }
+        refundsHechos.push({ payment_id: pid, monto: total - yaDevuelto })
+        console.log(`cancel-suscripcion: refund OK pago ${pid} ($${total - yaDevuelto})`)
+      }
+      if (fallas.length) {
+        return json({
+          error: 'No pudimos completar el reembolso en Mercado Pago. No se canceló nada — reintentá en unos minutos o contactá soporte.',
+          detalle: fallas,
+        }, 502)
+      }
+    }
 
     // 1) Juntar candidatos: el id GUARDADO (mp_subscription_id, ya verificado al activar
     //    — camino principal) + los que MP tenga con este external_reference (histórico;
@@ -170,7 +273,10 @@ serve(async (req) => {
     //    reflejamos la baja. MP-C9: el acceso se mantiene hasta fin de período pagado
     //    (subscription_period_end = next_payment_date de MP, fallback now()+30d); el
     //    SubscriptionGuard lo respeta. No se toca plan_tier.
-    const graceEnd = periodEnd ?? new Date(Date.now() + 30 * 86400000).toISOString()
+    //    Arrepentimiento: reembolso total → el acceso se revoca YA (period_end = now()).
+    const graceEnd = esArrepentimiento
+      ? new Date().toISOString()
+      : (periodEnd ?? new Date(Date.now() + 30 * 86400000).toISOString())
     const { error: updErr } = await admin.from('tenants')
       .update({ subscription_status: 'cancelled', subscription_period_end: graceEnd }).eq('id', tenantId)
     if (updErr) {
@@ -178,7 +284,23 @@ serve(async (req) => {
       return json({ error: 'Se canceló en MP pero no se pudo actualizar la cuenta. Contactá soporte.' }, 500)
     }
 
-    return json({ cancelled: true, mp_cancelled: mpCancelled, period_end: graceEnd })
+    // 4) Log de la solicitud (requisito legal: quién, cuándo, tipo). No bloquea la baja.
+    const montoReembolsado = refundsHechos.reduce((s, r) => s + r.monto, 0)
+    const { error: logErr } = await admin.from('billing_cancelaciones').insert({
+      tenant_id: tenantId,
+      user_id: user.id,
+      tipo: esArrepentimiento ? 'arrepentimiento' : 'cancelacion_estandar',
+      detalle: {
+        preapproval_id: storedId, mp_cancelled: mpCancelled, period_end: graceEnd,
+        ...(esArrepentimiento ? { refunds: refundsHechos, monto_reembolsado: montoReembolsado } : {}),
+      },
+    })
+    if (logErr) console.error('cancel-suscripcion: no se pudo loguear la solicitud', logErr)
+
+    return json({
+      cancelled: true, mp_cancelled: mpCancelled, period_end: graceEnd,
+      ...(esArrepentimiento ? { arrepentimiento: true, refunds: refundsHechos.length, monto_reembolsado: montoReembolsado } : {}),
+    })
   } catch (e) {
     console.error('cancel-suscripcion error', e)
     return json({ error: (e as Error).message ?? 'Error' }, 500)

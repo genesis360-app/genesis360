@@ -19,3 +19,15 @@ jobs:
             --fail \
             --silent \
             --show-error
+
+      # E2 (Fase 2 batch, mig 260): upgrades de plan programados — PUT en la ventana
+      # previa al cobro + habilitación del tier al confirmarse el pago (fail-closed).
+      - name: Call mp-batch-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/mp-batch-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

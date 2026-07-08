@@ -20,9 +20,23 @@ updated: 2026-07-06
 > suba con delta $5.000 aplicada por el webhook en 22s · baja sin cobro · **cambio de pack
 > +1→+3 con delta** · guard en ambas direcciones (bloqueó con 6/6 users, pasó tras desactivar
 > uno) · temporal de comprobantes acreditado con vencimiento · cancelación fail-closed + grace
-> real. `mp-addon-fijo` ELIMINADA de DEV+PROD (2026-07-07, cierra H7). **🟠 Pendiente:** Fase 2
-> (cambio de plan — spec de GO en §4) y backlog BATCH-BAJA-VIGENCIA (la baja quita el cupo al
-> instante aunque el mes esté pagado → evaluar vigencia hasta fin de período). El detalle de implementación de las
+> real. `mp-addon-fijo` ELIMINADA de DEV+PROD (2026-07-07, cierra H7).
+> **🏗 FASE 2 IMPLEMENTADA (v1.121.0, 2026-07-07 — EN DEV, sin PROD):** cambio de PLAN
+> Básico→Pro por el batch con **E1 inmediato** (delta de plan hoy, precios reales de los
+> planes MP vía `GET /preapproval_plan` — delta relativo que preserva descuentos custom;
+> mismo circuito `|addonbatch|`, fail-closed) y **E2 programado** (mig 260: estados
+> `programado`/`esperando_cobro` + EF nueva **`mp-batch-sweep`** en el workflow horario de
+> mp-reconciliacion: PUT en la ventana de 36h previa al cobro y tier habilitado SOLO con el
+> cobro del monto nuevo aprobado; timeout 7d → fallido + email; cancelable mientras esté
+> `programado`). `fn_aplicar_addon_batch` v2 aplica también `plan_tier`. **Prerrequisito §4
+> resuelto:** `mp-webhook`/`mp-verificar-suscripcion`/`admin-api.link_subscription` ya no
+> pisan `plan_tier` cuando el tenant está linkeado a esa misma sub con tier pago. UI: toggle
+> de plan en modo app + modal E1/E2 + banner de cambio en curso. UAT §10.c (MP-F1..F5).
+> Espejos: `calcularBatch({plan})`, `esUpgradeDePlan`, `decidirSweepProgramado`,
+> `decidirConfirmacionCobro`. Downgrade sigue afuera (MP-P2).
+> **🟠 Pendiente:** validación e2e con sub real + deploy PROD (mig 260 + EFs) y backlog
+> BATCH-BAJA-VIGENCIA (la baja quita el cupo al instante aunque el mes esté pagado →
+> evaluar vigencia hasta fin de período). El detalle de implementación de las
 > secciones de abajo (diseño pre-implementación) se mantiene como referencia técnica — el
 > comportamiento real vigente está resumido en `wiki/integrations/mercado-pago.md` §3.i.
 

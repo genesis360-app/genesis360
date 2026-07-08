@@ -121,7 +121,16 @@ serve(async (req) => {
         tenantId = t?.id ?? null
       }
       if (tenantId) {
-        const tier = MP_PLAN_TIER[subscription.preapproval_plan_id]
+        // Fase 2 (mig 260): tras un upgrade de plan el preapproval sigue apuntando al plan
+        // MP ORIGINAL (solo cambió el monto) → si el tenant ya está linkeado a ESTA misma
+        // suscripción con un tier pago en DB, el tier de DB es la fuente de verdad y NO se
+        // pisa con el que se deriva del preapproval_plan_id (solo vale para el link inicial).
+        const { data: tRow } = await supabase.from('tenants')
+          .select('plan_tier, mp_subscription_id, subscription_period_end').eq('id', tenantId).maybeSingle()
+        const tierDB = String(tRow?.plan_tier ?? '')
+        const mismaSubConTier = tRow?.mp_subscription_id === subscriptionId &&
+          ['basico', 'pro', 'enterprise'].includes(tierDB)
+        const tier = mismaSubConTier ? undefined : MP_PLAN_TIER[subscription.preapproval_plan_id]
         // MP-C9 (grace period) también en el camino webhook: si el usuario cancela DESDE EL
         // PANEL DE MP (sin pasar por cancel-suscripcion), el acceso igual perdura hasta el
         // fin del período pagado. next_payment_date viene en el propio preapproval; fallback
@@ -132,12 +141,8 @@ serve(async (req) => {
           const d = npd ? new Date(npd) : null
           if (d && !isNaN(d.getTime())) {
             periodEndUpdate = { subscription_period_end: d.toISOString() }
-          } else {
-            const { data: t } = await supabase
-              .from('tenants').select('subscription_period_end').eq('id', tenantId).maybeSingle()
-            if (!t?.subscription_period_end) {
-              periodEndUpdate = { subscription_period_end: new Date(Date.now() + 30 * 86400000).toISOString() }
-            }
+          } else if (!tRow?.subscription_period_end) {
+            periodEndUpdate = { subscription_period_end: new Date(Date.now() + 30 * 86400000).toISOString() }
           }
         } else if (newStatus === 'active') {
           // Al (re)activar, limpiar el grace de una cancelación anterior (higiene MP-C9).
@@ -253,7 +258,8 @@ serve(async (req) => {
           // ── BATCH de add-ons FIJOS pagado (delta): aplicar el cambio ─────────────
           // (diseño: wiki/features/configurador-addons-batch.md). El cliente pagó la
           // DIFERENCIA como pago único → recién ahora: (1) PUT del recurrente nuevo,
-          // (2) sync atómico de tenant_addons (fn_aplicar_addon_batch).
+          // (2) sync atómico de tenant_addons + plan_tier si el batch incluía upgrade de
+          // plan (fn_aplicar_addon_batch, mig 260).
           // Idempotente: claim por mp_payment_id (uq index) — reintentos de MP no re-aplican.
           const [batchTenantId, , changeId] = ref.split('|')
           const { data: claimed } = await supabase.from('addon_batch_changes')

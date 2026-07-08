@@ -4,21 +4,28 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // Diseño: G360.Wiki/wiki/features/configurador-addons-batch.md (decisión GO 2026-07-05).
 // Espejo puro testeado: src/lib/mpAddonBatch.ts (mantener EN SYNC).
 //
-// El cliente arma el ESTADO FINAL deseado de packs fijos (UN pack por dimensión) y confirma
-// en batch:
+// El cliente arma el ESTADO FINAL deseado de packs fijos (UN pack por dimensión) —y desde
+// Fase 2 (mig 260) opcionalmente el PLAN objetivo (upgrade Básico→Pro)— y confirma en batch:
 //   • delta > 0  → se crea una preference de PAGO ÚNICO por la diferencia + un change
 //                  'pendiente_pago'. El cobro y la aplicación los confirma mp-webhook
 //                  (fail-closed: sin pago no cambia NADA).
 //   • delta ≤ 0  → sin cobro ni reembolso: PUT del recurrente (fail-closed) + aplicación
 //                  atómica (fn_aplicar_addon_batch). La próxima factura llega por el monto
 //                  nuevo (next_payment_date del preapproval).
+//   • modo 'programado' (E2, solo con cambio de plan): el change queda 'programado' para la
+//                  próxima fecha de cobro — sin cobro hoy; el sweep mp-batch-sweep hace el
+//                  PUT en la ventana previa y el tier se habilita al confirmarse el cobro.
 //
 // 🛑 REGLA #0:
 //   • TODO se recalcula server-side (catálogo espejo) — ningún monto viaja del cliente.
 //   • Recurrente nuevo por DELTA sobre el monto real del preapproval (preserva descuentos):
-//     nuevo = montoActualMP − precio(packs fijos actuales) + precio(packs objetivo).
-//   • Guard de baja a nivel batch: límite resultante ≥ uso activo por dimensión de estado.
-//   • Un solo batch 'pendiente_pago' por tenant (uq index) — sin dobles cobros concurrentes.
+//     nuevo = montoActualMP − precio(packs actuales) + precio(packs objetivo) + deltaPlan,
+//     con deltaPlan = precio del plan MP objetivo − precio del plan MP actual (GET
+//     /preapproval_plan — también relativo, no pisa montos custom).
+//   • Guard de baja a nivel batch: límite resultante ≥ uso activo por dimensión de estado
+//     (con cambio de plan, contra la base del tier OBJETIVO).
+//   • Un solo batch 'pendiente_pago' (y uno programado/en curso) por tenant (uq indexes).
+//   • Downgrade de plan NO disponible acá (se diseña con MP-P2) — solo upgrade Básico→Pro.
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -78,6 +85,21 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}))
     const action = String(body?.action ?? '')
     const packsObjetivoRaw: Pack[] = Array.isArray(body?.packs_objetivo) ? body.packs_objetivo : []
+    const planObjetivoRaw = body?.plan_objetivo ? String(body.plan_objetivo) : null
+    // E2: 'programado' agenda el cambio a la próxima fecha de cobro (solo con cambio de plan)
+    const modo = body?.modo === 'programado' ? 'programado' : 'ahora'
+
+    // ── Cancelar un cambio PROGRAMADO (E2) que todavía no entró en ventana ─────────
+    // 'esperando_cobro' NO se cancela desde acá: el PUT ya salió a MP (conciliación soporte).
+    if (action === 'cancelar_programado') {
+      const { data: cancelado } = await admin.from('addon_batch_changes')
+        .update({ estado: 'cancelado' })
+        .eq('tenant_id', tenantId).eq('estado', 'programado')
+        .select('id').maybeSingle()
+      if (!cancelado) return json({ error: 'No hay un cambio programado para cancelar.' }, 404)
+      console.log(`mp-addon-batch: tenant ${tenantId} canceló el cambio programado ${cancelado.id}`)
+      return json({ ok: true })
+    }
 
     // ── Validar el objetivo contra el catálogo (una entrada por dimensión, pack real) ──
     const packsObjetivo: Pack[] = []
@@ -109,16 +131,48 @@ Deno.serve(async (req) => {
     if (!(montoActual > 0)) return json({ error: 'Monto de suscripción inválido en MP' }, 502)
     const nextPaymentDate = pre?.next_payment_date ?? pre?.summarized?.next_payment_date ?? null
 
+    // ── Cambio de PLAN (Fase 2) — validación + precios reales de los planes MP ────
+    const tierActual = String(t.plan_tier ?? 'free')
+    const cambiaPlan = !!planObjetivoRaw && planObjetivoRaw !== tierActual
+    if (cambiaPlan && !(tierActual === 'basico' && planObjetivoRaw === 'pro')) {
+      // Downgrade / free / enterprise: fuera de Fase 2 (MP-P2 pendiente)
+      return json({ error: 'Por ahora solo podés subir de Básico a Pro desde acá. Para bajar de plan escribinos a soporte.' }, 400)
+    }
+    const planObjetivo = cambiaPlan ? 'pro' : null
+
+    // Precios REALES de los planes de MP (canal automático con descuento): el delta de
+    // plan también es relativo → un monto custom del preapproval no se pisa.
+    const precioPlanMP = async (envKey: string): Promise<number | null> => {
+      const planId = Deno.env.get(envKey)
+      if (!planId) return null
+      const r = await fetch(`${MP}/preapproval_plan/${planId}`, { headers: H })
+      if (!r.ok) return null
+      const j = await r.json()
+      const monto = Number(j?.auto_recurring?.transaction_amount ?? 0)
+      return monto > 0 ? monto : null
+    }
+    const [planBasicoMP, planProMP] = await Promise.all([
+      precioPlanMP('MP_PLAN_BASICO'), precioPlanMP('MP_PLAN_PRO'),
+    ])
+    let deltaPlan = 0
+    if (cambiaPlan) {
+      if (planBasicoMP === null || planProMP === null) {
+        return json({ error: 'No se pudieron leer los precios de los planes en Mercado Pago. Reintentá.' }, 502)
+      }
+      deltaPlan = planProMP - planBasicoMP
+    }
+
     // ── Cálculo por delta (espejo calcularBatch) ──────────────────────────────────
     const suma = (packs: Pack[]) => packs.reduce((s, p) => s + (precioDe(p.dimension, p.cantidad) ?? 0), 0)
-    const recurrenteNuevo = Math.max(0, montoActual - suma(packsActuales) + suma(packsObjetivo))
+    const recurrenteNuevo = Math.max(0, montoActual - suma(packsActuales) + suma(packsObjetivo) + deltaPlan)
     const delta = recurrenteNuevo - montoActual
     const dims = ['sku', 'sucursales', 'usuarios', 'comprobantes']
     const cantidadDe = (packs: Pack[], d: string) => packs.find(p => p.dimension === d)?.cantidad ?? 0
-    const sinCambios = dims.every(d => cantidadDe(packsActuales, d) === cantidadDe(packsObjetivo, d))
+    const sinCambios = !cambiaPlan &&
+      dims.every(d => cantidadDe(packsActuales, d) === cantidadDe(packsObjetivo, d))
 
-    // ── Guard de baja a nivel batch (espejo guardBatch) ───────────────────────────
-    const base = BASE_ESTADO[t.plan_tier ?? 'free'] ?? BASE_ESTADO.free
+    // ── Guard de baja a nivel batch (espejo guardBatch) — contra el tier OBJETIVO ──
+    const base = BASE_ESTADO[planObjetivo ?? tierActual] ?? BASE_ESTADO.free
     const bloqueos: Array<{ dimension: string; nuevo_limite: number; uso: number; excedente: number }> = []
     for (const dim of ['sku', 'sucursales', 'usuarios'] as const) {
       if (base[dim] === -1) continue
@@ -129,27 +183,55 @@ Deno.serve(async (req) => {
       if (uso > nuevoLimite) bloqueos.push({ dimension: dim, nuevo_limite: nuevoLimite, uso, excedente: uso - nuevoLimite })
     }
 
+    // Cambio programado / en curso existente (para que la UI lo muestre y el confirm choque)
+    const { data: enCurso } = await admin.from('addon_batch_changes')
+      .select('id, estado, plan_objetivo, monto_recurrente_nuevo, programado_para')
+      .eq('tenant_id', tenantId).in('estado', ['programado', 'esperando_cobro']).maybeSingle()
+
     if (action === 'preview') {
       return json({
         monto_actual: montoActual, recurrente_nuevo: recurrenteNuevo,
         delta_a_pagar: delta > 0 ? delta : 0, sin_cambios: sinCambios,
         next_payment_date: nextPaymentDate, bloqueos,
+        // Fase 2: contexto de plan para la UI (toggle + total en vivo)
+        plan_actual: tierActual,
+        planes_mp: { basico: planBasicoMP, pro: planProMP },
+        cambio_en_curso: enCurso ?? null,
       })
     }
 
     if (action !== 'confirmar') return json({ error: `Acción inválida: ${action}` }, 400)
     if (sinCambios) return json({ error: 'No hay cambios para confirmar.' }, 400)
     if (bloqueos.length) return json({ blocked: true, bloqueos })
+    // Con un change 'esperando_cobro' el PUT ya salió a MP: no se pisa con otro batch.
+    if (enCurso?.estado === 'esperando_cobro') {
+      return json({ error: 'Tenés un cambio de plan en curso esperando la confirmación del cobro. Cuando se acredite vas a poder hacer nuevos cambios.' }, 409)
+    }
 
-    // Cancelar un batch pendiente anterior (quedó de un checkout abandonado) antes de crear
-    // el nuevo — nunca dos pendientes (uq index lo garantiza igual, esto lo hace amable).
+    // Cancelar un batch pendiente anterior (checkout abandonado) o programado (E2) antes
+    // de crear el nuevo — nunca dos en vuelo (los uq indexes lo garantizan igual).
     await admin.from('addon_batch_changes')
-      .update({ estado: 'cancelado' }).eq('tenant_id', tenantId).eq('estado', 'pendiente_pago')
+      .update({ estado: 'cancelado' }).eq('tenant_id', tenantId)
+      .in('estado', ['pendiente_pago', 'programado'])
+
+    // ── E2: upgrade PROGRAMADO a la próxima fecha de cobro (sin cobro hoy) ─────────
+    if (modo === 'programado') {
+      if (!cambiaPlan) return json({ error: 'El cambio programado es solo para el cambio de plan.' }, 400)
+      if (!nextPaymentDate) return json({ error: 'Mercado Pago no informó tu próxima fecha de cobro. Probá el cambio inmediato.' }, 502)
+      const { data: change, error: insErr } = await admin.from('addon_batch_changes').insert({
+        tenant_id: tenantId, packs_objetivo: packsObjetivo, plan_objetivo: planObjetivo,
+        estado: 'programado', programado_para: new Date(nextPaymentDate).toISOString(),
+        monto_delta: 0, monto_recurrente_nuevo: recurrenteNuevo,
+      }).select('id').single()
+      if (insErr || !change) return json({ error: 'No se pudo programar el cambio. Reintentá.' }, 500)
+      console.log(`mp-addon-batch: tenant ${tenantId} PROGRAMÓ upgrade → ${recurrenteNuevo} el ${nextPaymentDate} (change ${change.id})`)
+      return json({ ok: true, programado: true, programado_para: nextPaymentDate, recurrente_nuevo: recurrenteNuevo })
+    }
 
     // ── BAJA / NEUTRO: sin cobro — PUT fail-closed + aplicación atómica ───────────
     if (delta <= 0) {
       const { data: change, error: insErr } = await admin.from('addon_batch_changes').insert({
-        tenant_id: tenantId, packs_objetivo: packsObjetivo,
+        tenant_id: tenantId, packs_objetivo: packsObjetivo, plan_objetivo: planObjetivo,
         monto_delta: 0, monto_recurrente_nuevo: recurrenteNuevo,
       }).select('id').single()
       if (insErr || !change) return json({ error: 'No se pudo registrar el cambio. Reintentá.' }, 500)
@@ -178,7 +260,7 @@ Deno.serve(async (req) => {
 
     // ── SUBA: preference de pago único por el delta; aplica el webhook al pagar ───
     const { data: change, error: insErr } = await admin.from('addon_batch_changes').insert({
-      tenant_id: tenantId, packs_objetivo: packsObjetivo,
+      tenant_id: tenantId, packs_objetivo: packsObjetivo, plan_objetivo: planObjetivo,
       monto_delta: delta, monto_recurrente_nuevo: recurrenteNuevo,
     }).select('id').single()
     if (insErr || !change) return json({ error: 'No se pudo registrar el cambio. Reintentá.' }, 500)
@@ -189,8 +271,8 @@ Deno.serve(async (req) => {
       body: JSON.stringify({
         items: [{
           id: `addonbatch_${change.id}`,
-          title: 'Ajuste de plan — diferencia por add-ons',
-          description: `Tu suscripción pasa a $${recurrenteNuevo.toLocaleString('es-AR')}/mes desde el próximo ciclo`,
+          title: cambiaPlan ? 'Cambio de plan - diferencia a pagar hoy' : 'Ajuste de plan - diferencia por add-ons',
+          description: `Tu suscripcion pasa a $${recurrenteNuevo.toLocaleString('es-AR')}/mes desde el proximo ciclo`,
           quantity: 1, unit_price: delta, currency_id: 'ARS',
         }],
         external_reference: `${tenantId}|addonbatch|${change.id}`,

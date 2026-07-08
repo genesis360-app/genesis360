@@ -151,7 +151,7 @@ serve(async (req) => {
 
     // ── Evitar doble cobro: cancelar una suscripción anterior distinta ──────────
     const { data: tenantRow } = await admin
-      .from('tenants').select('mp_subscription_id').eq('id', tenantId).single()
+      .from('tenants').select('mp_subscription_id, plan_tier').eq('id', tenantId).single()
     const prevSubId = tenantRow?.mp_subscription_id
     if (prevSubId && String(prevSubId) !== String(sub.id)) {
       try {
@@ -167,12 +167,20 @@ serve(async (req) => {
     }
 
     // ── Activación (service role: bypassa el guard server-side de tenants) ───────
+    // Fase 2 (mig 260): si el tenant YA está linkeado a esta misma suscripción con un tier
+    // pago en DB (p.ej. upgradeó Básico→Pro por el batch — el preapproval sigue apuntando
+    // al plan MP original), el tier de DB manda: re-verificar NO debe degradarlo.
+    const tierDB = String(tenantRow?.plan_tier ?? '')
+    const mismaSubConTier = prevSubId && String(prevSubId) === String(sub.id) &&
+      ['basico', 'pro', 'enterprise'].includes(tierDB)
     const { error: updErr } = await admin.from('tenants').update({
       subscription_status: 'active',
       mp_subscription_id: String(sub.id),
-      plan_tier: tier,
-      max_users: TIER_BASE[tier].max_users,
-      max_productos: TIER_BASE[tier].max_productos,
+      ...(mismaSubConTier ? {} : {
+        plan_tier: tier,
+        max_users: TIER_BASE[tier].max_users,
+        max_productos: TIER_BASE[tier].max_productos,
+      }),
       subscription_period_end: null, // limpiar el grace de una cancelación anterior (higiene MP-C9)
     }).eq('id', tenantId)
     if (updErr) {
@@ -180,7 +188,7 @@ serve(async (req) => {
       return json({ error: 'No se pudo activar' }, 500)
     }
 
-    console.log(`mp-verificar: tenant ${tenantId} → active (sub ${sub.id}, ${tier})`)
+    console.log(`mp-verificar: tenant ${tenantId} → active (sub ${sub.id}, ${mismaSubConTier ? tierDB : tier})`)
     return json({ activated: true })
   } catch (e) {
     console.error('mp-verificar-suscripcion error', e)

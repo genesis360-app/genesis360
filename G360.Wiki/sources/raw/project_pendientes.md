@@ -6,7 +6,19 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-07-07 cierre · **BILLING COMPLETO VALIDADO E2E EN LA CUENTA NUEVA** — PROD v1.120.0)
+> ### 🏗 ARRANCÁ ACÁ (2026-07-07 noche · **v1.121.0 EN DEV, SIN deploy a PROD/Vercel** — Fase 2 cambio de PLAN + ARREPENTIMIENTO legal)
+> **Implementado y dejado LISTO EN DEV (mig 260 aplicada en DEV · 6 EFs deployadas a DEV: `mp-addon-batch`/`mp-batch-sweep` NUEVA/`mp-webhook`/`mp-verificar-suscripcion`/`admin-api`/`cancel-suscripcion` · smoke sweep verde · 945 unit +24 · tsc · build · schema_full al día · UAT §10.c/§10.d):**
+> 1. **Fase 2 del batch — cambio de PLAN Básico→Pro** (spec GO §4 de `configurador-addons-batch.md`): **E1 inmediato** (paga el delta de plan hoy — precios reales de los planes MP, delta relativo que preserva descuentos custom — mismo circuito `|addonbatch|`, fail-closed, fecha de cobro intacta) + **E2 programado** (change `programado` → sweep horario `mp-batch-sweep` en el workflow de mp-reconciliacion hace el PUT 36h antes del cobro → tier habilitado SOLO con el cobro nuevo aprobado; timeout 7d → fallido+email). **Prerrequisito resuelto:** las 3 EFs de activación ya NO pisan `plan_tier` (tier de DB manda si el tenant está linkeado a la misma sub). UI: toggle de plan en el configurador + modal E1/E2 + banner de cambio programado con cancelación.
+> 2. **Arrepentimiento (Ley 24.240 / click-to-cancel):** `tenants.primera_compra_at` (trigger 1ª activación paga) + ventana de **10 días corridos** → botón destacado en Mi Cuenta → **refund TOTAL idempotente fail-closed** (cuotas+deltas+temporales) → cancela MP → **acceso revocado YA**. Cancelación estándar ahora con modal + **fecha exacta** del fin de ciclo (`action:'preview'`). Log legal en `billing_cancelaciones`. PIN de verificación (Disp. 3/2026, opcional) NO implementado — **decidir GO**.
+>
+> **🟠 QUEDA ANTES DE PASAR A dev/prd DE VERCEL (próxima sesión):**
+> 1. **Validación e2e en DEV con usuario real** (tenant dev): (a) upgrade E1 con la sub de test (necesita una sub activa en DEV — hoy no hay); (b) E2 programado + corrida del sweep; (c) arrepentimiento con un pago real chico (o validar en PROD con el tenant "Test GO" re-suscripto); (d) MP-F3: re-verificar la sub tras upgrade → debe seguir Pro.
+> 2. **Decisiones GO:** ¿PIN por email para el arrepentimiento (Disp. 3/2026)? · ¿texto legal del modal ok? · ¿la ventana es 10 días corridos desde la PRIMERA compra (no se resetea)? — así quedó implementado.
+> 3. **Deploy a PROD (con OK de GO):** mig 260 en PROD → 6 EFs a PROD → PR dev→main v1.121.0 → release → Vercel. ⚠ El workflow `mp-reconciliacion.yml` ya llama a `mp-batch-sweep` — en PROD el EF nuevo debe estar deployado ANTES del próximo tick horario tras el merge (si no, el step del workflow falla con 404).
+> 4. **Pendientes operativos que siguen vivos (de la sesión anterior):** plan Básico MP ⚠ sigue $15 (volver a $54k, Claude por API) · refunds de los tests (GO) · checkout orgánico MP-A12 (paso 5) · limpiar `test123` de "Familia Otranto" · limpieza dummies "Test GO".
+> 5. Backlog: BATCH-BAJA-VIGENCIA · MP-P2 (downgrade de plan — reusa el guard batch) · dual pricing Fase B · WH-SIG · rollout ActionMenu.
+>
+> ### ✅ (2026-07-07 cierre · **BILLING COMPLETO VALIDADO E2E EN LA CUENTA NUEVA** — PROD v1.120.0)
 > **El ciclo entero de billing quedó probado con plata real por GO en el tenant "Test GO" (`c37c7b64…`, buildify.info@gmail.com):** suscripción (linkeada por soporte) → **batch SUBA** usuarios+1 (delta $5.000, webhook aplicó en 22s) → **BAJA** sin cobro → **cambio de pack +1→+3** con delta ✓ → **GUARD en ambas direcciones** (con 6/6 users bloqueó la baja con el modal; tras desactivar el 6º la dejó pasar) → **temporal de comprobantes +1.000** comprado y acreditado (vence solo 2026-08-06) → **cancelación** fail-closed llegó a MP + grace real hasta 2026-08-07. Bonus: el trigger DB `fn_enforce_limite()` bloquea inserts de users por SQL directo al llegar al límite (límite duro server-side probado).
 >
 > **🟠 PENDIENTES PRÓXIMA SESIÓN (en orden):**

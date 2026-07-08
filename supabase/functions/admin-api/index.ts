@@ -268,7 +268,7 @@ Deno.serve(async (req) => {
         if (!mpToken) return json({ error: 'MP no configurado' }, 500)
         const H = { Authorization: `Bearer ${mpToken}` }
 
-        const { data: tRow } = await svc.from('tenants').select('id, mp_subscription_id').eq('id', tenantId).maybeSingle()
+        const { data: tRow } = await svc.from('tenants').select('id, mp_subscription_id, plan_tier').eq('id', tenantId).maybeSingle()
         if (!tRow) return json({ error: 'Tenant no encontrado' }, 404)
 
         // 1) Traer el preapproval de MP
@@ -304,18 +304,26 @@ Deno.serve(async (req) => {
         }
 
         // 6) Activar (service_role: bypassa el guard server-side de tenants, mig 247)
+        // Fase 2 (mig 260): si el tenant YA está linkeado a este mismo preapproval con un
+        // tier pago en DB (upgrade por batch — el preapproval sigue en el plan MP original),
+        // el tier de DB manda: re-linkear NO debe degradarlo.
+        const tierDB = String((tRow as any)?.plan_tier ?? '')
+        const mismaSubConTier = prevId === preId && ['basico', 'pro', 'enterprise'].includes(tierDB)
         const { error: updErr } = await svc.from('tenants').update({
           subscription_status: 'active',
           mp_subscription_id: preId,
-          plan_tier: tier,
-          max_users: TIER_BASE[tier].max_users,
-          max_productos: TIER_BASE[tier].max_productos,
+          ...(mismaSubConTier ? {} : {
+            plan_tier: tier,
+            max_users: TIER_BASE[tier].max_users,
+            max_productos: TIER_BASE[tier].max_productos,
+          }),
           subscription_period_end: null, // limpiar el grace de una cancelación anterior (higiene MP-C9)
         }).eq('id', tenantId)
         if (updErr) return json({ error: 'Se verificó en MP pero no se pudo activar la cuenta.' }, 500)
 
-        await audit({ tenantId, preapproval_id: preId, tier, prev_cancel_error })
-        return json({ ok: true, tier, prev_cancel_error })
+        const tierFinal = mismaSubConTier ? tierDB : tier
+        await audit({ tenantId, preapproval_id: preId, tier: tierFinal, prev_cancel_error })
+        return json({ ok: true, tier: tierFinal, prev_cancel_error })
       }
 
       case 'crm.leads.list': {

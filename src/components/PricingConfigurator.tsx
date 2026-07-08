@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { PLANES, BRAND } from '@/config/brand'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
-import { precioSel, DIMS_BATCH, type PackSel } from '@/lib/mpAddonBatch'
+import { calcularBatch, esUpgradeDePlan, type PackSel } from '@/lib/mpAddonBatch'
 import { Check, Box, Building2, User, FileText, Shield, Rocket, Headphones, Lock, RefreshCw, Zap, type LucideIcon } from 'lucide-react'
 
 // Configurador de precios PÚBLICO (Landing) — Pricing 2026, Fase 4.
@@ -36,12 +36,17 @@ const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [
 //    real lo hace el EF mp-addon-batch (acá solo se estima y se arma el batch).
 export interface AppBatchMode {
   planNombre: string
+  /** Tier actual del tenant (tenants.plan_tier) — habilita el toggle de UPGRADE (Fase 2). */
+  planTier: string
+  /** Precios reales de los planes MP (preview del EF) — null si no se pudieron leer. */
+  planesMp?: { basico: number | null; pro: number | null } | null
   /** auto_recurring.transaction_amount actual del preapproval (preview del EF). */
   montoActualMP: number
   /** Packs FIJOS actuales (selDesdeAddons de tenant_addons). */
   initialSel: PackSel
   confirmando?: boolean
-  onConfirm: (packsObjetivo: PackSel) => void
+  /** planObjetivo: 'pro' si el batch incluye el upgrade de plan (E1/E2 lo decide la página). */
+  onConfirm: (packsObjetivo: PackSel, planObjetivo: 'pro' | null) => void
 }
 
 /** Pack TEMPORAL de comprobantes (pago único, 30 días) integrado a la tarjeta de
@@ -76,10 +81,25 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
     .map(([dim, cant]) => ({ dimension: dim as AddonDimension, cantidad: cant, tipo: 'fijo' }))
   const precioAddons = precioMensualAddonsFijos(addonsFijos)
 
-  // Modo app: total = recurrente NUEVO = montoActualMP − precio(actuales) + precio(elegidos).
-  const totalApp = app ? Math.max(0, app.montoActualMP - precioSel(app.initialSel) + precioSel(sel as PackSel)) : 0
+  // Fase 2: upgrade de PLAN dentro del batch (solo Básico→Pro; los precios de plan son
+  // los REALES de MP — canal automático — que trae el preview del EF).
+  const [planObjetivo, setPlanObjetivo] = useState<'pro' | null>(null)
+  const upgradeDisponible = !!app && esUpgradeDePlan(app.planTier, 'pro') &&
+    !!app.planesMp?.basico && !!app.planesMp?.pro
+  const planCambio = app && upgradeDisponible && planObjetivo
+    ? {
+        tierActual: app.planTier, tierObjetivo: planObjetivo,
+        precioPlanActualMP: app.planesMp!.basico!, precioPlanObjetivoMP: app.planesMp!.pro!,
+      }
+    : null
+
+  // Modo app: total = recurrente NUEVO por delta (espejo calcularBatch, mismo cálculo del EF).
+  const batchApp = app
+    ? calcularBatch({ montoActualMP: app.montoActualMP, packsActuales: app.initialSel, packsObjetivo: sel as PackSel, plan: planCambio })
+    : null
+  const totalApp = batchApp?.recurrenteNuevo ?? 0
   const deltaApp = app ? totalApp - app.montoActualMP : 0
-  const sinCambios = app ? DIMS_BATCH.every(d => (app.initialSel[d] ?? 0) === (sel[d] ?? 0)) : true
+  const sinCambios = batchApp?.sinCambios ?? true
   const total = app ? totalApp : base + precioAddons
 
   const setPack = (dim: string, cant: number) =>
@@ -103,13 +123,29 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
         <p className="mt-2 text-sm text-gray-400">Elegí el plan que mejor se adapta a tu negocio y sumá los add-ons que necesités.</p>
       </div>
 
-      {/* Toggle de plan base (Landing/estimador). En modo app el plan es el ACTUAL del
-          tenant — el cambio de PLAN va por las tarjetas de planes (Fase 2 del batch). */}
+      {/* Toggle de plan base. Landing/estimador: elige el plan a estimar. Modo app (Fase 2):
+          si el tenant es Básico, el toggle ofrece el UPGRADE a Pro (el delta usa los precios
+          reales de los planes MP); Pro/enterprise ven la píldora de su plan actual. */}
       <div className="relative mt-7 flex justify-center">
         {app ? (
-          <div className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-6 py-2.5 text-sm font-semibold text-white">
-            <Check size={15} className="text-accent" /> Tu plan: {app.planNombre} · ${app.montoActualMP.toLocaleString('es-AR')}/mes
-          </div>
+          upgradeDisponible ? (
+            <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+              <button onClick={() => setPlanObjetivo(null)}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all
+                  ${!planObjetivo ? 'bg-accent text-white shadow-lg shadow-accent/30' : 'text-gray-300 hover:text-white'}`}>
+                {app.planNombre} · ${app.montoActualMP.toLocaleString('es-AR')} (tu plan)
+              </button>
+              <button onClick={() => setPlanObjetivo('pro')}
+                className={`px-6 py-2.5 rounded-full text-sm font-semibold transition-all
+                  ${planObjetivo === 'pro' ? 'bg-accent text-white shadow-lg shadow-accent/30' : 'text-gray-300 hover:text-white'}`}>
+                Pro · +${((app.planesMp!.pro! - app.planesMp!.basico!)).toLocaleString('es-AR')}/mes
+              </button>
+            </div>
+          ) : (
+            <div className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-6 py-2.5 text-sm font-semibold text-white">
+              <Check size={15} className="text-accent" /> Tu plan: {app.planNombre} · ${app.montoActualMP.toLocaleString('es-AR')}/mes
+            </div>
+          )
         ) : (
           <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
             {planes.map(p => (
@@ -222,9 +258,11 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
           {app ? (
             <p className="text-xs text-gray-400">
               Venís pagando ${app.montoActualMP.toLocaleString('es-AR')}/mes
-              {!sinCambios && (deltaApp > 0
-                ? <> · hoy pagás la diferencia: <span className="font-semibold text-white">${deltaApp.toLocaleString('es-AR')}</span></>
-                : <> · sin cargos hoy — tu próxima factura ya llega por el monto nuevo</>)}
+              {!sinCambios && (batchApp?.cambiaPlan
+                ? <> · cambio de plan a <span className="font-semibold text-white">Pro</span>: elegís al confirmar si pagás la diferencia hoy o cambiás en tu próxima fecha de cobro</>
+                : deltaApp > 0
+                  ? <> · hoy pagás la diferencia: <span className="font-semibold text-white">${deltaApp.toLocaleString('es-AR')}</span></>
+                  : <> · sin cargos hoy — tu próxima factura ya llega por el monto nuevo</>)}
             </p>
           ) : (
             <p className="text-xs text-gray-400">Plan {plan.nombre} (${base.toLocaleString('es-AR')}) + add-ons (${precioAddons.toLocaleString('es-AR')})</p>
@@ -239,15 +277,18 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
           </p>
         </div>
         {app ? (
-          <button onClick={() => app.onConfirm(sel as PackSel)} disabled={sinCambios || app.confirmando}
+          <button onClick={() => app.onConfirm(sel as PackSel, batchApp?.cambiaPlan ? 'pro' : null)}
+            disabled={sinCambios || app.confirmando}
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-accent/30 transition-all hover:opacity-90 shrink-0 disabled:opacity-50">
             {app.confirmando
               ? <><RefreshCw size={16} className="animate-spin" /> Procesando…</>
               : sinCambios
                 ? <><Check size={18} /> Sin cambios</>
-                : deltaApp > 0
-                  ? <><Check size={18} /> Pagar diferencia ${deltaApp.toLocaleString('es-AR')}</>
-                  : <><Check size={18} /> Confirmar cambios</>}
+                : batchApp?.cambiaPlan
+                  ? <><Check size={18} /> Cambiar a Pro</>
+                  : deltaApp > 0
+                    ? <><Check size={18} /> Pagar diferencia ${deltaApp.toLocaleString('es-AR')}</>
+                    : <><Check size={18} /> Confirmar cambios</>}
           </button>
         ) : onCta ? (
           <button onClick={() => onCta(planId)} disabled={ctaLoading}

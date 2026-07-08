@@ -6,6 +6,24 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-07] update | 🏗 v1.121.0 (EN DEV) — Fase 2 batch: cambio de PLAN (E1 inmediato + E2 programado) + flujo de ARREPENTIMIENTO legal (refund total ≤10 días)
+
+**Dos features en una sesión, TODO en DEV (mig 260 aplicada en DEV + 6 EFs deployadas a DEV + smoke verde). SIN deploy a PROD ni Vercel — pendiente OK de GO.**
+
+**1) Fase 2 del batch — cambio de PLAN (spec GO 2026-07-07, `configurador-addons-batch.md` §4):**
+- **Mig 260:** `addon_batch_changes.plan_objetivo` + `programado_para` + estados `programado`/`esperando_cobro` (+uq un-programado-por-tenant) · `fn_aplicar_addon_batch` v2 aplica también `plan_tier` + max base.
+- **E1 (inmediato):** upgrade Básico→Pro paga HOY el delta de plan como pago único (precios REALES de los planes MP vía `GET /preapproval_plan` → delta relativo, un monto custom no se pisa — unit: preapproval a $15 + upgrade → delta $36.000, recurrente $36.015) por el MISMO circuito `|addonbatch|`; el webhook aplica fail-closed y la fecha de cobro nunca cambia.
+- **E2 (programado):** el change queda `programado` a la `next_payment_date`; **EF nueva `mp-batch-sweep`** (agregada al workflow horario de `mp-reconciliacion`) hace el PUT en la ventana de 36h previa (`esperando_cobro`) y habilita el tier SOLO cuando el cobro del monto nuevo figura aprobado en `authorized_payments` (cobro viejo NO habilita; preapproval muerto o timeout 7d → `fallido` + email a soporte). Cancelable mientras esté `programado` (banner en /suscripcion).
+- **Prerrequisito resuelto:** `mp-webhook`/`mp-verificar-suscripcion`/`admin-api.link_subscription` ya NO pisan `plan_tier` cuando el tenant está linkeado a esa misma sub con tier pago (la derivación por `preapproval_plan_id` queda solo para el link inicial) — sin esto, re-verificar tras un upgrade degradaba a Básico.
+- **UI:** toggle de plan en el `PricingConfigurator` modo app (solo Básico→Pro; usa `calcularBatch` espejo con precios MP del preview) + modal E1/E2 ("Cambiar ahora" vs "En mi próxima fecha de cobro (DD/MM)") + banner de cambio programado/esperando cobro con botón cancelar.
+
+**2) Arrepentimiento (Ley 24.240 art. 34 / click-to-cancel) + cancelación estándar con fecha exacta:**
+- **Mig 260 (mismo archivo):** `tenants.primera_compra_at` (trigger `fn_set_primera_compra` en la 1ª activación PAGA; NO se resetea al re-suscribir) + tabla de log legal `billing_cancelaciones` (tenant/user/tipo/detalle, solo service_role).
+- **EF `cancel-suscripcion`** ganó acciones: `preview` (fecha exacta del fin de ciclo + elegibilidad server-side) y `arrepentimiento` (≤10 días corridos de la primera compra): **refund TOTAL** de cuotas + deltas de batch + packs temporales (idempotente: saltea ya-reembolsados; fail-closed: una falla aborta SIN cancelar) → cancela en MP → **acceso revocado YA** (`subscription_period_end=now()`). Ambos tipos quedan logueados.
+- **UI MiCuentaPage:** botón destacado "Arrepentirse de la compra (reembolso)" solo dentro de la ventana (el EF revalida) + modales con condiciones explícitas (estándar: "sin reembolso, acceso hasta el DD/MM exacto"; arrepentimiento: "reembolso total, perdés el acceso YA"). MP no tiene Customer Portal tipo Stripe → todo por nuestra UI+API. PIN por email (Disp. 3/2026, opcional) NO implementado — decisión GO pendiente.
+
+**Espejos+tests:** `mpAddonBatch.ts` plan-aware + `decidirSweepProgramado`/`decidirConfirmacionCobro` · `arrepentimiento.ts` NUEVO · **945 unit verdes (+24) · tsc · build verdes**. UAT `mp-suscripciones-pagos.plan.md` §10.c (MP-F1..F5) y §10.d (AR-1..7) nuevos. `schema_full.sql` al día (incluye el faltante de mig 258).
+
 ## [2026-07-07] update | ✅ CIERRE — Billing COMPLETO validado e2e en la cuenta nueva (GO, plata real)
 
 **Resultados finales del ciclo de test (tenant "Test GO"):** GUARD validado en ambas direcciones (con 6/6 usuarios el modal bloqueó la baja del pack; tras desactivar el 6º pasó) · **cambio de pack +1→+3 usuarios con delta** ✓ (escenario extra, ni estaba en el guion) · **temporal de comprobantes +1.000** comprado desde la tarjeta nueva, acreditado, vence solo 2026-08-06 (pago `166832503207`) · **cancelación** fail-closed llegó a MP (`cancelled`) con **grace real hasta 2026-08-07** (next_payment_date de MP, no fallback) · 5 dummies "Dummy Guard" creados por SQL para el test (el 1er intento sin pack lo bloqueó `fn_enforce_limite()` — límite duro DB probado). **Pendientes → "ARRANCÁ ACÁ"** (plan a $54k ⚠ sigue $15, refunds, checkout orgánico MP-A12, test123, Fase 2 cambio de plan).

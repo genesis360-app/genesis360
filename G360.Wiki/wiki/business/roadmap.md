@@ -9,11 +9,42 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 7 de Julio, 2026
+**Última actualización:** 9 de Julio, 2026
 
 ---
 
-## v1.122.0 — 🧾 Facturación automática de plataforma (Fede) + motor de pago manual + precio dual (EN DEV, sin PROD)
+## v1.123.0 — 🚀 Deploy a PROD: Fase 2 batch + arrepentimiento + facturación de plataforma + pago manual + perf DB (🏗 EN CURSO — infra en PROD, código pendiente de merge)
+
+Consolida a PROD toda la cadena v1.121.0→v1.122.0: **Fase 2 batch** (cambio de PLAN Básico↔Pro,
+E1 inmediato/E2 programado) + **arrepentimiento legal** (Ley 24.240, mig 260); **facturación
+automática de plataforma** para Fede (mig 261); **motor de pago manual** (mig 262); + **mig 263**
+(performance RLS/índices); WH-SIG log-only; fix de `EnviosPage` (courier propio, REGLA #0); y
+eliminación de la EF huérfana `crear-suscripcion` (solo en DEV).
+
+**Infra de Supabase — 100% en PROD y verificada:** migraciones 260-263 aplicadas a
+`jjffnbrdjchquexdfgwq` (0 policies `auth.uid()` sin envolver, 4 tablas nuevas confirmadas,
+aislamiento multi-tenant reverificado por impersonación) + 10 Edge Functions deployadas con smoke
+OK (nuevas `mp-batch-sweep`/`emitir-factura-plataforma`/`platform-facturacion-sweep`/
+`billing-manual-pagar`/`billing-manual-avisar-pago`/`billing-manual-sweep`; modificadas
+`mp-webhook`/`admin-api`/`cancel-suscripcion`/`mp-verificar-suscripcion`). `crear-suscripcion`
+sigue viva en PROD (autorización de GO para borrarla fue solo para DEV) pero inofensiva.
+
+**Código:** PR genesis360 **#278** MERGEADO a `main` (commit `471912fd`). **Gotcha de
+versionado:** el tag `v1.122.0` ya existía (sesión previa, apuntando al commit viejo `94c9e01c`
+"EN DEV", con release de GitHub ya publicado) → se bumpeó `APP_VERSION` a **v1.123.0** (commit
+`42d02a79`) — ese es el número real de esta release de PROD. PR nuevo **genesis360 #279**
+(bump de versión) todavía SIN mergear.
+
+**🟠 Pendiente antes de cerrar el release:** mergear PR genesis360 #279 + PR **genesis360-admin
+#3** ("Pagos manuales + facturación de plataforma en Billing") → recién ahí tag `v1.123.0` +
+GitHub release + confirmar que Vercel deployó en `genesis360.pro` y `admin.genesis360.pro`. **El
+frontend de Vercel TODAVÍA sirve la versión anterior** hasta esos merges. Bloqueante real de fondo
+sin cambios: Fede completando sus 3 pasos en AfipSDK (afipsdk.com → punto de venta → token) para
+que la facturación de plataforma empiece a emitir de verdad.
+
+---
+
+## v1.122.0 — 🧾 Facturación automática de plataforma (Fede) + motor de pago manual + precio dual (infra en PROD desde v1.123.0, código consolidado ahí — ver arriba)
 
 Fede (monotributista, CUIT `20-42237416-8`) factura automáticamente los cobros de suscripción
 que le entran a su cuenta MP/banco: `platform_billers` (config AFIP, no es un `tenants`) +
@@ -24,7 +55,7 @@ a mes, por transferencia/efectivo/MP pago único — 3 caminos, todos disparan l
 sweep de recordatorio+gracia+suspensión (`billing-manual-sweep`). Precio dual visible en toda la
 app (Landing/Suscripción/estimador: -10% auto vs lista manual). 970 unit (+12).
 
-## v1.121.0 — 🏗 Fase 2 batch: cambio de PLAN (E1/E2) + Arrepentimiento legal (EN DEV, sin PROD)
+## v1.121.0 — 🏗 Fase 2 batch: cambio de PLAN (E1/E2) + Arrepentimiento legal (infra en PROD desde v1.123.0, código consolidado ahí — ver arriba)
 
 Cambio de plan Básico→Pro por el batch: **E1 inmediato** (paga hoy el delta de plan — precios reales de los planes MP, delta relativo que preserva descuentos — mismo circuito `|addonbatch|` fail-closed, fecha de cobro intacta) + **E2 programado** (mig 260 + EF nueva `mp-batch-sweep` horaria: PUT 36h antes del cobro, tier habilitado solo con el cobro nuevo aprobado). Las 3 EFs de activación dejan de pisar `plan_tier`. **Arrepentimiento (Ley 24.240 art. 34):** ventana de 10 días desde `tenants.primera_compra_at` → refund TOTAL idempotente fail-closed + revocación inmediata; cancelación estándar con modal y fecha exacta; log legal `billing_cancelaciones`. 945 unit · UAT §10.c/§10.d.
 

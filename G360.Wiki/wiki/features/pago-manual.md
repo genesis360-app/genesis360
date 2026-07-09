@@ -3,13 +3,15 @@ title: Motor de pago MANUAL (billing_mode) — transferencia/efectivo/MP sin aut
 category: features
 tags: [billing, mercadopago, pago-manual, precio-dual]
 sources: [supabase/migrations/262_billing_manual.sql, supabase/functions/billing-manual-pagar, supabase/functions/billing-manual-avisar-pago, supabase/functions/billing-manual-sweep, src/lib/facturacionManual.ts]
-updated: 2026-07-08
+updated: 2026-07-09
 ---
 
 # 💳 Pago manual (`billing_mode`)
 
-> Estado: **🏗 EN DEV (v1.122.0, 2026-07-08)** — código completo, deployado y smoke-testeado en
-> DEV. Ningún tenant real está en modo manual todavía.
+> Estado: **🏗 Infra 100% en PROD (mig 262 + EFs `billing-manual-pagar`/`billing-manual-avisar-pago`/
+> `billing-manual-sweep`, 2026-07-09)** — código mergeado a `main` (PR #278, release real
+> **v1.123.0**), frontend de Vercel pendiente de 2 PRs chicos (genesis360 #279 + genesis360-admin
+> #3) antes de dar por cerrado el release. Ningún tenant real está en modo manual todavía.
 
 ## Qué es
 

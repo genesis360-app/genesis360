@@ -8,10 +8,13 @@ updated: 2026-07-09
 
 # 🧾 Facturación automática de plataforma (Fede)
 
-> Estado: **🏗 EN DEV (v1.122.0, 2026-07-08)** — código completo, deployado y **validado e2e en
-> DEV el camino `sin_biller`** (ver sección abajo). **Bloqueado en la práctica hasta que Fede
-> configure `platform_billers`** — sin eso el sistema alerta a soporte y no factura (fail-open,
-> nunca bloquea el cobro).
+> Estado: **🏗 Infra 100% en PROD (mig 261 + EFs `emitir-factura-plataforma`/
+> `platform-facturacion-sweep`, 2026-07-09) — código mergeado a `main` (PR #278, release real
+> v1.123.0), frontend de Vercel pendiente de 2 PRs chicos (genesis360 #279 + genesis360-admin #3)
+> antes de dar por cerrado el release.** Código completo y **validado e2e en DEV el camino
+> `sin_biller`** (ver sección abajo). **Bloqueado en la práctica hasta que Fede configure
+> `platform_billers`** — sin eso el sistema alerta a soporte y no factura (fail-open, nunca
+> bloquea el cobro). Esto no cambió con el deploy: la infra ya está en PROD esperando esos datos.
 >
 > **Guía concreta para Fede (confirmado en código 2026-07-09,
 > `supabase/functions/emitir-factura/providers.ts:24-31`):** para el provider **AfipSDK** (el que

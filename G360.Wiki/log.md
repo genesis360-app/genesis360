@@ -6,6 +6,69 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-09] deploy | 🔒 Deploy a PROD 100% cerrado (v1.123.0: tag + release + Vercel READY en ambos proyectos) + incidente de seguridad hallado y remediado (Google Maps API key expuesta)
+
+**Sexta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, WH-SIG+mig 263, el
+cierre `crear-suscripcion`+fix EnviosPage, y el deploy de la entrada de abajo con infra 100% en PROD
+pero código pendiente de merge). Cierra el deploy a PROD por completo y resuelve un incidente de
+seguridad real encontrado en el camino — última actualización de wiki de la sesión, antes de un
+`/clear`.
+
+**1) Deploy a PROD — ahora sí 100% completo:**
+- PR genesis360 **#279** (bump `APP_VERSION` a v1.123.0,
+`https://github.com/genesis360-app/genesis360/pull/279`) **MERGEADO** a `main` (merge commit
+`4a930bc6`, 2026-07-09 17:56 UTC).
+- PR **genesis360-admin #3** ("Pagos manuales + facturación de plataforma (Fede) en Billing",
+`https://github.com/genesis360-app/genesis360-admin/pull/3`) **MERGEADO** (merge commit `595f66a4`,
+17:58 UTC).
+- Tag **v1.123.0** creado sobre el commit de merge `4a930bc6` + GitHub release publicada (17:59
+UTC): `https://github.com/genesis360-app/genesis360/releases/tag/v1.123.0`.
+- **Vercel verificado: ambos proyectos en `production`, estado `READY`** —
+`genesis360.pro`/`app.genesis360.pro`/`www.genesis360.pro` y `admin.genesis360.pro`, ambos sirviendo
+el código nuevo.
+- **PROD queda en: v1.123.0, migraciones 001-263, código y Supabase 100% sincronizados.** Nada
+pendiente de este deploy.
+
+**2) Incidente de seguridad encontrado y cerrado en la misma sesión (fuera del alcance original del
+deploy):**
+- GitHub Secret Scanning detectó una **Google Maps API Key hardcodeada en `public/test-maps.html`**,
+expuesta en vivo (Vite sirve todo `public/` tal cual, sin build step) desde el **21 de mayo de
+2026** (más de un mes) — era la key REAL de `VITE_GOOGLE_MAPS_API_KEY` de producción, no una
+descartable.
+- Investigación contra el código (`src/hooks/useGoogleMaps.ts`,
+`src/components/AddressAutocompleteInput.tsx`) confirmó que la app solo usa 3 APIs de Google (Maps
+JavaScript API, Places API (New), Distance Matrix API) — la key tenía **33 APIs habilitadas**, muy
+por encima de lo necesario.
+- **Remediación completa de GO (Google Cloud Console):** (1) restringió las APIs habilitadas de 33 a
+las 3 reales; (2) confirmó que la restricción de "Aplicaciones" ya estaba en "Sitios web" con los
+referrers correctos (`*.vercel.app/*`, `app.genesis360.pro/*`, `www.genesis360.pro/*`, etc.) —
+mitigaba buena parte del riesgo real incluso antes de rotar; (3) **rotó la key** (generó una nueva),
+la actualizó en Vercel (`VITE_GOOGLE_MAPS_API_KEY`, marcada "Sensitive") y redeployó.
+- **Código:** PR **#280** (`security: elimina API key de Google expuesta en test-maps.html`,
+`https://github.com/genesis360-app/genesis360/pull/280`, merge commit `4ced7ae8`, 18:15 UTC) —
+elimina `public/test-maps.html` (dos copias: la commiteada en `public/` y una suelta sin trackear en
+la raíz del repo). Mergeado y deployado, confirmado `READY` en Vercel producción.
+- **✅ Incidente CERRADO.** La key rotada + restringida a las 3 APIs reales queda como best practice
+a mantener (no volver a habilitar "todas las APIs" por default al crear una key nueva). Lección
+documentada (reusable): nunca hardcodear una API key en un archivo dentro de `public/` (Vite lo
+sirve tal cual, en vivo) ni en ningún archivo de test commiteado — usar siempre
+`import.meta.env.VITE_*`. Al crear una API key nueva de Google, restringirla de entrada a las APIs
+realmente usadas, no dejar el default de "todas habilitadas".
+
+**3) Gotcha operativo de proceso (sin consecuencias, reusable):** durante el deploy, un `git
+checkout main` para hacer el tag, seguido de una edición de código sin volver a `dev` primero, casi
+termina en un commit directo sobre `main` — detectado ANTES de hacer push, corregido con `git
+cherry-pick` del cambio a `dev` + `git reset --hard origin/main`. Ninguna consecuencia real (nunca
+se pusheó a `main` directamente). Lección de proceso: en journeys de deploy multi-paso, verificar
+SIEMPRE la rama actual (`git branch --show-current`) antes de cualquier edición de código.
+
+**Estado:** PROD en v1.123.0, migs 001-263, código y Vercel 100% sincronizados en ambos proyectos.
+Incidente de seguridad CERRADO (key rotada + restringida + archivo eliminado). Sin migraciones
+nuevas en esta sesión. Wiki tocado: `sources/raw/project_pendientes.md`, `wiki/business/roadmap.md`,
+`index.md`.
+
+---
+
 ## [2026-07-09] deploy | 🚀 Deploy a PROD: infra de Fase 2 batch + arrepentimiento + facturación de plataforma + pago manual + perf DB (código mergeado — versión real v1.123.0, Vercel pendiente)
 
 **Quinta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, WH-SIG+mig 263, y el

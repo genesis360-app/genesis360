@@ -6,12 +6,72 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 (2026-07-09 · DEPLOY A PROD — infra de Supabase 100% lista y verificada, código mergeado a `main`, PERO Vercel todavía sirve la versión anterior hasta mergear 2 PRs chicos)
+> ### ✅ (2026-07-09 · DEPLOY A PROD 100% CERRADO — v1.123.0 tageada + release publicada + Vercel `READY` en ambos proyectos) + 🔒 incidente de seguridad hallado y cerrado en la misma sesión (Google Maps API key expuesta en `test-maps.html`)
+> **Sexta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, WH-SIG+mig 263, el
+> cierre `crear-suscripcion`+fix EnviosPage, y el deploy con infra 100% en PROD pero código pendiente
+> de merge — bloques de abajo). **Última actualización de wiki antes de un `/clear` — cierra el
+> deploy a PROD por completo y deja resuelto un incidente de seguridad real encontrado en el camino.**
+> 1. **Deploy 100% completo:** PR genesis360 **#279** (bump `APP_VERSION` a v1.123.0,
+>    `https://github.com/genesis360-app/genesis360/pull/279`) **MERGEADO** a `main` (merge commit
+>    `4a930bc6`, 2026-07-09 17:56 UTC) + PR **genesis360-admin #3** ("Pagos manuales + facturación de
+>    plataforma (Fede) en Billing", `https://github.com/genesis360-app/genesis360-admin/pull/3`)
+>    **MERGEADO** (merge commit `595f66a4`, 17:58 UTC). Tag **v1.123.0** creado sobre `4a930bc6` +
+>    GitHub release publicada, 17:59 UTC:
+>    `https://github.com/genesis360-app/genesis360/releases/tag/v1.123.0`.
+>    **Vercel verificado: ambos proyectos en `production`, estado `READY`** — `genesis360.pro` /
+>    `app.genesis360.pro` / `www.genesis360.pro` y `admin.genesis360.pro`, sirviendo el código nuevo.
+>    **PROD queda en: v1.123.0, migraciones 001-263, código y Supabase 100% sincronizados. Nada
+>    pendiente de este deploy.**
+> 2. **🔒 Incidente de seguridad encontrado y cerrado (fuera del alcance original del deploy) — ✅
+>    CERRADO:** GitHub Secret Scanning detectó una **Google Maps API Key hardcodeada en
+>    `public/test-maps.html`**, expuesta en vivo (Vite sirve `public/` tal cual, sin build step)
+>    desde el **21 de mayo de 2026** (>1 mes) — era la key REAL de `VITE_GOOGLE_MAPS_API_KEY` de
+>    producción, con **33 APIs habilitadas** cuando la app solo usa 3 (Maps JavaScript API, Places
+>    API (New), Distance Matrix API — confirmado contra `src/hooks/useGoogleMaps.ts` y
+>    `src/components/AddressAutocompleteInput.tsx`). **Remediación de GO en Google Cloud Console:**
+>    (1) restringió las APIs habilitadas de 33 a las 3 reales; (2) confirmó que la restricción de
+>    "Aplicaciones" ya estaba en "Sitios web" con los referrers correctos (`*.vercel.app/*`,
+>    `app.genesis360.pro/*`, `www.genesis360.pro/*`, etc.) — mitigaba buena parte del riesgo real
+>    incluso antes de rotar; (3) **rotó la key** (generó una nueva), actualizada en Vercel
+>    (`VITE_GOOGLE_MAPS_API_KEY`, marcada "Sensitive") + redeploy. **Código:** PR **#280**
+>    (`security: elimina API key de Google expuesta en test-maps.html`,
+>    `https://github.com/genesis360-app/genesis360/pull/280`, merge commit `4ced7ae8`, 18:15 UTC)
+>    elimina `public/test-maps.html` (2 copias: la commiteada en `public/` + una suelta sin trackear
+>    en la raíz del repo). Mergeado y deployado, confirmado `READY` en Vercel producción. **La key
+>    rotada + restringida a las 3 APIs reales queda como best practice a mantener** (no volver a
+>    habilitar APIs de más al crear una key nueva). Lección reusable: nunca hardcodear una API key
+>    en un archivo dentro de `public/` (se sirve en vivo) ni en un archivo de test commiteado — usar
+>    siempre `import.meta.env.VITE_*`.
+> 3. **Gotcha operativo de proceso (sin consecuencias, reusable):** durante el deploy, un `git
+>    checkout main` para crear el tag, seguido de una edición de código sin volver a `dev` primero,
+>    casi termina en un commit directo sobre `main` — detectado ANTES de hacer push, corregido con
+>    `git cherry-pick` del cambio a `dev` + `git reset --hard origin/main`. Sin consecuencias reales
+>    (nunca se pusheó a `main` directamente). **Lección:** en journeys de deploy multi-paso, verificar
+>    SIEMPRE la rama actual (`git branch --show-current`) antes de cualquier edición de código.
+>
+> **🟠 QUEDA (próxima sesión, en orden de prioridad):**
+> 1. **Bloqueante real #1 — Fede completa sus 3 pasos** (crear cuenta en **afipsdk.com** con su CUIT
+>    `20-42237416-8` → habilitar **punto de venta para Facturación Electrónica** en AFIP/ARCA →
+>    obtener el **token de API** de afipsdk.com) → avisar para que Claude cargue la fila en
+>    `platform_billers` directo por SQL (tabla `service_role`-only, sin UI propia) — recién ahí sale
+>    la primera factura real de plataforma. Guía completa en el bloque "🧹 2026-07-09" de abajo,
+>    punto 4.
+> 2. **GO corre el dump de `schema_full.sql`** en su propia terminal con Docker Desktop corriendo,
+>    avisa para revisar/commitear.
+> 3. **Decidir si borrar `crear-suscripcion` también de PROD** (no bloqueante, EF huérfana e
+>    inofensiva; sigue viva en PROD, la autorización de GO fue solo para DEV).
+> 4. **Resto del backlog conocido, sin cambios:** volver el plan Básico de MP a $54.000 (sigue en
+>    $15/$1.000 de test) · refunds pendientes de los tests de Fede/GO · checkout orgánico MP-A12 ·
+>    rama `else` de `mp-webhook` (WH-LEGACY) · MP-P2 (downgrade de plan) · MP-AD7.
+>
+> ---
+>
+> ### 🚀 (2026-07-09 · DEPLOY A PROD — infra de Supabase 100% lista y verificada, código mergeado a `main` — ✅ CERRADO el mismo día, ver bloque nuevo arriba con tag v1.123.0 + release + Vercel `READY`)
 > **Quinta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, WH-SIG+mig 263, y
-> el cierre `crear-suscripcion`+fix EnviosPage — bloques de abajo). **Distinción clave: la DB/Edge
-> Functions de PROD YA tienen todo (migs 260-263 + 10 EFs); el CÓDIGO del frontend en Vercel
-> todavía NO — sigue sirviendo la versión previa hasta que se mergeen los 2 PRs pendientes (punto 5
-> de abajo).**
+> el cierre `crear-suscripcion`+fix EnviosPage — bloques de abajo). **✅ Actualización 2026-07-09
+> (sexta sesión, bloque de arriba): los 2 PRs pendientes del punto 5 de abajo se mergearon, se creó
+> el tag `v1.123.0` + GitHub release, y Vercel quedó `READY` en ambos proyectos — el deploy quedó
+> 100% cerrado el mismo día.**
 > 1. **Infra de Supabase — 100% en PROD y verificada:** migraciones **260, 261, 262, 263** aplicadas
 >    a PROD (`jjffnbrdjchquexdfgwq`) en ese orden. Post-verificación: `pg_policies` con 0 policies
 >    `auth.uid()` sin envolver; 4 tablas nuevas (`platform_billers`/`platform_facturas`/
@@ -30,35 +90,24 @@ type: project
 >    cadena: Fase 2 batch + arrepentimiento (mig 260), facturación de plataforma (mig 261), pago
 >    manual (mig 262), perf DB (mig 263), WH-SIG log-only, fix `EnviosPage` (courier propio),
 >    eliminación de `crear-suscripcion`.
-> 5. **🟠 Gotcha de versionado y lo que falta antes de que Vercel sirva la versión nueva:** al
->    tagear se descubrió que **`v1.122.0` YA EXISTÍA** (sesión previa 2026-07-08, apuntando al
->    commit viejo `94c9e01c` "EN DEV" nunca mergeado, CON release de GitHub ya publicado) — en vez
->    de mover un tag/release ya público, se bumpeó `APP_VERSION` a **v1.123.0** (commit `42d02a79`,
->    sobre `dev`), con **PR genesis360 #279**
->    (`https://github.com/genesis360-app/genesis360/pull/279`, 1 línea, bump de versión) todavía SIN
->    mergear. Además **PR genesis360-admin #3**
+> 5. **🟠 Gotcha de versionado (✅ resuelto 2026-07-09):** al tagear se descubrió que **`v1.122.0`
+>    YA EXISTÍA** (sesión previa 2026-07-08, apuntando al commit viejo `94c9e01c` "EN DEV" nunca
+>    mergeado, CON release de GitHub ya publicado) — en vez de mover un tag/release ya público, se
+>    bumpeó `APP_VERSION` a **v1.123.0** (commit `42d02a79`, sobre `dev`), con **PR genesis360 #279**
+>    (`https://github.com/genesis360-app/genesis360/pull/279`, 1 línea, bump de versión) **✅
+>    MERGEADO 2026-07-09** (merge commit `4a930bc6`). Además **PR genesis360-admin #3**
 >    (`https://github.com/genesis360-app/genesis360-admin/pull/3`, "Pagos manuales + facturación de
->    plataforma en Billing") también SIN mergear.
+>    plataforma en Billing") **✅ MERGEADO 2026-07-09** (merge commit `595f66a4`). Tag **v1.123.0** +
+>    GitHub release publicados sobre `4a930bc6`:
+>    `https://github.com/genesis360-app/genesis360/releases/tag/v1.123.0`.
 > 6. `.github/workflows/mp-reconciliacion.yml` no necesitó tocarse (ya trae los 4 steps de sweep en
 >    el repo) — corre automáticamente contra PROD desde que el código llegó a `main`, y como los 4
 >    EFs de sweep ya estaban deployados ANTES del merge, no debería haber dado 404 en el primer tick.
 >
-> **🟠 QUEDA (próxima sesión, en orden de prioridad):**
-> 1. **GO mergea los 2 PRs pendientes:** genesis360 **#279** (bump versión) y genesis360-admin
->    **#3** (Billing).
-> 2. **Recién ahí:** crear tag `v1.123.0` + GitHub release + verificar que Vercel deployó bien en
->    `genesis360.pro` Y `admin.genesis360.pro` — lo hace Claude en la próxima interacción, apenas GO
->    confirme los merges.
-> 3. **Decidir si borrar `crear-suscripcion` también de PROD** (no bloqueante, EF huérfana e
->    inofensiva).
-> 4. **El bloqueante real de fondo sigue igual:** Fede completa sus 3 pasos (afipsdk.com → punto de
->    venta AFIP/ARCA → token API) para que la facturación automática de plataforma empiece a emitir
->    de verdad — el código YA está en PROD esperando esos datos (guía completa en el bloque "🧹
->    2026-07-09" de abajo, punto 4).
-> 5. **Resto del backlog conocido, sin cambios:** GO corre el dump de `schema_full.sql` en su
->    terminal · volver el plan Básico de MP a $54.000 (sigue en $15/$1.000 de test) · refunds
->    pendientes de los tests de Fede/GO · checkout orgánico MP-A12 · rama `else` de `mp-webhook`
->    (WH-LEGACY) · MP-P2 (downgrade de plan) · MP-AD7.
+> **✅ RESUELTO 2026-07-09 (ver bloque de arriba):** los 2 PRs pendientes (genesis360 #279 +
+> genesis360-admin #3) se mergearon, se creó el tag `v1.123.0` + GitHub release, y Vercel quedó
+> `READY` en ambos proyectos. Lo único pendiente de este bloque es lo que ya era backlog de fondo
+> (Fede + resto) — ver bloque de arriba, sección "🟠 QUEDA".
 >
 > ---
 >
@@ -230,12 +279,11 @@ type: project
 >      reusable) en `wiki/integrations/resend-email.md`.
 > 3. **Decisiones de GO pendientes**: ¿wording final del email de recordatorio/suspensión? ¿el
 >    `concepto` de la factura tal como quedó redactado está bien para mostrar en el comprobante?
-> 4. **✅ HECHO (2026-07-09) — infra en PROD:** mig 261+262 (+260+263) aplicadas en PROD, 7+ EFs
->    deployadas (`platform-facturacion-sweep`/`billing-manual-sweep` incluidas, ya cubiertas por el
->    workflow), **PR #278 mergeado a `main`**. **Falta el número de versión/Vercel:** el release
->    real quedó como **v1.123.0** (no v1.122.0, tag duplicado — ver bloque "🚀 2026-07-09" arriba) y
->    el frontend de Vercel todavía sirve la versión anterior hasta mergear PR #279 (bump versión) +
->    genesis360-admin #3 (Billing).
+> 4. **✅ HECHO (2026-07-09) — deploy 100% completo:** mig 261+262 (+260+263) aplicadas en PROD, 7+
+>    EFs deployadas (`platform-facturacion-sweep`/`billing-manual-sweep` incluidas, ya cubiertas por
+>    el workflow), **PR #278 mergeado a `main`**, PR #279 (bump versión) y genesis360-admin #3
+>    (Billing) también mergeados — release real **v1.123.0** tageada + GitHub release publicada +
+>    Vercel `READY` en ambos proyectos (`genesis360.pro` y `admin.genesis360.pro`).
 > 5. Backlog: conciliación CSV de extracto bancario (Parte 4) · downgrade de plan MP-P2 · WSFE
 >    propio (fase 3, proyecto aparte) · panel multi-empresa (proyecto aparte).
 >
@@ -253,11 +301,11 @@ type: project
 > **🟠 QUEDA ANTES DE PASAR A dev/prd DE VERCEL (próxima sesión):**
 > 1. **Validación e2e en DEV con usuario real** (tenant dev): (a) upgrade E1 con la sub de test (necesita una sub activa en DEV — hoy no hay); (b) E2 programado + corrida del sweep; (c) arrepentimiento con un pago real chico (o validar en PROD con el tenant "Test GO" re-suscripto); (d) MP-F3: re-verificar la sub tras upgrade → debe seguir Pro.
 > 2. **Decisiones GO:** ¿PIN por email para el arrepentimiento (Disp. 3/2026)? · ¿texto legal del modal ok? · ¿la ventana es 10 días corridos desde la PRIMERA compra (no se resetea)? — así quedó implementado.
-> 3. **✅ HECHO (2026-07-09) — infra en PROD:** mig 260 aplicada en PROD, `mp-batch-sweep` (y el
->    resto de las 6 EFs) deployadas, **PR #278 mergeado a `main`** (release real **v1.123.0**, no
->    v1.121.0 — ver bloque "🚀 2026-07-09" arriba). El workflow `mp-reconciliacion.yml` ya corre
->    contra PROD con `mp-batch-sweep` deployado desde antes del merge (sin 404 esperado). Falta
->    Vercel: pendiente de mergear PR #279 (bump versión) + genesis360-admin #3.
+> 3. **✅ HECHO (2026-07-09) — deploy 100% completo:** mig 260 aplicada en PROD, `mp-batch-sweep` (y
+>    el resto de las 6 EFs) deployadas, **PR #278 mergeado a `main`** (release real **v1.123.0**, no
+>    v1.121.0 — ver bloque de arriba). El workflow `mp-reconciliacion.yml` corre contra PROD con
+>    `mp-batch-sweep` deployado desde antes del merge (sin 404). PR #279 (bump versión) y
+>    genesis360-admin #3 (Billing) MERGEADOS — Vercel `READY` en ambos proyectos.
 > 4. **Pendientes operativos que siguen vivos (de la sesión anterior):** **✅ display de la app ya muestra Básico $54k** (`PLANES.basico.precio` en `brand.ts`, 100% estático — Landing/Suscripción/estimador — nunca lee de MP) · **⚠ el plan REAL en MP sigue en $15** (decisión GO: lo maneja él a mano desde el panel MP mientras testea, y lo vuelve a $54k cuando termine — así separa "lo que la app muestra" de "lo que MP realmente cobra"). **🛑 Ojo con esto mientras el plan MP siga en $15:** la Fase 2 (upgrade Básico→Pro, arriba) calcula el delta leyendo el precio REAL del plan en MP (`GET /preapproval_plan`) — con Básico a $15 y Pro a su precio real, el delta que se calcule/cobre en un upgrade va a salir inflado/incorrecto (ej. ~$89.985 en vez de ~$36.000). No afecta nada más (ni Landing, ni el resto del batch de add-ons, ni el checkout normal) — es específico del flujo de cambio de PLAN nuevo. Mientras no haya clientes reales en Básico (hoy: solo "Test GO"), el blast radius es cero salvo que GO mismo pruebe el upgrade de plan con el precio de test puesto. · refunds de los tests (GO) · checkout orgánico MP-A12 (paso 5) · limpiar `test123` de "Familia Otranto" · limpieza dummies "Test GO".
 > 5. Backlog: BATCH-BAJA-VIGENCIA · MP-P2 (downgrade de plan — reusa el guard batch) · dual pricing Fase B · ~~WH-SIG~~ (✅ log-only 2026-07-08, ver bloque de arriba) · ~~rollout ActionMenu~~ (✅ verificado 2026-07-08, no hacía falta nada).
 >

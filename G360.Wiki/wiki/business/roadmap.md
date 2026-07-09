@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.123.0 — 🚀 Deploy a PROD: Fase 2 batch + arrepentimiento + facturación de plataforma + pago manual + perf DB (🏗 EN CURSO — infra en PROD, código pendiente de merge)
+## v1.123.0 — 🚀 Deploy a PROD: Fase 2 batch + arrepentimiento + facturación de plataforma + pago manual + perf DB (✅ PROD, cerrado 2026-07-09)
 
 Consolida a PROD toda la cadena v1.121.0→v1.122.0: **Fase 2 batch** (cambio de PLAN Básico↔Pro,
 E1 inmediato/E2 programado) + **arrepentimiento legal** (Ley 24.240, mig 260); **facturación
@@ -32,15 +32,24 @@ sigue viva en PROD (autorización de GO para borrarla fue solo para DEV) pero in
 **Código:** PR genesis360 **#278** MERGEADO a `main` (commit `471912fd`). **Gotcha de
 versionado:** el tag `v1.122.0` ya existía (sesión previa, apuntando al commit viejo `94c9e01c`
 "EN DEV", con release de GitHub ya publicado) → se bumpeó `APP_VERSION` a **v1.123.0** (commit
-`42d02a79`) — ese es el número real de esta release de PROD. PR nuevo **genesis360 #279**
-(bump de versión) todavía SIN mergear.
+`42d02a79`) — ese es el número real de esta release de PROD. PR **genesis360 #279** (bump de
+versión) y PR **genesis360-admin #3** ("Pagos manuales + facturación de plataforma en Billing")
+también MERGEADOS.
 
-**🟠 Pendiente antes de cerrar el release:** mergear PR genesis360 #279 + PR **genesis360-admin
-#3** ("Pagos manuales + facturación de plataforma en Billing") → recién ahí tag `v1.123.0` +
-GitHub release + confirmar que Vercel deployó en `genesis360.pro` y `admin.genesis360.pro`. **El
-frontend de Vercel TODAVÍA sirve la versión anterior** hasta esos merges. Bloqueante real de fondo
-sin cambios: Fede completando sus 3 pasos en AfipSDK (afipsdk.com → punto de venta → token) para
-que la facturación de plataforma empiece a emitir de verdad.
+**✅ Release cerrada (2026-07-09):** tag **v1.123.0** creado sobre el commit de merge `4a930bc6` +
+GitHub release publicada: https://github.com/genesis360-app/genesis360/releases/tag/v1.123.0.
+Vercel verificado `READY` en `production` en ambos proyectos (`genesis360.pro`/
+`app.genesis360.pro`/`www.genesis360.pro` y `admin.genesis360.pro`). PROD queda en v1.123.0, migs
+001-263, código y Supabase 100% sincronizados. Bloqueante real de fondo sin cambios: Fede
+completando sus 3 pasos en AfipSDK (afipsdk.com → punto de venta → token) para que la facturación
+de plataforma empiece a emitir de verdad.
+
+**🔒 Incidente de seguridad cerrado en la misma sesión (fuera de alcance del release):** GitHub
+Secret Scanning detectó una Google Maps API Key hardcodeada en `public/test-maps.html`, expuesta
+en vivo desde el 21 de mayo de 2026, con 33 APIs habilitadas cuando la app solo usa 3. GO restringió
+las APIs a las 3 reales, confirmó la restricción por referrer de sitios web y rotó la key en Google
+Cloud Console + Vercel; el archivo se eliminó del repo (PR #280, merge commit `4ced7ae8`). Detalle
+completo en `G360.Wiki/log.md` (entrada del 2026-07-09).
 
 ---
 

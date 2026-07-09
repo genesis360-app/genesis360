@@ -8,10 +8,10 @@ updated: 2026-07-09
 
 # ⚖️ Cancelación autónoma + Arrepentimiento (refund total ≤10 días)
 
-> Estado: **🏗 Infra 100% en PROD (mig 260 + EF `cancel-suscripcion` v2, 2026-07-09)** — código
-> mergeado a `main` (PR #278, release real **v1.123.0**), frontend de Vercel pendiente de 2 PRs
-> chicos (genesis360 #279 + genesis360-admin #3) antes de dar por cerrado el release. Pendiente:
-> validación e2e con pago real en PROD (no se hizo todavía). Objetivo legal: Ley de Defensa del
+> Estado: **✅ 100% en PROD (mig 260 + EF `cancel-suscripcion` v2, release v1.123.0)** — código
+> mergeado a `main` (PR #278 + #279) + tag/GitHub release publicados + Vercel `READY` en ambos
+> proyectos, confirmado 2026-07-09. Pendiente: validación e2e con pago real en PROD (no se hizo
+> todavía). Objetivo legal: Ley de Defensa del
 > Consumidor 24.240 art. 34 (botón de arrepentimiento, 10 días corridos) + regla "click-to-cancel"
 > (baja sin intervención humana). Mercado Pago NO tiene un Customer Portal tipo Stripe para
 > preapprovals → todo el flujo va por nuestra UI + API de MP.

@@ -3,7 +3,7 @@ title: Políticas RLS
 category: database
 tags: [rls, postgresql, seguridad, multi-tenant, policies]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-07-08
 ---
 
 # Políticas RLS (Row Level Security)
@@ -25,6 +25,17 @@ CREATE POLICY "tenant_isolation" ON tabla
 CREATE POLICY "bad_policy" ON tabla
   USING (tenant_id = get_tenant_id());
 ```
+
+> [!TIP] **Performance — envolver `auth.uid()` en `(select auth.uid())` (mig 263, 2026-07-08):**
+> el Supabase Performance Advisor marca cualquier `auth.uid()` (o `auth.role()`/`auth.jwt()`) usado
+> directo en `USING`/`WITH CHECK` como re-evaluado **por fila** en vez de una sola vez por
+> statement — costoso en tablas grandes. Envolverlo en un `SELECT` (`(select auth.uid())`) le
+> permite al planner tratarlo como un valor `InitPlan` estable. Es un cambio **cosmético de
+> performance, cero cambio de comportamiento** — la mig 263 reescribió las 116 policies del
+> schema `public` que tenían este patrón (todas con `ALTER POLICY`, verificadas carácter por
+> carácter contra la lógica original) + agregó 195 índices en columnas FK sin índice (el otro
+> hallazgo grande del Advisor). **DEV ✅ · PROD ⏳** — ver [[wiki/database/migraciones]] #263.
+> Nuevas policies: escribirlas ya con `(select auth.uid())` desde el principio.
 
 ---
 

@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-07-06
+updated: 2026-07-08
 ---
 
 # Integración Mercado Pago
@@ -297,6 +297,13 @@ Cron horario (.github/workflows/mp-reconciliacion.yml, :17 + dispatch manual)
 > (`billing.link_subscription`, §3.f). Espejo puro testeado en `src/lib/mpReconciliacion.ts` +
 > `tests/unit/mpReconciliacion.test.ts` (8 tests). **Smoke real en PROD (2026-07-05):** 12 preapprovals
 > revisados, 0 hallazgos (DB↔MP consistente en ese momento).
+>
+> **🛑 Gotcha (hallado 2026-07-08, validando la alerta análoga de `emitir-factura-plataforma`):** este
+> email a `soporte@` es "Resend directo sin tabla" — el mismo patrón silencioso frágil documentado en
+> [[wiki/integrations/resend-email]] (suppression list de Resend + DMARC + moderación/spam del Google
+> Group). Nunca se había disparado una alerta real de este sweep (siempre "0 hallazgos" en los smokes),
+> así que no había evidencia de que efectivamente llegara — ya corregido a nivel infraestructura
+> (transversal, no específico de este sweep).
 
 ### 3.i Batch de add-ons con cobro por delta (`mp-addon-batch`, v1.115.0, 2026-07-06)
 
@@ -425,11 +432,19 @@ Eventos: Pagos ✅ + Planes y suscripciones ✅
 
 ## Validación de webhooks
 
-> [!WARNING] **No hay validación HMAC** en `mp-webhook`/`mp-ipn` (a pesar de que exista el secret
-> `MP_WEBHOOK_SECRET`). Lo que da la garantía de autenticidad es que la EF **re-fetchea el pago a la API
-> de MP** (`GET /v1/payments/{id}`) con el `access_token` del seller: un payload falso con un `payment_id`
-> inválido devuelve no-aprobado/404 y no toca la DB. Si en el futuro se quiere endurecer, agregar validación
-> de firma `x-signature` con `MP_WEBHOOK_SECRET` ANTES del re-fetch.
+> [!NOTE] **WH-SIG — validación HMAC de firma, modo LOG-ONLY (2026-07-08).** `mp-webhook` ahora
+> tiene `verificarFirmaMp()`: HMAC-SHA256 sobre el manifest `id:{data.id};request-id:{x-request-id};ts:{ts};`
+> (formato oficial de MP, header `x-signature`/`x-request-id`) comparado contra `MP_WEBHOOK_SECRET`.
+> **Hoy es LOG-ONLY**: si el secret está seteado, loguea `OK`/`INVALIDA` pero **nunca bloquea** el
+> webhook — la garantía de autenticidad real sigue siendo el **re-fetch a la API de MP**
+> (`GET /v1/payments/{id}`) con el `access_token` del seller: un payload falso con un `payment_id`
+> inválido devuelve no-aprobado/404 y no toca la DB. **`MP_WEBHOOK_SECRET` todavía NO está cargado
+> como secret real en Supabase DEV ni PROD** (solo existe vacío, sin usar, en `.env.local` local)
+> → el log-only hoy no produce nada observable, pero el código queda listo. **Para activar de
+> verdad:** cargar el secret real (panel developers de MP, sección firma del webhook — DISTINTO de
+> `MP_ACCESS_TOKEN`/`MP_CLIENT_SECRET`) en Supabase DEV y PROD, dejarlo correr en log-only contra
+> tráfico real un tiempo, y recién con logs `OK` consistentes agregar el early-return 401 si
+> `!valid` (hoy el código ya calcula el resultado pero no lo usa para bloquear).
 
 ---
 

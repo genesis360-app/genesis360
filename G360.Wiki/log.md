@@ -6,6 +6,163 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-08] update | 🔧 WH-SIG (firma HMAC log-only) + mig 263 (perf RLS/índices) + ActionMenu rollout verificado + UAT #15 cerrado
+
+**Tercera sesión del día** (después de v1.122.0 y de la validación e2e `sin_biller` — entradas de
+abajo), **100% backend/DB + verificación, SIN deploy a PROD, SIN tocar `src/`, SIN release de
+versión de la app.**
+
+**1) WH-SIG — validación de firma HMAC del webhook de MP, modo LOG-ONLY:**
+`supabase/functions/mp-webhook/index.ts` no validaba `x-signature`/`x-request-id` pese a que el
+header CORS ya la mencionaba (hallazgo ya documentado en `wiki/integrations/mercado-pago.md`). Se
+agregó `verificarFirmaMp()` (HMAC-SHA256 sobre el manifest `id:{data.id};request-id:{x-request-id};ts:{ts};`,
+formato oficial de MP) integrada en modo **LOG-ONLY**: si `MP_WEBHOOK_SECRET` está seteado,
+loguea `OK`/`INVALIDA` pero **nunca bloquea** el webhook. Hoy `MP_WEBHOOK_SECRET` NO está cargado
+como secret real en Supabase DEV/PROD (solo existe vacío, sin usar, en `.env.local` local) → el
+log-only no produce nada observable todavía, pero el código queda listo. Deployado a DEV
+(`verify_jwt=false`, sin cambios) + smoke OPTIONS 204 OK, no rompió nada. **Falta para activar de
+verdad:** cargar el secret real (panel developers de MP, sección firma del webhook — DISTINTO de
+`MP_ACCESS_TOKEN`/`MP_CLIENT_SECRET`) en Supabase DEV y PROD, dejarlo correr en log-only contra
+tráfico real un tiempo, y recién con logs `OK` consistentes pasar a bloqueante (agregar el
+early-return 401 si `!valid` — hoy el código ya calcula el resultado pero no lo usa para bloquear).
+
+**2) Rollout ActionMenu al resto de módulos — verificado, NO hacía falta nada:** se revisaron las
+13 páginas candidatas restantes (`VentasPage`, `GastosPage`, `CajaPage`, `UsuariosPage`,
+`SucursalesPage`, `RecursosPage`, `EnviosPage`, `RrhhPage`, `AlertasPage`, `ConfigPage`,
+`GruposEstadosPage`, `AdminPage`, `MiCuentaPage`) contra el patrón ya aplicado en
+`InventarioPage`/`ClientesPage`/`ProductosPage`/`ProveedoresPage`. Ninguna calificó — todas tienen
+0 o 1 botón suelto en el header, sin clutter real que justifique el menú. El rollout ya estaba
+completo de sesiones anteriores; cero código tocado.
+
+**3) Migración 263 — performance DB (RLS + índices FK), aplicada y verificada en DEV:** los
+Supabase Performance Advisors marcaban 116 policies RLS con `auth.uid()` sin envolver en
+`(select auth.uid())` (re-evaluación por fila) y 195 columnas FK sin índice.
+`supabase/migrations/263_perf_rls_fk_indexes.sql`:
+- **116 `ALTER POLICY`** — solo tocan la expresión USING/WITH CHECK envolviendo cada `auth.uid()`,
+  lógica de aislamiento multi-tenant IDÉNTICA (verificada carácter por carácter contra el código
+  fuente real por un agente dedicado + revisada por `migration-reviewer`).
+- **195 `CREATE INDEX IF NOT EXISTS idx_<tabla>_<columna>`** sobre las FKs sin índice.
+- El `migration-reviewer` marcó un posible bloqueante (`proveedor_contactos.tenant_isolation`,
+  única definición en la mig 096 vieja con la sintaxis inválida `CREATE POLICY IF NOT EXISTS`, el
+  mismo antipatrón de CLAUDE.md) — verificado directo contra `pg_policies` en DEV: la policy SÍ
+  existe con ese nombre y esa lógica exacta, no era un problema real (el reviewer no tenía acceso
+  a la DB para confirmarlo).
+- También sugirió sumar `venta_auditoria_tenant` (ausente de las 116) — investigado y descartado:
+  la policy REAL en DEV usa funciones helper (`get_user_tenant_id()`, `auth_ve_todas_sucursales()`,
+  `auth_user_sucursal()`), no `auth.uid()` directo — el `schema_full.sql` con el que comparó el
+  reviewer está desactualizado ahí (ver hallazgo A abajo), así que NO se agregó.
+- Aplicada en DEV con `apply_migration`. **Verificación post-aplicación real (no solo "no tiró
+  error"):** 0 policies con `auth.uid()` sin envolver quedan en el schema `public` (query directa
+  a `pg_policies`); 195 índices `idx_*` nuevos confirmados creados; **aislamiento multi-tenant
+  verificado con impersonación SQL real** — como `service_role` hay 136 productos en 6 tenants
+  distintos; impersonando a un usuario SUPERVISOR real de `Familia Otranto De Porto`, la query de
+  `productos` devolvió exactamente 25 filas de 1 solo tenant (el suyo) — cero leak entre tenants,
+  la migración no aflojó ni rompió el aislamiento.
+- **SIN deploy a PROD** — queda pendiente con el checklist de siempre + ⚠ nota del reviewer: en
+  PROD, al no usar `CREATE INDEX CONCURRENTLY`, los `CREATE INDEX` toman lock `SHARE` sobre tablas
+  con tráfico real (`ventas`/`caja_movimientos`/`productos`) hasta el commit final de la migración
+  — evaluar ventana de bajo tráfico o partir el archivo en 2 antes de aplicar a PROD.
+
+**4) UAT/e2e — "Autorización de ajustes por rol": YA ESTABA RESUELTO, backlog desactualizado:** se
+fue a cerrar el pendiente #15 de la lista "PRÓXIMA SESIÓN — continuar UAT/e2e" de
+`project_pendientes.md` (línea ~591: "Autorización de ajustes por rol (runtime UI) — DUEÑO
+directo vs rol→Autorizaciones"). Resultó que ya lo había cubierto el cierre de UAT de la sesión
+2026-06-24 (`tests/specs/cobertura/00_cierre_uat.md` + `02_inventario_conteos.md`), con
+`47_conteo_autorizacion_rol_mutante.spec.ts` (SUPERVISOR → queda pendiente en
+`autorizaciones_inventario`, NO muta stock) y `51_autorizacion_ajuste_aprobar_mutante.spec.ts`
+(DUEÑO aprueba → recién ahí se aplica `movimientos_stock`). Se re-corrieron ambos specs frescos
+contra DEV hoy y dieron VERDE con verificación real en DB (LPN `LPN-20260430-0F9267` sin cambios
+en el caso SUPERVISOR; LPN `LPN-MNB85SGE` 126→127 + `movimientos_stock` insertado en el caso
+DUEÑO-aprueba). Se agregó una nota de re-confirmación con fecha 2026-07-09 en
+`02_inventario_conteos.md`. El backlog data de la sesión 2026-06-18 y no reflejaba el cierre
+posterior — ítem quitado de los pendientes.
+
+**Hallazgos nuevos documentados (no bloqueantes, no se arreglaron hoy):**
+- **A) `supabase/schema_full.sql` desactualizado desde 2026-03-26** (el header del archivo dice
+  explícitamente "actualizado 2026-03-26, migrations 001–024") — no refleja las últimas 239
+  migraciones (025-263). El checklist de CLAUDE.md dice que hay que actualizarlo tras cada
+  migración, pero en la práctica no se viene haciendo — drift preexistente grande, no introducido
+  hoy. Regenerarlo requiere `pg_dump`/`supabase db dump` real contra DEV (tarea aparte).
+- **B) 6 tests e2e (`npm test`, corridos hoy) fallan, TODOS preexistentes, sin relación a los
+  cambios de hoy:** `01_dashboard.spec.ts` (busca texto que ya no existe — el Dashboard se
+  rediseñó "gráficos primero" en v1.93-94.0, muy anterior, confirmado con `git log`, 100% test
+  desactualizado); `12_navegacion_sidebar.spec.ts` y `33_devolucion_proveedor_mutante.spec.ts`
+  pasaron en corrida aislada (flaky/orden-dependiente en la corrida masiva); `28_cobranza_cc_mutante.spec.ts`,
+  `38_envio_combustible_gasto_mutante.spec.ts`, `57_reserva_sin_sena_mutante.spec.ts` fallan
+  incluso aislados, consistente con fixtures de DEV agotados/mutados por el volumen de corridas
+  e2e de hoy. Ninguno de los 6 tiene relación con RLS/índices ni con `mp-webhook` (los cambios de
+  hoy fueron 100% backend/DB, cero archivos de `src/` tocados).
+
+**Estado:** DEV sigue en v1.122.0 (sin cambio de versión — trabajo interno). Mig 263 aplicada
+SOLO en DEV (001-263 en DEV, 001-262 en PROD). Wiki tocado: `sources/raw/project_pendientes.md`,
+`wiki/database/migraciones.md`, `wiki/database/rls-policies.md`, `wiki/integrations/mercado-pago.md`,
+`index.md`.
+
+---
+
+## [2026-07-08] update | ✅ Validación e2e camino `sin_biller` (facturación plataforma) + fix crítico de alertas a soporte (Resend/DMARC/Google Group)
+
+**Sin código nuevo, sin deploy, sin migraciones** — sesión de validación e2e sobre lo dejado en
+DEV por v1.122.0 (ver entrada anterior) + un hallazgo real de infraestructura corregido en el
+camino.
+
+**1) Validación e2e exitosa (pendiente #2 del roadmap 2026-07-08, ahora ✅ HECHO):** se registró
+un pago manual de prueba real desde `genesis360-admin` (BillingPage → "Registrar pago") sobre el
+tenant de validación `ZZZ_VALIDACION_CLAUDE` (`26fa1644-e03d-4c9f-b8f7-173834cd7b34`, DEV), en
+`billing_mode='manual'`, con `platform_billers` vacío (0 filas, a propósito). Se subió
+temporalmente el rol de `soporte@genesis360.pro` a `admin` en `support_agents` (DEV) para poder
+acceder al módulo Facturación — hallazgo menor: en DEV no había ninguna cuenta con acceso a
+`billing`. Flujo real: `admin-api` (`billing.manual_record_payment`) → RPC
+`fn_registrar_pago_manual` → `emitir-factura-plataforma`. **Verificado en DB:**
+`billing_manual_pagos` recibió la fila del pago ($60.000, transferencia) y
+`tenants.manual_paid_until` se extendió correctamente **pese a que la factura no se pudo
+emitir** — el pago queda en firme (fail-open correcto, cumple REGLA #0: la plata nunca se
+pierde). `platform_facturas_claims` recibió el claim (`payment_ref` formato
+`staff-<tenantId>-<timestamp>`) y `platform_facturas` se mantuvo en 0 filas (correcto, no se
+emitió nada). Logs de `admin-api` y `emitir-factura-plataforma`: HTTP 200 sin excepciones,
+consistente únicamente con la rama `reason:'sin_biller'`. **Conclusión: el camino `sin_biller`
+queda validado end-to-end en DEV.**
+
+**2) Hallazgo real (encontrado en el camino, ya corregido) — bug de infraestructura que afectaba
+TODAS las alertas a soporte del proyecto, no solo esta feature.** El email de alerta
+(`alertarSoporte()` en `emitir-factura-plataforma`, patrón "Resend directo sin tabla" usado
+también por `mp-reconciliacion` y la alerta inline de `mp-webhook`) nunca llegaba a
+`soporte@genesis360.pro`, ni al Google Group al que reenvía Cloudflare Email Routing. Root cause
+en cadena, diagnosticado con GO viendo las pantallas reales:
+1. `soporte@genesis360.pro` estaba en la **suppression list** de la cuenta de Resend (probable
+   bounce duro anterior) → Resend ni intentaba el envío. Sacado de la suppression list desde el
+   dashboard de Resend por GO.
+2. Faltaba el registro **DMARC** en el DNS de `genesis360.pro` (Cloudflare) — Resend lo marcaba
+   "Needs attention" en Insights, requisito de facto de Google para confiar en el remitente.
+   Agregado por GO: `_dmarc.genesis360.pro` TXT `v=DMARC1; p=none; rua=mailto:soporte@genesis360.pro`
+   (confirmado con `dig`/`nslookup` contra `1.1.1.1`). Con (1)+(2) resueltos, un segundo pago de
+   prueba mostró `Delivered` en Resend y `Forwarded` en el Activity Log de Cloudflare.
+3. El mensaje aun así quedó retenido en **"Pendientes de moderación"** del Google Group
+   `Genesis360 Soporte` (`genesis360-soporte@googlegroups.com`) pese a que la política general
+   "Moderación de mensajes" ya estaba en "Sin moderación" (no se tocó, ya estaba así de antes) —
+   causa más probable: el filtro de SPAM automático de Google, separado de la moderación general,
+   típico para un remitente nuevo/sin reputación. GO lo aprobó a mano; puede repetirse en los
+   primeros envíos hasta que `noreply@genesis360.pro` acumule reputación.
+
+**Impacto real:** este mecanismo (Resend → `soporte@` → Google Group) es el que usan ya en PROD
+`mp-reconciliacion` (corre cada hora desde v1.112.0) y la alerta inline de `mp-webhook` para
+"batch de add-ons pagado sin aplicar". Es muy probable que **ninguna alerta de este mecanismo
+haya llegado nunca a nadie** desde que existen esas features (nunca se había disparado una
+alerta real; los smokes previos siempre dieron "0 hallazgos"). Con (1)+(2) corregidos, el
+circuito queda funcionando de punta a punta para las tres funciones que lo usan — cambios de
+configuración externa (Resend + Cloudflare DNS), transversales a DEV y PROD, sin tocar código ni
+requerir deploy.
+
+**Estado:** v1.122.0 sigue igual que antes de esta sesión — EN DEV, sin deploy a PROD/Vercel. El
+bloqueante real para facturar de verdad sigue siendo operativo: Fede necesita token AfipSDK +
+certificado + punto de venta ARCA (`platform_billers` sigue vacío, a propósito).
+
+Wiki tocado: `wiki/features/facturacion-plataforma.md` (validación e2e + pendiente actualizado),
+`wiki/integrations/resend-email.md` (gotcha reusable del circuito de alertas), `wiki/integrations/mercado-pago.md`
+(nota cruzada en la sección de `mp-reconciliacion`), `sources/raw/project_pendientes.md`, `index.md`.
+
+---
+
 ## [2026-07-08] deploy | 🧾 v1.122.0 (EN DEV) — Facturación automática de plataforma (Fede, monotributo) + motor de pago manual + precio dual
 
 **Contexto:** Fede se hizo monotributista (CUIT `20-42237416-8`, Categoría A, Locaciones de

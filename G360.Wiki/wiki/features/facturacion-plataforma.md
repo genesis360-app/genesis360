@@ -8,10 +8,10 @@ updated: 2026-07-08
 
 # 🧾 Facturación automática de plataforma (Fede)
 
-> Estado: **🏗 EN DEV (v1.122.0, 2026-07-08)** — código completo, deployado y smoke-testeado en
-> DEV. **Bloqueado en la práctica hasta que Fede configure `platform_billers`** (token AfipSDK +
-> certificado + punto de venta) — sin eso el sistema alerta a soporte y no factura (fail-open,
-> nunca bloquea el cobro).
+> Estado: **🏗 EN DEV (v1.122.0, 2026-07-08)** — código completo, deployado y **validado e2e en
+> DEV el camino `sin_biller`** (ver sección abajo). **Bloqueado en la práctica hasta que Fede
+> configure `platform_billers`** (token AfipSDK + certificado + punto de venta) — sin eso el
+> sistema alerta a soporte y no factura (fail-open, nunca bloquea el cobro).
 
 ## Por qué existe
 
@@ -70,9 +70,30 @@ motor **propio** (WSAA + WSFEv1 directo, sin AfipSDK) sigue siendo un stub
 es un proyecto aparte (crypto CMS/PKCS#7 + SOAP), no se hizo ahora. Cuando esté listo, cambiar a
 Fede a `'propio'` es solo tocar el flag — cero migración de código.
 
+## Validación e2e (2026-07-08)
+
+**Camino `sin_biller` validado end-to-end en DEV**, con `platform_billers` vacío (0 filas, a
+propósito). Flujo real ejecutado desde `genesis360-admin` (rol `admin` en `support_agents`) →
+BillingPage → "Registrar pago" sobre el tenant de prueba `ZZZ_VALIDACION_CLAUDE`
+(`26fa1644-e03d-4c9f-b8f7-173834cd7b34`, DEV) en `billing_mode='manual'` → `admin-api` acción
+`billing.manual_record_payment` → RPC `fn_registrar_pago_manual` → `emitir-factura-plataforma`.
+Verificado en DB: `billing_manual_pagos` recibió la fila del pago ($60.000, transferencia) y
+`tenants.manual_paid_until` se extendió correctamente **pese a que la factura no se pudo
+emitir** — el pago queda en firme (fail-open correcto, cumple REGLA #0: la plata nunca se
+pierde). `platform_facturas_claims` recibió el claim del `payment_ref` (formato
+`staff-<tenantId>-<timestamp>`) y `platform_facturas` se mantuvo en 0 filas (no se emitió nada,
+correcto). Logs de `admin-api` y `emitir-factura-plataforma`: HTTP 200 sin excepciones,
+consistente con la rama `reason:'sin_biller'`.
+
+En el camino se encontró y arregló un bug de infraestructura no relacionado con el código de esta
+feature: la alerta a soporte (`alertarSoporte()`, patrón "Resend directo sin tabla") no llegaba a
+destino por 2 problemas de configuración externa (suppression list de Resend + falta de DMARC) —
+ver el gotcha completo en [[wiki/integrations/resend-email]]. Ya corregido, transversal a DEV y
+PROD.
+
 ## Pendiente
 
 - **Bloqueante operativo (Fede/GO, no código):** token AfipSDK + certificado + punto de venta
-  para el CUIT de Fede — cargar en `platform_billers`.
+  para el CUIT de Fede — cargar en `platform_billers`. Es el único paso que falta para validar el
+  camino feliz (con biller configurado, factura real emitida).
 - Wording final del `concepto` que aparece en el comprobante — revisar con GO.
-- Validación e2e con el biller configurado (hoy solo se probó el camino `sin_biller`).

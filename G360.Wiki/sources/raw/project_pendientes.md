@@ -6,6 +6,52 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🔧 (2026-07-08 continuación 3 · WH-SIG log-only + mig 263 perf DB (RLS+índices) + ActionMenu rollout verificado + UAT #15 cerrado — SIN deploy, SIN release nueva)
+> **Tercera sesión del día (después de v1.122.0 y de la validación e2e `sin_biller`, ambas abajo)
+> — 100% backend/DB + verificación, SIN deploy a PROD, SIN tocar `src/`, SIN release de versión de
+> la app. El bloqueante real para pasar a PROD sigue siendo el operativo de Fede (facturación de
+> plataforma) — ver bloque ARRANCÁ ACÁ debajo, sin cambios.**
+> 1. **WH-SIG resuelto en modo LOG-ONLY:** `mp-webhook` ganó `verificarFirmaMp()` (HMAC-SHA256
+>    sobre el manifest oficial de MP, headers `x-signature`/`x-request-id`) — hoy solo LOGUEA
+>    `OK`/`INVALIDA` si `MP_WEBHOOK_SECRET` está seteado, **nunca bloquea**. `MP_WEBHOOK_SECRET`
+>    todavía NO está cargado como secret real en Supabase DEV/PROD (solo vacío en `.env.local`
+>    local) → falta (1) cargar el secret real (panel developers de MP, sección firma — DISTINTO de
+>    `MP_ACCESS_TOKEN`/`MP_CLIENT_SECRET`) en DEV y PROD, (2) dejarlo correr en log-only contra
+>    tráfico real, (3) recién con logs `OK` consistentes agregar el early-return 401 bloqueante.
+>    Deployado a DEV, smoke OPTIONS 204 OK. Detalle: `wiki/integrations/mercado-pago.md`.
+> 2. **Rollout ActionMenu — verificado, NO hacía falta nada:** 13 páginas candidatas restantes
+>    (`VentasPage`, `GastosPage`, `CajaPage`, `UsuariosPage`, `SucursalesPage`, `RecursosPage`,
+>    `EnviosPage`, `RrhhPage`, `AlertasPage`, `ConfigPage`, `GruposEstadosPage`, `AdminPage`,
+>    `MiCuentaPage`) revisadas contra el patrón de Inventario/Clientes/Productos/Proveedores —
+>    ninguna calificó (0-1 botón suelto en el header). Rollout ya estaba completo, cero código
+>    tocado. **Cierra el pendiente "rollout ActionMenu" del backlog de billing (líneas de abajo).**
+> 3. **Migración 263 aplicada y verificada en DEV — performance DB (RLS + índices FK):** 116
+>    `ALTER POLICY` (envuelven `auth.uid()` en `(select auth.uid())`, lógica de aislamiento
+>    IDÉNTICA) + 195 `CREATE INDEX IF NOT EXISTS` en FKs sin índice — cierra el pendiente histórico
+>    "Pase de performance DB" (línea de abajo). Verificado en DEV: 0 policies sin envolver, 195
+>    índices confirmados, aislamiento multi-tenant intacto (impersonación SQL real, SUPERVISOR ve
+>    solo sus 25 productos de 136 en 6 tenants). **SIN deploy a PROD** — ⚠ sin `CREATE INDEX
+>    CONCURRENTLY`, en PROD los `CREATE INDEX` toman lock `SHARE` sobre `ventas`/`caja_movimientos`/
+>    `productos` (tráfico real) hasta el commit final — evaluar ventana de bajo tráfico o partir el
+>    archivo en 2. Detalle: `wiki/database/migraciones.md` #263, `wiki/database/rls-policies.md`.
+> 4. **UAT #15 "Autorización de ajustes por rol" — YA ESTABA RESUELTO, backlog desactualizado:**
+>    cubierto desde el cierre de UAT del 2026-06-24 (specs `47_conteo_autorizacion_rol_mutante` +
+>    `51_autorizacion_ajuste_aprobar_mutante`), re-corridos hoy en VERDE contra DEV con verificación
+>    real en DB. Ítem quitado de la lista de pendientes (ver más abajo). Nota agregada en
+>    `tests/specs/cobertura/02_inventario_conteos.md`.
+>
+> **🟠 Hallazgos nuevos (no bloqueantes, agregados al backlog, no se arreglaron hoy):**
+> - **`schema_full.sql` desactualizado desde 2026-03-26** (header dice "migrations 001–024", faltan
+>   las últimas 239). Regenerar requiere `pg_dump`/`supabase db dump` real contra DEV — tarea aparte.
+> - **6 tests e2e (`npm test`) fallan, TODOS preexistentes, sin relación a los cambios de hoy:**
+>   `01_dashboard.spec.ts` (selector desactualizado al rediseño "gráficos primero" v1.93-94.0) ·
+>   `28_cobranza_cc_mutante`/`38_envio_combustible_gasto_mutante`/`57_reserva_sin_sena_mutante`
+>   fallan incluso aislados (fixtures de DEV agotados por el volumen de e2e de hoy) ·
+>   `12_navegacion_sidebar`/`33_devolucion_proveedor_mutante` pasaron aislados (flaky de orden en
+>   la corrida masiva). Ninguno toca RLS/índices ni `mp-webhook`.
+>
+> ---
+>
 > ### 🧾 ARRANCÁ ACÁ (2026-07-08 · **v1.122.0 EN DEV, SIN deploy a PROD/Vercel** — Facturación de plataforma (Fede) + pago manual + precio dual)
 > **Implementado y dejado LISTO EN DEV (mig 261+262 aplicadas en DEV · 7 EFs deployadas a DEV:
 > `emitir-factura-plataforma`/`platform-facturacion-sweep`/`billing-manual-pagar`/
@@ -39,17 +85,33 @@ type: project
 >    de venta en ARCA para su CUIT `20-42237416-8`. Sin esto, `emitir-factura-plataforma` alerta
 >    a soporte y no emite (fail-open, no bloquea el cobro) — pero NINGUNA factura real sale hasta
 >    que se cargue una fila en `platform_billers` con esos datos.
-> 2. **Validación e2e en DEV**: registrar un pago manual de prueba desde `admin-api` (staff) y
->    confirmar el flujo completo hasta el intento de `emitir-factura-plataforma` (con
->    `platform_billers` vacío, debe alertar a soporte con reason `sin_biller` — no probado aún
->    en vivo, solo por smoke directo del sweep).
+> 2. **✅ HECHO (2026-07-08, sesión de validación) — Validación e2e en DEV**: pago manual de
+>    prueba registrado desde `genesis360-admin` (staff, `admin-api` `billing.manual_record_payment`)
+>    sobre el tenant `ZZZ_VALIDACION_CLAUDE` (`26fa1644-e03d-4c9f-b8f7-173834cd7b34`, DEV) →
+>    confirmado en DB: `billing_manual_pagos` + `manual_paid_until` OK, `platform_facturas_claims`
+>    con el claim `sin_biller`, `platform_facturas` en 0 (correcto, `platform_billers` vacío a
+>    propósito). **Camino `sin_biller` validado end-to-end.** Detalle en
+>    `wiki/features/facturacion-plataforma.md`.
+>    - **Hallazgo no relacionado, encontrado en el camino y ya corregido:** la alerta a
+>      `soporte@genesis360.pro` de este patrón ("Resend directo sin tabla", usado también por
+>      `mp-reconciliacion` en PROD desde v1.112.0 y la alerta inline de `mp-webhook` de add-ons
+>      pagado-sin-aplicar) **nunca llegaba a destino** — suppression list de `soporte@` en Resend
+>      + falta de registro DMARC en `genesis360.pro`. Ambos corregidos por GO (Resend dashboard +
+>      DNS Cloudflare, transversal DEV/PROD, sin cambios de código). Detalle completo (gotcha
+>      reusable) en `wiki/integrations/resend-email.md`.
 > 3. **Decisiones de GO pendientes**: ¿wording final del email de recordatorio/suspensión? ¿el
 >    `concepto` de la factura tal como quedó redactado está bien para mostrar en el comprobante?
-> 4. **Deploy a PROD (con OK de GO, y solo después de 1-2)**: mig 261+262 en PROD → 7 EFs a PROD
+> 4. **Deploy a PROD (con OK de GO, y solo después de 1-3)**: mig 261+262 en PROD → 7 EFs a PROD
 >    → sumar `platform-facturacion-sweep`+`billing-manual-sweep` al workflow de PROD → PR
 >    dev→main v1.122.0 → release → Vercel.
 > 5. Backlog: conciliación CSV de extracto bancario (Parte 4) · downgrade de plan MP-P2 · WSFE
 >    propio (fase 3, proyecto aparte) · panel multi-empresa (proyecto aparte).
+>
+> **✅ Limpieza post-validación (2026-07-08, ya hecha):** `ZZZ_VALIDACION_CLAUDE` revertido a
+> `billing_mode='auto'` (`manual_monto_mensual`/`manual_paid_until` en NULL), pagos de test
+> borrados de `billing_manual_pagos` + `platform_facturas_claims`, y `soporte@genesis360.pro`
+> vuelto a rol `support` en `support_agents` (DEV) — el tenant queda igual que antes del test,
+> disponible como fixture para la próxima validación.
 >
 > ### 🏗 (2026-07-07 noche · **v1.121.0 EN DEV, SIN deploy a PROD/Vercel** — Fase 2 cambio de PLAN + ARREPENTIMIENTO legal)
 > **Implementado y dejado LISTO EN DEV (mig 260 aplicada en DEV · 6 EFs deployadas a DEV: `mp-addon-batch`/`mp-batch-sweep` NUEVA/`mp-webhook`/`mp-verificar-suscripcion`/`admin-api`/`cancel-suscripcion` · smoke sweep verde · 945 unit +24 · tsc · build · schema_full al día · UAT §10.c/§10.d):**
@@ -61,7 +123,7 @@ type: project
 > 2. **Decisiones GO:** ¿PIN por email para el arrepentimiento (Disp. 3/2026)? · ¿texto legal del modal ok? · ¿la ventana es 10 días corridos desde la PRIMERA compra (no se resetea)? — así quedó implementado.
 > 3. **Deploy a PROD (con OK de GO):** mig 260 en PROD → 6 EFs a PROD → PR dev→main v1.121.0 → release → Vercel. ⚠ El workflow `mp-reconciliacion.yml` ya llama a `mp-batch-sweep` — en PROD el EF nuevo debe estar deployado ANTES del próximo tick horario tras el merge (si no, el step del workflow falla con 404).
 > 4. **Pendientes operativos que siguen vivos (de la sesión anterior):** **✅ display de la app ya muestra Básico $54k** (`PLANES.basico.precio` en `brand.ts`, 100% estático — Landing/Suscripción/estimador — nunca lee de MP) · **⚠ el plan REAL en MP sigue en $15** (decisión GO: lo maneja él a mano desde el panel MP mientras testea, y lo vuelve a $54k cuando termine — así separa "lo que la app muestra" de "lo que MP realmente cobra"). **🛑 Ojo con esto mientras el plan MP siga en $15:** la Fase 2 (upgrade Básico→Pro, arriba) calcula el delta leyendo el precio REAL del plan en MP (`GET /preapproval_plan`) — con Básico a $15 y Pro a su precio real, el delta que se calcule/cobre en un upgrade va a salir inflado/incorrecto (ej. ~$89.985 en vez de ~$36.000). No afecta nada más (ni Landing, ni el resto del batch de add-ons, ni el checkout normal) — es específico del flujo de cambio de PLAN nuevo. Mientras no haya clientes reales en Básico (hoy: solo "Test GO"), el blast radius es cero salvo que GO mismo pruebe el upgrade de plan con el precio de test puesto. · refunds de los tests (GO) · checkout orgánico MP-A12 (paso 5) · limpiar `test123` de "Familia Otranto" · limpieza dummies "Test GO".
-> 5. Backlog: BATCH-BAJA-VIGENCIA · MP-P2 (downgrade de plan — reusa el guard batch) · dual pricing Fase B · WH-SIG · rollout ActionMenu.
+> 5. Backlog: BATCH-BAJA-VIGENCIA · MP-P2 (downgrade de plan — reusa el guard batch) · dual pricing Fase B · ~~WH-SIG~~ (✅ log-only 2026-07-08, ver bloque de arriba) · ~~rollout ActionMenu~~ (✅ verificado 2026-07-08, no hacía falta nada).
 >
 > ### ✅ (2026-07-07 cierre · **BILLING COMPLETO VALIDADO E2E EN LA CUENTA NUEVA** — PROD v1.120.0)
 > **El ciclo entero de billing quedó probado con plata real por GO en el tenant "Test GO" (`c37c7b64…`, buildify.info@gmail.com):** suscripción (linkeada por soporte) → **batch SUBA** usuarios+1 (delta $5.000, webhook aplicó en 22s) → **BAJA** sin cobro → **cambio de pack +1→+3** con delta ✓ → **GUARD en ambas direcciones** (con 6/6 users bloqueó la baja con el modal; tras desactivar el 6º la dejó pasar) → **temporal de comprobantes +1.000** comprado y acreditado (vence solo 2026-08-06) → **cancelación** fail-closed llegó a MP + grace real hasta 2026-08-07. Bonus: el trigger DB `fn_enforce_limite()` bloquea inserts de users por SQL directo al llegar al límite (límite duro server-side probado).
@@ -73,7 +135,7 @@ type: project
 > 4. **Limpieza tenant Test GO:** 5 usuarios "Dummy Guard" quedaron activos (dejarlos como fixtures de test o borrarlos) · sub cancelada con grace hasta 7/8 (para futuros tests batch habrá que re-suscribir).
 > 5. **🏗 PRÓXIMA FEATURE = Fase 2 del batch (cambio de PLAN)** — spec de GO 2026-07-07 en `configurador-addons-batch.md` §4: E1 upgrade inmediato con delta (fecha de cobro intacta) + E2 upgrade PROGRAMADO a la próxima fecha de cobro (sweep + habilitar tier al confirmarse el cobro). Prerrequisito: migrar derivación de tier de `preapproval_plan_id` → `tenants.plan_tier` en las 3 EFs. El downgrade se diseña junto con MP-P2.
 > 6. **Backlog nuevo BATCH-BAJA-VIGENCIA:** la baja de un pack hoy quita el cupo AL INSTANTE aunque el mes esté pagado → evaluar mantenerlo hasta fin del período (evita pedidos de refund; hoy GO refundó a mano).
-> 7. Cola aprobada previa: **rollout ActionMenu** (resto de módulos) · dual pricing Fase B (motor manual) · WH-SIG (firma webhook en la app nueva) · WH-LEGACY.
+> 7. Cola aprobada previa: ~~**rollout ActionMenu**~~ (✅ verificado 2026-07-08, no hacía falta nada) · dual pricing Fase B (motor manual) · ~~WH-SIG~~ (✅ log-only 2026-07-08, ver bloque de arriba) · WH-LEGACY.
 >
 > ### 💳 (2026-07-07 · CAMBIO DE CUENTA MP — ✅ EJECUTADO (v1.119.0) · pasos de GO COMPLETADOS: webhook configurado + cuenta vieja cerrada)
 > **HECHO (Claude, 2026-07-07):** token de PRODUCCIÓN validado (`GET /users/me`: cuenta REAL = **Fede Messina**, user `478332282`, app `2672033309404649` — el primer token era de un test user y se rechazó) → **2 planes creados por API**: Básico **$54.000** = `142aefe11ad64fb887b5949db005f8f8` · Pro **$90.000** = `f06b269057254b9da0e4a60cb89d1544` (mensuales ARS, `back_url` a `/suscripcion`, −10% de débito automático incluido; ⚠ el JSON con tildes da 400 en MP, mandar ASCII) → `MP_PLAN_IDS` en `brand.ts` + secrets `MP_ACCESS_TOKEN`/`MP_PLAN_BASICO`/`MP_PLAN_PRO` seteados en **DEV y PROD** → **PR #276 + release v1.119.0** → smoke: cuenta nueva sin subs como collector (los 10 resultados de `/preapproval/search` son Fede-como-PAGADOR hacia la cuenta vieja — el search no filtra por collector) + workflow `mp-reconciliacion` corrido en verde.
@@ -102,7 +164,7 @@ type: project
 > 3. **BAJA:** destilda → total $1.000, botón "Confirmar cambios" (SIN pago) → toast *"tu factura del 3/8 llega por $1.000"* → MP recurrente vuelve a $1.000, sin ningún cobro.
 > 4. **GUARD (opcional):** con el pack de usuarios puesto, crear usuarios hasta 6 e intentar quitar el pack → modal "Tenés 1 usuarios activos de más…".
 > ⚠ Si algo falla: NO pagar de nuevo — sin pago confirmado nada cambia; pagado-sin-aplicar dispara email a soporte + change `fallido`.
-> **Después:** ~~(3) borrar `mp-addon-fijo`~~ ✅ HECHO 2026-07-07 (EF borrada de DEV+PROD, cierra H7; espejo+18 tests eliminados); (4) **Fase 2** = cambio de PLAN por el toggle con delta (diseño propio — ⚠ 3 EFs derivan el tier de `preapproval_plan_id`, ver doc §4); (5) pendientes previos: ~~plan Básico a $60k~~ y ~~refunds~~ ABSORBIDOS por el cambio de cuenta (v1.119: la cuenta vieja muere; GO cancela/refunda allá) · decidir sub de Fede · MP-P2/WH-LEGACY/WH-SIG (WH-SIG ahora tiene sentido: configurar firma en el webhook de la app NUEVA) · ~~Dependabot 18 vulns~~ ✅ HECHO 2026-07-07 (0 vulns, Vite 7).
+> **Después:** ~~(3) borrar `mp-addon-fijo`~~ ✅ HECHO 2026-07-07 (EF borrada de DEV+PROD, cierra H7; espejo+18 tests eliminados); (4) **Fase 2** = cambio de PLAN por el toggle con delta (diseño propio — ⚠ 3 EFs derivan el tier de `preapproval_plan_id`, ver doc §4); (5) pendientes previos: ~~plan Básico a $60k~~ y ~~refunds~~ ABSORBIDOS por el cambio de cuenta (v1.119: la cuenta vieja muere; GO cancela/refunda allá) · decidir sub de Fede · MP-P2/WH-LEGACY · ~~WH-SIG~~ ✅ log-only 2026-07-08 (falta cargar `MP_WEBHOOK_SECRET` real en Supabase DEV/PROD para activarlo de verdad) · ~~Dependabot 18 vulns~~ ✅ HECHO 2026-07-07 (0 vulns, Vite 7).
 
 > ### 🧪 (2026-07-05 · v1.114.0 — ADDON_FIJO_ENABLED=true · ✅ TEST OK, flujo luego REEMPLAZADO por el BATCH v1.115 — histórico)
 > **🛑 v1.114.0 (PR #271, decisión GO): se PRENDIÓ el configurador de add-ons fijos in-app** para la validación e2e del runbook §11 paso 2 con la sub real de Fede (`1619ea40…`, $1.000/mes). Exposición acotada: solo lo ven tenants `active` con `mp_subscription_id` real (hoy solo Fede). **Plan del test:** Fede agrega Usuarios+1 ($5.000) → toast OK + fila `tenant_addons` + límite 6 users (verifica Claude en DB) → GO mira en su panel MP que el preapproval diga **$6.000** y ANOTA qué fecha/monto muestra el próximo cobro (LA incógnita: ¿prorratea o cobra $6.000 el 3/8?) → Fede lo quita → vuelve a $1.000. **Si falla: flag a `false` + redeploy (rollback de 1 línea).** Si sale bien: el flag queda prendido + GO revisa visualmente la vista in-app (pendiente v1.111).
@@ -572,15 +634,17 @@ type: project
 12. **Config** (datos fiscales, métodos de pago, cuentas de origen, clave maestra, autorizaciones por rol UI).
 13. **Suscripción/planes/trial** (upgrade, gating Pro).
 14. **Caja avanzada** (traspaso entre cajas operativas, préstamo a empleado, panel cajero).
-15. **Autorización de ajustes por rol (runtime UI)** — DUEÑO directo vs rol→Autorizaciones (mig 228).
+15. ~~**Autorización de ajustes por rol (runtime UI)** — DUEÑO directo vs rol→Autorizaciones (mig 228).~~ ✅ YA ESTABA RESUELTO desde el cierre UAT 2026-06-24 (`tests/specs/cobertura/00_cierre_uat.md` + `02_inventario_conteos.md`, specs `47_conteo_autorizacion_rol_mutante` + `51_autorizacion_ajuste_aprobar_mutante`) — re-confirmado VERDE contra DEV el 2026-07-08 (este bullet estaba desactualizado, quitado de pendientes).
 16. **§29 matriz fiscal RUNTIME** — cambiar `condicion_iva_emisor` (RI/Mono/Exento) + emitir CAE real homologación (MF-01→14) + Gastos por condición (MG-01→13). *(Requiere AFIP homologación; los guards server-side ya están code-auditados.)*
 
 **Otros pendientes (no e2e):**
 - **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover tabs/sidebar, iconos en tabs, fondos landing/suscripción, capital por moneda.
 - **Smoke de primer uso PU-01→17 en PROD** sobre un tenant nuevo real (alta con confirmación de email — no automatizable sin inbox; lo corre GO). La paridad (migs 230-232) ya previene los drifts.
-- **▶ Pase de performance DB (backlog, para PROD):** los **646 lints** — envolver `auth.*()` en RLS con `(select auth.*())` + índices en FKs sin índice. Migración DEV+PROD.
+- **▶ Pase de performance DB:** ~~los **646 lints** — envolver `auth.*()` en RLS con `(select auth.*())` + índices en FKs sin índice.~~ ✅ **HECHO EN DEV (mig 263, 2026-07-08)** — 116 `ALTER POLICY` + 195 índices FK, verificado (0 policies sin envolver, aislamiento multi-tenant intacto). **⏳ Falta PROD** — ⚠ sin `CREATE INDEX CONCURRENTLY`, los `CREATE INDEX` toman lock `SHARE` sobre `ventas`/`caja_movimientos`/`productos` (tráfico real) hasta el commit final — evaluar ventana de bajo tráfico o partir el archivo en 2 antes de aplicar a PROD.
 - **Limpieza:** borrar el tenant `ZZZ_VALIDACION_CLAUDE` (DEV) cuando ya no se use; los datos de prueba en Almacén Jorgito (clientes test, traslado #1, recepción, gasto) son inocuos.
 - **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto).
+- **NUEVO (2026-07-08) — `supabase/schema_full.sql` desactualizado desde 2026-03-26:** el header del archivo dice explícitamente "actualizado 2026-03-26, migrations 001–024" — no refleja las últimas 239 migraciones (025-263). El checklist de CLAUDE.md pide actualizarlo tras cada migración pero en la práctica no se viene haciendo; drift preexistente grande, no bloqueante. Regenerarlo requiere `pg_dump`/`supabase db dump` real contra DEV (tarea aparte, no armar a mano).
+- **NUEVO (2026-07-08) — 6 tests e2e (`npm test`) fallan, preexistentes, no relacionados a RLS/índices/`mp-webhook`:** `01_dashboard.spec.ts` (selector busca texto que ya no existe — Dashboard rediseñado "gráficos primero" en v1.93-94.0, confirmado con `git log`, 100% desactualizado) · `28_cobranza_cc_mutante.spec.ts`/`38_envio_combustible_gasto_mutante.spec.ts`/`57_reserva_sin_sena_mutante.spec.ts` fallan incluso aislados (fixtures de DEV agotados/mutados por el volumen de corridas e2e del día) · `12_navegacion_sidebar.spec.ts`/`33_devolucion_proveedor_mutante.spec.ts` pasaron en corrida aislada (flaky/orden-dependiente en la corrida masiva). Pendiente: reescribir el selector del test de dashboard + mejorar aislamiento/reseed de fixtures entre corridas `_mutante`.
 
 **⚙️ Infra DEV (2026-06-19):** por el aviso de saturación de recursos se **desactivaron en DEV** los crons `jobid 1` (`net.http_post`) y `jobid 3` (`fn_tn_sync_heartbeat`, sync TiendaNube, cada 5 min) — saturaban el tier chico sin aportar en un entorno de prueba. **Reversibles:** `SELECT cron.alter_job(job_id => 1, active => true)` (ídem 3). jobid 4 (CC vencidas) y 5 (limpieza token envíos), daily, siguen activos. **PROD intacto** (sus crons siguen activos: sync real cada 5 min). No se subió compute (es DEV; el aviso era transitorio por el pico de e2e + diagnóstico).
 

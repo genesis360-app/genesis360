@@ -71,12 +71,52 @@ async function asentarIngresoInformativoMp(
   if (error) console.error('mp-webhook: error asentando ingreso_informativo en caja', error)
 }
 
+// WH-SIG: validación de firma HMAC-SHA256 del webhook, formato documentado por MP
+// (header `x-signature: ts=...,v1=...` + `x-request-id` + `data.id` de la query string).
+// Manifest: `id:{data.id};request-id:{x-request-id};ts:{ts};` firmado con el secret de
+// firma del panel de MP (MP_WEBHOOK_SECRET — DISTINTO de MP_ACCESS_TOKEN/MP_CLIENT_SECRET).
+async function verificarFirmaMp(req: Request, secret: string): Promise<{ valid: boolean; reason?: string }> {
+  const xSignature = req.headers.get('x-signature')
+  const xRequestId = req.headers.get('x-request-id')
+  if (!xSignature || !xRequestId) return { valid: false, reason: 'faltan headers x-signature/x-request-id' }
+
+  const parts = Object.fromEntries(
+    xSignature.split(',').map(p => p.trim().split('=').map(s => s.trim())),
+  ) as Record<string, string>
+  const ts = parts['ts']
+  const v1 = parts['v1']
+  if (!ts || !v1) return { valid: false, reason: 'x-signature mal formado' }
+
+  const url = new URL(req.url)
+  const dataId = (url.searchParams.get('data.id') ?? url.searchParams.get('id') ?? '').toLowerCase()
+  if (!dataId) return { valid: false, reason: 'sin data.id en query string' }
+
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(manifest))
+  const computed = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return computed === v1 ? { valid: true } : { valid: false, reason: 'hash no coincide' }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders })
   }
 
   try {
+    // WH-SIG (2026-07-08) — modo LOG-ONLY a propósito: MP_WEBHOOK_SECRET (el secret de
+    // firma del panel de MP, no configurado todavía) falta cargarse en Supabase. Mientras
+    // tanto solo se loguea el resultado, nunca se bloquea el webhook — pasar a bloqueante
+    // (early return 401 si !valid) recién cuando los logs muestren `OK` consistente contra
+    // tráfico real de MP.
+    const webhookSecret = Deno.env.get('MP_WEBHOOK_SECRET')
+    if (webhookSecret) {
+      const firma = await verificarFirmaMp(req, webhookSecret)
+      console.log('MP Webhook firma:', firma.valid ? 'OK' : `INVALIDA (${firma.reason})`)
+    }
+
     const body = await req.text()
     const event = JSON.parse(body)
 

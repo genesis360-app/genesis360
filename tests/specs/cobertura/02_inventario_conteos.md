@@ -122,6 +122,15 @@ Archivos auditados: `src/pages/InventarioPage.tsx`, `src/pages/RecepcionesPage.t
    ajuste/conteo con diferencia → **NO** muta el stock, crea `autorizaciones_inventario` pendiente; el
    DUEÑO aprueba → recién ahí muta (verificar `movimientos_stock` + `inventario_lineas`). Hoy solo está
    cubierta la rama DUEÑO directo (e2e 36) y la lógica pura (unit). Es el flujo de 2 patas más expuesto.
+   ✅ **Re-confirmado 2026-07-09** (Almacén Jorgito, `ajuste_autorizacion_roles=null`→default):
+   spec **47** re-corrida fresca (SUPERVISOR finaliza conteo Elite Pañuelos con +1) → toast "pendiente de
+   aprobación" + `autorizaciones_inventario` pendiente (`solicitado_por`=Supervisor Test) + LPN
+   `LPN-20260430-0F9267` **sin mutar** (cantidad 11 intacta); fixture de prueba limpiado por SQL tras
+   verificar. Spec **51** re-corrida con fixture sembrado (Coca Cola 1.5L Original, LPN `LPN-MNB85SGE`,
+   esperado 126/contado 127, `solicitado_por`=Supervisor Test) → DUEÑO aprueba → `inventario_lineas.cantidad`
+   126→**127**, `movimientos_stock` `ajuste_ingreso` insertado (stock producto 248→249), `autorizaciones_
+   inventario.estado`='aprobada' con `aprobado_por`≠`solicitado_por`. Ambas specs **VERDE**, comportamiento
+   real = exactamente el descripto (no se encontró discrepancia con la lógica esperada).
 
 2. **⭐ Conteo gate por umbral + doble conteo (reconteo)** (L18/L19, `conteoAjuste.ts` +
    `InventarioPage:1793`/`1844`). Con `conteo_gate_activo=true` y `conteo_gate_umbral_*` seteado:

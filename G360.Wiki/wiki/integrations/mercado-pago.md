@@ -3,7 +3,7 @@ title: Integración Mercado Pago
 category: integrations
 tags: [mercado-pago, pagos, suscripciones, webhook, qr, addon, argentina]
 sources: [CLAUDE.md]
-updated: 2026-07-08
+updated: 2026-07-09
 ---
 
 # Integración Mercado Pago
@@ -352,7 +352,7 @@ real cobrado + baja sin cobro + guard de baja); Fase 2 = cambio de PLAN por el m
 
 | Función | JWT | Propósito |
 |---------|-----|-----------|
-| `crear-suscripcion` | Sí | Deprecated (se usa init_point directo ahora) |
+| ~~`crear-suscripcion`~~ | — | **ELIMINADA (2026-07-09)** — huérfana, cero referencias en `src/` ni en otras EFs (`SuscripcionPage.tsx` arma el checkout de MP directo en el cliente desde hace tiempo). Borrada de Supabase DEV + carpeta local eliminada del repo (commit `85646408`), con OK de GO. |
 | `mp-webhook` | No | Eventos de pagos Y suscripciones (setea `plan_tier`; add-on temporal → `tenant_addons`) |
 | `mp-ipn` | No | IPN alternativo para pagos de ventas |
 | `mp-crear-link-pago` | Sí | Genera preference de pago por venta |
@@ -374,6 +374,15 @@ Recibe payload de MP
   → Si no coincide
       → Pago de PLATAFORMA (addon/suscripción, comportamiento anterior)
 ```
+
+> [!WARNING] **WH-LEGACY/H1 — pendiente sin resolver (investigado 2026-07-09, no tocado):** la
+> rama `else` final del routing de PLATAFORMA activa `subscription_status='active'` sin validar
+> monto ni idempotencia. `SuscripcionPage.tsx:278` arma `external_reference=${tenant.id}` igual
+> que hacía la EF `crear-suscripcion` (ya eliminada, ver tabla arriba), lo que sugiere que esta
+> rama sigue siendo parte del camino ACTIVO de alta de suscripción — pero la documentación
+> existente (H5) también dice que MP no persiste `external_reference` en checkouts por plan. Es
+> ambiguo sin evidencia de logs reales de un webhook real; no se tocó código. Pendiente: revisar
+> logs de un alta real antes de decidir si hay que endurecer esta rama.
 
 ### `mp-ipn`
 

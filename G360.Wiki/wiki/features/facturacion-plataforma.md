@@ -3,15 +3,27 @@ title: Facturación automática de ingresos de PLATAFORMA (Fede, monotributo)
 category: features
 tags: [afip, facturacion, monotributo, mercadopago, billing]
 sources: [supabase/functions/emitir-factura-plataforma, supabase/functions/platform-facturacion-sweep, supabase/migrations/261_platform_billing_fede.sql]
-updated: 2026-07-08
+updated: 2026-07-09
 ---
 
 # 🧾 Facturación automática de plataforma (Fede)
 
 > Estado: **🏗 EN DEV (v1.122.0, 2026-07-08)** — código completo, deployado y **validado e2e en
 > DEV el camino `sin_biller`** (ver sección abajo). **Bloqueado en la práctica hasta que Fede
-> configure `platform_billers`** (token AfipSDK + certificado + punto de venta) — sin eso el
-> sistema alerta a soporte y no factura (fail-open, nunca bloquea el cobro).
+> configure `platform_billers`** — sin eso el sistema alerta a soporte y no factura (fail-open,
+> nunca bloquea el cobro).
+>
+> **Guía concreta para Fede (confirmado en código 2026-07-09,
+> `supabase/functions/emitir-factura/providers.ts:24-31`):** para el provider **AfipSDK** (el que
+> usa Fede) el **certificado NO es obligatorio** — solo aplica al circuito "propio" (WSFE
+> directo, todavía un stub sin implementar). Solo falta el **token de AfipSDK**. 3 pasos, todos
+> fuera de Genesis360: (1) crear cuenta en **afipsdk.com** con el CUIT `20-42237416-8` (ellos
+> gestionan la generación/vínculo del certificado ante AFIP en su propio flujo); (2) habilitar un
+> **punto de venta para Facturación Electrónica** en AFIP/ARCA (Administrador de Relaciones de
+> Clave Fiscal); (3) obtener el **token de API** desde el dashboard de afipsdk.com. Con esos 3
+> datos (+ CUIT/razón social/domicilio ya conocidos), Claude carga la fila en `platform_billers`
+> directo por SQL — la tabla no tiene UI propia (ni en `genesis360-admin`, cero referencias), es
+> `service_role`-only por RLS.
 
 ## Por qué existe
 
@@ -93,7 +105,7 @@ PROD.
 
 ## Pendiente
 
-- **Bloqueante operativo (Fede/GO, no código):** token AfipSDK + certificado + punto de venta
-  para el CUIT de Fede — cargar en `platform_billers`. Es el único paso que falta para validar el
-  camino feliz (con biller configurado, factura real emitida).
+- **Bloqueante operativo (Fede, no código):** completar los 3 pasos de arriba (cuenta afipsdk.com
+  → punto de venta AFIP/ARCA → token API) para poder cargar `platform_billers`. Es el único paso
+  que falta para validar el camino feliz (con biller configurado, factura real emitida).
 - Wording final del `concepto` que aparece en el comprobante — revisar con GO.

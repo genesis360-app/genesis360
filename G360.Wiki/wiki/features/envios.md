@@ -3,12 +3,14 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md]
-updated: 2026-06-09
+updated: 2026-07-09
 ---
 
 # Módulo Envíos
 
 > [!IMPORTANT] **Guard server-side de plata (v1.81.0, REGLA #0):** el **pago a courier** ("marcar pagados") se hace por el RPC atómico `marcar_envios_pagados()` (mig 238): **doble firma server-side** sobre el umbral (cierra el hueco "se omite si no hay clave"); agrupa por courier, genera un gasto por courier (con desglose de IVA) + su movimiento de caja y marca los envíos pagados, todo en una transacción. Wiring `EnviosPage.marcarPagados`.
+
+> [!WARNING] **Bug corregido (2026-07-09, REGLA #0 — toca Pagos Courier):** crear un envío desde el modal manual **"Nuevo envío"** (no desde una venta) con tipo **"🚗 Envío propio"** dejaba `envios.courier = null` en vez de `'Envío propio'` (el `<select>` de courier queda oculto para ese tipo y nunca se togglea). Impacto: el botón "Registrar combustible" nunca aparecía (gate exacto `courier==='Envío propio'`) y `envioYaSaldado` — que decide `costo_pagado` al nacer el envío — también dependía de ese string, por lo que un envío realmente propio podía figurar indebidamente como pago pendiente en la pestaña **Pagos Courier**. **Fix** (commit `06d1bbae`) en `src/pages/EnviosPage.tsx`: `saveEnvio` deriva `courier` de `tipoEnvio` en vez de confiar en el select oculto; `envioYaSaldado` usa el `courier` ya corregido; `abrirEdicion` restaura `tipoEnvio` según el `courier` real del envío al editar (antes siempre arrancaba en "tercero"). Test de regresión: `tests/e2e/85_envio_propio_manual_courier_mutante.spec.ts`. Alcance real bajo: los envíos propios que ya existían en DEV se habían creado todos por el camino de Ventas (que sí setea `courier` bien), nunca por el modal manual.
 
 > **🚚 Envío en modo BÁSICO (v1.78.0, 2026-06-18 — EN DEV):** en básico el envío es **solo un campo de costo** en el POS (se guarda en `ventas.costo_envio`, sale en ticket y factura). **NO** hay courier/reparto/dirección ni se crea registro en `envios` (la inserción está gateada por `modoAvanzado`) — el módulo de Envíos queda oculto en básico. La gestión completa que describe esta página aplica **solo a modo avanzado**. El costo de envío cobrado al cliente ahora también entra en la **factura AFIP** (ver [[project_facturacion]] / [[project_costo_envio_factura]]).
 

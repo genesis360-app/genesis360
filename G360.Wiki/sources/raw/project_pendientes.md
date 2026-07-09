@@ -6,6 +6,75 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🧹 (2026-07-09 · cierre de sesión — `crear-suscripcion` eliminada + fix EnviosPage courier propio + 4 tests e2e reparados + guía AfipSDK para Fede + `schema_full.sql` bloqueado por Docker — SIN deploy, SIN release nueva, SIN migración nueva)
+> **Cuarta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, y WH-SIG+mig
+> 263+ActionMenu+UAT#15 — bloques de abajo). **Última actualización de wiki antes de un
+> `/clear` — el bloqueante real para pasar a PROD sigue siendo el operativo de Fede (facturación
+> de plataforma), ver los 3 pasos concretos en el punto 4.**
+> 1. **`crear-suscripcion` (Edge Function huérfana) ELIMINADA de DEV** (OK explícito de GO, cero
+>    referencias en `src/` ni en otras EFs — `SuscripcionPage.tsx` arma el checkout de MP directo
+>    en el cliente hace tiempo): borrada de Supabase DEV (`supabase functions delete
+>    crear-suscripcion --project-ref gcmhzdedrkmmzfzfveig`) + carpeta
+>    `supabase/functions/crear-suscripcion/` eliminada del repo (commit `85646408`). **La rama
+>    `else` final de `mp-webhook`** (activa `subscription_status='active'` sin validar
+>    monto/idempotencia) **NO se tocó — sigue sin resolver**: `SuscripcionPage.tsx:278` arma
+>    `external_reference=${tenant.id}` igual que hacía la EF borrada, pero la doc existente (H5)
+>    dice que MP no persiste ese campo en checkouts por plan — ambiguo sin evidencia de logs
+>    reales, necesita chequear logs de un webhook real antes de tocar código. **Cierra la mitad de
+>    WH-LEGACY/H1** (deprecar `crear-suscripcion` ✅; rama `else` pendiente).
+> 2. **🔴 Bug real corregido (REGLA #0, Pagos Courier) — `EnviosPage.tsx`:** el modal manual
+>    "Nuevo envío" con tipo "🚗 Envío propio" dejaba `envios.courier = null` en vez de `'Envío
+>    propio'` (el `<select>` de courier queda oculto para ese tipo y nunca se togglea) → (a) botón
+>    "Registrar combustible" nunca aparecía (gate exacto `courier==='Envío propio'`); (b)
+>    `envioYaSaldado` también dependía de ese string — con `courier=null` un envío realmente
+>    propio podía figurar indebidamente como pago pendiente en "Pagos Courier". **Fix** (commit
+>    `06d1bbae`): `saveEnvio` deriva `courier` de `tipoEnvio` en vez del select oculto;
+>    `envioYaSaldado` usa el `payload.courier` ya corregido; `abrirEdicion` restaura `tipoEnvio`
+>    real al editar. Test de regresión `tests/e2e/85_envio_propio_manual_courier_mutante.spec.ts`
+>    (verde). Alcance real bajo: los envíos propios existentes en DEV se crearon todos vía Ventas
+>    (que sí setea courier bien) — bug latente, no manifestado en datos reales conocidos. Detalle:
+>    `wiki/features/envios.md`.
+> 3. **4 de los 6 tests e2e stale detectados el 2026-07-08 (bloque de abajo), reparados** (mismo
+>    commit `06d1bbae`): `01_dashboard.spec.ts` (aserciones contra el Dashboard pre-rediseño
+>    "gráficos primero" v1.93-94.0, actualizado a headers reales "La Balanza"/"El Mix de Caja") ·
+>    `28_cobranza_cc_mutante` / `38_envio_combustible_gasto_mutante` (dependían de fixtures
+>    compartidos ya consumidos por corridas previas — ahora generan su propio dato) ·
+>    `57_reserva_sin_sena_mutante` (cliente fixture con "Crédito a favor" acumulado de otros specs
+>    que `VentasPage` auto-aplicaba como seña, neutralizando el guard — se limpia el monto tras
+>    seleccionar cliente). Los otros 2 (`12_navegacion_sidebar`/`33_devolucion_proveedor_mutante`)
+>    se reconfirmaron flaky por orden de ejecución, sin cambios de código.
+> 4. **Guía concreta para el bloqueante de Fede** (confirmado en código,
+>    `supabase/functions/emitir-factura/providers.ts:24-31`): para el provider **AfipSDK** (el que
+>    usa Fede) el **certificado NO es obligatorio** — solo aplica al circuito "propio" (WSFE
+>    directo, stub sin implementar). Solo falta el **token de AfipSDK**. **3 pasos para Fede**
+>    (fuera de Genesis360): (1) crear cuenta en **afipsdk.com** con CUIT `20-42237416-8`; (2)
+>    habilitar un **punto de venta para Facturación Electrónica** en AFIP/ARCA (Administrador de
+>    Relaciones de Clave Fiscal); (3) obtener el **token de API** del dashboard de afipsdk.com.
+>    Con esos 3 datos (+ CUIT/razón social/domicilio ya conocidos), Claude carga la fila en
+>    `platform_billers` directo por SQL — la tabla no tiene UI propia (ni en `genesis360-admin`,
+>    confirmado cero referencias), es `service_role`-only por RLS.
+> 5. **`schema_full.sql` — intento de regenerar, bloqueado por falta de Docker:** `supabase db
+>    dump --linked -s public -f supabase/schema_full.sql` falla porque el entorno sandboxeado de
+>    Claude Code no tiene Docker accesible (el CLI de Supabase lo necesita para el dump completo).
+>    Sigue desactualizado desde 2026-03-26 (migs 001-024, faltan 240). **Pendiente que GO lo corra
+>    en su propia terminal** (con Docker Desktop corriendo) y avise para revisar/commitear el
+>    resultado.
+>
+> **🟠 QUEDA (próxima sesión, en orden de prioridad):**
+> 1. **Fede completa sus 3 pasos** (afipsdk.com → punto de venta AFIP/ARCA → token API) → avisar
+>    para que Claude cargue la fila en `platform_billers` por SQL — bloqueante real para que salga
+>    la primera factura de plataforma real (ver bloque "2026-07-08 · Facturación de plataforma"
+>    debajo para el resto del contexto de facturación de plataforma + motor de pago manual).
+> 2. **GO corre el dump de `schema_full.sql`** en su propia terminal con Docker Desktop corriendo,
+>    avisa para revisar/commitear.
+> 3. **Resto del backlog conocido, sin cambios** (ver bloques de abajo): validación e2e de Fase 2
+>    batch + arrepentimiento (upgrade E1/E2 + refund total, 2026-07-07) · volver el plan Básico de
+>    MP a $54.000 (sigue en $15/$1.000 de test) · refunds pendientes de los tests de Fede/GO ·
+>    checkout orgánico MP-A12 · rama `else` de `mp-webhook` (WH-LEGACY, sin resolver, punto 1 de
+>    arriba) · MP-P2 (downgrade de plan) · MP-AD7 (idempotencia server-side del add-on).
+>
+> ---
+>
 > ### 🔧 (2026-07-08 continuación 3 · WH-SIG log-only + mig 263 perf DB (RLS+índices) + ActionMenu rollout verificado + UAT #15 cerrado — SIN deploy, SIN release nueva)
 > **Tercera sesión del día (después de v1.122.0 y de la validación e2e `sin_biller`, ambas abajo)
 > — 100% backend/DB + verificación, SIN deploy a PROD, SIN tocar `src/`, SIN release de versión de
@@ -43,12 +112,16 @@ type: project
 > **🟠 Hallazgos nuevos (no bloqueantes, agregados al backlog, no se arreglaron hoy):**
 > - **`schema_full.sql` desactualizado desde 2026-03-26** (header dice "migrations 001–024", faltan
 >   las últimas 239). Regenerar requiere `pg_dump`/`supabase db dump` real contra DEV — tarea aparte.
+>   **Intentado 2026-07-09 — bloqueado por falta de Docker en el entorno de Claude Code; pendiente
+>   que GO lo corra en su propia terminal (ver bloque de arriba).**
 > - **6 tests e2e (`npm test`) fallan, TODOS preexistentes, sin relación a los cambios de hoy:**
 >   `01_dashboard.spec.ts` (selector desactualizado al rediseño "gráficos primero" v1.93-94.0) ·
 >   `28_cobranza_cc_mutante`/`38_envio_combustible_gasto_mutante`/`57_reserva_sin_sena_mutante`
 >   fallan incluso aislados (fixtures de DEV agotados por el volumen de e2e de hoy) ·
 >   `12_navegacion_sidebar`/`33_devolucion_proveedor_mutante` pasaron aislados (flaky de orden en
->   la corrida masiva). Ninguno toca RLS/índices ni `mp-webhook`.
+>   la corrida masiva). Ninguno toca RLS/índices ni `mp-webhook`. **✅ 2026-07-09: los 4 primeros
+>   reparados** (commit `06d1bbae`, ver bloque de arriba); los 2 últimos reconfirmados flaky, sin
+>   cambios de código necesarios.
 >
 > ---
 >
@@ -135,7 +208,7 @@ type: project
 > 4. **Limpieza tenant Test GO:** 5 usuarios "Dummy Guard" quedaron activos (dejarlos como fixtures de test o borrarlos) · sub cancelada con grace hasta 7/8 (para futuros tests batch habrá que re-suscribir).
 > 5. **🏗 PRÓXIMA FEATURE = Fase 2 del batch (cambio de PLAN)** — spec de GO 2026-07-07 en `configurador-addons-batch.md` §4: E1 upgrade inmediato con delta (fecha de cobro intacta) + E2 upgrade PROGRAMADO a la próxima fecha de cobro (sweep + habilitar tier al confirmarse el cobro). Prerrequisito: migrar derivación de tier de `preapproval_plan_id` → `tenants.plan_tier` en las 3 EFs. El downgrade se diseña junto con MP-P2.
 > 6. **Backlog nuevo BATCH-BAJA-VIGENCIA:** la baja de un pack hoy quita el cupo AL INSTANTE aunque el mes esté pagado → evaluar mantenerlo hasta fin del período (evita pedidos de refund; hoy GO refundó a mano).
-> 7. Cola aprobada previa: ~~**rollout ActionMenu**~~ (✅ verificado 2026-07-08, no hacía falta nada) · dual pricing Fase B (motor manual) · ~~WH-SIG~~ (✅ log-only 2026-07-08, ver bloque de arriba) · WH-LEGACY.
+> 7. Cola aprobada previa: ~~**rollout ActionMenu**~~ (✅ verificado 2026-07-08, no hacía falta nada) · dual pricing Fase B (motor manual) · ~~WH-SIG~~ (✅ log-only 2026-07-08, ver bloque de arriba) · ~~WH-LEGACY~~ (parcial ✅ 2026-07-09: `crear-suscripcion` eliminada de DEV; la rama `else` del webhook de pagos de plataforma sigue sin resolver — ver bloque de arriba).
 >
 > ### 💳 (2026-07-07 · CAMBIO DE CUENTA MP — ✅ EJECUTADO (v1.119.0) · pasos de GO COMPLETADOS: webhook configurado + cuenta vieja cerrada)
 > **HECHO (Claude, 2026-07-07):** token de PRODUCCIÓN validado (`GET /users/me`: cuenta REAL = **Fede Messina**, user `478332282`, app `2672033309404649` — el primer token era de un test user y se rechazó) → **2 planes creados por API**: Básico **$54.000** = `142aefe11ad64fb887b5949db005f8f8` · Pro **$90.000** = `f06b269057254b9da0e4a60cb89d1544` (mensuales ARS, `back_url` a `/suscripcion`, −10% de débito automático incluido; ⚠ el JSON con tildes da 400 en MP, mandar ASCII) → `MP_PLAN_IDS` en `brand.ts` + secrets `MP_ACCESS_TOKEN`/`MP_PLAN_BASICO`/`MP_PLAN_PRO` seteados en **DEV y PROD** → **PR #276 + release v1.119.0** → smoke: cuenta nueva sin subs como collector (los 10 resultados de `/preapproval/search` son Fede-como-PAGADOR hacia la cuenta vieja — el search no filtra por collector) + workflow `mp-reconciliacion` corrido en verde.

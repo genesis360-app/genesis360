@@ -6,6 +6,85 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint`
 
 ---
 
+## [2026-07-09] update | 🧹 Cierre de sesión — `crear-suscripcion` eliminada + fix EnviosPage (courier propio) + 4 tests e2e reparados + guía AfipSDK para Fede + `schema_full.sql` bloqueado por Docker
+
+**Cuarta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, y WH-SIG + mig
+263 + ActionMenu + UAT #15 — entradas de abajo). Cierre de sesión antes de un `/clear` —
+**sin deploy, sin migración nueva, sin bump de versión de la app.**
+
+**1) `crear-suscripcion` (Edge Function huérfana) — ELIMINADA de DEV:** confirmado con GO que
+ningún flujo activo la usa (cero referencias en `src/` ni en otras EFs; el hallazgo ya estaba
+documentado como H1 en `tests/specs/mp-suscripciones-pagos.plan.md`; `SuscripcionPage.tsx` arma
+el checkout de MP directo en el cliente desde hace tiempo, sin pasar por ninguna EF). Con el OK
+explícito de GO: borrada de Supabase DEV (`supabase functions delete crear-suscripcion
+--project-ref gcmhzdedrkmmzfzfveig`) + carpeta local `supabase/functions/crear-suscripcion/`
+eliminada del repo (commit `85646408`). **La rama `else` final del webhook de pagos de
+plataforma (`mp-webhook`, activa `subscription_status='active'` sin validar monto/idempotencia)
+NO se tocó** — queda investigada pero sin resolver: `SuscripcionPage.tsx:278` arma
+`external_reference=${tenant.id}` igual que hacía la EF borrada, pero la documentación existente
+(H5/WH-LEGACY en `mp-suscripciones-pagos.plan.md`) también dice que MP no persiste ese campo
+para checkouts por plan — ambiguo sin evidencia de logs reales, no se tocó código del webhook.
+Cierra la mitad de WH-LEGACY/H1 (deprecar `crear-suscripcion` ✅; rama `else` pendiente).
+
+**2) Bug real encontrado y arreglado — `EnviosPage.tsx` (REGLA #0, toca lo contable de Pagos
+Courier):** al reparar un test e2e stale se encontró que crear un envío desde el modal manual
+**"Nuevo envío"** (no desde una venta) con tipo **"🚗 Envío propio"** dejaba `envios.courier =
+null` en vez de `'Envío propio'` — el `<select>` de courier queda oculto para ese tipo y nunca
+se togglea. Impacto: (a) el botón "Registrar combustible" nunca aparecía (gate exacto
+`courier==='Envío propio'`); (b) `envioYaSaldado` (decide `costo_pagado` al nacer el envío)
+también dependía de ese string — con `courier=null` un envío realmente propio podía aparecer
+indebidamente como pago pendiente en "Pagos Courier". **Fix** (commit `06d1bbae`), 3 cambios en
+`src/pages/EnviosPage.tsx`: `saveEnvio` deriva `courier` de `tipoEnvio==='propio' ? 'Envío
+propio' : (form.courier||null)` en vez de confiar en el select oculto; `envioYaSaldado` usa
+`payload.courier` (ya corregido) en vez del `form.courier` stale; `abrirEdicion` ahora hace
+`setTipoEnvio` según el `courier` real del envío al abrir edición (antes siempre arrancaba en
+"tercero"). Test de regresión nuevo `tests/e2e/85_envio_propio_manual_courier_mutante.spec.ts`
+(verde), registrado en `tests/specs/cobertura/04_compras_oc_envios.md` y
+`tests/specs/cobertura/00_cierre_uat.md`. Alcance real: los envíos propios que ya existían en
+DEV se habían creado todos por el camino de Ventas (que sí setea courier bien) — impacto en
+datos reales probablemente bajo/nulo hasta ahora, pero el bug estaba latente. Detalle:
+`wiki/features/envios.md`.
+
+**3) 4 de los 6 tests e2e stale detectados el 2026-07-08 (entrada de abajo), reparados** (mismo
+commit `06d1bbae`): `tests/e2e/01_dashboard.spec.ts` (probaba texto de un Dashboard rediseñado a
+"gráficos primero" en v1.93-94.0, mucho antes — actualizado a headers reales "La Balanza"/"El
+Mix de Caja" + ausencia del placeholder de carga); `tests/e2e/28_cobranza_cc_mutante.spec.ts` y
+`tests/e2e/38_envio_combustible_gasto_mutante.spec.ts` (dependían de un fixture compartido —
+deuda CC, envío con vehículo — ya consumido por corridas previas del mismo día; ahora generan su
+propia venta/envío antes de ejercer el flujo); `tests/e2e/57_reserva_sin_sena_mutante.spec.ts`
+(el cliente fixture acumuló "Crédito a favor" de otros specs corridos antes, que `VentasPage`
+auto-aplicaba como seña, neutralizando el guard — se limpia el monto explícitamente tras
+seleccionar cliente). Los otros 2 (`12_navegacion_sidebar`/`33_devolucion_proveedor_mutante`) se
+reconfirmaron flaky por orden de ejecución en una corrida aislada, sin cambios de código.
+
+**4) Guía concreta para el bloqueante de Fede (facturación de plataforma):** GO preguntó dónde
+tiene que cargar Fede sus certificados AFIP. Confirmado en código
+(`supabase/functions/emitir-factura/providers.ts:24-31`) que para el provider **AfipSDK** (el
+que usa Fede) el certificado **NO es obligatorio** — solo aplica al circuito "propio" (WSFE
+directo, todavía un stub sin implementar). Solo falta el **token de AfipSDK**. 3 pasos para Fede
+(fuera de Genesis360): (1) crear cuenta en **afipsdk.com** con su CUIT `20-42237416-8` (ellos
+gestionan la generación/vínculo del certificado ante AFIP en su propio flujo); (2) habilitar un
+**punto de venta para Facturación Electrónica** en AFIP/ARCA (Administrador de Relaciones de
+Clave Fiscal); (3) obtener el **token de API** desde el dashboard de afipsdk.com. Con esos 3
+datos (+ CUIT/razón social/domicilio ya conocidos), Claude carga la fila en `platform_billers`
+directo por SQL — esa tabla no tiene UI propia, ni en `genesis360-admin` (confirmado cero
+referencias ahí), es `service_role`-only por RLS. Detalle: `wiki/features/facturacion-plataforma.md`.
+
+**5) `schema_full.sql` — intento de regenerar, bloqueado por falta de Docker:** se intentó
+correr `supabase db dump --linked -s public -f supabase/schema_full.sql` para poner al día el
+archivo (desactualizado desde 2026-03-26, migs 001-024 nomás — 239+ migraciones sin reflejar).
+El comando falla porque el entorno sandboxeado donde corre Claude Code no tiene Docker accesible
+(el CLI de Supabase necesita Docker para el dump de schema completo). Queda pendiente que **GO
+lo corra en su propia terminal** (con Docker Desktop corriendo) y avise para revisar/commitear
+el resultado.
+
+**Estado:** DEV sigue en v1.122.0 (sin cambio de versión — trabajo interno). Sin migraciones
+nuevas (siguen 001-263 en DEV, 001-262 en PROD). Wiki tocado: `sources/raw/project_pendientes.md`,
+`wiki/integrations/mercado-pago.md`, `wiki/features/envios.md`, `wiki/features/facturacion-plataforma.md`,
+`index.md`.
+
+---
+
 ## [2026-07-08] update | 🔧 WH-SIG (firma HMAC log-only) + mig 263 (perf RLS/índices) + ActionMenu rollout verificado + UAT #15 cerrado
 
 **Tercera sesión del día** (después de v1.122.0 y de la validación e2e `sin_biller` — entradas de

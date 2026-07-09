@@ -339,6 +339,11 @@ export default function LandingPage() {
                           ${plan.precio.toLocaleString('es-AR')}
                         </span>
                         <span className={`text-sm ml-1 ${plan.destacado ? 'text-blue-200' : 'text-gray-400'}`}>/mes</span>
+                        {'precioManual' in plan && (
+                          <p className={`text-xs mt-1 ${plan.destacado ? 'text-blue-200' : 'text-gray-400'}`}>
+                            con débito automático · ${(plan as any).precioManual.toLocaleString('es-AR')} con otros medios de pago
+                          </p>
+                        )}
                       </div>
                     )}
                   </div>

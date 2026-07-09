@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.120.0'
+export const APP_VERSION = 'v1.122.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
@@ -58,6 +58,25 @@ export const ADDON_FIJO_ENABLED = true
 export const MP_PLAN_IDS: Record<string, string> = {
   basico: '142aefe11ad64fb887b5949db005f8f8',
   pro:    'f06b269057254b9da0e4a60cb89d1544',
+}
+
+// Precio de LISTA (sin el -10% de débito automático) — lo paga quien elige billing_mode
+// 'manual' (transferencia/efectivo/MP pago único, sin compromiso de auto-débito). Fuente de
+// verdad del monto a cobrar en modo manual (tenants.manual_monto_mensual se congela con
+// este valor al pasar a manual) — independiente de PLANES[].precio, que es el número que se
+// MUESTRA como destacado (con el -10%) y podría cambiar de criterio sin afectar lo ya cobrado.
+export const PRECIO_LISTA: Record<string, number> = {
+  basico: 60000,
+  pro:    100000,
+}
+
+// Datos de transferencia para pago manual (plan aprobado 2026-07-08 — facturación de Fede).
+// Se muestran en Mi Cuenta a los tenants en billing_mode='manual'.
+export const DATOS_TRANSFERENCIA = {
+  alias:   'DIA.SIGNO.CHASIS',
+  cbu:     '0070235730004033466939',
+  titular: 'Federico Ezequiel Messina',
+  banco:   'Banco Galicia',
 }
 
 export const BRAND = {
@@ -123,7 +142,8 @@ export const PLANES = [
   {
     id: 'basico',
     nombre: 'Básico',
-    precio: 60000,
+    precio: 54000,        // con -10% de débito automático (destacado)
+    precioManual: 60000,  // precio de lista — otros medios de pago (transferencia/efectivo/MP sin auto-débito)
     descripcion: 'Para comercios en marcha',
     destacado: false,
     limites: {
@@ -153,7 +173,8 @@ export const PLANES = [
   {
     id: 'pro',
     nombre: 'Pro',
-    precio: 100000,
+    precio: 90000,         // con -10% de débito automático (destacado)
+    precioManual: 100000,  // precio de lista — otros medios de pago
     descripcion: 'Para negocios en crecimiento',
     destacado: true,
     limites: {

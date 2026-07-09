@@ -3,7 +3,7 @@ title: Emails Transaccionales — Resend
 category: integrations
 tags: [resend, email, transaccional, edge-function, notificaciones]
 sources: [CLAUDE.md]
-updated: 2026-06-09
+updated: 2026-07-08
 ---
 
 # Emails Transaccionales — Resend
@@ -52,6 +52,13 @@ El "Reportar un problema" del Centro de Ayuda **ya NO usa `mailto:`** (dependía
 | `hola@genesis360.pro` | `BRAND.email` — contacto del Landing | Cloudflare → gmail de GO (ACTIVE) |
 
 > **Fan-out a varios destinatarios:** Cloudflare Email Routing reenvía **1 regla → 1 destino**. Para que `soporte@` llegue a **varias** personas se usa un **Google Group** como destino (membresía manejada en groups.google.com, **fuera del código** — el código siempre manda a `soporte@`). El grupo debe tener "Quiénes pueden publicar = Cualquier usuario en la Web" para aceptar el correo externo (de `noreply@` / reenvíos). Cuando el equipo de soporte crezca/cambie, se edita el grupo, no el código.
+
+> [!CAUTION] **🛑 Gotcha reusable — el circuito Resend → `soporte@` → Google Group puede fallar SILENCIOSAMENTE fuera del código (hallado y arreglado 2026-07-08).** Validando e2e la alerta `sin_biller` de `emitir-factura-plataforma` (patrón "Resend directo sin tabla", el mismo que usan `mp-reconciliacion` §3.h y la alerta inline de `mp-webhook` para batch de add-ons pagado-sin-aplicar) se descubrió que **ninguna alerta de este canal llegaba a nadie** desde que esas features existen (los smokes previos siempre dieron "0 hallazgos", así que nunca se había disparado una alerta real hasta esta sesión). Root cause real, en cadena (Resend responde 200 igual aunque falle más adelante):
+> 1. **`soporte@genesis360.pro` estaba en la suppression list de la cuenta de Resend** (se cae ahí solo con un bounce duro anterior) → Resend ni intentaba enviar. **Fix:** sacada de la suppression list desde el dashboard de Resend (Suppressions).
+> 2. **Faltaba el registro DMARC** en el DNS del dominio remitente → Resend marcaba el dominio "Needs attention" en Insights y Google desconfiaba del remitente. **Fix:** agregado `_dmarc.genesis360.pro` TXT `v=DMARC1; p=none; rua=mailto:soporte@genesis360.pro` (verificar con `dig`/`nslookup` contra `1.1.1.1`; el caché negativo de `8.8.8.8` puede tardar en expirar, no es indicador confiable). Con (1)+(2) corregidos, el segundo mail de prueba pasó a **"Delivered"** en Resend y **"Forwarded"** en el Activity Log de Cloudflare Email Routing.
+> 3. **Aun así, el mensaje quedó retenido en "Pendientes de moderación"** del Google Group destino (`genesis360-soporte@googlegroups.com`) pese a que la política general "Moderación de mensajes" ya estaba en "Sin moderación" (no se tocó, ya estaba así de antes) — la causa más probable es el filtro de SPAM automático de Google ("Tratamiento de mensajes de spam", control separado de la moderación general), típico para un remitente nuevo/sin reputación. No hay una acción de configuración clara para evitarlo; GO aprobó el mensaje a mano desde el panel del grupo. **Puede repetirse en los primeros envíos** hasta que `noreply@genesis360.pro` acumule reputación con Google — no asumir que es un bug si un mail queda pendiente de aprobación las primeras veces.
+>
+> (1) y (2) ya corregidos en DEV y PROD (dominio de email único, no depende del entorno). Cualquier feature nueva que alerte a soporte por este canal (Resend directo, sin pasar por `send-email`) hereda este gotcha — chequear suppression list + DMARC + moderación/spam del grupo ANTES de asumir que "no llegó nada" significa que el código está mal.
 
 ### 🎨 Branding del email (v1.100.0)
 `templateBase` usa el **degradé de marca violeta→cian** en el header (`background:#7B00FF; background-image:linear-gradient(135deg,#7B00FF,#06B6D4)` — el `background` sólido es el fallback para Outlook, que no renderiza gradientes) + **logo** (`https://www.genesis360.pro/android-chrome-192x192.png` — URL directa 200; `genesis360.pro` da 308) + tagline **"El inventario inteligente para tu negocio"**. `.btn`/`.tag`/`.total-row` en violeta `#7B00FF`. Antes era navy `#1E3A5F` + tagline "El cerebro de tu negocio". **Encoding:** `<meta charset="UTF-8">` + source UTF-8 → acentos/emojis OK (los `�` que aparecían en tests por `curl -d` inline eran mangling del shell de Windows, no bug del app).

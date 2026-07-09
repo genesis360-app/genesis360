@@ -13,6 +13,21 @@ updated: 2026-05-29
 
 ---
 
+## v1.122.0 — 🧾 Facturación automática de plataforma (Fede) + motor de pago manual + precio dual (EN DEV, sin PROD)
+
+Fede (monotributista, CUIT `20-42237416-8`) factura automáticamente los cobros de suscripción
+que le entran a su cuenta MP/banco: `platform_billers` (config AFIP, no es un `tenants`) +
+`emitir-factura-plataforma` (Factura C ad-hoc, AfipSDK) + sweep `platform-facturacion-sweep`
+(reconcilia cobros recurrentes de MP, cuyo webhook viene sin `external_reference`). Motor de
+**pago manual** (`billing_mode`): alternativa a la suscripción automática a precio de lista, mes
+a mes, por transferencia/efectivo/MP pago único — 3 caminos, todos disparan la factura de Fede;
+sweep de recordatorio+gracia+suspensión (`billing-manual-sweep`). Precio dual visible en toda la
+app (Landing/Suscripción/estimador: -10% auto vs lista manual). 970 unit (+12).
+
+## v1.121.0 — 🏗 Fase 2 batch: cambio de PLAN (E1/E2) + Arrepentimiento legal (EN DEV, sin PROD)
+
+Cambio de plan Básico→Pro por el batch: **E1 inmediato** (paga hoy el delta de plan — precios reales de los planes MP, delta relativo que preserva descuentos — mismo circuito `|addonbatch|` fail-closed, fecha de cobro intacta) + **E2 programado** (mig 260 + EF nueva `mp-batch-sweep` horaria: PUT 36h antes del cobro, tier habilitado solo con el cobro nuevo aprobado). Las 3 EFs de activación dejan de pisar `plan_tier`. **Arrepentimiento (Ley 24.240 art. 34):** ventana de 10 días desde `tenants.primera_compra_at` → refund TOTAL idempotente fail-closed + revocación inmediata; cancelación estándar con modal y fecha exacta; log legal `billing_cancelaciones`. 945 unit · UAT §10.c/§10.d.
+
 ## v1.120.0 — 🧪 Temporal de comprobantes integrado al panel + barra de comprobantes en Inventario (PROD ✅)
 
 Toggle "Mensual / 30 días" en la tarjeta de Comprobantes del configurador (el temporal deja de ser sección suelta) + barra de uso integrada; Inventario agregar/quitar muestra comprobantes del mes en vez de movimientos ilimitados. Mismo release en que se validó el BATCH e2e con plata real (suba delta $5.000 aplicada por webhook en 22s + baja sin cobro) y se descubrió el límite duro `fn_enforce_limite()` en DB.

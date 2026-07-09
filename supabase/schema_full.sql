@@ -77,6 +77,13 @@ CREATE TABLE tenants (
     CHECK (afip_provider IN ('afipsdk','propio')),
   plan_tier                 TEXT NOT NULL DEFAULT 'free'        -- mig 251 — tier del plan (fuente de verdad, desacoplado de max_users)
     CHECK (plan_tier IN ('free','basico','pro','enterprise')),
+  primera_compra_at         TIMESTAMPTZ,                        -- mig 260 — primera activación PAGA (trigger fn_set_primera_compra); arrepentimiento = +10 días
+  billing_mode              TEXT NOT NULL DEFAULT 'auto'        -- mig 262 — 'auto' (MP recurrente, -10%) | 'manual' (lista, mes a mes)
+    CHECK (billing_mode IN ('auto','manual')),
+  manual_monto_mensual      NUMERIC(12,2),                       -- mig 262 — precio de lista congelado al pasar a manual
+  manual_paid_until         TIMESTAMPTZ,                         -- mig 262 — hasta cuándo está pago (modo manual)
+  manual_ultimo_recordatorio_tipo TEXT,                          -- mig 262 — dedupe de emails del sweep
+  manual_ultimo_recordatorio_at   TIMESTAMPTZ,                   -- mig 262
   created_at                TIMESTAMPTZ DEFAULT NOW()
 );
 ALTER TABLE tenants ENABLE ROW LEVEL SECURITY;
@@ -3241,3 +3248,251 @@ REVOKE ALL ON mp_billing_alertas FROM PUBLIC;
 REVOKE ALL ON mp_billing_alertas FROM anon;
 REVOKE ALL ON mp_billing_alertas FROM authenticated;
 GRANT ALL ON mp_billing_alertas TO service_role;
+
+-- Batch de cambios de plan/add-ons (mig 258 + 260 — configurador BATCH con delta + Fase 2 cambio de PLAN).
+-- Un pack FIJO por dimensión (uq abajo); el precio NUNCA viaja en packs_objetivo (se recalcula server-side).
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tenant_addons_fijo_dim
+  ON public.tenant_addons(tenant_id, dimension) WHERE tipo = 'fijo';
+
+CREATE TABLE IF NOT EXISTS public.addon_batch_changes (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  estado         TEXT NOT NULL DEFAULT 'pendiente_pago'
+    CHECK (estado IN ('pendiente_pago','programado','esperando_cobro','aplicado','cancelado','fallido')),  -- mig 260 suma programado/esperando_cobro
+  packs_objetivo JSONB NOT NULL,           -- estado FINAL deseado: [{"dimension","cantidad"}]
+  plan_objetivo  TEXT CHECK (plan_objetivo IN ('basico','pro')),  -- mig 260 — tier destino (NULL = solo packs)
+  programado_para TIMESTAMPTZ,             -- mig 260 — E2: fecha del próximo cobro agendada
+  monto_delta            NUMERIC(12,2) NOT NULL,
+  monto_recurrente_nuevo NUMERIC(12,2) NOT NULL,
+  mp_preference_id TEXT,
+  mp_payment_id    TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+  applied_at     TIMESTAMPTZ,
+  error_detalle  TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_addon_batch_pendiente
+  ON public.addon_batch_changes(tenant_id) WHERE estado = 'pendiente_pago';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_addon_batch_mp_payment
+  ON public.addon_batch_changes(mp_payment_id) WHERE mp_payment_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS uq_addon_batch_programado
+  ON public.addon_batch_changes(tenant_id) WHERE estado IN ('programado','esperando_cobro');
+ALTER TABLE public.addon_batch_changes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY addon_batch_select ON public.addon_batch_changes FOR SELECT
+  USING (tenant_id = public.get_user_tenant_id() OR public.is_admin());
+REVOKE ALL ON public.addon_batch_changes FROM PUBLIC;
+REVOKE ALL ON public.addon_batch_changes FROM anon;
+GRANT SELECT ON public.addon_batch_changes TO authenticated;
+GRANT ALL   ON public.addon_batch_changes TO service_role;
+
+-- Aplicación ATÓMICA del batch (mig 258; v2 mig 260 aplica también plan_objetivo → plan_tier).
+CREATE OR REPLACE FUNCTION public.fn_aplicar_addon_batch(p_tenant_id UUID, p_change_id UUID)
+RETURNS BOOLEAN LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_estado TEXT;
+  v_packs JSONB;
+  v_plan TEXT;
+BEGIN
+  SELECT estado, packs_objetivo, plan_objetivo INTO v_estado, v_packs, v_plan
+    FROM public.addon_batch_changes
+    WHERE id = p_change_id AND tenant_id = p_tenant_id
+    FOR UPDATE;
+  IF v_estado IS NULL THEN RETURN FALSE; END IF;
+  IF v_estado = 'aplicado' THEN RETURN TRUE; END IF;
+  IF v_estado NOT IN ('pendiente_pago','esperando_cobro') THEN RETURN FALSE; END IF;
+
+  DELETE FROM public.tenant_addons WHERE tenant_id = p_tenant_id AND tipo = 'fijo';
+  INSERT INTO public.tenant_addons (tenant_id, dimension, cantidad, tipo, vence_at)
+  SELECT p_tenant_id, x.dimension, x.cantidad, 'fijo', NULL
+  FROM jsonb_to_recordset(v_packs) AS x(dimension TEXT, cantidad INT)
+  WHERE x.cantidad > 0;
+
+  IF v_plan IS NOT NULL THEN
+    UPDATE public.tenants SET
+      plan_tier     = v_plan,
+      max_users     = CASE v_plan WHEN 'pro' THEN 15   ELSE 5    END,
+      max_productos = CASE v_plan WHEN 'pro' THEN 8000 ELSE 2000 END
+    WHERE id = p_tenant_id;
+  END IF;
+
+  UPDATE public.addon_batch_changes
+    SET estado = 'aplicado', applied_at = now()
+    WHERE id = p_change_id;
+  RETURN TRUE;
+END $$;
+REVOKE ALL ON FUNCTION public.fn_aplicar_addon_batch(UUID, UUID) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_aplicar_addon_batch(UUID, UUID) TO service_role;
+
+-- Primera compra + arrepentimiento (mig 260 — Ley 24.240 art. 34 / click-to-cancel).
+CREATE OR REPLACE FUNCTION public.fn_set_primera_compra()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.subscription_status = 'active'
+     AND COALESCE(OLD.subscription_status, '') <> 'active'
+     AND NEW.mp_subscription_id IS NOT NULL
+     AND NEW.primera_compra_at IS NULL THEN
+    NEW.primera_compra_at := now();
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS trg_set_primera_compra ON public.tenants;
+CREATE TRIGGER trg_set_primera_compra
+  BEFORE UPDATE ON public.tenants
+  FOR EACH ROW EXECUTE FUNCTION public.fn_set_primera_compra();
+
+-- Log de solicitudes de baja (mig 260 — arrepentimiento con refund total / cancelación estándar).
+CREATE TABLE IF NOT EXISTS public.billing_cancelaciones (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id  UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  user_id    UUID,
+  tipo       TEXT NOT NULL CHECK (tipo IN ('arrepentimiento','cancelacion_estandar')),
+  detalle    JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_billing_cancelaciones_tenant
+  ON public.billing_cancelaciones(tenant_id, created_at DESC);
+ALTER TABLE public.billing_cancelaciones ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.billing_cancelaciones FROM PUBLIC;
+REVOKE ALL ON public.billing_cancelaciones FROM anon;
+REVOKE ALL ON public.billing_cancelaciones FROM authenticated;
+GRANT ALL ON public.billing_cancelaciones TO service_role;
+
+-- ────────────────────────────────────────────────────────────────────────────
+-- Facturación de PLATAFORMA (mig 261) + Pago manual (mig 262) — plan aprobado
+-- 2026-07-08 (facturación de Fede + pago manual).
+-- ────────────────────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS public.platform_billers (
+  id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  nombre               TEXT NOT NULL,
+  cuit                 BIGINT NOT NULL,
+  razon_social_fiscal  TEXT NOT NULL,
+  domicilio_fiscal     TEXT NOT NULL,
+  condicion_iva_emisor TEXT NOT NULL DEFAULT 'Monotributista'
+    CHECK (condicion_iva_emisor IN ('Monotributista','Exento','RI')),
+  punto_venta          INT NOT NULL,
+  afip_provider        TEXT NOT NULL DEFAULT 'afipsdk' CHECK (afip_provider IN ('afipsdk','propio')),
+  afipsdk_token        TEXT,
+  afip_produccion      BOOLEAN NOT NULL DEFAULT FALSE,
+  cert_crt_path        TEXT,
+  cert_key_path        TEXT,
+  umbral_facturacion_anual NUMERIC(14,2),
+  activo               BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.platform_billers ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.platform_billers FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.platform_billers TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.platform_facturas (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  biller_id           UUID NOT NULL REFERENCES public.platform_billers(id) ON DELETE RESTRICT,
+  tenant_origen_id    UUID REFERENCES public.tenants(id) ON DELETE SET NULL,
+  monto               NUMERIC(12,2) NOT NULL,
+  concepto            TEXT NOT NULL,
+  punto_venta         INT NOT NULL,
+  numero_comprobante  INT NOT NULL,
+  tipo_comprobante    TEXT NOT NULL DEFAULT 'C',
+  cae                 TEXT NOT NULL,
+  cae_vencimiento     TEXT NOT NULL,
+  afip_provider_usado TEXT NOT NULL,
+  origen_pago         TEXT NOT NULL CHECK (origen_pago IN ('mp_recurrente','mp_manual','manual_staff')),
+  payment_ref         TEXT,
+  error_detalle       TEXT,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_platform_facturas_biller_fecha ON public.platform_facturas(biller_id, created_at DESC);
+ALTER TABLE public.platform_facturas ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.platform_facturas FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.platform_facturas TO service_role;
+
+-- Idempotencia PREVIA a llamar a AFIP (claim-before-emit) — ver emitir-factura-plataforma.
+CREATE TABLE IF NOT EXISTS public.platform_facturas_claims (
+  payment_ref TEXT PRIMARY KEY,
+  claimed_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE public.platform_facturas_claims ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.platform_facturas_claims FROM PUBLIC, anon, authenticated;
+GRANT ALL ON public.platform_facturas_claims TO service_role;
+
+CREATE TABLE IF NOT EXISTS public.billing_manual_pagos (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id      UUID NOT NULL REFERENCES public.tenants(id) ON DELETE CASCADE,
+  monto          NUMERIC(12,2) NOT NULL,
+  medio          TEXT NOT NULL CHECK (medio IN ('transferencia','efectivo','tarjeta_mp','otro')),
+  referencia     TEXT,
+  periodo_desde  TIMESTAMPTZ NOT NULL,
+  periodo_hasta  TIMESTAMPTZ NOT NULL,
+  registrado_por UUID REFERENCES public.support_agents(id) ON DELETE SET NULL,  -- NULL = automático (MP)
+  mp_payment_id  TEXT,
+  notas          TEXT,
+  created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_billing_manual_pagos_mp_payment
+  ON public.billing_manual_pagos(mp_payment_id) WHERE mp_payment_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_billing_manual_pagos_tenant ON public.billing_manual_pagos(tenant_id, created_at DESC);
+ALTER TABLE public.billing_manual_pagos ENABLE ROW LEVEL SECURITY;
+CREATE POLICY billing_manual_pagos_select ON public.billing_manual_pagos FOR SELECT
+  USING (tenant_id = public.get_user_tenant_id() OR public.is_admin());
+REVOKE ALL ON public.billing_manual_pagos FROM PUBLIC, anon;
+GRANT SELECT ON public.billing_manual_pagos TO authenticated;
+GRANT ALL ON public.billing_manual_pagos TO service_role;
+
+-- Única puerta de escritura de un pago manual — extiende manual_paid_until desde el mayor
+-- entre "ahora" y el paid_until actual, y reactiva subscription_status si estaba inactive.
+CREATE OR REPLACE FUNCTION public.fn_registrar_pago_manual(
+  p_tenant_id UUID, p_monto NUMERIC, p_medio TEXT, p_referencia TEXT,
+  p_registrado_por UUID, p_mp_payment_id TEXT, p_notas TEXT
+) RETURNS TIMESTAMPTZ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_desde TIMESTAMPTZ;
+  v_hasta TIMESTAMPTZ;
+BEGIN
+  SELECT GREATEST(now(), COALESCE(manual_paid_until, now())) INTO v_desde
+    FROM public.tenants WHERE id = p_tenant_id FOR UPDATE;
+  IF v_desde IS NULL THEN RAISE EXCEPTION 'Tenant % no encontrado', p_tenant_id; END IF;
+  v_hasta := v_desde + INTERVAL '1 month';
+
+  INSERT INTO public.billing_manual_pagos (
+    tenant_id, monto, medio, referencia, periodo_desde, periodo_hasta,
+    registrado_por, mp_payment_id, notas
+  ) VALUES (
+    p_tenant_id, p_monto, p_medio, p_referencia, v_desde, v_hasta,
+    p_registrado_por, p_mp_payment_id, p_notas
+  );
+
+  UPDATE public.tenants SET
+    manual_paid_until = v_hasta,
+    subscription_status = CASE WHEN subscription_status = 'inactive' THEN 'active' ELSE subscription_status END,
+    manual_ultimo_recordatorio_tipo = NULL,
+    manual_ultimo_recordatorio_at = NULL
+  WHERE id = p_tenant_id;
+
+  RETURN v_hasta;
+END $$;
+REVOKE ALL ON FUNCTION public.fn_registrar_pago_manual(UUID,NUMERIC,TEXT,TEXT,UUID,TEXT,TEXT) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.fn_registrar_pago_manual(UUID,NUMERIC,TEXT,TEXT,UUID,TEXT,TEXT) TO service_role;
+
+-- Cambiar a modo manual: el monto NUNCA sale del cliente — se deriva server-side del
+-- plan_tier (espejo de PRECIO_LISTA en brand.ts). Solo el DUEÑO del tenant puede llamarla.
+CREATE OR REPLACE FUNCTION public.fn_activar_billing_manual(p_tenant_id UUID)
+RETURNS NUMERIC LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  v_tier TEXT;
+  v_precio NUMERIC;
+  v_es_dueño BOOLEAN;
+BEGIN
+  SELECT EXISTS (
+    SELECT 1 FROM public.users WHERE id = auth.uid() AND tenant_id = p_tenant_id AND rol = 'DUEÑO'
+  ) INTO v_es_dueño;
+  IF NOT v_es_dueño THEN RAISE EXCEPTION 'Solo el dueño puede cambiar el modo de pago'; END IF;
+
+  SELECT plan_tier INTO v_tier FROM public.tenants WHERE id = p_tenant_id;
+  v_precio := CASE v_tier WHEN 'basico' THEN 60000 WHEN 'pro' THEN 100000 ELSE NULL END;
+  IF v_precio IS NULL THEN RAISE EXCEPTION 'Plan % no tiene precio de lista para modo manual', v_tier; END IF;
+
+  UPDATE public.tenants SET billing_mode = 'manual', manual_monto_mensual = v_precio WHERE id = p_tenant_id;
+  RETURN v_precio;
+END $$;
+REVOKE ALL ON FUNCTION public.fn_activar_billing_manual(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.fn_activar_billing_manual(UUID) TO authenticated;

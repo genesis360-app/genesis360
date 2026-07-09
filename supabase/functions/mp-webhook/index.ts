@@ -71,12 +71,52 @@ async function asentarIngresoInformativoMp(
   if (error) console.error('mp-webhook: error asentando ingreso_informativo en caja', error)
 }
 
+// WH-SIG: validación de firma HMAC-SHA256 del webhook, formato documentado por MP
+// (header `x-signature: ts=...,v1=...` + `x-request-id` + `data.id` de la query string).
+// Manifest: `id:{data.id};request-id:{x-request-id};ts:{ts};` firmado con el secret de
+// firma del panel de MP (MP_WEBHOOK_SECRET — DISTINTO de MP_ACCESS_TOKEN/MP_CLIENT_SECRET).
+async function verificarFirmaMp(req: Request, secret: string): Promise<{ valid: boolean; reason?: string }> {
+  const xSignature = req.headers.get('x-signature')
+  const xRequestId = req.headers.get('x-request-id')
+  if (!xSignature || !xRequestId) return { valid: false, reason: 'faltan headers x-signature/x-request-id' }
+
+  const parts = Object.fromEntries(
+    xSignature.split(',').map(p => p.trim().split('=').map(s => s.trim())),
+  ) as Record<string, string>
+  const ts = parts['ts']
+  const v1 = parts['v1']
+  if (!ts || !v1) return { valid: false, reason: 'x-signature mal formado' }
+
+  const url = new URL(req.url)
+  const dataId = (url.searchParams.get('data.id') ?? url.searchParams.get('id') ?? '').toLowerCase()
+  if (!dataId) return { valid: false, reason: 'sin data.id en query string' }
+
+  const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  )
+  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(manifest))
+  const computed = Array.from(new Uint8Array(sigBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return computed === v1 ? { valid: true } : { valid: false, reason: 'hash no coincide' }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders })
   }
 
   try {
+    // WH-SIG (2026-07-08) — modo LOG-ONLY a propósito: MP_WEBHOOK_SECRET (el secret de
+    // firma del panel de MP, no configurado todavía) falta cargarse en Supabase. Mientras
+    // tanto solo se loguea el resultado, nunca se bloquea el webhook — pasar a bloqueante
+    // (early return 401 si !valid) recién cuando los logs muestren `OK` consistente contra
+    // tráfico real de MP.
+    const webhookSecret = Deno.env.get('MP_WEBHOOK_SECRET')
+    if (webhookSecret) {
+      const firma = await verificarFirmaMp(req, webhookSecret)
+      console.log('MP Webhook firma:', firma.valid ? 'OK' : `INVALIDA (${firma.reason})`)
+    }
+
     const body = await req.text()
     const event = JSON.parse(body)
 
@@ -121,7 +161,16 @@ serve(async (req) => {
         tenantId = t?.id ?? null
       }
       if (tenantId) {
-        const tier = MP_PLAN_TIER[subscription.preapproval_plan_id]
+        // Fase 2 (mig 260): tras un upgrade de plan el preapproval sigue apuntando al plan
+        // MP ORIGINAL (solo cambió el monto) → si el tenant ya está linkeado a ESTA misma
+        // suscripción con un tier pago en DB, el tier de DB es la fuente de verdad y NO se
+        // pisa con el que se deriva del preapproval_plan_id (solo vale para el link inicial).
+        const { data: tRow } = await supabase.from('tenants')
+          .select('plan_tier, mp_subscription_id, subscription_period_end').eq('id', tenantId).maybeSingle()
+        const tierDB = String(tRow?.plan_tier ?? '')
+        const mismaSubConTier = tRow?.mp_subscription_id === subscriptionId &&
+          ['basico', 'pro', 'enterprise'].includes(tierDB)
+        const tier = mismaSubConTier ? undefined : MP_PLAN_TIER[subscription.preapproval_plan_id]
         // MP-C9 (grace period) también en el camino webhook: si el usuario cancela DESDE EL
         // PANEL DE MP (sin pasar por cancel-suscripcion), el acceso igual perdura hasta el
         // fin del período pagado. next_payment_date viene en el propio preapproval; fallback
@@ -132,12 +181,8 @@ serve(async (req) => {
           const d = npd ? new Date(npd) : null
           if (d && !isNaN(d.getTime())) {
             periodEndUpdate = { subscription_period_end: d.toISOString() }
-          } else {
-            const { data: t } = await supabase
-              .from('tenants').select('subscription_period_end').eq('id', tenantId).maybeSingle()
-            if (!t?.subscription_period_end) {
-              periodEndUpdate = { subscription_period_end: new Date(Date.now() + 30 * 86400000).toISOString() }
-            }
+          } else if (!tRow?.subscription_period_end) {
+            periodEndUpdate = { subscription_period_end: new Date(Date.now() + 30 * 86400000).toISOString() }
           }
         } else if (newStatus === 'active') {
           // Al (re)activar, limpiar el grace de una cancelación anterior (higiene MP-C9).
@@ -253,7 +298,8 @@ serve(async (req) => {
           // ── BATCH de add-ons FIJOS pagado (delta): aplicar el cambio ─────────────
           // (diseño: wiki/features/configurador-addons-batch.md). El cliente pagó la
           // DIFERENCIA como pago único → recién ahora: (1) PUT del recurrente nuevo,
-          // (2) sync atómico de tenant_addons (fn_aplicar_addon_batch).
+          // (2) sync atómico de tenant_addons + plan_tier si el batch incluía upgrade de
+          // plan (fn_aplicar_addon_batch, mig 260).
           // Idempotente: claim por mp_payment_id (uq index) — reintentos de MP no re-aplican.
           const [batchTenantId, , changeId] = ref.split('|')
           const { data: claimed } = await supabase.from('addon_batch_changes')
@@ -306,6 +352,37 @@ serve(async (req) => {
                 }
               }
             }
+          }
+        } else if (ref.includes('|manualpago|')) {
+          // ── Pago único de un tenant en modo MANUAL ("Pagar ahora") ───────────────
+          // Plan aprobado 2026-07-08. Idempotente por mp_payment_id (uq index, mig 262):
+          // un reintento de MP no extiende el acceso dos veces (fn_registrar_pago_manual
+          // aborta con unique_violation, código 23505, si ya se procesó este paymentId).
+          const [manualTenantId] = ref.split('|')
+          const monto = Number(payment.transaction_amount ?? 0)
+          const { data: hasta, error: rpcErr } = await supabase.rpc('fn_registrar_pago_manual', {
+            p_tenant_id: manualTenantId, p_monto: monto, p_medio: 'tarjeta_mp',
+            p_referencia: null, p_registrado_por: null,
+            p_mp_payment_id: String(paymentId), p_notas: null,
+          })
+          if (rpcErr) {
+            if ((rpcErr as any).code === '23505') {
+              console.log(`manualpago: pago ${paymentId} ya procesado (idempotente)`)
+            } else {
+              console.error(`manualpago: fn_registrar_pago_manual falló para tenant ${manualTenantId}`, rpcErr)
+            }
+          } else {
+            console.log(`manualpago: tenant ${manualTenantId} pagó $${monto}, acceso hasta ${hasta}`)
+            const { data: tRow } = await supabase.from('tenants').select('nombre').eq('id', manualTenantId).maybeSingle()
+            fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/emitir-factura-plataforma`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                monto, origen_pago: 'mp_manual', tenant_origen_id: manualTenantId,
+                payment_ref: String(paymentId),
+                concepto: `Suscripción Genesis360 — ${tRow?.nombre ?? manualTenantId} — pago manual`,
+              }),
+            }).catch(e => console.error('manualpago: emitir-factura-plataforma falló', e))
           }
         } else {
           // ── Pago de PLATAFORMA (suscripción / add-on) ───────────────────

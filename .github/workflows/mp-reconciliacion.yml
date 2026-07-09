@@ -19,3 +19,40 @@ jobs:
             --fail \
             --silent \
             --show-error
+
+      # E2 (Fase 2 batch, mig 260): upgrades de plan programados — PUT en la ventana
+      # previa al cobro + habilitación del tier al confirmarse el pago (fail-closed).
+      - name: Call mp-batch-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/mp-batch-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error
+
+      # Facturación automática de plataforma (Fede, mig 261): reconcilia los cobros
+      # RECURRENTES de MP contra platform_facturas (los webhooks de renovación vienen
+      # con external_reference vacío — MP-W6 — así que se factura por sweep, no por webhook).
+      - name: Call platform-facturacion-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/platform-facturacion-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error
+
+      # Vencimiento de pago manual (mig 262): recordatorios 5d/1d antes + suspensión a
+      # los 5 días de gracia sin pago nuevo.
+      - name: Call billing-manual-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/billing-manual-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

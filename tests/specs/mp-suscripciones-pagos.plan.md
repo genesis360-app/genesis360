@@ -989,6 +989,14 @@ WHERE subscription_status = 'cancelled' AND subscription_period_end IS NULL;
 > Reemplaza el flujo "un click = un cobro" de `mp-addon-fijo` (validado e2e 2026-07-05 y
 > descartado por producto). Decisiones GO: delta HOY · comprobantes 6k/14k (packs $10k/$30k/$50k,
 > fijo Y temporal) · movimientos free · un pack fijo por dimensión · enforcement soft.
+>
+> **✅ VALIDADO E2E CON PLATA REAL (GO, 2026-07-07, cuenta MP nueva, tenant "Test GO"):**
+> MP-B1 suba delta $5.000 (webhook aplicó en 22s, payment 167681422238) · MP-B baja sin cobro ·
+> cambio de pack +1→+3 usuarios con delta (escenario extra) · guard ambas direcciones (modal con
+> 6/6, pasa tras desactivar el 6º; bonus: `fn_enforce_limite()` bloquea INSERT SQL directo =
+> límite duro DB) · temporal +1.000 acreditado con vencimiento · cancelación fail-closed + grace
+> real (2026-08-07). Gotcha operativo: rotar `MP_ACCESS_TOKEN` exige REDEPLOY de las EFs de
+> billing (instancias calientes no toman el secret — causó 502 en `mp-addon-batch`).
 
 **MP-B1 — Suba cobra SOLO la diferencia (ejemplos GO exactos).** Básico $60k + SKU+500 → paga
 $5.000 hoy, recurrente $65.000. Venía $65k y cambia pack SKU $5k→$10k → paga $5.000, queda $70k.
@@ -1022,6 +1030,77 @@ configurable → predicado robusto). Enforcement SOFT: al 80% aviso, al 100% avi
 venta SIEMPRE sale (F3b). Temporal de comprobantes reemplaza al de movimientos (mismo webhook
 idempotente MP-W3). `fn_plan_base_limite` v2 (mig 259): movimientos→-1. ✅ unit
 (`planLimits.test.ts`, `brand.test.ts`, `addons.test.ts` actualizados).
+
+---
+
+## 10.c 🏗 FASE 2 — Cambio de PLAN por batch (mig 260 · spec GO 2026-07-07 · EN DEV)
+
+Espejo testeado: `src/lib/mpAddonBatch.ts` (calcularBatch con `plan`, `esUpgradeDePlan`,
+`decidirSweepProgramado`, `decidirConfirmacionCobro`) + EF `mp-addon-batch` (plan_objetivo/modo)
++ EF nueva `mp-batch-sweep` (GH Actions horario, mismo workflow que mp-reconciliacion).
+
+**MP-F1 — E1 upgrade inmediato Básico→Pro.** Given tenant Básico activo con sub MP; When
+confirma plan_objetivo='pro' modo='ahora'; Then preference por el delta de plan (precios REALES
+de los planes MP: `GET /preapproval_plan` — delta relativo, un monto custom no se pisa) → al
+pagar, el webhook `|addonbatch|` hace PUT + `fn_aplicar_addon_batch` que ahora setea
+`plan_tier='pro'` + max base. La fecha de cobro NO cambia. ✅ unit (delta $36k con planes
+$54k/$90k; preapproval a $15 → delta $36.000, recurrente $36.015).
+
+**MP-F2 — E2 upgrade PROGRAMADO.** Given ídem; When confirma modo='programado'; Then change
+`programado` con `programado_para=next_payment_date`, SIN cobro ni PUT hoy → el sweep hace el
+PUT en la ventana de 36h previa (`esperando_cobro`) → el tier se habilita SOLO cuando el cobro
+del monto nuevo figura aprobado en `authorized_payments` (fail-closed; cobro por el monto viejo
+NO habilita; preapproval cancelado o timeout 7d → `fallido` + email a soporte). ✅ unit
+(decidirSweepProgramado / decidirConfirmacionCobro, bordes de ventana y timeout).
+
+**MP-F3 — Prerrequisito: el tier de DB manda.** Tras el upgrade, el preapproval sigue apuntando
+al plan MP de Básico → `mp-webhook` / `mp-verificar-suscripcion` / `admin-api.link_subscription`
+NO pisan `plan_tier` cuando el tenant ya está linkeado a ESA misma suscripción con tier pago
+(la derivación por `preapproval_plan_id` queda solo para el link inicial). ⚠ Validar e2e:
+upgradear y luego re-verificar la sub (checkout-return o link de soporte) → debe seguir `pro`.
+
+**MP-F4 — Guard contra el tier objetivo.** El guard de baja del batch usa la base del tier
+RESULTANTE (upgrade agranda la base → nunca bloquea de más). Downgrade Pro→Básico → 400
+(fuera de Fase 2; MP-P2). Free/enterprise no ven el toggle.
+
+**MP-F5 — Concurrencia E2.** Un solo change `programado`/`esperando_cobro` por tenant (uq).
+Confirmar otro batch cancela el `programado`; con `esperando_cobro` → 409 (el PUT ya salió).
+`action:'cancelar_programado'` solo cancela `programado` (nunca `esperando_cobro`).
+
+## 10.d ⚖️ ARREPENTIMIENTO + cancelación estándar (mig 260 · Ley 24.240 / click-to-cancel · EN DEV)
+
+Espejo testeado: `src/lib/arrepentimiento.ts` (`elegibleArrepentimiento`, `planDeRefunds`) +
+EF `cancel-suscripcion` acciones `preview`/`arrepentimiento` + tabla `billing_cancelaciones` +
+trigger `fn_set_primera_compra` (tenants.primera_compra_at en la 1ª activación paga).
+
+**AR-1 — Ventana legal.** 10 días corridos desde `primera_compra_at` (solo 1ª activación con
+sub MP; NO se resetea al re-suscribir/renovar/upgradear). Sin primera compra (trial) → no
+elegible. Borde exacto a los 10 días → elegible; +1s → no. ✅ unit.
+
+**AR-2 — Refund TOTAL fail-closed e idempotente.** Junta cuotas del preapproval
+(`authorized_payments/search`) + deltas de batch (`addon_batch_changes.mp_payment_id`) +
+temporales (`tenant_addons.mp_payment_id`); reembolsa solo aprobados no-reembolsados
+(`POST /v1/payments/{id}/refunds` + X-Idempotency-Key); cualquier falla → 502 SIN cancelar
+nada (retry saltea los ya devueltos — nunca doble refund, REGLA #0). ✅ unit (planDeRefunds).
+
+**AR-3 — Revocación inmediata.** Refunds OK → cancela preapproval (mismo circuito fail-closed
+de siempre) → `subscription_status='cancelled'` + `subscription_period_end=now()` → el
+SubscriptionGuard corta el acceso al instante (a diferencia del grace MP-C9 estándar).
+
+**AR-4 — Solo DUEÑO y solo la propia cuenta** (403 en otros casos). La UI muestra el botón
+por `tenant.primera_compra_at` pero el EF REVALIDA server-side (`fuera_de_plazo` → 400).
+
+**AR-5 — Cancelación estándar con fecha exacta.** `action:'preview'` devuelve
+`period_end_estimado` (next_payment_date real) + elegibilidad → el modal de MiCuentaPage
+muestra la fecha exacta y "sin reembolso por el período facturado". Flujo de cancelación
+en sí = MP-C1..C11 (sin cambios).
+
+**AR-6 — Log legal.** Toda solicitud (ambos tipos) inserta en `billing_cancelaciones`
+(tenant, user_id, tipo, detalle con refunds/period_end). Tabla solo service_role. El log
+NO bloquea la baja (si falla, console.error).
+
+**AR-7 — PIN de verificación (Disp. 3/2026, opcional).** NO implementado — decisión GO
+pendiente (hoy el guard es modal de confirmación + rol DUEÑO + revalidación server-side).
 
 ---
 

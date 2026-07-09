@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { User, CreditCard, Lock, LogOut, Trash2, Upload, CheckCircle, AlertTriangle, Eye, EyeOff, Pencil } from 'lucide-react'
+import { User, CreditCard, Lock, LogOut, Trash2, Upload, CheckCircle, AlertTriangle, Eye, EyeOff, Pencil, RefreshCw, Undo2, Landmark, Send } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
-import { BRAND, BTN } from '@/config/brand'
+import { BRAND, BTN, DATOS_TRANSFERENCIA } from '@/config/brand'
+import { elegibleArrepentimiento } from '@/lib/arrepentimiento'
+import { formatearVencimiento } from '@/lib/facturacionManual'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -74,8 +76,68 @@ export default function MiCuentaPage() {
       if (pe && pe > new Date()) return `Cancelada · acceso hasta ${format(pe, 'dd/MM/yyyy', { locale: es })}`
       return 'Cancelada'
     }
-    if (s === 'inactive') return 'Inactiva'
+    if (s === 'inactive') return tenant.billing_mode === 'manual' ? 'Suspendida por falta de pago' : 'Inactiva'
     return s
+  }
+
+  // ── Pago manual (billing_mode='manual') — plan aprobado 2026-07-08 ────────────
+  const esManual = tenant?.billing_mode === 'manual'
+  const [pagandoAhora, setPagandoAhora] = useState(false)
+  const [avisandoPago, setAvisandoPago] = useState(false)
+  const [avisoForm, setAvisoForm] = useState({ monto: '', fecha: '', referencia: '' })
+  const [mostrarAviso, setMostrarAviso] = useState(false)
+  const [cambiandoModo, setCambiandoModo] = useState(false)
+
+  const handlePagarAhora = async () => {
+    setPagandoAhora(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('billing-manual-pagar', { body: {} })
+      if (error || !data?.init_point) throw new Error(data?.error ?? error?.message ?? 'No se obtuvo link de pago')
+      window.location.href = data.init_point
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al iniciar el pago')
+      setPagandoAhora(false)
+    }
+  }
+
+  const handleAvisarPago = async () => {
+    setAvisandoPago(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('billing-manual-avisar-pago', {
+        body: {
+          monto: avisoForm.monto ? Number(avisoForm.monto) : undefined,
+          fecha: avisoForm.fecha || undefined,
+          referencia: avisoForm.referencia || undefined,
+        },
+      })
+      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo enviar el aviso')
+      toast.success('¡Listo! Avisamos a soporte para que verifique tu transferencia y active el acceso.')
+      setMostrarAviso(false)
+      setAvisoForm({ monto: '', fecha: '', referencia: '' })
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al enviar el aviso')
+    } finally {
+      setAvisandoPago(false)
+    }
+  }
+
+  const handleCambiarModo = async (nuevoModo: 'auto' | 'manual') => {
+    const confirmMsg = nuevoModo === 'manual'
+      ? '¿Pasar a pago manual? Vas a pagar a precio de lista (sin el -10% de débito automático), mes a mes, por transferencia/efectivo o con MP sin auto-débito.'
+      : '¿Volver a suscripción automática? Vas a tener que suscribirte de nuevo desde la sección de planes (con el -10% de débito automático).'
+    if (!confirm(confirmMsg)) return
+    if (nuevoModo === 'auto') { navigate('/suscripcion'); return }
+    setCambiandoModo(true)
+    try {
+      const { error } = await supabase.rpc('fn_activar_billing_manual', { p_tenant_id: tenant!.id })
+      if (error) throw error
+      await loadUserData(user!.id)
+      toast.success('Listo. Ahora estás en modo de pago manual, a precio de lista.')
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al cambiar el modo de pago')
+    } finally {
+      setCambiandoModo(false)
+    }
   }
 
   // ── Avatar upload ──────────────────────────────────────────────────────────
@@ -177,17 +239,48 @@ export default function MiCuentaPage() {
     }
   }
 
-  // ── Cancelar suscripción MP ────────────────────────────────────────────────
+  // ── Cancelar suscripción MP / Arrepentimiento (Ley 24.240 / click-to-cancel) ──
   // SIEMPRE server-side (EF cancel-suscripcion): cancela el preapproval en MP —lo
   // busca por external_reference aunque la DB no tenga el id— y recién ahí marca la
   // cuenta como cancelada (fail-closed: si MP no confirma, no dice "cancelado"). El EF
   // deriva el tenant del JWT; no se le pasa nada sensible desde el cliente.
+  //
+  // Condición A (≤10 días corridos de la PRIMERA compra — tenants.primera_compra_at):
+  // botón destacado de ARREPENTIMIENTO → reembolso TOTAL + el acceso se corta YA.
+  // Condición B (resto): cancelación estándar → sin reembolso, acceso hasta el fin del
+  // ciclo (fecha exacta que trae el preview del EF). El EF revalida la ventana server-side
+  // (la elegibilidad del cliente es solo para mostrar el botón — UI cacheable).
+  const arrep = elegibleArrepentimiento(tenant?.primera_compra_at)
+  const [cancelModal, setCancelModal] = useState<null | 'estandar' | 'arrepentimiento'>(null)
+  const [cancelPreview, setCancelPreview] = useState<null | {
+    period_end_estimado: string | null
+    elegible_arrepentimiento: boolean
+    arrepentimiento_hasta: string | null
+  }>(null)
+
+  const abrirModalCancelacion = async (tipo: 'estandar' | 'arrepentimiento') => {
+    setCancelModal(tipo)
+    setCancelPreview(null)
+    const { data, error } = await supabase.functions.invoke('cancel-suscripcion', { body: { action: 'preview' } })
+    if (!error && data && !data.error) {
+      setCancelPreview({
+        period_end_estimado: data.period_end_estimado ?? null,
+        elegible_arrepentimiento: !!data.elegible_arrepentimiento,
+        arrepentimiento_hasta: data.arrepentimiento_hasta ?? null,
+      })
+    } else {
+      // Sin preview igual se puede cancelar (el EF revalida todo al confirmar)
+      setCancelPreview({ period_end_estimado: null, elegible_arrepentimiento: arrep.elegible, arrepentimiento_hasta: null })
+    }
+  }
+
   const handleCancelarSuscripcion = async () => {
-    if (!tenant || !confirm('¿Cancelar tu suscripción? Se cancela el cobro en Mercado Pago, pero mantenés el acceso hasta el fin del período que ya pagaste.')) return
+    if (!tenant) return
     setCancelando(true)
     try {
       const { data, error } = await supabase.functions.invoke('cancel-suscripcion', { body: {} })
       if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo cancelar la suscripción')
+      setCancelModal(null)
       await loadUserData(user!.id)
       const hasta = data?.period_end ? new Date(data.period_end).toLocaleDateString('es-AR') : null
       toast.success(hasta
@@ -195,6 +288,27 @@ export default function MiCuentaPage() {
         : 'Suscripción cancelada. Mantenés el acceso hasta el fin del período pagado.')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al cancelar suscripción')
+    } finally {
+      setCancelando(false)
+    }
+  }
+
+  const handleArrepentimiento = async () => {
+    if (!tenant) return
+    setCancelando(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('cancel-suscripcion', {
+        body: { action: 'arrepentimiento' },
+      })
+      if (error || data?.error) throw new Error(data?.error ?? error?.message ?? 'No se pudo procesar el reembolso')
+      setCancelModal(null)
+      toast.success(
+        `Listo. Reembolsamos $${Number(data?.monto_reembolsado ?? 0).toLocaleString('es-AR')} a tu medio de pago y cancelamos la suscripción.`,
+        { duration: 8000 },
+      )
+      await loadUserData(user!.id) // el acceso ya está revocado → SubscriptionGuard redirige
+    } catch (err: any) {
+      toast.error(err.message ?? 'Error al procesar el arrepentimiento')
     } finally {
       setCancelando(false)
     }
@@ -330,13 +444,23 @@ export default function MiCuentaPage() {
             <p className="font-bold text-gray-900 dark:text-white text-lg">Plan {planLabel()}</p>
             <p className="text-sm text-gray-500 dark:text-gray-400">{estadoLabel()}</p>
           </div>
-          <div className="flex items-center gap-2">
-            {isOwner && tenant?.subscription_status === 'active' && (
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            {!esManual && isOwner && tenant?.subscription_status === 'active' && arrep.elegible && (
+              // Condición A — período de arrepentimiento (≤10 días de la primera compra):
+              // botón destacado; el EF revalida la ventana y hace el reembolso total.
               <button
-                onClick={handleCancelarSuscripcion}
+                onClick={() => abrirModalCancelacion('arrepentimiento')}
+                disabled={cancelando}
+                className="text-xs px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-semibold disabled:opacity-50 transition-colors flex items-center gap-1.5">
+                <Undo2 size={13} /> Arrepentirse de la compra (reembolso)
+              </button>
+            )}
+            {!esManual && isOwner && tenant?.subscription_status === 'active' && (
+              <button
+                onClick={() => abrirModalCancelacion('estandar')}
                 disabled={cancelando}
                 className="text-xs px-3 py-1.5 rounded-lg border border-red-300 dark:border-red-700 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors">
-                {cancelando ? 'Cancelando…' : 'Cancelar suscripción'}
+                Cancelar suscripción
               </button>
             )}
             <button onClick={() => navigate('/suscripcion')} className={`${BTN.outline} ${BTN.sm}`}>
@@ -344,7 +468,164 @@ export default function MiCuentaPage() {
             </button>
           </div>
         </div>
+
+        {/* Cambiar entre modo automático (MP, -10%) y manual (lista, mes a mes) */}
+        {isOwner && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">
+            {esManual
+              ? <>Estás en <strong>pago manual</strong> (precio de lista, sin auto-débito).{' '}
+                  <button onClick={() => handleCambiarModo('auto')} disabled={cambiandoModo}
+                    className="text-accent hover:underline disabled:opacity-50">
+                    Volver a suscripción automática (-10%) →
+                  </button></>
+              : <>¿Preferís pagar por transferencia/efectivo en vez de suscripción automática?{' '}
+                  <button onClick={() => handleCambiarModo('manual')} disabled={cambiandoModo}
+                    className="text-accent hover:underline disabled:opacity-50">
+                    Cambiar a pago manual →
+                  </button></>}
+          </p>
+        )}
       </div>
+
+      {/* ── Pago manual: vencimiento + 3 formas de pagar ─────────────────────── */}
+      {esManual && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
+          <h2 className="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+            <Landmark size={14} /> Pago manual
+          </h2>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {tenant?.manual_paid_until
+                  ? <>Pago hasta el <strong className="text-gray-900 dark:text-white">{formatearVencimiento(tenant.manual_paid_until)}</strong></>
+                  : 'Todavía no registramos tu primer pago'}
+              </p>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">
+                ${Number(tenant?.manual_monto_mensual ?? 0).toLocaleString('es-AR')}/mes
+              </p>
+            </div>
+            <button onClick={handlePagarAhora} disabled={pagandoAhora} className={`${BTN.primary} ${BTN.sm} flex items-center gap-1.5`}>
+              {pagandoAhora ? <><RefreshCw size={13} className="animate-spin" /> Redirigiendo…</> : 'Pagar ahora'}
+            </button>
+          </div>
+
+          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4 text-sm">
+            <p className="font-medium text-gray-700 dark:text-gray-300 mb-2">O transferí a:</p>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-gray-600 dark:text-gray-400">
+              <span className="text-gray-400 dark:text-gray-500">Alias</span><span className="font-mono">{DATOS_TRANSFERENCIA.alias}</span>
+              <span className="text-gray-400 dark:text-gray-500">CBU</span><span className="font-mono">{DATOS_TRANSFERENCIA.cbu}</span>
+              <span className="text-gray-400 dark:text-gray-500">Titular</span><span>{DATOS_TRANSFERENCIA.titular}</span>
+              <span className="text-gray-400 dark:text-gray-500">Banco</span><span>{DATOS_TRANSFERENCIA.banco}</span>
+            </div>
+            {!mostrarAviso ? (
+              <button onClick={() => setMostrarAviso(true)}
+                className="mt-3 text-xs text-accent hover:underline flex items-center gap-1.5">
+                <Send size={12} /> Ya transferí, avisar
+              </button>
+            ) : (
+              <div className="mt-3 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="number" placeholder="Monto (opcional)" value={avisoForm.monto}
+                    onChange={e => setAvisoForm(f => ({ ...f, monto: e.target.value }))}
+                    className="px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800" />
+                  <input type="date" value={avisoForm.fecha}
+                    onChange={e => setAvisoForm(f => ({ ...f, fecha: e.target.value }))}
+                    className="px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800" />
+                </div>
+                <input type="text" placeholder="Referencia / N° de operación (opcional)" value={avisoForm.referencia}
+                  onChange={e => setAvisoForm(f => ({ ...f, referencia: e.target.value }))}
+                  className="w-full px-2.5 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg text-xs bg-white dark:bg-gray-800" />
+                <div className="flex gap-2">
+                  <button onClick={handleAvisarPago} disabled={avisandoPago} className={`${BTN.primary} ${BTN.sm}`}>
+                    {avisandoPago ? 'Enviando…' : 'Confirmar aviso'}
+                  </button>
+                  <button onClick={() => setMostrarAviso(false)} className="text-xs text-gray-400 hover:text-gray-600">
+                    Cancelar
+                  </button>
+                </div>
+                <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                  Verificamos la transferencia y activamos el acceso — puede tardar unas horas.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal de cancelación / arrepentimiento ─────────────────────────── */}
+      {cancelModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50" onClick={() => !cancelando && setCancelModal(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            {cancelModal === 'arrepentimiento' ? (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <Undo2 size={20} className="text-amber-500" />
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Arrepentirse de la compra</h3>
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                  Estás dentro del período legal de arrepentimiento
+                  {cancelPreview?.arrepentimiento_hasta
+                    ? <> (hasta el <strong>{new Date(cancelPreview.arrepentimiento_hasta).toLocaleDateString('es-AR')}</strong>)</>
+                    : ' (10 días desde tu primera compra)'}.
+                </p>
+                <ul className="text-sm text-gray-600 dark:text-gray-400 mb-4 space-y-1.5 list-disc pl-5">
+                  <li>Te devolvemos <strong>todos tus pagos</strong> al mismo medio de pago.</li>
+                  <li>La suscripción se cancela en Mercado Pago.</li>
+                  <li><strong>Perdés el acceso inmediatamente</strong> (no hasta fin de mes).</li>
+                </ul>
+                {cancelPreview && !cancelPreview.elegible_arrepentimiento && (
+                  <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg p-3 mb-4">
+                    La ventana de arrepentimiento ya venció. Podés cancelar la suscripción normalmente
+                    y mantenés el acceso hasta el fin del período pagado.
+                  </p>
+                )}
+                <button
+                  onClick={handleArrepentimiento}
+                  disabled={cancelando || !cancelPreview || !cancelPreview.elegible_arrepentimiento}
+                  className={`${BTN.danger} ${BTN.md} w-full flex items-center justify-center gap-2 mb-2`}>
+                  {cancelando
+                    ? <><RefreshCw size={14} className="animate-spin" /> Procesando reembolso…</>
+                    : !cancelPreview
+                      ? <><RefreshCw size={14} className="animate-spin" /> Verificando…</>
+                      : 'Confirmar: reembolsar y cancelar YA'}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-3">
+                  <AlertTriangle size={20} className="text-red-500" />
+                  <h3 className="font-bold text-gray-800 dark:text-gray-100 text-lg">Cancelar suscripción</h3>
+                </div>
+                <ul className="text-sm text-gray-600 dark:text-gray-400 mb-4 space-y-1.5 list-disc pl-5">
+                  <li>Se cancela el cobro recurrente en Mercado Pago.</li>
+                  <li><strong>No se reembolsa</strong> el período ya facturado.</li>
+                  <li>
+                    Mantenés el acceso hasta el fin del período pagado
+                    {cancelPreview?.period_end_estimado
+                      ? <>: <strong>{new Date(cancelPreview.period_end_estimado).toLocaleDateString('es-AR')}</strong></>
+                      : cancelPreview ? ' (fin del ciclo actual)' : '…'}
+                    .
+                  </li>
+                </ul>
+                <button
+                  onClick={handleCancelarSuscripcion}
+                  disabled={cancelando || !cancelPreview}
+                  className={`${BTN.danger} ${BTN.md} w-full flex items-center justify-center gap-2 mb-2`}>
+                  {cancelando
+                    ? <><RefreshCw size={14} className="animate-spin" /> Cancelando…</>
+                    : !cancelPreview
+                      ? <><RefreshCw size={14} className="animate-spin" /> Verificando…</>
+                      : 'Confirmar cancelación'}
+                </button>
+              </>
+            )}
+            <button onClick={() => setCancelModal(null)} disabled={cancelando}
+              className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 py-1 transition-colors disabled:opacity-50">
+              Volver
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── Seguridad ──────────────────────────────────────────────────────── */}
       {!isGoogleUser && (

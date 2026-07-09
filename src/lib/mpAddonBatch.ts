@@ -45,33 +45,62 @@ export function precioSel(sel: PackSel): number {
     sum + (cant ? (findAddonPack(dim as AddonDimension, cant)?.precio ?? 0) : 0), 0)
 }
 
+/**
+ * Cambio de PLAN dentro del batch (Fase 2, spec GO 2026-07-07). Los precios de plan son
+ * los REALES de los planes de MP (GET /preapproval_plan — canal automático con −10%), no
+ * los de lista de brand.ts: así el delta de plan tampoco pisa descuentos del canal.
+ */
+export interface PlanCambio {
+  tierActual: string
+  tierObjetivo: string
+  /** auto_recurring.transaction_amount del plan MP del tier actual. */
+  precioPlanActualMP: number
+  /** auto_recurring.transaction_amount del plan MP del tier objetivo. */
+  precioPlanObjetivoMP: number
+}
+
+/** Fase 2 solo permite UPGRADE Básico→Pro (el downgrade se diseña con MP-P2). */
+export function esUpgradeDePlan(tierActual: string, tierObjetivo: string): boolean {
+  return tierActual === 'basico' && tierObjetivo === 'pro'
+}
+
 export interface BatchCalculo {
   /** Recurrente mensual nuevo (lo que va a llegar todos los meses de ahora en más). */
   recurrenteNuevo: number
   /** Lo que paga HOY (pago único). 0 si el batch baja o no cambia el monto. */
   deltaAPagar: number
-  /** true si el batch no cambia nada (selección idéntica). */
+  /** true si el batch no cambia nada (selección idéntica y sin cambio de plan). */
   sinCambios: boolean
+  /** true si el batch incluye cambio de plan (habilita la elección E1/E2). */
+  cambiaPlan: boolean
 }
 
 /**
  * Cálculo del batch por DELTA sobre el monto real del preapproval (preserva descuentos).
  * `montoActualMP` = auto_recurring.transaction_amount actual (GET al preapproval).
+ * Con `plan`: nuevo = montoActual − packs(actuales) + packs(objetivo) + (planMP(objetivo)
+ * − planMP(actual)) — el término de plan es relativo, así un descuento custom (monto
+ * puesteado a mano) se conserva como diferencia absoluta.
  */
 export function calcularBatch(p: {
   montoActualMP: number
   packsActuales: PackSel
   packsObjetivo: PackSel
+  plan?: PlanCambio | null
 }): BatchCalculo {
   const actual = precioSel(p.packsActuales)
   const objetivo = precioSel(p.packsObjetivo)
-  const recurrenteNuevo = Math.max(0, p.montoActualMP - actual + objetivo)
+  const cambiaPlan = !!p.plan && p.plan.tierObjetivo !== p.plan.tierActual
+  const deltaPlan = cambiaPlan ? p.plan!.precioPlanObjetivoMP - p.plan!.precioPlanActualMP : 0
+  const recurrenteNuevo = Math.max(0, p.montoActualMP - actual + objetivo + deltaPlan)
   const delta = recurrenteNuevo - p.montoActualMP
-  const sinCambios = DIMS_BATCH.every(d => (p.packsActuales[d] ?? 0) === (p.packsObjetivo[d] ?? 0))
+  const sinCambios = !cambiaPlan &&
+    DIMS_BATCH.every(d => (p.packsActuales[d] ?? 0) === (p.packsObjetivo[d] ?? 0))
   return {
     recurrenteNuevo,
     deltaAPagar: delta > 0 ? delta : 0, // baja = sin cobro ni reembolso (próxima factura menor)
     sinCambios,
+    cambiaPlan,
   }
 }
 
@@ -85,7 +114,8 @@ export interface BatchBloqueo {
 /**
  * Guard de baja a nivel BATCH (ejemplo GO: 2.001 SKUs con Básico 2.000 → quitar el pack
  * +2.000 se bloquea; cambiarlo por +500 [límite 2.500] se permite). Devuelve TODAS las
- * dimensiones en falta (lista vacía = batch permitido).
+ * dimensiones en falta (lista vacía = batch permitido). Con cambio de plan, `tier` es el
+ * tier RESULTANTE del batch (Fase 2 solo permite upgrades → la base solo crece).
  */
 export function guardBatch(p: {
   tier: string
@@ -104,4 +134,56 @@ export function guardBatch(p: {
     }
   }
   return bloqueos
+}
+
+// ─── E2: upgrade PROGRAMADO — espejo de la decisión del sweep (EF mp-batch-sweep) ────────
+// El change queda 'programado' hasta la ventana previa al próximo cobro; ahí el sweep hace
+// el PUT del monto nuevo ('esperando_cobro') para que ESE cobro ya salga por el plan nuevo.
+// El tier se habilita recién al confirmarse el cobro (fail-closed). La fecha nunca cambia.
+
+/** Horas antes del cobro en las que el sweep (horario) hace el PUT del monto nuevo. */
+export const SWEEP_VENTANA_HORAS = 36
+/** Días de espera del cobro antes de marcar el change como fallido y alertar a soporte. */
+export const SWEEP_TIMEOUT_DIAS = 7
+
+export type DecisionProgramado = 'esperar' | 'put' | 'vencido'
+
+/** Fase 'programado': ¿ya entramos en la ventana previa al cobro para hacer el PUT? */
+export function decidirSweepProgramado(p: {
+  programadoPara: string | Date
+  now?: Date
+  ventanaHoras?: number
+}): DecisionProgramado {
+  const now = p.now ?? new Date()
+  const objetivo = new Date(p.programadoPara).getTime()
+  if (Number.isNaN(objetivo)) return 'vencido' // fecha corrupta → a conciliación humana
+  const ventanaMs = (p.ventanaHoras ?? SWEEP_VENTANA_HORAS) * 3600_000
+  // Muy pasado de fecha sin haberse procesado (sweep caído) → alertar, no PUTear a ciegas
+  if (now.getTime() > objetivo + SWEEP_TIMEOUT_DIAS * 86400_000) return 'vencido'
+  return now.getTime() >= objetivo - ventanaMs ? 'put' : 'esperar'
+}
+
+export type DecisionCobro = 'aplicar' | 'esperar' | 'fallido'
+
+/**
+ * Fase 'esperando_cobro': el tier se habilita SOLO si el cobro del ciclo salió por el
+ * monto NUEVO y está aprobado (REGLA #0: si el cobro falla, no se habilita nada).
+ *  • preapproval cancelado/pausado sin cobro → 'fallido' (alerta a soporte).
+ *  • cobro aprobado por el monto nuevo → 'aplicar'.
+ *  • todavía sin cobro aprobado → 'esperar' (MP reintenta; timeout → 'fallido').
+ */
+export function decidirConfirmacionCobro(p: {
+  preapprovalStatus: string
+  cobroAprobadoMonto: number | null   // monto del cobro aprobado del ciclo (null = no hubo)
+  montoEsperado: number
+  programadoPara: string | Date
+  now?: Date
+  timeoutDias?: number
+}): DecisionCobro {
+  const now = p.now ?? new Date()
+  if (p.cobroAprobadoMonto !== null && p.cobroAprobadoMonto >= p.montoEsperado) return 'aplicar'
+  if (p.preapprovalStatus === 'cancelled') return 'fallido'
+  const limite = new Date(p.programadoPara).getTime() + (p.timeoutDias ?? SWEEP_TIMEOUT_DIAS) * 86400_000
+  if (Number.isNaN(limite) || now.getTime() > limite) return 'fallido'
+  return 'esperar'
 }

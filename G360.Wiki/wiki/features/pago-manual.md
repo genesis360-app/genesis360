@@ -8,10 +8,10 @@ updated: 2026-07-09
 
 # 💳 Pago manual (`billing_mode`)
 
-> Estado: **🏗 Infra 100% en PROD (mig 262 + EFs `billing-manual-pagar`/`billing-manual-avisar-pago`/
-> `billing-manual-sweep`, 2026-07-09)** — código mergeado a `main` (PR #278, release real
-> **v1.123.0**), frontend de Vercel pendiente de 2 PRs chicos (genesis360 #279 + genesis360-admin
-> #3) antes de dar por cerrado el release. Ningún tenant real está en modo manual todavía.
+> Estado: **✅ 100% en PROD (mig 262 + EFs `billing-manual-pagar`/`billing-manual-avisar-pago`/
+> `billing-manual-sweep`, release v1.123.0)** — código mergeado a `main` (PR #278 + #279) +
+> tag/GitHub release publicados + Vercel `READY` en ambos proyectos, confirmado 2026-07-09. Ningún
+> tenant real está en modo manual todavía.
 
 ## Qué es
 

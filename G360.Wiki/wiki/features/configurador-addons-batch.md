@@ -21,8 +21,9 @@ updated: 2026-07-09
 > +1→+3 con delta** · guard en ambas direcciones (bloqueó con 6/6 users, pasó tras desactivar
 > uno) · temporal de comprobantes acreditado con vencimiento · cancelación fail-closed + grace
 > real. `mp-addon-fijo` ELIMINADA de DEV+PROD (2026-07-07, cierra H7).
-> **🏗 FASE 2 — infra 100% en PROD (mig 260, 2026-07-09; código mergeado a `main` PR #278, release
-> real v1.123.0, frontend Vercel pendiente de PR #279 + genesis360-admin #3):** cambio de PLAN
+> **✅ FASE 2 — 100% en PROD (mig 260, release v1.123.0):** código mergeado a `main` (PR #278 +
+> #279) + tag/GitHub release publicados + Vercel `READY` en ambos proyectos, confirmado
+> 2026-07-09. Cambio de PLAN
 > Básico→Pro por el batch con **E1 inmediato** (delta de plan hoy, precios reales de los
 > planes MP vía `GET /preapproval_plan` — delta relativo que preserva descuentos custom;
 > mismo circuito `|addonbatch|`, fail-closed) y **E2 programado** (mig 260: estados

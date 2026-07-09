@@ -3,7 +3,7 @@ title: Configurador de add-ons BATCH con cobro por delta (diseño)
 category: features
 tags: [billing, addons, mercadopago, pricing, comprobantes, delta]
 sources: [src/pages/SuscripcionPage.tsx, src/components/PricingConfigurator.tsx, supabase/functions/mp-addon-fijo, supabase/functions/mp-webhook, tests/specs/mp-suscripciones-pagos.plan.md]
-updated: 2026-07-06
+updated: 2026-07-09
 ---
 
 # 🧩 Configurador de add-ons BATCH + cobro por delta
@@ -21,7 +21,8 @@ updated: 2026-07-06
 > +1→+3 con delta** · guard en ambas direcciones (bloqueó con 6/6 users, pasó tras desactivar
 > uno) · temporal de comprobantes acreditado con vencimiento · cancelación fail-closed + grace
 > real. `mp-addon-fijo` ELIMINADA de DEV+PROD (2026-07-07, cierra H7).
-> **🏗 FASE 2 IMPLEMENTADA (v1.121.0, 2026-07-07 — EN DEV, sin PROD):** cambio de PLAN
+> **🏗 FASE 2 — infra 100% en PROD (mig 260, 2026-07-09; código mergeado a `main` PR #278, release
+> real v1.123.0, frontend Vercel pendiente de PR #279 + genesis360-admin #3):** cambio de PLAN
 > Básico→Pro por el batch con **E1 inmediato** (delta de plan hoy, precios reales de los
 > planes MP vía `GET /preapproval_plan` — delta relativo que preserva descuentos custom;
 > mismo circuito `|addonbatch|`, fail-closed) y **E2 programado** (mig 260: estados
@@ -34,7 +35,7 @@ updated: 2026-07-06
 > de plan en modo app + modal E1/E2 + banner de cambio en curso. UAT §10.c (MP-F1..F5).
 > Espejos: `calcularBatch({plan})`, `esUpgradeDePlan`, `decidirSweepProgramado`,
 > `decidirConfirmacionCobro`. Downgrade sigue afuera (MP-P2).
-> **🟠 Pendiente:** validación e2e con sub real + deploy PROD (mig 260 + EFs) y backlog
+> **🟠 Pendiente:** validación e2e con sub real en PROD (no se hizo todavía) y backlog
 > BATCH-BAJA-VIGENCIA (la baja quita el cupo al instante aunque el mes esté pagado →
 > evaluar vigencia hasta fin de período). El detalle de implementación de las
 > secciones de abajo (diseño pre-implementación) se mantiene como referencia técnica — el

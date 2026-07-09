@@ -2,7 +2,74 @@
 
 Log cronológico append-only. Cada entrada empieza con `## [YYYY-MM-DD] tipo | título`.
 
-Tipos: `init` · `ingest` · `query` · `update` · `lint`
+Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
+
+---
+
+## [2026-07-09] deploy | 🚀 Deploy a PROD: infra de Fase 2 batch + arrepentimiento + facturación de plataforma + pago manual + perf DB (código mergeado — versión real v1.123.0, Vercel pendiente)
+
+**Quinta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, WH-SIG+mig 263, y el
+cierre de `crear-suscripcion`+fix EnviosPage — entradas de abajo). Deploy real a PROD de toda la
+cadena acumulada en DEV desde v1.121.0.
+
+**1) Infraestructura de Supabase — deployada y verificada 100% en PROD:**
+- Migraciones **260, 261, 262, 263** aplicadas a PROD (`jjffnbrdjchquexdfgwq`), en ese orden.
+Verificación post-aplicación: `pg_policies` confirma 0 policies con `auth.uid()` sin envolver en
+`(select auth.uid())`; las 4 tablas nuevas (`platform_billers`, `platform_facturas`,
+`billing_manual_pagos`, `addon_batch_changes`) existen; **aislamiento multi-tenant reverificado con
+impersonación SQL real** post-mig-263 (mismo método que en DEV: un usuario real impersonado solo ve
+su propio tenant).
+- **10 Edge Functions deployadas a PROD**, todas con smoke test OK (`curl -X OPTIONS` → 200/204, sin
+errores): nuevas `mp-batch-sweep`, `emitir-factura-plataforma` (con su dependencia cruzada
+`../emitir-factura/providers.ts` resuelta correctamente), `platform-facturacion-sweep`,
+`billing-manual-pagar`, `billing-manual-avisar-pago`, `billing-manual-sweep`; modificadas
+`mp-webhook`, `admin-api`, `cancel-suscripcion`, `mp-verificar-suscripcion`.
+- **`crear-suscripcion` NO se borró de PROD** (a diferencia de DEV, ver entrada de abajo) — la
+autorización de GO para borrarla fue específica para DEV, no para PROD. Sigue viva en PROD pero
+inofensiva (cero referencias en el código que la invoquen). Pendiente: preguntarle a GO si también
+la borra de PROD.
+- `.github/workflows/mp-reconciliacion.yml` (ya con los 4 steps de sweep en el repo) no hizo falta
+tocarlo — corre automáticamente contra PROD apenas el código llegó a `main`, y como los 4 EFs
+correspondientes YA estaban deployados ANTES del merge, no debería haber dado 404 en el primer tick
+horario del workflow.
+
+**2) Código — PR genesis360 #278 MERGEADO a `main`**
+(`https://github.com/genesis360-app/genesis360/pull/278`, commit de merge `471912fd`). Trae toda la
+cadena: Fase 2 batch + arrepentimiento (mig 260), facturación de plataforma (mig 261), pago manual
+(mig 262), perf DB (mig 263), WH-SIG log-only, fix del bug de `EnviosPage` (courier), eliminación de
+`crear-suscripcion`.
+
+**3) Gotcha de versionado — el tag `v1.122.0` ya existía:** al intentar tagear `v1.122.0` en el
+commit de merge, el tag YA EXISTÍA — se había creado en una sesión anterior (2026-07-08) apuntando
+al commit viejo `94c9e01c` ("EN DEV", nunca mergeado a `main` en ese momento), **con un GitHub
+release ya publicado también**. En vez de mover un tag/release ya público (mala práctica), se
+bumpeó `APP_VERSION` a **v1.123.0** en `src/config/brand.ts` — ese es el número real que va a
+llevar esta release de PROD. Commiteado y pusheado a `dev` (commit `42d02a79`), con un PR nuevo
+abierto: **genesis360 #279** (`https://github.com/genesis360-app/genesis360/pull/279`), 1 línea,
+todavía SIN mergear.
+
+**4) genesis360-admin — PR #3 todavía SIN mergear**
+(`https://github.com/genesis360-app/genesis360-admin/pull/3`, "Pagos manuales + facturación de
+plataforma (Fede) en Billing").
+
+**5) Lo que falta (todo del lado de GO, no de código):**
+- Mergear PR genesis360 #279 (el bump de versión).
+- Mergear PR genesis360-admin #3.
+- Recién ahí: crear el tag `v1.123.0` + GitHub release + verificar que Vercel deployó bien en ambos
+proyectos (`genesis360.pro` y `admin.genesis360.pro`) — lo hace Claude en la próxima interacción,
+apenas GO confirme los merges.
+- Decidir si borrar `crear-suscripcion` también de PROD (pendiente, no bloqueante).
+- El bloqueante real de fondo sigue siendo el mismo: Fede completando sus 3 pasos (afipsdk.com +
+punto de venta + token) para que la facturación automática de plataforma empiece a emitir de
+verdad — eso NO cambió con este deploy, solo que ahora el código YA está en PROD esperando esos
+datos.
+
+**Estado:** infra de DB/EFs YA 100% en PROD (migs 001-263). **Código mergeado a `main` pero el
+frontend de Vercel TODAVÍA sirve la versión anterior** hasta que se mergeen los 2 PRs pendientes —
+no confundir "infra lista" con "release completa". Sin migraciones nuevas en esta sesión (ya
+existían 260-263 en DEV, solo se promovieron a PROD). Wiki tocado:
+`sources/raw/project_pendientes.md`, `wiki/database/migraciones.md`, `wiki/business/roadmap.md`,
+`index.md`.
 
 ---
 

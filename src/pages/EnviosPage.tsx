@@ -559,7 +559,9 @@ export default function EnviosPage() {
         tenant_id: tenant!.id,
         sucursal_id: sucursalId || null,
         venta_id: form.venta_id || null,
-        courier: form.courier || null,
+        // EN7/G2 — el select de courier queda oculto en envío propio y nunca cambia
+        // form.courier: derivar 'Envío propio' de tipoEnvio en vez de confiar en el select.
+        courier: tipoEnvio === 'propio' ? 'Envío propio' : (form.courier || null),
         servicio: form.servicio || null,
         tracking_number: form.tracking_number.trim() || null,
         tracking_url: form.tracking_url.trim() || null,
@@ -608,7 +610,7 @@ export default function EnviosPage() {
       } else {
         // ISS-156: si el costo del envío ya lo cobró el cliente en la venta despachada,
         // o si es envío propio (sin courier a quien pagar), nace saldado → no va a Pagos Courier.
-        const envioYaSaldado = form.courier === 'Envío propio'
+        const envioYaSaldado = payload.courier === 'Envío propio'
           || (!!ventaSeleccionada && Number(ventaSeleccionada.costo_envio ?? 0) > 0 && ventaSeleccionada.estado === 'despachada')
         const { data: nuevo, error } = await supabase.from('envios').insert({ ...payload, costo_pagado: envioYaSaldado }).select('id').single()
         if (error) throw error
@@ -1141,6 +1143,7 @@ export default function EnviosPage() {
   }
   const abrirEdicion = (e: any) => {
     setEditId(e.id)
+    setTipoEnvio(e.courier === 'Envío propio' ? 'propio' : 'tercero')
     setForm({
       venta_id: e.venta_id ?? '', cliente_nombre: e.ventas?.clientes?.nombre ?? '',
       courier: e.courier ?? '', servicio: e.servicio ?? '',

@@ -11,11 +11,17 @@ test.describe('Dashboard', () => {
     await waitForApp(page)
   })
 
-  test('carga con KPI cards visibles', async ({ page }) => {
-    // Al menos dos cards con números
+  // v1.93-94: rediseño "gráficos primero" (área Todo › sub-tab Gráficos es el default).
+  // Las KPI cards migraron al sub-tab Métricas; lo que carga por default son los gráficos
+  // "La Balanza" (ventas vs gastos) y "El Mix de Caja" (medios de pago).
+  test('carga con gráficos reales visibles (La Balanza / Mix de Caja)', async ({ page }) => {
+    // Al menos una grilla de layout visible
     await expect(page.locator('.grid').first()).toBeVisible()
-    // Verifica que hay números en pantalla (no solo spinner)
-    await expect(page.getByText(/total productos|alertas activas|stock crítico/i).first()).toBeVisible()
+    // Los headers de los gráficos por default están presentes (no solo spinner/página vacía)
+    await expect(page.getByText('La Balanza')).toBeVisible()
+    await expect(page.getByText('El Mix de Caja')).toBeVisible()
+    // Las queries de los charts terminaron de cargar (ya no quedan "Cargando…" pendientes)
+    await expect(page.getByText('Cargando...').first()).not.toBeVisible({ timeout: 10000 })
   })
 
   // v1.51: el dashboard tiene chips de ÁREA (Todo, Ventas, …) + sub-tabs

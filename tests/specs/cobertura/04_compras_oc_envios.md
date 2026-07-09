@@ -48,13 +48,13 @@
 | L30 | OC PDF / texto WhatsApp / wa.me | `ocPDF.ts:generarOCPDF,textoOC,waLinkOC` | — | ✅unit (texto/total) · 🔴 capa manual (PDF visual) |
 | L31 | Alerta anticipo→OC sin recibir (badge rojo) | `GastosPage.tsx:3040` (`gastos_dias_alerta_anticipo_oc`) | 🟠 | 🔴gap |
 | **Envíos** |
-| L32 | Crear envío: tipos, sugerir courier por CP, plazo despacho por canal, unidades enviadas | `enviosCreacion.ts:*` · uso `EnviosPage.tsx:2181` | 🟠 | ✅unit |
+| L32 | Crear envío: tipos, sugerir courier por CP, plazo despacho por canal, unidades enviadas | `enviosCreacion.ts:*` · uso `EnviosPage.tsx:2181` | 🟠 | ✅unit · ✅e2e **85** (persistencia de `courier` en el modal manual "Nuevo envío") |
 | L33 | Costo envío propio ($/km × factor, tramos, recargo horario, mínimo) | `enviosTarifas.ts:costoEnvioPropio` · uso `EnviosPage.tsx:471-478` | 🟠 (costo) | ✅unit |
 | L34 | Cobro al cliente por política (cliente_100/margen/subsidio) + envío gratis condicional + diferencia real | `enviosTarifas.ts:cobroCliente,envioGratis,diferenciaReal` | 🔴 (cobra al cliente) | ✅unit · 🔴e2e (efecto en venta) |
 | L35 | **Pago a courier → genera gasto** por courier (IVA crédito) + egreso/egreso_informativo en caja | `EnviosPage.tsx:780-868`; `enviosCourierPago.ts:agruparPagosPorCourier,desgloseIvaFlete` | 🔴 **plata** | ✅unit (cálculo) · 🔴e2e/UAT (efecto gasto+caja) |
 | L36 | Pago a courier: doble firma por umbral (clave maestra) | `enviosCourierPago.ts:requiereDobleFirma` · uso `EnviosPage.tsx:787-795,1740` | 🔴 **plata** | ✅unit · 🔴e2e/UAT |
 | L37 | Conciliación factura courier vs registrado | `enviosCourierPago.ts:diffFactura,totalRegistrado` | 🟠 | ✅unit |
-| L38 | **Envío propio → combustible → gasto** (litros, costo, IVA, km acumulado al recurso) | `enviosRecurso.ts:*` · uso `EnviosPage.tsx:335,2789` | 🔴 **plata** | ✅unit · ✅e2e **38** |
+| L38 | **Envío propio → combustible → gasto** (litros, costo, IVA, km acumulado al recurso) | `enviosRecurso.ts:*` · uso `EnviosPage.tsx:335,2789` | 🔴 **plata** | ✅unit · ✅e2e **38**/**85** |
 | L39 | POD: campos requeridos + foto mínima | `enviosPod.ts:podFaltantes` · uso `EnviosPage.tsx:704-705`, `TransportistePage.tsx:101-102` | 🟠 | ✅unit · 🔴e2e |
 | L40 | POD: OTP por umbral (propio), geoloc fallback, no-entrega/reintento, recargo reintento | `enviosPod.ts:requiereOtp,geoEstado,resolverNoEntrega,recargoReintento` · uso `EnviosPage.tsx:757`, `TransportistePage.tsx:103,415` | 🟠 | ✅unit |
 | L41 | Reparto: productividad, cumplimiento día, orden hoja de ruta (proximidad), token expira, identidad | `enviosReparto.ts:*` · uso `EnviosPage.tsx:957,1031` | 🟠 | ✅unit |
@@ -165,6 +165,37 @@ Todos los gaps de plata/stock del §3 quedaron cubiertos. Método: impersonació
 **Residual no-REGLA-#0 (UX/secundario):** `oc_numeracion` por valor (L5), `recepcion_remito_obligatorio` (L21),
 alerta de costo→`precio_costo` (L22), `gastos_dias_alerta_anticipo_oc` (L31), cobro al cliente por política→venta
 (L34), `envio_identidad/notif/peso/rangos` (UX). No tocan integridad fiscal/contable/inventario.
+
+---
+
+## ✅ Hallazgo posterior — L32/L38: envío propio creado a mano (2026-07-09)
+
+**BUG ENCONTRADO Y ARREGLADO** (`EnviosPage.tsx`, fuera del barrido 2026-06-23): crear un envío desde
+el modal **manual** "Nuevo envío" (no desde una venta) con "Tipo de envío" = **🚗 Envío propio** dejaba
+`envios.courier = null` en vez de `'Envío propio'` — el `<select>` de courier queda oculto para ese
+tipo y `saveEnvio` confiaba en el `form.courier` stale en vez de derivar el valor del toggle
+`tipoEnvio`. Efecto doble:
+1. El botón "Registrar combustible" (gate `courier === 'Envío propio' && recurso_id`) nunca aparecía
+   para esos envíos.
+2. `envioYaSaldado` (decide `costo_pagado` al nacer) también dependía de ese string — con
+   `courier=null` daba `false`, así que el envío podía aparecer indebidamente como pago pendiente en
+   "Pagos Courier" (**plata mal clasificada**, REGLA #0).
+
+Los envíos reales existentes en DEV (#11/#13/#14/#15 y los generados por el spec 38) se crearon todos
+por la ruta de venta ("Incluir envío" → "Envío propio"), que nunca tuvo el bug — por eso no se había
+detectado hasta ahora.
+
+**Fix** (3 cambios en `EnviosPage.tsx`): `saveEnvio` deriva `courier` de `tipoEnvio` en vez de
+`form.courier` (~562); `envioYaSaldado` usa el `payload.courier` ya corregido (~613); `abrirEdicion`
+restaura el toggle `tipoEnvio` al abrir "Editar envío" (~1146 — antes siempre abría en "tercero" sin
+importar el courier guardado).
+
+✅ **spec 85** (`85_envio_propio_manual_courier_mutante.spec.ts`, DB-verificado vía REST/PostgREST con
+el bearer de la sesión OWNER): crea el envío por la ruta manual (tipo "Envío propio" + vehículo) y
+verifica `envios.courier = 'Envío propio'` + `envios.costo_pagado = true` + `recurso_id` seteado +
+el botón "Registrar combustible" visible en la UI + regresión de `abrirEdicion` (combo Vehículo ya
+visible con el vehículo seleccionado al reabrir "Editar envío", sin necesidad de re-clickear el
+toggle). Corrido en verde contra DEV el 2026-07-09.
 
 ---
 

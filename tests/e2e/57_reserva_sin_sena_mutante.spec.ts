@@ -13,6 +13,14 @@
  *
  * Cliente real del tenant: "Fede Messina". Re-ejecutable y sin efectos (el guard bloquea antes de crear
  * la reserva / reservar stock / asentar caja).
+ *
+ * AUTOSUFICIENTE frente a saldo a favor acumulado: si Fede Messina tiene "Crédito a favor" (queda de
+ * otros mutantes de devolución/CC que corrieron antes), `VentasPage` lo auto-aplica como único medio de
+ * pago al seleccionar el cliente (ISS E2, ~línea 2363). El guard E6 solo excluye "Cuenta Corriente" del
+ * cómputo de la seña real — "Crédito a favor" SÍ cuenta como seña (es plata real que el cliente ya tiene
+ * a favor) — así que si queda auto-aplicado, la reserva NO se bloquea y el test perdía la precondición
+ * "sin seña". Por eso el test limpia explícitamente el monto del medio de pago después de elegir el
+ * cliente, sin importar cuánto saldo a favor tenga acumulado.
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
@@ -45,7 +53,14 @@ test.describe('Reserva exige seña (mutante)', () => {
       test.skip(true, 'Cliente "Fede Messina" no encontrado en el tenant.')
     }
     await cliOpt.click()
-    await page.waitForTimeout(400)
+    await page.waitForTimeout(600)
+
+    // Neutralizar cualquier medio de pago auto-sugerido (ISS E2: "Crédito a favor" se auto-aplica
+    // si el cliente tiene saldo a favor). Si no se limpia, cuenta como "seña real" y el bloqueo
+    // esperado no se dispara — ver nota AUTOSUFICIENTE en el header del archivo.
+    const montoInput = page.getByPlaceholder(/^Monto$/i).first()
+    if (await montoInput.isVisible().catch(() => false)) await montoInput.fill('')
+    await page.waitForTimeout(200)
 
     // Modo "Reservar" (toggle exacto, distinto del CTA "Reservar stock")
     await page.getByRole('button', { name: /^Reservar$/ }).click()

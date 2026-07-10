@@ -13,6 +13,17 @@ updated: 2026-05-29
 
 ---
 
+## v1.124.0 — 🧾 Motor WSFE PROPIO (dual-provider fase 3) validado contra homologación (EN DEV, 2026-07-09)
+
+`WsfePropioProvider` real: TRA + firma CMS/PKCS#7 local (node-forge) → WSAA LoginCms → TA cacheado
+en DB (mig 264 `afip_wsaa_ta`) → WSFEv1 SOAP directo (`FECompUltimoAutorizado`/`FECAESolicitar`).
+Lógica fiscal compartida intacta (mismo payload que AfipSDK). Validación completa contra
+homologación REAL: 26 unit nuevos (984/984 suite) + integración Node (B/C/NC-C con CAE) + runtime
+vía EF en DEV (B №26 y C №35 por 'propio' + regresión afipsdk №27; alternancia de numeración
+25→26→27 sin saltos). EFs `emitir-factura` v19 y `emitir-factura-plataforma` v2 en DEV. UAT §32.
+**Pendiente PROD:** mig 264 + deploy EFs (OK de GO) → tenant piloto. Ver
+[[wiki/features/facturacion-afip]].
+
 ## v1.123.0 — 🚀 Deploy a PROD: Fase 2 batch + arrepentimiento + facturación de plataforma + pago manual + perf DB (✅ PROD, cerrado 2026-07-09)
 
 Consolida a PROD toda la cadena v1.121.0→v1.122.0: **Fase 2 batch** (cambio de PLAN Básico↔Pro,

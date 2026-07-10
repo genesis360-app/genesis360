@@ -1052,3 +1052,41 @@ aplica) oscuro, con hover forzado sobre los CTAs principales (`page.hover(...)` 
 | 3 | `LandingPage:406` CTA final "Crear cuenta gratis" | mismo patrón sobre `bg-brand-gradient-dark` | C1 | `hover:bg-white/90` ✅ v1.113.0 |
 | 4 | `SuscripcionPage:433/441` CTA plan NO destacado (card translúcida oscura) | (a) hover pierde el `bg-white` → primary sobre oscuro; (b) en modo oscuro `dark:bg-gray-800` + `text-primary` = bajo contraste PERMANENTE | C1+C3 | `dark:text-white` + `hover:bg-gray-100 dark:hover:bg-gray-700` ✅ v1.113.0 |
 | 5 | `LandingPage:165` `text-[#7DB9E8]` en el H1 | hex hardcodeado (contrasta OK — deuda, no bug visible) | C7 | anotado, sin cambio |
+
+---
+
+## 🧾 §32 — WSFE propio (dual-provider fase 3) — validado 2026-07-09
+
+**Qué cubre:** el circuito de facturación PROPIO (`tenants.afip_provider='propio'`): TRA firmado
+CMS/PKCS#7 con el cert del tenant → WSAA `LoginCms` → TA cacheado en `afip_wsaa_ta` (mig 264) →
+WSFEv1 `FECompUltimoAutorizado`/`FECAESolicitar`. La lógica fiscal (importes, matriz A/B/C,
+guards, persistencia) es LA MISMA de siempre — solo cambia el transporte.
+
+**Escenarios validados contra homologación REAL (2026-07-09):**
+
+| # | Escenario | Resultado |
+|---|---|---|
+| 1 | Unit (vitest, `wsfePropio.test.ts`): orden XSD del det (ImpTrib ANTES de ImpIVA), C sin array Iva, NC con CbtesAsoc, Concepto 3 + FchServ*, parsers A/R/Errors/fault, TA vigente | 26/26 ✅ |
+| 2 | Integración Node (`tests/integration/wsfe-homologacion.ts`): FEDummy + WSAA real + numeración + Factura B ($121, IVA 21) + Factura C ($1500) + NC-C asociada | 3 CAE reales ✅ |
+| 3 | EF `emitir-factura` en DEV, tenant RI en 'propio' → Factura B venta real | CAE 86280547716423, N°26, `afip_provider_usado='propio'`, estado→facturada ✅ |
+| 4 | EF, tenant Monotributista en 'propio' → Factura C | CAE 86280547717526, N°35 ✅ |
+| 5 | Regresión: tenant de vuelta en 'afipsdk' → Factura B por AfipSDK (mismo EF refactorizado) | CAE 86280547717673, N°27 ✅ |
+| 6 | Alternancia de numeración entre providers (propiedad clave del plan): B № 25 (propio script) → 26 (propio EF) → 27 (afipsdk EF), sin saltos ni duplicados | ✅ |
+| 7 | Cache de TA en DB: la EF reutilizó el TA sembrado (sin re-login WSAA → sin `alreadyAuthenticated`) | ✅ |
+
+**Guards REGLA #0 del circuito propio (verificados en código + unit):**
+- SIN fallback automático propio→afipsdk en la emisión (error de transporte = estado dudoso →
+  mensaje explícito "NO reintentar a ciegas, verificar último autorizado").
+- Tenant en 'propio' sin cert activo → 400 claro ANTES de tocar AFIP.
+- `coe.alreadyAuthenticated` → re-lee cache con delay; si no está, error explicativo (el TA lo
+  tiene otro sistema, p.ej. AfipSDK cloud; expira ≤12h).
+- Rechazo de AFIP (Resultado=R) → error con las Observaciones (código+mensaje); CAE aprobado con
+  observaciones → se emite igual + warn en logs.
+
+**⚠ Gotcha de convivencia (flip-day):** el TA de WSAA es POR CERTIFICADO. Si AfipSDK cloud tiene
+un TA vigente para el mismo cert, el primer login del circuito propio falla con
+`alreadyAuthenticated` hasta que ese TA expire (≤12h). Planificar el flip de un tenant con esa
+ventana en mente (o cargar el TA a mano en `afip_wsaa_ta` si se lo conoce).
+
+**Pendiente para PROD:** mig 264 en PROD + deploy de `emitir-factura`/`emitir-factura-plataforma`
+(OK de GO) → tenant piloto real en 'propio' → validar estabilidad → decidir retiro de AfipSDK.

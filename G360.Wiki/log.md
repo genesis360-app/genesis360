@@ -6,6 +6,70 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-09] update | 🧾 Motor WSFE PROPIO (dual-provider fase 3) — implementado y validado 100% contra homologación real · v1.124.0 EN DEV
+
+**Séptima sesión del día.** GO pidió armar el motor de facturación propio (WSAA + WSFEv1) según el
+plan dual-provider (decisión 2026-07-01) y correr todas las pruebas hasta dejarlo funcionando.
+**Resultado: el circuito propio emite CAE reales en homologación, por el script de integración Y por
+la Edge Function real en DEV, con regresión de AfipSDK verde y alternancia de numeración probada.**
+
+**1) Implementación (`supabase/functions/emitir-factura/`):**
+- **`wsfe-core.ts` (nuevo)** — núcleo PURO sin dependencias ni I/O: TRA, envelope `loginCms`,
+  parser del TA, envelopes/parsers de `FECAESolicitar`/`FECompUltimoAutorizado`/`FEDummy`, y el
+  builder del `FECAEDetRequest` en el **orden EXACTO del XSD real** (bajado de
+  `wswhomo.afip.gov.ar/wsfev1/service.asmx?WSDL`; ⚠ `ImpTrib` va ANTES de `ImpIVA`, el payload del
+  app los declara al revés). Lo importan la EF (Deno), vitest y el script de integración — **sin
+  espejos, un solo código fiscal de transporte**.
+- **`wsfe-sign.ts` (nuevo)** — firma CMS/PKCS#7 del TRA (SignedData con contenido embebido,
+  SHA-256) con `node-forge` **inyectado** → la misma función firma en Deno (`npm:node-forge`) y en
+  Node (devDependency).
+- **`providers.ts`** — `WsfePropioProvider` REAL (reemplaza el stub de fase 1): ensureTa (cache →
+  LoginCms → cache; maneja `coe.alreadyAuthenticated` con re-lectura del cache), `getLastVoucher` y
+  `createVoucher` vía SOAP directo. **REGLA #0:** error de transporte en la emisión = estado dudoso
+  → mensaje explícito "NO reintentar a ciegas, verificar último autorizado"; sin fallback automático
+  al otro provider.
+- **`index.ts`** — token de AfipSDK ya NO es requisito global (solo del circuito 'afipsdk'); tenant
+  en 'propio' sin cert → 400 claro antes de tocar AFIP; inyecta el `TaCache` real.
+- **`emitir-factura-plataforma`** — mismos guards + TaCache (un biller en 'propio' ya es viable).
+- **Mig 264 (`afip_wsaa_ta`)** — cache persistente del TA (~12h; AFIP no re-emite TA vigente),
+  clave `(cuit, service, environment)`, service_role-only. Aplicada en **DEV**.
+
+**2) Validación (todo contra homologación REAL de AFIP, CUIT 23320315069):**
+- **Unit:** `tests/unit/wsfePropio.test.ts` — 26 tests (orden XSD, C sin `Iva`, NC con `CbtesAsoc`,
+  Concepto 3 + FchServ*, parsers A/R/Errors/fault, TA). Suite completa: **984/984 verdes** (66
+  archivos) + build/tsc OK.
+- **Integración Node:** `tests/integration/wsfe-homologacion.ts` (cert por env vars, nunca
+  commiteado; TA cacheado en json local) — FEDummy OK → WSAA LoginCms OK (firma CMS aceptada al
+  primer intento) → numeración → **Factura B $121 (IVA 21) CAE `86280547714450` · Factura C $1500
+  CAE `86280547714463` · NC-C asociada CAE `86280547714476`**.
+- **Runtime vía EF en DEV** (deploy `emitir-factura` v19): tenant "Kiosco Buildi" (RI) flipeado a
+  'propio' → **Factura B №26 CAE `86280547716423`** sobre una venta real (persistió cae + estado
+  `facturada` + `afip_provider_usado='propio'`); "Almacén Jorgito" (Monotributista) → **Factura C
+  №35 CAE `86280547717526`**; vuelta a 'afipsdk' → **regresión OK: Factura B №27 CAE
+  `86280547717673`** (primera corrida runtime del refactor fase 1, que nunca se había deployado).
+  **Alternancia de numeración probada: №25 (propio script) → 26 (propio EF) → 27 (afipsdk EF), sin
+  saltos ni duplicados** — la propiedad clave del plan. Ambos tenants restaurados a 'afipsdk'.
+  La EF leyó el TA **desde el cache en DB** (sembrado desde el script) → sin re-login WSAA.
+- **UAT:** escenario **§32** registrado en `tests/specs/uat-modo-basico.md`.
+
+**3) Gotchas nuevos (documentados en UAT §32 y facturacion-afip.md):**
+- **El TA de WSAA es POR CERTIFICADO**: si AfipSDK cloud tiene un TA vigente del mismo cert, el
+  primer login del circuito propio da `alreadyAuthenticated` hasta que expire (≤12h) — planificar el
+  flip de un tenant piloto con esa ventana.
+- **`supabase db dump -f` TRUNCA el archivo de salida ANTES de autenticar**: los intentos fallidos
+  de hoy (bug de Supavisor) dejaron `schema_full.sql` en 0 bytes — restaurado con `git restore`.
+  Revisar el archivo tras cualquier dump fallido.
+
+**4) Queda para PROD (requiere OK de GO):** aplicar mig 264 en PROD + deploy de `emitir-factura` y
+`emitir-factura-plataforma` → elegir tenant piloto → flip a 'propio' → validar estabilidad → decidir
+retiro de AfipSDK. (mig 250 ya está en PROD; la EF de PROD sigue pre-adapter.)
+
+**Estado:** v1.124.0 EN DEV (código en `dev`, sin merge a main). Wiki tocado: `project_pendientes`,
+`log.md`, `features/facturacion-afip.md`, `database/migraciones.md`, `business/roadmap.md`,
+`index.md`.
+
+---
+
 ## [2026-07-09] deploy | 🔒 Deploy a PROD 100% cerrado (v1.123.0: tag + release + Vercel READY en ambos proyectos) + incidente de seguridad hallado y remediado (Google Maps API key expuesta)
 
 **Sexta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, WH-SIG+mig 263, el

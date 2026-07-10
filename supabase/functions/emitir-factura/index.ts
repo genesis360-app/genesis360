@@ -2,7 +2,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 // Dual-provider AFIP (fase 1): el transporte (AfipSDK vs WSFE propio) se elige por-tenant.
 // La lógica fiscal de este archivo es compartida por ambos providers. Ver providers.ts.
-import { makeAfipProvider, type AfipProviderName } from './providers.ts'
+import { makeAfipProvider, type AfipProviderName, type TaCache } from './providers.ts'
+import type { WsaaTa } from './wsfe-core.ts'
 
 // Mapeo condicion_iva → CondicionIVAReceptorId (RG 5616)
 const IVA_RECEPTOR_ID: Record<string, number> = {
@@ -72,7 +73,12 @@ serve(async (req) => {
       .eq('id', tenant_id).single()
     if (tErr || !tenant) throw new Error('Tenant no encontrado')
     if (!tenant.cuit) throw new Error('El tenant no tiene CUIT configurado')
-    if (!tenant.afipsdk_token) throw new Error('El tenant no tiene token de facturación configurado')
+
+    // Provider por-tenant (dual-provider). Default seguro = 'afipsdk' (circuito actual).
+    // El token de AfipSDK solo es requisito de ESE circuito; el propio necesita cert+key
+    // (se valida más abajo, después de bajarlos del bucket).
+    const providerName: AfipProviderName = tenant.afip_provider === 'propio' ? 'propio' : 'afipsdk'
+    if (providerName === 'afipsdk' && !tenant.afipsdk_token) throw new Error('El tenant no tiene token de facturación configurado')
 
     // Guard fiscal — última línea de defensa (la restricción del selector en el front es
     // solo UI y puede estar cacheada/bypasseada). Espeja tiposComprobantePermitidos() de
@@ -274,16 +280,44 @@ serve(async (req) => {
       }
     }
 
-    // Provider por-tenant (dual-provider). Default seguro = 'afipsdk' (circuito actual).
-    // El WSFE propio ('propio') es un stub por ahora → si un tenant estuviera en 'propio'
-    // sin implementación, falla claro ANTES de tocar AFIP (no emite nada a medias).
-    const providerName: AfipProviderName = tenant.afip_provider === 'propio' ? 'propio' : 'afipsdk'
+    // Circuito propio: el cert es OBLIGATORIO (firma el WSAA localmente). Falla claro
+    // ANTES de tocar AFIP — no hay fallback automático al otro provider (REGLA #0).
+    if (providerName === 'propio' && (!certPem || !keyPem)) {
+      return new Response(JSON.stringify({ error: "El tenant está en circuito WSFE propio pero no tiene certificado AFIP activo (Config → Facturación). Cargá el certificado o volvé el tenant a afip_provider='afipsdk'." }), {
+        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Cache persistente del TA de WSAA (tabla afip_wsaa_ta, service_role-only, mig 264).
+    // Sin esto, la 2ª emisión dentro de las ~12h fallaría: AFIP no re-emite un TA vigente
+    // (coe.alreadyAuthenticated) y las instancias de la EF son efímeras.
+    const taEnvironment = isProduction ? 'produccion' : 'homologacion'
+    const taCache: TaCache = {
+      get: async () => {
+        const { data } = await supabase.from('afip_wsaa_ta')
+          .select('token, sign, expiration_time')
+          .eq('cuit', cuit).eq('service', 'wsfe').eq('environment', taEnvironment)
+          .maybeSingle()
+        return data ? { token: data.token, sign: data.sign, expirationTime: data.expiration_time } as WsaaTa : null
+      },
+      set: async (ta: WsaaTa) => {
+        const { error } = await supabase.from('afip_wsaa_ta').upsert({
+          cuit, service: 'wsfe', environment: taEnvironment,
+          token: ta.token, sign: ta.sign,
+          expiration_time: ta.expirationTime,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'cuit,service,environment' })
+        if (error) console.warn('[emitir-factura] no se pudo cachear el TA de WSAA:', error.message)
+      },
+    }
+
     const provider = makeAfipProvider(providerName, {
       cuit,
       production: isProduction,
       accessToken: tenant.afipsdk_token,
       certPem,
       keyPem,
+      taCache,
     })
     const ultimo   = await provider.getLastVoucher(punto_venta, cbteTipo)
     const proximo  = ultimo + 1

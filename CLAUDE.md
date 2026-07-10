@@ -93,7 +93,7 @@ Objetivo: evitar consumo innecesario de tokens leyendo código que ya está resu
 ## Supabase
 
 - **PROD**: `jjffnbrdjchquexdfgwq` — NO tocar directamente
-- **DEV**: `gcmhzdedrkmmzfzfveig` · Tenant dev: `5f05f3eb-6757-4f60-b9d2-8853fdfae806`
+- **DEV**: `gcmhzdedrkmmzfzfveig` · Tenant dev: `4cf85bbb-22b3-4760-91ee-15a24d9e4713` ("Familia Otranto De Porto"). ⚠ Corregido 2026-07-10: el UUID anterior (`5f05f3eb-...`) era en realidad de **PROD** — verificar siempre con una query antes de asumir un tenant ID de memoria/docs.
 - Migrations: `supabase/migrations/NNN_*.sql` → aplicar en DEV → actualizar `schema_full.sql` → commit → aplicar en PROD al deployar
 
 ### ⚠ TODO cambio de DB va por migración versionada — NUNCA SQL suelto

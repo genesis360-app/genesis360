@@ -6,6 +6,31 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-10] deploy | ✅ PR #285 mergeado + retry de deploy (error de infra de Vercel) + MP_ACCESS_TOKEN marcado Sensitive
+
+**PR #285** (mig 265 + flip masivo de tenants a WSFE propio) mergeado a `main` por GO. El primer
+deploy a producción falló con `sts_credentials_fetch_failed` en `build-container-init` — **error de
+infraestructura de Vercel** (falla al pedir credenciales AWS para levantar el contenedor de build,
+antes incluso de clonar/instalar nada de nuestro código; confirmado con los build logs: clona el
+repo en 1.5s y ahí corta). El sitio en vivo no se vio afectado — Vercel no reemplaza el alias de
+producción hasta que un build termina bien, así que `genesis360.pro` siguió sirviendo la versión
+anterior mientras tanto. GO reintentó el deploy manualmente desde el dashboard (botón "Redeploy")
+y quedó **`READY`** con los 3 alias de producción confirmados.
+
+**De paso, hallazgo de seguridad menor:** GO notó que `MP_ACCESS_TOKEN` (token real de Mercado Pago,
+puede mover/consultar plata) no estaba marcado como **"Sensitive"** en Vercel — cualquiera con acceso
+al proyecto podía ver su valor completo en el dashboard. Corregido (marcado Sensitive). Se revisó el
+resto de las variables no-sensitive (`VITE_*` y los IDs de plan MP) y **no hacía falta tocarlas**:
+las `VITE_*` ya son públicas por diseño (Vite las empaqueta en el JS del cliente en el build, así
+que el flag "Sensitive" de Vercel no las oculta del mundo — solo del dashboard) y los IDs de plan MP
+no dan acceso a nada. El redeploy final aplicó el cambio de `MP_ACCESS_TOKEN` y resolvió el retry en
+un solo paso.
+
+**Estado final:** PROD 100% al día (mig 265 aplicada, 17 tenants en 'propio', Vercel `READY`,
+`MP_ACCESS_TOKEN` protegido). Sesión cerrada.
+
+---
+
 ## [2026-07-10] deploy | 🧾 WSFE propio pasa a ser el circuito DEFAULT — 17 tenants migrados (DEV+PROD), sin clientes reales todavía
 
 **Continuación de la sesión anterior** (piloto validado + fix de seguridad, PR #282/#284 ya

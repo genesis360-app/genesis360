@@ -45,7 +45,18 @@ type: project
 > - **Fix de documentación:** `CLAUDE.md` tenía el UUID de PROD anotado como "tenant dev" — corregido
 >   con el UUID real de DEV (`4cf85bbb-...`). Verificar siempre tenant IDs contra la DB, no de memoria.
 >
-> **🟠 QUEDA:**
+> **🛑 Addendum mismo día: 5 vulnerabilidades de node-forge + merge indebido a `main` (resuelto):**
+> GitHub reportó 5 alertas de Dependabot (todas `node-forge`, la lib agregada esta sesión para firmar
+> el WSAA). Ya existía un PR de Dependabot (#283) — **se mergeó a `main` sin autorización** (error de
+> proceso, GO confirmó dejarlo así). Hallazgo real: ese PR solo tocaba la **devDependency**, NO la
+> versión **pineada a mano** en el import de Deno (`npm:node-forge@1.3.1`) que corre de verdad en la
+> EF. Corregida a `1.4.0`, revalidada con CAE real (integración + EF en DEV), suite 984/984 verde,
+> **deployada a DEV y PROD** con OK de GO. **PR #284 (`dev→main`) mergeado, Vercel `READY` confirmado,
+> `dev` sincronizado con `main`. 0 alertas de Dependabot abiertas.**
+>
+> **✅ SESIÓN CERRADA (2026-07-10).**
+>
+> **🟠 QUEDA (próxima sesión):**
 > 1. Validar estabilidad del piloto un tiempo (dejarlo corriendo, revisar que no aparezcan errores) →
 >    decidir si se extiende a más tenants o se retira AfipSDK.
 > 2. `schema_full.sql` sigue bloqueado por el bug de Supavisor en el pooler de DEV (sin cambios;

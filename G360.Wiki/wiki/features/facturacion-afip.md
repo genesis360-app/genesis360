@@ -59,8 +59,15 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 > **Lección:** nunca sacar un chequeo de auth "porque no tengo la clave para probarlo" — si hace
 > falta invocar algo con service_role y no se tiene la clave, es señal de que ese approach no es
 > el correcto (usar el dashboard/CLI/canal ya confiado, no debilitar el endpoint).
-> **Falta:** validar estabilidad del piloto un tiempo → decidir si se extiende a más tenants o se
-> retira AfipSDK.
+> **✅ 2026-07-10 — extendido a TODOS los tenants:** sin clientes reales todavía (todos son de GO o
+> Fede), se aprovechó la ventana para dogfoodear ampliamente. **Mig 265**: `tenants.afip_provider`
+> DEFAULT → `'propio'` (DEV+PROD) — cualquier tenant nuevo arranca ahí. **Los 17 tenants existentes
+> flipeados a `'propio'`** (10 DEV + 7 PROD). Solo 3 tienen certificado cargado (mismo cert de
+> homologación reusado: "Familia Otranto De Porto" PROD, "Kiosco Buildi"/"Almacén Jorgito" DEV) —
+> los otros 14 no tienen CUIT/cert y dan error claro si intentan facturar sin configurarlo primero.
+> Decisión de GO: no configurar proactivamente, resolver caso a caso cuando cada tenant lo necesite.
+> AfipSDK sigue disponible como fallback manual por-tenant (flip del flag, sin deploy).
+> **Falta:** validar estabilidad con uso real → decidir si se retira AfipSDK del todo.
 > *(Fase 1 — adapter + flag, mig 250 — implementada 2026-07-01; con el v13 de PROD el adapter corre allá por primera vez, junto con fase 3.)*
 > GO decidió **construir el WSFE propio SIN romper AfipSDK y mantener AMBOS** (no big-bang), con vuelta atrás si el propio falla, hasta validar estabilidad. Diseño:
 > - **Adapter/provider:** interfaz común (`emitirComprobante`/`ultimoAutorizado`/`emitirNC`) con `AfipSdkProvider` (actual) + `WsfePropioProvider` (nuevo: TRA + firma CMS/PKCS#7 → WSAA `LoginCms` → TA cacheado ~12h → WSFEv1 SOAP `FECAESolicitar`/`FECompUltimoAutorizado`). **La lógica fiscal (payload A/B/C, alícuotas, condición IVA receptor, `ImpTotal`) se comparte** — solo cambia el transporte, así REGLA #0 no se bifurca.

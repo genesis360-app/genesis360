@@ -6,6 +6,36 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-10] deploy | 🧾 WSFE propio pasa a ser el circuito DEFAULT — 17 tenants migrados (DEV+PROD), sin clientes reales todavía
+
+**Continuación de la sesión anterior** (piloto validado + fix de seguridad, PR #282/#284 ya
+mergeados). GO pidió extender el circuito propio a TODOS los tenants existentes, aprovechando que
+todavía no hay clientes reales (todos son de GO o de Fede, su socio) para dogfoodearlo ampliamente.
+
+**1) Mig 265** (`afip_provider_default_propio.sql`): `ALTER TABLE tenants ALTER COLUMN
+afip_provider SET DEFAULT 'propio'` — cualquier tenant nuevo (alta de cliente real futura, o
+tenant de prueba) arranca directo en el circuito propio. Aplicada en **DEV y PROD**.
+
+**2) Flip masivo de datos** (UPDATE, no DDL — no requiere migración): los **17 tenants existentes
+quedaron en `afip_provider='propio'`** — 10 en DEV, 7 en PROD (confirmado con
+`count(*) FILTER (WHERE afip_provider='propio')` = total en ambos).
+
+**3) Estado real de certificados (auditado antes del flip):** solo **3 tenants tienen certificado
+AFIP cargado** hoy — "Familia Otranto De Porto" (PROD, el piloto), "Kiosco Buildi" y "Almacén
+Jorgito" (DEV), los 3 con el MISMO certificado de homologación reusado (CUIT `23-32031506-9`, RI).
+Los otros **14 tenants no tienen CUIT ni certificado configurado** — no podían facturar con ningún
+circuito antes de esto, y van a dar un error claro ("falta certificado") si intentan facturar ahora
+en 'propio' sin configurar Config → Facturación primero. **Decisión de GO: no configurar cert
+proactivamente en los 14 restantes — se resuelve orgánicamente cuando cada tenant lo necesite** (vía
+la UI, o pidiéndole a Claude que lo haga).
+
+**Estado final:** WSFE propio es ahora el circuito por defecto para tenants nuevos, y el activo en
+los 17 existentes. AfipSDK sigue disponible como fallback manual por-tenant (flip del flag, sin
+deploy) para cualquiera que dé problemas. Wiki tocado: `migraciones.md`, `log.md`,
+`project_pendientes.md`, `facturacion-afip.md`, `roadmap.md`, `index.md`.
+
+---
+
 ## [2026-07-10] deploy | 🎉 WSFE propio 100% funcionando en PROD (CAE real emitido) + incidente de seguridad detectado y resuelto + fix de documentación (tenant ID mal atribuido)
 
 **Continuación de la sesión anterior** (PR #282 recién mergeado, Vercel `READY`). GO pidió pilotear

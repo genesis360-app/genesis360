@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.124.0 — 🧾 Motor WSFE PROPIO (dual-provider fase 3) validado contra homologación (2026-07-09; infra en PROD 2026-07-10, PR #282 esperando merge)
+## v1.124.0 — 🧾 Motor WSFE PROPIO (dual-provider fase 3) — piloto 100% funcionando en PROD (2026-07-09/10, sesión cerrada)
 
 `WsfePropioProvider` real: TRA + firma CMS/PKCS#7 local (node-forge) → WSAA LoginCms → TA cacheado
 en DB (mig 264 `afip_wsaa_ta`) → WSFEv1 SOAP directo (`FECompUltimoAutorizado`/`FECAESolicitar`).
@@ -21,11 +21,17 @@ Lógica fiscal compartida intacta (mismo payload que AfipSDK). Validación compl
 homologación REAL: 26 unit nuevos (984/984 suite) + integración Node (B/C/NC-C con CAE) + runtime
 vía EF en DEV (B №26 y C №35 por 'propio' + regresión afipsdk №27; alternancia de numeración
 25→26→27 sin saltos). EFs `emitir-factura` v19 y `emitir-factura-plataforma` v2 en DEV. UAT §32.
-**2026-07-10:** mig 264 en PROD + EFs `emitir-factura` v13 / `emitir-factura-plataforma` v2
-deployadas; PR #282 mergeado, Vercel `READY`. **Tenant piloto "Familia Otranto De Porto" flipeado a
-'propio' en PROD — CAE real emitido (`86280549105220`), circuito 100% operativo.** Incidente de
-seguridad menor detectado y resuelto en el camino (EF temporal sin auth, sin explotación — ver
-log.md). **Pendiente:** validar estabilidad del piloto. Ver [[wiki/features/facturacion-afip]].
+**2026-07-10:** mig 264 en PROD + EFs deployadas; PR #282 mergeado, Vercel `READY`. **Tenant piloto
+"Familia Otranto De Porto" flipeado a 'propio' en PROD — CAE real emitido (`86280549105220`),
+circuito 100% operativo.** Incidente de seguridad menor (EF temporal sin auth, sin explotación) +
+merge indebido a `main` (autorizado post-facto) — ambos documentados en log.md. **Fix de seguridad
+real:** node-forge 1.3.1→1.4.0 en el código que corre en Deno (el bump de Dependabot solo cubría la
+devDependency) — revalidado con CAE real, deployado a DEV+PROD, **PR #284 mergeado, Vercel `READY`**,
+0 alertas de Dependabot abiertas. **Mismo día — extendido a TODOS los tenants:** mig 265
+(`afip_provider` DEFAULT → 'propio' en DEV+PROD) + los 17 tenants existentes (10 DEV + 7 PROD)
+flipeados a 'propio' — sin clientes reales todavía (todos de GO/Fede), ventana ideal para
+dogfoodear. Solo 3 tienen certificado (mismo cert de homologación reusado); el resto se configura
+orgánicamente cuando lo necesite. Ver [[wiki/features/facturacion-afip]].
 
 ## v1.123.0 — 🚀 Deploy a PROD: Fase 2 batch + arrepentimiento + facturación de plataforma + pago manual + perf DB (✅ PROD, cerrado 2026-07-09)
 

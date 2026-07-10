@@ -6,6 +6,32 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-10] update | 📖 Runbook: cómo configurar un tenant para WSFE propio desde cero (Config → Facturación)
+
+GO pidió una guía paso a paso de qué configurar en Config → Facturación para dejar un tenant
+funcionando con el circuito propio, dado que el Token AfipSDK ya no es obligatorio ahí. Se
+investigó el código real de `ConfigPage.tsx` (tab 'facturacion') para dar labels exactos, no
+supuestos.
+
+**Hallazgo clave documentado:** `tenants.afip_provider` (el flag AfipSDK↔propio) **no tiene NINGÚN
+control en el frontend** — se lee solo server-side en `emitir-factura/index.ts` y se setea
+exclusivamente por SQL (como se hizo esta sesión con mig 265 + el flip masivo). En la práctica no
+hace falta tocarlo más: el default ya quedó en 'propio' desde mig 265.
+
+**Segundo hallazgo (gotcha real de UI):** el toggle "Modo PRODUCCIÓN/PRUEBA" de Config →
+Facturación exige Token AfipSDK guardado para habilitarse (`afipDatosListos`,
+`ConfigPage.tsx:883`), sin contemplar el circuito propio — que no usa ese token. No bloquea nada
+mientras se siga en homologación, pero va a hacer falta un fix (o un flip por SQL) el día que se
+quiera pasar a producción real un tenant 100%-propio sin AfipSDK.
+
+**Runbook completo agregado a** `wiki/features/facturacion-afip.md` — sección nueva "Runbook —
+configurar un tenant para el circuito WSFE PROPIO desde cero", con tabla de campos exacta
+(label→columna→obligatoriedad) para las 3 secciones de Config → Facturación (Facturación
+Electrónica, Puntos de venta, Certificados). Sin cambios de código en esta entrada — solo
+documentación.
+
+---
+
 ## [2026-07-10] deploy | ✅ PR #285 mergeado + retry de deploy (error de infra de Vercel) + MP_ACCESS_TOKEN marcado Sensitive
 
 **PR #285** (mig 265 + flip masivo de tenants a WSFE propio) mergeado a `main` por GO. El primer

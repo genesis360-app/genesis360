@@ -181,8 +181,10 @@ tenants:
   razon_social_fiscal TEXT
   domicilio_fiscal TEXT
   umbral_factura_b DECIMAL
-  afipsdk_token TEXT             -- oculto en UI
+  afipsdk_token TEXT             -- solo lo usa el circuito 'afipsdk', ver dual-provider arriba
   afip_produccion BOOLEAN        -- false=homologación / true=producción (mig 210)
+  afip_provider TEXT             -- 'afipsdk' | 'propio' (mig 250, default 'propio' desde mig 265)
+                                  -- ⚠ SIN control en la UI — solo por SQL. Ver runbook WSFE propio abajo.
 ```
 
 **Puntos de venta AFIP:** CRUD colapsable → `puntos_venta_afip(id, sucursal_id, numero, nombre, activo)`
@@ -298,6 +300,53 @@ prueba. El log de la EF muestra `[homologación]`.
 4. Banda **Modo de emisión** → **PRODUCCIÓN** (confirmar checkbox).
 5. **Smoke real:** emitir un comprobante de monto chico → verificar CAE en el PDF y en
    "Mis Comprobantes" de AFIP. El log de la EF muestra `[PRODUCCIÓN]`.
+
+---
+
+## Runbook — configurar un tenant para el circuito WSFE PROPIO desde cero (2026-07-10)
+
+A diferencia del runbook de AfipSDK de arriba, acá **no hace falta ningún Token AfipSDK** — el
+circuito propio firma el WSAA localmente con el certificado del tenant. Componente:
+`ConfigPage.tsx` (tab `'facturacion'`, [src/pages/ConfigPage.tsx:2282](../../../src/pages/ConfigPage.tsx)).
+
+**1. Config → Facturación → sección "Facturación Electrónica (ARCA)"**
+| Campo (label exacto en la UI) | Va a | Obligatorio |
+|---|---|---|
+| CUIT | `tenants.cuit` | sí |
+| Condición IVA del emisor (RI / Monotributista / Exento) | `tenants.condicion_iva_emisor` | sí — define A/B (RI) vs solo C (Mono/Exento) |
+| Razón social fiscal / Domicilio fiscal | `tenants.razon_social_fiscal` / `domicilio_fiscal` | no, mejora el PDF |
+| Umbral Factura B ($) | `tenants.umbral_factura_b` | no, default $68.305,16 |
+| **Token AfipSDK** | `tenants.afipsdk_token` | **NO — el circuito propio ni lo mira.** Ver gotcha del toggle de Producción más abajo. |
+| Toggle **"Habilitada"** | `tenants.facturacion_habilitada` | sí — requiere CUIT + Condición IVA ya guardados; sin esto no aparece el botón "Facturar" en Ventas |
+
+**2. Sección "Puntos de venta AFIP"** — agregar ≥1 con **Número** (obligatorio; Nombre opcional).
+Sin esto no hay de dónde elegir el PV al facturar (`VentasPage.tsx` — dropdown `facturaPV`).
+
+**3. Sección "Certificados AFIP"** — lo que distingue al circuito propio: CUIT (obligatorio,
+repetido en este bloque) + **Certificado (.crt)** + **Clave privada (.key) sin passphrase**
+(obligatorios los dos). El botón "Guardar" queda deshabilitado hasta tener ambos archivos + CUIT.
+⚠ La UI no lo marca como bloqueante visualmente, pero **sin certificado activo la EF rechaza la
+emisión con 400** ("El tenant está en circuito WSFE propio pero no tiene certificado AFIP
+activo") — es un requisito real de todos modos.
+
+**4. `tenants.afip_provider` ('afipsdk' vs 'propio')** — **no tiene ningún control en
+`ConfigPage.tsx` ni en ningún otro lugar del frontend**, solo se lee server-side en
+[emitir-factura/index.ts:72,80](../../../supabase/functions/emitir-factura/index.ts). Se setea
+por SQL. **Desde mig 265 (2026-07-10) es el DEFAULT para tenants nuevos y ya está en `'propio'`
+en los 17 tenants existentes** — en la práctica no hace falta tocarlo. Para volver un tenant
+puntual a `'afipsdk'` (rollback), hay que pedirlo (UPDATE por SQL, sin deploy).
+
+**5. ⚠ Gotcha conocido — toggle "Modo PRODUCCIÓN/PRUEBA":** el chequeo de habilitación de este
+toggle (`afipDatosListos`, `ConfigPage.tsx:883`) exige **CUIT + Token AfipSDK guardados**, sin
+contemplar que el circuito propio no usa ese token para nada. Mientras el tenant esté en
+homologación (recomendado para seguir probando) no afecta. Si en algún momento hace falta pasar
+un tenant 100%-propio a producción real sin cargar nunca un Token AfipSDK, hay 2 salidas: (a)
+arreglar ese chequeo en el código para que sea propio-aware, o (b) setear
+`tenants.afip_produccion=true` directo por SQL, salteando el toggle de la UI.
+
+**Resumen mínimo para que funcione:** CUIT + Condición IVA + ≥1 Punto de venta + Certificado
+(.crt+.key) + toggle "Habilitada". Nada de Token AfipSDK, nada de tocar `afip_provider` (ya está
+bien en todos los tenants existentes).
 
 ---
 

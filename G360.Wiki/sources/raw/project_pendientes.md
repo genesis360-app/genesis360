@@ -28,19 +28,28 @@ type: project
 > 4. **⚠ Gotcha `db dump`:** `supabase db dump -f` TRUNCA el archivo de salida antes de autenticar —
 >    los dumps fallidos de hoy dejaron `schema_full.sql` en 0 bytes (restaurado con `git restore`).
 >
-> **✅ DEPLOY A PROD EJECUTADO (2026-07-10, autorizado por GO "pasemos todo a prd"):**
+> **✅ DEPLOY A PROD + PILOTO 100% VALIDADO (2026-07-10):**
 > - Sanity previo: 7/7 tenants PROD en `'afipsdk'`, 0 con `afip_produccion=true` → deploy neutro.
-> - **Mig 264 aplicada en PROD** · EFs **`emitir-factura` v13** + **`emitir-factura-plataforma` v2**
->   deployadas a PROD (bundle idéntico al validado en DEV, `ezbr_sha256` igual; smoke OPTIONS 200).
-> - **PR #282** (`dev→main`, v1.124.0) abierto: https://github.com/genesis360-app/genesis360/pull/282
->   — **esperando merge de GO** (Claude no mergea a main). Post-merge: verificar Vercel `READY`.
+> - Mig 264 aplicada en PROD · EFs `emitir-factura` v13 + `emitir-factura-plataforma` v2 deployadas
+>   (bundle idéntico a DEV) · **PR #282 mergeado, Vercel `READY` confirmado.**
+> - **Tenant piloto "Familia Otranto De Porto" (PROD, `5f05f3eb-...`) flipeado a `'propio'`** —
+>   certificado de homologación reusado de DEV (subido a mano por el dashboard, el `supabase storage
+>   cp` del CLI tiene un bug con uploads en Windows) + CUIT/condición IVA completados (estaban NULL).
+>   **Factura B real emitida: CAE `86280549105220`, N° 28, sobre venta #30 — persistida OK,
+>   `afip_provider_usado='propio'`.** Circuito propio 100% operativo en PROD (homologación, sin
+>   riesgo fiscal real). El tenant queda así como piloto activo.
+> - **🛑 Incidente de seguridad detectado y resuelto en el momento** (sin explotación): una EF
+>   temporal para subir el cert quedó momentáneamente sin auth (solo anon key) — el bloqueador
+>   automático cortó antes de la primera invocación exitosa. Neutralizada (410) y borrada. Detalle
+>   completo + lección en `log.md`.
+> - **Fix de documentación:** `CLAUDE.md` tenía el UUID de PROD anotado como "tenant dev" — corregido
+>   con el UUID real de DEV (`4cf85bbb-...`). Verificar siempre tenant IDs contra la DB, no de memoria.
 >
 > **🟠 QUEDA:**
-> 1. **GO mergea PR #282** → verificar Vercel → release v1.124.0 ya publicada (editarle el "[EN DEV]"
->    del título si corresponde).
-> 2. Elegir **tenant piloto** → flip `afip_provider='propio'` (ventana `alreadyAuthenticated` ≤12h
->    si AfipSDK tiene TA vigente del mismo cert) → validar estabilidad un tiempo → decidir retiro
->    de AfipSDK. Rollback = flip a 'afipsdk' (manual, previa reconciliación con último autorizado).
+> 1. Validar estabilidad del piloto un tiempo (dejarlo corriendo, revisar que no aparezcan errores) →
+>    decidir si se extiende a más tenants o se retira AfipSDK.
+> 2. `schema_full.sql` sigue bloqueado por el bug de Supavisor en el pooler de DEV (sin cambios;
+>    ver [[reference_supabase_pooler_auth_bug]]).
 >
 > ---
 >

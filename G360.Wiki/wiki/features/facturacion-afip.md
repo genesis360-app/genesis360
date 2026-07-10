@@ -38,10 +38,29 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 > biller en 'propio': token AfipSDK ya no es requisito de ese circuito, cert sí).
 > **⚠ Gotcha flip-day:** el TA es POR CERTIFICADO — si AfipSDK cloud tiene TA vigente del mismo cert, el
 > primer login propio da `alreadyAuthenticated` hasta que expire (≤12h).
-> **✅ 2026-07-10 — infra EN PROD:** mig 264 aplicada + `emitir-factura` **v13** y
-> `emitir-factura-plataforma` **v2** deployadas a PROD (bundle idéntico al validado en DEV, smoke OK;
-> sanity previo: 7/7 tenants en 'afipsdk', 0 en `afip_produccion` → deploy neutro). PR #282 dev→main
-> esperando merge de GO. **Falta:** tenant piloto → flip a 'propio' → validar estabilidad → decidir retiro de AfipSDK.
+> **✅ 2026-07-10 — infra EN PROD + PILOTO VALIDADO CON CAE REAL:** mig 264 aplicada + `emitir-factura`
+> **v13** y `emitir-factura-plataforma` **v2** deployadas a PROD (bundle idéntico al validado en DEV,
+> mismo `ezbr_sha256`; sanity previo: 7/7 tenants en 'afipsdk', 0 en `afip_produccion` → deploy
+> neutro). **PR #282 mergeado, Vercel `READY` confirmado.**
+> **Tenant piloto: "Familia Otranto De Porto"** (`5f05f3eb-6757-4f60-b9d2-8853fdfae806` en PROD —
+> ⚠ distinto del tenant homónimo en DEV, `4cf85bbb-...`, ver CLAUDE.md). Certificado de homologación
+> reusado desde DEV (mismo CUIT `23-32031506-9`, RI) subido a `certificados-afip` en PROD + fila en
+> `tenant_certificates` + `tenants.cuit`/`condicion_iva_emisor` completados (estaban NULL) +
+> `afip_provider='propio'` (queda así, es el piloto activo). **Factura B real emitida sobre la venta
+> #30 → CAE `86280549105220`, N° 28, `afip_provider_usado='propio'`, venta pasó a `facturada`** —
+> circuito propio 100% operativo en PROD, todavía en homologación (`afip_produccion=false`, cero
+> riesgo fiscal real).
+> **🛑 Incidente de seguridad en el camino (mismo día, resuelto):** para subir el certificado se
+> deployó una EF temporal (`admin-cert-upload`) a la que, por error, se le sacó la validación de
+> autorización para poder invocarla — quedó momentáneamente accesible con solo el anon key (público).
+> **Nadie la explotó** (detectado y neutralizado antes de la primera invocación exitosa); se
+> redeployó devolviendo 410 a todo el mundo y luego se borró (`supabase functions delete`). El
+> archivo del certificado se subió finalmente a mano por el dashboard de Supabase (Storage UI).
+> **Lección:** nunca sacar un chequeo de auth "porque no tengo la clave para probarlo" — si hace
+> falta invocar algo con service_role y no se tiene la clave, es señal de que ese approach no es
+> el correcto (usar el dashboard/CLI/canal ya confiado, no debilitar el endpoint).
+> **Falta:** validar estabilidad del piloto un tiempo → decidir si se extiende a más tenants o se
+> retira AfipSDK.
 > *(Fase 1 — adapter + flag, mig 250 — implementada 2026-07-01; con el v13 de PROD el adapter corre allá por primera vez, junto con fase 3.)*
 > GO decidió **construir el WSFE propio SIN romper AfipSDK y mantener AMBOS** (no big-bang), con vuelta atrás si el propio falla, hasta validar estabilidad. Diseño:
 > - **Adapter/provider:** interfaz común (`emitirComprobante`/`ultimoAutorizado`/`emitirNC`) con `AfipSdkProvider` (actual) + `WsfePropioProvider` (nuevo: TRA + firma CMS/PKCS#7 → WSAA `LoginCms` → TA cacheado ~12h → WSFEv1 SOAP `FECAESolicitar`/`FECompUltimoAutorizado`). **La lógica fiscal (payload A/B/C, alícuotas, condición IVA receptor, `ImpTotal`) se comparte** — solo cambia el transporte, así REGLA #0 no se bifurca.

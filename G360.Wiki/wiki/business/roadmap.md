@@ -27,8 +27,11 @@ circuito 100% operativo.** Incidente de seguridad menor (EF temporal sin auth, s
 merge indebido a `main` (autorizado post-facto) — ambos documentados en log.md. **Fix de seguridad
 real:** node-forge 1.3.1→1.4.0 en el código que corre en Deno (el bump de Dependabot solo cubría la
 devDependency) — revalidado con CAE real, deployado a DEV+PROD, **PR #284 mergeado, Vercel `READY`**,
-0 alertas de Dependabot abiertas. **Pendiente:** validar estabilidad del piloto. Ver
-[[wiki/features/facturacion-afip]].
+0 alertas de Dependabot abiertas. **Mismo día — extendido a TODOS los tenants:** mig 265
+(`afip_provider` DEFAULT → 'propio' en DEV+PROD) + los 17 tenants existentes (10 DEV + 7 PROD)
+flipeados a 'propio' — sin clientes reales todavía (todos de GO/Fede), ventana ideal para
+dogfoodear. Solo 3 tienen certificado (mismo cert de homologación reusado); el resto se configura
+orgánicamente cuando lo necesite. Ver [[wiki/features/facturacion-afip]].
 
 ## v1.123.0 — 🚀 Deploy a PROD: Fase 2 batch + arrepentimiento + facturación de plataforma + pago manual + perf DB (✅ PROD, cerrado 2026-07-09)
 

@@ -149,4 +149,4 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-07-10 — **Sesión cerrada: motor WSFE PROPIO piloteado con éxito en PROD** (CAE real `86280549105220`, tenant "Familia Otranto De Porto") + **fix de seguridad real** (node-forge 1.3.1→1.4.0 en el código que corre en Deno, no solo la devDependency; 0 alertas de Dependabot abiertas) — PR #282 y PR #284 mergeados a `main`, Vercel `READY` confirmado ([[wiki/features/facturacion-afip]]). Sesión previa: **Deploy a PROD 100% cerrado
+*Última actualización: 2026-07-10 — **WSFE propio extendido a TODOS los tenants** (mig 265, default de `afip_provider` → 'propio'; los 17 tenants existentes flipeados, 10 DEV + 7 PROD) — sin clientes reales todavía, ventana para dogfoodear ([[wiki/features/facturacion-afip]]). Sesión previa: motor WSFE PROPIO piloteado con éxito en PROD (CAE real `86280549105220`) + fix de seguridad real (node-forge 1.3.1→1.4.0) — PR #282 y PR #284 mergeados, Vercel `READY`. Sesión anterior: **Deploy a PROD 100% cerrado

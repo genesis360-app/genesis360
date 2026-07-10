@@ -38,8 +38,11 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 > biller en 'propio': token AfipSDK ya no es requisito de ese circuito, cert sí).
 > **⚠ Gotcha flip-day:** el TA es POR CERTIFICADO — si AfipSDK cloud tiene TA vigente del mismo cert, el
 > primer login propio da `alreadyAuthenticated` hasta que expire (≤12h).
-> **Falta para PROD:** mig 264 + deploy de ambas EFs (OK de GO) → tenant piloto → validar estabilidad → decidir retiro de AfipSDK.
-> *(Fase 1 — adapter + flag, mig 250 — implementada 2026-07-01; mig 250 ya está en PROD desde v1.123.0, la EF de PROD sigue en la versión pre-adapter.)*
+> **✅ 2026-07-10 — infra EN PROD:** mig 264 aplicada + `emitir-factura` **v13** y
+> `emitir-factura-plataforma` **v2** deployadas a PROD (bundle idéntico al validado en DEV, smoke OK;
+> sanity previo: 7/7 tenants en 'afipsdk', 0 en `afip_produccion` → deploy neutro). PR #282 dev→main
+> esperando merge de GO. **Falta:** tenant piloto → flip a 'propio' → validar estabilidad → decidir retiro de AfipSDK.
+> *(Fase 1 — adapter + flag, mig 250 — implementada 2026-07-01; con el v13 de PROD el adapter corre allá por primera vez, junto con fase 3.)*
 > GO decidió **construir el WSFE propio SIN romper AfipSDK y mantener AMBOS** (no big-bang), con vuelta atrás si el propio falla, hasta validar estabilidad. Diseño:
 > - **Adapter/provider:** interfaz común (`emitirComprobante`/`ultimoAutorizado`/`emitirNC`) con `AfipSdkProvider` (actual) + `WsfePropioProvider` (nuevo: TRA + firma CMS/PKCS#7 → WSAA `LoginCms` → TA cacheado ~12h → WSFEv1 SOAP `FECAESolicitar`/`FECompUltimoAutorizado`). **La lógica fiscal (payload A/B/C, alícuotas, condición IVA receptor, `ImpTotal`) se comparte** — solo cambia el transporte, así REGLA #0 no se bifurca.
 > - **Selector `tenants.afip_provider` (`'afipsdk'|'propio'`)** — mismo patrón que `afip_produccion` (mig 210): migración por-tenant + rollback instantáneo (flip de flag, sin deploy). Guardar `afip_provider_usado` en el comprobante.

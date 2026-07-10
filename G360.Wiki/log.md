@@ -6,6 +6,22 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-10] deploy | 🚀 WSFE propio a PROD: mig 264 + EFs deployadas — PR #282 esperando merge de GO
+
+GO autorizó "pasemos todo a prd". Ejecutado en orden (migs aditivas antes del merge):
+1. **Sanity previo en PROD:** 7/7 tenants en `'afipsdk'`, 0 con `afip_produccion=true` → el deploy
+   es conductualmente neutro (el circuito propio solo se activa flipeando el flag por tenant).
+2. **Mig 264 (`afip_wsaa_ta`) aplicada en PROD.**
+3. **EFs deployadas a PROD:** `emitir-factura` **v13** (⚠ estrena fase 1 adapter + fase 3 juntas —
+   PROD estaba pre-adapter) + `emitir-factura-plataforma` **v2**. Bundle byte-idéntico al validado
+   en DEV (`ezbr_sha256` coincide). Smoke OPTIONS 200 en ambas.
+4. **PR #282 (`dev→main`, "v1.124.0 — Motor WSFE propio…") abierto** —
+   https://github.com/genesis360-app/genesis360/pull/282 — **esperando merge de GO**.
+
+**Post-merge (pendiente):** verificar Vercel `READY` · tenant piloto a 'propio' cuando GO decida.
+
+---
+
 ## [2026-07-09] update | 🧾 Motor WSFE PROPIO (dual-provider fase 3) — implementado y validado 100% contra homologación real · v1.124.0 EN DEV
 
 **Séptima sesión del día.** GO pidió armar el motor de facturación propio (WSAA + WSFEv1) según el

@@ -28,9 +28,16 @@ type: project
 > 4. **⚠ Gotcha `db dump`:** `supabase db dump -f` TRUNCA el archivo de salida antes de autenticar —
 >    los dumps fallidos de hoy dejaron `schema_full.sql` en 0 bytes (restaurado con `git restore`).
 >
-> **🟠 QUEDA (para llevar el WSFE propio a PROD, requiere OK de GO):**
-> 1. Aplicar **mig 264 en PROD** + deploy de `emitir-factura` y `emitir-factura-plataforma` a PROD
->    (⚠ el `emitir-factura` de PROD sigue PRE-adapter: este deploy estrena fase 1+3 juntas allá).
+> **✅ DEPLOY A PROD EJECUTADO (2026-07-10, autorizado por GO "pasemos todo a prd"):**
+> - Sanity previo: 7/7 tenants PROD en `'afipsdk'`, 0 con `afip_produccion=true` → deploy neutro.
+> - **Mig 264 aplicada en PROD** · EFs **`emitir-factura` v13** + **`emitir-factura-plataforma` v2**
+>   deployadas a PROD (bundle idéntico al validado en DEV, `ezbr_sha256` igual; smoke OPTIONS 200).
+> - **PR #282** (`dev→main`, v1.124.0) abierto: https://github.com/genesis360-app/genesis360/pull/282
+>   — **esperando merge de GO** (Claude no mergea a main). Post-merge: verificar Vercel `READY`.
+>
+> **🟠 QUEDA:**
+> 1. **GO mergea PR #282** → verificar Vercel → release v1.124.0 ya publicada (editarle el "[EN DEV]"
+>    del título si corresponde).
 > 2. Elegir **tenant piloto** → flip `afip_provider='propio'` (ventana `alreadyAuthenticated` ≤12h
 >    si AfipSDK tiene TA vigente del mismo cert) → validar estabilidad un tiempo → decidir retiro
 >    de AfipSDK. Rollback = flip a 'afipsdk' (manual, previa reconciliación con último autorizado).

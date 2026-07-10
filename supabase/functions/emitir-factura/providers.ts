@@ -18,7 +18,7 @@
 // @ts-ignore — npm: import para Deno
 import Afip from 'npm:@afipsdk/afip.js'
 // @ts-ignore — npm: import para Deno (firma CMS/PKCS#7 del TRA, pure-JS)
-import forge from 'npm:node-forge@1.3.1'
+import forge from 'npm:node-forge@1.4.0'
 import { signTra } from './wsfe-sign.ts'
 import {
   buildTRA,

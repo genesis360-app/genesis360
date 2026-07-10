@@ -6,6 +6,44 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🧾 (2026-07-09 · MOTOR WSFE PROPIO — fase 3 IMPLEMENTADA Y VALIDADA contra homologación real · v1.124.0 EN DEV, mig 264 en DEV)
+> **Séptima sesión del día.** `WsfePropioProvider` REAL (ya no stub): TRA firmado CMS/PKCS#7
+> (`node-forge` SHA-256, cert del tenant) → WSAA `LoginCms` → **TA cacheado en `afip_wsaa_ta`
+> (mig 264**, service_role-only, clave `(cuit,service,environment)` — AFIP no re-emite TA vigente,
+> `coe.alreadyAuthenticated`) → WSFEv1 SOAP directo. Archivos nuevos:
+> `emitir-factura/wsfe-core.ts` (núcleo PURO, orden de campos del XSD real — ⚠ `ImpTrib` ANTES de
+> `ImpIVA`) + `wsfe-sign.ts` (firma compartida Deno/Node por inyección de forge). La lógica fiscal
+> de `index.ts` quedó INTACTA (mismo payload para ambos providers).
+> 1. **Validado contra homologación REAL:** 26 unit nuevos (984/984 suite) · integración Node
+>    (`tests/integration/wsfe-homologacion.ts`): FEDummy + WSAA + **B CAE `86280547714450` + C
+>    `…714463` + NC-C asociada `…714476`** · runtime vía EF en DEV: **B №26 `86280547716423` y C №35
+>    `…717526` por 'propio'** (venta real → cae + `facturada` + `afip_provider_usado='propio'`) +
+>    **regresión afipsdk B №27 `…717673`** (primera corrida runtime del refactor fase 1).
+>    **Alternancia de numeración probada №25→26→27 sin saltos** (propiedad clave). UAT **§32**.
+> 2. **Deploys a DEV:** `emitir-factura` v19 + `emitir-factura-plataforma` v2 (esta última ahora
+>    acepta biller en 'propio': token AfipSDK solo requisito del circuito afipsdk; cert requisito
+>    del propio + TaCache). Tenants de prueba restaurados a 'afipsdk'.
+> 3. **⚠ Gotcha flip-day:** el TA de WSAA es POR CERTIFICADO — si AfipSDK cloud tiene TA vigente del
+>    mismo cert, el primer login propio da `alreadyAuthenticated` hasta que expire (≤12h).
+> 4. **⚠ Gotcha `db dump`:** `supabase db dump -f` TRUNCA el archivo de salida antes de autenticar —
+>    los dumps fallidos de hoy dejaron `schema_full.sql` en 0 bytes (restaurado con `git restore`).
+>
+> **✅ DEPLOY A PROD EJECUTADO (2026-07-10, autorizado por GO "pasemos todo a prd"):**
+> - Sanity previo: 7/7 tenants PROD en `'afipsdk'`, 0 con `afip_produccion=true` → deploy neutro.
+> - **Mig 264 aplicada en PROD** · EFs **`emitir-factura` v13** + **`emitir-factura-plataforma` v2**
+>   deployadas a PROD (bundle idéntico al validado en DEV, `ezbr_sha256` igual; smoke OPTIONS 200).
+> - **PR #282** (`dev→main`, v1.124.0) abierto: https://github.com/genesis360-app/genesis360/pull/282
+>   — **esperando merge de GO** (Claude no mergea a main). Post-merge: verificar Vercel `READY`.
+>
+> **🟠 QUEDA:**
+> 1. **GO mergea PR #282** → verificar Vercel → release v1.124.0 ya publicada (editarle el "[EN DEV]"
+>    del título si corresponde).
+> 2. Elegir **tenant piloto** → flip `afip_provider='propio'` (ventana `alreadyAuthenticated` ≤12h
+>    si AfipSDK tiene TA vigente del mismo cert) → validar estabilidad un tiempo → decidir retiro
+>    de AfipSDK. Rollback = flip a 'afipsdk' (manual, previa reconciliación con último autorizado).
+>
+> ---
+>
 > ### ✅ (2026-07-09 · DEPLOY A PROD 100% CERRADO — v1.123.0 tageada + release publicada + Vercel `READY` en ambos proyectos) + 🔒 incidente de seguridad hallado y cerrado en la misma sesión (Google Maps API key expuesta en `test-maps.html`)
 > **Sexta sesión del día** (después de v1.122.0, la validación e2e `sin_biller`, WH-SIG+mig 263, el
 > cierre `crear-suscripcion`+fix EnviosPage, y el deploy con infra 100% en PROD pero código pendiente

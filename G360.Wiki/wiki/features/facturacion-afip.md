@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-06-14
+updated: 2026-07-09
 ---
 
 # Facturación Electrónica AFIP
@@ -23,7 +23,26 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 > A pesar del título "sin intermediario" de abajo (que fue la **intención**), lo deployado **usa AfipSDK (su nube), no una integración directa al WSFE**. En `emitir-factura`: `import Afip from 'npm:@afipsdk/afip.js'`, el `tenant.afipsdk_token` es **obligatorio** (línea 74), el CAE se pide con `eb.createVoucher()` (método de AfipSDK) y la firma WSAA se hace "en su nube". Verificado: **cero** rastro de WSFE directo en el repo (`wsaa.afip`/`servicios1.afip`/`wsfev1`/`FECAESolicitar`/`LoginCms`). El cert del tenant se pasa a AfipSDK pero el request **pasa por ellos**. **Costo:** AFIP/ARCA = $0; AfipSDK = free tier + pago por volumen, token **por tenant** (si cada cliente trae su cuenta, el costo es del cliente).
 
 > ### 🎯 Estrategia de migración: DUAL-PROVIDER con rollback (decisión GO 2026-07-01)
-> **✅ Fase 1 IMPLEMENTADA EN DEV (2026-07-01, mig 250, sin deploy):** adapter + flag por-tenant, refactor **no-funcional** (todos en `'afipsdk'`, comportamiento idéntico). Falta: aplicar mig 250 en PROD + deploy del EF (OK de GO) + prueba runtime en homologación. Fase 3 = implementar `WsfePropioProvider`.
+> **✅ Fase 3 IMPLEMENTADA Y VALIDADA EN DEV (2026-07-09, v1.124.0, mig 264):** `WsfePropioProvider` REAL —
+> TRA firmado CMS/PKCS#7 con el cert del tenant (`node-forge`, SHA-256) → WSAA `LoginCms` → **TA cacheado en
+> la tabla `afip_wsaa_ta`** (mig 264, service_role-only; clave `(cuit, service, environment)` — AFIP no
+> re-emite TA vigente, `coe.alreadyAuthenticated`) → WSFEv1 SOAP directo (`FECompUltimoAutorizado` /
+> `FECAESolicitar`). Archivos: `emitir-factura/wsfe-core.ts` (núcleo PURO sin deps: builders/parsers XML en el
+> **orden exacto del XSD** — ⚠ `ImpTrib` va ANTES de `ImpIVA`; testeado por vitest SIN espejo, importa el
+> módulo real) + `wsfe-sign.ts` (firma CMS con forge inyectado, compartida Deno/Node) + `providers.ts`.
+> **Validación completa contra homologación REAL:** 26 unit + integración Node
+> (`tests/integration/wsfe-homologacion.ts`: FEDummy+WSAA+B+C+NC-C con CAE) + runtime vía EF en DEV
+> (Factura B CAE `86280547716423` y C `86280547717526` por 'propio'; regresión afipsdk CAE `86280547717673`;
+> **alternancia de numeración probada: B №25 propio→26 propio→27 afipsdk sin saltos**). UAT §32.
+> `emitir-factura` v19 + `emitir-factura-plataforma` v2 deployadas a **DEV** (la de plataforma también acepta
+> biller en 'propio': token AfipSDK ya no es requisito de ese circuito, cert sí).
+> **⚠ Gotcha flip-day:** el TA es POR CERTIFICADO — si AfipSDK cloud tiene TA vigente del mismo cert, el
+> primer login propio da `alreadyAuthenticated` hasta que expire (≤12h).
+> **✅ 2026-07-10 — infra EN PROD:** mig 264 aplicada + `emitir-factura` **v13** y
+> `emitir-factura-plataforma` **v2** deployadas a PROD (bundle idéntico al validado en DEV, smoke OK;
+> sanity previo: 7/7 tenants en 'afipsdk', 0 en `afip_produccion` → deploy neutro). PR #282 dev→main
+> esperando merge de GO. **Falta:** tenant piloto → flip a 'propio' → validar estabilidad → decidir retiro de AfipSDK.
+> *(Fase 1 — adapter + flag, mig 250 — implementada 2026-07-01; con el v13 de PROD el adapter corre allá por primera vez, junto con fase 3.)*
 > GO decidió **construir el WSFE propio SIN romper AfipSDK y mantener AMBOS** (no big-bang), con vuelta atrás si el propio falla, hasta validar estabilidad. Diseño:
 > - **Adapter/provider:** interfaz común (`emitirComprobante`/`ultimoAutorizado`/`emitirNC`) con `AfipSdkProvider` (actual) + `WsfePropioProvider` (nuevo: TRA + firma CMS/PKCS#7 → WSAA `LoginCms` → TA cacheado ~12h → WSFEv1 SOAP `FECAESolicitar`/`FECompUltimoAutorizado`). **La lógica fiscal (payload A/B/C, alícuotas, condición IVA receptor, `ImpTotal`) se comparte** — solo cambia el transporte, así REGLA #0 no se bifurca.
 > - **Selector `tenants.afip_provider` (`'afipsdk'|'propio'`)** — mismo patrón que `afip_produccion` (mig 210): migración por-tenant + rollback instantáneo (flip de flag, sin deploy). Guardar `afip_provider_usado` en el comprobante.

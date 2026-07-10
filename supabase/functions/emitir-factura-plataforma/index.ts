@@ -92,7 +92,8 @@ Deno.serve(async (req) => {
       )
       return json({ ok: false, facturado: false, reason: 'sin_biller' })
     }
-    if (!biller.afipsdk_token) {
+    // El token de AfipSDK solo es requisito del circuito 'afipsdk'; el propio usa cert+key.
+    if (biller.afip_provider !== 'propio' && !biller.afipsdk_token) {
       await alertarSoporte(
         '🛑 Factura de plataforma sin emitir — falta token AfipSDK',
         `<p>Cobro confirmado (${origenPago}, $${monto}) pero <code>platform_billers</code> (${biller.nombre}) no tiene <code>afipsdk_token</code> configurado todavía. Concepto: ${concepto}.</p>`,
@@ -118,8 +119,36 @@ Deno.serve(async (req) => {
     const masterKill = Deno.env.get('AFIP_FORCE_HOMOLOGACION') === 'true'
     const isProduction = !masterKill && biller.afip_produccion === true
     const providerName: AfipProviderName = biller.afip_provider === 'propio' ? 'propio' : 'afipsdk'
+    if (providerName === 'propio' && (!certPem || !keyPem)) {
+      await alertarSoporte(
+        '🛑 Factura de plataforma sin emitir — biller en WSFE propio sin certificado',
+        `<p>Cobro confirmado (${origenPago}, $${monto}) pero el biller (${biller.nombre}) está en <code>afip_provider='propio'</code> sin cert/key en el bucket. Concepto: ${concepto}.</p><p>Cargar certificado o volver el biller a 'afipsdk'.</p>`,
+      )
+      return json({ ok: false, facturado: false, reason: 'sin_cert' })
+    }
+    // Cache del TA de WSAA (tabla afip_wsaa_ta, mig 264) — mismo cache que emitir-factura,
+    // clave (cuit, service, environment): sin esto la 2ª emisión dentro de ~12h fallaría
+    // contra WSAA (coe.alreadyAuthenticated). Solo lo usa el circuito 'propio'.
+    const taEnvironment = isProduction ? 'produccion' : 'homologacion'
     const provider = makeAfipProvider(providerName, {
       cuit, production: isProduction, accessToken: biller.afipsdk_token, certPem, keyPem,
+      taCache: {
+        get: async () => {
+          const { data } = await supabase.from('afip_wsaa_ta')
+            .select('token, sign, expiration_time')
+            .eq('cuit', cuit).eq('service', 'wsfe').eq('environment', taEnvironment)
+            .maybeSingle()
+          return data ? { token: data.token, sign: data.sign, expirationTime: data.expiration_time } : null
+        },
+        set: async (ta) => {
+          const { error } = await supabase.from('afip_wsaa_ta').upsert({
+            cuit, service: 'wsfe', environment: taEnvironment,
+            token: ta.token, sign: ta.sign, expiration_time: ta.expirationTime,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: 'cuit,service,environment' })
+          if (error) console.warn('[emitir-factura-plataforma] no se pudo cachear el TA:', error.message)
+        },
+      },
     })
 
     const CBTE_TIPO_C = 11

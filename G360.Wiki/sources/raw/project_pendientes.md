@@ -6,7 +6,32 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🧪 (2026-07-10 · VALIDACIÓN INTEGRAL DE FACTURACIÓN — 3 HALLAZGOS ARREGLADOS · v1.125.0 EN DEV, mig 266 DEV+PROD, EFs deployadas — ⚠ PR dev→main ABIERTO esperando merge de GO)
+> ### 🏢 (2026-07-10 · MULTI-CUIT POR TENANT (F5) — PLAN COMPLETO + FASE 1 EN DEV · mig 267)
+> **Novena sesión del día** (tras el cierre de v1.125.0, cuyo PR #286 GO YA mergeó — Vercel READY
+> confirmado, dev sincronizado). GO pidió armar el plan sólido de multi-CUIT para igualar a la
+> competencia (Netegia/Zeus/Contabilium tienen 2-10 CUITs; era F5 del backlog de pricing,
+> destrabado porque el WSFE propio ya es default). **Diseño completo en
+> `wiki/features/multi-cuit.md`** — leerlo ANTES de arrancar la Fase 2.
+> 1. **Decisiones de GO (2026-07-10, por AskUserQuestion):** emisor por **sucursal + override**
+>    (NC SIEMPRE hereda el emisor de la factura original, guard server-side) · **gastos también
+>    se imputan a emisor** (IVA crédito separable por CUIT) · monetización por **add-on "CUIT
+>    adicional"** (motor de add-ons batch) · arrancar Fase 1 ya.
+> 2. **✅ Fase 1 HECHA (mig 267, solo DEV):** tabla `emisores_fiscales` + FKs en hijos
+>    (`tenant_certificates`/`puntos_venta_afip`/`sucursales`/`ventas`/`gastos`) + backfill neutro
+>    (2 emisores default en DEV espejando `tenants.*`, hijos linkeados, verificado) + trigger
+>    transicional `fn_sync_emisor_fiscal_default` (tenants→emisor default, verificado en vivo;
+>    SE ELIMINA en el cutover de Fase 3). CERO cambio de comportamiento — nada la lee todavía.
+>    **⚠ Mig 267 NO está en PROD** (va con el deploy de Fase 2, patrón migs-aditivas-antes-del-merge).
+> 3. **▶ PRÓXIMO = Fase 2 (la crítica, REGLA #0):** EF `emitir-factura` resuelve el emisor
+>    (body.emisor_id ?? sucursal ?? default), toma cuit/condición/cert/token/provider/produccion
+>    DEL EMISOR, persiste `ventas.emisor_id`, guards por emisor + NC hereda emisor. Lib pura
+>    espejo `src/lib/emisorFiscal.ts` + regresión e2e 21/42/56. Después F3 (CRUD Config + cutover),
+>    F4 (selector en venta + confirmación de override), F5 (reportes por emisor), F6 (add-on).
+> 4. **Acciones de GO para F2+:** conseguir un **segundo CUIT/cert de homologación** para validar
+>    la matriz con 2 emisores reales (de paso cierra el pendiente UAT §29) · definir precio del
+>    add-on "CUIT adicional".
+
+> ### 🧪 (2026-07-10 · VALIDACIÓN INTEGRAL DE FACTURACIÓN — 3 HALLAZGOS ARREGLADOS · v1.125.0 EN DEV→ **MERGEADO (PR #286), EN PROD, Vercel READY** · mig 266 DEV+PROD, EFs deployadas)
 > **Octava sesión del día.** GO pidió revisar los planes de test (UAT/unit/e2e) de TODO el proceso de
 > facturación, agregar escenarios faltantes y ejecutar todo hasta dejarlo validado en DEV y PROD
 > (autorizó smoke de emisión en PROD + plataforma a fondo). Resultado: **3 hallazgos reales

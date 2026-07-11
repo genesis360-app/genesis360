@@ -6,6 +6,40 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-10] update | 🏢 Multi-CUIT por tenant (F5) — plan completo en 6 fases + Fase 1 (mig 267) en DEV
+
+**Cierre previo:** GO mergeó el PR #286 (v1.125.0) — el primer intento mostró conflictos en 4
+archivos del wiki (efecto del squash del PR #285: mismo contenido, commits distintos), resueltos
+mergeando `origin/main` en `dev` con la versión de `dev` (superconjunto). Squash final OK,
+**deploy de producción `READY`** (commit `65c54a70`), `dev` re-sincronizado sin conflictos.
+
+**Multi-CUIT:** GO pidió el plan para igualar a la competencia (Netegia/Zeus/Contabilium, 2-10
+CUITs — era F5 del backlog de pricing, "después del WSFE propio", que ya es default → destrabado).
+Relevamiento de todas las superficies acopladas a "1 CUIT por tenant" + 4 decisiones de producto
+tomadas por GO (AskUserQuestion): **emisor por sucursal + override** (NC siempre hereda el emisor
+de la factura original), **gastos imputados a emisor** (crédito separable por CUIT), **add-on
+"CUIT adicional"** (motor batch), **arrancar Fase 1 ya**.
+
+**Diseño completo nuevo: `wiki/features/multi-cuit.md`** — modelo `emisores_fiscales`, regla única
+de resolución del emisor (override ?? sucursal ?? default; NC derivada server-side), 6 fases con
+riesgo y testing por fase, 7 riesgos REGLA #0 explícitos (NC cruzada de CUIT, emisión con CUIT
+equivocado, cert por emisor, libros por emisor, PV por CUIT, gasto sin emisor, TA por cert — este
+último ya resuelto por diseño en mig 264).
+
+**✅ Fase 1 ejecutada (mig 267, SOLO DEV):** tabla `emisores_fiscales` (RLS tenant-scoped, REVOKE
+anon, UNIQUE default parcial + UNIQUE (tenant,cuit)) + FKs `ON DELETE SET NULL` en
+`tenant_certificates`/`puntos_venta_afip`/`sucursales`/`ventas`/`gastos` + backfill neutro (2
+emisores default en DEV espejando `tenants.*` — verificado campo a campo, 0 diferencias; hijos
+linkeados; ventas solo con CAE, gastos solo deducibles) + trigger transicional
+`fn_sync_emisor_fiscal_default` (SECURITY DEFINER, tenants→emisor default; verificado en vivo;
+se elimina en el cutover de Fase 3). CERO cambio de comportamiento. Mig 267 va a PROD recién con
+el deploy de la Fase 2.
+
+**Próximo:** Fase 2 = EF `emitir-factura` multi-emisor (la crítica). Acciones GO: segundo
+CUIT/cert de homologación (cierra de paso UAT §29) + precio del add-on.
+
+---
+
 ## [2026-07-10] update | 🧪 Validación integral de FACTURACIÓN (v1.125.0) — 3 hallazgos REGLA #0 arreglados, suite completa verde en DEV y PROD
 
 GO pidió revisar los planes de test (UAT + unit + e2e) de todo el proceso de facturación, agregar

@@ -151,6 +151,8 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 
 7. **Guard fiscal (2026-06-18):** valida que el `tipo_comprobante` sea válido para `condicion_iva_emisor` — Monotributista/Exento → solo C; RI → nunca C; si no, **400**. Es la última línea de defensa: la restricción del selector en el front es solo UI y puede estar cacheada/bypasseada.
 
+8. **Guard de identidad (2026-07-10, v1.125.0 — HALLAZGO de seguridad):** hasta la v21 (DEV) / v15 (PROD) la EF era invocable con el **anon key pelado** (es un JWT válido para el gateway) → cualquiera podía emitir comprobantes de cualquier tenant conociendo `venta_id`+`tenant_id`. Ahora, ANTES de cualquier lógica fiscal: sin usuario autenticado → **401**; usuario que no pertenece al `tenant_id` del body (lookup en `users`) → **403**; `service_role` pasa (flujos internos). Cubierto por e2e 56 (401/403/400).
+
 **Deploy de la EF:** `npx supabase functions deploy emitir-factura --project-ref <ref>` (CLI lee el archivo local, preserva config; más limpio que el MCP). DEV `gcmhzdedrkmmzfzfveig` · PROD `jjffnbrdjchquexdfgwq` (PROD requiere autorización explícita).
 
 ### ⚠ Gotcha — normalización de alícuota (numeric de Postgres) [2026-06-18]
@@ -168,6 +170,32 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 > - **Falta `CbtesAsoc`** → AFIP rechaza con **error 10197** ("Si el comprobante es Débito o Crédito, enviar CbteAsoc o PeriodoAsoc"). Fix v1.71.0: `CbtesAsoc:[{ Tipo (del original), PtoVta (mismo PV), Nro (`numero_comprobante`) }]`. **Asume mismo PV que la NC** (caso single-PV; si el tenant usa otro PV para NC, guardar el PV de la factura original).
 
 **Anular vs Devolver una facturada:** una venta **con CAE** no se puede "Anular" (los botones Anular + Cambiar cliente se **ocultan** si `ventaDetalle.cae`) — la reversión correcta es Devolver → NC. Anularla dejaría la factura viva en AFIP (libros descuadrados).
+
+---
+
+## Libro IVA / débito fiscal NETO con NC (v1.125.0 — HALLAZGO→FIX 2026-07-10)
+
+> [!WARNING] Hasta v1.125.0 las NC electrónicas emitidas **NO restaban débito fiscal en ningún
+> reporte**: Libro IVA Ventas, KPIs del panel de Facturación, liquidación 12 meses, Posición IVA
+> del Dashboard (overview) y el área Facturación del Dashboard sumaban solo `venta_items` de
+> ventas con CAE → tras cualquier devolución facturada el débito quedaba **sobre-declarado**
+> (y el Libro IVA ni siquiera listaba las NC, que un contador necesita).
+
+**Fix — `src/lib/libroIva.ts`** (lógica pura, 11 unit tests FAC-LIBRO-01→11, espejo del mapeo de
+ítems de la EF):
+- `mapDevolucionNc` (fila cruda de `devoluciones` → NC normalizada), `filasLibroNc` (filas
+  NEGATIVAS del libro: NC-C una fila a neto sin IVA; NC-A/B una fila por alícuota),
+  `ivaNcTotal` / `netoNcTotal` / `debitoNeto`.
+- **`devoluciones.nc_fecha` (mig 266):** fecha de EMISIÓN de la NC (la setea la EF al persistir
+  el CAE). El libro imputa la NC a ese período, **no** al de la devolución (`created_at`).
+  Backfill: NC preexistentes toman `created_at`.
+- Superficies integradas: `FacturacionPage` (KPIs netos, filas NC en el libro + export Excel,
+  liquidación 12m), `DashboardPage` (Posición IVA), `DashFacturacionArea` (débito/neto del mes +
+  evolución 6 meses). e2e 86 (read-only) valida el render.
+
+**Bonus (H3):** el Libro IVA Compras filtraba por sucursal y el de Ventas no → posición
+inconsistente. Ahora **ambos libros son del CUIT completo** (nota visible en la UI); las vistas
+operativas (borradores/emitidas del tab Facturación) siguen filtrando por sucursal.
 
 ---
 

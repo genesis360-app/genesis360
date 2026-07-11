@@ -6,6 +6,45 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🧪 (2026-07-10 · VALIDACIÓN INTEGRAL DE FACTURACIÓN — 3 HALLAZGOS ARREGLADOS · v1.125.0 EN DEV, mig 266 DEV+PROD, EFs deployadas — ⚠ PR dev→main ABIERTO esperando merge de GO)
+> **Octava sesión del día.** GO pidió revisar los planes de test (UAT/unit/e2e) de TODO el proceso de
+> facturación, agregar escenarios faltantes y ejecutar todo hasta dejarlo validado en DEV y PROD
+> (autorizó smoke de emisión en PROD + plataforma a fondo). Resultado: **3 hallazgos reales
+> encontrados y ARREGLADOS** (todos REGLA #0), suite completa verde, ambos ambientes validados.
+> 1. **🔴 H1 (fiscal, reportes): las NC emitidas NO restaban débito fiscal en NINGÚN reporte** —
+>    Libro IVA Ventas (ni siquiera las listaba), KPIs del panel Facturación, liquidación 12m,
+>    Posición IVA del Dashboard y área Facturación del dash. Débito sobre-declarado tras cualquier
+>    devolución facturada. **Fix:** lib pura `src/lib/libroIva.ts` (11 unit FAC-LIBRO) + **mig 266**
+>    (`devoluciones.nc_fecha` = fecha de EMISIÓN de la NC; la EF la persiste; el libro imputa por
+>    ella, no por la fecha de la devolución) + integración en las 4 superficies + filas NC negativas
+>    en el libro y el export Excel. **Mig 266 aplicada en DEV y PROD.**
+> 2. **🔴 H2 (seguridad, fiscal): la EF `emitir-factura` era invocable con el ANON KEY pelado** (es
+>    un JWT válido para el gateway) → cualquiera podía emitir comprobantes de cualquier tenant
+>    conociendo venta_id+tenant_id. **Fix:** guard de identidad ANTES de la lógica fiscal (401 sin
+>    usuario / 403 si no pertenece al tenant / service_role pasa). **EF deployada: DEV v21 + PROD
+>    v15 (`ezbr_sha256` idéntico `8c680d64…`)**. Verificado en PROD: anon→401, OPTIONS→200.
+>    Spec 56 reescrito (password grant con creds e2e + casos 401/403/400) — verde.
+> 3. **🟡 H3: Libro IVA Compras filtraba por sucursal y el de Ventas no** → posición inconsistente.
+>    Fix: ambos libros por CUIT completo + nota en la UI ("los libros IVA son del CUIT completo").
+> 4. **Validación ejecutada:** unit **997/997** (+13: 11 libroIva + 2 wsfe-core: NC-B con
+>    CbtesAsoc+Iva juntos, payload Factura C de plataforma) · build verde · e2e facturación DEV
+>    **16/16** (21 CAE real por 'propio', 42 NC real —fixture re-sembrada, valida `nc_fecha`—, 56
+>    guards, 84 dashboard, **86 NUEVO**: FacturacionPage panel/libros/liquidación read-only) ·
+>    consistencia SQL DEV y PROD (0 números duplicados, 0 NC huérfanas, claims de plataforma OK) ·
+>    **smoke PROD: Factura B №31 CAE `86280549332712`** (venta #29 del piloto, homologación,
+>    'propio', persistida + estado→facturada).
+> 5. **Plan de escenarios reescrito:** `tests/specs/facturacion.plan.md` (9 secciones: lógica pura,
+>    WSFE-core, libroIva, guards EF, plataforma FAC-PLAT-01→06, e2e/SQL/PROD). UAT: FAC-28/29/30
+>    nuevos en `uat-modo-basico.md` §11.
+> 6. **⚠ PENDIENTE DE GO:** (a) **mergear el PR `dev→main` v1.125.0** (frontend del fix H1/H3 — hasta
+>    entonces PROD sigue mostrando el Libro IVA sin NC; las EFs y migs YA están en PROD y son
+>    retrocompatibles con el frontend v1.124) + verificar Vercel READY; (b) plataforma: sigue
+>    bloqueada por el alta de Fede (`platform_billers` — 3 pasos AfipSDK), sin cambios.
+> 7. **Notas:** los "N facturada sin CAE" que muestran DEV (9) y PROD (5) son data vieja de prueba —
+>    el dashboard ya los expone como "Comprobantes Observados" by-design. Claims de plataforma que
+>    fallan (sin_biller/sin_token/cert) quedan tomados a propósito → el circuito de recuperación es
+>    la alerta a soporte@ + factura manual (documentado en el plan FAC-PLAT-03).
+
 > ### 🧾 (2026-07-09 · MOTOR WSFE PROPIO — fase 3 IMPLEMENTADA Y VALIDADA contra homologación real · v1.124.0 EN DEV, mig 264 en DEV)
 > **Séptima sesión del día.** `WsfePropioProvider` REAL (ya no stub): TRA firmado CMS/PKCS#7
 > (`node-forge` SHA-256, cert del tenant) → WSAA `LoginCms` → **TA cacheado en `afip_wsaa_ta`

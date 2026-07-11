@@ -67,6 +67,29 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     )
 
+    // 0. Guard de identidad (REGLA #0 — emitir un comprobante fiscal NO puede quedar
+    //    abierto al anon key, que es público y viaja en el frontend). El gateway solo
+    //    valida que el JWT sea válido, y el anon key ES un JWT válido → acá se exige un
+    //    USUARIO real que pertenezca al tenant por el que se emite (o el service_role,
+    //    para flujos internos). Corre antes que cualquier lógica fiscal.
+    const authToken = (req.headers.get('Authorization') ?? '').replace(/^Bearer\s+/i, '')
+    const esServiceRole = !!authToken && authToken === Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!esServiceRole) {
+      const { data: userData, error: userErr } = await supabase.auth.getUser(authToken)
+      if (userErr || !userData?.user) {
+        return new Response(JSON.stringify({ error: 'No autorizado: se requiere un usuario autenticado para emitir comprobantes.' }), {
+          status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      const { data: membership } = await supabase.from('users')
+        .select('id').eq('id', userData.user.id).eq('tenant_id', tenant_id).maybeSingle()
+      if (!membership) {
+        return new Response(JSON.stringify({ error: 'No autorizado: el usuario no pertenece al tenant indicado.' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
     // 1. Fetch config del tenant
     const { data: tenant, error: tErr } = await supabase.from('tenants')
       .select('cuit, afipsdk_token, condicion_iva_emisor, nombre, umbral_factura_b, afip_produccion, afip_provider')
@@ -394,6 +417,9 @@ serve(async (req) => {
         nc_numero_comprobante: proximo,
         nc_tipo:              tipo_comprobante,
         nc_punto_venta:       punto_venta,
+        // Fecha de emisión de la NC (mig 266): el Libro IVA la imputa a ESTE período,
+        // no al de la devolución (created_at).
+        nc_fecha:             new Date().toISOString(),
         afip_provider_usado:  providerName,
       }).eq('id', devolucion_id))
     } else {

@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.124.0'
+export const APP_VERSION = 'v1.125.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto

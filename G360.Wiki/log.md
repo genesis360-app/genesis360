@@ -6,6 +6,105 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-10] update | 🧪 Validación integral de FACTURACIÓN (v1.125.0) — 3 hallazgos REGLA #0 arreglados, suite completa verde en DEV y PROD
+
+GO pidió revisar los planes de test (UAT + unit + e2e) de todo el proceso de facturación, agregar
+escenarios faltantes y ejecutar todo hasta dejarlo 100% validado en DEV y PROD (autorizó por
+AskUserQuestion: smoke de emisión en PROD + facturación de plataforma a fondo). El gap-analysis
+contra el código real encontró **3 hallazgos reales**, todos arreglados en la misma sesión:
+
+**H1 🔴 (fiscal/reportes) — las NC emitidas no restaban débito fiscal en NINGÚN reporte.** El Libro
+IVA Ventas ni siquiera las listaba; KPIs del panel de Facturación, liquidación 12 meses, Posición
+IVA del Dashboard (overview) y el área Facturación del dash sumaban solo `venta_items` con CAE →
+débito sobre-declarado tras cualquier devolución facturada. Fix: lib pura `src/lib/libroIva.ts`
+(mapeo espejo de la EF, filas negativas por alícuota, NC-C sin IVA; 11 unit) + **mig 266**
+(`devoluciones.nc_fecha` — la NC se imputa al período de su EMISIÓN, no al de la devolución; la EF
+la persiste al guardar el CAE; backfill para NC preexistentes) + integración en las 4 superficies +
+export Excel con filas NC. Mig en DEV y PROD.
+
+**H2 🔴 (seguridad/fiscal) — `emitir-factura` invocable con el anon key pelado.** El anon key es un
+JWT válido para el gateway → cualquiera podía emitir comprobantes de cualquier tenant conociendo
+venta_id+tenant_id (UUIDs). Fix: guard de identidad ANTES de la lógica fiscal — 401 sin usuario
+autenticado, 403 si el usuario no pertenece al tenant del body, service_role pasa (flujos internos).
+EF deployada: **DEV v21 + PROD v15, `ezbr_sha256` idéntico** (`8c680d64…`). Verificado en PROD con
+curl: anon→401, OPTIONS→200. Spec 56 reescrito (token real por password grant + casos 401/403/400).
+
+**H3 🟡 — Libro IVA Compras filtraba por sucursal y el de Ventas no** → posición IVA mezclaba
+alcances. Fix: ambos libros del CUIT completo + nota visible en la UI.
+
+**Cobertura agregada:** unit `libroIva.test.ts` (11) + 2 en `wsfePropio.test.ts` (NC-B con
+CbtesAsoc+Iva juntos en orden XSD; payload Factura C de PLATAFORMA con Concepto 2 + FchServ*) +
+e2e **86 nuevo** (FacturacionPage read-only: KPIs, libros con NC en negativo, liquidación 12m) +
+`tests/specs/facturacion.plan.md` reescrito (9 secciones, incluye plataforma FAC-PLAT-01→06 y la
+matriz e2e/SQL/PROD) + UAT FAC-28/29/30.
+
+**Ejecución (todo verde):** unit **997/997** · typecheck+build · e2e facturación DEV **16/16**
+(21: CAE real homologación por circuito propio · 42: NC-C real con fixture re-sembrada → valida
+`nc_fecha` en runtime · 56: guards · 84: dashboard · 86: nuevo) · consistencia SQL en DEV y PROD
+(0 `numero_comprobante` duplicados por tenant/tipo/PV, 0 NC sin factura original, 0 claims de
+plataforma huérfanos, TA cache 1 fila por ambiente) · **smoke PROD: Factura B №31, CAE
+`86280549332712`** sobre la venta #29 del tenant piloto (homologación, `afip_provider_usado='propio'`,
+persistida, estado→facturada) — segundo CAE real del circuito propio en PROD.
+
+**Estado final:** migs 001-266 en DEV y PROD · EF `emitir-factura` DEV v21 / PROD v15 · v1.125.0
+commiteada en `dev` + **PR `dev→main` abierto esperando merge de GO** (el frontend de H1/H3 llega a
+PROD con ese merge; mientras tanto PROD opera con EF+migs nuevas y frontend v1.124, combinación
+retrocompatible). Wiki: `facturacion-afip.md` (secciones nuevas guard identidad + Libro IVA con NC),
+`migraciones.md` (266), `facturacion.plan.md`, `uat-modo-basico.md`, `project_pendientes.md`, este log.
+
+---
+
+## [2026-07-10] update | 📖 Runbook: cómo configurar un tenant para WSFE propio desde cero (Config → Facturación)
+
+GO pidió una guía paso a paso de qué configurar en Config → Facturación para dejar un tenant
+funcionando con el circuito propio, dado que el Token AfipSDK ya no es obligatorio ahí. Se
+investigó el código real de `ConfigPage.tsx` (tab 'facturacion') para dar labels exactos, no
+supuestos.
+
+**Hallazgo clave documentado:** `tenants.afip_provider` (el flag AfipSDK↔propio) **no tiene NINGÚN
+control en el frontend** — se lee solo server-side en `emitir-factura/index.ts` y se setea
+exclusivamente por SQL (como se hizo esta sesión con mig 265 + el flip masivo). En la práctica no
+hace falta tocarlo más: el default ya quedó en 'propio' desde mig 265.
+
+**Segundo hallazgo (gotcha real de UI):** el toggle "Modo PRODUCCIÓN/PRUEBA" de Config →
+Facturación exige Token AfipSDK guardado para habilitarse (`afipDatosListos`,
+`ConfigPage.tsx:883`), sin contemplar el circuito propio — que no usa ese token. No bloquea nada
+mientras se siga en homologación, pero va a hacer falta un fix (o un flip por SQL) el día que se
+quiera pasar a producción real un tenant 100%-propio sin AfipSDK.
+
+**Runbook completo agregado a** `wiki/features/facturacion-afip.md` — sección nueva "Runbook —
+configurar un tenant para el circuito WSFE PROPIO desde cero", con tabla de campos exacta
+(label→columna→obligatoriedad) para las 3 secciones de Config → Facturación (Facturación
+Electrónica, Puntos de venta, Certificados). Sin cambios de código en esta entrada — solo
+documentación.
+
+---
+
+## [2026-07-10] deploy | ✅ PR #285 mergeado + retry de deploy (error de infra de Vercel) + MP_ACCESS_TOKEN marcado Sensitive
+
+**PR #285** (mig 265 + flip masivo de tenants a WSFE propio) mergeado a `main` por GO. El primer
+deploy a producción falló con `sts_credentials_fetch_failed` en `build-container-init` — **error de
+infraestructura de Vercel** (falla al pedir credenciales AWS para levantar el contenedor de build,
+antes incluso de clonar/instalar nada de nuestro código; confirmado con los build logs: clona el
+repo en 1.5s y ahí corta). El sitio en vivo no se vio afectado — Vercel no reemplaza el alias de
+producción hasta que un build termina bien, así que `genesis360.pro` siguió sirviendo la versión
+anterior mientras tanto. GO reintentó el deploy manualmente desde el dashboard (botón "Redeploy")
+y quedó **`READY`** con los 3 alias de producción confirmados.
+
+**De paso, hallazgo de seguridad menor:** GO notó que `MP_ACCESS_TOKEN` (token real de Mercado Pago,
+puede mover/consultar plata) no estaba marcado como **"Sensitive"** en Vercel — cualquiera con acceso
+al proyecto podía ver su valor completo en el dashboard. Corregido (marcado Sensitive). Se revisó el
+resto de las variables no-sensitive (`VITE_*` y los IDs de plan MP) y **no hacía falta tocarlas**:
+las `VITE_*` ya son públicas por diseño (Vite las empaqueta en el JS del cliente en el build, así
+que el flag "Sensitive" de Vercel no las oculta del mundo — solo del dashboard) y los IDs de plan MP
+no dan acceso a nada. El redeploy final aplicó el cambio de `MP_ACCESS_TOKEN` y resolvió el retry en
+un solo paso.
+
+**Estado final:** PROD 100% al día (mig 265 aplicada, 17 tenants en 'propio', Vercel `READY`,
+`MP_ACCESS_TOKEN` protegido). Sesión cerrada.
+
+---
+
 ## [2026-07-10] deploy | 🧾 WSFE propio pasa a ser el circuito DEFAULT — 17 tenants migrados (DEV+PROD), sin clientes reales todavía
 
 **Continuación de la sesión anterior** (piloto validado + fix de seguridad, PR #282/#284 ya

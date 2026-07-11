@@ -9,9 +9,22 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 9 de Julio, 2026
+**Última actualización:** 10 de Julio, 2026
 
 ---
+
+## v1.125.0 — 🧪 Validación integral de FACTURACIÓN — 3 hallazgos REGLA #0 arreglados (2026-07-10, PR dev→main esperando merge)
+
+Gap-analysis de los planes de test de facturación contra el código real + ejecución completa en
+DEV y PROD. **H1 🔴:** las NC electrónicas no restaban débito fiscal en NINGÚN reporte (Libro IVA
+Ventas ni las listaba, KPIs, liquidación 12m, Posición IVA, dashboard) → `src/lib/libroIva.ts`
+(11 unit) + mig 266 (`devoluciones.nc_fecha`, imputación por fecha de emisión) + filas NC negativas
+en libro y Excel. **H2 🔴:** la EF `emitir-factura` era invocable con el anon key pelado → guard de
+identidad (401/403/service_role), EF DEV v21 + PROD v15 (bundle idéntico), verificado anon→401 en
+PROD. **H3 🟡:** libros IVA ahora por CUIT completo (Compras filtraba por sucursal, Ventas no).
+Suite: unit 997/997 · e2e facturación 16/16 (incl. spec 86 nuevo de FacturacionPage y spec 56
+reescrito) · smoke PROD Factura B №31 CAE `86280549332712` (piloto, homologación, circuito propio).
+Plan `facturacion.plan.md` reescrito (incluye plataforma) + UAT FAC-28/29/30. Migs 001-266 DEV+PROD.
 
 ## v1.124.0 — 🧾 Motor WSFE PROPIO (dual-provider fase 3) — piloto 100% funcionando en PROD (2026-07-09/10, sesión cerrada)
 

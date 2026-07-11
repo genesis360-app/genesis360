@@ -61,6 +61,24 @@ const payloadNC = {
   CbtesAsoc: [{ Tipo: 11, PtoVta: 1, Nro: 55 }],
 }
 
+// NC-B (emisor RI): CbtesAsoc Y array Iva JUNTOS — el caso con más elementos opcionales.
+const payloadNCB = {
+  ...payloadB, CbteTipo: 8, CbteDesde: 9, CbteHasta: 9,
+  CbtesAsoc: [{ Tipo: 6, PtoVta: 1, Nro: 124 }],
+}
+
+// Factura C de PLATAFORMA (emitir-factura-plataforma): Concepto=2 (Servicios) + FchServ*,
+// siempre Consumidor Final (99/0), sin array Iva. Mismo transporte wsfe-core.
+const payloadPlataformaC = {
+  CantReg: 1, PtoVta: 1, CbteTipo: 11,
+  Concepto: 2, FchServDesde: 20260710, FchServHasta: 20260710, FchVtoPago: 20260710,
+  DocTipo: 99, DocNro: 0,
+  CbteDesde: 3, CbteHasta: 3, CbteFch: 20260710,
+  ImpTotal: 60000, ImpTotConc: 0, ImpNeto: 60000, ImpOpEx: 0, ImpIVA: 0, ImpTrib: 0,
+  MonId: 'PES', MonCotiz: 1,
+  CondicionIVAReceptorId: 5,
+}
+
 describe('WSAA — TRA y LoginCms', () => {
   it('buildTRA arma el loginTicketRequest con ventana ±20min y uniqueId en epoch-seconds', () => {
     const now = new Date('2026-07-09T18:00:00.000Z')
@@ -185,6 +203,27 @@ describe('WSFEv1 — FECAEDetRequest (orden del XSD = REGLA #0)', () => {
     expect(xml).toContain('<CbtesAsoc><CbteAsoc><Tipo>11</Tipo><PtoVta>1</PtoVta><Nro>55</Nro></CbteAsoc></CbtesAsoc>')
     // CbtesAsoc va DESPUÉS de CondicionIVAReceptorId y ANTES de Iva según el XSD
     expect(xml.indexOf('<CondicionIVAReceptorId>')).toBeLessThan(xml.indexOf('<CbtesAsoc>'))
+  })
+
+  it('NC-B (RI): CbtesAsoc E Iva conviven en el orden del XSD (CondIVARecep < CbtesAsoc < Iva)', () => {
+    const xml = buildFECAEDetXml(payloadNCB)
+    expect(xml).toContain('<CbtesAsoc><CbteAsoc><Tipo>6</Tipo><PtoVta>1</PtoVta><Nro>124</Nro></CbteAsoc></CbtesAsoc>')
+    expect(xml).toContain('<Iva><AlicIva><Id>5</Id><BaseImp>100</BaseImp><Importe>21</Importe></AlicIva></Iva>')
+    expect(xml.indexOf('<CondicionIVAReceptorId>')).toBeLessThan(xml.indexOf('<CbtesAsoc>'))
+    expect(xml.indexOf('<CbtesAsoc>')).toBeLessThan(xml.indexOf('<Iva>'))
+  })
+
+  it('Factura C de PLATAFORMA: Concepto 2 + FchServ* (entre ImpIVA y MonId), CF 99/0, sin Iva', () => {
+    const xml = buildFECAEDetXml(payloadPlataformaC)
+    expect(xml).toContain('<Concepto>2</Concepto>')
+    expect(xml).toContain('<DocTipo>99</DocTipo><DocNro>0</DocNro>')
+    expect(xml).toContain('<FchServDesde>20260710</FchServDesde>')
+    expect(xml).toContain('<FchVtoPago>20260710</FchVtoPago>')
+    expect(xml).not.toContain('<Iva>')
+    expect(xml.indexOf('<ImpIVA>')).toBeLessThan(xml.indexOf('<FchServDesde>'))
+    expect(xml.indexOf('<FchVtoPago>')).toBeLessThan(xml.indexOf('<MonId>'))
+    expect(xml).toContain('<ImpNeto>60000</ImpNeto>')
+    expect(xml).toContain('<CondicionIVAReceptorId>5</CondicionIVAReceptorId>')
   })
 
   it('Concepto 3 (con envío/servicios) agrega FchServDesde/Hasta/FchVtoPago entre ImpIVA y MonId', () => {

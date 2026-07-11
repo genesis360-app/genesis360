@@ -14,6 +14,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
 import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
+import { mapDevolucionNc, filasLibroNc, ivaNcTotal, type NcEmitida } from '@/lib/libroIva'
 import toast from 'react-hot-toast'
 
 type Tab = 'panel' | 'emitir' | 'libros' | 'liquidacion'
@@ -294,11 +295,30 @@ export default function FacturacionPage() {
     enabled: !!tenant && tab === 'libros' && libroSub === 'ventas',
   })
 
-  // Datos para Libro IVA Compras
-  const { data: ivaCompras = [] } = useQuery({
-    queryKey: ['iva-compras', tenant?.id, periodoDesde, periodoHasta, sucursalId],
+  // NC electrónicas emitidas en el período — RESTAN débito fiscal (REGLA #0). Se imputan
+  // por nc_fecha (fecha de emisión, mig 266). Alimenta el Libro IVA Ventas y los KPIs.
+  const { data: ncPeriodo = [] } = useQuery({
+    queryKey: ['iva-ventas-nc', tenant?.id, periodoDesde, periodoHasta],
     queryFn: async () => {
-      let q = supabase.from('gastos')
+      const { data } = await supabase.from('devoluciones')
+        .select('id, nc_tipo, nc_numero_comprobante, nc_cae, nc_fecha, created_at, devolucion_items(cantidad, precio_unitario, productos(alicuota_iva)), ventas(clientes(nombre))')
+        .eq('tenant_id', tenant!.id)
+        .not('nc_cae', 'is', null)
+        .gte('nc_fecha', periodoDesde)
+        .lte('nc_fecha', periodoHasta + 'T23:59:59')
+        .order('nc_fecha', { ascending: false })
+      return (data ?? []).map(mapDevolucionNc)
+    },
+    enabled: !!tenant && (tab === 'panel' || (tab === 'libros' && libroSub === 'ventas')),
+  })
+
+  // Datos para Libro IVA Compras. ⚠ Los libros IVA son del CUIT completo: acá NO se filtra
+  // por sucursal (el Libro Ventas tampoco lo hace) — si no, la posición mezclaría un débito
+  // de todo el CUIT con un crédito de una sola sucursal.
+  const { data: ivaCompras = [] } = useQuery({
+    queryKey: ['iva-compras', tenant?.id, periodoDesde, periodoHasta],
+    queryFn: async () => {
+      const { data } = await supabase.from('gastos')
         .select('id, descripcion, monto, iva_monto, tipo_iva, iva_deducible, conciliado_iva, fecha, categoria')
         .eq('tenant_id', tenant!.id)
         .eq('iva_deducible', true)
@@ -306,8 +326,6 @@ export default function FacturacionPage() {
         .gte('fecha', periodoDesde)
         .lte('fecha', periodoHasta)
         .order('fecha', { ascending: false })
-      if (sucursalId) q = q.eq('sucursal_id', sucursalId)
-      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'libros' && libroSub === 'compras',
@@ -319,6 +337,21 @@ export default function FacturacionPage() {
     queryFn: async () => {
       const rows = []
       const hoy = new Date()
+
+      // NC emitidas de los 12 meses (una sola query): restan débito en su mes de emisión.
+      const inicio12 = new Date(hoy.getFullYear(), hoy.getMonth() - 11, 1).toISOString().split('T')[0]
+      const { data: ncsRaw } = await supabase.from('devoluciones')
+        .select('id, nc_tipo, nc_numero_comprobante, nc_fecha, created_at, devolucion_items(cantidad, precio_unitario, productos(alicuota_iva))')
+        .eq('tenant_id', tenant!.id)
+        .not('nc_cae', 'is', null)
+        .gte('nc_fecha', inicio12)
+      const ncPorMes: Record<string, number> = {}
+      for (const raw of ncsRaw ?? []) {
+        const nc = mapDevolucionNc(raw as any)
+        const mes = nc.fecha.slice(0, 7)
+        ncPorMes[mes] = (ncPorMes[mes] ?? 0) + ivaNcTotal([nc])
+      }
+
       for (let i = 11; i >= 0; i--) {
         const d = new Date(hoy.getFullYear(), hoy.getMonth() - i, 1)
         const desde = d.toISOString().split('T')[0]
@@ -335,6 +368,7 @@ export default function FacturacionPage() {
             .gte('fecha', desde).lte('fecha', hasta),
         ])
         const debito  = (dVentas ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
+          - (ncPorMes[periodo] ?? 0)
         const credito = (dGastos ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
         rows.push({ periodo, debito, credito, posicion: debito - credito })
       }
@@ -426,6 +460,15 @@ export default function FacturacionPage() {
         'Alícuota IVA': r.alicuota_iva ?? '',
         'IVA':         Number(r.iva_monto ?? 0),
       }))
+      // NC emitidas del período (montos en negativo — restan del libro)
+      const caePorNc = new Map((ncPeriodo as NcEmitida[]).map(nc => [`${nc.nc_tipo} #${nc.nc_numero_comprobante ?? '—'}`, nc.nc_cae ?? '']))
+      for (const f of filasNc) {
+        rows.push({
+          'Fecha': f.fecha, 'Comprobante': f.comprobante, 'Número': '',
+          'CAE': caePorNc.get(f.comprobante) ?? '', 'Cliente': f.cliente ?? '',
+          'Neto': f.neto, 'Alícuota IVA': f.alicuota, 'IVA': f.iva,
+        } as any)
+      }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'IVA Ventas')
     } else {
       const rows = (ivaCompras as any[]).map(r => ({
@@ -444,9 +487,19 @@ export default function FacturacionPage() {
   }
 
   // ── Cálculos ──────────────────────────────────────────────────────────────────
+  // Filas NC del libro (montos NEGATIVOS). El filtro de alícuota también las alcanza
+  // (una NC-C no discrimina → alícuota '—' y queda fuera de los filtros específicos).
+  const filasNc = (ncPeriodo as NcEmitida[]).flatMap(filasLibroNc)
+    .filter(f => !filtroAlicuota || f.alicuota === filtroAlicuota)
+  // IVA que las NC del período restan del débito (para KPIs; sin filtro de alícuota).
+  const ivaNcPeriodo = ivaNcTotal(ncPeriodo as NcEmitida[])
   const totalIvaVentas  = (ivaVentas as any[]).reduce((s, r) => s + Number(r.iva_monto ?? 0), 0)
+    + filasNc.reduce((s, f) => s + f.iva, 0)
   const totalIvaCompras = (ivaCompras as any[]).reduce((s, r) => s + Number(r.iva_monto ?? 0), 0)
   const comprasConciliadas = (ivaCompras as any[]).filter(r => r.conciliado_iva).length
+  // KPIs del panel netos de NC (débito y posición; el crédito no cambia).
+  const kpiDebito   = (kpis?.debito ?? 0) - ivaNcPeriodo
+  const kpiPosicion = (kpis?.posicion ?? 0) - ivaNcPeriodo
 
   const inputClass = 'border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent'
 
@@ -504,9 +557,9 @@ export default function FacturacionPage() {
         <div className="space-y-5">
           <div className="grid sm:grid-cols-3 gap-4">
             {[
-              { label: 'IVA Débito (Ventas)', value: kpis?.debito ?? 0, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20', desc: 'IVA de facturas emitidas' },
+              { label: 'IVA Débito (Ventas)', value: kpiDebito, color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20', desc: 'IVA de facturas emitidas menos NC' },
               { label: 'IVA Crédito (Compras)', value: kpis?.credito ?? 0, color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20', desc: 'IVA de gastos deducibles' },
-              { label: 'Posición mensual', value: Math.abs(kpis?.posicion ?? 0), color: (kpis?.posicion ?? 0) >= 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400', bg: (kpis?.posicion ?? 0) >= 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-green-50 dark:bg-green-900/20', desc: (kpis?.posicion ?? 0) >= 0 ? 'A pagar (proyectado)' : 'Saldo a favor' },
+              { label: 'Posición mensual', value: Math.abs(kpiPosicion), color: kpiPosicion >= 0 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400', bg: kpiPosicion >= 0 ? 'bg-red-50 dark:bg-red-900/20' : 'bg-green-50 dark:bg-green-900/20', desc: kpiPosicion >= 0 ? 'A pagar (proyectado)' : 'Saldo a favor' },
             ].map(k => (
               <div key={k.label} className={`${k.bg} rounded-xl p-5 border border-gray-100 dark:border-gray-700`}>
                 <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">{k.label}</p>
@@ -662,7 +715,7 @@ export default function FacturacionPage() {
       {tab === 'libros' && (
         <div className="space-y-4">
           {/* Sub-tabs */}
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {[
               { id: 'ventas'  as LibroSubTab, label: `IVA Ventas (Débito)` },
               { id: 'compras' as LibroSubTab, label: `IVA Compras (Crédito)` },
@@ -673,6 +726,7 @@ export default function FacturacionPage() {
                 {s.label}
               </button>
             ))}
+            <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">Los libros IVA son del CUIT completo (no se filtran por sucursal)</span>
           </div>
 
           {/* Filtros */}
@@ -723,9 +777,10 @@ export default function FacturacionPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50 dark:divide-gray-700">
-                    {(ivaVentas as any[]).length === 0 ? (
+                    {(ivaVentas as any[]).length === 0 && filasNc.length === 0 ? (
                       <tr><td colSpan={6} className="text-center py-8 text-gray-400">Sin datos en el período</td></tr>
-                    ) : (ivaVentas as any[]).map((r: any, i: number) => {
+                    ) : (<>
+                    {(ivaVentas as any[]).map((r: any, i: number) => {
                       const neto = Number(r.subtotal ?? 0) - Number(r.iva_monto ?? 0)
                       return (
                         <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
@@ -738,6 +793,18 @@ export default function FacturacionPage() {
                         </tr>
                       )
                     })}
+                    {/* NC emitidas: restan del libro (montos en negativo) */}
+                    {filasNc.map((f, i) => (
+                      <tr key={`nc-${i}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 bg-purple-50/40 dark:bg-purple-900/10">
+                        <td className="px-4 py-2.5 text-gray-500 dark:text-gray-400">{f.fecha}</td>
+                        <td className="px-4 py-2.5 text-xs"><span className="bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 px-1.5 py-0.5 rounded">{f.comprobante}</span></td>
+                        <td className="px-4 py-2.5 text-gray-800 dark:text-gray-100">{f.cliente ?? '—'}</td>
+                        <td className="px-4 py-2.5 text-right text-gray-700 dark:text-gray-300">{formatMoneda(f.neto)}</td>
+                        <td className="px-4 py-2.5 text-center"><span className="text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-1.5 rounded">{f.alicuota === '—' ? '—' : `${f.alicuota}%`}</span></td>
+                        <td className="px-4 py-2.5 text-right font-medium text-green-600 dark:text-green-400">{formatMoneda(f.iva)}</td>
+                      </tr>
+                    ))}
+                    </>)}
                   </tbody>
                 </table>
               </div>

@@ -151,6 +151,8 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 
 7. **Guard fiscal (2026-06-18):** valida que el `tipo_comprobante` sea válido para `condicion_iva_emisor` — Monotributista/Exento → solo C; RI → nunca C; si no, **400**. Es la última línea de defensa: la restricción del selector en el front es solo UI y puede estar cacheada/bypasseada.
 
+8. **Guard de identidad (2026-07-10, v1.125.0 — HALLAZGO de seguridad):** hasta la v21 (DEV) / v15 (PROD) la EF era invocable con el **anon key pelado** (es un JWT válido para el gateway) → cualquiera podía emitir comprobantes de cualquier tenant conociendo `venta_id`+`tenant_id`. Ahora, ANTES de cualquier lógica fiscal: sin usuario autenticado → **401**; usuario que no pertenece al `tenant_id` del body (lookup en `users`) → **403**; `service_role` pasa (flujos internos). Cubierto por e2e 56 (401/403/400).
+
 **Deploy de la EF:** `npx supabase functions deploy emitir-factura --project-ref <ref>` (CLI lee el archivo local, preserva config; más limpio que el MCP). DEV `gcmhzdedrkmmzfzfveig` · PROD `jjffnbrdjchquexdfgwq` (PROD requiere autorización explícita).
 
 ### ⚠ Gotcha — normalización de alícuota (numeric de Postgres) [2026-06-18]
@@ -171,6 +173,32 @@ Si `facturacion_habilitada=true` y CUIT configurado → modal automático post-d
 
 ---
 
+## Libro IVA / débito fiscal NETO con NC (v1.125.0 — HALLAZGO→FIX 2026-07-10)
+
+> [!WARNING] Hasta v1.125.0 las NC electrónicas emitidas **NO restaban débito fiscal en ningún
+> reporte**: Libro IVA Ventas, KPIs del panel de Facturación, liquidación 12 meses, Posición IVA
+> del Dashboard (overview) y el área Facturación del Dashboard sumaban solo `venta_items` de
+> ventas con CAE → tras cualquier devolución facturada el débito quedaba **sobre-declarado**
+> (y el Libro IVA ni siquiera listaba las NC, que un contador necesita).
+
+**Fix — `src/lib/libroIva.ts`** (lógica pura, 11 unit tests FAC-LIBRO-01→11, espejo del mapeo de
+ítems de la EF):
+- `mapDevolucionNc` (fila cruda de `devoluciones` → NC normalizada), `filasLibroNc` (filas
+  NEGATIVAS del libro: NC-C una fila a neto sin IVA; NC-A/B una fila por alícuota),
+  `ivaNcTotal` / `netoNcTotal` / `debitoNeto`.
+- **`devoluciones.nc_fecha` (mig 266):** fecha de EMISIÓN de la NC (la setea la EF al persistir
+  el CAE). El libro imputa la NC a ese período, **no** al de la devolución (`created_at`).
+  Backfill: NC preexistentes toman `created_at`.
+- Superficies integradas: `FacturacionPage` (KPIs netos, filas NC en el libro + export Excel,
+  liquidación 12m), `DashboardPage` (Posición IVA), `DashFacturacionArea` (débito/neto del mes +
+  evolución 6 meses). e2e 86 (read-only) valida el render.
+
+**Bonus (H3):** el Libro IVA Compras filtraba por sucursal y el de Ventas no → posición
+inconsistente. Ahora **ambos libros son del CUIT completo** (nota visible en la UI); las vistas
+operativas (borradores/emitidas del tab Facturación) siguen filtrando por sucursal.
+
+---
+
 ## Configuración del tenant (ConfigPage → Negocio)
 
 ```sql
@@ -181,8 +209,10 @@ tenants:
   razon_social_fiscal TEXT
   domicilio_fiscal TEXT
   umbral_factura_b DECIMAL
-  afipsdk_token TEXT             -- oculto en UI
+  afipsdk_token TEXT             -- solo lo usa el circuito 'afipsdk', ver dual-provider arriba
   afip_produccion BOOLEAN        -- false=homologación / true=producción (mig 210)
+  afip_provider TEXT             -- 'afipsdk' | 'propio' (mig 250, default 'propio' desde mig 265)
+                                  -- ⚠ SIN control en la UI — solo por SQL. Ver runbook WSFE propio abajo.
 ```
 
 **Puntos de venta AFIP:** CRUD colapsable → `puntos_venta_afip(id, sucursal_id, numero, nombre, activo)`
@@ -298,6 +328,53 @@ prueba. El log de la EF muestra `[homologación]`.
 4. Banda **Modo de emisión** → **PRODUCCIÓN** (confirmar checkbox).
 5. **Smoke real:** emitir un comprobante de monto chico → verificar CAE en el PDF y en
    "Mis Comprobantes" de AFIP. El log de la EF muestra `[PRODUCCIÓN]`.
+
+---
+
+## Runbook — configurar un tenant para el circuito WSFE PROPIO desde cero (2026-07-10)
+
+A diferencia del runbook de AfipSDK de arriba, acá **no hace falta ningún Token AfipSDK** — el
+circuito propio firma el WSAA localmente con el certificado del tenant. Componente:
+`ConfigPage.tsx` (tab `'facturacion'`, [src/pages/ConfigPage.tsx:2282](../../../src/pages/ConfigPage.tsx)).
+
+**1. Config → Facturación → sección "Facturación Electrónica (ARCA)"**
+| Campo (label exacto en la UI) | Va a | Obligatorio |
+|---|---|---|
+| CUIT | `tenants.cuit` | sí |
+| Condición IVA del emisor (RI / Monotributista / Exento) | `tenants.condicion_iva_emisor` | sí — define A/B (RI) vs solo C (Mono/Exento) |
+| Razón social fiscal / Domicilio fiscal | `tenants.razon_social_fiscal` / `domicilio_fiscal` | no, mejora el PDF |
+| Umbral Factura B ($) | `tenants.umbral_factura_b` | no, default $68.305,16 |
+| **Token AfipSDK** | `tenants.afipsdk_token` | **NO — el circuito propio ni lo mira.** Ver gotcha del toggle de Producción más abajo. |
+| Toggle **"Habilitada"** | `tenants.facturacion_habilitada` | sí — requiere CUIT + Condición IVA ya guardados; sin esto no aparece el botón "Facturar" en Ventas |
+
+**2. Sección "Puntos de venta AFIP"** — agregar ≥1 con **Número** (obligatorio; Nombre opcional).
+Sin esto no hay de dónde elegir el PV al facturar (`VentasPage.tsx` — dropdown `facturaPV`).
+
+**3. Sección "Certificados AFIP"** — lo que distingue al circuito propio: CUIT (obligatorio,
+repetido en este bloque) + **Certificado (.crt)** + **Clave privada (.key) sin passphrase**
+(obligatorios los dos). El botón "Guardar" queda deshabilitado hasta tener ambos archivos + CUIT.
+⚠ La UI no lo marca como bloqueante visualmente, pero **sin certificado activo la EF rechaza la
+emisión con 400** ("El tenant está en circuito WSFE propio pero no tiene certificado AFIP
+activo") — es un requisito real de todos modos.
+
+**4. `tenants.afip_provider` ('afipsdk' vs 'propio')** — **no tiene ningún control en
+`ConfigPage.tsx` ni en ningún otro lugar del frontend**, solo se lee server-side en
+[emitir-factura/index.ts:72,80](../../../supabase/functions/emitir-factura/index.ts). Se setea
+por SQL. **Desde mig 265 (2026-07-10) es el DEFAULT para tenants nuevos y ya está en `'propio'`
+en los 17 tenants existentes** — en la práctica no hace falta tocarlo. Para volver un tenant
+puntual a `'afipsdk'` (rollback), hay que pedirlo (UPDATE por SQL, sin deploy).
+
+**5. ⚠ Gotcha conocido — toggle "Modo PRODUCCIÓN/PRUEBA":** el chequeo de habilitación de este
+toggle (`afipDatosListos`, `ConfigPage.tsx:883`) exige **CUIT + Token AfipSDK guardados**, sin
+contemplar que el circuito propio no usa ese token para nada. Mientras el tenant esté en
+homologación (recomendado para seguir probando) no afecta. Si en algún momento hace falta pasar
+un tenant 100%-propio a producción real sin cargar nunca un Token AfipSDK, hay 2 salidas: (a)
+arreglar ese chequeo en el código para que sea propio-aware, o (b) setear
+`tenants.afip_produccion=true` directo por SQL, salteando el toggle de la UI.
+
+**Resumen mínimo para que funcione:** CUIT + Condición IVA + ≥1 Punto de venta + Certificado
+(.crt+.key) + toggle "Habilitada". Nada de Token AfipSDK, nada de tocar `afip_provider` (ya está
+bien en todos los tenants existentes).
 
 ---
 

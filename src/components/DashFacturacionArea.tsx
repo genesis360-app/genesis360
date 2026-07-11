@@ -8,6 +8,8 @@ import { SlidersHorizontal, X, Shield, AlertTriangle, CheckCircle, Clock, BarCha
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { mapDevolucionNc, ivaNcTotal, netoNcTotal, type NcEmitida } from '@/lib/libroIva'
+import { calcularImportes } from '@/lib/facturacionLogic'
 import { InsightCard } from '@/components/InsightCard'
 import type { DashSection } from '@/components/dashAreaSection'
 
@@ -82,10 +84,23 @@ export function DashFacturacionArea({ section, embedded }: { section?: DashSecti
           .in('venta_id', ventaIdsMes)
         itemsMes = data ?? []
       }
+      // NC electrónicas emitidas (últimos 6 meses, por nc_fecha — mig 266): RESTAN débito
+      // y neto, mismo criterio que el Libro IVA (REGLA #0). Sucursal via la venta original.
+      let qNc = supabase.from('devoluciones')
+        .select('id, nc_tipo, nc_numero_comprobante, nc_fecha, created_at, devolucion_items(cantidad, precio_unitario, productos(alicuota_iva)), ventas!inner(sucursal_id)')
+        .eq('tenant_id', tenant!.id).not('nc_cae', 'is', null).gte('nc_fecha', seisMAtras)
+      if (sucursalId) qNc = qNc.eq('ventas.sucursal_id', sucursalId)
+      const { data: ncRaw = [] } = await qNc
+      const ncs6m: NcEmitida[] = (ncRaw ?? []).map((d: any) => mapDevolucionNc(d))
+      const inicioMesDia = inicioMes.split('T')[0]
+      const ncsMes = ncs6m.filter(nc => nc.fecha >= inicioMesDia)
+
       const ivaDebito = itemsMes.reduce((a: number, vi: any) => a + (vi.iva_monto ?? 0), 0)
+        - ivaNcTotal(ncsMes)
       // Neto = subtotal (bruto facturado c/IVA, por línea) − iva_monto. precio_unitario es
-      // unitario pre-descuento → NO sirve como neto de línea.
+      // unitario pre-descuento → NO sirve como neto de línea. Las NC del mes lo restan.
       const netoVentas = itemsMes.reduce((a: number, vi: any) => a + ((vi.subtotal ?? 0) - (vi.iva_monto ?? 0)), 0)
+        - netoNcTotal(ncsMes)
 
       // 2. IVA Crédito desde gastos del mes (iva_deducible=true)
       const iniciomesDate = inicioMes.split('T')[0]
@@ -141,6 +156,15 @@ export function DashFacturacionArea({ section, embedded }: { section?: DashSecti
         if (!monthlyIVA[mes]) monthlyIVA[mes] = { neto: 0, iva: 0 }
         monthlyIVA[mes].neto += (vi.subtotal ?? 0)
         monthlyIVA[mes].iva += (vi.iva_monto ?? 0)
+      }
+      // Las NC restan en el mes de su emisión (el bucket `neto` acumula bruto c/IVA → se
+      // resta el total de la NC; el display hace neto − iva).
+      for (const nc of ncs6m) {
+        const mes = nc.fecha.slice(0, 7)
+        if (!monthlyIVA[mes]) monthlyIVA[mes] = { neto: 0, iva: 0 }
+        const imp = calcularImportes(nc.items, nc.nc_tipo ?? 'NC-C')
+        monthlyIVA[mes].neto -= imp.impTotal
+        monthlyIVA[mes].iva -= imp.impIVA
       }
       const evolData = Object.entries(monthlyIVA).sort(([a],[b]) => a.localeCompare(b)).map(([mes, d]) => {
         const [y, m] = mes.split('-')

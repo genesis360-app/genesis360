@@ -20,6 +20,7 @@ import { sugiereModoAvanzado } from '@/lib/modoOperacion'
 import { UpgradePrompt } from '@/components/UpgradePrompt'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { getFechasDashboard, getFechasAnteriores, labelPeriodo } from '@/components/FilterBar'
+import { mapDevolucionNc, ivaNcTotal } from '@/lib/libroIva'
 import type { PeriodoDash, Moneda } from '@/components/FilterBar'
 import { KPICard } from '@/components/KPICard'
 import { VentasVsGastosChart } from '@/components/VentasVsGastosChart'
@@ -419,7 +420,17 @@ export default function DashboardPage() {
         .not('ventas.cae', 'is', null)
       if (sucursalId) ivaFiscalQ = ivaFiscalQ.eq('ventas.sucursal_id', sucursalId)
       const { data: ivaFiscalRows } = await ivaFiscalQ
+      // Las NC electrónicas emitidas en el período RESTAN débito (mismo criterio que el
+      // Libro IVA, REGLA #0). Se imputan por nc_fecha (fecha de emisión, mig 266).
+      let ncFiscalQ = supabase.from('devoluciones')
+        .select('id, nc_tipo, nc_fecha, created_at, devolucion_items(cantidad, precio_unitario, productos(alicuota_iva)), ventas!inner(sucursal_id)')
+        .eq('tenant_id', tenant!.id)
+        .not('nc_cae', 'is', null)
+        .gte('nc_fecha', desde).lte('nc_fecha', hasta)
+      if (sucursalId) ncFiscalQ = ncFiscalQ.eq('ventas.sucursal_id', sucursalId)
+      const { data: ncFiscalRows } = await ncFiscalQ
       const ivaDebitoFiscal = (ivaFiscalRows ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
+        - ivaNcTotal((ncFiscalRows ?? []).map((d: any) => mapDevolucionNc(d)))
 
       // Ingreso Neto desde caja_movimientos
       let ingresoNeto = 0

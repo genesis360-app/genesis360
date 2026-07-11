@@ -6,6 +6,34 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🏢 (2026-07-11 · MULTI-CUIT FASES 2+3 EN DEV · migs 267-268 + EF v23 + panel UI · v1.126.0 — ⚠ PENDIENTE: prueba con 2 CUITs (cert de Fede) + deploy a PROD)
+> **Continuación:** GO pidió avanzar F2+F3 dejando la prueba real con 2 CUITs para cuando Fede
+> cargue el suyo (hoy). Todo EN DEV, NADA en PROD (migs 267-268 y EF v23 van a PROD con el deploy).
+> 1. **✅ F2 — EF `emitir-factura` v23 multi-emisor:** resolución `override ?? sucursal ?? default`
+>    (NC hereda SIEMPRE el emisor de la factura original), guards por EMISOR (letra/A-CUIT/umbral),
+>    guard nuevo de **PV por CUIT**, cert POR emisor (nunca firma cruzado), persiste
+>    `ventas.emisor_id`. **Mig 268**: cert UNIQUE(emisor) + PV UNIQUE(tenant,emisor,numero).
+>    Espejo `src/lib/emisorFiscal.ts` (15 unit). **Validado:** smokes 6/6 con emisor fake B +
+>    regresión e2e 21/42/56/86 = 10/10 (CAE/NC reales por el resolver nuevo). ⚠ Bug encontrado y
+>    arreglado en la validación: el guard de letra corría con el default ANTES de resolver la
+>    sucursal → ahora la resolución es una sola y "Venta no encontrada" se lanza tras los guards.
+> 2. **✅ F3 — UI (alcance ajustado, ver multi-cuit.md):** el form existente sigue editando el
+>    emisor PRINCIPAL (vía tenants + trigger 267 — sin cutover, cero drift); nuevo
+>    `EmisoresFiscalesPanel` en Config → Facturación: CRUD de emisores ADICIONALES + cert y PV por
+>    emisor + asignación sucursal→emisor; las secciones existentes de cert/PV ahora escriben
+>    `emisor_id` del principal (`afip.ts` upsert por emisor).
+> 3. **▶ HOY con Fede:** cargar su CUIT como emisor ADICIONAL en un tenant DEV (Config →
+>    Facturación → "Agregar emisor" + subir su cert + PV) + asignarle una sucursal → vender por esa
+>    sucursal → emitir. La UI del POS ofrece las letras del emisor PRINCIPAL hasta F4 (si eligen
+>    una letra inválida para el emisor de la sucursal, la EF rechaza con error claro — fail-closed).
+>    Alternativa más limpia para la demo: tenant donde el CUIT de Fede sea el PRINCIPAL.
+> 4. **Fixture NC lista** para la próxima corrida del spec 42 (devolución `f6b1c675…` sin nc_cae).
+> 5. **Deploy a PROD (cuando GO lo pida):** migs 267+268 ANTES del EF v23 + merge del PR de
+>    v1.126.0. La EF tiene fallback legacy (sin fila de emisor usa tenants.*), pero el orden
+>    correcto sigue siendo migs→EF→frontend.
+> 6. **F4-F6 pendientes** (selector en el POS con confirmación de override · reportes por emisor ·
+>    add-on "CUIT adicional"). Acción GO: precio del add-on.
+
 > ### 🏢 (2026-07-10 · MULTI-CUIT POR TENANT (F5) — PLAN COMPLETO + FASE 1 EN DEV · mig 267)
 > **Novena sesión del día** (tras el cierre de v1.125.0, cuyo PR #286 GO YA mergeó — Vercel READY
 > confirmado, dev sincronizado). GO pidió armar el plan sólido de multi-CUIT para igualar a la

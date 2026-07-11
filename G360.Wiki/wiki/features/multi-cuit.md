@@ -8,7 +8,8 @@ updated: 2026-07-10
 
 # Multi-CUIT por tenant (F5) — diseño y plan por fases
 
-**Estado: Fase 1 (modelo de datos) EN DEV (mig 267, 2026-07-10). Fases 2-6 pendientes.**
+**Estado: Fases 1-3 EN DEV (migs 267-268 + EF v23 + UI, 2026-07-11, v1.126.0). Falta la
+prueba real con 2 CUITs (cert de Fede) + Fases 4-6. NADA en PROD todavía.**
 
 ## Por qué
 
@@ -89,8 +90,8 @@ v1.125.0) y que esté `activo`.
 | Fase | Contenido | Riesgo | Estado |
 |---|---|---|---|
 | **1 — Modelo de datos (neutro)** | Mig 267: tabla + backfill + FKs + índices + RLS + trigger de sync. CERO cambio de comportamiento (nada lo lee todavía). | Bajo | ✅ DEV (2026-07-10) · PROD al deployar F2 |
-| **2 — EF `emitir-factura` multi-emisor** | La EF resuelve el emisor (regla de arriba) y toma cuit/condición/cert/token/provider/produccion/umbral DEL EMISOR (hoy: de `tenants`). Persiste `ventas.emisor_id`. Guards por emisor (Mono→C, RI→A/B, A exige CUIT, B≥umbral) — la condición ahora varía POR EMISOR. NC: hereda emisor + guard. Con 1 emisor = mismo flujo actual (regresión e2e 21/42/56). | **Alto (REGLA #0)** | ⬜ |
-| **3 — UI Config (CRUD de emisores)** | Config → Facturación pasa de formulario único a lista de emisores (form + cert upload + PV por emisor + marcar default + activo). Cutover: la UI escribe en `emisores_fiscales`, se elimina el trigger de sync, `tenants.*` fiscal queda read-only legacy. Asignación sucursal→emisor en Config → Sucursales. Runbook actualizado. | Medio | ⬜ |
+| **2 — EF `emitir-factura` multi-emisor** | La EF resuelve el emisor (regla de arriba) y toma cuit/condición/cert/token/provider/produccion/umbral DEL EMISOR. Persiste `ventas.emisor_id`. Guards por emisor + guard de PV por CUIT + NC hereda emisor. Con 1 emisor = mismo flujo actual. **Mig 268**: cert único POR EMISOR + PV único por (tenant, emisor, número). ⚠ Lección de la validación: el guard de letra debe correr DESPUÉS de la resolución completa (un guard "preliminar" con el default rechazaba B en una sucursal asignada a un emisor RI con default Mono) → la venta se fetchea con `maybeSingle` y "Venta no encontrada" se lanza recién después de los guards (preserva la semántica del spec 56). | **Alto (REGLA #0)** | ✅ DEV v23 (2026-07-11): smokes 6/6 (letra por override, PV por CUIT, cert por emisor, 403 cross-tenant, herencia NC, resolución por sucursal) + regresión e2e 21/42/56/86 10/10 |
+| **3 — UI Config (emisores adicionales)** | **Alcance ajustado en la implementación:** el form "Facturación Electrónica" existente SIGUE editando el emisor PRINCIPAL (escribe `tenants.*` y el trigger de mig 267 lo espeja — sin cutover total, cero riesgo de drift ni de romper los readers legacy del POS/PDF/dashboards). Lo nuevo: `EmisoresFiscalesPanel` (CRUD de emisores ADICIONALES + cert y PV por emisor + asignación sucursal→emisor + "sin cert/con cert" + activo/eliminar con guard de comprobantes) + las secciones existentes de cert/PV ahora escriben `emisor_id` del principal. El cutover total del form queda diferido a F4/F5 (cuando se migren los readers). | Medio | ✅ DEV (2026-07-11) |
 | **4 — Selección en el flujo de venta** | Modal de emisión (POS + FacturacionPage) muestra el emisor default de la sucursal con selector para override + **confirmación explícita si se cambia** (emitir con el CUIT equivocado es irreversible). `detectarTipoComprobante`/`tiposComprobantePermitidos` reciben la condición DEL EMISOR ELEGIDO (las letras ofrecidas cambian al cambiar de emisor). PDFs con los datos del emisor del comprobante. | Alto (UX fiscal) | ⬜ |
 | **5 — Reportes fiscales por emisor** | Selector de emisor en FacturacionPage (libros/KPIs/liquidación — libros por CUIT, v1.125.0, ahora por CUIT ELEGIDO), Posición IVA del Dashboard y DashFacturacionArea. Gastos: `emisor_id` en el form (default por sucursal). Export Excel por emisor. | Medio | ⬜ |
 | **6 — Monetización (add-on)** | Dimensión `cuits` en `fn_plan_base_limite` (base: 1 en todos los planes) + pack fijo "CUIT adicional" en el configurador batch + enforcement server-side (no crear emisor activo N+1 sin add-on). Pricing a definir con GO (referencia: la competencia lo regala en planes altos; nosotros monetizamos por add-on). | Medio | ⬜ |
@@ -116,13 +117,16 @@ Cada fase se deploya con su release y UAT propio (patrón [[feedback_features_gr
 
 ## Testing por fase
 
-- **F1:** queries de verificación del backfill (emisor default = campos del tenant; hijos linkeados).
-- **F2:** unit del resolver de emisor (lib pura espejo `src/lib/emisorFiscal.ts`) + regresión e2e
-  21/42/56 (con 1 emisor, todo idéntico) + **e2e nuevo con 2 emisores en el tenant de prueba DEV**
-  (⚠ requiere un SEGUNDO certificado/CUIT de homologación — acción GO; con el mismo CUIT de
-  homologación actual se puede simular parcialmente con 2 emisores del mismo CUIT, pero la matriz
-  Mono↔RI real exige otro CUIT). Esto de paso **cierra el pendiente UAT §29** (matriz fiscal por
-  condición con CAE real).
+- **F1:** ✅ queries de verificación del backfill (emisor default = campos del tenant; hijos linkeados).
+- **F2:** ✅ unit del resolver (`src/lib/emisorFiscal.ts`, 15 tests FAC-EMISOR-01→15) + regresión
+  e2e 21/42/56/86 (10/10, CAE y NC reales por el resolver nuevo) + smokes 6/6 con un emisor fake B
+  (RI, sin cert) en Jorgito: letra por override (RI rechaza C que el default Mono permitiría —
+  prueba que la resolución manda), PV por CUIT, cert por emisor, 403 emisor de otro tenant,
+  herencia de NC, y resolución por sucursal (encontró y arregló el bug del guard preliminar).
+  **⬜ PENDIENTE: prueba real con 2 CUITs distintos** (⚠ requiere el certificado/CUIT de Fede —
+  mañana; cargarlo como emisor adicional en un tenant DEV vía el panel nuevo y emitir con una
+  sucursal asignada). Esto de paso **cierra el pendiente UAT §29** (matriz fiscal por condición
+  con CAE real).
 - **F4/F5:** e2e de selección (override + confirmación) + spec 86 extendido (selector de emisor en
   libros) + UAT nuevos FAC-31+.
 - **F6:** unit de límites (patrón `planLimits.test.ts`) + e2e de enforcement.

@@ -47,6 +47,7 @@ serve(async (req) => {
       tipo_comprobante = 'B', // 'A' | 'B' | 'C' | 'NC-A' | 'NC-B' | 'NC-C'
       punto_venta = 1,
       devolucion_id,           // presente solo al emitir NC
+      emisor_id: bodyEmisorId, // multi-CUIT (F5): override explícito del emisor (opcional)
     } = await req.json()
 
     const esNC = tipo_comprobante.startsWith('NC-')
@@ -97,42 +98,153 @@ serve(async (req) => {
     if (tErr || !tenant) throw new Error('Tenant no encontrado')
     if (!tenant.cuit) throw new Error('El tenant no tiene CUIT configurado')
 
-    // Provider por-tenant (dual-provider). Default seguro = 'afipsdk' (circuito actual).
-    // El token de AfipSDK solo es requisito de ESE circuito; el propio necesita cert+key
-    // (se valida más abajo, después de bajarlos del bucket).
-    const providerName: AfipProviderName = tenant.afip_provider === 'propio' ? 'propio' : 'afipsdk'
-    if (providerName === 'afipsdk' && !tenant.afipsdk_token) throw new Error('El tenant no tiene token de facturación configurado')
+    // 1b. Multi-CUIT (F5, mig 267): la identidad fiscal del comprobante es un EMISOR del
+    //     tenant, no el tenant. Regla (espejo de src/lib/emisorFiscal.ts):
+    //       factura → body.emisor_id ?? emisor de la sucursal de la venta ?? default
+    //       NC      → SIEMPRE el emisor de la factura original (cruzar CUIT = inválido)
+    //     Acá se resuelve lo PRELIMINAR (sin la venta) para que los guards fallen rápido;
+    //     tras traer la venta se re-resuelve con sucursal/NC y se re-validan los guards.
+    interface EmisorFiscal {
+      id: string | null
+      cuit: string
+      condicion_iva_emisor: string | null
+      umbral_factura_b: number | string | null
+      afip_produccion: boolean | null
+      afip_provider: string | null
+      afipsdk_token: string | null
+      es_default: boolean
+      activo: boolean
+    }
+    const EMISOR_COLS = 'id, tenant_id, cuit, condicion_iva_emisor, umbral_factura_b, afip_produccion, afip_provider, afipsdk_token, es_default, activo'
+    const fetchEmisor = async (id: string) => {
+      const { data } = await supabase.from('emisores_fiscales').select(EMISOR_COLS).eq('id', id).maybeSingle()
+      return data as (EmisorFiscal & { tenant_id: string }) | null
+    }
+    // Fallback legacy (tenant sin fila en emisores_fiscales, p.ej. EF deployada antes de
+    // la mig en un ambiente): se emite con los campos fiscales del tenant, como siempre.
+    const emisorDesdeTenant = (): EmisorFiscal => ({
+      id: null, cuit: tenant.cuit, condicion_iva_emisor: tenant.condicion_iva_emisor,
+      umbral_factura_b: tenant.umbral_factura_b, afip_produccion: tenant.afip_produccion,
+      afip_provider: tenant.afip_provider, afipsdk_token: tenant.afipsdk_token,
+      es_default: true, activo: true,
+    })
+    const validarEmisor = (e: (EmisorFiscal & { tenant_id?: string }) | null, origen: string): Response | null => {
+      if (!e) {
+        return new Response(JSON.stringify({ error: `El emisor indicado (${origen}) no existe.` }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      if (e.tenant_id && e.tenant_id !== tenant_id) {
+        return new Response(JSON.stringify({ error: 'No autorizado: el emisor no pertenece al tenant indicado.' }), {
+          status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      if (!e.activo) {
+        return new Response(JSON.stringify({ error: `El emisor indicado (${origen}) está inactivo.` }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      return null
+    }
+
+    // 2. Fetch venta con ítems y cliente. `maybeSingle`: si no existe, el error se lanza
+    //    RECIÉN después de los guards (los guards no deben depender de que la venta exista
+    //    — permite validarlos con un venta_id dummy, ver spec 56).
+    const { data: venta } = await supabase.from('ventas')
+      .select(`
+        id, numero, total, costo_envio, estado, medio_pago, cae, tipo_comprobante, numero_comprobante,
+        sucursal_id, emisor_id,
+        venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto,
+          productos(nombre, sku, alicuota_iva)),
+        clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor)
+      `)
+      .eq('id', venta_id).maybeSingle()
+
+    // 2a. Resolución del emisor (una sola, con toda la información disponible):
+    //     NC → emisor de la factura original · factura → override ?? sucursal ?? default.
+    let emisor: EmisorFiscal
+    if (esNC && (venta as any)?.emisor_id) {
+      // 🛑 REGLA #0: la NC se emite SIEMPRE con el emisor de la factura original.
+      if (bodyEmisorId && String(bodyEmisorId) !== (venta as any).emisor_id) {
+        return new Response(JSON.stringify({ error: 'La Nota de Crédito debe emitirse con el mismo emisor (CUIT) que la factura original.' }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      const e = await fetchEmisor((venta as any).emisor_id)
+      const bad = validarEmisor(e, 'de la factura original')
+      if (bad) return bad
+      emisor = e!
+    } else if (bodyEmisorId) {
+      const e = await fetchEmisor(String(bodyEmisorId))
+      const bad = validarEmisor(e, 'override')
+      if (bad) return bad
+      emisor = e!
+    } else {
+      // Emisor asignado a la sucursal de la venta; si no hay, el default del tenant.
+      let sucursalEmisorId: string | null = null
+      if ((venta as any)?.sucursal_id) {
+        const { data: suc } = await supabase.from('sucursales')
+          .select('emisor_fiscal_id').eq('id', (venta as any).sucursal_id).maybeSingle()
+        sucursalEmisorId = suc?.emisor_fiscal_id ?? null
+      }
+      if (sucursalEmisorId) {
+        const e = await fetchEmisor(sucursalEmisorId)
+        const bad = validarEmisor(e, 'de la sucursal')
+        if (bad) return bad
+        emisor = e!
+      } else {
+        const { data: eDef } = await supabase.from('emisores_fiscales').select(EMISOR_COLS)
+          .eq('tenant_id', tenant_id).eq('es_default', true).maybeSingle()
+        emisor = (eDef as EmisorFiscal | null) ?? emisorDesdeTenant()
+      }
+    }
 
     // Guard fiscal — última línea de defensa (la restricción del selector en el front es
     // solo UI y puede estar cacheada/bypasseada). Espeja tiposComprobantePermitidos() de
     // src/lib/facturacionLogic.ts: Monotributista/Exento → SOLO C (y NC-C/ND-C); cualquier
     // otra condición (RI) → A o B, nunca C. La `letra` ignora el prefijo NC-/ND-.
+    // La condición es LA DEL EMISOR RESUELTO (puede variar por emisor en multi-CUIT).
     const letra = tipo_comprobante.replace(/^N[CD]-/, '')
-    const emisorSoloC = tenant.condicion_iva_emisor === 'Monotributista' || tenant.condicion_iva_emisor === 'Exento'
-    if (emisorSoloC && letra !== 'C') {
-      return new Response(JSON.stringify({ error: `Un emisor ${tenant.condicion_iva_emisor} solo puede emitir comprobantes tipo C (se intentó ${tipo_comprobante}).` }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-    if (!emisorSoloC && letra === 'C') {
-      return new Response(JSON.stringify({ error: `Un emisor Responsable Inscripto no puede emitir comprobantes tipo C (se intentó ${tipo_comprobante}).` }), {
-        status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+    {
+      const cond = emisor.condicion_iva_emisor
+      const soloC = cond === 'Monotributista' || cond === 'Exento'
+      if (soloC && letra !== 'C') {
+        return new Response(JSON.stringify({ error: `Un emisor ${cond} solo puede emitir comprobantes tipo C (se intentó ${tipo_comprobante}).` }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+      if (!soloC && letra === 'C') {
+        return new Response(JSON.stringify({ error: `Un emisor Responsable Inscripto no puede emitir comprobantes tipo C (se intentó ${tipo_comprobante}).` }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
     }
 
-    // 2. Fetch venta con ítems y cliente
-    const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select(`
-        id, numero, total, costo_envio, estado, medio_pago, cae, tipo_comprobante, numero_comprobante,
-        venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto,
-          productos(nombre, sku, alicuota_iva)),
-        clientes(nombre, dni, email, cuit_receptor, condicion_iva_receptor)
-      `)
-      .eq('id', venta_id).single()
-    if (vErr || !venta) throw new Error('Venta no encontrada')
+    // 2a-bis. Los puntos de venta de AFIP son POR CUIT: si el emisor tiene PV configurados,
+    // el pedido debe ser uno de ellos (evita emitir con el CUIT A usando un PV del CUIT B).
+    // Sin PV configurados se permite cualquier número (comportamiento legacy, PV 1).
+    {
+      const { data: pvRows } = await supabase.from('puntos_venta_afip')
+        .select('numero, emisor_id').eq('tenant_id', tenant_id).eq('activo', true)
+      const delEmisor = (pvRows ?? []).filter((p: { numero: number | string; emisor_id: string | null }) =>
+        (!!emisor.id && p.emisor_id === emisor.id) || (emisor.es_default && !p.emisor_id))
+      if (delEmisor.length > 0 && !delEmisor.some((p: { numero: number | string }) => Number(p.numero) === Number(punto_venta))) {
+        return new Response(JSON.stringify({ error: `El punto de venta ${punto_venta} no está configurado para este emisor (los puntos de venta de AFIP son por CUIT).` }), {
+          status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // Recién acá exigimos que la venta exista (los guards de arriba no dependen de ella).
+    if (!venta) throw new Error('Venta no encontrada')
 
     // Para facturas normales, bloquear si ya tiene CAE
     if (!esNC && venta.cae) throw new Error('Esta venta ya tiene CAE emitido: ' + venta.cae)
+
+    // Provider por-emisor (dual-provider). El token de AfipSDK solo es requisito de ESE
+    // circuito; el propio necesita cert+key (se valida más abajo).
+    const providerName: AfipProviderName = emisor.afip_provider === 'propio' ? 'propio' : 'afipsdk'
+    if (providerName === 'afipsdk' && !emisor.afipsdk_token) throw new Error('El emisor no tiene token de facturación configurado')
 
     const cliente = (venta as any).clientes
 
@@ -198,7 +310,7 @@ serve(async (req) => {
     // DocTipo/DocNro según condición
     let docTipo = 99; let docNro = 0 // Consumidor Final por defecto
     const totalVenta = Number(venta.total ?? 0) + (envioFacturado ? costoEnvio : 0)
-    const umbral = Number(tenant.umbral_factura_b ?? 68305.16)
+    const umbral = Number(emisor.umbral_factura_b ?? 68305.16)
 
     if (tipo_comprobante === 'A') {
       docTipo = 80 // CUIT
@@ -274,22 +386,26 @@ serve(async (req) => {
     )
 
     // 6. Obtener próximo número
-    const cuit = parseInt(tenant.cuit.replace(/[-\s]/g, ''))
-    // Homologación vs producción: decisión POR-TENANT (tenants.afip_produccion).
+    const cuit = parseInt(emisor.cuit.replace(/[-\s]/g, ''))
+    // Homologación vs producción: decisión POR-EMISOR (emisores_fiscales.afip_produccion).
     // `AFIP_FORCE_HOMOLOGACION=true` es un freno de emergencia GLOBAL que fuerza
     // homologación para todos (nunca prende producción). Default → homologación.
     const masterKill = Deno.env.get('AFIP_FORCE_HOMOLOGACION') === 'true'
-    const isProduction = !masterKill && tenant.afip_produccion === true
+    const isProduction = !masterKill && emisor.afip_produccion === true
 
-    // Certificado propio del tenant (subido en Config → Facturación, tabla
-    // tenant_certificates + bucket certificados-afip). AfipSDK acepta cert+key por
-    // constructor y hace la firma WSAA en su nube → funciona en Deno. Si el tenant no
-    // cargó cert, cae a modo token-only (sirve para el CUIT de prueba compartido).
+    // Certificado del EMISOR (subido en Config → Facturación, tabla tenant_certificates +
+    // bucket certificados-afip). El cert de un emisor NUNCA firma por otro: se elige la
+    // fila con emisor_id del emisor resuelto, con fallback a la fila legacy sin emisor
+    // (pre-mig 267). AfipSDK acepta cert+key por constructor y hace la firma WSAA en su
+    // nube → funciona en Deno. Sin cert, AfipSDK cae a modo token-only.
     let certPem: string | undefined
     let keyPem: string | undefined
-    const { data: certRow } = await supabase.from('tenant_certificates')
-      .select('cert_crt_path, cert_key_path, activo')
-      .eq('tenant_id', tenant_id).eq('activo', true).maybeSingle()
+    const { data: certRows } = await supabase.from('tenant_certificates')
+      .select('cert_crt_path, cert_key_path, activo, emisor_id')
+      .eq('tenant_id', tenant_id).eq('activo', true)
+    const certRow = (certRows ?? []).find((c: { emisor_id: string | null }) => !!emisor.id && c.emisor_id === emisor.id)
+      ?? (certRows ?? []).find((c: { emisor_id: string | null }) => !c.emisor_id)
+      ?? null
     if (certRow?.cert_crt_path && certRow?.cert_key_path) {
       const [crtDl, keyDl] = await Promise.all([
         supabase.storage.from('certificados-afip').download(certRow.cert_crt_path),
@@ -306,7 +422,7 @@ serve(async (req) => {
     // Circuito propio: el cert es OBLIGATORIO (firma el WSAA localmente). Falla claro
     // ANTES de tocar AFIP — no hay fallback automático al otro provider (REGLA #0).
     if (providerName === 'propio' && (!certPem || !keyPem)) {
-      return new Response(JSON.stringify({ error: "El tenant está en circuito WSFE propio pero no tiene certificado AFIP activo (Config → Facturación). Cargá el certificado o volvé el tenant a afip_provider='afipsdk'." }), {
+      return new Response(JSON.stringify({ error: "El emisor está en circuito WSFE propio pero no tiene certificado AFIP activo (Config → Facturación). Cargá el certificado del emisor o pasalo a afip_provider='afipsdk'." }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -337,7 +453,7 @@ serve(async (req) => {
     const provider = makeAfipProvider(providerName, {
       cuit,
       production: isProduction,
-      accessToken: tenant.afipsdk_token,
+      accessToken: emisor.afipsdk_token,
       certPem,
       keyPem,
       taCache,
@@ -389,7 +505,7 @@ serve(async (req) => {
     }
 
     // 8. Emitir
-    console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id} [${isProduction ? 'PRODUCCIÓN' : 'homologación'}] via ${providerName}`)
+    console.log(`Emitiendo ${tipo_comprobante} #${proximo} para tenant ${tenant_id} (emisor ${emisor.id ?? 'legacy'} CUIT ${cuit}) [${isProduction ? 'PRODUCCIÓN' : 'homologación'}] via ${providerName}`)
     const resultado = await provider.createVoucher(payload)
 
     // 9. Guardar CAE (REGLA #0). AFIP YA autorizó el comprobante: si el UPDATE falla, la venta/devolución
@@ -431,6 +547,9 @@ serve(async (req) => {
         tipo_comprobante:  `Factura ${tipo_comprobante}`,
         numero_comprobante: proximo,
         afip_provider_usado: providerName,
+        // Multi-CUIT: con qué emisor se emitió (la NC lo hereda de acá). Null solo en el
+        // fallback legacy sin fila de emisor.
+        ...(emisor.id ? { emisor_id: emisor.id } : {}),
       }
       if (venta.estado === 'despachada') ventaUpdate.estado = 'facturada'
       await persistirCAE(() => supabase.from('ventas').update(ventaUpdate).eq('id', venta_id))

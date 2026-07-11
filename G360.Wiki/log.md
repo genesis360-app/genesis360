@@ -6,6 +6,47 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-11] update | 🏢 Multi-CUIT Fases 2+3 EN DEV (v1.126.0) — EF multi-emisor validada con smokes + regresión; falta la prueba con 2 CUITs (cert de Fede)
+
+GO pidió avanzar Fases 2 y 3 dejando la prueba real con 2 CUITs para cuando Fede cargue el suyo.
+
+**F2 — EF `emitir-factura` v23 (DEV):** resolución del emisor server-side (`body.emisor_id ??
+sucursal de la venta ?? default`; la **NC hereda SIEMPRE el de la factura original**, 400 si el
+body manda otro), guards fiscales por EMISOR (letra, A-exige-CUIT, B≥umbral), **guard nuevo de PV
+por CUIT** (el PV 1 del CUIT A ≠ PV 1 del CUIT B), certificado POR emisor (nunca firma cruzado,
+fallback a la fila legacy), `afip_produccion`/`afip_provider`/token por emisor, y persistencia de
+`ventas.emisor_id`. **Mig 268**: cert `UNIQUE(emisor_id)` + PV `UNIQUE(tenant, emisor, numero)`.
+Espejo puro `src/lib/emisorFiscal.ts` con 15 unit (FAC-EMISOR-01→15, plan §10).
+
+**🐛 Bug encontrado y arreglado durante la validación:** el guard de letra corría "preliminar" con
+el emisor DEFAULT antes de conocer la sucursal → una sucursal asignada a un emisor RI no podía
+emitir B si el default era Mono (rechazo falso, fail-closed). Fix: resolución ÚNICA con la venta
+fetcheada `maybeSingle` y "Venta no encontrada" lanzada DESPUÉS de los guards (preserva la
+semántica del spec 56 con venta dummy). Redeploy v22→v23.
+
+**Validación:** smokes **6/6** con un emisor fake B (RI, sin cert) en Jorgito — letra por override
+(RI rechaza C que el default Mono permitiría: prueba que la resolución manda), PV por CUIT, cert
+por emisor, 403 emisor de otro tenant, herencia de NC, resolución por sucursal — todo 4xx ANTES de
+AFIP, nada mutado, fixture limpiada. **Regresión e2e 21/42/56/86 = 10/10** contra v23 (CAE y NC
+reales de homologación pasando por el resolver nuevo). Unit **1012/1012** (997+15) · build verde.
+
+**F3 — UI (alcance ajustado):** el form "Facturación Electrónica" existente sigue editando el
+emisor PRINCIPAL (escribe `tenants.*`, el trigger de mig 267 espeja — sin cutover total, cero
+riesgo para los readers legacy del POS/PDF/dashboards). Nuevo **`EmisoresFiscalesPanel`** en
+Config → Facturación: CRUD de emisores adicionales (homologación forzada al crear), cert y PV por
+emisor, asignación **sucursal → emisor** con warning de F4, eliminar con guard de comprobantes
+(REGLA #0: con ventas emitidas solo se desactiva). `afip.ts` upsertea el cert por `emisor_id`.
+
+**Para HOY con Fede:** cargar su CUIT como emisor adicional en un tenant DEV + cert + PV + asignar
+sucursal → vender por esa sucursal → emitir (o directamente un tenant con su CUIT como principal,
+más limpio para demo). Hasta F4 el POS ofrece las letras del emisor principal; una letra inválida
+para el emisor real es rechazada por la EF con error claro (fail-closed, REGLA #0).
+
+**Estado:** todo EN DEV (migs 267-268, EF v23, frontend v1.126.0 commiteado en dev). NADA en PROD.
+Deploy: migs → EF → merge PR. F4-F6 pendientes.
+
+---
+
 ## [2026-07-10] update | 🏢 Multi-CUIT por tenant (F5) — plan completo en 6 fases + Fase 1 (mig 267) en DEV
 
 **Cierre previo:** GO mergeó el PR #286 (v1.125.0) — el primer intento mostró conflictos en 4

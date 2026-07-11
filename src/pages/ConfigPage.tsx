@@ -15,6 +15,7 @@ import { CodigoPerfilesPanel } from '@/components/CodigoPerfilesPanel'
 import { CourierCredencialesPanel } from '@/components/CourierCredencialesPanel'
 import RepartidoresPanel from '@/components/RepartidoresPanel'
 import { CanalesVentaPanel } from '@/components/CanalesVentaPanel'
+import { EmisoresFiscalesPanel } from '@/components/EmisoresFiscalesPanel'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { MODO_BASICO_ENABLED } from '@/config/brand'
@@ -1656,17 +1657,35 @@ export default function ConfigPage() {
   const [certKeyFile, setCertKeyFile] = useState<File | null>(null)
   const [savingCert, setSavingCert] = useState(false)
 
-  const { data: tenantCert, refetch: refetchCert } = useQuery<TenantCertificate | null>({
-    queryKey: ['tenant-cert', tenant?.id],
+  // Multi-CUIT (F5): el emisor PRINCIPAL del tenant (es_default). Las secciones de
+  // certificado y puntos de venta de este tab operan sobre ÉL; los emisores adicionales
+  // se gestionan en EmisoresFiscalesPanel (cert y PV propios por emisor).
+  const { data: emisorDefault } = useQuery({
+    queryKey: ['emisor-fiscal-default', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('tenant_certificates')
-        .select('*').eq('tenant_id', tenant!.id).maybeSingle()
-      return data as TenantCertificate | null
+      const { data } = await supabase.from('emisores_fiscales')
+        .select('id').eq('tenant_id', tenant!.id).eq('es_default', true).maybeSingle()
+      return data as { id: string } | null
     },
     enabled: !!tenant && tab === 'facturacion',
   })
 
-  const { data: puntosVentaAfip = [], refetch: refetchPV } = useQuery({
+  const { data: tenantCert, refetch: refetchCert } = useQuery<TenantCertificate | null>({
+    queryKey: ['tenant-cert', tenant?.id, emisorDefault?.id],
+    queryFn: async () => {
+      // Puede haber un cert POR EMISOR (mig 268): esta sección muestra el del principal
+      // (o la fila legacy sin emisor).
+      const { data } = await supabase.from('tenant_certificates')
+        .select('*').eq('tenant_id', tenant!.id)
+      const rows = (data ?? []) as TenantCertificate[]
+      return rows.find(c => !!emisorDefault?.id && c.emisor_id === emisorDefault.id)
+        ?? rows.find(c => !c.emisor_id)
+        ?? null
+    },
+    enabled: !!tenant && tab === 'facturacion',
+  })
+
+  const { data: puntosVentaAfipTodos = [], refetch: refetchPV } = useQuery({
     queryKey: ['puntos-venta-afip-config', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('puntos_venta_afip')
@@ -1675,13 +1694,18 @@ export default function ConfigPage() {
     },
     enabled: !!tenant && tab === 'facturacion',
   })
+  // Esta sección lista solo los PV del emisor principal (los de emisores adicionales
+  // viven en su panel; los legacy sin emisor cuentan como del principal).
+  const puntosVentaAfip = (puntosVentaAfipTodos as { emisor_id?: string | null }[]).filter(
+    pv => !pv.emisor_id || pv.emisor_id === emisorDefault?.id,
+  )
 
   const handleSaveCert = async () => {
     if (!certCrtFile || !certKeyFile) { toast.error('Seleccioná los dos archivos (.crt y .key)'); return }
     if (!certCuit.trim()) { toast.error('El CUIT es obligatorio'); return }
     setSavingCert(true)
     try {
-      await uploadCertificates(tenant!.id, certCrtFile, certKeyFile, certCuit, certValidez || null)
+      await uploadCertificates(tenant!.id, certCrtFile, certKeyFile, certCuit, certValidez || null, emisorDefault?.id ?? null)
       toast.success('Certificados AFIP guardados')
       setCertCrtFile(null); setCertKeyFile(null)
       refetchCert()
@@ -2740,6 +2764,8 @@ export default function ConfigPage() {
                     const { error } = await supabase.from('puntos_venta_afip').insert({
                       tenant_id: tenant!.id, numero: parseInt(pvForm.numero),
                       nombre: pvForm.nombre.trim() || null,
+                      // Multi-CUIT: los PV de esta sección son del emisor principal
+                      emisor_id: emisorDefault?.id ?? null,
                     })
                     if (error) toast.error(error.message)
                     else { toast.success('Punto de venta agregado'); setPvForm({ numero: '', nombre: '' }); refetchPV() }
@@ -2870,6 +2896,9 @@ export default function ConfigPage() {
           )}
         </div>
       )}
+
+      {/* ── Emisores fiscales (multi-CUIT, F5) ─────────────────────────────── */}
+      {tab === 'facturacion' && canEdit && <EmisoresFiscalesPanel />}
 
       {tab === 'inventario' && (
         <div className="space-y-4">

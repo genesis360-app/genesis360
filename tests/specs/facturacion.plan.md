@@ -151,6 +151,26 @@ tras pago — espejo de `billing-manual-sweep`). El resto es runtime/DB:
 - PROD: smoke de emisión en el tenant piloto (homologación) + verificación 401 anon
   post-hardening.
 
+## 10. Multi-CUIT — resolución de EMISOR (FAC-EMISOR) ✅ *(nuevo 2026-07-11, F5 Fases 2/3)*
+
+Espejo: `src/lib/emisorFiscal.ts` → `tests/unit/emisorFiscal.test.ts`. Diseño completo:
+`wiki/features/multi-cuit.md`.
+
+- FAC-EMISOR-01→04: factura → override del body ?? emisor de la sucursal ?? default; sin
+  emisor → null (la EF corta con error claro).
+- FAC-EMISOR-05→08: NC hereda SIEMPRE el emisor de la factura original; body distinto →
+  error (nunca cruzar CUIT); venta legacy sin emisor → cae a la regla de factura.
+- FAC-EMISOR-09→11: `elegirCertificado` — el cert de un emisor nunca firma por otro;
+  fallback a la fila legacy sin emisor; sin cert → null (400 antes de AFIP).
+- FAC-EMISOR-12→15: `validarPuntoVenta` — los PV de AFIP son POR CUIT; las filas legacy
+  cuentan como del default; emisor sin PV configurados permite cualquier número (legacy).
+- Runtime (smokes DEV contra EF v23, 2026-07-11, emisor fake B RI sin cert): letra por
+  override (RI rechaza C que el default Mono permitiría) · PV por CUIT · cert por emisor ·
+  403 emisor de otro tenant · herencia de NC · resolución por sucursal. ⚠ Lección: el guard
+  de letra corre DESPUÉS de la resolución completa (la venta se fetchea `maybeSingle` y
+  "Venta no encontrada" se lanza tras los guards — preserva el spec 56 con venta dummy).
+- ⬜ Pendiente: emisión real con 2 CUITs distintos (cert de Fede) — cierra también UAT §29.
+
 ## Fuera de alcance unit (e2e / manual con ARCA)
 
 - WSAA login + CAE real (cubierto por e2e 21/42 contra homologación + integración Node).

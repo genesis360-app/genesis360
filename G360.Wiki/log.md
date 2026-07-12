@@ -6,6 +6,29 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-11] update | 🐛 Fix UX: las OC pasan a estar disponibles en AMBOS modos (el flujo "OC sugerida" moría a la mitad en básico)
+
+**Reporte de GO (dogfooding en plan/modo básico):** el módulo Prov./Servicios mostraba solo 2 de
+sus 3 pestañas — faltaba "Órdenes de compra" (gateada por `modoAvanzado`), pero el botón **"Generar
+OC sugerida" de Alertas NO estaba gateado** → en básico se creaba la OC en `ordenes_compra` y no
+había NINGUNA pantalla para verla o continuarla ("acceso a la mitad de algo").
+
+**Decisión de GO:** las 3 pestañas visibles en ambos modos (en básico se puede querer generar la
+OC sugerida desde Alertas con SKUs vinculados a proveedor). **Fix aplicado (v1.126.0):**
+- `ProveedoresPage`: tab "Órdenes de compra" sin gate de modo + botón "Nueva OC" ídem (los
+  permisos por ROL `capOC` siguen intactos). "Comparar presupuestos" (CO7b) sigue solo-avanzado.
+- `AlertasPage` + `useAlertas` (badge): las alertas de OC vencidas / por vencer cuentan y se
+  muestran en ambos modos — el badge y la página siguen contando IGUAL (regla de oro del módulo).
+  Las fuentes WMS (sin ubicación / sin proveedor / LPN vencidos) siguen solo-avanzado.
+- El flujo cierra completo en básico: Alertas → OC sugerida → tab OC → enviar → "Recibir
+  mercadería" navega a `/recepciones` (la ruta existe sin gate en App.tsx — el modo gatea UI,
+  nunca datos; el sidebar no muestra Recepciones en básico pero el botón del flujo llega igual).
+
+Verificación: build + unit 1012/1012 + e2e 07_alertas + 12_navegacion verdes. Actualizada la
+página [[wiki/features/modo-basico-avanzado]] (las OC ya no son parte del gate de modo).
+
+---
+
 ## [2026-07-11] update | 🏢 Multi-CUIT Fases 2+3 EN DEV (v1.126.0) — EF multi-emisor validada con smokes + regresión; falta la prueba con 2 CUITs (cert de Fede)
 
 GO pidió avanzar Fases 2 y 3 dejando la prueba real con 2 CUITs para cuando Fede cargue el suyo.

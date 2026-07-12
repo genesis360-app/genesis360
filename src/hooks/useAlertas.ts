@@ -30,9 +30,9 @@ async function contarCajasSobreUmbral(tenantId: string, umbral: number | null | 
 export function useAlertas() {
   const { tenant } = useAuthStore()
   // El badge del sidebar debe contar SOLO los tipos de alerta que el usuario puede
-  // accionar en su modo. En básico no hay vencimiento de lote (WMS) ni OC (compras),
-  // así que esas fuentes no se cuentan o el badge mostraría un número "fantasma"
-  // que no se corresponde con nada visible en /alertas. Ver AlertasPage.tsx.
+  // accionar en su modo. En básico no hay vencimiento de lote (WMS), así que esa fuente
+  // no se cuenta o el badge mostraría un número "fantasma" que no se corresponde con
+  // nada visible en /alertas. Las OC SÍ cuentan en ambos modos (v1.126.0). Ver AlertasPage.tsx.
   const { avanzado: modoAvanzado } = useModoOperacion()
 
   const { data } = useQuery({
@@ -47,6 +47,9 @@ export function useAlertas() {
       const en3diasStr = en3dias.toISOString().split('T')[0]
 
       // ── Fuentes comunes a ambos modos ──────────────────────────────────────
+      // Las OC cuentan en AMBOS modos desde v1.126.0: el tab "Órdenes de compra" de
+      // Prov./Servicios ya no es exclusivo de avanzado (decisión GO 2026-07-11 — la OC
+      // sugerida de Alertas se genera también en básico y hay que poder continuarla).
       const baseQueries = [
         supabase
           .from('alertas')
@@ -71,9 +74,26 @@ export function useAlertas() {
           .eq('tenant_id', tenant!.id)
           .in('estado', ['pendiente', 'reservada'])
           .not('cliente_id', 'is', null),
+        // OC con fecha de vencimiento de pago ya pasada y no pagadas
+        supabase
+          .from('ordenes_compra')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant!.id)
+          .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
+          .not('fecha_vencimiento_pago', 'is', null)
+          .lt('fecha_vencimiento_pago', hoy),
+        // OC que vencen en los próximos 3 días
+        supabase
+          .from('ordenes_compra')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant!.id)
+          .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
+          .not('fecha_vencimiento_pago', 'is', null)
+          .gte('fecha_vencimiento_pago', hoy)
+          .lte('fecha_vencimiento_pago', en3diasStr),
       ] as const
 
-      // ── Fuentes solo de modo avanzado (WMS / compras) ──────────────────────
+      // ── Fuentes solo de modo avanzado (WMS) ────────────────────────────────
       const avanzadoQueries = modoAvanzado
         ? [
             // Vencimiento de lote (WMS)
@@ -85,23 +105,6 @@ export function useAlertas() {
               .gt('cantidad', 0)
               .not('fecha_vencimiento', 'is', null)
               .lt('fecha_vencimiento', hoy),
-            // OC con fecha de vencimiento de pago ya pasada y no pagadas
-            supabase
-              .from('ordenes_compra')
-              .select('id', { count: 'exact', head: true })
-              .eq('tenant_id', tenant!.id)
-              .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
-              .not('fecha_vencimiento_pago', 'is', null)
-              .lt('fecha_vencimiento_pago', hoy),
-            // OC que vencen en los próximos 3 días
-            supabase
-              .from('ordenes_compra')
-              .select('id', { count: 'exact', head: true })
-              .eq('tenant_id', tenant!.id)
-              .in('estado_pago', ['pendiente_pago', 'pago_parcial', 'cuenta_corriente'])
-              .not('fecha_vencimiento_pago', 'is', null)
-              .gte('fecha_vencimiento_pago', hoy)
-              .lte('fecha_vencimiento_pago', en3diasStr),
           ]
         : []
 
@@ -110,12 +113,14 @@ export function useAlertas() {
         { count: countReservas },
         { count: countSinCategoria },
         clientesDeudaData,
+        { count: countOcVencidasRaw },
+        { count: countOcProximasRaw },
         ...avanzadoRes
       ] = await Promise.all([...baseQueries, ...avanzadoQueries])
 
       const countVencidos = (avanzadoRes[0] as any)?.count ?? 0
-      const countOcVencidas = (avanzadoRes[1] as any)?.count ?? 0
-      const countOcProximas = (avanzadoRes[2] as any)?.count ?? 0
+      const countOcVencidas = countOcVencidasRaw ?? 0
+      const countOcProximas = countOcProximasRaw ?? 0
 
       // Contar clientes únicos con saldo > $0.50
       const clientesUnicos = new Set<string>()

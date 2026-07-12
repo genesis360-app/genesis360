@@ -33,6 +33,12 @@ type: project
 >    correcto sigue siendo migs→EF→frontend.
 > 6. **F4-F6 pendientes** (selector en el POS con confirmación de override · reportes por emisor ·
 >    add-on "CUIT adicional"). Acción GO: precio del add-on.
+> 7. **🐛 Fix extra en la misma versión (reporte GO):** las **OC pasan a AMBOS modos** — el tab
+>    "Órdenes de compra" de Prov./Servicios estaba gateado por `modoAvanzado` pero el botón
+>    "Generar OC sugerida" de Alertas NO → en básico se creaba la OC y no había dónde verla.
+>    Fix: tab + "Nueva OC" sin gate de modo (permisos por rol `capOC` intactos), alertas de OC
+>    (página + badge `useAlertas`) cuentan en ambos modos, WMS sigue solo-avanzado. El flujo
+>    cierra: "Recibir mercadería" navega a `/recepciones` (ruta sin gate). e2e 07+12 verdes.
 
 > ### 🏢 (2026-07-10 · MULTI-CUIT POR TENANT (F5) — PLAN COMPLETO + FASE 1 EN DEV · mig 267)
 > **Novena sesión del día** (tras el cierre de v1.125.0, cuyo PR #286 GO YA mergeó — Vercel READY

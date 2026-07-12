@@ -6,6 +6,39 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-12] update | 🔐 Wizard de certificado AFIP self-service (v1.128.0) + cobertura de tests de la OC sugerida (bug reportado por GO)
+
+**1) Wizard de certificado (pedido de GO: "la .key y el CSR los generamos nosotros").** El `.crt`
+de ARCA no se puede emitir desatendido (exige clave fiscal del contribuyente), pero sí generamos
+por el cliente la clave privada + el CSR. Nuevo:
+- **Mig 270:** `emisores_fiscales.csr_key_path` (puntero a la `.key` pendiente en el bucket — la
+  `.key` nunca se guarda en la DB; sobrevive recargas porque puede pasar días entre el CSR y el `.crt`).
+- **EF `generar-csr`:** node-forge genera RSA 2048 + CSR PKCS#10 SHA-256 (subject con el CUIT en
+  `serialNumber`), guarda la `.key` en `certificados-afip`, setea `csr_key_path`, devuelve el CSR.
+  Guard de identidad (usuario del tenant). La `.key` no vuelve al browser.
+- **`afip.ts`:** `generarCsrEmisor()` + `finalizarCertificadoDesdeCsr()` (sube SOLO el `.crt` y lo
+  aparea con la `.key` pendiente; limpia `csr_key_path`).
+- **`EmisoresFiscalesPanel`:** modo "Asistente" (Generar CSR → Copiar/Descargar/Ir a ARCA →
+  instructivo → subir solo el `.crt` → Activar) + modo "Ya tengo .crt + .key" (manual, el de antes).
+Con esto Fede puede generar su certificado y cargarlo para los tests multi-CUIT. Sección
+actualizada en `wiki/features/multi-cuit.md` (onboarding).
+
+**2) Cobertura de tests de la OC sugerida + bug de GO documentado.** GO reportó: al generar la OC
+sugerida, salió una OC con **varias líneas del mismo SKU** (2 u. c/u) en vez de una sola con la
+cantidad total del maestro. Lógica extraída a **`src/lib/ocSugerida.ts`** (`armarOCsSugeridas`,
+refactor SIN cambio de conducta) + **`ocSugerida.test.ts`** (20 tests: lockean el comportamiento
+actual, incluyen el caso de GO en `OC-SUG-BUG1` y `precio null` en `OC-SUG-BUG5`) + 5 `it.todo` con
+los fixes pendientes. Plan `tests/specs/oc-sugerida.plan.md` + UAT ALR-OC-01/ALR-06. **5 bugs
+documentados** (no consolida por producto = el de GO · faltante sobre stock GLOBAL no por sucursal ·
+proveedor arbitrario · sin dedup vs OC abiertas · precio null). **A CORREGIR después de cerrar
+facturación** (decisión de GO). No se tocó la conducta todavía.
+
+**Verificación:** build verde · unit **1019 passed + 5 todo (1024)**. ⚠ **Deploy DEV pendiente**
+(MCP Supabase caído): aplicar migs **269 + 270** + deployar EFs **`generar-csr`** (nueva) y
+**`mp-addon-batch`**. `emitir-factura` NO necesita redeploy. NADA en PROD.
+
+---
+
 ## [2026-07-12] update | 🏢 Multi-CUIT Fases 4-6 implementadas (v1.127.0) — selector de emisor en emisión, reportes por CUIT, add-on "CUIT adicional"
 
 Completadas las fases que faltaban del multi-CUIT (GO: "hacé las fases que faltan así queda todo

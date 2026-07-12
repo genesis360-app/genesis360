@@ -8,6 +8,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { cajasSobreUmbralBovedaDelTenant } from '@/hooks/useAlertas'
 import { Link, useNavigate } from 'react-router-dom'
 import { capacidadCrearOC } from '@/lib/comprasPermisos'
+import { armarOCsSugeridas } from '@/lib/ocSugerida'
 import { formatDistanceToNow } from 'date-fns'
 import { es } from 'date-fns/locale'
 import toast from 'react-hot-toast'
@@ -298,34 +299,25 @@ export default function AlertasPage() {
   const generarOCsSugeridas = useMutation({
     mutationFn: async () => {
       if (!sucursalId) throw new Error('Elegí una sucursal específica (no "Todas") para generar las OCs.')
-      const lowStock = (alertas as any[]).filter(a => a.tipo === 'stock_minimo' && a.productos)
+      const lowStock = (alertas as any[]).filter(a => a.tipo === 'stock_minimo' && a.productos).map(a => a.productos)
       if (!lowStock.length) throw new Error('No hay productos bajo mínimo.')
-      const prodIds = lowStock.map(a => a.productos.id)
+      const prodIds = lowStock.map((p: any) => p.id)
       const { data: pps } = await supabase.from('proveedor_productos')
         .select('proveedor_id, producto_id, precio_compra, cantidad_minima, proveedores(nombre)')
         .in('producto_id', prodIds)
-      const porProveedor = new Map<string, { items: { producto_id: string; cantidad: number; precio: number | null }[] }>()
-      const sinProveedor: string[] = []
-      for (const a of lowStock) {
-        const p = a.productos
-        const faltante = Math.max((Number(p.stock_minimo) || 0) - (Number(p.stock_actual) || 0), 0)
-        const pp = (pps ?? []).find((x: any) => x.producto_id === p.id)
-        if (!pp) { sinProveedor.push(p.nombre); continue }
-        const cantidad = Math.max(faltante, Number(pp.cantidad_minima) || 0, 1)
-        if (!porProveedor.has(pp.proveedor_id)) porProveedor.set(pp.proveedor_id, { items: [] })
-        porProveedor.get(pp.proveedor_id)!.items.push({ producto_id: p.id, cantidad, precio: pp.precio_compra ?? null })
-      }
-      if (!porProveedor.size) throw new Error('Los productos bajo mínimo no tienen proveedor asociado (cargalos en Proveedores → Productos).')
+      // Armado puro (testeable) — ver src/lib/ocSugerida.ts (bugs conocidos documentados ahí).
+      const { ocs, sinProveedor } = armarOCsSugeridas(lowStock, (pps ?? []) as any[])
+      if (!ocs.length) throw new Error('Los productos bajo mínimo no tienen proveedor asociado (cargalos en Proveedores → Productos).')
       let creadas = 0
-      for (const [proveedorId, info] of porProveedor) {
+      for (const ocSug of ocs) {
         const { data: oc, error } = await supabase.from('ordenes_compra').insert({
-          tenant_id: tenant!.id, proveedor_id: proveedorId, numero: 0, estado: 'borrador',
+          tenant_id: tenant!.id, proveedor_id: ocSug.proveedor_id, numero: 0, estado: 'borrador',
           sucursal_id: sucursalId, notas: 'OC sugerida automáticamente (stock bajo mínimo)',
           created_by: user!.id,
         }).select('id').single()
         if (error) throw error
         const { error: itErr } = await supabase.from('orden_compra_items').insert(
-          info.items.map(it => ({ orden_compra_id: oc.id, producto_id: it.producto_id, cantidad: it.cantidad, precio_unitario: it.precio })),
+          ocSug.items.map(it => ({ orden_compra_id: oc.id, producto_id: it.producto_id, cantidad: it.cantidad, precio_unitario: it.precio })),
         )
         if (itErr) throw itErr
         creadas++

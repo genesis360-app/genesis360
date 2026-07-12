@@ -337,6 +337,8 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | ALR-03 | **Sin categoría: badge == página** (BUG histórico) | Producto sin categoría | Badge muestra "1" **y** la página lista ese producto (scoping mode-aware, no INNER join a ubicaciones) | E | 🔴 | ⬜ | |
 | ALR-04 | Alertas WMS NO aparecen en básico | Revisar alertas | Sin LPN vencidos / OC vencidas / sin ubicación-proveedor (gateadas por modo) | B | 🟡 | ⬜ | |
 | ALR-05 | Reservas vencidas | Reserva pasada de fecha | Alerta + sweep lazy libera | B | 🟡 | ⬜ | |
+| ALR-06 | **OC en ambos modos** (v1.126.0) | Modo básico → Alertas + tab OC de Prov./Servicios | El tab "Órdenes de compra" es visible y las alertas de OC vencidas/por-vencer cuentan igual en badge y página (antes solo avanzado) | B | 🟡 | ⬜ | |
+| ALR-OC-01 | **🐞 OC sugerida: líneas duplicadas del mismo SKU** (reportado GO 2026-07-12) | Con >1 alerta `stock_minimo` del mismo producto → "Generar OC sugerida" | **BUG:** la OC sale con **varias líneas del mismo SKU** (2 u. c/u) en vez de UNA con la cantidad total del maestro. `armarOCsSugeridas` no consolida por producto (`ocSugerida.ts` BUG1). Cobertura: `ocSugerida.test.ts` OC-SUG-BUG1. **Fix pendiente** (revisar tras cerrar facturación) — ver `tests/specs/oc-sugerida.plan.md` (BUG1-5) | H | 🔴 | 🐞 | Extraída a `src/lib/ocSugerida.ts`; falta consolidar por producto + stock por sucursal + dedup + proveedor determinístico + precio |
 
 ---
 

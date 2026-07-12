@@ -151,13 +151,20 @@ automatizar es todo lo demás (la parte nuestra):
    "Nueva Relación" → Servicio de Facturación Electrónica) — también manual.
 5. Sube el `.crt` de vuelta a Genesis360 (Config → Facturación → el emisor).
 
-**Automatización recomendada (candidato F4b/wizard):** un asistente en el panel de emisores que,
-al ingresar el CUIT, **genere la key + el CSR server-side** (guardados encriptados), muestre el CSR
-para copiar + el link directo a ARCA con el instructivo, y reciba el `.crt` de vuelta. Reduce el
-onboarding a "pegá el CSR en ARCA, descargá el .crt, subilo" — sin `openssl` ni conocimientos
-técnicos. **AfipSDK ya ofrece esta ayuda** para su circuito (`afipsdk.com`), por eso el circuito
-`afipsdk` tiene MENOS fricción (token en vez de cert propio) — es la vía recomendada para clientes
-que no quieran lidiar con el certificado.
+**✅ Wizard self-service (v1.128.0, implementado — mig 270 + EF `generar-csr`):** en el panel de
+emisores, modo "Asistente":
+1. Botón **"Generar CSR automáticamente"** → la EF `generar-csr` genera con node-forge una clave
+   RSA 2048 + el CSR PKCS#10 firmado SHA-256 (subject `C=AR/O=<razón social>/CN=…/serialNumber=CUIT
+   <11 díg>`). La `.key` se guarda en el bucket `certificados-afip` (nunca vuelve al browser); su
+   path queda en `emisores_fiscales.csr_key_path` (mig 270) para aparearla después.
+2. La UI muestra el CSR con **Copiar / Descargar .csr / Ir a ARCA** + el instructivo.
+3. El cliente crea el cert en ARCA (con su clave fiscal — paso ineludible) y **sube SOLO el `.crt`**;
+   `finalizarCertificadoDesdeCsr` lo aparea con la `.key` pendiente y activa el `tenant_certificates`.
+   El modo "Ya tengo .crt + .key" (carga manual de ambos) sigue disponible.
+
+Reduce el onboarding a "generá el CSR → pegalo en ARCA → subí el .crt" sin `openssl`. **AfipSDK
+también ofrece esta ayuda** para su circuito; el circuito `afipsdk` sigue teniendo menos fricción
+(token en vez de cert propio) para clientes que no quieran lidiar con el certificado.
 
 **Manual mientras tanto (homologación / testing):**
 ```bash

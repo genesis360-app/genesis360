@@ -30,6 +30,21 @@ describe('packs por dimensión', () => {
     expect(packsDe('movimientos')).toEqual([])           // sin packs → no se puede comprar más
     expect(tipoValido('movimientos', 'temporal')).toBe(false)
   })
+
+  test('cuits (multi-CUIT F6): add-on premium SOLO fijo (una razón social extra es costo permanente)', () => {
+    expect(packsDe('cuits')).toEqual([
+      { cantidad: 1, precio: 20000 },
+      { cantidad: 2, precio: 35000 },
+      { cantidad: 3, precio: 45000 },
+    ])
+    expect(tiposDe('cuits')).toEqual(['fijo'])
+    expect(tipoValido('cuits', 'temporal')).toBe(false)
+    expect(findAddonPack('cuits', 1)).toEqual({ cantidad: 1, precio: 20000 })
+    expect(findAddonPack('cuits', 4)).toBeNull()
+    // round-trip del external_reference
+    expect(parseAddonRef(buildAddonRef(TENANT, 'cuits', 2, 'fijo')))
+      .toMatchObject({ dimension: 'cuits', cantidad: 2, tipo: 'fijo' })
+  })
 })
 
 describe('findAddonPack — el precio SOLO sale del catálogo', () => {

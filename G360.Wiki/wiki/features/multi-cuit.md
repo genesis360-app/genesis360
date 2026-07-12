@@ -8,8 +8,10 @@ updated: 2026-07-10
 
 # Multi-CUIT por tenant (F5) — diseño y plan por fases
 
-**Estado: Fases 1-3 EN DEV (migs 267-268 + EF v23 + UI, 2026-07-11, v1.126.0). Falta la
-prueba real con 2 CUITs (cert de Fede) + Fases 4-6. NADA en PROD todavía.**
+**Estado: Fases 1-6 IMPLEMENTADAS (código v1.127.0). Migs 267-268 en DEV; ⚠ mig 269 (add-on
+`cuits`) + deploy de `mp-addon-batch` PENDIENTES de aplicar en DEV (MCP Supabase caído en la
+sesión). Falta la prueba real con 2 CUITs (cert de Fede) + precio final del add-on (GO). NADA
+en PROD todavía.**
 
 ## Por qué
 
@@ -92,9 +94,9 @@ v1.125.0) y que esté `activo`.
 | **1 — Modelo de datos (neutro)** | Mig 267: tabla + backfill + FKs + índices + RLS + trigger de sync. CERO cambio de comportamiento (nada lo lee todavía). | Bajo | ✅ DEV (2026-07-10) · PROD al deployar F2 |
 | **2 — EF `emitir-factura` multi-emisor** | La EF resuelve el emisor (regla de arriba) y toma cuit/condición/cert/token/provider/produccion/umbral DEL EMISOR. Persiste `ventas.emisor_id`. Guards por emisor + guard de PV por CUIT + NC hereda emisor. Con 1 emisor = mismo flujo actual. **Mig 268**: cert único POR EMISOR + PV único por (tenant, emisor, número). ⚠ Lección de la validación: el guard de letra debe correr DESPUÉS de la resolución completa (un guard "preliminar" con el default rechazaba B en una sucursal asignada a un emisor RI con default Mono) → la venta se fetchea con `maybeSingle` y "Venta no encontrada" se lanza recién después de los guards (preserva la semántica del spec 56). | **Alto (REGLA #0)** | ✅ DEV v23 (2026-07-11): smokes 6/6 (letra por override, PV por CUIT, cert por emisor, 403 cross-tenant, herencia NC, resolución por sucursal) + regresión e2e 21/42/56/86 10/10 |
 | **3 — UI Config (emisores adicionales)** | **Alcance ajustado en la implementación:** el form "Facturación Electrónica" existente SIGUE editando el emisor PRINCIPAL (escribe `tenants.*` y el trigger de mig 267 lo espeja — sin cutover total, cero riesgo de drift ni de romper los readers legacy del POS/PDF/dashboards). Lo nuevo: `EmisoresFiscalesPanel` (CRUD de emisores ADICIONALES + cert y PV por emisor + asignación sucursal→emisor + "sin cert/con cert" + activo/eliminar con guard de comprobantes) + las secciones existentes de cert/PV ahora escriben `emisor_id` del principal. El cutover total del form queda diferido a F4/F5 (cuando se migren los readers). | Medio | ✅ DEV (2026-07-11) |
-| **4 — Selección en el flujo de venta** | Modal de emisión (POS + FacturacionPage) muestra el emisor default de la sucursal con selector para override + **confirmación explícita si se cambia** (emitir con el CUIT equivocado es irreversible). `detectarTipoComprobante`/`tiposComprobantePermitidos` reciben la condición DEL EMISOR ELEGIDO (las letras ofrecidas cambian al cambiar de emisor). PDFs con los datos del emisor del comprobante. | Alto (UX fiscal) | ⬜ |
-| **5 — Reportes fiscales por emisor** | Selector de emisor en FacturacionPage (libros/KPIs/liquidación — libros por CUIT, v1.125.0, ahora por CUIT ELEGIDO), Posición IVA del Dashboard y DashFacturacionArea. Gastos: `emisor_id` en el form (default por sucursal). Export Excel por emisor. | Medio | ⬜ |
-| **6 — Monetización (add-on)** | Dimensión `cuits` en `fn_plan_base_limite` (base: 1 en todos los planes) + pack fijo "CUIT adicional" en el configurador batch + enforcement server-side (no crear emisor activo N+1 sin add-on). Pricing a definir con GO (referencia: la competencia lo regala en planes altos; nosotros monetizamos por add-on). | Medio | ⬜ |
+| **4 — Selección en el flujo de venta** | ✅ Modal de emisión (POS `VentasPage` + `FacturacionPage`) muestra el emisor default de la sucursal con selector de override + **confirmación explícita (checkbox)** si se cambia (emitir con el CUIT equivocado es irreversible). Las letras (`tiposComprobantePermitidos`) y el umbral B se recalculan según la condición DEL EMISOR elegido; los PV ofrecidos son los del emisor (por CUIT). Envía `emisor_id` a la EF. Con 1 emisor no se muestra nada (hook `useEmisoresFiscales.multiEmisor`). Pendiente menor: los PDFs siguen tomando datos del emisor principal (razón social/logo) — F4b. | Alto (UX fiscal) | ✅ código (v1.127.0) |
+| **5 — Reportes fiscales por emisor** | ✅ Selector de emisor en el header de `FacturacionPage` (KPIs del panel, Libro IVA Ventas/Compras, liquidación 12m — todo por CUIT vía `ventas.emisor_id`/`gastos.emisor_id`; NC por el emisor de su factura; filas legacy sin emisor cuentan como del principal). Gastos: `emisor_id` en el alta (variable + fijo) por la sucursal del gasto. Pendiente menor: Posición IVA del Dashboard/DashFacturacionArea todavía sin selector (usa todos los emisores) — F5b. | Medio | ✅ código (v1.127.0) |
+| **6 — Monetización (add-on)** | ✅ Dimensión `cuits` en `fn_plan_base_limite` (base 1 en todos los planes) + trigger `fn_enforce_limite_cuits` (el emisor default no consume cupo; bloquea activar el adicional N+1 sin add-on) — **mig 269** · pack fijo "CUIT adicional" en `ADDON_PACKS` (brand.ts + espejo EF `mp-addon-batch`, con conteo especial que excluye el default) + configurador (`PricingConfigurator` DIMS) · gate/upsell en `EmisoresFiscalesPanel` (captura el error de límite server-side). ⚠ **Precio PROVISORIO** ($20k/$35k/$45k por 1/2/3) — GO confirma antes de PROD. | Medio | ✅ código (v1.127.0) · ⚠ mig 269 + EF sin aplicar en DEV |
 
 Cada fase se deploya con su release y UAT propio (patrón [[feedback_features_grandes_por_fases]]).
 
@@ -130,6 +132,49 @@ Cada fase se deploya con su release y UAT propio (patrón [[feedback_features_gr
 - **F4/F5:** e2e de selección (override + confirmación) + spec 86 extendido (selector de emisor en
   libros) + UAT nuevos FAC-31+.
 - **F6:** unit de límites (patrón `planLimits.test.ts`) + e2e de enforcement.
+
+## Onboarding del certificado AFIP por emisor (cómo conseguir el .crt / .key)
+
+Cada emisor del circuito **propio** necesita su par certificado (`.crt`) + clave privada (`.key`)
+de AFIP/ARCA para firmar el WSAA. **No se puede generar el `.crt` de forma 100% desatendida**: el
+paso de emisión lo hace ARCA y exige el login del contribuyente con **clave fiscal nivel 3** — no
+hay API pública para emitir un certificado WSAA sin esa autenticación. Lo que SÍ se puede
+automatizar es todo lo demás (la parte nuestra):
+
+**Flujo estándar (el que hacen Xubio/Contabilium con un asistente):**
+1. La `.key` (clave privada RSA 2048) → **la generamos nosotros** (o el cliente con `openssl`).
+2. El CSR (pedido de certificado, lleva el CUIT en el subject) → **lo generamos nosotros** desde el
+   CUIT + la key.
+3. El cliente entra a **ARCA → Administración de Certificados Digitales** (con clave fiscal),
+   sube/pega el CSR y descarga el `.crt`. **Este paso es manual e ineludible** (clave fiscal).
+4. El cliente **asocia el certificado al web service `wsfe`** (Administrador de Relaciones →
+   "Nueva Relación" → Servicio de Facturación Electrónica) — también manual.
+5. Sube el `.crt` de vuelta a Genesis360 (Config → Facturación → el emisor).
+
+**Automatización recomendada (candidato F4b/wizard):** un asistente en el panel de emisores que,
+al ingresar el CUIT, **genere la key + el CSR server-side** (guardados encriptados), muestre el CSR
+para copiar + el link directo a ARCA con el instructivo, y reciba el `.crt` de vuelta. Reduce el
+onboarding a "pegá el CSR en ARCA, descargá el .crt, subilo" — sin `openssl` ni conocimientos
+técnicos. **AfipSDK ya ofrece esta ayuda** para su circuito (`afipsdk.com`), por eso el circuito
+`afipsdk` tiene MENOS fricción (token en vez de cert propio) — es la vía recomendada para clientes
+que no quieran lidiar con el certificado.
+
+**Manual mientras tanto (homologación / testing):**
+```bash
+# 1. clave privada
+openssl genrsa -out MiEmpresa.key 2048
+# 2. CSR con el CUIT en el subject (reemplazar razón social y CUIT)
+openssl req -new -key MiEmpresa.key \
+  -subj "/C=AR/O=RAZON SOCIAL SA/CN=genesis360/serialNumber=CUIT 20123456789" \
+  -out MiEmpresa.csr
+# 3. subir MiEmpresa.csr en ARCA (homologación: "WSASS - Autogestión Certificados Homologación";
+#    producción: "Administración de Certificados Digitales") → descargar el .crt
+# 4. asociar el certificado al servicio wsfe en el Administrador de Relaciones
+# 5. subir MiEmpresa.crt + MiEmpresa.key al emisor en Config → Facturación
+```
+El piloto actual **reusa un único certificado de homologación** (CUIT `23-32031506-9`) en los
+tenants de prueba. Para la prueba con 2 CUITs de Fede: generar/obtener SU cert (homologación al
+principio) y cargarlo como emisor adicional (o principal) por el panel.
 
 ## Abierto / a definir con GO
 

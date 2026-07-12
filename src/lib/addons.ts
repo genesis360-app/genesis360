@@ -12,7 +12,8 @@ import { ADDON_PACKS } from '@/config/brand'
 
 // 'movimientos' queda solo por back-compat de filas históricas de tenant_addons y pagos
 // en vuelo (pricing v2 2026-07-05: la dimensión de flujo vigente es 'comprobantes').
-export type AddonDimension = 'sku' | 'comprobantes' | 'sucursales' | 'usuarios' | 'movimientos'
+// 'cuits' = multi-CUIT F6 (razón social/emisor fiscal adicional; add-on premium 'fijo').
+export type AddonDimension = 'sku' | 'comprobantes' | 'sucursales' | 'usuarios' | 'movimientos' | 'cuits'
 export type AddonTipo = 'fijo' | 'temporal'
 
 export interface AddonPack { cantidad: number; precio: number }
@@ -63,7 +64,7 @@ export function parseAddonRef(ref: string): ParsedAddonRef | null {
   const cantidad = Number(cantidadStr)
   if (!tenantId) return null
   if (!Number.isInteger(cantidad) || cantidad <= 0) return null
-  if (!['sku', 'comprobantes', 'sucursales', 'usuarios', 'movimientos'].includes(dimension)) return null
+  if (!['sku', 'comprobantes', 'sucursales', 'usuarios', 'movimientos', 'cuits'].includes(dimension)) return null
   if (!['fijo', 'temporal'].includes(tipo)) return null
   return { tenantId, dimension: dimension as AddonDimension, cantidad, tipo: tipo as AddonTipo }
 }

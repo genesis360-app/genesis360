@@ -6,6 +6,53 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-12] update | 🏢 Multi-CUIT Fases 4-6 implementadas (v1.127.0) — selector de emisor en emisión, reportes por CUIT, add-on "CUIT adicional"
+
+Completadas las fases que faltaban del multi-CUIT (GO: "hacé las fases que faltan así queda todo
+completo"). Todo en código; la prueba real con 2 CUITs sigue esperando el cert de Fede.
+
+**F4 — selección de emisor en la emisión.** Hook nuevo `useEmisoresFiscales` (emisores activos +
+`emisorDeSucursal(sucursalId)` = el de la sucursal ?? principal; `multiEmisor` = >1). El modal de
+emisión del POS (`VentasPage`) y el de `FacturacionPage` muestran, SOLO si hay >1 emisor, un
+selector de emisor con default = el de la sucursal de la venta; el override a otro CUIT exige un
+**checkbox de confirmación** (emitir con el CUIT equivocado es irreversible). Las letras
+(`tiposComprobantePermitidos`), el umbral B y los PV ofrecidos se recalculan según el emisor
+elegido. Envía `emisor_id` a la EF v23 (que ya lo valida/hereda desde F2 — no hace falta redeploy
+del `emitir-factura`).
+
+**F5 — reportes fiscales por CUIT.** Selector de emisor en el header de `FacturacionPage` (aparece
+con multi-emisor): KPIs del panel, Libro IVA Ventas/Compras y liquidación 12m filtran por
+`ventas.emisor_id` / `gastos.emisor_id` (las NC por el emisor de su factura; las filas legacy sin
+emisor cuentan como del principal, vía `or(emisor_id.eq.X,emisor_id.is.null)`). `GastosPage`
+setea `gastos.emisor_id` en el alta (variable + fijo) según la sucursal del gasto. Pendiente menor
+F5b: la Posición IVA del Dashboard/DashFacturacionArea todavía no tiene el selector.
+
+**F6 — add-on "CUIT adicional".** Mig 269: dimensión `cuits` (base 1 en todos los planes) +
+trigger `fn_enforce_limite_cuits` en `emisores_fiscales` — el emisor **default no consume cupo**,
+bloquea activar el adicional N+1 sin add-on (REGLA #0 de ingresos, server-side). Catálogo en
+`brand.ts` (`ADDON_PACKS.cuits`, SOLO fijo) + espejo en la EF `mp-addon-batch` (con conteo especial
+que excluye el default en el guard de baja) + `PricingConfigurator` DIMS + upsell en
+`EmisoresFiscalesPanel` (captura el error de límite). **⚠ Precio PROVISORIO** ($20k/$35k/$45k por
+1/2/3 CUITs) — GO debe confirmar antes de PROD. Unit: `addons.test.ts` +1 (cuits round-trip).
+
+**Documentado además:** sección nueva en `wiki/features/multi-cuit.md` sobre el **onboarding del
+certificado AFIP** (respuesta a GO): el `.crt` NO se puede emitir desatendido —ARCA exige clave
+fiscal nivel 3—, pero SÍ se puede automatizar la generación de la key + CSR (candidato wizard
+F4b); el circuito AfipSDK tiene menos fricción (token en vez de cert propio). Pasos manuales con
+`openssl` para homologación incluidos.
+
+**Verificación:** build verde · unit **1013/1013** (1012 + cuits). ⚠ **Pendiente de deploy en DEV**
+(el MCP de Supabase se cayó a mitad de sesión): aplicar **mig 269** + deployar **`mp-addon-batch`**.
+El `emitir-factura` NO necesita redeploy (v23 ya maneja `emisor_id`). NADA en PROD.
+
+**Auditoría pedida por GO (OC sugerida):** ver el reporte al cierre de la sesión — NO hay test
+dedicado de `generarOCsSugeridas` y se detectaron varios puntos sospechosos (cantidad calculada
+sobre stock GLOBAL y no por sucursal; sin dedup contra OC abiertas existentes → duplica; elige un
+proveedor arbitrario si el producto tiene varios; precio null si el `proveedor_producto` no tiene
+`precio_compra`). Pendiente el contexto de GO sobre el síntoma exacto antes de arreglar.
+
+---
+
 ## [2026-07-11] update | 🐛 Fix UX: las OC pasan a estar disponibles en AMBOS modos (el flujo "OC sugerida" moría a la mitad en básico)
 
 **Reporte de GO (dogfooding en plan/modo básico):** el módulo Prov./Servicios mostraba solo 2 de

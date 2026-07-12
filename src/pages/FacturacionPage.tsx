@@ -15,6 +15,7 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
 import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
 import { mapDevolucionNc, filasLibroNc, ivaNcTotal, type NcEmitida } from '@/lib/libroIva'
+import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import toast from 'react-hot-toast'
 
 type Tab = 'panel' | 'emitir' | 'libros' | 'liquidacion'
@@ -53,6 +54,23 @@ export default function FacturacionPage() {
   const [ventaAFacturar, setVentaAFacturar]   = useState<any | null>(null)
   const [tipoComprobante, setTipoComprobante]  = useState('B')
   const [puntoVenta, setPuntoVenta]            = useState(1)
+  // Multi-CUIT (F4/F5): emisor del modal de emisión (default = el de la sucursal de la
+  // venta, override con confirmación) + filtro de emisor de los REPORTES fiscales (los
+  // libros/posición son POR CUIT — nunca se mezclan emisores). Con 1 emisor, nada cambia.
+  const { emisores: emisoresFiscales, principal: emisorPrincipal, multiEmisor, emisorDeSucursal } = useEmisoresFiscales()
+  const [emisorModalId, setEmisorModalId] = useState<string | null>(null)
+  const [emisorModalDefaultId, setEmisorModalDefaultId] = useState<string | null>(null)
+  const [confirmoEmisorOverride, setConfirmoEmisorOverride] = useState(false)
+  const emisorModal = emisoresFiscales.find(e => e.id === emisorModalId) ?? emisorPrincipal
+  const emisorEsOverride = multiEmisor && !!emisorModalId && !!emisorModalDefaultId && emisorModalId !== emisorModalDefaultId
+  const [emisorFiltroId, setEmisorFiltroId] = useState<string | null>(null)
+  // Filtro efectivo de reportes: con multi-emisor SIEMPRE hay uno elegido (default: principal)
+  const emisorFiltro = multiEmisor ? (emisoresFiscales.find(e => e.id === emisorFiltroId) ?? emisorPrincipal) : null
+  // Condición OR de PostgREST para filtrar por emisor (las filas legacy sin emisor_id
+  // cuentan como del PRINCIPAL — así el backfill y los datos viejos no desaparecen).
+  const emisorOr = emisorFiltro
+    ? (emisorFiltro.es_default ? `emisor_id.eq.${emisorFiltro.id},emisor_id.is.null` : `emisor_id.eq.${emisorFiltro.id}`)
+    : null
   const [emitiendo, setEmitiendo]              = useState(false)
   const [descargandoPdf, setDescargandoPdf]    = useState<string | null>(null)
   const [enviandoEmail, setEnviandoEmail]      = useState<string | null>(null)
@@ -247,7 +265,7 @@ export default function FacturacionPage() {
     queryKey: ['ventas-sin-cae', tenant?.id, sucursalId],
     queryFn: async () => {
       let q = supabase.from('ventas')
-        .select('id, numero, total, estado, created_at, tipo_comprobante, cae, clientes(nombre,cuit_receptor,condicion_iva_receptor), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre))')
+        .select('id, numero, total, estado, created_at, tipo_comprobante, cae, sucursal_id, clientes(nombre,cuit_receptor,condicion_iva_receptor), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre))')
         .eq('tenant_id', tenant!.id)
         .eq('estado', 'despachada')
         .is('cae', null)
@@ -260,9 +278,9 @@ export default function FacturacionPage() {
     enabled: !!tenant && tab === 'emitir',
   })
 
-  // Facturas ya emitidas
+  // Facturas ya emitidas (con multi-emisor: las del emisor filtrado)
   const { data: emitidas = [] } = useQuery({
-    queryKey: ['facturas-emitidas', tenant?.id, periodoDesde, periodoHasta, sucursalId],
+    queryKey: ['facturas-emitidas', tenant?.id, periodoDesde, periodoHasta, sucursalId, emisorFiltro?.id],
     queryFn: async () => {
       let q = supabase.from('ventas')
         .select('id, numero, total, cae, vencimiento_cae, tipo_comprobante, numero_comprobante, created_at, clientes(nombre)')
@@ -272,23 +290,25 @@ export default function FacturacionPage() {
         .lte('created_at', periodoHasta + 'T23:59:59')
         .order('created_at', { ascending: false })
       if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+      if (emisorOr) q = q.or(emisorOr)
       const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'emitir',
   })
 
-  // Datos para Libro IVA Ventas
+  // Datos para Libro IVA Ventas (por CUIT: con multi-emisor filtra por el emisor elegido)
   const { data: ivaVentas = [] } = useQuery({
-    queryKey: ['iva-ventas', tenant?.id, periodoDesde, periodoHasta, filtroAlicuota],
+    queryKey: ['iva-ventas', tenant?.id, periodoDesde, periodoHasta, filtroAlicuota, emisorFiltro?.id],
     queryFn: async () => {
       let q = supabase.from('venta_items')
-        .select('cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, ventas!inner(numero, created_at, cae, tipo_comprobante, clientes(nombre))')
+        .select('cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, ventas!inner(numero, created_at, cae, tipo_comprobante, emisor_id, clientes(nombre))')
         .eq('ventas.tenant_id', tenant!.id)
         .gte('ventas.created_at', periodoDesde)
         .lte('ventas.created_at', periodoHasta + 'T23:59:59')
         .not('ventas.cae', 'is', null)
       if (filtroAlicuota) q = q.eq('alicuota_iva', filtroAlicuota)
+      if (emisorOr) q = q.or(emisorOr, { referencedTable: 'ventas' })
       const { data } = await q
       return data ?? []
     },
@@ -297,16 +317,19 @@ export default function FacturacionPage() {
 
   // NC electrónicas emitidas en el período — RESTAN débito fiscal (REGLA #0). Se imputan
   // por nc_fecha (fecha de emisión, mig 266). Alimenta el Libro IVA Ventas y los KPIs.
+  // El emisor de la NC es SIEMPRE el de la factura original → filtro vía ventas.emisor_id.
   const { data: ncPeriodo = [] } = useQuery({
-    queryKey: ['iva-ventas-nc', tenant?.id, periodoDesde, periodoHasta],
+    queryKey: ['iva-ventas-nc', tenant?.id, periodoDesde, periodoHasta, emisorFiltro?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('devoluciones')
-        .select('id, nc_tipo, nc_numero_comprobante, nc_cae, nc_fecha, created_at, devolucion_items(cantidad, precio_unitario, productos(alicuota_iva)), ventas(clientes(nombre))')
+      let q = supabase.from('devoluciones')
+        .select('id, nc_tipo, nc_numero_comprobante, nc_cae, nc_fecha, created_at, devolucion_items(cantidad, precio_unitario, productos(alicuota_iva)), ventas!inner(emisor_id, clientes(nombre))')
         .eq('tenant_id', tenant!.id)
         .not('nc_cae', 'is', null)
         .gte('nc_fecha', periodoDesde)
         .lte('nc_fecha', periodoHasta + 'T23:59:59')
         .order('nc_fecha', { ascending: false })
+      if (emisorOr) q = q.or(emisorOr, { referencedTable: 'ventas' })
+      const { data } = await q
       return (data ?? []).map(mapDevolucionNc)
     },
     enabled: !!tenant && (tab === 'panel' || (tab === 'libros' && libroSub === 'ventas')),
@@ -314,11 +337,12 @@ export default function FacturacionPage() {
 
   // Datos para Libro IVA Compras. ⚠ Los libros IVA son del CUIT completo: acá NO se filtra
   // por sucursal (el Libro Ventas tampoco lo hace) — si no, la posición mezclaría un débito
-  // de todo el CUIT con un crédito de una sola sucursal.
+  // de todo el CUIT con un crédito de una sola sucursal. Con multi-emisor, el crédito se
+  // imputa por gastos.emisor_id (los legacy sin emisor cuentan como del principal).
   const { data: ivaCompras = [] } = useQuery({
-    queryKey: ['iva-compras', tenant?.id, periodoDesde, periodoHasta],
+    queryKey: ['iva-compras', tenant?.id, periodoDesde, periodoHasta, emisorFiltro?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('gastos')
+      let q = supabase.from('gastos')
         .select('id, descripcion, monto, iva_monto, tipo_iva, iva_deducible, conciliado_iva, fecha, categoria')
         .eq('tenant_id', tenant!.id)
         .eq('iva_deducible', true)
@@ -326,25 +350,29 @@ export default function FacturacionPage() {
         .gte('fecha', periodoDesde)
         .lte('fecha', periodoHasta)
         .order('fecha', { ascending: false })
+      if (emisorOr) q = q.or(emisorOr)
+      const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'libros' && libroSub === 'compras',
   })
 
-  // Historial 12 meses para liquidación
+  // Historial 12 meses para liquidación (por CUIT con multi-emisor)
   const { data: historial12 = [] } = useQuery({
-    queryKey: ['iva-historial-12', tenant?.id],
+    queryKey: ['iva-historial-12', tenant?.id, emisorFiltro?.id],
     queryFn: async () => {
       const rows = []
       const hoy = new Date()
 
       // NC emitidas de los 12 meses (una sola query): restan débito en su mes de emisión.
       const inicio12 = new Date(hoy.getFullYear(), hoy.getMonth() - 11, 1).toISOString().split('T')[0]
-      const { data: ncsRaw } = await supabase.from('devoluciones')
-        .select('id, nc_tipo, nc_numero_comprobante, nc_fecha, created_at, devolucion_items(cantidad, precio_unitario, productos(alicuota_iva))')
+      let qNcs = supabase.from('devoluciones')
+        .select('id, nc_tipo, nc_numero_comprobante, nc_fecha, created_at, devolucion_items(cantidad, precio_unitario, productos(alicuota_iva)), ventas!inner(emisor_id)')
         .eq('tenant_id', tenant!.id)
         .not('nc_cae', 'is', null)
         .gte('nc_fecha', inicio12)
+      if (emisorOr) qNcs = qNcs.or(emisorOr, { referencedTable: 'ventas' })
+      const { data: ncsRaw } = await qNcs
       const ncPorMes: Record<string, number> = {}
       for (const raw of ncsRaw ?? []) {
         const nc = mapDevolucionNc(raw as any)
@@ -358,15 +386,16 @@ export default function FacturacionPage() {
         const hasta = new Date(d.getFullYear(), d.getMonth() + 1, 0).toISOString().split('T')[0]
         const periodo = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`
 
-        const [{ data: dVentas }, { data: dGastos }] = await Promise.all([
-          supabase.from('venta_items').select('iva_monto, ventas!inner(cae)')
-            .eq('ventas.tenant_id', tenant!.id)
-            .gte('ventas.created_at', desde).lte('ventas.created_at', hasta + 'T23:59:59')
-            .not('ventas.cae', 'is', null),
-          supabase.from('gastos').select('iva_monto')
-            .eq('tenant_id', tenant!.id).eq('iva_deducible', true).gt('iva_monto', 0)
-            .gte('fecha', desde).lte('fecha', hasta),
-        ])
+        let qV = supabase.from('venta_items').select('iva_monto, ventas!inner(cae, emisor_id)')
+          .eq('ventas.tenant_id', tenant!.id)
+          .gte('ventas.created_at', desde).lte('ventas.created_at', hasta + 'T23:59:59')
+          .not('ventas.cae', 'is', null)
+        if (emisorOr) qV = qV.or(emisorOr, { referencedTable: 'ventas' })
+        let qG = supabase.from('gastos').select('iva_monto')
+          .eq('tenant_id', tenant!.id).eq('iva_deducible', true).gt('iva_monto', 0)
+          .gte('fecha', desde).lte('fecha', hasta)
+        if (emisorOr) qG = qG.or(emisorOr)
+        const [{ data: dVentas }, { data: dGastos }] = await Promise.all([qV, qG])
         const debito  = (dVentas ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
           - (ncPorMes[periodo] ?? 0)
         const credito = (dGastos ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
@@ -387,19 +416,20 @@ export default function FacturacionPage() {
     enabled: !!tenant && tab === 'liquidacion',
   })
 
-  // ── KPIs del Panel ────────────────────────────────────────────────────────────
+  // ── KPIs del Panel (por CUIT con multi-emisor) ───────────────────────────────
   const { data: kpis } = useQuery({
-    queryKey: ['facturacion-kpis', tenant?.id, periodoDesde, periodoHasta],
+    queryKey: ['facturacion-kpis', tenant?.id, periodoDesde, periodoHasta, emisorFiltro?.id],
     queryFn: async () => {
-      const [{ data: dVentas }, { data: dGastos }] = await Promise.all([
-        supabase.from('venta_items').select('iva_monto, ventas!inner(cae)')
-          .eq('ventas.tenant_id', tenant!.id)
-          .gte('ventas.created_at', periodoDesde).lte('ventas.created_at', periodoHasta + 'T23:59:59')
-          .not('ventas.cae', 'is', null),
-        supabase.from('gastos').select('iva_monto')
-          .eq('tenant_id', tenant!.id).eq('iva_deducible', true).gt('iva_monto', 0)
-          .gte('fecha', periodoDesde).lte('fecha', periodoHasta),
-      ])
+      let qV = supabase.from('venta_items').select('iva_monto, ventas!inner(cae, emisor_id)')
+        .eq('ventas.tenant_id', tenant!.id)
+        .gte('ventas.created_at', periodoDesde).lte('ventas.created_at', periodoHasta + 'T23:59:59')
+        .not('ventas.cae', 'is', null)
+      if (emisorOr) qV = qV.or(emisorOr, { referencedTable: 'ventas' })
+      let qG = supabase.from('gastos').select('iva_monto')
+        .eq('tenant_id', tenant!.id).eq('iva_deducible', true).gt('iva_monto', 0)
+        .gte('fecha', periodoDesde).lte('fecha', periodoHasta)
+      if (emisorOr) qG = qG.or(emisorOr)
+      const [{ data: dVentas }, { data: dGastos }] = await Promise.all([qV, qG])
       const debito  = (dVentas ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
       const credito = (dGastos ?? []).reduce((s: number, r: any) => s + Number(r.iva_monto ?? 0), 0)
       return { debito, credito, posicion: debito - credito }
@@ -410,6 +440,11 @@ export default function FacturacionPage() {
   // ── Emitir factura ────────────────────────────────────────────────────────────
   const emitirFactura = async () => {
     if (!ventaAFacturar) return
+    // Multi-CUIT: cambiar el emisor de la sucursal exige confirmación explícita.
+    if (emisorEsOverride && !confirmoEmisorOverride) {
+      toast.error('Marcá la confirmación para emitir con un CUIT distinto al de la sucursal.')
+      return
+    }
     setEmitiendo(true)
     try {
       const { data, error } = await supabase.functions.invoke('emitir-factura', {
@@ -418,6 +453,7 @@ export default function FacturacionPage() {
           tenant_id:        tenant!.id,
           tipo_comprobante: tipoComprobante,
           punto_venta:      puntoVenta,
+          ...(emisorModalId ? { emisor_id: emisorModalId } : {}),
         },
       })
       if (error) throw error
@@ -516,8 +552,20 @@ export default function FacturacionPage() {
             Facturación electrónica AFIP · {config?.razon_social_fiscal ?? tenant?.nombre}
           </p>
         </div>
-        {/* Período */}
-        <div className="flex items-center gap-2 text-sm">
+        {/* Emisor (multi-CUIT F5: los reportes fiscales son POR CUIT, nunca mezclados) + Período */}
+        <div className="flex items-center gap-2 text-sm flex-wrap">
+          {multiEmisor && (
+            <div className="relative">
+              <select value={emisorFiltro?.id ?? ''} onChange={e => setEmisorFiltroId(e.target.value || null)}
+                title="Los libros, KPIs y la liquidación son por CUIT — elegí el emisor a reportar"
+                className={`${inputClass} appearance-none pr-8`}>
+                {emisoresFiscales.map(em => (
+                  <option key={em.id} value={em.id}>{em.nombre} — {em.cuit}</option>
+                ))}
+              </select>
+              <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
+          )}
           <Calendar size={14} className="text-gray-400" />
           <input type="date" value={periodoDesde} onChange={e => setPeriodoDesde(e.target.value)}
             className={inputClass} />
@@ -628,7 +676,19 @@ export default function FacturacionPage() {
                       </p>
                     </div>
                     <button
-                      onClick={() => { setVentaAFacturar(v); setTipoComprobante(detectarTipoComprobante((config as any)?.condicion_iva_emisor, (v as any).clientes?.condicion_iva_receptor)); setPuntoVenta((puntosVenta as any[])[0]?.numero ?? 1); setShowEmitirModal(true) }}
+                      onClick={() => {
+                        // Multi-CUIT: emisor default = el de la sucursal de la venta (?? principal)
+                        const def = emisorDeSucursal((v as any).sucursal_id)
+                        setEmisorModalId(def?.id ?? null)
+                        setEmisorModalDefaultId(def?.id ?? null)
+                        setConfirmoEmisorOverride(false)
+                        setVentaAFacturar(v)
+                        setTipoComprobante(detectarTipoComprobante(def?.condicion_iva_emisor ?? (config as any)?.condicion_iva_emisor, (v as any).clientes?.condicion_iva_receptor))
+                        const pvs = (puntosVenta as any[]).filter((pv: any) =>
+                          pv.emisor_id === def?.id || (!pv.emisor_id && (def?.es_default ?? true)))
+                        setPuntoVenta(pvs[0]?.numero ?? 1)
+                        setShowEmitirModal(true)
+                      }}
                       disabled={!config?.facturacion_habilitada}
                       className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-xl disabled:opacity-40 transition-all">
                       <Send size={14} /> Emitir factura
@@ -952,30 +1012,67 @@ export default function FacturacionPage() {
                 </p>
               </div>
 
-              {/* Tipo de comprobante */}
+              {/* Emisor fiscal (multi-CUIT F4) */}
+              {multiEmisor && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Emisor (CUIT)</label>
+                  <div className="relative">
+                    <select value={emisorModalId ?? ''} onChange={e => {
+                      const id = e.target.value || null
+                      setEmisorModalId(id)
+                      setConfirmoEmisorOverride(false)
+                      const em = emisoresFiscales.find(x => x.id === id)
+                      const permitidos = tiposComprobantePermitidos(em?.condicion_iva_emisor ?? (config as any)?.condicion_iva_emisor)
+                      setTipoComprobante(t => permitidos.includes(t as any) ? t : permitidos[0])
+                      const pvs = (puntosVenta as any[]).filter((pv: any) =>
+                        pv.emisor_id === id || (!pv.emisor_id && !!em?.es_default))
+                      if (pvs.length > 0) setPuntoVenta(pvs[0].numero)
+                    }} className={`w-full appearance-none ${inputClass} pr-8`}>
+                      {emisoresFiscales.map(em => (
+                        <option key={em.id} value={em.id}>
+                          {em.nombre} — {em.cuit}{em.id === emisorModalDefaultId ? ' (de la sucursal)' : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  </div>
+                  {emisorEsOverride && (
+                    <label className="flex items-start gap-2 mt-2 cursor-pointer bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-3 py-2">
+                      <input type="checkbox" checked={confirmoEmisorOverride} onChange={e => setConfirmoEmisorOverride(e.target.checked)} className="mt-0.5" />
+                      <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                        Voy a emitir con un CUIT <strong>distinto al asignado a la sucursal</strong>. El comprobante sale a nombre de {emisorModal?.nombre} ({emisorModal?.cuit}) y no se puede deshacer (solo NC + re-factura).
+                      </span>
+                    </label>
+                  )}
+                </div>
+              )}
+
+              {/* Tipo de comprobante — letras según la condición del EMISOR seleccionado */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de comprobante</label>
                 <div className="relative">
                   <select value={tipoComprobante} onChange={e => setTipoComprobante(e.target.value)}
                     className={`w-full appearance-none ${inputClass} pr-8`}>
                     {TIPO_COMPROBANTE_OPTS
-                      .filter(o => tiposComprobantePermitidos((config as any)?.condicion_iva_emisor).includes(o.value as any))
+                      .filter(o => tiposComprobantePermitidos(emisorModal?.condicion_iva_emisor ?? (config as any)?.condicion_iva_emisor).includes(o.value as any))
                       .map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                   </select>
                   <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                 </div>
               </div>
 
-              {/* Punto de venta */}
+              {/* Punto de venta (del emisor seleccionado — los PV de AFIP son por CUIT) */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Punto de venta</label>
-                {(puntosVenta as any[]).length > 0 ? (
+                {(puntosVenta as any[]).filter((pv: any) => pv.emisor_id === emisorModal?.id || (!pv.emisor_id && (emisorModal?.es_default ?? true))).length > 0 ? (
                   <div className="relative">
                     <select value={puntoVenta} onChange={e => setPuntoVenta(parseInt(e.target.value))}
                       className={`w-full appearance-none ${inputClass} pr-8`}>
-                      {(puntosVenta as any[]).map((pv: any) => (
-                        <option key={pv.id} value={pv.numero}>{pv.numero.toString().padStart(4,'0')} — {pv.nombre ?? 'Punto de venta'}</option>
-                      ))}
+                      {(puntosVenta as any[])
+                        .filter((pv: any) => pv.emisor_id === emisorModal?.id || (!pv.emisor_id && (emisorModal?.es_default ?? true)))
+                        .map((pv: any) => (
+                          <option key={pv.id} value={pv.numero}>{pv.numero.toString().padStart(4,'0')} — {pv.nombre ?? 'Punto de venta'}</option>
+                        ))}
                     </select>
                     <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   </div>
@@ -1000,7 +1097,7 @@ export default function FacturacionPage() {
                 Cancelar
               </button>
               <button onClick={emitirFactura}
-                disabled={emitiendo || (tipoComprobante === 'A' && !ventaAFacturar.clientes?.cuit_receptor)}
+                disabled={emitiendo || (tipoComprobante === 'A' && !ventaAFacturar.clientes?.cuit_receptor) || (emisorEsOverride && !confirmoEmisorOverride)}
                 className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 text-sm flex items-center justify-center gap-2">
                 {emitiendo ? <><RefreshCw size={14} className="animate-spin" /> Emitiendo…</> : <><Send size={14} /> Emitir y obtener CAE</>}
               </button>

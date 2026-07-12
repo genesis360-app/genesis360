@@ -28,7 +28,7 @@ export const BTN = {
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.126.0'
+export const APP_VERSION = 'v1.127.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
@@ -228,11 +228,14 @@ export const PLANES = [
 // ⚠ Pricing v2 (GO 2026-07-05): la dimensión metered de FLUJO es COMPROBANTES (toda venta
 // finalizada del mes; presupuestos y canceladas no cuentan; enforcement SOFT — nunca se
 // bloquea una venta). Movimientos dejó de ser límite (-1 = free, queda como telemetría).
-export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number; comprobantes: number; sucursales: number; usuarios: number }> = {
-  free:       { sku: 50,   movimientos: -1, comprobantes: 200,   sucursales: 1,  usuarios: 1 },
-  basico:     { sku: 2000, movimientos: -1, comprobantes: 6000,  sucursales: 1,  usuarios: 5 },
-  pro:        { sku: 8000, movimientos: -1, comprobantes: 14000, sucursales: 4,  usuarios: 15 },
-  enterprise: { sku: -1,   movimientos: -1, comprobantes: -1,    sucursales: -1, usuarios: -1 },
+// `cuits` (multi-CUIT F5/F6): 1 incluido en TODOS los planes (el CUIT del negocio); los
+// emisores fiscales ADICIONALES activos se suman con el add-on "CUIT adicional". Espejo de
+// fn_plan_base_limite (mig 269) — mantener en sync.
+export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number; comprobantes: number; sucursales: number; usuarios: number; cuits: number }> = {
+  free:       { sku: 50,   movimientos: -1, comprobantes: 200,   sucursales: 1,  usuarios: 1,  cuits: 1 },
+  basico:     { sku: 2000, movimientos: -1, comprobantes: 6000,  sucursales: 1,  usuarios: 5,  cuits: 1 },
+  pro:        { sku: 8000, movimientos: -1, comprobantes: 14000, sucursales: 4,  usuarios: 15, cuits: 1 },
+  enterprise: { sku: -1,   movimientos: -1, comprobantes: -1,    sucursales: -1, usuarios: -1, cuits: -1 },
 }
 
 // Packs de add-on por dimensión (ARS, precio de lista sin descuentos). Se suman al límite base.
@@ -240,11 +243,15 @@ export const PLAN_BASE_LIMITS: Record<string, { sku: number; movimientos: number
 // reemplaza, no se acumulan). Comprobantes = 'fijo' o 'temporal' (pago único, vence 30d, para
 // picos puntuales; los temporales SÍ se acumulan). Los packs de movimientos se eliminaron
 // (pricing v2) — las filas históricas `dimension='movimientos'` en tenant_addons no se tocan.
+// ⚠ Los precios de `cuits` son PROVISORIOS (GO define el precio final del add-on premium —
+// referencia de competencia: solo se ofrece en planes de ~$150-300k). SOLO 'fijo' (recurrente,
+// una razón social extra es un costo permanente). Precio a confirmar antes de exponer el pack.
 export const ADDON_PACKS: Record<string, { tipos: Array<'fijo' | 'temporal'>; packs: Array<{ cantidad: number; precio: number }> }> = {
   sku:          { tipos: ['fijo'],             packs: [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }] },
   sucursales:   { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }] },
   usuarios:     { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }] },
   comprobantes: { tipos: ['fijo', 'temporal'], packs: [{ cantidad: 1000, precio: 10000 }, { cantidad: 5000, precio: 30000 }, { cantidad: 10000, precio: 50000 }] },
+  cuits:        { tipos: ['fijo'],             packs: [{ cantidad: 1, precio: 20000 }, { cantidad: 2, precio: 35000 }, { cantidad: 3, precio: 45000 }] },
 }
 
 // Descuentos sobre el precio del plan base (propuesta GO). Definir si se acumulan.

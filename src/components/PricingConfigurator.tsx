@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { PLANES, BRAND } from '@/config/brand'
 import { packsDe, precioMensualAddonsFijos, type AddonDimension, type AddonRow } from '@/lib/addons'
 import { calcularBatch, esUpgradeDePlan, type PackSel } from '@/lib/mpAddonBatch'
-import { Check, Box, Building2, User, FileText, Shield, Rocket, Headphones, Lock, RefreshCw, Zap, type LucideIcon } from 'lucide-react'
+import { Check, Box, Building2, User, FileText, Shield, Rocket, Headphones, Lock, RefreshCw, Zap, Landmark, type LucideIcon } from 'lucide-react'
 
 // Configurador de precios PÚBLICO (Landing) — Pricing 2026, Fase 4.
 // Solo estima: plan base + add-ons FIJOS (recurrentes) → total mensual en vivo.
@@ -18,6 +18,7 @@ const DIMS: Array<{ dim: AddonDimension; label: string; unidad: string; sub: str
   { dim: 'sucursales',   label: 'Sucursales',   unidad: 'sucursales',   sub: 'Sumá más sucursales a tu plan',      Icon: Building2 },
   { dim: 'usuarios',     label: 'Usuarios',     unidad: 'usuarios',     sub: 'Sumá más usuarios a tu plan',        Icon: User },
   { dim: 'comprobantes', label: 'Comprobantes', unidad: 'comprob./mes', sub: 'Sumá más comprobantes mensuales',    Icon: FileText },
+  { dim: 'cuits',        label: 'CUITs',        unidad: 'CUITs extra',  sub: 'Facturá con más de una razón social', Icon: Landmark },
 ]
 
 const BENEFICIOS: Array<{ Icon: LucideIcon; titulo: string; sub: string }> = [

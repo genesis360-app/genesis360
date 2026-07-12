@@ -24,6 +24,7 @@ import { useGruposEstados } from '@/hooks/useGruposEstados'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
+import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useCierreContable } from '@/hooks/useCierreContable'
 import { useCanalesVenta } from '@/hooks/useCanalesVenta'
@@ -1472,12 +1473,24 @@ export default function VentasPage() {
   // ── Facturación ───────────────────────────────────────────────────────────
   const factHabilitada = !!(tenant as any)?.facturacion_habilitada && !!(tenant as any)?.cuit
 
+  // Multi-CUIT (F4): el comprobante se emite con el EMISOR de la sucursal de la venta
+  // (?? principal), con override manual + confirmación explícita (emitir con el CUIT
+  // equivocado es irreversible). Con 1 solo emisor nada de esto se muestra.
+  const { emisores: emisoresFiscales, principal: emisorPrincipal, multiEmisor, emisorDeSucursal } = useEmisoresFiscales()
+  const [facturaEmisorId, setFacturaEmisorId] = useState<string | null>(null)
+  const [facturaEmisorDefaultId, setFacturaEmisorDefaultId] = useState<string | null>(null)
+  const [confirmoEmisorOverride, setConfirmoEmisorOverride] = useState(false)
+  const emisorFactura = emisoresFiscales.find(e => e.id === facturaEmisorId) ?? emisorPrincipal
+  const condEmisorFactura = emisorFactura?.condicion_iva_emisor ?? (tenant as any)?.condicion_iva_emisor
+  const emisorEsOverride = multiEmisor && !!facturaEmisorId && !!facturaEmisorDefaultId
+    && facturaEmisorId !== facturaEmisorDefaultId
+
   const detectarTipoComp = (clienteCondIva?: string): 'A' | 'B' | 'C' =>
-    detectarTipoComprobante((tenant as any)?.condicion_iva_emisor, clienteCondIva)
+    detectarTipoComprobante(condEmisorFactura, clienteCondIva)
 
   const triggerFacturaModal = (ventaId: string, ventaNumero: number, ventaTotal: number, clienteCondIva?: string) => {
     const tipo = detectarTipoComp(clienteCondIva)
-    const pvDefault = (puntosVentaAfip as any[])[0]?.numero ?? 1
+    const pvDefault = (pvsDelEmisor as any[])[0]?.numero ?? 1
     setFacturaTipo(tipo)
     setFacturaPV(pvDefault)
     setFacturaClienteCuit(null)
@@ -1485,26 +1498,42 @@ export default function VentasPage() {
   }
 
   // Al abrir el modal, traer el CUIT y DNI del cliente de la venta (Factura A exige CUIT;
-  // Factura B sobre el umbral exige identificar al receptor con DNI o CUIT).
+  // Factura B sobre el umbral exige identificar al receptor con DNI o CUIT) + resolver el
+  // emisor default por la SUCURSAL de la venta (multi-CUIT F4).
   useEffect(() => {
     if (!facturaModal) return
     let cancel = false
-    supabase.from('ventas').select('clientes(cuit_receptor, dni)').eq('id', facturaModal.ventaId).single()
+    supabase.from('ventas').select('sucursal_id, clientes(cuit_receptor, dni, condicion_iva_receptor)').eq('id', facturaModal.ventaId).single()
       .then(({ data }) => {
         if (cancel) return
         const cuit = ((data as any)?.clientes?.cuit_receptor ?? '').toString().replace(/[-\s]/g, '')
         const dni = ((data as any)?.clientes?.dni ?? '').toString().replace(/\D/g, '')
         setFacturaClienteCuit(cuit || null)
         setFacturaClienteDni(dni || null)
-        // Si quedó seleccionada Factura A sin CUIT, degradar a B para no bloquear la emisión.
-        if (!cuit) setFacturaTipo(t => (t === 'A' ? 'B' : t))
+        // Emisor default de esta venta = el de su sucursal (?? principal)
+        const def = emisorDeSucursal((data as any)?.sucursal_id)
+        setFacturaEmisorId(def?.id ?? null)
+        setFacturaEmisorDefaultId(def?.id ?? null)
+        setConfirmoEmisorOverride(false)
+        // Tipo según la condición DEL EMISOR resuelto (puede diferir del principal)
+        const tipoDef = detectarTipoComprobante(
+          def?.condicion_iva_emisor ?? (tenant as any)?.condicion_iva_emisor,
+          (data as any)?.clientes?.condicion_iva_receptor,
+        )
+        setFacturaTipo(!cuit && tipoDef === 'A' ? 'B' : tipoDef)
+        // PV default del emisor resuelto
+        const pvs = (puntosVentaAfip as any[]).filter((pv: any) =>
+          pv.emisor_id === def?.id || (!pv.emisor_id && (def?.es_default ?? true)))
+        if (pvs.length > 0) setFacturaPV(pvs[0].numero)
       })
     return () => { cancel = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [facturaModal])
 
   // RG AFIP: una Factura B a consumidor final por un total ≥ umbral exige identificar al
   // comprador (DNI o CUIT). Si no está identificado, se bloquea la emisión hasta cargarlo.
-  const umbralFacturaB = Number((tenant as any)?.umbral_factura_b ?? 68305.16)
+  // El umbral es DEL EMISOR seleccionado (multi-CUIT); fallback al del tenant.
+  const umbralFacturaB = Number(emisorFactura?.umbral_factura_b ?? (tenant as any)?.umbral_factura_b ?? 68305.16)
   const requiereIdentFacturaB = !!facturaModal && facturaTipo === 'B'
     && Number(facturaModal.ventaTotal) >= umbralFacturaB
     && !facturaClienteCuit && !facturaClienteDni
@@ -1515,10 +1544,21 @@ export default function VentasPage() {
       toast.error(`Factura B por $${umbralFacturaB.toLocaleString('es-AR', { maximumFractionDigits: 0 })} o más a consumidor final: AFIP exige identificar al cliente con DNI o CUIT. Cargalo en la ficha del cliente.`, { duration: 9000 })
       return
     }
+    // Multi-CUIT: cambiar el emisor de la sucursal exige confirmación explícita (emitir
+    // con el CUIT equivocado es irreversible — solo se corrige con NC + re-factura).
+    if (emisorEsOverride && !confirmoEmisorOverride) {
+      toast.error('Marcá la confirmación para emitir con un CUIT distinto al de la sucursal.')
+      return
+    }
     setEmitiendoFactura(true)
     try {
       const { data, error } = await supabase.functions.invoke('emitir-factura', {
-        body: { venta_id: facturaModal.ventaId, tenant_id: tenant!.id, tipo_comprobante: facturaTipo, punto_venta: facturaPV },
+        body: {
+          venta_id: facturaModal.ventaId, tenant_id: tenant!.id, tipo_comprobante: facturaTipo,
+          punto_venta: facturaPV,
+          // Multi-CUIT: emisor elegido (la EF valida pertenencia/activo y la NC hereda el suyo)
+          ...(facturaEmisorId ? { emisor_id: facturaEmisorId } : {}),
+        },
       })
       if (error) throw error
       if (data?.error) throw new Error(data.error)
@@ -2101,11 +2141,15 @@ export default function VentasPage() {
     queryKey: ['puntos-venta-afip', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('puntos_venta_afip')
-        .select('id, numero, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('numero')
+        .select('id, numero, nombre, emisor_id').eq('tenant_id', tenant!.id).eq('activo', true).order('numero')
       return data ?? []
     },
     enabled: !!tenant && (!!facturaModal || !!ncModal),
   })
+  // Multi-CUIT: los PV de AFIP son POR CUIT → el modal ofrece solo los del emisor
+  // seleccionado (las filas legacy sin emisor cuentan como del principal).
+  const pvsDelEmisor = (puntosVentaAfip as any[]).filter((pv: any) =>
+    pv.emisor_id === emisorFactura?.id || (!pv.emisor_id && (emisorFactura?.es_default ?? true)))
 
   const { data: combosDisp = [] } = useQuery({
     queryKey: ['combos', tenant?.id],
@@ -7110,11 +7154,48 @@ export default function VentasPage() {
           </div>
 
           <div className="p-5 space-y-4">
-            {/* Tipo de comprobante */}
+            {/* Emisor fiscal (multi-CUIT F4): solo si el tenant tiene más de un emisor */}
+            {multiEmisor && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Emisor (CUIT)</label>
+                <div className="relative">
+                  <select value={facturaEmisorId ?? ''} onChange={e => {
+                    const id = e.target.value || null
+                    setFacturaEmisorId(id)
+                    setConfirmoEmisorOverride(false)
+                    // Re-ofrecer letras según la condición del emisor elegido
+                    const em = emisoresFiscales.find(x => x.id === id)
+                    const permitidos = tiposComprobantePermitidos(em?.condicion_iva_emisor ?? (tenant as any)?.condicion_iva_emisor)
+                    setFacturaTipo(t => permitidos.includes(t as any) ? t : permitidos[0])
+                    // PV default del emisor elegido
+                    const pvs = (puntosVentaAfip as any[]).filter((pv: any) =>
+                      pv.emisor_id === id || (!pv.emisor_id && !!em?.es_default))
+                    if (pvs.length > 0) setFacturaPV(pvs[0].numero)
+                  }}
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    {emisoresFiscales.map(em => (
+                      <option key={em.id} value={em.id}>
+                        {em.nombre} — {em.cuit}{em.id === facturaEmisorDefaultId ? ' (de la sucursal)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {emisorEsOverride && (
+                  <label className="flex items-start gap-2 mt-2 cursor-pointer bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl px-3 py-2">
+                    <input type="checkbox" checked={confirmoEmisorOverride} onChange={e => setConfirmoEmisorOverride(e.target.checked)} className="mt-0.5" />
+                    <span className="text-[11px] text-amber-700 dark:text-amber-400">
+                      Voy a emitir con un CUIT <strong>distinto al asignado a la sucursal</strong>. Entiendo que el comprobante sale a nombre de {emisorFactura?.nombre} ({emisorFactura?.cuit}) y no se puede deshacer (solo NC + re-factura).
+                    </span>
+                  </label>
+                )}
+              </div>
+            )}
+
+            {/* Tipo de comprobante — letras según la condición del EMISOR seleccionado */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de comprobante</label>
-              <div className={`grid gap-2 ${tiposComprobantePermitidos((tenant as any)?.condicion_iva_emisor).length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
-                {tiposComprobantePermitidos((tenant as any)?.condicion_iva_emisor).map(t => {
+              <div className={`grid gap-2 ${tiposComprobantePermitidos(condEmisorFactura).length === 1 ? 'grid-cols-1' : 'grid-cols-2'}`}>
+                {tiposComprobantePermitidos(condEmisorFactura).map(t => {
                   const bloqueado = t === 'A' && !facturaClienteCuit
                   return (
                     <button key={t} onClick={() => { if (!bloqueado) setFacturaTipo(t) }} disabled={bloqueado}
@@ -7143,14 +7224,14 @@ export default function VentasPage() {
               )}
             </div>
 
-            {/* Punto de venta */}
+            {/* Punto de venta (del emisor seleccionado — los PV de AFIP son por CUIT) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Punto de venta</label>
-              {(puntosVentaAfip as any[]).length > 0 ? (
+              {(pvsDelEmisor as any[]).length > 0 ? (
                 <div className="relative">
                   <select value={facturaPV} onChange={e => setFacturaPV(parseInt(e.target.value))}
                     className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                    {(puntosVentaAfip as any[]).map((pv: any) => (
+                    {(pvsDelEmisor as any[]).map((pv: any) => (
                       <option key={pv.id} value={pv.numero}>
                         {String(pv.numero).padStart(4,'0')}{pv.nombre ? ` — ${pv.nombre}` : ''}
                       </option>
@@ -7169,7 +7250,7 @@ export default function VentasPage() {
               className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700 text-sm transition-all">
               Saltar
             </button>
-            <button onClick={emitirFactura} disabled={emitiendoFactura || requiereIdentFacturaB}
+            <button onClick={emitirFactura} disabled={emitiendoFactura || requiereIdentFacturaB || (emisorEsOverride && !confirmoEmisorOverride)}
               title={requiereIdentFacturaB ? 'Cargá DNI o CUIT del cliente para emitir Factura B sobre el umbral' : undefined}
               className="flex-[2] bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center justify-center gap-2">
               {emitiendoFactura

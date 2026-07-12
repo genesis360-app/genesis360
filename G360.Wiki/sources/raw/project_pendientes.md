@@ -6,6 +6,31 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🏢 (2026-07-12 · MULTI-CUIT FASES 4-6 IMPLEMENTADAS · v1.127.0 · mig 269 — ⚠ DEPLOY PENDIENTE EN DEV + prueba con 2 CUITs + precio del add-on)
+> **Se completaron las fases que faltaban** (F4 selección de emisor en la emisión con confirmación
+> de override · F5 reportes fiscales por CUIT + `gastos.emisor_id` · F6 add-on "CUIT adicional").
+> Detalle en el log 2026-07-12 y en `wiki/features/multi-cuit.md` (tabla de fases + sección de
+> onboarding de certificados). Build verde · unit 1013/1013.
+> **▶ ACCIONES INMEDIATAS (deploy quedó a medias porque el MCP de Supabase se cayó):**
+> 1. **Aplicar mig 269 en DEV** (`fn_plan_base_limite` v3 + trigger `fn_enforce_limite_cuits` +
+>    CHECK `cuits` en tenant_addons). Sin esto, el enforcement de F6 no corre (pero F4/F5 funcionan
+>    igual — no dependen de la 269).
+> 2. **Deployar la EF `mp-addon-batch`** a DEV (agrega el pack `cuits` + conteo especial). El
+>    `emitir-factura` NO necesita redeploy (v23 ya maneja `emisor_id`).
+> 3. **Prueba con 2 CUITs (con Fede):** generar/obtener su cert (homologación) y cargarlo como
+>    emisor adicional (o principal) por Config → Facturación → panel de emisores. Ver la sección
+>    "Onboarding del certificado AFIP" del wiki — el `.crt` requiere clave fiscal del contribuyente.
+> 4. **GO define el precio final del add-on "CUIT adicional"** (hoy PROVISORIO $20k/$35k/$45k).
+> 5. Deploy a PROD (cuando pase la prueba): **migs 267+268+269 ANTES** del EF, luego merge del PR.
+> **Pendientes menores (F4b/F5b, no bloqueantes):** los PDF de factura usan datos del emisor
+> principal (razón social/logo) aunque se emita con otro CUIT · Posición IVA del Dashboard sin
+> selector de emisor · wizard de generación de key+CSR para onboarding de cert self-service.
+> **🔎 Auditoría OC sugerida (pedida por GO, esperando su contexto):** `generarOCsSugeridas`
+> (`AlertasPage.tsx:297`) NO tiene test dedicado; sospechas: (a) calcula la cantidad a pedir con el
+> stock GLOBAL de `productos.stock_actual/stock_minimo`, no el stock POR SUCURSAL que usa la alerta;
+> (b) sin dedup contra OC abiertas → doble click = OCs duplicadas; (c) elige un proveedor arbitrario
+> si el producto tiene varios `proveedor_productos`; (d) `precio_unitario = precio_compra ?? null`.
+
 > ### 🏢 (2026-07-11 · MULTI-CUIT FASES 2+3 EN DEV · migs 267-268 + EF v23 + panel UI · v1.126.0 — ⚠ PENDIENTE: prueba con 2 CUITs (cert de Fede) + deploy a PROD)
 > **Continuación:** GO pidió avanzar F2+F3 dejando la prueba real con 2 CUITs para cuando Fede
 > cargue el suyo (hoy). Todo EN DEV, NADA en PROD (migs 267-268 y EF v23 van a PROD con el deploy).

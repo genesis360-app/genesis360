@@ -530,6 +530,8 @@ export interface TenantCertificate {
   cert_key_path: string
   cuit?: string | null
   fecha_validez_hasta?: string | null
+  /** Emisor fiscal dueño del certificado (multi-CUIT, mig 267). Null = fila legacy. */
+  emisor_id?: string | null
   activo: boolean
   created_at: string
   updated_at: string

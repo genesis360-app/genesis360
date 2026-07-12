@@ -37,11 +37,11 @@ Dos experiencias en un solo SaaS (v1.55.0, mig 207):
 | Productos | Form simple (sin tracking/regla/aging/peso-dim/ubicación-estado default; **sin "Es un KIT" ni precios mayoristas** — v1.58.0); **sin pestaña "Estructura"** (empaque unidad/caja/pallet = WMS — v1.59.0). Quedan: variantes talle/color, precio USD | Completo (incl. pestaña Estructura) |
 | Inventario | Stock + agregar/quitar simplificados + conteo rápido + Traslados (solo si >1 sucursal); **sin pestaña Kits** (v1.58.0) | Completo (LPN, ubicaciones, estados, vista por ubicación, conteos guiado/ciego/ABC/cíclico, acciones LPN, Kits) |
 | Gastos | Variables/fijos/historial + cheques/cierres/autorizaciones; **sin OC, Reportes-compras ni Recursos** (v1.58.0) | Completo |
-| Proveedores | Ficha + CC + pagos (sin OC/presupuestos/calificación) | Completo |
+| Proveedores | Ficha + CC + pagos + **tab Órdenes de compra (v1.126.0)** — la "OC sugerida" de Alertas se genera en ambos modos y el flujo debe poder continuarse (antes el tab estaba oculto y la OC quedaba inaccesible, reporte GO 2026-07-11); sin comparar-presupuestos (CO7b, solo avanzado) | Completo |
 | Configuración | Conectividad: **sub-tab Integraciones** (TiendaNube/MercadoLibre/MercadoPago) sí; **sin sub-tab "API"** (API pública del marketplace — v1.59.0) | Completo (incl. API pública/webhook) |
 | **Recursos** (activos fijos) | ❌ | ✅ |
 | **Biblioteca** (documentos) | ❌ | ✅ |
-| **Recepciones + OC** | ❌ (stock entra por Inventario → Agregar) | ✅ |
+| **Recepciones + OC** | Sidebar sin Recepciones (el stock suelto entra por Inventario → Agregar), pero **las OC SÍ están (v1.126.0)**: tab en Prov./Servicios + alertas de OC (página y badge cuentan igual) + "Recibir mercadería" llega a `/recepciones` por navegación directa (la ruta no tiene gate — el modo gatea UI, nunca datos) | ✅ |
 | **Envíos** | ❌ (costo de envío manual en el POS) | ✅ |
 | **Historial/Trazabilidad** | ❌ (movimientos en el tab Historial de Inventario) | ✅ |
 | RRHH | Gate de plan existente (`puede_rrhh`), sin cambios | ídem |

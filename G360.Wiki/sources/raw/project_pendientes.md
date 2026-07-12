@@ -6,7 +6,66 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🧪 (2026-07-10 · VALIDACIÓN INTEGRAL DE FACTURACIÓN — 3 HALLAZGOS ARREGLADOS · v1.125.0 EN DEV, mig 266 DEV+PROD, EFs deployadas — ⚠ PR dev→main ABIERTO esperando merge de GO)
+> ### 🏢 (2026-07-11 · MULTI-CUIT FASES 2+3 EN DEV · migs 267-268 + EF v23 + panel UI · v1.126.0 — ⚠ PENDIENTE: prueba con 2 CUITs (cert de Fede) + deploy a PROD)
+> **Continuación:** GO pidió avanzar F2+F3 dejando la prueba real con 2 CUITs para cuando Fede
+> cargue el suyo (hoy). Todo EN DEV, NADA en PROD (migs 267-268 y EF v23 van a PROD con el deploy).
+> 1. **✅ F2 — EF `emitir-factura` v23 multi-emisor:** resolución `override ?? sucursal ?? default`
+>    (NC hereda SIEMPRE el emisor de la factura original), guards por EMISOR (letra/A-CUIT/umbral),
+>    guard nuevo de **PV por CUIT**, cert POR emisor (nunca firma cruzado), persiste
+>    `ventas.emisor_id`. **Mig 268**: cert UNIQUE(emisor) + PV UNIQUE(tenant,emisor,numero).
+>    Espejo `src/lib/emisorFiscal.ts` (15 unit). **Validado:** smokes 6/6 con emisor fake B +
+>    regresión e2e 21/42/56/86 = 10/10 (CAE/NC reales por el resolver nuevo). ⚠ Bug encontrado y
+>    arreglado en la validación: el guard de letra corría con el default ANTES de resolver la
+>    sucursal → ahora la resolución es una sola y "Venta no encontrada" se lanza tras los guards.
+> 2. **✅ F3 — UI (alcance ajustado, ver multi-cuit.md):** el form existente sigue editando el
+>    emisor PRINCIPAL (vía tenants + trigger 267 — sin cutover, cero drift); nuevo
+>    `EmisoresFiscalesPanel` en Config → Facturación: CRUD de emisores ADICIONALES + cert y PV por
+>    emisor + asignación sucursal→emisor; las secciones existentes de cert/PV ahora escriben
+>    `emisor_id` del principal (`afip.ts` upsert por emisor).
+> 3. **▶ HOY con Fede:** cargar su CUIT como emisor ADICIONAL en un tenant DEV (Config →
+>    Facturación → "Agregar emisor" + subir su cert + PV) + asignarle una sucursal → vender por esa
+>    sucursal → emitir. La UI del POS ofrece las letras del emisor PRINCIPAL hasta F4 (si eligen
+>    una letra inválida para el emisor de la sucursal, la EF rechaza con error claro — fail-closed).
+>    Alternativa más limpia para la demo: tenant donde el CUIT de Fede sea el PRINCIPAL.
+> 4. **Fixture NC lista** para la próxima corrida del spec 42 (devolución `f6b1c675…` sin nc_cae).
+> 5. **Deploy a PROD (cuando GO lo pida):** migs 267+268 ANTES del EF v23 + merge del PR de
+>    v1.126.0. La EF tiene fallback legacy (sin fila de emisor usa tenants.*), pero el orden
+>    correcto sigue siendo migs→EF→frontend.
+> 6. **F4-F6 pendientes** (selector en el POS con confirmación de override · reportes por emisor ·
+>    add-on "CUIT adicional"). Acción GO: precio del add-on.
+> 7. **🐛 Fix extra en la misma versión (reporte GO):** las **OC pasan a AMBOS modos** — el tab
+>    "Órdenes de compra" de Prov./Servicios estaba gateado por `modoAvanzado` pero el botón
+>    "Generar OC sugerida" de Alertas NO → en básico se creaba la OC y no había dónde verla.
+>    Fix: tab + "Nueva OC" sin gate de modo (permisos por rol `capOC` intactos), alertas de OC
+>    (página + badge `useAlertas`) cuentan en ambos modos, WMS sigue solo-avanzado. El flujo
+>    cierra: "Recibir mercadería" navega a `/recepciones` (ruta sin gate). e2e 07+12 verdes.
+
+> ### 🏢 (2026-07-10 · MULTI-CUIT POR TENANT (F5) — PLAN COMPLETO + FASE 1 EN DEV · mig 267)
+> **Novena sesión del día** (tras el cierre de v1.125.0, cuyo PR #286 GO YA mergeó — Vercel READY
+> confirmado, dev sincronizado). GO pidió armar el plan sólido de multi-CUIT para igualar a la
+> competencia (Netegia/Zeus/Contabilium tienen 2-10 CUITs; era F5 del backlog de pricing,
+> destrabado porque el WSFE propio ya es default). **Diseño completo en
+> `wiki/features/multi-cuit.md`** — leerlo ANTES de arrancar la Fase 2.
+> 1. **Decisiones de GO (2026-07-10, por AskUserQuestion):** emisor por **sucursal + override**
+>    (NC SIEMPRE hereda el emisor de la factura original, guard server-side) · **gastos también
+>    se imputan a emisor** (IVA crédito separable por CUIT) · monetización por **add-on "CUIT
+>    adicional"** (motor de add-ons batch) · arrancar Fase 1 ya.
+> 2. **✅ Fase 1 HECHA (mig 267, solo DEV):** tabla `emisores_fiscales` + FKs en hijos
+>    (`tenant_certificates`/`puntos_venta_afip`/`sucursales`/`ventas`/`gastos`) + backfill neutro
+>    (2 emisores default en DEV espejando `tenants.*`, hijos linkeados, verificado) + trigger
+>    transicional `fn_sync_emisor_fiscal_default` (tenants→emisor default, verificado en vivo;
+>    SE ELIMINA en el cutover de Fase 3). CERO cambio de comportamiento — nada la lee todavía.
+>    **⚠ Mig 267 NO está en PROD** (va con el deploy de Fase 2, patrón migs-aditivas-antes-del-merge).
+> 3. **▶ PRÓXIMO = Fase 2 (la crítica, REGLA #0):** EF `emitir-factura` resuelve el emisor
+>    (body.emisor_id ?? sucursal ?? default), toma cuit/condición/cert/token/provider/produccion
+>    DEL EMISOR, persiste `ventas.emisor_id`, guards por emisor + NC hereda emisor. Lib pura
+>    espejo `src/lib/emisorFiscal.ts` + regresión e2e 21/42/56. Después F3 (CRUD Config + cutover),
+>    F4 (selector en venta + confirmación de override), F5 (reportes por emisor), F6 (add-on).
+> 4. **Acciones de GO para F2+:** conseguir un **segundo CUIT/cert de homologación** para validar
+>    la matriz con 2 emisores reales (de paso cierra el pendiente UAT §29) · definir precio del
+>    add-on "CUIT adicional".
+
+> ### 🧪 (2026-07-10 · VALIDACIÓN INTEGRAL DE FACTURACIÓN — 3 HALLAZGOS ARREGLADOS · v1.125.0 EN DEV→ **MERGEADO (PR #286), EN PROD, Vercel READY** · mig 266 DEV+PROD, EFs deployadas)
 > **Octava sesión del día.** GO pidió revisar los planes de test (UAT/unit/e2e) de TODO el proceso de
 > facturación, agregar escenarios faltantes y ejecutar todo hasta dejarlo validado en DEV y PROD
 > (autorizó smoke de emisión en PROD + plataforma a fondo). Resultado: **3 hallazgos reales

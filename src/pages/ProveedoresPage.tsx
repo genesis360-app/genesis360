@@ -1444,11 +1444,13 @@ export default function ProveedoresPage() {
   })
 
   // ── Tabs bar ───────────────────────────────────────────────────────────────
-  // En modo básico no hay circuito de OC (el stock entra por Inventario → Agregar)
+  // Las OC están disponibles en AMBOS modos desde v1.126.0 (decisión GO 2026-07-11):
+  // la "OC sugerida" de Alertas se genera también en básico y hay que poder continuarla
+  // — antes el tab quedaba oculto por modoAvanzado y el flujo moría a la mitad.
   const tabs = [
     { id: 'proveedores' as Tab, label: 'Proveedores', icon: Truck },
     { id: 'servicios' as Tab,   label: 'Servicios', icon: Wrench },
-    ...(modoAvanzado ? [{ id: 'ordenes' as Tab, label: 'Órdenes de compra', icon: FileText }] : []),
+    { id: 'ordenes' as Tab, label: 'Órdenes de compra', icon: FileText },
   ]
 
   const exportarProveedores = (format: 'json' | 'csv') => {
@@ -1505,7 +1507,7 @@ export default function ProveedoresPage() {
             <Plus className="w-4 h-4" /> Nuevo servicio
           </button>
         )}
-        {tab === 'ordenes' && modoAvanzado && capOC !== 'ninguna' && (
+        {tab === 'ordenes' && capOC !== 'ninguna' && (
           <button
             onClick={openNewOC}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white rounded-lg text-sm hover:bg-accent/90"

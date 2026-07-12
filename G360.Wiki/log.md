@@ -6,6 +6,104 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-11] update | 🐛 Fix UX: las OC pasan a estar disponibles en AMBOS modos (el flujo "OC sugerida" moría a la mitad en básico)
+
+**Reporte de GO (dogfooding en plan/modo básico):** el módulo Prov./Servicios mostraba solo 2 de
+sus 3 pestañas — faltaba "Órdenes de compra" (gateada por `modoAvanzado`), pero el botón **"Generar
+OC sugerida" de Alertas NO estaba gateado** → en básico se creaba la OC en `ordenes_compra` y no
+había NINGUNA pantalla para verla o continuarla ("acceso a la mitad de algo").
+
+**Decisión de GO:** las 3 pestañas visibles en ambos modos (en básico se puede querer generar la
+OC sugerida desde Alertas con SKUs vinculados a proveedor). **Fix aplicado (v1.126.0):**
+- `ProveedoresPage`: tab "Órdenes de compra" sin gate de modo + botón "Nueva OC" ídem (los
+  permisos por ROL `capOC` siguen intactos). "Comparar presupuestos" (CO7b) sigue solo-avanzado.
+- `AlertasPage` + `useAlertas` (badge): las alertas de OC vencidas / por vencer cuentan y se
+  muestran en ambos modos — el badge y la página siguen contando IGUAL (regla de oro del módulo).
+  Las fuentes WMS (sin ubicación / sin proveedor / LPN vencidos) siguen solo-avanzado.
+- El flujo cierra completo en básico: Alertas → OC sugerida → tab OC → enviar → "Recibir
+  mercadería" navega a `/recepciones` (la ruta existe sin gate en App.tsx — el modo gatea UI,
+  nunca datos; el sidebar no muestra Recepciones en básico pero el botón del flujo llega igual).
+
+Verificación: build + unit 1012/1012 + e2e 07_alertas + 12_navegacion verdes. Actualizada la
+página [[wiki/features/modo-basico-avanzado]] (las OC ya no son parte del gate de modo).
+
+---
+
+## [2026-07-11] update | 🏢 Multi-CUIT Fases 2+3 EN DEV (v1.126.0) — EF multi-emisor validada con smokes + regresión; falta la prueba con 2 CUITs (cert de Fede)
+
+GO pidió avanzar Fases 2 y 3 dejando la prueba real con 2 CUITs para cuando Fede cargue el suyo.
+
+**F2 — EF `emitir-factura` v23 (DEV):** resolución del emisor server-side (`body.emisor_id ??
+sucursal de la venta ?? default`; la **NC hereda SIEMPRE el de la factura original**, 400 si el
+body manda otro), guards fiscales por EMISOR (letra, A-exige-CUIT, B≥umbral), **guard nuevo de PV
+por CUIT** (el PV 1 del CUIT A ≠ PV 1 del CUIT B), certificado POR emisor (nunca firma cruzado,
+fallback a la fila legacy), `afip_produccion`/`afip_provider`/token por emisor, y persistencia de
+`ventas.emisor_id`. **Mig 268**: cert `UNIQUE(emisor_id)` + PV `UNIQUE(tenant, emisor, numero)`.
+Espejo puro `src/lib/emisorFiscal.ts` con 15 unit (FAC-EMISOR-01→15, plan §10).
+
+**🐛 Bug encontrado y arreglado durante la validación:** el guard de letra corría "preliminar" con
+el emisor DEFAULT antes de conocer la sucursal → una sucursal asignada a un emisor RI no podía
+emitir B si el default era Mono (rechazo falso, fail-closed). Fix: resolución ÚNICA con la venta
+fetcheada `maybeSingle` y "Venta no encontrada" lanzada DESPUÉS de los guards (preserva la
+semántica del spec 56 con venta dummy). Redeploy v22→v23.
+
+**Validación:** smokes **6/6** con un emisor fake B (RI, sin cert) en Jorgito — letra por override
+(RI rechaza C que el default Mono permitiría: prueba que la resolución manda), PV por CUIT, cert
+por emisor, 403 emisor de otro tenant, herencia de NC, resolución por sucursal — todo 4xx ANTES de
+AFIP, nada mutado, fixture limpiada. **Regresión e2e 21/42/56/86 = 10/10** contra v23 (CAE y NC
+reales de homologación pasando por el resolver nuevo). Unit **1012/1012** (997+15) · build verde.
+
+**F3 — UI (alcance ajustado):** el form "Facturación Electrónica" existente sigue editando el
+emisor PRINCIPAL (escribe `tenants.*`, el trigger de mig 267 espeja — sin cutover total, cero
+riesgo para los readers legacy del POS/PDF/dashboards). Nuevo **`EmisoresFiscalesPanel`** en
+Config → Facturación: CRUD de emisores adicionales (homologación forzada al crear), cert y PV por
+emisor, asignación **sucursal → emisor** con warning de F4, eliminar con guard de comprobantes
+(REGLA #0: con ventas emitidas solo se desactiva). `afip.ts` upsertea el cert por `emisor_id`.
+
+**Para HOY con Fede:** cargar su CUIT como emisor adicional en un tenant DEV + cert + PV + asignar
+sucursal → vender por esa sucursal → emitir (o directamente un tenant con su CUIT como principal,
+más limpio para demo). Hasta F4 el POS ofrece las letras del emisor principal; una letra inválida
+para el emisor real es rechazada por la EF con error claro (fail-closed, REGLA #0).
+
+**Estado:** todo EN DEV (migs 267-268, EF v23, frontend v1.126.0 commiteado en dev). NADA en PROD.
+Deploy: migs → EF → merge PR. F4-F6 pendientes.
+
+---
+
+## [2026-07-10] update | 🏢 Multi-CUIT por tenant (F5) — plan completo en 6 fases + Fase 1 (mig 267) en DEV
+
+**Cierre previo:** GO mergeó el PR #286 (v1.125.0) — el primer intento mostró conflictos en 4
+archivos del wiki (efecto del squash del PR #285: mismo contenido, commits distintos), resueltos
+mergeando `origin/main` en `dev` con la versión de `dev` (superconjunto). Squash final OK,
+**deploy de producción `READY`** (commit `65c54a70`), `dev` re-sincronizado sin conflictos.
+
+**Multi-CUIT:** GO pidió el plan para igualar a la competencia (Netegia/Zeus/Contabilium, 2-10
+CUITs — era F5 del backlog de pricing, "después del WSFE propio", que ya es default → destrabado).
+Relevamiento de todas las superficies acopladas a "1 CUIT por tenant" + 4 decisiones de producto
+tomadas por GO (AskUserQuestion): **emisor por sucursal + override** (NC siempre hereda el emisor
+de la factura original), **gastos imputados a emisor** (crédito separable por CUIT), **add-on
+"CUIT adicional"** (motor batch), **arrancar Fase 1 ya**.
+
+**Diseño completo nuevo: `wiki/features/multi-cuit.md`** — modelo `emisores_fiscales`, regla única
+de resolución del emisor (override ?? sucursal ?? default; NC derivada server-side), 6 fases con
+riesgo y testing por fase, 7 riesgos REGLA #0 explícitos (NC cruzada de CUIT, emisión con CUIT
+equivocado, cert por emisor, libros por emisor, PV por CUIT, gasto sin emisor, TA por cert — este
+último ya resuelto por diseño en mig 264).
+
+**✅ Fase 1 ejecutada (mig 267, SOLO DEV):** tabla `emisores_fiscales` (RLS tenant-scoped, REVOKE
+anon, UNIQUE default parcial + UNIQUE (tenant,cuit)) + FKs `ON DELETE SET NULL` en
+`tenant_certificates`/`puntos_venta_afip`/`sucursales`/`ventas`/`gastos` + backfill neutro (2
+emisores default en DEV espejando `tenants.*` — verificado campo a campo, 0 diferencias; hijos
+linkeados; ventas solo con CAE, gastos solo deducibles) + trigger transicional
+`fn_sync_emisor_fiscal_default` (SECURITY DEFINER, tenants→emisor default; verificado en vivo;
+se elimina en el cutover de Fase 3). CERO cambio de comportamiento. Mig 267 va a PROD recién con
+el deploy de la Fase 2.
+
+**Próximo:** Fase 2 = EF `emitir-factura` multi-emisor (la crítica). Acciones GO: segundo
+CUIT/cert de homologación (cierra de paso UAT §29) + precio del add-on.
+
+---
+
 ## [2026-07-10] update | 🧪 Validación integral de FACTURACIÓN (v1.125.0) — 3 hallazgos REGLA #0 arreglados, suite completa verde en DEV y PROD
 
 GO pidió revisar los planes de test (UAT + unit + e2e) de todo el proceso de facturación, agregar

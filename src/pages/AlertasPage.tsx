@@ -192,8 +192,8 @@ export default function AlertasPage() {
         .order('fecha_vencimiento_pago', { ascending: true }))
       return data ?? []
     },
-    // Las OC (compras) son de modo avanzado; en básico no existen → no contar ni mostrar.
-    enabled: !!tenant && modoAvanzado,
+    // Las OC cuentan en AMBOS modos desde v1.126.0 (el tab de OC ya no es solo avanzado).
+    enabled: !!tenant,
   })
 
   const { data: ocsProximas = [], isLoading: loadingOcsProx } = useQuery({
@@ -210,8 +210,8 @@ export default function AlertasPage() {
         .order('fecha_vencimiento_pago', { ascending: true }))
       return data ?? []
     },
-    // Las OC (compras) son de modo avanzado; en básico no existen → no contar ni mostrar.
-    enabled: !!tenant && modoAvanzado,
+    // Las OC cuentan en AMBOS modos desde v1.126.0 (el tab de OC ya no es solo avanzado).
+    enabled: !!tenant,
   })
 
   const { data: lpnsVencidos = [], isLoading: loadingVencidos } = useQuery({
@@ -340,10 +340,12 @@ export default function AlertasPage() {
     onError: (e: any) => toast.error(e.message),
   })
 
-  // Las fuentes de WMS/compras (sin ubicación, sin proveedor, LPN vencidos, OC) solo
-  // cuentan en modo avanzado — así el total coincide con el badge del sidebar (useAlertas).
+  // Las fuentes de WMS (sin ubicación, sin proveedor, LPN vencidos) solo cuentan en modo
+  // avanzado — así el total coincide con el badge del sidebar (useAlertas). Las OC cuentan
+  // en AMBOS modos desde v1.126.0 (el tab de OC de Prov./Servicios ya no es solo avanzado).
   const totalAlertas = alertas.length + reservasViejas.length + sinCategoria.length + clientesConDeuda.length + cajasSobreUmbral.length
-    + (modoAvanzado ? lineasSinUbicacion.length + lineasSinProveedor.length + lpnsVencidos.length + ocsVencidas.length + ocsProximas.length : 0)
+    + ocsVencidas.length + ocsProximas.length
+    + (modoAvanzado ? lineasSinUbicacion.length + lineasSinProveedor.length + lpnsVencidos.length : 0)
   const isLoadingAll = isLoading || loadingReservas || loadingSinCategoria || loadingDeuda || loadingSinUbic || loadingSinProv || loadingVencidos || loadingOcsVenc || loadingOcsProx
 
   return (
@@ -398,8 +400,8 @@ export default function AlertasPage() {
             </div>
           )}
 
-          {/* OC vencidas (solo avanzado/compras) */}
-          {modoAvanzado && ocsVencidas.length > 0 && (
+          {/* OC vencidas (ambos modos desde v1.126.0) */}
+          {ocsVencidas.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
                 <ShoppingCart size={14} />
@@ -434,8 +436,8 @@ export default function AlertasPage() {
             </div>
           )}
 
-          {/* OC próximas a vencer (solo avanzado/compras) */}
-          {modoAvanzado && ocsProximas.length > 0 && (
+          {/* OC próximas a vencer (ambos modos desde v1.126.0) */}
+          {ocsProximas.length > 0 && (
             <div className="space-y-3">
               <h2 className="text-sm font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-2">
                 <ShoppingCart size={14} />

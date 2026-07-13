@@ -11,12 +11,16 @@ type: project
 > de override · F5 reportes fiscales por CUIT + `gastos.emisor_id` · F6 add-on "CUIT adicional").
 > Detalle en el log 2026-07-12 y en `wiki/features/multi-cuit.md` (tabla de fases + sección de
 > onboarding de certificados). Build verde · unit 1013/1013.
-> **▶ ACCIONES INMEDIATAS (deploy quedó a medias porque el MCP de Supabase se cayó):**
-> 1. **Aplicar migs 269 + 270 en DEV** (269 = enforcement add-on `cuits`; 270 =
->    `emisores_fiscales.csr_key_path` del wizard de cert). F4/F5 funcionan sin ellas; F6 necesita
->    269 y el wizard necesita 270.
-> 2. **Deployar EFs a DEV: `generar-csr` (nueva) + `mp-addon-batch`** (pack `cuits`). El
->    `emitir-factura` NO necesita redeploy (v23 ya maneja `emisor_id`).
+> **✅ DEPLOY COMPLETO EN DEV Y PROD (2026-07-13):** migs 267-270 en PROD (267/268 estaban solo en
+> DEV; 269/270 nuevas en ambos) · EFs: **`emitir-factura` PROD v16 (multi-emisor, era v15)** ·
+> **`generar-csr` v1 (DEV+PROD, wizard cert, node-forge validado end-to-end: CSR real de 1002 chars)** ·
+> **`mp-addon-batch` DEV v8 / PROD v4 (pack `cuits`)**. Backfill PROD verificado (1 tenant con CUIT
+> = el piloto, emisor default espeja perfecto, 0 huérfanos). Guards anon→401 y OPTIONS→200 OK en
+> PROD. Consistencia fiscal PROD: 0 números duplicados, 0 NC huérfanas. **Falta SOLO: mergear PR
+> #287 (frontend).** ⚠ Nota: GO dejó un emisor de prueba `asdasd/asdasd` (adicional) en el tenant
+> piloto de PROD probando el panel — inofensivo (CUIT inválido, sin sucursal asignada), borrable
+> desde el panel. ⚠ `mp-addon-batch` DEV≠PROD por sha (comentarios distintos en el transcript) pero
+> lógica idéntica (cuits en packs/base/guard/dims); el archivo del repo es la fuente de verdad.
 > 3. **Prueba con 2 CUITs (con Fede):** generar/obtener su cert (homologación) y cargarlo como
 >    emisor adicional (o principal) por Config → Facturación → panel de emisores. Ver la sección
 >    "Onboarding del certificado AFIP" del wiki — el `.crt` requiere clave fiscal del contribuyente.

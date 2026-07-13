@@ -168,7 +168,7 @@ Deno.serve(async (req) => {
     const suma = (packs: Pack[]) => packs.reduce((s, p) => s + (precioDe(p.dimension, p.cantidad) ?? 0), 0)
     const recurrenteNuevo = Math.max(0, montoActual - suma(packsActuales) + suma(packsObjetivo) + deltaPlan)
     const delta = recurrenteNuevo - montoActual
-    const dims = ['sku', 'sucursales', 'usuarios', 'comprobantes']
+    const dims = ['sku', 'sucursales', 'usuarios', 'comprobantes', 'cuits']
     const cantidadDe = (packs: Pack[], d: string) => packs.find(p => p.dimension === d)?.cantidad ?? 0
     const sinCambios = !cambiaPlan &&
       dims.every(d => cantidadDe(packsActuales, d) === cantidadDe(packsObjetivo, d))

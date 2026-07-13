@@ -6,6 +6,78 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🔐 (2026-07-12 · FIX — WIZARD DE CERT PARA EL EMISOR PRINCIPAL + tests del 1er certificado · v1.129.0 · SIN COMMITEAR, NADA EN PROD)
+> **Hallazgo de GO:** "no tengo como crear el CRT desde el certificado principal". Confirmado: el
+> wizard self-service (Generar CSR → ARCA → subir `.crt`, v1.128.0) estaba **SÓLO en emisores
+> adicionales** (`!e.es_default`); el **principal** sólo tenía carga manual `.crt`+`.key` → **el que
+> recién arranca no podía generar su CSR desde la app**. Y `generar-csr`/`afip.ts` no tenían NINGÚN
+> test.
+> **HECHO (v1.129.0):**
+> - `src/lib/csrCert.ts` (lógica pura: subject espejo de la EF + `pasoWizardCert` + validadores);
+>   `afip.ts` los usa.
+> - `EmisoresFiscalesPanel`: el principal (⭐) ahora tiene botón **"Certificado" → Asistente** (mismo
+>   pipeline por-emisor, ya probado). Cerrado el hueco **cross-sesión** (`csr_key_path` pendiente sin
+>   CSR en memoria → subir el `.crt` directo, antes obligaba a regenerar). `ConfigPage`: pointer al
+>   asistente cuando no hay cert.
+> - Tests: **unit** `csrCert.test.ts` (14) · **e2e** `61_generar_csr_ef.spec.ts` **corrido en DEV 5/5**
+>   (401/403/400 + happy path CSR PKCS#10 real, `.key` no sale del server, con cleanup) · **UAT §11.b**
+>   (CERT-01→10) · plan `facturacion.plan.md §11`. build ✓ · typecheck ✓ · unit **1033+5 todo**.
+> **▶ FALTA (decisión de GO):** commitear en `dev` y sumar al **PR #287** (o PR nuevo). Sin migraciones
+> nuevas (usa la 270 ya en PROD). `generar-csr` NO cambió. CERT-04 (pegar en ARCA + subir `.crt`) es
+> **manual e ineludible** (clave fiscal). Esto **destraba** el onboarding del 1er certificado que
+> quedaba pendiente en el punto F4b de la entrada de multi-CUIT (abajo).
+>
+> ### 📱 (2026-07-13 · PRÓXIMO: SET DE PRUEBAS MOBILE RESPONSIVE + FIXES · deploy multi-CUIT YA HECHO)
+> **Multi-CUIT F1-F6 + wizard de cert están 100% deployados en DEV y PROD** (ver la entrada
+> siguiente y el log 2026-07-13). **Falta solo que GO mergee el PR #287** (frontend v1.128.0 a PROD).
+> **▶ TAREA PRINCIPAL PENDIENTE — pruebas mobile (GO la pidió, la arrancamos y frenamos):** en la
+> web-app desde el celular se sale contenido del marco (números del Dashboard, y varios módulos).
+> HOY no hay cobertura responsive en e2e. Plan:
+> 1. Helper de detección de overflow en `tests/e2e/helpers/navigation.ts`: en un viewport mobile
+>    (375×667 y 360×640), `documentElement.scrollWidth ≤ innerWidth` (sin scroll horizontal de
+>    página = señal #1) + lista de elementos cuyo `getBoundingClientRect().right > viewport` para
+>    diagnóstico, **ignorando** los que están dentro de un contenedor con `overflow-x: auto|scroll`
+>    (scroll intencional de tablas).
+> 2. e2e nuevo (spec 88+) que recorre las rutas principales (Dashboard/Ventas/Caja/Facturación/
+>    Clientes/Productos/Config…) a 2 viewports mobile y asierta sin overflow.
+> 3. Correrlo para ver los OFENSORES reales → FIXES CSS (min-w-0 en flex, truncate/break-words,
+>    `tabular-nums` + font más chica en KPIs, `overflow-x-auto` en tablas anchas) → re-correr verde.
+> 4. UAT §mobile responsive + (si sale un helper puro, unit). Build + release.
+> **Nota de arranque:** no encontré breakpoint/bottom-nav en `AppLayout.tsx` con el grep (revisar el
+> layout real del sidebar en mobile antes de escribir el test). NO se tocó nada de mobile todavía.
+
+> ### 🏢 (2026-07-12 · MULTI-CUIT FASES 4-6 IMPLEMENTADAS + DEPLOYADAS · v1.126-1.128 · migs 267-270 en DEV+PROD)
+> **Se completaron las fases que faltaban** (F4 selección de emisor en la emisión con confirmación
+> de override · F5 reportes fiscales por CUIT + `gastos.emisor_id` · F6 add-on "CUIT adicional").
+> Detalle en el log 2026-07-12 y en `wiki/features/multi-cuit.md` (tabla de fases + sección de
+> onboarding de certificados). Build verde · unit 1013/1013.
+> **✅ DEPLOY COMPLETO EN DEV Y PROD (2026-07-13):** migs 267-270 en PROD (267/268 estaban solo en
+> DEV; 269/270 nuevas en ambos) · EFs: **`emitir-factura` PROD v16 (multi-emisor, era v15)** ·
+> **`generar-csr` v1 (DEV+PROD, wizard cert, node-forge validado end-to-end: CSR real de 1002 chars)** ·
+> **`mp-addon-batch` DEV v8 / PROD v4 (pack `cuits`)**. Backfill PROD verificado (1 tenant con CUIT
+> = el piloto, emisor default espeja perfecto, 0 huérfanos). Guards anon→401 y OPTIONS→200 OK en
+> PROD. Consistencia fiscal PROD: 0 números duplicados, 0 NC huérfanas. **Falta SOLO: mergear PR
+> #287 (frontend).** ⚠ Nota: GO dejó un emisor de prueba `asdasd/asdasd` (adicional) en el tenant
+> piloto de PROD probando el panel — inofensivo (CUIT inválido, sin sucursal asignada), borrable
+> desde el panel. ⚠ `mp-addon-batch` DEV≠PROD por sha (comentarios distintos en el transcript) pero
+> lógica idéntica (cuits en packs/base/guard/dims); el archivo del repo es la fuente de verdad.
+> 3. **Prueba con 2 CUITs (con Fede):** generar/obtener su cert (homologación) y cargarlo como
+>    emisor adicional (o principal) por Config → Facturación → panel de emisores. Ver la sección
+>    "Onboarding del certificado AFIP" del wiki — el `.crt` requiere clave fiscal del contribuyente.
+> 4. **GO define el precio final del add-on "CUIT adicional"** (hoy PROVISORIO $20k/$35k/$45k).
+> 5. Deploy a PROD (cuando pase la prueba): **migs 267+268+269 ANTES** del EF, luego merge del PR.
+> **Pendientes menores (F4b/F5b, no bloqueantes):** los PDF de factura usan datos del emisor
+> principal (razón social/logo) aunque se emita con otro CUIT · Posición IVA del Dashboard sin
+> selector de emisor · wizard de generación de key+CSR para onboarding de cert self-service.
+> **🐞 OC sugerida — bug reportado por GO (2026-07-12), A CORREGIR TRAS FACTURACIÓN.** Síntoma:
+> "Generar OC sugerida" creó una OC con **varias líneas del mismo SKU** (2 u. c/u) en vez de UNA con
+> la cantidad total del maestro. Ya extraído a `src/lib/ocSugerida.ts` + `ocSugerida.test.ts` (20
+> tests que lockean la conducta actual, con el caso en `OC-SUG-BUG1`) + `it.todo` de los 5 fixes +
+> `tests/specs/oc-sugerida.plan.md`. **5 bugs:** (1) no consolida por producto = el de GO · (2)
+> faltante sobre stock GLOBAL no por sucursal · (3) proveedor arbitrario si hay varios · (4) sin
+> dedup vs OC abiertas · (5) `precio_unitario` null si el proveedor_producto no tiene precio.
+> **Fix pendiente** — NO se tocó la conducta todavía (decisión GO: revisar tras cerrar facturación).
+
 > ### 🏢 (2026-07-11 · MULTI-CUIT FASES 2+3 EN DEV · migs 267-268 + EF v23 + panel UI · v1.126.0 — ⚠ PENDIENTE: prueba con 2 CUITs (cert de Fede) + deploy a PROD)
 > **Continuación:** GO pidió avanzar F2+F3 dejando la prueba real con 2 CUITs para cuando Fede
 > cargue el suyo (hoy). Todo EN DEV, NADA en PROD (migs 267-268 y EF v23 van a PROD con el deploy).

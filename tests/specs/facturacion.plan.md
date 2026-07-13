@@ -171,6 +171,24 @@ Espejo: `src/lib/emisorFiscal.ts` → `tests/unit/emisorFiscal.test.ts`. Diseño
   "Venta no encontrada" se lanza tras los guards — preserva el spec 56 con venta dummy).
 - ⬜ Pendiente: emisión real con 2 CUITs distintos (cert de Fede) — cierra también UAT §29.
 
+## 11. Wizard de certificado self-service (CERT) ✅ *(nuevo 2026-07-12, hallazgo GO)*
+
+Espejo: `src/lib/csrCert.ts` → `tests/unit/csrCert.test.ts`. EF: `supabase/functions/generar-csr`
+→ `tests/e2e/61_generar_csr_ef.spec.ts`. UI: `EmisoresFiscalesPanel` + `ConfigPage §Certificados AFIP`.
+Diseño/onboarding: `wiki/features/multi-cuit.md`. Recorrido del que recién arranca: UAT §11.b.
+
+- CERT-SUBJ-01→06: `construirSubjectCsr` (espejo de la EF) — CUIT normalizado a 11 dígitos
+  (rechaza <11 y >11), razón social con fallback, CN truncado a 50. 🛑 un subject mal armado
+  = ARCA rechaza el cert / cert que no corresponde.
+- CERT-STEP-01→05: `pasoWizardCert` — máquina de estados del onboarding: generar → subir-crt →
+  (cross-sesión) pendiente-crt → activo; y el reemplazo (cert activo + CSR nuevo → subir-crt).
+- CERT-FILE-01→03: validación de extensiones (`esArchivoCrt`/`esArchivoKey`/`nombreArchivoCsr`).
+- e2e 61 (DEV, EF real): 401 anon · 403 otro tenant · 400 CUIT inválido · happy path (CSR PKCS#10
+  válido, la `.key` NO vuelve al cliente, `csr_key_path` seteado y limpiado).
+- 🛑 HALLAZGO GO (fix v1.129.0): el wizard estaba SÓLO para emisores adicionales; el emisor
+  principal (el del que recién arranca) no tenía forma de generar su CSR → habilitado.
+- ⬜ Manual con ARCA (fuera de unit/e2e): pegar el CSR en ARCA, bajar el `.crt`, `finalizarCert`.
+
 ## Fuera de alcance unit (e2e / manual con ARCA)
 
 - WSAA login + CAE real (cubierto por e2e 21/42 contra homologación + integración Node).

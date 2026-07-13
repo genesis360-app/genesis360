@@ -328,6 +328,30 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 
 ---
 
+## 11.b Onboarding del certificado AFIP — wizard self-service (**el que recién arranca carga su 1er certificado**)
+
+> Recorrido de una persona que **acaba de habilitar facturación y no sabe usar `openssl`**. El `.crt`
+> NO se puede emitir desatendido (ARCA exige clave fiscal del contribuyente), pero SÍ generamos por el
+> cliente la **clave privada + el CSR**; el usuario pega el CSR en ARCA y vuelve con el `.crt`.
+> EF `generar-csr` (node-forge, RSA 2048 + CSR PKCS#10 SHA-256) + `afip.ts`
+> (`generarCsrEmisor`/`finalizarCertificadoDesdeCsr`) + `csrCert.ts` (lógica pura) + `EmisoresFiscalesPanel`.
+> ⚠ Frontend en `dev` (PR #287 + v1.129.0) — **todavía NO en PROD**.
+
+| ID | Escenario | Pasos | Resultado esperado | Tipo | Pri | Estado | Resultado real / Nota |
+|---|---|---|---|---|---|---|---|
+| CERT-01 | **Descubrir el asistente sin tener el certificado** | Config → Facturación → "Certificados AFIP" **sin** cert cargado | Aparece el **callout** con `Wand2`: "¿Todavía no tenés el certificado? … Emisores fiscales → tu CUIT principal → Certificado → Asistente". Guía al que no sabe generar el cert a mano | H | 🔴 | ✅ | *v1.129.0: `!tenantCert` → pointer (ConfigPage §Certificados AFIP)* |
+| CERT-02 | 🛑 **El wizard también está para el emisor PRINCIPAL** (HALLAZGO GO 2026-07-12→FIX v1.129.0) | Config → Facturación → Emisores fiscales → fila del CUIT **principal** (⭐) | La fila principal muestra badge de estado de cert y botón **"Certificado"** → modo **Asistente**. **Antes** el wizard estaba SÓLO en emisores adicionales (`!e.es_default`) y el principal decía "se edita arriba ↑" → **el que recién arranca no tenía forma de generar su CSR** | H | 🔴 | ✅ | *Fix v1.129.0: se removió el guard `!e.es_default` de la sección de certificado; los datos/PV del principal siguen editándose arriba* |
+| CERT-03 | **Paso 1 — Generar el CSR** | Principal → Certificado → Asistente → "1 · Generar CSR automáticamente" | Devuelve un **CSR PKCS#10** (`-----BEGIN CERTIFICATE REQUEST-----`); la **`.key` NUNCA vuelve al browser** (queda en el bucket `certificados-afip`, service_role-only) y su path va a `emisores_fiscales.csr_key_path` | H | 🔴 | ✅ | *e2e 61 (happy path): CSR válido + assert de que la respuesta NO trae private key. Subject con CUIT en serialNumber (`csrCert.ts`)* |
+| CERT-04 | **Paso 2/3 — Copiar/Descargar CSR, ir a ARCA, subir el `.crt`** | Copiar/Descargar `.csr` → ARCA (Adm. de Certificados Digitales) → subir el `.crt` → "Activar certificado" | Sube **solo el `.crt`**; se aparea con la `.key` pendiente (`csr_key_path`); el cert queda **activo** y `csr_key_path` se limpia. Instructivo con link a ARCA + asociar a **wsfe** | H | 🔴 | ⬜ | Manual (requiere ARCA real / clave fiscal). Backend: `finalizarCertificadoDesdeCsr` |
+| CERT-05 | **Retomar en OTRA sesión** (generó el CSR ayer, hoy vuelve con el `.crt`) | Reabrir el asistente del emisor (con `csr_key_path` seteado, sin CSR en memoria) | Estado **"pendiente-crt"**: puede **subir el `.crt` directo** para la key pendiente, o "Generar un CSR nuevo". **Antes** solo ofrecía regenerar (creando una key nueva → el `.crt` de ARCA ya no correspondía) | H | 🔴 | ✅ | *Fix v1.129.0: `pasoWizardCert` (unit CERT-STEP-03). Cierra una trampa de onboarding cross-sesión* |
+| CERT-06 | **Reemplazo / renovación** con cert activo | Emisor con cert activo → asistente | Estado **"activo"** ("volver a cargar reemplaza") + botón "Generar CSR nuevo (reemplazar)". Al generar, pasa a **subir-crt** (no queda atascado en activo) | 🟡 | 🟡 | ✅ | *unit CERT-STEP-04/05* |
+| CERT-07 | 🛑 **CUIT inválido no genera CSR** | Asistente con CUIT que no tenga 11 dígitos (API directa / dato roto) | EF `generar-csr` responde **400** "El CUIT debe tener 11 dígitos." **antes** de generar nada (un subject mal armado = ARCA rechaza / cert que no corresponde) | E | 🔴 | ✅ | *e2e 61 + unit CERT-SUBJ-02/03/04* |
+| CERT-08 | 🛑 **Guard de identidad de `generar-csr`** (REGLA #0) | POST directo a la EF con anon key pelado / con usuario de otro tenant | **401** "se requiere un usuario autenticado" con anon; **403** "no pertenece al tenant" con usuario ajeno. Genera y guarda material criptográfico → exige usuario del tenant (o service_role) | E | 🔴 | ✅ | *e2e 61 (401/403). Mismo criterio que `emitir-factura` (FAC-29)* |
+| CERT-09 | **Modo manual "Ya tengo .crt + .key"** sigue disponible | Asistente → pestaña "Ya tengo .crt + .key" → subir ambos | Para quien generó el cert por su cuenta: valida extensiones y sube los dos. `.crt` estricto (rechaza otras); `.key` para la clave | 🟡 | 🟡 | ✅ | *unit CERT-FILE-01/02; `uploadCertificates` usa `esArchivoCrt/esArchivoKey`* |
+| CERT-10 | **Extensiones de archivo** | Subir un archivo con extensión equivocada | Upload manual: solo `.crt` (rechaza `.pem`); finalizar-desde-CSR acepta `.crt` **o** `.pem` (algunos browsers bajan `.pem`); la clave debe ser `.key` | B | 🟡 | ✅ | *unit CERT-FILE-01/02 (`esArchivoCrt(permitirPem)`)* |
+
+---
+
 ## 12. Alertas (mode-aware)
 
 | ID | Escenario | Pasos | Resultado esperado | Tipo | Pri | Estado | Resultado real / Nota |
@@ -337,6 +361,8 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 | ALR-03 | **Sin categoría: badge == página** (BUG histórico) | Producto sin categoría | Badge muestra "1" **y** la página lista ese producto (scoping mode-aware, no INNER join a ubicaciones) | E | 🔴 | ⬜ | |
 | ALR-04 | Alertas WMS NO aparecen en básico | Revisar alertas | Sin LPN vencidos / OC vencidas / sin ubicación-proveedor (gateadas por modo) | B | 🟡 | ⬜ | |
 | ALR-05 | Reservas vencidas | Reserva pasada de fecha | Alerta + sweep lazy libera | B | 🟡 | ⬜ | |
+| ALR-06 | **OC en ambos modos** (v1.126.0) | Modo básico → Alertas + tab OC de Prov./Servicios | El tab "Órdenes de compra" es visible y las alertas de OC vencidas/por-vencer cuentan igual en badge y página (antes solo avanzado) | B | 🟡 | ⬜ | |
+| ALR-OC-01 | **🐞 OC sugerida: líneas duplicadas del mismo SKU** (reportado GO 2026-07-12) | Con >1 alerta `stock_minimo` del mismo producto → "Generar OC sugerida" | **BUG:** la OC sale con **varias líneas del mismo SKU** (2 u. c/u) en vez de UNA con la cantidad total del maestro. `armarOCsSugeridas` no consolida por producto (`ocSugerida.ts` BUG1). Cobertura: `ocSugerida.test.ts` OC-SUG-BUG1. **Fix pendiente** (revisar tras cerrar facturación) — ver `tests/specs/oc-sugerida.plan.md` (BUG1-5) | H | 🔴 | 🐞 | Extraída a `src/lib/ocSugerida.ts`; falta consolidar por producto + stock por sucursal + dedup + proveedor determinístico + precio |
 
 ---
 

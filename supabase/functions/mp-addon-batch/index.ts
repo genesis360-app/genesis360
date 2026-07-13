@@ -36,18 +36,20 @@ const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
 
 // Espejo server-side de ADDON_PACKS (src/config/brand.ts) — solo packs FIJOS del batch.
+// ⚠ 'cuits' (multi-CUIT F6): precio PROVISORIO — GO confirma el precio final antes de PROD.
 const ADDON_PACKS: Record<string, Array<{ cantidad: number; precio: number }>> = {
   sku:          [{ cantidad: 500, precio: 5000 }, { cantidad: 2000, precio: 10000 }, { cantidad: 8000, precio: 25000 }],
   sucursales:   [{ cantidad: 1, precio: 15000 }, { cantidad: 3, precio: 35000 }, { cantidad: 5, precio: 55000 }],
   usuarios:     [{ cantidad: 1, precio: 5000 }, { cantidad: 3, precio: 10000 }, { cantidad: 5, precio: 15000 }],
   comprobantes: [{ cantidad: 1000, precio: 10000 }, { cantidad: 5000, precio: 30000 }, { cantidad: 10000, precio: 50000 }],
+  cuits:        [{ cantidad: 1, precio: 20000 }, { cantidad: 2, precio: 35000 }, { cantidad: 3, precio: 45000 }],
 }
 // Base por tier (espejo de PLAN_BASE_LIMITS / fn_plan_base_limite) — dims de ESTADO (guard).
-const BASE_ESTADO: Record<string, { sku: number; sucursales: number; usuarios: number }> = {
-  free:       { sku: 50,   sucursales: 1,  usuarios: 1 },
-  basico:     { sku: 2000, sucursales: 1,  usuarios: 5 },
-  pro:        { sku: 8000, sucursales: 4,  usuarios: 15 },
-  enterprise: { sku: -1,   sucursales: -1, usuarios: -1 },
+const BASE_ESTADO: Record<string, { sku: number; sucursales: number; usuarios: number; cuits: number }> = {
+  free:       { sku: 50,   sucursales: 1,  usuarios: 1,  cuits: 1 },
+  basico:     { sku: 2000, sucursales: 1,  usuarios: 5,  cuits: 1 },
+  pro:        { sku: 8000, sucursales: 4,  usuarios: 15, cuits: 1 },
+  enterprise: { sku: -1,   sucursales: -1, usuarios: -1, cuits: -1 },
 }
 const DIM_TABLA: Record<string, string> = { sku: 'productos', usuarios: 'users', sucursales: 'sucursales' }
 
@@ -166,7 +168,7 @@ Deno.serve(async (req) => {
     const suma = (packs: Pack[]) => packs.reduce((s, p) => s + (precioDe(p.dimension, p.cantidad) ?? 0), 0)
     const recurrenteNuevo = Math.max(0, montoActual - suma(packsActuales) + suma(packsObjetivo) + deltaPlan)
     const delta = recurrenteNuevo - montoActual
-    const dims = ['sku', 'sucursales', 'usuarios', 'comprobantes']
+    const dims = ['sku', 'sucursales', 'usuarios', 'comprobantes', 'cuits']
     const cantidadDe = (packs: Pack[], d: string) => packs.find(p => p.dimension === d)?.cantidad ?? 0
     const sinCambios = !cambiaPlan &&
       dims.every(d => cantidadDe(packsActuales, d) === cantidadDe(packsObjetivo, d))
@@ -174,12 +176,21 @@ Deno.serve(async (req) => {
     // ── Guard de baja a nivel batch (espejo guardBatch) — contra el tier OBJETIVO ──
     const base = BASE_ESTADO[planObjetivo ?? tierActual] ?? BASE_ESTADO.free
     const bloqueos: Array<{ dimension: string; nuevo_limite: number; uso: number; excedente: number }> = []
-    for (const dim of ['sku', 'sucursales', 'usuarios'] as const) {
+    for (const dim of ['sku', 'sucursales', 'usuarios', 'cuits'] as const) {
       if (base[dim] === -1) continue
       const nuevoLimite = base[dim] + cantidadDe(packsObjetivo, dim)
-      const { count } = await admin.from(DIM_TABLA[dim]).select('id', { count: 'exact', head: true })
-        .eq('tenant_id', tenantId).eq('activo', true)
-      const uso = count ?? 0
+      // 'cuits': el emisor DEFAULT (es_default) es el CUIT del negocio y NO consume cupo →
+      // el "uso" son los emisores adicionales activos + 1 (por el default, que ocupa el base).
+      let uso: number
+      if (dim === 'cuits') {
+        const { count } = await admin.from('emisores_fiscales').select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId).eq('activo', true).eq('es_default', false)
+        uso = (count ?? 0) + 1
+      } else {
+        const { count } = await admin.from(DIM_TABLA[dim]).select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId).eq('activo', true)
+        uso = count ?? 0
+      }
       if (uso > nuevoLimite) bloqueos.push({ dimension: dim, nuevo_limite: nuevoLimite, uso, excedente: uso - nuevoLimite })
     }
 

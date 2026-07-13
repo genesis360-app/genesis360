@@ -9,7 +9,21 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 10 de Julio, 2026
+**Última actualización:** 12 de Julio, 2026
+
+---
+
+## v1.129.0 — 🔐 Fix (hallazgo GO): el wizard de certificado AFIP también para el emisor PRINCIPAL + cobertura de tests del 1er certificado (2026-07-12, en `dev`, sin PROD)
+
+GO reportó que no había forma de generar el CSR desde el **certificado principal**. El wizard
+self-service (v1.128.0) estaba SÓLO en emisores adicionales → el que recién arranca no podía generar
+su cert. Fix: `src/lib/csrCert.ts` (lógica pura: subject espejo de la EF + máquina de pasos
+`pasoWizardCert`), el emisor principal (⭐) ahora usa el asistente en `EmisoresFiscalesPanel`
+(mismo pipeline por-emisor), cerrado el hueco cross-sesión (retomar el `.crt` sin regenerar), pointer
+en `ConfigPage`. Tests: unit `csrCert.test.ts` (14) + e2e `61_generar_csr_ef.spec.ts` (5/5 en DEV,
+happy path CSR PKCS#10 real) + UAT §11.b (CERT-01→10) + plan `facturacion.plan.md §11`. Sin migraciones
+(usa la 270). Detalle: `wiki/features/multi-cuit.md`. **Nota:** v1.126-1.128 (multi-CUIT F1-F6 +
+wizard v1.128.0) están deployadas en DEV+PROD — ver `multi-cuit.md` y el log 2026-07-13.
 
 ---
 

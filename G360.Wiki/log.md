@@ -6,6 +6,173 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-12] update | 🛑 Fix (hallazgo GO): el wizard de certificado NO estaba para el emisor PRINCIPAL + cobertura de tests del primer certificado (v1.129.0)
+
+**GO reportó:** "En configuración, facturación, no tengo como crear el CRT desde el certificado
+principal" + pidió escenarios UAT/e2e/unit del recorrido de una persona que **recién arranca y carga
+su primer certificado**, y preguntó si estaba probado/documentado.
+
+**🛑 Hallazgo confirmado (REGLA #0 — onboarding fiscal roto para el 1er cliente):** el wizard
+self-service (Generar CSR → ARCA → subir `.crt`, v1.128.0) estaba **SÓLO en emisores adicionales**
+(`EmisoresFiscalesPanel`, guard `!e.es_default`). El emisor **principal** decía "se edita arriba ↑"
+y "arriba" (Config → Facturación → "Certificados AFIP") sólo tenía **carga manual `.crt`+`.key`**.
+→ El que recién arranca (sólo tiene el CUIT principal) **no tenía forma de generar su CSR desde la
+app**. Y NO había ningún test unit/e2e de `generar-csr` ni de las funciones del wizard (sólo la
+validación manual en DEV que quedó en el log del 2026-07-13).
+
+**Fix (v1.129.0):**
+- **`src/lib/csrCert.ts`** (lógica pura nueva): `construirSubjectCsr` (espejo exacto del subject de
+  la EF `generar-csr` — CUIT a 11 díg, razón con fallback, CN a 50), `pasoWizardCert` (máquina de
+  estados del onboarding: generar → subir-crt → **pendiente-crt** → activo) y validadores de
+  extensión. `afip.ts` ahora usa estos validadores (no duplicar).
+- **`EmisoresFiscalesPanel`**: la fila del emisor principal (⭐) muestra estado de cert + botón
+  **"Certificado" → Asistente** (los datos/PV del principal se siguen editando arriba); el pipeline
+  de cert es **por emisor**, así que el principal usa el MISMO flujo probado (produce una fila
+  `tenant_certificates` idéntica a la carga manual del principal). Se cerró además el hueco
+  **cross-sesión**: con `csr_key_path` seteado y sin CSR en memoria, ahora ofrece **subir el `.crt`
+  directo** (antes obligaba a regenerar → invalidaba el `.crt` que ya dio ARCA).
+- **`ConfigPage` → "Certificados AFIP"**: pointer al asistente cuando `!tenantCert` (guía al que no
+  sabe usar `openssl`).
+
+**Tests (todo verde):**
+- **Unit** `tests/unit/csrCert.test.ts` — 14 casos (CERT-SUBJ / CERT-STEP / CERT-FILE). Suite total
+  **1033 passed + 5 todo** (70 files).
+- **e2e** `tests/e2e/61_generar_csr_ef.spec.ts` — **corrido contra DEV, 5/5**: 401 anon · 403 otro
+  tenant · 400 CUIT inválido · **happy path** (CSR PKCS#10 real, la `.key` NO vuelve al cliente,
+  `csr_key_path` seteado y **limpiado** en cleanup; no toca el cert activo).
+- **UAT** §11.b (CERT-01→10) en `uat-modo-basico.md` + plan `facturacion.plan.md §11`.
+- **build ✓ · typecheck ✓**.
+
+**Estado:** todo en `dev`, **sin commitear**. NADA en PROD. El frontend del wizard (v1.128.0) ya
+estaba en el **PR #287 sin mergear**; este fix (v1.129.0) se suma a ese PR o va en uno nuevo — a
+decisión de GO. Sin migraciones nuevas (usa la 270 ya deployada). La EF `generar-csr` NO cambió
+(sólo se testeó). ⚠ CERT-04 (pegar en ARCA + subir el `.crt`) sigue siendo **manual** (requiere
+clave fiscal real) — no automatizable.
+
+---
+
+## [2026-07-13] deploy | 🚀 Multi-CUIT (F1-F6) + wizard de cert deployados COMPLETOS en DEV y PROD
+
+GO reconectó el MCP de Supabase (se había caído a mitad de la sesión anterior, bloqueando el
+deploy). Ejecutado el deploy completo de todo lo acumulado (v1.126.0-v1.128.0) en orden seguro.
+
+**Migraciones:**
+- **DEV:** 267/268 ya estaban → aplicadas **269** (add-on `cuits` + `fn_enforce_limite_cuits`) y
+  **270** (`emisores_fiscales.csr_key_path` del wizard). Verificado: base cuits=1, trigger presente.
+- **PROD:** aplicadas las **4** (267 emisores_fiscales+backfill, 268 cert/PV por emisor, 269 add-on
+  cuits, 270 csr_key_path). **Backfill verificado**: 1 tenant con CUIT (el piloto), su emisor
+  default espeja `tenants.*` campo a campo (0 diferencias), certs/PV/ventas linkeados (0 huérfanos).
+
+**Edge Functions:**
+- **`emitir-factura`**: PROD **v15→v16** (multi-emisor; DEV ya estaba en v23). Guard anon→401 y
+  OPTIONS→200 verificados en PROD.
+- **`generar-csr`** (wizard cert, node-forge): **v1 en DEV y PROD** (sha idéntico). **Validado
+  end-to-end en DEV** con user real: generó un CSR PKCS#10 válido de 1002 chars (RSA 2048 + firma
+  SHA-256 corren OK en el runtime Deno). Artefacto de prueba limpiado.
+- **`mp-addon-batch`** (pack `cuits`): DEV v8 / PROD v4. ⚠ sha distinto entre ambientes (comentarios
+  distintos al transcribir) pero **lógica idéntica** (cuits en ADDON_PACKS/BASE_ESTADO/guard/dims);
+  el archivo del repo es la fuente de verdad. Fix en el mismo deploy: `'cuits'` agregado al array
+  `dims` del chequeo `sinCambios` (comprar SOLO un pack de CUIT quedaba rechazado como "sin cambios").
+
+**Consistencia fiscal PROD post-deploy:** 0 `numero_comprobante` duplicados, 0 NC huérfanas.
+
+**⚠ Nota:** GO dejó un emisor de prueba `asdasd/asdasd` (adicional, activo) en el tenant piloto de
+PROD probando el panel — inofensivo (CUIT inválido, sin sucursal asignada); borrable desde el panel.
+
+**Estado:** todo el backend de multi-CUIT (F1-F6) + wizard de cert está EN PROD y sano. **Falta SOLO
+que GO mergee el PR #287** para llevar el frontend (v1.128.0: selección/reportes por emisor, panel
+de emisores con wizard, OC en ambos modos, tests OC sugerida) a PROD.
+
+**▶ Empezado y FRENADO (GO pidió parar): set de pruebas MOBILE responsive.** GO reportó que en la
+web-app desde el celular hay contenido que se sale del marco (números en el Dashboard, y varios
+módulos). NO hay cobertura responsive/mobile en e2e hoy. Pendiente: e2e que detecte overflow
+horizontal (viewport mobile, `documentElement.scrollWidth ≤ innerWidth` + reporte de elementos que
+sobresalen del viewport, ignorando contenedores con overflow-x scroll intencional) por ruta, luego
+FIXES de CSS (min-w-0/truncate/break-words/tabular-nums responsive) + UAT §mobile. No se tocó nada
+de mobile todavía.
+
+---
+
+## [2026-07-12] update | 🔐 Wizard de certificado AFIP self-service (v1.128.0) + cobertura de tests de la OC sugerida (bug reportado por GO)
+
+**1) Wizard de certificado (pedido de GO: "la .key y el CSR los generamos nosotros").** El `.crt`
+de ARCA no se puede emitir desatendido (exige clave fiscal del contribuyente), pero sí generamos
+por el cliente la clave privada + el CSR. Nuevo:
+- **Mig 270:** `emisores_fiscales.csr_key_path` (puntero a la `.key` pendiente en el bucket — la
+  `.key` nunca se guarda en la DB; sobrevive recargas porque puede pasar días entre el CSR y el `.crt`).
+- **EF `generar-csr`:** node-forge genera RSA 2048 + CSR PKCS#10 SHA-256 (subject con el CUIT en
+  `serialNumber`), guarda la `.key` en `certificados-afip`, setea `csr_key_path`, devuelve el CSR.
+  Guard de identidad (usuario del tenant). La `.key` no vuelve al browser.
+- **`afip.ts`:** `generarCsrEmisor()` + `finalizarCertificadoDesdeCsr()` (sube SOLO el `.crt` y lo
+  aparea con la `.key` pendiente; limpia `csr_key_path`).
+- **`EmisoresFiscalesPanel`:** modo "Asistente" (Generar CSR → Copiar/Descargar/Ir a ARCA →
+  instructivo → subir solo el `.crt` → Activar) + modo "Ya tengo .crt + .key" (manual, el de antes).
+Con esto Fede puede generar su certificado y cargarlo para los tests multi-CUIT. Sección
+actualizada en `wiki/features/multi-cuit.md` (onboarding).
+
+**2) Cobertura de tests de la OC sugerida + bug de GO documentado.** GO reportó: al generar la OC
+sugerida, salió una OC con **varias líneas del mismo SKU** (2 u. c/u) en vez de una sola con la
+cantidad total del maestro. Lógica extraída a **`src/lib/ocSugerida.ts`** (`armarOCsSugeridas`,
+refactor SIN cambio de conducta) + **`ocSugerida.test.ts`** (20 tests: lockean el comportamiento
+actual, incluyen el caso de GO en `OC-SUG-BUG1` y `precio null` en `OC-SUG-BUG5`) + 5 `it.todo` con
+los fixes pendientes. Plan `tests/specs/oc-sugerida.plan.md` + UAT ALR-OC-01/ALR-06. **5 bugs
+documentados** (no consolida por producto = el de GO · faltante sobre stock GLOBAL no por sucursal ·
+proveedor arbitrario · sin dedup vs OC abiertas · precio null). **A CORREGIR después de cerrar
+facturación** (decisión de GO). No se tocó la conducta todavía.
+
+**Verificación:** build verde · unit **1019 passed + 5 todo (1024)**. ⚠ **Deploy DEV pendiente**
+(MCP Supabase caído): aplicar migs **269 + 270** + deployar EFs **`generar-csr`** (nueva) y
+**`mp-addon-batch`**. `emitir-factura` NO necesita redeploy. NADA en PROD.
+
+---
+
+## [2026-07-12] update | 🏢 Multi-CUIT Fases 4-6 implementadas (v1.127.0) — selector de emisor en emisión, reportes por CUIT, add-on "CUIT adicional"
+
+Completadas las fases que faltaban del multi-CUIT (GO: "hacé las fases que faltan así queda todo
+completo"). Todo en código; la prueba real con 2 CUITs sigue esperando el cert de Fede.
+
+**F4 — selección de emisor en la emisión.** Hook nuevo `useEmisoresFiscales` (emisores activos +
+`emisorDeSucursal(sucursalId)` = el de la sucursal ?? principal; `multiEmisor` = >1). El modal de
+emisión del POS (`VentasPage`) y el de `FacturacionPage` muestran, SOLO si hay >1 emisor, un
+selector de emisor con default = el de la sucursal de la venta; el override a otro CUIT exige un
+**checkbox de confirmación** (emitir con el CUIT equivocado es irreversible). Las letras
+(`tiposComprobantePermitidos`), el umbral B y los PV ofrecidos se recalculan según el emisor
+elegido. Envía `emisor_id` a la EF v23 (que ya lo valida/hereda desde F2 — no hace falta redeploy
+del `emitir-factura`).
+
+**F5 — reportes fiscales por CUIT.** Selector de emisor en el header de `FacturacionPage` (aparece
+con multi-emisor): KPIs del panel, Libro IVA Ventas/Compras y liquidación 12m filtran por
+`ventas.emisor_id` / `gastos.emisor_id` (las NC por el emisor de su factura; las filas legacy sin
+emisor cuentan como del principal, vía `or(emisor_id.eq.X,emisor_id.is.null)`). `GastosPage`
+setea `gastos.emisor_id` en el alta (variable + fijo) según la sucursal del gasto. Pendiente menor
+F5b: la Posición IVA del Dashboard/DashFacturacionArea todavía no tiene el selector.
+
+**F6 — add-on "CUIT adicional".** Mig 269: dimensión `cuits` (base 1 en todos los planes) +
+trigger `fn_enforce_limite_cuits` en `emisores_fiscales` — el emisor **default no consume cupo**,
+bloquea activar el adicional N+1 sin add-on (REGLA #0 de ingresos, server-side). Catálogo en
+`brand.ts` (`ADDON_PACKS.cuits`, SOLO fijo) + espejo en la EF `mp-addon-batch` (con conteo especial
+que excluye el default en el guard de baja) + `PricingConfigurator` DIMS + upsell en
+`EmisoresFiscalesPanel` (captura el error de límite). **⚠ Precio PROVISORIO** ($20k/$35k/$45k por
+1/2/3 CUITs) — GO debe confirmar antes de PROD. Unit: `addons.test.ts` +1 (cuits round-trip).
+
+**Documentado además:** sección nueva en `wiki/features/multi-cuit.md` sobre el **onboarding del
+certificado AFIP** (respuesta a GO): el `.crt` NO se puede emitir desatendido —ARCA exige clave
+fiscal nivel 3—, pero SÍ se puede automatizar la generación de la key + CSR (candidato wizard
+F4b); el circuito AfipSDK tiene menos fricción (token en vez de cert propio). Pasos manuales con
+`openssl` para homologación incluidos.
+
+**Verificación:** build verde · unit **1013/1013** (1012 + cuits). ⚠ **Pendiente de deploy en DEV**
+(el MCP de Supabase se cayó a mitad de sesión): aplicar **mig 269** + deployar **`mp-addon-batch`**.
+El `emitir-factura` NO necesita redeploy (v23 ya maneja `emisor_id`). NADA en PROD.
+
+**Auditoría pedida por GO (OC sugerida):** ver el reporte al cierre de la sesión — NO hay test
+dedicado de `generarOCsSugeridas` y se detectaron varios puntos sospechosos (cantidad calculada
+sobre stock GLOBAL y no por sucursal; sin dedup contra OC abiertas existentes → duplica; elige un
+proveedor arbitrario si el producto tiene varios; precio null si el `proveedor_producto` no tiene
+`precio_compra`). Pendiente el contexto de GO sobre el síntoma exacto antes de arreglar.
+
+---
+
 ## [2026-07-11] update | 🐛 Fix UX: las OC pasan a estar disponibles en AMBOS modos (el flujo "OC sugerida" moría a la mitad en básico)
 
 **Reporte de GO (dogfooding en plan/modo básico):** el módulo Prov./Servicios mostraba solo 2 de

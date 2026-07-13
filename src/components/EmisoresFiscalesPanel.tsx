@@ -14,11 +14,12 @@ import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
   Building2, Plus, ChevronDown, ChevronRight, Trash2, Pencil, ShieldCheck,
-  Star, Hash, AlertTriangle,
+  Star, Hash, AlertTriangle, Wand2, Copy, Download, ExternalLink,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
-import { uploadCertificates } from '@/lib/afip'
+import { uploadCertificates, generarCsrEmisor, finalizarCertificadoDesdeCsr } from '@/lib/afip'
+import { pasoWizardCert } from '@/lib/csrCert'
 import toast from 'react-hot-toast'
 
 interface Emisor {
@@ -40,6 +41,7 @@ interface Emisor {
   leyenda_comprobante: string | null
   es_default: boolean
   activo: boolean
+  csr_key_path: string | null
 }
 
 const FORM_VACIO = {
@@ -59,10 +61,15 @@ export function EmisoresFiscalesPanel() {
   const [form, setForm] = useState(FORM_VACIO)
   const [saving, setSaving] = useState(false)
   const [expandido, setExpandido] = useState<string | null>(null)
-  // Cert upload por emisor
+  // Cert upload por emisor (modo manual: .crt + .key)
   const [certCrt, setCertCrt] = useState<File | null>(null)
   const [certKey, setCertKey] = useState<File | null>(null)
   const [subiendoCert, setSubiendoCert] = useState(false)
+  // Wizard de CSR (self-service): generamos key+CSR, el cliente sube solo el .crt
+  const [modoCert, setModoCert] = useState<'wizard' | 'manual'>('wizard')
+  const [csrGenerado, setCsrGenerado] = useState<string | null>(null)
+  const [generandoCsr, setGenerandoCsr] = useState(false)
+  const [crtSolo, setCrtSolo] = useState<File | null>(null)
   // PV por emisor
   const [pvNuevo, setPvNuevo] = useState('')
 
@@ -162,7 +169,13 @@ export function EmisoresFiscalesPanel() {
       toast.success(editId ? 'Emisor actualizado' : 'Emisor creado (en modo homologación)')
       setShowForm(false); refetch()
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Error al guardar el emisor')
+      const msg = e instanceof Error ? e.message : 'Error al guardar el emisor'
+      // El enforcement server-side (mig 269) tira este mensaje si no hay cupo de CUITs.
+      if (/Límite de CUITs/i.test(msg)) {
+        toast.error(`${msg} Configuralo en Suscripción → Add-ons.`, { duration: 9000 })
+      } else {
+        toast.error(msg)
+      }
     } finally { setSaving(false) }
   }
 
@@ -203,6 +216,48 @@ export function EmisoresFiscalesPanel() {
     } finally { setSubiendoCert(false) }
   }
 
+  // Wizard: genera la clave privada + el CSR server-side (la .key nunca llega al browser).
+  const generarCsr = async (e: Emisor) => {
+    setGenerandoCsr(true)
+    try {
+      const csr = await generarCsrEmisor(tenant!.id, e.id, e.cuit, e.razon_social_fiscal ?? e.nombre)
+      setCsrGenerado(csr)
+      toast.success('CSR generado. Pegalo en ARCA y subí después el .crt que te den.')
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error generando el CSR')
+    } finally { setGenerandoCsr(false) }
+  }
+
+  const copiarCsr = () => {
+    if (!csrGenerado) return
+    navigator.clipboard.writeText(csrGenerado).then(
+      () => toast.success('CSR copiado al portapapeles'),
+      () => toast.error('No se pudo copiar — seleccionalo y copialo a mano'),
+    )
+  }
+
+  const descargarCsr = (e: Emisor) => {
+    if (!csrGenerado) return
+    const blob = new Blob([csrGenerado], { type: 'application/x-pem-file' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${e.cuit.replace(/\D/g, '')}.csr`
+    a.click()
+  }
+
+  // Sube SOLO el .crt (el que baja de ARCA) y lo aparea con la .key ya generada.
+  const finalizarCert = async (e: Emisor) => {
+    if (!crtSolo) { toast.error('Seleccioná el archivo .crt que descargaste de ARCA'); return }
+    setSubiendoCert(true)
+    try {
+      await finalizarCertificadoDesdeCsr(tenant!.id, e.id, crtSolo)
+      toast.success(`Certificado de ${e.nombre} activado`)
+      setCrtSolo(null); setCsrGenerado(null); refetchCerts(); refetch()
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error al finalizar el certificado')
+    } finally { setSubiendoCert(false) }
+  }
+
   const agregarPv = async (e: Emisor) => {
     const numero = parseInt(pvNuevo)
     if (!numero || numero < 1) { toast.error('Número de punto de venta inválido'); return }
@@ -221,6 +276,9 @@ export function EmisoresFiscalesPanel() {
   }
 
   const certDe = (emisorId: string) => (certs as { emisor_id: string | null; activo: boolean }[]).find(c => c.emisor_id === emisorId && c.activo)
+  // El emisor PRINCIPAL también matchea el cert legacy sin emisor (filas pre mig 267).
+  const certActivoDe = (e: Emisor) =>
+    certDe(e.id) ?? (e.es_default ? (certs as { emisor_id: string | null; activo: boolean }[]).find(c => !c.emisor_id && c.activo) : undefined)
   const pvsDe = (emisorId: string) => (pvs as { id: string; numero: number; nombre: string | null; emisor_id: string | null }[]).filter(p => p.emisor_id === emisorId)
 
   return (
@@ -251,15 +309,15 @@ export function EmisoresFiscalesPanel() {
                 {e.es_default
                   ? <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded">Principal</span>
                   : !e.activo && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 px-1.5 py-0.5 rounded">Inactivo</span>}
-                {!e.es_default && (
-                  certDe(e.id)
-                    ? <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1"><ShieldCheck size={12} /> cert</span>
-                    : <span className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} /> sin cert</span>
-                )}
+                {/* Estado del certificado — para TODOS los emisores, incluido el principal */}
+                {certActivoDe(e)
+                  ? <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1"><ShieldCheck size={12} /> cert</span>
+                  : <span className="text-xs text-red-500 flex items-center gap-1"><AlertTriangle size={12} /> sin cert</span>}
                 <div className="ml-auto flex items-center gap-2">
+                  {/* El asistente de certificado está disponible también para el principal (1er certificado) */}
+                  <button onClick={() => { setExpandido(expandido === e.id ? null : e.id); setModoCert('wizard'); setCsrGenerado(null); setCrtSolo(null); setCertCrt(null); setCertKey(null) }}
+                    className="text-xs text-accent hover:underline">{expandido === e.id ? 'Cerrar' : (e.es_default ? 'Certificado' : 'Cert / PV')}</button>
                   {!e.es_default && (<>
-                    <button onClick={() => setExpandido(expandido === e.id ? null : e.id)}
-                      className="text-xs text-accent hover:underline">{expandido === e.id ? 'Cerrar' : 'Cert / PV'}</button>
                     <button onClick={() => abrirEditar(e)} title="Editar" className="text-gray-400 hover:text-accent"><Pencil size={14} /></button>
                     <button onClick={() => toggleActivo(e)} title={e.activo ? 'Desactivar' : 'Activar'}
                       className={`relative w-8 h-4 rounded-full transition-colors ${e.activo ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
@@ -267,35 +325,127 @@ export function EmisoresFiscalesPanel() {
                     </button>
                     <button onClick={() => eliminar(e)} title="Eliminar" className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
                   </>)}
-                  {e.es_default && <span className="text-[11px] text-gray-400">se edita arriba ↑</span>}
+                  {e.es_default && <span className="text-[11px] text-gray-400">datos ↑</span>}
                 </div>
               </div>
 
-              {/* Detalle: cert + PV del emisor adicional */}
-              {!e.es_default && expandido === e.id && (
+              {/* Detalle: certificado (TODOS, incluido el principal) + PV (solo adicionales) */}
+              {expandido === e.id && (
                 <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 space-y-3">
-                  {/* Certificado */}
-                  <div>
-                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5 flex items-center gap-1.5">
-                      <ShieldCheck size={13} className={certDe(e.id) ? 'text-green-500' : 'text-gray-400'} />
-                      Certificado AFIP {certDe(e.id) ? '(activo — subir reemplaza)' : '(requerido para emitir)'}
+                  {e.es_default && (
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500">
+                      Los datos fiscales y los puntos de venta del emisor principal se editan arriba, en "Facturación Electrónica". Acá cargás su <strong>certificado</strong>.
                     </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <label className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 cursor-pointer text-gray-600 dark:text-gray-300">
-                        {certCrt ? certCrt.name : 'Archivo .crt'}
-                        <input type="file" accept=".crt" className="hidden" onChange={ev => setCertCrt(ev.target.files?.[0] ?? null)} />
-                      </label>
-                      <label className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 cursor-pointer text-gray-600 dark:text-gray-300">
-                        {certKey ? certKey.name : 'Clave .key'}
-                        <input type="file" accept=".key" className="hidden" onChange={ev => setCertKey(ev.target.files?.[0] ?? null)} />
-                      </label>
-                      <button onClick={() => subirCert(e)} disabled={subiendoCert || !certCrt || !certKey}
-                        className="text-xs px-3 py-1.5 bg-accent text-white rounded-lg disabled:opacity-50">
-                        {subiendoCert ? 'Subiendo…' : 'Guardar certificado'}
-                      </button>
+                  )}
+                  {/* Certificado — wizard (generamos key+CSR) o carga manual (.crt+.key) */}
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
+                        <ShieldCheck size={13} className={certActivoDe(e) ? 'text-green-500' : 'text-gray-400'} />
+                        Certificado AFIP {certActivoDe(e) ? '(activo — volver a cargar reemplaza)' : '(requerido para emitir)'}
+                      </p>
+                      <div className="flex gap-1 text-[11px]">
+                        <button onClick={() => setModoCert('wizard')} className={`px-2 py-0.5 rounded ${modoCert === 'wizard' ? 'bg-accent text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>Asistente</button>
+                        <button onClick={() => setModoCert('manual')} className={`px-2 py-0.5 rounded ${modoCert === 'manual' ? 'bg-accent text-white' : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>Ya tengo .crt + .key</button>
+                      </div>
                     </div>
+
+                    {modoCert === 'wizard' ? (() => {
+                      const paso = pasoWizardCert({
+                        tieneCertActivo: !!certActivoDe(e),
+                        csrKeyPath: e.csr_key_path,
+                        csrGeneradoEnSesion: !!csrGenerado,
+                      })
+                      // Sub-bloque reutilizado en 'subir-crt' y 'pendiente-crt': subir SOLO el .crt.
+                      const subirCrtBox = (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 cursor-pointer text-gray-600 dark:text-gray-300">
+                            {crtSolo ? crtSolo.name : 'Archivo .crt de ARCA'}
+                            <input type="file" accept=".crt,.pem" className="hidden" onChange={ev => setCrtSolo(ev.target.files?.[0] ?? null)} />
+                          </label>
+                          <button onClick={() => finalizarCert(e)} disabled={subiendoCert || !crtSolo}
+                            className="text-xs px-3 py-1.5 bg-accent text-white rounded-lg disabled:opacity-50">
+                            {subiendoCert ? 'Activando…' : 'Activar certificado'}
+                          </button>
+                        </div>
+                      )
+                      return (
+                        <div className="space-y-2">
+                          {paso === 'generar' && (
+                            <>
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                                Generamos la clave y el pedido (CSR) por vos. Solo vas a ARCA, subís el CSR y volvés con el certificado (.crt).
+                              </p>
+                              <button onClick={() => generarCsr(e)} disabled={generandoCsr}
+                                className="text-xs px-3 py-1.5 bg-accent text-white rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+                                <Wand2 size={13} /> {generandoCsr ? 'Generando…' : '1 · Generar CSR automáticamente'}
+                              </button>
+                            </>
+                          )}
+
+                          {paso === 'pendiente-crt' && (
+                            <>
+                              <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                                Ya generaste un CSR para este emisor. Si ya tenés el <strong>.crt</strong> de ARCA, subilo acá para activar el certificado. Si perdiste el CSR, generá uno nuevo (el .crt debe corresponder al <strong>último</strong> CSR).
+                              </p>
+                              {subirCrtBox}
+                              <button onClick={() => generarCsr(e)} disabled={generandoCsr}
+                                className="text-[11px] text-accent hover:underline flex items-center gap-1">
+                                <Wand2 size={11} /> {generandoCsr ? 'Generando…' : 'Generar un CSR nuevo'}
+                              </button>
+                            </>
+                          )}
+
+                          {paso === 'subir-crt' && csrGenerado && (
+                            <>
+                              <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">2 · Copiá este CSR y pegalo/subilo en ARCA:</p>
+                              <textarea readOnly value={csrGenerado} rows={4}
+                                className="w-full text-[10px] font-mono border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-gray-50 dark:bg-gray-900 text-gray-700 dark:text-gray-300" />
+                              <div className="flex flex-wrap gap-2">
+                                <button onClick={copiarCsr} className="text-[11px] px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center gap-1 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"><Copy size={11} /> Copiar</button>
+                                <button onClick={() => descargarCsr(e)} className="text-[11px] px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center gap-1 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"><Download size={11} /> Descargar .csr</button>
+                                <a href="https://www.afip.gob.ar/ws/documentacion/certificados.asp" target="_blank" rel="noopener noreferrer" className="text-[11px] px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center gap-1 text-accent hover:bg-accent/5"><ExternalLink size={11} /> Ir a ARCA</a>
+                              </div>
+                              <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
+                                En ARCA → <strong>Administración de Certificados Digitales</strong>: creá un certificado con este CSR, descargá el <strong>.crt</strong> y asocialo al servicio <strong>Facturación Electrónica (wsfe)</strong> en el Administrador de Relaciones.
+                              </p>
+                              <p className="text-[11px] text-gray-600 dark:text-gray-300 font-medium">3 · Subí el .crt que descargaste:</p>
+                              {subirCrtBox}
+                            </>
+                          )}
+
+                          {paso === 'activo' && (
+                            <>
+                              <p className="text-[11px] text-green-600 dark:text-green-400">
+                                Certificado activo. Para reemplazarlo (renovación o vencimiento), generá un CSR nuevo y volvé a subir el .crt.
+                              </p>
+                              <button onClick={() => generarCsr(e)} disabled={generandoCsr}
+                                className="text-xs px-3 py-1.5 bg-accent text-white rounded-lg disabled:opacity-50 flex items-center gap-1.5">
+                                <Wand2 size={13} /> {generandoCsr ? 'Generando…' : 'Generar CSR nuevo (reemplazar)'}
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )
+                    })() : (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 cursor-pointer text-gray-600 dark:text-gray-300">
+                          {certCrt ? certCrt.name : 'Archivo .crt'}
+                          <input type="file" accept=".crt" className="hidden" onChange={ev => setCertCrt(ev.target.files?.[0] ?? null)} />
+                        </label>
+                        <label className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 cursor-pointer text-gray-600 dark:text-gray-300">
+                          {certKey ? certKey.name : 'Clave .key'}
+                          <input type="file" accept=".key" className="hidden" onChange={ev => setCertKey(ev.target.files?.[0] ?? null)} />
+                        </label>
+                        <button onClick={() => subirCert(e)} disabled={subiendoCert || !certCrt || !certKey}
+                          className="text-xs px-3 py-1.5 bg-accent text-white rounded-lg disabled:opacity-50">
+                          {subiendoCert ? 'Subiendo…' : 'Guardar certificado'}
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  {/* Puntos de venta */}
+                  {/* Puntos de venta — solo emisores adicionales (los del principal se editan arriba) */}
+                  {!e.es_default && (
                   <div>
                     <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5 flex items-center gap-1.5">
                       <Hash size={13} className="text-accent" /> Puntos de venta de este CUIT
@@ -322,6 +472,7 @@ export function EmisoresFiscalesPanel() {
                       <p className="text-[11px] text-gray-400 mt-1">Sin PV configurados: al emitir se usa el N° que mande la app (habilitalo antes en ARCA).</p>
                     )}
                   </div>
+                  )}
                 </div>
               )}
             </div>

@@ -15,6 +15,7 @@ import { saldoEfectivoSesion } from '@/lib/cajaSaldo'
 import { puedeRegistrarPagoOC, requiereDobleFirmaPago } from '@/lib/comprasPermisos'
 import { montoAnticipo, labelBaseCuota, montoCuota, type CuotaSchedule } from '@/lib/comprasPago'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useSearchParams } from 'react-router-dom'
@@ -147,6 +148,9 @@ export default function GastosPage() {
   const { tenant, user } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
+  // Multi-CUIT (F5): el IVA crédito del gasto se imputa al emisor de su SUCURSAL
+  // (?? principal) — misma regla de resolución que las ventas. Con 1 emisor es un no-op.
+  const { emisorDeSucursal } = useEmisoresFiscales()
   const qc = useQueryClient()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const puedeAdministrarCaja = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
@@ -1104,6 +1108,8 @@ export default function GastosPage() {
         medio_pago: mediosPagoJson,
         fecha: form.fecha, notas: form.notas.trim() || null,
         sucursal_id: sucursalId || null,
+        // Multi-CUIT: a qué CUIT se imputa el IVA crédito (emisor de la sucursal ?? principal)
+        emisor_id: emisorDeSucursal(sucursalId)?.id ?? null,
         usuario_id: user?.id ?? null,
         // Migration 134 — link a recurso + capitalización
         recurso_id: form.recurso_id || null,
@@ -1492,6 +1498,8 @@ export default function GastosPage() {
         fecha: formGenerar.fecha,
         notas: formGenerar.notas.trim() || `Generado desde gasto fijo — ${f.frecuencia}`,
         sucursal_id: f.sucursal_id ?? null, usuario_id: user?.id ?? null,
+        // Multi-CUIT: IVA crédito imputado al emisor de la sucursal del gasto fijo
+        emisor_id: emisorDeSucursal(f.sucursal_id)?.id ?? null,
         comprobante_titulo: tituloFinal,
       }).select('id').single()
       if (error) throw error

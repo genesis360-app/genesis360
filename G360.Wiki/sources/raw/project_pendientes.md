@@ -6,7 +6,16 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🔐 (2026-07-12 · FIX — WIZARD DE CERT PARA EL EMISOR PRINCIPAL + tests del 1er certificado · v1.129.0 · SIN COMMITEAR, NADA EN PROD)
+> ### 🚀 (2026-07-13 · v1.129.0 DEPLOYADO A PROD — frontend multi-CUIT F4-F6 + wizard de cert)
+> **GO autorizó el deploy a PROD.** PR #288 (squash a main, commit `404f676c`, tag+release
+> `v1.129.0`). **Hallazgo (REGLA #0):** el PR #287 había mergeado solo v1.126.0 (Fases 2+3) — el
+> frontend de v1.127.0 (⚠ selector de emisor en la EMISIÓN) y v1.128.0 (wizard) **nunca habían ido a
+> PROD** (solo el backend/EF/DB). Ahora sí: a PROD fueron **v1.127+128+129 juntos**. Migs 267-270 ya
+> estaban en PROD (verificado), sin migraciones nuevas, EFs sin cambios. Vercel PROD READY
+> (`app.genesis360.pro`), DEV branch READY. CI verde. **▶ AHORA:** GO probando DEV+PROD en paralelo
+> (clickthrough manual) para detectar más cosas. Pendiente real: emisión con 2 CUITs (cert de Fede).
+>
+> ### 🔐 (2026-07-12 · FIX — WIZARD DE CERT PARA EL EMISOR PRINCIPAL + tests del 1er certificado · v1.129.0)
 > **Hallazgo de GO:** "no tengo como crear el CRT desde el certificado principal". Confirmado: el
 > wizard self-service (Generar CSR → ARCA → subir `.crt`, v1.128.0) estaba **SÓLO en emisores
 > adicionales** (`!e.es_default`); el **principal** sólo tenía carga manual `.crt`+`.key` → **el que
@@ -22,9 +31,9 @@ type: project
 > - Tests: **unit** `csrCert.test.ts` (14) · **e2e** `61_generar_csr_ef.spec.ts` **corrido en DEV 5/5**
 >   (401/403/400 + happy path CSR PKCS#10 real, `.key` no sale del server, con cleanup) · **UAT §11.b**
 >   (CERT-01→10) · plan `facturacion.plan.md §11`. build ✓ · typecheck ✓ · unit **1033+5 todo**.
-> **▶ FALTA (decisión de GO):** commitear en `dev` y sumar al **PR #287** (o PR nuevo). Sin migraciones
-> nuevas (usa la 270 ya en PROD). `generar-csr` NO cambió. CERT-04 (pegar en ARCA + subir `.crt`) es
-> **manual e ineludible** (clave fiscal). Esto **destraba** el onboarding del 1er certificado que
+> **✅ DEPLOYADO:** commiteado (`731048b1` + test UI `dfbc21e8`) y mergeado a PROD vía PR #288 (ver el
+> bloque de arriba). `generar-csr` NO cambió. CERT-04 (pegar en ARCA + subir `.crt`) sigue siendo
+> **manual e ineludible** (clave fiscal). Esto **destrabó** el onboarding del 1er certificado que
 > quedaba pendiente en el punto F4b de la entrada de multi-CUIT (abajo).
 >
 > ### 📱 (2026-07-13 · PRÓXIMO: SET DE PRUEBAS MOBILE RESPONSIVE + FIXES · deploy multi-CUIT YA HECHO)

@@ -13,7 +13,13 @@ updated: 2026-05-29
 
 ---
 
-## v1.129.0 — 🔐 Fix (hallazgo GO): el wizard de certificado AFIP también para el emisor PRINCIPAL + cobertura de tests del 1er certificado (2026-07-12, en `dev`, sin PROD)
+## v1.129.0 — 🔐 Multi-CUIT F4-F6 frontend + wizard de certificado (incl. emisor PRINCIPAL) — ✅ PROD (2026-07-13, PR #288)
+
+**A PROD fueron 3 releases juntos** (PR #287 solo había llevado v1.126.0 = Fases 2+3; el frontend de
+v1.127/128 nunca había ido a PROD): **v1.127.0** (selector de emisor en la emisión + reportes por CUIT
++ add-on CUIT adicional), **v1.128.0** (wizard de cert self-service), **v1.129.0** (wizard también para
+el emisor principal — hallazgo de GO). Migs 267-270 ya estaban en PROD; sin migraciones nuevas; EFs sin
+cambios. Vercel PROD READY (`app.genesis360.pro`). Detalle del fix de v1.129.0 abajo ↓.
 
 GO reportó que no había forma de generar el CSR desde el **certificado principal**. El wizard
 self-service (v1.128.0) estaba SÓLO en emisores adicionales → el que recién arranca no podía generar

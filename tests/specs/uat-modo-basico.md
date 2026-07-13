@@ -335,7 +335,7 @@ Recepciones, Biblioteca, Historial *(global — cada módulo tiene su propio his
 > cliente la **clave privada + el CSR**; el usuario pega el CSR en ARCA y vuelve con el `.crt`.
 > EF `generar-csr` (node-forge, RSA 2048 + CSR PKCS#10 SHA-256) + `afip.ts`
 > (`generarCsrEmisor`/`finalizarCertificadoDesdeCsr`) + `csrCert.ts` (lógica pura) + `EmisoresFiscalesPanel`.
-> ⚠ Frontend en `dev` (PR #287 + v1.129.0) — **todavía NO en PROD**.
+> ✅ En PROD desde 2026-07-13 (PR #288, v1.127-129 juntos).
 
 | ID | Escenario | Pasos | Resultado esperado | Tipo | Pri | Estado | Resultado real / Nota |
 |---|---|---|---|---|---|---|---|

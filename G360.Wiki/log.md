@@ -6,6 +6,32 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-13] deploy | 🚀 v1.129.0 a PROD — frontend multi-CUIT F4-F6 + wizard de cert (incl. emisor principal)
+
+GO autorizó el deploy a PROD con el alcance fiscal sobre la mesa. **Hallazgo en el camino
+(REGLA #0):** el wiki/log decían "F1-F6 + wizard en DEV y PROD", pero git/Vercel mostraban que
+**el PR #287 mergeado fue solo v1.126.0 (Fases 2+3)** — el frontend de v1.127.0 (⚠ **selector de
+emisor en la EMISIÓN de facturas**) y v1.128.0 (wizard de cert) **nunca habían ido a PROD**. Solo el
+backend/EF/DB estaba deployado. Un cliente en PROD no veía ni el selector ni el wizard.
+
+**Deploy (PR #288, squash a main, commit `404f676c`, tag+release `v1.129.0`):**
+- Resuelta la divergencia del squash de #287 mergeando `main`→`dev` (verificado: árbol idéntico a
+  dev, "dev es superconjunto" — mismo patrón que #285). PR #288 quedó mergeable.
+- **Migraciones 267-270 verificadas YA en PROD** (list_migrations) → sin migraciones nuevas; el
+  frontend tiene sus dependencias de DB. EFs sin cambios.
+- Checks de CI verdes (Unit Tests Vitest ✓, Vercel ✓; E2E skipping por secrets).
+- **Vercel PROD READY** (`app.genesis360.pro` / `genesis360.pro`, dpl_C9C2…). DEV branch también
+  READY (`genesis360-git-dev-…`).
+
+**A PROD fueron 3 releases juntos:** v1.127.0 (Fases 4-6 frontend), v1.128.0 (wizard frontend),
+v1.129.0 (wizard para el emisor principal + `src/lib/csrCert.ts` + tests). Detalle abajo ↓.
+
+**Validación:** unit 1033+5 todo · e2e DEV `61_generar_csr_ef` (5/5) + `62_wizard_cert_principal_ui`
+(clickthrough UI 2/2). **▶ GO probando en paralelo DEV+PROD (clickthrough manual) para detectar más
+cosas.** ⚠ Emisión real con 2 CUITs distintos sigue pendiente (necesita el cert de Fede).
+
+---
+
 ## [2026-07-12] update | 🛑 Fix (hallazgo GO): el wizard de certificado NO estaba para el emisor PRINCIPAL + cobertura de tests del primer certificado (v1.129.0)
 
 **GO reportó:** "En configuración, facturación, no tengo como crear el CRT desde el certificado

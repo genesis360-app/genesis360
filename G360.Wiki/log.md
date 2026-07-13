@@ -6,6 +6,48 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-13] deploy | 🚀 Multi-CUIT (F1-F6) + wizard de cert deployados COMPLETOS en DEV y PROD
+
+GO reconectó el MCP de Supabase (se había caído a mitad de la sesión anterior, bloqueando el
+deploy). Ejecutado el deploy completo de todo lo acumulado (v1.126.0-v1.128.0) en orden seguro.
+
+**Migraciones:**
+- **DEV:** 267/268 ya estaban → aplicadas **269** (add-on `cuits` + `fn_enforce_limite_cuits`) y
+  **270** (`emisores_fiscales.csr_key_path` del wizard). Verificado: base cuits=1, trigger presente.
+- **PROD:** aplicadas las **4** (267 emisores_fiscales+backfill, 268 cert/PV por emisor, 269 add-on
+  cuits, 270 csr_key_path). **Backfill verificado**: 1 tenant con CUIT (el piloto), su emisor
+  default espeja `tenants.*` campo a campo (0 diferencias), certs/PV/ventas linkeados (0 huérfanos).
+
+**Edge Functions:**
+- **`emitir-factura`**: PROD **v15→v16** (multi-emisor; DEV ya estaba en v23). Guard anon→401 y
+  OPTIONS→200 verificados en PROD.
+- **`generar-csr`** (wizard cert, node-forge): **v1 en DEV y PROD** (sha idéntico). **Validado
+  end-to-end en DEV** con user real: generó un CSR PKCS#10 válido de 1002 chars (RSA 2048 + firma
+  SHA-256 corren OK en el runtime Deno). Artefacto de prueba limpiado.
+- **`mp-addon-batch`** (pack `cuits`): DEV v8 / PROD v4. ⚠ sha distinto entre ambientes (comentarios
+  distintos al transcribir) pero **lógica idéntica** (cuits en ADDON_PACKS/BASE_ESTADO/guard/dims);
+  el archivo del repo es la fuente de verdad. Fix en el mismo deploy: `'cuits'` agregado al array
+  `dims` del chequeo `sinCambios` (comprar SOLO un pack de CUIT quedaba rechazado como "sin cambios").
+
+**Consistencia fiscal PROD post-deploy:** 0 `numero_comprobante` duplicados, 0 NC huérfanas.
+
+**⚠ Nota:** GO dejó un emisor de prueba `asdasd/asdasd` (adicional, activo) en el tenant piloto de
+PROD probando el panel — inofensivo (CUIT inválido, sin sucursal asignada); borrable desde el panel.
+
+**Estado:** todo el backend de multi-CUIT (F1-F6) + wizard de cert está EN PROD y sano. **Falta SOLO
+que GO mergee el PR #287** para llevar el frontend (v1.128.0: selección/reportes por emisor, panel
+de emisores con wizard, OC en ambos modos, tests OC sugerida) a PROD.
+
+**▶ Empezado y FRENADO (GO pidió parar): set de pruebas MOBILE responsive.** GO reportó que en la
+web-app desde el celular hay contenido que se sale del marco (números en el Dashboard, y varios
+módulos). NO hay cobertura responsive/mobile en e2e hoy. Pendiente: e2e que detecte overflow
+horizontal (viewport mobile, `documentElement.scrollWidth ≤ innerWidth` + reporte de elementos que
+sobresalen del viewport, ignorando contenedores con overflow-x scroll intencional) por ruta, luego
+FIXES de CSS (min-w-0/truncate/break-words/tabular-nums responsive) + UAT §mobile. No se tocó nada
+de mobile todavía.
+
+---
+
 ## [2026-07-12] update | 🔐 Wizard de certificado AFIP self-service (v1.128.0) + cobertura de tests de la OC sugerida (bug reportado por GO)
 
 **1) Wizard de certificado (pedido de GO: "la .key y el CSR los generamos nosotros").** El `.crt`

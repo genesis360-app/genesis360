@@ -6,7 +6,26 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🏢 (2026-07-12 · MULTI-CUIT FASES 4-6 IMPLEMENTADAS · v1.127.0 · mig 269 — ⚠ DEPLOY PENDIENTE EN DEV + prueba con 2 CUITs + precio del add-on)
+> ### 📱 (2026-07-13 · PRÓXIMO: SET DE PRUEBAS MOBILE RESPONSIVE + FIXES · deploy multi-CUIT YA HECHO)
+> **Multi-CUIT F1-F6 + wizard de cert están 100% deployados en DEV y PROD** (ver la entrada
+> siguiente y el log 2026-07-13). **Falta solo que GO mergee el PR #287** (frontend v1.128.0 a PROD).
+> **▶ TAREA PRINCIPAL PENDIENTE — pruebas mobile (GO la pidió, la arrancamos y frenamos):** en la
+> web-app desde el celular se sale contenido del marco (números del Dashboard, y varios módulos).
+> HOY no hay cobertura responsive en e2e. Plan:
+> 1. Helper de detección de overflow en `tests/e2e/helpers/navigation.ts`: en un viewport mobile
+>    (375×667 y 360×640), `documentElement.scrollWidth ≤ innerWidth` (sin scroll horizontal de
+>    página = señal #1) + lista de elementos cuyo `getBoundingClientRect().right > viewport` para
+>    diagnóstico, **ignorando** los que están dentro de un contenedor con `overflow-x: auto|scroll`
+>    (scroll intencional de tablas).
+> 2. e2e nuevo (spec 88+) que recorre las rutas principales (Dashboard/Ventas/Caja/Facturación/
+>    Clientes/Productos/Config…) a 2 viewports mobile y asierta sin overflow.
+> 3. Correrlo para ver los OFENSORES reales → FIXES CSS (min-w-0 en flex, truncate/break-words,
+>    `tabular-nums` + font más chica en KPIs, `overflow-x-auto` en tablas anchas) → re-correr verde.
+> 4. UAT §mobile responsive + (si sale un helper puro, unit). Build + release.
+> **Nota de arranque:** no encontré breakpoint/bottom-nav en `AppLayout.tsx` con el grep (revisar el
+> layout real del sidebar en mobile antes de escribir el test). NO se tocó nada de mobile todavía.
+
+> ### 🏢 (2026-07-12 · MULTI-CUIT FASES 4-6 IMPLEMENTADAS + DEPLOYADAS · v1.126-1.128 · migs 267-270 en DEV+PROD)
 > **Se completaron las fases que faltaban** (F4 selección de emisor en la emisión con confirmación
 > de override · F5 reportes fiscales por CUIT + `gastos.emisor_id` · F6 add-on "CUIT adicional").
 > Detalle en el log 2026-07-12 y en `wiki/features/multi-cuit.md` (tabla de fases + sección de

@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase'
+import { esArchivoCrt, esArchivoKey } from '@/lib/csrCert'
 
 export interface TenantCertificate {
   id: string
@@ -27,8 +28,8 @@ export async function uploadCertificates(
   validezHasta?: string | null,
   emisorId?: string | null,
 ): Promise<void> {
-  if (!crtFile.name.endsWith('.crt')) throw new Error('El archivo de certificado debe tener extensión .crt')
-  if (!keyFile.name.endsWith('.key')) throw new Error('La clave privada debe tener extensión .key')
+  if (!esArchivoCrt(crtFile.name)) throw new Error('El archivo de certificado debe tener extensión .crt')
+  if (!esArchivoKey(keyFile.name)) throw new Error('La clave privada debe tener extensión .key')
 
   const ts = Date.now()
   const crtPath = `${tenantId}/${ts}.crt`
@@ -106,7 +107,7 @@ export async function generarCsrEmisor(
 export async function finalizarCertificadoDesdeCsr(
   tenantId: string, emisorId: string, crtFile: File,
 ): Promise<void> {
-  if (!crtFile.name.endsWith('.crt') && !crtFile.name.endsWith('.pem'))
+  if (!esArchivoCrt(crtFile.name, { permitirPem: true }))
     throw new Error('El archivo del certificado debe tener extensión .crt (o .pem)')
 
   const { data: emisor } = await supabase.from('emisores_fiscales')

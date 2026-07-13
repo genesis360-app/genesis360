@@ -6,6 +6,51 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-12] update | 🛑 Fix (hallazgo GO): el wizard de certificado NO estaba para el emisor PRINCIPAL + cobertura de tests del primer certificado (v1.129.0)
+
+**GO reportó:** "En configuración, facturación, no tengo como crear el CRT desde el certificado
+principal" + pidió escenarios UAT/e2e/unit del recorrido de una persona que **recién arranca y carga
+su primer certificado**, y preguntó si estaba probado/documentado.
+
+**🛑 Hallazgo confirmado (REGLA #0 — onboarding fiscal roto para el 1er cliente):** el wizard
+self-service (Generar CSR → ARCA → subir `.crt`, v1.128.0) estaba **SÓLO en emisores adicionales**
+(`EmisoresFiscalesPanel`, guard `!e.es_default`). El emisor **principal** decía "se edita arriba ↑"
+y "arriba" (Config → Facturación → "Certificados AFIP") sólo tenía **carga manual `.crt`+`.key`**.
+→ El que recién arranca (sólo tiene el CUIT principal) **no tenía forma de generar su CSR desde la
+app**. Y NO había ningún test unit/e2e de `generar-csr` ni de las funciones del wizard (sólo la
+validación manual en DEV que quedó en el log del 2026-07-13).
+
+**Fix (v1.129.0):**
+- **`src/lib/csrCert.ts`** (lógica pura nueva): `construirSubjectCsr` (espejo exacto del subject de
+  la EF `generar-csr` — CUIT a 11 díg, razón con fallback, CN a 50), `pasoWizardCert` (máquina de
+  estados del onboarding: generar → subir-crt → **pendiente-crt** → activo) y validadores de
+  extensión. `afip.ts` ahora usa estos validadores (no duplicar).
+- **`EmisoresFiscalesPanel`**: la fila del emisor principal (⭐) muestra estado de cert + botón
+  **"Certificado" → Asistente** (los datos/PV del principal se siguen editando arriba); el pipeline
+  de cert es **por emisor**, así que el principal usa el MISMO flujo probado (produce una fila
+  `tenant_certificates` idéntica a la carga manual del principal). Se cerró además el hueco
+  **cross-sesión**: con `csr_key_path` seteado y sin CSR en memoria, ahora ofrece **subir el `.crt`
+  directo** (antes obligaba a regenerar → invalidaba el `.crt` que ya dio ARCA).
+- **`ConfigPage` → "Certificados AFIP"**: pointer al asistente cuando `!tenantCert` (guía al que no
+  sabe usar `openssl`).
+
+**Tests (todo verde):**
+- **Unit** `tests/unit/csrCert.test.ts` — 14 casos (CERT-SUBJ / CERT-STEP / CERT-FILE). Suite total
+  **1033 passed + 5 todo** (70 files).
+- **e2e** `tests/e2e/61_generar_csr_ef.spec.ts` — **corrido contra DEV, 5/5**: 401 anon · 403 otro
+  tenant · 400 CUIT inválido · **happy path** (CSR PKCS#10 real, la `.key` NO vuelve al cliente,
+  `csr_key_path` seteado y **limpiado** en cleanup; no toca el cert activo).
+- **UAT** §11.b (CERT-01→10) en `uat-modo-basico.md` + plan `facturacion.plan.md §11`.
+- **build ✓ · typecheck ✓**.
+
+**Estado:** todo en `dev`, **sin commitear**. NADA en PROD. El frontend del wizard (v1.128.0) ya
+estaba en el **PR #287 sin mergear**; este fix (v1.129.0) se suma a ese PR o va en uno nuevo — a
+decisión de GO. Sin migraciones nuevas (usa la 270 ya deployada). La EF `generar-csr` NO cambió
+(sólo se testeó). ⚠ CERT-04 (pegar en ARCA + subir el `.crt`) sigue siendo **manual** (requiere
+clave fiscal real) — no automatizable.
+
+---
+
 ## [2026-07-13] deploy | 🚀 Multi-CUIT (F1-F6) + wizard de cert deployados COMPLETOS en DEV y PROD
 
 GO reconectó el MCP de Supabase (se había caído a mitad de la sesión anterior, bloqueando el

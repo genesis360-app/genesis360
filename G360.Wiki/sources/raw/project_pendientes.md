@@ -6,6 +6,27 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🔐 (2026-07-12 · FIX — WIZARD DE CERT PARA EL EMISOR PRINCIPAL + tests del 1er certificado · v1.129.0 · SIN COMMITEAR, NADA EN PROD)
+> **Hallazgo de GO:** "no tengo como crear el CRT desde el certificado principal". Confirmado: el
+> wizard self-service (Generar CSR → ARCA → subir `.crt`, v1.128.0) estaba **SÓLO en emisores
+> adicionales** (`!e.es_default`); el **principal** sólo tenía carga manual `.crt`+`.key` → **el que
+> recién arranca no podía generar su CSR desde la app**. Y `generar-csr`/`afip.ts` no tenían NINGÚN
+> test.
+> **HECHO (v1.129.0):**
+> - `src/lib/csrCert.ts` (lógica pura: subject espejo de la EF + `pasoWizardCert` + validadores);
+>   `afip.ts` los usa.
+> - `EmisoresFiscalesPanel`: el principal (⭐) ahora tiene botón **"Certificado" → Asistente** (mismo
+>   pipeline por-emisor, ya probado). Cerrado el hueco **cross-sesión** (`csr_key_path` pendiente sin
+>   CSR en memoria → subir el `.crt` directo, antes obligaba a regenerar). `ConfigPage`: pointer al
+>   asistente cuando no hay cert.
+> - Tests: **unit** `csrCert.test.ts` (14) · **e2e** `61_generar_csr_ef.spec.ts` **corrido en DEV 5/5**
+>   (401/403/400 + happy path CSR PKCS#10 real, `.key` no sale del server, con cleanup) · **UAT §11.b**
+>   (CERT-01→10) · plan `facturacion.plan.md §11`. build ✓ · typecheck ✓ · unit **1033+5 todo**.
+> **▶ FALTA (decisión de GO):** commitear en `dev` y sumar al **PR #287** (o PR nuevo). Sin migraciones
+> nuevas (usa la 270 ya en PROD). `generar-csr` NO cambió. CERT-04 (pegar en ARCA + subir `.crt`) es
+> **manual e ineludible** (clave fiscal). Esto **destraba** el onboarding del 1er certificado que
+> quedaba pendiente en el punto F4b de la entrada de multi-CUIT (abajo).
+>
 > ### 📱 (2026-07-13 · PRÓXIMO: SET DE PRUEBAS MOBILE RESPONSIVE + FIXES · deploy multi-CUIT YA HECHO)
 > **Multi-CUIT F1-F6 + wizard de cert están 100% deployados en DEV y PROD** (ver la entrada
 > siguiente y el log 2026-07-13). **Falta solo que GO mergee el PR #287** (frontend v1.128.0 a PROD).

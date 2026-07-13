@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2 } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -2808,6 +2808,18 @@ export default function ConfigPage() {
               <p className="text-xs text-gray-400 dark:text-gray-500">
                 Requerido para facturación electrónica con ARCA (ex-AFIP). Los archivos se almacenan encriptados y solo son accesibles desde tu cuenta.
               </p>
+
+              {/* Pointer al asistente self-service para quien recién arranca (no tiene la .key/.crt todavía). */}
+              {!tenantCert && (
+                <div className="flex items-start gap-2 bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300">
+                  <Wand2 size={15} className="text-accent shrink-0 mt-0.5" />
+                  <span>
+                    ¿Todavía no tenés el certificado? No hace falta que sepas usar <span className="font-mono">openssl</span>: generamos la clave y el pedido (CSR) por vos.
+                    Andá a <strong>Emisores fiscales</strong> (más abajo ↓), abrí tu CUIT principal → <strong>Certificado</strong> → <strong>Asistente</strong> y seguí los pasos.
+                    Acá arriba subís el <span className="font-mono">.crt</span> + <span className="font-mono">.key</span> solo si ya los tenés.
+                  </span>
+                </div>
+              )}
 
               {/* Estado actual */}
               {tenantCert && (

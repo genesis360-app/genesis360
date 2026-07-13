@@ -166,6 +166,25 @@ Reduce el onboarding a "generá el CSR → pegalo en ARCA → subí el .crt" sin
 también ofrece esta ayuda** para su circuito; el circuito `afipsdk` sigue teniendo menos fricción
 (token en vez de cert propio) para clientes que no quieran lidiar con el certificado.
 
+**🛑 Fix v1.129.0 (hallazgo de GO 2026-07-12): el wizard también para el emisor PRINCIPAL.** En
+v1.128.0 el asistente estaba SÓLO en los emisores **adicionales** (`!e.es_default`); el emisor
+principal decía "se edita arriba ↑" y arriba (Config → Facturación → "Certificados AFIP") sólo había
+carga manual de `.crt`+`.key` → **una persona que recién arranca, con únicamente su CUIT principal,
+no tenía forma de generar su CSR desde la app**. Ahora la fila del principal (⭐) muestra su estado de
+cert y un botón **"Certificado" → Asistente** (los datos fiscales y los PV del principal se siguen
+editando arriba); y la sección "Certificados AFIP" muestra un **pointer** al asistente cuando todavía
+no hay cert cargado. El flujo es idéntico para todos los emisores porque el pipeline de cert es
+**por emisor** (`emisores_fiscales` + `tenant_certificates.emisor_id`), y el principal es sólo una
+fila `es_default=true`. Además el asistente ahora maneja el caso **cross-sesión** (generaste el CSR
+otro día): con `csr_key_path` seteado y sin CSR en memoria, ofrece **subir el `.crt` directo** (antes
+te obligaba a regenerar, invalidando el `.crt` que ya te dio ARCA). Máquina de estados en
+`src/lib/csrCert.ts` (`pasoWizardCert`: generar → subir-crt → pendiente-crt → activo).
+
+**Cobertura de tests (v1.129.0):** `tests/unit/csrCert.test.ts` (subject espejo de la EF + máquina
+de pasos + extensiones, 14 casos), `tests/e2e/61_generar_csr_ef.spec.ts` (EF real en DEV: 401 anon ·
+403 otro tenant · 400 CUIT inválido · happy path CSR PKCS#10 válido con la `.key` sin salir del
+server), UAT §11.b (CERT-01→10, recorrido del que recién arranca) y plan `facturacion.plan.md §11`.
+
 **Manual mientras tanto (homologación / testing):**
 ```bash
 # 1. clave privada

@@ -6,6 +6,37 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-14] update | 🛑 Guard crt↔clave en el wizard de certificado AFIP + diagnóstico `cms.sign.invalid` (Fede)
+
+**Contexto (REGLA #0):** Fede cargó su cert de homologación (CUIT 20-42237416-8, monotributo,
+tenant DEV "Kiosco Buildi", emisor `61987bb0`, `afip_produccion=false`) y al emitir la primera
+Factura C de prueba AFIP devolvió **`WSAA ns1:cms.sign.invalid: Firma inválida`**.
+
+**Diagnóstico (todo homologación, NADA real emitido).** No es bug de algoritmo (el mismo
+`wsfe-sign.ts` SHA-256/PKCS#7 ya autenticó el cert RI el 11/07). Es "firma inválida" = la pública
+del `.crt` no aparea con la privada. La línea de tiempo del bucket lo confirma: entre generar el
+CSR (clave nueva) y subir el `.crt` pasaron **8 y 13 segundos** → imposible ir a ARCA y volver →
+Fede subió un `.crt` que ya tenía (de otro CSR), y además **regeneró el CSR en el medio**, lo que
+invalida cualquier `.crt` previo. El código de apareo (`finalizarCertificadoDesdeCsr`) estaba bien;
+faltaba el guard que valide que el `.crt` corresponde a la clave.
+
+**Fix (commit `cb5b1caa`, en `dev`; EF deployada en DEV; PROD pendiente):**
+- **Nueva EF `finalizar-certificado`**: baja la `.key` del CSR (`emisores_fiscales.csr_key_path`),
+  valida el par RSA (módulo + exponente) con `certKeyMatch` y **recién ahí** activa el cert; si no
+  aparea → 400 con mensaje claro. Mismo guard de identidad que `generar-csr`.
+- **Validación server-side a propósito**: la `.key` nunca viaja al browser → el cliente no puede
+  compararla; REGLA #0 exige el guard del lado del servidor, no solo la UI.
+- `finalizarCertificadoDesdeCsr` (`src/lib/afip.ts`) pasa a ser un invoke fino a la EF.
+- Helper puro `certMatch.ts` (forge inyectado, corre en Deno y Node) + **4 unit tests** nuevos.
+- Verde: unit **1037 passed + 5 todo** · `tsc` limpio · build OK. Sin migración.
+
+**Pendiente para Fede:** rehacer el cert de homologación **una sola pasada** (generar CSR → pegar
+ESE CSR en ARCA homologación → subir el `.crt` que ARCA emite para él, sin regenerar en el medio) y
+reintentar la Factura C de prueba. Con el guard vivo, un `.crt` equivocado ahora corta al subirlo,
+no al emitir.
+
+---
+
 ## [2026-07-14] update | 🗄️ schema_full.sql regenerado (sin Docker) + ⚖️ blindaje legal + 🛑 fix alta de emisor (Fede)
 
 Sesión de 3 frentes, todo en `dev` (pusheado, NADA en PROD):

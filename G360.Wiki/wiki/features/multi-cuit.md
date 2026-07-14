@@ -159,8 +159,10 @@ emisores, modo "Asistente":
    path queda en `emisores_fiscales.csr_key_path` (mig 270) para aparearla después.
 2. La UI muestra el CSR con **Copiar / Descargar .csr / Ir a ARCA** + el instructivo.
 3. El cliente crea el cert en ARCA (con su clave fiscal — paso ineludible) y **sube SOLO el `.crt`**;
-   `finalizarCertificadoDesdeCsr` lo aparea con la `.key` pendiente y activa el `tenant_certificates`.
-   El modo "Ya tengo .crt + .key" (carga manual de ambos) sigue disponible.
+   `finalizarCertificadoDesdeCsr` lo manda a la EF **`finalizar-certificado`** (v1.x, 2026-07-14), que
+   baja la `.key` pendiente, **valida que el `.crt` corresponda a esa clave** (mismo par RSA) y recién
+   ahí activa el `tenant_certificates`. El modo "Ya tengo .crt + .key" (carga manual de ambos) sigue
+   disponible.
 
 Reduce el onboarding a "generá el CSR → pegalo en ARCA → subí el .crt" sin `openssl`. **AfipSDK
 también ofrece esta ayuda** para su circuito; el circuito `afipsdk` sigue teniendo menos fricción
@@ -179,6 +181,21 @@ fila `es_default=true`. Además el asistente ahora maneja el caso **cross-sesió
 otro día): con `csr_key_path` seteado y sin CSR en memoria, ofrece **subir el `.crt` directo** (antes
 te obligaba a regenerar, invalidando el `.crt` que ya te dio ARCA). Máquina de estados en
 `src/lib/csrCert.ts` (`pasoWizardCert`: generar → subir-crt → pendiente-crt → activo).
+
+**🛑 Guard crt↔clave (2026-07-14, commit `cb5b1caa` — REGLA #0).** Hasta acá el wizard aceptaba
+cualquier `.crt` subido y lo apareaba con la `.key` del CSR **sin verificar que fueran el mismo par
+RSA**. Si no correspondían, el error salía recién **al emitir**: `WSAA cms.sign.invalid: Firma
+inválida`, críptico y tardío. Pasó de verdad (Fede, homologación): subió un `.crt` de un CSR viejo
+sobre una clave regenerada (los timestamps del bucket mostraban 8–13 s entre generar el CSR y subir
+el `.crt` → imposible haber ido a ARCA). **Fix:** la finalización se movió a la EF
+**`finalizar-certificado`**, que valida el par con `certKeyMatch` (`supabase/functions/finalizar-certificado/certMatch.ts`,
+compara módulo + exponente, forge inyectado — corre en Deno y Node) **antes** de activar; si no
+aparea devuelve **400 con mensaje claro** ("el .crt no corresponde al CSR que generaste…"). La
+validación es **server-side a propósito**: la `.key` nunca viaja al browser, así que el cliente no
+puede compararla, y REGLA #0 exige el guard del lado del servidor. Tests: `tests/unit/certMatch.test.ts`
+(par que aparea · `.crt` de otra clave rechazado · PEM inválido, 4 casos). **Lección de UX/onboarding:**
+generar el CSR **una sola vez**, pegar ESE CSR en ARCA y subir el `.crt` que ARCA emite para él — no
+reutilizar un `.crt` anterior ni regenerar el CSR después de pegarlo (invalida el `.crt`).
 
 **Cobertura de tests (v1.129.0):** `tests/unit/csrCert.test.ts` (subject espejo de la EF + máquina
 de pasos + extensiones, 14 casos), `tests/e2e/61_generar_csr_ef.spec.ts` (EF real en DEV: 401 anon ·

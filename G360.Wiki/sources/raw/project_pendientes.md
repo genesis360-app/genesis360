@@ -6,6 +6,24 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🛑 (2026-07-14 · GUARD crt↔clave en el wizard de cert AFIP + diagnóstico `cms.sign.invalid` de Fede · commit `cb5b1caa` en dev · EF en DEV · PROD pendiente)
+> **Fede probó la 1ª Factura C de homologación con su cert (CUIT 20-42237416-8, tenant DEV "Kiosco
+> Buildi", emisor `61987bb0`, `afip_produccion=false`) y AFIP devolvió `WSAA cms.sign.invalid: Firma
+> inválida`.** Nada real emitido (homologación). **Diagnóstico:** no es algoritmo (mismo `wsfe-sign.ts`
+> ya autenticó el cert RI el 11/07) — la pública del `.crt` no aparea con la privada. Los timestamps
+> del bucket (8 y 13 s entre generar CSR y subir `.crt`) prueban que Fede subió un `.crt` viejo (de
+> otro CSR) y **regeneró el CSR en el medio**. El apareo estaba bien; faltaba validar.
+> **Fix (guard REGLA #0):** nueva **EF `finalizar-certificado`** (baja la `.key` del CSR, valida el par
+> RSA con `certKeyMatch` y recién ahí activa; si no aparea → 400 claro). Validación **server-side** a
+> propósito (la `.key` nunca va al browser). `finalizarCertificadoDesdeCsr` ahora invoca la EF. Helper
+> puro `certMatch.ts` + 4 unit tests. Verde (unit 1037, tsc, build). Sin migración. **EF deployada en
+> DEV (v1)**; commit `cb5b1caa` en `dev`.
+> **▶ PENDIENTE:** (a) **redeploy frontend DEV** para que el wizard use la EF (el push de `dev` ya lleva
+> el `afip.ts` nuevo — ⚠ orden: EF antes que frontend, ya cumplido); (b) **Fede rehace el cert de
+> homologación en una sola pasada** (generar CSR → pegar ESE CSR en ARCA → subir el `.crt` que ARCA
+> emite, sin regenerar) y reintenta la Factura C; (c) **deploy a PROD** de la EF + frontend (release,
+> con OK de GO).
+
 > ### 🗄️⚖️ (2026-07-14 · schema_full.sql REGENERADO + BLINDAJE LEGAL en dev + fix alta de emisor + EF ai-assistant redeploy · TODO EN DEV, PROD sigue v1.129.0)
 > **3 frentes, 5 commits en `dev` (`20e0ff89`→`33fc0129`), pusheados. Nada nuevo en PROD salvo el
 > redeploy del Asistente IA (no cambia fiscal/legal, solo su doc).**

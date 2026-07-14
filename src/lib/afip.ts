@@ -100,9 +100,12 @@ export async function generarCsrEmisor(
 }
 
 /**
- * Finaliza el certificado de un emisor que fue generado por el wizard: sube SOLO el .crt
- * que el cliente descargó de ARCA y lo aparea con la .key que ya está en el bucket
- * (emisores_fiscales.csr_key_path). No se sube la .key (nunca sale del server).
+ * Finaliza el certificado de un emisor que fue generado por el wizard: manda el .crt que el
+ * cliente descargó de ARCA a la EF `finalizar-certificado`, que lo VALIDA contra la .key
+ * guardada (mismo par RSA), lo activa y limpia el puntero. La validación es server-side a
+ * propósito: la .key nunca viaja al browser, así que el cliente no puede aparearla — y REGLA #0
+ * exige el guard del lado del servidor. Si el .crt no corresponde al CSR, la EF devuelve 400
+ * con un mensaje claro (antes esto fallaba recién al emitir con `cms.sign.invalid` del WSAA).
  */
 export async function finalizarCertificadoDesdeCsr(
   tenantId: string, emisorId: string, crtFile: File,
@@ -110,26 +113,14 @@ export async function finalizarCertificadoDesdeCsr(
   if (!esArchivoCrt(crtFile.name, { permitirPem: true }))
     throw new Error('El archivo del certificado debe tener extensión .crt (o .pem)')
 
-  const { data: emisor } = await supabase.from('emisores_fiscales')
-    .select('csr_key_path').eq('id', emisorId).eq('tenant_id', tenantId).maybeSingle()
-  const keyPath = (emisor as { csr_key_path?: string | null } | null)?.csr_key_path
-  if (!keyPath) throw new Error('Este emisor no tiene una clave pendiente. Generá el CSR primero.')
-
-  const crtPath = `${tenantId}/${Date.now()}.crt`
-  const { error: crtErr } = await supabase.storage.from('certificados-afip')
-    .upload(crtPath, crtFile, { upsert: true })
-  if (crtErr) throw new Error(`Error subiendo el .crt: ${crtErr.message}`)
-
-  const { error: dbErr } = await supabase.from('tenant_certificates').upsert({
-    tenant_id: tenantId, emisor_id: emisorId,
-    cert_crt_path: crtPath, cert_key_path: keyPath, activo: true,
-  }, { onConflict: 'emisor_id' })
-  if (dbErr) {
-    await supabase.storage.from('certificados-afip').remove([crtPath])
-    throw new Error(`Error guardando el certificado: ${dbErr.message}`)
+  const crtPem = await crtFile.text()
+  const { data, error } = await supabase.functions.invoke('finalizar-certificado', {
+    body: { tenant_id: tenantId, emisor_id: emisorId, crt_pem: crtPem },
+  })
+  if (error) {
+    let msg = error.message
+    try { const b = await (error as any).context?.json?.(); if (b?.error) msg = b.error } catch { /* */ }
+    throw new Error(msg || 'No se pudo finalizar el certificado')
   }
-
-  // Ya apareado: limpiar el puntero para que no se reuse.
-  await supabase.from('emisores_fiscales')
-    .update({ csr_key_path: null }).eq('id', emisorId).eq('tenant_id', tenantId)
+  if (data?.error) throw new Error(data.error)
 }

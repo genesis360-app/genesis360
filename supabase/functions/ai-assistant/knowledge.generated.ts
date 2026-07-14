@@ -10,7 +10,7 @@ export interface KnowledgeSection {
   contenido: string
 }
 
-export const KNOWLEDGE_GENERATED_AT = "2026-07-13T17:31:23.671Z"
+export const KNOWLEDGE_GENERATED_AT = "2026-07-13T22:02:50.324Z"
 
 export const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
   {

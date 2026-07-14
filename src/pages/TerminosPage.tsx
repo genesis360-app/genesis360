@@ -1,10 +1,10 @@
 import LegalLayout, { LegalSection } from '@/components/LegalLayout'
-import { BRAND } from '@/config/brand'
+import { BRAND, LEGAL_TITULAR, legalCompleto } from '@/config/brand'
 
 // ⚖️ NOTA PARA GO: este texto es un marco sólido y completo, PERO debe ser revisado por un
-// abogado antes de considerarlo definitivo, y hay que completar la razón social / CUIT del
-// titular donde dice "el Titular" (ver también src/pages/PrivacidadPage.tsx). El servicio se
-// identifica como Genesis360 y el contacto es BRAND.email.
+// abogado antes de considerarlo definitivo. La identidad del titular (razón social / CUIT /
+// domicilio / jurisdicción) sale de LEGAL_TITULAR en src/config/brand.ts — completarla ahí
+// (único lugar). Mientras esté en PENDIENTE, se muestra "en definición".
 
 export default function TerminosPage() {
   return (
@@ -16,12 +16,29 @@ export default function TerminosPage() {
         aceptás estos Términos en su totalidad. Si no estás de acuerdo, no debés utilizar el Servicio.
       </p>
 
+      <div className="rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-100 dark:border-gray-700 p-4">
+        <p className="font-semibold text-gray-800 dark:text-gray-100 mb-1">Titular del Servicio</p>
+        {legalCompleto ? (
+          <p>
+            {LEGAL_TITULAR.nombre} — {LEGAL_TITULAR.condicion} — CUIT {LEGAL_TITULAR.cuit}.
+            {' '}Domicilio: {LEGAL_TITULAR.domicilio}. Contacto:{' '}
+            <a href={`mailto:${LEGAL_TITULAR.email}`} className="text-accent hover:underline">{LEGAL_TITULAR.email}</a>.
+          </p>
+        ) : (
+          <p className="italic text-gray-400 dark:text-gray-500">
+            Los datos identificatorios del titular se encuentran en definición y se completarán
+            antes de la puesta en producción del Servicio.
+          </p>
+        )}
+      </div>
+
       <LegalSection n={1} title="Objeto y aceptación">
         <p>
           El Servicio se presta bajo la modalidad de software como servicio (SaaS). La creación de
           una cuenta, la contratación de un plan o el uso del Servicio implican la aceptación plena
-          de estos Términos y de la <a href="/privacidad" className="text-accent hover:underline">Política de Privacidad</a>,
-          que forma parte integrante de este documento.
+          de estos Términos, de la <a href="/privacidad" className="text-accent hover:underline">Política de Privacidad</a>
+          {' '}y de la <a href="/cookies" className="text-accent hover:underline">Política de Cookies</a>,
+          que forman parte integrante de este documento.
         </p>
       </LegalSection>
 
@@ -55,6 +72,15 @@ export default function TerminosPage() {
           cancelación no genera reembolsos por períodos ya iniciados, salvo que la ley aplicable
           disponga lo contrario.
         </p>
+        <p>
+          <strong>Botón de arrepentimiento (Ley 24.240, art. 34):</strong> si sos consumidor,
+          podés revocar la contratación dentro de los <strong>10 días corridos</strong> posteriores
+          a tu primera compra, sin costo ni penalidad, desde tu cuenta o escribiéndonos a{' '}
+          <a href={`mailto:${BRAND.email}`} className="text-accent hover:underline">{BRAND.email}</a>.
+          En ese caso se te reembolsa la <strong>totalidad</strong> de lo abonado y se da de baja el
+          Servicio. Fuera de ese plazo, la cancelación interrumpe la renovación pero no genera
+          reembolsos por el período en curso; conservás el acceso hasta el fin del período abonado.
+        </p>
       </LegalSection>
 
       <LegalSection n={5} title="Uso aceptable">
@@ -64,8 +90,16 @@ export default function TerminosPage() {
           <li>cargar contenido o datos que no tengas derecho a tratar;</li>
           <li>intentar acceder sin autorización a sistemas, cuentas o datos de otros usuarios;</li>
           <li>vulnerar, sobrecargar o interferir con la seguridad o el normal funcionamiento del Servicio;</li>
-          <li>revender o explotar el Servicio sin nuestra autorización expresa.</li>
+          <li>revender, alquilar, sublicenciar o explotar comercialmente el Servicio sin nuestra autorización expresa;</li>
+          <li>copiar, modificar, descompilar, realizar ingeniería inversa o intentar obtener el código fuente del Servicio, salvo en la medida en que la ley lo permita expresamente;</li>
+          <li>acceder al Servicio mediante medios automatizados (bots, scrapers) o para construir un producto o servicio competidor;</li>
+          <li>eludir, deshabilitar o interferir con límites de uso, controles de seguridad o mecanismos de autenticación.</li>
         </ul>
+        <p>
+          El uso del Servicio se concede bajo una licencia limitada, revocable, personal, intransferible
+          y no exclusiva, únicamente para gestionar tu propio negocio conforme a estos Términos. No se
+          te transfiere ningún otro derecho sobre el software.
+        </p>
       </LegalSection>
 
       <LegalSection n={6} title="Datos cargados por el usuario">
@@ -140,8 +174,10 @@ export default function TerminosPage() {
       <LegalSection n={13} title="Ley aplicable y jurisdicción">
         <p>
           Estos Términos se rigen por las leyes de la República Argentina. Para toda controversia se
-          aplicará la jurisdicción de los tribunales competentes según la normativa vigente,
-          respetando los derechos que la legislación de defensa del consumidor otorgue al usuario.
+          aplicará la jurisdicción de {legalCompleto ? `los tribunales ordinarios de ${LEGAL_TITULAR.jurisdiccion}` : 'los tribunales competentes según la normativa vigente'},
+          {' '}sin perjuicio de los derechos que la legislación de defensa del consumidor (Ley 24.240)
+          otorgue al usuario, incluida la posibilidad de acudir a la autoridad de aplicación o al fuero
+          de su domicilio cuando corresponda.
         </p>
       </LegalSection>
 

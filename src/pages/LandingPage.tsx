@@ -428,6 +428,8 @@ export default function LandingPage() {
               <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
               <Link to="/terminos" className="hover:text-white transition-colors">Términos</Link>
               <Link to="/privacidad" className="hover:text-white transition-colors">Privacidad</Link>
+              <Link to="/cookies" className="hover:text-white transition-colors">Cookies</Link>
+              <a href="https://www.argentina.gob.ar/produccion/defensadelconsumidor" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Defensa del Consumidor</a>
               <a href={`mailto:${BRAND.email}`} className="hover:text-white transition-colors">Contacto</a>
             </div>
             <p className="text-xs text-blue-300">© {new Date().getFullYear()} {BRAND.name}. Todos los derechos reservados.</p>

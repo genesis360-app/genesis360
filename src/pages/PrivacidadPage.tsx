@@ -1,10 +1,10 @@
 import LegalLayout, { LegalSection } from '@/components/LegalLayout'
-import { BRAND } from '@/config/brand'
+import { BRAND, LEGAL_TITULAR, legalCompleto } from '@/config/brand'
 
 // ⚖️ NOTA PARA GO: marco sólido alineado a la Ley 25.326 (AR) y sus normas complementarias,
-// PERO debe ser revisado por un abogado antes de ser definitivo. Completar la razón social /
-// CUIT del responsable de la base de datos donde dice "el Responsable" y, si corresponde,
-// registrar la base ante la AAIP (Agencia de Acceso a la Información Pública).
+// PERO debe ser revisado por un abogado antes de ser definitivo. La identidad del responsable
+// sale de LEGAL_TITULAR (src/config/brand.ts) — completarla ahí. Pendiente operativo: registrar
+// la base ante la AAIP (Agencia de Acceso a la Información Pública).
 
 export default function PrivacidadPage() {
   return (
@@ -18,9 +18,12 @@ export default function PrivacidadPage() {
 
       <LegalSection n={1} title="Responsable de la base de datos">
         <p>
-          El responsable del tratamiento de los datos es el titular de {BRAND.name}. Para cualquier
-          consulta o para ejercer tus derechos podés contactarnos en{' '}
-          <a href={`mailto:${BRAND.email}`} className="text-accent hover:underline">{BRAND.email}</a>.
+          El responsable del tratamiento de los datos es{' '}
+          {legalCompleto
+            ? <>{LEGAL_TITULAR.nombre} ({LEGAL_TITULAR.condicion}), CUIT {LEGAL_TITULAR.cuit}, con domicilio en {LEGAL_TITULAR.domicilio}, titular de {BRAND.name}</>
+            : <>el titular de {BRAND.name} (datos identificatorios en definición, a completar antes de la puesta en producción)</>}.
+          {' '}Para cualquier consulta o para ejercer tus derechos podés contactarnos en{' '}
+          <a href={`mailto:${LEGAL_TITULAR.email}`} className="text-accent hover:underline">{LEGAL_TITULAR.email}</a>.
         </p>
       </LegalSection>
 
@@ -28,7 +31,7 @@ export default function PrivacidadPage() {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>De registro y cuenta:</strong> nombre, correo electrónico, contraseña (almacenada de forma cifrada) y datos del negocio (nombre, tipo de comercio, país, teléfono).</li>
           <li><strong>De facturación:</strong> datos fiscales que cargues y la información necesaria para procesar pagos a través de nuestros proveedores de pago.</li>
-          <li><strong>De uso:</strong> registros de actividad, datos técnicos del dispositivo y de la sesión, necesarios para operar y asegurar el Servicio.</li>
+          <li><strong>De uso:</strong> registros de actividad, datos técnicos del dispositivo y de la sesión, necesarios para operar y asegurar el Servicio. El detalle de cookies y tecnologías similares está en nuestra <a href="/cookies" className="text-accent hover:underline">Política de Cookies</a>.</li>
           <li><strong>Datos que cargás en el Servicio:</strong> información de tus clientes, proveedores, empleados y operaciones. Respecto de estos datos, actuamos como encargados del tratamiento por cuenta tuya.</li>
         </ul>
       </LegalSection>
@@ -63,7 +66,9 @@ export default function PrivacidadPage() {
           <li><strong>Infraestructura y base de datos</strong> (alojamiento y almacenamiento del Servicio);</li>
           <li><strong>Envío de correos</strong> (notificaciones transaccionales y, si corresponde, marketing);</li>
           <li><strong>Procesamiento de pagos</strong> (por ejemplo, Mercado Pago);</li>
-          <li><strong>Facturación electrónica</strong> ante AFIP/ARCA y servicios asociados.</li>
+          <li><strong>Facturación electrónica</strong> ante AFIP/ARCA y servicios asociados;</li>
+          <li><strong>Monitoreo de errores y rendimiento</strong> (Sentry), para mantener el Servicio estable y corregir fallas; no graba tu sesión ni tu pantalla;</li>
+          <li><strong>Mapas y direcciones</strong> (Google Maps), únicamente en las pantallas donde cargás direcciones.</li>
         </ul>
         <p>
           Algunos de estos proveedores pueden alojar datos fuera de la Argentina. En esos casos,

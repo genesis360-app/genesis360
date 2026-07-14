@@ -37,6 +37,10 @@ export default function LegalLayout({ title, children }: { title: string; childr
           <span className="text-gray-300 dark:text-gray-600">·</span>
           <Link to="/privacidad" className="text-gray-500 dark:text-gray-400 hover:text-accent">Política de Privacidad</Link>
           <span className="text-gray-300 dark:text-gray-600">·</span>
+          <Link to="/cookies" className="text-gray-500 dark:text-gray-400 hover:text-accent">Cookies</Link>
+          <span className="text-gray-300 dark:text-gray-600">·</span>
+          <a href="https://www.argentina.gob.ar/produccion/defensadelconsumidor" target="_blank" rel="noopener noreferrer" className="text-gray-500 dark:text-gray-400 hover:text-accent">Defensa del Consumidor</a>
+          <span className="text-gray-300 dark:text-gray-600">·</span>
           <a href={`mailto:${BRAND.email}`} className="text-gray-500 dark:text-gray-400 hover:text-accent">Contacto</a>
         </div>
         <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-4">

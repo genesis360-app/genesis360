@@ -30,11 +30,31 @@ export const BTN = {
 
 export const APP_VERSION = 'v1.129.0'
 
-// Versión del texto legal (Términos y Condiciones + Política de Privacidad).
+// Versión del texto legal (Términos y Condiciones + Política de Privacidad + Cookies).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto
 // cambia de forma sustancial, bumpear esta fecha para poder detectar quién aceptó qué
 // versión (y eventualmente re-pedir aceptación). Formato ISO YYYY-MM-DD.
-export const LEGAL_VERSION = '2026-07-01'
+export const LEGAL_VERSION = '2026-07-13'
+
+// ⚖️ IDENTIDAD LEGAL DEL TITULAR — fuente ÚNICA (la usan T&C, Privacidad, Cookies y el pie).
+// Persona física / Monotributo (decisión GO 2026-07-13). La ley de e-commerce AR (Resol.
+// 424/2020 + Ley 24.240) OBLIGA a exhibir la identidad del vendedor, y estos datos deben
+// figurar en T&C/Privacidad para su validez.
+// Titular real (persona física / monotributo — Federico E. Messina, GO 2026-07-14). Si cambia
+// la figura (p. ej. se constituye una SRL/SA), actualizar acá. `legalCompleto` pasa a true al
+// no quedar ningún 'PENDIENTE' → las páginas muestran la identidad real en vez de "en definición".
+export const LEGAL_TITULAR = {
+  nombre: 'Federico Ezequiel Messina',
+  cuit: '20-42237416-8',
+  condicion: 'Responsable Monotributo',
+  domicilio: 'Cnel. Ramón L. Falcón 2387, C1406, Ciudad Autónoma de Buenos Aires',
+  jurisdiccion: 'la Ciudad Autónoma de Buenos Aires',
+  email: 'hola@genesis360.pro',   // Contacto legal / ejercicio de derechos
+}
+
+/** true cuando ya se cargaron los datos reales del titular (no quedan PENDIENTE). */
+export const legalCompleto =
+  !Object.values(LEGAL_TITULAR).some((v) => v === 'PENDIENTE')
 
 // Kill-switch del modo de operación Básico/Avanzado: en false, TODOS los tenants
 // operan en avanzado (la app completa, como antes de v1.55) sin importar

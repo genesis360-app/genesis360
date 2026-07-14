@@ -26,14 +26,17 @@ registerSW({
   },
 })
 
+// ⚖️ Sin Session Replay (decisión GO 2026-07-13): NO grabamos la sesión/pantalla del
+// usuario. Sentry queda solo para errores + rendimiento (browser tracing), sin capturar
+// contenido personal — así el tracking se limita a lo funcional y no requiere banner de
+// consentimiento (ver /cookies). No re-agregar `replayIntegration` sin actualizar la
+// Política de Cookies + Privacidad y sumar el mecanismo de consentimiento.
 Sentry.init({
   dsn: import.meta.env.VITE_SENTRY_DSN,
   environment: import.meta.env.MODE,
   tracesSampleRate: 0.1,
-  replaysOnErrorSampleRate: 1.0,
   integrations: [
     Sentry.browserTracingIntegration(),
-    Sentry.replayIntegration(),
   ],
 })
 

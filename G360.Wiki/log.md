@@ -6,6 +6,46 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-14] update | 🗄️ schema_full.sql regenerado (sin Docker) + ⚖️ blindaje legal + 🛑 fix alta de emisor (Fede)
+
+Sesión de 3 frentes, todo en `dev` (pusheado, NADA en PROD):
+
+**1. `schema_full.sql` destrabado y actualizado.** Estaba congelado en "migrations 001–024" (iba
+la 270). `supabase db dump` exige Docker y no hay wire-protocol desde la PC de GO (pooler=bug
+Supavisor; directo=IPv6 sin egress). Solución: introspección del catálogo vía **Management API**
+(execute_sql, mismo canal del MCP), base64 → archivo → node ensambla. Resultado: **435 KB, conteos
+exactos** (139 tablas, 103 funcs, 60 triggers, 157 policies, 6 vistas, 400 FKs). Script repetible
+**`npm run schema:dump`** (`scripts/dump-schema.mjs`, modo API con token + modo PG fallback; dep `pg`).
+Ver [[reference_schema_dump_metodo]].
+
+**2. Blindaje legal (decisiones GO).** Contra los 6 adjuntos de la agencia + normativa AR:
+- Ya teníamos T&C + Privacidad (Ley 25.326) + Botón de Arrepentimiento (24.240) + consentimiento
+  de marketing. Gaps cerrados: **Política de Cookies** nueva (`/cookies` + links en pies y T&C),
+  **Sentry sin Session Replay** (ya no graba pantalla; solo errores+rendimiento), **prohibiciones
+  tipo-EULA** y **cláusula de reembolsos** (10 días total, sin reembolso fuera de plazo) en T&C,
+  **Sentry+Google Maps** como sub-encargados en Privacidad, link **Defensa del Consumidor** en pies.
+- **Identidad del titular** centralizada en `LEGAL_TITULAR` (brand.ts): Federico Ezequiel Messina,
+  monotributo, CUIT 20-42237416-8, dom. Cnel. R. L. Falcón 2387 C1406 CABA. Fede = socio de GO,
+  es quien factura. `LEGAL_VERSION` bump a 2026-07-14. Decisiones: **sin SLA** (según
+  disponibilidad), refunds solo arrepentimiento, cookies sin banner.
+- 🔴 Pendiente antes de PROD: **revisión de abogado** + **registro AAIP** (trámites de GO, fuera
+  de la app). Ofrecido y no hecho aún: **DPA** para B2B grande.
+
+**3. 🛑 Fix REGLA #0 — alta de emisor de Fede fallaba con "Error al guardar el emisor".** Verificado
+contra DEV: NO era bug fiscal — el trigger `fn_enforce_limite_cuits` (mig 269) frena bien el 2º CUIT
+porque el plan incluye 1 (trial → tier 'pro' → cuits base 1, 0 adicionales). El bug real: el
+`PostgrestError` de Supabase NO es `instanceof Error` → el catch tragaba el mensaje real y mostraba
+el genérico. **Arreglado** (`EmisoresFiscalesPanel.tsx`: leer `.message` directo). Para que Fede
+pruebe multi-CUIT, GO autorizó **grant manual de 1 add-on `cuits` (fijo)** al tenant "Kiosco Buildi"
+(DEV, `35bc3348-…`, addon `096b146f-…`) → límite 1→2. ⚠ UX a decidir: un tenant en trial no puede
+comprar el add-on por MP (sin suscripción) — el mensaje "Suscripción → Add-ons" no le es accionable.
+
+**Pendiente de infra:** redeploy EF `ai-assistant` (DEV+PROD) por el knowledge regenerado — el
+comando `supabase functions deploy` lo bloquea el clasificador; GO lo corre a mano. Drift detectado:
+EF `verify_jwt` DEV=false / PROD=true (se preserva cada uno).
+
+---
+
 ## [2026-07-13] deploy | 🚀 v1.129.0 a PROD — frontend multi-CUIT F4-F6 + wizard de cert (incl. emisor principal)
 
 GO autorizó el deploy a PROD con el alcance fiscal sobre la mesa. **Hallazgo en el camino

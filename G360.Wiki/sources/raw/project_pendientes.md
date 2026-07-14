@@ -6,6 +6,42 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🗄️⚖️ (2026-07-14 · schema_full.sql REGENERADO + BLINDAJE LEGAL en dev + fix alta de emisor + EF ai-assistant redeploy · TODO EN DEV, PROD sigue v1.129.0)
+> **3 frentes, 5 commits en `dev` (`20e0ff89`→`33fc0129`), pusheados. Nada nuevo en PROD salvo el
+> redeploy del Asistente IA (no cambia fiscal/legal, solo su doc).**
+> 1. **✅ `schema_full.sql` DESTRABADO** (pendiente histórico cerrado). `supabase db dump` exige Docker
+>    y no hay wire-protocol desde la PC de GO (pooler=bug Supavisor, directo=IPv6 sin egress) →
+>    regenerado vía **Management API/execute_sql** (introspección catálogo → base64 → archivo → node
+>    ensambla). Script repetible **`npm run schema:dump`** (`scripts/dump-schema.mjs`: modo API con
+>    `SUPABASE_ACCESS_TOKEN` + modo PG fallback; dep nueva `pg`). 435 KB, conteos exactos vs catálogo
+>    (139 tablas, 103 funcs, 157 policies, 6 vistas, 400 FKs). Ver [[reference_schema_dump_metodo]].
+> 2. **✅ BLINDAJE LEGAL (en dev, NO en PROD).** Revisión vs los 6 adjuntos de agencia + normativa AR.
+>    Ya teníamos T&C + Privacidad (25.326) + Botón de Arrepentimiento (24.240) + consent marketing.
+>    **Gaps cerrados:** Política de **Cookies** nueva (`/cookies` + links en pies/T&C), **Sentry SIN
+>    Session Replay** (`main.tsx`, ya no graba pantalla), **EULA/reembolsos** en T&C, **Sentry+Google
+>    Maps** como sub-encargados en Privacidad, link **Defensa del Consumidor**. **Identidad del
+>    titular** centralizada en `LEGAL_TITULAR` (brand.ts): Federico Ezequiel Messina, monotributo,
+>    CUIT 20-42237416-8, Cnel. R.L. Falcón 2387 C1406 CABA (Fede = socio de GO, factura él).
+>    `LEGAL_VERSION`=2026-07-14. Decisiones GO: **sin SLA**, refunds solo arrepentimiento, cookies sin
+>    banner. 🔴 **ANTES DE MOSTRAR EN PROD: revisión de ABOGADO + registro AAIP** (trámites de GO,
+>    fuera de la app). Ofrecido y NO hecho aún: **DPA** para clientes B2B grandes.
+> 3. **🛑 Fix REGLA #0 — alta de emisor de Fede** ("Error al guardar el emisor" genérico). NO era bug
+>    fiscal: el trigger `fn_enforce_limite_cuits` (mig 269) frena bien el 2º CUIT (el plan trae 1;
+>    trial→tier 'pro'→cuits base 1). El bug real: el `PostgrestError` de Supabase NO es `instanceof
+>    Error` → el catch tragaba el mensaje real. **Arreglado** (`EmisoresFiscalesPanel.tsx`, leer
+>    `.message` directo). GO autorizó **grant manual de 1 add-on `cuits` (fijo)** a "Kiosco Buildi"
+>    (DEV `35bc3348-…`, addon `096b146f-…`) → límite 1→2, Fede ya puede cargar "Messina SA".
+>    ⚠ UX a decidir: en trial no se puede comprar el add-on por MP (sin suscripción) → el mensaje
+>    "Suscripción → Add-ons" no es accionable ahí.
+> 4. **✅ EF `ai-assistant` REDEPLOYADA en DEV y PROD** (por el knowledge regenerado). Lección:
+>    `supabase functions deploy` **NO necesita Docker** (el `WARNING: Docker is not running` es
+>    inofensivo; solo `db dump`/`functions serve` local lo piden). `verify_jwt` preservado por
+>    ambiente: **DEV=false / PROD=true** (drift viejo, se respeta cada uno).
+> **▶ PRÓXIMA SESIÓN:** (a) cuando el abogado apruebe los textos → **deploy legal a PROD** con bump de
+> versión + release + `npm run ai:knowledge`/redeploy si se tocó app-reference; (b) **mobile
+> responsive** (sigue pendiente, ver bloque de abajo); (c) decidir/redactar el **DPA**; (d) emisión
+> real con 2 CUITs (cert de Fede).
+
 > ### 🚀 (2026-07-13 · v1.129.0 DEPLOYADO A PROD — frontend multi-CUIT F4-F6 + wizard de cert)
 > **GO autorizó el deploy a PROD.** PR #288 (squash a main, commit `404f676c`, tag+release
 > `v1.129.0`). **Hallazgo (REGLA #0):** el PR #287 había mergeado solo v1.126.0 (Fases 2+3) — el

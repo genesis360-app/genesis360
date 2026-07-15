@@ -6,6 +6,20 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 📱 (2026-07-15 · SET DE PRUEBAS RESPONSIVE + fixes de overflow en Dashboard/Métricas · commit `e95297bf` en dev · barrido 11/11 verde · PROD pendiente)
+> **Cerrado el pendiente de mobile que venía del 13/07.** GO: "en el celular se sale contenido del
+> marco". Causa de fondo: `AppLayout.tsx:382` clippea con `overflow-hidden` en la raíz → el overflow
+> **no scrollea, se corta**. **Infra nueva:** helper `detectarOverflowHorizontal` (mide dentro del
+> `<main>`, elemento Y contenido de texto; ignora scroll intencional) + project `chromium-mobile`
+> (375/360px) + spec `88_mobile_responsive` (10 pantallas × 2 viewports). **Fixes:** Dashboard cards
+> `grid lg:grid-cols-2`→`grid-cols-1 lg:grid-cols-2` (columna implícita max-content) · chart scatter
+> `ReferenceLine position:right`→`insideTopRight`+`overflow-hidden` · Métricas selector `flex-wrap` +
+> card "Resultado" `grid-cols-3`→`grid-cols-1 sm:grid-cols-3`. Typecheck+build verdes.
+> **▶ PENDIENTE:** (a) **deploy a PROD** (release con OK de GO — junta con el guard cert); (b) **header
+> (❓) + sub-tabs apretados a ≤360px** — fuera del `<main>`, layout compartido, quedó como follow-up
+> de bajo impacto; (c) ampliar el barrido a sub-tabs/chips internos (el spec mide la vista default de
+> cada ruta).
+
 > ### 🛑 (2026-07-14 · GUARD crt↔clave en el wizard de cert AFIP + diagnóstico `cms.sign.invalid` de Fede · commit `cb5b1caa` en dev · EF en DEV · PROD pendiente)
 > **Fede probó la 1ª Factura C de homologación con su cert (CUIT 20-42237416-8, tenant DEV "Kiosco
 > Buildi", emisor `61987bb0`, `afip_produccion=false`) y AFIP devolvió `WSAA cms.sign.invalid: Firma
@@ -91,6 +105,9 @@ type: project
 > quedaba pendiente en el punto F4b de la entrada de multi-CUIT (abajo).
 >
 > ### 📱 (2026-07-13 · PRÓXIMO: SET DE PRUEBAS MOBILE RESPONSIVE + FIXES · deploy multi-CUIT YA HECHO)
+> **✅ HECHO el 2026-07-15** (commit `e95297bf`, ver el bloque de arriba). El plan de abajo se ejecutó:
+> helper de overflow + spec `88_mobile_responsive` + fixes en Dashboard/Métricas, 11/11 verde. Queda
+> el header/sub-tabs (≤360px) como follow-up.
 > **Multi-CUIT F1-F6 + wizard de cert están 100% deployados en DEV y PROD** (ver la entrada
 > siguiente y el log 2026-07-13). **Falta solo que GO mergee el PR #287** (frontend v1.128.0 a PROD).
 > **▶ TAREA PRINCIPAL PENDIENTE — pruebas mobile (GO la pidió, la arrancamos y frenamos):** en la

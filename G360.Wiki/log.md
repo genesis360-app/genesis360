@@ -6,6 +6,39 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-15] update | 📱 Set de pruebas responsive (barrido de overflow) + fixes de overflow en Dashboard/Métricas
+
+**Primera cobertura responsive en e2e** (pendiente que venía de 2026-07-13). GO reportó que en el
+celular "se sale contenido del marco". **Causa de fondo:** `AppLayout` clippea con `overflow-hidden`
+en el div raíz (`AppLayout.tsx:382`), así que el overflow horizontal **no scrollea la página, se
+corta** — por eso un detector basado en el scroll del documento no ve nada.
+
+**Infra (commit `e95297bf`, en `dev`):**
+- Helper **`detectarOverflowHorizontal`** (`tests/e2e/helpers/navigation.ts`): mide overflow
+  **dentro del `<main>`** (no del documento), tanto de elemento (rect que se pasa del borde) como de
+  **contenido** (texto/número que desborda su caja — no lo captura el rect). Ignora el scroll
+  horizontal INTENCIONAL (ancestros `overflow-x: auto|scroll`, tablas/tabs) pero **no** el clip.
+- Project **`chromium-mobile`** en `playwright.config.ts` (viewport 375 y 360px, sesión owner) +
+  excluido del project desktop (`testIgnore`).
+- Spec **`88_mobile_responsive.spec.ts`**: barre 10 pantallas × 2 viewports. **11/11 verde.**
+
+**Ofensores detectados y arreglados:**
+- **Dashboard:** grid de cards `grid lg:grid-cols-2` **sin `grid-cols-1` base** → `display:grid` a
+  secas crea una columna implícita de *max-content* que en mobile crece al ancho natural y desborda
+  (`DashProveedoresArea.tsx`). Chart scatter (`DashEnviosArea.tsx`): label de `ReferenceLine` con
+  `position:'right'` dibujaba **fuera** del plot → `insideTopRight` + `overflow-hidden` en la card.
+- **Métricas:** selector de rango sin `flex-wrap` (351px no entra en 328px) + card "Resultado del
+  período" `grid-cols-3` con números grandes (`text-2xl`) que desbordaban → `grid-cols-1 sm:grid-cols-3`.
+  De paso, fix de conflicto `dark:hover` en los chips de período.
+- **8/10 pantallas ya estaban limpias** (Ventas, Caja, Facturación, Clientes, Productos, Inventario,
+  Gastos, Configuración).
+
+**Pendiente (follow-up, NO cubierto por el guard):** header (ícono ❓) y sub-tabs ("Métric") apretados
+a ≤360px — están **fuera del `<main>`** (layout compartido), riesgo/beneficio no justifica tocarlo en
+la misma tanda. El barrido queda de **guard permanente** contra regresiones de overflow.
+
+---
+
 ## [2026-07-14] update | 🛑 Guard crt↔clave en el wizard de certificado AFIP + diagnóstico `cms.sign.invalid` (Fede)
 
 **Contexto (REGLA #0):** Fede cargó su cert de homologación (CUIT 20-42237416-8, monotributo,

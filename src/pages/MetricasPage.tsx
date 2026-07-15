@@ -380,11 +380,12 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
+          {/* flex-wrap: en mobile los 5 chips no entran en una fila (351px) → envuelven en 2. */}
+          <div className="flex flex-wrap gap-1 bg-gray-100 dark:bg-gray-700 p-1 rounded-xl">
             {PERIODOS.map(p => (
               <button key={p.id} onClick={() => setPeriodo(p.id as Periodo)}
                 className={`py-1.5 px-3 rounded-lg text-sm font-medium transition-all
-                  ${periodo === p.id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300'}`}>
+                  ${periodo === p.id ? 'bg-white dark:bg-gray-800 text-primary shadow-sm' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
                 {p.label}
               </button>
             ))}
@@ -404,7 +405,9 @@ export default function MetricasPage({ hideHeader }: { hideHeader?: boolean } = 
       {/* Resultado del período */}
       <div className="bg-gradient-to-br from-primary to-accent rounded-xl p-5 text-white">
         <p className="text-blue-200 text-xs font-medium mb-4 uppercase tracking-wide">Resultado del período</p>
-        <div className="grid grid-cols-3 gap-6">
+        {/* 1 columna en mobile: 3 números grandes (text-2xl) no entran en ~93px c/u y el texto
+            desborda la card. Desde sm vuelven las 3 columnas. */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           <div>
             <p className="text-blue-200 text-xs mb-1">Ventas</p>
             <p className="text-2xl font-bold">{formatMoneda(totalVentas)}</p>

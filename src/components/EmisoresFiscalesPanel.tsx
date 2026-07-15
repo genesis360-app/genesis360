@@ -169,7 +169,9 @@ export function EmisoresFiscalesPanel() {
       toast.success(editId ? 'Emisor actualizado' : 'Emisor creado (en modo homologación)')
       setShowForm(false); refetch()
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Error al guardar el emisor'
+      // ⚠ Los errores de Supabase (PostgrestError) NO son instancia de Error → hay que leer
+      // `.message` directo, si no se pierde el motivo real (ej. el RAISE del trigger de cupo).
+      const msg = (e as { message?: string })?.message || 'Error al guardar el emisor'
       // El enforcement server-side (mig 269) tira este mensaje si no hay cupo de CUITs.
       if (/Límite de CUITs/i.test(msg)) {
         toast.error(`${msg} Configuralo en Suscripción → Add-ons.`, { duration: 9000 })

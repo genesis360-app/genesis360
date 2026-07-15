@@ -6,6 +6,144 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-15] update | 📱 Set de pruebas responsive (barrido de overflow) + fixes de overflow en Dashboard/Métricas
+
+**Primera cobertura responsive en e2e** (pendiente que venía de 2026-07-13). GO reportó que en el
+celular "se sale contenido del marco". **Causa de fondo:** `AppLayout` clippea con `overflow-hidden`
+en el div raíz (`AppLayout.tsx:382`), así que el overflow horizontal **no scrollea la página, se
+corta** — por eso un detector basado en el scroll del documento no ve nada.
+
+**Infra (commit `e95297bf`, en `dev`):**
+- Helper **`detectarOverflowHorizontal`** (`tests/e2e/helpers/navigation.ts`): mide overflow
+  **dentro del `<main>`** (no del documento), tanto de elemento (rect que se pasa del borde) como de
+  **contenido** (texto/número que desborda su caja — no lo captura el rect). Ignora el scroll
+  horizontal INTENCIONAL (ancestros `overflow-x: auto|scroll`, tablas/tabs) pero **no** el clip.
+- Project **`chromium-mobile`** en `playwright.config.ts` (viewport 375 y 360px, sesión owner) +
+  excluido del project desktop (`testIgnore`).
+- Spec **`88_mobile_responsive.spec.ts`**: barre 10 pantallas × 2 viewports. **11/11 verde.**
+
+**Ofensores detectados y arreglados:**
+- **Dashboard:** grid de cards `grid lg:grid-cols-2` **sin `grid-cols-1` base** → `display:grid` a
+  secas crea una columna implícita de *max-content* que en mobile crece al ancho natural y desborda
+  (`DashProveedoresArea.tsx`). Chart scatter (`DashEnviosArea.tsx`): label de `ReferenceLine` con
+  `position:'right'` dibujaba **fuera** del plot → `insideTopRight` + `overflow-hidden` en la card.
+- **Métricas:** selector de rango sin `flex-wrap` (351px no entra en 328px) + card "Resultado del
+  período" `grid-cols-3` con números grandes (`text-2xl`) que desbordaban → `grid-cols-1 sm:grid-cols-3`.
+  De paso, fix de conflicto `dark:hover` en los chips de período.
+- **8/10 pantallas ya estaban limpias** (Ventas, Caja, Facturación, Clientes, Productos, Inventario,
+  Gastos, Configuración).
+
+**Header responsive (misma tanda, commit `39f27e9b`).** El guard se extendió para medir también el
+`<header>` (fuera del `<main>`): medía **461px** → en 360/375px clippeaba los últimos íconos, incluido
+el **AVATAR (mi cuenta/logout)** y Config, que quedaban **fuera de pantalla (inaccesibles)** — más serio
+de lo que parecía. Fix (`AppLayout.tsx`): en mobile (`<sm`) se ocultan **Refresh** (redundante: refresh
+automático al navegar por `staleTime:0`) y **Config** (está en el menú lateral para DUEÑO/SUPER) +
+nombre de sucursal `max-w-52` + header `px-3 sm:px-4`. Header 461→~348px, entra en 360px con margen; se
+mantienen AI, Notificaciones, Tema, Ayuda y Avatar con touch target completo. `detectarOverflowHorizontal`
+ahora acepta `selector` (mide `<main>` Y `<header>`). **Barrido 11/11 verde** (contenido + header, 375 y 360px).
+
+Sub-tabs del Dashboard ("Métric"): viven en un scroll container (`overflow-x-auto`) → scroll intencional,
+aceptable, no bloquea. El barrido queda de **guard permanente** contra regresiones de overflow.
+
+---
+
+## [2026-07-14] update | 🛑 Guard crt↔clave en el wizard de certificado AFIP + diagnóstico `cms.sign.invalid` (Fede)
+
+**Contexto (REGLA #0):** Fede cargó su cert de homologación (CUIT 20-42237416-8, monotributo,
+tenant DEV "Kiosco Buildi", emisor `61987bb0`, `afip_produccion=false`) y al emitir la primera
+Factura C de prueba AFIP devolvió **`WSAA ns1:cms.sign.invalid: Firma inválida`**.
+
+**Diagnóstico (todo homologación, NADA real emitido).** No es bug de algoritmo (el mismo
+`wsfe-sign.ts` SHA-256/PKCS#7 ya autenticó el cert RI el 11/07). Es "firma inválida" = la pública
+del `.crt` no aparea con la privada. La línea de tiempo del bucket lo confirma: entre generar el
+CSR (clave nueva) y subir el `.crt` pasaron **8 y 13 segundos** → imposible ir a ARCA y volver →
+Fede subió un `.crt` que ya tenía (de otro CSR), y además **regeneró el CSR en el medio**, lo que
+invalida cualquier `.crt` previo. El código de apareo (`finalizarCertificadoDesdeCsr`) estaba bien;
+faltaba el guard que valide que el `.crt` corresponde a la clave.
+
+**Fix (commit `cb5b1caa`, en `dev`; EF deployada en DEV; PROD pendiente):**
+- **Nueva EF `finalizar-certificado`**: baja la `.key` del CSR (`emisores_fiscales.csr_key_path`),
+  valida el par RSA (módulo + exponente) con `certKeyMatch` y **recién ahí** activa el cert; si no
+  aparea → 400 con mensaje claro. Mismo guard de identidad que `generar-csr`.
+- **Validación server-side a propósito**: la `.key` nunca viaja al browser → el cliente no puede
+  compararla; REGLA #0 exige el guard del lado del servidor, no solo la UI.
+- `finalizarCertificadoDesdeCsr` (`src/lib/afip.ts`) pasa a ser un invoke fino a la EF.
+- Helper puro `certMatch.ts` (forge inyectado, corre en Deno y Node) + **4 unit tests** nuevos.
+- Verde: unit **1037 passed + 5 todo** · `tsc` limpio · build OK. Sin migración.
+
+**Pendiente para Fede:** rehacer el cert de homologación **una sola pasada** (generar CSR → pegar
+ESE CSR en ARCA homologación → subir el `.crt` que ARCA emite para él, sin regenerar en el medio) y
+reintentar la Factura C de prueba. Con el guard vivo, un `.crt` equivocado ahora corta al subirlo,
+no al emitir.
+
+---
+
+## [2026-07-14] update | 🗄️ schema_full.sql regenerado (sin Docker) + ⚖️ blindaje legal + 🛑 fix alta de emisor (Fede)
+
+Sesión de 3 frentes, todo en `dev` (pusheado, NADA en PROD):
+
+**1. `schema_full.sql` destrabado y actualizado.** Estaba congelado en "migrations 001–024" (iba
+la 270). `supabase db dump` exige Docker y no hay wire-protocol desde la PC de GO (pooler=bug
+Supavisor; directo=IPv6 sin egress). Solución: introspección del catálogo vía **Management API**
+(execute_sql, mismo canal del MCP), base64 → archivo → node ensambla. Resultado: **435 KB, conteos
+exactos** (139 tablas, 103 funcs, 60 triggers, 157 policies, 6 vistas, 400 FKs). Script repetible
+**`npm run schema:dump`** (`scripts/dump-schema.mjs`, modo API con token + modo PG fallback; dep `pg`).
+Ver [[reference_schema_dump_metodo]].
+
+**2. Blindaje legal (decisiones GO).** Contra los 6 adjuntos de la agencia + normativa AR:
+- Ya teníamos T&C + Privacidad (Ley 25.326) + Botón de Arrepentimiento (24.240) + consentimiento
+  de marketing. Gaps cerrados: **Política de Cookies** nueva (`/cookies` + links en pies y T&C),
+  **Sentry sin Session Replay** (ya no graba pantalla; solo errores+rendimiento), **prohibiciones
+  tipo-EULA** y **cláusula de reembolsos** (10 días total, sin reembolso fuera de plazo) en T&C,
+  **Sentry+Google Maps** como sub-encargados en Privacidad, link **Defensa del Consumidor** en pies.
+- **Identidad del titular** centralizada en `LEGAL_TITULAR` (brand.ts): Federico Ezequiel Messina,
+  monotributo, CUIT 20-42237416-8, dom. Cnel. R. L. Falcón 2387 C1406 CABA. Fede = socio de GO,
+  es quien factura. `LEGAL_VERSION` bump a 2026-07-14. Decisiones: **sin SLA** (según
+  disponibilidad), refunds solo arrepentimiento, cookies sin banner.
+- 🔴 Pendiente antes de PROD: **revisión de abogado** + **registro AAIP** (trámites de GO, fuera
+  de la app). Ofrecido y no hecho aún: **DPA** para B2B grande.
+
+**3. 🛑 Fix REGLA #0 — alta de emisor de Fede fallaba con "Error al guardar el emisor".** Verificado
+contra DEV: NO era bug fiscal — el trigger `fn_enforce_limite_cuits` (mig 269) frena bien el 2º CUIT
+porque el plan incluye 1 (trial → tier 'pro' → cuits base 1, 0 adicionales). El bug real: el
+`PostgrestError` de Supabase NO es `instanceof Error` → el catch tragaba el mensaje real y mostraba
+el genérico. **Arreglado** (`EmisoresFiscalesPanel.tsx`: leer `.message` directo). Para que Fede
+pruebe multi-CUIT, GO autorizó **grant manual de 1 add-on `cuits` (fijo)** al tenant "Kiosco Buildi"
+(DEV, `35bc3348-…`, addon `096b146f-…`) → límite 1→2. ⚠ UX a decidir: un tenant en trial no puede
+comprar el add-on por MP (sin suscripción) — el mensaje "Suscripción → Add-ons" no le es accionable.
+
+**Pendiente de infra:** redeploy EF `ai-assistant` (DEV+PROD) por el knowledge regenerado — el
+comando `supabase functions deploy` lo bloquea el clasificador; GO lo corre a mano. Drift detectado:
+EF `verify_jwt` DEV=false / PROD=true (se preserva cada uno).
+
+---
+
+## [2026-07-13] deploy | 🚀 v1.129.0 a PROD — frontend multi-CUIT F4-F6 + wizard de cert (incl. emisor principal)
+
+GO autorizó el deploy a PROD con el alcance fiscal sobre la mesa. **Hallazgo en el camino
+(REGLA #0):** el wiki/log decían "F1-F6 + wizard en DEV y PROD", pero git/Vercel mostraban que
+**el PR #287 mergeado fue solo v1.126.0 (Fases 2+3)** — el frontend de v1.127.0 (⚠ **selector de
+emisor en la EMISIÓN de facturas**) y v1.128.0 (wizard de cert) **nunca habían ido a PROD**. Solo el
+backend/EF/DB estaba deployado. Un cliente en PROD no veía ni el selector ni el wizard.
+
+**Deploy (PR #288, squash a main, commit `404f676c`, tag+release `v1.129.0`):**
+- Resuelta la divergencia del squash de #287 mergeando `main`→`dev` (verificado: árbol idéntico a
+  dev, "dev es superconjunto" — mismo patrón que #285). PR #288 quedó mergeable.
+- **Migraciones 267-270 verificadas YA en PROD** (list_migrations) → sin migraciones nuevas; el
+  frontend tiene sus dependencias de DB. EFs sin cambios.
+- Checks de CI verdes (Unit Tests Vitest ✓, Vercel ✓; E2E skipping por secrets).
+- **Vercel PROD READY** (`app.genesis360.pro` / `genesis360.pro`, dpl_C9C2…). DEV branch también
+  READY (`genesis360-git-dev-…`).
+
+**A PROD fueron 3 releases juntos:** v1.127.0 (Fases 4-6 frontend), v1.128.0 (wizard frontend),
+v1.129.0 (wizard para el emisor principal + `src/lib/csrCert.ts` + tests). Detalle abajo ↓.
+
+**Validación:** unit 1033+5 todo · e2e DEV `61_generar_csr_ef` (5/5) + `62_wizard_cert_principal_ui`
+(clickthrough UI 2/2). **▶ GO probando en paralelo DEV+PROD (clickthrough manual) para detectar más
+cosas.** ⚠ Emisión real con 2 CUITs distintos sigue pendiente (necesita el cert de Fede).
+
+---
+
 ## [2026-07-12] update | 🛑 Fix (hallazgo GO): el wizard de certificado NO estaba para el emisor PRINCIPAL + cobertura de tests del primer certificado (v1.129.0)
 
 **GO reportó:** "En configuración, facturación, no tengo como crear el CRT desde el certificado

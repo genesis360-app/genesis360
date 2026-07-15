@@ -417,7 +417,7 @@ export function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0">
 
         {/* Header universal */}
-        <header className="flex items-center gap-2 px-4 py-2.5 bg-surface border-b border-border-ds flex-shrink-0">
+        <header className="flex items-center gap-2 px-3 sm:px-4 py-2.5 bg-surface border-b border-border-ds flex-shrink-0">
 
           {/* Hamburger (mobile) */}
           <button onClick={() => setSidebarOpen(true)} className={`lg:hidden ${hBtn}`}>
@@ -457,7 +457,7 @@ export function AppLayout() {
                   {/* ISS-108 — Mobile (<640px): ícono + nombre. Si puede cambiar, <select> transparente encima */}
                   <div className="relative sm:hidden flex items-center gap-1 mr-1">
                     <Building2 size={14} className="text-muted flex-shrink-0" />
-                    <span className={`text-xs font-medium truncate max-w-[90px] ${nombreSucursal ? 'text-primary dark:text-white' : puedeVerTodas ? 'text-muted' : 'text-orange-500'}`}>
+                    <span className={`text-xs font-medium truncate max-w-[52px] ${nombreSucursal ? 'text-primary dark:text-white' : puedeVerTodas ? 'text-muted' : 'text-orange-500'}`}>
                       {etiquetaMobile}
                     </span>
                     {puedeCambiarMobile && (
@@ -521,8 +521,9 @@ export function AppLayout() {
               )
             })()}
 
-            {/* Refresh */}
-            <RefreshButton className={hBtn} />
+            {/* Refresh — oculto en mobile (<sm): el header no entra (461px) y es redundante
+                (refresh automático al navegar por staleTime:0 + reload del browser). */}
+            <span className="hidden sm:inline-flex"><RefreshButton className={hBtn} /></span>
 
             {/* Notificaciones */}
             <AiAssistant className={hBtn} contexto={{
@@ -555,9 +556,10 @@ export function AppLayout() {
               </svg>
             </button>
 
-            {/* Config */}
+            {/* Config — oculto en mobile (<sm): Configuración está en el menú lateral (hamburguesa)
+                para DUEÑO/SUPER; libera ancho para que el avatar no quede clippeado. */}
             {(user?.rol === 'DUEÑO' || user?.rol === 'SUPER_USUARIO') && (
-              <ConfigButton className={hBtn} />
+              <span className="hidden sm:inline-flex"><ConfigButton className={hBtn} /></span>
             )}
 
             {/* Avatar + dropdown */}

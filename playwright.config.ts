@@ -71,7 +71,22 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
       dependencies: ['setup-owner'],
-      testIgnore: /1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante/,
+      testIgnore: /1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante|88_mobile_responsive/,
+    },
+
+    // ─── Barrido responsive/mobile (owner) — viewport de celular, mismo storageState.
+    // isMobile+hasTouch emulan un teléfono real; el spec itera 375px y 360px con setViewportSize.
+    {
+      name: 'chromium-mobile',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 375, height: 667 },
+        isMobile: true,
+        hasTouch: true,
+        storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
+      },
+      dependencies: ['setup-owner'],
+      testMatch: /88_mobile_responsive\.spec\.ts/,
     },
 
     // ─── Tests CAJERO — solo si hay credenciales

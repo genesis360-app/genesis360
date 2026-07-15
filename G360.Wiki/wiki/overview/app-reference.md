@@ -449,7 +449,7 @@ Módulo de facturación electrónica AFIP.
 
 **Tipos de comprobante:** Factura A (RI a RI), Factura B (RI a CF/Monotributista), Factura C (Monotributista emisor)
 
-**Configuración requerida:** certificado digital .p12 + clave, CUIT, punto de venta AFIP (en `/configuracion` → tab AFIP).
+**Configuración requerida:** certificado digital (**.crt + .key**, no .p12), CUIT, condición IVA y punto de venta AFIP — en `/configuracion` → tab **Facturación**. Un negocio puede facturar con **más de un CUIT** (multi-CUIT: sección "Emisores fiscales", cada emisor con su cert y sus PV; la venta usa el emisor de su sucursal o el principal). Si no tenés el certificado, el **asistente** genera la clave y el CSR por vos (Generar CSR → pegarlo en ARCA → subir el .crt); disponible tanto para el **CUIT principal** como para los adicionales.
 
 **Emisión desde ventas:** también se puede emitir desde el historial de ventas directamente (acceso rápido).
 
@@ -704,7 +704,7 @@ Setup completo del negocio y sus parámetros. Solo DUEÑO.
   - **TiendaNube**: OAuth, conectar tienda, sincronizar stock, mapear productos
   - **MercadoPago**: OAuth, conectar cuenta, gestionar suscripción Genesis360
   - **MercadoLibre**: OAuth, conectar cuenta, mapear publicaciones
-  - **AFIP**: subir certificado .p12, ingresar clave privada, CUIT, puntos de venta
+  - **AFIP (en el tab Facturación)**: cargar certificado (**.crt + .key**) o generarlo con el **asistente** (Generar CSR → ARCA → subir el .crt), CUIT, condición IVA, puntos de venta. Multi-CUIT: sección "Emisores fiscales" para facturar con más de una razón social (cada una con su cert y sus PV)
   - **MODO** (v1.8.25): QR interoperable bancario. Configura Merchant ID + API Key + ambiente (test/prod). Al conectar: botón QR aparece en VentasPage al seleccionar "MODO" como medio de pago. Genera QR + deep link para compartir. Edge Function: modo-crear-pago.
 - **API**: generar y revocar API keys para integración de sistemas externos (solo lectura)
 - **Estados** (sub-tab): dentro del tab "Estados" hay 3 sub-tabs:

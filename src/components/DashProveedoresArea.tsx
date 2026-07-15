@@ -307,7 +307,9 @@ export function DashProveedoresArea({ section, embedded }: { section?: DashSecti
 
       {showG && (<>
       {/* Charts fila 1 */}
-      <div className="grid lg:grid-cols-2 gap-4">
+      {/* grid-cols-1 base: sin él, `grid` a secas crea una columna implícita de max-content
+          que en mobile crece al ancho natural del contenido y desborda (fix responsive). */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Donut Top proveedores */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4"><DollarSign size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Concentración de Gasto</h3><span className="ml-auto text-xs text-muted">Top 5 proveedores</span></div>

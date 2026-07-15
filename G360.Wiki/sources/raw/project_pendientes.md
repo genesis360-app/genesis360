@@ -6,7 +6,86 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🔐 (2026-07-12 · FIX — WIZARD DE CERT PARA EL EMISOR PRINCIPAL + tests del 1er certificado · v1.129.0 · SIN COMMITEAR, NADA EN PROD)
+> ### 📱 (2026-07-15 · SET DE PRUEBAS RESPONSIVE + fixes de overflow en Dashboard/Métricas · commit `e95297bf` en dev · barrido 11/11 verde · PROD pendiente)
+> **Cerrado el pendiente de mobile que venía del 13/07.** GO: "en el celular se sale contenido del
+> marco". Causa de fondo: `AppLayout.tsx:382` clippea con `overflow-hidden` en la raíz → el overflow
+> **no scrollea, se corta**. **Infra nueva:** helper `detectarOverflowHorizontal` (mide dentro del
+> `<main>`, elemento Y contenido de texto; ignora scroll intencional) + project `chromium-mobile`
+> (375/360px) + spec `88_mobile_responsive` (10 pantallas × 2 viewports). **Fixes:** Dashboard cards
+> `grid lg:grid-cols-2`→`grid-cols-1 lg:grid-cols-2` (columna implícita max-content) · chart scatter
+> `ReferenceLine position:right`→`insideTopRight`+`overflow-hidden` · Métricas selector `flex-wrap` +
+> card "Resultado" `grid-cols-3`→`grid-cols-1 sm:grid-cols-3`. Typecheck+build verdes.
+> **✅ Header responsive (commit `39f27e9b`):** el guard se extendió a medir el `<header>` — medía 461px
+> y clippeaba el **avatar (logout/mi cuenta)** fuera de pantalla en ≤375px. Fix: en mobile se ocultan
+> Refresh + Config (reachables por otro lado) + sucursal `max-w-52` + header `px-3 sm:px-4` → ~348px,
+> entra con margen. **▶ PENDIENTE:** (a) **deploy a PROD** (release con OK de GO — junta con el guard
+> cert); (b) sub-tabs del Dashboard viven en scroll container (aceptable); (c) ampliar el barrido a
+> sub-tabs/chips internos (hoy mide la vista default de cada ruta).
+
+> ### 🛑 (2026-07-14 · GUARD crt↔clave en el wizard de cert AFIP + diagnóstico `cms.sign.invalid` de Fede · commit `cb5b1caa` en dev · EF en DEV · PROD pendiente)
+> **Fede probó la 1ª Factura C de homologación con su cert (CUIT 20-42237416-8, tenant DEV "Kiosco
+> Buildi", emisor `61987bb0`, `afip_produccion=false`) y AFIP devolvió `WSAA cms.sign.invalid: Firma
+> inválida`.** Nada real emitido (homologación). **Diagnóstico:** no es algoritmo (mismo `wsfe-sign.ts`
+> ya autenticó el cert RI el 11/07) — la pública del `.crt` no aparea con la privada. Los timestamps
+> del bucket (8 y 13 s entre generar CSR y subir `.crt`) prueban que Fede subió un `.crt` viejo (de
+> otro CSR) y **regeneró el CSR en el medio**. El apareo estaba bien; faltaba validar.
+> **Fix (guard REGLA #0):** nueva **EF `finalizar-certificado`** (baja la `.key` del CSR, valida el par
+> RSA con `certKeyMatch` y recién ahí activa; si no aparea → 400 claro). Validación **server-side** a
+> propósito (la `.key` nunca va al browser). `finalizarCertificadoDesdeCsr` ahora invoca la EF. Helper
+> puro `certMatch.ts` + 4 unit tests. Verde (unit 1037, tsc, build). Sin migración. **EF deployada en
+> DEV (v1)**; commit `cb5b1caa` en `dev`.
+> **▶ PENDIENTE:** (a) **redeploy frontend DEV** para que el wizard use la EF (el push de `dev` ya lleva
+> el `afip.ts` nuevo — ⚠ orden: EF antes que frontend, ya cumplido); (b) **Fede rehace el cert de
+> homologación en una sola pasada** (generar CSR → pegar ESE CSR en ARCA → subir el `.crt` que ARCA
+> emite, sin regenerar) y reintenta la Factura C; (c) **deploy a PROD** de la EF + frontend (release,
+> con OK de GO).
+
+> ### 🗄️⚖️ (2026-07-14 · schema_full.sql REGENERADO + BLINDAJE LEGAL en dev + fix alta de emisor + EF ai-assistant redeploy · TODO EN DEV, PROD sigue v1.129.0)
+> **3 frentes, 5 commits en `dev` (`20e0ff89`→`33fc0129`), pusheados. Nada nuevo en PROD salvo el
+> redeploy del Asistente IA (no cambia fiscal/legal, solo su doc).**
+> 1. **✅ `schema_full.sql` DESTRABADO** (pendiente histórico cerrado). `supabase db dump` exige Docker
+>    y no hay wire-protocol desde la PC de GO (pooler=bug Supavisor, directo=IPv6 sin egress) →
+>    regenerado vía **Management API/execute_sql** (introspección catálogo → base64 → archivo → node
+>    ensambla). Script repetible **`npm run schema:dump`** (`scripts/dump-schema.mjs`: modo API con
+>    `SUPABASE_ACCESS_TOKEN` + modo PG fallback; dep nueva `pg`). 435 KB, conteos exactos vs catálogo
+>    (139 tablas, 103 funcs, 157 policies, 6 vistas, 400 FKs). Ver [[reference_schema_dump_metodo]].
+> 2. **✅ BLINDAJE LEGAL (en dev, NO en PROD).** Revisión vs los 6 adjuntos de agencia + normativa AR.
+>    Ya teníamos T&C + Privacidad (25.326) + Botón de Arrepentimiento (24.240) + consent marketing.
+>    **Gaps cerrados:** Política de **Cookies** nueva (`/cookies` + links en pies/T&C), **Sentry SIN
+>    Session Replay** (`main.tsx`, ya no graba pantalla), **EULA/reembolsos** en T&C, **Sentry+Google
+>    Maps** como sub-encargados en Privacidad, link **Defensa del Consumidor**. **Identidad del
+>    titular** centralizada en `LEGAL_TITULAR` (brand.ts): Federico Ezequiel Messina, monotributo,
+>    CUIT 20-42237416-8, Cnel. R.L. Falcón 2387 C1406 CABA (Fede = socio de GO, factura él).
+>    `LEGAL_VERSION`=2026-07-14. Decisiones GO: **sin SLA**, refunds solo arrepentimiento, cookies sin
+>    banner. 🔴 **ANTES DE MOSTRAR EN PROD: revisión de ABOGADO + registro AAIP** (trámites de GO,
+>    fuera de la app). Ofrecido y NO hecho aún: **DPA** para clientes B2B grandes.
+> 3. **🛑 Fix REGLA #0 — alta de emisor de Fede** ("Error al guardar el emisor" genérico). NO era bug
+>    fiscal: el trigger `fn_enforce_limite_cuits` (mig 269) frena bien el 2º CUIT (el plan trae 1;
+>    trial→tier 'pro'→cuits base 1). El bug real: el `PostgrestError` de Supabase NO es `instanceof
+>    Error` → el catch tragaba el mensaje real. **Arreglado** (`EmisoresFiscalesPanel.tsx`, leer
+>    `.message` directo). GO autorizó **grant manual de 1 add-on `cuits` (fijo)** a "Kiosco Buildi"
+>    (DEV `35bc3348-…`, addon `096b146f-…`) → límite 1→2, Fede ya puede cargar "Messina SA".
+>    ⚠ UX a decidir: en trial no se puede comprar el add-on por MP (sin suscripción) → el mensaje
+>    "Suscripción → Add-ons" no es accionable ahí.
+> 4. **✅ EF `ai-assistant` REDEPLOYADA en DEV y PROD** (por el knowledge regenerado). Lección:
+>    `supabase functions deploy` **NO necesita Docker** (el `WARNING: Docker is not running` es
+>    inofensivo; solo `db dump`/`functions serve` local lo piden). `verify_jwt` preservado por
+>    ambiente: **DEV=false / PROD=true** (drift viejo, se respeta cada uno).
+> **▶ PRÓXIMA SESIÓN:** (a) cuando el abogado apruebe los textos → **deploy legal a PROD** con bump de
+> versión + release + `npm run ai:knowledge`/redeploy si se tocó app-reference; (b) **mobile
+> responsive** (sigue pendiente, ver bloque de abajo); (c) decidir/redactar el **DPA**; (d) emisión
+> real con 2 CUITs (cert de Fede).
+
+> ### 🚀 (2026-07-13 · v1.129.0 DEPLOYADO A PROD — frontend multi-CUIT F4-F6 + wizard de cert)
+> **GO autorizó el deploy a PROD.** PR #288 (squash a main, commit `404f676c`, tag+release
+> `v1.129.0`). **Hallazgo (REGLA #0):** el PR #287 había mergeado solo v1.126.0 (Fases 2+3) — el
+> frontend de v1.127.0 (⚠ selector de emisor en la EMISIÓN) y v1.128.0 (wizard) **nunca habían ido a
+> PROD** (solo el backend/EF/DB). Ahora sí: a PROD fueron **v1.127+128+129 juntos**. Migs 267-270 ya
+> estaban en PROD (verificado), sin migraciones nuevas, EFs sin cambios. Vercel PROD READY
+> (`app.genesis360.pro`), DEV branch READY. CI verde. **▶ AHORA:** GO probando DEV+PROD en paralelo
+> (clickthrough manual) para detectar más cosas. Pendiente real: emisión con 2 CUITs (cert de Fede).
+>
+> ### 🔐 (2026-07-12 · FIX — WIZARD DE CERT PARA EL EMISOR PRINCIPAL + tests del 1er certificado · v1.129.0)
 > **Hallazgo de GO:** "no tengo como crear el CRT desde el certificado principal". Confirmado: el
 > wizard self-service (Generar CSR → ARCA → subir `.crt`, v1.128.0) estaba **SÓLO en emisores
 > adicionales** (`!e.es_default`); el **principal** sólo tenía carga manual `.crt`+`.key` → **el que
@@ -22,12 +101,15 @@ type: project
 > - Tests: **unit** `csrCert.test.ts` (14) · **e2e** `61_generar_csr_ef.spec.ts` **corrido en DEV 5/5**
 >   (401/403/400 + happy path CSR PKCS#10 real, `.key` no sale del server, con cleanup) · **UAT §11.b**
 >   (CERT-01→10) · plan `facturacion.plan.md §11`. build ✓ · typecheck ✓ · unit **1033+5 todo**.
-> **▶ FALTA (decisión de GO):** commitear en `dev` y sumar al **PR #287** (o PR nuevo). Sin migraciones
-> nuevas (usa la 270 ya en PROD). `generar-csr` NO cambió. CERT-04 (pegar en ARCA + subir `.crt`) es
-> **manual e ineludible** (clave fiscal). Esto **destraba** el onboarding del 1er certificado que
+> **✅ DEPLOYADO:** commiteado (`731048b1` + test UI `dfbc21e8`) y mergeado a PROD vía PR #288 (ver el
+> bloque de arriba). `generar-csr` NO cambió. CERT-04 (pegar en ARCA + subir `.crt`) sigue siendo
+> **manual e ineludible** (clave fiscal). Esto **destrabó** el onboarding del 1er certificado que
 > quedaba pendiente en el punto F4b de la entrada de multi-CUIT (abajo).
 >
 > ### 📱 (2026-07-13 · PRÓXIMO: SET DE PRUEBAS MOBILE RESPONSIVE + FIXES · deploy multi-CUIT YA HECHO)
+> **✅ HECHO el 2026-07-15** (commit `e95297bf`, ver el bloque de arriba). El plan de abajo se ejecutó:
+> helper de overflow + spec `88_mobile_responsive` + fixes en Dashboard/Métricas, 11/11 verde. Queda
+> el header/sub-tabs (≤360px) como follow-up.
 > **Multi-CUIT F1-F6 + wizard de cert están 100% deployados en DEV y PROD** (ver la entrada
 > siguiente y el log 2026-07-13). **Falta solo que GO mergee el PR #287** (frontend v1.128.0 a PROD).
 > **▶ TAREA PRINCIPAL PENDIENTE — pruebas mobile (GO la pidió, la arrancamos y frenamos):** en la

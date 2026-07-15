@@ -334,7 +334,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
 
       {/* Scatter subsidio vs ganancia */}
       {(eData?.scatterData ?? []).length > 0 && (
-        <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
+        <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 mb-1"><AlertTriangle size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Subsidio Logístico vs Ganancia Neta</h3></div>
           <p className="text-xs text-muted mb-4 ml-5">Cada punto = una venta. Puntos por encima de la línea roja = pérdida real por el flete.</p>
           <ResponsiveContainer width="100%" height={200}>
@@ -343,7 +343,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
               <XAxis type="number" dataKey="gananciaNeta" name="Ganancia neta" tickFormatter={v => `$${(v/1000).toFixed(0)}K`} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} label={{ value: 'Ganancia neta →', position: 'insideRight', fontSize: 9, fill: '#9CA3AF' }} />
               <YAxis type="number" dataKey="costoEnvio" name="Subsidio" tickFormatter={v => `$${(v/1000).toFixed(0)}K`} tick={{ fontSize: 10, fill: '#9CA3AF' }} axisLine={false} tickLine={false} label={{ value: '↑ Subsidio flete', angle: -90, position: 'insideLeft', fontSize: 9, fill: '#9CA3AF' }} />
               <Tooltip content={<EnvioTooltip />} />
-              <ReferenceLine y={0} stroke="#EF4444" strokeDasharray="5 3" strokeWidth={1.5} label={{ value: 'Punto de equilibrio', position: 'right', fontSize: 9, fill: '#EF4444' }} />
+              <ReferenceLine y={0} stroke="#EF4444" strokeDasharray="5 3" strokeWidth={1.5} label={{ value: 'Punto de equilibrio', position: 'insideTopRight', fontSize: 9, fill: '#EF4444' }} />
               <Scatter data={eData!.scatterData}>
                 {(eData!.scatterData as any[]).map((d, i) => (
                   <Cell key={i} fill={d.deficit ? '#EF4444' : '#7B00FF'} fillOpacity={0.7} />

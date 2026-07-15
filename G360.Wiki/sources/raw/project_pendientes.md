@@ -15,10 +15,12 @@ type: project
 > `grid lg:grid-cols-2`→`grid-cols-1 lg:grid-cols-2` (columna implícita max-content) · chart scatter
 > `ReferenceLine position:right`→`insideTopRight`+`overflow-hidden` · Métricas selector `flex-wrap` +
 > card "Resultado" `grid-cols-3`→`grid-cols-1 sm:grid-cols-3`. Typecheck+build verdes.
-> **▶ PENDIENTE:** (a) **deploy a PROD** (release con OK de GO — junta con el guard cert); (b) **header
-> (❓) + sub-tabs apretados a ≤360px** — fuera del `<main>`, layout compartido, quedó como follow-up
-> de bajo impacto; (c) ampliar el barrido a sub-tabs/chips internos (el spec mide la vista default de
-> cada ruta).
+> **✅ Header responsive (commit `39f27e9b`):** el guard se extendió a medir el `<header>` — medía 461px
+> y clippeaba el **avatar (logout/mi cuenta)** fuera de pantalla en ≤375px. Fix: en mobile se ocultan
+> Refresh + Config (reachables por otro lado) + sucursal `max-w-52` + header `px-3 sm:px-4` → ~348px,
+> entra con margen. **▶ PENDIENTE:** (a) **deploy a PROD** (release con OK de GO — junta con el guard
+> cert); (b) sub-tabs del Dashboard viven en scroll container (aceptable); (c) ampliar el barrido a
+> sub-tabs/chips internos (hoy mide la vista default de cada ruta).
 
 > ### 🛑 (2026-07-14 · GUARD crt↔clave en el wizard de cert AFIP + diagnóstico `cms.sign.invalid` de Fede · commit `cb5b1caa` en dev · EF en DEV · PROD pendiente)
 > **Fede probó la 1ª Factura C de homologación con su cert (CUIT 20-42237416-8, tenant DEV "Kiosco

@@ -33,9 +33,17 @@ corta** — por eso un detector basado en el scroll del documento no ve nada.
 - **8/10 pantallas ya estaban limpias** (Ventas, Caja, Facturación, Clientes, Productos, Inventario,
   Gastos, Configuración).
 
-**Pendiente (follow-up, NO cubierto por el guard):** header (ícono ❓) y sub-tabs ("Métric") apretados
-a ≤360px — están **fuera del `<main>`** (layout compartido), riesgo/beneficio no justifica tocarlo en
-la misma tanda. El barrido queda de **guard permanente** contra regresiones de overflow.
+**Header responsive (misma tanda, commit `39f27e9b`).** El guard se extendió para medir también el
+`<header>` (fuera del `<main>`): medía **461px** → en 360/375px clippeaba los últimos íconos, incluido
+el **AVATAR (mi cuenta/logout)** y Config, que quedaban **fuera de pantalla (inaccesibles)** — más serio
+de lo que parecía. Fix (`AppLayout.tsx`): en mobile (`<sm`) se ocultan **Refresh** (redundante: refresh
+automático al navegar por `staleTime:0`) y **Config** (está en el menú lateral para DUEÑO/SUPER) +
+nombre de sucursal `max-w-52` + header `px-3 sm:px-4`. Header 461→~348px, entra en 360px con margen; se
+mantienen AI, Notificaciones, Tema, Ayuda y Avatar con touch target completo. `detectarOverflowHorizontal`
+ahora acepta `selector` (mide `<main>` Y `<header>`). **Barrido 11/11 verde** (contenido + header, 375 y 360px).
+
+Sub-tabs del Dashboard ("Métric"): viven en un scroll container (`overflow-x-auto`) → scroll intencional,
+aceptable, no bloquea. El barrido queda de **guard permanente** contra regresiones de overflow.
 
 ---
 

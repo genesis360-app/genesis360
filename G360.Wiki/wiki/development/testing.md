@@ -121,7 +121,7 @@ npm run test:unit:coverage # coverage report
 | `14_coherencia_numeros.spec.ts` | Coherencia KPIs (badge alertas capea en "9+") | ✅ |
 | `15_rol_supervisor.spec.ts` | Rol SUPERVISOR | ✅ |
 | `16_rol_rrhh.spec.ts` | Rol RRHH | ✅ |
-| `88_mobile_responsive.spec.ts` | **Barrido responsive mobile** — 10 pantallas × 2 viewports (375/360px), assertea sin overflow horizontal. Project `chromium-mobile` (`isMobile`+`hasTouch`, sesión owner). Helper `detectarOverflowHorizontal` mide dentro del `<main>` (el root `AppLayout` clippea con `overflow-hidden`) tanto rect como overflow de texto, ignorando scroll intencional | ✅ |
+| `88_mobile_responsive.spec.ts` | **Barrido responsive mobile** — 10 pantallas × 2 viewports (375/360px), assertea sin overflow horizontal en el **contenido (`<main>`) Y el `<header>`**. Project `chromium-mobile` (`isMobile`+`hasTouch`, sesión owner). Helper `detectarOverflowHorizontal(page, { selector })` mide dentro del contenedor (el root `AppLayout` clippea con `overflow-hidden`) tanto rect como overflow de texto, ignorando scroll intencional | ✅ |
 
 > **Barrido responsive (2026-07-15):** primera cobertura mobile en e2e. Detecta el patrón "se sale del marco" (contenido más ancho que el `<main>`). Corre en su propio project `chromium-mobile`; el project desktop lo excluye por `testIgnore`. Guard contra regresiones de overflow. Ver log 2026-07-15.
 

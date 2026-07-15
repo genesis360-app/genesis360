@@ -41,13 +41,16 @@ test.describe('Mobile responsive — sin overflow horizontal', () => {
         // Dar tiempo a que rendericen números/gráficos async (KPIs, charts).
         await page.waitForTimeout(600)
 
-        const r = await detectarOverflowHorizontal(page)
-        if (r.scrolls) {
+        // Se mide el contenido (<main>) Y el header (fuera del main, layout compartido). Los dos
+        // clippean bajo el `overflow-hidden` de la raíz, así que el overflow se corta y no scrollea.
+        for (const region of [{ label: 'contenido', sel: undefined }, { label: 'header', sel: 'header' }]) {
+          const r = await detectarOverflowHorizontal(page, { selector: region.sel })
+          if (!r.scrolls) continue
           const detalle = r.offenders.slice(0, 6).map((o) =>
             `      · <${o.tag}${o.id ? '#' + o.id : ''}> "${o.text}" right=${o.right}px w=${o.width} cls="${o.cls}"`,
           ).join('\n')
           fallas.push(
-            `  [${vp.label} ${vp.width}px] scrollWidth=${r.scrollWidth} > viewport=${r.clientWidth}\n` +
+            `  [${vp.label} ${vp.width}px · ${region.label}] scrollWidth=${r.scrollWidth} > ${r.clientWidth}\n` +
             (detalle || '      (sin ofensor puntual identificado — revisar layout general del contenedor)'),
           )
         }

@@ -54,20 +54,28 @@ export interface OverflowReport {
   offenders: OverflowOffender[]
 }
 
+export interface OverflowOpts {
+  /** Selector del contenedor a medir. Default: `<main>` (con fallbacks). Ej: `'header'`. */
+  selector?: string
+  tolerancePx?: number
+}
+
 /**
  * Mide el overflow horizontal en el viewport vigente. ⚠ NO mide el documento: el layout raíz
  * (`AppLayout`) tiene `overflow-hidden`, así que el overflow NO scrollea la página — se CLIPPEA
- * (el síntoma "se sale del marco" = contenido cortado). Por eso se mide dentro del contenedor de
- * contenido (`<main>`, con fallbacks). Se ignora el scroll horizontal INTENCIONAL (ancestros con
- * `overflow-x: auto|scroll` — tablas, tabs, chips), pero NO el `overflow-hidden` (ese es el clip
- * que enmascara el bug). `tolerancePx` absorbe redondeos sub-pixel. Corre en el browser.
+ * (el síntoma "se sale del marco" = contenido cortado). Por eso se mide dentro de un contenedor
+ * (`<main>` por default; pasar `selector` para medir otro, p.ej. `'header'`). Se ignora el scroll
+ * horizontal INTENCIONAL (ancestros con `overflow-x: auto|scroll` — tablas, tabs, chips), pero NO
+ * el `overflow-hidden` (ese es el clip que enmascara el bug). `tolerancePx` absorbe redondeos.
  */
-export async function detectarOverflowHorizontal(page: Page, tolerancePx = 2): Promise<OverflowReport> {
-  return await page.evaluate((tol) => {
-    const container =
-      (document.querySelector('main') as HTMLElement | null) ||
-      (document.querySelector('.flex-1.min-w-0') as HTMLElement | null) ||
-      document.body
+export async function detectarOverflowHorizontal(page: Page, opts: OverflowOpts = {}): Promise<OverflowReport> {
+  const { selector, tolerancePx = 2 } = opts
+  return await page.evaluate(({ tol, sel }) => {
+    const container = sel
+      ? ((document.querySelector(sel) as HTMLElement | null) ?? document.body)
+      : ((document.querySelector('main') as HTMLElement | null) ||
+         (document.querySelector('.flex-1.min-w-0') as HTMLElement | null) ||
+         document.body)
     const cRect = container.getBoundingClientRect()
     const clientWidth = container.clientWidth
     const scrollWidth = container.scrollWidth
@@ -117,5 +125,5 @@ export async function detectarOverflowHorizontal(page: Page, tolerancePx = 2): P
       container: `${container.tagName.toLowerCase()}.${ccn.split(' ').slice(0, 2).join('.')}`,
       offenders: offenders.slice(0, 15),
     }
-  }, tolerancePx)
+  }, { tol: tolerancePx, sel: selector ?? null })
 }

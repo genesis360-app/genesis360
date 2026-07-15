@@ -47,12 +47,27 @@ SQL — el usuario e2e de siempre es de Jorgito, que tiene 2 emisores pero **1 s
 `E2E_MULTICUIT_*` en `tests/e2e/.env.test.local` (gitignored). ⚠ **Gotcha:** el `#` en un password rompe
 el parseo del `.env` (lo toma como comentario y trunca el valor) → passwords de test sin `#`.
 
-**⚠ Fixture del spec 42 CONSUMIDA.** La corrida de esta sesión emitió la NC de la última devolución
-pendiente de la venta #239 (`nc_cae` 86280567040037) → **el spec 42 ahora falla** hasta sembrar una
-devolución nueva sin `nc_cae`. Es la trampa ya documentada (los specs mutantes deben generar su propia
-precondición); encima el spec **assertea en vez de skipear**, contra lo que dice su propio docstring.
+**✅ Spec 42 reparado de raíz (commit `fbd28842`).** La corrida de validación consumió su fixture
+(le escribió `nc_cae`) y lo dejó rojo — que es justo la trampa documentada: **dependía de una devolución
+sembrada a mano, la 1ª corrida la consumía y quedaba ROJO para siempre**; encima asserteaba en vez de
+skipear, contra su propio docstring. Ahora **siembra su propia precondición**: si no hay devolución
+`facturada` sin `nc_cae`, la crea por API con el token del owner (policies `dev_tenant_insert` /
+`devitem_tenant_insert`, tenant-scoped). `devoluciones` **no tiene triggers** → no toca stock ni caja,
+solo crea el papel que la emisión necesita. **Verificado corriendo el spec DOS VECES seguidas**: ambas
+verdes, cada una auto-sembró y emitió su propia NC-C con CAE real (nº12 y nº13).
 
-Verde: unit **1045 + 5 todo** · tsc · build · e2e facturación (21 con **CAE real**, 56, 63, 86).
+**🔎 Hallazgo colateral: los specs de API se SKIPEABAN en silencio.** `tests/e2e/.env.test.local` no
+tenía `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` → los specs **56 (guards fiscales) y 63** se omitían
+en `npm run test:e2e` (solo corrían pasando `-e .env.local` a mano). Agregadas al env de e2e (la anon key
+es **pública**, ya viaja en el bundle; el archivo sigue gitignored). Ahora corren en la suite estándar.
+
+**🚀 EF `emitir-factura` DEPLOYADA A PROD (v17, `verify_jwt=true` preservado)** con el hardening del
+certificado. Smoke post-deploy: anon → **401** del guard de identidad (no 500) → la EF bootea bien y
+`certSelect.ts` importa correcto, sin corte fiscal. En DEV quedó con el mismo código, validada por los
+e2e que emiten CAE real (21 Factura C, 42 NC-C).
+
+Verde: unit **1045 + 5 todo** · tsc · build · e2e facturación (21 con **CAE real**, 42 con **NC-C real**
+×2 corridas, 56, 63, 86).
 
 ---
 

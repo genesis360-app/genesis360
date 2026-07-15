@@ -20,10 +20,13 @@ type: project
 > **✅ e2e `63_multicuit_emisor_guards` (7/7):** el EMISOR gobierna la letra; cubre la rama **"RI rechaza
 > C"** que el 56 no podía. Usuario nuevo **solo DEV** `e2e-multicuit@genesis360.test` (DUEÑO de Kiosco
 > Buildi) + vars `E2E_MULTICUIT_*` en `.env.test.local`. ⚠ Gotcha: **un `#` en el password rompe el `.env`**.
-> **▶ PENDIENTE:** (a) **deploy de `emitir-factura` a PROD** con el hardening (OK de GO); (b) **⚠ fixture
-> del spec 42 CONSUMIDA** en esta sesión (se emitió la NC de la última devolución pendiente de la venta
-> #239) → el spec falla hasta sembrar una devolución nueva sin `nc_cae`; además **assertea en vez de
-> skipear** (arreglar: que genere su propia precondición).
+> **✅ CERRADO TODO (2026-07-15):** (a) **EF `emitir-factura` en PROD v17** (`verify_jwt=true` preservado)
+> con el hardening; smoke post-deploy anon→401 del guard (no 500) → bootea bien, sin corte fiscal.
+> (b) **Spec 42 reparado de raíz** (commit `fbd28842`): **siembra su propia precondición** por API (token
+> del owner; `devoluciones` no tiene triggers → no toca stock ni caja). Verificado corriendo **2 veces
+> seguidas**: ambas verdes, cada una auto-sembró y emitió su NC-C real (nº12 y nº13). Ya no es one-shot.
+> (c) **Los specs de API ya no se skipean en silencio**: faltaban `VITE_SUPABASE_URL`/`ANON_KEY` en
+> `tests/e2e/.env.test.local` → los specs **56 y 63** se omitían en `npm run test:e2e`. Agregadas.
 
 > ### 🚀 (2026-07-15 · **v1.130.0 EN PROD** — PR #289 · mobile responsive + guard cert AFIP + blindaje legal)
 > **PROD = v1.130.0** (main `4937ec3c`, tag+release publicados). Contenido: barrido responsive

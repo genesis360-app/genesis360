@@ -128,6 +128,10 @@ npm run test:unit:coverage # coverage report
 
 > Las specs E2E son **defensivas**: corren contra el DEV compartido y se omiten (sin fallar) cuando la precondición de estado no está dada (ej. caja sin sesión, <2 cajas para traspaso). Nunca mutan sin limpiar (crear→verificar→baja/eliminar).
 
+> **🌱 Los specs MUTANTES siembran su propia precondición (regla, 2026-07-15).** Depender de un fixture sembrado a mano es una trampa: la PRIMERA corrida lo consume y el spec queda **rojo para siempre**. Le pasó al **42** (la corrida de validación le escribió el `nc_cae` a la última devolución pendiente) → ahora se siembra solo por API con el token del owner (`devoluciones` no tiene triggers → no toca stock ni caja). Si un spec mutante necesita un estado previo, **que lo cree él**. Verificar el fix corriendo el spec **dos veces seguidas**.
+
+> **⚙️ Env de e2e:** `tests/e2e/.env.test.local` incluye `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (la anon key es **pública**, ya viaja en el bundle del frontend). Sin ellas, los specs de API (**42** auto-siembra, **56** guards fiscales, **63** multi-CUIT) se **SKIPEAN en silencio** en `npm run test:e2e` — pasó hasta el 2026-07-15. ⚠ **Un `#` en un password rompe el parseo del `.env`** (lo toma como comentario y trunca el valor) → passwords de test sin `#`.
+
 ### Configuración Playwright
 
 ```typescript

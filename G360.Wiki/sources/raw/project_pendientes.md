@@ -6,7 +6,28 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📱 (2026-07-15 · SET DE PRUEBAS RESPONSIVE + fixes de overflow en Dashboard/Métricas · commit `e95297bf` en dev · barrido 11/11 verde · PROD pendiente)
+> ### 🚀 (2026-07-15 · **v1.130.0 EN PROD** — PR #289 · mobile responsive + guard cert AFIP + blindaje legal)
+> **PROD = v1.130.0** (main `4937ec3c`, tag+release publicados). Contenido: barrido responsive
+> `88_mobile_responsive` + fixes Dashboard/Métricas/**header** (el avatar/logout se clippeaba fuera de
+> pantalla en ≤375px) · **guard crt↔clave** (EF `finalizar-certificado` en **DEV+PROD**, v1 ACTIVE,
+> `verify_jwt: true`) · **blindaje legal** · fix alta de emisor · `schema_full.sql`.
+> **Sin migraciones nuevas** (264-270 verificadas presentes en PROD por query real antes de mergear).
+> La EF fue a PROD **antes** que el frontend (si no, el wizard invoca una función inexistente).
+> ⚠ **Divergencia del squash:** el PR salió CONFLICTING (main tenía solo el squash de #288) → se mergeó
+> `origin/main` en `dev` resolviendo a favor de dev (superconjunto). **Es un paso fijo del deploy**, no
+> un incidente; repetirlo cada release.
+> **▶ PENDIENTES REALES:**
+> 1. **⚖️ Legal: abogado + registro AAIP siguen PENDIENTES sobre contenido YA PÚBLICO.** GO autorizó el
+>    deploy pese al hold ("no hay clientes reales todavía"). Las páginas legales exhiben los datos reales
+>    de Fede (incl. domicilio particular). **Revisar antes de tener clientes.**
+> 2. **Fede: rehacer el cert de homologación** en UNA sola pasada (generar CSR → pegar ESE CSR en ARCA →
+>    subir el `.crt` que ARCA emite; sin regenerar en el medio) y reintentar la Factura C de prueba.
+>    🛑 **Error de ARCA 2026-07-15 diagnosticado: NO es el CSR** — el WSASS rechaza el *"Nombre simbólico
+>    del DN"* `genesis360 2` porque **tiene un espacio** (solo acepta letras/números). Poner `genesis3602`.
+> 3. Redeploy EF `ai-assistant` (DEV+PROD) por el `app-reference` actualizado (pendiente viejo).
+> 4. Ampliar el barrido responsive a sub-tabs/chips internos (hoy mide la vista default de cada ruta).
+
+> ### 📱 (2026-07-15 · SET DE PRUEBAS RESPONSIVE + fixes de overflow en Dashboard/Métricas · commit `e95297bf` en dev · barrido 11/11 verde · ✅ YA EN PROD via v1.130.0)
 > **Cerrado el pendiente de mobile que venía del 13/07.** GO: "en el celular se sale contenido del
 > marco". Causa de fondo: `AppLayout.tsx:382` clippea con `overflow-hidden` en la raíz → el overflow
 > **no scrollea, se corta**. **Infra nueva:** helper `detectarOverflowHorizontal` (mide dentro del

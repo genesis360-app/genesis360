@@ -9,7 +9,35 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 12 de Julio, 2026
+**Última actualización:** 15 de Julio, 2026
+
+---
+
+## v1.130.0 — 📱 Mobile responsive + 🛑 guard cert AFIP + ⚖️ blindaje legal — ✅ PROD (2026-07-15, PR #289)
+
+**📱 Mobile responsive (primera cobertura responsive en e2e).** Síntoma de GO: "en el celular se sale
+contenido del marco". Causa de fondo: `AppLayout` clippea con `overflow-hidden` en la raíz → el overflow
+**no scrollea la página, se corta**. Barrido **`88_mobile_responsive`** (project `chromium-mobile`,
+375/360px) + helper `detectarOverflowHorizontal` (mide `<main>` Y `<header>`, elemento y overflow de
+texto, ignorando scroll intencional) — **11/11 verde**, queda de guard permanente. Fixes: Dashboard
+(grid de cards sin `grid-cols-1` base → columna implícita de max-content; chart scatter con label
+`ReferenceLine position:right` fuera del plot), Métricas (selector de rango sin `flex-wrap`; card
+"Resultado del período" `grid-cols-3` con números grandes), y **header** (medía 461px → el **avatar
+(mi cuenta/logout) quedaba clippeado fuera de pantalla** en ≤375px; ahora oculta Refresh/Config en
+mobile + sucursal más corta + `px-3 sm:px-4` → ~348px).
+
+**🛑 Guard crt↔clave del wizard de certificado (REGLA #0).** Un `.crt` que no correspondía al CSR se
+aceptaba y fallaba **recién al emitir** con `WSAA cms.sign.invalid` (incidente real en homologación).
+Nueva **EF `finalizar-certificado`** (DEV+PROD): valida el par RSA server-side con `certKeyMatch` antes
+de activar; si no aparea → 400 claro. La `.key` nunca viaja al browser → el guard tiene que ser del server.
+
+**⚖️ Blindaje legal.** T&C / Privacidad / Cookies + EULA/reembolsos + `LEGAL_TITULAR` + Sentry sin
+Session Replay. **Deploy autorizado por GO** pese al hold de "abogado + AAIP" (todavía sin clientes reales).
+
+**🐛 Fixes:** alta de emisor mostraba error genérico (`PostgrestError` no es `instanceof Error`);
+`schema_full.sql` regenerado + `npm run schema:dump`.
+
+Sin migraciones nuevas (264-270 ya en PROD, verificado).
 
 ---
 

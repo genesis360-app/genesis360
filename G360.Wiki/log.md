@@ -6,6 +6,35 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-15] deploy | 🚀 v1.130.0 A PROD (PR #289) — mobile responsive + guard cert AFIP + blindaje legal
+
+**GO autorizó "pasa todo a PROD".** Antes de ejecutar se frenó y se le avisó que `dev` no traía solo lo
+de la sesión: arrastraba el **blindaje legal** del 14/07, que estaba marcado *"🔴 ANTES DE MOSTRAR EN
+PROD: revisión de ABOGADO + registro AAIP"* y publica los datos reales de Fede (incl. **domicilio
+particular**) en las páginas legales. **GO decidió deployarlo igual** — fundamento: *"no hay problema en
+replicar a PROD, no tenemos clientes reales"*. Queda registrado: la revisión de abogado + AAIP **sigue
+pendiente** sobre contenido que ya está público.
+
+**Contenido:** mobile responsive (barrido `88_mobile_responsive` + fixes Dashboard/Métricas/header) ·
+guard crt↔clave (EF `finalizar-certificado`) · blindaje legal · fix alta de emisor · `schema_full.sql`.
+
+**Ejecución (orden seguro):**
+1. **Verificación REGLA #0 previa:** migs 264-270 confirmadas presentes en PROD por query real
+   (`afip_wsaa_ta`, `emisores_fiscales`, `csr_key_path`, `nc_fecha`) → **sin migraciones nuevas**.
+2. `APP_VERSION` → **v1.130.0** (`993daa0d`).
+3. **EF `finalizar-certificado` deployada a PROD ANTES del frontend** (v1, ACTIVE, `verify_jwt: true`,
+   mismo `sha256` que DEV) — si iba primero el frontend, el wizard invocaba una función inexistente.
+4. **Divergencia del squash otra vez:** el PR salió `CONFLICTING` (main tenía solo el squash de #288,
+   v1.129.0). Se mergeó `origin/main` en `dev` resolviendo los 10 conflictos a favor de dev
+   (superconjunto; verificado: v1.130.0 + `afip.ts` con la EF, sin marcadores) → `bf2135d8`.
+5. PR **#289** → checks verdes (unit ×2 pass, Vercel pass, e2e skip condicional) → **squash a main**
+   (`4937ec3c`) → **tag + release `v1.130.0`** → Vercel PROD.
+
+**Lección repetida:** el patrón squash-merge deja `dev` divergente de `main` en cada release; el paso
+"mergear `origin/main` en `dev` y resolver a favor de dev" es parte fija del deploy, no un incidente.
+
+---
+
 ## [2026-07-15] update | 📱 Set de pruebas responsive (barrido de overflow) + fixes de overflow en Dashboard/Métricas
 
 **Primera cobertura responsive en e2e** (pendiente que venía de 2026-07-13). GO reportó que en el

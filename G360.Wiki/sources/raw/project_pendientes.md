@@ -6,6 +6,25 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🏢 (2026-07-15 · **MULTI-CUIT VALIDADO** con datos reales + hardening del cert · commit `5581f220` en dev · EF en DEV, **PROD pendiente**)
+> **Cerrado el pendiente "emisión real con 2 CUITs" que venía del 11/07.** Fede pudo emitir (su error de
+> ARCA era el **alias del DN con espacio**, no el CSR; después faltaba **"Crear autorización a servicio"**
+> para `wsfe` → `coe.notAuthorized`). Tenant "Kiosco Buildi" DEV emitió con **2 CUITs**: Factura C nº**1**
+> del Monotributo de Fede (CAE `86280566995291`) y Factura B nº3-30 del RI → **secuencias INDEPENDIENTES
+> por CUIT** (si fuera del tenant, la C de Fede era #28). TA de WSAA por CUIT, cert propio por emisor,
+> letras correctas. **0 violaciones** del invariante letra↔condición.
+> **🛑 Hardening (commit `5581f220`):** la selección de cert caía a un **cert LEGACY** (`emisor_id NULL`)
+> si el emisor no tenía el suyo → en multi-CUIT firmaba el WSAA **con el CUIT de otro**. Inerte hoy (0
+> certs legacy en DEV/PROD) pero arreglado: el legacy es del CUIT original → **solo para el emisor
+> DEFAULT**. `certSelect.ts` puro + 8 unit tests. **EF `emitir-factura` redeployada en DEV — falta PROD.**
+> **✅ e2e `63_multicuit_emisor_guards` (7/7):** el EMISOR gobierna la letra; cubre la rama **"RI rechaza
+> C"** que el 56 no podía. Usuario nuevo **solo DEV** `e2e-multicuit@genesis360.test` (DUEÑO de Kiosco
+> Buildi) + vars `E2E_MULTICUIT_*` en `.env.test.local`. ⚠ Gotcha: **un `#` en el password rompe el `.env`**.
+> **▶ PENDIENTE:** (a) **deploy de `emitir-factura` a PROD** con el hardening (OK de GO); (b) **⚠ fixture
+> del spec 42 CONSUMIDA** en esta sesión (se emitió la NC de la última devolución pendiente de la venta
+> #239) → el spec falla hasta sembrar una devolución nueva sin `nc_cae`; además **assertea en vez de
+> skipear** (arreglar: que genere su propia precondición).
+
 > ### 🚀 (2026-07-15 · **v1.130.0 EN PROD** — PR #289 · mobile responsive + guard cert AFIP + blindaje legal)
 > **PROD = v1.130.0** (main `4937ec3c`, tag+release publicados). Contenido: barrido responsive
 > `88_mobile_responsive` + fixes Dashboard/Métricas/**header** (el avatar/logout se clippeaba fuera de

@@ -6,6 +6,56 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-15] update | 🏢 Auditoría MULTI-CUIT — validado con datos reales + hardening del cert + e2e nuevo
+
+**GO pidió validar que un mismo tenant sea multi-CUIT.** Cerrado el pendiente que venía desde el 11/07
+("emisión real con 2 CUITs — cert de Fede"), ahora que Fede pudo emitir.
+
+**✅ Validación con DATOS REALES** (tenant "Kiosco Buildi" DEV, 2 identidades fiscales conviviendo):
+| emisor | CUIT | condición | tipo | nº comprobante |
+|---|---|---|---|---|
+| adicional | 20422374168 (Fede) | Monotributista | **Factura C** | **1** (CAE `86280566995291`) |
+| default ⭐ | 23-32031506-9 | RI | **Factura B** | 3→30 |
+
+**El invariante clave:** la Factura C de Fede salió con `numero_comprobante = 1`, no 31 — **hay dos
+secuencias de Factura C independientes en el mismo tenant** (1→27 de un CUIT, 1→1 del otro). Prueba que
+la numeración sale de `FECompUltimoAutorizado` **por CUIT**, no de un contador del tenant. Además: TA de
+WSAA cacheado **por CUIT** (`afip_wsaa_ta`), cert propio por emisor, letras correctas por condición.
+
+**🛑 Hallazgo 1 — edge case latente en la selección de certificado (arreglado, commit `5581f220`).**
+`emitir-factura/index.ts` caía a un cert **LEGACY** (`emisor_id IS NULL`) cuando el emisor no tenía el
+suyo. En un tenant multi-CUIT eso **firma el WSAA con el CUIT de OTRO emisor**. Verificado que hoy es
+**inerte** (0 certs legacy en DEV y en PROD; el emisor sin cert recibe el 400 claro), pero se endurece:
+el legacy pertenece al CUIT original del tenant → **solo lo usa el emisor DEFAULT**. Extraído a
+`certSelect.ts` (`elegirCertificado`, puro) + **8 unit tests**. EF redeployada en **DEV** (PROD pendiente).
+
+**🛑 Hallazgo 2 — falso positivo que casi se reporta como bug grave (lección).** Un chequeo de
+letra↔condición dio "Monotributista con 7 Factura B" y "RI con 24 Factura C". **No es violación:** todos
+esos comprobantes son ANTERIORES al flip de condición que se hizo para testear (última B 19/06 vs emisor
+modificado 13/07). Con el invariante bien planteado (comprobantes POSTERIORES al último cambio del
+emisor) → **0 violaciones**. Confirma la regla: **un registro fiscal histórico no se juzga contra la
+configuración actual**.
+
+**✅ e2e nuevo `63_multicuit_emisor_guards`:** prueba que el **EMISOR** (no el tenant) gobierna la letra,
+en el único tenant con RI + Monotributista conviviendo. Cubre la rama **"RI rechaza C"** que el spec 56
+no podía (exigía flipear la condición del tenant). Aserciones positivas (combos válidos pasan el guard)
++ 403 de emisor cross-tenant. No muta nada (venta dummy: los guards corren antes de buscar la venta) →
+repetible. **7/7 verde.**
+
+**Usuario e2e nuevo (solo DEV):** `e2e-multicuit@genesis360.test` (DUEÑO de "Kiosco Buildi", creado por
+SQL — el usuario e2e de siempre es de Jorgito, que tiene 2 emisores pero **1 solo con cert**). Vars
+`E2E_MULTICUIT_*` en `tests/e2e/.env.test.local` (gitignored). ⚠ **Gotcha:** el `#` en un password rompe
+el parseo del `.env` (lo toma como comentario y trunca el valor) → passwords de test sin `#`.
+
+**⚠ Fixture del spec 42 CONSUMIDA.** La corrida de esta sesión emitió la NC de la última devolución
+pendiente de la venta #239 (`nc_cae` 86280567040037) → **el spec 42 ahora falla** hasta sembrar una
+devolución nueva sin `nc_cae`. Es la trampa ya documentada (los specs mutantes deben generar su propia
+precondición); encima el spec **assertea en vez de skipear**, contra lo que dice su propio docstring.
+
+Verde: unit **1045 + 5 todo** · tsc · build · e2e facturación (21 con **CAE real**, 56, 63, 86).
+
+---
+
 ## [2026-07-15] deploy | 🚀 v1.130.0 A PROD (PR #289) — mobile responsive + guard cert AFIP + blindaje legal
 
 **GO autorizó "pasa todo a PROD".** Antes de ejecutar se frenó y se le avisó que `dev` no traía solo lo

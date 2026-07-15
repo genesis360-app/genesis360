@@ -53,9 +53,16 @@ test.describe('Envío propio desde el modal manual "Nuevo envío" (mutante)', ()
     await page.getByRole('button', { name: /Nuevo envío/i }).click()
     await expect(page.getByRole('heading', { name: /^Nuevo envío$/i })).toBeVisible({ timeout: 5000 })
 
-    // 2) Domicilio de destino manual (ya viene seleccionado por default al no haber venta asociada)
+    // 2) Domicilio de destino manual (ya viene seleccionado por default al no haber venta asociada).
+    // El destino es ÚNICO por corrida: es la identidad con la que después ubicamos EXACTAMENTE
+    // la fila de este envío, en vez de asumir que es la primera de la grilla (ver paso 6).
+    const destinoUnico = `Dirección Test E2E ${Date.now()}, CABA`
     const destino = page.getByPlaceholder(/Calle, número, ciudad, provincia, CP/i)
-    if (await destino.isVisible().catch(() => false)) await destino.fill('Dirección Test E2E 123, CABA')
+    await expect(
+      destino,
+      'No apareció el campo de domicilio de destino en el modal "Nuevo envío"',
+    ).toBeVisible({ timeout: 5000 })
+    await destino.fill(destinoUnico)
 
     // 3) Tipo de envío = "Envío propio" — la rama exacta donde vivía el bug
     await page.getByRole('button', { name: /Envío propio/i }).click()
@@ -63,7 +70,12 @@ test.describe('Envío propio desde el modal manual "Nuevo envío" (mutante)', ()
 
     // 4) Vehículo asignado (recurso_id) — condición del gate de "Registrar combustible"
     const vehiculoSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /Moto Reparto Test/i }) }).first()
-    test.skip(!(await vehiculoSelect.isVisible().catch(() => false)), 'No hay vehículo "Moto Reparto Test" activo en el tenant de prueba')
+    expect(
+      await vehiculoSelect.isVisible().catch(() => false),
+      'No hay vehículo "Moto Reparto Test" activo en el tenant de prueba — precondición faltante. ' +
+        'Antes esto se skipeaba en silencio: el guard de REGLA #0 que verifica que un envío propio ' +
+        'nace saldado (costo_pagado=true) dejaba de correr y la suite igual daba verde.',
+    ).toBeTruthy()
     const vehiculoValue = await vehiculoSelect.locator('option', { hasText: /Moto Reparto Test/i }).first().getAttribute('value')
     await vehiculoSelect.selectOption(vehiculoValue!)
 
@@ -74,9 +86,18 @@ test.describe('Envío propio desde el modal manual "Nuevo envío" (mutante)', ()
     await expect(page.getByText(/^Envío creado$/i)).toBeVisible({ timeout: 10000 })
     await expect(page.getByRole('heading', { name: /^Nuevo envío$/i })).not.toBeVisible({ timeout: 5000 })
 
-    // 6) El envío recién creado es el más reciente (orden created_at desc) → primera fila
-    const fila = page.locator('tbody tr').first()
-    await expect(fila).toBeVisible({ timeout: 8000 })
+    // 6) Ubicar EL envío que creó ESTE test.
+    // ⚠ Antes tomaba `tbody tr` .first() asumiendo que su envío era el más reciente. Eso
+    // funciona aislado pero NO en la suite: cualquier otro spec que cree un envío (o un
+    // reordenamiento de la grilla) hacía que el test asserteara sobre una fila AJENA. Era una
+    // de las causas de que la suite fuera no determinística — el 85 fallaba en una corrida y
+    // pasaba en la siguiente sin que cambiara una línea de código.
+    // Ahora se busca la fila POR el envío propio recién creado y se verifica que sea única.
+    const fila = page.locator('tbody tr').filter({ hasText: destinoUnico }).first()
+    await expect(
+      fila,
+      `No se encontró la fila del envío creado por este test (destino "${destinoUnico}")`,
+    ).toBeVisible({ timeout: 8000 })
     // BUG exacto: antes del fix esta columna quedaba "—" (courier null) en vez de "Envío propio"
     await expect(fila.getByText(/Envío propio/i)).toBeVisible({ timeout: 5000 })
     const numeroTxt = await fila.locator('td').nth(1).innerText()

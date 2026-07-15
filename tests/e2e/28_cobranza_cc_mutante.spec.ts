@@ -16,59 +16,44 @@
  * haya quedado deuda de una corrida anterior.
  */
 import { test, expect } from '@playwright/test'
+import {
+  garantizarCajaAbierta,
+  irAlPOS,
+  agregarPrimerProductoAlCarrito,
+  totalDelCarrito,
+} from './helpers/fixtures'
 import { goto, waitForApp } from './helpers/navigation'
 
 const CLIENTE = 'Gaston Otranto'
 
 test.describe('Cobranza CC efectivo (mutante)', () => {
   test('cobra parte de la deuda CC en efectivo (exige caja → ingreso)', async ({ page }) => {
-    // 1) Asegurar caja abierta (la venta CC y la cobranza en efectivo la exigen — H4/VF1)
-    await goto(page, '/caja')
-    await waitForApp(page)
-    const pill = page.getByRole('button', { name: /Caja1\b/ }).first()
-    if (await pill.isVisible().catch(() => false)) {
-      await pill.click()
-      await page.waitForTimeout(400)
-      const abrir = page.getByRole('button', { name: /^Abrir caja$/ }).first()
-      if (await abrir.isVisible().catch(() => false)) {
-        await abrir.click()
-        await page.waitForTimeout(400)
-        await page.locator('xpath=//label[contains(.,"Monto inicial")]/following::input[1]').fill('5000')
-        await page.getByRole('button', { name: /Confirmar apertura|Sí, abrir con diferencia/ }).first().click()
-        await page.waitForTimeout(500)
-        const dif = page.getByRole('button', { name: /Sí, abrir con diferencia/ })
-        if (await dif.isVisible().catch(() => false)) await dif.click()
-        await page.waitForTimeout(500)
-      }
-    }
+    // 1) Caja abierta — precondición GARANTIZADA, no asumida (la venta CC y la cobranza en
+    // efectivo la exigen: H4/VF1). Antes este bloque abría la caja "si veía el botón" y
+    // rellenaba "Monto inicial" a ciegas → en la corrida masiva la caja ya estaba abierta
+    // (la dejaba abierta otro spec), el modal nunca aparecía y el fill se colgaba 30s.
+    await garantizarCajaAbierta(page)
 
     // 2) FIXTURE FRESCA: generar una venta 100% Cuenta Corriente para el cliente (nueva deuda CC)
-    await goto(page, '/ventas')
-    await waitForApp(page)
-    const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
-    await expect(buscador).toBeVisible({ timeout: 8000 })
-    await buscador.fill('a')
-    await page.waitForTimeout(1000)
-    const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await prod.isVisible().catch(() => false)), 'No hay productos vendibles en el tenant de prueba')
-    await prod.click()
-    await page.waitForTimeout(500)
-    await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
+    await irAlPOS(page)
+    await agregarPrimerProductoAlCarrito(page)
 
     const cliInput = page.getByPlaceholder(/Buscar por nombre o DNI/i)
     await expect(cliInput).toBeVisible({ timeout: 5000 })
     await cliInput.fill(CLIENTE)
     await page.waitForTimeout(900)
     const cliOpt = page.getByRole('button', { name: new RegExp(CLIENTE) }).first()
-    test.skip(!(await cliOpt.isVisible().catch(() => false)), `Cliente "${CLIENTE}" no encontrado en el tenant.`)
+    expect(
+      await cliOpt.isVisible().catch(() => false),
+      `Cliente "${CLIENTE}" no encontrado en el tenant de prueba — precondición faltante ` +
+        `(antes esto se skipeaba en silencio y la suite daba verde).`,
+    ).toBeTruthy()
     await cliOpt.click()
     await page.waitForTimeout(400)
 
     // Monto a Cuenta Corriente = total exacto del carrito (evita dejar una deuda inconsistente
     // con el total de la venta — REGLA #0 contable; nada de montos "overshoot" arbitrarios).
-    const totalTxt = await page.locator('div:has(> span:text-is("Total")) > span').last().textContent()
-    const totalNum = parseFloat((totalTxt ?? '0').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.')) || 0
-    expect(totalNum).toBeGreaterThan(0)
+    const totalNum = await totalDelCarrito(page)
 
     const medioSelect = page.locator('select').filter({ has: page.locator('option[value="Cuenta Corriente"]') }).first()
     await expect(medioSelect).toBeVisible({ timeout: 5000 })

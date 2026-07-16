@@ -130,6 +130,76 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
   return Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.35)
 }
 
+/**
+ * 🛑 REGLA #0 — Guard de los datos fiscales del emisor: si no se pudieron leer, NO se arma el
+ * comprobante. Lanza en vez de dejar que los `?? ''` de abajo inventen los datos.
+ *
+ * El bug que evita (real, estuvo EN PROD desde el 2026-06-14 / v1.62.0 — commit `c35450e8`,
+ * "factura completa + remito + datos del emisor"): la `.select()` pedía `telefono, email`, dos
+ * columnas que NO EXISTEN en `tenants` → PostgREST devolvía **400** (`column tenants.telefono
+ * does not exist`, verificado con curl) → el código hacía `const { data: cfgTenant } = ...`
+ * **descartando el `error`** → `cfgTenant` quedaba `null` → y cada `?? ''` convertía el fallo en
+ * un dato fiscal falso: **CUIT vacío**, razón social vacía, y —lo más grave—
+ * `condicion_iva_emisor ?? 'responsable_inscripto'`, que hacía que el comprobante de un
+ * **Monotributista declarara ser Responsable Inscripto**.
+ *
+ * La lección (la misma que el bug de la alícuota AFIP): un default sobre un dato FISCAL no es
+ * una comodidad, es una mentira con formato de PDF. Ante la duda, romper — un comprobante que no
+ * sale es un problema; un comprobante con la identidad fiscal inventada es un problema peor.
+ */
+function exigirCfgFiscal(cfg: unknown, error: { message: string } | null): asserts cfg {
+  if (error || !cfg) {
+    throw new Error(
+      `No se pudieron leer los datos fiscales del emisor${error ? `: ${error.message}` : ''}. ` +
+        `No se emite el comprobante para no imprimir un CUIT o una condición de IVA incorrectos.`,
+    )
+  }
+}
+
+/**
+ * Badge con la cantidad que el producto tiene en el carrito, para el tile de la vista galería.
+ *
+ * Problema que resuelve (reportado por GO): en galería, tocar un producto lo agregaba al carrito
+ * SIN ningún feedback — el único que había era `hover:border-accent`, y en el celular el hover no
+ * existe. El carrito vive debajo de una grilla scrolleable (`max-h-[28rem]`), así que suele estar
+ * fuera de pantalla. Resultado: tocabas de nuevo creyendo que no había pasado nada y sumabas
+ * unidades sin enterarte.
+ *
+ * Por qué un badge y no un toast: el badge está DONDE el ojo ya está (acabás de mirar ahí para
+ * tocar), es POR PRODUCTO (un toast "+2" no dice de qué), aguanta el tecleo rápido de un cajero
+ * (se actualiza en vez de apilarse) y —lo más importante— NO CADUCA: contesta "¿cuántos llevo?"
+ * en cualquier momento, no durante 4 segundos.
+ *
+ * El "bump" se dispara con el CAMBIO REAL de la cantidad, no con el click: si `agregarProducto`
+ * rechaza el ítem (sin stock / sin precio) no hay pulso, así el feedback nunca miente.
+ */
+function BadgeCantidadCarrito({ cantidad }: { cantidad: number }) {
+  const [bump, setBump] = useState(false)
+  const previa = useRef(cantidad)
+
+  useEffect(() => {
+    if (cantidad === previa.current) return
+    previa.current = cantidad
+    if (cantidad <= 0) return
+    setBump(true)
+    const t = setTimeout(() => setBump(false), 220)
+    return () => clearTimeout(t)
+  }, [cantidad])
+
+  if (cantidad <= 0) return null
+  // Queda DENTRO del tile a propósito (`top-1 right-1`, no `-top-1.5`): la grilla es
+  // `overflow-y-auto`, así que un badge que sobresale se clippea al scrollear la 1ª fila.
+  return (
+    <span
+      aria-label={`${cantidad} en el carrito`}
+      className={`absolute top-1 right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-accent text-white
+        text-[11px] font-bold flex items-center justify-center shadow ring-2 ring-surface
+        transition-transform duration-200 motion-reduce:transition-none ${bump ? 'scale-125' : 'scale-100'}`}>
+      {cantidad}
+    </span>
+  )
+}
+
 export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
@@ -1194,6 +1264,11 @@ export default function VentasPage() {
     }
   }, [ventas, loadingVentas, searchParams, setSearchParams])
 
+  /** Cuántas unidades de un producto hay en el carrito (suma TODAS sus líneas: el mismo
+   *  producto puede estar en varias). Misma semántica que usa `agregarProducto` más abajo. */
+  const cantidadEnCarrito = (productoId: string) =>
+    cart.filter(c => c.producto_id === productoId).reduce((a, c) => a + c.cantidad, 0)
+
   const agregarProducto = async (p: any) => {
     setProductoSearch('')
 
@@ -1662,9 +1737,11 @@ export default function VentasPage() {
     const { data: pv } = await supabase.from('puntos_venta_afip')
       .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
       .order('numero').limit(1).maybeSingle()
-    const { data: cfgTenant } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, telefono, email, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
+    // 🛑 REGLA #0 — el `error` NO se descarta: ver `exigirCfgFiscal` abajo.
+    const { data: cfgTenant, error: errCfgFiscal } = await supabase.from('tenants')
+      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
       .eq('id', tenant!.id).single()
+    exigirCfgFiscal(cfgTenant, errCfgFiscal)
     const cli = (venta as any).clientes
     const formaPago = parseFormaPago((venta as any).medio_pago)
     // Saldo pendiente → QR de pago MercadoPago en el PDF (si el tenant tiene MP conectado)
@@ -1737,9 +1814,11 @@ export default function VentasPage() {
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
-    const { data: cfgTenant } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, telefono, email, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
+    // 🛑 REGLA #0 — el `error` NO se descarta: ver `exigirCfgFiscal` abajo.
+    const { data: cfgTenant, error: errCfgFiscal } = await supabase.from('tenants')
+      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
       .eq('id', tenant!.id).single()
+    exigirCfgFiscal(cfgTenant, errCfgFiscal)
     const cli = (venta as any).clientes
     const validezDias = (tenant as any)?.presupuesto_validez_dias
     let validez: string | null = null
@@ -1800,9 +1879,11 @@ export default function VentasPage() {
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
-    const { data: cfgTenant } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, telefono, email, sitio_web, leyenda_comprobante')
+    // 🛑 REGLA #0 — el `error` NO se descarta: ver `exigirCfgFiscal` abajo.
+    const { data: cfgTenant, error: errCfgFiscal } = await supabase.from('tenants')
+      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, sitio_web, leyenda_comprobante')
       .eq('id', tenant!.id).single()
+    exigirCfgFiscal(cfgTenant, errCfgFiscal)
     const cli = (venta as any).clientes
     return {
       numero:              `R-${formatTicket(venta)}`,
@@ -2023,9 +2104,11 @@ export default function VentasPage() {
       .eq('id', devolucionId).single()
     if (error) throw new Error(error.message)
     if (!dev?.nc_cae) return null
-    const { data: cfgTenant } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, telefono, email, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
+    // 🛑 REGLA #0 — el `error` NO se descarta: ver `exigirCfgFiscal` abajo.
+    const { data: cfgTenant, error: errCfgFiscal } = await supabase.from('tenants')
+      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
       .eq('id', tenant!.id).single()
+    exigirCfgFiscal(cfgTenant, errCfgFiscal)
     const cli = (dev as any).ventas?.clientes
     const data: FacturaPDFData = {
       clase:               'nota_credito',
@@ -4451,15 +4534,26 @@ export default function VentasPage() {
               {/* Galería de productos */}
               {viewMode === 'galeria' && productosBusqueda.length > 0 && (
                 <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[28rem] overflow-y-auto pr-1">
-                  {(productosBusqueda as any[]).map(p => (
+                  {(productosBusqueda as any[]).map(p => {
+                    // Feedback al agregar (ver `BadgeCantidadCarrito`): antes tocar un tile no
+                    // producía NINGUNA señal visible en mobile (el único feedback era `hover:`,
+                    // que en touch no existe) y el carrito queda fuera de pantalla debajo de la
+                    // grilla scrolleable → se sumaban unidades sin que el usuario se enterara.
+                    const enCarrito = cantidadEnCarrito(p.id)
+                    return (
                     <button key={p.id} onClick={() => agregarProducto(p)}
-                      className="flex flex-col items-center text-center p-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-accent hover:shadow-sm transition-all bg-surface h-full">
-                      <div className="w-full aspect-square bg-gray-50 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden mb-2">
+                      className={`relative flex flex-col items-center text-center p-2.5 border rounded-xl hover:shadow-sm transition-all bg-surface h-full
+                        active:scale-95 motion-reduce:active:scale-100
+                        ${enCarrito > 0
+                          ? 'border-accent2 ring-1 ring-accent2/40'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-accent'}`}>
+                      <div className="relative w-full aspect-square bg-gray-50 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden mb-2">
                         {p.imagen_url
                           ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover rounded-lg" />
                           : <Package size={22} className="text-gray-300" />
                         }
                       </div>
+                      <BadgeCantidadCarrito cantidad={enCarrito} />
                       <p className="text-xs font-medium text-primary line-clamp-2 leading-tight w-full">{p.nombre}</p>
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate w-full">{p.sku}</p>
                       <p className="text-sm font-bold text-primary mt-1">${p.precio_venta?.toLocaleString('es-AR')}</p>
@@ -4472,7 +4566,8 @@ export default function VentasPage() {
                         }
                       </p>
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </div>
@@ -4619,9 +4714,7 @@ export default function VentasPage() {
                               {item.descuento_tipo === 'pct' ? '%' : '$'}
                             </button>
                           </div>
-                          {item.descuento > 0
-                            ? <span className="text-[10px] text-accent">por combo</span>
-                            : <span className="text-[10px] text-gray-400 dark:text-gray-500">auto (combos)</span>}
+                          {item.descuento > 0 && <span className="text-[10px] text-accent">por combo</span>}
                         </div>
 
                         {/* Subtotal */}

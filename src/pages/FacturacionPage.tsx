@@ -243,7 +243,7 @@ export default function FacturacionPage() {
     queryKey: ['facturacion-config', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('tenants')
-        .select('facturacion_habilitada, condicion_iva_emisor, razon_social_fiscal, cuit, umbral_factura_b, logo_url, domicilio_fiscal, ingresos_brutos, inicio_actividades, telefono, email, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
+        .select('facturacion_habilitada, condicion_iva_emisor, razon_social_fiscal, cuit, umbral_factura_b, logo_url, domicilio_fiscal, ingresos_brutos, inicio_actividades, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
         .eq('id', tenant!.id).single()
       return data
     },

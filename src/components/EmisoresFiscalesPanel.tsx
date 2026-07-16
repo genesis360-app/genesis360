@@ -323,7 +323,12 @@ export function EmisoresFiscalesPanel() {
                     <button onClick={() => abrirEditar(e)} title="Editar" className="text-gray-400 hover:text-accent"><Pencil size={14} /></button>
                     <button onClick={() => toggleActivo(e)} title={e.activo ? 'Desactivar' : 'Activar'}
                       className={`relative w-8 h-4 rounded-full transition-colors ${e.activo ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                      <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${e.activo ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                      {/* `left-0.5` obligatorio: sin `left`, un `absolute` toma su posición
+                          ESTÁTICA y el <button> trae `text-align: center` del UA → el knob
+                          arrancaba centrado y se salía del track. Track 32 − knob 12 − 2 = 18
+                          → translate-x-4 (16) + left-0.5 (2). OFF = translate-x-0 (margen
+                          simétrico de 2px). Ver la nota del toggle de Facturación en ConfigPage. */}
+                      <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${e.activo ? 'translate-x-4' : 'translate-x-0'}`} />
                     </button>
                     <button onClick={() => eliminar(e)} title="Eliminar" className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
                   </>)}

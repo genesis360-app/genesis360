@@ -13,6 +13,24 @@ updated: 2026-05-29
 
 ---
 
+## v1.132.0 — 🎚️ Componente `<Toggle>` estándar (el bug del knob, imposible por construcción) — ✅ PROD (2026-07-16, PR #291)
+
+Pedido de GO tras el bug de los toggles de v1.131.0: *"mejor hacer uno estandar y q se aplique en
+todas las paginas... y si queremos cambiar algo aplica a todas"*. Es la **causa raíz**: había ~26
+toggles a mano con 5 geometrías distintas, y el knob se salía del óvalo **precisamente porque cada
+uno se escribió por separado**.
+
+- **`src/components/Toggle.tsx`** — el knob **ya no es `absolute`** (es flex item de un `inline-flex
+  items-center`): sin posición estática de la cual depender, el bug es **imposible por construcción**,
+  no "menos probable". Desplazamiento ON = px exacto (`track − knob − 2`), no `translate-x-N` a ojo.
+  Bonus a11y: `role="switch"` + `aria-checked` + focus ring (ninguno de los 26 los tenía). Tamaños
+  sm/md/lg del inventario real.
+- **Migrados:** los 3 que estaban rotos (ARCA habilitada, **AFIP producción**, emisor activo — los 3
+  de UI fiscal) + 3 de ConfigPage. Quedan ~20, ninguno roto (deuda de consistencia).
+- **Verificado:** 0 toggles con el patrón roto (`absolute` + `top-*` sin `left-*`) en toda la app.
+
+**Sin migraciones · sin Edge Functions.** Verde: tsc · build · unit 1045+5 todo · e2e 11/11.
+
 ## v1.131.0 — 🛑 Fix fiscal: comprobantes con el CUIT VACÍO (REGLA #0) + toggles + feedback POS — ✅ PROD (2026-07-16, PR #290)
 
 **El release lo motiva un bug fiscal que estuvo EN PROD un mes** (desde el 2026-06-14, v1.62.0,

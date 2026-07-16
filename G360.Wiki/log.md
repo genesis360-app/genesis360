@@ -6,6 +6,45 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-16] deploy | 🎚️ v1.132.0 A PROD (PR #291) — componente `<Toggle>` estándar
+
+**Cierre de la sesión.** Segundo release del día, sobre v1.131.0. Ataca la **causa raíz** del bug de
+los toggles: en vez de arreglar los 3 rotos a mano (ya hecho en v1.131.0), un componente que hace el
+error **imposible por construcción**.
+
+**Pedido de GO:** *"porq mejor no hacer uno estandar y q se aplique en todas las paginas... así no vas
+una a una... y si queremos cambiar algo aplica a todas"*. Tiene razón: había **~26 toggles a mano con
+5 geometrías distintas** (`translate-x-4/-5/-6`, con y sin `left-0.5`, tracks `w-8/w-10/w-11`), y el
+knob se salía del óvalo **precisamente porque cada uno se escribió por separado**.
+
+**`src/components/Toggle.tsx`:** el knob **ya no es `absolute`** (es flex item de un `inline-flex
+items-center`). El bug original venía de que un `absolute` sin `left` toma su posición **estática** y
+el `<button>` trae `text-align:center` del user-agent → sin `absolute`, **no hay posición estática de
+la cual depender**. Desplazamiento ON = px exacto (`track − knob − 2`), no `translate-x-N` a ojo. Bonus
+a11y: `role="switch"` + `aria-checked` + focus ring (ninguno de los 26 los tenía). Tamaños sm/md/lg del
+inventario real (2/14/9 usos).
+
+**Migrados:** los 3 que estaban rotos (ARCA habilitada, **AFIP producción**, emisor activo — los 3 de
+UI fiscal) + 3 de ConfigPage. **Quedan ~20 por migrar** — ninguno roto (usan `border-2` como padding):
+deuda de consistencia, no bug. Verificado: **0 toggles con el patrón roto** (`absolute` + `top-*` sin
+`left-*`) en toda la app.
+
+**Deploy:** PR #291 squash a main (`40601925`), tag+release `v1.132.0`. **Sin migraciones · sin Edge
+Functions.** ⚠ El PR salió CONFLICTING (divergencia del squash del #290 — paso fijo) → merge de
+`origin/main` en `dev` resolviendo a favor de dev (superconjunto); conflictos en `brand.ts` (versión) y
+`EmisoresFiscalesPanel` (mi `<Toggle>` vs el fix a mano de v1.131.0), ambos ganó dev. **Verificado que
+PROD sirve v1.132.0** leyendo el bundle real (`index-CKDiJ3E0.js`), no la narrativa. Verde: tsc · build
+· unit 1045+5 todo · e2e 11/11 (10_configuracion, 56, 87).
+
+**▶ PENDIENTES AL CIERRE (ninguno bloqueante):** todos los de la entrada de v1.131.0 siguen abiertos —
+🛑 (a) **el PDF lee el CUIT del TENANT, no del EMISOR** (con multi-CUIT el papel no coincide con AFIP,
+ahora EXPUESTO); (b) ~20 toggles por migrar a `<Toggle>` (deuda, no bug); (c) **Asistente IA en mobile
+se ve a la mitad**; (d) el barrido `88_mobile_responsive` sólo mide la vista default (no modales ni
+contención); (e) la **suite e2e sigue no determinística** (243 sleeps fijos + 19 `test.skip` con
+`isVisible()`); (f) la **landing** (concepto C diseñado, esperando que GO lo charle con el socio).
+
+---
+
 ## [2026-07-16] deploy | 🛑 v1.131.0 A PROD (PR #290) — fix fiscal: los comprobantes salían con el CUIT VACÍO
 
 **GO encontró el bug usando la app: "al emitir factura me sale el CUIT vacío, si lo tengo cargado".

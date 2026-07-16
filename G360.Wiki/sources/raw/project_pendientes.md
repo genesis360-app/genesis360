@@ -6,6 +6,42 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 📍 ESTADO AL CIERRE (2026-07-16) — **PROD = DEV = v1.132.0** · dev pusheado · nada sin deployar
+> **Dos releases hoy:** **v1.131.0** (fix fiscal del CUIT vacío) y **v1.132.0** (componente `<Toggle>`).
+> Ambos EN PROD, verificados leyendo el bundle real (`app.genesis360.pro`), no la narrativa. **Sin
+> migraciones ni Edge Functions nuevas** en toda la sesión. `git diff origin/main origin/dev` en `src/`
+> y `supabase/` = **0** (dev y PROD idénticos). Migs en DEV y PROD: hasta `emisores_csr_key_path` (13/07).
+>
+> **▶ PENDIENTES (ninguno bloqueante), por valor:**
+> 1. 🛑 **El PDF de los comprobantes lee el CUIT del TENANT, no del EMISOR** (REGLA #0, ver bloque de
+>    v1.131.0 abajo). Con multi-CUIT el papel no coincide con AFIP; **estaba enmascarado por el bloque
+>    vacío y ahora quedó EXPUESTO**. Reproducible ya (Almacén Jorgito tiene 2 emisores). **Es el más
+>    importante que dejó la sesión.**
+> 2. **Suite e2e sigue NO determinística** — causa raíz **NO resuelta**: 243 `waitForTimeout` fijos en
+>    69 specs + 19 `test.skip` decididos con `isVisible()` (no auto-espera → bajo carga los tests se
+>    saltean solos y dan verde). Ver [[reference_e2e_suite_no_deterministica]]. También abierto:
+>    `55_venta_usd` — `/ventas` renderiza el Dashboard en corrida masiva (posible bug de producto, ya
+>    instrumentado con `E2E_TRACE_REDIRECTS`), y `33_devolucion_proveedor` debe sembrar su precondición.
+> 3. **Asistente IA en mobile se ve a la mitad** (reportado por GO, sin diagnosticar).
+> 4. **~20 toggles por migrar a `<Toggle>`** (deuda de consistencia, NINGUNO roto).
+> 5. **Barrido `88_mobile_responsive` sólo mide la vista default** — no abre modales ni detecta
+>    contención hijo⊄padre. Por eso GO encontró 3 bugs esta sesión que la suite no vio (CUIT, toggle,
+>    modal IA). Ampliar a modales/overlays + chequeo geométrico de contención.
+> 6. **Landing** — concepto **C ("Una venta. Todo el sistema.")** diseñado y discutido (3 conceptos +
+>    arquitectura de 8 beats + SEO/GEO). **En pausa hasta que GO lo charle con el socio.** GO debe
+>    decidir: (a) C + obertura de B; (b) Next separado en `www` vs Astro; (c) tocar el tagline de
+>    `brand.ts`; (d) el domicilio particular de Fede en las páginas legales (riesgo si la landing tracc.).
+
+> ### 🎚️ (2026-07-16 · **v1.132.0 EN PROD**, PR #291, main `40601925` · componente `<Toggle>` estándar · sin migraciones)
+> **Pedido de GO** tras el bug de los toggles de v1.131.0: un componente estándar que aplique a todas las
+> páginas. Es la **causa raíz**: había ~26 toggles a mano con 5 geometrías, el knob se salía del óvalo
+> **porque cada uno se escribió por separado**. `src/components/Toggle.tsx`: el knob **ya no es
+> `absolute`** (flex item de `inline-flex items-center`) → sin posición estática de la cual depender, el
+> bug es **imposible por construcción**. Desplazamiento ON = px exacto (`track − knob − 2`). Bonus a11y:
+> `role="switch"` + `aria-checked` + focus ring. Migrados los 3 rotos (ARCA, **AFIP producción**, emisor
+> activo) + 3 de ConfigPage. **Quedan ~20** (deuda, ninguno roto). Verificado: **0 toggles con el patrón
+> roto** en toda la app.
+
 > ### 🛑🧾 (2026-07-16 · **BUG FISCAL EN PROD DESDE HACE UN MES — ARREGLADO Y ✅ DEPLOYADO** · **v1.131.0 EN PROD**, PR #290, main `7ef200a0`, tag+release · sin migraciones · verificado leyendo el bundle real de `app.genesis360.pro`)
 > **Lo reportó GO usando la app** ("al emitir factura me sale el CUIT vacío, si lo tengo cargado"), **no la suite**.
 > **Síntoma:** TODOS los comprobantes (factura, ticket, remito, presupuesto — **5 call sites**) salían con el bloque del emisor **vacío**: sin CUIT, sin razón social, sin domicilio. Y lo más grave: `condicion_iva_emisor ?? 'responsable_inscripto'` → **el comprobante de un Monotributista declaraba ser Responsable Inscripto**.

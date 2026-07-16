@@ -20,6 +20,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { uploadCertificates, generarCsrEmisor, finalizarCertificadoDesdeCsr } from '@/lib/afip'
 import { pasoWizardCert } from '@/lib/csrCert'
+import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 
 interface Emisor {
@@ -321,15 +322,13 @@ export function EmisoresFiscalesPanel() {
                     className="text-xs text-accent hover:underline">{expandido === e.id ? 'Cerrar' : (e.es_default ? 'Certificado' : 'Cert / PV')}</button>
                   {!e.es_default && (<>
                     <button onClick={() => abrirEditar(e)} title="Editar" className="text-gray-400 hover:text-accent"><Pencil size={14} /></button>
-                    <button onClick={() => toggleActivo(e)} title={e.activo ? 'Desactivar' : 'Activar'}
-                      className={`relative w-8 h-4 rounded-full transition-colors ${e.activo ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                      {/* `left-0.5` obligatorio: sin `left`, un `absolute` toma su posición
-                          ESTÁTICA y el <button> trae `text-align: center` del UA → el knob
-                          arrancaba centrado y se salía del track. Track 32 − knob 12 − 2 = 18
-                          → translate-x-4 (16) + left-0.5 (2). OFF = translate-x-0 (margen
-                          simétrico de 2px). Ver la nota del toggle de Facturación en ConfigPage. */}
-                      <span className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${e.activo ? 'translate-x-4' : 'translate-x-0'}`} />
-                    </button>
+                    <Toggle
+                      checked={e.activo}
+                      onChange={() => toggleActivo(e)}
+                      size="sm"
+                      aria-label={`${e.activo ? 'Desactivar' : 'Activar'} el emisor ${e.nombre}`}
+                      title={e.activo ? 'Desactivar' : 'Activar'}
+                    />
                     <button onClick={() => eliminar(e)} title="Eliminar" className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
                   </>)}
                   {e.es_default && <span className="text-[11px] text-gray-400">datos ↑</span>}

@@ -6,6 +6,84 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-16] deploy | 🛑 v1.131.0 A PROD (PR #290) — fix fiscal: los comprobantes salían con el CUIT VACÍO
+
+**GO encontró el bug usando la app: "al emitir factura me sale el CUIT vacío, si lo tengo cargado".
+La suite no lo agarró en un mes.**
+
+**🛑 El bug (REGLA #0, estuvo EN PROD desde el 2026-06-14 / v1.62.0).** TODOS los comprobantes
+—factura, ticket, remito, presupuesto, **5 call sites**— salían con el bloque del emisor **vacío**:
+sin CUIT, sin razón social, sin domicilio. Y lo más grave: `condicion_iva_emisor ??
+'responsable_inscripto'` → **el comprobante de un Monotributista declaraba ser Responsable Inscripto**.
+
+**Causa raíz, probada con curl (no inferida):**
+```
+.select('..., telefono, email, ...')   // 2 columnas que NO EXISTEN en `tenants` (ni DEV ni PROD)
+→ PostgREST HTTP 400  "column tenants.telefono does not exist"
+→ const { data: cfgTenant } = ...      // el `error` se DESCARTA
+→ cfgTenant = null → cada `?? ''` convierte el fallo en un dato fiscal FALSO
+```
+Ironía: el commit culpable (`c35450e8`) se llama *"factura completa + remito + **datos del emisor**
+(paridad Xubio)"* — el que agregó los datos del emisor los rompió todos.
+
+**✅ Lo que NO estaba roto: el CAE.** La EF `emitir-factura` resuelve el emisor **server-side** contra
+`emisores_fiscales` → **el registro en AFIP siempre estuvo bien**. Lo roto era **el papel** que recibe
+el cliente. Sin clientes reales → daño acotado a comprobantes de prueba de GO/Fede.
+
+**Fix (`63132723`):** sacadas `telefono, email` de las 5 selects (verificado contra la API real: antes
+**400**, ahora **200**) + **`exigirCfgFiscal()`**, guard que **LANZA** si los datos fiscales no se
+pueden leer. *Un comprobante que no sale es un problema; uno con la identidad fiscal inventada es peor.*
+
+**🧪 Guard nuevo (`22de6a0e`) — spec `87_datos_emisor_comprobante`:** corre las selects REALES contra
+la DB y exige que no fallen y que cuit/razón social/condición vengan con contenido. **Verificado POR
+MUTACIÓN**: con la select rota original falla con el mensaje exacto (`devolvió 400: column
+tenants.telefono does not exist`). No es un test que pasa de casualidad.
+
+**🛑 POR QUÉ NINGÚN TEST LO AGARRÓ — la lección de fondo:** la suite verificaba la **TRANSACCIÓN**
+fiscal (que AFIP devolviera CAE) y paraba ahí; el spec 21 emite con **CAE real** y sólo assertea el
+toast. Pero **el CAE siempre estuvo bien**: lo roto era el **DOCUMENTO**, que es lo único que ve el
+cliente. **Nadie miraba el papel.** Y los 1045 unit tests no podían: `facturasPDF.ts` **recibe**
+`emisor_cuit` por parámetro → le pasás un CUIT válido y pasa; el bug vivía en el **llamador**, en una
+query que sólo falla contra la DB real. Una `.select()` con columna inexistente es un fallo de
+**runtime** que ni TypeScript ni un unit test ven. Los `(cfg as any)?.telefono` fueron cómplices: el
+cast tapó que la columna no existía en ningún lado.
+
+**🎚️ Toggles (reportado por GO con captura).** El knob blanco se salía del óvalo. Sin `left`, un
+`absolute` toma su **posición estática** y el `<button>` trae `text-align: center` del user-agent
+(Tailwind resetea el `padding`, **no** el `text-align`) → el knob arrancaba centrado (~12px) y con
+`translate-x-5` terminaba en 48px dentro de un track de 40px. **Regla de detección:** `absolute
+top-*` **sin** `left-*` → eran exactamente **3, y los 3 de UI fiscal**: ARCA habilitada, **AFIP
+PRODUCCIÓN** (su estado no puede leerse ambiguo) y emisor activo.
+
+**🛒 POS galería:** tocar un producto no daba **ninguna** señal visible en mobile (el único feedback
+era `hover:`, inexistente en touch) y el carrito queda fuera de pantalla → se sumaban unidades sin
+enterarse. **Badge permanente** con la cantidad + micro-pulso + borde accent. Se eligió badge sobre
+toast: está donde el ojo ya está, es por producto, aguanta el tecleo rápido y **no caduca**. Quitado
+"auto (combos)".
+
+**🧪 Suite e2e — capa de fixtures (`446a9a38`).** Diagnóstico: era **NO DETERMINÍSTICA** (6 corridas,
+6 sets de fallas casi disjuntos; run5 y run6 **sin solapamiento**). Causa: los specs comparten un
+tenant DEV mutable, asumen precondiciones que no establecen, y esperan con **243 sleeps fijos en 69
+specs**. Los **33 skips** eran el mismo defecto callado: **19 `test.skip` se deciden con
+`isVisible()`, que NO auto-espera** → bajo carga los tests **se saltean solos** y la suite da verde.
+El nº de skips **varía entre corridas** (32/33/34/35) — prueba de que es timing, no gating. Nuevo
+`helpers/fixtures.ts`; specs 28/37/85 arreglados (el **37** era one-shot: generaba la nómina *y su
+gasto* → se comía su precondición y quedaba **rojo todo julio**; ahora siembra la suya, verificado
+con 2 corridas + **0 gastos duplicados, 0 huérfanos**).
+
+**Deploy:** PR #290 squash a main (`7ef200a0`), tag + release `v1.131.0`. **Sin migraciones.**
+Verificado que PROD sirve **v1.131.0** leyendo el bundle real (`/assets/index-DgQ09KIi.js`), no la
+narrativa. Verde: tsc · build · unit 1045+5 todo · e2e fiscales **8/8** (21 con CAE real, 56, 87).
+
+**▶ PENDIENTES QUE DEJA:** (a) 🛑 **el PDF lee el CUIT del TENANT, no del EMISOR** — con multi-CUIT el
+CAE sale con el CUIT del emisor pero el papel imprimiría el del tenant → **no coincide con AFIP**;
+estaba enmascarado por el bloque vacío y **ahora queda expuesto**; (b) `<Toggle>` estándar (~25 a mano
+con 5 geometrías — el bug existe porque cada uno se escribió por separado); (c) Asistente IA en mobile
+se ve a la mitad; (d) el barrido `88_mobile_responsive` **sólo mide la vista default**: no abre modales
+ni detecta contención hijo⊄padre — por eso GO encontró 2 bugs seguidos que el guard no vio.
+
+---
+
 ## [2026-07-15] update | 🏢 Auditoría MULTI-CUIT — validado con datos reales + hardening del cert + e2e nuevo
 
 **GO pidió validar que un mismo tenant sea multi-CUIT.** Cerrado el pendiente que venía desde el 11/07

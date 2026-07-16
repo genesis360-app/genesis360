@@ -13,6 +13,33 @@ updated: 2026-05-29
 
 ---
 
+## v1.131.0 — 🛑 Fix fiscal: comprobantes con el CUIT VACÍO (REGLA #0) + toggles + feedback POS — ✅ PROD (2026-07-16, PR #290)
+
+**El release lo motiva un bug fiscal que estuvo EN PROD un mes** (desde el 2026-06-14, v1.62.0,
+commit `c35450e8` *"factura completa + remito + datos del emisor"* — el commit que agregó los datos
+del emisor los rompió todos). **Lo reportó GO usando la app, NO la suite.**
+
+- **🛑 Comprobantes con la identidad fiscal vacía.** TODOS (factura, ticket, remito, presupuesto —
+  5 call sites) salían sin CUIT, sin razón social y sin domicilio; y `condicion_iva_emisor ??
+  'responsable_inscripto'` hacía que **el comprobante de un Monotributista declarara ser RI**.
+  **Causa** (probada con curl): la `.select()` pedía `telefono, email`, **columnas que no existen en
+  `tenants`** → PostgREST **400** → el código **descartaba el `error`** → `cfgTenant = null` → los
+  `?? ''` inventaban los datos. **El CAE nunca estuvo mal** (la EF resuelve el emisor server-side) →
+  el registro en AFIP siempre estuvo bien; lo roto era **el papel**. Sin clientes reales → daño
+  acotado. **Fix:** selects corregidas (antes 400 → ahora 200, verificado contra la API real) +
+  **`exigirCfgFiscal()`**, guard que LANZA en vez de dejar que los defaults inventen.
+- **🧪 Guard nuevo — spec `87_datos_emisor_comprobante`**: corre las selects reales contra la DB.
+  **Verificado por mutación**: con la select rota falla con el mensaje exacto.
+- **🎚️ 3 toggles con el knob fuera del track** (los 3 de UI fiscal: ARCA habilitada, **AFIP
+  producción**, emisor activo). Sin `left`, un `absolute` toma su posición estática y el `<button>`
+  trae `text-align: center` del UA → el knob terminaba 8px afuera.
+- **🛒 Feedback al agregar en la galería del POS**: badge permanente con la cantidad + micro-pulso
+  + borde accent (antes, en mobile, tocar un producto no daba NINGUNA señal). Quitado "auto (combos)".
+- **🧪 e2e**: capa de fixtures nueva (`helpers/fixtures.ts`) que **garantiza** precondiciones en vez
+  de skipearlas; specs 28/37/85 arreglados (el 37 era one-shot: se comía su propia precondición).
+
+**Sin migraciones.** Verde: tsc · build · unit 1045+5 todo · e2e fiscales 8/8 (spec 21 con **CAE real**).
+
 ## v1.130.0 — 📱 Mobile responsive + 🛑 guard cert AFIP + ⚖️ blindaje legal — ✅ PROD (2026-07-15, PR #289)
 
 **📱 Mobile responsive (primera cobertura responsive en e2e).** Síntoma de GO: "en el celular se sale

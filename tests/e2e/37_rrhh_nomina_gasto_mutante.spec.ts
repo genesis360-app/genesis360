@@ -10,25 +10,40 @@
  * "Generar gasto" en una liquidación. Aserción POSITIVA (toast "Gasto generado en Gastos");
  * la fila en `gastos` + el link `gasto_id` se verifican aparte con execute_sql.
  *
+ * 🌱 SIEMBRA SU PROPIA PRECONDICIÓN (2026-07-16). Antes era ONE-SHOT y se rompía solo: genera la
+ * nómina del mes Y su gasto, o sea que **consume su propia precondición** — cuando todas las
+ * liquidaciones del período quedan con `gasto_id`, el botón "Generar gasto" desaparece y el spec
+ * queda ROJO el resto del mes (determinístico, no flake). Probado con la DB: período 2026-07 → 5
+ * liquidaciones, las 5 ya con gasto, 0 pendientes. Es la misma trampa que tenía el spec 42.
+ * Ahora `garantizarLiquidacionSinGasto` libera una revirtiendo el efecto de la corrida anterior
+ * (borra un gasto PENDIENTE; el FK ON DELETE SET NULL desliga la liquidación de forma atómica →
+ * el gasto duplicado es imposible por construcción). Ver el helper para las 3 redes de seguridad.
+ *
  * Corre con OWNER=DUEÑO (chromium) contra el tenant DEV (Almacén Jorgito; 5 empleados con salario).
  */
 import { test, expect } from '@playwright/test'
+import { garantizarLiquidacionSinGasto } from './helpers/fixtures'
 import { goto, waitForApp } from './helpers/navigation'
 
 test.describe('Nómina RRHH → gasto (mutante)', () => {
-  test('generar nómina del mes y su gasto → aparece en Gastos como pendiente', async ({ page }) => {
+  test('generar nómina del mes y su gasto → aparece en Gastos como pendiente', async ({ page, request }) => {
     await goto(page, '/rrhh')
     await waitForApp(page)
 
+    // 🌱 Precondición GARANTIZADA: al menos una liquidación del mes sin gasto generado.
+    // (Necesita la sesión ya cargada en el browser para tomar el token → va después del goto.)
+    await garantizarLiquidacionSinGasto(page, request)
+
     // Tab Nómina
     await page.getByRole('button', { name: /Nómina/i }).first().click()
-    await page.waitForTimeout(600)
 
     // Generar nómina del mes (crea las liquidaciones faltantes del período actual)
-    await page.getByRole('button', { name: /Generar nómina del mes/i }).click()
-    await page.waitForTimeout(1500)
+    const generarNomina = page.getByRole('button', { name: /Generar nómina del mes/i })
+    await expect(generarNomina).toBeVisible({ timeout: 10000 })
+    await generarNomina.click()
 
-    // Debe haber al menos una liquidación con acción "Generar gasto"
+    // Debe haber al menos una liquidación con acción "Generar gasto" (sin sleep fijo: se espera
+    // el botón, no el reloj — los sleeps fijos son la causa raíz de que la suite sea flaky)
     const generarGasto = page.getByRole('button', { name: /Generar gasto/i }).first()
     await expect(generarGasto).toBeVisible({ timeout: 10000 })
     await generarGasto.click()

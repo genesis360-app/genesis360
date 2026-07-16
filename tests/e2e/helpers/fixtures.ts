@@ -223,6 +223,93 @@ export async function agregarPrimerProductoAlCarrito(page: Page, busqueda = 'a')
   await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 8000 })
 }
 
+// ─── RRHH / nómina ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Garantiza que exista al menos UNA liquidación del período corriente SIN gasto generado
+ * (precondición del spec 37: sin eso, el botón "Generar gasto" no existe).
+ *
+ * 🛑 El spec 37 era ONE-SHOT y se rompía solo — la trampa del spec 42 otra vez: genera la
+ * nómina del mes Y su gasto, así que **consume su propia precondición**. Probado con la DB el
+ * 2026-07-16: período 2026-07 → 5 liquidaciones, **las 5 ya con `gasto_id`, 0 pendientes** →
+ * el spec quedaba ROJO el resto de julio (determinístico, no flake) hasta que cambiara el mes.
+ *
+ * 🛡 Cómo se libera una, y por qué es seguro (REGLA #0 — esto genera GASTOS):
+ * se borra el gasto de una liquidación y el FK `rrhh_salarios_gasto_id_fkey`, que es
+ * **ON DELETE SET NULL** (verificado en la DB), desliga la liquidación **atómicamente**. O sea
+ * que el escenario peligroso —quedarse con el gasto huérfano y que el spec genere un SEGUNDO
+ * gasto para el mismo sueldo (gasto DUPLICADO)— es **imposible por construcción**: no lo evita
+ * este código, lo evita la DB. Es revertir el efecto de la corrida anterior, no inventar plata.
+ *
+ * Tres redes más:
+ *  1. **Sólo se borra un gasto `pendiente`** → no tiene movimiento de caja, así que no puede
+ *     dejar un asiento huérfano. Si estuviera `pagado` (lo paga el spec 50) NO se toca.
+ *  2. Sólo del **período corriente** y sólo de los que cuelgan de `rrhh_salarios` (los generó
+ *     exactamente este flujo).
+ *  3. El trigger `trg_gastos_periodo_cerrado` **bloquea el DELETE si el período contable está
+ *     cerrado** (`fecha <= ultimo_cierre_hasta`) → si alguien cierra el período, esto falla
+ *     ruidoso en vez de tocar historia contable.
+ */
+export async function garantizarLiquidacionSinGasto(
+  page: Page,
+  request: APIRequestContext,
+): Promise<void> {
+  const token = await tokenDesdeBrowser(page)
+  const headers = restHeaders(token)
+
+  const hoy = new Date()
+  const periodo = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-01`
+
+  // ¿Ya hay una liquidación sin gasto? → precondición satisfecha, no tocar nada.
+  const pend = await request.get(
+    `${SUPABASE_URL}/rest/v1/rrhh_salarios?periodo=eq.${periodo}&gasto_id=is.null&select=id`,
+    { headers },
+  )
+  expect(pend.ok(), `[fixtures] no se pudo consultar rrhh_salarios: ${await pend.text()}`).toBeTruthy()
+  if (((await pend.json()) as unknown[]).length > 0) return
+
+  // Todas consumidas por corridas anteriores → liberar UNA revirtiendo su propio efecto.
+  const conGasto = await request.get(
+    `${SUPABASE_URL}/rest/v1/rrhh_salarios?periodo=eq.${periodo}&gasto_id=not.is.null` +
+      `&select=id,gasto_id,gastos(id,estado_pago,descripcion)`,
+    { headers },
+  )
+  expect(conGasto.ok(), `[fixtures] no se pudo consultar las liquidaciones: ${await conGasto.text()}`).toBeTruthy()
+  const filas = (await conGasto.json()) as Array<{
+    id: string
+    gasto_id: string
+    gastos?: { id: string; estado_pago: string; descripcion: string } | null
+  }>
+
+  const liberable = filas.find(f => f.gastos?.estado_pago === 'pendiente')
+  expect(
+    liberable,
+    `[fixtures] No hay ninguna liquidación de ${periodo} liberable: o no hay ninguna, o todas ` +
+      `sus gastos ya están PAGADOS (${filas.length} con gasto). Un gasto pagado NO se borra ` +
+      `(tiene movimiento de caja y borrarlo lo dejaría huérfano — REGLA #0). ` +
+      `Sembrar una liquidación nueva a mano o esperar al mes siguiente.`,
+  ).toBeTruthy()
+
+  const del = await request.delete(`${SUPABASE_URL}/rest/v1/gastos?id=eq.${liberable!.gasto_id}`, { headers })
+  expect(
+    del.ok(),
+    `[fixtures] no se pudo borrar el gasto pendiente "${liberable!.gastos?.descripcion}" para ` +
+      `liberar la precondición: ${await del.text()}`,
+  ).toBeTruthy()
+
+  // POSITIVO: la liquidación quedó realmente desligada (el FK SET NULL hizo lo suyo)
+  const verif = await request.get(
+    `${SUPABASE_URL}/rest/v1/rrhh_salarios?id=eq.${liberable!.id}&select=id,gasto_id`,
+    { headers },
+  )
+  const [fila] = (await verif.json()) as Array<{ gasto_id: string | null }>
+  expect(
+    fila?.gasto_id,
+    `[fixtures] se borró el gasto pero rrhh_salarios.gasto_id NO quedó en NULL — el ON DELETE ` +
+      `SET NULL no actuó. FRENAR: sin eso el spec generaría un gasto DUPLICADO para el mismo sueldo.`,
+  ).toBeNull()
+}
+
 /** Lee el total del carrito del POS como número. */
 export async function totalDelCarrito(page: Page): Promise<number> {
   const totalTxt = await page.locator('div:has(> span:text-is("Total")) > span').last().textContent()

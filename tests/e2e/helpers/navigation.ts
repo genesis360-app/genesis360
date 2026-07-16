@@ -1,13 +1,35 @@
 /**
  * Helpers de navegación y utilidades comunes para los tests E2E.
  */
-import { Page, expect } from '@playwright/test'
+import { Page, expect, test } from '@playwright/test'
 
-/** Navega a una ruta y espera que el contenido principal cargue */
+/**
+ * Navega a una ruta y espera que el contenido principal cargue.
+ *
+ * 🔎 Con `E2E_TRACE_REDIRECTS=1` avisa cuando la app terminó en una ruta DISTINTA a la pedida.
+ * Nace de un síntoma real (2026-07-15): en una corrida masiva, `/ventas` renderizó el DASHBOARD
+ * y el spec 55 murió con un "no se encontró el buscador" que no decía nada. Aislado no pasa.
+ * Como los specs de rol (13-18) redirigen A PROPÓSITO, esto va detrás de un flag: se prende para
+ * diagnosticar, no ensucia la corrida normal. Nunca falla el test — es sólo diagnóstico.
+ */
 export async function goto(page: Page, path: string) {
   await page.goto(path)
   // Esperar que no haya spinner de carga
   await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {})
+
+  if (process.env.E2E_TRACE_REDIRECTS) {
+    try {
+      const landed = new URL(page.url()).pathname
+      if (landed !== path) {
+        const info = test.info()
+        const msg = `[redirect] ${info.titlePath.at(-1) ?? '?'}: goto("${path}") → "${landed}"`
+        console.warn(msg)
+        info.annotations.push({ type: 'redirect-inesperado', description: msg })
+      }
+    } catch {
+      /* el diagnóstico nunca rompe el test */
+    }
+  }
 }
 
 /** Espera que el layout esté listo. En páginas con sidebar espera el aside; en otras espera networkidle. */

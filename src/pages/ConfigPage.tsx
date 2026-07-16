@@ -7,6 +7,7 @@ import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { supabase } from '@/lib/supabase'
 import { PageTabs } from '@/components/PageTabs'
+import { Toggle } from '@/components/Toggle'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { uploadCertificates } from '@/lib/afip'
@@ -2508,11 +2509,12 @@ export default function ConfigPage() {
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {bizFactHabilitada ? 'Habilitada' : 'Deshabilitada'}
               </span>
-              <button onClick={toggleFacturacion}
+              <Toggle
+                checked={bizFactHabilitada}
+                onChange={toggleFacturacion}
+                aria-label="Habilitar facturación electrónica (ARCA)"
                 title="Click para habilitar/deshabilitar — se guarda automáticamente"
-                className={`relative w-10 h-5 rounded-full transition-colors ${bizFactHabilitada ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${bizFactHabilitada ? 'translate-x-5' : 'translate-x-0.5'}`} />
-              </button>
+              />
             </label>
           </div>
           <div className="px-5 py-4 space-y-3">
@@ -2663,11 +2665,16 @@ export default function ConfigPage() {
                     </p>
                   </div>
                 </div>
-                <button onClick={toggleAfipProduccion} disabled={savingProd}
+                {/* 🛑 Este switch decide homologación ↔ AFIP PRODUCCIÓN REAL: su estado no puede
+                    leerse ambiguo (REGLA #0). Por eso va por el componente estándar. */}
+                <Toggle
+                  checked={bizAfipProduccion}
+                  onChange={toggleAfipProduccion}
+                  disabled={savingProd}
+                  colorOn="bg-emerald-500"
+                  aria-label="Emitir contra AFIP producción real"
                   title={bizAfipProduccion ? 'Volver a modo prueba (homologación)' : 'Pasar a producción real'}
-                  className={`relative w-10 h-5 rounded-full transition-colors shrink-0 disabled:opacity-50 ${bizAfipProduccion ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${bizAfipProduccion ? 'translate-x-5' : 'translate-x-0.5'}`} />
-                </button>
+                />
               </div>
               {!afipDatosListos && !bizAfipProduccion && (
                 <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">Cargá y guardá CUIT + Token AfipSDK para poder pasar a producción.</p>
@@ -4767,10 +4774,9 @@ export default function ConfigPage() {
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Margen negativo</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Avisar cuando una venta se cierra con costo mayor al total.</p>
                   </div>
-                  <button type="button" disabled={!canEdit} onClick={() => setBizAlertaMargenNeg(v => !v)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${bizAlertaMargenNeg ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizAlertaMargenNeg ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
+                  <Toggle size="lg" disabled={!canEdit} checked={bizAlertaMargenNeg}
+                    onChange={setBizAlertaMargenNeg}
+                    aria-label="Alertar margen negativo" />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                   <div>
@@ -4975,20 +4981,18 @@ export default function ConfigPage() {
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir "Consumidor Final"</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Habilita vender sin identificar al cliente (genérico).</p>
                   </div>
-                  <button type="button" disabled={!canEdit} onClick={() => setBizClienteConsumidorFinal(v => !v)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${bizClienteConsumidorFinal ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizClienteConsumidorFinal ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
+                  <Toggle size="lg" disabled={!canEdit} checked={bizClienteConsumidorFinal}
+                    onChange={setBizClienteConsumidorFinal}
+                    aria-label='Permitir "Consumidor Final"' />
                 </div>
                 <div className="flex items-center justify-between py-1">
                   <div>
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Crear cliente inline desde el POS</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Permite agregar un cliente nuevo directamente desde la pantalla de venta.</p>
                   </div>
-                  <button type="button" disabled={!canEdit} onClick={() => setBizClienteCreacionInline(v => !v)}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${bizClienteCreacionInline ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                    <span className={`inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizClienteCreacionInline ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
+                  <Toggle size="lg" disabled={!canEdit} checked={bizClienteCreacionInline}
+                    onChange={setBizClienteCreacionInline}
+                    aria-label="Crear cliente inline desde el POS" />
                 </div>
               </div>
 

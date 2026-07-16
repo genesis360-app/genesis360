@@ -18,24 +18,34 @@
  * USD no está aplicado. Corre con OWNER (chromium) contra DEV.
  */
 import { test, expect } from '@playwright/test'
-import { goto, waitForApp } from './helpers/navigation'
+import { irAlPOS } from './helpers/fixtures'
 
 test.describe('Venta de producto en USD — conversión a la cotización vigente', () => {
   test('agregar producto USD → precio convertido a moneda local', async ({ page }) => {
-    await goto(page, '/ventas')
-    await waitForApp(page)
+    // 🔎 `irAlPOS` en vez de goto+waitForApp: en una corrida masiva del 2026-07-15 este spec
+    // falló con un críptico "no se encontró el buscador", y el snapshot del fallo mostraba el
+    // DASHBOARD renderizado en /ventas (0 señales de POS, 4 de Dashboard: "La Balanza"/"El Mix
+    // de Caja"). Aislado llega bien al POS. Causa raíz NO identificada — descartados:
+    // permisos_custom (el OWNER e2e tiene rol_custom_id: null), redirects por rol de AppLayout,
+    // RUTAS_AVANZADO (/ventas no está), el guard de ruta (/ventas cuelga de un AuthGuard SIN
+    // requireRole) y el service worker (los e2e corren contra `npm run dev` y VitePWA no tiene
+    // devOptions → SW deshabilitado en dev).
+    // Si es real, un DUEÑO que entra directo a /ventas a veces cae en /dashboard = BUG DE
+    // PRODUCTO. `irAlPOS` reporta URL + h1 + si renderizó el Dashboard, para cazarlo la próxima
+    // vez que aparezca en lugar de dejar un mensaje que no dice nada.
+    await irAlPOS(page)
 
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
-    await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('Coca Cola 1.5L')
-    await page.waitForTimeout(1000)
+    // Sin sleep fijo: esperar el resultado, no el reloj (los 243 waitForTimeout fijos de la
+    // suite son la causa raíz de que las fallas se muevan entre corridas).
     const prod = page.locator('div.absolute.top-full button, div.grid > button').filter({ hasText: /Coca Cola 1\.5L/i }).first()
-    if (!(await prod.isVisible().catch(() => false))) {
+    const aparecio = await prod.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false)
+    if (!aparecio) {
       test.skip(true, 'Producto "Coca Cola 1.5L Original" no disponible en el tenant.')
     }
     await prod.click()
-    await page.waitForTimeout(600)
-    await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
+    await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 8000 })
 
     // Si no aparece el indicador USD, el fixture (moneda_venta='usd' + precio_usd) no está aplicado.
     const usdInd = page.getByText(/Precio USD/i).first()

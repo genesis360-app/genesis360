@@ -6,7 +6,75 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📱 (2026-07-15 · SET DE PRUEBAS RESPONSIVE + fixes de overflow en Dashboard/Métricas · commit `e95297bf` en dev · barrido 11/11 verde · PROD pendiente)
+> ### 🛑🧾 (2026-07-16 · **BUG FISCAL EN PROD DESDE HACE UN MES — ARREGLADO** · commit `63132723` en dev · **falta deploy a PROD**)
+> **Lo reportó GO usando la app** ("al emitir factura me sale el CUIT vacío, si lo tengo cargado"), **no la suite**.
+> **Síntoma:** TODOS los comprobantes (factura, ticket, remito, presupuesto — **5 call sites**) salían con el bloque del emisor **vacío**: sin CUIT, sin razón social, sin domicilio. Y lo más grave: `condicion_iva_emisor ?? 'responsable_inscripto'` → **el comprobante de un Monotributista declaraba ser Responsable Inscripto**.
+> **Causa raíz (PROBADA con curl, no inferida):** la `.select()` pedía `telefono, email`, **dos columnas que NO EXISTEN en `tenants`** (ni en DEV ni en PROD) → PostgREST **HTTP 400** (`column tenants.telefono does not exist`) → el código hacía `const { data: cfgTenant } = ...` **descartando el `error`** → `cfgTenant = null` → cada `?? ''` convertía el fallo en un dato fiscal falso.
+> **Desde:** commit `c35450e8`, **2026-06-14 (v1.62.0)** — *"factura completa + remito + datos del emisor (paridad Xubio)"*. El commit que agregó los datos del emisor los rompió todos.
+> **✅ NO afectado: el CAE.** La EF `emitir-factura` resuelve el emisor **server-side** contra `emisores_fiscales` → **el registro en AFIP siempre estuvo bien**. Lo roto era **el papel** que recibe el cliente. Sin clientes reales → daño acotado a comprobantes de prueba de GO/Fede.
+> **Fix (`63132723`):** sacadas `telefono, email` de las 5 selects (verificado contra la API real: antes **400**, ahora **200**) + **`exigirCfgFiscal()`**, un guard que **LANZA** si los datos fiscales no se pueden leer en vez de dejar que los `?? ''` inventen. *Un comprobante que no sale es un problema; uno con la identidad fiscal inventada es peor.*
+> **Guard nuevo (`22de6a0e`): spec `87_datos_emisor_comprobante`** — corre las selects reales contra la DB y exige que no fallen y que cuit/razón social/condición vengan con contenido. **Verificado POR MUTACIÓN**: con la select rota original falla con el mensaje exacto.
+> **🛑 POR QUÉ NINGÚN TEST LO AGARRÓ (la lección de fondo):** la suite verificaba la **TRANSACCIÓN** fiscal (que AFIP devolviera CAE) y paraba ahí — el spec 21 emite con **CAE real** y sólo assertea el toast. Pero **el CAE siempre estuvo bien**: lo roto era el **DOCUMENTO**, que es lo único que ve el cliente. **Nadie mira el papel.** Y los unit tests no podían: `facturasPDF.ts` **recibe** `emisor_cuit` por parámetro → un unit test le pasa un CUIT válido y pasa; el bug vivía en el **llamador**, en una query que sólo falla contra la DB real. Una `.select()` con columna inexistente es un fallo de **runtime** que ni TS ni un unit test ven.
+> **▶ PENDIENTE:** (a) **deploy a PROD** (bump + PR + release); (b) **🛑 2º hallazgo, NO arreglado: el PDF lee el CUIT del TENANT, no del EMISOR** (`from('tenants')` en los 5 sitios). Con multi-CUIT, si emitís con un emisor adicional el **CAE sale con SU CUIT** pero el PDF imprimiría el del tenant → **un papel que no coincide con AFIP**. Hoy estaba enmascarado por el bloque vacío; **al arreglar lo anterior queda EXPUESTO**. Almacén Jorgito ya tiene 2 emisores con CUITs distintos (`23-32031506-9` default y `23-18383448-9` Otranto S.A.) → **reproducible ya**; (c) tests que miren el **contenido del PDF**, no sólo el toast (`facturasPDF.ts` no tiene NINGÚN unit test).
+
+> ### 🎚️ (2026-07-16 · toggles con el knob fuera del track — **3 arreglados**, falta el componente estándar)
+> **Lo reportó GO con una captura**, no la suite. **Causa:** sin `left`, un `absolute` toma su **posición ESTÁTICA**, y el `<button>` trae `text-align: center` del user-agent (Tailwind resetea el `padding` pero **no** el `text-align`) → el knob arrancaba **centrado** (~12px) y con `translate-x-5` terminaba en 48px dentro de un track de 40px → **el círculo blanco quedaba FUERA del óvalo**.
+> **Regla mecánica de detección:** toggles con `absolute top-*` y **SIN** `left-*`. Eran exactamente 3, y los 3 en UI fiscal: `ConfigPage:2514` (ARCA habilitada), `ConfigPage:2669` (**AFIP PRODUCCIÓN** — su estado no puede leerse ambiguo, REGLA #0) y `EmisoresFiscalesPanel:326`. Arreglados con `left-0.5` + OFF en `translate-x-0` (margen simétrico de 2px). Commit `63132723`.
+> **▶ PENDIENTE (pedido de GO): `<Toggle>` estándar reutilizable.** Hay **~25 toggles hechos a mano con 5 geometrías distintas** (`translate-x-4/-x-5/-x-6`, con y sin `left-0.5`, tracks `w-8/w-10/w-11`) — el bug existe **precisamente porque** cada uno se escribió por separado. Un componente hace el error imposible por construcción y permite cambiar el diseño en un solo lugar.
+
+> ### 📱 (2026-07-16 · pendiente reportado por GO) **Asistente IA en mobile: el modal se ve sólo a la mitad**
+> En el celular, al abrir el Asistente IA la ventana muestra **sólo la mitad derecha**, no se ve entera y no se puede mover. Debería aparecer **centrada** en la pantalla del celular. Sin diagnosticar todavía.
+
+> ### 🔴 (2026-07-16) **El barrido `88_mobile_responsive` sólo mide la vista DEFAULT de cada ruta — no ve modales ni overlays**
+> **Dos bugs seguidos los encontró GO y el barrido no**: el knob del toggle y el modal del Asistente IA en mobile. No es mala suerte: el guard **mira la mitad de la app**. `detectarOverflowHorizontal` mide el `<main>` (y el `<header>`) en la vista default; **nunca abre un modal, un sub-tab ni un chip**. Y tampoco detecta **contención**: un hijo que se escapa de su padre (knob 8px fuera de un track de 40px) **no hace scrollear la página**, así que es invisible para el barrido.
+> **▶ Ampliar el barrido a:** (a) **modales/overlays** (Asistente IA, wizard de cert, modales de venta); (b) sub-tabs/chips internos; (c) un chequeo de **contención hijo⊄padre** (estilo §31 pero geométrico) que hubiera cazado el toggle.
+
+> ### 🏢 (2026-07-15 · **MULTI-CUIT VALIDADO** con datos reales + hardening del cert · commit `5581f220` en dev · EF en DEV, **PROD pendiente**)
+> **Cerrado el pendiente "emisión real con 2 CUITs" que venía del 11/07.** Fede pudo emitir (su error de
+> ARCA era el **alias del DN con espacio**, no el CSR; después faltaba **"Crear autorización a servicio"**
+> para `wsfe` → `coe.notAuthorized`). Tenant "Kiosco Buildi" DEV emitió con **2 CUITs**: Factura C nº**1**
+> del Monotributo de Fede (CAE `86280566995291`) y Factura B nº3-30 del RI → **secuencias INDEPENDIENTES
+> por CUIT** (si fuera del tenant, la C de Fede era #28). TA de WSAA por CUIT, cert propio por emisor,
+> letras correctas. **0 violaciones** del invariante letra↔condición.
+> **🛑 Hardening (commit `5581f220`):** la selección de cert caía a un **cert LEGACY** (`emisor_id NULL`)
+> si el emisor no tenía el suyo → en multi-CUIT firmaba el WSAA **con el CUIT de otro**. Inerte hoy (0
+> certs legacy en DEV/PROD) pero arreglado: el legacy es del CUIT original → **solo para el emisor
+> DEFAULT**. `certSelect.ts` puro + 8 unit tests. **EF `emitir-factura` redeployada en DEV — falta PROD.**
+> **✅ e2e `63_multicuit_emisor_guards` (7/7):** el EMISOR gobierna la letra; cubre la rama **"RI rechaza
+> C"** que el 56 no podía. Usuario nuevo **solo DEV** `e2e-multicuit@genesis360.test` (DUEÑO de Kiosco
+> Buildi) + vars `E2E_MULTICUIT_*` en `.env.test.local`. ⚠ Gotcha: **un `#` en el password rompe el `.env`**.
+> **✅ CERRADO TODO (2026-07-15):** (a) **EF `emitir-factura` en PROD v17** (`verify_jwt=true` preservado)
+> con el hardening; smoke post-deploy anon→401 del guard (no 500) → bootea bien, sin corte fiscal.
+> (b) **Spec 42 reparado de raíz** (commit `fbd28842`): **siembra su propia precondición** por API (token
+> del owner; `devoluciones` no tiene triggers → no toca stock ni caja). Verificado corriendo **2 veces
+> seguidas**: ambas verdes, cada una auto-sembró y emitió su NC-C real (nº12 y nº13). Ya no es one-shot.
+> (c) **Los specs de API ya no se skipean en silencio**: faltaban `VITE_SUPABASE_URL`/`ANON_KEY` en
+> `tests/e2e/.env.test.local` → los specs **56 y 63** se omitían en `npm run test:e2e`. Agregadas.
+
+> ### 🚀 (2026-07-15 · **v1.130.0 EN PROD** — PR #289 · mobile responsive + guard cert AFIP + blindaje legal)
+> **PROD = v1.130.0** (main `4937ec3c`, tag+release publicados). Contenido: barrido responsive
+> `88_mobile_responsive` + fixes Dashboard/Métricas/**header** (el avatar/logout se clippeaba fuera de
+> pantalla en ≤375px) · **guard crt↔clave** (EF `finalizar-certificado` en **DEV+PROD**, v1 ACTIVE,
+> `verify_jwt: true`) · **blindaje legal** · fix alta de emisor · `schema_full.sql`.
+> **Sin migraciones nuevas** (264-270 verificadas presentes en PROD por query real antes de mergear).
+> La EF fue a PROD **antes** que el frontend (si no, el wizard invoca una función inexistente).
+> ⚠ **Divergencia del squash:** el PR salió CONFLICTING (main tenía solo el squash de #288) → se mergeó
+> `origin/main` en `dev` resolviendo a favor de dev (superconjunto). **Es un paso fijo del deploy**, no
+> un incidente; repetirlo cada release.
+> **▶ PENDIENTES REALES:**
+> 1. **⚖️ Legal: abogado + registro AAIP siguen PENDIENTES sobre contenido YA PÚBLICO.** GO autorizó el
+>    deploy pese al hold ("no hay clientes reales todavía"). Las páginas legales exhiben los datos reales
+>    de Fede (incl. domicilio particular). **Revisar antes de tener clientes.**
+> 2. ~~**Fede: rehacer el cert de homologación**~~ ✅ **CERRADO 2026-07-15** — Fede emitió su **Factura C
+>    nº1 con CAE real** (`86280566995291`). El error de ARCA era el *"Nombre simbólico del DN"* con
+>    **espacio** (`genesis360 2` → `genesis3602`; solo acepta letras/números) + faltaba **"Crear
+>    autorización a servicio"** para `wsfe` (`coe.notAuthorized`). No era el CSR.
+> 3. ~~Redeploy EF `ai-assistant` (DEV+PROD) por el `app-reference` actualizado~~ ✅ **YA ESTABA HECHO**
+>    el 2026-07-14 (ver entrada de esa fecha, punto 4). **Verificado 2026-07-15 contra el proyecto:**
+>    PROD `ai-assistant` **v6, updated 2026-07-14**, ACTIVE. Este ítem estaba **duplicado/stale** acá.
+> 4. Ampliar el barrido responsive a sub-tabs/chips internos (hoy mide la vista default de cada ruta).
+
+> ### 📱 (2026-07-15 · SET DE PRUEBAS RESPONSIVE + fixes de overflow en Dashboard/Métricas · commit `e95297bf` en dev · barrido 11/11 verde · ✅ YA EN PROD via v1.130.0)
 > **Cerrado el pendiente de mobile que venía del 13/07.** GO: "en el celular se sale contenido del
 > marco". Causa de fondo: `AppLayout.tsx:382` clippea con `overflow-hidden` en la raíz → el overflow
 > **no scrollea, se corta**. **Infra nueva:** helper `detectarOverflowHorizontal` (mide dentro del
@@ -1144,11 +1212,33 @@ type: project
 **Otros pendientes (no e2e):**
 - **Verificación VISUAL en PROD:** ícono nuevo (hard-reload por caché PWA), degradé global, hover tabs/sidebar, iconos en tabs, fondos landing/suscripción, capital por moneda.
 - **Smoke de primer uso PU-01→17 en PROD** sobre un tenant nuevo real (alta con confirmación de email — no automatizable sin inbox; lo corre GO). La paridad (migs 230-232) ya previene los drifts.
-- **▶ Pase de performance DB:** ~~los **646 lints** — envolver `auth.*()` en RLS con `(select auth.*())` + índices en FKs sin índice.~~ ✅ **HECHO EN DEV (mig 263, 2026-07-08)** — 116 `ALTER POLICY` + 195 índices FK, verificado (0 policies sin envolver, aislamiento multi-tenant intacto). **⏳ Falta PROD** — ⚠ sin `CREATE INDEX CONCURRENTLY`, los `CREATE INDEX` toman lock `SHARE` sobre `ventas`/`caja_movimientos`/`productos` (tráfico real) hasta el commit final — evaluar ventana de bajo tráfico o partir el archivo en 2 antes de aplicar a PROD.
+- ~~**▶ Pase de performance DB:** los **646 lints** — envolver `auth.*()` en RLS con `(select auth.*())` + índices en FKs sin índice.~~ ✅ **CERRADO — EN DEV Y EN PROD** (mig 263 `263_perf_rls_fk_indexes`; DEV `20260709030902`, PROD `20260709161918`). 116 `ALTER POLICY` + 195 índices FK. **Verificado contra la DB el 2026-07-15** (no solo la fila de `schema_migrations`, también el efecto): **0 policies** con `auth.*()` sin envolver en ambos, 157 policies, y **hash global idéntico DEV≡PROD** (`548b29b648fbd96caf4bd011411577db`) → sin drift. La nota vieja decía "⏳ Falta PROD" y era **stale** (ya se había aplicado; la ventana de bajo tráfico por el lock `SHARE` de los `CREATE INDEX` no llegó a ser necesaria).
+  > ⚠ **Gotcha al auditar esto:** `pg_policies` renderiza la forma envuelta como `( SELECT auth.uid())` **en mayúscula**, y `~`/`!~` en Postgres son **case-sensitive** → un chequeo con `!~ '\(\s*select\s+auth\.'` reporta **107 falsos positivos** en PROD. Usar `~*`/`!~*`. Mismo patrón que el falso positivo de letra↔condición del 15/07: **el invariante mal planteado inventa el bug**.
 - **Limpieza:** borrar el tenant `ZZZ_VALIDACION_CLAUDE` (DEV) cuando ya no se use; los datos de prueba en Almacén Jorgito (clientes test, traslado #1, recepción, gasto) son inocuos.
 - **Diferido:** módulo Finanzas/Tesorería consolidada (la Bóveda es la tesorería de-facto).
-- **NUEVO (2026-07-08) — `supabase/schema_full.sql` desactualizado desde 2026-03-26:** el header del archivo dice explícitamente "actualizado 2026-03-26, migrations 001–024" — no refleja las últimas 239 migraciones (025-263). El checklist de CLAUDE.md pide actualizarlo tras cada migración pero en la práctica no se viene haciendo; drift preexistente grande, no bloqueante. Regenerarlo requiere `pg_dump`/`supabase db dump` real contra DEV (tarea aparte, no armar a mano).
-- **NUEVO (2026-07-08) — 6 tests e2e (`npm test`) fallan, preexistentes, no relacionados a RLS/índices/`mp-webhook`:** `01_dashboard.spec.ts` (selector busca texto que ya no existe — Dashboard rediseñado "gráficos primero" en v1.93-94.0, confirmado con `git log`, 100% desactualizado) · `28_cobranza_cc_mutante.spec.ts`/`38_envio_combustible_gasto_mutante.spec.ts`/`57_reserva_sin_sena_mutante.spec.ts` fallan incluso aislados (fixtures de DEV agotados/mutados por el volumen de corridas e2e del día) · `12_navegacion_sidebar.spec.ts`/`33_devolucion_proveedor_mutante.spec.ts` pasaron en corrida aislada (flaky/orden-dependiente en la corrida masiva). Pendiente: reescribir el selector del test de dashboard + mejorar aislamiento/reseed de fixtures entre corridas `_mutante`.
+- ~~**NUEVO (2026-07-08) — `supabase/schema_full.sql` desactualizado desde 2026-03-26**~~ ✅ **CERRADO el 2026-07-14** — regenerado sin Docker vía Management API + script repetible **`npm run schema:dump`** (`scripts/dump-schema.mjs`). 435 KB, conteos exactos vs catálogo. Ver [[reference_schema_dump_metodo]].
+- 🛑 **RE-DIAGNOSTICADO 2026-07-15 — la suite e2e es NO DETERMINÍSTICA (y la nota vieja de "6 tests fallan" era incorrecta).**
+  **La nota anterior decía:** 6 rojos fijos, `01_dashboard` "100% desactualizado", 28/38/57 "fallan incluso aislados". **Verificado hoy: nada de eso es cierto hoy.** `01_dashboard` pasa **6/6** (ya fue reescrito para el Dashboard rediseñado); 28/38/57 pasan **aislados y en la suite**.
+  **El problema real es peor:** **las fallas se MUEVEN entre corridas.** Mismo código, misma DB, dos corridas seguidas:
+  | corrida | resultado |
+  |---|---|
+  | suite completa (261 tests) | **227 pass · 1 fail (`85_envio_propio_manual`) · 33 skip** — 15,5 min |
+  | proyecto `chromium` solo | **121 pass · 3 fail (`28`, `33`, `55`) · 34 skip** — 12,4 min · **el 85 PASÓ (ok 155)** |
+  **Causa raíz (con evidencia, no hipótesis):** los specs comparten un **tenant DEV mutable** y **asumen precondiciones que no establecen**. `workers: 1` + `fullyParallel: false` → **no es una race, es dependencia de orden secuencial**.
+  - **`28_cobranza_cc`**: falla al buscar "Monto inicial" porque **la caja YA estaba abierta** — probado: el `error-context.md` del fallo muestra el sidebar con el badge **"Caja abierta"**. El spec asume caja cerrada; se la dejó abierta un spec anterior.
+  - **`33_devolucion_proveedor`**: "Confirmar devolución" queda **`disabled`** → fixture consumido.
+  - **`85_envio_propio_manual`**: asume que **su** envío es la **primera fila** (`tbody tr` first, orden `created_at desc`) en vez de buscar el número que él mismo creó.
+  **🛑 Por qué importa (REGLA #0):** la suite es la red de seguridad de lo fiscal/contable/inventario y hoy **"verde" no significa "verificado"**: ~13% no corre y las fallas se mueven, así que **una regresión real se descarta como "el flake de siempre"**. Es exactamente por eso que esta nota sobrevivió una semana equivocada.
+  **🔇 Los 33-34 skips son el mismo defecto, en silencio.** Los specs se **auto-skipean** cuando falta su fixture en vez de sembrarlo — los propios mensajes lo confesaban: **14×** "No hay productos vendibles en el tenant de prueba", "Presupuesto fixture $7.777 no encontrado **(re-sembrar el SQL)**", "Form de recepción no cargó el ítem de la OC fixture **(re-sembrar SQL)**". La suite puede erosionarse hasta no probar nada y **seguir reportando verde**. (Distinto de los 3 skips **intencionales** por flag: `E2E_KIT_DESARMAR`, `E2E_CAJA_AJENA`, `E2E_CAJA_CIERRE_DIF` — esos están bien.)
+  **✅ HECHO (2026-07-15, commit `446a9a38`):** capa de fixtures nueva **`tests/e2e/helpers/fixtures.ts`** (`garantizarCajaAbierta`, `irAlPOS`, `agregarPrimerProductoAlCarrito`, `totalDelCarrito`, `loginToken`, `tokenDesdeBrowser`) + **28** usa `garantizarCajaAbierta` (verificado: pasa **con la caja ya abierta**, que es el escenario que lo rompía, y **3/3** corridas seguidas) + **85** identifica SU envío por un destino único por corrida + skips por fixture faltante → **fallo ruidoso**.
+  **Resultado:** proyecto `chromium` **126 pass · 0 fail · 32 skip · 9,5 min (EXIT=0)** — pasaron los 5 que fallaban (28, 30, 33, 55, 85).
+  ⚠ **CONFIRMADO: la suite SIGUE siendo no determinística — la corrida verde fue suerte.** 4 corridas, 4 sets de fallas distintos: (1) suite completa → `85` · (2) chromium → `28`,`30`,`33` · (3) chromium → **verde** · (4) chromium trazada → `37_rrhh_nomina`. Los fixes arreglaron specs puntuales; **la causa de fondo (243 sleeps fijos) sigue viva**.
+  **🛑 `37_rrhh_nomina_gasto` es ONE-SHOT y va a estar ROJO todo julio (probado con la DB, no inferido).** El spec genera la nómina del mes corriente **y su gasto**; una vez que todas las liquidaciones tienen `gasto_id`, el botón "Generar gasto" desaparece. Query real: período **2026-07-01 → 5 liquidaciones, 5 ya tienen gasto, 0 pendientes** (la corrida 3 lo consumió). **Es la trampa del spec 42 otra vez.**
+  ⚠ **Al arreglarlo, NO hacer lo obvio:** poner `gasto_id = null` para que reaparezca el botón **deja el gasto huérfano** y el spec crea un **SEGUNDO gasto para el mismo sueldo** → **gasto duplicado (REGLA #0)**. La siembra correcta es crear una liquidación nueva, no reciclar una consumida.
+  **🔎 Trazador de redirects nuevo (commit `7735032a`):** `E2E_TRACE_REDIRECTS=1` hace que `goto()` avise cuando la app termina en otra ruta (console.warn + annotation, nunca falla el test; detrás de flag porque los specs de rol redirigen a propósito).
+  **🛑 CAUSA RAÍZ GENERAL IDENTIFICADA — todavía NO resuelta: 243 `waitForTimeout` FIJOS en 69 specs.** Cada sleep fijo es una apuesta a que el browser responda en X ms: alcanza con la máquina ociosa (spec aislado) y **no alcanza bajo la carga de la suite completa** → el mismo test pasa o falla según cuán ocupada esté la máquina. **Ésta es la razón de fondo de que las fallas se muevan.** Migrarlos a locators auto-esperantes es el trabajo pendiente grande (ya hecho en `agregarPrimerProductoAlCarrito`).
+  **▶ Pendiente además:** (a) **`55_venta_usd`** — en corrida masiva `/ventas` **renderiza el DASHBOARD** (0 señales de POS, 4 de Dashboard); aislado llega bien al POS. **Causa raíz NO identificada**; descartados `permisos_custom` (el OWNER e2e tiene `rol_custom_id: null`), redirects por rol, `RUTAS_AVANZADO` (`/ventas` no está) y walkthrough. **Si es real, un OWNER que entra directo a `/ventas` a veces cae en `/dashboard` = BUG DE PRODUCTO** — `irAlPOS()` ya lo reporta explícito. (b) **`33_devolucion_proveedor`** debe sembrar su precondición ("Confirmar devolución" queda `disabled`). (c) los **32 skips restantes**. Ver [[reference_e2e_suite_no_deterministica]].
+  **▶ Fix (histórico) — generalizar el patrón YA PROBADO del spec 42** (siembra su propia precondición por API con el token del owner): (1) `tests/e2e/helpers/fixtures.ts` que **garantice** la precondición (producto vendible, caja cerrada/abierta, etc.) en vez de skipear — hoy **no existe capa de fixtures**, sólo `helpers/navigation.ts`, y el "productos vendibles" está **copy-pasteado en 8+ specs**; (2) cada spec establece su estado de entrada (p.ej. 28 cierra la caja si está abierta); (3) el 85 busca **su** envío por número, no la primera fila; (4) hacer los skips **ruidosos** (reportar/fallar si un spec que debía correr se saltea).
 
 **⚙️ Infra DEV (2026-06-19):** por el aviso de saturación de recursos se **desactivaron en DEV** los crons `jobid 1` (`net.http_post`) y `jobid 3` (`fn_tn_sync_heartbeat`, sync TiendaNube, cada 5 min) — saturaban el tier chico sin aportar en un entorno de prueba. **Reversibles:** `SELECT cron.alter_job(job_id => 1, active => true)` (ídem 3). jobid 4 (CC vencidas) y 5 (limpieza token envíos), daily, siguen activos. **PROD intacto** (sus crons siguen activos: sync real cada 5 min). No se subió compute (es DEV; el aviso era transitorio por el pico de e2e + diagnóstico).
 

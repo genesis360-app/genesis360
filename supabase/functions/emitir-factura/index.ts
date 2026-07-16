@@ -4,6 +4,8 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 // La lógica fiscal de este archivo es compartida por ambos providers. Ver providers.ts.
 import { makeAfipProvider, type AfipProviderName, type TaCache } from './providers.ts'
 import type { WsaaTa } from './wsfe-core.ts'
+// 🛑 Apareo emisor↔certificado (multi-CUIT): un emisor jamás firma con el cert de otro CUIT.
+import { elegirCertificado, type CertRow } from './certSelect.ts'
 
 // Mapeo condicion_iva → CondicionIVAReceptorId (RG 5616)
 const IVA_RECEPTOR_ID: Record<string, number> = {
@@ -394,8 +396,9 @@ serve(async (req) => {
     const isProduction = !masterKill && emisor.afip_produccion === true
 
     // Certificado del EMISOR (subido en Config → Facturación, tabla tenant_certificates +
-    // bucket certificados-afip). El cert de un emisor NUNCA firma por otro: se elige la
-    // fila con emisor_id del emisor resuelto, con fallback a la fila legacy sin emisor
+    // bucket certificados-afip). 🛑 El cert de un emisor NUNCA firma por otro (firmaría el
+    // WSAA con el CUIT equivocado) → la selección vive en `elegirCertificado` (pura, testeada):
+    // cert propio del emisor y, sólo para el DEFAULT, fallback a la fila legacy sin emisor
     // (pre-mig 267). AfipSDK acepta cert+key por constructor y hace la firma WSAA en su
     // nube → funciona en Deno. Sin cert, AfipSDK cae a modo token-only.
     let certPem: string | undefined
@@ -403,9 +406,7 @@ serve(async (req) => {
     const { data: certRows } = await supabase.from('tenant_certificates')
       .select('cert_crt_path, cert_key_path, activo, emisor_id')
       .eq('tenant_id', tenant_id).eq('activo', true)
-    const certRow = (certRows ?? []).find((c: { emisor_id: string | null }) => !!emisor.id && c.emisor_id === emisor.id)
-      ?? (certRows ?? []).find((c: { emisor_id: string | null }) => !c.emisor_id)
-      ?? null
+    const certRow = elegirCertificado(certRows as CertRow[] | null, emisor)
     if (certRow?.cert_crt_path && certRow?.cert_key_path) {
       const [crtDl, keyDl] = await Promise.all([
         supabase.storage.from('certificados-afip').download(certRow.cert_crt_path),

@@ -121,11 +121,16 @@ npm run test:unit:coverage # coverage report
 | `14_coherencia_numeros.spec.ts` | Coherencia KPIs (badge alertas capea en "9+") | ✅ |
 | `15_rol_supervisor.spec.ts` | Rol SUPERVISOR | ✅ |
 | `16_rol_rrhh.spec.ts` | Rol RRHH | ✅ |
+| `63_multicuit_emisor_guards.spec.ts` | **Multi-CUIT — el EMISOR (no el tenant) gobierna la letra.** Corre contra "Kiosco Buildi" (DEV), único tenant con 2 identidades fiscales conviviendo (RI default + Monotributista adicional, ambas con cert). Cubre la rama **"RI rechaza C"** que el 56 no podía (exigía flipear la condición del tenant) + Mono rechaza A/B + combos válidos pasan (aserción positiva) + emisor cross-tenant → 403. **No muta** (venta dummy: los guards corren antes de buscar la venta) → repetible. Requiere `E2E_MULTICUIT_*` (usuario `e2e-multicuit@genesis360.test`, solo DEV). ⚠ El `#` en un password rompe el parseo del `.env` | ✅ |
 | `88_mobile_responsive.spec.ts` | **Barrido responsive mobile** — 10 pantallas × 2 viewports (375/360px), assertea sin overflow horizontal en el **contenido (`<main>`) Y el `<header>`**. Project `chromium-mobile` (`isMobile`+`hasTouch`, sesión owner). Helper `detectarOverflowHorizontal(page, { selector })` mide dentro del contenedor (el root `AppLayout` clippea con `overflow-hidden`) tanto rect como overflow de texto, ignorando scroll intencional | ✅ |
 
 > **Barrido responsive (2026-07-15):** primera cobertura mobile en e2e. Detecta el patrón "se sale del marco" (contenido más ancho que el `<main>`). Corre en su propio project `chromium-mobile`; el project desktop lo excluye por `testIgnore`. Guard contra regresiones de overflow. Ver log 2026-07-15.
 
 > Las specs E2E son **defensivas**: corren contra el DEV compartido y se omiten (sin fallar) cuando la precondición de estado no está dada (ej. caja sin sesión, <2 cajas para traspaso). Nunca mutan sin limpiar (crear→verificar→baja/eliminar).
+
+> **🌱 Los specs MUTANTES siembran su propia precondición (regla, 2026-07-15).** Depender de un fixture sembrado a mano es una trampa: la PRIMERA corrida lo consume y el spec queda **rojo para siempre**. Le pasó al **42** (la corrida de validación le escribió el `nc_cae` a la última devolución pendiente) → ahora se siembra solo por API con el token del owner (`devoluciones` no tiene triggers → no toca stock ni caja). Si un spec mutante necesita un estado previo, **que lo cree él**. Verificar el fix corriendo el spec **dos veces seguidas**.
+
+> **⚙️ Env de e2e:** `tests/e2e/.env.test.local` incluye `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (la anon key es **pública**, ya viaja en el bundle del frontend). Sin ellas, los specs de API (**42** auto-siembra, **56** guards fiscales, **63** multi-CUIT) se **SKIPEAN en silencio** en `npm run test:e2e` — pasó hasta el 2026-07-15. ⚠ **Un `#` en un password rompe el parseo del `.env`** (lo toma como comentario y trunca el valor) → passwords de test sin `#`.
 
 ### Configuración Playwright
 

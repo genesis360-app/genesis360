@@ -197,6 +197,28 @@ puede compararla, y REGLA #0 exige el guard del lado del servidor. Tests: `tests
 generar el CSR **una sola vez**, pegar ESE CSR en ARCA y subir el `.crt` que ARCA emite para él — no
 reutilizar un `.crt` anterior ni regenerar el CSR después de pegarlo (invalida el `.crt`).
 
+**✅ VALIDACIÓN MULTI-CUIT CON DATOS REALES (2026-07-15) — el pendiente "emisión con 2 CUITs" CERRADO.**
+El tenant "Kiosco Buildi" (DEV) emitió con **dos identidades fiscales** en el mismo tenant:
+
+| emisor | CUIT | condición | tipo | nº comprobante |
+|---|---|---|---|---|
+| adicional | 20422374168 (Fede) | Monotributista | **Factura C** | **1** — CAE `86280566995291` |
+| default ⭐ | 23-32031506-9 | RI | **Factura B** | 3 → 30 |
+
+**El invariante que lo prueba:** la Factura C del Monotributo salió con `numero_comprobante = 1`, no 31 —
+hay **dos secuencias de Factura C independientes** en el mismo tenant (1→27 de un CUIT, 1→1 del otro).
+La numeración sale de `FECompUltimoAutorizado` **por CUIT**, no de un contador del tenant. Además: TA de
+WSAA cacheado **por CUIT** (`afip_wsaa_ta`), certificado propio por emisor, **0 violaciones** del
+invariante letra↔condición (los "mismatch" que aparecen en crudo son **anteriores** a los flips de
+condición hechos para testear → un registro fiscal histórico NO se juzga contra la config actual).
+
+**🛑 Hardening del apareo emisor↔certificado (`certSelect.ts`, EF `emitir-factura` PROD v17).** La
+selección caía a un cert **LEGACY** (`emisor_id IS NULL`) si el emisor no tenía el suyo → en un tenant
+multi-CUIT eso **firma el WSAA con el CUIT de OTRO**. Inerte hoy (0 certs legacy en DEV y PROD,
+verificado), pero arreglado: el legacy pertenece al CUIT original del tenant → **sólo lo usa el emisor
+DEFAULT**; un emisor adicional se queda sin cert y la EF corta con 400 claro. `elegirCertificado` es
+puro + 8 unit tests (`tests/unit/certSelect.test.ts`).
+
 **Cobertura de tests (v1.129.0):** `tests/unit/csrCert.test.ts` (subject espejo de la EF + máquina
 de pasos + extensiones, 14 casos), `tests/e2e/61_generar_csr_ef.spec.ts` (EF real en DEV: 401 anon ·
 403 otro tenant · 400 CUIT inválido · happy path CSR PKCS#10 válido con la `.key` sin salir del

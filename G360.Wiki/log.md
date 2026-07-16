@@ -6,6 +6,100 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-15] update | 🏢 Auditoría MULTI-CUIT — validado con datos reales + hardening del cert + e2e nuevo
+
+**GO pidió validar que un mismo tenant sea multi-CUIT.** Cerrado el pendiente que venía desde el 11/07
+("emisión real con 2 CUITs — cert de Fede"), ahora que Fede pudo emitir.
+
+**✅ Validación con DATOS REALES** (tenant "Kiosco Buildi" DEV, 2 identidades fiscales conviviendo):
+| emisor | CUIT | condición | tipo | nº comprobante |
+|---|---|---|---|---|
+| adicional | 20422374168 (Fede) | Monotributista | **Factura C** | **1** (CAE `86280566995291`) |
+| default ⭐ | 23-32031506-9 | RI | **Factura B** | 3→30 |
+
+**El invariante clave:** la Factura C de Fede salió con `numero_comprobante = 1`, no 31 — **hay dos
+secuencias de Factura C independientes en el mismo tenant** (1→27 de un CUIT, 1→1 del otro). Prueba que
+la numeración sale de `FECompUltimoAutorizado` **por CUIT**, no de un contador del tenant. Además: TA de
+WSAA cacheado **por CUIT** (`afip_wsaa_ta`), cert propio por emisor, letras correctas por condición.
+
+**🛑 Hallazgo 1 — edge case latente en la selección de certificado (arreglado, commit `5581f220`).**
+`emitir-factura/index.ts` caía a un cert **LEGACY** (`emisor_id IS NULL`) cuando el emisor no tenía el
+suyo. En un tenant multi-CUIT eso **firma el WSAA con el CUIT de OTRO emisor**. Verificado que hoy es
+**inerte** (0 certs legacy en DEV y en PROD; el emisor sin cert recibe el 400 claro), pero se endurece:
+el legacy pertenece al CUIT original del tenant → **solo lo usa el emisor DEFAULT**. Extraído a
+`certSelect.ts` (`elegirCertificado`, puro) + **8 unit tests**. EF redeployada en **DEV** (PROD pendiente).
+
+**🛑 Hallazgo 2 — falso positivo que casi se reporta como bug grave (lección).** Un chequeo de
+letra↔condición dio "Monotributista con 7 Factura B" y "RI con 24 Factura C". **No es violación:** todos
+esos comprobantes son ANTERIORES al flip de condición que se hizo para testear (última B 19/06 vs emisor
+modificado 13/07). Con el invariante bien planteado (comprobantes POSTERIORES al último cambio del
+emisor) → **0 violaciones**. Confirma la regla: **un registro fiscal histórico no se juzga contra la
+configuración actual**.
+
+**✅ e2e nuevo `63_multicuit_emisor_guards`:** prueba que el **EMISOR** (no el tenant) gobierna la letra,
+en el único tenant con RI + Monotributista conviviendo. Cubre la rama **"RI rechaza C"** que el spec 56
+no podía (exigía flipear la condición del tenant). Aserciones positivas (combos válidos pasan el guard)
++ 403 de emisor cross-tenant. No muta nada (venta dummy: los guards corren antes de buscar la venta) →
+repetible. **7/7 verde.**
+
+**Usuario e2e nuevo (solo DEV):** `e2e-multicuit@genesis360.test` (DUEÑO de "Kiosco Buildi", creado por
+SQL — el usuario e2e de siempre es de Jorgito, que tiene 2 emisores pero **1 solo con cert**). Vars
+`E2E_MULTICUIT_*` en `tests/e2e/.env.test.local` (gitignored). ⚠ **Gotcha:** el `#` en un password rompe
+el parseo del `.env` (lo toma como comentario y trunca el valor) → passwords de test sin `#`.
+
+**✅ Spec 42 reparado de raíz (commit `fbd28842`).** La corrida de validación consumió su fixture
+(le escribió `nc_cae`) y lo dejó rojo — que es justo la trampa documentada: **dependía de una devolución
+sembrada a mano, la 1ª corrida la consumía y quedaba ROJO para siempre**; encima asserteaba en vez de
+skipear, contra su propio docstring. Ahora **siembra su propia precondición**: si no hay devolución
+`facturada` sin `nc_cae`, la crea por API con el token del owner (policies `dev_tenant_insert` /
+`devitem_tenant_insert`, tenant-scoped). `devoluciones` **no tiene triggers** → no toca stock ni caja,
+solo crea el papel que la emisión necesita. **Verificado corriendo el spec DOS VECES seguidas**: ambas
+verdes, cada una auto-sembró y emitió su propia NC-C con CAE real (nº12 y nº13).
+
+**🔎 Hallazgo colateral: los specs de API se SKIPEABAN en silencio.** `tests/e2e/.env.test.local` no
+tenía `VITE_SUPABASE_URL`/`VITE_SUPABASE_ANON_KEY` → los specs **56 (guards fiscales) y 63** se omitían
+en `npm run test:e2e` (solo corrían pasando `-e .env.local` a mano). Agregadas al env de e2e (la anon key
+es **pública**, ya viaja en el bundle; el archivo sigue gitignored). Ahora corren en la suite estándar.
+
+**🚀 EF `emitir-factura` DEPLOYADA A PROD (v17, `verify_jwt=true` preservado)** con el hardening del
+certificado. Smoke post-deploy: anon → **401** del guard de identidad (no 500) → la EF bootea bien y
+`certSelect.ts` importa correcto, sin corte fiscal. En DEV quedó con el mismo código, validada por los
+e2e que emiten CAE real (21 Factura C, 42 NC-C).
+
+Verde: unit **1045 + 5 todo** · tsc · build · e2e facturación (21 con **CAE real**, 42 con **NC-C real**
+×2 corridas, 56, 63, 86).
+
+---
+
+## [2026-07-15] deploy | 🚀 v1.130.0 A PROD (PR #289) — mobile responsive + guard cert AFIP + blindaje legal
+
+**GO autorizó "pasa todo a PROD".** Antes de ejecutar se frenó y se le avisó que `dev` no traía solo lo
+de la sesión: arrastraba el **blindaje legal** del 14/07, que estaba marcado *"🔴 ANTES DE MOSTRAR EN
+PROD: revisión de ABOGADO + registro AAIP"* y publica los datos reales de Fede (incl. **domicilio
+particular**) en las páginas legales. **GO decidió deployarlo igual** — fundamento: *"no hay problema en
+replicar a PROD, no tenemos clientes reales"*. Queda registrado: la revisión de abogado + AAIP **sigue
+pendiente** sobre contenido que ya está público.
+
+**Contenido:** mobile responsive (barrido `88_mobile_responsive` + fixes Dashboard/Métricas/header) ·
+guard crt↔clave (EF `finalizar-certificado`) · blindaje legal · fix alta de emisor · `schema_full.sql`.
+
+**Ejecución (orden seguro):**
+1. **Verificación REGLA #0 previa:** migs 264-270 confirmadas presentes en PROD por query real
+   (`afip_wsaa_ta`, `emisores_fiscales`, `csr_key_path`, `nc_fecha`) → **sin migraciones nuevas**.
+2. `APP_VERSION` → **v1.130.0** (`993daa0d`).
+3. **EF `finalizar-certificado` deployada a PROD ANTES del frontend** (v1, ACTIVE, `verify_jwt: true`,
+   mismo `sha256` que DEV) — si iba primero el frontend, el wizard invocaba una función inexistente.
+4. **Divergencia del squash otra vez:** el PR salió `CONFLICTING` (main tenía solo el squash de #288,
+   v1.129.0). Se mergeó `origin/main` en `dev` resolviendo los 10 conflictos a favor de dev
+   (superconjunto; verificado: v1.130.0 + `afip.ts` con la EF, sin marcadores) → `bf2135d8`.
+5. PR **#289** → checks verdes (unit ×2 pass, Vercel pass, e2e skip condicional) → **squash a main**
+   (`4937ec3c`) → **tag + release `v1.130.0`** → Vercel PROD.
+
+**Lección repetida:** el patrón squash-merge deja `dev` divergente de `main` en cada release; el paso
+"mergear `origin/main` en `dev` y resolver a favor de dev" es parte fija del deploy, no un incidente.
+
+---
+
 ## [2026-07-15] update | 📱 Set de pruebas responsive (barrido de overflow) + fixes de overflow en Dashboard/Métricas
 
 **Primera cobertura responsive en e2e** (pendiente que venía de 2026-07-13). GO reportó que en el

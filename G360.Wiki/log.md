@@ -6,6 +6,39 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-17] update | 🏛️ Identidad fiscal = FUENTE ÚNICA (mig 271 + F1/F2) — en DEV, deploy en HOLD por AFIP caída
+
+**Pedido GO: "resolver de raíz" la duplicación de la identidad fiscal** (tenants.* ↔ emisor default,
+causa raíz de los dos bugs fiscales de esta semana). Ejecutado el cutover que la mig 267 anunciaba.
+
+**Diseño:** `emisores_fiscales` = LA fuente de verdad de TODA identidad fiscal. `tenants.*` fiscal queda
+como espejo de SOLO LECTURA legacy (trigger invertido) hasta el drop final (Fase 4, con criterios).
+
+**Mig 271 (DEV, verificada por efecto):** espejo invertido emisores(default)→tenants probado en vivo ·
+guards P0001 probados (el default no se borra ni desactiva; el DELETE solo pasa en el cascade del
+tenant) · backfill idempotente (0 pendientes DEV y PROD, verificado por query ANTES de escribirla).
+
+**Código (commit `b281e4ad`):** `camposEmisorPDF` único armador de los emisor_* (mató los 5 selects
+copy-pasteados); identidad por ventas.emisor_id; NC por la factura original; PV impreso POR emisor;
+fiscal:true lanza sin identidad; regla #7 respetada (emisor inactivo sigue imprimiendo su identidad
+histórica); ConfigPage escribe en emisores_fiscales (4 escritores); spec 87 renovado con el test
+multi-CUIT de datos reales (identidad de la venta del adicional ≠ CUIT del tenant). Unit 1055+5 · tsc ·
+build · e2e 87/10/24/44/56/63 verdes.
+
+**🛑 Deploy a PROD EN HOLD (REGLA #0):** AFIP homologación CAÍDA esta noche — curl directo a la EF:
+guards en 2,5s, emisión real >90s sin respuesta (HTTP 000). El spec 21 (CAE real) no puede validar el
+end-to-end → no se deploya un cambio fiscal sin ese verde. A la mañana la misma emisión tardó 15,5s.
+
+**🛑🛑 Gotcha de deploy NUEVO — mig 271 es BREAKING para el frontend viejo:** el ConfigPage de v1.132
+escribe identidad en tenants; post-271 esas escrituras NO se espejan → la EF leería identidad STALE.
+La 271 va a PROD PEGADA al merge (minutos antes), no aditiva-días-antes. Secuencia: 21 verde → 271 en
+PROD → merge+release v1.133.0 → verificar bundle + drift 0.
+
+**Colateral:** el spec 42 SKIPEÓ en silencio en la batería (la última NC es de ayer) — anotado en la
+lista de skips silenciosos.
+
+---
+
 ## [2026-07-16] deploy | 🎚️ v1.132.0 A PROD (PR #291) — componente `<Toggle>` estándar
 
 **Cierre de la sesión.** Segundo release del día, sobre v1.131.0. Ataca la **causa raíz** del bug de

@@ -6,7 +6,39 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📍 ESTADO AL CIERRE (2026-07-16) — **PROD = DEV = v1.132.0** · dev pusheado · nada sin deployar
+> ### 🏛️🧾 (2026-07-17 · **IDENTIDAD FISCAL = FUENTE ÚNICA (emisores_fiscales) — Fases 1+2 HECHAS Y VERIFICADAS EN DEV** · commit `b281e4ad` · mig **271** aplicada en DEV · **🛑 DEPLOY A PROD EN HOLD por AFIP homologación CAÍDA**)
+> **Pedido GO: "resolver de raíz" la duplicación del CUIT** (tenants.* vs emisor default). Hecho el cutover
+> que la mig 267 dejaba anunciado. **`emisores_fiscales` es LA fuente de verdad**; `tenants.*` fiscal quedó
+> como **espejo de solo-lectura legacy** (trigger invertido `trg_espejo_emisor_default_a_tenant`).
+> **Mig 271 (DEV, verificada POR EFECTO):** espejo invertido probado (escribís el emisor → el tenant se
+> actualiza; drift **0**) · guards probados (desactivar/borrar el default → **P0001**; el DELETE solo pasa
+> en el cascade del tenant) · backfill idempotente (0 pendientes en DEV **y PROD**, por query).
+> **Código:** `camposEmisorPDF` (`src/lib/emisorPdf.ts`) es el ÚNICO lugar que arma los `emisor_*` de los
+> PDFs — mató los 5 selects copy-pasteados sobre tenants. Identidad por `ventas.emisor_id` (35/35
+> pobladas); **NC siempre por la factura original**; **PV impreso POR emisor** (antes `limit(1)` del tenant
+> → en multi-CUIT imprimía el PV de otro CUIT); `fiscal:true` LANZA si falta identidad (sin defaults
+> inventados); regla #7: un emisor luego desactivado sigue imprimiendo SU identidad en sus comprobantes.
+> ConfigPage: los 4 escritores fiscales (save/afip_produccion/logo×2) escriben en `emisores_fiscales`.
+> **Verde:** unit **1055+5** (10 nuevos `FAC-IDENT`) · tsc · build · e2e **87 renovado 4/4** (incl. 🛑 test
+> multi-CUIT con datos reales: identidad de la venta del emisor adicional ≠ CUIT del tenant), 10, 24, 44,
+> 56, 63.
+> **🛑 POR QUÉ NO SE DEPLOYÓ (REGLA #0):** el spec **21 (CAE real) no puede correr — AFIP homologación
+> CAÍDA** (probado con curl directo a la EF: los guards responden en 2,5s pero la emisión real cuelga
+> **>90s sin respuesta**; a la mañana tardaba 15,5s — venía degradada). *Ante la duda, frenar.* La venta
+> 339 (DEV) puede recibir un CAE tardío si la EF colgada termina — sería del curl de diagnóstico, benigno.
+> **🛑🛑 SECUENCIA DE DEPLOY OBLIGATORIA (breaking):** la mig **271 en PROD va PEGADA al merge del
+> frontend (minutos antes), NO "aditiva días antes"** — el ConfigPage viejo (v1.132) escribe en `tenants`
+> y post-271 esas escrituras **ya no se espejan** a emisores → la EF leería identidad **STALE**. Pasos:
+> (1) spec 21 verde (AFIP recuperada) → (2) `apply_migration` 271 en PROD → (3) merge PR + release
+> v1.133.0 inmediato → (4) verificar bundle + drift 0 en PROD.
+> **Pendientes que deja:** (a) Fase 3 — UI unificada (el panel gestiona TODOS los emisores; la sección
+> ARCA deja de ser un segundo editor); (b) Fase 4 — drop de columnas fiscales de `tenants` (criterios:
+> grep lectores=0 + drift 0 + soak); (c) lectores no-PDF que siguen en tenants vía espejo (GastosPage,
+> Dash, CierresContables — correctos por el espejo, migrar en F3/F4); (d) **el spec 42 SKIPEÓ en silencio
+> esta noche** (la última NC es de ayer) — otro caso para la lista de skips; (e) `ocPDF` fuera de alcance
+> (documento no fiscal de compras; emisor por OC = decisión futura).
+
+> ### 📍 ESTADO ANTERIOR (2026-07-16) — **PROD = v1.132.0** · con el bloque de arriba, dev tiene la F1+F2 de identidad fiscal SIN deployar
 > **Dos releases hoy:** **v1.131.0** (fix fiscal del CUIT vacío) y **v1.132.0** (componente `<Toggle>`).
 > Ambos EN PROD, verificados leyendo el bundle real (`app.genesis360.pro`), no la narrativa. **Sin
 > migraciones ni Edge Functions nuevas** en toda la sesión. `git diff origin/main origin/dev` en `src/`

@@ -6,6 +6,47 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 📍 ARRANCÁ ACÁ (2026-07-17, cierre) — **PROD = DEV = v1.133.0** · migs **001-272** en DEV y PROD · dev pusheado · nada sin deployar · drift identidad fiscal **0** en ambos
+> **Qué acaba de pasar (3 releases en 2 días):** v1.131.0 (fix CUIT vacío en comprobantes — bug de un mes
+> en PROD) → v1.132.0 (`<Toggle>` estándar) → **v1.133.0 (cutover de IDENTIDAD FISCAL A FUENTE ÚNICA:
+> `emisores_fiscales` manda, `tenants.*` fiscal es espejo de solo lectura; + fix búsqueda del historial
+> server-side)**. Detalle en los bloques de abajo y en `log.md`.
+>
+> **▶ PENDIENTES PRIORIZADOS (con las mejoras sugeridas por Claude):**
+> **A. Plan de raíz identidad fiscal (continuación):**
+> 1. **F3b — ARCA deja de ser 2º editor**: la sección "Facturación (ARCA)" pasa a resumen readonly +
+>    botón al panel de Emisores. **UX que GO debe VER con la app en la mano antes de ejecutar.**
+> 2. **F4 — DROP de las columnas fiscales de `tenants`** (muere la duplicación físicamente). Criterios:
+>    migrar los lectores no-PDF que hoy van vía espejo (GastosPage, DashFacturacionArea,
+>    CierresContablesPanel, `useAuthStore.tenant.*` fiscal) → grep lectores = 0 → drift 0 sostenido
+>    (correr la auditoría del final de mig 271 periódicamente) → soak → mig de DROP.
+> 3. **Mejora EF `emitir-factura`**: auto-invalidar el **cache de TA WSAA (mig 264)** cuando WSFE
+>    devuelve fault/basura — un TA obtenido durante la caída de AFIP quedó envenenado y hubo que
+>    borrarlo A MANO (`delete from afip_wsaa_ta where cuit=...`). Hoy no se auto-cura.
+> 4. **Unit tests de contenido de `facturasPDF.ts`** (sigue con CERO tests — pendiente del incidente
+>    del CUIT vacío: "nadie mira el papel").
+> **B. Suite e2e (SIGUE no determinística — causa raíz abierta):**
+> 5. Migrar los **243 `waitForTimeout` fijos en 69 specs** a esperas de resultado (la causa de fondo).
+> 6. Los **~18 `test.skip` decididos con `isVisible()`** que quedan (el spec 42 fue el caso nº20,
+>    arreglado; patrón: `waitFor` + falla ruidosa; fixtures → sembrar, no skipear).
+> 7. `55_venta_usd`: `/ventas` renderiza el DASHBOARD en corrida masiva (posible bug de producto;
+>    instrumentado con `E2E_TRACE_REDIRECTS=1`, sin reproducir aún) · `33_devolucion_proveedor` debe
+>    sembrar su precondición · los ~32 skips restantes.
+> **C. UI/UX reportados por GO:**
+> 8. **Asistente IA en mobile**: el modal se ve solo la mitad derecha, debería centrarse. Sin diagnosticar.
+> 9. **~20 toggles** a mano por migrar a `<Toggle>` (deuda de consistencia, ninguno roto).
+> 10. **Barrido `88_mobile_responsive`**: ampliarlo a modales/overlays + chequeo de contención
+>     hijo⊄padre (GO encontró 3 bugs que el barrido no vio: knob, modal IA, y el CUIT lo vio en la app).
+> **D. Negocio / decisiones de GO:**
+> 11. **Landing** (concepto C "Una venta. Todo el sistema." + obertura de B, diseñado completo — ver log
+>     2026-07-15/16): en pausa hasta que GO lo charle con el socio. Decisiones: concepto · Next en `www`
+>     vs Astro · tagline de `brand.ts` (hoy "El inventario inteligente…" contradice el posicionamiento) ·
+>     ⚖️ el domicilio particular de Fede en las páginas legales ANTES de traccionar tráfico.
+> 12. **⚖️ Legal**: abogado + registro AAIP sobre contenido YA PÚBLICO (pendiente desde v1.130.0).
+> 13. **Colaboración con Fede**: decidido `@claude` de GitHub (no plan mensual propio) + falta página
+>     **"Empezá acá"** en el wiki (con links markdown, no wikilinks) e instalar la GitHub App.
+> 14. Relevamientos sin responder: **Inventario/WMS** y **Ventas H-L** (GO + socio).
+
 > ### ✅ (2026-07-17 · **v1.133.0 EN PROD** — PR #292, main `b6d541b0`, tag+release, bundle `index-CyLP2nMF.js` verificado · **migs 271+272 en DEV y PROD** aplicadas PEGADAS al merge (secuencia breaking ejecutada, ventana ~4 min) · **drift 0 en DEV y PROD post-deploy**)
 > **El cutover de identidad fiscal está COMPLETO en PROD (F1+F2+F3a).** Pendiente del plan de raíz:
 > **F3b** — la sección ARCA deja de ser un 2º editor (resumen + pointer al panel; UX que GO tiene que

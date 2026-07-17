@@ -37,6 +37,8 @@ import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
+import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
+import { camposEmisorPDF } from '@/lib/emisorPdf'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales'
@@ -128,32 +130,6 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
   const a = Math.sin(dLat / 2) ** 2
     + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
   return Math.round(R * 2 * Math.asin(Math.sqrt(a)) * 1.35)
-}
-
-/**
- * 🛑 REGLA #0 — Guard de los datos fiscales del emisor: si no se pudieron leer, NO se arma el
- * comprobante. Lanza en vez de dejar que los `?? ''` de abajo inventen los datos.
- *
- * El bug que evita (real, estuvo EN PROD desde el 2026-06-14 / v1.62.0 — commit `c35450e8`,
- * "factura completa + remito + datos del emisor"): la `.select()` pedía `telefono, email`, dos
- * columnas que NO EXISTEN en `tenants` → PostgREST devolvía **400** (`column tenants.telefono
- * does not exist`, verificado con curl) → el código hacía `const { data: cfgTenant } = ...`
- * **descartando el `error`** → `cfgTenant` quedaba `null` → y cada `?? ''` convertía el fallo en
- * un dato fiscal falso: **CUIT vacío**, razón social vacía, y —lo más grave—
- * `condicion_iva_emisor ?? 'responsable_inscripto'`, que hacía que el comprobante de un
- * **Monotributista declarara ser Responsable Inscripto**.
- *
- * La lección (la misma que el bug de la alícuota AFIP): un default sobre un dato FISCAL no es
- * una comodidad, es una mentira con formato de PDF. Ante la duda, romper — un comprobante que no
- * sale es un problema; un comprobante con la identidad fiscal inventada es un problema peor.
- */
-function exigirCfgFiscal(cfg: unknown, error: { message: string } | null): asserts cfg {
-  if (error || !cfg) {
-    throw new Error(
-      `No se pudieron leer los datos fiscales del emisor${error ? `: ${error.message}` : ''}. ` +
-        `No se emite el comprobante para no imprimir un CUIT o una condición de IVA incorrectos.`,
-    )
-  }
 }
 
 /**
@@ -1721,7 +1697,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -1734,14 +1710,13 @@ export default function VentasPage() {
       for (const i of ventaItemsPdf) { const a = String(i.alicuota_iva ?? 21); porAlic[a] = (porAlic[a] ?? 0) + Number(i.subtotal ?? 0) }
       return Number(Object.entries(porAlic).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 21)
     })()
-    const { data: pv } = await supabase.from('puntos_venta_afip')
-      .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
-      .order('numero').limit(1).maybeSingle()
-    // 🛑 REGLA #0 — el `error` NO se descarta: ver `exigirCfgFiscal` abajo.
-    const { data: cfgTenant, error: errCfgFiscal } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
-      .eq('id', tenant!.id).single()
-    exigirCfgFiscal(cfgTenant, errCfgFiscal)
+    // 🛑 Identidad del EMISOR de la venta (fuente única) + su punto de venta — no del tenant.
+    const { emisor, campos } = await camposEmisorPDF(tenant, {
+      ventaEmisorId: (venta as any).emisor_id, fiscal: true,
+    })
+    const { data: pvRows } = await supabase.from('puntos_venta_afip')
+      .select('numero, emisor_id').eq('tenant_id', tenant!.id).eq('activo', true)
+    const pvNumero = puntoVentaDelEmisor(pvRows, emisor?.id ?? null, emisor?.es_default ?? true) ?? 1
     const cli = (venta as any).clientes
     const formaPago = parseFormaPago((venta as any).medio_pago)
     // Saldo pendiente → QR de pago MercadoPago en el PDF (si el tenant tiene MP conectado)
@@ -1750,24 +1725,11 @@ export default function VentasPage() {
     const data: FacturaPDFData = {
       tipo_comprobante:    (venta.tipo_comprobante ?? 'B').replace(/^Factura\s+/i, ''),
       numero_comprobante:  venta.numero_comprobante ?? venta.numero,
-      punto_venta:         pv?.numero ?? 1,
+      punto_venta:         pvNumero,
       fecha:               venta.created_at,
       cae:                 venta.cae,
       vencimiento_cae:     venta.vencimiento_cae ?? '',
-      emisor_razon_social: cfgTenant?.razon_social_fiscal ?? tenant?.nombre ?? '',
-      emisor_cuit:         cfgTenant?.cuit ?? '',
-      emisor_domicilio:    cfgTenant?.domicilio_fiscal,
-      emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
-      emisor_logo_url:     (cfgTenant as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
-      emisor_ingresos_brutos:    (cfgTenant as any)?.ingresos_brutos ?? null,
-      emisor_inicio_actividades: (cfgTenant as any)?.inicio_actividades ?? null,
-      emisor_telefono:     (cfgTenant as any)?.telefono ?? null,
-      emisor_email:        (cfgTenant as any)?.email ?? null,
-      emisor_sitio_web:    (cfgTenant as any)?.sitio_web ?? null,
-      emisor_banco:        (cfgTenant as any)?.banco ?? null,
-      emisor_cbu:          (cfgTenant as any)?.cbu ?? null,
-      emisor_alias:        (cfgTenant as any)?.alias_cbu ?? null,
-      emisor_leyenda:      (cfgTenant as any)?.leyenda_comprobante ?? null,
+      ...campos,
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),
@@ -1810,15 +1772,17 @@ export default function VentasPage() {
   // Arma el PresupuestoPDFData (A4) para una venta en estado presupuesto ('pendiente').
   async function buildPresupuestoPDFDataPorId(ventaId: string): Promise<PresupuestoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, descuento, subtotal, productos(nombre, sku))')
+      .select('numero, presupuesto_numero, presupuesto_numero_sucursal, estado, sucursal_id, total, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, descuento, subtotal, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
-    // 🛑 REGLA #0 — el `error` NO se descarta: ver `exigirCfgFiscal` abajo.
-    const { data: cfgTenant, error: errCfgFiscal } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
-      .eq('id', tenant!.id).single()
-    exigirCfgFiscal(cfgTenant, errCfgFiscal)
+    // Identidad del emisor (fuente única): el de la venta si ya se emitió, si no el de la
+    // sucursal, si no el default. No fiscal → sin emisor cae al nombre/logo del negocio.
+    const { campos } = await camposEmisorPDF(tenant, {
+      ventaEmisorId: (venta as any).emisor_id,
+      sucursalEmisorId: (venta as any).sucursales?.emisor_fiscal_id,
+      fiscal: false,
+    })
     const cli = (venta as any).clientes
     const validezDias = (tenant as any)?.presupuesto_validez_dias
     let validez: string | null = null
@@ -1829,20 +1793,7 @@ export default function VentasPage() {
       numero:              formatTicket(venta),
       fecha:               venta.created_at,
       validez_hasta:       validez,
-      emisor_razon_social: cfgTenant?.razon_social_fiscal ?? tenant?.nombre ?? '',
-      emisor_cuit:         cfgTenant?.cuit ?? '',
-      emisor_domicilio:    cfgTenant?.domicilio_fiscal,
-      emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
-      emisor_logo_url:     (cfgTenant as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
-      emisor_ingresos_brutos:    (cfgTenant as any)?.ingresos_brutos ?? null,
-      emisor_inicio_actividades: (cfgTenant as any)?.inicio_actividades ?? null,
-      emisor_telefono:     (cfgTenant as any)?.telefono ?? null,
-      emisor_email:        (cfgTenant as any)?.email ?? null,
-      emisor_sitio_web:    (cfgTenant as any)?.sitio_web ?? null,
-      emisor_banco:        (cfgTenant as any)?.banco ?? null,
-      emisor_cbu:          (cfgTenant as any)?.cbu ?? null,
-      emisor_alias:        (cfgTenant as any)?.alias_cbu ?? null,
-      emisor_leyenda:      (cfgTenant as any)?.leyenda_comprobante ?? null,
+      ...campos,
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: cli?.condicion_iva_receptor ? normalizarCondIVA(cli.condicion_iva_receptor) : null,
@@ -1875,30 +1826,21 @@ export default function VentasPage() {
   // Arma el RemitoPDFData (nota de entrega, no fiscal) de una venta.
   async function buildRemitoPDFDataPorId(ventaId: string): Promise<RemitoPDFData | null> {
     const { data: venta, error } = await supabase.from('ventas')
-      .select('numero, numero_sucursal, sucursal_id, estado, created_at, notas, clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, productos(nombre, sku))')
+      .select('numero, numero_sucursal, sucursal_id, estado, created_at, notas, emisor_id, sucursales(emisor_fiscal_id), clientes(nombre, cuit_receptor, dni, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, productos(nombre, sku))')
       .eq('id', ventaId).single()
     if (error) throw new Error(error.message)
     if (!venta) return null
-    // 🛑 REGLA #0 — el `error` NO se descarta: ver `exigirCfgFiscal` abajo.
-    const { data: cfgTenant, error: errCfgFiscal } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, sitio_web, leyenda_comprobante')
-      .eq('id', tenant!.id).single()
-    exigirCfgFiscal(cfgTenant, errCfgFiscal)
+    // Identidad del emisor (fuente única) — no fiscal: sin emisor cae al nombre del negocio.
+    const { campos } = await camposEmisorPDF(tenant, {
+      ventaEmisorId: (venta as any).emisor_id,
+      sucursalEmisorId: (venta as any).sucursales?.emisor_fiscal_id,
+      fiscal: false,
+    })
     const cli = (venta as any).clientes
     return {
       numero:              `R-${formatTicket(venta)}`,
       fecha:               venta.created_at,
-      emisor_razon_social: cfgTenant?.razon_social_fiscal ?? tenant?.nombre ?? '',
-      emisor_cuit:         cfgTenant?.cuit ?? '',
-      emisor_domicilio:    cfgTenant?.domicilio_fiscal,
-      emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
-      emisor_logo_url:     (cfgTenant as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
-      emisor_ingresos_brutos:    (cfgTenant as any)?.ingresos_brutos ?? null,
-      emisor_inicio_actividades: (cfgTenant as any)?.inicio_actividades ?? null,
-      emisor_telefono:     (cfgTenant as any)?.telefono ?? null,
-      emisor_email:        (cfgTenant as any)?.email ?? null,
-      emisor_sitio_web:    (cfgTenant as any)?.sitio_web ?? null,
-      emisor_leyenda:      (cfgTenant as any)?.leyenda_comprobante ?? null,
+      ...campos,
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: cli?.condicion_iva_receptor ? normalizarCondIVA(cli.condicion_iva_receptor) : null,
@@ -2100,15 +2042,15 @@ export default function VentasPage() {
   // ticket interno de devolución. La NC vive en `devoluciones` (nc_cae, nc_tipo, etc.).
   async function buildNCPDFDataPorDevolucion(devolucionId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: dev, error } = await supabase.from('devoluciones')
-      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva))')
+      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva))')
       .eq('id', devolucionId).single()
     if (error) throw new Error(error.message)
     if (!dev?.nc_cae) return null
-    // 🛑 REGLA #0 — el `error` NO se descarta: ver `exigirCfgFiscal` abajo.
-    const { data: cfgTenant, error: errCfgFiscal } = await supabase.from('tenants')
-      .select('razon_social_fiscal, cuit, domicilio_fiscal, condicion_iva_emisor, logo_url, ingresos_brutos, inicio_actividades, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
-      .eq('id', tenant!.id).single()
-    exigirCfgFiscal(cfgTenant, errCfgFiscal)
+    // 🛑 La NC imprime SIEMPRE la identidad del emisor de su FACTURA ORIGINAL (CbtesAsoc:
+    // cruzar de CUIT sería un comprobante inválido ante AFIP) — misma regla que la EF.
+    const { campos } = await camposEmisorPDF(tenant, {
+      ventaEmisorId: (dev as any).ventas?.emisor_id, fiscal: true,
+    })
     const cli = (dev as any).ventas?.clientes
     const data: FacturaPDFData = {
       clase:               'nota_credito',
@@ -2118,20 +2060,7 @@ export default function VentasPage() {
       fecha:               (dev as any).created_at,
       cae:                 (dev as any).nc_cae,
       vencimiento_cae:     (dev as any).nc_vencimiento_cae ?? '',
-      emisor_razon_social: cfgTenant?.razon_social_fiscal ?? tenant?.nombre ?? '',
-      emisor_cuit:         cfgTenant?.cuit ?? '',
-      emisor_domicilio:    cfgTenant?.domicilio_fiscal,
-      emisor_condicion_iva: cfgTenant?.condicion_iva_emisor ?? 'responsable_inscripto',
-      emisor_logo_url:     (cfgTenant as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
-      emisor_ingresos_brutos:    (cfgTenant as any)?.ingresos_brutos ?? null,
-      emisor_inicio_actividades: (cfgTenant as any)?.inicio_actividades ?? null,
-      emisor_telefono:     (cfgTenant as any)?.telefono ?? null,
-      emisor_email:        (cfgTenant as any)?.email ?? null,
-      emisor_sitio_web:    (cfgTenant as any)?.sitio_web ?? null,
-      emisor_banco:        (cfgTenant as any)?.banco ?? null,
-      emisor_cbu:          (cfgTenant as any)?.cbu ?? null,
-      emisor_alias:        (cfgTenant as any)?.alias_cbu ?? null,
-      emisor_leyenda:      (cfgTenant as any)?.leyenda_comprobante ?? null,
+      ...campos,
       receptor_nombre:     cli?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni:   cli?.cuit_receptor ?? cli?.dni,
       receptor_condicion_iva: normalizarCondIVA(cli?.condicion_iva_receptor),

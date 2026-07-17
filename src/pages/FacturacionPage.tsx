@@ -14,6 +14,8 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
 import { detectarTipoComprobante, tiposComprobantePermitidos } from '@/lib/facturacionLogic'
+import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
+import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { mapDevolucionNc, filasLibroNc, ivaNcTotal, type NcEmitida } from '@/lib/libroIva'
 import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import toast from 'react-hot-toast'
@@ -89,31 +91,24 @@ export default function FacturacionPage() {
     const saldo = Number(venta.total) - Number((venta as any).monto_pagado ?? 0)
     const pagoMpQr = saldo > 0.5 ? await crearPagoMpQR(facturaId, saldo) : null
 
-    const { data: pv } = await supabase.from('puntos_venta_afip')
-      .select('numero').eq('tenant_id', tenant!.id).eq('activo', true)
-      .order('numero').limit(1).maybeSingle()
+    // 🛑 Identidad del EMISOR de la venta (fuente única, mig 271) + su punto de venta.
+    // Antes leía la identidad del TENANT y el PV con limit(1) del tenant entero → con
+    // multi-CUIT imprimía el CUIT/PV de OTRO emisor que el registrado en AFIP.
+    const { emisor, campos } = await camposEmisorPDF(tenant, {
+      ventaEmisorId: (venta as any).emisor_id, fiscal: true,
+    })
+    const { data: pvRows } = await supabase.from('puntos_venta_afip')
+      .select('numero, emisor_id').eq('tenant_id', tenant!.id).eq('activo', true)
+    const pvNumero = puntoVentaDelEmisor(pvRows, emisor?.id ?? null, emisor?.es_default ?? true) ?? 1
 
     const data: FacturaPDFData = {
       tipo_comprobante:  (venta.tipo_comprobante ?? 'B').replace(/^Factura\s+/i, ''),
       numero_comprobante: venta.numero_comprobante ?? venta.numero,
-      punto_venta:       pv?.numero ?? 1,
+      punto_venta:       pvNumero,
       fecha:             venta.created_at,
       cae:               venta.cae,
       vencimiento_cae:   venta.vencimiento_cae ?? '',
-      emisor_razon_social: (config as any)?.razon_social_fiscal ?? tenant?.nombre ?? '',
-      emisor_cuit:       (config as any)?.cuit ?? '',
-      emisor_domicilio:  (config as any)?.domicilio_fiscal ?? (tenant as any)?.domicilio_fiscal,
-      emisor_condicion_iva: (config as any)?.condicion_iva_emisor ?? 'responsable_inscripto',
-      emisor_logo_url:   (config as any)?.logo_url ?? (tenant as any)?.logo_url ?? null,
-      emisor_ingresos_brutos:    (config as any)?.ingresos_brutos ?? null,
-      emisor_inicio_actividades: (config as any)?.inicio_actividades ?? null,
-      emisor_telefono:   (config as any)?.telefono ?? (tenant as any)?.telefono ?? null,
-      emisor_email:      (config as any)?.email ?? (tenant as any)?.email ?? null,
-      emisor_sitio_web:  (config as any)?.sitio_web ?? null,
-      emisor_banco:      (config as any)?.banco ?? null,
-      emisor_cbu:        (config as any)?.cbu ?? null,
-      emisor_alias:      (config as any)?.alias_cbu ?? null,
-      emisor_leyenda:    (config as any)?.leyenda_comprobante ?? null,
+      ...campos,
       receptor_nombre:   venta.clientes?.nombre ?? 'Consumidor Final',
       receptor_cuit_dni: venta.clientes?.cuit_receptor ?? venta.clientes?.dni,
       receptor_condicion_iva: normalizarCondIVA(venta.clientes?.condicion_iva_receptor),

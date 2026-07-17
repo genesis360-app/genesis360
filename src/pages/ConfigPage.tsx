@@ -623,6 +623,38 @@ export default function ConfigPage() {
   const [bizAfipProduccion,  setBizAfipProduccion]  = useState<boolean>((tenant as any)?.afip_produccion ?? false)
   const [showProdConfirm,    setShowProdConfirm]    = useState(false)
   const [prodAck,            setProdAck]            = useState(false)
+
+  // 🔄 Re-sincronizar el form fiscal cuando la identidad cambia en el store. Desde el cutover a
+  // fuente única (mig 271) hay DOS editores del mismo registro (esta sección y el panel de
+  // Emisores fiscales): sin esto, editar desde el panel dejaba este form con valores stale y un
+  // "Guardar" posterior PISABA la identidad con datos viejos. Ambos escriben el mismo registro,
+  // así que el re-sync solo refleja — no puede divergir. (Los deps son los VALORES fiscales: el
+  // efecto no dispara por cambios no-fiscales del tenant.)
+  const tAny = tenant as any
+  useEffect(() => {
+    if (!tAny) return
+    setBizCuit(tAny.cuit ?? '')
+    setBizCondIva(tAny.condicion_iva_emisor ?? '')
+    setBizRazonSocial(tAny.razon_social_fiscal ?? '')
+    setBizDomicilioFiscal(tAny.domicilio_fiscal ?? '')
+    setBizUmbralB(String(tAny.umbral_factura_b ?? '68305.16'))
+    setBizAfipToken(tAny.afipsdk_token ?? '')
+    setBizLogoUrl(tAny.logo_url ?? '')
+    setBizIngBrutos(tAny.ingresos_brutos ?? '')
+    setBizInicioAct((tAny.inicio_actividades ?? '').slice(0, 10))
+    setBizSitioWeb(tAny.sitio_web ?? '')
+    setBizBanco(tAny.banco ?? '')
+    setBizCbu(tAny.cbu ?? '')
+    setBizAliasCbu(tAny.alias_cbu ?? '')
+    setBizLeyenda(tAny.leyenda_comprobante ?? '')
+    setBizAfipProduccion(tAny.afip_produccion ?? false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    tAny?.cuit, tAny?.condicion_iva_emisor, tAny?.razon_social_fiscal, tAny?.domicilio_fiscal,
+    tAny?.umbral_factura_b, tAny?.afipsdk_token, tAny?.logo_url, tAny?.ingresos_brutos,
+    tAny?.inicio_actividades, tAny?.sitio_web, tAny?.banco, tAny?.cbu, tAny?.alias_cbu,
+    tAny?.leyenda_comprobante, tAny?.afip_produccion,
+  ])
   const [savingProd,         setSavingProd]         = useState(false)
 
   // WhatsApp
@@ -814,6 +846,42 @@ export default function ConfigPage() {
 
   // Guardar solo los datos fiscales (sin pisar otros campos del state)
   const [savingFact, setSavingFact] = useState(false)
+
+  // ── Cutover mig 271 (v1.133.0): la identidad fiscal se ESCRIBE en `emisores_fiscales`
+  // (fuente única). El trigger `trg_espejo_emisor_default_a_tenant` espeja el default a
+  // `tenants.*` (solo-lectura legacy) — por eso tras cada save se RELEE tenants para el store.
+  // La duplicación con doble escritura fue la causa raíz del CUIT vacío (v1.62→v1.131).
+
+  /** id del emisor default del tenant, o null si aún no existe (tenant sin CUIT cargado). */
+  const emisorDefaultId = async (): Promise<string | null> => {
+    const { data, error } = await supabase.from('emisores_fiscales')
+      .select('id').eq('tenant_id', tenant!.id).eq('es_default', true).maybeSingle()
+    if (error) throw error
+    return data?.id ?? null
+  }
+
+  /** Relee el tenant YA espejado por el trigger de DB y refresca el store Zustand. */
+  const refrescarTenant = async () => {
+    const { data, error } = await supabase.from('tenants').select('*').eq('id', tenant!.id).single()
+    if (error || !data) throw (error ?? new Error('No se pudo releer la configuración'))
+    setTenant(data)
+    return data
+  }
+
+  /** Escribe el logo en la identidad fiscal si existe (espejo → tenants); si no, en tenants. */
+  const persistirLogo = async (url: string | null) => {
+    const defId = await emisorDefaultId()
+    if (defId) {
+      const { error } = await supabase.from('emisores_fiscales')
+        .update({ logo_url: url, updated_at: new Date().toISOString() }).eq('id', defId)
+      if (error) throw error
+    } else {
+      const { error } = await supabase.from('tenants').update({ logo_url: url }).eq('id', tenant!.id)
+      if (error) throw error
+    }
+    return refrescarTenant()
+  }
+
   const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !tenant) return
@@ -827,11 +895,8 @@ export default function ConfigPage() {
       if (upErr) throw upErr
       const { data: urlData } = supabase.storage.from('logos').getPublicUrl(path)
       const publicUrl = urlData.publicUrl + `?t=${Date.now()}` // cache-bust
-      const { data, error: dbErr } = await supabase.from('tenants')
-        .update({ logo_url: publicUrl }).eq('id', tenant.id).select().single()
-      if (dbErr || !data) throw (dbErr ?? new Error('No se pudo guardar'))
+      await persistirLogo(publicUrl)
       setBizLogoUrl(publicUrl)
-      setTenant(data)
       toast.success('Logo actualizado')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al subir el logo')
@@ -844,11 +909,8 @@ export default function ConfigPage() {
     if (!tenant) return
     setUploadingLogo(true)
     try {
-      const { data, error } = await supabase.from('tenants')
-        .update({ logo_url: null }).eq('id', tenant.id).select().single()
-      if (error || !data) throw (error ?? new Error('No se pudo quitar'))
+      await persistirLogo(null)
       setBizLogoUrl('')
-      setTenant(data)
       toast.success('Logo quitado')
     } catch (err: any) {
       toast.error(err.message ?? 'Error al quitar el logo')
@@ -859,40 +921,88 @@ export default function ConfigPage() {
 
   const handleSaveFacturacion = async () => {
     setSavingFact(true)
-    const { data, error } = await supabase.from('tenants').update({
-      cuit: bizCuit.trim() || null,
-      condicion_iva_emisor: bizCondIva || null,
-      razon_social_fiscal: bizRazonSocial.trim() || null,
-      domicilio_fiscal: bizDomicilioFiscal.trim() || null,
-      umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
-      afipsdk_token: bizAfipToken.trim() || null,
-      ingresos_brutos: bizIngBrutos.trim() || null,
-      inicio_actividades: bizInicioAct || null,
-      sitio_web: bizSitioWeb.trim() || null,
-      banco: bizBanco.trim() || null,
-      cbu: bizCbu.trim() || null,
-      alias_cbu: bizAliasCbu.trim() || null,
-      leyenda_comprobante: bizLeyenda.trim() || null,
-    }).eq('id', tenant!.id).select().single()
-    setSavingFact(false)
-    if (error || !data) { toast.error('No se pudo guardar'); return }
-    setTenant(data)  // refrescar store
-    setBizAfipProduccion(data.afip_produccion ?? bizAfipProduccion)
-    toast.success('Datos fiscales guardados')
+    try {
+      const cuit = bizCuit.trim() || null
+      const identidad = {
+        cuit,
+        condicion_iva_emisor: bizCondIva || null,
+        razon_social_fiscal: bizRazonSocial.trim() || null,
+        domicilio_fiscal: bizDomicilioFiscal.trim() || null,
+        umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
+        afipsdk_token: bizAfipToken.trim() || null,
+        ingresos_brutos: bizIngBrutos.trim() || null,
+        inicio_actividades: bizInicioAct || null,
+        banco: bizBanco.trim() || null,
+        cbu: bizCbu.trim() || null,
+        alias_cbu: bizAliasCbu.trim() || null,
+        leyenda_comprobante: bizLeyenda.trim() || null,
+      }
+      if (cuit) {
+        // Fuente única: la identidad va a emisores_fiscales (el espejo DB actualiza tenants.*)
+        const defId = await emisorDefaultId()
+        const { error } = defId
+          ? await supabase.from('emisores_fiscales')
+              .update({ ...identidad, updated_at: new Date().toISOString() }).eq('id', defId)
+          : await supabase.from('emisores_fiscales').insert({
+              ...identidad,
+              tenant_id: tenant!.id,
+              nombre: identidad.razon_social_fiscal ?? tenant?.nombre ?? 'Emisor principal',
+              es_default: true, activo: true,
+            })
+        if (error) throw error
+        // sitio_web es contacto del NEGOCIO (no identidad fiscal) → sigue en tenants
+        const { error: tErr } = await supabase.from('tenants')
+          .update({ sitio_web: bizSitioWeb.trim() || null }).eq('id', tenant!.id)
+        if (tErr) throw tErr
+      } else {
+        // Sin CUIT no hay identidad fiscal que representar → legacy: solo tenants
+        // (cuando cargue el CUIT, el save crea el emisor default con TODO el form)
+        const { error } = await supabase.from('tenants').update({
+          ...identidad, sitio_web: bizSitioWeb.trim() || null,
+        }).eq('id', tenant!.id)
+        if (error) throw error
+      }
+      const data = await refrescarTenant()
+      setBizAfipProduccion(data.afip_produccion ?? bizAfipProduccion)
+      toast.success('Datos fiscales guardados')
+    } catch (err: any) {
+      // El PostgrestError NO es instanceof Error → leer .message directo (lección del alta de
+      // emisor de Fede). P.ej.: CUIT duplicado con un emisor adicional → unique(tenant_id,cuit).
+      toast.error(err?.message ?? 'No se pudo guardar')
+    } finally {
+      setSavingFact(false)
+    }
   }
 
   // Modo de emisión: pasar a producción exige CUIT + token GUARDADOS (no solo tipeados)
   const afipDatosListos = !!(tenant as any)?.cuit && !!(tenant as any)?.afipsdk_token
   const persistAfipProduccion = async (nuevoValor: boolean) => {
     setSavingProd(true)
-    const { data, error } = await supabase.from('tenants')
-      .update({ afip_produccion: nuevoValor })
-      .eq('id', tenant!.id).select().single()
-    setSavingProd(false)
-    if (error || !data) { toast.error('No se pudo cambiar el modo de emisión'); return false }
-    setTenant(data)
-    setBizAfipProduccion(nuevoValor)
-    return true
+    try {
+      // 🛑 afip_produccion es POR EMISOR (fuente única, mig 271). El toggle de esta sección
+      // gobierna al emisor PRINCIPAL; el espejo DB propaga a tenants.* para lectores legacy.
+      const defId = await emisorDefaultId()
+      if (defId) {
+        const { error } = await supabase.from('emisores_fiscales')
+          .update({ afip_produccion: nuevoValor, updated_at: new Date().toISOString() })
+          .eq('id', defId)
+        if (error) throw error
+      } else {
+        // Tenant sin identidad fiscal todavía (sin CUIT): legacy — no debería pasar porque
+        // afipDatosListos exige CUIT guardado, pero no rompemos si pasa.
+        const { error } = await supabase.from('tenants')
+          .update({ afip_produccion: nuevoValor }).eq('id', tenant!.id)
+        if (error) throw error
+      }
+      await refrescarTenant()
+      setBizAfipProduccion(nuevoValor)
+      return true
+    } catch (err: any) {
+      toast.error(err?.message ?? 'No se pudo cambiar el modo de emisión')
+      return false
+    } finally {
+      setSavingProd(false)
+    }
   }
   const toggleAfipProduccion = async () => {
     if (bizAfipProduccion) {

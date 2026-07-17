@@ -6,6 +6,90 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🚀 (2026-07-17, ~03:00 · **v1.133.0 EN DEPLOY** — gate pasado, batería verde, commits `98a67a82`+bump pusheados · falta: migs 271+272 a PROD → merge → release → verificar)
+> **Gate: spec 21 VERDE con CAE real** (Factura C nº56, venta 344, `emisor_id` ✓). AFIP homologación
+> estuvo CAÍDA (**ORA-12514**, la DB Oracle de ARCA; sonda útil: `FEDummy` a
+> `wswhomo.afip.gov.ar/wsfev1/service.asmx`, sin auth) y volvió ~02:00 (monitor estricto: 3 OKs/60s).
+> **En el release además del cutover F1+F2+F3a:**
+> 1. **🛑 BUG DE PRODUCTO (destapado por el spec 42): la búsqueda del historial era client-side sobre
+>    las últimas 50 ventas** → buscar una venta más vieja daba "No hay ventas registradas" aunque
+>    existiera. FIX: con término ≥2 chars busca EN EL SERVIDOR (número→eq · texto→ilike
+>    `cliente_nombre` · limit 100). Validado: el 42 encontró la #239 (fuera de la ventana, 344 ventas)
+>    y emitió NC-C real.
+> 2. **Spec 42 = caso nº20 del patrón `isVisible()`** (skip decidido con lectura que no espera) →
+>    `waitFor` + falla ruidosa.
+> 3. **Mig 272 (DEV ✅):** REVOKE EXECUTE de las 2 fn de trigger de la 271 (advisor: SECURITY DEFINER
+>    ejecutables por anon vía RPC). Verificado: espejo OK post-revoke; RPC anon → 404.
+> Verde: tsc · unit 1055+5 · build · e2e 21/42/56/63/87/10 (24/44 flaky de orden, verdes aislados).
+
+> ### 🏛️🧾 (2026-07-17 · **IDENTIDAD FISCAL = FUENTE ÚNICA (emisores_fiscales) — Fases 1+2 HECHAS Y VERIFICADAS EN DEV** · commit `b281e4ad` · mig **271** aplicada en DEV · **🛑 DEPLOY A PROD EN HOLD por AFIP homologación CAÍDA**)
+> **Pedido GO: "resolver de raíz" la duplicación del CUIT** (tenants.* vs emisor default). Hecho el cutover
+> que la mig 267 dejaba anunciado. **`emisores_fiscales` es LA fuente de verdad**; `tenants.*` fiscal quedó
+> como **espejo de solo-lectura legacy** (trigger invertido `trg_espejo_emisor_default_a_tenant`).
+> **Mig 271 (DEV, verificada POR EFECTO):** espejo invertido probado (escribís el emisor → el tenant se
+> actualiza; drift **0**) · guards probados (desactivar/borrar el default → **P0001**; el DELETE solo pasa
+> en el cascade del tenant) · backfill idempotente (0 pendientes en DEV **y PROD**, por query).
+> **Código:** `camposEmisorPDF` (`src/lib/emisorPdf.ts`) es el ÚNICO lugar que arma los `emisor_*` de los
+> PDFs — mató los 5 selects copy-pasteados sobre tenants. Identidad por `ventas.emisor_id` (35/35
+> pobladas); **NC siempre por la factura original**; **PV impreso POR emisor** (antes `limit(1)` del tenant
+> → en multi-CUIT imprimía el PV de otro CUIT); `fiscal:true` LANZA si falta identidad (sin defaults
+> inventados); regla #7: un emisor luego desactivado sigue imprimiendo SU identidad en sus comprobantes.
+> ConfigPage: los 4 escritores fiscales (save/afip_produccion/logo×2) escriben en `emisores_fiscales`.
+> **Verde:** unit **1055+5** (10 nuevos `FAC-IDENT`) · tsc · build · e2e **87 renovado 4/4** (incl. 🛑 test
+> multi-CUIT con datos reales: identidad de la venta del emisor adicional ≠ CUIT del tenant), 10, 24, 44,
+> 56, 63.
+> **🛑 POR QUÉ NO SE DEPLOYÓ (REGLA #0):** el spec **21 (CAE real) no puede correr — AFIP homologación
+> CAÍDA** (probado con curl directo a la EF: los guards responden en 2,5s pero la emisión real cuelga
+> **>90s sin respuesta**; a la mañana tardaba 15,5s — venía degradada). *Ante la duda, frenar.* La venta
+> 339 (DEV) puede recibir un CAE tardío si la EF colgada termina — sería del curl de diagnóstico, benigno.
+> **🛑🛑 SECUENCIA DE DEPLOY OBLIGATORIA (breaking):** la mig **271 en PROD va PEGADA al merge del
+> frontend (minutos antes), NO "aditiva días antes"** — el ConfigPage viejo (v1.132) escribe en `tenants`
+> y post-271 esas escrituras **ya no se espejan** a emisores → la EF leería identidad **STALE**. Pasos:
+> (1) spec 21 verde (AFIP recuperada) → (2) `apply_migration` 271 en PROD → (3) merge PR + release
+> v1.133.0 inmediato → (4) verificar bundle + drift 0 en PROD.
+> **Pendientes que deja:** (a) Fase 3 — UI unificada (el panel gestiona TODOS los emisores; la sección
+> ARCA deja de ser un segundo editor); (b) Fase 4 — drop de columnas fiscales de `tenants` (criterios:
+> grep lectores=0 + drift 0 + soak); (c) lectores no-PDF que siguen en tenants vía espejo (GastosPage,
+> Dash, CierresContables — correctos por el espejo, migrar en F3/F4); (d) **el spec 42 SKIPEÓ en silencio
+> esta noche** (la última NC es de ayer) — otro caso para la lista de skips; (e) `ocPDF` fuera de alcance
+> (documento no fiscal de compras; emisor por OC = decisión futura).
+
+> ### 📍 ESTADO ANTERIOR (2026-07-16) — **PROD = v1.132.0** · con el bloque de arriba, dev tiene la F1+F2 de identidad fiscal SIN deployar
+> **Dos releases hoy:** **v1.131.0** (fix fiscal del CUIT vacío) y **v1.132.0** (componente `<Toggle>`).
+> Ambos EN PROD, verificados leyendo el bundle real (`app.genesis360.pro`), no la narrativa. **Sin
+> migraciones ni Edge Functions nuevas** en toda la sesión. `git diff origin/main origin/dev` en `src/`
+> y `supabase/` = **0** (dev y PROD idénticos). Migs en DEV y PROD: hasta `emisores_csr_key_path` (13/07).
+>
+> **▶ PENDIENTES (ninguno bloqueante), por valor:**
+> 1. 🛑 **El PDF de los comprobantes lee el CUIT del TENANT, no del EMISOR** (REGLA #0, ver bloque de
+>    v1.131.0 abajo). Con multi-CUIT el papel no coincide con AFIP; **estaba enmascarado por el bloque
+>    vacío y ahora quedó EXPUESTO**. Reproducible ya (Almacén Jorgito tiene 2 emisores). **Es el más
+>    importante que dejó la sesión.**
+> 2. **Suite e2e sigue NO determinística** — causa raíz **NO resuelta**: 243 `waitForTimeout` fijos en
+>    69 specs + 19 `test.skip` decididos con `isVisible()` (no auto-espera → bajo carga los tests se
+>    saltean solos y dan verde). Ver [[reference_e2e_suite_no_deterministica]]. También abierto:
+>    `55_venta_usd` — `/ventas` renderiza el Dashboard en corrida masiva (posible bug de producto, ya
+>    instrumentado con `E2E_TRACE_REDIRECTS`), y `33_devolucion_proveedor` debe sembrar su precondición.
+> 3. **Asistente IA en mobile se ve a la mitad** (reportado por GO, sin diagnosticar).
+> 4. **~20 toggles por migrar a `<Toggle>`** (deuda de consistencia, NINGUNO roto).
+> 5. **Barrido `88_mobile_responsive` sólo mide la vista default** — no abre modales ni detecta
+>    contención hijo⊄padre. Por eso GO encontró 3 bugs esta sesión que la suite no vio (CUIT, toggle,
+>    modal IA). Ampliar a modales/overlays + chequeo geométrico de contención.
+> 6. **Landing** — concepto **C ("Una venta. Todo el sistema.")** diseñado y discutido (3 conceptos +
+>    arquitectura de 8 beats + SEO/GEO). **En pausa hasta que GO lo charle con el socio.** GO debe
+>    decidir: (a) C + obertura de B; (b) Next separado en `www` vs Astro; (c) tocar el tagline de
+>    `brand.ts`; (d) el domicilio particular de Fede en las páginas legales (riesgo si la landing tracc.).
+
+> ### 🎚️ (2026-07-16 · **v1.132.0 EN PROD**, PR #291, main `40601925` · componente `<Toggle>` estándar · sin migraciones)
+> **Pedido de GO** tras el bug de los toggles de v1.131.0: un componente estándar que aplique a todas las
+> páginas. Es la **causa raíz**: había ~26 toggles a mano con 5 geometrías, el knob se salía del óvalo
+> **porque cada uno se escribió por separado**. `src/components/Toggle.tsx`: el knob **ya no es
+> `absolute`** (flex item de `inline-flex items-center`) → sin posición estática de la cual depender, el
+> bug es **imposible por construcción**. Desplazamiento ON = px exacto (`track − knob − 2`). Bonus a11y:
+> `role="switch"` + `aria-checked` + focus ring. Migrados los 3 rotos (ARCA, **AFIP producción**, emisor
+> activo) + 3 de ConfigPage. **Quedan ~20** (deuda, ninguno roto). Verificado: **0 toggles con el patrón
+> roto** en toda la app.
+
 > ### 🛑🧾 (2026-07-16 · **BUG FISCAL EN PROD DESDE HACE UN MES — ARREGLADO Y ✅ DEPLOYADO** · **v1.131.0 EN PROD**, PR #290, main `7ef200a0`, tag+release · sin migraciones · verificado leyendo el bundle real de `app.genesis360.pro`)
 > **Lo reportó GO usando la app** ("al emitir factura me sale el CUIT vacío, si lo tengo cargado"), **no la suite**.
 > **Síntoma:** TODOS los comprobantes (factura, ticket, remito, presupuesto — **5 call sites**) salían con el bloque del emisor **vacío**: sin CUIT, sin razón social, sin domicilio. Y lo más grave: `condicion_iva_emisor ?? 'responsable_inscripto'` → **el comprobante de un Monotributista declaraba ser Responsable Inscripto**.

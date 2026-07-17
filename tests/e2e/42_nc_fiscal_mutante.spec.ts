@@ -97,9 +97,16 @@ test.describe('Nota de Crédito electrónica (mutante)', () => {
 
     // 2) Abrir el detalle de la venta (primera fila filtrada). El query de historial puede
     //    tardar en cargar → esperar a que la fila exista antes de clickear.
+    // ⚠ `isVisible({timeout})` NO espera (ignora el timeout, devuelve el estado inmediato) →
+    // este spec se SKIPEABA en silencio cuando el filtro tardaba >0ms. `waitFor` sí espera.
+    // Y la venta #239 es fixture PERMANENTE: si no está, es precondición rota → FALLA ruidosa,
+    // no skip (la lección de los 19 test.skip decididos con isVisible()).
     const fila = page.locator('div.divide-y > div').filter({ hasText: /\$/ }).first()
-    const hayFila = await fila.isVisible({ timeout: 8000 }).catch(() => false)
-    test.skip(!hayFila, `No se encontró la venta #${VENTA_NUMERO} en el historial`)
+    const hayFila = await fila.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false)
+    expect(
+      hayFila,
+      `No se encontró la venta #${VENTA_NUMERO} en el historial — es fixture permanente del tenant e2e; revisar, no skipear.`,
+    ).toBeTruthy()
     await fila.click()
     await page.waitForTimeout(1500) // el detalle dispara la query de devoluciones (async)
 

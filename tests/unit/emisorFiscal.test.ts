@@ -83,3 +83,57 @@ describe('validarPuntoVenta (los PV de AFIP son POR CUIT)', () => {
     expect(validarPuntoVenta([{ numero: 3, emisor_id: B }], A, false, 1).ok).toBe(true)
   })
 })
+
+// ─── Identidad para COMPROBANTES (cutover mig 271 / v1.133.0 — fuente única) ─────────────
+// El bug real que estos tests guardan: con multi-CUIT, el CAE sale con el CUIT del EMISOR de
+// la venta pero el PDF imprimía la identidad del TENANT → papel ≠ AFIP.
+import { elegirIdentidadEmisor, puntoVentaDelEmisor } from '@/lib/emisorFiscal'
+
+describe('elegirIdentidadEmisor (identidad que imprime el comprobante)', () => {
+  const eDef = { id: DEF, es_default: true, cuit: '23-32031506-9' }
+  const eA   = { id: A,   es_default: false, cuit: '20-42237416-8' }
+  const eB   = { id: B,   es_default: false, cuit: '23-18383448-9' }
+  const rows = [eDef, eA, eB]
+
+  it('FAC-IDENT-01 🛑 la venta emitida por un emisor ADICIONAL imprime SU identidad, no la del default', () => {
+    expect(elegirIdentidadEmisor(rows, { ventaEmisorId: A })).toBe(eA)
+  })
+  it('FAC-IDENT-02 el emisor de la VENTA gana sobre el de la sucursal (histórico manda)', () => {
+    expect(elegirIdentidadEmisor(rows, { ventaEmisorId: A, sucursalEmisorId: B })).toBe(eA)
+  })
+  it('FAC-IDENT-03 sin emisor en la venta (presupuesto/remito) → el de la sucursal', () => {
+    expect(elegirIdentidadEmisor(rows, { sucursalEmisorId: B })).toBe(eB)
+  })
+  it('FAC-IDENT-04 sin venta ni sucursal → el default del tenant', () => {
+    expect(elegirIdentidadEmisor(rows, {})).toBe(eDef)
+  })
+  it('FAC-IDENT-05 🛑 regla #7: el emisor de la venta se respeta aunque HOY esté inactivo', () => {
+    const eAInactivo = { ...eA, activo: false }
+    expect(elegirIdentidadEmisor([eDef, eAInactivo], { ventaEmisorId: A })).toBe(eAInactivo)
+  })
+  it('FAC-IDENT-06 emisor_id de la venta que ya no existe (borrado) → cae al default, no revienta', () => {
+    expect(elegirIdentidadEmisor([eDef], { ventaEmisorId: 'emisor-borrado' })).toBe(eDef)
+  })
+  it('FAC-IDENT-07 tenant sin ningún emisor (sin CUIT) → null (el caller decide el fallback)', () => {
+    expect(elegirIdentidadEmisor([], { ventaEmisorId: A })).toBeNull()
+    expect(elegirIdentidadEmisor(null, {})).toBeNull()
+  })
+})
+
+describe('puntoVentaDelEmisor (el PV impreso es POR CUIT)', () => {
+  const pvs = [
+    { numero: 4, emisor_id: A },
+    { numero: 1, emisor_id: null },   // legacy → del default
+    { numero: '2', emisor_id: A },    // numeric de PG llega string
+  ]
+  it('FAC-IDENT-08 🛑 el PV impreso es el del EMISOR de la venta (antes: limit(1) del tenant entero)', () => {
+    expect(puntoVentaDelEmisor(pvs, A, false)).toBe(2)
+  })
+  it('FAC-IDENT-09 el default toma sus filas legacy sin emisor', () => {
+    expect(puntoVentaDelEmisor(pvs, DEF, true)).toBe(1)
+  })
+  it('FAC-IDENT-10 emisor sin PV configurado → null (el caller decide el fallback legacy 1)', () => {
+    expect(puntoVentaDelEmisor(pvs, B, false)).toBeNull()
+    expect(puntoVentaDelEmisor([], A, false)).toBeNull()
+  })
+})

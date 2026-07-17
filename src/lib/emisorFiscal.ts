@@ -65,6 +65,69 @@ export function elegirCertificado<T extends CertRowLike>(
     ?? null
 }
 
+// ─── Identidad del emisor para COMPROBANTES (cutover mig 271 — fuente única) ────────────
+// Desde v1.133.0 los PDFs (factura/NC/presupuesto/remito) leen la identidad fiscal de
+// `emisores_fiscales`, NUNCA de `tenants.*` (que quedó como espejo de solo-lectura legacy).
+// El bug que esto arregla: con multi-CUIT, el CAE sale con el CUIT del EMISOR de la venta
+// pero el papel imprimía el del tenant → un comprobante que no coincide con AFIP.
+
+export interface IdentidadEmisor {
+  id: string
+  cuit: string
+  razon_social_fiscal: string | null
+  condicion_iva_emisor: string | null
+  domicilio_fiscal: string | null
+  ingresos_brutos: string | null
+  inicio_actividades: string | null
+  banco: string | null
+  cbu: string | null
+  alias_cbu: string | null
+  leyenda_comprobante: string | null
+  logo_url: string | null
+  es_default: boolean
+  activo: boolean
+}
+
+/** Columnas a seleccionar de `emisores_fiscales` para armar un comprobante. */
+export const IDENTIDAD_EMISOR_COLS =
+  'id, cuit, razon_social_fiscal, condicion_iva_emisor, domicilio_fiscal, ingresos_brutos, ' +
+  'inicio_actividades, banco, cbu, alias_cbu, leyenda_comprobante, logo_url, es_default, activo'
+
+/**
+ * Elige QUÉ identidad imprime el comprobante: emisor de la VENTA ?? emisor de la sucursal ??
+ * default del tenant (la misma cadena que `resolverEmisorId`, sobre filas ya traídas).
+ *
+ * ⚠ A PROPÓSITO no filtra `activo`: un comprobante emitido por un emisor luego desactivado
+ * debe seguir imprimiendo LA IDENTIDAD QUE LO EMITIÓ (regla #7: el registro fiscal histórico
+ * no se juzga contra la configuración actual). Solo el fallback a default exige el vigente.
+ */
+export function elegirIdentidadEmisor<T extends { id: string; es_default: boolean }>(
+  emisores: T[] | null | undefined,
+  opts: { ventaEmisorId?: string | null; sucursalEmisorId?: string | null } = {},
+): T | null {
+  const rows = emisores ?? []
+  const porId = (id?: string | null) => (id ? rows.find(e => e.id === id) ?? null : null)
+  return porId(opts.ventaEmisorId) ?? porId(opts.sucursalEmisorId) ?? rows.find(e => e.es_default) ?? null
+}
+
+/**
+ * Punto de venta a IMPRIMIR en el comprobante: el primero configurado DEL EMISOR (las filas
+ * legacy sin emisor cuentan como del default). Devuelve null si el emisor no tiene ninguno
+ * (el caller decide el fallback — hoy 1, el comportamiento legacy).
+ * Antes el PDF hacía `limit(1)` sobre TODOS los PV del tenant → en multi-CUIT podía imprimir
+ * el PV de OTRO CUIT (los PV de AFIP son por CUIT).
+ */
+export function puntoVentaDelEmisor(
+  pvRows: PvRowLike[] | null | undefined,
+  emisorId: string | null,
+  esDefault: boolean,
+): number | null {
+  const delEmisor = (pvRows ?? [])
+    .filter(p => (!!emisorId && p.emisor_id === emisorId) || (esDefault && !p.emisor_id))
+    .sort((a, b) => Number(a.numero) - Number(b.numero))
+  return delEmisor.length ? Number(delEmisor[0].numero) : null
+}
+
 export interface PvRowLike {
   numero: number | string
   emisor_id?: string | null

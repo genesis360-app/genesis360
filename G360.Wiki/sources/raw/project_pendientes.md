@@ -6,7 +6,14 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 (2026-07-17, ~03:00 · **v1.133.0 EN DEPLOY** — gate pasado, batería verde, commits `98a67a82`+bump pusheados · falta: migs 271+272 a PROD → merge → release → verificar)
+> ### ✅ (2026-07-17 · **v1.133.0 EN PROD** — PR #292, main `b6d541b0`, tag+release, bundle `index-CyLP2nMF.js` verificado · **migs 271+272 en DEV y PROD** aplicadas PEGADAS al merge (secuencia breaking ejecutada, ventana ~4 min) · **drift 0 en DEV y PROD post-deploy**)
+> **El cutover de identidad fiscal está COMPLETO en PROD (F1+F2+F3a).** Pendiente del plan de raíz:
+> **F3b** — la sección ARCA deja de ser un 2º editor (resumen + pointer al panel; UX que GO tiene que
+> ver con la app en la mano) · **F4** — DROP de las columnas fiscales de `tenants` (criterios: grep
+> lectores=0 + drift 0 sostenido + soak; los lectores no-PDF —GastosPage/Dash/CierresContables— siguen
+> leyendo tenants vía espejo, correctos). Gotcha nuevo p/ memoria: **el cache de TA (mig 264) no se
+> auto-invalida ante faults de WSFE** — un TA obtenido durante la caída de AFIP quedó envenenado y se
+> borró a mano; mejora futura en la EF.
 > **Gate: spec 21 VERDE con CAE real** (Factura C nº56, venta 344, `emisor_id` ✓). AFIP homologación
 > estuvo CAÍDA (**ORA-12514**, la DB Oracle de ARCA; sonda útil: `FEDummy` a
 > `wswhomo.afip.gov.ar/wsfev1/service.asmx`, sin auth) y volvió ~02:00 (monitor estricto: 3 OKs/60s).

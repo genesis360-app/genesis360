@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-17] deploy | 🚀 v1.133.0 A PROD (PR #292) — identidad fiscal FUENTE ÚNICA deployada + búsqueda historial server-side
+
+**Cierra el cutover de identidad fiscal de raíz (pedido GO).** PROD = v1.133.0 (main `b6d541b0`,
+bundle `index-CyLP2nMF.js` verificado), **migs 271+272 en DEV y PROD**, drift **0** en ambos.
+
+**⚠ Secuencia breaking ejecutada como se documentó:** migs 271+272 aplicadas a PROD **pegadas al
+merge** (~4 min de ventana entre migs y frontend). La 271 invierte el espejo (emisores→tenants) y el
+ConfigPage viejo escribía en tenants → no podía aplicarse "aditiva días antes".
+
+**El gate costó una noche:** AFIP homologación estuvo CAÍDA (**ORA-12514** — la DB Oracle de ARCA;
+diagnóstico con la sonda `FEDummy` a `wswhomo.afip.gov.ar`, sin auth, no emite nada) y el deploy se
+retuvo (REGLA #0: sin el spec 21 verde con CAE real no sale un cambio fiscal). Volvió ~02:00
+(monitor estricto: 3 FEDummy OK / 60s) → **spec 21 verde: Factura C nº56, venta 344, emisor_id ✓**.
+Gotcha extra: un **TA de WSAA obtenido durante la caída quedó cacheado** (mig 264) — se borró del
+cache para re-autenticar (el cache no se auto-invalida ante faults de WSFE; mejora futura).
+
+**🛑 2º hallazgo de producto de la saga del spec 42:** al convertir su skip silencioso en falla
+ruidosa (era el **caso nº20** del patrón `isVisible({timeout})` que NO espera), apareció que **la
+búsqueda del historial de ventas era client-side sobre las últimas 50** → buscar una venta más vieja
+daba "No hay ventas registradas" aunque existiera (bug real de usuario). FIX: término ≥2 chars busca
+EN EL SERVIDOR (número→eq exacto · texto→ilike `cliente_nombre` · limit 100). Validado end-to-end:
+el 42 encontró la #239 (fuera de la ventana, 344 ventas) y emitió **NC-C con CAE real**.
+
+**También en el release:** F3a (el panel de Emisores edita al PRINCIPAL + re-sync del form ARCA —
+con fuente única ambos editores escriben el MISMO registro) · mig 272 (REVOKE EXECUTE de las fn de
+trigger, hallazgo del Security Advisor; verificado: espejo OK post-revoke, RPC anon→404).
+
+Verde: tsc · unit 1055+5 · build · e2e 21 (CAE real), 42 (NC real), 56, 63, 87 (con test multi-CUIT
+de datos reales), 10, 24, 44 · CI · drift 0 DEV y PROD.
+
+**▶ QUEDA PENDIENTE del plan de raíz:** **Fase 3b** — la sección ARCA deja de ser un segundo editor
+(pasa a resumen + pointer al panel; decisión de UX para que GO vea con la app en la mano) · **Fase 4**
+— DROP de las columnas fiscales de `tenants` (criterios: grep lectores=0 + drift 0 sostenido + soak);
+lectores no-PDF (GastosPage/Dash/CierresContables) siguen leyendo tenants vía espejo, correctos.
+
+---
+
 ## [2026-07-17] update | 🏛️ Identidad fiscal = FUENTE ÚNICA (mig 271 + F1/F2) — en DEV, deploy en HOLD por AFIP caída
 
 **Pedido GO: "resolver de raíz" la duplicación de la identidad fiscal** (tenants.* ↔ emisor default,

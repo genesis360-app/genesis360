@@ -13,6 +13,24 @@ updated: 2026-05-29
 
 ---
 
+## v1.133.0 — 🏛️ Identidad fiscal con FUENTE ÚNICA de verdad + búsqueda historial server-side — ✅ PROD (2026-07-17, PR #292)
+
+**El cutover de raíz (pedido GO):** `emisores_fiscales` pasa a ser LA fuente de verdad de toda
+identidad fiscal; `tenants.*` fiscal queda como espejo de solo lectura legacy (trigger invertido,
+mig 271) hasta el drop final (Fase 4). Era la causa raíz de los dos bugs fiscales de la semana.
+
+- **Migs 271+272** (DEV+PROD, aplicadas PEGADAS al merge — breaking p/ frontend viejo): espejo
+  invertido + guards P0001 (el default no se borra/desactiva) + REVOKE de las fn de trigger.
+- **`camposEmisorPDF`**: único armador de los `emisor_*` de los PDFs; identidad por
+  `ventas.emisor_id`; NC por su factura original; **PV impreso POR emisor**; documento fiscal sin
+  identidad completa NO se imprime. ConfigPage escribe en emisores; panel edita también al principal.
+- **🛑 Fix búsqueda del historial**: era client-side sobre las últimas 50 → una venta más vieja "no
+  existía". Ahora server-side (número→exacto · texto→cliente).
+- Contexto: el deploy se retuvo una noche por la caída de AFIP homologación (ORA-12514); gate spec
+  21 verde con **CAE real** antes de mergear.
+
+**Pendiente del plan:** F3b (ARCA → resumen, GO decide UX) · F4 (drop de columnas fiscales de tenants).
+
 ## v1.132.0 — 🎚️ Componente `<Toggle>` estándar (el bug del knob, imposible por construcción) — ✅ PROD (2026-07-16, PR #291)
 
 Pedido de GO tras el bug de los toggles de v1.131.0: *"mejor hacer uno estandar y q se aplique en

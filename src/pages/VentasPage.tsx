@@ -1211,11 +1211,24 @@ export default function VentasPage() {
     (acc[d.venta_item_id] ??= []).push(d); return acc
   }, {})
 
+  // 🔎 Búsqueda del historial: si hay término, se busca EN EL SERVIDOR (sin la ventana de 50).
+  // Bug real que esto arregla (destapado por el spec 42, 2026-07-17): la búsqueda filtraba
+  // client-side SOLO sobre las últimas `ventasLimit` (50) ventas → buscar el número de una
+  // venta más vieja daba "No hay ventas registradas" aunque existiera. Número → match exacto;
+  // texto → ilike sobre el nombre del cliente. El filtro client-side de abajo sigue aplicando.
+  const busquedaHistorial = searchHistorial.trim()
   const { data: ventas = [], isLoading: loadingVentas } = useQuery({
-    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit],
+    queryKey: ['ventas', tenant?.id, filterEstado, sucursalId, ventasLimit, busquedaHistorial],
     queryFn: async () => {
       let q = supabase.from('ventas').select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, alicuota_iva, iva_monto, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
-        .eq('tenant_id', tenant!.id).order('created_at', { ascending: false }).limit(ventasLimit)
+        .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
+      if (busquedaHistorial.length >= 2) {
+        if (/^\d+$/.test(busquedaHistorial)) q = q.eq('numero', Number(busquedaHistorial))
+        else q = q.ilike('cliente_nombre', `%${busquedaHistorial}%`)
+        q = q.limit(100)   // búsqueda global acotada, no la ventana de recientes
+      } else {
+        q = q.limit(ventasLimit)
+      }
       if (filterEstado) q = q.eq('estado', filterEstado)
       q = applyFilter(q)
       const { data, error } = await q

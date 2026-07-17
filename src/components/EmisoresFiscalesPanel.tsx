@@ -55,7 +55,7 @@ const FORM_VACIO = {
 const inputCls = 'w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'
 
 export function EmisoresFiscalesPanel() {
-  const { tenant } = useAuthStore()
+  const { tenant, setTenant } = useAuthStore()
   const [collapsed, setCollapsed] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -169,6 +169,13 @@ export function EmisoresFiscalesPanel() {
       if (error) throw error
       toast.success(editId ? 'Emisor actualizado' : 'Emisor creado (en modo homologación)')
       setShowForm(false); refetch()
+      // Si se editó el PRINCIPAL: el espejo DB (mig 271) ya actualizó tenants.* → refrescar el
+      // store para que el form de la sección "Facturación (ARCA)" se re-sincronice y no quede
+      // stale (evita que un "Guardar" posterior desde allá pise con valores viejos).
+      if (editId && principal && editId === principal.id) {
+        const { data: t } = await supabase.from('tenants').select('*').eq('id', tenant!.id).single()
+        if (t) setTenant(t)
+      }
     } catch (e) {
       // ⚠ Los errores de Supabase (PostgrestError) NO son instancia de Error → hay que leer
       // `.message` directo, si no se pierde el motivo real (ej. el RAISE del trigger de cupo).
@@ -296,9 +303,11 @@ export function EmisoresFiscalesPanel() {
       {!collapsed && (
         <div className="px-5 pb-5 space-y-4 border-t border-gray-100 dark:border-gray-700 pt-4">
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            Un negocio puede facturar con más de una razón social (CUIT). El emisor <strong>principal</strong> se
-            edita arriba en "Facturación Electrónica"; acá se agregan emisores adicionales, cada uno con su
-            certificado y sus puntos de venta. La venta usa el emisor de su sucursal (o el principal).
+            Un negocio puede facturar con más de una razón social (CUIT). Acá se gestionan <strong>todos</strong> los
+            emisores — el principal (⭐) y los adicionales — cada uno con su certificado y sus puntos de venta.
+            La venta usa el emisor de su sucursal (o el principal). Los datos del principal también pueden
+            editarse arriba en "Facturación Electrónica": desde el cutover a fuente única (mig 271) ambos
+            formularios escriben el MISMO registro, así que no pueden divergir.
           </p>
 
           {/* Lista de emisores */}
@@ -320,8 +329,14 @@ export function EmisoresFiscalesPanel() {
                   {/* El asistente de certificado está disponible también para el principal (1er certificado) */}
                   <button onClick={() => { setExpandido(expandido === e.id ? null : e.id); setModoCert('wizard'); setCsrGenerado(null); setCrtSolo(null); setCertCrt(null); setCertKey(null) }}
                     className="text-xs text-accent hover:underline">{expandido === e.id ? 'Cerrar' : (e.es_default ? 'Certificado' : 'Cert / PV')}</button>
+                  {/* Editar: TODOS los emisores, incluido el principal (F3a, cutover mig 271 —
+                      con fuente única ambos formularios escriben el mismo registro). Desactivar
+                      y eliminar siguen solo para adicionales (los guards de DB además lo
+                      rechazan con P0001 si alguien lo intenta por API). */}
+                  <button onClick={() => abrirEditar(e)}
+                    title={e.es_default ? 'Editar la identidad fiscal del emisor principal' : 'Editar'}
+                    className="text-gray-400 hover:text-accent"><Pencil size={14} /></button>
                   {!e.es_default && (<>
-                    <button onClick={() => abrirEditar(e)} title="Editar" className="text-gray-400 hover:text-accent"><Pencil size={14} /></button>
                     <Toggle
                       checked={e.activo}
                       onChange={() => toggleActivo(e)}
@@ -331,7 +346,6 @@ export function EmisoresFiscalesPanel() {
                     />
                     <button onClick={() => eliminar(e)} title="Eliminar" className="text-gray-400 hover:text-red-500"><Trash2 size={14} /></button>
                   </>)}
-                  {e.es_default && <span className="text-[11px] text-gray-400">datos ↑</span>}
                 </div>
               </div>
 

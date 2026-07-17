@@ -623,6 +623,38 @@ export default function ConfigPage() {
   const [bizAfipProduccion,  setBizAfipProduccion]  = useState<boolean>((tenant as any)?.afip_produccion ?? false)
   const [showProdConfirm,    setShowProdConfirm]    = useState(false)
   const [prodAck,            setProdAck]            = useState(false)
+
+  // 🔄 Re-sincronizar el form fiscal cuando la identidad cambia en el store. Desde el cutover a
+  // fuente única (mig 271) hay DOS editores del mismo registro (esta sección y el panel de
+  // Emisores fiscales): sin esto, editar desde el panel dejaba este form con valores stale y un
+  // "Guardar" posterior PISABA la identidad con datos viejos. Ambos escriben el mismo registro,
+  // así que el re-sync solo refleja — no puede divergir. (Los deps son los VALORES fiscales: el
+  // efecto no dispara por cambios no-fiscales del tenant.)
+  const tAny = tenant as any
+  useEffect(() => {
+    if (!tAny) return
+    setBizCuit(tAny.cuit ?? '')
+    setBizCondIva(tAny.condicion_iva_emisor ?? '')
+    setBizRazonSocial(tAny.razon_social_fiscal ?? '')
+    setBizDomicilioFiscal(tAny.domicilio_fiscal ?? '')
+    setBizUmbralB(String(tAny.umbral_factura_b ?? '68305.16'))
+    setBizAfipToken(tAny.afipsdk_token ?? '')
+    setBizLogoUrl(tAny.logo_url ?? '')
+    setBizIngBrutos(tAny.ingresos_brutos ?? '')
+    setBizInicioAct((tAny.inicio_actividades ?? '').slice(0, 10))
+    setBizSitioWeb(tAny.sitio_web ?? '')
+    setBizBanco(tAny.banco ?? '')
+    setBizCbu(tAny.cbu ?? '')
+    setBizAliasCbu(tAny.alias_cbu ?? '')
+    setBizLeyenda(tAny.leyenda_comprobante ?? '')
+    setBizAfipProduccion(tAny.afip_produccion ?? false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    tAny?.cuit, tAny?.condicion_iva_emisor, tAny?.razon_social_fiscal, tAny?.domicilio_fiscal,
+    tAny?.umbral_factura_b, tAny?.afipsdk_token, tAny?.logo_url, tAny?.ingresos_brutos,
+    tAny?.inicio_actividades, tAny?.sitio_web, tAny?.banco, tAny?.cbu, tAny?.alias_cbu,
+    tAny?.leyenda_comprobante, tAny?.afip_produccion,
+  ])
   const [savingProd,         setSavingProd]         = useState(false)
 
   // WhatsApp

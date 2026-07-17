@@ -6,6 +6,22 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
+> ### 🚀 (2026-07-17, ~03:00 · **v1.133.0 EN DEPLOY** — gate pasado, batería verde, commits `98a67a82`+bump pusheados · falta: migs 271+272 a PROD → merge → release → verificar)
+> **Gate: spec 21 VERDE con CAE real** (Factura C nº56, venta 344, `emisor_id` ✓). AFIP homologación
+> estuvo CAÍDA (**ORA-12514**, la DB Oracle de ARCA; sonda útil: `FEDummy` a
+> `wswhomo.afip.gov.ar/wsfev1/service.asmx`, sin auth) y volvió ~02:00 (monitor estricto: 3 OKs/60s).
+> **En el release además del cutover F1+F2+F3a:**
+> 1. **🛑 BUG DE PRODUCTO (destapado por el spec 42): la búsqueda del historial era client-side sobre
+>    las últimas 50 ventas** → buscar una venta más vieja daba "No hay ventas registradas" aunque
+>    existiera. FIX: con término ≥2 chars busca EN EL SERVIDOR (número→eq · texto→ilike
+>    `cliente_nombre` · limit 100). Validado: el 42 encontró la #239 (fuera de la ventana, 344 ventas)
+>    y emitió NC-C real.
+> 2. **Spec 42 = caso nº20 del patrón `isVisible()`** (skip decidido con lectura que no espera) →
+>    `waitFor` + falla ruidosa.
+> 3. **Mig 272 (DEV ✅):** REVOKE EXECUTE de las 2 fn de trigger de la 271 (advisor: SECURITY DEFINER
+>    ejecutables por anon vía RPC). Verificado: espejo OK post-revoke; RPC anon → 404.
+> Verde: tsc · unit 1055+5 · build · e2e 21/42/56/63/87/10 (24/44 flaky de orden, verdes aislados).
+
 > ### 🏛️🧾 (2026-07-17 · **IDENTIDAD FISCAL = FUENTE ÚNICA (emisores_fiscales) — Fases 1+2 HECHAS Y VERIFICADAS EN DEV** · commit `b281e4ad` · mig **271** aplicada en DEV · **🛑 DEPLOY A PROD EN HOLD por AFIP homologación CAÍDA**)
 > **Pedido GO: "resolver de raíz" la duplicación del CUIT** (tenants.* vs emisor default). Hecho el cutover
 > que la mig 267 dejaba anunciado. **`emisores_fiscales` es LA fuente de verdad**; `tenants.*` fiscal quedó

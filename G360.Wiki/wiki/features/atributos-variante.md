@@ -8,13 +8,14 @@ updated: 2026-07-18
 
 # Atributos de variante (talle / color / encaje / formato / sabor·aroma)
 
-> [!WARNING] **EN `dev`, SIN COMMITEAR (2026-07-18, ronda 3).** No mergeado a `main`, no deployado a
-> PROD. GO probó la ronda 1 y encontró bugs (ronda 2, corregidos) y luego probó la ronda 2 y encontró
-> que el ingreso simple TAMPOCO pedía el atributo — causa raíz: el buscador de productos no traía las
-> columnas nuevas en el `SELECT` (ver "Ronda 3" abajo). Corregido + extendido a TODOS los movimientos
-> de stock (ingreso masivo, rebaje masivo, mover/partir LPN, traslados) por pedido explícito de GO.
-> UAT §33 (`tests/specs/uat-modo-basico.md`) + e2e spec **89** (creado y corrido, verificado en DB).
-> Pendiente de que GO vuelva a probar antes de mergear.
+> [!WARNING] **EN `dev`, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) — NO mergeado a
+> `main`, NO deployado a PROD.** GO probó la ronda 1 y encontró bugs (ronda 2, corregidos) y luego
+> probó la ronda 2 y encontró que el ingreso simple TAMPOCO pedía el atributo — causa raíz: el
+> buscador de productos no traía las columnas nuevas en el `SELECT` (ver "Ronda 3" abajo). Corregido +
+> extendido a TODOS los movimientos de stock (ingreso masivo, rebaje masivo, mover/partir LPN,
+> traslados) por pedido explícito de GO. UAT §33 (`tests/specs/uat-modo-basico.md`) + e2e spec **89**
+> (creado y corrido, verificado en DB). **Pendiente: GO todavía no confirmó haber probado la ronda 3**
+> — bloqueante antes de mergear a `main`.
 
 ## Por qué existe esta página
 

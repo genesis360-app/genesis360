@@ -428,12 +428,15 @@ Modal: flex flex-col · max-h-[90vh]
 
 ---
 
-## Atributos de variante (talle/color/etc.) — 🟡 EN DEV (2026-07-17, sin commitear)
+## Atributos de variante (talle/color/etc.) — 🟡 EN DEV, commiteado y pusheado (`a99bb270`/`c559f831`/`90de330b`), pendiente de mergear a `main`
 
 Badges de talle/color/encaje/formato/sabor_aroma en el picker de "Rebaje manual", panel de detalle de
 movimiento, vista agrupada por ubicación y tabla de líneas por producto — respaldados por un catálogo
-configurable nuevo (mig 273, `Config → Inventario → Atributos`). No confundir con "Grupo de variantes"
-(SKU separado). Detalle completo: [[wiki/features/atributos-variante]].
+configurable nuevo (mig 273, `Config → Inventario → Atributos`). Obligatorio (no opcional) en TODO
+movimiento de stock cuando el producto tiene el atributo activo: ingreso simple, ingreso masivo, rebaje
+masivo (con filtro de líneas por valor elegido), mover/partir LPN (`LpnAccionesModal`, hereda el
+atributo) y traslados entre sucursales (mig 275, snapshotea y propaga). No confundir con "Grupo de
+variantes" (SKU separado). Detalle completo: [[wiki/features/atributos-variante]].
 
 ---
 

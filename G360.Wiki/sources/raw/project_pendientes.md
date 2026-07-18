@@ -6,115 +6,76 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📍 ARRANCÁ ACÁ (2026-07-18, cierre sesión 4) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene la RONDA 3 de fixes de variantes lista para commitear · migs **273+274+275 SOLO en DEV** · nada mergeado a `main`
+> ### 📍 ARRANCÁ ACÁ (2026-07-18) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + sistema de atributos de variante completo, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main`
 >
-> **Ronda 3 — GO probó de nuevo y encontró que el ingreso SIMPLE tampoco pedía el atributo.** Causa
-> raíz real: el buscador de productos de "Ingreso manual" no traía `tiene_talle`/etc. en el `SELECT`
-> → `selectedProduct.tiene_talle` quedaba `undefined` sin importar el valor real en la base, así que
-> la validación (ya escrita en ronda 2) nunca se disparaba. El mismo patrón de bug apareció en
-> **7 queries distintas** (InventarioPage ×3, RecepcionesPage ×2 scan-ticket, MasivoModal ×2) —
-> encontradas grepeando por `tiene_lote` sin `tiene_talle` en el mismo `.select()`.
+> **Qué se hizo esta sesión (3 entregas, todas en `dev`, ninguna en PROD):**
 >
-> **Además, por pedido explícito de GO ("cualquier movimiento del inventario"), se extendió a TODO
-> el ciclo de vida del stock:**
-> - `MasivoModal` (ingreso Y rebaje masivo, el modal separado): soporte real — obligatorio en ingreso,
->   ambigüedad exige elegir + filtra consumo en rebaje (`atributoAmbiguoEnLineas`/`filtrarLineasPorAtributo`).
-> - Grilla inline de "Ingreso masivo" (`masivoRows`): en ronda 2 quedó bloqueada; ahora soporte real.
-> - `LpnAccionesModal`: tab "Editar" pasa a select+obligatorio; tab "Mover" (partir stock a otra
->   ubicación) ahora hereda los atributos a la línea nueva (se perdían).
-> - Traslados entre sucursales (`TrasladosPanel` + **mig 275** nueva, `traslado_items` no tenía las
->   columnas): despacho snapshotea, recepción y cancelación propagan a la línea nueva.
-> - 12 unit tests nuevos (`atributosVariante.test.ts`) + **spec e2e 89 escrito Y CORRIDO** (no quedó
->   pendiente): crea un producto real, ingreso sin talle rechazado, con talle aceptado, **verificado
->   por query directa a la base** que la línea quedó con el talle real. UAT §33 documenta las 12 filas
->   de cobertura (`tests/specs/uat-modo-basico.md`).
+> **1. F3b — ARCA deja de ser 2º editor de identidad fiscal.** La tarjeta "Facturación Electrónica
+> (ARCA)" de `ConfigPage.tsx` pasa a RESUMEN readonly + botón "Editar en Emisores fiscales" cuando el
+> tenant ya tiene CUIT (el formulario completo se mantiene solo para el alta sin CUIT).
+> `EmisoresFiscalesPanel.tsx` gana `editarPrincipal()` vía `forwardRef`/`useImperativeHandle`. 🛑 Bug
+> REGLA #0 corregido de paso: `handleSaveBiz` seguía escribiendo CUIT/condición IVA/razón
+> social/domicilio/umbral B/token AfipSDK directo a `tenants` (la mig 271 no lo bloqueaba a nivel DB,
+> solo por convención) → reabría el drift del bug histórico del CUIT vacío
+> ([[reference_comprobante_cuit_vacio_incidente]]); sacado. Sin migraciones nuevas.
+> **Pendiente: GO no confirmó haber visto el resumen+botón en el dev server** (probó variantes, no
+> reportó nada de ARCA) — verificar antes de mergear.
 >
-> Verde: tsc · build · unit **1075+5** · e2e **17/17** (incluye spec 89 nuevo + `30_traslado_sucursal_mutante`
-> corrido aislado tras tocar TrasladosPanel, sin romper nada). **Detalle completo:
-> [[wiki/features/atributos-variante]] "Ronda 3".**
+> **2. Sistema "Atributos de variante" (talle/color/encaje/formato/sabor·aroma) pasa a ser FUNCIONAL
+> de punta a punta.** GO reportó que esos toggles del producto "no hacían nada". Se construyó en 3
+> rondas (GO probó entre cada una y encontró bugs reales, no cosméticos):
+> - **Ronda 1** (`a99bb270`): catálogo configurable nuevo (**mig 273**, tabla
+>   `atributos_variante_valores`) + sub-pestaña Config→Inventario→Atributos + `AtributoValorSelect.tsx`
+>   en Recepciones/Ingreso manual + badges en InventarioPage + el picker "Elegir posición de rebaje" de
+>   VentasPage (gobierna la línea real que se descuenta, no es cosmético) extendido a talle/color.
+> - **Ronda 2** (`c559f831`): GO probó y encontró 3 bugs — (a) el atributo no era obligatorio en el
+>   ingreso, (b) el despacho/venta tampoco lo exigía (picker de rebaje era opcional → podía cobrarse
+>   sin desambiguar), (c) "Grupo de variantes" y "Atributos de variante" son sistemas incompatibles y
+>   nada lo impedía — un producto de prueba terminó con AMBOS activos. Fix: obligatorio en
+>   Recepciones/Ingreso manual (patrón `tiene_lote`), bloqueo de venta ambigua (patrón `tiene_series`,
+>   función `atributoAmbiguoEnStock`), y **mig 274** (`chk_productos_grupo_sin_atributos_variante`,
+>   CHECK constraint verificado que rechaza incluso por SQL directo — REGLA #0, guard server-side).
+> - **Ronda 3** (`90de330b`): GO probó de nuevo — el ingreso SIMPLE (Inventario→Agregar stock→Ingreso)
+>   seguía sin pedir el atributo pese al fix de ronda 2. Causa raíz real: el buscador de productos de
+>   "Ingreso manual" no traía `tiene_talle`/etc. en el `SELECT` → `selectedProduct.tiene_talle` quedaba
+>   `undefined` sin importar el valor real en la base, así que la validación (ya escrita en ronda 2)
+>   nunca se disparaba. El mismo patrón de bug (query sin las 5 columnas nuevas) apareció en **7
+>   queries distintas** (InventarioPage ×3, RecepcionesPage ×2 scan-ticket, MasivoModal ×2), encontradas
+>   grepeando por `tiene_lote` sin `tiene_talle` en el mismo `.select()` — no adivinadas. Por pedido
+>   explícito de GO ("cualquier movimiento del inventario"), se extendió a TODO el ciclo de vida del
+>   stock: `MasivoModal` (ingreso y rebaje masivo, soporte real, no bloqueo), grilla inline de Ingreso
+>   masivo, `LpnAccionesModal` (tabs Editar y Mover — Mover perdía los atributos al partir stock a otra
+>   ubicación), y Traslados entre sucursales (**mig 275** nueva, `traslado_items` no tenía las columnas;
+>   despacho/recepción/cancelación ahora las propagan). 12 unit tests nuevos
+>   (`atributosVariante.test.ts`) + spec e2e **89** escrito y corrido (verificado con query directa a la
+>   base). UAT §33 documenta las 12 filas de cobertura.
 >
-> **▶ PENDIENTE INMEDIATO:** GO prueba la ronda 3 en el dev server antes de commitear/mergear a `main`
-> y aplicar migs 274+275 en PROD.
-> **GO probó F3b y variantes a mano en el dev server (como se pedía) y encontró 3 bugs reales en
-> variantes** — investigados con datos reales (Supabase MCP, tenant Almacén Jorgito DEV, producto
-> "Variante1"), no adivinados. Los 3 corregidos en esta misma sesión (ronda 2):
-> 1. **El atributo no era obligatorio en el ingreso** (GO: "tiene que funcionar como el lote, si está
->    activado en el producto siempre te debe pedir ese atributo en ingreso, despacho y cualquier
->    movimiento"). Fix: obligatorio en Recepciones + Ingreso manual (mismo patrón que `tiene_lote`);
->    Ingreso masivo (grilla) todavía no lo soporta → ahora BLOQUEA explícitamente en vez de dejar pasar
->    en silencio con `null`.
-> 2. **El despacho (venta) tampoco lo pedía** — el picker "Elegir posición de rebaje" era opcional.
->    Fix: mismo patrón que `tiene_series` (bloquea el cobro) — función pura nueva
->    `atributoAmbiguoEnStock()` detecta ambigüedad real entre líneas de stock; si hay >1 valor distinto
->    y el cajero no confirmó, `registrarVenta()` bloquea con toast + badge ámbar parpadeante en el carrito.
-> 3. **Duplicidad real: "Grupo de variantes" y "Atributos de variante" son sistemas incompatibles y
->    nada lo impedía** — GO terminó con un producto vinculado a AMBOS (`grupo_id` + `tiene_talle=true`),
->    cargando "S,M,L" dos veces en catálogos sin conexión. Fix: `ProductoFormPage` bloquea combinarlos
->    (UI) + **mig 274** `chk_productos_grupo_sin_atributos_variante` (DB, verificado que rechaza incluso
->    por SQL directo — REGLA #0, guard server-side no solo UI). Dato de prueba corregido en DEV.
+> Detalle completo de las 3 rondas: [[wiki/features/atributos-variante]]. Verde acumulado: tsc · build
+> · unit **1075+5** · e2e **17/17**.
 >
-> Verde: tsc · build · unit **1063+5** (8 nuevos total) · regresión e2e sin cambios en 5 specs
-> (`29_recepcion_stock_mutante`, `23_inventario_ingreso_mutante`, `04_ventas`, `19_flujo_venta_mutante`,
-> `10_configuracion`). **Todavía sin commitear** — falta que GO vuelva a probar antes del commit+push
-> de esta ronda y del merge a `main`. Detalle completo: [[wiki/features/atributos-variante]].
+> **3. Wiki de pricing corregido** — Federico Messina (cofundador, acceso propio a GitHub/Claude desde
+> esta semana) encontró que `planes-pricing.md` mostraba precios VIEJOS ($4.900/$9.900) pese a que el
+> pricing v2 ($60k/$100k lista, $54k/$90k con débito automático) está en PROD desde v1.115.0. Causa:
+> un update anterior había sido un PARCHE (agregó lo nuevo sin reconciliar lo viejo). Corregido en
+> `planes-pricing.md`, `app-reference.md` y `suscripciones-planes.md`. `npm run ai:knowledge` corrido y
+> commiteado — falta el **redeploy de la EF `ai-assistant` en DEV y PROD** para que el Asistente IA
+> in-app aprenda los precios corregidos. Regla nueva guardada en memoria:
+> [[feedback_wiki_actualizacion_completa_sin_contradicciones]] (reconciliar todo lo relacionado al
+> tocar el wiki, no solo agregar lo nuevo).
 >
-> ### 📍 ESTADO ANTERIOR (2026-07-17, cierre sesión 2) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · ronda 1 de F3b+variantes commiteada y pusheada a `dev` (`a99bb270`) sin mergear a `main`
->
-> **Qué queda pendiente de commitear (NO se mergeó a `main`, NO se deployó, NO hay migración en PROD):**
-> 1. **F3b — ARCA deja de ser 2º editor de identidad fiscal** (cerraba el pendiente que dejó
->    v1.133.0): la tarjeta "Facturación Electrónica (ARCA)" de `ConfigPage.tsx` pasa a **RESUMEN
->    readonly + botón "Editar en Emisores fiscales"** cuando el tenant ya tiene CUIT (formulario
->    completo se mantiene solo para el alta sin CUIT). `EmisoresFiscalesPanel.tsx` gana
->    `editarPrincipal()` vía `forwardRef`/`useImperativeHandle`. 🛑 **Bug REGLA #0 corregido de paso:**
->    `handleSaveBiz` seguía escribiendo CUIT/condición IVA/razón social/domicilio/umbral B/token
->    AfipSDK DIRECTO a `tenants` (la mig 271 no lo bloquea a nivel DB, solo por convención) → reabría
->    el mismo drift del bug histórico del CUIT vacío; sacado, la identidad ahora solo se escribe desde
->    `handleSaveFacturacion` o el panel de Emisores. Sin migraciones. **GO tiene que VER el
->    resumen+pointer en el dev server antes de mergear (decisión de UX explícita, no autónoma).**
-> 2. **Variantes de producto (talle/color/encaje/formato/sabor·aroma) pasan a ser FUNCIONALES** — GO
->    reportó que esos toggles "no hacían nada". Catálogo configurable NUEVO: **mig
->    `273_atributos_variante_catalogo.sql`** (tabla `atributos_variante_valores`, EN DEV, backfill dio
->    0 filas) + sub-pestaña **Config → Inventario → Atributos** + `AtributoValorSelect.tsx` (select +
->    "agregar nuevo valor" inline) en Recepciones/Ingreso manual + badges en InventarioPage + **el
->    picker "Elegir posición de rebaje" de VentasPage — que SÍ gobierna la línea real que se
->    descuenta al confirmar, no era cosmético — ahora también deja elegir por talle/color**
->    (`calcularLpnFuentes`/`LineaDisponible`/`LpnFuente` extendidos, 3 tests unitarios nuevos). El
->    otro sistema, "Grupo de variantes" (SKU separado, `producto_grupos`), NO se tocó — ya funcionaba.
->
-> Verde: tsc · build · unit **1058+5** (3 nuevos) · regresión e2e SIN cambios en 4 specs existentes
-> (`29_recepcion_stock_mutante`, `23_inventario_ingreso_mutante`, `04_ventas`+`19_flujo_venta_mutante`,
-> `10_configuracion`). **Sin spec e2e nuevo del feature** (sin browser tool en la sesión) — próximo
-> número disponible: **89**.
->
-> **3. 🧾 Wiki de pricing corregido (2026-07-17, mismo cierre de sesión) — Federico Messina (cofundador,
->    con acceso a GitHub/Claude propio) encontró que `planes-pricing.md` mostraba precios VIEJOS
->    ($4.900/$9.900) pese a que el pricing v2 ($60k/$100k lista, $54k/$90k con débito automático,
->    add-ons por SKU/sucursales/usuarios/comprobantes/CUITs) está en PROD desde v1.115.0 (semanas
->    antes). Causa: un update anterior había sido un PARCHE (agregó lo nuevo) sin reconciliar lo
->    viejo — quedó un banner inicial falso, un título "en discusión" sobre algo ya implementado, una
->    tabla legacy sin aclarar, una nota contradiciendo el trial (decía 7-14d, ya eran 30d), y AFIP
->    marcada Pro-only cuando está en Free. Corregido en `planes-pricing.md`, `app-reference.md`
->    (¡alimenta el Asistente IA in-app!) y `suscripciones-planes.md`. **`npm run ai:knowledge` corrido
->    localmente** (`supabase/functions/ai-assistant/knowledge.generated.ts` regenerado, sin commitear
->    todavía) — **falta el redeploy de la EF `ai-assistant` en DEV y PROD** para que el Asistente IA
->    real aprenda los precios corregidos. Memoria nueva guardada:
->    `feedback_wiki_actualizacion_completa_sin_contradicciones` (reconciliar, no solo agregar, al
->    tocar el wiki).
->
-> **▶ PENDIENTES INMEDIATOS (antes de mergear a `main` / aplicar mig 273 en PROD):**
-> 1. 🛑 **F3b y variantes de talle/color NUNCA se probaron a mano en el dev server** — quedó pedido
->    explícitamente en esta misma sesión y no se confirmó. Ambos tocan REGLA #0 (identidad fiscal /
->    rebaje de inventario en la venta). Antes de mergear a `main`/aplicar la mig 273 en PROD, alguien
->    tiene que haber clickeado el flujo real, aunque sea una vez.
-> 2. Flujo de prueba de variantes en `localhost:5173`: Config→Inventario→Atributos (cargar 2-3 talles)
->    → activar "Talle" en un producto de prueba (ProductoFormPage → Trazabilidad → Atributos de
->    variante) → Recepciones o Inventario→Ingreso manual (2 talles distintos) → Ventas (agregar al
->    carrito, ver badge de talle, usar el picker "Elegir talle/color/posición de rebaje").
-> 3. Tras la validación: escribir el spec e2e mutante formal (nº **89**) para variantes.
-> 4. Redeployar la EF `ai-assistant` (DEV y PROD) con el `knowledge.generated.ts` regenerado.
-> 5. Diferido, no bloqueante: `venta_item_despachos` no snapshotea el talle/color consumido (solo
->    visible en el carrito antes de confirmar, no en el historial post-venta) · `selectedLineasInfo`
->    (resumen de selección múltiple en InventarioPage, traslados) sin extender con atributos.
+> **▶ PENDIENTE INMEDIATO (antes de mergear `dev` → `main` / aplicar migs 274+275 en PROD):**
+> 1. 🛑 GO todavía no confirmó haber probado la RONDA 3 (la que arregla el bug de las 7 queries) — probó
+>    rondas 1 y 2 y encontró los bugs de arriba, pero el fix de ronda 3 recién se commiteó al final de
+>    la sesión. Antes de mergear, repetir el flujo real: Config→Inventario→Atributos (cargar 2-3
+>    talles) → producto de prueba con "Talle" activado → Ingreso SIMPLE por SKU (el que había fallado)
+>    → Ingreso masivo → Venta con picker de rebaje → LpnAccionesModal (Editar y Mover) → un traslado
+>    entre sucursales.
+> 2. GO tampoco confirmó haber visto el resumen ARCA de F3b en ConfigPage.
+> 3. Redeployar la EF `ai-assistant` (DEV y PROD) con el `knowledge.generated.ts` regenerado (pricing).
+> 4. Diferido, no bloqueante: `venta_item_despachos` no snapshotea el talle/color consumido en el
+>    historial post-venta · `selectedLineasInfo` (resumen de selección múltiple en InventarioPage,
+>    traslados) sin extender con atributos · e2e formal para rebaje-masivo-ambigüedad y
+>    LpnAccionesModal-editar (hoy solo unit + code review).
 
 > ### 📍 ESTADO ANTERIOR (2026-07-17, cierre release) — **PROD = DEV = v1.133.0** · migs **001-272** en DEV y PROD · dev pusheado · nada sin deployar · drift identidad fiscal **0** en ambos
 > **Qué acaba de pasar (3 releases en 2 días):** v1.131.0 (fix CUIT vacío en comprobantes — bug de un mes

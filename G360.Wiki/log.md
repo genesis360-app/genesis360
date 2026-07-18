@@ -6,6 +6,25 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-18] update | ✅ Cierre de sesión — ronda 3 commiteada y pusheada, memoria/wiki/pendientes reconciliados
+
+**Corrige la entrada anterior** (dejaba dicho "todavía sin commitear"): la ronda 3 de variantes quedó
+**commiteada y pusheada a `dev`** como `90de330b` ("fix: variantes ronda 3 — causa raíz real (queries
+sin las columnas nuevas) + extendido a todo movimiento de stock", 17 archivos, +638/-83). Junto con
+`a99bb270` (F3b + variantes ronda 1 + fix pricing) y `c559f831` (variantes ronda 2), las 3 entregas de
+esta sesión están en `dev`, **ninguna mergeada a `main`**, PROD sigue en v1.133.0 sin cambios. Migs
+273+274+275 aplicadas solo en DEV.
+
+GO pidió explícitamente al cierre: "actualiza memoria, wiki y pendientes así hacemos `/clear` y
+seguimos en nueva sesión" — se hizo una pasada de **reconciliación completa** (no solo agregar):
+corregido el bloque "ARRANCÁ ACÁ" de `project_pendientes.md` (tenía texto contradictorio de rondas
+2 y 3 mezclado, y decía "antes de commitear" sobre un commit que ya existía), corregido el banner de
+[[wiki/features/atributos-variante]] (decía "SIN COMMITEAR"), memoria de proyecto actualizada. Esto es
+justamente el tipo de reconciliación que [[feedback_wiki_actualizacion_completa_sin_contradicciones]]
+pide hacer siempre al cerrar sesión, no solo cuando GO lo nota.
+
+---
+
 ## [2026-07-18] update | 🐛 Variantes ronda 3 — causa raíz real (queries sin las columnas nuevas) + extendido a TODO movimiento de stock
 
 **GO volvió a probar la ronda 2 y el ingreso SIMPLE ("Inventario → Agregar stock → Ingreso") tampoco

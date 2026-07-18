@@ -199,6 +199,13 @@ export interface LineaDisponible {
   cantidad: number
   cantidad_reservada: number
   ubicacion?: string | null   // nombre de la ubicación (para mostrar en carrito)
+  // Atributos de variante (talle/color/etc.) — para que el cajero vea/elija QUÉ variante
+  // está vendiendo, no solo de qué LPN/ubicación. Ver src/lib/atributosVariante.ts.
+  talle?: string | null
+  color?: string | null
+  encaje?: string | null
+  formato?: string | null
+  sabor_aroma?: string | null
 }
 
 export interface LpnFuente {
@@ -206,6 +213,11 @@ export interface LpnFuente {
   lpn: string | null
   cantidad: number
   ubicacion?: string | null   // nombre de la ubicación
+  talle?: string | null
+  color?: string | null
+  encaje?: string | null
+  formato?: string | null
+  sabor_aroma?: string | null
 }
 
 /**
@@ -222,7 +234,11 @@ export function calcularLpnFuentes(lineas: LineaDisponible[], cantidad: number):
     if (disponible <= 0) continue
     const usar = Math.min(disponible, restante)
     if (usar <= 0) continue
-    fuentes.push({ linea_id: l.id, lpn: l.lpn, cantidad: usar, ubicacion: l.ubicacion ?? null })
+    fuentes.push({
+      linea_id: l.id, lpn: l.lpn, cantidad: usar, ubicacion: l.ubicacion ?? null,
+      talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
+      formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
+    })
     restante -= usar
     if (restante <= 0) break
   }

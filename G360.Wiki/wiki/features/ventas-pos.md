@@ -57,6 +57,7 @@ Toggle en el checkout:
 - Al cambiar cantidad: recomputa fuentes client-side sin re-fetch
 - Badges máx 3 LPNs + "+N más" en el carrito
 - Función pura: `calcularLpnFuentes(lineas, cantidad)`
+- **Picker manual "Elegir posición de rebaje"** (`lpnPickerIdx`/`overrideLpnSource`): cuando un producto tiene más de una línea de stock candidata, el cajero puede abrir el picker y elegir cuál — **gobierna la línea real que se descuenta al confirmar** (el commit de checkout sigue el plan `item.lpn_fuentes`/`lpn_manual_ids` del carrito ANTES de caer a FIFO/FEFO automático, no es cosmético). 🟡 **EN DEV (2026-07-17, sin commitear):** el picker y los badges del carrito ahora también muestran talle/color/encaje/formato/sabor_aroma (extensión de `calcularLpnFuentes`/`LineaDisponible`/`LpnFuente`) — ver [[wiki/features/atributos-variante]].
 
 ### ISS-075 — Trazabilidad de despacho por LPN (mig 153)
 

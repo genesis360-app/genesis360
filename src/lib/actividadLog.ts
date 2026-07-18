@@ -10,6 +10,7 @@ export type EntidadLog =
   | 'ubicacion'
   | 'estado'
   | 'motivo'
+  | 'atributo_variante'
   | 'usuario'
   | 'gasto'
   | 'combo'

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { estadoOCdesdeRecibido, superaOverReceipt, tieneFaltante, esAjusteCantidad } from '@/lib/recepcionLogic'
@@ -1385,41 +1386,36 @@ export default function RecepcionesPage() {
                       {it.tiene_talle && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Talle / Talla</label>
-                          <input type="text" value={it.talle} onChange={e => updItem(it._key, { talle: e.target.value })}
-                            placeholder="Ej: M, 42"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="talle" value={it.talle}
+                            onChange={v => updItem(it._key, { talle: v })} placeholder="Ej: M, 42" />
                         </div>
                       )}
                       {it.tiene_color && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Color</label>
-                          <input type="text" value={it.color} onChange={e => updItem(it._key, { color: e.target.value })}
-                            placeholder="Ej: Rojo"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="color" value={it.color}
+                            onChange={v => updItem(it._key, { color: v })} placeholder="Ej: Rojo" />
                         </div>
                       )}
                       {it.tiene_encaje && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Encaje</label>
-                          <input type="text" value={it.encaje} onChange={e => updItem(it._key, { encaje: e.target.value })}
-                            placeholder="Ej: Slim fit"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="encaje" value={it.encaje}
+                            onChange={v => updItem(it._key, { encaje: v })} placeholder="Ej: Slim fit" />
                         </div>
                       )}
                       {it.tiene_formato && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Formato</label>
-                          <input type="text" value={it.formato} onChange={e => updItem(it._key, { formato: e.target.value })}
-                            placeholder="Ej: 500g"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="formato" value={it.formato}
+                            onChange={v => updItem(it._key, { formato: v })} placeholder="Ej: 500g" />
                         </div>
                       )}
                       {it.tiene_sabor_aroma && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Sabor / Aroma</label>
-                          <input type="text" value={it.sabor_aroma} onChange={e => updItem(it._key, { sabor_aroma: e.target.value })}
-                            placeholder="Ej: Vainilla"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="sabor_aroma" value={it.sabor_aroma}
+                            onChange={v => updItem(it._key, { sabor_aroma: v })} placeholder="Ej: Vainilla" />
                         </div>
                       )}
                       <div>

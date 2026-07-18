@@ -859,11 +859,11 @@ Perfil y configuración personal del usuario.
 
 Gestión del plan de pago.
 
-**Planes:** Free, Básico ($4.900/mes), Pro ($9.900/mes), Enterprise (a consultar).
+**Planes:** Free (30 días de trial, luego se elige plan), Básico ($60.000/mes lista · $54.000/mes con débito automático −10%), Pro ($100.000/mes lista · $90.000/mes con débito), Enterprise (a consultar). Detalle completo y fuente de verdad: `src/config/brand.ts` (`PLANES`) y `G360.Wiki/wiki/business/planes-pricing.md`.
 
 **Acciones:**
 - Suscribirse a un plan → genera link de pago MercadoPago (modelo preapproval). Redirige al checkout de MP. Al volver con `?status=approved`, verifica el pago.
-- Comprar add-on de movimientos adicionales
+- Armar el plan con add-ons (SKU / sucursales / usuarios fijos, comprobantes fijo o temporal, CUIT adicional) desde el configurador "Armá tu plan"
 - Cancelar suscripción
 
 ---
@@ -1131,12 +1131,16 @@ Alertas operativas sin resolver: stock crítico, reservas antiguas, productos si
 
 ## 9. Planes y límites
 
-| Plan | Usuarios | Productos | Features extra | Precio |
-|------|----------|-----------|----------------|--------|
-| Free | 1 | 50 | — | $0 |
-| Básico | 2 | 500 | Historial, Reportes | $4.900/mes |
-| Pro | 10 | 5.000 | + RRHH, Métricas avanzadas | $9.900/mes |
-| Enterprise | ∞ | ∞ | Todo incluido | A consultar |
+> Fuente de verdad: `src/config/brand.ts` (`PLANES`, `PLAN_BASE_LIMITS`, `ADDON_PACKS`). Detalle completo en `G360.Wiki/wiki/business/planes-pricing.md`.
+
+| Plan | Usuarios | SKU | Comprobantes/mes | Sucursales | Features extra | Precio (lista / con débito −10%) |
+|------|----------|-----|-------------------|------------|-----------------|--------|
+| Free | 1 | 50 | 200 | 1 | — | $0 (30 días de trial, equivalente a Pro) |
+| Básico | 5 | 2.000 | 6.000 | 1 | Historial, Reportes, Métricas | $60.000 / $54.000 mes |
+| Pro | 15 | 8.000 | 14.000 | 4 | + WMS, RRHH, Compras, Envíos, Importación masiva, Marketplace | $100.000 / $90.000 mes |
+| Enterprise | ∞ | ∞ | ∞ | ∞ | Todo incluido + API/SLA/onboarding | A consultar |
+
+Cada dimensión metered (SKU, comprobantes, sucursales, usuarios, CUITs adicionales) puede ampliarse con add-ons — ver `ADDON_PACKS` en `brand.ts` o la tabla de add-ons en `planes-pricing.md`.
 
 - `usePlanLimits()`: hook que calcula límites y porcentajes de uso
 - `<UpgradePrompt />`: bloquea el módulo con un CTA de upgrade cuando se alcanza el límite

@@ -6,6 +6,31 @@ function linea(id: string, lpn: string | null, cantidad: number, cantidad_reserv
   return { id, lpn, cantidad, cantidad_reservada }
 }
 
+describe('calcularLpnFuentes — atributos de variante (talle/color/etc.)', () => {
+  it('propaga el talle de la línea a la fuente calculada', () => {
+    const result = calcularLpnFuentes([{ ...linea('L1', 'LPN-A', 5), talle: 'M' }], 2)
+    expect(result).toMatchObject([{ linea_id: 'L1', talle: 'M' }])
+  })
+
+  it('cada fuente conserva el talle de SU línea al spanear varias (no mezcla talles)', () => {
+    const lineas = [
+      { ...linea('L1', 'LPN-A', 2), talle: 'S' },
+      { ...linea('L2', 'LPN-B', 5), talle: 'M' },
+    ]
+    const result = calcularLpnFuentes(lineas, 4)
+    expect(result).toMatchObject([
+      { linea_id: 'L1', talle: 'S', cantidad: 2 },
+      { linea_id: 'L2', talle: 'M', cantidad: 2 },
+    ])
+  })
+
+  it('sin atributo cargado en la línea, la fuente lo devuelve null (no undefined-que-rompe UI)', () => {
+    const result = calcularLpnFuentes([linea('L1', 'LPN-A', 5)], 1)
+    expect(result[0].talle).toBeNull()
+    expect(result[0].color).toBeNull()
+  })
+})
+
 describe('calcularLpnFuentes', () => {
   it('una línea con suficiente stock — una fuente', () => {
     const result = calcularLpnFuentes([linea('L1', 'LPN-A', 10)], 3)

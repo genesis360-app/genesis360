@@ -6,7 +6,68 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📍 ARRANCÁ ACÁ (2026-07-17, cierre) — **PROD = DEV = v1.133.0** · migs **001-272** en DEV y PROD · dev pusheado · nada sin deployar · drift identidad fiscal **0** en ambos
+> ### 📍 ARRANCÁ ACÁ (2026-07-17, cierre sesión 2) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · DEV tiene **DOS cambios SIN COMMITEAR** en el working tree esperando que GO los pruebe en el dev server local (`localhost:5173`, sigue corriendo en background) · mig **273 SOLO en DEV** (archivo sin commitear) · lo commiteado/en PROD sigue en migs 001-272
+>
+> **⚠ Verificar `git status`/`git log` de `dev` antes de asumir este estado** — si el working tree
+> aparece limpio, es porque otra sesión ya commiteó o revirtió estos cambios.
+>
+> **Qué queda pendiente de commitear (NO se mergeó a `main`, NO se deployó, NO hay migración en PROD):**
+> 1. **F3b — ARCA deja de ser 2º editor de identidad fiscal** (cerraba el pendiente que dejó
+>    v1.133.0): la tarjeta "Facturación Electrónica (ARCA)" de `ConfigPage.tsx` pasa a **RESUMEN
+>    readonly + botón "Editar en Emisores fiscales"** cuando el tenant ya tiene CUIT (formulario
+>    completo se mantiene solo para el alta sin CUIT). `EmisoresFiscalesPanel.tsx` gana
+>    `editarPrincipal()` vía `forwardRef`/`useImperativeHandle`. 🛑 **Bug REGLA #0 corregido de paso:**
+>    `handleSaveBiz` seguía escribiendo CUIT/condición IVA/razón social/domicilio/umbral B/token
+>    AfipSDK DIRECTO a `tenants` (la mig 271 no lo bloquea a nivel DB, solo por convención) → reabría
+>    el mismo drift del bug histórico del CUIT vacío; sacado, la identidad ahora solo se escribe desde
+>    `handleSaveFacturacion` o el panel de Emisores. Sin migraciones. **GO tiene que VER el
+>    resumen+pointer en el dev server antes de mergear (decisión de UX explícita, no autónoma).**
+> 2. **Variantes de producto (talle/color/encaje/formato/sabor·aroma) pasan a ser FUNCIONALES** — GO
+>    reportó que esos toggles "no hacían nada". Catálogo configurable NUEVO: **mig
+>    `273_atributos_variante_catalogo.sql`** (tabla `atributos_variante_valores`, EN DEV, backfill dio
+>    0 filas) + sub-pestaña **Config → Inventario → Atributos** + `AtributoValorSelect.tsx` (select +
+>    "agregar nuevo valor" inline) en Recepciones/Ingreso manual + badges en InventarioPage + **el
+>    picker "Elegir posición de rebaje" de VentasPage — que SÍ gobierna la línea real que se
+>    descuenta al confirmar, no era cosmético — ahora también deja elegir por talle/color**
+>    (`calcularLpnFuentes`/`LineaDisponible`/`LpnFuente` extendidos, 3 tests unitarios nuevos). El
+>    otro sistema, "Grupo de variantes" (SKU separado, `producto_grupos`), NO se tocó — ya funcionaba.
+>
+> Verde: tsc · build · unit **1058+5** (3 nuevos) · regresión e2e SIN cambios en 4 specs existentes
+> (`29_recepcion_stock_mutante`, `23_inventario_ingreso_mutante`, `04_ventas`+`19_flujo_venta_mutante`,
+> `10_configuracion`). **Sin spec e2e nuevo del feature** (sin browser tool en la sesión) — próximo
+> número disponible: **89**.
+>
+> **3. 🧾 Wiki de pricing corregido (2026-07-17, mismo cierre de sesión) — Federico Messina (cofundador,
+>    con acceso a GitHub/Claude propio) encontró que `planes-pricing.md` mostraba precios VIEJOS
+>    ($4.900/$9.900) pese a que el pricing v2 ($60k/$100k lista, $54k/$90k con débito automático,
+>    add-ons por SKU/sucursales/usuarios/comprobantes/CUITs) está en PROD desde v1.115.0 (semanas
+>    antes). Causa: un update anterior había sido un PARCHE (agregó lo nuevo) sin reconciliar lo
+>    viejo — quedó un banner inicial falso, un título "en discusión" sobre algo ya implementado, una
+>    tabla legacy sin aclarar, una nota contradiciendo el trial (decía 7-14d, ya eran 30d), y AFIP
+>    marcada Pro-only cuando está en Free. Corregido en `planes-pricing.md`, `app-reference.md`
+>    (¡alimenta el Asistente IA in-app!) y `suscripciones-planes.md`. **`npm run ai:knowledge` corrido
+>    localmente** (`supabase/functions/ai-assistant/knowledge.generated.ts` regenerado, sin commitear
+>    todavía) — **falta el redeploy de la EF `ai-assistant` en DEV y PROD** para que el Asistente IA
+>    real aprenda los precios corregidos. Memoria nueva guardada:
+>    `feedback_wiki_actualizacion_completa_sin_contradicciones` (reconciliar, no solo agregar, al
+>    tocar el wiki).
+>
+> **▶ PENDIENTES INMEDIATOS (antes de mergear a `main` / aplicar mig 273 en PROD):**
+> 1. 🛑 **F3b y variantes de talle/color NUNCA se probaron a mano en el dev server** — quedó pedido
+>    explícitamente en esta misma sesión y no se confirmó. Ambos tocan REGLA #0 (identidad fiscal /
+>    rebaje de inventario en la venta). Antes de mergear a `main`/aplicar la mig 273 en PROD, alguien
+>    tiene que haber clickeado el flujo real, aunque sea una vez.
+> 2. Flujo de prueba de variantes en `localhost:5173`: Config→Inventario→Atributos (cargar 2-3 talles)
+>    → activar "Talle" en un producto de prueba (ProductoFormPage → Trazabilidad → Atributos de
+>    variante) → Recepciones o Inventario→Ingreso manual (2 talles distintos) → Ventas (agregar al
+>    carrito, ver badge de talle, usar el picker "Elegir talle/color/posición de rebaje").
+> 3. Tras la validación: escribir el spec e2e mutante formal (nº **89**) para variantes.
+> 4. Redeployar la EF `ai-assistant` (DEV y PROD) con el `knowledge.generated.ts` regenerado.
+> 5. Diferido, no bloqueante: `venta_item_despachos` no snapshotea el talle/color consumido (solo
+>    visible en el carrito antes de confirmar, no en el historial post-venta) · `selectedLineasInfo`
+>    (resumen de selección múltiple en InventarioPage, traslados) sin extender con atributos.
+
+> ### 📍 ESTADO ANTERIOR (2026-07-17, cierre release) — **PROD = DEV = v1.133.0** · migs **001-272** en DEV y PROD · dev pusheado · nada sin deployar · drift identidad fiscal **0** en ambos
 > **Qué acaba de pasar (3 releases en 2 días):** v1.131.0 (fix CUIT vacío en comprobantes — bug de un mes
 > en PROD) → v1.132.0 (`<Toggle>` estándar) → **v1.133.0 (cutover de IDENTIDAD FISCAL A FUENTE ÚNICA:
 > `emisores_fiscales` manda, `tenants.*` fiscal es espejo de solo lectura; + fix búsqueda del historial

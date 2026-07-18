@@ -428,6 +428,15 @@ Modal: flex flex-col · max-h-[90vh]
 
 ---
 
+## Atributos de variante (talle/color/etc.) — 🟡 EN DEV (2026-07-17, sin commitear)
+
+Badges de talle/color/encaje/formato/sabor_aroma en el picker de "Rebaje manual", panel de detalle de
+movimiento, vista agrupada por ubicación y tabla de líneas por producto — respaldados por un catálogo
+configurable nuevo (mig 273, `Config → Inventario → Atributos`). No confundir con "Grupo de variantes"
+(SKU separado). Detalle completo: [[wiki/features/atributos-variante]].
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/ventas-pos]]
@@ -436,5 +445,6 @@ Modal: flex flex-col · max-h-[90vh]
 - [[wiki/features/escaneo-barcode]]
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/productos]]
+- [[wiki/features/atributos-variante]]
 - [[wiki/database/triggers]]
 - [[wiki/database/schema-overview]]

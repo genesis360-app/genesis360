@@ -6,6 +6,128 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-17] update | 🧾 Wiki de pricing desactualizado — corregido (hallazgo de Federico Messina)
+
+**Federico Messina (cofundador, con acceso a GitHub y su propio Claude para consultar el sistema)
+revisó el wiki y encontró que `planes-pricing.md` mostraba precios VIEJOS** ($4.900/$9.900) pese a que
+el pricing v2 está en PROD desde v1.115.0 (2026-07-06), semanas antes.
+
+**Causa raíz:** un update anterior de esa página fue un **parche** (agregó las secciones "✅
+IMPLEMENTADO") sin **reconciliar** lo viejo que quedaba contradiciéndolo en la misma página: un banner
+inicial falso ("brand.ts tiene $4.900/$9.900"), un título "Propuesta EN DISCUSIÓN... No cerrada" sobre
+algo ya en producción, una tabla "legacy" sin aclarar que ya no existe en el código, una nota
+contradiciendo la duración del trial (decía 7-14d cuando la misma página ya tenía correcto 30d más
+arriba), y una tabla de features marcando AFIP como Pro-only cuando en realidad está en el plan Free.
+
+**Corregido (verificado contra `src/config/brand.ts`, fuente de verdad):**
+- `wiki/business/planes-pricing.md` — banner, framing, tabla de add-ons (agregado el pack de CUITs que
+  faltaba), tabla de features, nota de trial contradictoria eliminada, tabla legacy marcada como
+  histórica explícita.
+- `wiki/overview/app-reference.md` — **este archivo alimenta el Asistente IA in-app** (`npm run
+  ai:knowledge`) — tenía los mismos precios viejos en dos lugares, sin ningún caveat. Corregido +
+  `knowledge.generated.ts` regenerado localmente (**falta redeployar la EF `ai-assistant` en DEV y
+  PROD** para que el asistente real responda con los precios corregidos).
+- `wiki/features/suscripciones-planes.md` — tabla actualizada con los números reales (ya tenía un
+  `[!NOTE]` avisando que estaba desactualizada, pero mejor tenerla bien directamente).
+
+**Memoria nueva guardada** (`feedback_wiki_actualizacion_completa_sin_contradicciones`): la regla es
+que actualizar el wiki significa reconciliar TODO lo viejo que contradiga el dato nuevo, no solo
+agregar la sección correcta — y verificar contra el código fuente, no contra la memoria de la sesión.
+Esto pesa más ahora que Fede consulta el wiki directo, no solo GO.
+
+---
+
+## [2026-07-17] update | 🧵 F3b (ARCA→resumen+pointer) + variantes talle/color FUNCIONALES — EN `dev`, SIN COMMITEAR
+
+**Nada de esta sesión se deployó ni se mergeó a `main`. PROD sigue en v1.133.0, sin cambios.** Los dos
+cambios de abajo quedaron en el **working tree de `dev`** (sin commit, sin push), corriendo en el dev
+server local (`localhost:5173`, sigue en background) para que **GO los pruebe antes de continuar**.
+
+**1. F3b — la tarjeta "Facturación Electrónica (ARCA)" deja de ser un 2º editor de identidad fiscal.**
+Cerraba el pendiente que había dejado v1.133.0 (cutover de identidad fiscal, mig 271). `ConfigPage.tsx`
++ `EmisoresFiscalesPanel.tsx`: si el tenant YA tiene CUIT cargado, la tarjeta ARCA pasa a un **RESUMEN
+de solo lectura** (CUIT, razón social, condición IVA, domicilio, umbral B, token AfipSDK, IIBB,
+banco/CBU, etc.) + botón **"Editar en Emisores fiscales"** que abre directo el modal de edición del
+emisor principal en el panel de abajo (`EmisoresFiscalesPanelHandle.editarPrincipal()`, `forwardRef`/
+`useImperativeHandle` nuevo). Si el tenant NO tiene CUIT (alta nueva), la tarjeta sigue siendo el
+formulario completo de siempre — el panel de Emisores no puede crear el emisor **PRINCIPAL** (su
+"Agregar emisor" siempre crea adicionales, `es_default:false` hardcodeado). "Sitio web" sigue editable
+siempre en la tarjeta ARCA (dato de contacto, no identidad fiscal). El toggle de Modo Producción no se
+tocó.
+
+**🛑 Bug encontrado y corregido de paso (REGLA #0):** `handleSaveBiz` — compartida por los botones
+"Guardar cambios" de Negocio/Inventario/Ventas/Envíos/RRHH — seguía escribiendo CUIT/condición IVA/
+razón social/domicilio/umbral B/token AfipSDK **DIRECTO a `tenants`**, sin pasar por
+`emisores_fiscales`. La mig 271 no bloquea escrituras directas a esas columnas (son solo-lectura por
+**convención**, no por guard de DB) → esto reabría el mismo tipo de drift que causó el bug histórico
+del CUIT vacío. Se sacaron esos campos de `handleSaveBiz`; la identidad fiscal ahora se escribe SOLO
+desde `handleSaveFacturacion` (bootstrap sin CUIT) o el panel de Emisores fiscales. Sin migraciones en
+este cambio.
+
+**2. Variantes de producto (talle/color/encaje/formato/sabor·aroma) pasan a ser FUNCIONALES.** GO
+reportó que esos toggles de trazabilidad "no hacen nada". Investigación previa confirmó **dos sistemas
+distintos**: "Grupo de variantes" (SKU separado, `producto_grupos`/`ProductoGrupoModal.tsx` — SÍ
+funcionaba bien, **sin tocar**) y "Atributos de variante" (`tiene_talle`/`tiene_color`/etc., texto
+libre capturado al recibir stock pero **nunca leído en ningún otro lado** — el roto). GO confirmó por
+AskUserQuestion: arreglar el sistema #2, con un **catálogo configurable** (no autocompletar libre),
+como Estados/Ubicaciones.
+
+- **Mig NUEVA `273_atributos_variante_catalogo.sql` (aplicada en DEV, archivo sin commitear)**: tabla
+  `atributos_variante_valores` — UNA tabla genérica para los 5 atributos (no 5 tablas), CHECK de
+  `atributo`, RLS tenant-scoped estándar, índice único case-insensitive
+  `(tenant_id, atributo, lower(btrim(valor)))` (para que "M"/"m" no fragmenten), y un **backfill** que
+  sembró el catálogo con los valores DISTINCT que ya existían como texto libre en `inventario_lineas`
+  (sin tocar esa tabla — REGLA #0, nunca se reescribe inventario histórico; en DEV dio 0 filas porque
+  nadie había usado el feature). `schema_full.sql` sincronizado **a mano** (el dump automático sigue
+  bloqueado por el bug conocido de Supavisor — no había `SUPABASE_ACCESS_TOKEN` en esta sesión).
+- **ConfigPage**: sub-pestaña nueva **"Atributos"** en Configuración → Inventario (básico y avanzado,
+  no gateada por WMS) — CRUD de valores por atributo, soft-delete `activo=false` (patrón Motivos).
+- **`src/components/AtributoValorSelect.tsx`** (nuevo): reemplaza los inputs de texto libre por un
+  `<select>` contra el catálogo + opción **"+ Agregar nuevo valor…"** inline (crea sin salir de la
+  pantalla). Usado en `RecepcionesPage.tsx` y en el "Ingreso manual" de `InventarioPage.tsx`.
+- **`src/lib/atributosVariante.ts`** (nuevo, lib pura): `atributosDeLinea()` para badges reutilizables.
+- **InventarioPage.tsx**: badges de talle/color/etc. en el picker de "Rebaje manual" (con búsqueda
+  extendida), en el panel de detalle de movimiento, en la vista agrupada por ubicación y en la tabla de
+  líneas por producto.
+- **La parte crítica — VentasPage.tsx + `src/lib/ventasValidation.ts`**: se investigó primero cómo
+  funciona hoy la selección de lote/LPN al vender — YA EXISTE un picker manual "Elegir posición de
+  rebaje" (`lpnPickerIdx`/`overrideLpnSource`) en el carrito, y se **confirmó que ese picker SÍ
+  gobierna la línea real que se descuenta al confirmar la venta** (no era cosmético). Por eso se
+  extendió ESE mecanismo en vez de inventar uno nuevo: `talle`/`color`/`encaje`/`formato`/
+  `sabor_aroma` agregados a `LineaDisponible`/`LpnFuente` y a `calcularLpnFuentes()` (3 tests unitarios
+  nuevos: cada fuente conserva el atributo de SU línea al spanear varias, sin mezclarlos), agregados a
+  los 2 `SELECT` de `inventario_lineas` que alimentan el carrito (alta + restauración de carrito desde
+  localStorage), y mostrados como badges en la fila compacta del carrito y en el picker expandido (que
+  ahora prioriza mostrar talle/color sobre el LPN crudo).
+
+Verde: tsc · build · unit **1058+5** (3 nuevos de `calcularLpnFuentes`) · regresión e2e verde **SIN
+cambios** en 4 specs existentes (`29_recepcion_stock_mutante`, `23_inventario_ingreso_mutante`,
+`04_ventas`+`19_flujo_venta_mutante`, `10_configuracion`) — confirma que no se rompió nada existente.
+**NO se escribió un spec e2e nuevo para el feature en sí** (sin browser tool disponible en la sesión
+para armarlo con confianza) — próximo número de spec disponible: **89**.
+
+**Pendientes explícitos que deja para la próxima sesión / decisión de GO:**
+1. **GO tiene que probar los DOS cambios en `localhost:5173` antes de que se commiteen/mergeen** —
+   F3b (resumen+pointer, decisión de UX explícita) y el flujo de variantes completo: Config→Inventario→
+   Atributos (cargar 2-3 talles) → activar "Talle" en un producto de prueba (ProductoFormPage →
+   Trazabilidad → Atributos de variante) → Recepciones o Inventario→Ingreso manual (2 talles distintos)
+   → Ventas (badge de talle en el carrito + picker "Elegir talle/color/posición de rebaje").
+2. Escribir el spec e2e mutante formal (**nº 89**) para variantes una vez que GO valide a mano.
+3. `venta_item_despachos` (ledger de trazabilidad de despacho por LPN) **no** snapshotea todavía el
+   talle/color consumido — hoy solo queda visible en el carrito antes de confirmar, no en el historial
+   post-venta. Mejora de trazabilidad razonable a futuro (`feedback_trazabilidad_grado_wms.md`), no
+   bloqueante para que el feature sea "funcional".
+4. `selectedLineasInfo` (widget de resumen de selección múltiple en InventarioPage, usado en
+   traslados) no se extendió con los atributos — menor, no bloqueante.
+
+`git status` en `dev` al cierre: 9 archivos modificados (`ConfigPage.tsx`, `EmisoresFiscalesPanel.tsx`,
+`InventarioPage.tsx`, `RecepcionesPage.tsx`, `VentasPage.tsx`, `ventasValidation.ts`, `actividadLog.ts`,
+`schema_full.sql`, `tests/unit/lpnFuentes.test.ts`) + 3 archivos nuevos sin trackear (`AtributoValorSelect.tsx`,
+`atributosVariante.ts`, `273_atributos_variante_catalogo.sql`). **Sin commit, sin push, sin merge, sin
+migraciones aplicadas a PROD.**
+
+---
+
 ## [2026-07-17] deploy | 🚀 v1.133.0 A PROD (PR #292) — identidad fiscal FUENTE ÚNICA deployada + búsqueda historial server-side
 
 **Cierra el cutover de identidad fiscal de raíz (pedido GO).** PROD = v1.133.0 (main `b6d541b0`,

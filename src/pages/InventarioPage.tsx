@@ -9,6 +9,7 @@ import {
   Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock, ArrowRightLeft, Boxes,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -32,6 +33,7 @@ import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import toast from 'react-hot-toast'
 import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { atributosDeLinea } from '@/lib/atributosVariante'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
@@ -322,7 +324,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('movimientos_stock')
-        .select('*, productos(nombre,sku,unidad_medida,categoria_id,categorias(id,nombre)), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
+        .select('*, productos(nombre,sku,unidad_medida,categoria_id,categorias(id,nombre)), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -2948,6 +2950,12 @@ export default function InventarioPage() {
                               <p className="text-sm text-gray-700 dark:text-gray-300">{linea.nro_lote}</p>
                             </div>
                           )}
+                          {atributosDeLinea(linea).map(a => (
+                            <div key={a.key}>
+                              <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">{a.label}</p>
+                              <p className="text-sm text-gray-700 dark:text-gray-300">{a.emoji} {a.valor}</p>
+                            </div>
+                          ))}
                           {linea.fecha_vencimiento && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Vencimiento</p>
@@ -3305,40 +3313,40 @@ export default function InventarioPage() {
                         {(selectedProduct as any).tiene_talle && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Talle / Talla</label>
-                            <input type="text" value={form.talle} onChange={e => setForm(p => ({ ...p, talle: e.target.value }))}
-                              placeholder="Ej: M, 42, XL"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="talle" value={form.talle}
+                              onChange={v => setForm(p => ({ ...p, talle: v }))} placeholder="Ej: M, 42, XL"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_color && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
-                            <input type="text" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
-                              placeholder="Ej: Rojo"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="color" value={form.color}
+                              onChange={v => setForm(p => ({ ...p, color: v }))} placeholder="Ej: Rojo"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_encaje && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Encaje</label>
-                            <input type="text" value={form.encaje} onChange={e => setForm(p => ({ ...p, encaje: e.target.value }))}
-                              placeholder="Ej: Slim fit"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="encaje" value={form.encaje}
+                              onChange={v => setForm(p => ({ ...p, encaje: v }))} placeholder="Ej: Slim fit"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_formato && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Formato</label>
-                            <input type="text" value={form.formato} onChange={e => setForm(p => ({ ...p, formato: e.target.value }))}
-                              placeholder="Ej: 500g, 1L"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="formato" value={form.formato}
+                              onChange={v => setForm(p => ({ ...p, formato: v }))} placeholder="Ej: 500g, 1L"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_sabor_aroma && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sabor / Aroma</label>
-                            <input type="text" value={form.saborAroma} onChange={e => setForm(p => ({ ...p, saborAroma: e.target.value }))}
-                              placeholder="Ej: Vainilla"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="sabor_aroma" value={form.saborAroma}
+                              onChange={v => setForm(p => ({ ...p, saborAroma: v }))} placeholder="Ej: Vainilla"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
@@ -3527,7 +3535,8 @@ export default function InventarioPage() {
                               return (l.ubicaciones?.nombre ?? '').toLowerCase().includes(s) ||
                                 (l.estados_inventario?.nombre ?? '').toLowerCase().includes(s) ||
                                 (l.nro_lote ?? '').toLowerCase().includes(s) ||
-                                (l.lpn ?? '').toLowerCase().includes(s)
+                                (l.lpn ?? '').toLowerCase().includes(s) ||
+                                atributosDeLinea(l).some(a => a.valor.toLowerCase().includes(s))
                             })
                             .filter((l: any) => {
                               const grupoActivo = rebajeGrupoId ? grupos.find(g => g.id === rebajeGrupoId) : grupoDefault
@@ -3572,6 +3581,9 @@ export default function InventarioPage() {
                                   )}
                                   {l.nro_lote && <span>🏷 {l.nro_lote}</span>}
                                   {l.fecha_vencimiento && <span>📅 {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
+                                  {atributosDeLinea(l).map(a => (
+                                    <span key={a.key}>{a.emoji} {a.valor}</span>
+                                  ))}
                                   {(l.cantidad_reservada ?? 0) > 0 && (
                                     <span className="text-orange-400">{l.cantidad_reservada} reservada(s)</span>
                                   )}
@@ -3905,6 +3917,9 @@ export default function InventarioPage() {
                                       )}
                                       {l.nro_lote && <span className="text-gray-500 dark:text-gray-400">Lote: {l.nro_lote}</span>}
                                       {l.fecha_vencimiento && <span className="text-gray-500 dark:text-gray-400">Vto: {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
+                                      {atributosDeLinea(l).map(a => (
+                                        <span key={a.key} className="text-gray-500 dark:text-gray-400">{a.emoji} {a.valor}</span>
+                                      ))}
                                       {(l.cantidad_reservada ?? 0) > 0 && (
                                         <span className="text-amber-500">{disponible} disp. ({l.cantidad_reservada} reserv.)</span>
                                       )}
@@ -4128,7 +4143,10 @@ export default function InventarioPage() {
                                     {l.fecha_vencimiento && (
                                       <p className="text-xs text-gray-400 dark:text-gray-500">{new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</p>
                                     )}
-                                    {!l.nro_lote && !l.fecha_vencimiento && <span className="text-xs text-gray-300">—</span>}
+                                    {atributosDeLinea(l).map(a => (
+                                      <p key={a.key} className="text-xs text-gray-400 dark:text-gray-500">{a.emoji} {a.valor}</p>
+                                    ))}
+                                    {!l.nro_lote && !l.fecha_vencimiento && atributosDeLinea(l).length === 0 && <span className="text-xs text-gray-300">—</span>}
                                   </div>
                                   )}
 

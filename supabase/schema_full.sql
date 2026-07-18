@@ -137,6 +137,16 @@ CREATE TABLE public.archivos_biblioteca (
   created_at timestamp with time zone DEFAULT now()
 );
 
+CREATE TABLE public.atributos_variante_valores (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  atributo text NOT NULL,
+  valor text NOT NULL,
+  orden integer NOT NULL DEFAULT 0,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone DEFAULT now()
+);
+
 CREATE TABLE public.autorizaciones_cc (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -2337,6 +2347,9 @@ ALTER TABLE public.alertas ADD CONSTRAINT alertas_pkey PRIMARY KEY (id);
 ALTER TABLE public.api_keys ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
 ALTER TABLE public.archivos_biblioteca ADD CONSTRAINT archivos_biblioteca_pkey PRIMARY KEY (id);
 ALTER TABLE public.archivos_biblioteca ADD CONSTRAINT archivos_biblioteca_tipo_check CHECK ((tipo = ANY (ARRAY['certificado_afip_crt'::text, 'certificado_afip_key'::text, 'contrato'::text, 'factura_proveedor'::text, 'manual'::text, 'otro'::text])));
+ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_pkey PRIMARY KEY (id);
+ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_atributo_check CHECK ((atributo = ANY (ARRAY['talle'::text, 'color'::text, 'encaje'::text, 'formato'::text, 'sabor_aroma'::text])));
+ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_valor_check CHECK ((btrim(valor) <> ''::text));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text, 'cancelada'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_motivo_bloqueo_check CHECK ((motivo_bloqueo = ANY (ARRAY['limite_excedido'::text, 'oc_vencida'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_pkey PRIMARY KEY (id);
@@ -2625,6 +2638,7 @@ ALTER TABLE public.alertas ADD CONSTRAINT alertas_tenant_id_fkey FOREIGN KEY (te
 ALTER TABLE public.api_keys ADD CONSTRAINT api_keys_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.archivos_biblioteca ADD CONSTRAINT archivos_biblioteca_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE public.archivos_biblioteca ADD CONSTRAINT archivos_biblioteca_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_aprobador_id_fkey FOREIGN KEY (aprobador_id) REFERENCES users(id);
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_oc_id_fkey FOREIGN KEY (oc_id) REFERENCES ordenes_compra(id) ON DELETE SET NULL;
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE CASCADE;
@@ -3039,6 +3053,8 @@ CREATE INDEX idx_api_keys_key_hash ON public.api_keys USING btree (key_hash);
 CREATE INDEX idx_api_keys_tenant ON public.api_keys USING btree (tenant_id);
 CREATE INDEX idx_archivos_biblioteca_created_by ON public.archivos_biblioteca USING btree (created_by);
 CREATE INDEX idx_archivos_biblioteca_tenant ON public.archivos_biblioteca USING btree (tenant_id, tipo);
+CREATE UNIQUE INDEX uq_atributos_variante_valores_tenant_atributo_valor ON public.atributos_variante_valores USING btree (tenant_id, atributo, lower(btrim(valor)));
+CREATE INDEX idx_atributos_variante_valores_tenant_atributo ON public.atributos_variante_valores USING btree (tenant_id, atributo) WHERE activo;
 CREATE INDEX idx_aut_inv_tenant_estado ON public.autorizaciones_inventario USING btree (tenant_id, estado);
 CREATE INDEX idx_autoriz_cc_proveedor ON public.autorizaciones_cc USING btree (proveedor_id, estado);
 CREATE INDEX idx_autoriz_cc_tenant_estado ON public.autorizaciones_cc USING btree (tenant_id, estado);
@@ -6637,6 +6653,7 @@ ALTER TABLE public.aging_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.alertas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.api_keys ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.archivos_biblioteca ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.atributos_variante_valores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_cc ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_gasto ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.autorizaciones_inventario ENABLE ROW LEVEL SECURITY;
@@ -6807,6 +6824,13 @@ CREATE POLICY api_keys_tenant ON public.api_keys AS PERMISSIVE FOR ALL TO public
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY archivos_biblioteca_tenant ON public.archivos_biblioteca AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY atributos_variante_valores_tenant ON public.atributos_variante_valores AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
+  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY autoriz_cc_tenant ON public.autorizaciones_cc AS PERMISSIVE FOR ALL TO public
@@ -7559,6 +7583,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ap
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.archivos_biblioteca TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.archivos_biblioteca TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.archivos_biblioteca TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.atributos_variante_valores TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.atributos_variante_valores TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.autorizaciones_cc TO service_role;

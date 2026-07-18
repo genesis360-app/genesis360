@@ -55,9 +55,17 @@ Guards en DB: el emisor default no se puede borrar (salvo el cascade del tenant)
   tenants) → se aplicó a PROD **pegada al merge** del PR #292, no aditiva-días-antes.
 - **Auditoría de drift** (correr periódicamente, debe dar 0): query al final de
   `supabase/migrations/271_identidad_fiscal_fuente_unica.sql`.
-- **Pendiente**: F3b (la sección ARCA pasa a resumen readonly + pointer al panel — UX a validar con
-  GO) · F4 (DROP físico de las columnas fiscales de `tenants`: grep lectores=0 + drift 0 sostenido
-  + soak; los lectores no-PDF —Gastos/Dash/Cierres— hoy leen tenants vía espejo, correctos).
+- **F3b — 🟡 CODEADO EN DEV (2026-07-17), SIN COMMITEAR, pendiente de que GO lo pruebe en el dev
+  server:** la sección ARCA de `ConfigPage` pasa a **resumen readonly + botón "Editar en Emisores
+  fiscales"** cuando el tenant ya tiene CUIT (`EmisoresFiscalesPanel.editarPrincipal()` vía
+  `forwardRef`); con CUIT vacío (alta nueva) sigue siendo el formulario completo (el panel no puede
+  crear el emisor PRINCIPAL). 🛑 De paso se encontró y corrigió un bug REGLA #0: `handleSaveBiz`
+  (los botones "Guardar" de otros tabs) seguía escribiendo identidad fiscal DIRECTO a `tenants`,
+  reabriendo el drift que la mig 271 no bloquea a nivel DB (solo por convención). Detalle completo en
+  `log.md` `[2026-07-17] update | 🧵 F3b + variantes talle/color FUNCIONALES`. **Nada de esto está
+  commiteado, mergeado a `main` ni en PROD.**
+- **Pendiente**: F4 (DROP físico de las columnas fiscales de `tenants`: grep lectores=0 + drift 0
+  sostenido + soak; los lectores no-PDF —Gastos/Dash/Cierres— hoy leen tenants vía espejo, correctos).
 
 ## Modelo de datos (mig 267 — Fase 1)
 

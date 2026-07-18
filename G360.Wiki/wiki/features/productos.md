@@ -131,6 +131,8 @@ Los mismos atributos (pais_origen, talle, color, encaje, formato, sabor_aroma) s
 - `InventarioPage` modal ingreso
 - `RecepcionesPage` FormItem + insert en `inventario_lineas`
 
+> [!WARNING] **🟡 EN DEV (2026-07-17, sin commitear):** talle/color/encaje/formato/sabor_aroma pasan de texto libre a un **catálogo configurable** por tenant (Config → Inventario → Atributos, mig 273) + selección real al vender (el picker "Elegir posición de rebaje" de VentasPage ahora distingue por estos atributos). Detalle completo en [[wiki/features/atributos-variante]]. Pendiente de que GO lo pruebe en el dev server antes de mergear.
+
 ### Card 6: Marketplace
 
 Visible solo si el tenant tiene `marketplace_activo = true`.
@@ -262,6 +264,7 @@ Ver detalle técnico: [[wiki/features/escaneo-barcode]]
 ## Links relacionados
 
 - [[wiki/features/grupos-variantes]]
+- [[wiki/features/atributos-variante]] — catálogo configurable de talle/color/etc. (🟡 EN DEV)
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/wms]]
 - [[wiki/features/multi-sucursal]]

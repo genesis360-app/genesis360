@@ -55,8 +55,7 @@ Guards en DB: el emisor default no se puede borrar (salvo el cascade del tenant)
   tenants) → se aplicó a PROD **pegada al merge** del PR #292, no aditiva-días-antes.
 - **Auditoría de drift** (correr periódicamente, debe dar 0): query al final de
   `supabase/migrations/271_identidad_fiscal_fuente_unica.sql`.
-- **F3b — 🟡 EN DEV, commiteado y pusheado (`a99bb270`), pendiente de que GO lo pruebe en el dev
-  server antes de mergear a `main`:** la sección ARCA de `ConfigPage` pasa a **resumen readonly + botón "Editar en Emisores
+- **F3b — ✅ PROD desde v1.134.0 (2026-07-18, PR #293):** la sección ARCA de `ConfigPage` pasa a **resumen readonly + botón "Editar en Emisores
   fiscales"** cuando el tenant ya tiene CUIT (`EmisoresFiscalesPanel.editarPrincipal()` vía
   `forwardRef`); con CUIT vacío (alta nueva) sigue siendo el formulario completo (el panel no puede
   crear el emisor PRINCIPAL). 🛑 De paso se encontró y corrigió un bug REGLA #0: `handleSaveBiz`

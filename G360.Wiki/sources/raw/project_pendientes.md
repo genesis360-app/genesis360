@@ -6,7 +6,38 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📍 ARRANCÁ ACÁ (2026-07-18) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + atributos de variante, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main` · **+4 fixes/features nuevos post-`/clear`, SIN COMMITEAR (ver abajo) + mig 276 nueva SOLO en DEV**
+> ### ✅ ARRANCÁ ACÁ (2026-07-18, cierre) — **PROD = DEV = v1.134.0** · PR #293 mergeado a `main` (`c534ddea`) · tag+release v1.134.0 · Vercel producción READY (`app.genesis360.pro` verificado 200) · migs **273-276 en DEV y PROD**
+>
+> **GO probó los 3 flujos pedidos y autorizó el deploy completo** ("probé el 1 y el 2 y funcionan
+> bien... el 3 confirmado, se ve bien... Puedes aplicar las migs y todo lo pendiente a DEV y PRD" +
+> "te doy el OK para q subas a PRD"): traslado real desde LpnAccionesModal, ronda 3 de atributos de
+> variante, y el resumen ARCA de F3b (F3b). GO avisa que sigue probando y abre issue si encuentra algo.
+>
+> **Deployado en v1.134.0** (bundle de 2 sesiones — detalle completo en `log.md` 2026-07-18 y
+> `tests/specs/uat-modo-basico.md` §33-§37):
+> - F3b (ARCA→resumen readonly) + Atributos de variante funcionales (3 rondas, migs 273-275).
+> - 4 hallazgos de la sesión de testing cross-sucursal: estado_id del producto no se guardaba,
+>   ProductosPage sin categoría/estado/ubicación visibles, ubicaciones globales ausentes en
+>   Confirmar recepción, y el fix grande — **"Mover" LPN a otra sucursal genera un traslado real**
+>   en vez de reubicar directo (mig 276, riesgo REGLA #0 cerrado). Validado con DOS usuarios reales
+>   de sucursales distintas (specs 92/93).
+> - Validación RLS cross-sucursal con usuarios reales (spec 94).
+>
+> **Reconciliación del merge:** `dev` y `main` habían divergido por el patrón de squash-merge de
+> siempre (ver PRs anteriores) — se resolvió con `git merge origin/main` a `dev` (6 conflictos,
+> todos "dev es superconjunto", incluye `EmisoresFiscalesPanel.tsx`/`brand.ts`/wiki), tsc+build+unit
+> verdes post-merge, recién ahí el PR quedó `MERGEABLE`.
+>
+> **▶ Pendiente (no bloqueante):**
+> 1. Redeployar la EF `ai-assistant` (DEV y PROD) con el `knowledge.generated.ts` regenerado —
+>    arrastra desde la sesión del 2026-07-17 (fix de pricing desactualizado en el wiki), sigue sin
+>    hacerse.
+> 2. Diferido: `venta_item_despachos` no snapshotea el talle/color consumido en el historial
+>    post-venta · `selectedLineasInfo` sin extender con atributos · e2e formal para
+>    rebaje-masivo-ambigüedad y LpnAccionesModal-editar (hoy solo unit + code review).
+> 3. Relevamientos sin responder: **Inventario/WMS** y **Ventas H-L** (GO + socio).
+
+> ### 📍 ESTADO ANTERIOR (2026-07-18, pre-deploy) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + atributos de variante, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main` · **+4 fixes/features nuevos post-`/clear`, SIN COMMITEAR (ver abajo) + mig 276 nueva SOLO en DEV**
 >
 > **🐛🚚 4 fixes/features nuevos esta sesión (post-`/clear`, SIN COMMITEAR)** — disparados por GO
 > pidiendo usuarios de prueba de una 2da sucursal (Sur) para testear cross-sucursal:

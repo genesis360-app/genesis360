@@ -435,7 +435,7 @@ Modal: flex flex-col · max-h-[90vh]
 
 ---
 
-## Atributos de variante (talle/color/etc.) — 🟡 EN DEV, commiteado y pusheado (`a99bb270`/`c559f831`/`90de330b`), pendiente de mergear a `main`
+## Atributos de variante (talle/color/etc.) — ✅ PROD desde v1.134.0 (2026-07-18)
 
 Badges de talle/color/encaje/formato/sabor_aroma en el picker de "Rebaje manual", panel de detalle de
 movimiento, vista agrupada por ubicación y tabla de líneas por producto — respaldados por un catálogo

@@ -6,6 +6,39 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-18] deploy | 🚀 v1.134.0 EN PROD — F3b + atributos de variante + traslado real desde LPN (PR #293)
+
+**GO probó los 3 flujos pendientes y autorizó el deploy completo a DEV y PROD** ("probé el 1 y el
+2 y funcionan bien... el 3 confirmado... Puedes aplicar las migs y todo lo pendiente a DEV y PRD"
++ "te doy el OK para q subas a PRD"). Deploy ejecutado de punta a punta:
+
+1. **Migraciones 273-276 aplicadas en PROD** — verificado antes de la 274 (guard grupo vs
+   atributos de variante): 0 filas en PROD violan la condición del CHECK.
+2. **Bump `APP_VERSION` → v1.134.0** + `schema_full.sql` actualizado a mano (columna
+   `ubicacion_sugerida_id` de la mig 276 — no hay Docker acá, patch manual dirigido en vez de
+   regenerar todo con `npm run schema:dump`).
+3. **PR #293 `dev → main`** — quedó `CONFLICTING` al abrirlo: `dev` y `main` habían divergido por
+   el mismo patrón de siempre (squash-merge de PRs anteriores nunca reconciliado de vuelta a
+   `dev` desde el PR #292). Resuelto con `git merge origin/main` → 6 archivos en conflicto
+   (`log.md`, `project_pendientes.md`, `roadmap.md`, `migraciones.md`,
+   `EmisoresFiscalesPanel.tsx`, `brand.ts`) — todos resueltos a favor de `dev` ("dev es
+   superconjunto", mismo criterio que las reconciliaciones anteriores). tsc + build + unit
+   1080+5 verdes post-merge → recién ahí el PR pasó a `MERGEABLE`.
+4. **CI verde** (GitHub Actions: Unit Tests ×2, Vercel build) → merge a `main` (`c534ddea`).
+5. **Tag `v1.134.0` + GitHub release** sobre el commit de merge.
+6. **Vercel producción `READY`**, alias `app.genesis360.pro`/`www.genesis360.pro` verificados
+   (smoke: `/` → 307 a `/login` → 200, esperado).
+
+Detalle completo del contenido deployado (F3b, atributos de variante 3 rondas, 4 hallazgos de la
+sesión de testing cross-sucursal, traslado real desde LpnAccionesModal): ver entrada anterior
+"🚚 Testing cross-sucursal..." y `tests/specs/uat-modo-basico.md` §33-§37.
+
+**Pendiente no bloqueante:** redeploy de la EF `ai-assistant` (pricing corregido, arrastra desde
+el 2026-07-17) · `venta_item_despachos` sin snapshot de talle/color · e2e formal de
+rebaje-masivo-ambigüedad y LpnAccionesModal-editar.
+
+---
+
 ## [2026-07-18] update | 🚚 Testing cross-sucursal con usuarios reales + traslado real desde LpnAccionesModal (autónomo)
 
 **Disparador:** GO pidió crear usuarios de prueba para Sucursal Sur de Almacén Jorgito (además de

@@ -8,14 +8,14 @@ updated: 2026-07-18
 
 # Atributos de variante (talle / color / encaje / formato / sabor·aroma)
 
-> [!WARNING] **EN `dev`, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) — NO mergeado a
-> `main`, NO deployado a PROD.** GO probó la ronda 1 y encontró bugs (ronda 2, corregidos) y luego
-> probó la ronda 2 y encontró que el ingreso simple TAMPOCO pedía el atributo — causa raíz: el
-> buscador de productos no traía las columnas nuevas en el `SELECT` (ver "Ronda 3" abajo). Corregido +
-> extendido a TODOS los movimientos de stock (ingreso masivo, rebaje masivo, mover/partir LPN,
-> traslados) por pedido explícito de GO. UAT §33 (`tests/specs/uat-modo-basico.md`) + e2e spec **89**
-> (creado y corrido, verificado en DB). **Pendiente: GO todavía no confirmó haber probado la ronda 3**
-> — bloqueante antes de mergear a `main`.
+> [!NOTE] **✅ PROD desde v1.134.0 (2026-07-18, PR #293).** GO probó la ronda 1 y encontró bugs
+> (ronda 2, corregidos) y luego probó la ronda 2 y encontró que el ingreso simple TAMPOCO pedía el
+> atributo — causa raíz: el buscador de productos no traía las columnas nuevas en el `SELECT` (ver
+> "Ronda 3" abajo). Corregido + extendido a TODOS los movimientos de stock (ingreso masivo, rebaje
+> masivo, mover/partir LPN, traslados) por pedido explícito de GO. UAT §33
+> (`tests/specs/uat-modo-basico.md`) + e2e spec **89** (creado y corrido, verificado en DB). GO
+> probó la ronda 3 y confirmó que funciona bien; deployado junto con F3b y el fix del traslado real
+> desde LpnAccionesModal (ver [[wiki/features/multi-sucursal]]).
 
 ## Por qué existe esta página
 
@@ -30,7 +30,7 @@ Genesis360 tiene **dos** mecanismos de variante que conviven, con propósitos di
 | Sistema | Página / tabla | Qué es | Estado |
 |---|---|---|---|
 | **Grupo de variantes** | `ProductoGrupoModal.tsx` / `producto_grupos` | Cada variante es un **producto (SKU) separado** con su propio stock, precio, LPNs | ✅ Funcionaba bien, sin tocar en esta sesión. Ver [[wiki/features/grupos-variantes]] |
-| **Atributos de variante** (esta página) | `ProductoFormPage` → Trazabilidad → toggles `tiene_talle`/`tiene_color`/`tiene_encaje`/`tiene_formato`/`tiene_sabor_aroma` | Atributo **descriptivo dentro del mismo SKU** — un mismo producto (p.ej. "Remera básica") tiene stock con distintos talles/colores en `inventario_lineas`, sin ser productos separados | 🟡 EN DEV — era el sistema roto, se arregló en esta sesión |
+| **Atributos de variante** (esta página) | `ProductoFormPage` → Trazabilidad → toggles `tiene_talle`/`tiene_color`/`tiene_encaje`/`tiene_formato`/`tiene_sabor_aroma` | Atributo **descriptivo dentro del mismo SKU** — un mismo producto (p.ej. "Remera básica") tiene stock con distintos talles/colores en `inventario_lineas`, sin ser productos separados | ✅ PROD desde v1.134.0 — era el sistema roto, se arregló en esta sesión |
 
 GO confirmó por AskUserQuestion cuál arreglar (el #2) y que quería un **catálogo configurable** de
 valores válidos, no un campo de texto libre — mismo patrón que Estados/Ubicaciones en
@@ -48,7 +48,7 @@ ingreso, `RecepcionesPage`). Pero:
 2. El dato **no se leía en ningún otro lado** — ni al vender, ni en las vistas de stock agrupado. Un
    producto con "Talle" activado no distinguía sus líneas de stock por talle en ninguna pantalla.
 
-## Qué se arregló (2026-07-17, EN DEV)
+## Qué se arregló (2026-07-17/18, ✅ PROD desde v1.134.0)
 
 ### Catálogo configurable — mig 273
 
@@ -215,19 +215,17 @@ Verde tras la ronda 3: tsc · build · unit **1075+5** (12 nuevos sobre la ronda
 
 ## Qué queda pendiente
 
-1. **Validación manual de GO — ronda 3** en el dev server (`localhost:5173`) — bloqueante para
-   commitear/mergear.
-2. **e2e dedicado** para rebaje masivo con ambigüedad, venta bloqueada por ambigüedad, y editar LPN
+1. **e2e dedicado** para rebaje masivo con ambigüedad, venta bloqueada por ambigüedad, y editar LPN
    (#5/#6/#7 de la tabla en `uat-modo-basico.md` §33) — hoy cubiertos por unit tests de la lógica pura
    + revisión de código, no por click-through automatizado completo. No bloqueante.
-3. **`venta_item_despachos`** (ledger de trazabilidad de despacho por LPN, ver
+2. **`venta_item_despachos`** (ledger de trazabilidad de despacho por LPN, ver
    [[wiki/features/ventas-pos]] "ISS-075") **no** snapshotea todavía el talle/color consumido — hoy
    solo es visible en el carrito antes de confirmar, no en el historial post-venta. Mejora de
    trazabilidad razonable para una fase futura (ligada a `feedback_trazabilidad_grado_wms.md`), **no
    bloqueante**.
-4. `selectedLineasInfo` en InventarioPage (resumen de selección múltiple en traslados) sin extender
+3. `selectedLineasInfo` en InventarioPage (resumen de selección múltiple en traslados) sin extender
    con los atributos — menor, no bloqueante.
-5. **Lección para memoria:** al agregar una columna nueva a `productos` que gatea un flujo, hay que
+4. **Lección para memoria:** al agregar una columna nueva a `productos` que gatea un flujo, hay que
    agregarla a TODAS las queries que alimentan ese flujo, no solo a la "principal" — grep por el
    patrón hermano (`tiene_lote` sin `tiene_talle` en el mismo `.select()`) es la forma sistemática de
    encontrar los faltantes, en vez de esperar a que el usuario los encuentre uno por uno.

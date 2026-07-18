@@ -113,7 +113,7 @@ Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs d
 - **Motivos** → ABM de motivos de movimiento (ingreso / rebaje / caja)
 - **Unidades de medida** → ABM de unidades custom
 
-### Sub-tab: Atributos (🟡 EN DEV, commiteado y pusheado, pendiente de mergear a `main`)
+### Sub-tab: Atributos (✅ PROD desde v1.134.0, 2026-07-18)
 
 Catálogo configurable de valores para talle/color/encaje/formato/sabor·aroma (mig 273, tabla
 `atributos_variante_valores`). CRUD por atributo (tabs), soft-delete `activo=false` (patrón Motivos).

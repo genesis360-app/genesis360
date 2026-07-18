@@ -80,3 +80,20 @@ export function estadoDesdeRecepcion(items: ItemRecepcion[]): 'recibido' | 'reci
 export function totalFaltante(items: ItemRecepcion[]): number {
   return items.reduce((acc, it) => acc + Math.max(0, it.cantidad - it.cantidad_recibida), 0)
 }
+
+/**
+ * ¿El movimiento parcial de un LPN (LpnAccionesModal → tab "Mover") cruza de sucursal?
+ * Si es cross-sucursal, NO se reubica directo: hay que despachar un traslado real
+ * (en_transito) para que el destino confirme la recepción — reubicar directo haría
+ * aparecer stock en la otra sucursal sin que nadie confirmó que llegó físicamente.
+ *
+ * `null`/`undefined` en cualquiera de los dos lados (sin sucursal asignada) NUNCA es
+ * cross-sucursal: no hay una sucursal física de origen (o destino) contra la cual
+ * generar un traslado real — en ese caso es una reasignación administrativa directa.
+ */
+export function esMovimientoCrossSucursal(
+  sucursalDestino: string | null | undefined,
+  sucursalOrigen: string | null | undefined,
+): boolean {
+  return !!sucursalDestino && !!sucursalOrigen && sucursalDestino !== sucursalOrigen
+}

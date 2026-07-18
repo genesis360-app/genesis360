@@ -37,6 +37,36 @@ piezas se diseñaron multi-CUIT-ready a propósito:
 | Monetización | **Add-on "CUIT adicional"** (recurrente, reusa el motor de add-ons batch ya validado). El 1er CUIT incluido en todos los planes. |
 | Arranque | Plan + **Fase 1 ya** (modelo de datos neutro en DEV). |
 
+## 🏛️ CUTOVER A FUENTE ÚNICA — ✅ EN PROD (v1.133.0, 2026-07-17, migs 271+272)
+
+**`emisores_fiscales` es LA fuente de verdad de toda identidad fiscal.** El trigger transicional
+tenants→emisores de la mig 267 se eliminó y el espejo se **invirtió**: el emisor default espeja a
+`tenants.*` (que quedó de **solo lectura legacy** hasta el DROP de sus columnas fiscales — Fase 4).
+Guards en DB: el emisor default no se puede borrar (salvo el cascade del tenant) ni desactivar (P0001).
+
+- **PDFs** (`camposEmisorPDF`, `src/lib/emisorPdf.ts` — único armador): identidad por
+  `ventas.emisor_id` · **NC siempre por su factura original** · **PV impreso POR emisor** ·
+  documento fiscal sin identidad completa **no se imprime** (lanza, sin defaults inventados) ·
+  regla #7: un emisor luego desactivado sigue imprimiendo SU identidad en sus comprobantes.
+- **Escritores**: ConfigPage (ARCA) escribe en `emisores_fiscales`; el panel de Emisores edita
+  también al **principal** (ambos escriben el MISMO registro → no pueden divergir; el form de ARCA
+  se re-sincroniza vía efecto). Guard e2e: spec `87` (incluye test multi-CUIT con datos reales).
+- **⚠ Gotcha de deploy**: la mig 271 fue **BREAKING para el frontend viejo** (que escribía en
+  tenants) → se aplicó a PROD **pegada al merge** del PR #292, no aditiva-días-antes.
+- **Auditoría de drift** (correr periódicamente, debe dar 0): query al final de
+  `supabase/migrations/271_identidad_fiscal_fuente_unica.sql`.
+- **F3b — 🟡 EN DEV, commiteado y pusheado (`a99bb270`), pendiente de que GO lo pruebe en el dev
+  server antes de mergear a `main`:** la sección ARCA de `ConfigPage` pasa a **resumen readonly + botón "Editar en Emisores
+  fiscales"** cuando el tenant ya tiene CUIT (`EmisoresFiscalesPanel.editarPrincipal()` vía
+  `forwardRef`); con CUIT vacío (alta nueva) sigue siendo el formulario completo (el panel no puede
+  crear el emisor PRINCIPAL). 🛑 De paso se encontró y corrigió un bug REGLA #0: `handleSaveBiz`
+  (los botones "Guardar" de otros tabs) seguía escribiendo identidad fiscal DIRECTO a `tenants`,
+  reabriendo el drift que la mig 271 no bloquea a nivel DB (solo por convención). Detalle completo en
+  `log.md` `[2026-07-17] update | 🧵 F3b + variantes talle/color FUNCIONALES`. **Nada de esto está
+  commiteado, mergeado a `main` ni en PROD.**
+- **Pendiente**: F4 (DROP físico de las columnas fiscales de `tenants`: grep lectores=0 + drift 0
+  sostenido + soak; los lectores no-PDF —Gastos/Dash/Cierres— hoy leen tenants vía espejo, correctos).
+
 ## Modelo de datos (mig 267 — Fase 1)
 
 **Tabla nueva `emisores_fiscales`** — una identidad fiscal del tenant. Absorbe los campos

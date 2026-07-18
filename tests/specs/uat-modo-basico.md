@@ -1119,3 +1119,196 @@ ventana en mente (o cargar el TA a mano en `afip_wsaa_ta` si se lo conoce).
 
 **Pendiente para PROD:** mig 264 en PROD + deploy de `emitir-factura`/`emitir-factura-plataforma`
 (OK de GO) → tenant piloto real en 'propio' → validar estabilidad → decidir retiro de AfipSDK.
+
+---
+
+## 🧵 §33 — Atributos de variante (talle/color/encaje/formato/sabor·aroma) obligatorios en TODO movimiento de stock — 2026-07-18
+
+**Contexto:** GO probó la ronda 1 (catálogo + selección en Recepciones/Ingreso manual/Ventas) a
+mano y encontró que el atributo NO era obligatorio y se perdía en varios movimientos. Pedido
+explícito: "si lo tiene activado en el producto, siempre debe pedirte ese atributo en el ingreso y
+despacho y cualquier movimiento del inventario". Esta sección cubre esa ronda 2/3 de fixes.
+
+**Regla general aplicada en todos los puntos de abajo:** si `productos.tiene_talle` (o color/
+encaje/formato/sabor_aroma) es `true`, el atributo es **obligatorio** para CREAR una línea nueva
+(mismo patrón que ya usaba `tiene_lote`), y si hay **más de un valor distinto en stock**, el
+sistema **exige elegir cuál** antes de consumir/rebajar (mismo patrón que ya usaba `tiene_series`
+para forzar la selección de series) — nunca cae a "cualquiera" por FIFO ciego.
+
+| # | Flujo | Comportamiento exigido | Cómo se valida | Estado |
+|---|---|---|---|---|
+| 1 | Recepción de OC (`RecepcionesPage`) | Atributo obligatorio si `tiene_X` | Validación + auto-expand del ítem con error | ✅ Código + unit (validación pura ya cubierta indirectamente) |
+| 2 | Inventario → Ingreso manual (single-item) | Atributo obligatorio si `tiene_X` | Validación en `ingresoMutation` | ✅ **e2e spec 89** (creación real de producto + ingreso rechazado sin talle + aceptado con talle, verificado en DB) |
+| 3 | Inventario → Ingreso masivo, grilla inline (`masivoRows`) | Atributo obligatorio por fila si `tiene_X` (antes bloqueaba directamente, ahora soporta de verdad) | Validación en `procesarMasivoIngreso` | ✅ Código + unit (misma lógica de campo obligatorio) — sin e2e dedicado |
+| 4 | Inventario → Ingreso masivo, modal (`MasivoModal` tipo='ingreso') | Atributo obligatorio por ítem si `tiene_X` | `validate()` de `MasivoModal` | ✅ Código — sin e2e dedicado |
+| 5 | Inventario → Rebaje masivo (`MasivoModal` tipo='rebaje') | Si hay >1 valor distinto en stock, exige elegir cuál ANTES de rebajar (filtra las líneas candidatas, nunca consume "cualquiera") | `atributoAmbiguoEnLineas` + `filtrarLineasPorAtributo` (`validate()` + `mutationFn`) | ✅ **Unit 10 tests** (`atributosVariante.test.ts`) sobre la lógica pura — sin e2e dedicado |
+| 6 | Venta (`VentasPage`, checkout) | Si hay >1 valor distinto en stock disponible, bloquea el cobro hasta elegir (badge ámbar parpadeante + picker "Elegir talle/color/posición de rebaje") | `atributoAmbiguoEnStock` (`registrarVenta`) | ✅ **Unit 5 tests** (`lpnFuentes.test.ts`) sobre la lógica pura — sin e2e dedicado (requiere 2 líneas con talles distintos + checkout completo) |
+| 7 | `LpnAccionesModal` → tab "Editar" (editar una línea existente) | Atributo obligatorio si `tiene_X`; select del catálogo en vez de texto libre | Validación en `guardarEdicion` | ✅ Código — sin e2e dedicado |
+| 8 | `LpnAccionesModal` → tab "Mover" (mover/partir stock a otra ubicación — el "movimiento parcial de LPN/ubicación") | La línea NUEVA hereda el atributo de la línea origen (misma mercadería física, no se re-pregunta) | Insert copia `talle/color/encaje/formato/sabor_aroma` de `linea` | ✅ Código — sin e2e dedicado |
+| 9 | Traslados entre sucursales — despacho (`TrasladosPanel`) | Snapshot del atributo de la línea origen en `traslado_items` (columnas nuevas, **mig 275**) | Insert incluye los 5 campos | ✅ Código + regresión e2e (`30_traslado_sucursal_mutante`, corrido aislado tras el cambio — sigue verde) |
+| 10 | Traslados — recepción en destino | La línea nueva en destino hereda el atributo del `traslado_items` (no se re-pregunta) | Insert copia los 5 campos de `it` | ✅ Código + regresión e2e (mismo spec 30) |
+| 11 | Traslados — cancelación/reingreso al origen | Igual que recepción, para la rama que crea línea nueva | Insert copia los 5 campos de `it` | ✅ Código (rama de reingreso sin línea previa) |
+| 12 | Conflicto "Grupo de variantes" vs "Atributos de variante" | Un producto NO puede tener `grupo_id` Y `tiene_X=true` a la vez (dos modelos de stock incompatibles) | `ProductoFormPage` bloquea en UI + **mig 274** CHECK constraint en DB (verificado que rechaza por SQL directo) | ✅ Código + verificación manual por SQL (violación real rechazada) |
+
+**Gaps de queries de producto encontrados y corregidos en esta ronda** (la causa real del bug que
+reportó GO: el buscador de "Ingreso manual" no traía `tiene_talle` etc. en el `SELECT`, así que la
+validación nunca se disparaba pese a estar bien escrita): `InventarioPage` (`productosBusqueda`,
+2 handlers de scan de código de barras), `RecepcionesPage` (2 queries del scan de ticket por foto/
+IA), `MasivoModal` (búsqueda + scan). Lección: al agregar una columna nueva a `productos`, hay que
+agregarla a **todas** las queries que alimentan flujos de esa columna, no solo a la principal —
+grep por `tiene_lote` sin `tiene_talle` en el mismo `.select()` es la forma de encontrarlas.
+
+**Pendiente (no bloqueante, próxima sesión si GO lo pide):** e2e dedicado para #5, #6, #7 (rebaje
+masivo con ambigüedad, venta bloqueada por ambigüedad, editar LPN) — hoy cubiertos por unit tests
+de la lógica pura + revisión de código, no por click-through automatizado completo.
+
+## 🐛 §34 — "Estado de inventario predeterminado" del producto no persistía al guardar — 2026-07-18
+
+**Contexto:** GO reportó que en Editar producto, al elegir un valor en el select "Estado de
+inventario predeterminado" y tocar "Guardar cambios", el valor no quedaba guardado.
+
+**Causa raíz:** el `payload` de `handleSubmit` en `ProductoFormPage.tsx` arma `ubicacion_id` pero
+se olvidaba `estado_id` — el campo se leía bien de la DB al abrir el form y el `<select>` lo
+mostraba/actualizaba en el state local, pero el `UPDATE`/`INSERT` a `productos` nunca lo incluía,
+así que quedaba en `null` en silencio pese al toast "Producto actualizado". Mismo bug presente en
+`handleDuplicate` (duplicar un producto tampoco copiaba el estado predeterminado).
+
+**Por qué importa (no es cosmético):** `productos.estado_id` es el default que `RecepcionesPage` e
+`InventarioPage` usan para precargar el estado de la línea al recibir/ingresar stock nuevo — sin
+persistencia, ese default nunca funcionaba y cada ingreso dependía de elegir el estado a mano.
+
+**Fix:** agregado `estado_id: form.estado_id || null` al payload de `handleSubmit` (edición y alta)
+y al de `handleDuplicate`. Sin migraciones — la columna ya existía (mig 263 la indexa).
+
+| # | Escenario | Cómo se valida | Estado |
+|---|---|---|---|
+| 1 | Editar producto → elegir estado predeterminado → "Guardar cambios" → releer por REST | Confirma `estado_id` = valor elegido, no `null` | ✅ **e2e spec 90** (`90_producto_estado_predeterminado_mutante`) — corrido primero SIN el fix (falló con el mensaje exacto del bug, confirmando que el test lo detecta) y luego CON el fix (verde) |
+| 2 | Recargar `/productos/:id/editar` tras guardar | El `<select>` vuelve a mostrar el valor persistido | ✅ Mismo spec 90, paso 6 |
+| 3 | Duplicar producto (`handleDuplicate`) | El nuevo producto hereda `estado_id` del original | ⚠️ Código corregido — sin e2e dedicado (mismo patrón que #1, no reprodujo bug reportado por GO) |
+
+Verde: tsc · build · e2e spec 90 (aislado). Sin migraciones nuevas.
+
+## 🐛 §35 — Traslados: ubicaciones GLOBALES (`sucursal_id IS NULL`) no aparecían en "Ubicación destino" al confirmar recepción — 2026-07-18
+
+**Contexto:** GO probó un traslado real Sucursal Norte → Sucursal Sur (con los usuarios nuevos por
+sucursal). Sucursal Sur no tiene ninguna ubicación propia en el catálogo, solo existe una ubicación
+GLOBAL ("Container", `sucursal_id = NULL`, visible para todas las sucursales) — pero el selector
+"Ubicación destino" del modal "Confirmar recepción" la mostraba vacía (solo "Sin ubicación").
+
+**Causa raíz:** la query de `ubicacionesDestino` en `TrasladosPanel.tsx` filtraba con
+`.eq('sucursal_id', sucursal_destino_id)` — un `.eq()` estricto en Postgres/PostgREST **nunca
+matchea filas con `sucursal_id IS NULL`**, así que las ubicaciones globales quedaban excluidas. Es
+el mismo patrón mode-aware que ya se usa en `ConfigPage`, `InventarioPage`, `LpnAccionesModal` y los
+widgets del dashboard (`.or('sucursal_id.eq.X,sucursal_id.is.null')`) — `TrasladosPanel` era el
+único lugar que se había quedado con el filtro estricto viejo.
+
+**Fix:** cambiado a `.or(\`sucursal_id.eq.${sucursal_destino_id},sucursal_id.is.null\`)`, igual que
+el resto de la app. Sin migraciones.
+
+| # | Escenario | Cómo se valida | Estado |
+|---|---|---|---|
+| 1 | Confirmar recepción en una sucursal SIN ubicaciones propias, solo con una global | El selector "Ubicación destino" muestra la ubicación global | ✅ **e2e spec 30** (`30_traslado_sucursal_mutante`, assert agregado 2026-07-18: `option`s del selector > 1, no solo "Sin ubicación") |
+
+Cerrado — spec 30 corrido primero SIN el fix (falló, `Received: 1`) y luego CON el fix (verde),
+confirmando que la regresión se detecta. Nota de metodología: la primera corrida del assert
+falló por una CARRERA del test (leía las `option` antes de que la query `ubicacionesDestino`
+resolviera, no por el bug) — se corrigió con `expect.poll()` en vez de una lectura inmediata;
+ese mismo patrón de carrera volvió a aparecer en los specs 92/93 de abajo.
+
+## 🚚 §36 — LpnAccionesModal → "Mover" a otra sucursal genera un TRASLADO real (no reubica directo) — 2026-07-18
+
+**Contexto:** GO pidió probar traslados con usuarios reales de 2 sucursales distintas y detectó
+dos pedidos de UX/negocio sobre el tab "Mover" del modal de Acciones de un LPN:
+1. El selector "Ubicación destino" debe mostrar **solo** las ubicaciones de la sucursal elegida
+   (no las de la sucursal activa del usuario), y limpiarse al cambiar de sucursal — igual para
+   mover dentro de la misma sucursal que para enviar a otra.
+2. Si el movimiento cruza de sucursal, **debe generarse un traslado real** ("en tránsito") en el
+   tab Traslados, para que la OTRA sucursal confirme la recepción — no puede reubicar el stock
+   directo, porque eso hace aparecer stock en destino sin que nadie confirmó que llegó
+   físicamente (violación de REGLA #0: el mecanismo de tránsito+confirmación ya existía para
+   traslados armados desde el tab Traslados, pero el modal de LPN lo bypaseaba por completo).
+
+**Causa raíz de (2):** `moverStock` en `LpnAccionesModal.tsx` siempre hacía lo mismo sin importar
+la sucursal elegida: reducía el LPN origen e insertaba un `inventario_lineas` nuevo YA ACTIVO en
+la sucursal destino, con la cantidad movida disponible de inmediato. Cruzar de sucursal por este
+camino nunca pasaba por `traslados`/`traslado_items`.
+
+**Fix:**
+- **Ubicaciones por sucursal destino**: query nueva `ubicacionesDestinoMover`
+  (`queryKey: ['ubicaciones-destino-lpn', tenant, sucursalDestino]`), separada de la que usa el
+  tab "Editar" (que sigue atada a la sucursal activa). El selector de sucursal destino ya
+  limpiaba `ubicDestino` en su `onChange` (esto ya funcionaba, no hizo falta tocarlo).
+- **Decisión cross-sucursal como función pura**: `esMovimientoCrossSucursal(destino, origen)` en
+  `src/lib/trasladoLogic.ts` (5 unit tests) — `null`/`undefined` en cualquier lado NUNCA es
+  cross-sucursal (no hay traslado real posible sin sucursal física de origen o destino).
+- **Rama cross-sucursal en `moverStock`**: si `esMovimientoCrossSucursal`, en vez de reubicar
+  directo: valida `puedeCrearTraslado(rol)` + `useConteoBloqueante` de la sucursal ORIGEN (mismos
+  guards que `TrasladosPanel.despachar`), inserta cabecera `traslados` (`estado: 'en_transito'`),
+  reduce la línea origen, inserta `traslado_items` (snapshot completo: lote, vencimiento, estado,
+  talle/color/encaje/formato/sabor_aroma), ledger `movimientos_stock`, `logActividad`. El stock
+  **no** se crea en destino hasta que alguien confirme la recepción desde el tab Traslados.
+- **Ubicación elegida al despachar no se pierde** (mig 276, `traslado_items.ubicacion_sugerida_id`
+  nullable, `ON DELETE SET NULL`): `TrasladosPanel.abrirRecepcion` la usa para PRECARGAR el
+  selector de "Confirmar recepción" cuando todos los ítems del traslado sugieren la misma
+  ubicación (siempre el caso para un traslado de 1 ítem armado desde el LPN) — el destino puede
+  cambiarla igual, no es vinculante. No cambia nada de los traslados armados desde el tab
+  Traslados (esa columna queda NULL, selector arranca vacío como siempre).
+- UI: el aviso informativo del tab "Mover" cambia de texto según el modo, y el botón pasa de
+  "Confirmar traslado" a "Despachar traslado" cuando es cross-sucursal.
+
+| # | Escenario | Cómo se valida | Estado |
+|---|---|---|---|
+| 1 | Mover parcial dentro de la MISMA sucursal (sin tocar "Sucursal destino") | Reubicación directa de siempre: nuevo LPN activo de inmediato en la ubicación elegida, mismo `sucursal_id`, CERO `traslado_items` generados | ✅ **e2e spec 92** (`92_lpn_mover_misma_sucursal_mutante`) — producto+ingreso real, verificado por REST |
+| 2 | Mover parcial a OTRA sucursal | Genera `traslados` (en_transito) + `traslado_items` (cantidad, `ubicacion_sugerida_id`), reduce el origen, **NO** crea stock en destino todavía | ✅ **e2e spec 93** (`93_lpn_mover_cross_sucursal_traslado_mutante`) — verificado por REST |
+| 3 | La otra sucursal confirma la recepción (usuario REAL restringido a esa sucursal, no el owner) | El selector "Ubicación destino" de "Confirmar recepción" viene PRECARGADO con la elegida al despachar; al confirmar, entra el stock a destino con esa ubicación; el traslado pasa a `recibido` | ✅ **e2e spec 93**, mismo test — usa `deposito@genesis360.com` (Sucursal Sur, `puede_ver_todas=false`) en un 2do browser context con login real, no el owner simulando ambos lados |
+| 4 | `esMovimientoCrossSucursal` — casos borde (null en cualquier lado, mismo id, distinto id) | Lógica pura | ✅ **5 unit tests** (`trasladoLogic.test.ts`) |
+
+**🛑 Gotcha de testing encontrado (para no repetirlo):** `browser.newContext()` en Playwright Test
+**hereda por defecto el `storageState` del proyecto** (acá, la sesión ya logueada del OWNER en el
+proyecto `chromium`) si no se lo pisa explícitamente — un "contexto nuevo" sin
+`storageState: { cookies: [], origins: [] }` explícito en realidad seguía autenticado como OWNER,
+no como el usuario que se quería loguear. Tampoco hereda `use.baseURL` (goto relativo falla sin
+pasarlo). Guardado en memoria — ver `reference_e2e_validation_capability`.
+
+Sin migraciones nuevas de UX; **mig 276** (`276_traslado_items_ubicacion_sugerida.sql`) agrega
+`traslado_items.ubicacion_sugerida_id`. Verde: tsc · build · unit 1080+5 · e2e 92/93 dedicados +
+regresión 30 (ubicaciones global) + 89 (variantes) + 02/13/15/17/23/43 (inventario/roles/producto)
+sin romper nada.
+
+## 🔒 §37 — RLS por sucursal validado con usuarios REALES de 2 sucursales (no solo el owner) — 2026-07-18
+
+**Contexto:** hasta ahora el aislamiento por sucursal (`sucursal_id IS NULL OR sucursal_id =
+auth_user_sucursal() OR auth_ve_todas_sucursales()`) se verificaba por code review de las
+policies o con el OWNER simulando ambos lados. Se armó un cross-check real: `supervisor@test.com`
+(Sucursal Norte) vs `supervisor2@test.com` (Sucursal Sur, usuario nuevo de esta sesión), ambos
+`puede_ver_todas=false` — pegando directo a PostgREST con el `access_token` de cada uno (no la UI,
+para probar la RLS server-side, no el filtro client-side).
+
+| # | Tabla | Escenario | Resultado |
+|---|---|---|---|
+| 1 | `inventario_lineas` | Usuario de Norte pide líneas con `sucursal_id=Sur` | ✅ 0 filas (RLS bloquea) |
+| 2 | `inventario_lineas` | Usuario de Sur pide líneas con `sucursal_id=Norte` | ✅ 0 filas (RLS bloquea) |
+| 3 | `inventario_lineas` | Cada uno pide líneas de SU sucursal | ✅ ≥1 fila (RLS no bloquea de más) |
+| 4 | `caja_sesiones` | Usuario de Norte pide sesiones con `sucursal_id=Sur` | ✅ 0 filas |
+| 5 | `caja_sesiones` | Usuario de Sur pide sesiones de su propia sucursal | ✅ ≥1 fila |
+
+✅ **e2e spec 94** (`94_rls_aislamiento_sucursal_cross_check`, API-only vía `loginToken`/REST).
+
+**🛑 Falso positivo encontrado y corregido en el PROPIO test (para no repetirlo):** la primera
+corrida dio el usuario de Norte viendo líneas de Sur — pero la causa era que `loginToken(request)`
+se llamó **sin** pasar email/password explícitos, y el default del helper cae a
+`E2E_EMAIL`/`E2E_PASSWORD` (el OWNER, que ve todas las sucursales), no al supervisor. No fue un
+bug de RLS — al pasar `E2E_SUPERVISOR_EMAIL`/`PASSWORD` explícitos dio verde. Moraleja: en tests
+multi-usuario, nunca confiar en los defaults de un helper de login sin revisar a quién loguea
+realmente.
+
+**Nota (no es un hallazgo nuevo, verificado contra la doc existente):** la policy `traslados_tenant`
+filtra **solo por `tenant_id`**, sin la cláusula de sucursal que sí tienen `inventario_lineas`/
+`caja_sesiones` — a primera vista parece una inconsistencia, pero es una **decisión de diseño
+deliberada y ya documentada** desde v1.75.0 (mig 216-218):
+`wiki/features/multi-sucursal.md` §"RLS por sucursal a nivel servidor" lista explícitamente
+`traslado_items` (origen+destino) junto a `caja_traspasos` como tablas **"dejadas tenant-only a
+propósito"** por "cruzar sucursales por diseño" — un traslado no le pertenece exclusivamente a
+ninguna de las dos puntas, así que restringirlo por sucursal rompería la trazabilidad del propio
+mecanismo. `94_rls_aislamiento_sucursal_cross_check` documenta el comportamiento (test #2) como
+regresión de control de esa decisión, no como un bug a corregir.

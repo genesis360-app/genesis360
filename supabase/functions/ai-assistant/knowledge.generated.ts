@@ -10,7 +10,7 @@ export interface KnowledgeSection {
   contenido: string
 }
 
-export const KNOWLEDGE_GENERATED_AT = "2026-07-13T22:02:50.324Z"
+export const KNOWLEDGE_GENERATED_AT = "2026-07-18T02:18:00.520Z"
 
 export const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
   {
@@ -453,7 +453,7 @@ export const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
       "ampliar plan",
       "comprobantes del plan"
     ],
-    "contenido": "Gestión del plan de pago.\n\n**Planes:** Free, Básico ($4.900/mes), Pro ($9.900/mes), Enterprise (a consultar).\n\n**Acciones:**\n- Suscribirse a un plan → genera link de pago MercadoPago (modelo preapproval). Redirige al checkout de MP. Al volver con `?status=approved`, verifica el pago.\n- Comprar add-on de movimientos adicionales\n- Cancelar suscripción\n\n---"
+    "contenido": "Gestión del plan de pago.\n\n**Planes:** Free (30 días de trial, luego se elige plan), Básico ($60.000/mes lista · $54.000/mes con débito automático −10%), Pro ($100.000/mes lista · $90.000/mes con débito), Enterprise (a consultar). Detalle completo y fuente de verdad: `src/config/brand.ts` (`PLANES`) y `G360.Wiki/wiki/business/planes-pricing.md`.\n\n**Acciones:**\n- Suscribirse a un plan → genera link de pago MercadoPago (modelo preapproval). Redirige al checkout de MP. Al volver con `?status=approved`, verifica el pago.\n- Armar el plan con add-ons (SKU / sucursales / usuarios fijos, comprobantes fijo o temporal, CUIT adicional) desde el configurador \"Armá tu plan\"\n- Cancelar suscripción\n\n---"
   },
   {
     "id": "4.11",
@@ -630,7 +630,7 @@ export const KNOWLEDGE_SECTIONS: KnowledgeSection[] = [
       "trial",
       "prueba gratis"
     ],
-    "contenido": "| Plan | Usuarios | Productos | Features extra | Precio |\n|------|----------|-----------|----------------|--------|\n| Free | 1 | 50 | — | $0 |\n| Básico | 2 | 500 | Historial, Reportes | $4.900/mes |\n| Pro | 10 | 5.000 | + RRHH, Métricas avanzadas | $9.900/mes |\n| Enterprise | ∞ | ∞ | Todo incluido | A consultar |\n\n- `usePlanLimits()`: hook que calcula límites y porcentajes de uso\n- `<UpgradePrompt />`: bloquea el módulo con un CTA de upgrade cuando se alcanza el límite\n- Early returns con `<UpgradePrompt />` siempre DESPUÉS de todos los hooks del componente\n\n---"
+    "contenido": "> Fuente de verdad: `src/config/brand.ts` (`PLANES`, `PLAN_BASE_LIMITS`, `ADDON_PACKS`). Detalle completo en `G360.Wiki/wiki/business/planes-pricing.md`.\n\n| Plan | Usuarios | SKU | Comprobantes/mes | Sucursales | Features extra | Precio (lista / con débito −10%) |\n|------|----------|-----|-------------------|------------|-----------------|--------|\n| Free | 1 | 50 | 200 | 1 | — | $0 (30 días de trial, equivalente a Pro) |\n| Básico | 5 | 2.000 | 6.000 | 1 | Historial, Reportes, Métricas | $60.000 / $54.000 mes |\n| Pro | 15 | 8.000 | 14.000 | 4 | + WMS, RRHH, Compras, Envíos, Importación masiva, Marketplace | $100.000 / $90.000 mes |\n| Enterprise | ∞ | ∞ | ∞ | ∞ | Todo incluido + API/SLA/onboarding | A consultar |\n\nCada dimensión metered (SKU, comprobantes, sucursales, usuarios, CUITs adicionales) puede ampliarse con add-ons — ver `ADDON_PACKS` en `brand.ts` o la tabla de add-ons en `planes-pricing.md`.\n\n- `usePlanLimits()`: hook que calcula límites y porcentajes de uso\n- `<UpgradePrompt />`: bloquea el módulo con un CTA de upgrade cuando se alcanza el límite\n- Early returns con `<UpgradePrompt />` siempre DESPUÉS de todos los hooks del componente\n\n---"
   },
   {
     "id": "10.",

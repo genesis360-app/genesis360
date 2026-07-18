@@ -1,10 +1,61 @@
 import { describe, it, expect } from 'vitest'
-import { calcularLpnFuentes, type LineaDisponible } from '../../src/lib/ventasValidation'
+import { calcularLpnFuentes, atributoAmbiguoEnStock, type LineaDisponible } from '../../src/lib/ventasValidation'
 import { getRebajeSort } from '../../src/lib/rebajeSort'
 
 function linea(id: string, lpn: string | null, cantidad: number, cantidad_reservada = 0): LineaDisponible {
   return { id, lpn, cantidad, cantidad_reservada }
 }
+
+describe('atributoAmbiguoEnStock — REGLA #0: no vender un talle por otro a ciegas', () => {
+  it('sin líneas → no hay ambigüedad', () => {
+    expect(atributoAmbiguoEnStock([])).toBeNull()
+  })
+
+  it('un solo talle en stock → no hace falta elegir', () => {
+    const lineas = [{ ...linea('L1', 'A', 5), talle: 'M' }, { ...linea('L2', 'B', 3), talle: 'M' }]
+    expect(atributoAmbiguoEnStock(lineas)).toBeNull()
+  })
+
+  it('dos talles distintos en stock → ambiguo, hay que elegir', () => {
+    const lineas = [{ ...linea('L1', 'A', 5), talle: 'S' }, { ...linea('L2', 'B', 3), talle: 'M' }]
+    expect(atributoAmbiguoEnStock(lineas)).toBe('talle')
+  })
+
+  it('producto sin atributo tracked (todo null) → no hay ambigüedad', () => {
+    const lineas = [linea('L1', 'A', 5), linea('L2', 'B', 3)]
+    expect(atributoAmbiguoEnStock(lineas)).toBeNull()
+  })
+
+  it('detecta ambigüedad de color igual que de talle', () => {
+    const lineas = [{ ...linea('L1', 'A', 5), color: 'Rojo' }, { ...linea('L2', 'B', 3), color: 'Azul' }]
+    expect(atributoAmbiguoEnStock(lineas)).toBe('color')
+  })
+})
+
+describe('calcularLpnFuentes — atributos de variante (talle/color/etc.)', () => {
+  it('propaga el talle de la línea a la fuente calculada', () => {
+    const result = calcularLpnFuentes([{ ...linea('L1', 'LPN-A', 5), talle: 'M' }], 2)
+    expect(result).toMatchObject([{ linea_id: 'L1', talle: 'M' }])
+  })
+
+  it('cada fuente conserva el talle de SU línea al spanear varias (no mezcla talles)', () => {
+    const lineas = [
+      { ...linea('L1', 'LPN-A', 2), talle: 'S' },
+      { ...linea('L2', 'LPN-B', 5), talle: 'M' },
+    ]
+    const result = calcularLpnFuentes(lineas, 4)
+    expect(result).toMatchObject([
+      { linea_id: 'L1', talle: 'S', cantidad: 2 },
+      { linea_id: 'L2', talle: 'M', cantidad: 2 },
+    ])
+  })
+
+  it('sin atributo cargado en la línea, la fuente lo devuelve null (no undefined-que-rompe UI)', () => {
+    const result = calcularLpnFuentes([linea('L1', 'LPN-A', 5)], 1)
+    expect(result[0].talle).toBeNull()
+    expect(result[0].color).toBeNull()
+  })
+})
 
 describe('calcularLpnFuentes', () => {
   it('una línea con suficiente stock — una fuente', () => {

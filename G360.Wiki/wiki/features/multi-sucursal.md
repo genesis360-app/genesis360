@@ -197,6 +197,36 @@ Auditoría de procesos 2026-06-11, ítem #4. Tab **Traslados** en Inventario (`T
 - Ledger: `movimientos_stock` tipo `traslado` en ambas puntas. Tablas `traslados` (correlativo por tenant, `envio_id` reservado para el link logístico futuro) + `traslado_items` (snapshot completo). Lógica pura en `src/lib/trasladoLogic.ts` (22 tests).
 - Decisiones relevadas con GO: tránsito + confirmación · por LPN/línea · DEPOSITO+ crea, destino confirma · recepción parcial auditada.
 
+### Bugfix — ubicaciones GLOBALES no aparecían en "Confirmar recepción" (2026-07-18)
+
+La query de `ubicacionesDestino` en `TrasladosPanel` filtraba con `.eq('sucursal_id', destino)` —
+un `.eq()` estricto en Postgres/PostgREST nunca matchea `sucursal_id IS NULL`, así que una
+sucursal que solo tiene ubicaciones GLOBALES (sin ninguna propia) veía el selector vacío ("Sin
+ubicación" únicamente). Fix: `.or('sucursal_id.eq.X,sucursal_id.is.null')`, igual que el resto de
+la app. Regresión: `30_traslado_sucursal_mutante` (UAT §35).
+
+### "Mover" del LPN hacia otra sucursal genera un traslado real, no reubica directo (2026-07-18)
+
+El tab "Mover" de `LpnAccionesModal` (movimiento parcial de un LPN) permite elegir cualquier
+sucursal como destino además de reubicar dentro de la misma. Hasta esta fecha, elegir OTRA
+sucursal ahí reubicaba el stock **directo y de inmediato** en destino — sin pasar por
+`traslados`/`traslado_items`, saltándose el mecanismo de tránsito+confirmación de arriba. Fix:
+`esMovimientoCrossSucursal()` (`src/lib/trasladoLogic.ts`) detecta el cruce y, si aplica,
+`moverStock` despacha un traslado real (`en_transito`, mismos guards que `TrasladosPanel.
+despachar`: `puedeCrearTraslado` + conteo bloqueante) en vez de crear la línea en destino. El
+selector "Ubicación destino" también pasó a filtrar por la sucursal **elegida** (antes mostraba
+las de la sucursal activa del usuario, sin importar a dónde se estuviera moviendo) y se limpia al
+cambiar de sucursal.
+
+La ubicación elegida al despachar desde acá se guarda en `traslado_items.ubicacion_sugerida_id`
+(**mig 276**, nullable) y precarga el selector de "Confirmar recepción" cuando aplica (todos los
+ítems del traslado sugieren la misma — siempre el caso para un traslado de 1 ítem armado desde el
+LPN); el destino puede cambiarla igual, no es vinculante. Traslados armados desde el tab Traslados
+no la usan (columna queda NULL, selector arranca vacío como siempre).
+
+Validado end-to-end con **dos usuarios reales de sucursales distintas** (no el owner simulando
+ambos lados): `30/92/93` en `tests/e2e/`, detalle en UAT §36.
+
 ---
 
 ## Stock mínimo por sucursal (migration 052)

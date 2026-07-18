@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   puedeCrearTraslado, puedeConfirmarRecepcion, disponibleLinea,
   validarCantidadTraslado, validarRecepcion, estadoDesdeRecepcion, totalFaltante,
+  esMovimientoCrossSucursal,
 } from '@/lib/trasladoLogic'
 
 // Traslados entre sucursales (mig 205) — decisiones relevadas 2026-06-11:
@@ -105,5 +106,27 @@ describe('validarRecepcion / estadoDesdeRecepcion / totalFaltante', () => {
   })
   it('sin ítems → error', () => {
     expect(validarRecepcion([])).toMatch(/no tiene ítems/)
+  })
+})
+
+describe('esMovimientoCrossSucursal', () => {
+  // LpnAccionesModal → tab "Mover" (bug real de GO 2026-07-18: mover a otra sucursal
+  // reubicaba el stock directo en destino, sin pasar por traslado/confirmación).
+  it('mismo id en origen y destino → NO es cross-sucursal', () => {
+    expect(esMovimientoCrossSucursal('suc-A', 'suc-A')).toBe(false)
+  })
+  it('ids distintos → SÍ es cross-sucursal', () => {
+    expect(esMovimientoCrossSucursal('suc-B', 'suc-A')).toBe(true)
+  })
+  it('sin sucursal destino (limpiar el selector) → no es cross-sucursal', () => {
+    expect(esMovimientoCrossSucursal(null, 'suc-A')).toBe(false)
+    expect(esMovimientoCrossSucursal(undefined, 'suc-A')).toBe(false)
+  })
+  it('línea sin sucursal de origen → no es cross-sucursal (no hay traslado real posible)', () => {
+    expect(esMovimientoCrossSucursal('suc-B', null)).toBe(false)
+    expect(esMovimientoCrossSucursal('suc-B', undefined)).toBe(false)
+  })
+  it('ambos null → no es cross-sucursal', () => {
+    expect(esMovimientoCrossSucursal(null, null)).toBe(false)
   })
 })

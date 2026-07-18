@@ -1,3 +1,5 @@
+import { atributoAmbiguoEnLineas } from './atributosVariante'
+
 export type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada' | 'devuelta'
 export interface MedioPagoItem { tipo: string; monto: string }
 
@@ -199,6 +201,13 @@ export interface LineaDisponible {
   cantidad: number
   cantidad_reservada: number
   ubicacion?: string | null   // nombre de la ubicación (para mostrar en carrito)
+  // Atributos de variante (talle/color/etc.) — para que el cajero vea/elija QUÉ variante
+  // está vendiendo, no solo de qué LPN/ubicación. Ver src/lib/atributosVariante.ts.
+  talle?: string | null
+  color?: string | null
+  encaje?: string | null
+  formato?: string | null
+  sabor_aroma?: string | null
 }
 
 export interface LpnFuente {
@@ -206,6 +215,24 @@ export interface LpnFuente {
   lpn: string | null
   cantidad: number
   ubicacion?: string | null   // nombre de la ubicación
+  talle?: string | null
+  color?: string | null
+  encaje?: string | null
+  formato?: string | null
+  sabor_aroma?: string | null
+}
+
+/**
+ * Si entre las líneas disponibles de un producto hay MÁS DE UN valor distinto para algún
+ * atributo de variante (talle/color/etc.), vender "a ciegas" (auto-FIFO) podría entregar una
+ * variante distinta a la que el cliente pidió — a diferencia de lote/ubicación, acá SÍ importa
+ * cuál se elige. Devuelve la etiqueta del primer atributo ambiguo encontrado, o null si no hay
+ * ambigüedad (0 o 1 solo valor en stock → no hace falta que el cajero elija nada).
+ * (Delegado a `atributoAmbiguoEnLineas` en atributosVariante.ts — misma lógica que rebaje masivo.)
+ */
+export function atributoAmbiguoEnStock(lineas: LineaDisponible[]): string | null {
+  const r = atributoAmbiguoEnLineas(lineas)
+  return r ? (r.key === 'sabor_aroma' ? 'sabor/aroma' : r.label.toLowerCase()) : null
 }
 
 /**
@@ -222,7 +249,11 @@ export function calcularLpnFuentes(lineas: LineaDisponible[], cantidad: number):
     if (disponible <= 0) continue
     const usar = Math.min(disponible, restante)
     if (usar <= 0) continue
-    fuentes.push({ linea_id: l.id, lpn: l.lpn, cantidad: usar, ubicacion: l.ubicacion ?? null })
+    fuentes.push({
+      linea_id: l.id, lpn: l.lpn, cantidad: usar, ubicacion: l.ubicacion ?? null,
+      talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
+      formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
+    })
     restante -= usar
     if (restante <= 0) break
   }

@@ -3,12 +3,12 @@ title: Planes y Pricing
 category: business
 tags: [planes, pricing, free, basic, pro, enterprise, limites, competencia]
 sources: [xubio.com, contabilium.com, netegia.com, neuralsoft.com, aconpy.com]
-updated: 2026-07-06
+updated: 2026-07-17
 ---
 
 # Planes y Pricing
 
-> ⚠️ **Los precios de la app (`brand.ts`) están DESACTUALIZADOS** ($4.900/$9.900, ~5-25x por debajo del mercado 2026). Pricing en definición — ver "Propuesta en discusión" abajo. Actualizar `src/config/brand.ts` (`PLANES`, `MAX_MOVIMIENTOS_POR_PLAN`, `FEATURES_POR_PLAN`) cuando GO cierre los números.
+> ✅ **Pricing v2 IMPLEMENTADO en `brand.ts` y EN PROD** (desde v1.115.0, 2026-07-06): Básico **$60.000** / Pro **$100.000** (precio de lista; $54.000/$90.000 con el −10% de débito automático). La sección "Tabla de planes (LEGACY)" más abajo con $4.900/$9.900 es **historia** — esos números NO existen más en el código, quedan solo de referencia de cómo arrancó el pricing. La fuente de verdad siempre es `src/config/brand.ts` (`PLANES`, `PLAN_BASE_LIMITS`, `ADDON_PACKS`, `FEATURES_POR_PLAN`).
 
 ---
 
@@ -59,16 +59,18 @@ Respuesta sin marketing a "¿por qué alguien elegiría Netegia?" (pedido GO):
 
 ---
 
-## 💵 Propuesta de pricing (EN DISCUSIÓN, 2026-07-01)
+## 💵 Pricing (✅ IMPLEMENTADO Y EN PROD desde v1.115.0, 2026-07-06 — propuesta original 2026-07-01)
 
-Propuesta de GO + ajustes recomendados. **No cerrada.**
+Los números de abajo son los que cobra la app HOY (fuente de verdad: `src/config/brand.ts`), no una propuesta.
 
-| Plan | Precio propuesto GO (c/IVA) | Users | Comprobantes/mes 🆕 | SKU | Sucursales |
-|---|---|---|---|---|---|
-| **Free** | $0 — **30 días de trial** (✅ RESUELTO 2026-07-05, mig 257 — ver "Trial" abajo) | — | 200 | — | — |
-| **Básico** | **$60.000/mes** (débito −10%, anual −30%) | 5 | 6.000 | 2.000 | 1 |
-| **Pro** | **$100.000/mes** (mismos desc.) | 15 | 14.000 | 8.000 | 4 |
-| **Enterprise** | A consultar (según complejidad) | — | ilimitado | — | — |
+| Plan | Precio de LISTA c/IVA (`PRECIO_LISTA`) | Precio destacado con débito automático −10% (`PLANES[].precio`) | Users | Comprobantes/mes 🆕 | SKU | Sucursales |
+|---|---|---|---|---|---|---|
+| **Free** | $0 — **30 días de trial** (✅ RESUELTO 2026-07-05, mig 257 — ver "Trial" abajo) | — | — | 200 | — | — |
+| **Básico** | **$60.000/mes** | **$54.000/mes** (anual −30% adicional) | 5 | 6.000 | 2.000 | 1 |
+| **Pro** | **$100.000/mes** | **$90.000/mes** (anual −30% adicional) | 15 | 14.000 | 8.000 | 4 |
+| **Enterprise** | A consultar (según complejidad) | — | — | ilimitado | — | — |
+
+> El precio de LISTA es el que paga quien elige pago manual (transferencia/efectivo/MP sin auto-débito) — `PRECIO_LISTA` en `brand.ts`, fuente de verdad de lo que se cobra realmente en modo manual. El destacado con −10% es el que se muestra en Landing/Suscripción y lo cobran los planes de MP con auto-débito (`MP_PLAN_IDS`, cuenta collector 478332282).
 
 > Límites base **actualizados con la propuesta de add-ons de GO (2026-07-01)** — el SKU 100/300 quedó descartado (subió a 2.000/6.000). Detalle de add-ons + revisión abajo (§ "Límites base + Add-ons").
 > **✅ IMPLEMENTADO v1.115.0 (2026-07-06):** la dimensión de flujo pasó de **movimientos** a **comprobantes** (toda venta finalizada del mes = 1 comprobante, con o sin factura AFIP; presupuestos y canceladas no cuentan). Movimientos quedó **free/ilimitado (solo telemetría)** — sus packs de add-on se eliminaron. Detalle completo en `wiki/features/configurador-addons-batch.md` y `wiki/integrations/mercado-pago.md` §3.
@@ -108,7 +110,10 @@ Modelo multi-dimensional (como Netegia): 4 dimensiones metered (SKU · Comproban
 | **Sucursales** | 1 × $15.000 | 3 × $35.000 | 5 × $55.000 | **Solo fijo** | 15.000 / 11.667 / 11.000 ✓ |
 | **Comprobantes** 🆕 | 1.000 × $10.000 | 5.000 × $30.000 | 10.000 × $50.000 | **Fijo Y temporal** | 10 / 6 / 5 ✓ |
 | **Usuarios** | 1 × $5.000 | 3 × $10.000 | 5 × $15.000 | **Solo fijo** | 5.000 / 3.333 / 3.000 ✓ |
+| **CUITs adicionales** 🆕 | 1 × $20.000 | 2 × $35.000 | 3 × $45.000 | **Solo fijo** | 20.000 / 17.500 / 15.000 — ⚠ **PROVISORIO**, falta que GO confirme el precio final |
 | ~~Movimientos~~ | ~~eliminado~~ | ~~eliminado~~ | ~~eliminado~~ | — | — |
+
+> **CUITs (multi-emisor/multi-razón-social, F5/F6):** cada tenant incluye 1 CUIT (el del negocio) en TODOS los planes. Los emisores fiscales adicionales activos se cobran con este add-on. Ver `wiki/features/multi-cuit.md` para el detalle funcional — este catálogo de precios es el mismo `ADDON_PACKS.cuits` de `brand.ts`.
 
 **Enforcement de comprobantes: SOFT** (decisión Q2 de GO, 2026-07-05) — banner de upsell al 80%
 del límite, aviso fuerte + email al 100%, pero la venta **SIEMPRE sale** (nunca se bloquea un
@@ -143,8 +148,8 @@ presupuestos y ventas canceladas NO cuentan.
 | **0 — Modelo de datos + límites base** ✅ **HECHA EN DEV (2026-07-01, mig 251)** | `tenants.plan_tier` (desacopla tier de max_users) + tabla `tenant_addons` + `fn_plan_base_limite`/`fn_tenant_limite` (límite efectivo = base + Σ add-ons activos; trial→pro). `brand.ts`: precios $60k/$100k, `PLAN_BASE_LIMITS` (SKU 2.000/8.000, mov 5.000/20.000, suc 1/4, users 5/15), `ADDON_PACKS`, `PLAN_DESCUENTOS`. `usePlanLimits` reescrito (plan_tier + efectivo + sucursales). | Bajo | Aditivo, sin bloquear. typecheck+build+unit verdes. |
 | **1 — Enforcement server-side (REGLA #0 de ingresos)** ✅ **HECHA EN DEV (2026-07-01, mig 252)** | Triggers `BEFORE INSERT OR UPDATE OF activo` en productos/users/sucursales → bloquean crear sobre `fn_tenant_limite`. **Movimientos DIFERIDO** (hot-path). Verificado por impersonación (seed entra, bajo-límite pasa, sobre-límite bloquea). | Medio | Límites base ≥ viejos → sin bloqueo a existentes. **Falta:** enforcement de movimientos (contador/RPC). |
 | **2 — Add-on temporal de movimientos** ✅ **HECHA EN DEV (2026-07-02, mig 253)** | Lib `src/lib/addons.ts` (packs/ref/precio, unit-tested) + EF `mp-addon` parametrizado (packs 1.000/5.000/20.000, revalida precio server-side) + EF `mp-webhook` inserta `tenant_addons` temporal (vence 30d, **idempotente por `mp_payment_id`**, mig 253) + `SuscripcionPage` selector de 3 packs. | Bajo | El flujo legacy no era idempotente (re-notificación MP duplicaba) → mig 253. **No deployado** (espera OK GO). |
-| **3 — Add-ons fijos (SKU/sucursal/usuario) + downgrade guiado + EFs tier-aware + MP preapproval** ✅ **CÓDIGO EN DEV (2026-07-02)** | **F3a:** `mp-webhook`/`mp-verificar` setean `plan_tier` (cierra medio RIESGO #1). **F3b:** enforcement movimientos = SOFT (decisión REGLA #0, no cortar ventas). **F3c:** lib `evaluarDowngrade`/`precioMensualAddonsFijos` (unit-tested) + EF `mp-addon-fijo` (alta/baja, `PUT transaction_amount` del preapproval por delta, fail-closed, downgrade guiado server-side) + configurador en `SuscripcionPage`. | Alto | **NO deployado / no e2e-testeable.** Requiere reconfigurar planes base MP a $60k/$100k + validar `PUT` en sandbox + OK GO. |
-| **4 — Configurador de precios (Landing + Suscripción)** ✅ **HECHA (2026-07-02, v1.103.0)** · **🎨 REDISEÑO "Armá tu plan" (2026-07-04, v1.111.0 EN DEV)** | Suscripción ✅ (add-ons fijos en vivo, F3). Landing ✅ (`PricingConfigurator`: plan base Básico/Pro + selectores de add-ons fijos → total mensual en vivo; reusa `addons.ts`). Frontend-only. **Rediseño v1.111.0:** panel oscuro + grid de tarjetas seleccionables con degradé de marca violeta→cian (tokens `--color-accent`/`--color-accent-2`, nada hardcodeado), toggle Básico/Pro en píldora, sub-cards por dimensión (Productos/Sucursales/Usuarios) con ícono, barra de total en vivo + CTA, y fila de 4 beneficios. **In-app (`SuscripcionPage`) adaptado:** MISMO lenguaje visual PERO conserva su semántica (plan actual, add-ons activos = tarjeta seleccionada con botón quitar, sin toggle ni CTA de prueba) y **la lógica de compra MP (`agregarAddonFijo`/`quitarAddonFijo`) intacta** (REGLA #0). **🛑 kill-switch `ADDON_FIJO_ENABLED=false` (v1.111.0):** el configurador de add-ons FIJOS in-app queda OCULTO en PROD porque el cobro (`mp-addon-fijo` → `PUT transaction_amount` del preapproval) **nunca se validó e2e en sandbox** y ya estaba vivo/alcanzable en PROD desde v1.106 (riesgo de cambiar el cobro de un cliente real). Prender solo tras validar. El estimador público del Landing y el add-on temporal de movimientos NO dependen del flag. | Bajo (Landing) / **Alto (in-app, gateado OFF)** | Estimador público (marketing); no cobra. Soporte del Landing = **"Soporte dedicado"** (decisión GO). Movimientos sigue como flujo temporal aparte (no 4ª tarjeta). |
+| **3 — Add-ons fijos (SKU/sucursal/usuario) + downgrade guiado + EFs tier-aware + MP preapproval** ✅ **VALIDADO E2E EN PROD (2026-07-05)** | **F3a:** `mp-webhook`/`mp-verificar` setean `plan_tier`. **F3b:** enforcement movimientos = SOFT. **F3c:** lib `evaluarDowngrade`/`precioMensualAddonsFijos` (unit-tested) + EF `mp-addon-fijo` (alta/baja, `PUT transaction_amount` del preapproval por delta, fail-closed, downgrade guiado server-side) + configurador en `SuscripcionPage`. **Validado con la suscripción REAL de Fede** (runbook `mp-suscripciones-pagos.plan.md` §11): alta de Usuarios+1 → monto $1.000→$6.000 en MP → baja → $1.000. | Bajo (ya validado) | Planes base de MP reconfigurados a la cuenta collector 478332282 ($60k/$100k lista, $54k/$90k débito). |
+| **4 — Configurador de precios (Landing + Suscripción)** ✅ **HECHA (2026-07-02, v1.103.0)** · **🎨 REDISEÑO "Armá tu plan" (2026-07-04, v1.111.0)** | Suscripción ✅ (add-ons fijos en vivo, F3). Landing ✅ (`PricingConfigurator`: plan base Básico/Pro + selectores de add-ons fijos → total mensual en vivo; reusa `addons.ts`). Frontend-only. Rediseño: panel oscuro + grid de tarjetas seleccionables con degradé de marca violeta→cian, toggle Básico/Pro en píldora, sub-cards por dimensión (Productos/Sucursales/Usuarios), barra de total en vivo + CTA. **In-app (`SuscripcionPage`):** mismo lenguaje visual, conserva su semántica (plan actual, add-ons activos = tarjeta con botón quitar) y la lógica de compra MP (`agregarAddonFijo`/`quitarAddonFijo`) intacta (REGLA #0). **✅ `ADDON_FIJO_ENABLED = true`** (prendido 2026-07-05 tras la validación e2e de F3 con la suscripción real de Fede) — el configurador de add-ons FIJOS in-app está VIVO, pero con **exposición acotada**: solo lo ven tenants `active` CON `mp_subscription_id` real (hoy en PROD, prácticamente solo Fede — sin clientes reales pagos todavía). Si algo falla, el kill-switch en `brand.ts` vuelve a `false`. El estimador público del Landing y el add-on temporal de movimientos NO dependen del flag. | Bajo | Estimador público (marketing); no cobra. Soporte del Landing = **"Soporte dedicado"** (decisión GO). Movimientos sigue como flujo temporal aparte (no 4ª tarjeta). |
 | **5 — Multi-CUIT / multi-razón-social** | Track aparte, grande (cert + numeración de comprobantes por CUIT). **Después del WSFE propio** (comparten capa de facturación). | Alto | Candidato Enterprise / add-on premium. Ver BACKLOG en `project_pendientes.md`. |
 
 ---
@@ -194,7 +199,11 @@ AFIP/ARCA no cobra por CAE. Con AfipSDK el token es por-tenant (lo paga el clien
 
 ---
 
-## Tabla de planes (LEGACY en código — desactualizada)
+## 🗄️ Tabla de planes — HISTÓRICO (pricing v1, reemplazado por completo en v1.115.0)
+
+> Esta tabla ya **NO existe en el código**. Se conserva solo como referencia de cómo arrancó el
+> pricing antes de la revisión de 2026-07-01/06. Para los números vigentes ver la tabla de
+> "Límites base por plan" más arriba.
 
 | Plan | Usuarios | Productos | Sucursales | Precio |
 |------|----------|-----------|------------|--------|
@@ -227,27 +236,26 @@ El `SubscriptionGuard` en `src/components/AuthGuard.tsx` bloquea acceso a featur
 - **GitHub — repo privado = GRATIS (NO hace falta pagar GitHub Pro).** El plan **Free** de GitHub incluye **repos privados ILIMITADOS con colaboradores ilimitados** (desde abr-2020) — pasar `genesis360-app/genesis360` de público a privado no tiene costo (Settings → General → Danger Zone → Change visibility). Lo ÚNICO que se paga (GitHub **Team**, ~US$4/usuario/mes) son extras sobre repos privados: **branch protection / required reviews / CODEOWNERS** y más minutos de Actions (Free da 2.000 min/mes). Recomendación: pasarlo a privado en Free ahora (gratis); evaluar Team solo si querés forzar reviews/branch-protection en `main`. (Verificar términos vigentes de GitHub al hacerlo.)
 - **Snapshot (2026-06-30):** solo se paga Claude Code (US$23/mes) + dominio (~US$15/año); resto en free tier (incl. GitHub); 0 clientes PROD. Umbrales de escalado (sin $) en `sources/raw/reference_escalabilidad.md`.
 
-> [!NOTE] La tabla de arriba (usuarios/productos/precios) y "Features por plan" pueden estar desactualizadas (trial dice 14d, la app usa 7d en el welcome; AFIP no está estrictamente gateada a Pro en el código). Revisar contra `src/config/brand.ts` (`PLANES`, `MAX_MOVIMIENTOS_POR_PLAN`, `FEATURES_POR_PLAN`) al definir el pricing final.
-
 ---
 
-## Features por plan
+## Features por plan (espejo exacto de `FEATURES_POR_PLAN` + `PLAN_REQUERIDO` en `brand.ts`)
 
 > [!NOTE] Esta tabla debe actualizarse cada vez que se agreguen features gateadas por plan.
 
-| Feature | Free | Basic | Pro | Enterprise |
+| Feature | Free | Básico | Pro | Enterprise |
 |---------|------|-------|-----|-----------|
-| Inventario | ✓ | ✓ | ✓ | ✓ |
-| POS/Ventas | ✓ | ✓ | ✓ | ✓ |
-| Caja | ✓ | ✓ | ✓ | ✓ |
-| Reportes básicos | ✓ | ✓ | ✓ | ✓ |
-| Exportación Excel/PDF | — | ✓ | ✓ | ✓ |
+| Ventas/POS · Caja · Gastos · Clientes · Inventario · Alertas | ✓ | ✓ | ✓ | ✓ |
+| **Facturación electrónica AFIP** (NO gateada por plan — disponible desde Free) | ✓ | ✓ | ✓ | ✓ |
+| Reportes · Historial · Métricas | — | ✓ | ✓ | ✓ |
+| Sucursales | 1 | 1 | hasta 4 (base) | ilimitadas |
+| Importación masiva (CSV/Excel) | — | — | ✓ | ✓ |
 | RRHH | — | — | ✓ | ✓ |
+| Modo Avanzado (WMS: lotes/series/vencimientos/FIFO-FEFO) | — | — | ✓ | ✓ |
 | Marketplace (MeLi/TN) | — | — | ✓ | ✓ |
-| Multi-sucursal | — | — | ✓ | ✓ |
-| AFIP Facturación | — | — | ✓ | ✓ |
-| Auto-reorder | — | — | ✓ | ✓ |
-| API acceso | — | — | — | ✓ |
+| Aging profiles | — | — | ✓ | ✓ |
+| API / integraciones a medida / SLA / onboarding | — | — | — | ✓ |
+
+> "Auto-reorder" no existe en el código (no hay ninguna feature con ese nombre) — se sacó de la tabla, era aspiracional y nunca se implementó.
 
 ---
 

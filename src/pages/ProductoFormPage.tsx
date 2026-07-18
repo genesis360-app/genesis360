@@ -93,6 +93,20 @@ export default function ProductoFormPage() {
   const [grupoModalOpen, setGrupoModalOpen] = useState(false)
   const [grupoSelectorOpen, setGrupoSelectorOpen] = useState(false)
 
+  // "Atributos de variante" (tiene_talle/color/encaje/formato/sabor_aroma) y "Grupo de
+  // variantes" son dos modelos de stock incompatibles para el mismo producto: el primero
+  // trackea el atributo en las líneas de UN SOLO SKU; el segundo hace que cada valor sea un
+  // SKU/producto separado. Combinarlos en el mismo producto generó datos inconsistentes en la
+  // práctica (bug reportado por GO, 2026-07-18) — se bloquean mutuamente.
+  const ATRIBUTOS_VARIANTE_CAMPOS = ['tiene_talle', 'tiene_color', 'tiene_encaje', 'tiene_formato', 'tiene_sabor_aroma'] as const
+  const toggleAtributoVariante = (campo: typeof ATRIBUTOS_VARIANTE_CAMPOS[number], checked: boolean) => {
+    if (checked && grupoId) {
+      toast.error('Este producto ya está vinculado a un Grupo de variantes — no se puede combinar con "Atributos de variante". Son dos formas distintas de manejar el stock; desvinculalo del grupo primero si necesitás esto.', { duration: 7000 })
+      return
+    }
+    setForm(p => ({ ...p, [campo]: checked }))
+  }
+
   const { data: categorias = [] } = useQuery({
     queryKey: ['categorias', tenant?.id],
     queryFn: async () => {
@@ -387,6 +401,7 @@ export default function ProductoFormPage() {
         descripcion: form.descripcion.trim() || null,
         categoria_id: form.categoria_id || null, proveedor_id: form.proveedor_id || null,
         ubicacion_id: form.ubicacion_id || null,
+        estado_id: form.estado_id || null,
         precio_costo: Math.max(0, parseFloat(form.precio_costo) || 0),
         precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
@@ -522,6 +537,7 @@ export default function ProductoFormPage() {
         categoria_id: form.categoria_id || null,
         proveedor_id: form.proveedor_id || null,
         ubicacion_id: form.ubicacion_id || null,
+        estado_id: form.estado_id || null,
         precio_costo: Math.max(0, parseFloat(form.precio_costo) || 0),
         precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
@@ -1375,14 +1391,19 @@ export default function ProductoFormPage() {
                   <div className="space-y-3">
                     <div>
                       <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Atributos de variante</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Para ropa, alimentos, etc.</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        Para UN SOLO producto/SKU cuyo stock se banca junto pero se distingue por talle/color en el
+                        depósito (te lo va a pedir en cada ingreso y venta). Si cada talle/color tiene precio o SKU
+                        propio, usá <strong>&quot;Grupo de variantes&quot;</strong> más abajo en su lugar — no se pueden combinar.
+                      </p>
                     </div>
 
                     {/* tiene_talle */}
-                    <label className="flex items-start gap-3 cursor-pointer">
+                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
                       <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_talle}
-                          onChange={e => setForm(p => ({ ...p, tiene_talle: e.target.checked }))} className="sr-only" />
+                        <input type="checkbox" checked={form.tiene_talle} disabled={!!grupoId}
+                          onChange={e => toggleAtributoVariante('tiene_talle', e.target.checked)} className="sr-only" />
                         <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_talle ? 'bg-accent' : 'bg-gray-300'}`}>
                           <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_talle ? 'translate-x-5' : ''}`} />
                         </div>
@@ -1394,10 +1415,11 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_color */}
-                    <label className="flex items-start gap-3 cursor-pointer">
+                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
                       <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_color}
-                          onChange={e => setForm(p => ({ ...p, tiene_color: e.target.checked }))} className="sr-only" />
+                        <input type="checkbox" checked={form.tiene_color} disabled={!!grupoId}
+                          onChange={e => toggleAtributoVariante('tiene_color', e.target.checked)} className="sr-only" />
                         <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_color ? 'bg-accent' : 'bg-gray-300'}`}>
                           <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_color ? 'translate-x-5' : ''}`} />
                         </div>
@@ -1409,10 +1431,11 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_encaje */}
-                    <label className="flex items-start gap-3 cursor-pointer">
+                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
                       <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_encaje}
-                          onChange={e => setForm(p => ({ ...p, tiene_encaje: e.target.checked }))} className="sr-only" />
+                        <input type="checkbox" checked={form.tiene_encaje} disabled={!!grupoId}
+                          onChange={e => toggleAtributoVariante('tiene_encaje', e.target.checked)} className="sr-only" />
                         <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_encaje ? 'bg-accent' : 'bg-gray-300'}`}>
                           <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_encaje ? 'translate-x-5' : ''}`} />
                         </div>
@@ -1424,10 +1447,11 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_formato */}
-                    <label className="flex items-start gap-3 cursor-pointer">
+                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
                       <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_formato}
-                          onChange={e => setForm(p => ({ ...p, tiene_formato: e.target.checked }))} className="sr-only" />
+                        <input type="checkbox" checked={form.tiene_formato} disabled={!!grupoId}
+                          onChange={e => toggleAtributoVariante('tiene_formato', e.target.checked)} className="sr-only" />
                         <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_formato ? 'bg-accent' : 'bg-gray-300'}`}>
                           <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_formato ? 'translate-x-5' : ''}`} />
                         </div>
@@ -1439,10 +1463,11 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_sabor_aroma */}
-                    <label className="flex items-start gap-3 cursor-pointer">
+                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
                       <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_sabor_aroma}
-                          onChange={e => setForm(p => ({ ...p, tiene_sabor_aroma: e.target.checked }))} className="sr-only" />
+                        <input type="checkbox" checked={form.tiene_sabor_aroma} disabled={!!grupoId}
+                          onChange={e => toggleAtributoVariante('tiene_sabor_aroma', e.target.checked)} className="sr-only" />
                         <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_sabor_aroma ? 'bg-accent' : 'bg-gray-300'}`}>
                           <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_sabor_aroma ? 'translate-x-5' : ''}`} />
                         </div>
@@ -1473,7 +1498,10 @@ export default function ProductoFormPage() {
                     /* Sin grupo: selector */
                     <div className="space-y-3">
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Vinculá este producto a un grupo para gestionarlo junto con sus variantes (talle, color, etc.).
+                        Vinculá este producto a un grupo si cada talle/color es un SKU/producto separado con su
+                        propio precio y stock independiente (ej. "Remera — S" y "Remera — M" son dos productos).
+                        Si en cambio querés UN solo producto que trackee el talle en el depósito, no uses esto —
+                        activá "Atributos de variante" más arriba en su lugar.
                       </p>
                       {grupoSelectorOpen ? (
                         <div className="space-y-2">
@@ -1491,6 +1519,10 @@ export default function ProductoFormPage() {
                                   key={g.id}
                                   type="button"
                                   onClick={() => {
+                                    if (ATRIBUTOS_VARIANTE_CAMPOS.some(c => form[c])) {
+                                      toast.error('Este producto tiene "Atributos de variante" activados (talle/color/etc.) — no se puede combinar con Grupo de variantes. Desactivalos primero si necesitás esto.', { duration: 7000 })
+                                      return
+                                    }
                                     setGrupoId(g.id)
                                     // Pre-cargar atributos como claves vacías
                                     if (g.atributos) {

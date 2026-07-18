@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2 } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -16,7 +16,7 @@ import { CodigoPerfilesPanel } from '@/components/CodigoPerfilesPanel'
 import { CourierCredencialesPanel } from '@/components/CourierCredencialesPanel'
 import RepartidoresPanel from '@/components/RepartidoresPanel'
 import { CanalesVentaPanel } from '@/components/CanalesVentaPanel'
-import { EmisoresFiscalesPanel } from '@/components/EmisoresFiscalesPanel'
+import { EmisoresFiscalesPanel, type EmisoresFiscalesPanelHandle } from '@/components/EmisoresFiscalesPanel'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { MODO_BASICO_ENABLED } from '@/config/brand'
@@ -25,7 +25,8 @@ import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
-type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'codigos'
+type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'atributos' | 'codigos'
+type AtributoVariante = 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'
 type ConSubTab = 'integraciones' | 'api'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
@@ -311,6 +312,82 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
   )
 }
 
+// ─── Catálogo de "Atributos de variante" (talle/color/encaje/formato/sabor·aroma) ────────────
+// Mismo patrón que MotivosList: catálogo por tenant, soft-delete (activo=false). A diferencia
+// de Motivos, acá el "tipo" (atributo) es un filtro de pestaña, no un campo por fila — cada
+// fila es un VALOR de ESE atributo (ej. con la pestaña "Talle" activa: S, M, L, XL).
+const ATRIBUTOS_VARIANTE: { value: AtributoVariante; label: string }[] = [
+  { value: 'talle', label: 'Talle' },
+  { value: 'color', label: 'Color' },
+  { value: 'encaje', label: 'Encaje' },
+  { value: 'formato', label: 'Formato' },
+  { value: 'sabor_aroma', label: 'Sabor / Aroma' },
+]
+
+function AtributoValoresList({ valores, loading, onAdd, onRename, onDelete }: {
+  valores: { id: string; valor: string }[]; loading: boolean
+  onAdd: (valor: string) => Promise<void>
+  onRename: (id: string, valor: string) => Promise<void>
+  onDelete: (id: string) => Promise<void>
+}) {
+  const [nuevo, setNuevo] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
+  const [editValor, setEditValor] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const handleAdd = async () => {
+    if (!nuevo.trim()) return
+    setSaving(true)
+    await onAdd(nuevo.trim())
+    setNuevo(''); setSaving(false)
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex gap-2">
+        <input type="text" value={nuevo} onChange={e => setNuevo(e.target.value)}
+          placeholder="Nuevo valor... (ej: M, Azul, Extra grande)" onKeyDown={e => e.key === 'Enter' && handleAdd()}
+          className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+        <button onClick={handleAdd} disabled={saving || !nuevo.trim()}
+          className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm disabled:opacity-50 hover:bg-accent transition-all">
+          <Plus size={16} />
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
+      ) : valores.length === 0 ? (
+        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Sin valores cargados para este atributo</p>
+      ) : (
+        <div className="flex flex-wrap gap-2">
+          {valores.map(v => (
+            <div key={v.id} className="flex items-center gap-2 pl-3 pr-1.5 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-full">
+              {editId === v.id ? (
+                <>
+                  <input type="text" value={editValor} onChange={e => setEditValor(e.target.value)} autoFocus
+                    onKeyDown={e => e.key === 'Enter' && (async () => { setSaving(true); await onRename(v.id, editValor); setEditId(null); setSaving(false) })()}
+                    className="w-28 px-2 py-0.5 border border-accent rounded-lg text-sm focus:outline-none bg-white dark:bg-gray-800" />
+                  <button onClick={async () => { setSaving(true); await onRename(v.id, editValor); setEditId(null); setSaving(false) }}
+                    className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:bg-green-900/20 rounded-full"><Check size={14} /></button>
+                  <button onClick={() => setEditId(null)} className="p-1 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><X size={14} /></button>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{v.valor}</span>
+                  <button onClick={() => { setEditId(v.id); setEditValor(v.valor) }}
+                    className="p-1 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-full"><Pencil size={12} /></button>
+                  <button onClick={() => onDelete(v.id)}
+                    className="p-1 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-full"><Trash2 size={12} /></button>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MarketplaceSection() {
   const { tenant, user, setTenant } = useAuthStore()
   const canEdit = user?.rol === 'DUEÑO'
@@ -491,6 +568,24 @@ function ModoOperacionSection() {
   )
 }
 
+const CONDICION_IVA_LABEL: Record<string, string> = {
+  RI: 'Responsable Inscripto (RI)',
+  Monotributista: 'Monotributista',
+  Exento: 'Exento',
+}
+
+/** Fila de solo-lectura del resumen de identidad fiscal (F3b: la edición vive en Emisores fiscales). */
+function CampoResumenFiscal({ label, value, mono, className }: { label: string; value?: string | null; mono?: boolean; className?: string }) {
+  return (
+    <div className={className}>
+      <p className="text-[11px] text-gray-400 dark:text-gray-500">{label}</p>
+      <p className={`text-sm ${mono ? 'font-mono' : ''} ${value ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500 italic'}`}>
+        {value || 'Sin cargar'}
+      </p>
+    </div>
+  )
+}
+
 export default function ConfigPage() {
   const searchParams = new URLSearchParams(window.location.search)
   const initialTab = searchParams.get('tab') as Tab | null
@@ -598,6 +693,9 @@ export default function ConfigPage() {
   const [bizCCPreVencDias, setBizCCPreVencDias] = useState<string>((tenant as any)?.cc_notif_pre_venc_dias != null ? String((tenant as any).cc_notif_pre_venc_dias) : '')
   const [bizCumpleCliente, setBizCumpleCliente] = useState<boolean>((tenant as any)?.cumple_notif_cliente ?? false)
   const [bizCumpleDuenio, setBizCumpleDuenio] = useState<boolean>((tenant as any)?.cumple_notif_duenio ?? false)
+
+  // F3b: pointer desde la tarjeta ARCA a la edición del emisor principal en el panel de abajo
+  const emisoresPanelRef = useRef<EmisoresFiscalesPanelHandle>(null)
 
   // Facturación electrónica
   const [bizFactHabilitada,  setBizFactHabilitada]  = useState<boolean>((tenant as any)?.facturacion_habilitada ?? false)
@@ -1121,13 +1219,11 @@ export default function ConfigPage() {
       envio_alerta_pod_pendiente_dias: parseInt(bizAlertaPodDias) || 3,
       envio_alerta_pago_courier_dias: parseInt(bizAlertaPagoDias) || 7,
       envio_alerta_diferencia_pct: parseFloat(bizAlertaDifPct) || 15,
-      // Facturación
+      // Facturación — SOLO el switch on/off (tenant-level). La identidad fiscal (CUIT, razón
+      // social, condición IVA, domicilio, umbral B, token) se escribe EXCLUSIVAMENTE vía
+      // emisores_fiscales (handleSaveFacturacion / EmisoresFiscalesPanel) — cutover mig 271.
+      // Escribirla acá reabriría el drift que causó el bug del CUIT vacío (v1.62→v1.131).
       facturacion_habilitada: bizFactHabilitada,
-      cuit: bizCuit.trim() || null,
-      condicion_iva_emisor: bizCondIva || null,
-      razon_social_fiscal: bizRazonSocial.trim() || null,
-      domicilio_fiscal: bizDomicilioFiscal.trim() || null,
-      umbral_factura_b: parseFloat(bizUmbralB) || 68305.16,
       // Fase 2
       precio_redondeo:       bizPrecioRedondeo,
       moneda:                bizMoneda,
@@ -1147,7 +1243,6 @@ export default function ConfigPage() {
       rrhh_doc_alerta_dias:                Math.max(1, parseInt(bizRrhhDocAlertaDias) || 30),
       rrhh_nomina_supervisor_aprueba:      bizRrhhNominaSupAprueba,
     }
-    if (bizAfipToken.trim()) updatePayload.afipsdk_token = bizAfipToken.trim()
 
     // Clave maestra — se guarda HASHEADA vía RPC `set_clave_maestra` (NO en texto plano).
     // Validación anti-error: si se ingresó una clave nueva, debe repetirse igual y tener ≥6 chars.
@@ -1517,6 +1612,38 @@ export default function ConfigPage() {
     const old = (motivos as any[]).find(m => m.id === id)
     const { error } = await supabase.from('motivos_movimiento').update({ activo: false }).eq('id', id)
     if (error) toast.error(error.message); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['motivos'] }); logActividad({ entidad: 'motivo', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
+  }
+
+  // Atributos de variante (talle/color/encaje/formato/sabor·aroma) — catálogo por atributo
+  const [atribVarianteTipo, setAtribVarianteTipo] = useState<AtributoVariante>('talle')
+  const { data: atributoValores = [], isLoading: loadingAtributoValores } = useQuery({
+    queryKey: ['atributo-variante-valores', tenant?.id, atribVarianteTipo],
+    queryFn: async () => {
+      const { data } = await supabase.from('atributos_variante_valores')
+        .select('id, valor').eq('tenant_id', tenant!.id).eq('atributo', atribVarianteTipo).eq('activo', true)
+        .order('orden').order('valor')
+      return data ?? []
+    },
+    enabled: !!tenant,
+  })
+  const addAtributoValor = async (valor: string) => {
+    const { error } = await supabase.from('atributos_variante_valores')
+      .insert({ tenant_id: tenant!.id, atributo: atribVarianteTipo, valor })
+    if (error) toast.error(/duplicate key|unique/i.test(error.message) ? 'Ese valor ya existe' : error.message)
+    else { toast.success('Valor agregado'); qc.invalidateQueries({ queryKey: ['atributo-variante-valores'] }); logActividad({ entidad: 'atributo_variante', entidad_nombre: `${atribVarianteTipo}: ${valor}`, accion: 'crear', pagina: '/configuracion' }) }
+  }
+  const renameAtributoValor = async (id: string, valor: string) => {
+    if (!valor.trim()) return
+    const { error } = await supabase.from('atributos_variante_valores').update({ valor: valor.trim() }).eq('id', id)
+    if (error) toast.error(/duplicate key|unique/i.test(error.message) ? 'Ese valor ya existe' : error.message)
+    else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['atributo-variante-valores'] }) }
+  }
+  const deleteAtributoValor = async (id: string) => {
+    const old = (atributoValores as any[]).find(v => v.id === id)
+    if (!confirm(`¿Eliminar "${old?.valor}"? Los ingresos de inventario que ya usaron este valor no se modifican.`)) return
+    const { error } = await supabase.from('atributos_variante_valores').update({ activo: false }).eq('id', id)
+    if (error) toast.error(error.message)
+    else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['atributo-variante-valores'] }); logActividad({ entidad: 'atributo_variante', entidad_id: id, entidad_nombre: old?.valor, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
   // Combos
@@ -2629,7 +2756,9 @@ export default function ConfigPage() {
           </div>
           <div className="px-5 py-4 space-y-3">
             <p className="text-xs text-gray-400 dark:text-gray-500">
-              Completá los datos fiscales del negocio para emitir comprobantes electrónicos A, B y C.
+              {tAny?.cuit
+                ? 'Identidad fiscal del emisor principal. Se edita desde "Emisores fiscales" (más abajo) — un único lugar para no divergir.'
+                : 'Completá los datos fiscales del negocio para emitir comprobantes electrónicos A, B y C.'}
             </p>
             {/* Logo del negocio — sale en la factura y el presupuesto */}
             <div className="flex items-center gap-4 rounded-xl border border-gray-200 dark:border-gray-700 p-3">
@@ -2655,108 +2784,163 @@ export default function ConfigPage() {
                 </div>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CUIT</label>
-                <input type="text" value={bizCuit} onChange={e => setBizCuit(e.target.value)}
-                  placeholder="20-12345678-9"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Condición IVA del emisor</label>
-                <div className="relative">
-                  <select value={bizCondIva} onChange={e => setBizCondIva(e.target.value)}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
-                    <option value="">Seleccionar…</option>
-                    <option value="RI">Responsable Inscripto (RI)</option>
-                    <option value="Monotributista">Monotributista</option>
-                    <option value="Exento">Exento</option>
-                  </select>
-                  <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            {!tAny?.cuit ? (
+              <>
+                {/* F3b: este bloque editable SOLO existe para el alta inicial (todavía no hay
+                    emisor principal). Una vez creado, la edición pasa a "Emisores fiscales" —
+                    dejar de ser un 2º editor era el pedido de GO tras el cutover mig 271. */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CUIT</label>
+                    <input type="text" value={bizCuit} onChange={e => setBizCuit(e.target.value)}
+                      placeholder="20-12345678-9"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Condición IVA del emisor</label>
+                    <div className="relative">
+                      <select value={bizCondIva} onChange={e => setBizCondIva(e.target.value)}
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        <option value="">Seleccionar…</option>
+                        <option value="RI">Responsable Inscripto (RI)</option>
+                        <option value="Monotributista">Monotributista</option>
+                        <option value="Exento">Exento</option>
+                      </select>
+                      <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Razón social fiscal</label>
+                    <input type="text" value={bizRazonSocial} onChange={e => setBizRazonSocial(e.target.value)}
+                      placeholder="Razón social ante AFIP"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Domicilio fiscal</label>
+                    <input type="text" value={bizDomicilioFiscal} onChange={e => setBizDomicilioFiscal(e.target.value)}
+                      placeholder="Calle 123, Ciudad"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Umbral Factura B ($) <span className="text-gray-400 font-normal">— RG 5616</span>
+                    </label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} value={bizUmbralB} onChange={e => setBizUmbralB(e.target.value)} min="0"
+                      placeholder="68305.16"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    <p className="text-xs text-gray-400 mt-0.5">Ventas ≥ este monto requieren DNI/CUIT del cliente</p>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Token AfipSDK</label>
+                    <div className="relative">
+                      <input type={showAfipToken ? 'text' : 'password'} value={bizAfipToken} onChange={e => setBizAfipToken(e.target.value)}
+                        placeholder="Token de afipsdk.com"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      <button type="button" onClick={() => setShowAfipToken(v => !v)}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                        <Eye size={14} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
+                  </div>
                 </div>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Razón social fiscal</label>
-                <input type="text" value={bizRazonSocial} onChange={e => setBizRazonSocial(e.target.value)}
-                  placeholder="Razón social ante AFIP"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Domicilio fiscal</label>
-                <input type="text" value={bizDomicilioFiscal} onChange={e => setBizDomicilioFiscal(e.target.value)}
-                  placeholder="Calle 123, Ciudad"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
-                  Umbral Factura B ($) <span className="text-gray-400 font-normal">— RG 5616</span>
-                </label>
-                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizUmbralB} onChange={e => setBizUmbralB(e.target.value)} min="0"
-                  placeholder="68305.16"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                <p className="text-xs text-gray-400 mt-0.5">Ventas ≥ este monto requieren DNI/CUIT del cliente</p>
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Token AfipSDK</label>
-                <div className="relative">
-                  <input type={showAfipToken ? 'text' : 'password'} value={bizAfipToken} onChange={e => setBizAfipToken(e.target.value)}
-                    placeholder="Token de afipsdk.com"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                  <button type="button" onClick={() => setShowAfipToken(v => !v)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                    <Eye size={14} />
+                {/* Datos que salen en factura / presupuesto / remito (mig 212) */}
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Datos para los comprobantes (factura / presupuesto / remito)</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ingresos Brutos</label>
+                      <input type="text" value={bizIngBrutos} onChange={e => setBizIngBrutos(e.target.value)}
+                        placeholder="N° de Ingresos Brutos / Convenio"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Inicio de Actividades</label>
+                      <input type="date" value={bizInicioAct} onChange={e => setBizInicioAct(e.target.value)}
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sitio web</label>
+                      <input type="text" value={bizSitioWeb} onChange={e => setBizSitioWeb(e.target.value)}
+                        placeholder="www.minegocio.com"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Banco</label>
+                      <input type="text" value={bizBanco} onChange={e => setBizBanco(e.target.value)}
+                        placeholder="Banco (para transferencias)"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CBU</label>
+                      <input type="text" value={bizCbu} onChange={e => setBizCbu(e.target.value)}
+                        placeholder="0000000000000000000000"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Alias CBU</label>
+                      <input type="text" value={bizAliasCbu} onChange={e => setBizAliasCbu(e.target.value)}
+                        placeholder="mi.alias.cbu"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Leyenda / nota del comprobante</label>
+                      <textarea value={bizLeyenda} onChange={e => setBizLeyenda(e.target.value)} rows={2}
+                        placeholder="Ej.: ¡Gracias por su compra! · Seguinos en @minegocio"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-end pt-2">
+                  <button onClick={handleSaveFacturacion} disabled={savingFact}
+                    className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                    {savingFact ? 'Guardando...' : 'Guardar datos fiscales'}
                   </button>
                 </div>
-                <p className="text-xs text-gray-400 mt-0.5">Obtenelo en afipsdk.com. Se guarda encriptado.</p>
-              </div>
-            </div>
-            {/* Datos que salen en factura / presupuesto / remito (mig 212) */}
-            <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
-              <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">Datos para los comprobantes (factura / presupuesto / remito)</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ingresos Brutos</label>
-                  <input type="text" value={bizIngBrutos} onChange={e => setBizIngBrutos(e.target.value)}
-                    placeholder="N° de Ingresos Brutos / Convenio"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              </>
+            ) : (
+              <>
+                {/* F3b: resumen de solo lectura — la edición vive en "Emisores fiscales" (abajo),
+                    que desde el cutover mig 271 escribe el MISMO registro (emisores_fiscales). */}
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Identidad fiscal del emisor principal</p>
+                    <button type="button" onClick={() => emisoresPanelRef.current?.editarPrincipal()}
+                      className="text-xs text-accent hover:underline flex items-center gap-1 shrink-0">
+                      <Pencil size={12} /> Editar en Emisores fiscales
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2.5">
+                    <CampoResumenFiscal label="CUIT" value={tAny.cuit} mono />
+                    <CampoResumenFiscal label="Razón social fiscal" value={tAny.razon_social_fiscal} />
+                    <CampoResumenFiscal label="Condición IVA" value={tAny.condicion_iva_emisor ? (CONDICION_IVA_LABEL[tAny.condicion_iva_emisor] ?? tAny.condicion_iva_emisor) : null} />
+                    <CampoResumenFiscal label="Domicilio fiscal" value={tAny.domicilio_fiscal} />
+                    <CampoResumenFiscal label="Umbral Factura B" value={tAny.umbral_factura_b ? `$${Number(tAny.umbral_factura_b).toLocaleString('es-AR')}` : null} />
+                    <CampoResumenFiscal label="Token AfipSDK" value={tAny.afipsdk_token ? 'Configurado' : null} />
+                    <CampoResumenFiscal label="Ingresos Brutos" value={tAny.ingresos_brutos} />
+                    <CampoResumenFiscal label="Inicio de actividades" value={tAny.inicio_actividades ? new Date(tAny.inicio_actividades).toLocaleDateString('es-AR') : null} />
+                    <CampoResumenFiscal label="Banco" value={tAny.banco} />
+                    <CampoResumenFiscal label="CBU" value={tAny.cbu} mono />
+                    <CampoResumenFiscal label="Alias CBU" value={tAny.alias_cbu} />
+                    <CampoResumenFiscal label="Leyenda del comprobante" value={tAny.leyenda_comprobante} className="md:col-span-2" />
+                  </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Inicio de Actividades</label>
-                  <input type="date" value={bizInicioAct} onChange={e => setBizInicioAct(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                {/* Sitio web: dato de contacto del negocio (no es identidad fiscal per-CUIT) —
+                    sin equivalente en Emisores fiscales, sigue editable acá. */}
+                <div className="flex items-end gap-2">
+                  <div className="flex-1">
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sitio web</label>
+                    <input type="text" value={bizSitioWeb} onChange={e => setBizSitioWeb(e.target.value)}
+                      placeholder="www.minegocio.com"
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  </div>
+                  <button onClick={handleSaveFacturacion} disabled={savingFact}
+                    className="px-4 py-2 bg-accent hover:bg-accent/90 text-white font-medium rounded-xl transition-all disabled:opacity-60 text-sm shrink-0">
+                    {savingFact ? 'Guardando…' : 'Guardar sitio web'}
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sitio web</label>
-                  <input type="text" value={bizSitioWeb} onChange={e => setBizSitioWeb(e.target.value)}
-                    placeholder="www.minegocio.com"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Banco</label>
-                  <input type="text" value={bizBanco} onChange={e => setBizBanco(e.target.value)}
-                    placeholder="Banco (para transferencias)"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CBU</label>
-                  <input type="text" value={bizCbu} onChange={e => setBizCbu(e.target.value)}
-                    placeholder="0000000000000000000000"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Alias CBU</label>
-                  <input type="text" value={bizAliasCbu} onChange={e => setBizAliasCbu(e.target.value)}
-                    placeholder="mi.alias.cbu"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Leyenda / nota del comprobante</label>
-                  <textarea value={bizLeyenda} onChange={e => setBizLeyenda(e.target.value)} rows={2}
-                    placeholder="Ej.: ¡Gracias por su compra! · Seguinos en @minegocio"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
-              </div>
-            </div>
+              </>
+            )}
             {/* Modo de emisión: homologación (prueba) vs producción (CAE fiscal real) */}
             <div className={`rounded-xl border p-3 ${bizAfipProduccion ? 'border-emerald-300 bg-emerald-50 dark:border-emerald-800/60 dark:bg-emerald-900/20' : 'border-amber-300 bg-amber-50 dark:border-amber-800/60 dark:bg-amber-900/20'}`}>
               <div className="flex items-start justify-between gap-3">
@@ -2789,12 +2973,6 @@ export default function ConfigPage() {
               {!afipDatosListos && !bizAfipProduccion && (
                 <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">Cargá y guardá CUIT + Token AfipSDK para poder pasar a producción.</p>
               )}
-            </div>
-            <div className="flex justify-end pt-2">
-              <button onClick={handleSaveFacturacion} disabled={savingFact}
-                className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                {savingFact ? 'Guardando...' : 'Guardar datos fiscales'}
-              </button>
             </div>
           </div>
 
@@ -3027,7 +3205,7 @@ export default function ConfigPage() {
       )}
 
       {/* ── Emisores fiscales (multi-CUIT, F5) ─────────────────────────────── */}
-      {tab === 'facturacion' && canEdit && <EmisoresFiscalesPanel />}
+      {tab === 'facturacion' && canEdit && <EmisoresFiscalesPanel ref={emisoresPanelRef} />}
 
       {tab === 'inventario' && (
         <div className="space-y-4">
@@ -3040,6 +3218,7 @@ export default function ConfigPage() {
               { id: 'estados' as InvSubTab, label: 'Estados', icon: CircleDot },
               { id: 'motivos' as InvSubTab, label: 'Motivos', icon: MessageSquare },
               { id: 'unidades' as InvSubTab, label: 'Unidades', icon: Ruler },
+              { id: 'atributos' as InvSubTab, label: 'Atributos', icon: Shirt },
               { id: 'codigos' as InvSubTab, label: 'Códigos', icon: ScanBarcode },
               // Reglas (FIFO/conteos), Ubicaciones, Estados y Códigos GS1 son WMS → solo avanzado
             ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
@@ -3865,6 +4044,38 @@ export default function ConfigPage() {
                     </>
                   )}
                 </div>
+              ))}
+            </div>
+          )}
+        </div>
+          )}
+
+          {invSubTab === 'atributos' && (
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
+          <div className="flex items-center gap-2 mb-1">
+            <Shirt size={18} className="text-accent" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Atributos de variante</h2>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Valores válidos para talle, color, encaje, formato y sabor/aroma. Se usan al recibir stock y al elegir qué variante vender —
+            evitan que "M" y "Mediana" terminen siendo dos cosas distintas sin que te des cuenta. Activá el atributo que corresponda en la ficha del producto (pestaña Trazabilidad).
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {ATRIBUTOS_VARIANTE.map(a => (
+              <button key={a.value} onClick={() => setAtribVarianteTipo(a.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all
+                  ${atribVarianteTipo === a.value ? 'bg-primary text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
+                {a.label}
+              </button>
+            ))}
+          </div>
+          {canEdit ? (
+            <AtributoValoresList valores={atributoValores as any[]} loading={loadingAtributoValores}
+              onAdd={addAtributoValor} onRename={renameAtributoValor} onDelete={deleteAtributoValor} />
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {(atributoValores as any[]).map(v => (
+                <span key={v.id} className="px-3 py-1.5 bg-gray-50 dark:bg-gray-700 rounded-full text-sm text-gray-800 dark:text-gray-100">{v.valor}</span>
               ))}
             </div>
           )}

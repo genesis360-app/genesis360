@@ -401,6 +401,13 @@ Al seleccionar producto (scan o búsqueda manual), el formulario de ingreso se p
 
 **ISS-131 (v1.8.32):** La query `productosBusqueda` ahora incluye `estado_id` y `proveedor_id` en el SELECT. Antes no los seleccionaba, por lo que los defaults llegaban siempre vacíos.
 
+**Bug hermano (2026-07-18):** ISS-131 arregló el lado de LECTURA; hasta esta fecha el lado de
+**GUARDADO** seguía roto — el `payload` de `handleSubmit`/`handleDuplicate` en `ProductoFormPage`
+armaba `ubicacion_id` pero se olvidaba `estado_id`, así que "Estado de inventario predeterminado"
+nunca llegaba a persistirse (quedaba `null` en silencio pese al toast "Producto actualizado"), y
+por lo tanto este default nunca tenía nada que ofrecer. Corregido + regresión e2e (spec 90,
+corrida primero SIN el fix para confirmar que lo detecta). Detalle: UAT §34.
+
 El operador puede modificar cualquier campo antes de confirmar.
 
 ---
@@ -428,6 +435,18 @@ Modal: flex flex-col · max-h-[90vh]
 
 ---
 
+## Atributos de variante (talle/color/etc.) — 🟡 EN DEV, commiteado y pusheado (`a99bb270`/`c559f831`/`90de330b`), pendiente de mergear a `main`
+
+Badges de talle/color/encaje/formato/sabor_aroma en el picker de "Rebaje manual", panel de detalle de
+movimiento, vista agrupada por ubicación y tabla de líneas por producto — respaldados por un catálogo
+configurable nuevo (mig 273, `Config → Inventario → Atributos`). Obligatorio (no opcional) en TODO
+movimiento de stock cuando el producto tiene el atributo activo: ingreso simple, ingreso masivo, rebaje
+masivo (con filtro de líneas por valor elegido), mover/partir LPN (`LpnAccionesModal`, hereda el
+atributo) y traslados entre sucursales (mig 275, snapshotea y propaga). No confundir con "Grupo de
+variantes" (SKU separado). Detalle completo: [[wiki/features/atributos-variante]].
+
+---
+
 ## Links relacionados
 
 - [[wiki/features/ventas-pos]]
@@ -436,5 +455,6 @@ Modal: flex flex-col · max-h-[90vh]
 - [[wiki/features/escaneo-barcode]]
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/productos]]
+- [[wiki/features/atributos-variante]]
 - [[wiki/database/triggers]]
 - [[wiki/database/schema-overview]]

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { resolverScanCompuesto } from '@/lib/scanCompuesto'
 import { useAuthStore } from '@/store/authStore'
 import { estadoOCdesdeRecibido, superaOverReceipt, tieneFaltante, esAjusteCantidad } from '@/lib/recepcionLogic'
@@ -79,6 +80,7 @@ type ScanItem = {
   match: {
     id: string; nombre: string; sku: string; precio_costo: number
     tiene_series: boolean; tiene_lote: boolean; tiene_vencimiento: boolean
+    tiene_talle: boolean; tiene_color: boolean; tiene_encaje: boolean; tiene_formato: boolean; tiene_sabor_aroma: boolean
     unidad_medida: string
   } | null
 }
@@ -433,6 +435,16 @@ export default function RecepcionesPage() {
           errores.push(`"${it.producto_nombre}" requiere fecha de vencimiento`)
         if (it.tiene_series && !it.series_txt.trim())
           errores.push(`"${it.producto_nombre}" requiere números de serie`)
+        if (it.tiene_talle && !it.talle?.trim())
+          errores.push(`"${it.producto_nombre}" requiere talle`)
+        if (it.tiene_color && !it.color?.trim())
+          errores.push(`"${it.producto_nombre}" requiere color`)
+        if (it.tiene_encaje && !it.encaje?.trim())
+          errores.push(`"${it.producto_nombre}" requiere encaje`)
+        if (it.tiene_formato && !it.formato?.trim())
+          errores.push(`"${it.producto_nombre}" requiere formato`)
+        if (it.tiene_sabor_aroma && !it.sabor_aroma?.trim())
+          errores.push(`"${it.producto_nombre}" requiere sabor/aroma`)
       }
       if (errores.length > 0) {
         // Auto-expandir ítems con error para que el usuario vea los campos faltantes
@@ -444,7 +456,12 @@ export default function RecepcionesPage() {
           const conError =
             (it.tiene_lote && !it.nro_lote?.trim()) ||
             (it.tiene_vencimiento && !it.fecha_vencimiento) ||
-            (it.tiene_series && !it.series_txt.trim())
+            (it.tiene_series && !it.series_txt.trim()) ||
+            (it.tiene_talle && !it.talle?.trim()) ||
+            (it.tiene_color && !it.color?.trim()) ||
+            (it.tiene_encaje && !it.encaje?.trim()) ||
+            (it.tiene_formato && !it.formato?.trim()) ||
+            (it.tiene_sabor_aroma && !it.sabor_aroma?.trim())
           return conError ? { ...it, expanded: true } : it
         }))
         toast.error(errores[0])
@@ -832,7 +849,7 @@ export default function RecepcionesPage() {
         // 1. Por barcode (SKU exacto)
         if (item.barcode) {
           const { data: d } = await supabase.from('productos')
-            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida')
+            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida')
             .eq('tenant_id', tenant!.id).eq('activo', true).eq('sku', item.barcode).maybeSingle()
           prod = d
         }
@@ -840,7 +857,7 @@ export default function RecepcionesPage() {
         if (!prod) {
           const palabras = item.nombre.split(/\s+/).slice(0, 2).join(' ')
           const { data: d } = await supabase.from('productos')
-            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida')
+            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida')
             .eq('tenant_id', tenant!.id).eq('activo', true).ilike('nombre', `%${palabras}%`).limit(1).maybeSingle()
           prod = d
         }
@@ -850,7 +867,13 @@ export default function RecepcionesPage() {
           nombre_scan: item.nombre,
           cantidad: item.cantidad,
           precio_unitario: item.precio_unitario,
-          match: prod ? { id: prod.id, nombre: prod.nombre, sku: prod.sku, precio_costo: prod.precio_costo ?? 0, tiene_series: prod.tiene_series ?? false, tiene_lote: prod.tiene_lote ?? false, tiene_vencimiento: prod.tiene_vencimiento ?? false, unidad_medida: prod.unidad_medida ?? 'unidad' } : null,
+          match: prod ? {
+            id: prod.id, nombre: prod.nombre, sku: prod.sku, precio_costo: prod.precio_costo ?? 0,
+            tiene_series: prod.tiene_series ?? false, tiene_lote: prod.tiene_lote ?? false, tiene_vencimiento: prod.tiene_vencimiento ?? false,
+            tiene_talle: prod.tiene_talle ?? false, tiene_color: prod.tiene_color ?? false, tiene_encaje: prod.tiene_encaje ?? false,
+            tiene_formato: prod.tiene_formato ?? false, tiene_sabor_aroma: prod.tiene_sabor_aroma ?? false,
+            unidad_medida: prod.unidad_medida ?? 'unidad',
+          } : null,
         } as ScanItem
       }))
       setScanItems(matched)
@@ -871,6 +894,11 @@ export default function RecepcionesPage() {
       tiene_series: i.match!.tiene_series,
       tiene_lote: i.match!.tiene_lote,
       tiene_vencimiento: i.match!.tiene_vencimiento,
+      tiene_talle: i.match!.tiene_talle,
+      tiene_color: i.match!.tiene_color,
+      tiene_encaje: i.match!.tiene_encaje,
+      tiene_formato: i.match!.tiene_formato,
+      tiene_sabor_aroma: i.match!.tiene_sabor_aroma,
       unidad_medida: i.match!.unidad_medida,
       precio_costo_default: i.match!.precio_costo,
       cantidad_recibida: String(i.cantidad),
@@ -1385,41 +1413,36 @@ export default function RecepcionesPage() {
                       {it.tiene_talle && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Talle / Talla</label>
-                          <input type="text" value={it.talle} onChange={e => updItem(it._key, { talle: e.target.value })}
-                            placeholder="Ej: M, 42"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="talle" value={it.talle}
+                            onChange={v => updItem(it._key, { talle: v })} placeholder="Ej: M, 42" />
                         </div>
                       )}
                       {it.tiene_color && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Color</label>
-                          <input type="text" value={it.color} onChange={e => updItem(it._key, { color: e.target.value })}
-                            placeholder="Ej: Rojo"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="color" value={it.color}
+                            onChange={v => updItem(it._key, { color: v })} placeholder="Ej: Rojo" />
                         </div>
                       )}
                       {it.tiene_encaje && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Encaje</label>
-                          <input type="text" value={it.encaje} onChange={e => updItem(it._key, { encaje: e.target.value })}
-                            placeholder="Ej: Slim fit"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="encaje" value={it.encaje}
+                            onChange={v => updItem(it._key, { encaje: v })} placeholder="Ej: Slim fit" />
                         </div>
                       )}
                       {it.tiene_formato && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Formato</label>
-                          <input type="text" value={it.formato} onChange={e => updItem(it._key, { formato: e.target.value })}
-                            placeholder="Ej: 500g"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="formato" value={it.formato}
+                            onChange={v => updItem(it._key, { formato: v })} placeholder="Ej: 500g" />
                         </div>
                       )}
                       {it.tiene_sabor_aroma && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Sabor / Aroma</label>
-                          <input type="text" value={it.sabor_aroma} onChange={e => updItem(it._key, { sabor_aroma: e.target.value })}
-                            placeholder="Ej: Vainilla"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          <AtributoValorSelect tenantId={tenant!.id} atributo="sabor_aroma" value={it.sabor_aroma}
+                            onChange={v => updItem(it._key, { sabor_aroma: v })} placeholder="Ej: Vainilla" />
                         </div>
                       )}
                       <div>

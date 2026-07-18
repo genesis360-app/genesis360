@@ -6,7 +6,156 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 (2026-07-17, ~03:00 · **v1.133.0 EN DEPLOY** — gate pasado, batería verde, commits `98a67a82`+bump pusheados · falta: migs 271+272 a PROD → merge → release → verificar)
+> ### 📍 ARRANCÁ ACÁ (2026-07-18) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + atributos de variante, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main` · **+4 fixes/features nuevos post-`/clear`, SIN COMMITEAR (ver abajo) + mig 276 nueva SOLO en DEV**
+>
+> **🐛🚚 4 fixes/features nuevos esta sesión (post-`/clear`, SIN COMMITEAR)** — disparados por GO
+> pidiendo usuarios de prueba de una 2da sucursal (Sur) para testear cross-sucursal:
+> 1. **"Estado de inventario predeterminado" del producto no persistía al guardar** —
+>    `ProductoFormPage` armaba `ubicacion_id` en el payload pero se olvidaba `estado_id`. Fix +
+>    **e2e spec 90** (confirmado que detecta la regresión). Sin migraciones. UAT §34.
+> 2. **`ProductosPage` (listado) no mostraba categoría/estado/ubicación a simple vista** —
+>    agregados como badges + panel expandido. Query ahora trae `estados_inventario`/`ubicaciones`.
+> 3. **Traslados: ubicaciones GLOBALES no aparecían en "Confirmar recepción"** —
+>    `TrasladosPanel` usaba `.eq('sucursal_id', X)` (nunca matchea `NULL`) en vez de `.or(...)`.
+>    Fix + **regresión agregada al spec 30** (corrido sin/con el fix). UAT §35.
+> 4. **"Mover" del LPN hacia otra sucursal reubicaba stock DIRECTO, sin traslado real** — saltaba
+>    el mecanismo de tránsito+confirmación (riesgo REGLA #0: stock aparecía en destino sin
+>    confirmación física). Fix: genera un traslado real cuando cruza sucursal (`traslado_items`
+>    gana `ubicacion_sugerida_id`, **mig 276**). **Validado con DOS usuarios reales de sucursales
+>    distintas** (no el owner simulando ambos lados) — **e2e specs 92/93 nuevos**. UAT §36.
+> 5. **Validación RLS cross-sucursal con usuarios reales** — **e2e spec 94 nuevo** (API-only):
+>    confirma que `inventario_lineas`/`caja_sesiones` aíslan bien; confirma (sin alarma, ya
+>    documentado desde v1.75.0) que `traslados` es tenant-wide a propósito. UAT §37.
+>
+> Usuarios DEV nuevos: `supervisor2@test.com` (SUPERVISOR, Sucursal Sur) + password reseteada de
+> `deposito@genesis360.com` (DEPOSITO, Sucursal Sur, ya existía). Credenciales en
+> `tests/e2e/.env.test.local`. Verde: tsc · build · **unit 1080+5** · **e2e 69/69** (sweep de
+> regresión) + specs 90/92/93/94 dedicados. Detalle completo: `log.md` (2026-07-18, entrada
+> "Testing cross-sucursal...") y `tests/specs/uat-modo-basico.md` §34-§37.
+>
+> **Qué se hizo esta sesión (3 entregas, todas en `dev`, ninguna en PROD):**
+>
+> **1. F3b — ARCA deja de ser 2º editor de identidad fiscal.** La tarjeta "Facturación Electrónica
+> (ARCA)" de `ConfigPage.tsx` pasa a RESUMEN readonly + botón "Editar en Emisores fiscales" cuando el
+> tenant ya tiene CUIT (el formulario completo se mantiene solo para el alta sin CUIT).
+> `EmisoresFiscalesPanel.tsx` gana `editarPrincipal()` vía `forwardRef`/`useImperativeHandle`. 🛑 Bug
+> REGLA #0 corregido de paso: `handleSaveBiz` seguía escribiendo CUIT/condición IVA/razón
+> social/domicilio/umbral B/token AfipSDK directo a `tenants` (la mig 271 no lo bloqueaba a nivel DB,
+> solo por convención) → reabría el drift del bug histórico del CUIT vacío
+> ([[reference_comprobante_cuit_vacio_incidente]]); sacado. Sin migraciones nuevas.
+> **Pendiente: GO no confirmó haber visto el resumen+botón en el dev server** (probó variantes, no
+> reportó nada de ARCA) — verificar antes de mergear.
+>
+> **2. Sistema "Atributos de variante" (talle/color/encaje/formato/sabor·aroma) pasa a ser FUNCIONAL
+> de punta a punta.** GO reportó que esos toggles del producto "no hacían nada". Se construyó en 3
+> rondas (GO probó entre cada una y encontró bugs reales, no cosméticos):
+> - **Ronda 1** (`a99bb270`): catálogo configurable nuevo (**mig 273**, tabla
+>   `atributos_variante_valores`) + sub-pestaña Config→Inventario→Atributos + `AtributoValorSelect.tsx`
+>   en Recepciones/Ingreso manual + badges en InventarioPage + el picker "Elegir posición de rebaje" de
+>   VentasPage (gobierna la línea real que se descuenta, no es cosmético) extendido a talle/color.
+> - **Ronda 2** (`c559f831`): GO probó y encontró 3 bugs — (a) el atributo no era obligatorio en el
+>   ingreso, (b) el despacho/venta tampoco lo exigía (picker de rebaje era opcional → podía cobrarse
+>   sin desambiguar), (c) "Grupo de variantes" y "Atributos de variante" son sistemas incompatibles y
+>   nada lo impedía — un producto de prueba terminó con AMBOS activos. Fix: obligatorio en
+>   Recepciones/Ingreso manual (patrón `tiene_lote`), bloqueo de venta ambigua (patrón `tiene_series`,
+>   función `atributoAmbiguoEnStock`), y **mig 274** (`chk_productos_grupo_sin_atributos_variante`,
+>   CHECK constraint verificado que rechaza incluso por SQL directo — REGLA #0, guard server-side).
+> - **Ronda 3** (`90de330b`): GO probó de nuevo — el ingreso SIMPLE (Inventario→Agregar stock→Ingreso)
+>   seguía sin pedir el atributo pese al fix de ronda 2. Causa raíz real: el buscador de productos de
+>   "Ingreso manual" no traía `tiene_talle`/etc. en el `SELECT` → `selectedProduct.tiene_talle` quedaba
+>   `undefined` sin importar el valor real en la base, así que la validación (ya escrita en ronda 2)
+>   nunca se disparaba. El mismo patrón de bug (query sin las 5 columnas nuevas) apareció en **7
+>   queries distintas** (InventarioPage ×3, RecepcionesPage ×2 scan-ticket, MasivoModal ×2), encontradas
+>   grepeando por `tiene_lote` sin `tiene_talle` en el mismo `.select()` — no adivinadas. Por pedido
+>   explícito de GO ("cualquier movimiento del inventario"), se extendió a TODO el ciclo de vida del
+>   stock: `MasivoModal` (ingreso y rebaje masivo, soporte real, no bloqueo), grilla inline de Ingreso
+>   masivo, `LpnAccionesModal` (tabs Editar y Mover — Mover perdía los atributos al partir stock a otra
+>   ubicación), y Traslados entre sucursales (**mig 275** nueva, `traslado_items` no tenía las columnas;
+>   despacho/recepción/cancelación ahora las propagan). 12 unit tests nuevos
+>   (`atributosVariante.test.ts`) + spec e2e **89** escrito y corrido (verificado con query directa a la
+>   base). UAT §33 documenta las 12 filas de cobertura.
+>
+> Detalle completo de las 3 rondas: [[wiki/features/atributos-variante]]. Verde acumulado: tsc · build
+> · unit **1075+5** · e2e **17/17**.
+>
+> **3. Wiki de pricing corregido** — Federico Messina (cofundador, acceso propio a GitHub/Claude desde
+> esta semana) encontró que `planes-pricing.md` mostraba precios VIEJOS ($4.900/$9.900) pese a que el
+> pricing v2 ($60k/$100k lista, $54k/$90k con débito automático) está en PROD desde v1.115.0. Causa:
+> un update anterior había sido un PARCHE (agregó lo nuevo sin reconciliar lo viejo). Corregido en
+> `planes-pricing.md`, `app-reference.md` y `suscripciones-planes.md`. `npm run ai:knowledge` corrido y
+> commiteado — falta el **redeploy de la EF `ai-assistant` en DEV y PROD** para que el Asistente IA
+> in-app aprenda los precios corregidos. Regla nueva guardada en memoria:
+> [[feedback_wiki_actualizacion_completa_sin_contradicciones]] (reconciliar todo lo relacionado al
+> tocar el wiki, no solo agregar lo nuevo).
+>
+> **▶ PENDIENTE INMEDIATO (antes de mergear `dev` → `main` / aplicar migs 274+275+276 en PROD):**
+> 1. 🛑 GO todavía no confirmó haber probado la RONDA 3 (la que arregla el bug de las 7 queries) — probó
+>    rondas 1 y 2 y encontró los bugs de arriba, pero el fix de ronda 3 recién se commiteó al final de
+>    la sesión. Antes de mergear, repetir el flujo real: Config→Inventario→Atributos (cargar 2-3
+>    talles) → producto de prueba con "Talle" activado → Ingreso SIMPLE por SKU (el que había fallado)
+>    → Ingreso masivo → Venta con picker de rebaje → LpnAccionesModal (Editar y Mover) → un traslado
+>    entre sucursales.
+> 2. GO tampoco confirmó haber visto el resumen ARCA de F3b en ConfigPage.
+> 3. 🛑 GO tampoco probó a mano todavía el traslado real desde LpnAccionesModal (fix #4 de arriba) —
+>    validado por Claude con e2e (specs 92/93, 2 usuarios reales), pero falta que GO lo vea andar en
+>    el dev server: LPN → Mover → elegir OTRA sucursal → "Ubicación destino" se repuebla con las de
+>    esa sucursal → Despachar traslado → aparece en tab Traslados → la otra sucursal confirma
+>    recepción con la ubicación ya precargada.
+> 4. Redeployar la EF `ai-assistant` (DEV y PROD) con el `knowledge.generated.ts` regenerado (pricing).
+> 5. Diferido, no bloqueante: `venta_item_despachos` no snapshotea el talle/color consumido en el
+>    historial post-venta · `selectedLineasInfo` (resumen de selección múltiple en InventarioPage,
+>    traslados) sin extender con atributos · e2e formal para rebaje-masivo-ambigüedad y
+>    LpnAccionesModal-editar (hoy solo unit + code review).
+
+> ### 📍 ESTADO ANTERIOR (2026-07-17, cierre release) — **PROD = DEV = v1.133.0** · migs **001-272** en DEV y PROD · dev pusheado · nada sin deployar · drift identidad fiscal **0** en ambos
+> **Qué acaba de pasar (3 releases en 2 días):** v1.131.0 (fix CUIT vacío en comprobantes — bug de un mes
+> en PROD) → v1.132.0 (`<Toggle>` estándar) → **v1.133.0 (cutover de IDENTIDAD FISCAL A FUENTE ÚNICA:
+> `emisores_fiscales` manda, `tenants.*` fiscal es espejo de solo lectura; + fix búsqueda del historial
+> server-side)**. Detalle en los bloques de abajo y en `log.md`.
+>
+> **▶ PENDIENTES PRIORIZADOS (con las mejoras sugeridas por Claude):**
+> **A. Plan de raíz identidad fiscal (continuación):**
+> 1. **F3b — ARCA deja de ser 2º editor**: la sección "Facturación (ARCA)" pasa a resumen readonly +
+>    botón al panel de Emisores. **UX que GO debe VER con la app en la mano antes de ejecutar.**
+> 2. **F4 — DROP de las columnas fiscales de `tenants`** (muere la duplicación físicamente). Criterios:
+>    migrar los lectores no-PDF que hoy van vía espejo (GastosPage, DashFacturacionArea,
+>    CierresContablesPanel, `useAuthStore.tenant.*` fiscal) → grep lectores = 0 → drift 0 sostenido
+>    (correr la auditoría del final de mig 271 periódicamente) → soak → mig de DROP.
+> 3. **Mejora EF `emitir-factura`**: auto-invalidar el **cache de TA WSAA (mig 264)** cuando WSFE
+>    devuelve fault/basura — un TA obtenido durante la caída de AFIP quedó envenenado y hubo que
+>    borrarlo A MANO (`delete from afip_wsaa_ta where cuit=...`). Hoy no se auto-cura.
+> 4. **Unit tests de contenido de `facturasPDF.ts`** (sigue con CERO tests — pendiente del incidente
+>    del CUIT vacío: "nadie mira el papel").
+> **B. Suite e2e (SIGUE no determinística — causa raíz abierta):**
+> 5. Migrar los **243 `waitForTimeout` fijos en 69 specs** a esperas de resultado (la causa de fondo).
+> 6. Los **~18 `test.skip` decididos con `isVisible()`** que quedan (el spec 42 fue el caso nº20,
+>    arreglado; patrón: `waitFor` + falla ruidosa; fixtures → sembrar, no skipear).
+> 7. `55_venta_usd`: `/ventas` renderiza el DASHBOARD en corrida masiva (posible bug de producto;
+>    instrumentado con `E2E_TRACE_REDIRECTS=1`, sin reproducir aún) · `33_devolucion_proveedor` debe
+>    sembrar su precondición · los ~32 skips restantes.
+> **C. UI/UX reportados por GO:**
+> 8. **Asistente IA en mobile**: el modal se ve solo la mitad derecha, debería centrarse. Sin diagnosticar.
+> 9. **~20 toggles** a mano por migrar a `<Toggle>` (deuda de consistencia, ninguno roto).
+> 10. **Barrido `88_mobile_responsive`**: ampliarlo a modales/overlays + chequeo de contención
+>     hijo⊄padre (GO encontró 3 bugs que el barrido no vio: knob, modal IA, y el CUIT lo vio en la app).
+> **D. Negocio / decisiones de GO:**
+> 11. **Landing** (concepto C "Una venta. Todo el sistema." + obertura de B, diseñado completo — ver log
+>     2026-07-15/16): en pausa hasta que GO lo charle con el socio. Decisiones: concepto · Next en `www`
+>     vs Astro · tagline de `brand.ts` (hoy "El inventario inteligente…" contradice el posicionamiento) ·
+>     ⚖️ el domicilio particular de Fede en las páginas legales ANTES de traccionar tráfico.
+> 12. **⚖️ Legal**: abogado + registro AAIP sobre contenido YA PÚBLICO (pendiente desde v1.130.0).
+> 13. **Colaboración con Fede**: decidido `@claude` de GitHub (no plan mensual propio) + falta página
+>     **"Empezá acá"** en el wiki (con links markdown, no wikilinks) e instalar la GitHub App.
+> 14. Relevamientos sin responder: **Inventario/WMS** y **Ventas H-L** (GO + socio).
+
+> ### ✅ (2026-07-17 · **v1.133.0 EN PROD** — PR #292, main `b6d541b0`, tag+release, bundle `index-CyLP2nMF.js` verificado · **migs 271+272 en DEV y PROD** aplicadas PEGADAS al merge (secuencia breaking ejecutada, ventana ~4 min) · **drift 0 en DEV y PROD post-deploy**)
+> **El cutover de identidad fiscal está COMPLETO en PROD (F1+F2+F3a).** Pendiente del plan de raíz:
+> **F3b** — la sección ARCA deja de ser un 2º editor (resumen + pointer al panel; UX que GO tiene que
+> ver con la app en la mano) · **F4** — DROP de las columnas fiscales de `tenants` (criterios: grep
+> lectores=0 + drift 0 sostenido + soak; los lectores no-PDF —GastosPage/Dash/CierresContables— siguen
+> leyendo tenants vía espejo, correctos). Gotcha nuevo p/ memoria: **el cache de TA (mig 264) no se
+> auto-invalida ante faults de WSFE** — un TA obtenido durante la caída de AFIP quedó envenenado y se
+> borró a mano; mejora futura en la EF.
 > **Gate: spec 21 VERDE con CAE real** (Factura C nº56, venta 344, `emisor_id` ✓). AFIP homologación
 > estuvo CAÍDA (**ORA-12514**, la DB Oracle de ARCA; sonda útil: `FEDummy` a
 > `wswhomo.afip.gov.ar/wsfev1/service.asmx`, sin auth) y volvió ~02:00 (monitor estricto: 3 OKs/60s).

@@ -55,8 +55,26 @@ test.describe('Traslado entre sucursales (mutante)', () => {
     await expect(confirmarLista).toBeVisible({ timeout: 12000 })
     await confirmarLista.click()
 
-    // Modal de recepción → confirmar (ubicación "Sin ubicación" por default)
+    // Modal de recepción — REGRESIÓN §35 (2026-07-18): el selector "Ubicación destino" filtraba
+    // con `.eq('sucursal_id', destino)`, que en Postgres NUNCA matchea `sucursal_id IS NULL` →
+    // las ubicaciones GLOBALES (ej. "Container", sin sucursal asignada) desaparecían del
+    // selector aunque apliquen a todas las sucursales. Con el fix debe haber más de la opción
+    // "Sin ubicación" sola (a menos que el tenant no tenga NINGUNA ubicación global, lo cual
+    // sería un problema de datos de DEV, no del código — por eso el mensaje lo distingue).
     await expect(page.getByText(/Confirmar recepción — Traslado #\d+/i)).toBeVisible({ timeout: 5000 })
+    const ubicDestinoSelect = page.locator('xpath=//label[contains(.,"Ubicación destino")]/following-sibling::select[1]')
+    // poll: la query de ubicaciones-destino fetchea al abrir el modal, el <select> arranca con
+    // el default [] hasta que resuelve — un count() inmediato es una carrera, no una regresión.
+    await expect
+      .poll(() => ubicDestinoSelect.locator('option').count(), {
+        timeout: 8000,
+        message:
+          '[30] El selector "Ubicación destino" de Confirmar recepción solo tiene "Sin ubicación" — ' +
+          'regresión del bug §35 (ubicaciones globales excluidas) o el tenant se quedó sin ninguna ' +
+          'ubicación global en DEV (verificar `ubicaciones` con sucursal_id IS NULL).',
+      })
+      .toBeGreaterThan(1)
+
     await page.getByRole('button', { name: /Confirmar recepción/i }).last().click()
 
     // POSITIVO: toast "Traslado #N recibido ..."

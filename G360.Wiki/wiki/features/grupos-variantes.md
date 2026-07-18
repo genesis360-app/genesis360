@@ -2,6 +2,8 @@
 
 Permite agrupar múltiples SKUs que son variantes de un mismo artículo (ej: Remera S/M/L en Azul/Rojo). Cada SKU sigue siendo un producto normal con su propio stock, precio y LPNs.
 
+> [!NOTE] **No confundir con "Atributos de variante"** (`tiene_talle`/`tiene_color`/etc. en ProductoFormPage → Trazabilidad) — ese es un sistema DISTINTO donde el talle/color es un dato descriptivo **dentro del mismo SKU** (no un producto separado). Este documento cubre "Grupo de variantes" (SKU separado), que funciona bien y no se tocó. Ver [[wiki/features/atributos-variante]] (🟡 EN DEV, 2026-07-17) para el otro sistema.
+
 ## Schema (migration 120)
 
 ```sql

@@ -9,6 +9,7 @@ import {
   Eye, EyeOff, RefreshCw, BarChart3, Download, CalendarClock, ArrowRightLeft, Boxes,
 } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
 import { LpnAccionesModal } from '@/components/LpnAccionesModal'
@@ -32,6 +33,7 @@ import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import toast from 'react-hot-toast'
 import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { atributosDeLinea } from '@/lib/atributosVariante'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
@@ -164,6 +166,11 @@ export default function InventarioPage() {
     tiene_series: boolean
     tiene_lote: boolean
     tiene_vencimiento: boolean
+    tiene_talle: boolean
+    tiene_color: boolean
+    tiene_encaje: boolean
+    tiene_formato: boolean
+    tiene_sabor_aroma: boolean
     cantidad: string
     estado_id: string
     ubicacion_id: string
@@ -172,6 +179,11 @@ export default function InventarioPage() {
     lpn: string
     series_txt: string
     showExtra: boolean
+    talle: string
+    color: string
+    encaje: string
+    formato: string
+    sabor_aroma: string
   }
   const [masivoInline, setMasivoInline] = useState(false)
   const [masivoRows, setMasivoRows] = useState<MasivoRow[]>([])
@@ -322,7 +334,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('movimientos_stock')
-        .select('*, productos(nombre,sku,unidad_medida,categoria_id,categorias(id,nombre)), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
+        .select('*, productos(nombre,sku,unidad_medida,categoria_id,categorias(id,nombre)), users(nombre_display), estados_inventario(nombre,color), inventario_lineas(lpn, nro_lote, fecha_vencimiento, precio_costo_snapshot, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre), proveedores(nombre), inventario_series(nro_serie)), ventas(numero)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
@@ -351,7 +363,7 @@ export default function InventarioPage() {
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
       let q = supabase.from('productos')
-        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo, estado_id, proveedor_id')
+        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, ubicacion_id, precio_costo, estado_id, proveedor_id')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
       if (form.productoSearch.length > 0)
         q = q.or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%,codigo_barras.eq.${form.productoSearch}`)
@@ -365,7 +377,7 @@ export default function InventarioPage() {
     queryKey: ['productos-masivo-busqueda', tenant?.id, masivoSearch],
     queryFn: async () => {
       let q = supabase.from('productos')
-        .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
+        .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, precio_costo, precio_venta')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
       if (masivoSearch.length > 0)
         q = q.or(`nombre.ilike.%${masivoSearch}%,sku.ilike.%${masivoSearch}%,codigo_barras.eq.${masivoSearch}`)
@@ -1042,6 +1054,11 @@ export default function InventarioPage() {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (tieneLote && !form.nroLote.trim()) throw new Error('Este producto requiere número de lote')
       if (tieneVencimiento && !form.fechaVencimiento) throw new Error('Este producto requiere fecha de vencimiento')
+      if ((selectedProduct as any).tiene_talle && !form.talle.trim()) throw new Error('Este producto requiere talle')
+      if ((selectedProduct as any).tiene_color && !form.color.trim()) throw new Error('Este producto requiere color')
+      if ((selectedProduct as any).tiene_encaje && !form.encaje.trim()) throw new Error('Este producto requiere encaje')
+      if ((selectedProduct as any).tiene_formato && !form.formato.trim()) throw new Error('Este producto requiere formato')
+      if ((selectedProduct as any).tiene_sabor_aroma && !form.saborAroma.trim()) throw new Error('Este producto requiere sabor/aroma')
 
       // I-05: Validar mono_sku en la ubicación seleccionada
       if (form.ubicacionId) {
@@ -2065,7 +2082,7 @@ export default function InventarioPage() {
     }
 
     const { data: prods } = await supabase.from('productos')
-      .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
+      .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, ubicacion_id, precio_costo')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
@@ -2089,8 +2106,10 @@ export default function InventarioPage() {
   // ISS-127 F2: `overrides` pre-cargan cantidad/lote/venc desde un código GS1.
   const addMasivoRow = (prod: any, overrides?: { cantidad?: number; nro_lote?: string; fecha_vencimiento?: string }) => {
     setMasivoRows(prev => {
-      // Same SKU + no lote required → increment quantity
-      const existingIdx = prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !overrides?.nro_lote && !prod.tiene_lote && !prod.tiene_series)
+      // Same SKU + no lote required → increment quantity (nunca si trackea algún atributo:
+      // cada fila puede terminar con un talle/color distinto, no se pueden fusionar a ciegas)
+      const tieneAlgunAtributo = !!(prod.tiene_talle || prod.tiene_color || prod.tiene_encaje || prod.tiene_formato || prod.tiene_sabor_aroma)
+      const existingIdx = tieneAlgunAtributo ? -1 : prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !overrides?.nro_lote && !prod.tiene_lote && !prod.tiene_series)
       if (existingIdx >= 0) {
         const updated = [...prev]
         const prevCant = parseFloat(updated[existingIdx].cantidad) || 0
@@ -2107,6 +2126,11 @@ export default function InventarioPage() {
         tiene_series: prod.tiene_series ?? false,
         tiene_lote: prod.tiene_lote ?? false,
         tiene_vencimiento: prod.tiene_vencimiento ?? false,
+        tiene_talle: prod.tiene_talle ?? false,
+        tiene_color: prod.tiene_color ?? false,
+        tiene_encaje: prod.tiene_encaje ?? false,
+        tiene_formato: prod.tiene_formato ?? false,
+        tiene_sabor_aroma: prod.tiene_sabor_aroma ?? false,
         cantidad: overrides?.cantidad != null ? String(overrides.cantidad) : '1',
         estado_id: '',
         ubicacion_id: '',
@@ -2114,7 +2138,8 @@ export default function InventarioPage() {
         fecha_vencimiento: overrides?.fecha_vencimiento ?? '',
         lpn: '',
         series_txt: '',
-        showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series || overrides?.nro_lote || overrides?.fecha_vencimiento),
+        showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series || tieneAlgunAtributo || overrides?.nro_lote || overrides?.fecha_vencimiento),
+        talle: '', color: '', encaje: '', formato: '', sabor_aroma: '',
       }
       setMasivoFocusIdx(prev.length)
       return [...prev, newRow]
@@ -2143,7 +2168,7 @@ export default function InventarioPage() {
     }
 
     const { data: prods } = await supabase.from('productos')
-      .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
+      .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, precio_costo, precio_venta')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
@@ -2182,6 +2207,11 @@ export default function InventarioPage() {
           if (!cant || cant <= 0) { errores.push(`${row.sku}: cantidad inválida`); continue }
           if (row.tiene_lote && !row.nro_lote.trim()) { errores.push(`${row.sku}: requiere lote`); continue }
           if (row.tiene_vencimiento && !row.fecha_vencimiento) { errores.push(`${row.sku}: requiere vencimiento`); continue }
+          if (row.tiene_talle && !row.talle.trim()) { errores.push(`${row.sku}: requiere talle`); continue }
+          if (row.tiene_color && !row.color.trim()) { errores.push(`${row.sku}: requiere color`); continue }
+          if (row.tiene_encaje && !row.encaje.trim()) { errores.push(`${row.sku}: requiere encaje`); continue }
+          if (row.tiene_formato && !row.formato.trim()) { errores.push(`${row.sku}: requiere formato`); continue }
+          if (row.tiene_sabor_aroma && !row.sabor_aroma.trim()) { errores.push(`${row.sku}: requiere sabor/aroma`); continue }
 
           const { data: prodAntes } = await supabase.from('productos').select('precio_costo,precio_venta').eq('id', row.producto_id).single()
           const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)
@@ -2198,6 +2228,11 @@ export default function InventarioPage() {
             precio_costo_snapshot: (prodAntes as any)?.precio_costo ?? null,
             precio_venta_snapshot: (prodAntes as any)?.precio_venta ?? null,
             sucursal_id: sucursalId ?? null,
+            talle: row.tiene_talle ? (row.talle || null) : null,
+            color: row.tiene_color ? (row.color || null) : null,
+            encaje: row.tiene_encaje ? (row.encaje || null) : null,
+            formato: row.tiene_formato ? (row.formato || null) : null,
+            sabor_aroma: row.tiene_sabor_aroma ? (row.sabor_aroma || null) : null,
           }).select().single()
           if (lineaError) { errores.push(`${row.sku}: ${lineaError.message}`); continue }
 
@@ -2602,10 +2637,10 @@ export default function InventarioPage() {
                               </td>
                               )}
                               <td className="px-3 py-2 text-center">
-                                {(modoAvanzado || row.tiene_series || row.tiene_lote || row.tiene_vencimiento) && (
+                                {(modoAvanzado || row.tiene_series || row.tiene_lote || row.tiene_vencimiento || row.tiene_talle || row.tiene_color || row.tiene_encaje || row.tiene_formato || row.tiene_sabor_aroma) && (
                                 <button
                                   onClick={() => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, showExtra: !r.showExtra } : r))}
-                                  title="Lote / Vencimiento / LPN / Series"
+                                  title="Lote / Vencimiento / LPN / Series / Atributos de variante"
                                   className={`p-1 rounded transition-colors ${row.showExtra ? 'text-accent' : 'text-gray-400 hover:text-gray-600'}`}>
                                   <ChevronDown size={14} className={`transition-transform ${row.showExtra ? 'rotate-180' : ''}`} />
                                 </button>
@@ -2656,6 +2691,20 @@ export default function InventarioPage() {
                                         <p className="text-gray-400 mt-0.5">{row.series_txt.split('\n').filter(s => s.trim()).length} series</p>
                                       </div>
                                     )}
+                                    {([
+                                      { activo: row.tiene_talle, campo: 'talle' as const, atributo: 'talle' as const, label: 'Talle' },
+                                      { activo: row.tiene_color, campo: 'color' as const, atributo: 'color' as const, label: 'Color' },
+                                      { activo: row.tiene_encaje, campo: 'encaje' as const, atributo: 'encaje' as const, label: 'Encaje' },
+                                      { activo: row.tiene_formato, campo: 'formato' as const, atributo: 'formato' as const, label: 'Formato' },
+                                      { activo: row.tiene_sabor_aroma, campo: 'sabor_aroma' as const, atributo: 'sabor_aroma' as const, label: 'Sabor/Aroma' },
+                                    ]).filter(a => a.activo).map(a => (
+                                      <div key={a.campo}>
+                                        <label className="block text-gray-500 mb-1">{a.label} *</label>
+                                        <AtributoValorSelect tenantId={tenant!.id} atributo={a.atributo} value={row[a.campo]}
+                                          onChange={v => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, [a.campo]: v } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                      </div>
+                                    ))}
                                   </div>
                                 </td>
                               </tr>
@@ -2948,6 +2997,12 @@ export default function InventarioPage() {
                               <p className="text-sm text-gray-700 dark:text-gray-300">{linea.nro_lote}</p>
                             </div>
                           )}
+                          {atributosDeLinea(linea).map(a => (
+                            <div key={a.key}>
+                              <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">{a.label}</p>
+                              <p className="text-sm text-gray-700 dark:text-gray-300">{a.emoji} {a.valor}</p>
+                            </div>
+                          ))}
                           {linea.fecha_vencimiento && (
                             <div>
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Vencimiento</p>
@@ -3305,40 +3360,40 @@ export default function InventarioPage() {
                         {(selectedProduct as any).tiene_talle && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Talle / Talla</label>
-                            <input type="text" value={form.talle} onChange={e => setForm(p => ({ ...p, talle: e.target.value }))}
-                              placeholder="Ej: M, 42, XL"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="talle" value={form.talle}
+                              onChange={v => setForm(p => ({ ...p, talle: v }))} placeholder="Ej: M, 42, XL"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_color && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
-                            <input type="text" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
-                              placeholder="Ej: Rojo"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="color" value={form.color}
+                              onChange={v => setForm(p => ({ ...p, color: v }))} placeholder="Ej: Rojo"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_encaje && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Encaje</label>
-                            <input type="text" value={form.encaje} onChange={e => setForm(p => ({ ...p, encaje: e.target.value }))}
-                              placeholder="Ej: Slim fit"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="encaje" value={form.encaje}
+                              onChange={v => setForm(p => ({ ...p, encaje: v }))} placeholder="Ej: Slim fit"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_formato && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Formato</label>
-                            <input type="text" value={form.formato} onChange={e => setForm(p => ({ ...p, formato: e.target.value }))}
-                              placeholder="Ej: 500g, 1L"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="formato" value={form.formato}
+                              onChange={v => setForm(p => ({ ...p, formato: v }))} placeholder="Ej: 500g, 1L"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_sabor_aroma && (
                           <div>
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sabor / Aroma</label>
-                            <input type="text" value={form.saborAroma} onChange={e => setForm(p => ({ ...p, saborAroma: e.target.value }))}
-                              placeholder="Ej: Vainilla"
+                            <AtributoValorSelect tenantId={tenant!.id} atributo="sabor_aroma" value={form.saborAroma}
+                              onChange={v => setForm(p => ({ ...p, saborAroma: v }))} placeholder="Ej: Vainilla"
                               className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
                           </div>
                         )}
@@ -3527,7 +3582,8 @@ export default function InventarioPage() {
                               return (l.ubicaciones?.nombre ?? '').toLowerCase().includes(s) ||
                                 (l.estados_inventario?.nombre ?? '').toLowerCase().includes(s) ||
                                 (l.nro_lote ?? '').toLowerCase().includes(s) ||
-                                (l.lpn ?? '').toLowerCase().includes(s)
+                                (l.lpn ?? '').toLowerCase().includes(s) ||
+                                atributosDeLinea(l).some(a => a.valor.toLowerCase().includes(s))
                             })
                             .filter((l: any) => {
                               const grupoActivo = rebajeGrupoId ? grupos.find(g => g.id === rebajeGrupoId) : grupoDefault
@@ -3572,6 +3628,9 @@ export default function InventarioPage() {
                                   )}
                                   {l.nro_lote && <span>🏷 {l.nro_lote}</span>}
                                   {l.fecha_vencimiento && <span>📅 {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
+                                  {atributosDeLinea(l).map(a => (
+                                    <span key={a.key}>{a.emoji} {a.valor}</span>
+                                  ))}
                                   {(l.cantidad_reservada ?? 0) > 0 && (
                                     <span className="text-orange-400">{l.cantidad_reservada} reservada(s)</span>
                                   )}
@@ -3905,6 +3964,9 @@ export default function InventarioPage() {
                                       )}
                                       {l.nro_lote && <span className="text-gray-500 dark:text-gray-400">Lote: {l.nro_lote}</span>}
                                       {l.fecha_vencimiento && <span className="text-gray-500 dark:text-gray-400">Vto: {new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</span>}
+                                      {atributosDeLinea(l).map(a => (
+                                        <span key={a.key} className="text-gray-500 dark:text-gray-400">{a.emoji} {a.valor}</span>
+                                      ))}
                                       {(l.cantidad_reservada ?? 0) > 0 && (
                                         <span className="text-amber-500">{disponible} disp. ({l.cantidad_reservada} reserv.)</span>
                                       )}
@@ -4128,7 +4190,10 @@ export default function InventarioPage() {
                                     {l.fecha_vencimiento && (
                                       <p className="text-xs text-gray-400 dark:text-gray-500">{new Date(l.fecha_vencimiento).toLocaleDateString('es-AR')}</p>
                                     )}
-                                    {!l.nro_lote && !l.fecha_vencimiento && <span className="text-xs text-gray-300">—</span>}
+                                    {atributosDeLinea(l).map(a => (
+                                      <p key={a.key} className="text-xs text-gray-400 dark:text-gray-500">{a.emoji} {a.valor}</p>
+                                    ))}
+                                    {!l.nro_lote && !l.fecha_vencimiento && atributosDeLinea(l).length === 0 && <span className="text-xs text-gray-300">—</span>}
                                   </div>
                                   )}
 

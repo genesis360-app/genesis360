@@ -27,7 +27,7 @@ La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con se
 | **Ventas** | Sub-tabs: Métodos de pago · Descuentos y combos · Operativa |
 | **Caja** | Contraseña maestra, umbral bóveda |
 | **Clientes** | Placeholder — próximamente |
-| **Inventario** | Sub-tabs: Reglas de stock · Categorías · Ubicaciones · Estados · Motivos · Unidades |
+| **Inventario** | Sub-tabs: Reglas de stock · Categorías · Ubicaciones · Estados · Motivos · Unidades · Atributos (🟡 EN DEV) |
 | **Envíos** | Costo por km, plantilla WhatsApp |
 | **Facturación** | CUIT, condición IVA, razón social, domicilio fiscal, umbral factura B, token AFIP, certificados, puntos de venta |
 | **RRHH** | Asistencia/tardanzas, Nómina, Documentos (v1.81.x, H4) |
@@ -112,6 +112,13 @@ Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs d
 - **Estados** → ABM + Grupos de estados + Progresión (aging profiles)
 - **Motivos** → ABM de motivos de movimiento (ingreso / rebaje / caja)
 - **Unidades de medida** → ABM de unidades custom
+
+### Sub-tab: Atributos (🟡 EN DEV, commiteado y pusheado, pendiente de mergear a `main`)
+
+Catálogo configurable de valores para talle/color/encaje/formato/sabor·aroma (mig 273, tabla
+`atributos_variante_valores`). CRUD por atributo (tabs), soft-delete `activo=false` (patrón Motivos).
+Alimenta `AtributoValorSelect` en Recepciones/Ingreso manual y el picker de rebaje en VentasPage.
+Detalle: [[wiki/features/atributos-variante]].
 
 ---
 

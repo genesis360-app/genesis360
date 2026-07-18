@@ -30,7 +30,7 @@ export async function resolverScanCompuesto(code: string, tenantId: string): Pro
     const cands = Array.from(new Set([raw, g14, g13, gN].filter(Boolean)))
     const ors = cands.flatMap(c => [`gtin.eq.${c}`, `codigo_barras.eq.${c}`]).join(',')
     const { data } = await supabase.from('productos')
-      .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, estado_id, proveedor_id, precio_costo, precio_venta')
+      .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, ubicacion_id, estado_id, proveedor_id, precio_costo, precio_venta')
       .eq('tenant_id', tenantId).eq('activo', true).or(ors).limit(1)
     producto = data?.[0] ?? null
   }

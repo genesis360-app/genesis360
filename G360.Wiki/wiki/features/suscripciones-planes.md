@@ -10,23 +10,22 @@ updated: 2026-07-05
 
 Genesis360 usa un modelo freemium con 4 planes de suscripción. Los pagos se procesan con Mercado Pago.
 
-> [!NOTE] Esta página quedó desactualizada en precios/límites (modelo Pricing 2026 con add-ons por
-> dimensión: SKU/movimientos/sucursales/usuarios). La fuente de verdad de planes/precios/límites es
-> [[wiki/business/planes-pricing]]; el detalle técnico de billing (activación/cancelación/reconciliación)
+> [!NOTE] Detalle completo de precios/límites/add-ons (fuente de verdad, actualizado 2026-07-17):
+> [[wiki/business/planes-pricing]]. El detalle técnico de billing (activación/cancelación/reconciliación)
 > vive en [[wiki/integrations/mercado-pago]].
 
 ---
 
-## Planes disponibles
+## Planes disponibles (✅ pricing v2, EN PROD desde v1.115.0 — ver [[wiki/business/planes-pricing]] para el detalle completo con add-ons)
 
-| Plan | Usuarios | Productos | Precio |
-|------|----------|-----------|--------|
-| **Free** | 1 | 50 | $0 ARS/mes |
-| **Basic** | 2 | 500 | $4.900 ARS/mes |
-| **Pro** | 10 | 5.000 | $9.900 ARS/mes |
-| **Enterprise** | Ilimitado | Ilimitado | A convenir |
+| Plan | Usuarios | SKU | Comprobantes/mes | Sucursales | Precio (lista / con débito automático −10%) |
+|------|----------|-----|-------------------|------------|--------|
+| **Free** | 1 | 50 | 200 | 1 | $0 ARS/mes (30 días de trial) |
+| **Básico** | 5 | 2.000 | 6.000 | 1 | $60.000 / $54.000 ARS/mes |
+| **Pro** | 15 | 8.000 | 14.000 | 4 | $100.000 / $90.000 ARS/mes |
+| **Enterprise** | Ilimitado | Ilimitado | Ilimitado | Ilimitado | A convenir |
 
-Los límites se verifican en el hook `src/hooks/usePlanLimits.ts`.
+Los límites se verifican en el hook `src/hooks/usePlanLimits.ts`. Cada dimensión (SKU, comprobantes, sucursales, usuarios, CUITs adicionales) se puede ampliar con add-ons — ver `ADDON_PACKS` en `brand.ts`.
 
 ---
 

@@ -6,6 +6,347 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-18] update | 🚚 Testing cross-sucursal con usuarios reales + traslado real desde LpnAccionesModal (autónomo)
+
+**Disparador:** GO pidió crear usuarios de prueba para Sucursal Sur de Almacén Jorgito (además de
+los de Norte que ya existían) para probar con usuarios de 2 sucursales distintas. Al probar
+traslados con ellos aparecieron 2 bugs reales y un pedido de feature; se cerró con una pasada
+autónoma completa: fix → tests que detectan la regresión (corridos SIN el fix para confirmarlo) →
+sweep de regresión → documentación.
+
+**Usuarios nuevos DEV** (tenant Almacén Jorgito, `3769b1db-...`): `supervisor2@test.com`
+(SUPERVISOR, Sucursal Sur, pass `123`) creado desde cero; `deposito@genesis360.com` (DEPOSITO,
+Sucursal Sur) ya existía sin contraseña conocida → reseteada a `123`. Quedan documentados en
+`tests/e2e/.env.test.local` (`E2E_SUPERVISOR_SUR_*`, `E2E_DEPOSITO_SUR_*`) para reusar en tests.
+
+**1. Bug — "Estado de inventario predeterminado" del producto no persistía al guardar.**
+`ProductoFormPage.handleSubmit`/`handleDuplicate` armaban `ubicacion_id` en el payload pero se
+olvidaban `estado_id` → el `UPDATE`/`INSERT` nunca lo mandaba, quedaba `null` en silencio pese al
+toast de éxito. Bug hermano de ISS-131 (v1.8.32, que arregló el lado de LECTURA de este mismo
+campo). Fix de una línea × 2 lugares. **Regresión: e2e spec 90**, corrido primero SIN el fix
+(falló con el mensaje exacto) y CON el fix (verde). Sin migraciones. UAT §34.
+
+**2. También en `ProductosPage` (listado)** — categoría, estado y ubicación predeterminada no se
+veían a simple vista en la fila del producto (categoría estaba pero oculta en mobile; estado y
+ubicación no se mostraban en ningún lado). Agregados como badges bajo SKU/código de barras +
+campos nuevos en el panel expandido. Query ahora trae `estados_inventario(nombre)` +
+`ubicaciones(nombre)` además de `categorias`/`proveedores`.
+
+**3. Bug — Traslados: ubicaciones GLOBALES no aparecían en "Confirmar recepción".**
+`TrasladosPanel` filtraba `ubicacionesDestino` con `.eq('sucursal_id', destino)` — un `.eq()`
+estricto en Postgres nunca matchea `sucursal_id IS NULL`, así que una sucursal sin ubicaciones
+propias (Sucursal Sur solo tiene la global "Container") veía el selector vacío. Mismo patrón
+mode-aware que ya usa el resto de la app (`ConfigPage`/`InventarioPage`/`LpnAccionesModal`) —
+`TrasladosPanel` era el único lugar sin el fix. **Regresión: spec 30 extendido** con el assert
+(corrido SIN el fix → falló; CON el fix → verde). UAT §35.
+
+**4. Feature/bug — "Mover" del LPN hacia otra sucursal reubicaba directo, sin traslado real.**
+GO pidió: (a) que "Ubicación destino" del tab Mover filtre por la sucursal ELEGIDA, no la activa
+del usuario, igual para mover dentro de la misma sucursal que para enviar a otra; (b) que un envío
+a otra sucursal desde ahí genere el traslado real en el tab Traslados, para que la otra sucursal
+confirme la recepción — antes reubicaba el stock directo en destino, saltándose por completo el
+mecanismo de tránsito+confirmación que ya existía (**riesgo real de REGLA #0**: stock apareciendo
+en otra sucursal sin que nadie confirmó que llegó físicamente). Fix: `esMovimientoCrossSucursal()`
+pura nueva (`src/lib/trasladoLogic.ts`, 5 tests) decide la rama; si cruza sucursal, `moverStock`
+despacha un traslado real (mismos guards que `TrasladosPanel.despachar`: `puedeCrearTraslado` +
+conteo bloqueante) en vez de crear la línea en destino. La ubicación elegida al despachar se
+guarda en `traslado_items.ubicacion_sugerida_id` (**mig 276**, nueva) y precarga el selector de
+"Confirmar recepción" (no vinculante, el destino puede cambiarla). **Validado end-to-end con DOS
+usuarios reales de sucursales distintas** (no el owner simulando ambos lados): spec 92 (misma
+sucursal, reubicación directa, regresión) + spec 93 (cross-sucursal, despacho con OWNER en Norte →
+`deposito@genesis360.com` en un 2do browser context con login real confirma en Sur). UAT §36.
+
+**5. Validación — RLS por sucursal con usuarios reales cross-check.** Spec 94 nuevo (API-only, sin
+UI): `supervisor@test.com` (Norte) vs `supervisor2@test.com` (Sur), pega directo a PostgREST con
+el token real de cada uno. Confirma que `inventario_lineas`/`caja_sesiones` bloquean correctamente
+la sucursal ajena. De paso surgió un falso positivo en el PROPIO test (`loginToken()` sin
+email/password explícitos cae al owner, no al supervisor) — corregido, no era un bug de RLS.
+También confirma (sin alarma, ya documentado desde v1.75.0 en
+[[wiki/features/multi-sucursal]]) que `traslados` es tenant-wide a propósito, no sucursal-scoped
+— "cruza sucursales por diseño", igual que `caja_traspasos`. UAT §37.
+
+**🛑 Gotcha de testing para no repetir** (guardado en memoria): `browser.newContext()` en
+Playwright Test **hereda el `storageState` del proyecto** (la sesión del owner) si no se lo pisa
+explícito con `storageState: { cookies: [], origins: [] }` — un "browser context nuevo" sin eso
+seguía autenticado como el owner. Tampoco hereda `use.baseURL`. Costó una sesión entera de debug
+(`browser.newContext({baseURL})` sin más parecía razonable y fallaba de forma confusa: `/login`
+redirigía solo a `/dashboard` en ~2s sin haber tocado el form).
+
+Verde: tsc · build · **unit 1080+5** · **e2e 69/69** (sweep de regresión: inventario, traslados,
+producto, variantes, roles cajero/supervisor/deposito) + specs nuevos 90/92/93/94 dedicados.
+Nada de esto commiteado todavía — se suma a los cambios de `dev` (F3b + atributos de variante)
+pendientes de merge a `main`.
+
+---
+
+## [2026-07-18] update | 🐛 "Estado de inventario predeterminado" del producto no persistía al guardar
+
+**GO reportó** (nueva sesión, tras el `/clear`): en Editar producto, elegir un valor en "Estado de
+inventario predeterminado" y tocar "Guardar cambios" no lo guardaba. **Causa raíz:** el `payload` de
+`handleSubmit` en `ProductoFormPage.tsx` armaba `ubicacion_id` pero se olvidaba `estado_id` — el
+`UPDATE`/`INSERT` a `productos` nunca lo mandaba, quedaba `null` en silencio pese al toast "Producto
+actualizado". Mismo bug en `handleDuplicate`. No es cosmético: `productos.estado_id` es el default
+que Recepciones/Inventario usan para precargar el estado al recibir/ingresar stock.
+
+**Fix:** agregado `estado_id: form.estado_id || null` a ambos payloads. Sin migraciones (columna ya
+existía, indexada en mig 263). **Test de regresión nuevo:** e2e spec 90
+(`90_producto_estado_predeterminado_mutante`) — corrido primero SIN el fix (falló con el mensaje
+exacto del bug) y luego CON el fix (verde), confirmando que detecta la regresión. Detalle completo
+en `tests/specs/uat-modo-basico.md` §34. Verde: tsc · build · e2e spec 90. **Sin commitear** — se
+suma al resto de cambios de `dev` pendientes de que GO pruebe antes del merge a `main` (ver
+`project_pendientes.md`).
+
+---
+
+## [2026-07-18] update | ✅ Cierre de sesión — ronda 3 commiteada y pusheada, memoria/wiki/pendientes reconciliados
+
+**Corrige la entrada anterior** (dejaba dicho "todavía sin commitear"): la ronda 3 de variantes quedó
+**commiteada y pusheada a `dev`** como `90de330b` ("fix: variantes ronda 3 — causa raíz real (queries
+sin las columnas nuevas) + extendido a todo movimiento de stock", 17 archivos, +638/-83). Junto con
+`a99bb270` (F3b + variantes ronda 1 + fix pricing) y `c559f831` (variantes ronda 2), las 3 entregas de
+esta sesión están en `dev`, **ninguna mergeada a `main`**, PROD sigue en v1.133.0 sin cambios. Migs
+273+274+275 aplicadas solo en DEV.
+
+GO pidió explícitamente al cierre: "actualiza memoria, wiki y pendientes así hacemos `/clear` y
+seguimos en nueva sesión" — se hizo una pasada de **reconciliación completa** (no solo agregar):
+corregido el bloque "ARRANCÁ ACÁ" de `project_pendientes.md` (tenía texto contradictorio de rondas
+2 y 3 mezclado, y decía "antes de commitear" sobre un commit que ya existía), corregido el banner de
+[[wiki/features/atributos-variante]] (decía "SIN COMMITEAR"), memoria de proyecto actualizada. Esto es
+justamente el tipo de reconciliación que [[feedback_wiki_actualizacion_completa_sin_contradicciones]]
+pide hacer siempre al cerrar sesión, no solo cuando GO lo nota.
+
+---
+
+## [2026-07-18] update | 🐛 Variantes ronda 3 — causa raíz real (queries sin las columnas nuevas) + extendido a TODO movimiento de stock
+
+**GO volvió a probar la ronda 2 y el ingreso SIMPLE ("Inventario → Agregar stock → Ingreso") tampoco
+pedía el talle.** No era el producto de prueba — era un bug real: el buscador de productos de ese
+flujo (`productosBusqueda` en `InventarioPage`) hacía `.select(...)` sin las columnas
+`tiene_talle/tiene_color/tiene_encaje/tiene_formato/tiene_sabor_aroma`, así que `selectedProduct`
+quedaba con esos campos en `undefined` sin importar el valor real en la base — la validación (ya
+escrita y correcta desde la ronda 2) nunca se disparaba. Encontrado grepeando el código por queries
+que traen `tiene_lote` pero no `tiene_talle` (mismo bug repetido en **7 lugares**: InventarioPage ×3
+—búsqueda + 2 handlers de scan de barras—, RecepcionesPage ×2 —scan de ticket por foto/IA—,
+MasivoModal ×2 —búsqueda + scan—).
+
+**Además, GO pidió explícitamente extender la obligatoriedad a TODO movimiento de inventario**
+("ingreso simple o masivo, rebaje simple o masivo, movimientos parciales de LPN o de ubicación").
+Se cubrió:
+- `MasivoModal` (el modal separado de Ingreso/Rebaje masivo): soporte real por primera vez —
+  obligatorio en ingreso; en rebaje, si hay >1 valor distinto en stock exige elegir cuál y **filtra**
+  las líneas candidatas antes de consumir (nunca cae a "cualquiera" si falta stock de la elegida).
+- Grilla inline de "Ingreso masivo" (`masivoRows`): en la ronda 2 había quedado bloqueada (rechazaba
+  productos con atributos activos); ahora tiene soporte real igual que el modal.
+- `LpnAccionesModal`: tab "Editar" pasa de texto libre a `AtributoValorSelect` + obligatorio; tab
+  "Mover" (partir una línea y mandar parte del stock a otra ubicación — el "movimiento parcial")
+  **no copiaba los atributos a la línea nueva** — se perdían en cada movimiento parcial, corregido
+  (se heredan, no se re-preguntan: es la misma mercadería física).
+- Traslados entre sucursales (`TrasladosPanel`): `traslado_items` **ni tenía las columnas** — **mig
+  275** nueva las agrega. Despacho snapshotea desde la línea origen; recepción y cancelación/reingreso
+  propagan a la línea nueva que crean.
+- Helpers puros compartidos nuevos (`src/lib/atributosVariante.ts`): `atributoAmbiguoEnLineas()` y
+  `filtrarLineasPorAtributo()` — 12 tests unitarios nuevos.
+- **Spec e2e mutante nº 89 escrito Y CORRIDO** (no quedó pendiente esta vez): crea un producto real
+  con "Talle" activado, ingreso sin talle rechazado con el toast exacto, con talle aceptado —
+  **verificado por query directa a la base** que la línea quedó con `talle: "L"` real, no null. Pasó
+  a la primera corrida. UAT §33 documenta las 12 filas de cobertura del feature completo.
+
+Verde: tsc · build · unit **1075+5** (12 nuevos) · e2e **17/17** (incluye spec 89 + regresión de
+`30_traslado_sucursal_mutante` corrida aislada tras tocar TrasladosPanel — sin romper nada; ese spec
+da "skip" en corrida masiva por el conocido problema de no-determinismo de la suite, no por esta
+sesión). **Todavía sin commitear** — esperando que GO pruebe la ronda 3 antes del commit+push+merge.
+
+---
+
+## [2026-07-18] update | 🐛 Variantes ronda 2 — GO probó a mano y encontró 3 bugs reales, corregidos
+
+**GO hizo lo que se le pidió** (probar F3b y variantes en el dev server antes del merge) y encontró que
+variantes "funciona todo raro". Se investigó con datos reales por Supabase MCP (tenant Almacén Jorgito
+DEV, producto "Variante1") antes de tocar código — no se adivinó nada.
+
+**3 hallazgos, los 3 corregidos:**
+1. **El atributo no era obligatorio en el ingreso** — la línea real de GO quedó con `talle: null` pese
+   a `tiene_talle=true`. GO pidió explícitamente: "tiene que funcionar como el lote... siempre te debe
+   pedir ese atributo en el ingreso y despacho y cualquier movimiento del inventario". Fix: obligatorio
+   en Recepciones + Inventario→Ingreso manual (mismo patrón que `tiene_lote`); el Ingreso masivo (grilla)
+   no soporta estos atributos todavía → ahora bloquea explícitamente en vez de dejar pasar en silencio.
+2. **El despacho tampoco lo pedía** — el picker "Elegir posición de rebaje" era opcional. Fix: mismo
+   patrón que ya usa `tiene_series` para bloquear el cobro — `atributoAmbiguoEnStock()` (nueva, pura,
+   5 tests) detecta si hay más de un talle/color distinto en stock; si hay ambigüedad sin confirmar,
+   `registrarVenta()` bloquea con toast, y el badge del carrito pasa a ámbar parpadeante.
+3. **Duplicidad real entre los dos sistemas de variante** — GO no encontró dónde asignar S/M/L al crear
+   el producto (por diseño, el atributo se carga en el ingreso) y terminó vinculándolo también a un
+   Grupo de variantes, recargando "S,M,L" en un catálogo separado sin conexión. El producto quedó con
+   `grupo_id` Y `tiene_talle=true` simultáneamente — dos modelos de stock incompatibles. Fix:
+   `ProductoFormPage` bloquea combinarlos + **mig 274** `chk_productos_grupo_sin_atributos_variante`
+   (CHECK constraint en DB, verificado que rechaza la combinación incluso por SQL directo — REGLA #0,
+   guard server-side no solo UI). Dato de prueba corregido a mano en DEV.
+
+Verde: tsc · build · unit 1063+5 (8 nuevos en total sobre la ronda 1) · regresión e2e sin cambios en
+5 specs. **Todavía sin commitear** — esperando que GO vuelva a probar antes del commit+push+merge.
+Detalle completo en [[wiki/features/atributos-variante]].
+
+---
+
+## [2026-07-17] update | 🧾 Wiki de pricing desactualizado — corregido (hallazgo de Federico Messina)
+
+**Federico Messina (cofundador, con acceso a GitHub y su propio Claude para consultar el sistema)
+revisó el wiki y encontró que `planes-pricing.md` mostraba precios VIEJOS** ($4.900/$9.900) pese a que
+el pricing v2 está en PROD desde v1.115.0 (2026-07-06), semanas antes.
+
+**Causa raíz:** un update anterior de esa página fue un **parche** (agregó las secciones "✅
+IMPLEMENTADO") sin **reconciliar** lo viejo que quedaba contradiciéndolo en la misma página: un banner
+inicial falso ("brand.ts tiene $4.900/$9.900"), un título "Propuesta EN DISCUSIÓN... No cerrada" sobre
+algo ya en producción, una tabla "legacy" sin aclarar que ya no existe en el código, una nota
+contradiciendo la duración del trial (decía 7-14d cuando la misma página ya tenía correcto 30d más
+arriba), y una tabla de features marcando AFIP como Pro-only cuando en realidad está en el plan Free.
+
+**Corregido (verificado contra `src/config/brand.ts`, fuente de verdad):**
+- `wiki/business/planes-pricing.md` — banner, framing, tabla de add-ons (agregado el pack de CUITs que
+  faltaba), tabla de features, nota de trial contradictoria eliminada, tabla legacy marcada como
+  histórica explícita.
+- `wiki/overview/app-reference.md` — **este archivo alimenta el Asistente IA in-app** (`npm run
+  ai:knowledge`) — tenía los mismos precios viejos en dos lugares, sin ningún caveat. Corregido +
+  `knowledge.generated.ts` regenerado localmente (**falta redeployar la EF `ai-assistant` en DEV y
+  PROD** para que el asistente real responda con los precios corregidos).
+- `wiki/features/suscripciones-planes.md` — tabla actualizada con los números reales (ya tenía un
+  `[!NOTE]` avisando que estaba desactualizada, pero mejor tenerla bien directamente).
+
+**Memoria nueva guardada** (`feedback_wiki_actualizacion_completa_sin_contradicciones`): la regla es
+que actualizar el wiki significa reconciliar TODO lo viejo que contradiga el dato nuevo, no solo
+agregar la sección correcta — y verificar contra el código fuente, no contra la memoria de la sesión.
+Esto pesa más ahora que Fede consulta el wiki directo, no solo GO.
+
+---
+
+## [2026-07-17] update | 🧵 F3b (ARCA→resumen+pointer) + variantes talle/color FUNCIONALES — EN `dev`, SIN COMMITEAR
+
+**Nada de esta sesión se deployó ni se mergeó a `main`. PROD sigue en v1.133.0, sin cambios.** Los dos
+cambios de abajo quedaron en el **working tree de `dev`** (sin commit, sin push), corriendo en el dev
+server local (`localhost:5173`, sigue en background) para que **GO los pruebe antes de continuar**.
+
+**1. F3b — la tarjeta "Facturación Electrónica (ARCA)" deja de ser un 2º editor de identidad fiscal.**
+Cerraba el pendiente que había dejado v1.133.0 (cutover de identidad fiscal, mig 271). `ConfigPage.tsx`
++ `EmisoresFiscalesPanel.tsx`: si el tenant YA tiene CUIT cargado, la tarjeta ARCA pasa a un **RESUMEN
+de solo lectura** (CUIT, razón social, condición IVA, domicilio, umbral B, token AfipSDK, IIBB,
+banco/CBU, etc.) + botón **"Editar en Emisores fiscales"** que abre directo el modal de edición del
+emisor principal en el panel de abajo (`EmisoresFiscalesPanelHandle.editarPrincipal()`, `forwardRef`/
+`useImperativeHandle` nuevo). Si el tenant NO tiene CUIT (alta nueva), la tarjeta sigue siendo el
+formulario completo de siempre — el panel de Emisores no puede crear el emisor **PRINCIPAL** (su
+"Agregar emisor" siempre crea adicionales, `es_default:false` hardcodeado). "Sitio web" sigue editable
+siempre en la tarjeta ARCA (dato de contacto, no identidad fiscal). El toggle de Modo Producción no se
+tocó.
+
+**🛑 Bug encontrado y corregido de paso (REGLA #0):** `handleSaveBiz` — compartida por los botones
+"Guardar cambios" de Negocio/Inventario/Ventas/Envíos/RRHH — seguía escribiendo CUIT/condición IVA/
+razón social/domicilio/umbral B/token AfipSDK **DIRECTO a `tenants`**, sin pasar por
+`emisores_fiscales`. La mig 271 no bloquea escrituras directas a esas columnas (son solo-lectura por
+**convención**, no por guard de DB) → esto reabría el mismo tipo de drift que causó el bug histórico
+del CUIT vacío. Se sacaron esos campos de `handleSaveBiz`; la identidad fiscal ahora se escribe SOLO
+desde `handleSaveFacturacion` (bootstrap sin CUIT) o el panel de Emisores fiscales. Sin migraciones en
+este cambio.
+
+**2. Variantes de producto (talle/color/encaje/formato/sabor·aroma) pasan a ser FUNCIONALES.** GO
+reportó que esos toggles de trazabilidad "no hacen nada". Investigación previa confirmó **dos sistemas
+distintos**: "Grupo de variantes" (SKU separado, `producto_grupos`/`ProductoGrupoModal.tsx` — SÍ
+funcionaba bien, **sin tocar**) y "Atributos de variante" (`tiene_talle`/`tiene_color`/etc., texto
+libre capturado al recibir stock pero **nunca leído en ningún otro lado** — el roto). GO confirmó por
+AskUserQuestion: arreglar el sistema #2, con un **catálogo configurable** (no autocompletar libre),
+como Estados/Ubicaciones.
+
+- **Mig NUEVA `273_atributos_variante_catalogo.sql` (aplicada en DEV, archivo sin commitear)**: tabla
+  `atributos_variante_valores` — UNA tabla genérica para los 5 atributos (no 5 tablas), CHECK de
+  `atributo`, RLS tenant-scoped estándar, índice único case-insensitive
+  `(tenant_id, atributo, lower(btrim(valor)))` (para que "M"/"m" no fragmenten), y un **backfill** que
+  sembró el catálogo con los valores DISTINCT que ya existían como texto libre en `inventario_lineas`
+  (sin tocar esa tabla — REGLA #0, nunca se reescribe inventario histórico; en DEV dio 0 filas porque
+  nadie había usado el feature). `schema_full.sql` sincronizado **a mano** (el dump automático sigue
+  bloqueado por el bug conocido de Supavisor — no había `SUPABASE_ACCESS_TOKEN` en esta sesión).
+- **ConfigPage**: sub-pestaña nueva **"Atributos"** en Configuración → Inventario (básico y avanzado,
+  no gateada por WMS) — CRUD de valores por atributo, soft-delete `activo=false` (patrón Motivos).
+- **`src/components/AtributoValorSelect.tsx`** (nuevo): reemplaza los inputs de texto libre por un
+  `<select>` contra el catálogo + opción **"+ Agregar nuevo valor…"** inline (crea sin salir de la
+  pantalla). Usado en `RecepcionesPage.tsx` y en el "Ingreso manual" de `InventarioPage.tsx`.
+- **`src/lib/atributosVariante.ts`** (nuevo, lib pura): `atributosDeLinea()` para badges reutilizables.
+- **InventarioPage.tsx**: badges de talle/color/etc. en el picker de "Rebaje manual" (con búsqueda
+  extendida), en el panel de detalle de movimiento, en la vista agrupada por ubicación y en la tabla de
+  líneas por producto.
+- **La parte crítica — VentasPage.tsx + `src/lib/ventasValidation.ts`**: se investigó primero cómo
+  funciona hoy la selección de lote/LPN al vender — YA EXISTE un picker manual "Elegir posición de
+  rebaje" (`lpnPickerIdx`/`overrideLpnSource`) en el carrito, y se **confirmó que ese picker SÍ
+  gobierna la línea real que se descuenta al confirmar la venta** (no era cosmético). Por eso se
+  extendió ESE mecanismo en vez de inventar uno nuevo: `talle`/`color`/`encaje`/`formato`/
+  `sabor_aroma` agregados a `LineaDisponible`/`LpnFuente` y a `calcularLpnFuentes()` (3 tests unitarios
+  nuevos: cada fuente conserva el atributo de SU línea al spanear varias, sin mezclarlos), agregados a
+  los 2 `SELECT` de `inventario_lineas` que alimentan el carrito (alta + restauración de carrito desde
+  localStorage), y mostrados como badges en la fila compacta del carrito y en el picker expandido (que
+  ahora prioriza mostrar talle/color sobre el LPN crudo).
+
+Verde: tsc · build · unit **1058+5** (3 nuevos de `calcularLpnFuentes`) · regresión e2e verde **SIN
+cambios** en 4 specs existentes (`29_recepcion_stock_mutante`, `23_inventario_ingreso_mutante`,
+`04_ventas`+`19_flujo_venta_mutante`, `10_configuracion`) — confirma que no se rompió nada existente.
+**NO se escribió un spec e2e nuevo para el feature en sí** (sin browser tool disponible en la sesión
+para armarlo con confianza) — próximo número de spec disponible: **89**.
+
+**Pendientes explícitos que deja para la próxima sesión / decisión de GO:**
+1. **GO tiene que probar los DOS cambios en `localhost:5173` antes de que se commiteen/mergeen** —
+   F3b (resumen+pointer, decisión de UX explícita) y el flujo de variantes completo: Config→Inventario→
+   Atributos (cargar 2-3 talles) → activar "Talle" en un producto de prueba (ProductoFormPage →
+   Trazabilidad → Atributos de variante) → Recepciones o Inventario→Ingreso manual (2 talles distintos)
+   → Ventas (badge de talle en el carrito + picker "Elegir talle/color/posición de rebaje").
+2. Escribir el spec e2e mutante formal (**nº 89**) para variantes una vez que GO valide a mano.
+3. `venta_item_despachos` (ledger de trazabilidad de despacho por LPN) **no** snapshotea todavía el
+   talle/color consumido — hoy solo queda visible en el carrito antes de confirmar, no en el historial
+   post-venta. Mejora de trazabilidad razonable a futuro (`feedback_trazabilidad_grado_wms.md`), no
+   bloqueante para que el feature sea "funcional".
+4. `selectedLineasInfo` (widget de resumen de selección múltiple en InventarioPage, usado en
+   traslados) no se extendió con los atributos — menor, no bloqueante.
+
+`git status` en `dev` al cierre: 9 archivos modificados (`ConfigPage.tsx`, `EmisoresFiscalesPanel.tsx`,
+`InventarioPage.tsx`, `RecepcionesPage.tsx`, `VentasPage.tsx`, `ventasValidation.ts`, `actividadLog.ts`,
+`schema_full.sql`, `tests/unit/lpnFuentes.test.ts`) + 3 archivos nuevos sin trackear (`AtributoValorSelect.tsx`,
+`atributosVariante.ts`, `273_atributos_variante_catalogo.sql`). **Sin commit, sin push, sin merge, sin
+migraciones aplicadas a PROD.**
+
+---
+
+## [2026-07-17] deploy | 🚀 v1.133.0 A PROD (PR #292) — identidad fiscal FUENTE ÚNICA deployada + búsqueda historial server-side
+
+**Cierra el cutover de identidad fiscal de raíz (pedido GO).** PROD = v1.133.0 (main `b6d541b0`,
+bundle `index-CyLP2nMF.js` verificado), **migs 271+272 en DEV y PROD**, drift **0** en ambos.
+
+**⚠ Secuencia breaking ejecutada como se documentó:** migs 271+272 aplicadas a PROD **pegadas al
+merge** (~4 min de ventana entre migs y frontend). La 271 invierte el espejo (emisores→tenants) y el
+ConfigPage viejo escribía en tenants → no podía aplicarse "aditiva días antes".
+
+**El gate costó una noche:** AFIP homologación estuvo CAÍDA (**ORA-12514** — la DB Oracle de ARCA;
+diagnóstico con la sonda `FEDummy` a `wswhomo.afip.gov.ar`, sin auth, no emite nada) y el deploy se
+retuvo (REGLA #0: sin el spec 21 verde con CAE real no sale un cambio fiscal). Volvió ~02:00
+(monitor estricto: 3 FEDummy OK / 60s) → **spec 21 verde: Factura C nº56, venta 344, emisor_id ✓**.
+Gotcha extra: un **TA de WSAA obtenido durante la caída quedó cacheado** (mig 264) — se borró del
+cache para re-autenticar (el cache no se auto-invalida ante faults de WSFE; mejora futura).
+
+**🛑 2º hallazgo de producto de la saga del spec 42:** al convertir su skip silencioso en falla
+ruidosa (era el **caso nº20** del patrón `isVisible({timeout})` que NO espera), apareció que **la
+búsqueda del historial de ventas era client-side sobre las últimas 50** → buscar una venta más vieja
+daba "No hay ventas registradas" aunque existiera (bug real de usuario). FIX: término ≥2 chars busca
+EN EL SERVIDOR (número→eq exacto · texto→ilike `cliente_nombre` · limit 100). Validado end-to-end:
+el 42 encontró la #239 (fuera de la ventana, 344 ventas) y emitió **NC-C con CAE real**.
+
+**También en el release:** F3a (el panel de Emisores edita al PRINCIPAL + re-sync del form ARCA —
+con fuente única ambos editores escriben el MISMO registro) · mig 272 (REVOKE EXECUTE de las fn de
+trigger, hallazgo del Security Advisor; verificado: espejo OK post-revoke, RPC anon→404).
+
+Verde: tsc · unit 1055+5 · build · e2e 21 (CAE real), 42 (NC real), 56, 63, 87 (con test multi-CUIT
+de datos reales), 10, 24, 44 · CI · drift 0 DEV y PROD.
+
+**▶ QUEDA PENDIENTE del plan de raíz:** **Fase 3b** — la sección ARCA deja de ser un segundo editor
+(pasa a resumen + pointer al panel; decisión de UX para que GO vea con la app en la mano) · **Fase 4**
+— DROP de las columnas fiscales de `tenants` (criterios: grep lectores=0 + drift 0 sostenido + soak);
+lectores no-PDF (GastosPage/Dash/CierresContables) siguen leyendo tenants vía espejo, correctos.
+
+---
+
 ## [2026-07-17] update | 🏛️ Identidad fiscal = FUENTE ÚNICA (mig 271 + F1/F2) — en DEV, deploy en HOLD por AFIP caída
 
 **Pedido GO: "resolver de raíz" la duplicación de la identidad fiscal** (tenants.* ↔ emisor default,

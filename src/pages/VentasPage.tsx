@@ -13,6 +13,7 @@ import { notificarRegistroDeudaCC, notificarPagoCC } from '@/lib/notificacionesC
 import { useAuthStore } from '@/store/authStore'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { getRebajeSort } from '@/lib/rebajeSort'
+import { atributosDeLinea } from '@/lib/atributosVariante'
 import { generarFacturaPDF, generarFacturaPDFBase64, normalizarCondIVA, type FacturaPDFData } from '@/lib/facturasPDF'
 import { generarPresupuestoPDF, type PresupuestoPDFData } from '@/lib/presupuestoPDF'
 import { generarRemitoPDF, type RemitoPDFData } from '@/lib/remitoPDF'
@@ -34,7 +35,7 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
@@ -965,7 +966,7 @@ export default function VentasPage() {
         if (itemsSinSeries.length > 0) {
           Promise.all(itemsSinSeries.map(async (item: any) => {
             let q = supabase.from('inventario_lineas')
-              .select('id, lpn, cantidad, cantidad_reservada, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
+              .select('id, lpn, cantidad, cantidad_reservada, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
             if (sucursalId) q = q.eq('sucursal_id', sucursalId)
             const { data } = await q
@@ -976,6 +977,8 @@ export default function VentasPage() {
                 id: l.id, lpn: l.lpn ?? null,
                 cantidad: l.cantidad, cantidad_reservada: l.cantidad_reservada ?? 0,
                 ubicacion: (l.ubicaciones as any)?.nombre ?? null,
+                talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
+                formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
               }))
             return { producto_id: item.producto_id, lineasDisp }
           })).then(updates => {
@@ -1333,7 +1336,7 @@ export default function VentasPage() {
       const evIds2 = (evData2 ?? []).map((e: any) => e.id)
       const estadosFinal2 = estadosFiltro2.length > 0 ? estadosFiltro2.filter(id => evIds2.includes(id)) : evIds2
       let lq = supabase.from('inventario_lineas')
-        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(nombre, prioridad, disponible_surtido)')
+        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
       if (modoAvanzado && estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
       const { data: lineasRaw2 } = await lq
@@ -1348,6 +1351,8 @@ export default function VentasPage() {
         cantidad: l.cantidad,
         cantidad_reservada: l.cantidad_reservada ?? 0,
         ubicacion: (l.ubicaciones as any)?.nombre ?? null,
+        talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
+        formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
       }))
       lpnFuentes = calcularLpnFuentes(lineasDisponibles, 1)
       primaryLineaId = lpnFuentes[0]?.linea_id
@@ -2469,6 +2474,17 @@ export default function VentasPage() {
       }
       if (item.tiene_series && item.series_seleccionadas.length !== item.cantidad) {
         toast.error(`Seleccioná ${item.cantidad} serie(s) para ${item.nombre}`); return
+      }
+      // REGLA #0: si hay más de un talle/color/etc. en stock para este producto, auto-FIFO
+      // podría vender una variante distinta de la que el cliente pidió — a diferencia de
+      // lote/ubicación, acá sí importa cuál sale. Exigir que el cajero haya pasado por el
+      // picker "Elegir talle/color/posición de rebaje" (aunque confirme la opción por defecto).
+      if (!item.tiene_series && item.lineas_disponibles) {
+        const atributoAmbiguo = atributoAmbiguoEnStock(item.lineas_disponibles)
+        if (atributoAmbiguo && !(item.lpn_manual_ids?.length)) {
+          toast.error(`Elegí el ${atributoAmbiguo} de "${item.nombre}" antes de cobrar — hay más de un valor en stock (click en el detalle del producto en el carrito)`, { duration: 6000 })
+          return
+        }
       }
       // Validar cantidad válida (NaN o ≤ 0 no deben llegar al DB)
       if (!item.cantidad || item.cantidad <= 0 || isNaN(item.cantidad)) {
@@ -4544,18 +4560,32 @@ export default function VentasPage() {
                             {modoAvanzado && !item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
                               const canPick = (item.lineas_disponibles?.length ?? 0) > 1
                               const isOpen = lpnPickerIdx === idx
+                              // REGLA #0: hay >1 talle/color en stock y el cajero todavía no pasó
+                              // por el picker — sin esto, "cobrar" se va a bloquear (ver registrarVenta).
+                              const requiereConfirmar = canPick && item.lineas_disponibles
+                                && !!atributoAmbiguoEnStock(item.lineas_disponibles) && !(item.lpn_manual_ids?.length)
                               return (
                                 <>
+                                  {requiereConfirmar && (
+                                    <span onClick={() => setLpnPickerIdx(isOpen ? null : idx)}
+                                      className="text-xs px-1.5 py-0.5 rounded font-semibold cursor-pointer
+                                        text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 ring-1 ring-amber-300 dark:ring-amber-700 animate-pulse">
+                                      ⚠ Elegí {atributoAmbiguoEnStock(item.lineas_disponibles!)}
+                                    </span>
+                                  )}
                                   {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
                                     <span key={fi}
                                       onClick={canPick ? () => setLpnPickerIdx(isOpen ? null : idx) : undefined}
-                                      title={canPick ? 'Click para cambiar posición de rebaje' : (f.ubicacion ? `Ubicación: ${f.ubicacion}` : undefined)}
+                                      title={canPick ? 'Click para elegir talle/color/posición de rebaje' : (f.ubicacion ? `Ubicación: ${f.ubicacion}` : undefined)}
                                       className={`text-xs px-1.5 py-0.5 rounded transition-colors
                                         ${canPick
                                           ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/40 ring-1 ring-blue-200 dark:ring-blue-800'
                                           : 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'}`}>
                                       {f.lpn ?? 'Sin LPN'}{item.lpn_fuentes!.length > 1 ? ` (${f.cantidad}u)` : ''}
                                       {f.ubicacion && <span className="text-blue-400 dark:text-blue-500"> · {f.ubicacion}</span>}
+                                      {atributosDeLinea(f).map(a => (
+                                        <span key={a.key} className="text-blue-500 dark:text-blue-400 font-medium"> · {a.emoji}{a.valor}</span>
+                                      ))}
                                       {canPick && fi === 0 && <span className="ml-0.5 text-blue-400">▾</span>}
                                     </span>
                                   ))}
@@ -4566,11 +4596,12 @@ export default function VentasPage() {
                                   {isOpen && item.lineas_disponibles && (
                                     <div className="w-full mt-1 bg-white dark:bg-gray-800 border border-blue-200 dark:border-blue-700 rounded-xl shadow-lg overflow-hidden">
                                       <p className="text-xs text-gray-500 dark:text-gray-400 px-3 py-1.5 border-b border-gray-100 dark:border-gray-700 font-medium">
-                                        Elegir posición de rebaje
+                                        Elegir talle / color / posición de rebaje
                                       </p>
                                       {item.lineas_disponibles.map((l) => {
                                         const disp = l.cantidad - (l.cantidad_reservada ?? 0)
                                         const isActive = item.lineas_disponibles![0].id === l.id
+                                        const atributos = atributosDeLinea(l)
                                         return (
                                           <button key={l.id} onClick={() => overrideLpnSource(idx, l.id)}
                                             className={`w-full flex items-center justify-between px-3 py-2 text-xs text-left transition-colors
@@ -4578,8 +4609,11 @@ export default function VentasPage() {
                                                 ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-medium'
                                                 : 'hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-700 dark:text-gray-300'}`}>
                                             <span>
-                                              {l.lpn ?? <span className="text-gray-400 italic">Sin LPN</span>}
+                                              {atributos.length > 0
+                                                ? atributos.map(a => `${a.emoji} ${a.valor}`).join(' · ')
+                                                : (l.lpn ?? <span className="text-gray-400 italic">Sin LPN</span>)}
                                               {l.ubicacion && <span className="text-gray-400 dark:text-gray-500 ml-1">· {l.ubicacion}</span>}
+                                              {atributos.length > 0 && l.lpn && <span className="text-gray-400 dark:text-gray-500 ml-1">· {l.lpn}</span>}
                                               {isActive && <span className="ml-1 text-blue-500">✓</span>}
                                             </span>
                                             <span className={`ml-2 shrink-0 ${disp <= 0 ? 'text-red-400' : 'text-gray-400 dark:text-gray-500'}`}>

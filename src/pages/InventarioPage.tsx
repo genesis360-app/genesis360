@@ -367,7 +367,7 @@ export default function InventarioPage() {
     queryKey: ['productos-masivo-busqueda', tenant?.id, masivoSearch],
     queryFn: async () => {
       let q = supabase.from('productos')
-        .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
+        .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, precio_costo, precio_venta')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
       if (masivoSearch.length > 0)
         q = q.or(`nombre.ilike.%${masivoSearch}%,sku.ilike.%${masivoSearch}%,codigo_barras.eq.${masivoSearch}`)
@@ -1044,6 +1044,11 @@ export default function InventarioPage() {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (tieneLote && !form.nroLote.trim()) throw new Error('Este producto requiere número de lote')
       if (tieneVencimiento && !form.fechaVencimiento) throw new Error('Este producto requiere fecha de vencimiento')
+      if ((selectedProduct as any).tiene_talle && !form.talle.trim()) throw new Error('Este producto requiere talle')
+      if ((selectedProduct as any).tiene_color && !form.color.trim()) throw new Error('Este producto requiere color')
+      if ((selectedProduct as any).tiene_encaje && !form.encaje.trim()) throw new Error('Este producto requiere encaje')
+      if ((selectedProduct as any).tiene_formato && !form.formato.trim()) throw new Error('Este producto requiere formato')
+      if ((selectedProduct as any).tiene_sabor_aroma && !form.saborAroma.trim()) throw new Error('Este producto requiere sabor/aroma')
 
       // I-05: Validar mono_sku en la ubicación seleccionada
       if (form.ubicacionId) {
@@ -2090,6 +2095,14 @@ export default function InventarioPage() {
   // ── Masivo inline helpers ─────────────────────────────────────────────────
   // ISS-127 F2: `overrides` pre-cargan cantidad/lote/venc desde un código GS1.
   const addMasivoRow = (prod: any, overrides?: { cantidad?: number; nro_lote?: string; fecha_vencimiento?: string }) => {
+    // El ingreso masivo (esta grilla) todavía no pide talle/color/encaje/formato/sabor-aroma por
+    // fila — permitirlo crearía líneas de stock con el atributo en null pese a tenerlo activado
+    // (REGLA #0: no fallar en silencio). Hasta que se sume soporte acá, esos productos van por
+    // "Ingreso manual" (single-item), donde el atributo SÍ es obligatorio.
+    if (prod.tiene_talle || prod.tiene_color || prod.tiene_encaje || prod.tiene_formato || prod.tiene_sabor_aroma) {
+      toast.error(`"${prod.nombre}" tiene un atributo de variante activado (talle/color/etc.) — usá "Ingreso manual" para cargarlo, el masivo todavía no lo soporta.`, { duration: 6000 })
+      return
+    }
     setMasivoRows(prev => {
       // Same SKU + no lote required → increment quantity
       const existingIdx = prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !overrides?.nro_lote && !prod.tiene_lote && !prod.tiene_series)

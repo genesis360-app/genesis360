@@ -3,15 +3,14 @@ title: Atributos de variante (talle / color / encaje / formato / sabor·aroma)
 category: features
 tags: [productos, inventario, variantes, talle, color, ventas, atributos]
 sources: [CLAUDE.md, log.md]
-updated: 2026-07-17
+updated: 2026-07-18
 ---
 
 # Atributos de variante (talle / color / encaje / formato / sabor·aroma)
 
-> [!WARNING] **EN DEV, SIN COMMITEAR (2026-07-17).** No mergeado a `main`, no deployado a PROD. Corre
-> en el dev server local (`localhost:5173`) esperando que GO pruebe el flujo completo antes de seguir.
-> Ver `log.md` entrada `[2026-07-17] update | 🧵 F3b + variantes talle/color FUNCIONALES` y el bloque
-> "▶ RETOMAR ACÁ" de `project_pendientes.md`.
+> [!WARNING] **EN `dev`, SIN COMMITEAR (2026-07-18, ronda 2).** No mergeado a `main`, no deployado a
+> PROD. GO probó la ronda 1 a mano y encontró bugs reales (ver "Ronda 2" abajo) — corregidos, pendiente
+> de que GO vuelva a probar antes de mergear.
 
 ## Por qué existe esta página
 
@@ -115,24 +114,62 @@ Por eso la solución extiende ESE mecanismo existente en vez de inventar un fluj
 - Badges de talle/color en la fila compacta del carrito y en el picker expandido (que ahora prioriza
   mostrar talle/color sobre el LPN crudo).
 
+## Ronda 2 (2026-07-18) — GO probó a mano y encontró 3 bugs reales
+
+GO hizo un ingreso de un producto "Variante1" con talle en el tenant **Almacén Jorgito (DEV)** y
+reportó "funciona todo raro". Antes de tocar código se investigaron los datos reales (Supabase MCP) —
+no se adivinó nada:
+
+1. **🛑 El atributo NO era obligatorio en el ingreso** — GO pidió explícitamente que funcione **como el
+   lote**: si el producto lo tiene activado, SIEMPRE debe pedirlo en ingreso, despacho y cualquier
+   movimiento. La línea real creada por GO quedó con `talle: null` pese a `tiene_talle=true` — el campo
+   era opcional. **Fix:** obligatorio en Recepciones (mismo patrón que `tiene_lote`) e Inventario →
+   Ingreso manual (mismo patrón). El **Ingreso masivo** (grilla, `MasivoModal`) todavía no soporta estos
+   5 atributos por fila — en vez de dejarlo pasar en silencio con `null`, ahora **bloquea explícitamente**
+   agregar un producto con algún atributo activo a esa grilla, con un toast que dirige a "Ingreso manual".
+2. **🛑 El despacho (venta) tampoco lo pedía** — el picker "Elegir posición de rebaje" ya existía pero
+   era **opcional** (click para override). GO aclaró que para talle/color, a diferencia de lote, la
+   elección SÍ importa (un cliente que pide talle M no puede recibir talle S por FIFO ciego). **Fix:**
+   mismo patrón que ya usa `tiene_series` para forzar la selección de series antes de cobrar — nueva
+   función pura `atributoAmbiguoEnStock()` (`ventasValidation.ts`, 5 tests nuevos) detecta si hay **más
+   de un valor distinto** de algún atributo entre las líneas disponibles de un producto; si hay
+   ambigüedad y el cajero no pasó por el picker (`lpn_manual_ids` vacío), `registrarVenta()` bloquea el
+   cobro con un toast — y el badge del carrito se pone ámbar/parpadeante ("⚠ Elegí talle") en vez del
+   azul discreto de antes.
+3. **🛑 Duplicidad real de catálogos — conflicto entre los dos sistemas de variante.** GO cargó S/M/L en
+   Config→Atributos (este sistema), no encontró dónde asignarlos al CREAR el producto (por diseño: acá
+   el atributo se carga en el INGRESO, no en la ficha del producto), así que terminó vinculando el
+   producto a un **Grupo de variantes** y volviendo a tipear S/M/L ahí — una lista **totalmente
+   separada** (`producto_grupos.atributos`, sin ninguna conexión con `atributos_variante_valores`). El
+   producto "Variante1" quedó con `grupo_id` seteado **Y** `tiene_talle=true` simultáneamente — dos
+   modelos de stock incompatibles en el mismo SKU. **Fix (UI + DB, no solo UI — REGLA #0):**
+   - `ProductoFormPage`: los 5 toggles de "Atributos de variante" se deshabilitan si el producto ya
+     tiene `grupo_id`, y viceversa (vincular a un grupo se bloquea si algún toggle ya está activo) —
+     con copy explicando cuándo usar cada sistema.
+   - **Mig 274** (`chk_productos_grupo_sin_atributos_variante`, aplicada en DEV): CHECK constraint que
+     bloquea la combinación **incluso por API/SQL directo** — verificado intentando la violación por
+     SQL, rechazada con el error del constraint.
+   - Dato de prueba corregido en DEV: "Variante1" (Almacén Jorgito) → `tiene_talle=false` (queda solo
+     como miembro del grupo, que es el modelo correcto para "cada talle es un SKU separado").
+
+Verde tras la ronda 2: tsc · build · unit **1063+5** (8 nuevos en total sobre la ronda 1) · regresión
+e2e **sin cambios** en las mismas 5 specs (con `19_flujo_venta_mutante` sumado) — el bloqueo de checkout
+nuevo no rompió el flujo de venta normal (esas specs no usan productos con atributos ambiguos).
+
 ## Qué queda pendiente
 
-1. **Validación manual de GO en el dev server** (`localhost:5173`) — bloqueante para commitear/mergear.
-2. **Spec e2e mutante formal** (próximo número disponible: **89**) — no se escribió en esta sesión por
-   falta de browser tool disponible.
-3. **`venta_item_despachos`** (ledger de trazabilidad de despacho por LPN, ver
+1. **Validación manual de GO — ronda 2** en el dev server (`localhost:5173`) — bloqueante para
+   commitear/mergear. La ronda 1 SÍ se probó y encontró los 3 bugs de arriba.
+2. **Ingreso masivo sin soporte real** para estos 5 atributos (hoy solo bloquea, no permite cargarlos
+   por esa vía) — pendiente de diseño si hace falta.
+3. **Spec e2e mutante formal** (próximo número disponible: **89**) — todavía no se escribió (sin browser
+   tool en la sesión).
+4. **`venta_item_despachos`** (ledger de trazabilidad de despacho por LPN, ver
    [[wiki/features/ventas-pos]] "ISS-075") **no** snapshotea todavía el talle/color consumido — hoy
    solo es visible en el carrito antes de confirmar, no en el historial post-venta. Mejora de
    trazabilidad razonable para una fase futura (ligada a `feedback_trazabilidad_grado_wms.md`), **no
    bloqueante** para que el feature sea "funcional" como pidió GO.
-4. `selectedLineasInfo` en InventarioPage (traslados) sin extender con los atributos.
-
-## Verde de la sesión
-
-tsc · build · unit **1058+5** (3 nuevos de `calcularLpnFuentes`) · regresión e2e verde **sin cambios**
-en 4 specs existentes que tocan las páginas modificadas (`29_recepcion_stock_mutante`,
-`23_inventario_ingreso_mutante`, `04_ventas` + `19_flujo_venta_mutante`, `10_configuracion`) — confirma
-que no se rompió nada existente.
+5. `selectedLineasInfo` en InventarioPage (traslados) sin extender con los atributos.
 
 ## Links
 

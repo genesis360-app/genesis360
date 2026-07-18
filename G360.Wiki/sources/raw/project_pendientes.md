@@ -6,10 +6,32 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📍 ARRANCÁ ACÁ (2026-07-17, cierre sesión 2) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · DEV tiene **DOS cambios SIN COMMITEAR** en el working tree esperando que GO los pruebe en el dev server local (`localhost:5173`, sigue corriendo en background) · mig **273 SOLO en DEV** (archivo sin commitear) · lo commiteado/en PROD sigue en migs 001-272
+> ### 📍 ARRANCÁ ACÁ (2026-07-18, cierre sesión 3) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` COMMITEADO Y PUSHEADO (`a99bb270` + fixes de ronda 2 sin commitear todavía) · migs **273+274 SOLO en DEV** · nada mergeado a `main`
 >
-> **⚠ Verificar `git status`/`git log` de `dev` antes de asumir este estado** — si el working tree
-> aparece limpio, es porque otra sesión ya commiteó o revirtió estos cambios.
+> **GO probó F3b y variantes a mano en el dev server (como se pedía) y encontró 3 bugs reales en
+> variantes** — investigados con datos reales (Supabase MCP, tenant Almacén Jorgito DEV, producto
+> "Variante1"), no adivinados. Los 3 corregidos en esta misma sesión (ronda 2):
+> 1. **El atributo no era obligatorio en el ingreso** (GO: "tiene que funcionar como el lote, si está
+>    activado en el producto siempre te debe pedir ese atributo en ingreso, despacho y cualquier
+>    movimiento"). Fix: obligatorio en Recepciones + Ingreso manual (mismo patrón que `tiene_lote`);
+>    Ingreso masivo (grilla) todavía no lo soporta → ahora BLOQUEA explícitamente en vez de dejar pasar
+>    en silencio con `null`.
+> 2. **El despacho (venta) tampoco lo pedía** — el picker "Elegir posición de rebaje" era opcional.
+>    Fix: mismo patrón que `tiene_series` (bloquea el cobro) — función pura nueva
+>    `atributoAmbiguoEnStock()` detecta ambigüedad real entre líneas de stock; si hay >1 valor distinto
+>    y el cajero no confirmó, `registrarVenta()` bloquea con toast + badge ámbar parpadeante en el carrito.
+> 3. **Duplicidad real: "Grupo de variantes" y "Atributos de variante" son sistemas incompatibles y
+>    nada lo impedía** — GO terminó con un producto vinculado a AMBOS (`grupo_id` + `tiene_talle=true`),
+>    cargando "S,M,L" dos veces en catálogos sin conexión. Fix: `ProductoFormPage` bloquea combinarlos
+>    (UI) + **mig 274** `chk_productos_grupo_sin_atributos_variante` (DB, verificado que rechaza incluso
+>    por SQL directo — REGLA #0, guard server-side no solo UI). Dato de prueba corregido en DEV.
+>
+> Verde: tsc · build · unit **1063+5** (8 nuevos total) · regresión e2e sin cambios en 5 specs
+> (`29_recepcion_stock_mutante`, `23_inventario_ingreso_mutante`, `04_ventas`, `19_flujo_venta_mutante`,
+> `10_configuracion`). **Todavía sin commitear** — falta que GO vuelva a probar antes del commit+push
+> de esta ronda y del merge a `main`. Detalle completo: [[wiki/features/atributos-variante]].
+>
+> ### 📍 ESTADO ANTERIOR (2026-07-17, cierre sesión 2) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · ronda 1 de F3b+variantes commiteada y pusheada a `dev` (`a99bb270`) sin mergear a `main`
 >
 > **Qué queda pendiente de commitear (NO se mergeó a `main`, NO se deployó, NO hay migración en PROD):**
 > 1. **F3b — ARCA deja de ser 2º editor de identidad fiscal** (cerraba el pendiente que dejó

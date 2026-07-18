@@ -2512,6 +2512,7 @@ ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion
 ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion_sucursal_producto_id_sucursal_id_key UNIQUE (producto_id, sucursal_id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_alicuota_iva_check CHECK ((alicuota_iva = ANY (ARRAY[(0)::numeric, 10.5, (21)::numeric, (27)::numeric])));
 ALTER TABLE public.productos ADD CONSTRAINT productos_clase_abc_check CHECK (((clase_abc IS NULL) OR (clase_abc = ANY (ARRAY['A'::text, 'B'::text, 'C'::text]))));
+ALTER TABLE public.productos ADD CONSTRAINT chk_productos_grupo_sin_atributos_variante CHECK ((NOT ((grupo_id IS NOT NULL) AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_pkey PRIMARY KEY (id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_tenant_id_sku_key UNIQUE (tenant_id, sku);
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_pkey PRIMARY KEY (id);

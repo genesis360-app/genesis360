@@ -35,7 +35,7 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
@@ -2475,6 +2475,17 @@ export default function VentasPage() {
       if (item.tiene_series && item.series_seleccionadas.length !== item.cantidad) {
         toast.error(`Seleccioná ${item.cantidad} serie(s) para ${item.nombre}`); return
       }
+      // REGLA #0: si hay más de un talle/color/etc. en stock para este producto, auto-FIFO
+      // podría vender una variante distinta de la que el cliente pidió — a diferencia de
+      // lote/ubicación, acá sí importa cuál sale. Exigir que el cajero haya pasado por el
+      // picker "Elegir talle/color/posición de rebaje" (aunque confirme la opción por defecto).
+      if (!item.tiene_series && item.lineas_disponibles) {
+        const atributoAmbiguo = atributoAmbiguoEnStock(item.lineas_disponibles)
+        if (atributoAmbiguo && !(item.lpn_manual_ids?.length)) {
+          toast.error(`Elegí el ${atributoAmbiguo} de "${item.nombre}" antes de cobrar — hay más de un valor en stock (click en el detalle del producto en el carrito)`, { duration: 6000 })
+          return
+        }
+      }
       // Validar cantidad válida (NaN o ≤ 0 no deben llegar al DB)
       if (!item.cantidad || item.cantidad <= 0 || isNaN(item.cantidad)) {
         toast.error(`Cantidad inválida para "${item.nombre}". Corregila antes de guardar.`); return
@@ -4549,8 +4560,19 @@ export default function VentasPage() {
                             {modoAvanzado && !item.tiene_series && item.lpn_fuentes && item.lpn_fuentes.length > 0 && (() => {
                               const canPick = (item.lineas_disponibles?.length ?? 0) > 1
                               const isOpen = lpnPickerIdx === idx
+                              // REGLA #0: hay >1 talle/color en stock y el cajero todavía no pasó
+                              // por el picker — sin esto, "cobrar" se va a bloquear (ver registrarVenta).
+                              const requiereConfirmar = canPick && item.lineas_disponibles
+                                && !!atributoAmbiguoEnStock(item.lineas_disponibles) && !(item.lpn_manual_ids?.length)
                               return (
                                 <>
+                                  {requiereConfirmar && (
+                                    <span onClick={() => setLpnPickerIdx(isOpen ? null : idx)}
+                                      className="text-xs px-1.5 py-0.5 rounded font-semibold cursor-pointer
+                                        text-amber-700 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/30 ring-1 ring-amber-300 dark:ring-amber-700 animate-pulse">
+                                      ⚠ Elegí {atributoAmbiguoEnStock(item.lineas_disponibles!)}
+                                    </span>
+                                  )}
                                   {item.lpn_fuentes.slice(0, 3).map((f, fi) => (
                                     <span key={fi}
                                       onClick={canPick ? () => setLpnPickerIdx(isOpen ? null : idx) : undefined}

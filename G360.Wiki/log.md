@@ -6,6 +6,36 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-18] update | 🐛 Variantes ronda 2 — GO probó a mano y encontró 3 bugs reales, corregidos
+
+**GO hizo lo que se le pidió** (probar F3b y variantes en el dev server antes del merge) y encontró que
+variantes "funciona todo raro". Se investigó con datos reales por Supabase MCP (tenant Almacén Jorgito
+DEV, producto "Variante1") antes de tocar código — no se adivinó nada.
+
+**3 hallazgos, los 3 corregidos:**
+1. **El atributo no era obligatorio en el ingreso** — la línea real de GO quedó con `talle: null` pese
+   a `tiene_talle=true`. GO pidió explícitamente: "tiene que funcionar como el lote... siempre te debe
+   pedir ese atributo en el ingreso y despacho y cualquier movimiento del inventario". Fix: obligatorio
+   en Recepciones + Inventario→Ingreso manual (mismo patrón que `tiene_lote`); el Ingreso masivo (grilla)
+   no soporta estos atributos todavía → ahora bloquea explícitamente en vez de dejar pasar en silencio.
+2. **El despacho tampoco lo pedía** — el picker "Elegir posición de rebaje" era opcional. Fix: mismo
+   patrón que ya usa `tiene_series` para bloquear el cobro — `atributoAmbiguoEnStock()` (nueva, pura,
+   5 tests) detecta si hay más de un talle/color distinto en stock; si hay ambigüedad sin confirmar,
+   `registrarVenta()` bloquea con toast, y el badge del carrito pasa a ámbar parpadeante.
+3. **Duplicidad real entre los dos sistemas de variante** — GO no encontró dónde asignar S/M/L al crear
+   el producto (por diseño, el atributo se carga en el ingreso) y terminó vinculándolo también a un
+   Grupo de variantes, recargando "S,M,L" en un catálogo separado sin conexión. El producto quedó con
+   `grupo_id` Y `tiene_talle=true` simultáneamente — dos modelos de stock incompatibles. Fix:
+   `ProductoFormPage` bloquea combinarlos + **mig 274** `chk_productos_grupo_sin_atributos_variante`
+   (CHECK constraint en DB, verificado que rechaza la combinación incluso por SQL directo — REGLA #0,
+   guard server-side no solo UI). Dato de prueba corregido a mano en DEV.
+
+Verde: tsc · build · unit 1063+5 (8 nuevos en total sobre la ronda 1) · regresión e2e sin cambios en
+5 specs. **Todavía sin commitear** — esperando que GO vuelva a probar antes del commit+push+merge.
+Detalle completo en [[wiki/features/atributos-variante]].
+
+---
+
 ## [2026-07-17] update | 🧾 Wiki de pricing desactualizado — corregido (hallazgo de Federico Messina)
 
 **Federico Messina (cofundador, con acceso a GitHub y su propio Claude para consultar el sistema)

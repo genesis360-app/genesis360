@@ -434,6 +434,16 @@ export default function RecepcionesPage() {
           errores.push(`"${it.producto_nombre}" requiere fecha de vencimiento`)
         if (it.tiene_series && !it.series_txt.trim())
           errores.push(`"${it.producto_nombre}" requiere números de serie`)
+        if (it.tiene_talle && !it.talle?.trim())
+          errores.push(`"${it.producto_nombre}" requiere talle`)
+        if (it.tiene_color && !it.color?.trim())
+          errores.push(`"${it.producto_nombre}" requiere color`)
+        if (it.tiene_encaje && !it.encaje?.trim())
+          errores.push(`"${it.producto_nombre}" requiere encaje`)
+        if (it.tiene_formato && !it.formato?.trim())
+          errores.push(`"${it.producto_nombre}" requiere formato`)
+        if (it.tiene_sabor_aroma && !it.sabor_aroma?.trim())
+          errores.push(`"${it.producto_nombre}" requiere sabor/aroma`)
       }
       if (errores.length > 0) {
         // Auto-expandir ítems con error para que el usuario vea los campos faltantes
@@ -445,7 +455,12 @@ export default function RecepcionesPage() {
           const conError =
             (it.tiene_lote && !it.nro_lote?.trim()) ||
             (it.tiene_vencimiento && !it.fecha_vencimiento) ||
-            (it.tiene_series && !it.series_txt.trim())
+            (it.tiene_series && !it.series_txt.trim()) ||
+            (it.tiene_talle && !it.talle?.trim()) ||
+            (it.tiene_color && !it.color?.trim()) ||
+            (it.tiene_encaje && !it.encaje?.trim()) ||
+            (it.tiene_formato && !it.formato?.trim()) ||
+            (it.tiene_sabor_aroma && !it.sabor_aroma?.trim())
           return conError ? { ...it, expanded: true } : it
         }))
         toast.error(errores[0])

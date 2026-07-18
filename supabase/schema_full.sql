@@ -2143,7 +2143,8 @@ CREATE TABLE public.traslado_items (
   color text,
   encaje text,
   formato text,
-  sabor_aroma text
+  sabor_aroma text,
+  ubicacion_sugerida_id uuid
 );
 
 CREATE TABLE public.traslados (
@@ -2993,6 +2994,7 @@ ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_linea_origen_id_
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_traslado_id_fkey FOREIGN KEY (traslado_id) REFERENCES traslados(id) ON DELETE CASCADE;
+ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_ubicacion_sugerida_id_fkey FOREIGN KEY (ubicacion_sugerida_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_despachado_por_fkey FOREIGN KEY (despachado_por) REFERENCES users(id);
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_envio_id_fkey FOREIGN KEY (envio_id) REFERENCES envios(id) ON DELETE SET NULL;
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_recibido_por_fkey FOREIGN KEY (recibido_por) REFERENCES users(id);

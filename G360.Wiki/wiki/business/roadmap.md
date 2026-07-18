@@ -9,9 +9,39 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 15 de Julio, 2026
+**Última actualización:** 18 de Julio, 2026
 
 ---
+
+## v1.134.0 — 🧵🚚 Atributos de variante FUNCIONALES + F3b (ARCA→resumen) + traslado real desde LpnAccionesModal — ✅ PROD (2026-07-18)
+
+**Bundle de 2 sesiones** (F3b+variantes del 2026-07-17 + testing cross-sucursal con usuarios reales
+del 2026-07-18), deployado junto tras confirmación de GO. Migs **273-276** en DEV y PROD.
+
+- **F3b** — la tarjeta "Facturación Electrónica (ARCA)" de `ConfigPage` deja de ser 2º editor de
+  identidad fiscal: resumen readonly + botón "Editar en Emisores fiscales" cuando el tenant ya
+  tiene CUIT.
+- **Atributos de variante** (talle/color/encaje/formato/sabor·aroma) pasan de "toggles que no
+  hacían nada" a funcionales de punta a punta: catálogo configurable (mig 273), obligatorios en
+  TODO movimiento de stock (ingreso/rebaje simple y masivo, mover/partir LPN, traslados), guard
+  server-side contra combinarlos con "Grupo de variantes" (mig 274, CHECK constraint), columnas de
+  snapshot en `traslado_items` (mig 275). Detalle: [[wiki/features/atributos-variante]].
+- **🚚 "Mover" un LPN hacia otra sucursal ahora genera un traslado real** (en tránsito +
+  confirmación), no reubica el stock directo como antes — cerraba un riesgo real de REGLA #0
+  (stock apareciendo en otra sucursal sin confirmación física de que llegó). Mig **276** nueva
+  (`traslado_items.ubicacion_sugerida_id`, precarga la ubicación al confirmar recepción). Validado
+  con DOS usuarios reales de sucursales distintas, no el owner simulando ambos lados. Detalle:
+  [[wiki/features/multi-sucursal]] · `tests/specs/uat-modo-basico.md` §36.
+- **3 bugs más** encontrados probando con usuarios reales de una 2da sucursal: `estado_id` del
+  producto no se guardaba (payload incompleto en `ProductoFormPage`), `ProductosPage` no mostraba
+  categoría/estado/ubicación a simple vista, ubicaciones GLOBALES ausentes en "Confirmar recepción"
+  de Traslados (`.eq()` vs `.or()`). UAT §34-§35.
+- **Validación RLS por sucursal** con usuarios reales (no solo impersonación SQL) — confirma que
+  `inventario_lineas`/`caja_sesiones` aíslan bien; confirma (documentado desde v1.75.0, no es nuevo)
+  que `traslados` es tenant-wide a propósito. UAT §37.
+
+Verde: tsc · build · unit 1080+5 · e2e 69/69 (sweep de regresión) + 4 specs nuevos dedicados
+(90/92/93/94).
 
 ## v1.133.0 — 🏛️ Identidad fiscal con FUENTE ÚNICA de verdad + búsqueda historial server-side — ✅ PROD (2026-07-17, PR #292)
 

@@ -10,6 +10,7 @@ import type { Sucursal } from '@/lib/supabase'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { requiereAuthAjuste } from '@/lib/ajusteAutorizacion'
 import { LpnQR } from '@/components/LpnQR'
+import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
 import toast from 'react-hot-toast'
 import type { ProductoEstructura } from '@/lib/supabase'
@@ -178,6 +179,16 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         throw new Error('Este producto requiere número de lote')
       if (producto.tiene_vencimiento && !editForm.fecha_vencimiento)
         throw new Error('Este producto requiere fecha de vencimiento')
+      if (producto.tiene_talle && !editForm.talle.trim())
+        throw new Error('Este producto requiere talle')
+      if (producto.tiene_color && !editForm.color.trim())
+        throw new Error('Este producto requiere color')
+      if (producto.tiene_encaje && !editForm.encaje.trim())
+        throw new Error('Este producto requiere encaje')
+      if (producto.tiene_formato && !editForm.formato.trim())
+        throw new Error('Este producto requiere formato')
+      if (producto.tiene_sabor_aroma && !editForm.sabor_aroma.trim())
+        throw new Error('Este producto requiere sabor/aroma')
 
       // DEPOSITO: si cambia cantidad → crear solicitud de autorización en vez de ejecutar
       if (requiereAprobacion && cantCambio) {
@@ -298,7 +309,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         .eq('id', linea.id)
       if (e1) throw e1
 
-      // Crear nuevo LPN con la cantidad movida
+      // Crear nuevo LPN con la cantidad movida — hereda TODOS los atributos de la línea
+      // origen (es la MISMA mercadería física, no hace falta re-preguntar el talle/color).
       const newLpn = `LPN-${Date.now().toString(36).toUpperCase()}`
       const { error: e2 } = await supabase.from('inventario_lineas').insert({
         tenant_id: tenant!.id,
@@ -311,6 +323,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         proveedor_id: linea.proveedor_id || null,
         nro_lote: linea.nro_lote || null,
         fecha_vencimiento: linea.fecha_vencimiento || null,
+        pais_origen: linea.pais_origen || null,
+        talle: linea.talle || null,
+        color: linea.color || null,
+        encaje: linea.encaje || null,
+        formato: linea.formato || null,
+        sabor_aroma: linea.sabor_aroma || null,
       })
       if (e2) throw e2
 
@@ -626,42 +644,42 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   )}
                   {producto.tiene_talle && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Talle / Talla</label>
-                      <input type="text" value={editForm.talle} onChange={e => setEditForm(p => ({ ...p, talle: e.target.value }))}
-                        placeholder="Ej: M, 42, XL"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Talle / Talla <span className="text-red-500">*</span></label>
+                      <AtributoValorSelect tenantId={tenant!.id} atributo="talle" value={editForm.talle}
+                        onChange={v => setEditForm(p => ({ ...p, talle: v }))} placeholder="Ej: M, 42, XL"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.talle.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                   {producto.tiene_color && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Color</label>
-                      <input type="text" value={editForm.color} onChange={e => setEditForm(p => ({ ...p, color: e.target.value }))}
-                        placeholder="Ej: Rojo"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Color <span className="text-red-500">*</span></label>
+                      <AtributoValorSelect tenantId={tenant!.id} atributo="color" value={editForm.color}
+                        onChange={v => setEditForm(p => ({ ...p, color: v }))} placeholder="Ej: Rojo"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.color.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                   {producto.tiene_encaje && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Encaje</label>
-                      <input type="text" value={editForm.encaje} onChange={e => setEditForm(p => ({ ...p, encaje: e.target.value }))}
-                        placeholder="Ej: Slim fit"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Encaje <span className="text-red-500">*</span></label>
+                      <AtributoValorSelect tenantId={tenant!.id} atributo="encaje" value={editForm.encaje}
+                        onChange={v => setEditForm(p => ({ ...p, encaje: v }))} placeholder="Ej: Slim fit"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.encaje.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                   {producto.tiene_formato && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Formato</label>
-                      <input type="text" value={editForm.formato} onChange={e => setEditForm(p => ({ ...p, formato: e.target.value }))}
-                        placeholder="Ej: 500g, 1L"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Formato <span className="text-red-500">*</span></label>
+                      <AtributoValorSelect tenantId={tenant!.id} atributo="formato" value={editForm.formato}
+                        onChange={v => setEditForm(p => ({ ...p, formato: v }))} placeholder="Ej: 500g, 1L"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.formato.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                   {producto.tiene_sabor_aroma && (
                     <div>
-                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sabor / Aroma</label>
-                      <input type="text" value={editForm.sabor_aroma} onChange={e => setEditForm(p => ({ ...p, sabor_aroma: e.target.value }))}
-                        placeholder="Ej: Vainilla"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                      <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sabor / Aroma <span className="text-red-500">*</span></label>
+                      <AtributoValorSelect tenantId={tenant!.id} atributo="sabor_aroma" value={editForm.sabor_aroma}
+                        onChange={v => setEditForm(p => ({ ...p, sabor_aroma: v }))} placeholder="Ej: Vainilla"
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.sabor_aroma.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                 </div>

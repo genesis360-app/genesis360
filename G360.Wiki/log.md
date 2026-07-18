@@ -6,6 +6,47 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-18] update | 🐛 Variantes ronda 3 — causa raíz real (queries sin las columnas nuevas) + extendido a TODO movimiento de stock
+
+**GO volvió a probar la ronda 2 y el ingreso SIMPLE ("Inventario → Agregar stock → Ingreso") tampoco
+pedía el talle.** No era el producto de prueba — era un bug real: el buscador de productos de ese
+flujo (`productosBusqueda` en `InventarioPage`) hacía `.select(...)` sin las columnas
+`tiene_talle/tiene_color/tiene_encaje/tiene_formato/tiene_sabor_aroma`, así que `selectedProduct`
+quedaba con esos campos en `undefined` sin importar el valor real en la base — la validación (ya
+escrita y correcta desde la ronda 2) nunca se disparaba. Encontrado grepeando el código por queries
+que traen `tiene_lote` pero no `tiene_talle` (mismo bug repetido en **7 lugares**: InventarioPage ×3
+—búsqueda + 2 handlers de scan de barras—, RecepcionesPage ×2 —scan de ticket por foto/IA—,
+MasivoModal ×2 —búsqueda + scan—).
+
+**Además, GO pidió explícitamente extender la obligatoriedad a TODO movimiento de inventario**
+("ingreso simple o masivo, rebaje simple o masivo, movimientos parciales de LPN o de ubicación").
+Se cubrió:
+- `MasivoModal` (el modal separado de Ingreso/Rebaje masivo): soporte real por primera vez —
+  obligatorio en ingreso; en rebaje, si hay >1 valor distinto en stock exige elegir cuál y **filtra**
+  las líneas candidatas antes de consumir (nunca cae a "cualquiera" si falta stock de la elegida).
+- Grilla inline de "Ingreso masivo" (`masivoRows`): en la ronda 2 había quedado bloqueada (rechazaba
+  productos con atributos activos); ahora tiene soporte real igual que el modal.
+- `LpnAccionesModal`: tab "Editar" pasa de texto libre a `AtributoValorSelect` + obligatorio; tab
+  "Mover" (partir una línea y mandar parte del stock a otra ubicación — el "movimiento parcial")
+  **no copiaba los atributos a la línea nueva** — se perdían en cada movimiento parcial, corregido
+  (se heredan, no se re-preguntan: es la misma mercadería física).
+- Traslados entre sucursales (`TrasladosPanel`): `traslado_items` **ni tenía las columnas** — **mig
+  275** nueva las agrega. Despacho snapshotea desde la línea origen; recepción y cancelación/reingreso
+  propagan a la línea nueva que crean.
+- Helpers puros compartidos nuevos (`src/lib/atributosVariante.ts`): `atributoAmbiguoEnLineas()` y
+  `filtrarLineasPorAtributo()` — 12 tests unitarios nuevos.
+- **Spec e2e mutante nº 89 escrito Y CORRIDO** (no quedó pendiente esta vez): crea un producto real
+  con "Talle" activado, ingreso sin talle rechazado con el toast exacto, con talle aceptado —
+  **verificado por query directa a la base** que la línea quedó con `talle: "L"` real, no null. Pasó
+  a la primera corrida. UAT §33 documenta las 12 filas de cobertura del feature completo.
+
+Verde: tsc · build · unit **1075+5** (12 nuevos) · e2e **17/17** (incluye spec 89 + regresión de
+`30_traslado_sucursal_mutante` corrida aislada tras tocar TrasladosPanel — sin romper nada; ese spec
+da "skip" en corrida masiva por el conocido problema de no-determinismo de la suite, no por esta
+sesión). **Todavía sin commitear** — esperando que GO pruebe la ronda 3 antes del commit+push+merge.
+
+---
+
 ## [2026-07-18] update | 🐛 Variantes ronda 2 — GO probó a mano y encontró 3 bugs reales, corregidos
 
 **GO hizo lo que se le pidió** (probar F3b y variantes en el dev server antes del merge) y encontró que

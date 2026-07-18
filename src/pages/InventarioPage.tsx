@@ -166,6 +166,11 @@ export default function InventarioPage() {
     tiene_series: boolean
     tiene_lote: boolean
     tiene_vencimiento: boolean
+    tiene_talle: boolean
+    tiene_color: boolean
+    tiene_encaje: boolean
+    tiene_formato: boolean
+    tiene_sabor_aroma: boolean
     cantidad: string
     estado_id: string
     ubicacion_id: string
@@ -174,6 +179,11 @@ export default function InventarioPage() {
     lpn: string
     series_txt: string
     showExtra: boolean
+    talle: string
+    color: string
+    encaje: string
+    formato: string
+    sabor_aroma: string
   }
   const [masivoInline, setMasivoInline] = useState(false)
   const [masivoRows, setMasivoRows] = useState<MasivoRow[]>([])
@@ -353,7 +363,7 @@ export default function InventarioPage() {
     queryKey: ['productos-busqueda', tenant?.id, form.productoSearch],
     queryFn: async () => {
       let q = supabase.from('productos')
-        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo, estado_id, proveedor_id')
+        .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, ubicacion_id, precio_costo, estado_id, proveedor_id')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(5)
       if (form.productoSearch.length > 0)
         q = q.or(`nombre.ilike.%${form.productoSearch}%,sku.ilike.%${form.productoSearch}%,codigo_barras.eq.${form.productoSearch}`)
@@ -2072,7 +2082,7 @@ export default function InventarioPage() {
     }
 
     const { data: prods } = await supabase.from('productos')
-      .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo')
+      .select('id, nombre, sku, stock_actual, unidad_medida, imagen_url, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, ubicacion_id, precio_costo')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
@@ -2095,17 +2105,11 @@ export default function InventarioPage() {
   // ── Masivo inline helpers ─────────────────────────────────────────────────
   // ISS-127 F2: `overrides` pre-cargan cantidad/lote/venc desde un código GS1.
   const addMasivoRow = (prod: any, overrides?: { cantidad?: number; nro_lote?: string; fecha_vencimiento?: string }) => {
-    // El ingreso masivo (esta grilla) todavía no pide talle/color/encaje/formato/sabor-aroma por
-    // fila — permitirlo crearía líneas de stock con el atributo en null pese a tenerlo activado
-    // (REGLA #0: no fallar en silencio). Hasta que se sume soporte acá, esos productos van por
-    // "Ingreso manual" (single-item), donde el atributo SÍ es obligatorio.
-    if (prod.tiene_talle || prod.tiene_color || prod.tiene_encaje || prod.tiene_formato || prod.tiene_sabor_aroma) {
-      toast.error(`"${prod.nombre}" tiene un atributo de variante activado (talle/color/etc.) — usá "Ingreso manual" para cargarlo, el masivo todavía no lo soporta.`, { duration: 6000 })
-      return
-    }
     setMasivoRows(prev => {
-      // Same SKU + no lote required → increment quantity
-      const existingIdx = prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !overrides?.nro_lote && !prod.tiene_lote && !prod.tiene_series)
+      // Same SKU + no lote required → increment quantity (nunca si trackea algún atributo:
+      // cada fila puede terminar con un talle/color distinto, no se pueden fusionar a ciegas)
+      const tieneAlgunAtributo = !!(prod.tiene_talle || prod.tiene_color || prod.tiene_encaje || prod.tiene_formato || prod.tiene_sabor_aroma)
+      const existingIdx = tieneAlgunAtributo ? -1 : prev.findIndex(r => r.producto_id === prod.id && !r.nro_lote && !overrides?.nro_lote && !prod.tiene_lote && !prod.tiene_series)
       if (existingIdx >= 0) {
         const updated = [...prev]
         const prevCant = parseFloat(updated[existingIdx].cantidad) || 0
@@ -2122,6 +2126,11 @@ export default function InventarioPage() {
         tiene_series: prod.tiene_series ?? false,
         tiene_lote: prod.tiene_lote ?? false,
         tiene_vencimiento: prod.tiene_vencimiento ?? false,
+        tiene_talle: prod.tiene_talle ?? false,
+        tiene_color: prod.tiene_color ?? false,
+        tiene_encaje: prod.tiene_encaje ?? false,
+        tiene_formato: prod.tiene_formato ?? false,
+        tiene_sabor_aroma: prod.tiene_sabor_aroma ?? false,
         cantidad: overrides?.cantidad != null ? String(overrides.cantidad) : '1',
         estado_id: '',
         ubicacion_id: '',
@@ -2129,7 +2138,8 @@ export default function InventarioPage() {
         fecha_vencimiento: overrides?.fecha_vencimiento ?? '',
         lpn: '',
         series_txt: '',
-        showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series || overrides?.nro_lote || overrides?.fecha_vencimiento),
+        showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series || tieneAlgunAtributo || overrides?.nro_lote || overrides?.fecha_vencimiento),
+        talle: '', color: '', encaje: '', formato: '', sabor_aroma: '',
       }
       setMasivoFocusIdx(prev.length)
       return [...prev, newRow]
@@ -2158,7 +2168,7 @@ export default function InventarioPage() {
     }
 
     const { data: prods } = await supabase.from('productos')
-      .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, precio_costo, precio_venta')
+      .select('id, nombre, sku, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, precio_costo, precio_venta')
       .eq('tenant_id', tenant!.id).eq('activo', true)
       .or(`codigo_barras.eq.${code},sku.eq.${code}`)
       .limit(1)
@@ -2197,6 +2207,11 @@ export default function InventarioPage() {
           if (!cant || cant <= 0) { errores.push(`${row.sku}: cantidad inválida`); continue }
           if (row.tiene_lote && !row.nro_lote.trim()) { errores.push(`${row.sku}: requiere lote`); continue }
           if (row.tiene_vencimiento && !row.fecha_vencimiento) { errores.push(`${row.sku}: requiere vencimiento`); continue }
+          if (row.tiene_talle && !row.talle.trim()) { errores.push(`${row.sku}: requiere talle`); continue }
+          if (row.tiene_color && !row.color.trim()) { errores.push(`${row.sku}: requiere color`); continue }
+          if (row.tiene_encaje && !row.encaje.trim()) { errores.push(`${row.sku}: requiere encaje`); continue }
+          if (row.tiene_formato && !row.formato.trim()) { errores.push(`${row.sku}: requiere formato`); continue }
+          if (row.tiene_sabor_aroma && !row.sabor_aroma.trim()) { errores.push(`${row.sku}: requiere sabor/aroma`); continue }
 
           const { data: prodAntes } = await supabase.from('productos').select('precio_costo,precio_venta').eq('id', row.producto_id).single()
           const stockAntes = await getStockAntesSucursal(row.producto_id, sucursalId)
@@ -2213,6 +2228,11 @@ export default function InventarioPage() {
             precio_costo_snapshot: (prodAntes as any)?.precio_costo ?? null,
             precio_venta_snapshot: (prodAntes as any)?.precio_venta ?? null,
             sucursal_id: sucursalId ?? null,
+            talle: row.tiene_talle ? (row.talle || null) : null,
+            color: row.tiene_color ? (row.color || null) : null,
+            encaje: row.tiene_encaje ? (row.encaje || null) : null,
+            formato: row.tiene_formato ? (row.formato || null) : null,
+            sabor_aroma: row.tiene_sabor_aroma ? (row.sabor_aroma || null) : null,
           }).select().single()
           if (lineaError) { errores.push(`${row.sku}: ${lineaError.message}`); continue }
 
@@ -2617,10 +2637,10 @@ export default function InventarioPage() {
                               </td>
                               )}
                               <td className="px-3 py-2 text-center">
-                                {(modoAvanzado || row.tiene_series || row.tiene_lote || row.tiene_vencimiento) && (
+                                {(modoAvanzado || row.tiene_series || row.tiene_lote || row.tiene_vencimiento || row.tiene_talle || row.tiene_color || row.tiene_encaje || row.tiene_formato || row.tiene_sabor_aroma) && (
                                 <button
                                   onClick={() => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, showExtra: !r.showExtra } : r))}
-                                  title="Lote / Vencimiento / LPN / Series"
+                                  title="Lote / Vencimiento / LPN / Series / Atributos de variante"
                                   className={`p-1 rounded transition-colors ${row.showExtra ? 'text-accent' : 'text-gray-400 hover:text-gray-600'}`}>
                                   <ChevronDown size={14} className={`transition-transform ${row.showExtra ? 'rotate-180' : ''}`} />
                                 </button>
@@ -2671,6 +2691,20 @@ export default function InventarioPage() {
                                         <p className="text-gray-400 mt-0.5">{row.series_txt.split('\n').filter(s => s.trim()).length} series</p>
                                       </div>
                                     )}
+                                    {([
+                                      { activo: row.tiene_talle, campo: 'talle' as const, atributo: 'talle' as const, label: 'Talle' },
+                                      { activo: row.tiene_color, campo: 'color' as const, atributo: 'color' as const, label: 'Color' },
+                                      { activo: row.tiene_encaje, campo: 'encaje' as const, atributo: 'encaje' as const, label: 'Encaje' },
+                                      { activo: row.tiene_formato, campo: 'formato' as const, atributo: 'formato' as const, label: 'Formato' },
+                                      { activo: row.tiene_sabor_aroma, campo: 'sabor_aroma' as const, atributo: 'sabor_aroma' as const, label: 'Sabor/Aroma' },
+                                    ]).filter(a => a.activo).map(a => (
+                                      <div key={a.campo}>
+                                        <label className="block text-gray-500 mb-1">{a.label} *</label>
+                                        <AtributoValorSelect tenantId={tenant!.id} atributo={a.atributo} value={row[a.campo]}
+                                          onChange={v => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, [a.campo]: v } : r))}
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                      </div>
+                                    ))}
                                   </div>
                                 </td>
                               </tr>

@@ -6,8 +6,35 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📍 ARRANCÁ ACÁ (2026-07-18, cierre sesión 3) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` COMMITEADO Y PUSHEADO (`a99bb270` + fixes de ronda 2 sin commitear todavía) · migs **273+274 SOLO en DEV** · nada mergeado a `main`
+> ### 📍 ARRANCÁ ACÁ (2026-07-18, cierre sesión 4) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene la RONDA 3 de fixes de variantes lista para commitear · migs **273+274+275 SOLO en DEV** · nada mergeado a `main`
 >
+> **Ronda 3 — GO probó de nuevo y encontró que el ingreso SIMPLE tampoco pedía el atributo.** Causa
+> raíz real: el buscador de productos de "Ingreso manual" no traía `tiene_talle`/etc. en el `SELECT`
+> → `selectedProduct.tiene_talle` quedaba `undefined` sin importar el valor real en la base, así que
+> la validación (ya escrita en ronda 2) nunca se disparaba. El mismo patrón de bug apareció en
+> **7 queries distintas** (InventarioPage ×3, RecepcionesPage ×2 scan-ticket, MasivoModal ×2) —
+> encontradas grepeando por `tiene_lote` sin `tiene_talle` en el mismo `.select()`.
+>
+> **Además, por pedido explícito de GO ("cualquier movimiento del inventario"), se extendió a TODO
+> el ciclo de vida del stock:**
+> - `MasivoModal` (ingreso Y rebaje masivo, el modal separado): soporte real — obligatorio en ingreso,
+>   ambigüedad exige elegir + filtra consumo en rebaje (`atributoAmbiguoEnLineas`/`filtrarLineasPorAtributo`).
+> - Grilla inline de "Ingreso masivo" (`masivoRows`): en ronda 2 quedó bloqueada; ahora soporte real.
+> - `LpnAccionesModal`: tab "Editar" pasa a select+obligatorio; tab "Mover" (partir stock a otra
+>   ubicación) ahora hereda los atributos a la línea nueva (se perdían).
+> - Traslados entre sucursales (`TrasladosPanel` + **mig 275** nueva, `traslado_items` no tenía las
+>   columnas): despacho snapshotea, recepción y cancelación propagan a la línea nueva.
+> - 12 unit tests nuevos (`atributosVariante.test.ts`) + **spec e2e 89 escrito Y CORRIDO** (no quedó
+>   pendiente): crea un producto real, ingreso sin talle rechazado, con talle aceptado, **verificado
+>   por query directa a la base** que la línea quedó con el talle real. UAT §33 documenta las 12 filas
+>   de cobertura (`tests/specs/uat-modo-basico.md`).
+>
+> Verde: tsc · build · unit **1075+5** · e2e **17/17** (incluye spec 89 nuevo + `30_traslado_sucursal_mutante`
+> corrido aislado tras tocar TrasladosPanel, sin romper nada). **Detalle completo:
+> [[wiki/features/atributos-variante]] "Ronda 3".**
+>
+> **▶ PENDIENTE INMEDIATO:** GO prueba la ronda 3 en el dev server antes de commitear/mergear a `main`
+> y aplicar migs 274+275 en PROD.
 > **GO probó F3b y variantes a mano en el dev server (como se pedía) y encontró 3 bugs reales en
 > variantes** — investigados con datos reales (Supabase MCP, tenant Almacén Jorgito DEV, producto
 > "Variante1"), no adivinados. Los 3 corregidos en esta misma sesión (ronda 2):

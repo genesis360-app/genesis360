@@ -22,7 +22,17 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { logActividad } from '@/lib/actividadLog'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { AtributoValorSelect } from '@/components/AtributoValorSelect'
+import { atributoAmbiguoEnLineas, filtrarLineasPorAtributo, type LineaConAtributos } from '@/lib/atributosVariante'
 import toast from 'react-hot-toast'
+
+const ATRIBUTOS_MASIVO: { key: 'talle' | 'color' | 'encaje' | 'formato' | 'saborAroma'; atributo: 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'; tieneKey: 'tieneTalle' | 'tieneColor' | 'tieneEncaje' | 'tieneFormato' | 'tieneSaborAroma'; label: string }[] = [
+  { key: 'talle', atributo: 'talle', tieneKey: 'tieneTalle', label: 'Talle / Talla' },
+  { key: 'color', atributo: 'color', tieneKey: 'tieneColor', label: 'Color' },
+  { key: 'encaje', atributo: 'encaje', tieneKey: 'tieneEncaje', label: 'Encaje' },
+  { key: 'formato', atributo: 'formato', tieneKey: 'tieneFormato', label: 'Formato' },
+  { key: 'saborAroma', atributo: 'sabor_aroma', tieneKey: 'tieneSaborAroma', label: 'Sabor / Aroma' },
+]
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -38,6 +48,11 @@ type MasivoItem = {
   tieneSeries: boolean
   tieneLote: boolean
   tieneVencimiento: boolean
+  tieneTalle: boolean
+  tieneColor: boolean
+  tieneEncaje: boolean
+  tieneFormato: boolean
+  tieneSaborAroma: boolean
   reglaInventario?: string | null
   precioCoste: number
   // Campos del formulario
@@ -53,6 +68,14 @@ type MasivoItem = {
   expanded: boolean    // opcionales expandidos
   // ISS-012: rebaje — LPN/lote preferido (override del FIFO/FEFO automático)
   lpnPreferido: string
+  // Atributos de variante: en INGRESO es el valor a cargar en la línea nueva; en REBAJE
+  // es el valor a exigir/filtrar cuando hay más de uno en stock (REGLA #0 — no vender
+  // "cualquier talle" a ciegas). Mismo campo sirve para los dos casos (nunca coexisten).
+  talle: string
+  color: string
+  encaje: string
+  formato: string
+  saborAroma: string
 }
 
 function mkItem(p: any): MasivoItem {
@@ -66,6 +89,11 @@ function mkItem(p: any): MasivoItem {
     tieneSeries: p.tiene_series ?? false,
     tieneLote: p.tiene_lote ?? false,
     tieneVencimiento: p.tiene_vencimiento ?? false,
+    tieneTalle: p.tiene_talle ?? false,
+    tieneColor: p.tiene_color ?? false,
+    tieneEncaje: p.tiene_encaje ?? false,
+    tieneFormato: p.tiene_formato ?? false,
+    tieneSaborAroma: p.tiene_sabor_aroma ?? false,
     reglaInventario: p.regla_inventario ?? null,
     precioCoste: p.precio_costo ?? 0,
     cantidad: '',
@@ -79,6 +107,7 @@ function mkItem(p: any): MasivoItem {
     seriesText: '',
     expanded: false,
     lpnPreferido: '',
+    talle: '', color: '', encaje: '', formato: '', saborAroma: '',
   }
 }
 
@@ -99,7 +128,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
   const { avanzado: modoAvanzado } = useModoOperacion()
   const [items, setItems] = useState<MasivoItem[]>([])
   // ISS-012: cache de líneas ordenadas por producto (para preview FIFO/FEFO en rebaje)
-  const [lineasCache, setLineasCache] = useState<Record<string, { id: string; lpn: string | null; lote: string | null; disponible: number; sorted: boolean }[]>>({})
+  const [lineasCache, setLineasCache] = useState<Record<string, (LineaConAtributos & { id: string; lpn: string | null; lote: string | null; disponible: number; sorted: boolean })[]>>({})
   const [prodSearch, setProdSearch] = useState('')
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
@@ -121,7 +150,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
     queryKey: ['masivo-prod-search', tenant?.id, prodSearch],
     queryFn: async () => {
       let q = supabase.from('productos')
-        .select('id, nombre, sku, stock_actual, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, ubicacion_id, precio_costo, regla_inventario')
+        .select('id, nombre, sku, stock_actual, unidad_medida, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, ubicacion_id, precio_costo, regla_inventario')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre').limit(6)
       if (prodSearch)
         q = q.or(`nombre.ilike.%${prodSearch}%,sku.ilike.%${prodSearch}%,codigo_barras.eq.${prodSearch}`)
@@ -178,7 +207,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
     if (lineasCache[productoId]) return  // ya cargado
     try {
       let q = supabase.from('inventario_lineas')
-        .select('id, lpn, nro_lote, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicaciones(prioridad, disponible_surtido)')
+        .select('id, lpn, nro_lote, cantidad, cantidad_reservada, created_at, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(prioridad, disponible_surtido)')
         .eq('tenant_id', tenant!.id)
         .eq('producto_id', productoId)
         .eq('activo', true)
@@ -199,6 +228,8 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
           lote: l.nro_lote ?? null,
           disponible: l.cantidad - (l.cantidad_reservada ?? 0),
           sorted: true,
+          talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
+          formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
         }))
       setLineasCache(prev => ({ ...prev, [productoId]: lineas }))
     } catch { /* silencioso */ }
@@ -244,6 +275,23 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
         return `${it.productoNombre}: requiere número de lote.`
       if (tipo === 'ingreso' && it.tieneVencimiento && !it.fechaVencimiento)
         return `${it.productoNombre}: requiere fecha de vencimiento.`
+      // REGLA #0: atributos de variante — igual de obligatorios acá que en el ingreso simple.
+      if (tipo === 'ingreso') {
+        for (const a of ATRIBUTOS_MASIVO) {
+          if (it[a.tieneKey] && !it[a.key].trim())
+            return `${it.productoNombre}: requiere ${a.label.toLowerCase()}.`
+        }
+      }
+      // REGLA #0: si hay más de un talle/color en stock para este producto, no rebajar a
+      // ciegas por FIFO — exigir que el usuario elija cuál (mismo criterio que la venta).
+      if (tipo === 'rebaje') {
+        const lineas = lineasCache[it.productoId]
+        if (lineas) {
+          const ambiguo = atributoAmbiguoEnLineas(lineas)
+          if (ambiguo && !it[ambiguo.key === 'sabor_aroma' ? 'saborAroma' : ambiguo.key as 'talle' | 'color' | 'encaje' | 'formato'].trim())
+            return `${it.productoNombre}: elegí el ${ambiguo.label.toLowerCase()} a rebajar — hay más de uno en stock.`
+        }
+      }
     }
     return null
   }
@@ -305,6 +353,11 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
               precio_costo_snapshot: it.precioCoste || null,
               lpn: it.lpn || null,
               sucursal_id: sucursalId || null,
+              talle: it.tieneTalle ? (it.talle || null) : null,
+              color: it.tieneColor ? (it.color || null) : null,
+              encaje: it.tieneEncaje ? (it.encaje || null) : null,
+              formato: it.tieneFormato ? (it.formato || null) : null,
+              sabor_aroma: it.tieneSaborAroma ? (it.saborAroma || null) : null,
             })
             .select().single()
           if (lineaErr) throw new Error(`${it.productoNombre}: ${lineaErr.message}`)
@@ -345,7 +398,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
           // ISS-012: REBAJE — FIFO/FEFO/LEFO/LIFO/Manual corregido
           // Fix: incluye filtros por sucursal y excluye lineas sin ubicacion
           let lineasQ = supabase.from('inventario_lineas')
-            .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, nro_lote, lpn, ubicaciones(prioridad, disponible_surtido), estados_inventario!estado_id(es_disponible_venta)')
+            .select('id, cantidad, cantidad_reservada, created_at, fecha_vencimiento, nro_lote, lpn, talle, color, encaje, formato, sabor_aroma, ubicaciones(prioridad, disponible_surtido), estados_inventario!estado_id(es_disponible_venta)')
             .eq('tenant_id', tenant!.id)
             .eq('producto_id', it.productoId)
             .eq('activo', true)
@@ -371,6 +424,17 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
               ...lineas.filter((l: any) => l.lpn !== pref && l.nro_lote !== pref),
             ]
           }
+          // REGLA #0: si el usuario eligió talle/color/etc. (porque había ambigüedad en
+          // stock, exigido por `validate()`), NO consumir de otra variante aunque falte
+          // stock de la elegida — filtra ANTES de rebajar, nunca cae de vuelta a "cualquiera".
+          const seleccionAtributo = {
+            talle: it.talle.trim() || undefined,
+            color: it.color.trim() || undefined,
+            encaje: it.encaje.trim() || undefined,
+            formato: it.formato.trim() || undefined,
+            sabor_aroma: it.saborAroma.trim() || undefined,
+          }
+          lineas = filtrarLineasPorAtributo(lineas as any, seleccionAtributo) as typeof lineas
 
           let restante = cant
           let primeraLinea: any = null
@@ -600,6 +664,23 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                                   onChange={e => upd(it.localId, { motivo: e.target.value })}
                                   className={inp} placeholder="Opcional" />
                               </div>
+                              {/* REGLA #0: si hay más de un talle/color en stock, exigir cuál rebajar —
+                                  no dejar que el auto-FIFO elija a ciegas una variante distinta. */}
+                              {lineasCache[it.productoId] && (() => {
+                                const ambiguo = atributoAmbiguoEnLineas(lineasCache[it.productoId])
+                                if (!ambiguo) return null
+                                const a = ATRIBUTOS_MASIVO.find(x => x.atributo === ambiguo.key)!
+                                return (
+                                  <div>
+                                    <label className="block text-xs font-medium text-amber-600 dark:text-amber-400 mb-1">
+                                      ⚠ Elegí {a.label.toLowerCase()} a rebajar — hay más de uno en stock *
+                                    </label>
+                                    <AtributoValorSelect tenantId={tenant!.id} atributo={a.atributo} value={it[a.key]}
+                                      onChange={v => upd(it.localId, { [a.key]: v } as Partial<MasivoItem>)}
+                                      className={`${sel} ${!it[a.key].trim() ? 'border-amber-400' : ''}`} />
+                                  </div>
+                                )
+                              })()}
                               {/* ISS-012: LPN/lote preferido override — solo avanzado (en básico no hay LPN/lote) */}
                               {modoAvanzado && (
                               <div>
@@ -621,18 +702,21 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                         const cant = getCantidad(it)
                         if (cant <= 0) return null
                         const pref = it.lpnPreferido.trim()
+                        const seleccionAtributo = { talle: it.talle || undefined, color: it.color || undefined, encaje: it.encaje || undefined, formato: it.formato || undefined, sabor_aroma: it.saborAroma || undefined }
+                        const filtradas = filtrarLineasPorAtributo(lineasCache[it.productoId], seleccionAtributo)
                         let ordenadas = pref
                           ? [
-                              ...lineasCache[it.productoId].filter(l => l.lpn === pref || l.lote === pref),
-                              ...lineasCache[it.productoId].filter(l => l.lpn !== pref && l.lote !== pref),
+                              ...filtradas.filter(l => l.lpn === pref || l.lote === pref),
+                              ...filtradas.filter(l => l.lpn !== pref && l.lote !== pref),
                             ]
-                          : lineasCache[it.productoId]
+                          : filtradas
                         let restante = cant
                         const preview: { label: string; consume: number }[] = []
                         for (const l of ordenadas) {
                           if (restante <= 0) break
                           const consume = Math.min(restante, l.disponible)
-                          preview.push({ label: l.lpn ?? l.lote ?? `(sin LPN)`, consume })
+                          const atrib = [l.talle, l.color, l.encaje, l.formato, l.sabor_aroma].filter(Boolean).join('/')
+                          preview.push({ label: (l.lpn ?? l.lote ?? `(sin LPN)`) + (atrib ? ` [${atrib}]` : ''), consume })
                           restante -= consume
                         }
                         if (preview.length === 0) return null
@@ -713,6 +797,14 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                                     className={inp} />
                                 </div>
                               )}
+                              {ATRIBUTOS_MASIVO.filter(a => it[a.tieneKey]).map(a => (
+                                <div key={a.key}>
+                                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{a.label} *</label>
+                                  <AtributoValorSelect tenantId={tenant!.id} atributo={a.atributo} value={it[a.key]}
+                                    onChange={v => upd(it.localId, { [a.key]: v } as Partial<MasivoItem>)}
+                                    className={sel} />
+                                </div>
+                              ))}
                               {modoAvanzado && (
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">LPN</label>

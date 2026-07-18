@@ -1119,3 +1119,45 @@ ventana en mente (o cargar el TA a mano en `afip_wsaa_ta` si se lo conoce).
 
 **Pendiente para PROD:** mig 264 en PROD + deploy de `emitir-factura`/`emitir-factura-plataforma`
 (OK de GO) → tenant piloto real en 'propio' → validar estabilidad → decidir retiro de AfipSDK.
+
+---
+
+## 🧵 §33 — Atributos de variante (talle/color/encaje/formato/sabor·aroma) obligatorios en TODO movimiento de stock — 2026-07-18
+
+**Contexto:** GO probó la ronda 1 (catálogo + selección en Recepciones/Ingreso manual/Ventas) a
+mano y encontró que el atributo NO era obligatorio y se perdía en varios movimientos. Pedido
+explícito: "si lo tiene activado en el producto, siempre debe pedirte ese atributo en el ingreso y
+despacho y cualquier movimiento del inventario". Esta sección cubre esa ronda 2/3 de fixes.
+
+**Regla general aplicada en todos los puntos de abajo:** si `productos.tiene_talle` (o color/
+encaje/formato/sabor_aroma) es `true`, el atributo es **obligatorio** para CREAR una línea nueva
+(mismo patrón que ya usaba `tiene_lote`), y si hay **más de un valor distinto en stock**, el
+sistema **exige elegir cuál** antes de consumir/rebajar (mismo patrón que ya usaba `tiene_series`
+para forzar la selección de series) — nunca cae a "cualquiera" por FIFO ciego.
+
+| # | Flujo | Comportamiento exigido | Cómo se valida | Estado |
+|---|---|---|---|---|
+| 1 | Recepción de OC (`RecepcionesPage`) | Atributo obligatorio si `tiene_X` | Validación + auto-expand del ítem con error | ✅ Código + unit (validación pura ya cubierta indirectamente) |
+| 2 | Inventario → Ingreso manual (single-item) | Atributo obligatorio si `tiene_X` | Validación en `ingresoMutation` | ✅ **e2e spec 89** (creación real de producto + ingreso rechazado sin talle + aceptado con talle, verificado en DB) |
+| 3 | Inventario → Ingreso masivo, grilla inline (`masivoRows`) | Atributo obligatorio por fila si `tiene_X` (antes bloqueaba directamente, ahora soporta de verdad) | Validación en `procesarMasivoIngreso` | ✅ Código + unit (misma lógica de campo obligatorio) — sin e2e dedicado |
+| 4 | Inventario → Ingreso masivo, modal (`MasivoModal` tipo='ingreso') | Atributo obligatorio por ítem si `tiene_X` | `validate()` de `MasivoModal` | ✅ Código — sin e2e dedicado |
+| 5 | Inventario → Rebaje masivo (`MasivoModal` tipo='rebaje') | Si hay >1 valor distinto en stock, exige elegir cuál ANTES de rebajar (filtra las líneas candidatas, nunca consume "cualquiera") | `atributoAmbiguoEnLineas` + `filtrarLineasPorAtributo` (`validate()` + `mutationFn`) | ✅ **Unit 10 tests** (`atributosVariante.test.ts`) sobre la lógica pura — sin e2e dedicado |
+| 6 | Venta (`VentasPage`, checkout) | Si hay >1 valor distinto en stock disponible, bloquea el cobro hasta elegir (badge ámbar parpadeante + picker "Elegir talle/color/posición de rebaje") | `atributoAmbiguoEnStock` (`registrarVenta`) | ✅ **Unit 5 tests** (`lpnFuentes.test.ts`) sobre la lógica pura — sin e2e dedicado (requiere 2 líneas con talles distintos + checkout completo) |
+| 7 | `LpnAccionesModal` → tab "Editar" (editar una línea existente) | Atributo obligatorio si `tiene_X`; select del catálogo en vez de texto libre | Validación en `guardarEdicion` | ✅ Código — sin e2e dedicado |
+| 8 | `LpnAccionesModal` → tab "Mover" (mover/partir stock a otra ubicación — el "movimiento parcial de LPN/ubicación") | La línea NUEVA hereda el atributo de la línea origen (misma mercadería física, no se re-pregunta) | Insert copia `talle/color/encaje/formato/sabor_aroma` de `linea` | ✅ Código — sin e2e dedicado |
+| 9 | Traslados entre sucursales — despacho (`TrasladosPanel`) | Snapshot del atributo de la línea origen en `traslado_items` (columnas nuevas, **mig 275**) | Insert incluye los 5 campos | ✅ Código + regresión e2e (`30_traslado_sucursal_mutante`, corrido aislado tras el cambio — sigue verde) |
+| 10 | Traslados — recepción en destino | La línea nueva en destino hereda el atributo del `traslado_items` (no se re-pregunta) | Insert copia los 5 campos de `it` | ✅ Código + regresión e2e (mismo spec 30) |
+| 11 | Traslados — cancelación/reingreso al origen | Igual que recepción, para la rama que crea línea nueva | Insert copia los 5 campos de `it` | ✅ Código (rama de reingreso sin línea previa) |
+| 12 | Conflicto "Grupo de variantes" vs "Atributos de variante" | Un producto NO puede tener `grupo_id` Y `tiene_X=true` a la vez (dos modelos de stock incompatibles) | `ProductoFormPage` bloquea en UI + **mig 274** CHECK constraint en DB (verificado que rechaza por SQL directo) | ✅ Código + verificación manual por SQL (violación real rechazada) |
+
+**Gaps de queries de producto encontrados y corregidos en esta ronda** (la causa real del bug que
+reportó GO: el buscador de "Ingreso manual" no traía `tiene_talle` etc. en el `SELECT`, así que la
+validación nunca se disparaba pese a estar bien escrita): `InventarioPage` (`productosBusqueda`,
+2 handlers de scan de código de barras), `RecepcionesPage` (2 queries del scan de ticket por foto/
+IA), `MasivoModal` (búsqueda + scan). Lección: al agregar una columna nueva a `productos`, hay que
+agregarla a **todas** las queries que alimentan flujos de esa columna, no solo a la principal —
+grep por `tiene_lote` sin `tiene_talle` en el mismo `.select()` es la forma de encontrarlas.
+
+**Pendiente (no bloqueante, próxima sesión si GO lo pide):** e2e dedicado para #5, #6, #7 (rebaje
+masivo con ambigüedad, venta bloqueada por ambigüedad, editar LPN) — hoy cubiertos por unit tests
+de la lógica pura + revisión de código, no por click-through automatizado completo.

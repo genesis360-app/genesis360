@@ -80,6 +80,7 @@ type ScanItem = {
   match: {
     id: string; nombre: string; sku: string; precio_costo: number
     tiene_series: boolean; tiene_lote: boolean; tiene_vencimiento: boolean
+    tiene_talle: boolean; tiene_color: boolean; tiene_encaje: boolean; tiene_formato: boolean; tiene_sabor_aroma: boolean
     unidad_medida: string
   } | null
 }
@@ -848,7 +849,7 @@ export default function RecepcionesPage() {
         // 1. Por barcode (SKU exacto)
         if (item.barcode) {
           const { data: d } = await supabase.from('productos')
-            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida')
+            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida')
             .eq('tenant_id', tenant!.id).eq('activo', true).eq('sku', item.barcode).maybeSingle()
           prod = d
         }
@@ -856,7 +857,7 @@ export default function RecepcionesPage() {
         if (!prod) {
           const palabras = item.nombre.split(/\s+/).slice(0, 2).join(' ')
           const { data: d } = await supabase.from('productos')
-            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, unidad_medida')
+            .select('id, nombre, sku, precio_costo, tiene_series, tiene_lote, tiene_vencimiento, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma, unidad_medida')
             .eq('tenant_id', tenant!.id).eq('activo', true).ilike('nombre', `%${palabras}%`).limit(1).maybeSingle()
           prod = d
         }
@@ -866,7 +867,13 @@ export default function RecepcionesPage() {
           nombre_scan: item.nombre,
           cantidad: item.cantidad,
           precio_unitario: item.precio_unitario,
-          match: prod ? { id: prod.id, nombre: prod.nombre, sku: prod.sku, precio_costo: prod.precio_costo ?? 0, tiene_series: prod.tiene_series ?? false, tiene_lote: prod.tiene_lote ?? false, tiene_vencimiento: prod.tiene_vencimiento ?? false, unidad_medida: prod.unidad_medida ?? 'unidad' } : null,
+          match: prod ? {
+            id: prod.id, nombre: prod.nombre, sku: prod.sku, precio_costo: prod.precio_costo ?? 0,
+            tiene_series: prod.tiene_series ?? false, tiene_lote: prod.tiene_lote ?? false, tiene_vencimiento: prod.tiene_vencimiento ?? false,
+            tiene_talle: prod.tiene_talle ?? false, tiene_color: prod.tiene_color ?? false, tiene_encaje: prod.tiene_encaje ?? false,
+            tiene_formato: prod.tiene_formato ?? false, tiene_sabor_aroma: prod.tiene_sabor_aroma ?? false,
+            unidad_medida: prod.unidad_medida ?? 'unidad',
+          } : null,
         } as ScanItem
       }))
       setScanItems(matched)
@@ -887,6 +894,11 @@ export default function RecepcionesPage() {
       tiene_series: i.match!.tiene_series,
       tiene_lote: i.match!.tiene_lote,
       tiene_vencimiento: i.match!.tiene_vencimiento,
+      tiene_talle: i.match!.tiene_talle,
+      tiene_color: i.match!.tiene_color,
+      tiene_encaje: i.match!.tiene_encaje,
+      tiene_formato: i.match!.tiene_formato,
+      tiene_sabor_aroma: i.match!.tiene_sabor_aroma,
       unidad_medida: i.match!.unidad_medida,
       precio_costo_default: i.match!.precio_costo,
       cantidad_recibida: String(i.cantidad),

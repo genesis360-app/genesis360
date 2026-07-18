@@ -8,9 +8,13 @@ updated: 2026-07-18
 
 # Atributos de variante (talle / color / encaje / formato / sabor·aroma)
 
-> [!WARNING] **EN `dev`, SIN COMMITEAR (2026-07-18, ronda 2).** No mergeado a `main`, no deployado a
-> PROD. GO probó la ronda 1 a mano y encontró bugs reales (ver "Ronda 2" abajo) — corregidos, pendiente
-> de que GO vuelva a probar antes de mergear.
+> [!WARNING] **EN `dev`, SIN COMMITEAR (2026-07-18, ronda 3).** No mergeado a `main`, no deployado a
+> PROD. GO probó la ronda 1 y encontró bugs (ronda 2, corregidos) y luego probó la ronda 2 y encontró
+> que el ingreso simple TAMPOCO pedía el atributo — causa raíz: el buscador de productos no traía las
+> columnas nuevas en el `SELECT` (ver "Ronda 3" abajo). Corregido + extendido a TODOS los movimientos
+> de stock (ingreso masivo, rebaje masivo, mover/partir LPN, traslados) por pedido explícito de GO.
+> UAT §33 (`tests/specs/uat-modo-basico.md`) + e2e spec **89** (creado y corrido, verificado en DB).
+> Pendiente de que GO vuelva a probar antes de mergear.
 
 ## Por qué existe esta página
 
@@ -156,20 +160,76 @@ Verde tras la ronda 2: tsc · build · unit **1063+5** (8 nuevos en total sobre 
 e2e **sin cambios** en las mismas 5 specs (con `19_flujo_venta_mutante` sumado) — el bloqueo de checkout
 nuevo no rompió el flujo de venta normal (esas specs no usan productos con atributos ambiguos).
 
+## Ronda 3 (2026-07-18) — GO probó de nuevo: el ingreso SIMPLE tampoco pedía el atributo
+
+**Causa raíz real (no era el producto de prueba, era un bug de verdad):** el buscador de productos
+de "Ingreso manual" (`productosBusqueda` en `InventarioPage`) hacía `.select(...)` sin las columnas
+`tiene_talle/tiene_color/tiene_encaje/tiene_formato/tiene_sabor_aroma` — el objeto `selectedProduct`
+quedaba con esos campos en `undefined` **sin importar el valor real en la base**, así que la
+validación (correcta, ya escrita en la ronda 2) nunca se disparaba. Se encontró grepeando el código
+por queries que traen `tiene_lote` pero no `tiene_talle` — el mismo patrón de bug apareció repetido
+en **7 lugares distintos** que nadie había tocado en la ronda 2:
+
+- `InventarioPage`: `productosBusqueda` (la query que causó el bug reportado), 2 handlers de scan de
+  código de barras (GS1 y plano).
+- `RecepcionesPage`: 2 queries del "escanear ticket" (match de productos por foto+IA).
+- `MasivoModal` (`src/components/MasivoModal.tsx`): búsqueda de productos + scan de barras.
+
+**Además, por pedido explícito de GO ("cualquier movimiento del inventario: ingreso simple o masivo,
+rebaje simple o masivo, movimientos parciales de LPN o de ubicación"), se extendió el alcance a TODO
+el ciclo de vida del stock, no solo Recepciones/Ingreso manual:**
+
+- **`MasivoModal`** (el modal separado de "Ingreso masivo"/"Rebaje masivo", `tipo='ingreso'|'rebaje'`,
+  distinto de la grilla inline): ganó soporte REAL —
+  - Ingreso: los 5 atributos son obligatorios por ítem, igual que lote/vencimiento.
+  - Rebaje: si hay más de un valor distinto en stock para un producto, exige elegir cuál (badge ámbar,
+    `atributoAmbiguoEnLineas`) y **filtra** las líneas candidatas por ese valor antes de consumir
+    (`filtrarLineasPorAtributo`) — nunca cae a "cualquiera" si falta stock de la variante elegida.
+- **Grilla inline de "Ingreso masivo"** (`masivoRows` en `InventarioPage`, distinta del modal de
+  arriba): en la ronda 2 quedó **bloqueada** (rechazaba agregar productos con atributos activos,
+  dirigiendo a "Ingreso manual"). En esta ronda gana soporte real igual que el modal — ya no bloquea.
+- **`LpnAccionesModal`** (editar una línea existente + "mover stock parcial", que es el "movimiento
+  parcial de LPN/ubicación" pedido por GO): el tab "Editar" tenía su propio `<input>` de texto libre
+  (no usaba el catálogo) sin validación obligatoria — corregido a `AtributoValorSelect` + obligatorio.
+  El tab "Mover" (parte una línea en dos, una queda en origen y la otra viaja a otra ubicación) **NO
+  copiaba los 5 atributos a la línea nueva** — se perdían en cada movimiento parcial. Fix: la línea
+  nueva **hereda** los atributos de la línea origen (es la misma mercadería física, no se re-pregunta).
+- **Traslados entre sucursales** (`TrasladosPanel`): `traslado_items` **ni siquiera tenía las
+  columnas** — **mig 275** las agrega. El despacho ahora snapshotea los 5 atributos de la línea
+  origen; la recepción y la cancelación/reingreso los propagan a la línea nueva que crean (heredado,
+  no re-preguntado — mismo criterio que "Mover").
+- **Helpers puros nuevos y compartidos** (`src/lib/atributosVariante.ts`): `atributoAmbiguoEnLineas()`
+  (misma lógica de ambigüedad, ahora compartida entre venta y rebaje masivo — `atributoAmbiguoEnStock`
+  en `ventasValidation.ts` pasó a delegar en esta) y `filtrarLineasPorAtributo()` (filtra líneas que
+  matcheen TODOS los valores seleccionados). **12 tests unitarios nuevos.**
+- **Spec e2e mutante nº 89** (`89_atributo_variante_obligatorio_mutante.spec.ts`) — escrito Y CORRIDO
+  en esta sesión (no quedó pendiente): crea un producto real con "Talle" activado, intenta un ingreso
+  SIN talle (rechazado con el toast exacto "requiere talle"), completa el talle y confirma — **verificado
+  además por query directa a la base** que la línea real quedó con `talle: "L"` (no null). Pasó a la
+  primera corrida.
+
+Verde tras la ronda 3: tsc · build · unit **1075+5** (12 nuevos sobre la ronda 2) · regresión e2e
+**17/17 verde** (incluye el spec 89 nuevo + `30_traslado_sucursal_mutante` corrido aislado tras tocar
+`TrasladosPanel`, sin romper nada).
+
 ## Qué queda pendiente
 
-1. **Validación manual de GO — ronda 2** en el dev server (`localhost:5173`) — bloqueante para
-   commitear/mergear. La ronda 1 SÍ se probó y encontró los 3 bugs de arriba.
-2. **Ingreso masivo sin soporte real** para estos 5 atributos (hoy solo bloquea, no permite cargarlos
-   por esa vía) — pendiente de diseño si hace falta.
-3. **Spec e2e mutante formal** (próximo número disponible: **89**) — todavía no se escribió (sin browser
-   tool en la sesión).
-4. **`venta_item_despachos`** (ledger de trazabilidad de despacho por LPN, ver
+1. **Validación manual de GO — ronda 3** en el dev server (`localhost:5173`) — bloqueante para
+   commitear/mergear.
+2. **e2e dedicado** para rebaje masivo con ambigüedad, venta bloqueada por ambigüedad, y editar LPN
+   (#5/#6/#7 de la tabla en `uat-modo-basico.md` §33) — hoy cubiertos por unit tests de la lógica pura
+   + revisión de código, no por click-through automatizado completo. No bloqueante.
+3. **`venta_item_despachos`** (ledger de trazabilidad de despacho por LPN, ver
    [[wiki/features/ventas-pos]] "ISS-075") **no** snapshotea todavía el talle/color consumido — hoy
    solo es visible en el carrito antes de confirmar, no en el historial post-venta. Mejora de
    trazabilidad razonable para una fase futura (ligada a `feedback_trazabilidad_grado_wms.md`), **no
-   bloqueante** para que el feature sea "funcional" como pidió GO.
-5. `selectedLineasInfo` en InventarioPage (traslados) sin extender con los atributos.
+   bloqueante**.
+4. `selectedLineasInfo` en InventarioPage (resumen de selección múltiple en traslados) sin extender
+   con los atributos — menor, no bloqueante.
+5. **Lección para memoria:** al agregar una columna nueva a `productos` que gatea un flujo, hay que
+   agregarla a TODAS las queries que alimentan ese flujo, no solo a la "principal" — grep por el
+   patrón hermano (`tiene_lote` sin `tiene_talle` en el mismo `.select()`) es la forma sistemática de
+   encontrar los faltantes, en vez de esperar a que el usuario los encuentre uno por uno.
 
 ## Links
 
@@ -178,4 +238,4 @@ nuevo no rompió el flujo de venta normal (esas specs no usan productos con atri
 - [[wiki/features/inventario-stock]] — badges y picker de rebaje manual
 - [[wiki/features/ventas-pos]] — picker "Elegir posición de rebaje" que gobierna el descuento real
 - [[wiki/features/configuracion]] — sub-pestaña Atributos
-- [[wiki/database/migraciones]] — mig 273
+- [[wiki/database/migraciones]] — migs 273, 274, 275

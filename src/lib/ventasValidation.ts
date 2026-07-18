@@ -1,3 +1,5 @@
+import { atributoAmbiguoEnLineas } from './atributosVariante'
+
 export type EstadoVenta = 'pendiente' | 'reservada' | 'despachada' | 'cancelada' | 'facturada' | 'devuelta'
 export interface MedioPagoItem { tipo: string; monto: string }
 
@@ -220,27 +222,17 @@ export interface LpnFuente {
   sabor_aroma?: string | null
 }
 
-const ATRIBUTOS_VARIANTE_LABEL: { key: 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'; label: string }[] = [
-  { key: 'talle', label: 'talle' },
-  { key: 'color', label: 'color' },
-  { key: 'encaje', label: 'encaje' },
-  { key: 'formato', label: 'formato' },
-  { key: 'sabor_aroma', label: 'sabor/aroma' },
-]
-
 /**
  * Si entre las líneas disponibles de un producto hay MÁS DE UN valor distinto para algún
  * atributo de variante (talle/color/etc.), vender "a ciegas" (auto-FIFO) podría entregar una
  * variante distinta a la que el cliente pidió — a diferencia de lote/ubicación, acá SÍ importa
  * cuál se elige. Devuelve la etiqueta del primer atributo ambiguo encontrado, o null si no hay
  * ambigüedad (0 o 1 solo valor en stock → no hace falta que el cajero elija nada).
+ * (Delegado a `atributoAmbiguoEnLineas` en atributosVariante.ts — misma lógica que rebaje masivo.)
  */
 export function atributoAmbiguoEnStock(lineas: LineaDisponible[]): string | null {
-  for (const { key, label } of ATRIBUTOS_VARIANTE_LABEL) {
-    const valores = new Set(lineas.map(l => l[key]).filter((v): v is string => !!v))
-    if (valores.size > 1) return label
-  }
-  return null
+  const r = atributoAmbiguoEnLineas(lineas)
+  return r ? (r.key === 'sabor_aroma' ? 'sabor/aroma' : r.label.toLowerCase()) : null
 }
 
 /**

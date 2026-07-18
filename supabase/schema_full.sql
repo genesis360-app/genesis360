@@ -2138,7 +2138,12 @@ CREATE TABLE public.traslado_items (
   series jsonb,
   cantidad numeric(14,4) NOT NULL,
   cantidad_recibida numeric(14,4),
-  created_at timestamp with time zone NOT NULL DEFAULT now()
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  talle text,
+  color text,
+  encaje text,
+  formato text,
+  sabor_aroma text
 );
 
 CREATE TABLE public.traslados (

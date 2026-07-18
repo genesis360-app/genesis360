@@ -203,6 +203,13 @@ export default function TrasladosPanel() {
           precio_costo_snapshot: linea.precio_costo_snapshot ?? null,
           series: seriesSnapshot,
           cantidad: cant,
+          // Snapshot de atributos de variante — la recepción/cancelación los propaga a la
+          // línea nueva sin re-preguntar (es la misma mercadería física que viaja).
+          talle: linea.talle ?? null,
+          color: linea.color ?? null,
+          encaje: linea.encaje ?? null,
+          formato: linea.formato ?? null,
+          sabor_aroma: linea.sabor_aroma ?? null,
         })
         if (eItem) throw eItem
 
@@ -293,6 +300,11 @@ export default function TrasladosPanel() {
             fecha_vencimiento: it.fecha_vencimiento ?? null,
             precio_costo_snapshot: it.precio_costo_snapshot ?? null,
             notas: `Traslado #${t.numero} desde ${sucursalNombre(t.sucursal_origen_id)}`,
+            talle: it.talle ?? null,
+            color: it.color ?? null,
+            encaje: it.encaje ?? null,
+            formato: it.formato ?? null,
+            sabor_aroma: it.sabor_aroma ?? null,
           })
           if (eLin) throw eLin
 
@@ -395,6 +407,11 @@ export default function TrasladosPanel() {
             fecha_vencimiento: it.fecha_vencimiento ?? null,
             precio_costo_snapshot: it.precio_costo_snapshot ?? null,
             notas: `Reingreso por cancelación de traslado #${t.numero}`,
+            talle: it.talle ?? null,
+            color: it.color ?? null,
+            encaje: it.encaje ?? null,
+            formato: it.formato ?? null,
+            sabor_aroma: it.sabor_aroma ?? null,
           })
         }
         const serieIds = ((it.series as any[]) ?? []).map(s => s.serie_id)

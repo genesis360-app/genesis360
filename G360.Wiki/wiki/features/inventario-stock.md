@@ -401,6 +401,13 @@ Al seleccionar producto (scan o búsqueda manual), el formulario de ingreso se p
 
 **ISS-131 (v1.8.32):** La query `productosBusqueda` ahora incluye `estado_id` y `proveedor_id` en el SELECT. Antes no los seleccionaba, por lo que los defaults llegaban siempre vacíos.
 
+**Bug hermano (2026-07-18):** ISS-131 arregló el lado de LECTURA; hasta esta fecha el lado de
+**GUARDADO** seguía roto — el `payload` de `handleSubmit`/`handleDuplicate` en `ProductoFormPage`
+armaba `ubicacion_id` pero se olvidaba `estado_id`, así que "Estado de inventario predeterminado"
+nunca llegaba a persistirse (quedaba `null` en silencio pese al toast "Producto actualizado"), y
+por lo tanto este default nunca tenía nada que ofrecer. Corregido + regresión e2e (spec 90,
+corrida primero SIN el fix para confirmar que lo detecta). Detalle: UAT §34.
+
 El operador puede modificar cualquier campo antes de confirmar.
 
 ---

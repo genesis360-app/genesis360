@@ -510,7 +510,7 @@ export default function ProductosPage() {
     queryFn: async () => {
       let q = supabase
         .from('productos')
-        .select('*, categorias(nombre), proveedores(nombre)')
+        .select('*, categorias(nombre), proveedores(nombre), estados_inventario(nombre), ubicaciones(nombre)')
         .eq('tenant_id', tenant!.id)
         .order('nombre')
       if (search) q = q.or(`nombre.ilike.%${search}%,sku.ilike.%${search}%,codigo_barras.eq.${search}`)
@@ -1459,6 +1459,25 @@ export default function ProductosPage() {
                           {(p as any).codigo_barras && (
                             <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{(p as any).codigo_barras}</p>
                           )}
+                          {((p as any).categorias?.nombre || (p as any).estados_inventario?.nombre || (p as any).ubicaciones?.nombre) && (
+                            <div className="flex flex-wrap items-center gap-1 mt-1">
+                              {(p as any).categorias?.nombre && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">
+                                  {(p as any).categorias.nombre}
+                                </span>
+                              )}
+                              {(p as any).estados_inventario?.nombre && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">
+                                  {(p as any).estados_inventario.nombre}
+                                </span>
+                              )}
+                              {(p as any).ubicaciones?.nombre && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400">
+                                  {(p as any).ubicaciones.nombre}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {(p as any).grupo_id && (() => {
                             const g = productosGrupos.find(gr => gr.id === (p as any).grupo_id)
                             return g ? (
@@ -1467,10 +1486,6 @@ export default function ProductosPage() {
                               </p>
                             ) : null
                           })()}
-                        </div>
-
-                        <div className="hidden md:block text-xs text-gray-400 dark:text-gray-500">
-                          {(p as any).categorias?.nombre ?? '—'}
                         </div>
 
                         <div className="hidden sm:block text-right flex-shrink-0">
@@ -1557,6 +1572,18 @@ export default function ProductosPage() {
                               <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Categoría</p>
                               <p className="text-gray-700 dark:text-gray-300">{(p as any).categorias?.nombre ?? '—'}</p>
                             </div>
+                            {(p as any).estados_inventario?.nombre && (
+                              <div>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Estado predeterminado</p>
+                                <p className="text-gray-700 dark:text-gray-300">{(p as any).estados_inventario.nombre}</p>
+                              </div>
+                            )}
+                            {(p as any).ubicaciones?.nombre && (
+                              <div>
+                                <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Ubicación predeterminada</p>
+                                <p className="text-gray-700 dark:text-gray-300">{(p as any).ubicaciones.nombre}</p>
+                              </div>
+                            )}
                             {(p as any).proveedores?.nombre && (
                               <div>
                                 <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Proveedor</p>

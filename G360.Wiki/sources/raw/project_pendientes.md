@@ -6,7 +6,32 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📍 ARRANCÁ ACÁ (2026-07-18) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + sistema de atributos de variante completo, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main`
+> ### 📍 ARRANCÁ ACÁ (2026-07-18) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + atributos de variante, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main` · **+4 fixes/features nuevos post-`/clear`, SIN COMMITEAR (ver abajo) + mig 276 nueva SOLO en DEV**
+>
+> **🐛🚚 4 fixes/features nuevos esta sesión (post-`/clear`, SIN COMMITEAR)** — disparados por GO
+> pidiendo usuarios de prueba de una 2da sucursal (Sur) para testear cross-sucursal:
+> 1. **"Estado de inventario predeterminado" del producto no persistía al guardar** —
+>    `ProductoFormPage` armaba `ubicacion_id` en el payload pero se olvidaba `estado_id`. Fix +
+>    **e2e spec 90** (confirmado que detecta la regresión). Sin migraciones. UAT §34.
+> 2. **`ProductosPage` (listado) no mostraba categoría/estado/ubicación a simple vista** —
+>    agregados como badges + panel expandido. Query ahora trae `estados_inventario`/`ubicaciones`.
+> 3. **Traslados: ubicaciones GLOBALES no aparecían en "Confirmar recepción"** —
+>    `TrasladosPanel` usaba `.eq('sucursal_id', X)` (nunca matchea `NULL`) en vez de `.or(...)`.
+>    Fix + **regresión agregada al spec 30** (corrido sin/con el fix). UAT §35.
+> 4. **"Mover" del LPN hacia otra sucursal reubicaba stock DIRECTO, sin traslado real** — saltaba
+>    el mecanismo de tránsito+confirmación (riesgo REGLA #0: stock aparecía en destino sin
+>    confirmación física). Fix: genera un traslado real cuando cruza sucursal (`traslado_items`
+>    gana `ubicacion_sugerida_id`, **mig 276**). **Validado con DOS usuarios reales de sucursales
+>    distintas** (no el owner simulando ambos lados) — **e2e specs 92/93 nuevos**. UAT §36.
+> 5. **Validación RLS cross-sucursal con usuarios reales** — **e2e spec 94 nuevo** (API-only):
+>    confirma que `inventario_lineas`/`caja_sesiones` aíslan bien; confirma (sin alarma, ya
+>    documentado desde v1.75.0) que `traslados` es tenant-wide a propósito. UAT §37.
+>
+> Usuarios DEV nuevos: `supervisor2@test.com` (SUPERVISOR, Sucursal Sur) + password reseteada de
+> `deposito@genesis360.com` (DEPOSITO, Sucursal Sur, ya existía). Credenciales en
+> `tests/e2e/.env.test.local`. Verde: tsc · build · **unit 1080+5** · **e2e 69/69** (sweep de
+> regresión) + specs 90/92/93/94 dedicados. Detalle completo: `log.md` (2026-07-18, entrada
+> "Testing cross-sucursal...") y `tests/specs/uat-modo-basico.md` §34-§37.
 >
 > **Qué se hizo esta sesión (3 entregas, todas en `dev`, ninguna en PROD):**
 >
@@ -63,7 +88,7 @@ type: project
 > [[feedback_wiki_actualizacion_completa_sin_contradicciones]] (reconciliar todo lo relacionado al
 > tocar el wiki, no solo agregar lo nuevo).
 >
-> **▶ PENDIENTE INMEDIATO (antes de mergear `dev` → `main` / aplicar migs 274+275 en PROD):**
+> **▶ PENDIENTE INMEDIATO (antes de mergear `dev` → `main` / aplicar migs 274+275+276 en PROD):**
 > 1. 🛑 GO todavía no confirmó haber probado la RONDA 3 (la que arregla el bug de las 7 queries) — probó
 >    rondas 1 y 2 y encontró los bugs de arriba, pero el fix de ronda 3 recién se commiteó al final de
 >    la sesión. Antes de mergear, repetir el flujo real: Config→Inventario→Atributos (cargar 2-3
@@ -71,8 +96,13 @@ type: project
 >    → Ingreso masivo → Venta con picker de rebaje → LpnAccionesModal (Editar y Mover) → un traslado
 >    entre sucursales.
 > 2. GO tampoco confirmó haber visto el resumen ARCA de F3b en ConfigPage.
-> 3. Redeployar la EF `ai-assistant` (DEV y PROD) con el `knowledge.generated.ts` regenerado (pricing).
-> 4. Diferido, no bloqueante: `venta_item_despachos` no snapshotea el talle/color consumido en el
+> 3. 🛑 GO tampoco probó a mano todavía el traslado real desde LpnAccionesModal (fix #4 de arriba) —
+>    validado por Claude con e2e (specs 92/93, 2 usuarios reales), pero falta que GO lo vea andar en
+>    el dev server: LPN → Mover → elegir OTRA sucursal → "Ubicación destino" se repuebla con las de
+>    esa sucursal → Despachar traslado → aparece en tab Traslados → la otra sucursal confirma
+>    recepción con la ubicación ya precargada.
+> 4. Redeployar la EF `ai-assistant` (DEV y PROD) con el `knowledge.generated.ts` regenerado (pricing).
+> 5. Diferido, no bloqueante: `venta_item_despachos` no snapshotea el talle/color consumido en el
 >    historial post-venta · `selectedLineasInfo` (resumen de selección múltiple en InventarioPage,
 >    traslados) sin extender con atributos · e2e formal para rebaje-masivo-ambigüedad y
 >    LpnAccionesModal-editar (hoy solo unit + code review).

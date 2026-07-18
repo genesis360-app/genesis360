@@ -9,6 +9,8 @@ import { useAuthStore } from '@/store/authStore'
 import type { Sucursal } from '@/lib/supabase'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { requiereAuthAjuste } from '@/lib/ajusteAutorizacion'
+import { puedeCrearTraslado, esMovimientoCrossSucursal } from '@/lib/trasladoLogic'
+import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { LpnQR } from '@/components/LpnQR'
 import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
@@ -99,6 +101,21 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     },
     enabled: !!tenant,
   })
+  // Ubicaciones de la SUCURSAL DESTINO elegida en la pestaña "Mover" — nunca las de la
+  // sucursal activa. Si `sucursalDestino` cambia, este catálogo cambia con ella (y el
+  // campo se limpia en el propio onChange del selector, ver más abajo).
+  const { data: ubicacionesDestinoMover = [] } = useQuery({
+    queryKey: ['ubicaciones-destino-lpn', tenant?.id, sucursalDestino],
+    queryFn: async () => {
+      let q = supabase.from('ubicaciones').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      q = sucursalDestino ? q.or(`sucursal_id.eq.${sucursalDestino},sucursal_id.is.null`) : q.is('sucursal_id', null)
+      const { data } = await q
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'mover',
+  })
+  const esCrossSucursal = esMovimientoCrossSucursal(sucursalDestino, linea.sucursal_id)
+  const { data: conteoBloqueanteOrigen } = useConteoBloqueante(tenant?.id, esCrossSucursal ? linea.sucursal_id : null)
   const { data: proveedores = [] } = useQuery({
     queryKey: ['proveedores', tenant?.id],
     queryFn: async () => { const { data } = await supabase.from('proveedores').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
@@ -298,10 +315,93 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (cant >= linea.cantidad) throw new Error('La cantidad a mover debe ser menor al total del LPN')
       if (!ubicDestino) throw new Error('Seleccioná una ubicación destino')
-      const sucursalFinal = sucursalDestino ?? linea.sucursal_id ?? null
 
-      const { data: prodAntes } = await supabase.from('productos').select('stock_actual').eq('id', producto.id).single()
-      const stockAntes = prodAntes?.stock_actual ?? 0
+      // ── Cruza de sucursal: NO reubicar directo — despacha un TRASLADO real
+      // (en_transito) para que el destino lo confirme desde el tab Traslados, igual
+      // que si se armara desde ahí. Reubicar directo haría aparecer stock en la otra
+      // sucursal sin que nadie confirmó que llegó físicamente (REGLA #0).
+      if (esCrossSucursal) {
+        if (!puedeCrearTraslado(user?.rol as any)) throw new Error('Tu rol no puede crear traslados entre sucursales')
+        if (conteoBloqueanteOrigen) throw new Error('Hay un conteo wall-to-wall en curso en la sucursal de origen. Finalizalo antes de trasladar stock.')
+
+        // Re-chequeo fresco contra carreras (otro usuario pudo vender/reservar/mover)
+        const { data: fresh } = await supabase.from('inventario_lineas')
+          .select('cantidad, cantidad_reservada, activo').eq('id', linea.id).single()
+        const dispFresh = fresh?.activo ? (fresh.cantidad ?? 0) - (fresh.cantidad_reservada ?? 0) : 0
+        if (cant > dispFresh) throw new Error(`El disponible cambió (quedan ${dispFresh})`)
+
+        const sucursalDestNombre = (sucursales as Sucursal[]).find(s => s.id === sucursalDestino)?.nombre ?? String(sucursalDestino)
+        const sucursalOrigNombre = (sucursales as Sucursal[]).find(s => s.id === linea.sucursal_id)?.nombre ?? String(linea.sucursal_id)
+
+        const { data: cab, error: eCab } = await supabase.from('traslados').insert({
+          tenant_id: tenant!.id,
+          sucursal_origen_id: linea.sucursal_id,
+          sucursal_destino_id: sucursalDestino,
+          estado: 'en_transito',
+          notas: `Movimiento parcial desde LPN ${linea.lpn}`,
+          despachado_por: user?.id ?? null,
+        }).select('id, numero').single()
+        if (eCab) throw eCab
+
+        const nueva = (fresh!.cantidad ?? 0) - cant
+        const { error: eUpd } = await supabase.from('inventario_lineas')
+          .update({ cantidad: nueva, activo: nueva > 0 }).eq('id', linea.id)
+        if (eUpd) throw eUpd
+
+        // Ítem del traslado — snapshot de todos los atributos (misma mercadería física,
+        // no se re-pregunta al confirmar recepción). `ubicacion_sugerida_id` precarga el
+        // selector de "Confirmar recepción" en TrasladosPanel (mig 276) — el destino puede
+        // cambiarla antes de confirmar, no es vinculante.
+        const { error: eItem } = await supabase.from('traslado_items').insert({
+          tenant_id: tenant!.id,
+          traslado_id: cab.id,
+          producto_id: producto.id,
+          linea_origen_id: linea.id,
+          lpn: linea.lpn,
+          nro_lote: linea.nro_lote ?? null,
+          fecha_vencimiento: linea.fecha_vencimiento ?? null,
+          estado_id: linea.estado_id ?? null,
+          ubicacion_sugerida_id: ubicDestino || null,
+          cantidad: cant,
+          talle: linea.talle ?? null,
+          color: linea.color ?? null,
+          encaje: linea.encaje ?? null,
+          formato: linea.formato ?? null,
+          sabor_aroma: linea.sabor_aroma ?? null,
+        })
+        if (eItem) throw eItem
+
+        // Ledger en el origen (misma lógica que TrasladosPanel.despachar)
+        const { data: stockRows } = await supabase.from('inventario_lineas')
+          .select('cantidad').eq('tenant_id', tenant!.id).eq('producto_id', producto.id)
+          .eq('sucursal_id', linea.sucursal_id).eq('activo', true)
+        const stockDespues = (stockRows ?? []).reduce((a: number, r: any) => a + (r.cantidad ?? 0), 0)
+        await supabase.from('movimientos_stock').insert({
+          tenant_id: tenant!.id,
+          producto_id: producto.id,
+          tipo: 'traslado',
+          cantidad: cant,
+          stock_antes: stockDespues + cant,
+          stock_despues: stockDespues,
+          motivo: `Traslado #${cab.numero} → ${sucursalDestNombre} (LPN ${linea.lpn})`,
+          usuario_id: user?.id ?? null,
+          linea_id: linea.id,
+          sucursal_id: linea.sucursal_id,
+        })
+
+        logActividad({
+          entidad: 'traslado', entidad_id: cab.id, entidad_nombre: producto.nombre,
+          accion: 'despacho_traslado', campo: `${cant} ${producto.unidad_medida ?? 'u'}`,
+          valor_anterior: sucursalOrigNombre, valor_nuevo: sucursalDestNombre,
+          pagina: '/inventario', tipo_transaccion: 'traslado',
+          producto_id: producto.id, lpn: linea.lpn, lote: linea.nro_lote ?? null, sucursal_id: linea.sucursal_id,
+        })
+
+        return { esTraslado: true, numero: cab.numero, sucursalDestNombre }
+      }
+
+      // ── Misma sucursal (o sin sucursal asignada): reubicación directa ──────────
+      const sucursalFinal = sucursalDestino ?? linea.sucursal_id ?? null
 
       // Reducir cantidad en LPN original
       const { error: e1 } = await supabase.from('inventario_lineas')
@@ -332,11 +432,21 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       })
       if (e2) throw e2
 
-      const ubicNombre = (ubicaciones as any[]).find(u => u.id === ubicDestino)?.nombre ?? ubicDestino
+      const ubicNombre = (ubicacionesDestinoMover as any[]).find(u => u.id === ubicDestino)?.nombre ?? ubicDestino
       const ubicOrigen = (linea.ubicaciones?.nombre ?? (ubicaciones as any[]).find(u => u.id === linea.ubicacion_id)?.nombre) || 'sin ubicación'
       logActividad({ entidad: 'inventario_linea', entidad_id: linea.id, entidad_nombre: producto.nombre, accion: 'editar', campo: 'traslado', valor_anterior: `${ubicOrigen} · ${linea.lpn} (${linea.cantidad} u.)`, valor_nuevo: `${ubicNombre} · ${newLpn} (${cant} u.)`, pagina: '/inventario', tipo_transaccion: 'traslado', producto_id: producto.id, lpn: newLpn, lote: linea.nro_lote ?? null, sucursal_id: sucursalFinal })
+      return { esTraslado: false }
     },
-    onSuccess: () => { toast.success('Stock movido — nuevo LPN creado'); invalidar(); onClose() },
+    onSuccess: (result: any) => {
+      if (result?.esTraslado) {
+        toast.success(`Traslado #${result.numero} despachado — queda "en tránsito" hasta que ${result.sucursalDestNombre} confirme la recepción`, { duration: 6000 })
+        qc.invalidateQueries({ queryKey: ['traslados'] })
+      } else {
+        toast.success('Stock movido — nuevo LPN creado')
+      }
+      invalidar()
+      onClose()
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -696,7 +806,9 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           {tab === 'mover' && (
             <div className="space-y-4">
               <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 rounded-xl p-3 text-xs text-blue-700 dark:text-blue-400">
-                Mover stock parcial crea un nuevo LPN en la ubicación destino y reduce la cantidad de este LPN.
+                {esCrossSucursal
+                  ? 'Mover a otra sucursal genera un traslado "en tránsito": el stock sale de acá ahora y recién entra al destino cuando esa sucursal confirme la recepción desde el tab Traslados.'
+                  : 'Mover stock parcial crea un nuevo LPN en la ubicación destino y reduce la cantidad de este LPN.'}
               </div>
               {tieneSeries ? (
                 <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl p-3 text-xs text-amber-700 dark:text-amber-400">
@@ -729,22 +841,31 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     </div>
                   )}
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ubicación destino</label>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Ubicación destino {sucursalDestino && <span className="font-normal text-gray-400">· {(sucursales as Sucursal[]).find(s => s.id === sucursalDestino)?.nombre}</span>}
+                    </label>
                     <select value={ubicDestino} onChange={e => setUbicDestino(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
                       <option value="">Seleccioná ubicación...</option>
-                      {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      {(ubicacionesDestinoMover as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                     </select>
+                    {(ubicacionesDestinoMover as any[]).length === 0 && (
+                      <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Esa sucursal no tiene ubicaciones cargadas.</p>
+                    )}
                   </div>
                   {cantMover && ubicDestino && (
                     <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 text-xs text-gray-600 dark:text-gray-400 space-y-1">
                       <p>LPN original: <span className="font-semibold">{linea.cantidad - parseInt(cantMover)} u.</span></p>
-                      <p>Nuevo LPN: <span className="font-semibold">{cantMover} u.</span> en {(ubicaciones as any[]).find(u => u.id === ubicDestino)?.nombre}</p>
+                      {esCrossSucursal ? (
+                        <p>Traslado: <span className="font-semibold">{cantMover} u.</span> en tránsito hacia {(sucursales as Sucursal[]).find(s => s.id === sucursalDestino)?.nombre} — ubicación final la elige el destino al confirmar</p>
+                      ) : (
+                        <p>Nuevo LPN: <span className="font-semibold">{cantMover} u.</span> en {(ubicacionesDestinoMover as any[]).find(u => u.id === ubicDestino)?.nombre}</p>
+                      )}
                     </div>
                   )}
                   <button onClick={() => moverStock.mutate()} disabled={moverStock.isPending || !cantMover || !ubicDestino}
                     className="w-full bg-accent hover:bg-primary text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                    <ArrowRightLeft size={15} /> {moverStock.isPending ? 'Moviendo...' : 'Confirmar traslado'}
+                    <ArrowRightLeft size={15} /> {moverStock.isPending ? 'Moviendo...' : esCrossSucursal ? 'Despachar traslado' : 'Confirmar traslado'}
                   </button>
                 </>
               )}

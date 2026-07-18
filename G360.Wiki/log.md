@@ -6,6 +6,98 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-18] update | 🚚 Testing cross-sucursal con usuarios reales + traslado real desde LpnAccionesModal (autónomo)
+
+**Disparador:** GO pidió crear usuarios de prueba para Sucursal Sur de Almacén Jorgito (además de
+los de Norte que ya existían) para probar con usuarios de 2 sucursales distintas. Al probar
+traslados con ellos aparecieron 2 bugs reales y un pedido de feature; se cerró con una pasada
+autónoma completa: fix → tests que detectan la regresión (corridos SIN el fix para confirmarlo) →
+sweep de regresión → documentación.
+
+**Usuarios nuevos DEV** (tenant Almacén Jorgito, `3769b1db-...`): `supervisor2@test.com`
+(SUPERVISOR, Sucursal Sur, pass `123`) creado desde cero; `deposito@genesis360.com` (DEPOSITO,
+Sucursal Sur) ya existía sin contraseña conocida → reseteada a `123`. Quedan documentados en
+`tests/e2e/.env.test.local` (`E2E_SUPERVISOR_SUR_*`, `E2E_DEPOSITO_SUR_*`) para reusar en tests.
+
+**1. Bug — "Estado de inventario predeterminado" del producto no persistía al guardar.**
+`ProductoFormPage.handleSubmit`/`handleDuplicate` armaban `ubicacion_id` en el payload pero se
+olvidaban `estado_id` → el `UPDATE`/`INSERT` nunca lo mandaba, quedaba `null` en silencio pese al
+toast de éxito. Bug hermano de ISS-131 (v1.8.32, que arregló el lado de LECTURA de este mismo
+campo). Fix de una línea × 2 lugares. **Regresión: e2e spec 90**, corrido primero SIN el fix
+(falló con el mensaje exacto) y CON el fix (verde). Sin migraciones. UAT §34.
+
+**2. También en `ProductosPage` (listado)** — categoría, estado y ubicación predeterminada no se
+veían a simple vista en la fila del producto (categoría estaba pero oculta en mobile; estado y
+ubicación no se mostraban en ningún lado). Agregados como badges bajo SKU/código de barras +
+campos nuevos en el panel expandido. Query ahora trae `estados_inventario(nombre)` +
+`ubicaciones(nombre)` además de `categorias`/`proveedores`.
+
+**3. Bug — Traslados: ubicaciones GLOBALES no aparecían en "Confirmar recepción".**
+`TrasladosPanel` filtraba `ubicacionesDestino` con `.eq('sucursal_id', destino)` — un `.eq()`
+estricto en Postgres nunca matchea `sucursal_id IS NULL`, así que una sucursal sin ubicaciones
+propias (Sucursal Sur solo tiene la global "Container") veía el selector vacío. Mismo patrón
+mode-aware que ya usa el resto de la app (`ConfigPage`/`InventarioPage`/`LpnAccionesModal`) —
+`TrasladosPanel` era el único lugar sin el fix. **Regresión: spec 30 extendido** con el assert
+(corrido SIN el fix → falló; CON el fix → verde). UAT §35.
+
+**4. Feature/bug — "Mover" del LPN hacia otra sucursal reubicaba directo, sin traslado real.**
+GO pidió: (a) que "Ubicación destino" del tab Mover filtre por la sucursal ELEGIDA, no la activa
+del usuario, igual para mover dentro de la misma sucursal que para enviar a otra; (b) que un envío
+a otra sucursal desde ahí genere el traslado real en el tab Traslados, para que la otra sucursal
+confirme la recepción — antes reubicaba el stock directo en destino, saltándose por completo el
+mecanismo de tránsito+confirmación que ya existía (**riesgo real de REGLA #0**: stock apareciendo
+en otra sucursal sin que nadie confirmó que llegó físicamente). Fix: `esMovimientoCrossSucursal()`
+pura nueva (`src/lib/trasladoLogic.ts`, 5 tests) decide la rama; si cruza sucursal, `moverStock`
+despacha un traslado real (mismos guards que `TrasladosPanel.despachar`: `puedeCrearTraslado` +
+conteo bloqueante) en vez de crear la línea en destino. La ubicación elegida al despachar se
+guarda en `traslado_items.ubicacion_sugerida_id` (**mig 276**, nueva) y precarga el selector de
+"Confirmar recepción" (no vinculante, el destino puede cambiarla). **Validado end-to-end con DOS
+usuarios reales de sucursales distintas** (no el owner simulando ambos lados): spec 92 (misma
+sucursal, reubicación directa, regresión) + spec 93 (cross-sucursal, despacho con OWNER en Norte →
+`deposito@genesis360.com` en un 2do browser context con login real confirma en Sur). UAT §36.
+
+**5. Validación — RLS por sucursal con usuarios reales cross-check.** Spec 94 nuevo (API-only, sin
+UI): `supervisor@test.com` (Norte) vs `supervisor2@test.com` (Sur), pega directo a PostgREST con
+el token real de cada uno. Confirma que `inventario_lineas`/`caja_sesiones` bloquean correctamente
+la sucursal ajena. De paso surgió un falso positivo en el PROPIO test (`loginToken()` sin
+email/password explícitos cae al owner, no al supervisor) — corregido, no era un bug de RLS.
+También confirma (sin alarma, ya documentado desde v1.75.0 en
+[[wiki/features/multi-sucursal]]) que `traslados` es tenant-wide a propósito, no sucursal-scoped
+— "cruza sucursales por diseño", igual que `caja_traspasos`. UAT §37.
+
+**🛑 Gotcha de testing para no repetir** (guardado en memoria): `browser.newContext()` en
+Playwright Test **hereda el `storageState` del proyecto** (la sesión del owner) si no se lo pisa
+explícito con `storageState: { cookies: [], origins: [] }` — un "browser context nuevo" sin eso
+seguía autenticado como el owner. Tampoco hereda `use.baseURL`. Costó una sesión entera de debug
+(`browser.newContext({baseURL})` sin más parecía razonable y fallaba de forma confusa: `/login`
+redirigía solo a `/dashboard` en ~2s sin haber tocado el form).
+
+Verde: tsc · build · **unit 1080+5** · **e2e 69/69** (sweep de regresión: inventario, traslados,
+producto, variantes, roles cajero/supervisor/deposito) + specs nuevos 90/92/93/94 dedicados.
+Nada de esto commiteado todavía — se suma a los cambios de `dev` (F3b + atributos de variante)
+pendientes de merge a `main`.
+
+---
+
+## [2026-07-18] update | 🐛 "Estado de inventario predeterminado" del producto no persistía al guardar
+
+**GO reportó** (nueva sesión, tras el `/clear`): en Editar producto, elegir un valor en "Estado de
+inventario predeterminado" y tocar "Guardar cambios" no lo guardaba. **Causa raíz:** el `payload` de
+`handleSubmit` en `ProductoFormPage.tsx` armaba `ubicacion_id` pero se olvidaba `estado_id` — el
+`UPDATE`/`INSERT` a `productos` nunca lo mandaba, quedaba `null` en silencio pese al toast "Producto
+actualizado". Mismo bug en `handleDuplicate`. No es cosmético: `productos.estado_id` es el default
+que Recepciones/Inventario usan para precargar el estado al recibir/ingresar stock.
+
+**Fix:** agregado `estado_id: form.estado_id || null` a ambos payloads. Sin migraciones (columna ya
+existía, indexada en mig 263). **Test de regresión nuevo:** e2e spec 90
+(`90_producto_estado_predeterminado_mutante`) — corrido primero SIN el fix (falló con el mensaje
+exacto del bug) y luego CON el fix (verde), confirmando que detecta la regresión. Detalle completo
+en `tests/specs/uat-modo-basico.md` §34. Verde: tsc · build · e2e spec 90. **Sin commitear** — se
+suma al resto de cambios de `dev` pendientes de que GO pruebe antes del merge a `main` (ver
+`project_pendientes.md`).
+
+---
+
 ## [2026-07-18] update | ✅ Cierre de sesión — ronda 3 commiteada y pusheada, memoria/wiki/pendientes reconciliados
 
 **Corrige la entrada anterior** (dejaba dicho "todavía sin commitear"): la ronda 3 de variantes quedó

@@ -102,7 +102,7 @@ export default function TrasladosPanel() {
       const { data } = await supabase.from('ubicaciones')
         .select('id, nombre')
         .eq('tenant_id', tenant!.id)
-        .eq('sucursal_id', recibirTraslado!.sucursal_destino_id)
+        .or(`sucursal_id.eq.${recibirTraslado!.sucursal_destino_id},sucursal_id.is.null`)
         .order('prioridad', { ascending: true })
       return data ?? []
     },
@@ -259,7 +259,14 @@ export default function TrasladosPanel() {
       cants[it.id] = String(it.cantidad)
       series[it.id] = ((it.series as any[]) ?? []).map(s => s.serie_id)   // default: llegaron todas
     }
-    setRecibirCants(cants); setRecibirSeries(series); setRecibirUbicacionId('')
+    // Precarga la ubicación destino si TODOS los ítems sugieren la misma (mig 276 — hoy solo
+    // la setea el movimiento parcial desde LpnAccionesModal, que siempre despacha 1 ítem).
+    // El destino puede cambiarla igual; no es vinculante.
+    const items: any[] = t.traslado_items ?? []
+    const sugeridas = new Set(items.map(it => it.ubicacion_sugerida_id ?? null))
+    const sugeridaUnica = sugeridas.size === 1 ? [...sugeridas][0] : null
+
+    setRecibirCants(cants); setRecibirSeries(series); setRecibirUbicacionId(sugeridaUnica ?? '')
     setRecibirTraslado(t)
   }
 

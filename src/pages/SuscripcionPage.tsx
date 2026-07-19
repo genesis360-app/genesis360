@@ -353,7 +353,7 @@ export default function SuscripcionPage() {
                 </>
               ) : (
                 <>
-                  <RefreshCw size={48} className="text-accent mx-auto mb-4 animate-spin" />
+                  <RefreshCw size={48} className="text-accent-text mx-auto mb-4 animate-spin" />
                   <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Aplicando tu cambio de plan…</h1>
                   <p className="text-gray-500 dark:text-gray-400 mb-6">
                     Confirmamos tu pago con Mercado Pago y actualizamos tu suscripción. Unos segundos…
@@ -391,7 +391,7 @@ export default function SuscripcionPage() {
                 <p className="text-gray-500 dark:text-gray-400 mb-6">
                   Tu plan quedó activo. Ya podés usar {BRAND.name} sin límites de prueba.
                 </p>
-                <div className="flex items-center justify-center gap-2 text-accent font-medium">
+                <div className="flex items-center justify-center gap-2 text-accent-text font-medium">
                   <RefreshCw size={16} className="animate-spin" />
                   <span>Redirigiendo al dashboard...</span>
                 </div>
@@ -432,12 +432,12 @@ export default function SuscripcionPage() {
               </>
             ) : (
               <>
-                <RefreshCw size={48} className="text-accent mx-auto mb-4 animate-spin" />
+                <RefreshCw size={48} className="text-accent-text mx-auto mb-4 animate-spin" />
                 <h1 className="text-2xl font-bold text-gray-800 dark:text-gray-100 mb-2">Verificando tu pago…</h1>
                 <p className="text-gray-500 dark:text-gray-400 mb-6">
                   Estamos confirmando tu suscripción con Mercado Pago. Esto puede tardar unos segundos.
                 </p>
-                <div className="flex items-center justify-center gap-2 text-accent font-medium">
+                <div className="flex items-center justify-center gap-2 text-accent-text font-medium">
                   <RefreshCw size={16} className="animate-spin" />
                   <span>Un momento…</span>
                 </div>
@@ -593,7 +593,7 @@ export default function SuscripcionPage() {
                   <div className={`text-center py-3 rounded-xl text-sm font-semibold border
                     ${plan.destacado
                       ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 border-transparent'
-                      : 'bg-accent/25 text-white border-accent/50'}`}>
+                      : 'bg-accent/25 text-white border-accent-text/50'}`}>
                     ✓ Plan actual
                   </div>
                 ) : plan.precio === null ? (
@@ -626,8 +626,8 @@ export default function SuscripcionPage() {
         <div className="mt-12 relative left-1/2 -translate-x-1/2 w-[94vw] lg:w-[80vw] max-w-[1600px]">
           {/* E2: cambio programado / esperando cobro — banner informativo + cancelación */}
           {ADDON_FIJO_ENABLED && tieneSubMP && batchPreview?.cambio_en_curso && (
-            <div className="mb-4 rounded-2xl border border-accent/40 bg-accent/10 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-              <Clock size={20} className="text-accent shrink-0" />
+            <div className="mb-4 rounded-2xl border border-accent-text/40 bg-accent/10 p-4 flex flex-col sm:flex-row sm:items-center gap-3">
+              <Clock size={20} className="text-accent-text shrink-0" />
               <p className="text-sm text-white flex-1">
                 {batchPreview.cambio_en_curso.estado === 'programado' ? (
                   <>Tenés un cambio de plan programado para el{' '}
@@ -682,7 +682,7 @@ export default function SuscripcionPage() {
               </p>
               <button
                 onClick={() => confirmarBatch(planModal.packs, planModal.plan, 'ahora')}
-                className="w-full text-left rounded-xl border border-accent/40 bg-accent/5 hover:bg-accent/10 p-4 mb-3 transition-all">
+                className="w-full text-left rounded-xl border border-accent-text/40 bg-accent/5 hover:bg-accent/10 p-4 mb-3 transition-all">
                 <p className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Cambiar ahora</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                   Pagás hoy la diferencia (pago único) y el plan Pro se habilita apenas se acredite.

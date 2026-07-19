@@ -228,14 +228,14 @@ export function DashProveedoresArea({ section, embedded }: { section?: DashSecti
         </div>
         <div className="relative" ref={filterRef}>
           <button onClick={() => setFilterOpen(v => !v)}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all ${filterOpen ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800'}`}>
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all ${filterOpen ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800'}`}>
             <SlidersHorizontal size={14} /> Filtros
           </button>
           {filterOpen && (
             <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5">
               <div className="flex items-center justify-between mb-3"><h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Filtros</h3><button onClick={() => setFilterOpen(false)}><X size={14} className="text-gray-400" /></button></div>
               <p className="text-xs text-gray-400 dark:text-gray-500">Los filtros avanzados por estado y categoría están disponibles en el módulo Proveedores.</p>
-              <a href="/proveedores" className="block mt-3 text-center text-xs font-medium text-accent hover:underline">Ir a Proveedores →</a>
+              <a href="/proveedores" className="block mt-3 text-center text-xs font-medium text-accent-text hover:underline">Ir a Proveedores →</a>
             </div>
           )}
         </div>
@@ -261,7 +261,7 @@ export function DashProveedoresArea({ section, embedded }: { section?: DashSecti
         </div>
 
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent"><Flame size={20} /></div></div>
+          <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent-text"><Flame size={20} /></div></div>
           <p className="text-sm font-medium text-muted">Gasto Fijo Mensual</p>
           <p className="text-2xl font-semibold text-primary mt-1 tabular-nums">{isLoading ? '—' : fmtCorto(pData?.gastoFijoMensual ?? 0)}</p>
           <p className="text-xs text-muted mt-1.5">Suscripciones y servicios recurrentes activos.</p>
@@ -312,7 +312,7 @@ export function DashProveedoresArea({ section, embedded }: { section?: DashSecti
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Donut Top proveedores */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><DollarSign size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Concentración de Gasto</h3><span className="ml-auto text-xs text-muted">Top 5 proveedores</span></div>
+          <div className="flex items-center gap-2 mb-4"><DollarSign size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Concentración de Gasto</h3><span className="ml-auto text-xs text-muted">Top 5 proveedores</span></div>
           {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (pData?.donutProveedores ?? []).length > 0 ? (
             <div className="flex items-center gap-4">
               <ResponsiveContainer width={130} height={130}><PieChart><Pie data={pData!.donutProveedores} cx="50%" cy="50%" innerRadius={32} outerRadius={55} dataKey="total" paddingAngle={2} strokeWidth={0}>{pData!.donutProveedores.map((_: any, i: number) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}</Pie><Tooltip formatter={(v: any) => fmt(Number(v))} /></PieChart></ResponsiveContainer>
@@ -330,7 +330,7 @@ export function DashProveedoresArea({ section, embedded }: { section?: DashSecti
 
         {/* Aging OC */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><AlertTriangle size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Muro de Vencimientos</h3><span className="ml-auto text-xs text-muted">OC pendientes</span></div>
+          <div className="flex items-center gap-2 mb-4"><AlertTriangle size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Muro de Vencimientos</h3><span className="ml-auto text-xs text-muted">OC pendientes</span></div>
           {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (
             <div className="space-y-3">
               {(pData?.agingOC ?? []).map((b) => (
@@ -346,7 +346,7 @@ export function DashProveedoresArea({ section, embedded }: { section?: DashSecti
 
       {/* Evolución gastos */}
       <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-        <div className="flex items-center gap-2 mb-4"><BarChart2 size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Evolución de Gastos</h3><span className="ml-auto text-xs text-muted">Últimos 6 meses</span></div>
+        <div className="flex items-center gap-2 mb-4"><BarChart2 size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Evolución de Gastos</h3><span className="ml-auto text-xs text-muted">Últimos 6 meses</span></div>
         {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (pData?.evolData ?? []).length > 0 ? (
           <ResponsiveContainer width="100%" height={180}>
             <BarChart data={pData!.evolData} margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
@@ -365,7 +365,7 @@ export function DashProveedoresArea({ section, embedded }: { section?: DashSecti
       {/* Insights */}
       {insights.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3"><Zap size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Auditor Financiero</h3><span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span></div>
+          <div className="flex items-center gap-2 mb-3"><Zap size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Auditor Financiero</h3><span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span></div>
           <div className="grid sm:grid-cols-2 gap-3">{insights.map((ins, i) => { const Icon = INSIGHT_ICONS[ins.tipo]; return <InsightCard key={i} variant={ins.tipo} icon={<Icon size={15} />} title={ins.titulo} description={ins.impacto} action={{ label: ins.accion, onClick: () => { window.location.href = ins.link } }} /> })}</div>
         </div>
       )}

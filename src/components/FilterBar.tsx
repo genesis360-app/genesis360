@@ -176,7 +176,7 @@ export function FilterBar({
               new Date(e.target.value + 'T00:00:00').toISOString(),
               customHasta ?? new Date().toISOString(),
             )}
-            className="border border-border-ds rounded-lg px-2 py-1 text-xs bg-surface text-primary focus:outline-none focus:border-accent"
+            className="border border-border-ds rounded-lg px-2 py-1 text-xs bg-surface text-primary focus:outline-none focus:border-accent-text"
           />
           <span className="text-muted">→</span>
           <input
@@ -187,7 +187,7 @@ export function FilterBar({
               customDesde ?? new Date().toISOString(),
               new Date(e.target.value + 'T23:59:59').toISOString(),
             )}
-            className="border border-border-ds rounded-lg px-2 py-1 text-xs bg-surface text-primary focus:outline-none focus:border-accent"
+            className="border border-border-ds rounded-lg px-2 py-1 text-xs bg-surface text-primary focus:outline-none focus:border-accent-text"
           />
         </div>
       )}

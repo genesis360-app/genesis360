@@ -49,6 +49,20 @@ Tras 4+ mensajes aparece "Enviar reporte al equipo" → `send-email` `type:'bug_
 - Groq free tier: 70B ≈ 12k tokens/min — mitigado por el fallback al 8B (Fase 3); si ambos límites se agotan, mensaje amable.
 - Posible evolución: embeddings/pgvector si el keyword matching queda corto con más contenido.
 
+## Redeploy 2026-07-18 (DEV+PROD) — cierra pendiente de knowledge desactualizado
+
+El fix de pricing (`ADDON_FIJO_ENABLED`/precios v2) corregido en `app-reference.md` el 2026-07-17
+(commit `a99bb270`) había regenerado `knowledge.generated.ts` y quedó commiteado, pero la EF
+`ai-assistant` deployada seguía sirviendo la versión vieja (`KNOWLEDGE_GENERATED_AT` 2026-07-13) —
+el conocimiento **solo se actualiza al redeployar la EF**, nunca en caliente (ver "Limitaciones
+conocidas" abajo). Cerrado en sesión aparte: `npm run ai:knowledge` (sin diff real, el contenido ya
+estaba al día) + `supabase functions deploy ai-assistant` en DEV y PROD. Verificado
+`KNOWLEDGE_GENERATED_AT` = `2026-07-18T02:18:00.520Z` en ambos ambientes + smoke HTTP (OPTIONS 200 /
+POST sin auth 401). Recordatorio del flujo correcto: tras cualquier cambio a `app-reference.md` (o
+al wiki en general que alimente el conocimiento), correr `npm run ai:knowledge` y redeployar la EF
+**en el mismo momento** — no dejarlo como pendiente para después. Detalle: `log.md` (2026-07-18,
+"Redeploy EF ai-assistant...").
+
 ## Validación (2026-07-07, DEV)
 
 - Fases 1+2: CAJERO modo básico, "¿cómo emito una factura?" → guió por Ventas → Historial → "Emitir factura AFIP" (real), config AFIP atribuida al DUEÑO. Off-topic declinado 2/2.

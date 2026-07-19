@@ -1141,9 +1141,9 @@ para forzar la selección de series) — nunca cae a "cualquiera" por FIFO ciego
 | 2 | Inventario → Ingreso manual (single-item) | Atributo obligatorio si `tiene_X` | Validación en `ingresoMutation` | ✅ **e2e spec 89** (creación real de producto + ingreso rechazado sin talle + aceptado con talle, verificado en DB) |
 | 3 | Inventario → Ingreso masivo, grilla inline (`masivoRows`) | Atributo obligatorio por fila si `tiene_X` (antes bloqueaba directamente, ahora soporta de verdad) | Validación en `procesarMasivoIngreso` | ✅ Código + unit (misma lógica de campo obligatorio) — sin e2e dedicado |
 | 4 | Inventario → Ingreso masivo, modal (`MasivoModal` tipo='ingreso') | Atributo obligatorio por ítem si `tiene_X` | `validate()` de `MasivoModal` | ✅ Código — sin e2e dedicado |
-| 5 | Inventario → Rebaje masivo (`MasivoModal` tipo='rebaje') | Si hay >1 valor distinto en stock, exige elegir cuál ANTES de rebajar (filtra las líneas candidatas, nunca consume "cualquiera") | `atributoAmbiguoEnLineas` + `filtrarLineasPorAtributo` (`validate()` + `mutationFn`) | ✅ **Unit 10 tests** (`atributosVariante.test.ts`) sobre la lógica pura — sin e2e dedicado |
-| 6 | Venta (`VentasPage`, checkout) | Si hay >1 valor distinto en stock disponible, bloquea el cobro hasta elegir (badge ámbar parpadeante + picker "Elegir talle/color/posición de rebaje") | `atributoAmbiguoEnStock` (`registrarVenta`) | ✅ **Unit 5 tests** (`lpnFuentes.test.ts`) sobre la lógica pura — sin e2e dedicado (requiere 2 líneas con talles distintos + checkout completo) |
-| 7 | `LpnAccionesModal` → tab "Editar" (editar una línea existente) | Atributo obligatorio si `tiene_X`; select del catálogo en vez de texto libre | Validación en `guardarEdicion` | ✅ Código — sin e2e dedicado |
+| 5 | Inventario → Rebaje masivo (`MasivoModal` tipo='rebaje') | Si hay >1 valor distinto en stock, exige elegir cuál ANTES de rebajar (filtra las líneas candidatas, nunca consume "cualquiera") | `atributoAmbiguoEnLineas` + `filtrarLineasPorAtributo` (`validate()` + `mutationFn`) | ✅ **Unit 10 tests** (`atributosVariante.test.ts`) + **e2e spec 95** (`95_rebaje_masivo_atributo_ambiguo_mutante`, 5/5 corridas verdes: exige elegir color, rechaza sin elegir, consume SOLO la línea elegida verificado por REST) |
+| 6 | Venta (`VentasPage`, checkout) | Si hay >1 valor distinto en stock disponible, bloquea el cobro hasta elegir (badge ámbar parpadeante + picker "Elegir talle/color/posición de rebaje") | `atributoAmbiguoEnStock` (`registrarVenta`) | ✅ **Unit 5 tests** (`lpnFuentes.test.ts`) + **e2e spec 96** (`96_venta_bloqueada_atributo_ambiguo_mutante`, 4/4 corridas verdes: rechaza sin elegir color (carrito no se limpia), completa tras elegir, verifica por REST que `venta_item_despachos` snapshoteó el color correcto y que solo la línea elegida se redujo) |
+| 7 | `LpnAccionesModal` → tab "Editar" (editar una línea existente) | Atributo obligatorio si `tiene_X`; select del catálogo en vez de texto libre | Validación en `guardarEdicion` | ✅ Código + **e2e spec 97** (`97_lpn_editar_atributo_obligatorio_mutante`, estable en corridas repetidas: vaciar el color y guardar rechaza con "Este producto requiere color", re-elegir persiste verificado por REST) |
 | 8 | `LpnAccionesModal` → tab "Mover" (mover/partir stock a otra ubicación — el "movimiento parcial de LPN/ubicación") | La línea NUEVA hereda el atributo de la línea origen (misma mercadería física, no se re-pregunta) | Insert copia `talle/color/encaje/formato/sabor_aroma` de `linea` | ✅ Código — sin e2e dedicado |
 | 9 | Traslados entre sucursales — despacho (`TrasladosPanel`) | Snapshot del atributo de la línea origen en `traslado_items` (columnas nuevas, **mig 275**) | Insert incluye los 5 campos | ✅ Código + regresión e2e (`30_traslado_sucursal_mutante`, corrido aislado tras el cambio — sigue verde) |
 | 10 | Traslados — recepción en destino | La línea nueva en destino hereda el atributo del `traslado_items` (no se re-pregunta) | Insert copia los 5 campos de `it` | ✅ Código + regresión e2e (mismo spec 30) |
@@ -1158,9 +1158,14 @@ IA), `MasivoModal` (búsqueda + scan). Lección: al agregar una columna nueva a 
 agregarla a **todas** las queries que alimentan flujos de esa columna, no solo a la principal —
 grep por `tiene_lote` sin `tiene_talle` en el mismo `.select()` es la forma de encontrarlas.
 
-**Pendiente (no bloqueante, próxima sesión si GO lo pide):** e2e dedicado para #5, #6, #7 (rebaje
-masivo con ambigüedad, venta bloqueada por ambigüedad, editar LPN) — hoy cubiertos por unit tests
-de la lógica pura + revisión de código, no por click-through automatizado completo.
+**✅ Cerrado 2026-07-18 (sesión separada, ronda 4):** e2e dedicado para #5, #6, #7 (rebaje masivo
+con ambigüedad, venta bloqueada por ambigüedad, editar LPN) — specs **95/96/97** nuevos (self-
+contained, generan su propia precondición). **Las 12 filas de esta tabla quedan con e2e real**
+(antes 9/12). Detalle en [[wiki/features/atributos-variante]] "Ronda 4" y `log.md`. Nota de calidad:
+al escribir estos specs se corrigieron 2 causas de flake en el helper de ingreso manual compartido
+(placeholder específico por atributo en "+ Agregar nuevo valor…", y esperar el VALOR real del
+`<select>` tras el guardado async en vez de `waitForTimeout`). **Esta ronda 4 (código +
+mig 277) está en el working tree de `dev` sin commitear, no deployada a PROD todavía.**
 
 ## 🐛 §34 — "Estado de inventario predeterminado" del producto no persistía al guardar — 2026-07-18
 

@@ -8,14 +8,21 @@ updated: 2026-07-18
 
 # Atributos de variante (talle / color / encaje / formato / sabor·aroma)
 
-> [!NOTE] **✅ PROD desde v1.134.0 (2026-07-18, PR #293).** GO probó la ronda 1 y encontró bugs
-> (ronda 2, corregidos) y luego probó la ronda 2 y encontró que el ingreso simple TAMPOCO pedía el
-> atributo — causa raíz: el buscador de productos no traía las columnas nuevas en el `SELECT` (ver
-> "Ronda 3" abajo). Corregido + extendido a TODOS los movimientos de stock (ingreso masivo, rebaje
-> masivo, mover/partir LPN, traslados) por pedido explícito de GO. UAT §33
+> [!NOTE] **✅ Rondas 1-3 PROD desde v1.134.0 (2026-07-18, PR #293).** GO probó la ronda 1 y encontró
+> bugs (ronda 2, corregidos) y luego probó la ronda 2 y encontró que el ingreso simple TAMPOCO pedía
+> el atributo — causa raíz: el buscador de productos no traía las columnas nuevas en el `SELECT`
+> (ver "Ronda 3" abajo). Corregido + extendido a TODOS los movimientos de stock (ingreso masivo,
+> rebaje masivo, mover/partir LPN, traslados) por pedido explícito de GO. UAT §33
 > (`tests/specs/uat-modo-basico.md`) + e2e spec **89** (creado y corrido, verificado en DB). GO
 > probó la ronda 3 y confirmó que funciona bien; deployado junto con F3b y el fix del traslado real
 > desde LpnAccionesModal (ver [[wiki/features/multi-sucursal]]).
+>
+> **🟡 Ronda 4 (2026-07-18, mismo día, sesión separada) — EN EL WORKING TREE DE `dev`, SIN
+> COMMITEAR, NO DEPLOYADA A PROD.** Cierra los 3 diferidos que había dejado la ronda 3 (ver "Ronda 4"
+> abajo): `venta_item_despachos` ahora snapshotea el atributo consumido (**mig 277**, aplicada solo
+> en DEV), `selectedLineasInfo` de InventarioPage muestra badges de atributo, y 3 specs e2e nuevos
+> (95/96/97) cierran los huecos de cobertura de UAT §33. Sin bump de `APP_VERSION`, sin PR — queda
+> para la próxima ventana de deploy. **No confundir con las rondas 1-3, que sí están en PROD.**
 
 ## Por qué existe esta página
 
@@ -213,28 +220,105 @@ Verde tras la ronda 3: tsc · build · unit **1075+5** (12 nuevos sobre la ronda
 **17/17 verde** (incluye el spec 89 nuevo + `30_traslado_sucursal_mutante` corrido aislado tras tocar
 `TrasladosPanel`, sin romper nada).
 
+## Ronda 4 (2026-07-18, sesión separada) — cierra los 3 diferidos de la ronda 3
+
+**⚠ Estado real (verificado con `git log`/`git status`, no asumido): todo lo de esta ronda está en
+el working tree de `dev`, SIN COMMITEAR. La mig 277 está aplicada en DEV; NO se tocó PROD (ni la
+migración ni el código). Sin bump de `APP_VERSION`, sin PR — pendiente de la próxima ventana de
+deploy.**
+
+### 1. `venta_item_despachos` ahora snapshotea el atributo consumido — mig 277
+
+`venta_item_despachos` (ledger de despacho por LPN de una venta, ver [[wiki/features/ventas-pos]]
+"ISS-075") no snapshoteaba qué talle/color se vendió — solo era visible en el carrito antes de
+confirmar, no en el historial post-venta. **Mig 277**
+(`277_venta_item_despachos_atributos_variante.sql`, aplicada en DEV, revisada por el agente
+migration-reviewer, mismo patrón aditivo que la mig 275 de `traslado_items`): agrega
+`talle/color/encaje/formato/sabor_aroma` (TEXT nullable) a `venta_item_despachos`. Sin backfill (no
+se puede reconstruir qué talle se vendió en despachos históricos).
+
+`src/pages/VentasPage.tsx`: los 2 flujos de despacho (checkout directo desde el carrito, y "reserva
+→ despachada") ahora seleccionan esas 5 columnas de `inventario_lineas` al armar el plan de rebaje, y
+las snapshotean en cada fila de `despachoRows` insertada en `venta_item_despachos`. El historial
+post-venta (panel de detalle de una venta, modal `ventaDetalle`) muestra el atributo junto al
+LPN/ubicación en el desglose de despacho, con el helper reutilizable `atributosDeLinea()` (el mismo
+que ya usaba el carrito). Verificado end-to-end por el **e2e spec 96** (ver abajo): confirma por REST
+que `venta_item_despachos.color` quedó con el valor correcto tras una venta real.
+
+### 2. `selectedLineasInfo` (InventarioPage) ahora muestra atributos de variante
+
+El resumen de selección múltiple de LPNs (modal "Combinar LPNs" — fusionar o asignar LPN madre,
+Sprint D) no mostraba talle/color/etc. de los LPNs seleccionados pese a que el dato ya estaba
+disponible en la query. El tipo `SelectedLinea` se extendió con los 5 campos, los 2 lugares que
+populan el estado (vista agrupada por ubicación y vista de líneas por producto) los propagan, y el
+modal "Combinar LPNs" muestra badges de atributo (mismo `atributosDeLinea()`) junto a cada LPN de la
+lista. Cambio puramente de UI/display, sin tocar ninguna lógica de movimiento de stock.
+
+### 3. Cobertura e2e para los 3 huecos de UAT §33
+
+La tabla de `tests/specs/uat-modo-basico.md` §33 tenía 3 filas marcadas "sin e2e dedicado" (#5, #6,
+#7 — cubiertas antes solo por unit tests de la lógica pura o revisión de código). 3 specs e2e
+mutantes nuevos, todos self-contained (generan su propia precondición: producto nuevo con "Color"
+activado + ingresos reales, no dependen de fixtures compartidas):
+
+- **`tests/e2e/95_rebaje_masivo_atributo_ambiguo_mutante.spec.ts`** — cierra fila #5. `MasivoModal`
+  tipo='rebaje': con 2 líneas de colores distintos en stock, exige elegir el color antes de
+  confirmar (rechaza con el toast exacto si no se elige), y una vez elegido consume SOLO la línea de
+  esa variante (verificado por REST: la línea no elegida queda intacta). 5/5 corridas verdes.
+- **`tests/e2e/96_venta_bloqueada_atributo_ambiguo_mutante.spec.ts`** — cierra fila #6. Checkout del
+  POS (`registrarVenta`): con 2 líneas de colores distintos, "Venta directa" sin elegir color
+  rechaza (toast + el carrito NO se limpia); tras elegir el color en el picker "Elegir
+  talle/color/posición de rebaje", la venta se completa. Verificado por REST que
+  `venta_item_despachos` snapshoteó el color correcto Y que solo la línea elegida se redujo (valida
+  de paso el punto 1, end-to-end). 4/4 corridas verdes.
+- **`tests/e2e/97_lpn_editar_atributo_obligatorio_mutante.spec.ts`** — cierra fila #7.
+  `LpnAccionesModal` → tab "Editar": vaciar el select de color y guardar rechaza con "Este producto
+  requiere color"; re-elegir el valor y guardar persiste correctamente (verificado por REST).
+  Estable en corridas repetidas.
+
+Con esto, **las 12 filas de la tabla del §33 quedan con e2e real** (antes 9/12, ahora 12/12) — tabla
+actualizada en `tests/specs/uat-modo-basico.md`.
+
+**Lección reusable de calidad de estos specs:** al escribirlos se encontraron y corrigieron 2 causas
+reales de flake en el helper de ingreso manual usado por los 3 specs: (a) el input del modo "+
+Agregar nuevo valor…" de `AtributoValorSelect` tiene un placeholder ESPECÍFICO por atributo ("Ej:
+Rojo" para color, no un genérico "Nuevo valor" — el spec 89 tenía ese locator mal pero nunca lo
+ejercitó en la práctica porque el catálogo ya tenía datos), y (b) hay que esperar el VALOR real del
+`<select>` (`toHaveValue`) tras el guardado async del nuevo valor, no un `waitForTimeout` fijo, o el
+click de confirmar puede salir antes de que el estado termine de actualizar. También se encontró que
+en modo avanzado el filtro de venta del POS sigue excluyendo líneas con `estado_id NULL` aunque el
+grupo activo sea "Todos" (el spec 96 necesitó setear un Estado real al ingresar, no solo la
+Ubicación).
+
+**Verificación de la sesión:** tsc limpio · `npm run build` verde · `npm run test:unit` → 1080
+passed + 5 todo (igual al baseline) · specs 95/96/97 estables en corridas repetidas · regresión e2e
+de specs relacionados (89, 90, 92, 93, 30) verde en aislado (2 fallaron en corrida conjunta por
+contención ambiental, confirmado no-regresión al aislarlos).
+
 ## Qué queda pendiente
 
-1. **e2e dedicado** para rebaje masivo con ambigüedad, venta bloqueada por ambigüedad, y editar LPN
-   (#5/#6/#7 de la tabla en `uat-modo-basico.md` §33) — hoy cubiertos por unit tests de la lógica pura
-   + revisión de código, no por click-through automatizado completo. No bloqueante.
-2. **`venta_item_despachos`** (ledger de trazabilidad de despacho por LPN, ver
-   [[wiki/features/ventas-pos]] "ISS-075") **no** snapshotea todavía el talle/color consumido — hoy
-   solo es visible en el carrito antes de confirmar, no en el historial post-venta. Mejora de
-   trazabilidad razonable para una fase futura (ligada a `feedback_trazabilidad_grado_wms.md`), **no
-   bloqueante**.
-3. `selectedLineasInfo` en InventarioPage (resumen de selección múltiple en traslados) sin extender
-   con los atributos — menor, no bloqueante.
+1. ~~e2e dedicado para rebaje masivo con ambigüedad, venta bloqueada por ambigüedad, y editar LPN~~
+   **✅ resuelto en la ronda 4** — specs **95** (rebaje masivo), **96** (venta bloqueada) y **97**
+   (editar LPN) nuevos, ver arriba.
+2. ~~`venta_item_despachos` no snapshotea el talle/color consumido~~ **✅ resuelto en la ronda 4**
+   — mig 277 + `VentasPage.tsx`, ver arriba. **Aplicado solo en DEV, falta PROD.**
+3. ~~`selectedLineasInfo` en InventarioPage sin extender con los atributos~~ **✅ resuelto en la
+   ronda 4**, ver arriba.
 4. **Lección para memoria:** al agregar una columna nueva a `productos` que gatea un flujo, hay que
    agregarla a TODAS las queries que alimentan ese flujo, no solo a la "principal" — grep por el
    patrón hermano (`tiene_lote` sin `tiene_talle` en el mismo `.select()`) es la forma sistemática de
    encontrar los faltantes, en vez de esperar a que el usuario los encuentre uno por uno.
+5. **Pendiente real (no resuelto todavía):** la ronda 4 no está en PROD — falta bump de
+   `APP_VERSION`, PR `dev → main`, y aplicar la mig 277 en PROD en el próximo release.
 
 ## Links
 
 - [[wiki/features/grupos-variantes]] — el otro sistema de variantes (SKU separado), no confundir
 - [[wiki/features/productos]] — Card 5 Trazabilidad, los 5 toggles originales (mig 118)
 - [[wiki/features/inventario-stock]] — badges y picker de rebaje manual
-- [[wiki/features/ventas-pos]] — picker "Elegir posición de rebaje" que gobierna el descuento real
+- [[wiki/features/ventas-pos]] — picker "Elegir posición de rebaje" que gobierna el descuento real,
+  "ISS-075" (`venta_item_despachos`)
 - [[wiki/features/configuracion]] — sub-pestaña Atributos
-- [[wiki/database/migraciones]] — migs 273, 274, 275
+- [[wiki/database/migraciones]] — migs 273, 274, 275, 277
+- `tests/specs/uat-modo-basico.md` §33 — tabla de cobertura completa (12/12 filas con e2e real tras
+  la ronda 4: specs 89, 95, 96, 97)

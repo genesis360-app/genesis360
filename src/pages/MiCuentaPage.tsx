@@ -361,10 +361,10 @@ export default function MiCuentaPage() {
           {/* Avatar */}
           <div className="relative flex-shrink-0">
             {avatarSrc ? (
-              <img src={avatarSrc} alt="Avatar" className="w-20 h-20 rounded-full object-cover border-2 border-accent/30" />
+              <img src={avatarSrc} alt="Avatar" className="w-20 h-20 rounded-full object-cover border-2 border-accent-text/30" />
             ) : (
               <div className="w-20 h-20 rounded-full bg-accent/20 flex items-center justify-center">
-                <User size={32} className="text-accent" />
+                <User size={32} className="text-accent-text" />
               </div>
             )}
             {!isGoogleUser && (
@@ -475,12 +475,12 @@ export default function MiCuentaPage() {
             {esManual
               ? <>Estás en <strong>pago manual</strong> (precio de lista, sin auto-débito).{' '}
                   <button onClick={() => handleCambiarModo('auto')} disabled={cambiandoModo}
-                    className="text-accent hover:underline disabled:opacity-50">
+                    className="text-accent-text hover:underline disabled:opacity-50">
                     Volver a suscripción automática (-10%) →
                   </button></>
               : <>¿Preferís pagar por transferencia/efectivo en vez de suscripción automática?{' '}
                   <button onClick={() => handleCambiarModo('manual')} disabled={cambiandoModo}
-                    className="text-accent hover:underline disabled:opacity-50">
+                    className="text-accent-text hover:underline disabled:opacity-50">
                     Cambiar a pago manual →
                   </button></>}
           </p>
@@ -519,7 +519,7 @@ export default function MiCuentaPage() {
             </div>
             {!mostrarAviso ? (
               <button onClick={() => setMostrarAviso(true)}
-                className="mt-3 text-xs text-accent hover:underline flex items-center gap-1.5">
+                className="mt-3 text-xs text-accent-text hover:underline flex items-center gap-1.5">
                 <Send size={12} /> Ya transferí, avisar
               </button>
             ) : (

@@ -50,17 +50,17 @@ function TagInput({
   }
 
   return (
-    <div className="border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 min-h-[36px] flex flex-wrap gap-1 bg-white dark:bg-gray-700 focus-within:border-accent transition-colors">
+    <div className="border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 min-h-[36px] flex flex-wrap gap-1 bg-white dark:bg-gray-700 focus-within:border-accent-text transition-colors">
       {valores.map((v, i) => (
         <span
           key={i}
-          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-accent/10 text-accent font-medium"
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-accent/10 text-accent-text font-medium"
         >
           {v}
           <button
             type="button"
             onClick={() => removeValor(i)}
-            className="text-accent/60 hover:text-accent transition-colors"
+            className="text-accent-text/60 hover:text-accent-text transition-colors"
             title="Eliminar"
           >
             <X size={10} />
@@ -284,7 +284,7 @@ export default function ProductoGrupoModal({
     }
   }
 
-  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent transition-colors text-gray-800 dark:text-gray-100'
+  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text transition-colors text-gray-800 dark:text-gray-100'
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -374,7 +374,7 @@ export default function ProductoGrupoModal({
               <button
                 type="button"
                 onClick={() => agregarAtributo()}
-                className="flex items-center gap-1.5 text-xs text-accent hover:bg-accent/10 px-2.5 py-1.5 rounded-lg transition-colors border border-accent/30"
+                className="flex items-center gap-1.5 text-xs text-accent-text hover:bg-accent/10 px-2.5 py-1.5 rounded-lg transition-colors border border-accent-text/30"
               >
                 <Plus size={13} /> Agregar atributo
               </button>
@@ -393,7 +393,7 @@ export default function ProductoGrupoModal({
                     className={`px-2.5 py-1 text-xs rounded-full border transition-colors
                       ${existe
                         ? 'border-gray-200 dark:border-gray-700 text-gray-300 dark:text-gray-600 cursor-not-allowed'
-                        : 'border-accent/40 text-accent hover:bg-accent/10 cursor-pointer'}`}
+                        : 'border-accent-text/40 text-accent-text hover:bg-accent/10 cursor-pointer'}`}
                   >
                     + {sug}
                   </button>
@@ -415,7 +415,7 @@ export default function ProductoGrupoModal({
                     value={attr.nombre}
                     onChange={e => updateAtributo(idx, { nombre: e.target.value })}
                     placeholder="Nombre del atributo (ej: Talle, Color)"
-                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent"
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
                   />
                   <button
                     type="button"
@@ -474,7 +474,7 @@ export default function ProductoGrupoModal({
                         <button
                           type="button"
                           onClick={() => navigate(`/productos/${v.id}/editar`)}
-                          className="p-1.5 text-gray-400 hover:text-accent transition-colors flex-shrink-0"
+                          className="p-1.5 text-gray-400 hover:text-accent-text transition-colors flex-shrink-0"
                           title="Abrir producto"
                         >
                           <ExternalLink size={14} />
@@ -489,9 +489,9 @@ export default function ProductoGrupoModal({
 
           {/* ── Generar combinaciones ──────────────────────────────────────── */}
           {combinaciones.length > 0 && (
-            <div className="border border-accent/30 rounded-xl p-4 space-y-3 bg-accent/5 dark:bg-accent/10">
+            <div className="border border-accent-text/30 rounded-xl p-4 space-y-3 bg-accent/5 dark:bg-accent/10">
               <div className="flex items-center gap-2">
-                <Sparkles size={15} className="text-accent flex-shrink-0" />
+                <Sparkles size={15} className="text-accent-text flex-shrink-0" />
                 <div>
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
                     Generar {combinaciones.length} variante{combinaciones.length !== 1 ? 's' : ''}

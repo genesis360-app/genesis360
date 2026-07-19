@@ -128,7 +128,7 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <ScanBarcode size={17} className="text-accent" />
+            <ScanBarcode size={17} className="text-accent-text" />
             <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">Código compuesto (GS1)</span>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
@@ -139,7 +139,7 @@ export function CodigoCompuestoModal({ fields, lpn, productoNombre, sku, perfile
         <div className="p-5 flex flex-col items-center gap-3">
           {opciones.length > 1 && (
             <select value={perfilId} onChange={e => setPerfilId(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
               {opciones.map(p => <option key={p.id} value={p.id}>{p.nombre} · {SIMB_LABEL[p.simbologia]}</option>)}
             </select>
           )}

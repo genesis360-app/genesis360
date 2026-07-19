@@ -14,7 +14,7 @@ export default function CookiesPage() {
         Esta Política explica qué cookies y tecnologías similares (almacenamiento local,
         identificadores de sesión) utiliza {BRAND.name} (el "Servicio") y con qué finalidad.
         Forma parte de nuestra{' '}
-        <a href="/privacidad" className="text-accent hover:underline">Política de Privacidad</a>.
+        <a href="/privacidad" className="text-accent-text hover:underline">Política de Privacidad</a>.
       </p>
 
       <LegalSection n={1} title="Qué son">
@@ -69,7 +69,7 @@ export default function CookiesPage() {
         <p>
           Podemos actualizar esta Política; publicaremos la versión vigente en esta página con su
           fecha. Ante cualquier consulta, escribinos a{' '}
-          <a href={`mailto:${BRAND.email}`} className="text-accent hover:underline">{BRAND.email}</a>.
+          <a href={`mailto:${BRAND.email}`} className="text-accent-text hover:underline">{BRAND.email}</a>.
         </p>
       </LegalSection>
     </LegalLayout>

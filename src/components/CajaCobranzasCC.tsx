@@ -142,12 +142,12 @@ export default function CajaCobranzasCC() {
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Monto</label>
                     <input type="number" min="0" onWheel={e => e.currentTarget.blur()} value={monto}
                       onChange={e => setMonto(e.target.value)}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-text" />
                   </div>
                   <div className="flex-1 min-w-[120px]">
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Medio de pago</label>
                     <select value={metodo} onChange={e => setMetodo(e.target.value)}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                       {['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'MercadoPago', 'Otro'].map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                   </div>

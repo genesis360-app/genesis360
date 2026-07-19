@@ -304,7 +304,7 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
                         <ArrowRightLeft size={12} /> Endosar
                       </button>
                     )}
-                    <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-accent p-1" title="Editar"><Pencil size={13} /></button>
+                    <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-accent-text p-1" title="Editar"><Pencil size={13} /></button>
                     <button onClick={() => { if (confirm('¿Eliminar este cheque?')) eliminar.mutate(c.id) }} className="text-gray-400 hover:text-red-500 p-1" title="Eliminar"><Trash2 size={13} /></button>
                   </div>
                 </div>

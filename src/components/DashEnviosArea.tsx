@@ -30,7 +30,7 @@ function EnvioTooltip({ active, payload }: any) {
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg px-3 py-2 text-xs">
       <p className="font-semibold text-gray-800 dark:text-gray-100">Envío #{d?.numero}</p>
-      <p className="text-accent">Costo envío: {fmt(d?.costoEnvio ?? 0)}</p>
+      <p className="text-accent-text">Costo envío: {fmt(d?.costoEnvio ?? 0)}</p>
       <p className="text-gray-500">Ganancia neta: {fmt(d?.gananciaNeta ?? 0)}</p>
       {d?.deficit && <p className="text-red-500 font-semibold">⚠ Pérdida por flete</p>}
     </div>
@@ -231,14 +231,14 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
         <p className="text-sm text-gray-500 dark:text-gray-400">Envíos del mes actual · {eData?.totalEnvios ?? 0} operaciones</p>
         <div className="relative" ref={filterRef}>
           <button onClick={() => setFilterOpen(v => !v)}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all ${filterOpen ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800'}`}>
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all ${filterOpen ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800'}`}>
             <SlidersHorizontal size={14} /> Filtros
           </button>
           {filterOpen && (
             <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5">
               <div className="flex items-center justify-between mb-3"><h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Filtros</h3><button onClick={() => setFilterOpen(false)}><X size={14} className="text-gray-400" /></button></div>
               <p className="text-xs text-gray-400 dark:text-gray-500">Los filtros por courier y zona están en el módulo Envíos.</p>
-              <a href="/envios" className="block mt-3 text-center text-xs font-medium text-accent hover:underline">Ir a Envíos →</a>
+              <a href="/envios" className="block mt-3 text-center text-xs font-medium text-accent-text hover:underline">Ir a Envíos →</a>
             </div>
           )}
         </div>
@@ -250,7 +250,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
       {/* 6 KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent"><Send size={20} /></div></div>
+          <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent-text"><Send size={20} /></div></div>
           <p className="text-sm font-medium text-muted">Costo Medio por Envío</p>
           <p className="text-2xl font-semibold text-primary mt-1 tabular-nums">{isLoading ? '—' : fmtCorto(eData?.costoMedio ?? 0)}</p>
           <p className="text-xs text-muted mt-1.5">Promedio cobrado por los couriers este mes.</p>
@@ -286,7 +286,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
           </p>
         </div>
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent"><Package size={20} /></div></div>
+          <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent-text"><Package size={20} /></div></div>
           <p className="text-sm font-medium text-muted">Volumen en Tránsito</p>
           <p className="text-2xl font-semibold text-primary mt-1 tabular-nums">{isLoading ? '—' : eData?.enTransito ?? 0}</p>
           <p className="text-xs text-muted mt-1.5">
@@ -302,7 +302,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
       {/* Funnel + Courier */}
       <div className="grid lg:grid-cols-2 gap-4">
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><Send size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Cuello de Botella Operativo</h3></div>
+          <div className="flex items-center gap-2 mb-4"><Send size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Cuello de Botella Operativo</h3></div>
           {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (
             <div className="space-y-3">
               {(eData?.funnelData ?? []).map((step) => (
@@ -317,7 +317,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
 
         {/* Rendimiento por courier */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><BarChart2 size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rendimiento por Courier</h3></div>
+          <div className="flex items-center gap-2 mb-4"><BarChart2 size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Rendimiento por Courier</h3></div>
           {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (eData?.courierData ?? []).length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <BarChart data={eData!.courierData} layout="vertical" margin={{ top: 0, right: 30, left: 0, bottom: 0 }}>
@@ -335,7 +335,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
       {/* Scatter subsidio vs ganancia */}
       {(eData?.scatterData ?? []).length > 0 && (
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm overflow-hidden">
-          <div className="flex items-center gap-2 mb-1"><AlertTriangle size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Subsidio Logístico vs Ganancia Neta</h3></div>
+          <div className="flex items-center gap-2 mb-1"><AlertTriangle size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Subsidio Logístico vs Ganancia Neta</h3></div>
           <p className="text-xs text-muted mb-4 ml-5">Cada punto = una venta. Puntos por encima de la línea roja = pérdida real por el flete.</p>
           <ResponsiveContainer width="100%" height={200}>
             <ScatterChart margin={{ top: 5, right: 10, left: 5, bottom: 5 }}>
@@ -364,7 +364,7 @@ export function DashEnviosArea({ section, embedded }: { section?: DashSection; e
       {/* Insights */}
       {insights.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3"><Zap size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Gerente de Tráfico</h3><span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span></div>
+          <div className="flex items-center gap-2 mb-3"><Zap size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Gerente de Tráfico</h3><span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span></div>
           <div className="grid sm:grid-cols-2 gap-3">{insights.map((ins, i) => { const Icon = INSIGHT_ICONS[ins.tipo]; return <InsightCard key={i} variant={ins.tipo} icon={<Icon size={15} />} title={ins.titulo} description={ins.impacto} action={{ label: ins.accion, onClick: () => { window.location.href = ins.link } }} /> })}</div>
         </div>
       )}

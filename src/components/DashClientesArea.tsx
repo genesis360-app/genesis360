@@ -30,7 +30,7 @@ function CohortTooltip({ active, payload, label }: any) {
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg px-3 py-2 text-xs">
       <p className="font-semibold text-gray-800 dark:text-gray-100">{label}</p>
-      <p className="text-accent">{payload[0]?.value ?? 0}% retención</p>
+      <p className="text-accent-text">{payload[0]?.value ?? 0}% retención</p>
     </div>
   )
 }
@@ -242,7 +242,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
         <div className="relative" ref={filterRef}>
           <button onClick={() => setFilterOpen(v => !v)}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all
-              ${filterOpen ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
+              ${filterOpen ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
             <SlidersHorizontal size={14} /> Filtros
           </button>
           {filterOpen && (
@@ -252,7 +252,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
                 <button onClick={() => setFilterOpen(false)}><X size={14} className="text-gray-400" /></button>
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500">Los filtros avanzados por segmento y zona se aplican directamente en el módulo Clientes.</p>
-              <a href="/clientes" className="block mt-3 text-center text-xs font-medium text-accent hover:underline">Ir a Clientes →</a>
+              <a href="/clientes" className="block mt-3 text-center text-xs font-medium text-accent-text hover:underline">Ir a Clientes →</a>
             </div>
           )}
         </div>
@@ -264,7 +264,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
       {/* 6 KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent"><Users size={20} /></div></div>
+          <div className="mb-3"><div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent-text"><Users size={20} /></div></div>
           <p className="text-sm font-medium text-muted">Cartera Activa</p>
           <p className="text-3xl font-semibold text-primary mt-1 tabular-nums">{isLoading ? '—' : cData?.cartaActiva ?? 0}</p>
           <p className="text-xs text-muted mt-1.5">Compraron al menos una vez en los últimos 90 días.</p>
@@ -308,7 +308,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Pirámide de Rentabilidad */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><Users size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Pirámide de Rentabilidad</h3></div>
+          <div className="flex items-center gap-2 mb-4"><Users size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Pirámide de Rentabilidad</h3></div>
           {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (
             <div className="space-y-3">
               {(cData?.piramide ?? []).map((tier, i) => (
@@ -326,7 +326,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
 
         {/* Origen de clientes */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><BarChart2 size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Origen de los Mejores Clientes</h3></div>
+          <div className="flex items-center gap-2 mb-4"><BarChart2 size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Origen de los Mejores Clientes</h3></div>
           {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (cData?.canalData ?? []).length > 0 ? (
             <div className="space-y-3">
               {(cData?.canalData ?? []).slice(0, 5).map((c, i) => (
@@ -345,7 +345,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
 
       {/* Cohort Analysis */}
       <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-        <div className="flex items-center gap-2 mb-1"><Heart size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Fidelidad en el Tiempo (Análisis de Cohortes)</h3></div>
+        <div className="flex items-center gap-2 mb-1"><Heart size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Fidelidad en el Tiempo (Análisis de Cohortes)</h3></div>
         <p className="text-xs text-muted mb-4 ml-5">% de clientes que volvieron a comprar en los meses siguientes a su primera compra.</p>
         {isLoading ? <div className="h-36 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (cData?.cohortData ?? []).length > 0 ? (
           <div className="overflow-x-auto">
@@ -372,7 +372,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
       {/* Aging CC */}
       {(cData?.deudaTotal ?? 0) > 0 && (
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><AlertTriangle size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Salud de Cobranzas (Aging de Deuda)</h3></div>
+          <div className="flex items-center gap-2 mb-4"><AlertTriangle size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Salud de Cobranzas (Aging de Deuda)</h3></div>
           <ResponsiveContainer width="100%" height={140}>
             <BarChart data={cData?.agingCC ?? []} margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9CA3AF' }} axisLine={false} tickLine={false} />
@@ -392,7 +392,7 @@ export function DashClientesArea({ section, embedded }: { section?: DashSection;
       {/* Insights */}
       {insights.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3"><Zap size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Ejecutivo de Cuentas</h3><span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span></div>
+          <div className="flex items-center gap-2 mb-3"><Zap size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Ejecutivo de Cuentas</h3><span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span></div>
           <div className="grid sm:grid-cols-2 gap-3">
             {insights.map((ins, i) => { const Icon = INSIGHT_ICONS[ins.tipo]; return <InsightCard key={i} variant={ins.tipo} icon={<Icon size={15} />} title={ins.titulo} description={ins.impacto} action={{ label: ins.accion, onClick: () => { window.location.href = ins.link } }} /> })}
           </div>

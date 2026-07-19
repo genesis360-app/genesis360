@@ -192,7 +192,7 @@ export default function RrhhReportesPanel({ tenant }: { tenant: any }) {
           <div className="grid grid-cols-3 gap-3">
             <div className="rounded-xl bg-gray-50 dark:bg-gray-700/50 p-3 text-center"><p className="text-2xl font-bold text-primary dark:text-white">{rot.activos}</p><p className="text-xs text-gray-400">Activos</p></div>
             <div className="rounded-xl bg-gray-50 dark:bg-gray-700/50 p-3 text-center"><p className="text-2xl font-bold text-red-500">{rot.bajas}</p><p className="text-xs text-gray-400">Bajas</p></div>
-            <div className="rounded-xl bg-gray-50 dark:bg-gray-700/50 p-3 text-center"><p className="text-2xl font-bold text-accent">{rot.permanenciaPromedioAnios}</p><p className="text-xs text-gray-400">Años promedio</p></div>
+            <div className="rounded-xl bg-gray-50 dark:bg-gray-700/50 p-3 text-center"><p className="text-2xl font-bold text-accent-text">{rot.permanenciaPromedioAnios}</p><p className="text-xs text-gray-400">Años promedio</p></div>
           </div>
         </div>
       )}

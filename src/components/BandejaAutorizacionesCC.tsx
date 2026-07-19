@@ -109,7 +109,7 @@ export default function BandejaAutorizacionesCC() {
       </div>
 
       {isLoading ? (
-        <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" /></div>
+        <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-text" /></div>
       ) : autorizaciones.length === 0 ? (
         <div className="flex flex-col items-center py-16 text-gray-400">
           <ShieldAlert size={36} className="mb-3 opacity-30" />

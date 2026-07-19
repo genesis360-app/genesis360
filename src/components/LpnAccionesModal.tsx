@@ -599,11 +599,11 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           </div>
           <div className="flex items-center gap-1">
             <button onClick={() => setShowCodigo(true)} title="Generar código compuesto (GS1)"
-              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
               <ScanBarcode size={18} />
             </button>
             <button onClick={() => setShowQR(true)} title="Generar QR del LPN"
-              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
               <QrCode size={18} />
             </button>
             <button onClick={onClose} className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
@@ -645,7 +645,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           {TABS.map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-medium transition-all border-b-2
-                ${tab === id ? 'border-accent text-primary' : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400'}
+                ${tab === id ? 'border-accent-text text-primary' : 'border-transparent text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400'}
                 ${id === 'eliminar' ? 'text-red-400 hover:text-red-600 dark:text-red-400' : ''}`}>
               <Icon size={14} /> {label}
             </button>
@@ -660,14 +660,14 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre del LPN</label>
                   <input type="text" value={editForm.lpn} onChange={e => setEditForm(p => ({ ...p, lpn: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent-text" />
                 </div>
                 {!tieneSeries && (
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Cantidad</label>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editForm.cantidad}
                       onChange={e => setEditForm(p => ({ ...p, cantidad: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                     {parseInt(editForm.cantidad) !== linea.cantidad && (
                       <p className="text-xs text-orange-500 mt-1">
                         ⚠ Diferencia: {parseInt(editForm.cantidad) - linea.cantidad > 0 ? '+' : ''}{parseInt(editForm.cantidad) - linea.cantidad} u.
@@ -681,7 +681,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Estado</label>
                   <select value={editForm.estado_id} onChange={e => setEditForm(p => ({ ...p, estado_id: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                     <option value="">Sin estado</option>
                     {(estados as any[]).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                   </select>
@@ -689,7 +689,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ubicación</label>
                   <select value={editForm.ubicacion_id} onChange={e => setEditForm(p => ({ ...p, ubicacion_id: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                     <option value="">Sin ubicación</option>
                     {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                   </select>
@@ -700,7 +700,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Proveedor</label>
                   <select value={editForm.proveedor_id} onChange={e => setEditForm(p => ({ ...p, proveedor_id: e.target.value }))}
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                     <option value="">Sin proveedor</option>
                     {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
@@ -709,7 +709,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sucursal</label>
                     <select value={editForm.sucursal_id} onChange={e => setEditForm(p => ({ ...p, sucursal_id: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                       <option value="">Sin sucursal</option>
                       {(sucursales as Sucursal[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                     </select>
@@ -724,7 +724,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     </label>
                     <input type="text" value={editForm.nro_lote} onChange={e => setEditForm(p => ({ ...p, nro_lote: e.target.value }))}
                       placeholder="Lote-001"
-                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent
+                      className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent-text
                         ${!editForm.nro_lote.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                   </div>
                 )}
@@ -736,7 +736,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     Fecha de vencimiento <span className="text-red-500">*</span>
                   </label>
                   <input type="date" value={editForm.fecha_vencimiento} onChange={e => setEditForm(p => ({ ...p, fecha_vencimiento: e.target.value }))}
-                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent-text
                       ${!editForm.fecha_vencimiento ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                 </div>
               )}
@@ -749,7 +749,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">País de Origen</label>
                       <input type="text" value={editForm.pais_origen} onChange={e => setEditForm(p => ({ ...p, pais_origen: e.target.value }))}
                         placeholder="Ej: Argentina"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                     </div>
                   )}
                   {producto.tiene_talle && (
@@ -757,7 +757,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Talle / Talla <span className="text-red-500">*</span></label>
                       <AtributoValorSelect tenantId={tenant!.id} atributo="talle" value={editForm.talle}
                         onChange={v => setEditForm(p => ({ ...p, talle: v }))} placeholder="Ej: M, 42, XL"
-                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.talle.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent-text ${!editForm.talle.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                   {producto.tiene_color && (
@@ -765,7 +765,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Color <span className="text-red-500">*</span></label>
                       <AtributoValorSelect tenantId={tenant!.id} atributo="color" value={editForm.color}
                         onChange={v => setEditForm(p => ({ ...p, color: v }))} placeholder="Ej: Rojo"
-                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.color.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent-text ${!editForm.color.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                   {producto.tiene_encaje && (
@@ -773,7 +773,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Encaje <span className="text-red-500">*</span></label>
                       <AtributoValorSelect tenantId={tenant!.id} atributo="encaje" value={editForm.encaje}
                         onChange={v => setEditForm(p => ({ ...p, encaje: v }))} placeholder="Ej: Slim fit"
-                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.encaje.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent-text ${!editForm.encaje.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                   {producto.tiene_formato && (
@@ -781,7 +781,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Formato <span className="text-red-500">*</span></label>
                       <AtributoValorSelect tenantId={tenant!.id} atributo="formato" value={editForm.formato}
                         onChange={v => setEditForm(p => ({ ...p, formato: v }))} placeholder="Ej: 500g, 1L"
-                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.formato.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent-text ${!editForm.formato.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                   {producto.tiene_sabor_aroma && (
@@ -789,7 +789,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sabor / Aroma <span className="text-red-500">*</span></label>
                       <AtributoValorSelect tenantId={tenant!.id} atributo="sabor_aroma" value={editForm.sabor_aroma}
                         onChange={v => setEditForm(p => ({ ...p, sabor_aroma: v }))} placeholder="Ej: Vainilla"
-                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent ${!editForm.sabor_aroma.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
+                        className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:border-accent-text ${!editForm.sabor_aroma.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                     </div>
                   )}
                 </div>
@@ -822,7 +822,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     </label>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max={cantDisponible - 1}
                       value={cantMover} onChange={e => setCantMover(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" placeholder="Ingresá una cantidad" />
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" placeholder="Ingresá una cantidad" />
                   </div>
                   {sucursales.length > 1 && (
                     <div>
@@ -830,7 +830,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       <select
                         value={sucursalDestino ?? ''}
                         onChange={e => { setSucursalDestino(e.target.value || null); setUbicDestino('') }}
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                         <option value="">Sin sucursal asignada{!linea.sucursal_id ? ' (actual)' : ''}</option>
                         {(sucursales as Sucursal[]).map(s => (
                           <option key={s.id} value={s.id}>
@@ -845,7 +845,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       Ubicación destino {sucursalDestino && <span className="font-normal text-gray-400">· {(sucursales as Sucursal[]).find(s => s.id === sucursalDestino)?.nombre}</span>}
                     </label>
                     <select value={ubicDestino} onChange={e => setUbicDestino(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                       <option value="">Seleccioná ubicación...</option>
                       {(ubicacionesDestinoMover as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                     </select>
@@ -882,7 +882,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <input type="text" value={newSerie} onChange={e => setNewSerie(e.target.value)}
                     placeholder="Nro. de serie"
                     onKeyDown={e => e.key === 'Enter' && agregarSerie.mutate()}
-                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent" />
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent-text" />
                   <button onClick={() => agregarSerie.mutate()} disabled={agregarSerie.isPending || !newSerie.trim()}
                     className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm disabled:opacity-50">
                     <Plus size={16} />
@@ -898,7 +898,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                       {editSerieId === s.id ? (
                         <>
                           <input type="text" value={editSerieNro} onChange={e => setEditSerieNro(e.target.value)}
-                            className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono focus:outline-none focus:border-accent" />
+                            className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm font-mono focus:outline-none focus:border-accent-text" />
                           <button onClick={() => editarSerie.mutate({ serieId: s.id, nroNuevo: editSerieNro })}
                             className="text-green-600 dark:text-green-400 text-xs font-medium hover:underline">Guardar</button>
                           <button onClick={() => setEditSerieId(null)} className="text-gray-400 dark:text-gray-500 text-xs hover:underline">Cancelar</button>
@@ -909,7 +909,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                           <span className="flex-1 text-sm font-mono text-gray-800 dark:text-gray-100">{s.nro_serie}</span>
                           {s.reservado && <span className="text-xs bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded">Reservada</span>}
                           <button onClick={() => { setEditSerieId(s.id); setEditSerieNro(s.nro_serie) }}
-                            className="text-gray-400 dark:text-gray-500 hover:text-accent p-1"><Edit2 size={12} /></button>
+                            className="text-gray-400 dark:text-gray-500 hover:text-accent-text p-1"><Edit2 size={12} /></button>
                           {!s.reservado && (
                             <button onClick={() => { if (confirm('¿Eliminar esta serie?')) eliminarSerie.mutate(s.id) }}
                               className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={12} /></button>
@@ -945,12 +945,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                           <button key={e.id} onClick={() => setEstructuraId(e.id)}
                             className={`w-full text-left px-3 py-3 rounded-xl border-2 transition-all
                               ${isCurrent
-                                ? 'border-accent bg-accent/5 dark:bg-accent/10'
+                                ? 'border-accent-text bg-accent/5 dark:bg-accent/10'
                                 : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'}`}>
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
-                                <Layers size={14} className={isCurrent ? 'text-accent' : 'text-gray-400'} />
-                                <span className={`text-sm font-medium ${isCurrent ? 'text-accent' : 'text-gray-700 dark:text-gray-300'}`}>
+                                <Layers size={14} className={isCurrent ? 'text-accent-text' : 'text-gray-400'} />
+                                <span className={`text-sm font-medium ${isCurrent ? 'text-accent-text' : 'text-gray-700 dark:text-gray-300'}`}>
                                   {e.nombre}
                                 </span>
                                 {e.is_default && (
@@ -959,7 +959,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                                   </span>
                                 )}
                               </div>
-                              {isCurrent && <span className="text-xs text-accent font-semibold">✓ Seleccionada</span>}
+                              {isCurrent && <span className="text-xs text-accent-text font-semibold">✓ Seleccionada</span>}
                             </div>
                             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5">
                               {e.unidades_por_caja && (

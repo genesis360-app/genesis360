@@ -160,7 +160,7 @@ export default function GruposEstadosPage() {
 
       {/* Formulario */}
       {showForm && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent/30 space-y-4">
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent-text/30 space-y-4">
           <h2 className="font-semibold text-gray-700 dark:text-gray-300">{editId ? 'Editar grupo' : 'Nuevo grupo'}</h2>
 
           <div className="grid sm:grid-cols-2 gap-4">
@@ -168,13 +168,13 @@ export default function GruposEstadosPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre del grupo *</label>
               <input type="text" value={form.nombre} onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
                 placeholder="Ej: Disponible para venta"
-                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción (opcional)</label>
               <input type="text" value={form.descripcion} onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
                 placeholder="Ej: Estados disponibles para vender"
-                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
             </div>
           </div>
 
@@ -193,10 +193,10 @@ export default function GruposEstadosPage() {
                   return (
                     <button key={e.id} type="button" onClick={() => toggleEstado(e.id)}
                       className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
-                        ${selected ? 'border-accent bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}>
+                        ${selected ? 'border-accent-text bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}>
                       <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
                       <span className="truncate">{e.nombre}</span>
-                      {selected && <Check size={13} className="text-accent ml-auto flex-shrink-0" />}
+                      {selected && <Check size={13} className="text-accent-text ml-auto flex-shrink-0" />}
                     </button>
                   )
                 })}
@@ -287,7 +287,7 @@ export default function GruposEstadosPage() {
                       </button>
                     )}
                     <button onClick={() => startEdit(grupo)}
-                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                       <Pencil size={15} />
                     </button>
                     <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteMutation.mutate(grupo.id) }}

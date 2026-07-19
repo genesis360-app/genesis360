@@ -141,7 +141,7 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
                 value={search}
                 onChange={e => { setSearch(e.target.value); setOpenFaq(null) }}
                 placeholder="Buscar en preguntas frecuentes..."
-                className="w-full pl-9 pr-3 py-2 text-sm border border-border-ds rounded-xl bg-page focus:outline-none focus:border-accent"
+                className="w-full pl-9 pr-3 py-2 text-sm border border-border-ds rounded-xl bg-page focus:outline-none focus:border-accent-text"
               />
             </div>
           </div>
@@ -200,7 +200,7 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
                   <select
                     value={form.tipo}
                     onChange={e => setForm(p => ({ ...p, tipo: e.target.value }))}
-                    className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700"
+                    className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700"
                   >
                     <option value="bug">Bug</option>
                     <option value="sugerencia">Sugerencia</option>
@@ -212,7 +212,7 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
                   <select
                     value={form.urgencia}
                     onChange={e => setForm(p => ({ ...p, urgencia: e.target.value }))}
-                    className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700"
+                    className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700"
                   >
                     <option value="baja">Baja</option>
                     <option value="media">Media</option>
@@ -226,7 +226,7 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
                   value={form.asunto}
                   onChange={e => setForm(p => ({ ...p, asunto: e.target.value }))}
                   placeholder="Descripción breve del problema"
-                  className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent"
+                  className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text"
                 />
               </div>
               <div>
@@ -236,7 +236,7 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
                   onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
                   rows={3}
                   placeholder="Describí el problema en detalle..."
-                  className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent resize-none"
+                  className="w-full text-sm border border-border-ds rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text resize-none"
                 />
               </div>
               <button
@@ -259,7 +259,7 @@ export function AyudaModal({ isOpen, onClose, currentModule }: AyudaModalProps) 
               Email:{' '}
               <a
                 href="mailto:soporte@genesis360.pro"
-                className="text-accent hover:underline"
+                className="text-accent-text hover:underline"
               >
                 soporte@genesis360.pro
               </a>

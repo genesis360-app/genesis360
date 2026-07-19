@@ -66,7 +66,7 @@ function ScatterTooltip({ active, payload }: any) {
       <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{d.nombre}</p>
       <p className="text-gray-400 dark:text-gray-500">{d.sku}</p>
       <p className="text-gray-600 dark:text-gray-300 mt-1">{d.total_cantidad} u. vendidas</p>
-      <p className="text-accent font-semibold">{d.avg_margen?.toFixed(1)}% margen</p>
+      <p className="text-accent-text font-semibold">{d.avg_margen?.toFixed(1)}% margen</p>
       <p className="text-gray-400 mt-0.5">{quad[d.quadrant as keyof typeof quad]}</p>
     </div>
   )
@@ -536,16 +536,16 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Mostrando <span className="font-medium text-primary">{PERIODO_LABELS[periodo].toLowerCase()}</span>
-          {categoriaFiltro && <span className="ml-1 text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded">Cat: {categoriaFiltro}</span>}
-          {margenMin > 0 && <span className="ml-1 text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded">Margen ≥ {margenMin}%</span>}
-          {cicloVida && <span className="ml-1 text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded">{cicloVida}</span>}
+          {categoriaFiltro && <span className="ml-1 text-xs bg-accent/10 text-accent-text px-1.5 py-0.5 rounded">Cat: {categoriaFiltro}</span>}
+          {margenMin > 0 && <span className="ml-1 text-xs bg-accent/10 text-accent-text px-1.5 py-0.5 rounded">Margen ≥ {margenMin}%</span>}
+          {cicloVida && <span className="ml-1 text-xs bg-accent/10 text-accent-text px-1.5 py-0.5 rounded">{cicloVida}</span>}
         </p>
 
         <div className="relative" ref={filterRef}>
           <button onClick={() => setFilterOpen(v => !v)}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all
               ${filterOpen || activeFilters > 0
-                ? 'border-accent bg-accent/5 text-accent'
+                ? 'border-accent-text bg-accent/5 text-accent-text'
                 : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
             <SlidersHorizontal size={14} />
             Filtros
@@ -577,11 +577,11 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
                   <div className="flex items-center gap-2 mt-2 text-xs">
                     <input type="date" max={hoy} value={customDesde.split('T')[0]}
                       onChange={e => setCustomDesde(new Date(e.target.value + 'T00:00:00').toISOString())}
-                      className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent" />
+                      className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent-text" />
                     <span className="text-gray-400">→</span>
                     <input type="date" max={hoy} value={customHasta.split('T')[0]}
                       onChange={e => setCustomHasta(new Date(e.target.value + 'T23:59:59').toISOString())}
-                      className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent" />
+                      className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent-text" />
                   </div>
                 )}
               </div>
@@ -592,7 +592,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Categoría</p>
                   <select value={categoriaFiltro} onChange={e => setCategoriaFiltro(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent">
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent-text">
                     <option value="">Todas las categorías</option>
                     {(pData?.categoriasDisp ?? []).map((c: string) => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -623,7 +623,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
 
               {activeFilters > 0 && (
                 <button onClick={() => { setCategoriaFiltro(''); setMargenMin(0); setCicloVida('') }}
-                  className="w-full text-xs text-gray-400 hover:text-accent transition-colors">Limpiar filtros</button>
+                  className="w-full text-xs text-gray-400 hover:text-accent-text transition-colors">Limpiar filtros</button>
               )}
             </div>
           )}
@@ -663,13 +663,13 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
         {/* KPI 2: El Motor */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="mb-3">
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent">
+            <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent-text">
               <Star size={20} />
             </div>
           </div>
           <p className="text-sm font-medium text-muted">El Motor</p>
           <p className="text-lg font-semibold text-primary mt-1 truncate">{isLoading ? '—' : pData?.topMotor?.nombre ?? '—'}</p>
-          <p className="text-2xl font-bold text-accent mt-0.5 tabular-nums">{isLoading ? '' : pData?.topMotor ? fmt(pData.topMotor.total_ingresos) : ''}</p>
+          <p className="text-2xl font-bold text-accent-text mt-0.5 tabular-nums">{isLoading ? '' : pData?.topMotor ? fmt(pData.topMotor.total_ingresos) : ''}</p>
           <p className="text-xs text-muted mt-1">El producto que más dinero hace entrar a tu caja.</p>
         </div>
 
@@ -748,7 +748,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
         {/* Gráfico 1: Cuadrante Mágico (Scatter) */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-1">
-            <Target size={15} className="text-accent" />
+            <Target size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">El Cuadrante Mágico</h3>
             <span className="ml-auto text-xs text-muted">{periodoLabel}</span>
           </div>
@@ -786,7 +786,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
         {/* Gráfico 3: Participación por Categoría (Pie) */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <BarChart2 size={15} className="text-accent" />
+            <BarChart2 size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Participación por Categoría</h3>
           </div>
           {isLoading ? (
@@ -822,7 +822,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       {/* Pareto (fila 2) */}
       <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
         <div className="flex items-center gap-2 mb-1">
-          <BarChart2 size={15} className="text-accent" />
+          <BarChart2 size={15} className="text-accent-text" />
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Concentración de Ingresos (Pareto 80/20)</h3>
           <span className="ml-auto text-xs text-muted">Top 20 productos</span>
         </div>
@@ -854,7 +854,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       {/* Tijera de Precios (fila 3) */}
       <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
         <div className="flex items-center gap-2 mb-1">
-          <TrendingUp size={15} className="text-accent" />
+          <TrendingUp size={15} className="text-accent-text" />
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">La Tijera de Precios</h3>
           <span className="ml-auto text-xs text-muted">Costo vs Precio promedio · Últimos 6 meses</span>
         </div>
@@ -885,7 +885,7 @@ export function DashProductosArea({ section, embedded, gPeriodo, gCustomDesde, g
       {insights.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Zap size={15} className="text-accent" />
+            <Zap size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu consultor de producto</h3>
             <span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span>
           </div>

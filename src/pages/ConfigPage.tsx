@@ -101,7 +101,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
           <input type="text" value={newNombre} onChange={e => setNewNombre(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleAdd()}
             placeholder="Nombre..."
-            className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+            className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
           <button onClick={handleAdd} disabled={saving || !newNombre.trim()}
             className="flex items-center gap-1.5 px-4 py-2 bg-accent hover:bg-accent/90 text-white text-sm font-medium rounded-lg transition-all disabled:opacity-50">
             <Plus size={15} /> Agregar
@@ -110,7 +110,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
         {withDescription && (
           <input type="text" value={newExtra} onChange={e => setNewExtra(e.target.value)}
             placeholder="Descripción (opcional)..."
-            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
         )}
       </div>
 
@@ -119,7 +119,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar..."
-            className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
         </div>
       )}
 
@@ -146,7 +146,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
                       </div>
                     )}
                     <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)}
-                      className="w-full px-3 py-1.5 border border-accent rounded-lg text-sm focus:outline-none" />
+                      className="w-full px-3 py-1.5 border border-accent-text rounded-lg text-sm focus:outline-none" />
                     {withDescription && (
                       <input type="text" value={editExtra} onChange={e => setEditExtra(e.target.value)}
                         placeholder="Descripción..."
@@ -174,7 +174,7 @@ function ListaABM({ items, loading, onAdd, onUpdate, onDelete, withDescription =
                     )}
                   </div>
                   <button onClick={() => startEdit(item)}
-                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                     <Pencil size={15} />
                   </button>
                   <button onClick={() => onDelete(item.id)}
@@ -235,9 +235,9 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
       <div className="flex gap-2">
         <input type="text" value={newNombre} onChange={e => setNewNombre(e.target.value)}
           placeholder="Nuevo motivo..." onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+          className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
         <select value={newTipo} onChange={e => setNewTipo(e.target.value)}
-          className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+          className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
           {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
         </select>
         <button onClick={handleAdd} disabled={saving || !newNombre.trim()}
@@ -252,7 +252,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar motivo..."
-            className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+            className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
         </div>
       )}
 
@@ -280,7 +280,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
               {editId === m.id ? (
                 <>
                   <input type="text" value={editNombre} onChange={e => setEditNombre(e.target.value)}
-                    className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                    className="flex-1 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                   <select value={editTipo} onChange={e => setEditTipo(e.target.value)}
                     className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none">
                     {TIPOS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
@@ -297,7 +297,7 @@ function MotivosList({ motivos, loading, onAdd, onUpdate, onDelete }: {
                     ? <span className="text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5 bg-gray-100 dark:bg-gray-600 rounded-full">sistema</span>
                     : <>
                         <button onClick={() => { setEditId(m.id); setEditNombre(m.nombre); setEditTipo(m.tipo) }}
-                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg"><Pencil size={15} /></button>
+                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg"><Pencil size={15} /></button>
                         <button onClick={() => onDelete(m.id)}
                           className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg"><Trash2 size={15} /></button>
                       </>
@@ -347,7 +347,7 @@ function AtributoValoresList({ valores, loading, onAdd, onRename, onDelete }: {
       <div className="flex gap-2">
         <input type="text" value={nuevo} onChange={e => setNuevo(e.target.value)}
           placeholder="Nuevo valor... (ej: M, Azul, Extra grande)" onKeyDown={e => e.key === 'Enter' && handleAdd()}
-          className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+          className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
         <button onClick={handleAdd} disabled={saving || !nuevo.trim()}
           className="px-4 py-2.5 bg-primary text-white rounded-xl text-sm disabled:opacity-50 hover:bg-accent transition-all">
           <Plus size={16} />
@@ -366,7 +366,7 @@ function AtributoValoresList({ valores, loading, onAdd, onRename, onDelete }: {
                 <>
                   <input type="text" value={editValor} onChange={e => setEditValor(e.target.value)} autoFocus
                     onKeyDown={e => e.key === 'Enter' && (async () => { setSaving(true); await onRename(v.id, editValor); setEditId(null); setSaving(false) })()}
-                    className="w-28 px-2 py-0.5 border border-accent rounded-lg text-sm focus:outline-none bg-white dark:bg-gray-800" />
+                    className="w-28 px-2 py-0.5 border border-accent-text rounded-lg text-sm focus:outline-none bg-white dark:bg-gray-800" />
                   <button onClick={async () => { setSaving(true); await onRename(v.id, editValor); setEditId(null); setSaving(false) }}
                     className="p-1 text-green-600 dark:text-green-400 hover:bg-green-50 dark:bg-green-900/20 rounded-full"><Check size={14} /></button>
                   <button onClick={() => setEditId(null)} className="p-1 text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full"><X size={14} /></button>
@@ -375,7 +375,7 @@ function AtributoValoresList({ valores, loading, onAdd, onRename, onDelete }: {
                 <>
                   <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{v.valor}</span>
                   <button onClick={() => { setEditId(v.id); setEditValor(v.valor) }}
-                    className="p-1 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-full"><Pencil size={12} /></button>
+                    className="p-1 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-full"><Pencil size={12} /></button>
                   <button onClick={() => onDelete(v.id)}
                     className="p-1 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-full"><Trash2 size={12} /></button>
                 </>
@@ -411,7 +411,7 @@ function MarketplaceSection() {
       <button onClick={() => setCollapsed(c => !c)}
         className="w-full flex items-center justify-between px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
         <div className="flex items-center gap-2">
-          <Globe size={16} className="text-accent" />
+          <Globe size={16} className="text-accent-text" />
           <span className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Marketplace</span>
           {activo && <span className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full">Activo</span>}
         </div>
@@ -440,14 +440,14 @@ function MarketplaceSection() {
               <input type="url" value={webhookUrl} onChange={e => setWebhookUrl(e.target.value)}
                 disabled={!canEdit}
                 placeholder="https://mi-sistema.com/webhook/stock"
-                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Recibís una notificación POST cada vez que cambia el stock de un producto publicado.</p>
             </div>
           )}
           {activo && (
             <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-1">
               <p className="text-xs font-medium text-gray-600 dark:text-gray-300">Endpoint público de tu catálogo:</p>
-              <p className="text-xs font-mono text-accent break-all">
+              <p className="text-xs font-mono text-accent-text break-all">
                 {import.meta.env.VITE_SUPABASE_URL}/functions/v1/marketplace-api?tenant_id={tenant?.id}
               </p>
             </div>
@@ -524,7 +524,7 @@ function ModoOperacionSection() {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
       <div className="flex items-center gap-2">
-        <Layers size={16} className="text-accent" />
+        <Layers size={16} className="text-accent-text" />
         <h2 className="font-semibold text-gray-700 dark:text-gray-300">Modo de operación</h2>
       </div>
       <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -538,11 +538,11 @@ function ModoOperacionSection() {
             <button key={op.id} type="button" disabled={!canEdit || saving || bloqueada}
               onClick={() => cambiar(op.id)}
               className={`text-left rounded-xl border-2 p-4 transition-all ${activa
-                ? 'border-accent bg-accent/5'
-                : 'border-gray-200 dark:border-gray-700 hover:border-accent/40'} ${(!canEdit || bloqueada) ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                ? 'border-accent-text bg-accent/5'
+                : 'border-gray-200 dark:border-gray-700 hover:border-accent-text/40'} ${(!canEdit || bloqueada) ? 'opacity-60 cursor-not-allowed' : ''}`}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">{op.titulo}</span>
-                {activa && <span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full font-medium">Activo</span>}
+                {activa && <span className="text-xs bg-accent/10 text-accent-text px-2 py-0.5 rounded-full font-medium">Activo</span>}
                 {bloqueada && <Lock size={14} className="text-gray-400" />}
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400">{op.desc}</p>
@@ -561,7 +561,7 @@ function ModoOperacionSection() {
       )}
       {modoActual === 'basico' && !puedeWms && motivo !== 'plan_insuficiente' && (
         <p className="text-xs text-gray-400 dark:text-gray-500">
-          El modo avanzado requiere plan <strong>Pro</strong>. <Link to="/suscripcion" className="text-accent underline">Ver planes</Link>
+          El modo avanzado requiere plan <strong>Pro</strong>. <Link to="/suscripcion" className="text-accent-text underline">Ver planes</Link>
         </p>
       )}
     </div>
@@ -2565,7 +2565,7 @@ export default function ConfigPage() {
         <p className="font-semibold text-gray-700 dark:text-gray-300">{title}</p>
         <p className="text-sm text-gray-400 dark:text-gray-500 mt-1 max-w-sm mx-auto">{desc}</p>
       </div>
-      <span className="inline-block text-xs bg-accent/10 text-accent px-3 py-1 rounded-full font-medium">Próximamente</span>
+      <span className="inline-block text-xs bg-accent/10 text-accent-text px-3 py-1 rounded-full font-medium">Próximamente</span>
     </div>
   )
 
@@ -2586,12 +2586,12 @@ export default function ConfigPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Settings size={22} className="text-accent" /> Configuración
+            <Settings size={22} className="text-accent-text" /> Configuración
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Administrá los datos de tu negocio</p>
         </div>
         <Link to="/configuracion/importar"
-          className="flex items-center gap-2 border border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
+          className="flex items-center gap-2 border border-accent-text text-accent-text px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all">
           <Upload size={15} /> Importar
         </Link>
       </div>
@@ -2606,7 +2606,7 @@ export default function ConfigPage() {
               {group.items.map(({ id, label, icon: Icon, placeholder }) => (
                 <button key={id} onClick={() => setTab(id)}
                   className={`w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left
-                    ${tab === id ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/10 hover:text-accent dark:hover:text-accent'}
+                    ${tab === id ? 'bg-accent text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-accent/10 hover:text-accent-text dark:hover:text-accent-text'}
                     ${placeholder ? 'opacity-60' : ''}`}>
                   <Icon size={15} className="flex-shrink-0" />
                   <span className="flex-1">{label}</span>
@@ -2638,13 +2638,13 @@ export default function ConfigPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre</label>
             <input type="text" value={bizForm.nombre} disabled={!canEdit}
               onChange={e => setBizForm(p => ({ ...p, nombre: e.target.value }))}
-              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de comercio</label>
             <select value={bizTipoSelect} disabled={!canEdit}
               onChange={e => setBizTipoSelect(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
               <option value="">Seleccioná...</option>
               {TIPOS_COMERCIO.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
@@ -2652,7 +2652,7 @@ export default function ConfigPage() {
               <input type="text" value={bizTipoPersonalizado}
                 onChange={e => setBizTipoPersonalizado(e.target.value)}
                 placeholder="Describí tu tipo de comercio"
-                className="mt-2 w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                className="mt-2 w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
             )}
             {bizTipoSelect === 'Otro' && !canEdit && bizTipoPersonalizado && (
               <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 px-1">{bizTipoPersonalizado}</p>
@@ -2662,7 +2662,7 @@ export default function ConfigPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cierre de sesión por inactividad</label>
             <select value={bizTimeout} disabled={!canEdit}
               onChange={e => setBizTimeout(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
               <option value="nunca">Nunca</option>
               <option value="5">5 minutos</option>
               <option value="15">15 minutos</option>
@@ -2673,11 +2673,11 @@ export default function ConfigPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5">
-              <DollarSign size={14} className="text-accent" /> Moneda principal del negocio
+              <DollarSign size={14} className="text-accent-text" /> Moneda principal del negocio
             </label>
             <select value={bizMoneda} disabled={!canEdit}
               onChange={e => setBizMoneda(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
               {MONEDAS_DISPONIBLES.map(m => (
                 <option key={m.code} value={m.code}>{m.simbolo}  {m.code} — {m.nombre}</option>
               ))}
@@ -2688,7 +2688,7 @@ export default function ConfigPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Redondeo de precios de venta</label>
             <select value={bizPrecioRedondeo} disabled={!canEdit}
               onChange={e => setBizPrecioRedondeo(e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
               <option value="none">Sin redondeo</option>
               <option value="10">Redondear a $10</option>
               <option value="50">Redondear a $50</option>
@@ -2739,7 +2739,7 @@ export default function ConfigPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Receipt size={18} className="text-accent" />
+              <Receipt size={18} className="text-accent-text" />
               <span className="font-semibold text-gray-700 dark:text-gray-300">Facturación Electrónica (ARCA)</span>
             </div>
             <label className="flex items-center gap-2 cursor-pointer">
@@ -2771,7 +2771,7 @@ export default function ConfigPage() {
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Logo del negocio</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Sale en la factura y el presupuesto. PNG/JPG, máx. 2 MB.</p>
                 <div className="flex gap-2">
-                  <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${uploadingLogo ? 'opacity-60 pointer-events-none' : ''} border border-accent text-accent hover:bg-accent/10`}>
+                  <label className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium cursor-pointer transition-all ${uploadingLogo ? 'opacity-60 pointer-events-none' : ''} border border-accent-text text-accent-text hover:bg-accent/10`}>
                     {uploadingLogo ? 'Subiendo…' : (bizLogoUrl ? 'Cambiar logo' : 'Subir logo')}
                     <input type="file" accept="image/*" className="hidden" onChange={handleLogoChange} disabled={uploadingLogo} />
                   </label>
@@ -2794,13 +2794,13 @@ export default function ConfigPage() {
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CUIT</label>
                     <input type="text" value={bizCuit} onChange={e => setBizCuit(e.target.value)}
                       placeholder="20-12345678-9"
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Condición IVA del emisor</label>
                     <div className="relative">
                       <select value={bizCondIva} onChange={e => setBizCondIva(e.target.value)}
-                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         <option value="">Seleccionar…</option>
                         <option value="RI">Responsable Inscripto (RI)</option>
                         <option value="Monotributista">Monotributista</option>
@@ -2813,13 +2813,13 @@ export default function ConfigPage() {
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Razón social fiscal</label>
                     <input type="text" value={bizRazonSocial} onChange={e => setBizRazonSocial(e.target.value)}
                       placeholder="Razón social ante AFIP"
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Domicilio fiscal</label>
                     <input type="text" value={bizDomicilioFiscal} onChange={e => setBizDomicilioFiscal(e.target.value)}
                       placeholder="Calle 123, Ciudad"
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
@@ -2827,7 +2827,7 @@ export default function ConfigPage() {
                     </label>
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={bizUmbralB} onChange={e => setBizUmbralB(e.target.value)} min="0"
                       placeholder="68305.16"
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     <p className="text-xs text-gray-400 mt-0.5">Ventas ≥ este monto requieren DNI/CUIT del cliente</p>
                   </div>
                   <div>
@@ -2835,7 +2835,7 @@ export default function ConfigPage() {
                     <div className="relative">
                       <input type={showAfipToken ? 'text' : 'password'} value={bizAfipToken} onChange={e => setBizAfipToken(e.target.value)}
                         placeholder="Token de afipsdk.com"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       <button type="button" onClick={() => setShowAfipToken(v => !v)}
                         className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
                         <Eye size={14} />
@@ -2852,42 +2852,42 @@ export default function ConfigPage() {
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ingresos Brutos</label>
                       <input type="text" value={bizIngBrutos} onChange={e => setBizIngBrutos(e.target.value)}
                         placeholder="N° de Ingresos Brutos / Convenio"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Inicio de Actividades</label>
                       <input type="date" value={bizInicioAct} onChange={e => setBizInicioAct(e.target.value)}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sitio web</label>
                       <input type="text" value={bizSitioWeb} onChange={e => setBizSitioWeb(e.target.value)}
                         placeholder="www.minegocio.com"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Banco</label>
                       <input type="text" value={bizBanco} onChange={e => setBizBanco(e.target.value)}
                         placeholder="Banco (para transferencias)"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">CBU</label>
                       <input type="text" value={bizCbu} onChange={e => setBizCbu(e.target.value)}
                         placeholder="0000000000000000000000"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Alias CBU</label>
                       <input type="text" value={bizAliasCbu} onChange={e => setBizAliasCbu(e.target.value)}
                         placeholder="mi.alias.cbu"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div className="md:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Leyenda / nota del comprobante</label>
                       <textarea value={bizLeyenda} onChange={e => setBizLeyenda(e.target.value)} rows={2}
                         placeholder="Ej.: ¡Gracias por su compra! · Seguinos en @minegocio"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                   </div>
                 </div>
@@ -2906,7 +2906,7 @@ export default function ConfigPage() {
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Identidad fiscal del emisor principal</p>
                     <button type="button" onClick={() => emisoresPanelRef.current?.editarPrincipal()}
-                      className="text-xs text-accent hover:underline flex items-center gap-1 shrink-0">
+                      className="text-xs text-accent-text hover:underline flex items-center gap-1 shrink-0">
                       <Pencil size={12} /> Editar en Emisores fiscales
                     </button>
                   </div>
@@ -2932,7 +2932,7 @@ export default function ConfigPage() {
                     <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Sitio web</label>
                     <input type="text" value={bizSitioWeb} onChange={e => setBizSitioWeb(e.target.value)}
                       placeholder="www.minegocio.com"
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   </div>
                   <button onClick={handleSaveFacturacion} disabled={savingFact}
                     className="px-4 py-2 bg-accent hover:bg-accent/90 text-white font-medium rounded-xl transition-all disabled:opacity-60 text-sm shrink-0">
@@ -3014,7 +3014,7 @@ export default function ConfigPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
           <button className="w-full flex items-center gap-3 px-5 py-4 text-left"
             onClick={() => setPvCollapsed(v => !v)}>
-            <Hash size={18} className="text-accent" />
+            <Hash size={18} className="text-accent-text" />
             <span className="font-semibold text-gray-700 dark:text-gray-300 flex-1">Puntos de venta AFIP</span>
             <span className="text-xs text-gray-400">{(puntosVentaAfip as any[]).length} configurado{(puntosVentaAfip as any[]).length !== 1 ? 's' : ''}</span>
             {pvCollapsed ? <ChevronRight size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
@@ -3043,14 +3043,14 @@ export default function ConfigPage() {
                   <input type="number" onWheel={e => e.currentTarget.blur()} value={pvForm.numero}
                     onChange={e => setPvForm(f => ({ ...f, numero: e.target.value }))} min="1" max="9998"
                     placeholder="1"
-                    className="w-20 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-20 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 <div className="flex-1">
                   <label className="block text-xs text-gray-500 mb-0.5">Nombre (opcional)</label>
                   <input type="text" value={pvForm.nombre}
                     onChange={e => setPvForm(f => ({ ...f, nombre: e.target.value }))}
                     placeholder="Ej: Local principal"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 <button disabled={!pvForm.numero || savingPv}
                   onClick={async () => {
@@ -3106,8 +3106,8 @@ export default function ConfigPage() {
 
               {/* Pointer al asistente self-service para quien recién arranca (no tiene la .key/.crt todavía). */}
               {!tenantCert && (
-                <div className="flex items-start gap-2 bg-accent/5 border border-accent/20 rounded-xl px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300">
-                  <Wand2 size={15} className="text-accent shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2 bg-accent/5 border border-accent-text/20 rounded-xl px-3 py-2.5 text-xs text-gray-600 dark:text-gray-300">
+                  <Wand2 size={15} className="text-accent-text shrink-0 mt-0.5" />
                   <span>
                     ¿Todavía no tenés el certificado? No hace falta que sepas usar <span className="font-mono">openssl</span>: generamos la clave y el pedido (CSR) por vos.
                     Andá a <strong>Emisores fiscales</strong> (más abajo ↓), abrí tu CUIT principal → <strong>Certificado</strong> → <strong>Asistente</strong> y seguí los pasos.
@@ -3145,13 +3145,13 @@ export default function ConfigPage() {
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">CUIT *</label>
                     <input type="text" value={certCuit} onChange={e => setCertCuit(e.target.value)}
                       placeholder="20-12345678-9"
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white font-mono" />
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white font-mono" />
                   </div>
 
                   <div>
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de validez (opcional)</label>
                     <input type="date" value={certValidez} onChange={e => setCertValidez(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
@@ -3239,7 +3239,7 @@ export default function ConfigPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Regla de inventario</label>
                 <select value={bizRegla} disabled={!canEdit}
                   onChange={e => setBizRegla(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                   {REGLAS_INVENTARIO.map(r => (
                     <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
                   ))}
@@ -3281,7 +3281,7 @@ export default function ConfigPage() {
                     <button key={m} type="button" disabled={!canEdit} title={desc}
                       onClick={() => setBizConteoModo(m)}
                       className={`px-3 py-2 rounded-xl text-sm font-medium transition-colors border-2 disabled:opacity-50
-                        ${bizConteoModo === m ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                        ${bizConteoModo === m ? 'border-accent-text text-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
                       {label}
                     </button>
                   ))}
@@ -3362,7 +3362,7 @@ export default function ConfigPage() {
           {invSubTab === 'categorias' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-4">
-            <Tag size={18} className="text-accent" />
+            <Tag size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Categorías de productos</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{categorias.length} cargadas</span>
           </div>
@@ -3373,7 +3373,7 @@ export default function ConfigPage() {
           {invSubTab === 'ubicaciones' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-1">
-            <MapPin size={18} className="text-accent" />
+            <MapPin size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Ubicaciones</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{ubicaciones.length} cargadas</span>
           </div>
@@ -3385,15 +3385,15 @@ export default function ConfigPage() {
               <input type="text" placeholder="Nombre de la ubicación" value={newUbicNombre}
                 onChange={e => setNewUbicNombre(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && addUbicacion()}
-                className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Prioridad" value={newUbicPrioridad}
                 onChange={e => setNewUbicPrioridad(e.target.value)}
                 title="Prioridad de rebaje (menor = primero)"
-                className="w-24 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-24 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Secuencia" value={newUbicSecuencia}
                 onChange={e => setNewUbicSecuencia(e.target.value)}
                 title="Secuencia de recorrido para conteo y picking (menor = primero)"
-                className="w-24 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-24 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               <button onClick={addUbicacion} disabled={!newUbicNombre.trim()}
                 className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
                 <Plus size={15} /> Agregar
@@ -3401,10 +3401,10 @@ export default function ConfigPage() {
             </div>
             <input type="text" placeholder="Descripción (opcional)" value={newUbicDesc}
               onChange={e => setNewUbicDesc(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
             {sucursales.length > 1 && (
               <select value={newUbicSucursalId} onChange={e => setNewUbicSucursalId(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
                 <option value="">Global (todas las sucursales)</option>
                 {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
               </select>
@@ -3423,7 +3423,7 @@ export default function ConfigPage() {
             {newUbicWmsOpen && (
               <div className="grid grid-cols-3 gap-2 pt-1">
                 <select value={newUbicTipo} onChange={e => setNewUbicTipo(e.target.value)}
-                  className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                   <option value="">Tipo de ubicación (opcional)</option>
                   <option value="picking">Picking</option>
                   <option value="bulk">Bulk / Reserva</option>
@@ -3431,11 +3431,11 @@ export default function ConfigPage() {
                   <option value="camara">Cámara frigorífica</option>
                   <option value="cross_dock">Cross-dock</option>
                 </select>
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={newUbicAlto} onChange={e => setNewUbicAlto(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={newUbicAncho} onChange={e => setNewUbicAncho(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Largo (cm)" value={newUbicLargo} onChange={e => setNewUbicLargo(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Peso máx (kg)" value={newUbicPeso} onChange={e => setNewUbicPeso(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Cap. pallets" value={newUbicPallets} onChange={e => setNewUbicPallets(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={newUbicAlto} onChange={e => setNewUbicAlto(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={newUbicAncho} onChange={e => setNewUbicAncho(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Largo (cm)" value={newUbicLargo} onChange={e => setNewUbicLargo(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Peso máx (kg)" value={newUbicPeso} onChange={e => setNewUbicPeso(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Cap. pallets" value={newUbicPallets} onChange={e => setNewUbicPallets(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
               </div>
             )}
           </div>
@@ -3445,7 +3445,7 @@ export default function ConfigPage() {
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
             <input type="text" placeholder="Buscar ubicación..." value={ubicSearch}
               onChange={e => setUbicSearch(e.target.value)}
-              className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+              className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
           </div>
 
           {/* Lista */}
@@ -3460,13 +3460,13 @@ export default function ConfigPage() {
                         {/* Fila principal */}
                         <div className="flex gap-2 items-center">
                           <input type="text" value={editUbicNombre} onChange={e => setEditUbicNombre(e.target.value)}
-                            className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                            className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                           <input type="text" value={editUbicDesc} onChange={e => setEditUbicDesc(e.target.value)}
-                            placeholder="Descripción" className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                            placeholder="Descripción" className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                           <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editUbicPrioridad} onChange={e => setEditUbicPrioridad(e.target.value)}
-                            className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Prioridad de rebaje" />
+                            className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent-text" title="Prioridad de rebaje" />
                           <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={editUbicSecuencia} onChange={e => setEditUbicSecuencia(e.target.value)}
-                            placeholder="Sec." className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent" title="Secuencia de recorrido (conteo/picking)" />
+                            placeholder="Sec." className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm text-center focus:outline-none focus:border-accent-text" title="Secuencia de recorrido (conteo/picking)" />
                           <button onClick={() => saveUbicacion(u.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
                           <button onClick={() => setEditUbicId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
                         </div>
@@ -3477,7 +3477,7 @@ export default function ConfigPage() {
                             <select
                               value={editUbicSucursalId}
                               onChange={e => setEditUbicSucursalId(e.target.value)}
-                              className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary">
+                              className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
                               <option value="">Global (todas las sucursales)</option>
                               {(sucursales as any[]).map(s => (
                                 <option key={s.id} value={s.id}>{s.nombre}</option>
@@ -3497,7 +3497,7 @@ export default function ConfigPage() {
                         {editUbicWmsOpen && (
                           <div className="grid grid-cols-3 gap-2 pt-1">
                             <select value={editUbicTipo} onChange={e => setEditUbicTipo(e.target.value)}
-                              className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                              className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                               <option value="">Tipo de ubicación (opcional)</option>
                               <option value="picking">Picking</option>
                               <option value="bulk">Bulk / Reserva</option>
@@ -3506,15 +3506,15 @@ export default function ConfigPage() {
                               <option value="cross_dock">Cross-dock</option>
                             </select>
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={editUbicAlto} onChange={e => setEditUbicAlto(e.target.value)}
-                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={editUbicAncho} onChange={e => setEditUbicAncho(e.target.value)}
-                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Largo (cm)" value={editUbicLargo} onChange={e => setEditUbicLargo(e.target.value)}
-                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Peso máx (kg)" value={editUbicPeso} onChange={e => setEditUbicPeso(e.target.value)}
-                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Cap. pallets" value={editUbicPallets} onChange={e => setEditUbicPallets(e.target.value)}
-                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                           </div>
                         )}
                         {/* Mono-SKU toggle */}
@@ -3579,7 +3579,7 @@ export default function ConfigPage() {
                           className={`p-1 transition-colors ${u.es_devolucion ? 'text-orange-500 hover:text-gray-400' : 'text-gray-300 hover:text-orange-500'}`}>
                           <RotateCcw size={14} />
                         </button>
-                        <button onClick={() => startEditUbic(u)} className="text-gray-400 dark:text-gray-500 hover:text-accent p-1"><Pencil size={14} /></button>
+                        <button onClick={() => startEditUbic(u)} className="text-gray-400 dark:text-gray-500 hover:text-accent-text p-1"><Pencil size={14} /></button>
                         <button onClick={() => deleteUbicacion(u.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={14} /></button>
                       </>
                     )}
@@ -3609,7 +3609,7 @@ export default function ConfigPage() {
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <CircleDot size={18} className="text-accent" />
+                  <CircleDot size={18} className="text-accent-text" />
                   <h2 className="font-semibold text-gray-700 dark:text-gray-300">Estados de inventario</h2>
                   <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{estados.length} cargados</span>
                 </div>
@@ -3712,20 +3712,20 @@ export default function ConfigPage() {
               )}
 
               {grupoShowForm && (
-                <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent/30 space-y-4">
+                <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent-text/30 space-y-4">
                   <h2 className="font-semibold text-gray-700 dark:text-gray-300">{grupoEditId ? 'Editar grupo' : 'Nuevo grupo'}</h2>
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre *</label>
                       <input type="text" value={grupoForm.nombre} onChange={e => setGrupoForm(p => ({ ...p, nombre: e.target.value }))}
                         placeholder="Ej: Disponible para venta"
-                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción (opcional)</label>
                       <input type="text" value={grupoForm.descripcion} onChange={e => setGrupoForm(p => ({ ...p, descripcion: e.target.value }))}
                         placeholder="Ej: Estados vendibles"
-                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     </div>
                   </div>
                   <div>
@@ -3739,10 +3739,10 @@ export default function ConfigPage() {
                         return (
                           <button key={e.id} type="button" onClick={() => toggleGrupoEstado(e.id)}
                             className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-sm font-medium transition-all
-                              ${selected ? 'border-accent bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}>
+                              ${selected ? 'border-accent-text bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600'}`}>
                             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
                             <span className="truncate">{e.nombre}</span>
-                            {selected && <Check size={13} className="text-accent ml-auto flex-shrink-0" />}
+                            {selected && <Check size={13} className="text-accent-text ml-auto flex-shrink-0" />}
                           </button>
                         )
                       })}
@@ -3805,7 +3805,7 @@ export default function ConfigPage() {
                             {!grupo.es_default && (
                               <button onClick={() => setGrupoDefault.mutate(grupo.id)} title="Marcar como default" className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-amber-500 hover:bg-amber-50 dark:bg-amber-900/20 rounded-lg transition-colors"><StarOff size={15} /></button>
                             )}
-                            <button onClick={() => startEditGrupo(grupo)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"><Pencil size={15} /></button>
+                            <button onClick={() => startEditGrupo(grupo)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors"><Pencil size={15} /></button>
                             <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteGrupo.mutate(grupo.id) }} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={15} /></button>
                           </div>
                         </div>
@@ -3821,11 +3821,11 @@ export default function ConfigPage() {
           {estadosSubTab === 'progresion' && (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
               <div className="flex items-center gap-2 mb-1">
-                <Timer size={18} className="text-accent" />
+                <Timer size={18} className="text-accent-text" />
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300">Progresión de estado</h2>
                 <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{agingProfiles.length} perfiles</span>
                 <button onClick={processAging} disabled={processingAging}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent text-xs font-medium rounded-lg transition-all disabled:opacity-50">
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent-text text-xs font-medium rounded-lg transition-all disabled:opacity-50">
                   <Play size={12} /> {processingAging ? 'Procesando...' : 'Procesar ahora'}
                 </button>
               </div>
@@ -3840,7 +3840,7 @@ export default function ConfigPage() {
                   <input type="text" value={newAgingNombre} onChange={e => setNewAgingNombre(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && addAgingProfile()}
                     placeholder="Nombre del perfil (ej: DISP-365)"
-                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                   <button onClick={addAgingProfile} disabled={!newAgingNombre.trim()}
                     className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
                     <Plus size={15} /> Agregar
@@ -3865,7 +3865,7 @@ export default function ConfigPage() {
                             <>
                               <input type="text" value={editAgingNombre} onChange={e => setEditAgingNombre(e.target.value)}
                                 onClick={e => e.stopPropagation()}
-                                className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent" />
+                                className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                               <button onClick={e => { e.stopPropagation(); saveAgingProfile(ap.id) }} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:text-green-400 p-1"><Check size={14} /></button>
                               <button onClick={e => { e.stopPropagation(); setEditAgingId(null) }} className="text-gray-400 dark:text-gray-500 p-1"><X size={14} /></button>
                             </>
@@ -3877,10 +3877,10 @@ export default function ConfigPage() {
                                 onClick={e => { e.stopPropagation(); processAgingProfile(ap.id, ap.nombre) }}
                                 disabled={processingAgingId === ap.id || processingAging}
                                 title="Procesar solo este perfil ahora"
-                                className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-accent bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors disabled:opacity-50 mr-1">
+                                className="flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-accent-text bg-accent/10 hover:bg-accent/20 rounded-lg transition-colors disabled:opacity-50 mr-1">
                                 <Play size={10} /> {processingAgingId === ap.id ? 'Procesando...' : 'Procesar'}
                               </button>
-                              <button onClick={e => { e.stopPropagation(); setEditAgingId(ap.id); setEditAgingNombre(ap.nombre) }} className="text-gray-400 dark:text-gray-500 hover:text-accent p-1"><Pencil size={13} /></button>
+                              <button onClick={e => { e.stopPropagation(); setEditAgingId(ap.id); setEditAgingNombre(ap.nombre) }} className="text-gray-400 dark:text-gray-500 hover:text-accent-text p-1"><Pencil size={13} /></button>
                               <button onClick={e => { e.stopPropagation(); deleteAgingProfile(ap.id) }} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={13} /></button>
                             </>
                           )}
@@ -3923,14 +3923,14 @@ export default function ConfigPage() {
                             {addRuleProfileId === ap.id ? (
                               <div className="flex gap-2 mt-1 items-center">
                                 <select value={addRuleEstadoId} onChange={e => setAddRuleEstadoId(e.target.value)}
-                                  className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                                  className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                                   <option value="">— Estado —</option>
                                   {(estados as any[]).map((e: any) => (
                                     <option key={e.id} value={e.id}>{e.nombre}</option>
                                   ))}
                                 </select>
                                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={addRuleDias} onChange={e => setAddRuleDias(e.target.value)}
-                                  placeholder="Días" className="w-24 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent" />
+                                  placeholder="Días" className="w-24 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent-text" />
                                 <button onClick={() => addAgingRegla(ap.id)} disabled={!addRuleEstadoId || addRuleDias === ''}
                                   className="p-1.5 bg-accent text-white rounded-lg disabled:opacity-40"><Check size={14} /></button>
                                 <button onClick={() => { setAddRuleProfileId(null); setAddRuleEstadoId(''); setAddRuleDias('') }}
@@ -3938,7 +3938,7 @@ export default function ConfigPage() {
                               </div>
                             ) : (
                               <button onClick={() => { setAddRuleProfileId(ap.id); setAddRuleEstadoId(''); setAddRuleDias('') }}
-                                className="flex items-center gap-1.5 text-xs text-accent hover:text-accent/80 font-medium mt-1">
+                                className="flex items-center gap-1.5 text-xs text-accent-text hover:text-accent-text/80 font-medium mt-1">
                                 <Plus size={13} /> Agregar regla
                               </button>
                             )}
@@ -3957,7 +3957,7 @@ export default function ConfigPage() {
           {invSubTab === 'motivos' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center gap-2 mb-1">
-            <MessageSquare size={18} className="text-accent" />
+            <MessageSquare size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Motivos de movimiento</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{motivos.length} cargados</span>
           </div>
@@ -3969,7 +3969,7 @@ export default function ConfigPage() {
           {invSubTab === 'unidades' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
           <div className="flex items-center gap-2 mb-1">
-            <Ruler size={18} className="text-accent" />
+            <Ruler size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Unidades de medida personalizadas</h2>
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500">Definí unidades propias de tu negocio para usarlas en productos (además de las estándar).</p>
@@ -3980,10 +3980,10 @@ export default function ConfigPage() {
               <div className="flex gap-2">
                 <input type="text" placeholder="Nombre *" value={udmNombre} onChange={e => setUdmNombre(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addUdm()}
-                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                  className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
                 <input type="text" placeholder="Símbolo (ej: pz)" value={udmSimbolo} onChange={e => setUdmSimbolo(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addUdm()}
-                  className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                  className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
                 <button onClick={addUdm} disabled={!udmNombre.trim() || udmSaving}
                   className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
                   <Plus size={15} /> Agregar
@@ -4006,7 +4006,7 @@ export default function ConfigPage() {
                     <>
                       <div className="flex-1 flex gap-2">
                         <input type="text" value={udmEditNombre} onChange={e => setUdmEditNombre(e.target.value)}
-                          className="flex-1 px-3 py-1.5 border border-accent rounded-lg text-sm focus:outline-none" />
+                          className="flex-1 px-3 py-1.5 border border-accent-text rounded-lg text-sm focus:outline-none" />
                         <input type="text" value={udmEditSimbolo} onChange={e => setUdmEditSimbolo(e.target.value)}
                           placeholder="Símbolo"
                           className="w-28 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none" />
@@ -4031,7 +4031,7 @@ export default function ConfigPage() {
                         : canEdit && (
                           <>
                             <button onClick={() => { setUdmEditId(u.id); setUdmEditNombre(u.nombre); setUdmEditSimbolo(u.simbolo ?? '') }}
-                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                               <Pencil size={15} />
                             </button>
                             <button onClick={() => deleteUdm(u.id)}
@@ -4053,7 +4053,7 @@ export default function ConfigPage() {
           {invSubTab === 'atributos' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
           <div className="flex items-center gap-2 mb-1">
-            <Shirt size={18} className="text-accent" />
+            <Shirt size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Atributos de variante</h2>
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -4090,13 +4090,13 @@ export default function ConfigPage() {
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Navigation size={18} className="text-accent" /> Configuración de envíos
+              <Navigation size={18} className="text-accent-text" /> Configuración de envíos
             </h2>
             <div className="flex items-center gap-3">
               <label className="text-sm font-medium text-gray-700 dark:text-gray-300 whitespace-nowrap">$ por km — valor global (todas las sucursales)</label>
               <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCostoKm}
                 onChange={e => setBizCostoKm(e.target.value)} placeholder="Ej: 150" min="0" step="0.01" disabled={!canEdit}
-                className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               <p className="text-xs text-gray-400 dark:text-gray-500">Default global. Si una sucursal tiene su propio $/km en Sucursales, ese valor predomina.</p>
             </div>
           </div>
@@ -4104,20 +4104,20 @@ export default function ConfigPage() {
           {/* EN4 — costos y tarifas (envío propio) */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <DollarSign size={18} className="text-accent" /> Tarifas y cobro del envío propio
+              <DollarSign size={18} className="text-accent-text" /> Tarifas y cobro del envío propio
             </h3>
             <div className="flex flex-wrap gap-4 items-end">
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Factor KM</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizFactorKm} onChange={e => setBizFactorKm(e.target.value)}
                   min="1" step="0.05" disabled={!canEdit}
-                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Costo mínimo ($)</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCostoMinimo} onChange={e => setBizCostoMinimo(e.target.value)}
                   min="0" step="1" disabled={!canEdit}
-                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
             </div>
             {/* Tramos escalonados (B3) */}
@@ -4138,7 +4138,7 @@ export default function ConfigPage() {
                   </div>
                 ))}
               </div>
-              {canEdit && <button onClick={() => setBizTramos(arr => [...arr, { hasta: '', precio: '' }])} className="text-xs text-accent hover:underline mt-1">+ Agregar tramo</button>}
+              {canEdit && <button onClick={() => setBizTramos(arr => [...arr, { hasta: '', precio: '' }])} className="text-xs text-accent-text hover:underline mt-1">+ Agregar tramo</button>}
             </div>
             {/* Recargo horario (B1) */}
             <div>
@@ -4161,7 +4161,7 @@ export default function ConfigPage() {
                   </div>
                 ))}
               </div>
-              {canEdit && <button onClick={() => setBizRecargoHorario(arr => [...arr, { desde: '', hasta: '', recargo: '' }])} className="text-xs text-accent hover:underline mt-1">+ Agregar recargo</button>}
+              {canEdit && <button onClick={() => setBizRecargoHorario(arr => [...arr, { desde: '', hasta: '', recargo: '' }])} className="text-xs text-accent-text hover:underline mt-1">+ Agregar recargo</button>}
             </div>
             {/* Cobro al cliente (B4) */}
             <div className="flex flex-wrap gap-4 items-end">
@@ -4208,7 +4208,7 @@ export default function ConfigPage() {
           {/* ISS-178 — Rangos horarios de entrega */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Clock size={18} className="text-accent" /> Rangos horarios para entrega
+              <Clock size={18} className="text-accent-text" /> Rangos horarios para entrega
             </h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
               El operador elige uno de estos rangos al cargar el envío en una venta. Defaults: 8-13 / 13-18 / 18-22. Editables y eliminables.
@@ -4218,11 +4218,11 @@ export default function ConfigPage() {
                 <div key={i} className="flex items-center gap-2">
                   <input type="time" value={r.desde} disabled={!canEdit}
                     onChange={e => setBizEnvioRangos(arr => arr.map((x, j) => j === i ? { ...x, desde: e.target.value } : x))}
-                    className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                    className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
                   <span className="text-gray-400">a</span>
                   <input type="time" value={r.hasta} disabled={!canEdit}
                     onChange={e => setBizEnvioRangos(arr => arr.map((x, j) => j === i ? { ...x, hasta: e.target.value } : x))}
-                    className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                    className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
                   <span className="text-xs text-gray-400 ml-1">
                     {r.desde && r.hasta ? `${r.desde} – ${r.hasta}` : 'incompleto'}
                   </span>
@@ -4242,7 +4242,7 @@ export default function ConfigPage() {
               <div className="flex justify-between items-center pt-1">
                 <button
                   onClick={() => setBizEnvioRangos(arr => [...arr, { desde: '', hasta: '' }])}
-                  className="text-xs text-accent hover:underline"
+                  className="text-xs text-accent-text hover:underline"
                 >
                   + Agregar rango
                 </button>
@@ -4253,7 +4253,7 @@ export default function ConfigPage() {
           {/* ISS-174 — fuente del peso/medidas para cotizar */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Package size={18} className="text-accent" /> Peso y medidas para cotizar envíos
+              <Package size={18} className="text-accent-text" /> Peso y medidas para cotizar envíos
             </h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
               Define de dónde sale el peso y las dimensiones al cotizar un envío por courier.
@@ -4267,9 +4267,9 @@ export default function ConfigPage() {
                   onClick={() => setBizPesoFuente(opt.v)}
                   className={`text-left p-3 rounded-xl border transition-colors disabled:opacity-60
                     ${bizPesoFuente === opt.v
-                      ? 'border-accent bg-accent/5'
-                      : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
-                  <p className={`text-sm font-medium ${bizPesoFuente === opt.v ? 'text-accent' : 'text-gray-700 dark:text-gray-300'}`}>{opt.t}</p>
+                      ? 'border-accent-text bg-accent/5'
+                      : 'border-gray-200 dark:border-gray-600 hover:border-accent-text/40'}`}>
+                  <p className={`text-sm font-medium ${bizPesoFuente === opt.v ? 'text-accent-text' : 'text-gray-700 dark:text-gray-300'}`}>{opt.t}</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{opt.d}</p>
                 </button>
               ))}
@@ -4279,7 +4279,7 @@ export default function ConfigPage() {
           {/* EN1 — pagos a courier contables */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <CreditCard size={18} className="text-accent" /> Pagos a courier (contabilidad)
+              <CreditCard size={18} className="text-accent-text" /> Pagos a courier (contabilidad)
             </h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
               Al marcar pagado un envío de courier tercero en la pestaña "Pagos Courier", se puede generar un gasto contable automático.
@@ -4296,13 +4296,13 @@ export default function ConfigPage() {
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Alícuota IVA del flete (%)</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizCourierIvaPct}
                   onChange={e => setBizCourierIvaPct(e.target.value)} min="0" step="0.5" disabled={!canEdit || !bizCourierGeneraGasto}
-                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Umbral doble firma ($, 0 = sin)</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizEnvioDobleFirma}
                   onChange={e => setBizEnvioDobleFirma(e.target.value)} min="0" step="1" disabled={!canEdit}
-                  className="w-40 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-40 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
               <p className="text-xs text-gray-400 dark:text-gray-500 flex-1 min-w-[180px]">Pagos a courier por encima del umbral exigen la clave maestra del dueño.</p>
             </div>
@@ -4311,7 +4311,7 @@ export default function ConfigPage() {
           {/* EN2 — POD robusto */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <ClipboardCheck size={18} className="text-accent" /> Prueba de entrega (POD)
+              <ClipboardCheck size={18} className="text-accent-text" /> Prueba de entrega (POD)
             </h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
               Definí qué datos exige el comprobante de entrega y las reglas de no-entrega / reintento.
@@ -4336,31 +4336,31 @@ export default function ConfigPage() {
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Mín. de fotos</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizPodFotoMin} onChange={e => setBizPodFotoMin(e.target.value)}
                   min="0" step="1" disabled={!canEdit}
-                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">OTP sobre monto ($, 0 = off)</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizPodOtpUmbral} onChange={e => setBizPodOtpUmbral(e.target.value)}
                   min="0" step="1" disabled={!canEdit}
-                  className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-36 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Geoloc alerta (km, 0 = off)</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizGeolocAlertaKm} onChange={e => setBizGeolocAlertaKm(e.target.value)}
                   min="0" step="0.5" disabled={!canEdit}
-                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Máx. reintentos</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizReintentosMax} onChange={e => setBizReintentosMax(e.target.value)}
                   min="1" step="1" disabled={!canEdit}
-                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Recargo tras máx. ($)</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={bizReintentoRecargo} onChange={e => setBizReintentoRecargo(e.target.value)}
                   min="0" step="1" disabled={!canEdit}
-                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-28 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
               </div>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500">El OTP solo aplica a envíos propios sobre el monto indicado. La geoloc tiene fallback: si no se puede capturar, igual permite confirmar.</p>
@@ -4370,7 +4370,7 @@ export default function ConfigPage() {
           <RepartidoresPanel canEdit={canEdit} />
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Navigation size={18} className="text-accent" /> Reparto y página del transportista
+              <Navigation size={18} className="text-accent-text" /> Reparto y página del transportista
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -4420,7 +4420,7 @@ export default function ConfigPage() {
           {/* EN5 — creación y alcance */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Clock size={18} className="text-accent" /> Plazo de despacho y sugerencia de courier
+              <Clock size={18} className="text-accent-text" /> Plazo de despacho y sugerencia de courier
             </h3>
             <div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Plazo de despacho por canal (horas, 0 = sin alerta)</p>
@@ -4452,14 +4452,14 @@ export default function ConfigPage() {
                   </div>
                 ))}
               </div>
-              {canEdit && <button onClick={() => setBizCpCourier(arr => [...arr, { desde: '', hasta: '', courier: '' }])} className="text-xs text-accent hover:underline mt-1">+ Agregar regla</button>}
+              {canEdit && <button onClick={() => setBizCpCourier(arr => [...arr, { desde: '', hasta: '', courier: '' }])} className="text-xs text-accent-text hover:underline mt-1">+ Agregar regla</button>}
             </div>
           </div>
 
           {/* EN7 — envío propio (combustible) + alertas de envíos */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
             <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Truck size={18} className="text-accent" /> Envío propio y alertas
+              <Truck size={18} className="text-accent-text" /> Envío propio y alertas
             </h3>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Precio del litro de combustible</label>
@@ -4495,11 +4495,11 @@ export default function ConfigPage() {
                 <span className="text-lg">💬</span> Plantilla WhatsApp — Coordinar entregas
               </h3>
               <p className="text-xs text-gray-400 dark:text-gray-500">
-                Plantilla para el botón "Coordinar por WhatsApp" en el módulo de Envíos. Variables: <span className="font-mono text-accent">{'{{Nombre_Cliente}}'}</span> <span className="font-mono text-accent">{'{{Nombre_Negocio}}'}</span> <span className="font-mono text-accent">{'{{Numero_Orden}}'}</span> <span className="font-mono text-accent">{'{{Tracking}}'}</span> <span className="font-mono text-accent">{'{{Courier}}'}</span> <span className="font-mono text-accent">{'{{Fecha_Entrega}}'}</span>
+                Plantilla para el botón "Coordinar por WhatsApp" en el módulo de Envíos. Variables: <span className="font-mono text-accent-text">{'{{Nombre_Cliente}}'}</span> <span className="font-mono text-accent-text">{'{{Nombre_Negocio}}'}</span> <span className="font-mono text-accent-text">{'{{Numero_Orden}}'}</span> <span className="font-mono text-accent-text">{'{{Tracking}}'}</span> <span className="font-mono text-accent-text">{'{{Courier}}'}</span> <span className="font-mono text-accent-text">{'{{Fecha_Entrega}}'}</span>
               </p>
               <textarea value={bizWAPlantilla} onChange={e => setBizWAPlantilla(e.target.value)}
                 rows={5} placeholder={`Hola {{Nombre_Cliente}}! Somos {{Nombre_Negocio}}.\n\nTu pedido #{{Numero_Orden}} está en camino.\n🚚 Courier: {{Courier}}\n📅 Fecha: {{Fecha_Entrega}}`}
-                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-y bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono" />
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-y bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono" />
             </div>
           )}
 
@@ -4521,7 +4521,7 @@ export default function ConfigPage() {
           {/* Reglas de comprobante */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Receipt size={18} className="text-accent" /> Cuándo es obligatorio adjuntar comprobante
+              <Receipt size={18} className="text-accent-text" /> Cuándo es obligatorio adjuntar comprobante
             </h2>
             <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
               Activá <strong>una</strong> regla para exigir comprobante en esos gastos. Sin ninguna regla activa, no se solicitará comprobante obligatorio.
@@ -4535,7 +4535,7 @@ export default function ConfigPage() {
             ].map((r, i, arr) => (
               <div key={i} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30">
                 <button onClick={() => { if (!canEdit) return; const newVal = !r.v; arr.forEach((x, j) => x.s(j === i ? newVal : false)) }} disabled={!canEdit} className="flex-shrink-0 mt-0.5">
-                  {r.v ? <ToggleRight size={26} className="text-accent" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
+                  {r.v ? <ToggleRight size={26} className="text-accent-text" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
                 </button>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-700 dark:text-gray-200 text-sm">{r.label}</p>
@@ -4549,7 +4549,7 @@ export default function ConfigPage() {
                 <label className="text-sm text-gray-700 dark:text-gray-300">Monto umbral:</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={gCompMontoUmbral}
                   onChange={e => setGCompMontoUmbral(e.target.value)} placeholder="Ej: 50000" min="0" step="0.01" disabled={!canEdit}
-                  className="w-40 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-40 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
                 <span className="text-xs text-gray-400">A partir de este monto, se exigirá comprobante</span>
               </div>
             )}
@@ -4558,14 +4558,14 @@ export default function ConfigPage() {
           {/* Alertas */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Bell size={18} className="text-accent" /> Alertas
+              <Bell size={18} className="text-accent-text" /> Alertas
             </h2>
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Días para alertar gastos en Borrador</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={gDiasAlertaBorrador}
                   onChange={e => setGDiasAlertaBorrador(e.target.value)} min="1" max="365" disabled={!canEdit}
-                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si un gasto sin medio de pago lleva más de N días, alerta al DUEÑO + SUPERVISOR.</p>
               </div>
               {modoAvanzado && (
@@ -4573,7 +4573,7 @@ export default function ConfigPage() {
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Días para alertar Anticipo en OC sin recibir</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={gDiasAlertaAnticipo}
                   onChange={e => setGDiasAlertaAnticipo(e.target.value)} min="1" max="365" disabled={!canEdit}
-                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Si una OC tiene anticipo (pago hecho) y pasaron N días sin recibir mercadería, el badge se pone en rojo.</p>
               </div>
               )}
@@ -4582,7 +4582,7 @@ export default function ConfigPage() {
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Días para alertar Cheques próximos a cobrar</label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={chequesAlertaDias}
                   onChange={e => setChequesAlertaDias(e.target.value)} min="1" max="365" disabled={!canEdit}
-                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                  className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Cheques pendientes (Gastos → Cheques) cuya fecha de cobro está dentro de N días (o vencida) se marcan como alerta.</p>
               </div>
             </div>
@@ -4593,7 +4593,7 @@ export default function ConfigPage() {
               <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Órdenes de compra (OC)</h3>
               <div className="flex items-start gap-3">
                 <button onClick={() => canEdit && setOcAprobActiva(v => !v)} disabled={!canEdit} className="flex-shrink-0 mt-0.5">
-                  {ocAprobActiva ? <ToggleRight size={26} className="text-accent" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
+                  {ocAprobActiva ? <ToggleRight size={26} className="text-accent-text" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
                 </button>
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-700 dark:text-gray-200 text-sm">Requerir aprobación antes de enviar al proveedor</p>
@@ -4641,7 +4641,7 @@ export default function ConfigPage() {
                 </div>
                 <div className="flex items-start gap-2 pt-6">
                   <button onClick={() => canEdit && setOcRemitoObligatorio(v => !v)} disabled={!canEdit} className="flex-shrink-0">
-                    {ocRemitoObligatorio ? <ToggleRight size={26} className="text-accent" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
+                    {ocRemitoObligatorio ? <ToggleRight size={26} className="text-accent-text" /> : <ToggleLeft size={26} className="text-gray-300 dark:text-gray-600" />}
                   </button>
                   <div>
                     <p className="font-medium text-gray-700 dark:text-gray-200 text-sm">Remito obligatorio</p>
@@ -4672,7 +4672,7 @@ export default function ConfigPage() {
           {/* Categorías de gasto */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <Tag size={18} className="text-accent" /> Categorías de gasto
+              <Tag size={18} className="text-accent-text" /> Categorías de gasto
               <span className="ml-auto text-xs text-gray-400">{(categoriasGasto as any[]).filter((c: any) => c.activo).length} activas / {(categoriasGasto as any[]).length} total</span>
             </h2>
             <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
@@ -4687,12 +4687,12 @@ export default function ConfigPage() {
                     onChange={e => setNewCategoria(c => ({ ...c, nombre: e.target.value }))}
                     onKeyDown={e => { if (e.key === 'Enter') addCategoriaGasto() }}
                     placeholder="Ej: Suscripciones de software"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" />
                 </div>
                 <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
                   <input type="checkbox" checked={newCategoria.requiere_sucursal}
                     onChange={e => setNewCategoria(c => ({ ...c, requiere_sucursal: e.target.checked }))}
-                    className="rounded border-gray-300 dark:border-gray-600 text-accent focus:ring-accent" />
+                    className="rounded border-gray-300 dark:border-gray-600 text-accent-text focus:ring-accent-text" />
                   Sucursal obligatoria
                 </label>
                 <button onClick={addCategoriaGasto}
@@ -4724,7 +4724,7 @@ export default function ConfigPage() {
                           <button onClick={() => canEdit && toggleCategoriaGastoRequiereSucursal(c.id, c.requiere_sucursal)} disabled={!canEdit}
                             title={c.requiere_sucursal ? 'Sucursal obligatoria' : 'Sucursal opcional'}>
                             {c.requiere_sucursal
-                              ? <ToggleRight size={22} className="text-accent" />
+                              ? <ToggleRight size={22} className="text-accent-text" />
                               : <ToggleLeft size={22} className="text-gray-300 dark:text-gray-600" />}
                           </button>
                         </td>
@@ -4738,7 +4738,7 @@ export default function ConfigPage() {
                         </td>
                         <td className="py-2 px-2 text-center">
                           {c.predefinida
-                            ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-900/20 text-accent">Predefinida</span>
+                            ? <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-900/20 text-accent-text">Predefinida</span>
                             : <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400">Custom</span>}
                         </td>
                         <td className="py-2 px-2 text-right">
@@ -4763,7 +4763,7 @@ export default function ConfigPage() {
           {tab === 'ventas' && ventasSubTab === 'descuentos' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
           <div className="flex items-center gap-2">
-            <Gift size={18} className="text-accent" />
+            <Gift size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Combos de productos</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{combos.length} activos</span>
           </div>
@@ -4788,7 +4788,7 @@ export default function ConfigPage() {
               <div className="col-span-2">
                 <input type="text" value={comboForm.nombre} onChange={e => setComboForm(p => ({ ...p, nombre: e.target.value }))}
                   placeholder="Nombre del combo (ej: 3x Coca-Cola 10% off)"
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
               </div>
 
               {/* Productos del combo */}
@@ -4797,7 +4797,7 @@ export default function ConfigPage() {
                 {comboItems.map((ci, idx) => (
                   <div key={idx} className="flex gap-2 items-center">
                     <select value={ci.producto_id} onChange={e => setComboItems(prev => prev.map((x,i) => i===idx ? {...x, producto_id: e.target.value} : x))}
-                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                       <option value="">Seleccionar producto...</option>
                   {(productosAll as any[]).map((p: any) => (
                     <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
@@ -4805,7 +4805,7 @@ export default function ConfigPage() {
                 </select>
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="1" value={ci.cantidad}
                   onChange={e => setComboItems(prev => prev.map((x,i) => i===idx ? {...x, cantidad: e.target.value} : x))}
-                  placeholder="Cant." className="w-16 px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent text-center" />
+                  placeholder="Cant." className="w-16 px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text text-center" />
                 {comboItems.length > 1 && (
                   <button onClick={() => setComboItems(prev => prev.filter((_,i) => i!==idx))}
                     className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg" title="Quitar">
@@ -4815,7 +4815,7 @@ export default function ConfigPage() {
               </div>
               ))}
               <button onClick={() => setComboItems(prev => [...prev, { producto_id: '', cantidad: '1' }])}
-                className="text-xs text-accent hover:underline flex items-center gap-1">
+                className="text-xs text-accent-text hover:underline flex items-center gap-1">
                 <Plus size={12} /> Agregar producto al combo
               </button>
             </div>
@@ -4823,7 +4823,7 @@ export default function ConfigPage() {
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo de descuento</label>
                 <select value={comboForm.descuento_tipo} onChange={e => setComboForm(p => ({ ...p, descuento_tipo: e.target.value, descuento_valor: '0' }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                   <option value="pct">Porcentaje (%)</option>
                   <option value="monto_ars">Monto fijo ($)</option>
                   <option value="monto_usd">Monto fijo (USD)</option>
@@ -4836,7 +4836,7 @@ export default function ConfigPage() {
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={comboForm.descuento_tipo === 'pct' ? '100' : undefined} step={comboForm.descuento_tipo === 'pct' ? '0.5' : '1'}
                   value={comboForm.descuento_valor}
                   onChange={e => setComboForm(p => ({ ...p, descuento_valor: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
               </div>
             </div>
             <button onClick={addCombo} disabled={savingCombo}
@@ -4881,7 +4881,7 @@ export default function ConfigPage() {
       {tab === 'ventas' && ventasSubTab === 'metodos' && (
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
           <div className="flex items-center gap-2 mb-1">
-            <CreditCard size={18} className="text-accent" />
+            <CreditCard size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Métodos de pago</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{metodosPago.length} método{metodosPago.length !== 1 ? 's' : ''}</span>
           </div>
@@ -4902,20 +4902,20 @@ export default function ConfigPage() {
                         className="w-8 h-8 rounded cursor-pointer border-0 p-0 flex-shrink-0" />
                       <input type="text" value={editMetodoData.nombre}
                         onChange={e => setEditMetodoData(p => ({ ...p, nombre: e.target.value }))}
-                        className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                        className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                       <div className="flex items-center gap-1 shrink-0">
                         <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="50" step="0.1"
                           value={editMetodoData.comision_pct}
                           onChange={e => setEditMetodoData(p => ({ ...p, comision_pct: e.target.value }))}
                           placeholder="0"
-                          className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-center focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                          className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-center focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                         <span className="text-xs text-gray-400 dark:text-gray-500">%</span>
                       </div>
                       <select
                         value={editMetodoData.cuenta_origen_id || ''}
                         onChange={e => setEditMetodoData(p => ({ ...p, cuenta_origen_id: e.target.value || null }))}
                         title="Cuenta donde se acredita este método"
-                        className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white shrink-0">
+                        className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white shrink-0">
                         <option value="">— sin cuenta —</option>
                         {(cuentasOrigen as any[]).filter(c => c.activo).map(c => (
                           <option key={c.id} value={c.id}>{c.nombre}</option>
@@ -4964,7 +4964,7 @@ export default function ConfigPage() {
                         Gastos
                       </button>
                       <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '', cuenta_origen_id: m.cuenta_origen_id ?? '' }) }}
-                        className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                        className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                         <Pencil size={14} />
                       </button>
                       {!m.es_sistema && (
@@ -4991,7 +4991,7 @@ export default function ConfigPage() {
                 onChange={e => setNuevoMetodo(p => ({ ...p, nombre: e.target.value }))}
                 placeholder="Ej: Cripto, Cheque..."
                 onKeyDown={e => e.key === 'Enter' && addMetodoPago.mutate()}
-                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
               <button onClick={() => addMetodoPago.mutate()}
                 disabled={!nuevoMetodo.nombre.trim() || addMetodoPago.isPending}
                 className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5">
@@ -5010,7 +5010,7 @@ export default function ConfigPage() {
                 <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-700/50">
                   <span className="font-medium text-sm text-gray-800 dark:text-gray-100 flex-1">{banco.nombre}</span>
                   <button onClick={() => setEditBancoId(editBancoId === banco.id ? null : banco.id)}
-                    className="text-xs text-accent hover:underline">
+                    className="text-xs text-accent-text hover:underline">
                     {editBancoId === banco.id ? 'Cerrar' : 'Editar cuotas'}
                   </button>
                   <button onClick={() => saveCuotasBancos(cuotasBancos.filter(b => b.id !== banco.id))}
@@ -5034,9 +5034,9 @@ export default function ConfigPage() {
                 {editBancoId === banco.id && (
                   <div className="px-4 pb-3 flex items-center gap-2 flex-wrap">
                     <input type="number" min="1" value={nuevaCuota.cant} onChange={e => setNuevaCuota(p => ({ ...p, cant: e.target.value }))}
-                      placeholder="Cuotas" className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                      placeholder="Cuotas" className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                     <input type="number" min="0" step="0.1" value={nuevaCuota.interes} onChange={e => setNuevaCuota(p => ({ ...p, interes: e.target.value }))}
-                      placeholder="Interés %" className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                      placeholder="Interés %" className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                     <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
                       <input type="checkbox" checked={nuevaCuota.sin_interes} onChange={e => setNuevaCuota(p => ({ ...p, sin_interes: e.target.checked, interes: e.target.checked ? '0' : p.interes }))}
                         className="accent-green-500" /> Sin interés
@@ -5068,7 +5068,7 @@ export default function ConfigPage() {
                     setNuevoBancoNombre('')
                   }
                 }}
-                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
               <button onClick={() => {
                 if (!nuevoBancoNombre.trim()) return
                 saveCuotasBancos([...cuotasBancos, { id: crypto.randomUUID(), nombre: nuevoBancoNombre.trim(), cuotas: [] }])
@@ -5088,7 +5088,7 @@ export default function ConfigPage() {
               <CanalesVentaPanel />
               {/* VF4/K2 — Alertas automáticas de ventas */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><Bell size={18} className="text-accent" /> Alertas de ventas</h2>
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><Bell size={18} className="text-accent-text" /> Alertas de ventas</h2>
                 <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">Notifican a DUEÑO/SUPERVISOR/ADMIN automáticamente.</p>
                 <div className="flex items-center justify-between py-1">
                   <div>
@@ -5105,7 +5105,7 @@ export default function ConfigPage() {
                     <div className="flex items-center gap-2">
                       <input type="number" min="1" onWheel={e => e.currentTarget.blur()} value={bizAlertaDevN} disabled={!canEdit}
                         onChange={e => setBizAlertaDevN(e.target.value)} placeholder="Desactivado"
-                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                       <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">por cliente/producto</span>
                     </div>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin alerta de devoluciones.</p>
@@ -5114,7 +5114,7 @@ export default function ConfigPage() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">En los últimos (días)</label>
                     <input type="number" min="1" max="365" onWheel={e => e.currentTarget.blur()} value={bizAlertaDevDias} disabled={!canEdit}
                       onChange={e => setBizAlertaDevDias(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   </div>
                 </div>
               </div>
@@ -5125,7 +5125,7 @@ export default function ConfigPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Validez de presupuesto (días)</label>
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365" value={bizPresupuestoValidez} disabled={!canEdit}
                     onChange={e => setBizPresupuestoValidez(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
                 </div>
               </div>
@@ -5149,7 +5149,7 @@ export default function ConfigPage() {
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
                     value={bizReservaSenaMinimaPct} disabled={!canEdit || !bizReservaSenaObligatoria}
                     onChange={e => setBizReservaSenaMinimaPct(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">0 = cualquier seña mayor a cero. Ej: 30 exige al menos el 30% del total al reservar.</p>
                 </div>
 
@@ -5158,7 +5158,7 @@ export default function ConfigPage() {
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365"
                     value={bizReservaVencimientoDias} disabled={!canEdit} placeholder="Sin vencimiento"
                     onChange={e => setBizReservaVencimientoDias(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin vencimiento. Pasados estos días sin despachar, <span className="font-medium">el inventario reservado se libera automáticamente</span> y la reserva se cancela.</p>
                 </div>
 
@@ -5167,7 +5167,7 @@ export default function ConfigPage() {
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
                     value={bizReservaPenalidadPct} disabled={!canEdit}
                     onChange={e => setBizReservaPenalidadPct(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">0 = sin penalidad (se devuelve la seña completa). Ej: 10 retiene el 10% de la seña al cancelar.</p>
                 </div>
 
@@ -5181,7 +5181,7 @@ export default function ConfigPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Al superar el límite de crédito</label>
                   <select value={bizCCEnforcement} disabled={!canEdit}
                     onChange={e => setBizCCEnforcement(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="permitir">Permitir (no controlar el límite)</option>
                     <option value="avisar">Avisar y dejar continuar (recomendado)</option>
                     <option value="bloquear">Bloquear la venta a cuenta corriente</option>
@@ -5194,7 +5194,7 @@ export default function ConfigPage() {
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="0"
                     value={bizCCLimiteDefault} disabled={!canEdit} placeholder="Sin límite"
                     onChange={e => setBizCCLimiteDefault(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin límite general. Aplica a clientes que no tengan un límite propio cargado.</p>
                 </div>
 
@@ -5202,7 +5202,7 @@ export default function ConfigPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cliente con deuda vencida</label>
                   <select value={bizCCMorosidad} disabled={!canEdit}
                     onChange={e => setBizCCMorosidad(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="permitir">Sin restricción</option>
                     <option value="bloqueo_cc">No puede sumar a cuenta corriente, sí pagar por otro medio (recomendado)</option>
                     <option value="bloqueo_total">No puede comprar hasta saldar</option>
@@ -5215,14 +5215,14 @@ export default function ConfigPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365"
                       value={bizCCDiasVenc} disabled={!canEdit} placeholder="Sin vencimiento"
                       onChange={e => setBizCCDiasVenc(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Interés por mora (% mensual)</label>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.1"
                       value={bizCCInteresMensual} disabled={!canEdit}
                       onChange={e => setBizCCInteresMensual(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   </div>
                 </div>
                 <p className="text-xs text-gray-400 dark:text-gray-500">Vacío en vencimiento = la deuda no vence. El interés se aplica sobre el saldo vencido y se recalcula al abrir Clientes o Caja.</p>
@@ -5257,7 +5257,7 @@ export default function ConfigPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="60"
                       value={bizCCPreVencDias} disabled={!canEdit} placeholder="Sin recordatorio"
                       onChange={e => setBizCCPreVencDias(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Las deudas que vencen dentro de estos días se marcan en el tab Cuenta Corriente para recordarle al cliente (WhatsApp/email manual).</p>
                   </div>
                   <p className="text-sm font-semibold text-gray-600 dark:text-gray-300 pt-1">Cumpleaños</p>
@@ -5280,7 +5280,7 @@ export default function ConfigPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Cuándo se requiere seleccionar cliente?</label>
                   <select value={bizClienteObligatorio} disabled={!canEdit}
                     onChange={e => setBizClienteObligatorio(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="nunca">Nunca (siempre opcional)</option>
                     <option value="reservas">Solo en reservas</option>
                     <option value="siempre">Siempre obligatorio</option>
@@ -5290,7 +5290,7 @@ export default function ConfigPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Datos mínimos requeridos</label>
                   <select value={bizClienteDatosMinimos} disabled={!canEdit}
                     onChange={e => setBizClienteDatosMinimos(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="nombre">Solo nombre</option>
                     <option value="nombre_dni">Nombre + DNI</option>
                     <option value="nombre_dni_email">Nombre + DNI + Email</option>
@@ -5350,7 +5350,7 @@ export default function ConfigPage() {
                         value={bizDescuentoMaxSupervisor} disabled={!canEdit}
                         onChange={e => setBizDescuentoMaxSupervisor(e.target.value)}
                         placeholder="Sin límite"
-                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                       <span className="text-sm text-gray-500 dark:text-gray-400">%</span>
                     </div>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Aplica al rol SUPERVISOR. El DUEÑO nunca tiene límite.</p>
@@ -5385,7 +5385,7 @@ export default function ConfigPage() {
           {conSubTab === 'integraciones' && (
         <div className="space-y-6">
           <div className="flex items-center gap-2">
-            <Plug size={18} className="text-accent" />
+            <Plug size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Integraciones externas</h2>
           </div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -5635,7 +5635,7 @@ export default function ConfigPage() {
                           {oauthUrl && (
                             <a href={oauthUrl}
                               title="Reconectar"
-                              className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                              className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                               <Plug size={14} />
                             </a>
                           )}
@@ -5740,7 +5740,7 @@ export default function ConfigPage() {
               <div className="mt-4 border-t border-gray-100 dark:border-gray-700 pt-4">
                 <button onClick={() => setMeliMapExpanded(v => !v)}
                   className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 w-full">
-                  <Layers size={14} className="text-accent" />
+                  <Layers size={14} className="text-accent-text" />
                   Productos mapeados ({(meliMap as any[]).length})
                   {meliMapExpanded ? <ChevronUp size={14} className="ml-auto" /> : <ChevronDown size={14} className="ml-auto" />}
                 </button>
@@ -5756,7 +5756,7 @@ export default function ConfigPage() {
                             setMeliSearchResults([])
                             if (prod?.sku) searchMELIItems(prod.sku)
                           }}
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent">
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                           <option value="">— Producto G360 —</option>
                           {(productosMap as any[]).map((p: any) => (
                             <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
@@ -5785,11 +5785,11 @@ export default function ConfigPage() {
                         <input type="text" value={meliMapForm.meliItemId}
                           onChange={e => setMeliMapForm(p => p ? { ...p, meliItemId: e.target.value } : p)}
                           placeholder="ML Item ID (ej: MLA1234567890)"
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                         <input type="text" value={meliMapForm.meliVariationId}
                           onChange={e => setMeliMapForm(p => p ? { ...p, meliVariationId: e.target.value } : p)}
                           placeholder="Variation ID (opcional)"
-                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                          className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                         <div className="flex gap-4">
                           <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
                             <input type="checkbox" checked={meliMapForm.syncStock}
@@ -5811,7 +5811,7 @@ export default function ConfigPage() {
                       </div>
                     ) : (
                       <button onClick={() => setMeliMapForm({ productoId: '', meliItemId: '', meliVariationId: '', syncStock: true, syncPrecio: true })}
-                        className="flex items-center gap-1.5 text-xs text-accent hover:underline">
+                        className="flex items-center gap-1.5 text-xs text-accent-text hover:underline">
                         <Plus size={12} /> Agregar mapeo
                       </button>
                     )}
@@ -5869,7 +5869,7 @@ export default function ConfigPage() {
               </div>
               <div className="flex gap-2">
                 <button onClick={() => setModoForm({ merchant_id: modoCred.merchant_id, api_key: '', ambiente: modoCred.ambiente as 'test' | 'prod' })}
-                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors">
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-gray-600 dark:text-gray-400 hover:border-accent-text hover:text-accent-text transition-colors">
                   <Pencil size={12} /> Editar credenciales
                 </button>
                 <button onClick={desconectarModo}
@@ -5889,14 +5889,14 @@ export default function ConfigPage() {
                   <input type="text" value={modoForm.merchant_id}
                     onChange={e => setModoForm(f => ({ ...f, merchant_id: e.target.value }))}
                     placeholder="Tu Merchant ID de MODO"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 dark:text-white" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 dark:text-white" />
                 </div>
                 <div>
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">API Key *</label>
                   <input type="password" value={modoForm.api_key}
                     onChange={e => setModoForm(f => ({ ...f, api_key: e.target.value }))}
                     placeholder="Tu API Key de MODO"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 dark:text-white" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 dark:text-white" />
                 </div>
               </div>
               <div>
@@ -5904,7 +5904,7 @@ export default function ConfigPage() {
                 <div className="flex gap-2">
                   {(['test', 'prod'] as const).map(a => (
                     <button key={a} onClick={() => setModoForm(f => ({ ...f, ambiente: a }))}
-                      className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-all ${modoForm.ambiente === a ? 'bg-accent border-accent text-white' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent'}`}>
+                      className={`flex-1 py-2 rounded-xl border text-sm font-medium transition-all ${modoForm.ambiente === a ? 'bg-accent border-accent-text text-white' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent-text'}`}>
                       {a === 'test' ? '🟡 Sandbox (test)' : '🟢 Producción'}
                     </button>
                   ))}
@@ -5932,7 +5932,7 @@ export default function ConfigPage() {
               {/* Contraseña maestra — Solo DUEÑO (B6) */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                  <Clock size={16} className="text-accent" /> Seguridad de Caja
+                  <Clock size={16} className="text-accent-text" /> Seguridad de Caja
                 </h2>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -5949,7 +5949,7 @@ export default function ConfigPage() {
                       onChange={e => setBizClaveMaestra(e.target.value)}
                       disabled={user?.rol !== 'DUEÑO'}
                       placeholder={(tenant as any)?.clave_maestra ? '••••••••' : 'Nueva contraseña maestra'}
-                      className="w-full px-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
+                      className="w-full px-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700"
                     />
                     <button type="button" onClick={() => setShowClaveMaestra(v => !v)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
@@ -5965,7 +5965,7 @@ export default function ConfigPage() {
                       placeholder="Repetí la clave maestra"
                       className={`w-full mt-2 px-4 py-2.5 border rounded-xl text-sm focus:outline-none dark:bg-gray-700
                         ${bizClaveMaestraConfirm.length === 0
-                          ? 'border-gray-200 dark:border-gray-700 focus:border-accent'
+                          ? 'border-gray-200 dark:border-gray-700 focus:border-accent-text'
                           : bizClaveMaestra.trim() === bizClaveMaestraConfirm.trim()
                             ? 'border-green-400 focus:border-green-500'
                             : 'border-red-400 focus:border-red-500'}`}
@@ -5994,13 +5994,13 @@ export default function ConfigPage() {
               {/* Permisos avanzados de caja (B7/G1/E2) */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                  <ShieldCheck size={16} className="text-accent" /> Permisos avanzados
+                  <ShieldCheck size={16} className="text-accent-text" /> Permisos avanzados
                 </h2>
                 <div className="space-y-3">
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={bizDobleVal} disabled={!canEdit}
                       onChange={e => setBizDobleVal(e.target.checked)}
-                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                      className="mt-1 rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Doble validación al cerrar caja</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Un 2do usuario (DUEÑO/SUPERVISOR/ADMIN) debe confirmar el cierre con sus credenciales (B7).</p>
@@ -6009,7 +6009,7 @@ export default function ConfigPage() {
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={bizSupervisorEdita} disabled={!canEdit}
                       onChange={e => setBizSupervisorEdita(e.target.checked)}
-                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                      className="mt-1 rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-100">SUPERVISOR puede corregir movimientos manuales</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Permite al SUPERVISOR usar el botón "Corregir" en ingresos manuales (G1).</p>
@@ -6018,7 +6018,7 @@ export default function ConfigPage() {
                   <label className="flex items-start gap-3 cursor-pointer">
                     <input type="checkbox" checked={bizSupervisorBoveda} disabled={!canEdit}
                       onChange={e => setBizSupervisorBoveda(e.target.checked)}
-                      className="mt-1 rounded border-gray-300 text-accent focus:ring-accent disabled:opacity-50" />
+                      className="mt-1 rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-100">SUPERVISOR puede ver el saldo de la bóveda</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">Por default solo el DUEÑO ve los saldos por cuenta de origen (E2).</p>
@@ -6038,7 +6038,7 @@ export default function ConfigPage() {
               {/* Bóveda */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                  <Wallet size={16} className="text-accent" /> Bóveda
+                  <Wallet size={16} className="text-accent-text" /> Bóveda
                 </h2>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto máximo en caja ($)</label>
@@ -6046,7 +6046,7 @@ export default function ConfigPage() {
                     value={bizBovedaUmbral} disabled={!canEdit}
                     onChange={e => setBizBovedaUmbral(e.target.value)}
                     placeholder="Sin límite"
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                     Cuando el saldo en caja supera este monto, el sistema alerta para transferir el excedente a la bóveda. Dejá vacío para no poner umbral.
                   </p>
@@ -6056,7 +6056,7 @@ export default function ConfigPage() {
               {/* Diferencias de cierre (B1/B2/B3) */}
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                  <AlertCircle size={16} className="text-accent" /> Diferencias en cierre de caja
+                  <AlertCircle size={16} className="text-accent-text" /> Diferencias en cierre de caja
                 </h2>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Umbral mínimo para alertar ($)</label>
@@ -6064,7 +6064,7 @@ export default function ConfigPage() {
                     value={bizDifUmbral} disabled={!canEdit}
                     onChange={e => setBizDifUmbral(e.target.value)}
                     placeholder="Alertar con cualquier diferencia"
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                     Si la diferencia (sobrante o faltante) supera este monto en valor absoluto, se dispara la alerta. Vacío = alertar siempre con cualquier diferencia ≠ 0.
                   </p>
@@ -6077,7 +6077,7 @@ export default function ConfigPage() {
                       return (
                         <button key={r} type="button" disabled={!canEdit}
                           onClick={() => setBizDifRoles(curr => curr.includes(r) ? curr.filter(x => x !== r) : [...curr, r])}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
                           {r}
                         </button>
                       )
@@ -6097,7 +6097,7 @@ export default function ConfigPage() {
                       return (
                         <button key={c.id} type="button" disabled={!canEdit || deshab}
                           onClick={() => setBizDifCanales(curr => curr.includes(c.id) ? curr.filter(x => x !== c.id) : [...curr, c.id])}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${activo ? 'bg-accent text-white border-accent' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
+                          className={`px-3 py-1.5 rounded-xl text-xs font-medium border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${activo ? 'bg-accent text-white border-accent-text' : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600'}`}>
                           {c.label}
                         </button>
                       )
@@ -6118,7 +6118,7 @@ export default function ConfigPage() {
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    <CreditCard size={16} className="text-accent" /> Cuentas de Origen
+                    <CreditCard size={16} className="text-accent-text" /> Cuentas de Origen
                   </h2>
                   <span className="text-xs text-gray-400 dark:text-gray-500">{(cuentasOrigen as any[]).filter(c => c.activo).length} activas / {(cuentasOrigen as any[]).length} total</span>
                 </div>
@@ -6137,10 +6137,10 @@ export default function ConfigPage() {
                             <input type="text" value={editCuentaData.nombre}
                               onChange={e => setEditCuentaData(p => ({ ...p, nombre: e.target.value }))}
                               placeholder="Nombre"
-                              className="flex-1 min-w-0 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                              className="flex-1 min-w-0 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                             <select value={editCuentaData.tipo}
                               onChange={e => setEditCuentaData(p => ({ ...p, tipo: e.target.value }))}
-                              className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white shrink-0">
+                              className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white shrink-0">
                               <option value="banco">Banco</option>
                               <option value="billetera">Billetera</option>
                               <option value="efectivo">Efectivo</option>
@@ -6149,10 +6149,10 @@ export default function ConfigPage() {
                             <input type="text" value={editCuentaData.banco}
                               onChange={e => setEditCuentaData(p => ({ ...p, banco: e.target.value }))}
                               placeholder="Banco / Entidad"
-                              className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                              className="w-32 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                             <select value={editCuentaData.moneda}
                               onChange={e => setEditCuentaData(p => ({ ...p, moneda: e.target.value }))}
-                              className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white shrink-0">
+                              className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white shrink-0">
                               {MONEDAS_DISPONIBLES.map(m => <option key={m.code} value={m.code}>{m.code}</option>)}
                             </select>
                             <button onClick={() => updateCuentaOrigen.mutate(c.id)} disabled={updateCuentaOrigen.isPending}
@@ -6185,7 +6185,7 @@ export default function ConfigPage() {
                               {c.activo ? 'Activa' : 'Inactiva'}
                             </button>
                             <button onClick={() => { setEditCuentaId(c.id); setEditCuentaData({ nombre: c.nombre, tipo: c.tipo, banco: c.banco ?? '', alias: c.alias ?? '', numero: c.numero ?? '', moneda: c.moneda }) }}
-                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                              className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                               <Pencil size={14} />
                             </button>
                             <button onClick={() => { if (confirm('¿Eliminar esta cuenta? Si tiene movimientos vinculados, mejor desactivarla.')) deleteCuentaOrigen.mutate(c.id) }}
@@ -6209,10 +6209,10 @@ export default function ConfigPage() {
                       <input type="text" value={nuevaCuenta.nombre}
                         onChange={e => setNuevaCuenta(p => ({ ...p, nombre: e.target.value }))}
                         placeholder="Nombre (ej: BBVA Cuenta Corriente)"
-                        className="flex-1 min-w-[200px] px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                        className="flex-1 min-w-[200px] px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                       <select value={nuevaCuenta.tipo}
                         onChange={e => setNuevaCuenta(p => ({ ...p, tipo: e.target.value }))}
-                        className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                        className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white">
                         <option value="banco">Banco</option>
                         <option value="billetera">Billetera</option>
                         <option value="efectivo">Efectivo</option>
@@ -6221,10 +6221,10 @@ export default function ConfigPage() {
                       <input type="text" value={nuevaCuenta.banco}
                         onChange={e => setNuevaCuenta(p => ({ ...p, banco: e.target.value }))}
                         placeholder="Banco / Entidad"
-                        className="w-44 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                        className="w-44 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
                       <select value={nuevaCuenta.moneda || (tenant as any)?.moneda || 'ARS'}
                         onChange={e => setNuevaCuenta(p => ({ ...p, moneda: e.target.value }))}
-                        className="w-24 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                        className="w-24 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white">
                         {MONEDAS_DISPONIBLES.map(m => <option key={m.code} value={m.code}>{m.code}</option>)}
                       </select>
                       <button onClick={() => addCuentaOrigen.mutate()} disabled={addCuentaOrigen.isPending || !nuevaCuenta.nombre.trim()}
@@ -6254,7 +6254,7 @@ export default function ConfigPage() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tratamiento de la tardanza</label>
                     <select value={bizRrhhTardanzaModo} disabled={!canEdit}
                       onChange={e => setBizRrhhTardanzaModo(e.target.value as any)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                       <option value="registrar">Solo registrar (no descuenta del sueldo)</option>
                       <option value="proporcional">Descontar proporcional (todos los minutos tarde)</option>
                       <option value="umbral">Descontar pasada la tolerancia (solo lo que excede)</option>
@@ -6265,7 +6265,7 @@ export default function ConfigPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
                       value={bizRrhhTardanzaTol} disabled={!canEdit || bizRrhhTardanzaModo !== 'umbral'}
                       onChange={e => setBizRrhhTardanzaTol(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 disabled:opacity-60" />
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700 disabled:opacity-60" />
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Minutos que no se descuentan. Solo aplica al modo "pasada la tolerancia".</p>
                   </div>
                   <div>
@@ -6273,7 +6273,7 @@ export default function ConfigPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
                       value={bizRrhhHorasMesBase} disabled={!canEdit}
                       onChange={e => setBizRrhhHorasMesBase(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Divisor para calcular el valor hora a partir del sueldo bruto (default 200).</p>
                   </div>
                 </div>
@@ -6305,7 +6305,7 @@ export default function ConfigPage() {
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
                     value={bizRrhhDocAlertaDias} disabled={!canEdit}
                     onChange={e => setBizRrhhDocAlertaDias(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Cuántos días antes del vencimiento se muestra el documento como "por vencer" (default 30).</p>
                 </div>
               </div>
@@ -6394,7 +6394,7 @@ function ApiTab({ tenantId, isOwner }: { tenantId: string; isOwner: boolean }) {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2">
-        <Key size={18} className="text-accent" />
+        <Key size={18} className="text-accent-text" />
         <h2 className="font-semibold text-gray-700 dark:text-gray-300">API de datos</h2>
       </div>
       <p className="text-sm text-gray-500 dark:text-gray-400">
@@ -6412,7 +6412,7 @@ function ApiTab({ tenantId, isOwner }: { tenantId: string; isOwner: boolean }) {
               value={newKeyNombre}
               onChange={e => setNewKeyNombre(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && newKeyNombre.trim() && crearKey.mutate(newKeyNombre.trim())}
-              className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white"
+              className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white"
             />
             <button
               onClick={() => newKeyNombre.trim() && crearKey.mutate(newKeyNombre.trim())}
@@ -6521,7 +6521,7 @@ function ApiTab({ tenantId, isOwner }: { tenantId: string; isOwner: boolean }) {
                   { e: 'inventario',  c: 'lpn, producto, sku, cantidad, cantidad_reservada, disponible, ubicacion, estado, nro_lote, fecha_vencimiento' },
                 ].map(row => (
                   <tr key={row.e}>
-                    <td className="px-3 py-2"><code className="text-accent font-mono">{row.e}</code></td>
+                    <td className="px-3 py-2"><code className="text-accent-text font-mono">{row.e}</code></td>
                     <td className="px-3 py-2 text-gray-500 dark:text-gray-400">{row.c}</td>
                   </tr>
                 ))}

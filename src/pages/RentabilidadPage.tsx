@@ -262,7 +262,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
           {/* P&L simplificado (Migration 134 — Fase 4) */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm mb-6">
             <div className="flex items-center gap-2 mb-4">
-              <DollarSign size={16} className="text-accent" />
+              <DollarSign size={16} className="text-accent-text" />
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Estado de resultados (período)</h2>
             </div>
             {(() => {
@@ -280,7 +280,7 @@ export default function RentabilidadPage({ hideHeader = false }: { hideHeader?: 
                     <p className={`text-sm ${opts.strong ? 'font-semibold text-gray-800 dark:text-gray-100' : opts.muted ? 'text-gray-500 dark:text-gray-400' : 'text-gray-700 dark:text-gray-300'}`}>{label}</p>
                     {opts.sub && <p className="text-xs text-gray-400 dark:text-gray-500">{opts.sub}</p>}
                     {opts.link && (
-                      <Link to={opts.link.to} className="text-xs text-accent hover:underline inline-flex items-center gap-1 mt-0.5">
+                      <Link to={opts.link.to} className="text-xs text-accent-text hover:underline inline-flex items-center gap-1 mt-0.5">
                         {opts.link.label} <ArrowRight size={11} />
                       </Link>
                     )}

@@ -34,7 +34,7 @@ export function InsightCard({ variant, icon, title, description, action }: Insig
         {action && (
           <button
             onClick={action.onClick}
-            className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-accent hover:text-primary transition-colors"
+            className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-accent-text hover:text-primary transition-colors"
           >
             {action.label} <ChevronRight size={11} />
           </button>

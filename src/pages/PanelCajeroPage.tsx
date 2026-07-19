@@ -57,7 +57,7 @@ export default function PanelCajeroPage() {
         </div>
         <button onClick={toggleSonido}
           title={sonido ? 'Sonido al cobrar: activado' : 'Sonido al cobrar: desactivado'}
-          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${sonido ? 'bg-accent/10 text-accent' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+          className={`flex items-center gap-2 px-3 py-2 rounded-xl text-sm font-semibold transition-colors ${sonido ? 'bg-accent/10 text-accent-text' : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
           {sonido ? <Volume2 size={18} /> : <VolumeX size={18} />}
           <span className="hidden sm:inline">{sonido ? 'Sonido ON' : 'Sonido OFF'}</span>
         </button>
@@ -97,8 +97,8 @@ export default function PanelCajeroPage() {
         </button>
 
         <button onClick={() => navigate('/caja')}
-          className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-accent rounded-3xl py-12 shadow-sm transition-all active:scale-[0.98]">
-          <Wallet size={56} className="text-accent" />
+          className="flex flex-col items-center justify-center gap-3 bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-accent-text rounded-3xl py-12 shadow-sm transition-all active:scale-[0.98]">
+          <Wallet size={56} className="text-accent-text" />
           <span className="text-2xl font-bold">{tieneCajaAbierta ? 'Operar caja' : 'Abrir caja'}</span>
           <span className="text-sm text-gray-400 dark:text-gray-500">Ingreso · arqueo · cierre</span>
         </button>

@@ -113,7 +113,7 @@ export function AvatarDropdown({ className = '' }: AvatarDropdownProps) {
           />
         ) : (
           <div className="w-8 h-8 rounded-full bg-accent/20 flex items-center justify-center border-2 border-gray-200 dark:border-gray-600">
-            <User size={15} className="text-accent" />
+            <User size={15} className="text-accent-text" />
           </div>
         )}
         <ChevronDown size={13} className="text-gray-400 hidden sm:block" />
@@ -128,7 +128,7 @@ export function AvatarDropdown({ className = '' }: AvatarDropdownProps) {
               <img src={user.avatar_url} alt="Avatar" className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
             ) : (
               <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
-                <User size={18} className="text-accent" />
+                <User size={18} className="text-accent-text" />
               </div>
             )}
             <div className="min-w-0 flex-1">
@@ -136,7 +136,7 @@ export function AvatarDropdown({ className = '' }: AvatarDropdownProps) {
               {authEmail && <p className="text-xs text-muted truncate">{authEmail}</p>}
               <p className="text-xs text-muted">{rolLabel} · {tenant?.nombre}</p>
             </div>
-            <Check size={14} className="text-accent flex-shrink-0" />
+            <Check size={14} className="text-accent-text flex-shrink-0" />
           </div>
 
           {/* Acciones de cuenta */}
@@ -175,7 +175,7 @@ export function AvatarDropdown({ className = '' }: AvatarDropdownProps) {
                   <img src={acc.avatar_url} alt="" className="w-7 h-7 rounded-full object-cover flex-shrink-0" />
                 ) : (
                   <div className="w-7 h-7 rounded-full bg-accent/10 flex items-center justify-center flex-shrink-0">
-                    <User size={13} className="text-accent" />
+                    <User size={13} className="text-accent-text" />
                   </div>
                 )}
                 <div className="min-w-0 flex-1">
@@ -188,7 +188,7 @@ export function AvatarDropdown({ className = '' }: AvatarDropdownProps) {
             {/* Agregar otra cuenta */}
             <button
               onClick={handleAddAccount}
-              className="w-full px-4 py-2 text-sm text-left text-accent hover:bg-accent/5 flex items-center gap-2.5 transition-colors"
+              className="w-full px-4 py-2 text-sm text-left text-accent-text hover:bg-accent/5 flex items-center gap-2.5 transition-colors"
             >
               <UserPlus size={15} className="flex-shrink-0" />
               + Agregar otra cuenta

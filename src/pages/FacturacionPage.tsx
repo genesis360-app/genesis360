@@ -532,7 +532,7 @@ export default function FacturacionPage() {
   const kpiDebito   = (kpis?.debito ?? 0) - ivaNcPeriodo
   const kpiPosicion = (kpis?.posicion ?? 0) - ivaNcPeriodo
 
-  const inputClass = 'border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent'
+  const inputClass = 'border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text'
 
   // ── Render ────────────────────────────────────────────────────────────────────
   return (
@@ -541,7 +541,7 @@ export default function FacturacionPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Receipt size={22} className="text-accent" /> Facturación
+            <Receipt size={22} className="text-accent-text" /> Facturación
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             Facturación electrónica AFIP · {config?.razon_social_fiscal ?? tenant?.nombre}
@@ -616,7 +616,7 @@ export default function FacturacionPage() {
           {config?.cuit && (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-5">
               <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-                <Building size={15} className="text-accent" /> Datos fiscales del negocio
+                <Building size={15} className="text-accent-text" /> Datos fiscales del negocio
               </p>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div><p className="text-xs text-gray-400">CUIT</p><p className="font-medium text-gray-800 dark:text-gray-100">{config.cuit}</p></div>
@@ -651,7 +651,7 @@ export default function FacturacionPage() {
             </div>
 
             {loadingBorr ? (
-              <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" /></div>
+              <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-text" /></div>
             ) : (borradoresFact as any[]).length === 0 ? (
               <div className="text-center py-10 text-gray-400 dark:text-gray-500">
                 <CheckCircle size={32} className="mx-auto mb-2 text-green-500 opacity-60" />
@@ -719,7 +719,7 @@ export default function FacturacionPage() {
                     {(emitidas as any[]).map((f: any) => (
                       <tr key={f.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400">{f.created_at?.split('T')[0]}</td>
-                        <td className="px-4 py-3"><span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded">{f.tipo_comprobante ?? '—'}</span></td>
+                        <td className="px-4 py-3"><span className="text-xs bg-accent/10 text-accent-text px-2 py-0.5 rounded">{f.tipo_comprobante ?? '—'}</span></td>
                         <td className="px-4 py-3 font-mono text-gray-700 dark:text-gray-300">{f.numero_comprobante ?? f.numero}</td>
                         <td className="px-4 py-3 text-gray-800 dark:text-gray-100">{f.clientes?.nombre ?? '—'}</td>
                         <td className="px-4 py-3 text-right font-semibold text-gray-800 dark:text-gray-100">{formatMoneda(Number(f.total ?? 0))}</td>
@@ -730,7 +730,7 @@ export default function FacturacionPage() {
                               onClick={() => descargarFacturaPDF(f.id)}
                               disabled={descargandoPdf === f.id}
                               title="Descargar PDF"
-                              className="text-accent hover:text-accent/80 disabled:opacity-40"
+                              className="text-accent-text hover:text-accent-text/80 disabled:opacity-40"
                             >
                               {descargandoPdf === f.id
                                 ? <RefreshCw size={14} className="animate-spin" />
@@ -896,7 +896,7 @@ export default function FacturacionPage() {
                           <td className="px-4 py-2.5 text-center">
                             <button onClick={() => conciliar.mutate({ id: r.id, val: !r.conciliado_iva })}
                               className={`w-5 h-5 rounded border-2 flex items-center justify-center mx-auto transition-colors
-                                ${r.conciliado_iva ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 dark:border-gray-600 hover:border-accent'}`}>
+                                ${r.conciliado_iva ? 'bg-green-500 border-green-500 text-white' : 'border-gray-300 dark:border-gray-600 hover:border-accent-text'}`}>
                               {r.conciliado_iva && <CheckCircle size={12} />}
                             </button>
                           </td>
@@ -1107,7 +1107,7 @@ export default function FacturacionPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Send size={18} className="text-accent" />
+                <Send size={18} className="text-accent-text" />
                 <h2 className="font-semibold text-gray-800 dark:text-gray-100">Enviar factura por email</h2>
               </div>
               <button onClick={() => setFacturaEmailModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -1119,7 +1119,7 @@ export default function FacturacionPage() {
                 onChange={e => setFacturaEmailValue(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && enviandoEmail !== facturaEmailModal.facturaId) enviarFacturaEmail(facturaEmailModal.facturaId, facturaEmailValue) }}
                 placeholder="email@cliente.com"
-                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               <p className="text-[11px] text-gray-400">Se adjunta el PDF de la factura.</p>
             </div>
             <div className="px-5 pb-5 flex gap-2">

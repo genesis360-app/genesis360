@@ -176,14 +176,14 @@ export default function OnboardingPage() {
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8 text-center space-y-3">
             <div className="w-14 h-14 bg-accent/10 rounded-full flex items-center justify-center mx-auto">
-              <Mail size={26} className="text-accent" />
+              <Mail size={26} className="text-accent-text" />
             </div>
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Revisá tu email</h2>
             <p className="text-sm text-gray-500 dark:text-gray-400">
               Te enviamos un link de confirmación a <strong className="text-gray-700 dark:text-gray-200">{emailPendiente}</strong>. Confirmá tu cuenta desde ese email y <strong>tu negocio queda creado automáticamente</strong>.
             </p>
             <p className="text-xs text-gray-400 dark:text-gray-500">¿No te llegó? Revisá spam o esperá un minuto.</p>
-            <Link to="/login" className="inline-block text-sm font-medium text-accent hover:underline mt-2">Ir a Ingresar</Link>
+            <Link to="/login" className="inline-block text-sm font-medium text-accent-text hover:underline mt-2">Ir a Ingresar</Link>
           </div>
         </div>
       </div>
@@ -230,7 +230,7 @@ export default function OnboardingPage() {
                   type="text" required value={accountData.name}
                   onChange={e => setAccountData(p => ({ ...p, name: e.target.value }))}
                   placeholder="Juan García"
-                  className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
                 />
               </div>
 
@@ -242,7 +242,7 @@ export default function OnboardingPage() {
                     type="email" required value={accountData.email}
                     onChange={e => setAccountData(p => ({ ...p, email: e.target.value }))}
                     placeholder="tu@email.com"
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
                   />
                 </div>
               </div>
@@ -255,7 +255,7 @@ export default function OnboardingPage() {
                     type="password" required minLength={8} value={accountData.password}
                     onChange={e => setAccountData(p => ({ ...p, password: e.target.value }))}
                     placeholder="Mínimo 8 caracteres"
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
                   />
                 </div>
               </div>
@@ -276,7 +276,7 @@ export default function OnboardingPage() {
                     type="text" required value={bizData.nombre}
                     onChange={e => setBizData(p => ({ ...p, nombre: e.target.value }))}
                     placeholder="Mi Ferretería"
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
                   />
                 </div>
               </div>
@@ -286,7 +286,7 @@ export default function OnboardingPage() {
                 <select
                   required value={bizData.tipo_comercio}
                   onChange={e => setBizData(p => ({ ...p, tipo_comercio: e.target.value }))}
-                  className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent"
+                  className="w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text"
                 >
                   <option value="">Seleccioná...</option>
                   {TIPOS_COMERCIO.map(t => <option key={t} value={t}>{t}</option>)}
@@ -296,7 +296,7 @@ export default function OnboardingPage() {
                     type="text" value={tipoPersonalizado}
                     onChange={e => setTipoPersonalizado(e.target.value)}
                     placeholder="Describí tu tipo de comercio"
-                    className="mt-2 w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                    className="mt-2 w-full px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
                   />
                 )}
               </div>
@@ -308,7 +308,7 @@ export default function OnboardingPage() {
                   <select
                     value={bizData.pais}
                     onChange={e => setBizData(p => ({ ...p, pais: e.target.value }))}
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text"
                   >
                     {PAISES.map(p => <option key={p.code} value={p.code}>{p.label}</option>)}
                   </select>
@@ -323,7 +323,7 @@ export default function OnboardingPage() {
                     type="tel" value={bizData.telefono}
                     onChange={e => setBizData(p => ({ ...p, telefono: e.target.value }))}
                     placeholder="+54 11 1234-5678"
-                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent"
+                    className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text"
                   />
                 </div>
               </div>
@@ -334,20 +334,20 @@ export default function OnboardingPage() {
                   <input
                     type="checkbox" checked={aceptaTerminos}
                     onChange={e => setAceptaTerminos(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-accent focus:ring-accent/40"
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-accent-text focus:ring-accent-text/40"
                   />
                   <span className="text-xs text-gray-600 dark:text-gray-400 leading-snug">
                     Acepto los{' '}
-                    <a href="/terminos" target="_blank" rel="noopener noreferrer" className="text-accent font-medium hover:underline">Términos y Condiciones</a>
+                    <a href="/terminos" target="_blank" rel="noopener noreferrer" className="text-accent-text font-medium hover:underline">Términos y Condiciones</a>
                     {' '}y la{' '}
-                    <a href="/privacidad" target="_blank" rel="noopener noreferrer" className="text-accent font-medium hover:underline">Política de Privacidad</a>.
+                    <a href="/privacidad" target="_blank" rel="noopener noreferrer" className="text-accent-text font-medium hover:underline">Política de Privacidad</a>.
                   </span>
                 </label>
                 <label className="flex items-start gap-2.5 cursor-pointer">
                   <input
                     type="checkbox" checked={aceptaMarketing}
                     onChange={e => setAceptaMarketing(e.target.checked)}
-                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-accent focus:ring-accent/40"
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-accent-text focus:ring-accent-text/40"
                   />
                   <span className="text-xs text-gray-600 dark:text-gray-400 leading-snug">
                     Quiero recibir novedades, promociones y consejos por email <span className="text-gray-400 dark:text-gray-500">(opcional)</span>.
@@ -370,7 +370,7 @@ export default function OnboardingPage() {
 
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-4">
             ¿Ya tenés cuenta?{' '}
-            <Link to="/login" className="text-accent font-medium hover:underline">Iniciá sesión</Link>
+            <Link to="/login" className="text-accent-text font-medium hover:underline">Iniciá sesión</Link>
           </p>
 
           {/* Escape: si hay sesión activa pero quedó atrapado en onboarding */}

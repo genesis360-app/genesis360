@@ -189,7 +189,7 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
             <h3 className="font-semibold text-sm text-primary dark:text-white">Notificaciones</h3>
             <div className="flex items-center gap-2">
               {unread > 0 && (
-                <button onClick={markAllRead} className="text-xs text-accent hover:underline">
+                <button onClick={markAllRead} className="text-xs text-accent-text hover:underline">
                   Marcar todas leídas
                 </button>
               )}
@@ -241,7 +241,7 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
                     {n.action_url && !esSolicitudCajaFuerte && (
                       <button
                         onClick={() => { markRead(n.id); navigate(n.action_url); setOpen(false) }}
-                        className="flex-shrink-0 text-accent hover:text-accent/80 text-xs flex items-center gap-1 font-medium whitespace-nowrap mt-0.5"
+                        className="flex-shrink-0 text-accent-text hover:text-accent-text/80 text-xs flex items-center gap-1 font-medium whitespace-nowrap mt-0.5"
                       >
                         Ir <ArrowRight size={12} />
                       </button>

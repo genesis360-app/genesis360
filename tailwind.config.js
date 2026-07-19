@@ -9,6 +9,10 @@ export default {
         primary:    'rgb(var(--color-primary) / <alpha-value>)',
         accent:     'rgb(var(--color-accent) / <alpha-value>)',
         accent2:    'rgb(var(--color-accent-2) / <alpha-value>)',
+        // Variante de `accent` para texto/borde/ring — igual en light, más clara en
+        // dark (ver src/index.css). `bg-accent` NO usa este token (el relleno sólido
+        // ya tiene buen contraste con texto blanco en los dos modos).
+        'accent-text': 'rgb(var(--color-accent-text) / <alpha-value>)',
         'brand-bg': 'rgb(var(--color-brand-bg) / <alpha-value>)',
 
         // ── Design System Sprint 1 — nuevos tokens semánticos ─────────────

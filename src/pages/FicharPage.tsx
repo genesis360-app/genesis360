@@ -51,7 +51,7 @@ export default function FicharPage() {
   }
 
   if (loading) return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 size={36} className="animate-spin text-accent" /></div>
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center"><Loader2 size={36} className="animate-spin text-accent-text" /></div>
   )
   if (notFound) return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-6 text-center">
@@ -98,10 +98,10 @@ export default function FicharPage() {
                   onClick={() => fichar(emp)}
                   disabled={fichando === emp.id}
                   className={`flex items-center justify-between gap-3 rounded-2xl px-5 py-5 text-left shadow-sm transition-all active:scale-[0.98] disabled:opacity-50 ${entrada
-                    ? 'bg-white border-2 border-gray-200 hover:border-accent text-gray-800'
+                    ? 'bg-white border-2 border-gray-200 hover:border-accent-text text-gray-800'
                     : 'bg-amber-50 border-2 border-amber-200 hover:border-amber-400 text-amber-900'}`}>
                   <span className="font-semibold text-lg truncate">{nombre}</span>
-                  <span className={`flex items-center gap-1.5 text-sm font-bold shrink-0 ${entrada ? 'text-accent' : 'text-amber-600'}`}>
+                  <span className={`flex items-center gap-1.5 text-sm font-bold shrink-0 ${entrada ? 'text-accent-text' : 'text-amber-600'}`}>
                     {fichando === emp.id
                       ? <Loader2 size={20} className="animate-spin" />
                       : entrada ? <><LogIn size={20} /> Entrada</> : <><LogOut size={20} /> Salida</>}

@@ -52,7 +52,7 @@ export default function LoginPage() {
           {/* Google */}
           <button
             onClick={handleGoogleLogin}
-            className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 font-medium hover:border-accent hover:bg-accent/10 transition-all mb-6"
+            className="w-full flex items-center justify-center gap-3 px-4 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-xl text-gray-700 dark:text-gray-300 font-medium hover:border-accent-text hover:bg-accent/10 transition-all mb-6"
           >
             <Chrome size={20} />
             Continuar con Google
@@ -80,7 +80,7 @@ export default function LoginPage() {
                   onChange={e => setEmail(e.target.value)}
                   required
                   placeholder="tu@email.com"
-                  className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
                 />
               </div>
             </div>
@@ -96,7 +96,7 @@ export default function LoginPage() {
                   onChange={e => setPassword(e.target.value)}
                   required
                   placeholder="••••••••"
-                  className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                  className="w-full pl-9 pr-4 py-3 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20"
                 />
               </div>
             </div>
@@ -112,7 +112,7 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-gray-500 dark:text-gray-400 mt-6">
             ¿No tenés cuenta?{' '}
-            <Link to="/onboarding" className="text-accent font-medium hover:underline">
+            <Link to="/onboarding" className="text-accent-text font-medium hover:underline">
               Registrá tu negocio
             </Link>
           </p>

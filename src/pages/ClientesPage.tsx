@@ -824,7 +824,7 @@ export default function ClientesPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Users size={22} className="text-accent" /> Clientes
+            <Users size={22} className="text-accent-text" /> Clientes
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{clientes.length} registrado{clientes.length !== 1 ? 's' : ''}</p>
         </div>
@@ -1029,7 +1029,7 @@ export default function ClientesPage() {
                                       onClick={() => revertirDeudaCC(v.id, v.numero)}
                                       disabled={cancelandoDeudaId === v.id}
                                       title="Revertir: restaurar la deuda a 'falta pagar' para re-cobrar o anular"
-                                      className="flex-shrink-0 text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors disabled:opacity-50">
+                                      className="flex-shrink-0 text-xs px-2 py-0.5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text hover:text-accent-text transition-colors disabled:opacity-50">
                                       {cancelandoDeudaId === v.id ? '...' : 'Revertir'}
                                     </button>
                                   ) : (
@@ -1049,7 +1049,7 @@ export default function ClientesPage() {
 
                         {/* Panel inline de pago */}
                         {pagoInlineId === c.id && d && (
-                          <div className="mt-3 bg-accent/5 border border-accent/20 rounded-xl p-4 space-y-3">
+                          <div className="mt-3 bg-accent/5 border border-accent-text/20 rounded-xl p-4 space-y-3">
                             <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">Registrar pago — Deuda total: <span className="text-red-600 dark:text-red-400">{formatMoneda(d.total)}</span></p>
                             <div className="grid grid-cols-2 gap-2">
                               <div>
@@ -1060,13 +1060,13 @@ export default function ClientesPage() {
                                     onChange={e => setPagoMonto(e.target.value)}
                                     onWheel={e => e.currentTarget.blur()}
                                     placeholder="0"
-                                    className="w-full pl-7 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                                    className="w-full pl-7 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                                 </div>
                               </div>
                               <div>
                                 <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">Método</label>
                                 <select value={pagoMetodo} onChange={e => setPagoMetodo(e.target.value)}
-                                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                                   {['Efectivo','Transferencia','Tarjeta','MercadoPago','Otro'].map(m => (
                                     <option key={m} value={m}>{m}</option>
                                   ))}
@@ -1309,7 +1309,7 @@ export default function ClientesPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
             <div className="flex items-center gap-3 mb-2">
               <div className="w-9 h-9 rounded-xl bg-purple-50 flex items-center justify-center">
-                <ShoppingCart size={18} className="text-accent" />
+                <ShoppingCart size={18} className="text-accent-text" />
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400">Ticket promedio</p>
             </div>
@@ -1340,14 +1340,14 @@ export default function ClientesPage() {
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por nombre o DNI..."
-            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+            className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
         </div>
         {/* Filtro etiquetas */}
         {(clientes as any[]).some(c => Array.isArray(c.etiquetas) && c.etiquetas.length > 0) && (
           <div className="relative">
             <Tag size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
             <select value={filtroEtiqueta} onChange={e => setFiltroEtiqueta(e.target.value)}
-              className="pl-8 pr-8 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent appearance-none bg-white dark:bg-gray-800">
+              className="pl-8 pr-8 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text appearance-none bg-white dark:bg-gray-800">
               <option value="">Todas las etiquetas</option>
               {[...new Set((clientes as any[]).flatMap(c => c.etiquetas ?? []))].map((et: string) => (
                 <option key={et} value={et}>{et}</option>
@@ -1367,13 +1367,13 @@ export default function ClientesPage() {
       {/* Lista */}
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-text" />
         </div>
       ) : clientes.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-14 text-gray-400 dark:text-gray-500">
           <Users size={36} className="mb-3 opacity-30" />
           <p className="font-medium text-sm">No hay clientes aún</p>
-          <button onClick={() => abrirModal()} className="mt-3 text-accent text-sm font-medium hover:underline">Crear el primero</button>
+          <button onClick={() => abrirModal()} className="mt-3 text-accent-text text-sm font-medium hover:underline">Crear el primero</button>
         </div>
       ) : (
         <div className="space-y-2">
@@ -1386,7 +1386,7 @@ export default function ClientesPage() {
               <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 shadow-sm overflow-hidden">
                 <div className="p-4 flex items-center gap-3">
                   {/* Avatar */}
-                  <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0 text-accent font-bold text-sm">
+                  <div className="w-10 h-10 bg-accent/10 rounded-full flex items-center justify-center flex-shrink-0 text-accent-text font-bold text-sm">
                     {c.nombre.charAt(0).toUpperCase()}
                   </div>
 
@@ -1425,7 +1425,7 @@ export default function ClientesPage() {
                         </button>
                       )}
                       {Array.isArray(c.etiquetas) && c.etiquetas.map((et: string) => (
-                        <span key={et} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                        <span key={et} className="text-xs bg-purple-50 dark:bg-purple-900/20 text-accent-text px-1.5 py-0.5 rounded flex items-center gap-0.5">
                           <Tag size={9} />{et}
                         </span>
                       ))}
@@ -1539,7 +1539,7 @@ export default function ClientesPage() {
                                     <p className="text-xs text-gray-400 dark:text-gray-500">{formatFecha(v.created_at)}</p>
                                   </div>
                                   <button onClick={() => navigate(`/ventas?id=${v.id}`)} title="Ver venta"
-                                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hover:text-accent transition-colors">
+                                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 dark:text-gray-500 hover:text-accent-text transition-colors">
                                     <ExternalLink size={14} />
                                   </button>
                                 </div>
@@ -1567,7 +1567,7 @@ export default function ClientesPage() {
                         <div className="flex items-center justify-between">
                           <p className="text-xs text-gray-500 dark:text-gray-400">{(domicilios as any[]).length} domicilio{(domicilios as any[]).length !== 1 ? 's' : ''} guardado{(domicilios as any[]).length !== 1 ? 's' : ''}</p>
                           <button onClick={() => { setShowDomForm(true); setEditDomId(null); setDomForm({ nombre: '', calle: '', numero: '', piso_depto: '', ciudad: '', provincia: '', codigo_postal: '', referencias: '', es_principal: false }) }}
-                            className="flex items-center gap-1 text-xs text-accent hover:underline">
+                            className="flex items-center gap-1 text-xs text-accent-text hover:underline">
                             <Plus size={12} /> Agregar domicilio
                           </button>
                         </div>
@@ -1578,48 +1578,48 @@ export default function ClientesPage() {
                             <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">{editDomId ? 'Editar domicilio' : 'Nuevo domicilio'}</p>
                             <input type="text" value={domForm.nombre} onChange={e => setDomForm(f => ({ ...f, nombre: e.target.value }))}
                               placeholder="Nombre / alias (ej: Casa, Trabajo) — opcional"
-                              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                             <div className="grid grid-cols-2 gap-2">
                               <div className="col-span-2">
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Calle *</label>
                                 <input type="text" value={domForm.calle} onChange={e => setDomForm(f => ({ ...f, calle: e.target.value }))}
                                   placeholder="Av. Corrientes"
-                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                               </div>
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Número</label>
                                 <input type="text" value={domForm.numero} onChange={e => setDomForm(f => ({ ...f, numero: e.target.value }))}
                                   placeholder="1234"
-                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                               </div>
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Piso / Depto</label>
                                 <input type="text" value={domForm.piso_depto} onChange={e => setDomForm(f => ({ ...f, piso_depto: e.target.value }))}
                                   placeholder="3° B"
-                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                               </div>
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Ciudad</label>
                                 <input type="text" value={domForm.ciudad} onChange={e => setDomForm(f => ({ ...f, ciudad: e.target.value }))}
                                   placeholder="Buenos Aires"
-                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                               </div>
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Provincia</label>
                                 <input type="text" value={domForm.provincia} onChange={e => setDomForm(f => ({ ...f, provincia: e.target.value }))}
                                   placeholder="CABA"
-                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                               </div>
                               <div>
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-0.5">Código postal</label>
                                 <input type="text" value={domForm.codigo_postal} onChange={e => setDomForm(f => ({ ...f, codigo_postal: e.target.value }))}
                                   placeholder="C1043"
-                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                               </div>
                             </div>
                             <input type="text" value={domForm.referencias} onChange={e => setDomForm(f => ({ ...f, referencias: e.target.value }))}
                               placeholder="Referencias para el courier (portón verde, timbre 4, etc.)"
-                              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                             <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
                               <input type="checkbox" checked={domForm.es_principal} onChange={e => setDomForm(f => ({ ...f, es_principal: e.target.checked }))} className="accent-accent" />
                               Marcar como domicilio principal
@@ -1652,7 +1652,7 @@ export default function ClientesPage() {
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2 mb-1">
                                       {d.es_principal && <Star size={12} className="text-amber-500 fill-amber-500 flex-shrink-0" />}
-                                      {d.nombre && <span className="text-xs font-semibold text-accent">{d.nombre}</span>}
+                                      {d.nombre && <span className="text-xs font-semibold text-accent-text">{d.nombre}</span>}
                                     </div>
                                     <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
                                       {d.calle}{d.numero ? ` ${d.numero}` : ''}{d.piso_depto ? `, ${d.piso_depto}` : ''}
@@ -1666,7 +1666,7 @@ export default function ClientesPage() {
                                     <button onClick={() => {
                                       setEditDomId(d.id); setShowDomForm(true)
                                       setDomForm({ nombre: d.nombre ?? '', calle: d.calle, numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '', referencias: d.referencias ?? '', es_principal: d.es_principal })
-                                    }} className="p-1 text-gray-400 hover:text-accent rounded-lg transition-colors">
+                                    }} className="p-1 text-gray-400 hover:text-accent-text rounded-lg transition-colors">
                                       <Pencil size={13} />
                                     </button>
                                     <button onClick={() => deleteDomicilio(d.id)} className="p-1 text-gray-400 hover:text-red-500 rounded-lg transition-colors">
@@ -1688,7 +1688,7 @@ export default function ClientesPage() {
                         <div className="flex gap-2">
                           <textarea value={nuevaNota} onChange={e => setNuevaNota(e.target.value)}
                             placeholder="Escribí una nota sobre este cliente..." rows={2}
-                            className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" />
+                            className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text resize-none bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100" />
                           <button onClick={agregarNota} disabled={savingNota || !nuevaNota.trim()}
                             className="px-3 py-2 bg-accent text-white rounded-xl text-sm font-medium hover:bg-accent/90 disabled:opacity-50 transition-all self-end">
                             {savingNota ? '…' : 'Guardar'}
@@ -1762,7 +1762,7 @@ export default function ClientesPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nombre completo *</label>
                 <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
                   placeholder="Nombre completo o razón social" autoFocus
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1771,7 +1771,7 @@ export default function ClientesPage() {
                     onChange={e => { setForm(f => ({ ...f, dni: e.target.value })); setDniError(null) }}
                     onBlur={e => setDniError(validarDNI(e.target.value))}
                     placeholder="Ej: 30123456"
-                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent ${dniError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
+                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text ${dniError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
                   {dniError && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle size={11} />{dniError}</p>}
                 </div>
                 <div>
@@ -1780,7 +1780,7 @@ export default function ClientesPage() {
                     onChange={e => { setForm(f => ({ ...f, telefono: e.target.value })); setTelError(null) }}
                     onBlur={e => setTelError(validarTelefono(e.target.value))}
                     placeholder="Ej: +54 11 1234-5678"
-                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent ${telError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
+                    className={`w-full border rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text ${telError ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
                   {telError && <p className="text-xs text-red-500 mt-1 flex items-center gap-1"><AlertCircle size={11} />{telError}</p>}
                 </div>
               </div>
@@ -1788,7 +1788,7 @@ export default function ClientesPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
                 <input value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
                   placeholder="Opcional" type="email"
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               </div>
               {/* Fecha nacimiento + Etiquetas */}
               <div>
@@ -1796,7 +1796,7 @@ export default function ClientesPage() {
                   🎂 Fecha de nacimiento
                 </label>
                 <input type="date" value={form.fecha_nacimiento} onChange={e => setForm(f => ({ ...f, fecha_nacimiento: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="flex items-center gap-1 text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -1805,7 +1805,7 @@ export default function ClientesPage() {
                 <input type="text" value={form.etiquetas} onChange={e => setForm(f => ({ ...f, etiquetas: e.target.value }))}
                   placeholder="mayorista, vip, zona-norte (separadas por coma)"
                   list="etiquetas-catalogo"
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
                 {/* F1 — autocomplete: catálogo predefinido del tenant ∪ etiquetas ya usadas */}
                 <datalist id="etiquetas-catalogo">
                   {(etiquetasCatalogo as string[]).map(et => <option key={et} value={et} />)}
@@ -1820,13 +1820,13 @@ export default function ClientesPage() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CUIT</label>
                     <input value={form.cuit_receptor} onChange={e => setForm(f => ({ ...f, cuit_receptor: e.target.value }))}
                       placeholder="20-12345678-9 (para Factura A)"
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Condición IVA</label>
                     <div className="relative">
                       <select value={form.condicion_iva_receptor} onChange={e => setForm(f => ({ ...f, condicion_iva_receptor: e.target.value }))}
-                        className="w-full appearance-none border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent">
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                         <option value="">Sin especificar</option>
                         <option value="CF">Consumidor Final</option>
                         <option value="RI">Responsable Inscripto</option>
@@ -1840,13 +1840,13 @@ export default function ClientesPage() {
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Código fiscal</label>
                     <input value={form.codigo_fiscal} onChange={e => setForm(f => ({ ...f, codigo_fiscal: e.target.value }))}
                       placeholder="Opcional"
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Régimen fiscal</label>
                     <input value={form.regimen_fiscal} onChange={e => setForm(f => ({ ...f, regimen_fiscal: e.target.value }))}
                       placeholder="Ej: Responsable Inscripto"
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
                   </div>
                 </div>
               </div>
@@ -1874,7 +1874,7 @@ export default function ClientesPage() {
                         onChange={e => setForm(f => ({ ...f, limite_credito: e.target.value }))}
                         onWheel={e => e.currentTarget.blur()}
                         placeholder="Sin límite"
-                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text" />
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Plazo de pago (días)</label>
@@ -1882,7 +1882,7 @@ export default function ClientesPage() {
                         onChange={e => setForm(f => ({ ...f, plazo_pago_dias: e.target.value }))}
                         onWheel={e => e.currentTarget.blur()}
                         placeholder="30"
-                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text" />
                     </div>
                   </div>
                 )}
@@ -1892,7 +1892,7 @@ export default function ClientesPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas generales</label>
                 <textarea value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
                   placeholder="Observaciones internas (para notas con fecha usá el tab Notas en la ficha del cliente)..." rows={2}
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-none" />
               </div>
             </div>
             <div className="px-5 pb-5 pt-4 flex gap-3 border-t border-gray-100 dark:border-gray-700 flex-shrink-0">
@@ -1915,7 +1915,7 @@ export default function ClientesPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                <FileSpreadsheet size={18} className="text-accent" /> Importar clientes
+                <FileSpreadsheet size={18} className="text-accent-text" /> Importar clientes
               </h2>
               <button onClick={() => setShowImport(false)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>
             </div>
@@ -1937,7 +1937,7 @@ export default function ClientesPage() {
               {!resultadoImport && (
                 <div className="flex gap-3 flex-wrap">
                   <button onClick={descargarPlantilla}
-                    className="flex items-center gap-2 border border-accent text-accent font-medium px-4 py-2 rounded-xl hover:bg-accent/5 text-sm transition-all">
+                    className="flex items-center gap-2 border border-accent-text text-accent-text font-medium px-4 py-2 rounded-xl hover:bg-accent/5 text-sm transition-all">
                     <Download size={14} /> Descargar plantilla
                   </button>
                   <button onClick={() => fileRefImport.current?.click()}
@@ -2044,7 +2044,7 @@ export default function ClientesPage() {
 
               {filasImport.length === 0 && !resultadoImport && (
                 <div
-                  className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
+                  className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-8 text-center cursor-pointer hover:border-accent-text hover:bg-accent/5 transition-all"
                   onClick={() => fileRefImport.current?.click()}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>
@@ -2073,7 +2073,7 @@ export default function ClientesPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Razón de la baja</label>
                 <select value={bajaMotivo} onChange={e => setBajaMotivo(e.target.value)}
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                   <option value="">Sin especificar</option>
                   <option value="Se mudó">Se mudó</option>
                   <option value="Cerró / dejó de comprar">Cerró / dejó de comprar</option>
@@ -2114,14 +2114,14 @@ export default function ClientesPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
                 <input value={incobrableMotivo} onChange={e => setIncobrableMotivo(e.target.value)}
                   placeholder="Ej: quiebra, ilocalizable, acuerdo..."
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               </div>
               {!!(tenant as any)?.clave_maestra && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Clave maestra del dueño</label>
                   <input type="password" value={incobrableClave} onChange={e => setIncobrableClave(e.target.value)}
                     placeholder="Requerida para confirmar"
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
                 </div>
               )}
             </div>
@@ -2142,7 +2142,7 @@ export default function ClientesPage() {
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setLinkCuenta(null)}>
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
             <div className="p-5 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-              <ExternalLink size={18} className="text-accent" />
+              <ExternalLink size={18} className="text-accent-text" />
               <h3 className="font-semibold text-gray-800 dark:text-gray-100">Link de estado de cuenta</h3>
             </div>
             <div className="p-5 space-y-3">
@@ -2179,7 +2179,7 @@ export default function ClientesPage() {
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto a devolver</label>
                 <input type="number" min="0" max={retiro.saldo} step="0.01" value={retiroMonto}
                   onChange={e => setRetiroMonto(e.target.value)} autoFocus
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Caja (de donde sale el efectivo)</label>
@@ -2187,7 +2187,7 @@ export default function ClientesPage() {
                   <p className="text-sm text-red-500 dark:text-red-400">No hay ninguna caja operativa abierta. Abrí una caja para devolver el efectivo.</p>
                 ) : (
                   <select value={retiroCajaId} onChange={e => setRetiroCajaId(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent">
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent-text">
                     <option value="">Elegí la caja…</option>
                     {cajasRetiro.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>

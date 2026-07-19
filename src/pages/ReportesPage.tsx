@@ -635,7 +635,7 @@ export default function ReportesPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-          <BarChart2 size={22} className="text-accent" /> Reportes
+          <BarChart2 size={22} className="text-accent-text" /> Reportes
         </h1>
         <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Exportá tus datos en Excel o PDF</p>
       </div>
@@ -648,7 +648,7 @@ export default function ReportesPage() {
           return (
             <button key={r.id} onClick={() => setReporteActivo(activo ? null : r.id)}
               className={`text-left p-4 rounded-xl border-2 transition-all
-                ${activo ? 'border-accent bg-blue-50 dark:bg-blue-900/20/50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'}`}>
+                ${activo ? 'border-accent-text bg-blue-50 dark:bg-blue-900/20/50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'}`}>
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${r.color}`}>
                 <Icon size={20} />
               </div>
@@ -667,8 +667,8 @@ export default function ReportesPage() {
             const Icon = m.icon
             return (
               <button key={m.id} onClick={() => exportarMaster(m.id)}
-                className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-accent hover:shadow-sm transition-all text-left">
-                <div className="w-8 h-8 rounded-lg bg-purple-50 text-accent flex items-center justify-center flex-shrink-0">
+                className="flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-accent-text hover:shadow-sm transition-all text-left">
+                <div className="w-8 h-8 rounded-lg bg-purple-50 text-accent-text flex items-center justify-center flex-shrink-0">
                   <Icon size={16} />
                 </div>
                 <div className="min-w-0">
@@ -703,10 +703,10 @@ export default function ReportesPage() {
                 <div className="flex items-center gap-2 text-sm">
                   <Calendar size={14} className="text-gray-400 dark:text-gray-400" />
                   <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                    className="border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent-text" />
                   <span className="text-gray-400 dark:text-gray-400">→</span>
                   <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent" />
+                    className="border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent-text" />
                 </div>
               )}
 

@@ -79,7 +79,7 @@ function UbicacionPicker({ value, onChange, opciones, size = 'md', autoFocus = f
   const yaExiste = !value || opciones.includes(value)
   const [modo, setModo] = useState<'select' | 'nueva'>(yaExiste ? 'select' : 'nueva')
   const cls = size === 'sm'
-    ? 'text-xs border border-border-ds rounded px-2 py-1 bg-surface text-primary focus:outline-none focus:border-accent'
+    ? 'text-xs border border-border-ds rounded px-2 py-1 bg-surface text-primary focus:outline-none focus:border-accent-text'
     : 'w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary'
 
   if (modo === 'nueva') {
@@ -375,7 +375,7 @@ export default function RecursosPage() {
   const tabBtn = (t: typeof tab, label: string, count?: number, badge?: number) => (
     <button onClick={() => setTab(t)}
       className={`relative px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-        ${tab === t ? 'border-accent text-accent' : 'border-transparent text-muted hover:text-primary'}`}>
+        ${tab === t ? 'border-accent-text text-accent-text' : 'border-transparent text-muted hover:text-primary'}`}>
       {label}{count !== undefined && <span className="ml-1 text-xs opacity-70">({count})</span>}
       {badge != null && badge > 0 && (
         <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[10px] flex items-center justify-center font-bold">{badge}</span>
@@ -436,7 +436,7 @@ export default function RecursosPage() {
               type="button"
               onClick={() => navigate(`/gastos?tab=recursos`)}
               title="Ver gastos vinculados en Gastos → Recursos"
-              className="inline-flex items-center gap-1.5 text-[11px] text-muted hover:text-accent transition-colors"
+              className="inline-flex items-center gap-1.5 text-[11px] text-muted hover:text-accent-text transition-colors"
             >
               {gastos.mantenimiento > 0 && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400">
@@ -492,7 +492,7 @@ export default function RecursosPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Landmark className="w-6 h-6 text-accent" />
+          <Landmark className="w-6 h-6 text-accent-text" />
           <div>
             <h1 className="text-xl font-bold text-primary">Recursos</h1>
             <p className="text-xs text-muted">Patrimonio e inventario del negocio (no para vender)</p>
@@ -598,7 +598,7 @@ export default function RecursosPage() {
 
             {tab === 'adquirir' && listaAdquirir.length > 0 && (
               <button onClick={() => navigate('/proveedores')}
-                className="w-full mt-2 flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-accent/50 text-accent text-sm hover:bg-accent/5 transition-colors">
+                className="w-full mt-2 flex items-center justify-center gap-2 p-3 rounded-lg border border-dashed border-accent-text/50 text-accent-text text-sm hover:bg-accent/5 transition-colors">
                 <ShoppingBag className="w-4 h-4" />
                 Solicitar presupuesto a proveedor
                 <ChevronRight className="w-4 h-4" />
@@ -625,7 +625,7 @@ export default function RecursosPage() {
             {gruposOrdenados.map(([grupo, lista]) => (
               <div key={grupo}>
                 <div className="flex items-center gap-2 mb-2">
-                  <MapPin className={`w-4 h-4 ${grupo === '—Sin ubicación—' ? 'text-muted' : 'text-accent'}`} />
+                  <MapPin className={`w-4 h-4 ${grupo === '—Sin ubicación—' ? 'text-muted' : 'text-accent-text'}`} />
                   <h3 className={`text-sm font-semibold ${grupo === '—Sin ubicación—' ? 'text-muted' : 'text-primary'}`}>
                     {grupo === '—Sin ubicación—' ? 'Sin ubicación asignada' : grupo}
                   </h3>
@@ -700,7 +700,7 @@ export default function RecursosPage() {
           <div className="bg-surface rounded-xl w-full max-w-sm shadow-xl">
             <div className="flex items-center justify-between p-4 border-b border-border-ds">
               <h2 className="font-semibold text-primary flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-accent" /> Asignar ubicación
+                <MapPin className="w-4 h-4 text-accent-text" /> Asignar ubicación
               </h2>
               <button onClick={() => setShowUbicModal(false)} className="text-muted hover:text-primary">✕</button>
             </div>

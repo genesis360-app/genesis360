@@ -504,7 +504,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
-  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent'
+  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text'
   const sel = `${inp} cursor-pointer`
   const esTitulo = tipo === 'ingreso' ? 'Ingreso masivo' : 'Rebaje masivo'
   const itemsValidos = tipo === 'rebaje' ? items.filter(it => !it.tieneSeries) : items
@@ -549,7 +549,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                 onChange={e => { setProdSearch(e.target.value); setDropdownOpen(true) }}
                 onFocus={() => setDropdownOpen(true)}
                 placeholder="Buscar y agregar producto..."
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800"
               />
               {dropdownOpen && prodResultados.length > 0 && (
                 <div className="absolute z-30 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-52 overflow-y-auto">
@@ -567,7 +567,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                           <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{p.sku} · Stock: {p.stock_actual} {p.unidad_medida}</p>
                         </div>
                         {yaEsta && <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">Ya agregado</span>}
-                        {!yaEsta && <Plus size={15} className="text-accent flex-shrink-0" />}
+                        {!yaEsta && <Plus size={15} className="text-accent-text flex-shrink-0" />}
                       </button>
                     )
                   })}
@@ -575,7 +575,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
               )}
             </div>
             <button onClick={() => setScannerOpen(true)}
-              className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent transition-colors bg-white dark:bg-gray-800"
+              className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent-text transition-colors bg-white dark:bg-gray-800"
               title="Escanear código de barras">
               <Camera size={17} />
             </button>
@@ -615,7 +615,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                           Stock actual: {it.stockActual} {it.unidadMedida}
                           {cant > 0 && (
-                            <span className={`ml-2 font-medium ${tipo === 'rebaje' && cant > it.stockActual ? 'text-red-500' : 'text-accent'}`}>
+                            <span className={`ml-2 font-medium ${tipo === 'rebaje' && cant > it.stockActual ? 'text-red-500' : 'text-accent-text'}`}>
                               → {tipo === 'ingreso' ? it.stockActual + cant : Math.max(0, it.stockActual - cant)} {it.unidadMedida}
                             </span>
                           )}
@@ -640,7 +640,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                             value={it.seriesText}
                             onChange={e => upd(it.localId, { seriesText: e.target.value })}
                             rows={3}
-                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent font-mono resize-none"
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text font-mono resize-none"
                             placeholder={'SN-001\nSN-002\nSN-003'}
                           />
                         </div>
@@ -744,7 +744,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                         <div>
                           <button type="button"
                             onClick={() => upd(it.localId, { expanded: !it.expanded })}
-                            className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-accent transition-colors">
+                            className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-accent-text transition-colors">
                             {it.expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                             {it.expanded ? 'Ocultar opciones' : (modoAvanzado ? 'Más opciones (ubicación, estado, lote…)' : 'Más opciones (proveedor, motivo…)')}
                           </button>

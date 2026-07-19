@@ -1445,7 +1445,7 @@ export default function CajaPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <DollarSign size={22} className="text-accent" /> Caja
+            <DollarSign size={22} className="text-accent-text" /> Caja
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná la caja de tu negocio</p>
         </div>
@@ -1512,7 +1512,7 @@ export default function CajaPage() {
                       title={abierta ? 'Abierta' : 'Cerrada'}
                       className={`flex items-center gap-1.5 pl-3 pr-2 py-1.5 rounded-l-xl text-xs font-medium border-y border-l transition-all
                         ${activa
-                          ? 'border-accent bg-accent/10 text-accent'
+                          ? 'border-accent-text bg-accent/10 text-accent-text'
                           : abierta
                             ? 'border-green-300 bg-green-50 dark:bg-green-900/20 dark:border-green-700 text-green-700 dark:text-green-400 hover:border-green-400'
                             : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-400 dark:text-gray-500 hover:border-gray-300'}`}>
@@ -1529,7 +1529,7 @@ export default function CajaPage() {
                       title={esPref ? 'Predeterminada (click para quitar)' : 'Establecer como predeterminada'}
                       className={`px-2 py-1.5 rounded-r-xl text-xs border-y border-r transition-all
                         ${activa
-                          ? 'border-accent bg-accent/10 text-accent hover:bg-accent/20'
+                          ? 'border-accent-text bg-accent/10 text-accent-text hover:bg-accent/20'
                           : abierta
                             ? 'border-green-300 bg-green-50 dark:bg-green-900/20 dark:border-green-700 text-green-600 dark:text-green-400 hover:bg-green-100'
                             : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-gray-300 dark:text-gray-600 hover:border-gray-300'}
@@ -1548,7 +1548,7 @@ export default function CajaPage() {
               <p className="font-medium text-gray-600 dark:text-gray-400">No hay cajas operativas configuradas</p>
               <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Creá una caja en la pestaña Configuración</p>
               <button onClick={() => setTab('configuracion')}
-                className="mt-4 text-sm text-accent hover:underline">
+                className="mt-4 text-sm text-accent-text hover:underline">
                 Ir a configuración →
               </button>
             </div>
@@ -1570,7 +1570,7 @@ export default function CajaPage() {
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 text-left">Abrir caja para</label>
                       <select value={aperturaParaUsuarioId}
                         onChange={e => setAperturaParaUsuarioId(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                         <option value="">Yo ({user?.nombre_display ?? 'mi usuario'})</option>
                         {(cajerosTenant as any[]).filter((u: any) => u.id !== user?.id).map((u: any) => (
                           <option key={u.id} value={u.id}>{u.nombre_display ?? u.email} ({u.rol})</option>
@@ -1595,7 +1595,7 @@ export default function CajaPage() {
                       <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoApertura}
                         onChange={e => { setMontoApertura(e.target.value); setShowDifConfirm(false) }}
                         placeholder="0" autoFocus
-                        className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                        className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     </div>
                     {/* Diferencia en tiempo real */}
                     {montoSugerido !== null && montoApertura !== '' && (() => {
@@ -1759,7 +1759,7 @@ export default function CajaPage() {
                 {cajasAbiertas.length >= 2 && (
                   <button onClick={() => setShowTraspaso(true)}
                     title="Transferir efectivo a otra caja"
-                    className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-accent text-accent hover:bg-accent/10 font-semibold rounded-xl transition-all">
+                    className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-accent-text text-accent-text hover:bg-accent/10 font-semibold rounded-xl transition-all">
                     <ArrowRightLeft size={16} />
                   </button>
                 )}
@@ -1822,7 +1822,7 @@ export default function CajaPage() {
                                     <span className="text-xs bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">{medio}</span>
                                   )}
                                   {numVenta && (
-                                    <span className="text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded font-mono">#{numVenta}</span>
+                                    <span className="text-xs bg-accent/10 text-accent-text px-1.5 py-0.5 rounded font-mono">#{numVenta}</span>
                                   )}
                                 </div>
                               </div>
@@ -1880,7 +1880,7 @@ export default function CajaPage() {
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                   <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700">
                     <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm flex items-center gap-2">
-                      <CheckCircle size={14} className="text-accent" /> Arqueos ({arqueosSesion.length})
+                      <CheckCircle size={14} className="text-accent-text" /> Arqueos ({arqueosSesion.length})
                     </h3>
                   </div>
                   <div className="divide-y divide-gray-50 dark:divide-gray-700">
@@ -2198,7 +2198,7 @@ export default function CajaPage() {
               <select value={depositoFuenteSesionId} onChange={e => setDepositoFuenteSesionId(e.target.value)}
                 disabled={!modoAvanzado}
                 title={!modoAvanzado ? 'En modo básico se transfiere desde la caja en la que estás operando' : undefined}
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent disabled:opacity-60 disabled:cursor-not-allowed">
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text disabled:opacity-60 disabled:cursor-not-allowed">
                 <option value="">Ingreso externo (sin caja)</option>
                 {(sesionesAbiertasAll as any[]).filter((s: any) => !cajaFuerte || s.caja_id !== cajaFuerte.id).map((s: any) => (
                   <option key={s.id} value={s.id}>{s.cajas?.nombre}</option>
@@ -2214,7 +2214,7 @@ export default function CajaPage() {
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cuenta de destino</label>
               <select value={depositoCuentaId} onChange={e => setDepositoCuentaId(e.target.value)}
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                 {(bovedaCuentas as any[]).filter((c: any) => c.activo).map((c: any) => (
                   <option key={c.cuenta_origen_id} value={c.cuenta_origen_id}>{c.nombre}</option>
                 ))}
@@ -2225,13 +2225,13 @@ export default function CajaPage() {
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                 value={fuerteMonto} onChange={e => setFuerteMonto(e.target.value)} placeholder="0"
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
               <input type="text" value={fuerteConcepto} onChange={e => setFuerteConcepto(e.target.value)}
                 placeholder={depositoFuenteSesionId ? 'Depósito desde caja' : 'Ingreso externo'}
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
             </div>
             {!depositoFuenteSesionId && (
               <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -2265,7 +2265,7 @@ export default function CajaPage() {
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Caja destino *</label>
               <select value={retiroCajaDestinoSesionId} onChange={e => setRetiroCajaDestinoSesionId(e.target.value)}
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                 <option value="">Seleccioná una caja con sesión abierta</option>
                 {(sesionesAbiertasAll as any[]).map((s: any) => (
                   <option key={s.id} value={s.id}>{s.cajas?.nombre}</option>
@@ -2279,14 +2279,14 @@ export default function CajaPage() {
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                 value={fuerteMonto} onChange={e => setFuerteMonto(e.target.value)} placeholder="0"
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Saldo en caja fuerte: {formatMoneda(fuerteSaldo)}</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
               <input type="text" value={fuerteConcepto} onChange={e => setFuerteConcepto(e.target.value)}
                 placeholder="Envío desde caja fuerte"
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
             </div>
             <button onClick={() => operarCajaFuerte.mutate({
               tipo: 'retiro',
@@ -2309,7 +2309,7 @@ export default function CajaPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md space-y-4 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h3 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                <CheckCircle size={16} className="text-accent" /> Arqueo de bóveda
+                <CheckCircle size={16} className="text-accent-text" /> Arqueo de bóveda
               </h3>
               <button onClick={() => setShowArqueoBoveda(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={16} /></button>
             </div>
@@ -2330,7 +2330,7 @@ export default function CajaPage() {
                     <input type="number" inputMode="decimal" placeholder="Saldo contado…"
                       value={raw}
                       onChange={e => setArqueoBovedaConteo(prev => ({ ...prev, [c.cuenta_origen_id]: e.target.value }))}
-                      className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                      className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text" />
                     {dif !== null && (
                       <p className={`text-xs mt-1 font-medium ${dif === 0 ? 'text-gray-500 dark:text-gray-400' : dif > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                         {dif === 0 ? 'Coincide' : `Diferencia: ${dif > 0 ? '+' : ''}${formatMoneda(dif)}`}
@@ -2347,7 +2347,7 @@ export default function CajaPage() {
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Notas (opcional)</label>
               <input type="text" value={arqueoBovedaNotas} onChange={e => setArqueoBovedaNotas(e.target.value)}
                 placeholder="Observaciones del arqueo…"
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text" />
             </div>
             <div className="flex gap-2 pt-1">
               <button onClick={() => setShowArqueoBoveda(false)}
@@ -2377,7 +2377,7 @@ export default function CajaPage() {
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cuenta de origen *</label>
               <select value={extraerCuentaId} onChange={e => setExtraerCuentaId(e.target.value)}
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                 <option value="">Seleccioná una cuenta...</option>
                 {(bovedaCuentas as any[]).filter((c: any) => c.activo && Number(c.saldo) > 0).map((c: any) => (
                   <option key={c.cuenta_origen_id} value={c.cuenta_origen_id}>
@@ -2392,13 +2392,13 @@ export default function CajaPage() {
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                 value={extraerMonto} onChange={e => setExtraerMonto(e.target.value)}
                 placeholder="0"
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
             </div>
 
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tipo de retiro *</label>
               <select value={extraerTipo} onChange={e => setExtraerTipo(e.target.value as any)}
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                 <option value="retiro_personal">Retiro personal del dueño</option>
                 <option value="banco">Depósito a banco / inversión bancaria</option>
                 <option value="inversion">Inversión (compra activos, etc.)</option>
@@ -2412,7 +2412,7 @@ export default function CajaPage() {
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Motivo *</label>
               <input type="text" value={extraerMotivo} onChange={e => setExtraerMotivo(e.target.value)}
                 placeholder="Ej: Sueldo del dueño abril, Depósito Plazo Fijo, etc."
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
             </div>
 
             <div>
@@ -2420,7 +2420,7 @@ export default function CajaPage() {
               <textarea value={extraerNotas} onChange={e => setExtraerNotas(e.target.value)}
                 rows={2}
                 placeholder="Detalle adicional para tu registro personal..."
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-none" />
             </div>
 
             <div className="flex gap-2 pt-2">
@@ -2456,7 +2456,7 @@ export default function CajaPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Concepto corregido</label>
                 <input type="text" value={corregirConcepto} onChange={e => setCorregirConcepto(e.target.value)}
                   autoFocus
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                 <p className="text-[11px] text-gray-400 mt-1">Original: <span className="italic">{corregirMov.concepto}</span></p>
               </div>
               <div>
@@ -2465,7 +2465,7 @@ export default function CajaPage() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={corregirMonto}
                     onChange={e => setCorregirMonto(e.target.value)}
-                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                 </div>
                 <p className="text-[11px] text-gray-400 mt-1">Original: {formatMoneda(corregirMov.monto)}</p>
               </div>
@@ -2502,14 +2502,14 @@ export default function CajaPage() {
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Monto *</label>
               <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                 value={solicitudMonto} onChange={e => setSolicitudMonto(e.target.value)} placeholder="0"
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible: {formatMoneda(saldoActual)}</p>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto</label>
               <input type="text" value={solicitudConcepto} onChange={e => setSolicitudConcepto(e.target.value)}
                 placeholder="Motivo de la transferencia"
-                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
             </div>
             <button onClick={() => enviarSolicitudFuerte.mutate({ monto: parseFloat(solicitudMonto) || 0, concepto: solicitudConcepto })}
               disabled={enviarSolicitudFuerte.isPending || !solicitudMonto}
@@ -2662,7 +2662,7 @@ export default function CajaPage() {
                   {/* Toggle detalle */}
                   <button
                     onClick={() => setSesionExpandida(isExpanded ? null : s.id)}
-                    className="mt-3 flex items-center gap-1 text-xs text-accent hover:underline">
+                    className="mt-3 flex items-center gap-1 text-xs text-accent-text hover:underline">
                     {isExpanded ? <><ChevronUp size={13} /> Ocultar detalle</> : <><ChevronDown size={13} /> Ver movimientos</>}
                   </button>
                 </div>
@@ -2697,7 +2697,7 @@ export default function CajaPage() {
                     {arqueosHistorial.length > 0 && (
                       <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3">
                         <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-1">
-                          <CheckCircle size={11} className="text-accent" /> Arqueos ({arqueosHistorial.length})
+                          <CheckCircle size={11} className="text-accent-text" /> Arqueos ({arqueosHistorial.length})
                         </p>
                         <div className="space-y-1.5">
                           {(arqueosHistorial as any[]).map((a) => {
@@ -2740,11 +2740,11 @@ export default function CajaPage() {
               <div className="flex gap-2 mb-4 flex-wrap">
                 <input type="text" value={nuevaCajaNombre} onChange={e => setNuevaCajaNombre(e.target.value)}
                   placeholder="Nombre de la caja (ej: Caja 1, Caja Principal)"
-                  className="flex-1 min-w-[200px] px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  className="flex-1 min-w-[200px] px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                 <select value={nuevaCajaMoneda || (tenant as any)?.moneda || 'ARS'}
                   onChange={e => setNuevaCajaMoneda(e.target.value)}
                   title="Moneda de la caja (no se puede cambiar luego)"
-                  className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                  className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                   {MONEDAS_LISTA.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
                 <button onClick={() => crearCaja.mutate()} disabled={crearCaja.isPending}
@@ -2788,7 +2788,7 @@ export default function CajaPage() {
                             if (error) { toast.error(error.message); return }
                             qc.invalidateQueries({ queryKey: ['cajas'] })
                           }}
-                          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-accent">
+                          className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 focus:outline-none focus:border-accent-text">
                           <option value="">Sin sucursal</option>
                           {sucursales.map((s: any) => (
                             <option key={s.id} value={s.id}>{s.nombre}</option>
@@ -2857,7 +2857,7 @@ export default function CajaPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                <CheckCircle size={20} className="text-accent" /> Arqueo parcial
+                <CheckCircle size={20} className="text-accent-text" /> Arqueo parcial
               </h2>
               <button onClick={() => { setShowArqueo(false); setArqueoConteo(''); setArqueoNotas('') }}
                 className="text-gray-400 dark:text-gray-500 hover:text-gray-600"><X size={20} /></button>
@@ -2872,7 +2872,7 @@ export default function CajaPage() {
                 <input type="number" onWheel={e => e.currentTarget.blur()}
                   value={arqueoConteo} onChange={e => setArqueoConteo(e.target.value)}
                   placeholder="0" min="0" step="0.01" autoFocus
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
                 {arqueoConteo !== '' && (
                   <p className={`mt-1.5 text-sm font-medium ${
                     parseFloat(arqueoConteo) - saldoActual > 0 ? 'text-green-600 dark:text-green-400' :
@@ -2887,7 +2887,7 @@ export default function CajaPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
                 <input type="text" value={arqueoNotas} onChange={e => setArqueoNotas(e.target.value)}
                   placeholder="Observaciones..."
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               </div>
               <button onClick={() => realizarArqueo.mutate()} disabled={realizarArqueo.isPending || !arqueoConteo.trim()}
                 className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl transition-all disabled:opacity-50">
@@ -2916,7 +2916,7 @@ export default function CajaPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Concepto</label>
                 <input type="text" value={movConcepto} onChange={e => setMovConcepto(e.target.value)} autoFocus
                   placeholder="Ej: Pago a proveedor, Cobro efectivo..."
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                 {(motivosCaja as any[]).length > 0 && (
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {(motivosCaja as any[]).map((m: any) => (
@@ -2924,8 +2924,8 @@ export default function CajaPage() {
                         onClick={() => setMovConcepto(m.nombre)}
                         className={`text-xs px-2.5 py-1 rounded-full border transition-all
                           ${movConcepto === m.nombre
-                            ? 'bg-accent text-white border-accent'
-                            : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-accent hover:text-accent'}`}>
+                            ? 'bg-accent text-white border-accent-text'
+                            : 'bg-gray-50 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-700 hover:border-accent-text hover:text-accent-text'}`}>
                         {m.nombre}
                       </button>
                     ))}
@@ -2938,7 +2938,7 @@ export default function CajaPage() {
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500">$</span>
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={movMonto} onChange={e => setMovMonto(e.target.value)}
                     placeholder="0"
-                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                 </div>
               </div>
             </div>
@@ -2962,7 +2962,7 @@ export default function CajaPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-bold text-primary flex items-center gap-2">
-                <ArrowRightLeft size={18} className="text-accent" /> Transferir a otra caja
+                <ArrowRightLeft size={18} className="text-accent-text" /> Transferir a otra caja
               </h2>
               <button onClick={() => setShowTraspaso(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400 transition-colors"><X size={16} /></button>
             </div>
@@ -2971,7 +2971,7 @@ export default function CajaPage() {
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Caja destino *</label>
                 <select value={traspasoDestinoSesionId}
                   onChange={e => setTraspasoDestinoSesionId(e.target.value)}
-                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                   <option value="">Seleccioná una caja...</option>
                   {(sesionesAbiertasAll as any[])
                     .filter(s => s.id !== sesionActiva?.id)
@@ -2985,14 +2985,14 @@ export default function CajaPage() {
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01"
                   value={traspasoMonto} onChange={e => setTraspasoMonto(e.target.value)}
                   placeholder="0"
-                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Disponible: {formatMoneda(saldoActual)}</p>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Concepto (opcional)</label>
                 <input type="text" value={traspasoConcepto} onChange={e => setTraspasoConcepto(e.target.value)}
                   placeholder="Traspaso entre cajas"
-                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               </div>
               <button onClick={() => realizarTraspaso.mutate()}
                 disabled={realizarTraspaso.isPending || !traspasoDestinoSesionId || !traspasoMonto}
@@ -3035,7 +3035,7 @@ export default function CajaPage() {
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={montoRealCierre}
                   onChange={e => setMontoRealCierre(e.target.value)}
                   placeholder={formatMoneda(saldoActual).replace('$', '')}
-                  className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                  className="w-full pl-7 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
               </div>
               {diferencia !== null && (
                 <div className={`mt-2 flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-lg ${
@@ -3056,7 +3056,7 @@ export default function CajaPage() {
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas de cierre <span className="text-gray-400 dark:text-gray-500 font-normal">(opcional)</span></label>
               <textarea value={notasCierre} onChange={e => setNotasCierre(e.target.value)} rows={2}
                 placeholder="Observaciones del cierre..."
-                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
+                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text resize-none" />
             </div>
 
             {/* B5 — Clave maestra al cerrar caja ajena */}

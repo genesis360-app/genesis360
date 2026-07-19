@@ -29,13 +29,26 @@ type: project
 > verdes post-merge, recién ahí el PR quedó `MERGEABLE`.
 >
 > **▶ Pendiente (no bloqueante):**
-> 1. Redeployar la EF `ai-assistant` (DEV y PROD) con el `knowledge.generated.ts` regenerado —
->    arrastra desde la sesión del 2026-07-17 (fix de pricing desactualizado en el wiki), sigue sin
->    hacerse.
-> 2. Diferido: `venta_item_despachos` no snapshotea el talle/color consumido en el historial
+> 1. Diferido: `venta_item_despachos` no snapshotea el talle/color consumido en el historial
 >    post-venta · `selectedLineasInfo` sin extender con atributos · e2e formal para
 >    rebaje-masivo-ambigüedad y LpnAccionesModal-editar (hoy solo unit + code review).
-> 3. Relevamientos sin responder: **Inventario/WMS** y **Ventas H-L** (GO + socio).
+> 2. Relevamientos sin responder: **Inventario/WMS** y **Ventas H-L** (GO + socio).
+>
+> ✅ **Resuelto 2026-07-18 (sesión separada, sin código/migración/versión):** redeploy de la EF
+> `ai-assistant` en DEV y PROD con el `knowledge.generated.ts` ya commiteado (`a99bb270`) —
+> `KNOWLEDGE_GENERATED_AT` verificado en `2026-07-18T02:18:00.520Z` en ambos ambientes, smoke
+> OPTIONS 200/POST 401 OK. Ver `log.md` ("Redeploy EF ai-assistant...").
+>
+> ✅ **Resuelto 2026-07-18 (sesión separada) — cierra los 3 diferidos de Atributos de variante,
+> ⚠ EN EL WORKING TREE DE `dev`, SIN COMMITEAR, SIN DEPLOY A PROD:** (1) `venta_item_despachos`
+> ahora snapshotea talle/color/encaje/formato/sabor_aroma del despacho (**mig 277 nueva, aplicada
+> en DEV, NO en PROD** + `VentasPage.tsx`); (2) `selectedLineasInfo` de `InventarioPage` (resumen de
+> "Combinar LPNs") ahora muestra badges de atributo; (3) **e2e specs 95/96/97 nuevos** cierran las 3
+> filas de UAT §33 que quedaban sin e2e dedicado (rebaje masivo ambiguo, venta bloqueada por
+> ambigüedad, editar LPN con atributo obligatorio) — §33 pasa de 9/12 a **12/12 filas con e2e real**.
+> Verde: tsc · build · unit 1080+5 · specs 95/96/97 estables. **Falta para el próximo release:**
+> bump `APP_VERSION`, PR `dev→main`, aplicar mig 277 en PROD. Ver `log.md` ("🧵 Cierra 3 diferidos de
+> Atributos de variante...") y [[wiki/features/atributos-variante]].
 
 > ### 📍 ESTADO ANTERIOR (2026-07-18, pre-deploy) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + atributos de variante, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main` · **+4 fixes/features nuevos post-`/clear`, SIN COMMITEAR (ver abajo) + mig 276 nueva SOLO en DEV**
 >

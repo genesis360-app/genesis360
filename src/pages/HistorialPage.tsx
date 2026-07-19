@@ -354,14 +354,14 @@ export default function HistorialPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <ClipboardList size={22} className="text-accent" /> Historial de actividad
+            <ClipboardList size={22} className="text-accent-text" /> Historial de actividad
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Todo lo que pasó en tu negocio — quién, qué, cuándo</p>
         </div>
         <div className="flex gap-2">
           <button onClick={() => setShowFiltros(!showFiltros)}
             className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-xl border-2 transition-all
-              ${showFiltros || hayFiltros ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+              ${showFiltros || hayFiltros ? 'border-accent-text text-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
             <Filter size={15} /> Filtros {hayFiltros && '●'}
           </button>
           <button onClick={exportarExcel} disabled={exportando}
@@ -379,12 +379,12 @@ export default function HistorialPage() {
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Buscar nombre</label>
               <input type="text" placeholder="Nombre de la entidad..." value={filtros.buscar}
                 onChange={e => { setFiltros(f => ({ ...f, buscar: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo</label>
               <select value={filtros.entidad} onChange={e => { setFiltros(f => ({ ...f, entidad: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                 <option value="">Todos</option>
                 {Object.entries(ENTIDAD_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
@@ -392,7 +392,7 @@ export default function HistorialPage() {
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Transacción</label>
               <select value={filtros.tipo} onChange={e => { setFiltros(f => ({ ...f, tipo: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                 <option value="">Todas</option>
                 {Object.entries(TIPO_TX_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
               </select>
@@ -400,7 +400,7 @@ export default function HistorialPage() {
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Acción</label>
               <select value={filtros.accion} onChange={e => { setFiltros(f => ({ ...f, accion: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                 <option value="">Todas</option>
                 {Object.entries(ACCION_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
@@ -408,7 +408,7 @@ export default function HistorialPage() {
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Usuario</label>
               <select value={filtros.usuario_id} onChange={e => { setFiltros(f => ({ ...f, usuario_id: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                 <option value="">Todos</option>
                 {(usuarios as any[]).map(u => <option key={u.usuario_id} value={u.usuario_id}>{u.usuario_nombre}</option>)}
               </select>
@@ -416,12 +416,12 @@ export default function HistorialPage() {
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Desde</label>
               <input type="date" value={filtros.desde} onChange={e => { setFiltros(f => ({ ...f, desde: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Hasta</label>
               <input type="date" value={filtros.hasta} onChange={e => { setFiltros(f => ({ ...f, hasta: e.target.value })); setPage(0) }}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
             </div>
           </div>
 
@@ -435,23 +435,23 @@ export default function HistorialPage() {
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Producto (nombre o SKU)</label>
                 <input type="text" placeholder="Producto..." value={filtros.producto}
                   onChange={e => { setFiltros(f => ({ ...f, producto: e.target.value })); setPage(0) }}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">LPN</label>
                 <input type="text" placeholder="LPN-XXXX" value={filtros.lpn}
                   onChange={e => { setFiltros(f => ({ ...f, lpn: e.target.value })); setPage(0) }}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">N° de serie</label>
                 <input type="text" placeholder="Serie..." value={filtros.serie}
                   onChange={e => { setFiltros(f => ({ ...f, serie: e.target.value })); setPage(0) }}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               </div>
             </div>
             {unitMode && (
-              <p className="text-[11px] text-accent mt-2">Mostrando la historia completa de la unidad (ingresos, traslados, ediciones y ventas).</p>
+              <p className="text-[11px] text-accent-text mt-2">Mostrando la historia completa de la unidad (ingresos, traslados, ediciones y ventas).</p>
             )}
           </div>
 
@@ -489,7 +489,7 @@ export default function HistorialPage() {
                   return (
                     <div key={t.tx ?? log.id}
                       onClick={() => setSelectedTx(t)}
-                      className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-3.5 hover:shadow-sm hover:border-accent/30 transition-all cursor-pointer">
+                      className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-3.5 hover:shadow-sm hover:border-accent-text/30 transition-all cursor-pointer">
                       <div className="flex items-start gap-3">
                         <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5">
                           <EntidadIcon size={15} className="text-gray-500 dark:text-gray-400" />
@@ -498,7 +498,7 @@ export default function HistorialPage() {
                           <p className="text-sm text-gray-800 dark:text-gray-100">{resumenTx(t)}</p>
                           <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                             {multi ? (
-                              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent flex items-center gap-1">
+                              <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent-text flex items-center gap-1">
                                 <Layers size={10} /> {t.rows.length} cambios
                               </span>
                             ) : (
@@ -550,11 +550,11 @@ export default function HistorialPage() {
                   setEditandoCantidad(false)
                 }}
                 onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                className="w-16 px-2 py-1 border border-accent rounded-lg text-center focus:outline-none" />
+                className="w-16 px-2 py-1 border border-accent-text rounded-lg text-center focus:outline-none" />
             ) : (
               <span
                 onDoubleClick={() => { setEditandoCantidad(true); setCantidadInput(String(pageSize)) }}
-                className="font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:text-accent"
+                className="font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:text-accent-text"
                 title="Doble click para ingresar número custom">
                 {pageSize}
               </span>

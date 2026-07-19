@@ -247,7 +247,7 @@ export default function CierresContablesPanel() {
       {puedeCerrar && sugeridos.length > 0 && (
         <div className="bg-surface border border-border-ds rounded-xl p-5 space-y-3">
           <h3 className="text-sm font-semibold text-primary flex items-center gap-2">
-            <Calendar size={15} className="text-accent" /> Cerrar nuevo periodo
+            <Calendar size={15} className="text-accent-text" /> Cerrar nuevo periodo
           </h3>
           <div className="grid md:grid-cols-2 gap-3">
             <div>
@@ -256,7 +256,7 @@ export default function CierresContablesPanel() {
                 <select
                   value={periodoElegido}
                   onChange={e => setPeriodoElegido(e.target.value)}
-                  className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-8 py-2 text-sm bg-page text-primary focus:outline-none focus:border-accent"
+                  className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-8 py-2 text-sm bg-page text-primary focus:outline-none focus:border-accent-text"
                 >
                   <option value="">Seleccioná un periodo…</option>
                   {sugeridos.map(p => <option key={p} value={p}>{periodoLabel(p)}</option>)}
@@ -269,7 +269,7 @@ export default function CierresContablesPanel() {
               <input
                 value={observaciones} onChange={e => setObservaciones(e.target.value)}
                 placeholder="Ej: cierre conciliado con extracto bancario"
-                className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary focus:outline-none focus:border-accent"
+                className="w-full border border-border-ds rounded-lg px-3 py-2 text-sm bg-page text-primary focus:outline-none focus:border-accent-text"
               />
             </div>
           </div>
@@ -311,7 +311,7 @@ export default function CierresContablesPanel() {
       {/* Listado de cierres */}
       <div className="bg-surface border border-border-ds rounded-xl overflow-hidden">
         <div className="px-5 py-3 border-b border-border-ds flex items-center gap-2">
-          <FileText size={14} className="text-accent" />
+          <FileText size={14} className="text-accent-text" />
           <h3 className="text-sm font-semibold text-primary">Historial de cierres</h3>
           <span className="text-xs text-muted">({cierres.length})</span>
         </div>
@@ -372,7 +372,7 @@ export default function CierresContablesPanel() {
                           type="button"
                           onClick={(e) => { e.stopPropagation(); generarPdfCierre(c) }}
                           title="Descargar PDF del cierre con snapshot de totales"
-                          className="text-xs px-3 py-1.5 rounded-lg border border-border-ds text-muted hover:text-accent hover:border-accent flex items-center gap-1.5">
+                          className="text-xs px-3 py-1.5 rounded-lg border border-border-ds text-muted hover:text-accent-text hover:border-accent-text flex items-center gap-1.5">
                           <FileDown size={12} /> Descargar PDF
                         </button>
                       </div>
@@ -390,7 +390,7 @@ export default function CierresContablesPanel() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="bg-surface rounded-xl w-full max-w-md shadow-xl p-5 space-y-3">
             <h3 className="font-semibold text-primary flex items-center gap-2">
-              <Lock size={16} className="text-accent" /> Confirmar cierre
+              <Lock size={16} className="text-accent-text" /> Confirmar cierre
             </h3>
             <p className="text-sm text-primary">
               ¿Cerrar el periodo <strong>{periodoLabel(periodoElegido)}</strong>?

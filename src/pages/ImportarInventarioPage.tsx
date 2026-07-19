@@ -278,15 +278,15 @@ export default function ImportarInventarioPage() {
       <div className="grid lg:grid-cols-3 gap-5">
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent" /> Plantilla</h2>
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><FileSpreadsheet size={16} className="text-accent-text" /> Plantilla</h2>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Completá una fila por línea de inventario a cargar.</p>
-            <button onClick={descargarPlantilla} className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
+            <button onClick={descargarPlantilla} className="w-full flex items-center justify-center gap-2 border border-accent-text text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
               <Download size={15} /> Descargar plantilla
             </button>
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent" /> Subir archivo</h2>
-            <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2"><Upload size={16} className="text-accent-text" /> Subir archivo</h2>
+            <div className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent-text hover:bg-accent/5 transition-all"
               onClick={() => fileRef.current?.click()}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f) }}>

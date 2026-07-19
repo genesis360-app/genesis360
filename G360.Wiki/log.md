@@ -6,6 +6,94 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-18] update | 🧵 Cierra 3 diferidos de Atributos de variante — snapshot en despachos, badges en Combinar LPNs, e2e 95/96/97
+
+**Disparador:** los 3 ítems "no bloqueante" que había quedado documentados en la sección "Qué queda
+pendiente" de [[wiki/features/atributos-variante]] tras el deploy de v1.134.0 (ronda 3). Esta sesión
+los resuelve los tres. **Estado real: todo en el working tree de `dev`, SIN COMMITEAR** (verificado
+con `git status`/`git log` — no asumido). Migración 277 aplicada en DEV, NO en PROD. Sin bump de
+`APP_VERSION`, sin PR — queda listo para la próxima ventana de deploy junto con lo que se siga
+acumulando en `dev`.
+
+1. **`venta_item_despachos` ahora snapshotea el atributo consumido** — **mig 277**
+   (`277_venta_item_despachos_atributos_variante.sql`, aplicada en DEV, revisada por
+   migration-reviewer, mismo patrón aditivo que la mig 275 de `traslado_items`): agrega
+   `talle/color/encaje/formato/sabor_aroma` (TEXT nullable) a `venta_item_despachos`. Sin backfill
+   (no se puede reconstruir qué talle se vendió en despachos históricos). `src/pages/VentasPage.tsx`:
+   los 2 flujos de despacho (checkout directo desde el carrito, y "reserva → despachada") ahora
+   seleccionan esas 5 columnas de `inventario_lineas` al armar el plan de rebaje y las snapshotean en
+   `venta_item_despachos`; el panel de detalle de venta (modal `ventaDetalle`) muestra el atributo
+   junto al LPN/ubicación en el desglose de despacho vía `atributosDeLinea()`.
+2. **`selectedLineasInfo` (InventarioPage) ahora muestra atributos de variante** — el tipo
+   `SelectedLinea` se extendió con los 5 campos; los 2 lugares que populan el estado (vista agrupada
+   por ubicación y vista de líneas por producto) los propagan; el modal "Combinar LPNs" muestra
+   badges de atributo junto a cada LPN. Cambio puramente de UI/display, sin tocar movimiento de
+   stock.
+3. **Cobertura e2e para los 3 huecos de UAT §33** — 3 specs mutantes nuevos, self-contained (generan
+   su propia precondición, no dependen de fixtures compartidos):
+   - **`tests/e2e/95_rebaje_masivo_atributo_ambiguo_mutante.spec.ts`** (cierra fila #5):
+     `MasivoModal` tipo='rebaje' con 2 líneas de colores distintos exige elegir el color antes de
+     confirmar y consume solo la línea de esa variante (verificado por REST). 5/5 corridas verdes.
+   - **`tests/e2e/96_venta_bloqueada_atributo_ambiguo_mutante.spec.ts`** (cierra fila #6): checkout
+     del POS con 2 líneas de colores distintos rechaza sin elegir color (carrito no se limpia) y
+     completa tras elegir en el picker; verificado por REST que `venta_item_despachos` snapshoteó el
+     color correcto Y que solo la línea elegida se redujo (valida de paso el punto 1, end-to-end).
+     4/4 corridas verdes.
+   - **`tests/e2e/97_lpn_editar_atributo_obligatorio_mutante.spec.ts`** (cierra fila #7):
+     `LpnAccionesModal` → tab Editar rechaza vaciar el color ("Este producto requiere color"),
+     re-elegirlo persiste. Estable en corridas repetidas.
+
+   Con esto, **las 12 filas de la tabla del §33 de `uat-modo-basico.md` quedan con e2e real** (antes
+   9/12, ahora 12/12) — tabla actualizada.
+
+**Lección reusable (2 causas de flake encontradas y corregidas en el helper de ingreso manual usado
+por los 3 specs):** (a) el input del modo "+ Agregar nuevo valor…" de `AtributoValorSelect` tiene un
+placeholder ESPECÍFICO por atributo ("Ej: Rojo" para color, no un genérico "Nuevo valor" — el spec 89
+tenía ese locator mal pero nunca lo ejercitó porque el catálogo ya tenía datos); (b) hay que esperar
+el VALOR real del `<select>` (`toHaveValue`) tras el guardado async del nuevo valor, no un
+`waitForTimeout` fijo. También se encontró que en modo avanzado el filtro de venta del POS sigue
+excluyendo líneas con `estado_id NULL` aunque el grupo activo sea "Todos" (spec 96 necesitó setear un
+Estado real al ingresar).
+
+**Verificación de la sesión:** tsc limpio · `npm run build` verde · `npm run test:unit` → 1080
+passed + 5 todo (igual al baseline) · specs 95/96/97 estables en corridas repetidas · regresión e2e
+de specs relacionados (89, 90, 92, 93, 30) verde en aislado (2 fallaron en corrida conjunta por
+contención ambiental, confirmado no-regresión al aislarlos).
+
+Ver [[wiki/features/atributos-variante]], `tests/specs/uat-modo-basico.md` §33.
+
+---
+
+## [2026-07-18] update | 🤖 Redeploy EF ai-assistant (DEV+PROD) — cierra pendiente de knowledge desactualizado
+
+**Disparador:** pendiente arrastrado desde el 2026-07-17 (fix de pricing en `planes-pricing.md` /
+`app-reference.md` / `suscripciones-planes.md`, commiteado en `a99bb270`) y repetido en el bloque
+"ARRANCÁ ACÁ" del cierre de v1.134.0: el contenido correcto ya estaba en `knowledge.generated.ts`
+commiteado al repo, pero la Edge Function `ai-assistant` deployada seguía sirviendo una versión
+vieja del conocimiento (`KNOWLEDGE_GENERATED_AT` de 2026-07-13). Sesión autónoma y puntual — sin
+código nuevo, sin migración, sin bump de `APP_VERSION`: puro redeploy de un artefacto ya commiteado.
+
+1. `npm run ai:knowledge` — regeneró el archivo, pero el contenido resultante fue idéntico al ya
+   commiteado en `a99bb270` (solo cambiaba el timestamp de generación); descartado ese diff
+   cosmético con `git checkout --` para no ensuciar el árbol con un commit de solo-timestamp.
+2. **Deploy a DEV** (`gcmhzdedrkmmzfzfveig`) vía Supabase CLI
+   (`supabase functions deploy ai-assistant --project-ref gcmhzdedrkmmzfzfveig`, CLI v2.78.1) — sin
+   problemas (el bug de Supavisor es solo de conexión DB por pooler, no afecta el deploy de EFs que
+   va por Management API).
+3. Verificado con un dump de la función vía MCP: `KNOWLEDGE_GENERATED_AT` deployado en DEV pasó a
+   `2026-07-18T02:18:00.520Z` (coincide con el commit `a99bb270`, confirma que el contenido correcto
+   está activo). Smoke test HTTP: `OPTIONS` → 200, `POST` sin auth → 401 (guard de auth intacto).
+4. Con la autorización ya dada por GO en el cierre de la sesión anterior ("Puedes aplicar las migs y
+   todo lo pendiente a DEV y PRD"), se repitió el mismo procedimiento contra **PROD**
+   (`jjffnbrdjchquexdfgwq`): deploy vía CLI, verificación de `KNOWLEDGE_GENERATED_AT` =
+   `2026-07-18T02:18:00.520Z`, smoke test OPTIONS 200 / POST sin auth 401.
+
+**Resultado:** el Asistente IA en DEV y PROD sirve ahora el conocimiento correcto (pricing v2
+actualizado). Cierra el ítem 1 del pendiente "no bloqueante" de v1.134.0. Ver
+[[wiki/features/asistente-ia]].
+
+---
+
 ## [2026-07-18] deploy | 🚀 v1.134.0 EN PROD — F3b + atributos de variante + traslado real desde LPN (PR #293)
 
 **GO probó los 3 flujos pendientes y autorizó el deploy completo a DEV y PROD** ("probé el 1 y el

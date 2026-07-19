@@ -266,7 +266,7 @@ export default function CajaReportes() {
           return (
             <button key={s.id} onClick={() => setSub(s.id)}
               className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
-                ${activo ? 'border-accent text-accent' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
+                ${activo ? 'border-accent-text text-accent-text' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'}`}>
               <Icon size={14} /> {s.label}
             </button>
           )
@@ -280,12 +280,12 @@ export default function CajaReportes() {
             <div>
               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
               <input type="date" value={fechaDesde} onChange={e => setFechaDesde(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
             </div>
             <div>
               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
               <input type="date" value={fechaHasta} onChange={e => setFechaHasta(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
             </div>
           </>
         )}
@@ -293,7 +293,7 @@ export default function CajaReportes() {
           <div>
             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Sucursal</label>
             <select value={filtroSucursalId} onChange={e => setFiltroSucursalId(e.target.value)}
-              className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+              className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
               <option value="">Todas</option>
               {sucursales.map((s: any) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
             </select>

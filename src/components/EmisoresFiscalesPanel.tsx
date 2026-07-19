@@ -52,7 +52,7 @@ const FORM_VACIO = {
   leyenda_comprobante: '',
 }
 
-const inputCls = 'w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'
+const inputCls = 'w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100'
 
 export interface EmisoresFiscalesPanelHandle {
   /** Despliega el panel y abre el modal de edición del emisor principal (F3b: pointer desde ARCA). */
@@ -306,7 +306,7 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
       <button className="w-full flex items-center gap-3 px-5 py-4 text-left" onClick={() => setCollapsed(v => !v)}>
-        <Building2 size={18} className="text-accent" />
+        <Building2 size={18} className="text-accent-text" />
         <span className="font-semibold text-gray-700 dark:text-gray-300 flex-1">Emisores fiscales (multi-CUIT)</span>
         <span className="text-xs text-gray-400">{emisores.length} emisor{emisores.length !== 1 ? 'es' : ''}</span>
         {collapsed ? <ChevronRight size={16} className="text-gray-400" /> : <ChevronDown size={16} className="text-gray-400" />}
@@ -340,14 +340,14 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
                 <div className="ml-auto flex items-center gap-2">
                   {/* El asistente de certificado está disponible también para el principal (1er certificado) */}
                   <button onClick={() => { setExpandido(expandido === e.id ? null : e.id); setModoCert('wizard'); setCsrGenerado(null); setCrtSolo(null); setCertCrt(null); setCertKey(null) }}
-                    className="text-xs text-accent hover:underline">{expandido === e.id ? 'Cerrar' : (e.es_default ? 'Certificado' : 'Cert / PV')}</button>
+                    className="text-xs text-accent-text hover:underline">{expandido === e.id ? 'Cerrar' : (e.es_default ? 'Certificado' : 'Cert / PV')}</button>
                   {/* Editar: TODOS los emisores, incluido el principal (F3a, cutover mig 271 —
                       con fuente única ambos formularios escriben el mismo registro). Desactivar
                       y eliminar siguen solo para adicionales (los guards de DB además lo
                       rechazan con P0001 si alguien lo intenta por API). */}
                   <button onClick={() => abrirEditar(e)}
                     title={e.es_default ? 'Editar la identidad fiscal del emisor principal' : 'Editar'}
-                    className="text-gray-400 hover:text-accent"><Pencil size={14} /></button>
+                    className="text-gray-400 hover:text-accent-text"><Pencil size={14} /></button>
                   {!e.es_default && (<>
                     <Toggle
                       checked={e.activo}
@@ -422,7 +422,7 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
                               </p>
                               {subirCrtBox}
                               <button onClick={() => generarCsr(e)} disabled={generandoCsr}
-                                className="text-[11px] text-accent hover:underline flex items-center gap-1">
+                                className="text-[11px] text-accent-text hover:underline flex items-center gap-1">
                                 <Wand2 size={11} /> {generandoCsr ? 'Generando…' : 'Generar un CSR nuevo'}
                               </button>
                             </>
@@ -436,7 +436,7 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
                               <div className="flex flex-wrap gap-2">
                                 <button onClick={copiarCsr} className="text-[11px] px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center gap-1 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"><Copy size={11} /> Copiar</button>
                                 <button onClick={() => descargarCsr(e)} className="text-[11px] px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center gap-1 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"><Download size={11} /> Descargar .csr</button>
-                                <a href="https://www.afip.gob.ar/ws/documentacion/certificados.asp" target="_blank" rel="noopener noreferrer" className="text-[11px] px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center gap-1 text-accent hover:bg-accent/5"><ExternalLink size={11} /> Ir a ARCA</a>
+                                <a href="https://www.afip.gob.ar/ws/documentacion/certificados.asp" target="_blank" rel="noopener noreferrer" className="text-[11px] px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg flex items-center gap-1 text-accent-text hover:bg-accent/5"><ExternalLink size={11} /> Ir a ARCA</a>
                               </div>
                               <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">
                                 En ARCA → <strong>Administración de Certificados Digitales</strong>: creá un certificado con este CSR, descargá el <strong>.crt</strong> y asocialo al servicio <strong>Facturación Electrónica (wsfe)</strong> en el Administrador de Relaciones.
@@ -480,7 +480,7 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
                   {!e.es_default && (
                   <div>
                     <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 mb-1.5 flex items-center gap-1.5">
-                      <Hash size={13} className="text-accent" /> Puntos de venta de este CUIT
+                      <Hash size={13} className="text-accent-text" /> Puntos de venta de este CUIT
                     </p>
                     <div className="flex flex-wrap items-center gap-2">
                       {pvsDe(e.id).map(pv => (
@@ -511,7 +511,7 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
           ))}
 
           <button onClick={abrirNuevo}
-            className="flex items-center gap-1.5 px-3 py-2 border border-accent text-accent rounded-xl text-sm hover:bg-accent/10 transition-all">
+            className="flex items-center gap-1.5 px-3 py-2 border border-accent-text text-accent-text rounded-xl text-sm hover:bg-accent/10 transition-all">
             <Plus size={14} /> Agregar emisor (otro CUIT)
           </button>
 

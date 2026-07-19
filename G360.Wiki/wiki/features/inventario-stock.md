@@ -130,6 +130,11 @@ DEPOSITO no puede ejecutar cambios directamente — quedan pendientes de aprobac
 - Modal con 2 modos:
   - **Fusionar**: todo el stock pasa al LPN destino (los otros quedan `activo=false, cantidad=0`)
   - **LPN Madre**: asigna `parent_lpn_id` sin mover stock → los hijos muestran "↳ PLT-001"
+- **Desde 2026-07-18 (🟡 ronda 4 de atributos de variante, en el working tree de `dev`, sin
+  commitear):** el resumen de selección (`selectedLineasInfo`) muestra badges de
+  talle/color/encaje/formato/sabor·aroma junto a cada LPN elegido (`atributosDeLinea()`) — antes solo
+  mostraba LPN/cantidad/lote. Cambio de UI/display, sin tocar la lógica de fusión. Ver
+  [[wiki/features/atributos-variante]] "Ronda 4".
 
 ---
 

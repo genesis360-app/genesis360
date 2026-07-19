@@ -3,7 +3,7 @@ title: Frontend Stack
 category: architecture
 tags: [react, vite, typescript, tailwind, zustand, pwa]
 sources: []
-updated: 2026-04-30
+updated: 2026-07-19
 ---
 
 # Frontend Stack
@@ -61,11 +61,16 @@ El archivo `tailwind.config.js` define tokens semánticos:
 | `surface` | Tarjetas, paneles |
 | `border-ds` | Bordes |
 | `primary` | Color de acción principal |
-| `accent` | Color de énfasis |
+| `accent` | Color de énfasis — **relleno sólido/degradé de marca** (fondo violeta + texto blanco), NO varía entre claro/oscuro a propósito |
+| `accent-text` | **(2026-07-19)** Variante de `accent` para **texto/borde/ring** (`text-accent-text`/`border-accent-text`/`ring-accent-text`), NO para relleno. Mismo valor que `accent` en modo claro, pero más luminoso en `.dark` (`--color-accent-text: 139 92 246` violet-500 vs `123 0 255` en claro) — el violeta de marca (`#7B00FF`) es idéntico en los 2 modos y pierde contraste como texto/borde fino sobre fondo casi negro. Mismo criterio que ya se usaba solo para el scrollbar en dark. Migración mecánica (perl) de ~1440 usos de `text-accent`/`border-accent`/`ring-accent` en 91 archivos de `src/` — `bg-accent` no se tocó |
 | `success` / `danger` / `warning` / `info` | Estados |
 | `muted` | Texto secundario |
 
 Fonts: **Inter** (sans-serif) · **JetBrains Mono** (monospace)
+
+> [!WARNING] **Gotcha (2026-07-19):** `tailwind.config.js` **no hot-reload** en un dev server ya
+> corriendo — un token de color nuevo (como `accent-text` arriba) no aparece hasta reiniciar
+> (`npm run dev`). A diferencia de cambios en `.tsx`/`.css`, que sí hot-reloadean al instante.
 
 ## Configuración TypeScript
 

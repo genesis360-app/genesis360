@@ -3,7 +3,7 @@ title: Atributos de variante (talle / color / encaje / formato / sabor·aroma)
 category: features
 tags: [productos, inventario, variantes, talle, color, ventas, atributos]
 sources: [CLAUDE.md, log.md]
-updated: 2026-07-18
+updated: 2026-07-19
 ---
 
 # Atributos de variante (talle / color / encaje / formato / sabor·aroma)
@@ -17,12 +17,15 @@ updated: 2026-07-18
 > probó la ronda 3 y confirmó que funciona bien; deployado junto con F3b y el fix del traslado real
 > desde LpnAccionesModal (ver [[wiki/features/multi-sucursal]]).
 >
-> **🟡 Ronda 4 (2026-07-18, mismo día, sesión separada) — EN EL WORKING TREE DE `dev`, SIN
-> COMMITEAR, NO DEPLOYADA A PROD.** Cierra los 3 diferidos que había dejado la ronda 3 (ver "Ronda 4"
-> abajo): `venta_item_despachos` ahora snapshotea el atributo consumido (**mig 277**, aplicada solo
-> en DEV), `selectedLineasInfo` de InventarioPage muestra badges de atributo, y 3 specs e2e nuevos
-> (95/96/97) cierran los huecos de cobertura de UAT §33. Sin bump de `APP_VERSION`, sin PR — queda
-> para la próxima ventana de deploy. **No confundir con las rondas 1-3, que sí están en PROD.**
+> **🟡 Ronda 4 (2026-07-18, sesión separada) — COMMITEADA en `dev` (`1ae43343`), SIN PUSHEAR A
+> GITHUB, NO DEPLOYADA A PROD** (actualizado 2026-07-19; se commiteó junto con 2 fixes de UI sin
+> relación con variantes — impresión de ticket + contraste dark mode, ver
+> [[wiki/architecture/frontend-stack]] y `log.md` 2026-07-19). Cierra los 3 diferidos que había
+> dejado la ronda 3 (ver "Ronda 4" abajo): `venta_item_despachos` ahora snapshotea el atributo
+> consumido (**mig 277**, aplicada solo en DEV), `selectedLineasInfo` de InventarioPage muestra
+> badges de atributo, y 3 specs e2e nuevos (95/96/97) cierran los huecos de cobertura de UAT §33.
+> Sin bump de `APP_VERSION`, sin PR, sin push — queda para la próxima ventana de deploy. **No
+> confundir con las rondas 1-3, que sí están en PROD.**
 
 ## Por qué existe esta página
 
@@ -222,10 +225,10 @@ Verde tras la ronda 3: tsc · build · unit **1075+5** (12 nuevos sobre la ronda
 
 ## Ronda 4 (2026-07-18, sesión separada) — cierra los 3 diferidos de la ronda 3
 
-**⚠ Estado real (verificado con `git log`/`git status`, no asumido): todo lo de esta ronda está en
-el working tree de `dev`, SIN COMMITEAR. La mig 277 está aplicada en DEV; NO se tocó PROD (ni la
-migración ni el código). Sin bump de `APP_VERSION`, sin PR — pendiente de la próxima ventana de
-deploy.**
+**⚠ Estado real (verificado con `git log`/`git status`, no asumido): commiteada en `dev`
+(`1ae43343`, 2026-07-18 23:39 -0400), SIN PUSHEAR A GITHUB, SIN DEPLOY A PROD.** La mig 277 está
+aplicada en DEV; NO se tocó PROD (ni la migración ni el código). Sin bump de `APP_VERSION`, sin PR,
+sin push — pendiente de la próxima ventana de deploy.
 
 ### 1. `venta_item_despachos` ahora snapshotea el atributo consumido — mig 277
 

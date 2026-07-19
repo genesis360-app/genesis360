@@ -6,7 +6,26 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-07-19, cierre) — **PROD = DEV = v1.134.0 (SIN CAMBIOS)** · PR #293 mergeado a `main` (`c534ddea`) · tag+release v1.134.0 · Vercel producción READY (`app.genesis360.pro` verificado 200) · migs **273-276 en DEV y PROD** · **2 commits NUEVOS en `dev` LOCAL (`1ae43343`, `f64ad9be`), NINGUNO PUSHEADO A GITHUB** (`git rev-list --left-right --count dev...origin/dev` → `2 0`) · **mig 277 aplicada SOLO en DEV**
+> ### ✅ ARRANCÁ ACÁ (2026-07-19, deploy v1.135.0) — **PROD = DEV = v1.135.0** · PR #294 mergeado a `main` (`3e121867`) · tag+release v1.135.0 · Vercel QA (`dev`) y PRD (`main`/`app.genesis360.pro`) ambos READY · mig **277 en DEV y PROD** (sin drift)
+>
+> **Deployado en v1.135.0** (detalle completo abajo, sesión 2026-07-19 previa al deploy, y `log.md`):
+> fix impresión ticket/devolución (`@media print` + `.no-print`) · sistema `--color-accent-text`
+> para dark mode (91 archivos, ~1440 usos migrados) · factura/NC con nombre+descripción del producto
+> (jspdf-autotable, alineación corregida) · fix bug duplicado + feature "Eliminar grupo" en Grupos
+> de variantes · atributos de variante ronda 4 (`venta_item_despachos` snapshot, mig 277, e2e
+> 95/96/97). Ver [[wiki/business/roadmap]] v1.135.0 para el resumen curado.
+>
+> **▶ Pendiente (no bloqueante, sin cambios):**
+> 1. Relevamientos sin responder: **Inventario/WMS** y **Ventas H-L** (GO + socio).
+> 2. El grupo de variantes duplicado real de GO ("Remera Los Redondos", ver bloque de abajo) sigue
+>    sin resolver a propósito — pedirle a GO que use el botón "Eliminar grupo" nuevo sobre el
+>    duplicado vacío (se identifica fácil: dice "0 variantes").
+> 3. Backlog de 13 puntos relevado para Fede/GO (Config Ventas/Envíos) — 9 a implementar + 4 a
+>    conversar entre ellos, ninguno arrancado. Ver `project_revision_config_fede_tonga` (memoria) —
+>    2 hallazgos importantes: "Envío gratis condicional" no tiene efecto real (config write-only,
+>    nada la lee) e integración MODO nunca validada contra la API real.
+
+> ### 📍 ESTADO ANTERIOR (2026-07-19, cierre pre-deploy) — **PROD = DEV = v1.134.0 (SIN CAMBIOS)** · PR #293 mergeado a `main` (`c534ddea`) · tag+release v1.134.0 · Vercel producción READY (`app.genesis360.pro` verificado 200) · migs **273-276 en DEV y PROD** · **2 commits NUEVOS en `dev` LOCAL (`1ae43343`, `f64ad9be`), NINGUNO PUSHEADO A GITHUB** (`git rev-list --left-right --count dev...origin/dev` → `2 0`) · **mig 277 aplicada SOLO en DEV**
 >
 > **GO probó los 3 flujos pedidos y autorizó el deploy completo** ("probé el 1 y el 2 y funcionan
 > bien... el 3 confirmado, se ve bien... Puedes aplicar las migs y todo lo pendiente a DEV y PRD" +

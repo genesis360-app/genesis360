@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-19] deploy | 🚀 v1.135.0 a PRD — print fix, dark mode tokens, factura nombre+descripción, fix grupos de variantes, atributos de variante ronda 4
+
+**Deploy completo autorizado por GO** ("sube todo a QA y PRD... las migs, las mejoras, todo").
+Contenido: los 2 commits locales de la entrada anterior (`1ae43343`, `f64ad9be`) + bump de versión
+(`09aa33ed`). Pasos ejecutados vía `deploy-runner`: `git push origin dev` (dispara Vercel QA) →
+mig **277** aplicada en Supabase PROD (`jjffnbrdjchquexdfgwq`, 5 columnas nullable en
+`venta_item_despachos`, verificada) → PR [#294](https://github.com/genesis360-app/genesis360/pull/294)
+`dev→main` → merge (`3e121867`) → tag+release
+[v1.135.0](https://github.com/genesis360-app/genesis360/releases/tag/v1.135.0) → Vercel QA (`dev`) y
+PRD (`main`/`app.genesis360.pro`) verificados **READY**. Build verde (tsc+vite) antes de pushear.
+Wiki actualizada post-deploy: `roadmap.md` (v1.135.0), `migraciones.md` (277 DEV+PROD),
+`project_pendientes.md` (ARRANCÁ ACÁ actualizado, bloque anterior demovido a ESTADO ANTERIOR).
+Detalle funcional completo: ver la entrada de abajo (sin cambios, ya documentaba el contenido).
+
 ## [2026-07-19] update | 🎨🧾 4 hallazgos NUEVOS de GO/Fede probando en paralelo — fix impresión, contraste dark mode, factura con descripción, bug de grupos de variantes duplicados
 
 **Disparador:** GO (y Fede en paralelo) siguieron probando la app después de la entrada anterior de

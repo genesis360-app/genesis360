@@ -2,10 +2,10 @@
 
 Permite agrupar múltiples SKUs que son variantes de un mismo artículo (ej: Remera S/M/L en Azul/Rojo). Cada SKU sigue siendo un producto normal con su propio stock, precio y LPNs.
 
-> [!NOTE] **No confundir con "Atributos de variante"** (`tiene_talle`/`tiene_color`/etc. en ProductoFormPage → Trazabilidad) — ese es un sistema DISTINTO donde el talle/color es un dato descriptivo **dentro del mismo SKU** (no un producto separado). Este documento cubre "Grupo de variantes" (SKU separado). Ver [[wiki/features/atributos-variante]] (✅ PROD rondas 1-3, 🟡 DEV ronda 4) para el otro sistema.
+> [!NOTE] **No confundir con "Atributos de variante"** (`tiene_talle`/`tiene_color`/etc. en ProductoFormPage → Trazabilidad) — ese es un sistema DISTINTO donde el talle/color es un dato descriptivo **dentro del mismo SKU** (no un producto separado). Este documento cubre "Grupo de variantes" (SKU separado). Ver [[wiki/features/atributos-variante]] (✅ PROD, las 4 rondas) para el otro sistema.
 
-> [!WARNING] **🐛 Bug real de duplicado + fix (2026-07-19, EN `dev` LOCAL, sin pushear, sin deploy
-> a PROD).** GO reportó que al crear el grupo "Remera Los Redondos" se le duplicó — 2 filas
+> [!WARNING] **🐛 Bug real de duplicado + fix (✅ PROD, v1.135.0, 2026-07-19).** GO reportó que al
+> crear el grupo "Remera Los Redondos" se le duplicó — 2 filas
 > idénticas en `producto_grupos`, una con los 9 productos-variante reales enganchados y otra vacía
 > (0 productos), creadas 5 segundos aparte. **Causa raíz (código, no adivinada):** en
 > `ProductoGrupoModal.guardarGrupo()`, la condición INSERT-vs-UPDATE era `if (isEditing &&
@@ -58,7 +58,7 @@ Modal para crear/editar un grupo. Secciones:
 - **Toggle "Agrupar variantes"** (ícono Layers) junto al search bar. Alterna entre `viewMode: 'flat' | 'grouped'`.
 - **Vista agrupada**: productos sin grupo bajo "Productos individuales" (colapsable), grupos como secciones expandibles con tabla de variantes (Nombre/SKU | Variante | Precio | Stock), botones **"Editar grupo"** y **"Eliminar"**.
 - **Vista plana (default)**: badge `• Parte de "X"` bajo el nombre cuando `grupo_id` tiene valor.
-- **Eliminar grupo (2026-07-19, nuevo, EN `dev` LOCAL, sin pushear):** hasta esta sesión no existía
+- **Eliminar grupo (2026-07-19, nuevo, ✅ PROD v1.135.0):** hasta esta sesión no existía
   NINGUNA forma de sacar un grupo no deseado (ni en la UI ni en el código — confirmado grepeando
   todo `src/`). Botón "Eliminar" en cada tarjeta de grupo → modal de confirmación → soft-delete
   (`producto_grupos.activo = false`, mismo patrón que Motivos/Estados, mutación

@@ -17,15 +17,12 @@ updated: 2026-07-19
 > probó la ronda 3 y confirmó que funciona bien; deployado junto con F3b y el fix del traslado real
 > desde LpnAccionesModal (ver [[wiki/features/multi-sucursal]]).
 >
-> **🟡 Ronda 4 (2026-07-18, sesión separada) — COMMITEADA en `dev` (`1ae43343`), SIN PUSHEAR A
-> GITHUB, NO DEPLOYADA A PROD** (actualizado 2026-07-19; se commiteó junto con 2 fixes de UI sin
-> relación con variantes — impresión de ticket + contraste dark mode, ver
-> [[wiki/architecture/frontend-stack]] y `log.md` 2026-07-19). Cierra los 3 diferidos que había
-> dejado la ronda 3 (ver "Ronda 4" abajo): `venta_item_despachos` ahora snapshotea el atributo
-> consumido (**mig 277**, aplicada solo en DEV), `selectedLineasInfo` de InventarioPage muestra
+> **✅ Ronda 4 (2026-07-18/19) — EN PROD** (v1.135.0, PR #294, 2026-07-19). Cierra los 3 diferidos
+> que había dejado la ronda 3 (ver "Ronda 4" abajo): `venta_item_despachos` ahora snapshotea el
+> atributo consumido (**mig 277**, DEV y PROD), `selectedLineasInfo` de InventarioPage muestra
 > badges de atributo, y 3 specs e2e nuevos (95/96/97) cierran los huecos de cobertura de UAT §33.
-> Sin bump de `APP_VERSION`, sin PR, sin push — queda para la próxima ventana de deploy. **No
-> confundir con las rondas 1-3, que sí están en PROD.**
+> Deployada junto con 2 fixes de UI sin relación con variantes — impresión de ticket + contraste
+> dark mode, ver [[wiki/architecture/frontend-stack]] y `log.md` 2026-07-19.
 
 ## Por qué existe esta página
 
@@ -225,17 +222,15 @@ Verde tras la ronda 3: tsc · build · unit **1075+5** (12 nuevos sobre la ronda
 
 ## Ronda 4 (2026-07-18, sesión separada) — cierra los 3 diferidos de la ronda 3
 
-**⚠ Estado real (verificado con `git log`/`git status`, no asumido): commiteada en `dev`
-(`1ae43343`, 2026-07-18 23:39 -0400), SIN PUSHEAR A GITHUB, SIN DEPLOY A PROD.** La mig 277 está
-aplicada en DEV; NO se tocó PROD (ni la migración ni el código). Sin bump de `APP_VERSION`, sin PR,
-sin push — pendiente de la próxima ventana de deploy.
+**✅ Deployada a PROD** (v1.135.0, PR #294, 2026-07-19, commits `1ae43343`+`f64ad9be`+`09aa33ed`).
+Mig 277 aplicada en DEV y PROD, sin drift.
 
 ### 1. `venta_item_despachos` ahora snapshotea el atributo consumido — mig 277
 
 `venta_item_despachos` (ledger de despacho por LPN de una venta, ver [[wiki/features/ventas-pos]]
 "ISS-075") no snapshoteaba qué talle/color se vendió — solo era visible en el carrito antes de
 confirmar, no en el historial post-venta. **Mig 277**
-(`277_venta_item_despachos_atributos_variante.sql`, aplicada en DEV, revisada por el agente
+(`277_venta_item_despachos_atributos_variante.sql`, DEV y PROD, revisada por el agente
 migration-reviewer, mismo patrón aditivo que la mig 275 de `traslado_items`): agrega
 `talle/color/encaje/formato/sabor_aroma` (TEXT nullable) a `venta_item_despachos`. Sin backfill (no
 se puede reconstruir qué talle se vendió en despachos históricos).

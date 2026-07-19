@@ -123,7 +123,7 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 - Totales (neto + IVA por alícuota + total)
 - **QR AFIP** (RG 4291): JSON del comprobante → base64 → URL `https://www.afip.gob.ar/fe/qr/?p=<base64>`
 
-> **2026-07-19 (EN `dev` LOCAL, sin pushear, sin deploy) — ítem con nombre + descripción del
+> **✅ PROD (v1.135.0, 2026-07-19) — ítem con nombre + descripción del
 > producto.** El ítem de Factura/NC ahora muestra el `nombre` del producto (como ya hacía) y,
 > debajo en gris chico, la `descripcion` del producto **si está cargada** (campo opcional que ya
 > existía en `productos` pero no se usaba en facturación). El ticket y el historial de venta NO

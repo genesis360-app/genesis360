@@ -5,8 +5,13 @@ import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, Mess
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
+import { estadoVigenciaCombo, hoyLocalISO } from '@/lib/ventasValidation'
+import { descuentoDeConfig, etiquetaPromo, DIAS_SEMANA_CORTOS, type DescuentoMetodoPago } from '@/lib/promosPago'
+import { normalizarReglasGratis, describirReglaGratis, type ReglaGratis } from '@/lib/enviosTarifas'
+import { camposRequeridosCliente, enumLegacyDeCampos } from '@/lib/clienteCampos'
 import { supabase } from '@/lib/supabase'
 import { PageTabs } from '@/components/PageTabs'
+import { InfoTip } from '@/components/InfoTip'
 import { Toggle } from '@/components/Toggle'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -425,12 +430,8 @@ function MarketplaceSection() {
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Activar marketplace</p>
               <p className="text-xs text-gray-400 dark:text-gray-500">Habilita la API pública y la sección en cada producto</p>
             </div>
-            <button
-              disabled={!canEdit}
-              onClick={() => setActivo(a => !a)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${activo ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} disabled:opacity-50`}>
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${activo ? 'translate-x-6' : 'translate-x-1'}`} />
-            </button>
+            <Toggle size="lg" disabled={!canEdit} checked={activo}
+              onChange={() => setActivo(a => !a)} aria-label="Activar marketplace" />
           </div>
           {activo && (
             <div>
@@ -757,6 +758,7 @@ export default function ConfigPage() {
 
   // WhatsApp
   const [bizWAPlantilla, setBizWAPlantilla] = useState<string>((tenant as any)?.whatsapp_plantilla ?? '')
+  const waTextareaRef = useRef<HTMLTextAreaElement>(null)
   // Envíos
   const [bizCostoKm, setBizCostoKm] = useState<string>(String((tenant as any)?.costo_envio_por_km ?? ''))
   // ISS-174 — fuente del peso/medidas para cotizar (manual por envío | dato maestro del producto)
@@ -801,11 +803,17 @@ export default function ConfigPage() {
   const [bizCobroPolitica, setBizCobroPolitica] = useState<string>((tenant as any)?.envio_cobro_politica ?? 'cliente_100')
   const [bizCobroMargen, setBizCobroMargen] = useState<string>(String((tenant as any)?.envio_cobro_margen_pct ?? 0))
   const [bizSubsidioUmbral, setBizSubsidioUmbral] = useState<string>(String((tenant as any)?.envio_subsidio_umbral ?? 0))
-  const _gr = ((tenant as any)?.envio_gratis_reglas ?? {}) as any
-  const [bizGratisMonto, setBizGratisMonto] = useState<string>(String(_gr.montoMinimo ?? ''))
-  const [bizGratisEtiquetas, setBizGratisEtiquetas] = useState<string>(Array.isArray(_gr.etiquetas) ? _gr.etiquetas.join(', ') : '')
-  const [bizGratisDesde, setBizGratisDesde] = useState<string>(_gr.promoDesde ?? '')
-  const [bizGratisHasta, setBizGratisHasta] = useState<string>(_gr.promoHasta ?? '')
+  // Envío gratis condicional v2 (multi-regla + tope de km — backlog Fede/GO punto 7).
+  // normalizarReglasGratis migra el shape legacy {montoMinimo, etiquetas, promoDesde/Hasta}.
+  const [bizGratisReglas, setBizGratisReglas] = useState<Array<{ montoMinimo: string; etiquetas: string; desde: string; hasta: string; maxKm: string }>>(
+    () => normalizarReglasGratis((tenant as any)?.envio_gratis_reglas).map((r: ReglaGratis) => ({
+      montoMinimo: r.montoMinimo != null ? String(r.montoMinimo) : '',
+      etiquetas: (r.etiquetas ?? []).join(', '),
+      desde: r.desde ?? '',
+      hasta: r.hasta ?? '',
+      maxKm: r.maxKm != null ? String(r.maxKm) : '',
+    }))
+  )
   // EN5 — creación/alcance
   const _pd = ((tenant as any)?.envio_plazo_despacho ?? {}) as any
   const [bizPlazoPresencial, setBizPlazoPresencial] = useState<string>(String(_pd.presencial ?? ''))
@@ -828,7 +836,8 @@ export default function ConfigPage() {
 
   // Fase 3 — cliente en POS
   const [bizClienteObligatorio,     setBizClienteObligatorio]     = useState<string>(tenant?.cliente_obligatorio ?? 'nunca')
-  const [bizClienteDatosMinimos,    setBizClienteDatosMinimos]    = useState<string>(tenant?.cliente_datos_minimos ?? 'nombre')
+  // Campos requeridos por checkbox (mig 280) — reemplaza el enum legacy cliente_datos_minimos
+  const [bizClienteCampos, setBizClienteCampos] = useState(() => camposRequeridosCliente(tenant as any))
   const [bizClienteConsumidorFinal, setBizClienteConsumidorFinal] = useState<boolean>(tenant?.cliente_consumidor_final ?? true)
   const [bizClienteCreacionInline,  setBizClienteCreacionInline]  = useState<boolean>(tenant?.cliente_creacion_inline ?? true)
 
@@ -1200,11 +1209,17 @@ export default function ConfigPage() {
       envio_cobro_politica: bizCobroPolitica,
       envio_cobro_margen_pct: parseFloat(bizCobroMargen) || 0,
       envio_subsidio_umbral: parseFloat(bizSubsidioUmbral) || 0,
+      // v2 multi-regla (punto 7): shape { reglas: [...] } — el POS la lee vía normalizarReglasGratis
       envio_gratis_reglas: {
-        montoMinimo: bizGratisMonto ? parseFloat(bizGratisMonto) : null,
-        etiquetas: bizGratisEtiquetas.split(',').map(s => s.trim()).filter(Boolean),
-        promoDesde: bizGratisDesde || null,
-        promoHasta: bizGratisHasta || null,
+        reglas: bizGratisReglas
+          .map(r => ({
+            montoMinimo: r.montoMinimo ? parseFloat(r.montoMinimo) : null,
+            etiquetas: r.etiquetas.split(',').map(s => s.trim()).filter(Boolean),
+            desde: r.desde || null,
+            hasta: r.hasta || null,
+            maxKm: r.maxKm ? parseFloat(r.maxKm) : null,
+          }))
+          .filter(r => r.montoMinimo || r.etiquetas.length > 0 || (r.desde && r.hasta) || r.maxKm),
       },
       // EN5 — creación/alcance
       envio_plazo_despacho: {
@@ -1227,9 +1242,11 @@ export default function ConfigPage() {
       // Fase 2
       precio_redondeo:       bizPrecioRedondeo,
       moneda:                bizMoneda,
-      // Fase 3 — cliente en POS
+      // Fase 3 — cliente en POS. El jsonb (mig 280) manda; el enum legacy se sincroniza al
+      // valor más cercano para no romper lectores viejos.
       cliente_obligatorio:      bizClienteObligatorio,
-      cliente_datos_minimos:    bizClienteDatosMinimos,
+      cliente_campos_requeridos: bizClienteCampos,
+      cliente_datos_minimos:    enumLegacyDeCampos(bizClienteCampos),
       cliente_consumidor_final: bizClienteConsumidorFinal,
       cliente_creacion_inline:  bizClienteCreacionInline,
       // Fase 4 — descuentos y caja
@@ -1647,7 +1664,7 @@ export default function ConfigPage() {
   }
 
   // Combos
-  const [comboForm, setComboForm] = useState({ nombre: '', descuento_tipo: 'pct', descuento_valor: '0' })
+  const [comboForm, setComboForm] = useState({ nombre: '', descuento_tipo: 'pct', descuento_valor: '0', vigencia_desde: '', vigencia_hasta: '' })
   const [comboItems, setComboItems] = useState<{ producto_id: string; cantidad: string }[]>([{ producto_id: '', cantidad: '1' }])
   const [savingCombo, setSavingCombo] = useState(false)
 
@@ -1700,6 +1717,9 @@ export default function ConfigPage() {
     if (comboForm.descuento_tipo === 'pct' && valor > 100) { toast.error('El porcentaje no puede superar 100'); return }
     const descuento_pct = comboForm.descuento_tipo === 'pct' ? valor : 0
     const descuento_monto = comboForm.descuento_tipo !== 'pct' ? valor : 0
+    if (comboForm.vigencia_desde && comboForm.vigencia_hasta && comboForm.vigencia_desde > comboForm.vigencia_hasta) {
+      toast.error('La fecha "desde" no puede ser posterior a "hasta"'); return
+    }
     setSavingCombo(true)
     try {
       const { data: combo, error: eC } = await supabase.from('combos').insert({
@@ -1709,6 +1729,8 @@ export default function ConfigPage() {
         descuento_tipo: comboForm.descuento_tipo,
         descuento_monto,
         sucursal_id: sucursalId || null,
+        vigencia_desde: comboForm.vigencia_desde || null,
+        vigencia_hasta: comboForm.vigencia_hasta || null,
       }).select('id').single()
       if (eC) throw eC
       const { error: eI } = await supabase.from('combo_items').insert(
@@ -1717,7 +1739,7 @@ export default function ConfigPage() {
       if (eI) throw eI
       toast.success('Combo creado')
       logActividad({ entidad: 'combo', entidad_nombre: comboForm.nombre.trim(), accion: 'crear', pagina: '/configuracion' })
-      setComboForm({ nombre: '', descuento_tipo: 'pct', descuento_valor: '0' })
+      setComboForm({ nombre: '', descuento_tipo: 'pct', descuento_valor: '0', vigencia_desde: '', vigencia_hasta: '' })
       setComboItems([{ producto_id: '', cantidad: '1' }])
       qc.invalidateQueries({ queryKey: ['combos'] })
     } catch (err: any) { toast.error(err.message ?? 'Error al crear combo') }
@@ -2064,6 +2086,46 @@ export default function ConfigPage() {
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['metodos_pago'] }),
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ── Descuento al cliente por método de pago (punto 1 Fede/GO, mig 281) ────────────────
+  // Vive en metodos_pago.config.descuento — panel expandible por método.
+  const [promoMetodoId, setPromoMetodoId] = useState<string | null>(null)
+  const [promoForm, setPromoForm] = useState({ pct: '', tope: '', dias: [] as number[], desde: '', hasta: '' })
+  const abrirPromoMetodo = (m: any) => {
+    const d = descuentoDeConfig(m.config)
+    setPromoForm({
+      pct: d?.pct != null ? String(d.pct) : '',
+      tope: d?.tope != null ? String(d.tope) : '',
+      dias: d?.dias ?? [],
+      desde: d?.desde ?? '',
+      hasta: d?.hasta ?? '',
+    })
+    setPromoMetodoId(m.id)
+  }
+  const savePromoMetodo = useMutation({
+    mutationFn: async (m: any) => {
+      const pct = parseFloat(promoForm.pct)
+      const descuento = Number.isFinite(pct) && pct > 0 ? {
+        pct: Math.min(pct, 100),
+        tope: promoForm.tope ? parseFloat(promoForm.tope) : null,
+        dias: promoForm.dias.length > 0 && promoForm.dias.length < 7 ? promoForm.dias : null,
+        desde: promoForm.desde || null,
+        hasta: promoForm.hasta || null,
+      } : null
+      // Merge sobre el config existente: no pisar otras claves que pueda tener el jsonb
+      const configNuevo = { ...(m.config && typeof m.config === 'object' ? m.config : {}), descuento }
+      const { error } = await supabase.from('metodos_pago').update({ config: configNuevo })
+        .eq('id', m.id).eq('tenant_id', tenant!.id)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Promo guardada')
+      setPromoMetodoId(null)
+      qc.invalidateQueries({ queryKey: ['metodos_pago'] })
+      qc.invalidateQueries({ queryKey: ['metodos_pago_cfg'] })  // el POS la lee de acá
+    },
     onError: (e: Error) => toast.error(e.message),
   })
 
@@ -3251,26 +3313,16 @@ export default function ConfigPage() {
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir over-receipt</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Al recibir mercadería, permite ingresar más cantidad de la pedida en la OC. Genera alerta de excedente.</p>
                 </div>
-                <button type="button" disabled={!canEdit} onClick={() => setBizOverReceipt(p => !p)}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none
-                    ${bizOverReceipt ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}
-                    ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
-                    ${bizOverReceipt ? 'translate-x-5' : 'translate-x-0'}`} />
-                </button>
+                <Toggle size="lg" disabled={!canEdit} checked={bizOverReceipt}
+                  onChange={() => setBizOverReceipt(p => !p)} aria-label="Permitir over-receipt" />
               </div>
               <div className="flex items-center justify-between py-1">
                 <div>
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Trazabilidad de asignación de stock</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Registra de qué LPN/ubicación/serie se surtió cada unidad de cada venta, y si fue selección manual o automática. Permite seguir el rastro completo (recall, auditoría) desde Historial y el detalle de venta.</p>
                 </div>
-                <button type="button" disabled={!canEdit} onClick={() => setBizTrazaAsignacion((p: boolean) => !p)}
-                  className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none
-                    ${bizTrazaAsignacion ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}
-                    ${!canEdit ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                  <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform
-                    ${bizTrazaAsignacion ? 'translate-x-5' : 'translate-x-0'}`} />
-                </button>
+                <Toggle size="lg" disabled={!canEdit} checked={bizTrazaAsignacion}
+                  onChange={() => setBizTrazaAsignacion((p: boolean) => !p)} aria-label="Trazabilidad de asignación de stock" />
               </div>
               {/* F2a — Modo de conteo de inventario */}
               <div className="py-1">
@@ -3294,11 +3346,8 @@ export default function ConfigPage() {
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Aprobación de ajustes de conteo</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Las diferencias de un conteo no tocan el stock hasta que un DUEÑO/SUPERVISOR las aprueba en <strong>Inventario → Autorizaciones</strong>. Si el gate está <strong>desactivado</strong>, TODA diferencia requiere aprobación. Si lo <strong>activás</strong>, solo las que superen algún umbral (lo menor que pongas) van a aprobación; el resto se aplica directo.</p>
                   </div>
-                  <button type="button" disabled={!canEdit} onClick={() => setBizConteoGate(g => ({ ...g, activo: !g.activo }))}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ml-3
-                      ${bizConteoGate.activo ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'} ${!canEdit ? 'opacity-50' : ''}`}>
-                    <span className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transform transition-transform ${bizConteoGate.activo ? 'translate-x-5' : 'translate-x-0'}`} />
-                  </button>
+                  <div className="ml-3"><Toggle size="lg" disabled={!canEdit} checked={bizConteoGate.activo}
+                    onChange={() => setBizConteoGate(g => ({ ...g, activo: !g.activo }))} aria-label="Aprobación de ajustes de conteo" /></div>
                 </div>
                 {bizConteoGate.activo && (
                   <div className="mt-2 grid grid-cols-3 gap-2">
@@ -3749,12 +3798,9 @@ export default function ConfigPage() {
                     </div>
                   </div>
                   <label className="flex items-center gap-3 cursor-pointer p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl">
-                    <div className="relative">
-                      <input type="checkbox" checked={grupoForm.es_default} onChange={e => setGrupoForm(p => ({ ...p, es_default: e.target.checked }))} className="sr-only" />
-                      <div className={`w-10 h-5 rounded-full transition-colors ${grupoForm.es_default ? 'bg-amber-50 dark:bg-amber-900/200' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${grupoForm.es_default ? 'translate-x-5' : ''}`} />
-                      </div>
-                    </div>
+                    <Toggle checked={grupoForm.es_default} colorOn="bg-amber-500"
+                      onChange={v => setGrupoForm(p => ({ ...p, es_default: v }))}
+                      aria-label="Grupo por defecto" />
                     <div>
                       <p className="text-sm font-medium text-amber-800 dark:text-amber-400">Filtro por defecto</p>
                       <p className="text-xs text-amber-600 dark:text-amber-400">Aparecerá preseleccionado en Rebaje y Ventas</p>
@@ -4185,23 +4231,72 @@ export default function ConfigPage() {
                     className="w-32 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" /></div>
               )}
             </div>
-            {/* Envío gratis condicional (B5) */}
+            {/* Envío gratis condicional (B5 v2 — multi-regla, punto 7 Fede/GO) */}
             <div>
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Envío gratis condicional (opcional)</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input type="number" onWheel={e => e.currentTarget.blur()} value={bizGratisMonto} onChange={e => setBizGratisMonto(e.target.value)} placeholder="Monto mínimo de venta ($)" disabled={!canEdit}
-                  className="border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                <input type="text" value={bizGratisEtiquetas} onChange={e => setBizGratisEtiquetas(e.target.value)} placeholder="Etiquetas de cliente (Mayorista, VIP)" disabled={!canEdit}
-                  className="border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                <div className="flex items-center gap-2">
-                  <span className="text-xs text-gray-400">Promo</span>
-                  <input type="date" value={bizGratisDesde} onChange={e => setBizGratisDesde(e.target.value)} disabled={!canEdit}
-                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                  <span className="text-xs text-gray-400">a</span>
-                  <input type="date" value={bizGratisHasta} onChange={e => setBizGratisHasta(e.target.value)} disabled={!canEdit}
-                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                </div>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Envío gratis condicional
+                {' '}<InfoTip text="Cada regla combina condiciones con Y: todas las que completes deben cumplirse (monto mínimo de la venta, etiqueta del cliente, fechas, distancia máxima). Entre reglas alcanza con que UNA aplique. Cuando una regla aplica, el POS pone el costo de envío en $0 automáticamente (editable)." />
+              </p>
+              {bizGratisReglas.length === 0 && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Sin reglas — el envío nunca es gratis automáticamente.</p>
+              )}
+              <div className="space-y-2">
+                {bizGratisReglas.map((r, idx) => (
+                  <div key={idx} className="border border-gray-200 dark:border-gray-600 rounded-xl p-3 space-y-2 bg-gray-50 dark:bg-gray-700/30">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-gray-500 dark:text-gray-400">Regla {idx + 1}</span>
+                      {canEdit && (
+                        <button type="button" onClick={() => setBizGratisReglas(prev => prev.filter((_, i) => i !== idx))}
+                          className="p-1 text-gray-400 hover:text-red-500 transition-colors" title="Quitar regla">
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <input type="number" onWheel={e => e.currentTarget.blur()} value={r.montoMinimo} disabled={!canEdit}
+                        onChange={e => setBizGratisReglas(prev => prev.map((x, i) => i === idx ? { ...x, montoMinimo: e.target.value } : x))}
+                        placeholder="Compra mínima ($) — vacío = sin mínimo"
+                        className="border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      <input type="text" value={r.etiquetas} disabled={!canEdit}
+                        onChange={e => setBizGratisReglas(prev => prev.map((x, i) => i === idx ? { ...x, etiquetas: e.target.value } : x))}
+                        placeholder="Etiquetas de cliente (Mayorista, VIP)"
+                        className="border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-gray-400 whitespace-nowrap">Vigencia</span>
+                        <input type="date" value={r.desde} disabled={!canEdit}
+                          onChange={e => setBizGratisReglas(prev => prev.map((x, i) => i === idx ? { ...x, desde: e.target.value } : x))}
+                          className="flex-1 min-w-0 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <span className="text-xs text-gray-400">a</span>
+                        <input type="date" value={r.hasta} disabled={!canEdit}
+                          onChange={e => setBizGratisReglas(prev => prev.map((x, i) => i === idx ? { ...x, hasta: e.target.value } : x))}
+                          className="flex-1 min-w-0 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.5" value={r.maxKm} disabled={!canEdit}
+                          onChange={e => setBizGratisReglas(prev => prev.map((x, i) => i === idx ? { ...x, maxKm: e.target.value } : x))}
+                          placeholder="Distancia máx. (km)"
+                          className="flex-1 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <InfoTip text="Tope de distancia del envío para que la regla aplique. Si el envío no tiene distancia calculada (costo por monto fijo), una regla con tope de km NO aplica — nunca se regala un envío fuera de radio." />
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {describirReglaGratis({
+                        montoMinimo: r.montoMinimo ? parseFloat(r.montoMinimo) : null,
+                        etiquetas: r.etiquetas.split(',').map(s => s.trim()).filter(Boolean),
+                        desde: r.desde || null, hasta: r.hasta || null,
+                        maxKm: r.maxKm ? parseFloat(r.maxKm) : null,
+                      })}
+                    </p>
+                  </div>
+                ))}
               </div>
+              {canEdit && (
+                <button type="button"
+                  onClick={() => setBizGratisReglas(prev => [...prev, { montoMinimo: '', etiquetas: '', desde: '', hasta: '', maxKm: '' }])}
+                  className="mt-2 text-xs text-accent-text hover:underline flex items-center gap-1">
+                  <Plus size={12} /> Agregar regla de envío gratis
+                </button>
+              )}
             </div>
           </div>
 
@@ -4495,9 +4590,34 @@ export default function ConfigPage() {
                 <span className="text-lg">💬</span> Plantilla WhatsApp — Coordinar entregas
               </h3>
               <p className="text-xs text-gray-400 dark:text-gray-500">
-                Plantilla para el botón "Coordinar por WhatsApp" en el módulo de Envíos. Variables: <span className="font-mono text-accent-text">{'{{Nombre_Cliente}}'}</span> <span className="font-mono text-accent-text">{'{{Nombre_Negocio}}'}</span> <span className="font-mono text-accent-text">{'{{Numero_Orden}}'}</span> <span className="font-mono text-accent-text">{'{{Tracking}}'}</span> <span className="font-mono text-accent-text">{'{{Courier}}'}</span> <span className="font-mono text-accent-text">{'{{Fecha_Entrega}}'}</span>
+                Plantilla para el botón "Coordinar por WhatsApp" en el módulo de Envíos.
+                Tocá una variable para insertarla donde esté el cursor:
               </p>
-              <textarea value={bizWAPlantilla} onChange={e => setBizWAPlantilla(e.target.value)}
+              {/* Punto 9 Fede/GO: variables como chips clickeables (antes eran texto plano) */}
+              <div className="flex flex-wrap gap-1.5">
+                {['Nombre_Cliente', 'Nombre_Negocio', 'Numero_Orden', 'Tracking', 'Courier', 'Fecha_Entrega'].map(v => (
+                  <button key={v} type="button"
+                    onClick={() => {
+                      const ta = waTextareaRef.current
+                      const token = `{{${v}}}`
+                      if (!ta) { setBizWAPlantilla(p => p + token); return }
+                      const start = ta.selectionStart ?? bizWAPlantilla.length
+                      const end = ta.selectionEnd ?? start
+                      const nuevo = bizWAPlantilla.slice(0, start) + token + bizWAPlantilla.slice(end)
+                      setBizWAPlantilla(nuevo)
+                      // devolver el foco y dejar el cursor después del token insertado
+                      requestAnimationFrame(() => {
+                        ta.focus()
+                        const pos = start + token.length
+                        ta.setSelectionRange(pos, pos)
+                      })
+                    }}
+                    className="px-2.5 py-1 text-xs font-mono rounded-full border border-accent-text/40 text-accent-text hover:bg-accent/10 transition-colors cursor-pointer">
+                    + {`{{${v}}}`}
+                  </button>
+                ))}
+              </div>
+              <textarea ref={waTextareaRef} value={bizWAPlantilla} onChange={e => setBizWAPlantilla(e.target.value)}
                 rows={5} placeholder={`Hola {{Nombre_Cliente}}! Somos {{Nombre_Negocio}}.\n\nTu pedido #{{Numero_Orden}} está en camino.\n🚚 Courier: {{Courier}}\n📅 Fecha: {{Fecha_Entrega}}`}
                 className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-y bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 font-mono" />
             </div>
@@ -4838,6 +4958,21 @@ export default function ConfigPage() {
                   onChange={e => setComboForm(p => ({ ...p, descuento_valor: e.target.value }))}
                   className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
               </div>
+              {/* Vigencia por fecha (mig 279) */}
+              <div className="col-span-2">
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                  Vigencia (opcional) <InfoTip text="El combo se aplica solo entre estas fechas (ambas inclusive). Dejá los campos vacíos para que aplique siempre. Un combo vencido deja de ofrecerse solo en el POS — no hace falta apagarlo a mano." />
+                </label>
+                <div className="flex items-center gap-2">
+                  <input type="date" value={comboForm.vigencia_desde}
+                    onChange={e => setComboForm(p => ({ ...p, vigencia_desde: e.target.value }))}
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700" />
+                  <span className="text-xs text-gray-400">a</span>
+                  <input type="date" value={comboForm.vigencia_hasta}
+                    onChange={e => setComboForm(p => ({ ...p, vigencia_hasta: e.target.value }))}
+                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700" />
+                </div>
+              </div>
             </div>
             <button onClick={addCombo} disabled={savingCombo}
               className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
@@ -4858,7 +4993,17 @@ export default function ConfigPage() {
                     <Gift size={15} className="text-amber-600 dark:text-amber-400" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{c.nombre}</p>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100 flex items-center gap-2">
+                      {c.nombre}
+                      {(() => {
+                        if (!c.vigencia_desde && !c.vigencia_hasta) return null
+                        const estado = estadoVigenciaCombo(c, hoyLocalISO())
+                        const cls = estado === 'vigente' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                          : estado === 'programado' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                          : 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300'
+                        return <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${cls}`}>{estado}</span>
+                      })()}
+                    </p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
                       {(c.combo_items ?? []).map((ci: any, i: number) => (
                         <span key={i}>{i > 0 ? ' + ' : ''}{ci.productos?.nombre ?? '?'} ×{ci.cantidad}</span>
@@ -4866,6 +5011,9 @@ export default function ConfigPage() {
                       {(c.descuento_tipo ?? 'pct') === 'pct'
                         ? `${c.descuento_pct}% off`
                         : (c.descuento_tipo === 'monto_usd' ? `USD ${c.descuento_monto} off` : `$${c.descuento_monto} off`)}
+                      {(c.vigencia_desde || c.vigencia_hasta) && (
+                        <> · {c.vigencia_desde ?? '…'} → {c.vigencia_hasta ?? '…'}</>
+                      )}
                     </p>
                   </div>
                   <button onClick={() => deleteCombo(c.id)}
@@ -4894,7 +5042,8 @@ export default function ConfigPage() {
           ) : (
             <div className="space-y-2">
               {(metodosPago as any[]).map((m: any) => (
-                <div key={m.id} className="flex items-center gap-3 px-4 py-3 border border-gray-100 dark:border-gray-700 rounded-xl">
+                <div key={m.id} className="border border-gray-100 dark:border-gray-700 rounded-xl">
+                <div className="flex items-center gap-3 px-4 py-3">
                   {editMetodoId === m.id ? (
                     <>
                       <input type="color" value={editMetodoData.color}
@@ -4935,10 +5084,18 @@ export default function ConfigPage() {
                       <div className="w-4 h-4 rounded-full flex-shrink-0 border border-gray-200 dark:border-gray-600" style={{ backgroundColor: m.color }} />
                       <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100">{m.nombre}</span>
                       {(m.comision_pct > 0) && (
-                        <span className="text-xs px-1.5 py-0.5 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 rounded font-mono" title="Comisión de la plataforma">
+                        <span className="text-xs px-1.5 py-0.5 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 rounded font-mono" title="Comisión que te cobra la plataforma (costo tuyo, no descuento al cliente)">
                           {m.comision_pct}%
                         </span>
                       )}
+                      {(() => {
+                        const d = descuentoDeConfig(m.config)
+                        return d ? (
+                          <span className="text-xs px-1.5 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded font-medium" title="Descuento al cliente por pagar con este método">
+                            🏷 {etiquetaPromo(d)}
+                          </span>
+                        ) : null
+                      })()}
                       {m.cuenta_origen_id && (() => {
                         const co = (cuentasOrigen as any[]).find(c => c.id === m.cuenta_origen_id)
                         return co ? (
@@ -4963,6 +5120,13 @@ export default function ConfigPage() {
                         className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${(m.habilitado_gastos ?? true) ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 hover:bg-purple-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
                         Gastos
                       </button>
+                      {canEdit && (
+                        <button onClick={() => promoMetodoId === m.id ? setPromoMetodoId(null) : abrirPromoMetodo(m)}
+                          title="Descuento al cliente por pagar con este método"
+                          className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${descuentoDeConfig(m.config) ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'}`}>
+                          Promo
+                        </button>
+                      )}
                       <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '', cuenta_origen_id: m.cuenta_origen_id ?? '' }) }}
                         className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                         <Pencil size={14} />
@@ -4975,6 +5139,66 @@ export default function ConfigPage() {
                       )}
                     </>
                   )}
+                </div>
+
+                {/* Panel de promo por método (punto 1 Fede/GO): % + tope + días + vigencia */}
+                {promoMetodoId === m.id && (
+                  <div className="px-4 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-3">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Descuento que se le hace <strong>al cliente</strong> por pagar con {m.nombre}.
+                      {' '}<InfoTip text="Distinto de la comisión (naranja), que es lo que la plataforma te cobra a vos. El descuento se aplica solo en el POS al cobrar con este método, respetando días y vigencia. Con pago mixto, descuenta sobre lo abonado con este método. Dejá el % vacío para quitar la promo." />
+                    </p>
+                    <div className="flex flex-wrap items-end gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento (%)</label>
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5" value={promoForm.pct}
+                          onChange={e => setPromoForm(p => ({ ...p, pct: e.target.value }))} placeholder="0"
+                          className="w-20 px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-center focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tope ($, opcional)</label>
+                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={promoForm.tope}
+                          onChange={e => setPromoForm(p => ({ ...p, tope: e.target.value }))} placeholder="Sin tope"
+                          className="w-28 px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Vigencia (opcional)</label>
+                        <div className="flex items-center gap-1.5">
+                          <input type="date" value={promoForm.desde} onChange={e => setPromoForm(p => ({ ...p, desde: e.target.value }))}
+                            className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
+                          <span className="text-xs text-gray-400">a</span>
+                          <input type="date" value={promoForm.hasta} onChange={e => setPromoForm(p => ({ ...p, hasta: e.target.value }))}
+                            className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Días de la semana (ninguno marcado = todos)</label>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {DIAS_SEMANA_CORTOS.map((dia, i) => (
+                          <button key={dia} type="button"
+                            onClick={() => setPromoForm(p => ({ ...p, dias: p.dias.includes(i) ? p.dias.filter(x => x !== i) : [...p.dias, i].sort() }))}
+                            className={`px-2.5 py-1 text-xs rounded-full border transition-colors
+                              ${promoForm.dias.includes(i)
+                                ? 'border-accent-text bg-accent/10 text-accent-text font-medium'
+                                : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                            {dia}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setPromoMetodoId(null)}
+                        className="px-3 py-1.5 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 rounded-lg text-xs hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                        Cancelar
+                      </button>
+                      <button onClick={() => savePromoMetodo.mutate(m)} disabled={savePromoMetodo.isPending}
+                        className="px-3 py-1.5 bg-accent hover:bg-accent/90 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-60">
+                        {savePromoMetodo.isPending ? 'Guardando…' : 'Guardar promo'}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 </div>
               ))}
             </div>
@@ -5101,17 +5325,24 @@ export default function ConfigPage() {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alertar si las devoluciones superan</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Alertar por devoluciones repetidas
+                      {' '}<InfoTip text="Cuenta OPERACIONES de devolución (no unidades ni plata): si un mismo cliente o un mismo producto acumula más devoluciones que este número dentro de la ventana de días, se genera la alerta. Ej: con 3, la 4ta devolución del mismo producto dispara el aviso." />
+                    </label>
                     <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">más de</span>
                       <input type="number" min="1" onWheel={e => e.currentTarget.blur()} value={bizAlertaDevN} disabled={!canEdit}
-                        onChange={e => setBizAlertaDevN(e.target.value)} placeholder="Desactivado"
-                        className="flex-1 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                      <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">por cliente/producto</span>
+                        onChange={e => setBizAlertaDevN(e.target.value)} placeholder="—"
+                        className="w-20 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-center focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                      <span className="text-sm text-gray-500 dark:text-gray-400">devoluciones del mismo cliente o producto</span>
                     </div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin alerta de devoluciones.</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = alerta desactivada.</p>
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">En los últimos (días)</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                      Ventana de tiempo (días)
+                      {' '}<InfoTip text="Las devoluciones se cuentan dentro de este período hacia atrás desde hoy. Default: 30 días." />
+                    </label>
                     <input type="number" min="1" max="365" onWheel={e => e.currentTarget.blur()} value={bizAlertaDevDias} disabled={!canEdit}
                       onChange={e => setBizAlertaDevDias(e.target.value)}
                       className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
@@ -5287,15 +5518,24 @@ export default function ConfigPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Datos mínimos requeridos</label>
-                  <select value={bizClienteDatosMinimos} disabled={!canEdit}
-                    onChange={e => setBizClienteDatosMinimos(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
-                    <option value="nombre">Solo nombre</option>
-                    <option value="nombre_dni">Nombre + DNI</option>
-                    <option value="nombre_dni_email">Nombre + DNI + Email</option>
-                    <option value="todos">Todos los datos</option>
-                  </select>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Datos requeridos al crear un cliente
+                    {' '}<InfoTip text="Aplica al alta rápida de cliente desde el POS. El nombre es siempre obligatorio; marcá qué otros datos no pueden faltar." />
+                  </label>
+                  <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
+                    <label className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500">
+                      <input type="checkbox" checked disabled className="w-4 h-4 accent-accent opacity-60" />
+                      Nombre (siempre)
+                    </label>
+                    {([['dni', 'DNI'], ['telefono', 'Teléfono'], ['email', 'Email']] as const).map(([key, label]) => (
+                      <label key={key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                        <input type="checkbox" disabled={!canEdit} checked={bizClienteCampos[key]}
+                          onChange={e => setBizClienteCampos(p => ({ ...p, [key]: e.target.checked }))}
+                          className="w-4 h-4 accent-accent" />
+                        {label}
+                      </label>
+                    ))}
+                  </div>
                 </div>
                 <div className="flex items-center justify-between py-1">
                   <div>

@@ -19,6 +19,7 @@ import { useCierreContable } from '@/hooks/useCierreContable'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 
 type Tab = 'caja' | 'historial' | 'caja_fuerte' | 'reportes' | 'configuracion' | 'cobranzas'
@@ -2831,16 +2832,14 @@ export default function CajaPage() {
                   const enabled = roles.includes(value)
                   return (
                     <label key={value} className="flex items-center gap-3 cursor-pointer">
-                      <div onClick={async () => {
-                        const current: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
-                        const updated = enabled ? current.filter(r => r !== value) : [...current, value]
-                        await supabase.from('tenants').update({ caja_fuerte_roles: updated }).eq('id', tenant!.id)
-                        qc.invalidateQueries({ queryKey: ['cajas'] })
-                        window.location.reload() // reload para que authStore refresque el tenant
-                      }}
-                        className={`w-9 h-5 rounded-full transition-colors flex items-center px-0.5 ${enabled ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                        <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-4' : 'translate-x-0'}`} />
-                      </div>
+                      <Toggle checked={enabled} aria-label={`Acceso a bóveda: ${label}`}
+                        onChange={async () => {
+                          const current: string[] = (tenant as any)?.caja_fuerte_roles ?? ['DUEÑO']
+                          const updated = enabled ? current.filter(r => r !== value) : [...current, value]
+                          await supabase.from('tenants').update({ caja_fuerte_roles: updated }).eq('id', tenant!.id)
+                          qc.invalidateQueries({ queryKey: ['cajas'] })
+                          window.location.reload() // reload para que authStore refresque el tenant
+                        }} />
                       <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
                     </label>
                   )

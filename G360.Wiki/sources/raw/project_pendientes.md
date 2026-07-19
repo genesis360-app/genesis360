@@ -6,7 +6,76 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-07-19, cierre) — **PROD = DEV = v1.134.0 (SIN CAMBIOS)** · PR #293 mergeado a `main` (`c534ddea`) · tag+release v1.134.0 · Vercel producción READY (`app.genesis360.pro` verificado 200) · migs **273-276 en DEV y PROD** · **2 commits NUEVOS en `dev` LOCAL (`1ae43343`, `f64ad9be`), NINGUNO PUSHEADO A GITHUB** (`git rev-list --left-right --count dev...origin/dev` → `2 0`) · **mig 277 aplicada SOLO en DEV**
+> ### 🐛 ARRANCÁ ACÁ (2026-07-19, hard delete productos + auto-sufijo variante) — **EN DEV, SIN COMMITEAR** · PROD sigue v1.135.0 (SIN CAMBIOS) · mig **278 SOLO en DEV**
+>
+> **Disparador:** GO preguntó (1) si había un botón para eliminar varios productos a la vez (solo
+> existía Desactivar/Reactivar en bulk) y (2) por qué el ingreso de stock de un SKU vinculado a un
+> "Grupo de variantes" (creó "Remera Básica" con talle S) no le pedía el talle.
+>
+> **Hallazgo 1 — no había hard delete real.** El botón "Eliminar" de `ProductoFormPage` en realidad
+> hacía `UPDATE productos SET activo=false` (soft-delete, idéntico al toggle Activo/Inactivo del
+> mismo formulario) — redundante. No existía NINGÚN hard delete real, ni individual ni bulk.
+>
+> **Hallazgo 2 — el comportamiento es correcto por diseño, faltaba un detalle de UX.** Genesis360
+> tiene dos modelos de variante NO combinables (mig 274): "Atributos de variante" (un SKU, el talle
+> se pide por LPN al ingresar) y "Grupo de variantes" (cada talle es un SKU SEPARADO — por diseño el
+> ingreso no pregunta el talle porque el SKU elegido YA ES esa variante). Confirmado en DEV que
+> "Remera Básica" (SKU-00092) estaba correctamente vinculada al grupo con `variante_valores`
+> `{Talle:"S"}` — pero el nombre no reflejaba el talle y en NINGÚN lado de Inventario/Ventas/tickets
+> se muestra un badge de variante (solo en el panel de Grupos de Productos) — el nombre es el ÚNICO
+> lugar donde se distingue la variante ahí. Causa raíz: "Generar variantes" (alta automática) sí arma
+> el nombre "Grupo — Valor", pero vincular un producto YA EXISTENTE a un grupo (lo que hizo GO) no
+> aplicaba ese sufijo.
+>
+> **Cambios (EN DEV, sin commitear):**
+> 1. **Hard delete real de productos (individual + bulk)** — nueva **mig 278**
+>    (`278_hard_delete_productos.sql`, aplicada en DEV; fix post-aplicación de un bug real hallado en
+>    e2e: columna `producto_id` ambigua en plpgsql por el `RETURNS TABLE` con esa misma columna,
+>    resuelto calificando `alertas.producto_id`/`productos.id`). 2 funciones:
+>    `fn_producto_tiene_actividad(p_producto_id)` chequea actividad en ~17 tablas relacionadas
+>    (venta_items, movimientos_stock, orden_compra_items, recepcion_items, traslado_items,
+>    inventario_conteo_items/conteos, devolucion_items, devolucion_proveedor_items, envio_items,
+>    venta_item_despachos, inventario_lineas, inventario_series, combo_items, combos, kit_recetas,
+>    kitting_log, inventario_meli_map, inventario_tn_map) — "sin stock actual" NO alcanza (un
+>    producto vendido y agotado tiene stock=0 pero sí historial); SECURITY DEFINER a propósito porque
+>    el chequeo debe ser tenant-wide (varias tablas tienen RLS por sucursal, no puede dejar pasar un
+>    delete de un producto con actividad en OTRA sucursal que el usuario no ve). Devuelve
+>    (producto_id, eliminado, motivo) por fila. Frontend: `ProductoFormPage.tsx` (botón "Eliminar"
+>    ahora hard delete real vía RPC, muestra motivo si está bloqueado) + `ProductosPage.tsx` (botón
+>    "Eliminar" nuevo en la bulk action bar, mismo guard server-side, reporta "N eliminados · M
+>    bloqueados"). Validado e2e manual: producto sin actividad se borra de verdad (fila desaparece de
+>    `productos`); "Remera Básica — S" (con stock/movimientos) queda bloqueado con el mensaje
+>    esperado.
+> 2. **Auto-sufijo de nombre al vincular producto existente a un Grupo de variantes** —
+>    `ProductoFormPage.tsx`: al guardar un producto vinculado a un grupo con valores de variante
+>    cargados, el nombre se auto-completa con `— <valor>` (mismo criterio que "Generar variantes"); si
+>    el usuario cambia de valor se despega el sufijo viejo antes de agregar el nuevo. El registro de
+>    prueba de GO ("Remera Básica", SKU-00092) fue renombrado a mano a "Remera Básica — S".
+>
+> **▶ Pendiente:** commitear (nada commiteado todavía) + decidir con GO si se deploya. Sin bump de
+> versión, sin PR, sin tag. Ver `log.md` ("Hard delete real de productos + auto-sufijo de variante"),
+> [[wiki/features/productos]], [[wiki/features/grupos-variantes]].
+
+> ### 📍 ESTADO ANTERIOR (2026-07-19, deploy v1.135.0) — **PROD = DEV = v1.135.0** · PR #294 mergeado a `main` (`3e121867`) · tag+release v1.135.0 · Vercel QA (`dev`) y PRD (`main`/`app.genesis360.pro`) ambos READY · mig **277 en DEV y PROD** (sin drift)
+>
+> **Deployado en v1.135.0** (detalle completo abajo, sesión 2026-07-19 previa al deploy, y `log.md`):
+> fix impresión ticket/devolución (`@media print` + `.no-print`) · sistema `--color-accent-text`
+> para dark mode (91 archivos, ~1440 usos migrados) · factura/NC con nombre+descripción del producto
+> (jspdf-autotable, alineación corregida) · fix bug duplicado + feature "Eliminar grupo" en Grupos
+> de variantes · atributos de variante ronda 4 (`venta_item_despachos` snapshot, mig 277, e2e
+> 95/96/97). Ver [[wiki/business/roadmap]] v1.135.0 para el resumen curado.
+>
+> **▶ Pendiente (no bloqueante, sin cambios):**
+> 1. Relevamientos sin responder: **Inventario/WMS** y **Ventas H-L** (GO + socio).
+> 2. El grupo de variantes duplicado real de GO ("Remera Los Redondos", ver bloque de abajo) sigue
+>    sin resolver a propósito — pedirle a GO que use el botón "Eliminar grupo" nuevo sobre el
+>    duplicado vacío (se identifica fácil: dice "0 variantes").
+> 3. Backlog de 13 puntos relevado para Fede/GO (Config Ventas/Envíos) — 9 a implementar + 4 a
+>    conversar entre ellos, ninguno arrancado. Ver `project_revision_config_fede_tonga` (memoria) —
+>    2 hallazgos importantes: "Envío gratis condicional" no tiene efecto real (config write-only,
+>    nada la lee) e integración MODO nunca validada contra la API real.
+
+> ### 📍 ESTADO ANTERIOR (2026-07-19, cierre pre-deploy) — **PROD = DEV = v1.134.0 (SIN CAMBIOS)** · PR #293 mergeado a `main` (`c534ddea`) · tag+release v1.134.0 · Vercel producción READY (`app.genesis360.pro` verificado 200) · migs **273-276 en DEV y PROD** · **2 commits NUEVOS en `dev` LOCAL (`1ae43343`, `f64ad9be`), NINGUNO PUSHEADO A GITHUB** (`git rev-list --left-right --count dev...origin/dev` → `2 0`) · **mig 277 aplicada SOLO en DEV**
 >
 > **GO probó los 3 flujos pedidos y autorizó el deploy completo** ("probé el 1 y el 2 y funcionan
 > bien... el 3 confirmado, se ve bien... Puedes aplicar las migs y todo lo pendiente a DEV y PRD" +

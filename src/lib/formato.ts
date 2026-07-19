@@ -70,3 +70,27 @@ export function formatMoneda(
   const formatted = safe.toLocaleString(localeMoneda(moneda), { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
   return showSymbol ? `${simboloMoneda(moneda)}${formatted}` : formatted
 }
+
+// ── Helpers centrales de formato numérico (backlog Fede/GO punto 6, 2026-07-19) ──────────
+// Punto único para los TRES formatos que usa la app: plata ($, sin decimales, es-AR),
+// enteros (separador de miles) y porcentajes. El código existente tiene ~340 llamados
+// sueltos a toLocaleString('es-AR', …) — el código NUEVO debe usar estos helpers, y el
+// viejo se migra de forma oportunista al tocar cada archivo (no en una pasada masiva).
+
+/** Plata en pesos, sin decimales: 12345.6 → "$12.346". Para montos con centavos usar formatMoneda con decimals:2. */
+export function fmtPesos(n: number | string | null | undefined): string {
+  const v = typeof n === 'number' ? n : parseFloat(String(n ?? 0))
+  return `$${(isNaN(v) ? 0 : v).toLocaleString('es-AR', { maximumFractionDigits: 0 })}`
+}
+
+/** Entero con separador de miles: 12345 → "12.345". */
+export function fmtEntero(n: number | string | null | undefined): string {
+  const v = typeof n === 'number' ? n : parseFloat(String(n ?? 0))
+  return (isNaN(v) ? 0 : Math.round(v)).toLocaleString('es-AR')
+}
+
+/** Porcentaje: 10 → "10%" · 10.5 → "10,5%" (hasta 2 decimales, sin ceros de relleno). */
+export function fmtPct(n: number | string | null | undefined): string {
+  const v = typeof n === 'number' ? n : parseFloat(String(n ?? 0))
+  return `${(isNaN(v) ? 0 : v).toLocaleString('es-AR', { maximumFractionDigits: 2 })}%`
+}

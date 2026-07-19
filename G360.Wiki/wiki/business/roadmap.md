@@ -9,9 +9,36 @@ updated: 2026-05-29
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 18 de Julio, 2026
+**Última actualización:** 19 de Julio, 2026
 
 ---
+
+## v1.135.0 — 🖨️🎨🧾 Fix impresión ticket + dark mode tokens + factura nombre+descripción + fix grupos de variantes — ✅ PROD (2026-07-19, PR #294)
+
+Mig **277** en DEV y PROD.
+
+- **Fix impresión**: el ticket de venta y el comprobante de devolución imprimían toda la pantalla en
+  vez de solo el comprobante — CSS `@media print` + clases `.no-print` en `VentasPage.tsx`.
+- **Sistema de dark-mode**: nuevo color token `--color-accent-text` (texto/bordes en modo oscuro,
+  más claro que el accent normal, mismo criterio que el scrollbar) migrado mecánicamente en 91
+  archivos de `src/` (~1440 usos de `text-accent`/`border-accent`/`ring-accent` → `-text`) para
+  mejorar contraste. Detalle: [[wiki/architecture/frontend-stack]].
+- **Factura/ticket/historial**: muestran nombre del SKU + descripción del producto (2 líneas), no
+  solo el nombre — `src/lib/facturasPDF.ts` (`descripcionCelda`/`descripcionHooks`, baseline
+  correcto en jspdf-autotable), `VentasPage.tsx` y `FacturacionPage.tsx`. Detalle:
+  [[wiki/features/facturacion-afip]].
+- **Fix bug + feature "Grupo de variantes"**: se duplicaba al editar (`isEditing && grupoId` mal
+  puesto en `ProductoGrupoModal.tsx`, corregido a `grupoId`); nuevo botón "Eliminar" por grupo
+  (soft-delete `producto_grupos.activo=false`) en `ProductosPage.tsx`. Detalle:
+  [[wiki/features/grupos-variantes]].
+- **Atributos de variante — ronda 4**: `venta_item_despachos` snapshotea talle/color/encaje/
+  formato/sabor_aroma al momento del despacho (mig 277, 5 columnas nullable). Badges visibles en
+  "Combinar LPNs" (`InventarioPage.tsx`) y en historial/ticket de venta (`VentasPage.tsx`). 3 specs
+  e2e nuevos (95/96/97, mutantes de rebaje ambiguo/venta bloqueada/LPN obligatorio). Detalle:
+  [[wiki/features/atributos-variante]].
+
+Build verde (tsc + vite build). Supabase DEV y PROD sin drift (mig 277 en ambas). Vercel QA (dev) y
+PRD (main) ambos READY.
 
 ## v1.134.0 — 🧵🚚 Atributos de variante FUNCIONALES + F3b (ARCA→resumen) + traslado real desde LpnAccionesModal — ✅ PROD (2026-07-18, PR #293)
 

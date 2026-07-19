@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Check, X, Star, StarOff, Layers } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 
 interface Estado { id: string; nombre: string; color: string }
@@ -206,13 +207,11 @@ export default function GruposEstadosPage() {
 
           {/* Default toggle */}
           <label className="flex items-center gap-3 cursor-pointer p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-xl">
-            <div className="relative">
-              <input type="checkbox" checked={form.es_default}
-                onChange={e => setForm(p => ({ ...p, es_default: e.target.checked }))} className="sr-only" />
-              <div className={`w-10 h-5 rounded-full transition-colors ${form.es_default ? 'bg-amber-50 dark:bg-amber-900/200' : 'bg-gray-300'}`}>
-                <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.es_default ? 'translate-x-5' : ''}`} />
-              </div>
-            </div>
+            {/* colorOn amber-500 real: el track viejo usaba bg-amber-50 (casi blanco) y el knob
+                blanco se perdía encima — mismo patrón de contraste que el UAT §31 */}
+            <Toggle checked={form.es_default} colorOn="bg-amber-500"
+              onChange={v => setForm(p => ({ ...p, es_default: v }))}
+              aria-label="Grupo por defecto" />
             <div>
               <p className="text-sm font-medium text-amber-800 dark:text-amber-400">Marcar como filtro por defecto</p>
               <p className="text-xs text-amber-600 dark:text-amber-400">Este grupo aparecerá preseleccionado en Rebaje y Ventas</p>

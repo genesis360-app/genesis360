@@ -6,6 +6,42 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-19] update | Hard delete real de productos + auto-sufijo de variante
+
+**🟡 EN DEV, SIN COMMITEAR** (nada en `git status` fuera de working tree — `supabase/migrations/278_hard_delete_productos.sql` sin trackear + `src/pages/ProductoFormPage.tsx`/`ProductosPage.tsx` modificados). PROD sigue v1.135.0 sin cambios; migraciones en PROD siguen en 001-277.
+
+**Disparador:** GO preguntó dos cosas sobre Productos: (1) si existía un botón para eliminar varios productos a la vez (solo había Desactivar/Reactivar en bulk); (2) por qué al ingresar inventario de un SKU vinculado a un "Grupo de variantes" (creó "Remera Básica" con talle S) no le pedía el talle.
+
+1. **Hallazgo 1 — no había hard delete real.** El "Eliminar" individual que ya existía en `ProductoFormPage` en realidad hacía `UPDATE productos SET activo=false` (soft-delete, idéntico al toggle "Activo/Inactivo" del mismo formulario) — redundante. No existía ningún hard delete real, ni individual ni bulk.
+
+2. **Hallazgo 2 — el comportamiento es correcto por diseño, faltaba un detalle de UX.** Genesis360 tiene dos modelos de variantes NO combinables (documentado desde mig 274): "Atributos de variante" (un SKU, el talle se pide por LPN al ingresar stock) y "Grupo de variantes" (`producto_grupos`, cada talle/color es un producto/SKU SEPARADO — por diseño el ingreso no pregunta el talle porque el SKU elegido YA ES esa variante). Se confirmó en DEV que "Remera Básica" (SKU-00092) estaba correctamente vinculada al grupo con `variante_valores {Talle:"S"}` — el comportamiento (no preguntar talle) es correcto, PERO el nombre del producto no reflejaba el talle ("Remera Básica" a secas), y en NINGÚN lado de Inventario/Ventas/tickets se muestra un badge de variante (eso solo existe en el panel de Grupos dentro de Productos) — el nombre es el ÚNICO lugar donde se distingue la variante en esas pantallas. Causa raíz: "Generar variantes" (alta automática desde el modal del grupo) sí arma el nombre como "Grupo — Valor", pero vincular un producto YA EXISTENTE a un grupo (lo que hizo GO) no aplicaba ese sufijo.
+
+**Cambios implementados (EN DEV, sin commitear):**
+
+1. **Hard delete real de productos (individual + bulk).** Nueva migración `supabase/migrations/278_hard_delete_productos.sql` (aplicada en DEV, con un fix post-aplicación por un bug real encontrado en e2e: columna `producto_id` ambigua en plpgsql porque el `RETURNS TABLE` usa esa misma columna de nombre — resuelto calificando `alertas.producto_id`/`productos.id` en los DELETE). 2 funciones:
+   - `fn_producto_tiene_actividad(p_producto_id uuid)`: chequea actividad histórica en ~17 tablas relacionadas (venta_items, movimientos_stock, orden_compra_items, recepcion_items, traslado_items, inventario_conteo_items/conteos, devolucion_items, devolucion_proveedor_items, envio_items, venta_item_despachos, inventario_lineas, inventario_series, combo_items, combos, kit_recetas, kitting_log, inventario_meli_map, inventario_tn_map). "Sin stock actual" NO alcanza como criterio (un producto vendido y agotado tiene stock=0 pero sí historial) — el único criterio seguro es cero actividad en toda la vida del producto. SECURITY DEFINER a propósito: varias de esas tablas tienen RLS filtrado por sucursal, y el chequeo tiene que ser tenant-wide para no dejar pasar un delete de un producto con actividad real en OTRA sucursal que el usuario no ve por RLS normal.
+   - `eliminar_productos_fisico(p_ids uuid[])`: hace el DELETE real, uno por uid, solo si no tiene actividad. Devuelve (producto_id, eliminado, motivo) por fila para reportar parciales.
+   - Frontend: `src/pages/ProductoFormPage.tsx` — el botón "Eliminar" ahora llama a la RPC (antes era soft-delete); si está bloqueado muestra el motivo ("tiene movimientos, ventas, compras..."). `src/pages/ProductosPage.tsx` — nuevo botón "Eliminar" en la barra de acciones bulk (antes solo había Desactivar/Reactivar), mismo guard server-side, reporta "N eliminados · M bloqueados".
+   - Validado end-to-end con Playwright manual (spec temporal, borrada después de usarla): producto nuevo sin actividad → hard delete real confirmado (desaparece de la lista, fila borrada de la tabla `productos`). Producto con stock/movimientos ("Remera Básica — S") → bloqueado correctamente con el mensaje esperado.
+
+2. **Auto-sufijo de nombre al vincular producto existente a un Grupo de variantes.** `src/pages/ProductoFormPage.tsx` — al guardar un producto vinculado a un grupo con valores de variante cargados, el nombre ahora se auto-completa con el sufijo `— <valor>` (mismo criterio que ya usaba "Generar variantes" en el modal del grupo), y si el usuario cambia de valor (ej. S → M) se despega el sufijo viejo antes de agregar el nuevo. El registro de prueba de GO en DEV ("Remera Básica", SKU-00092) fue renombrado a mano a "Remera Básica — S" para reflejar esto de inmediato.
+
+**Pendiente:** commitear (nada commiteado todavía), decidir con GO si se deploya. Sin bump de `APP_VERSION`, sin PR, sin tag, sin release. Ver [[wiki/features/productos]], [[wiki/features/grupos-variantes]], [[wiki/database/migraciones]] fila 278.
+
+## [2026-07-19] deploy | 🚀 v1.135.0 a PRD — print fix, dark mode tokens, factura nombre+descripción, fix grupos de variantes, atributos de variante ronda 4
+
+**Deploy completo autorizado por GO** ("sube todo a QA y PRD... las migs, las mejoras, todo").
+Contenido: los 2 commits locales de la entrada anterior (`1ae43343`, `f64ad9be`) + bump de versión
+(`09aa33ed`). Pasos ejecutados vía `deploy-runner`: `git push origin dev` (dispara Vercel QA) →
+mig **277** aplicada en Supabase PROD (`jjffnbrdjchquexdfgwq`, 5 columnas nullable en
+`venta_item_despachos`, verificada) → PR [#294](https://github.com/genesis360-app/genesis360/pull/294)
+`dev→main` → merge (`3e121867`) → tag+release
+[v1.135.0](https://github.com/genesis360-app/genesis360/releases/tag/v1.135.0) → Vercel QA (`dev`) y
+PRD (`main`/`app.genesis360.pro`) verificados **READY**. Build verde (tsc+vite) antes de pushear.
+Wiki actualizada post-deploy: `roadmap.md` (v1.135.0), `migraciones.md` (277 DEV+PROD),
+`project_pendientes.md` (ARRANCÁ ACÁ actualizado, bloque anterior demovido a ESTADO ANTERIOR).
+Detalle funcional completo: ver la entrada de abajo (sin cambios, ya documentaba el contenido).
+
 ## [2026-07-19] update | 🎨🧾 4 hallazgos NUEVOS de GO/Fede probando en paralelo — fix impresión, contraste dark mode, factura con descripción, bug de grupos de variantes duplicados
 
 **Disparador:** GO (y Fede en paralelo) siguieron probando la app después de la entrada anterior de

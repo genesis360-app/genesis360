@@ -184,6 +184,35 @@ export function calcularComboRows(
   return rows
 }
 
+/** Vigencia por fecha de un combo (mig 279). NULL en ambos lados = siempre vigente.
+ *  `hoy` = YYYY-MM-DD LOCAL (no UTC): una promo "hasta el 15" vale todo el 15 en Argentina. */
+export function comboVigente(
+  combo: { vigencia_desde?: string | null; vigencia_hasta?: string | null },
+  hoy: string,
+): boolean {
+  if (combo.vigencia_desde && hoy < combo.vigencia_desde) return false
+  if (combo.vigencia_hasta && hoy > combo.vigencia_hasta) return false
+  return true
+}
+
+/** Estado de vigencia para los badges de Config: vigente | programado (aún no empezó) | vencido. */
+export function estadoVigenciaCombo(
+  combo: { vigencia_desde?: string | null; vigencia_hasta?: string | null },
+  hoy: string,
+): 'vigente' | 'programado' | 'vencido' {
+  if (combo.vigencia_desde && hoy < combo.vigencia_desde) return 'programado'
+  if (combo.vigencia_hasta && hoy > combo.vigencia_hasta) return 'vencido'
+  return 'vigente'
+}
+
+/** Fecha local YYYY-MM-DD (la de la máquina del usuario, no UTC — evita el corrimiento de -3hs). */
+export function hoyLocalISO(d: Date = new Date()): string {
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${dd}`
+}
+
 /** Parsea el JSON de medio_pago de una venta y restaura como MedioPagoItem[].
  *  Retorna [] si no se puede parsear o no hay datos válidos. */
 export function restaurarMediosPago(mediosPagoJson: string | null | undefined): MedioPagoItem[] {

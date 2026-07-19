@@ -6,7 +6,7 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-07-19, release v1.136.0) — **PR #295 MERGEADO a `main` (`82907baf`) + tag/release v1.136.0** · migs **278-281 en DEV Y PROD (verificadas)** · ⚠️ **Vercel PRD NO buildeó el merge** (webhook GitHub→Vercel nunca disparó; `app.genesis360.pro` seguía sirviendo v1.135.0) — se re-disparó con un segundo merge (el commit de este wiki); **CONFIRMAR que PRD sirva v1.136.0 antes de dar el deploy por cerrado**
+> ### 🚀 ARRANCÁ ACÁ (2026-07-19, release v1.136.0) — **PR #295 MERGEADO a `main` (`82907baf`) + tag/release v1.136.0** · migs **278-281 en DEV Y PROD (verificadas)** · ✅ **Vercel PRD CONFIRMADO sirviendo v1.136.0** (bundle `index-C1iD59WS.js`; el webhook del merge #295 nunca disparó — el merge del PR #296 (docs) lo re-disparó, deployment `dpl_BQRQrq3P…` target=production READY sobre `7bde1c03`)
 >
 > **Qué entró en v1.136.0** (2 entregas, GO autorizó pipeline completo en autónomo — "haz todo
 > y lo subes directo a DEV, QA y PRD"):
@@ -47,9 +47,9 @@ type: project
 > prorrateo) · regresión 29/29 (specs 02/04/06/08/10/19) · **UAT §38**.
 >
 > **▶ Pendiente:**
-> 1. ⚠️ **Confirmar Vercel PRD = v1.136.0** (ver arriba). Si el segundo merge tampoco disparó el
->    build, es un problema de la integración GitHub↔Vercel: GO debe redeployar a mano desde el
->    dashboard de Vercel (Deploys → Redeploy sobre `main`).
+> 1. ✅ ~~Confirmar Vercel PRD = v1.136.0~~ — CONFIRMADO (ver arriba). Gotcha nuevo: el webhook
+>    GitHub→Vercel puede perderse en un merge (pasó con el #295, cero deployments generados);
+>    si vuelve a pasar, un segundo merge lo re-dispara, o GO redeploya desde el dashboard.
 > 2. GO + Fede prueban TODO directo en PRD (pedido explícito de GO — aún sin clientes).
 > 3. Los 4 puntos "para conversar" del relevamiento siguen abiertos (A códigos GS1 de proveedor ·
 >    B unidades sueltas de paquete · C detalle fino de envío gratis · D integración MODO nunca

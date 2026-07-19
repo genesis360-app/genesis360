@@ -152,7 +152,7 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 
 ---
 
-*Última actualización: 2026-07-19 — **🚀 v1.136.0 released (PR #295, `82907baf`): backlog Config Ventas/Envíos de Fede completo (9 puntos — descuento por método de pago con prorrateo fiscal + envío gratis condicional CONECTADO + combos con vigencia + campos de cliente por checkbox + toggles/tooltips/chips/formato) + hard delete real de productos + auto-sufijo de variante. Migs 278-281 en DEV y PROD. unit 1129 · e2e 98 nuevo + regresión 29/29 · UAT §38. ⚠️ Vercel PRD no buildeó el merge (webhook) — re-disparado, confirmar `app.genesis360.pro` = v1.136.0.** Antes: **🐛 (reconciliado — era "EN dev SIN COMMITEAR", hoy released):**
+*Última actualización: 2026-07-19 — **🚀 v1.136.0 released (PR #295, `82907baf`): backlog Config Ventas/Envíos de Fede completo (9 puntos — descuento por método de pago con prorrateo fiscal + envío gratis condicional CONECTADO + combos con vigencia + campos de cliente por checkbox + toggles/tooltips/chips/formato) + hard delete real de productos + auto-sufijo de variante. Migs 278-281 en DEV y PROD. unit 1129 · e2e 98 nuevo + regresión 29/29 · UAT §38. ✅ Vercel PRD confirmado sirviendo v1.136.0 (el webhook del #295 se perdió; el merge del #296 lo re-disparó).** Antes: **🐛 (reconciliado — era "EN dev SIN COMMITEAR", hoy released):**
 GO preguntó por qué no había un "eliminar varios" en Productos y por qué el ingreso de stock de un
 SKU vinculado a un Grupo de variantes no pedía el talle. Hallazgo 1: el "Eliminar" de
 `ProductoFormPage` era en realidad soft-delete (`activo=false`), idéntico al toggle Activo/Inactivo

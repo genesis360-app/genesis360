@@ -10,10 +10,12 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 **PR #295 mergeado a `main` (`82907baf`) + tag/release v1.136.0 (--latest).** Migs **278-281
 aplicadas y verificadas en DEV Y PROD** (2 funciones + columnas + backfill 0 pendientes, por query).
-Commit `440e8ec9` en `dev` pusheado (Vercel QA READY). ⚠️ **El build de PRODUCCIÓN de Vercel no se
-disparó con el merge** (verificado vía API: cero deployments post-push; `app.genesis360.pro` seguía
-en v1.135.0) — se re-disparó con el merge del commit de este wiki; confirmar PRD antes de dar el
-deploy por cerrado.
+Commit `440e8ec9` en `dev` pusheado (Vercel QA READY). **Gotcha de deploy nuevo:** el build de
+PRODUCCIÓN de Vercel NO se disparó con el merge #295 (webhook perdido — verificado vía API: cero
+deployments post-push; `app.genesis360.pro` siguió en v1.135.0 ~1h). Se resolvió con un segundo
+merge (PR #296, el wiki de cierre): deployment `dpl_BQRQrq3P…` target=production READY sobre
+`7bde1c03` → **✅ PRD CONFIRMADO sirviendo v1.136.0** (bundle `index-C1iD59WS.js`, verificado por
+curl al bundle real, no narrativa).
 
 **Pedido de GO:** implementar los 9 puntos "para implementar" del relevamiento de Fede
 (`project_revision_config_fede_tonga`) en autónomo, con tests (unit+e2e+UAT) y subirlo a DEV, QA

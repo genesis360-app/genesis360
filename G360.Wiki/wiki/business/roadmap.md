@@ -13,10 +13,10 @@ updated: 2026-05-29
 
 ---
 
-## v1.136.0 — 🛍️🗑️ Backlog Config Ventas/Envíos de Fede (9 puntos) + hard delete de productos — release 2026-07-19 (PR #295) · ⚠️ Vercel PRD por confirmar
+## v1.136.0 — 🛍️🗑️ Backlog Config Ventas/Envíos de Fede (9 puntos) + hard delete de productos — ✅ PROD (2026-07-19, PR #295+#296)
 
-Migs **278-281** en DEV y PROD (verificadas). Tag+release creados. ⚠️ El build de producción de
-Vercel no se disparó con el merge (webhook) — confirmar que `app.genesis360.pro` sirva v1.136.0.
+Migs **278-281** en DEV y PROD (verificadas). Tag+release creados. `app.genesis360.pro`
+confirmado sirviendo v1.136.0 (el webhook del merge #295 se perdió; el merge del #296 lo re-disparó).
 
 - **Descuento por método de pago** (% + tope + días + vigencia, panel "Promo" en Config→Ventas→
   Métodos de pago): el POS lo aplica solo, lo registra en `ventas.promo_pago` (mig 281) y lo pliega

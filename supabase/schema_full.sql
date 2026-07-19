@@ -2234,7 +2234,12 @@ CREATE TABLE public.venta_item_despachos (
   cantidad numeric NOT NULL,
   nro_serie text,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  origen text
+  origen text,
+  talle text,
+  color text,
+  encaje text,
+  formato text,
+  sabor_aroma text
 );
 
 CREATE TABLE public.venta_items (

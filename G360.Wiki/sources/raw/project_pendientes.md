@@ -6,7 +6,56 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🐛 ARRANCÁ ACÁ (2026-07-19, hard delete productos + auto-sufijo variante) — **EN DEV, SIN COMMITEAR** · PROD sigue v1.135.0 (SIN CAMBIOS) · mig **278 SOLO en DEV**
+> ### 🚀 ARRANCÁ ACÁ (2026-07-19, release v1.136.0) — **PR #295 MERGEADO a `main` (`82907baf`) + tag/release v1.136.0** · migs **278-281 en DEV Y PROD (verificadas)** · ⚠️ **Vercel PRD NO buildeó el merge** (webhook GitHub→Vercel nunca disparó; `app.genesis360.pro` seguía sirviendo v1.135.0) — se re-disparó con un segundo merge (el commit de este wiki); **CONFIRMAR que PRD sirva v1.136.0 antes de dar el deploy por cerrado**
+>
+> **Qué entró en v1.136.0** (2 entregas, GO autorizó pipeline completo en autónomo — "haz todo
+> y lo subes directo a DEV, QA y PRD"):
+>
+> **Entrega A — Hard delete real de productos + auto-sufijo de variante (mig 278):** el bloque
+> de abajo ("🐛 2026-07-19 hard delete") nació como "EN DEV sin commitear" — YA NO: commiteado
+> (`440e8ec9`), mergeado y released. Mig 278 en DEV y PROD.
+>
+> **Entrega B — Backlog Config Ventas/Envíos de Fede (los 9 puntos "para implementar", migs
+> 279-281):**
+> 1. **Descuento por método de pago** (% + tope + días + vigencia) en `metodos_pago.config.descuento`
+>    (panel "Promo" en Config→Ventas→Métodos de pago). El POS lo aplica solo (medio único: sobre el
+>    total; mixto: sobre lo abonado con cada método), línea verde en el resumen, opción del selector
+>    muestra "🏷 N% off". REGLA #0: se pliega al **prorrateo fiscal G0.6** (Σ `venta_items.subtotal`
+>    == `ventas.total` EXACTO, verificado en DB por e2e) y queda trazado en `ventas.promo_pago`
+>    (mig 281). Lógica pura: `src/lib/promosPago.ts`.
+> 2. **Vigencia por fecha en combos** (mig 279) + badges vigente/programado/vencido + filtro POS
+>    client-side (`comboVigente`, fecha LOCAL).
+> 3. **"Alertas de ventas" re-redactada** (cuenta OPERACIONES de devolución, no unidades) + InfoTip.
+> 4. **Campos requeridos del cliente en POS** (mig 280, `tenants.cliente_campos_requeridos` jsonb
+>    con backfill): checkboxes DNI/Teléfono/Email, enum legacy sincronizado, **el alta rápida del
+>    POS ganó input de EMAIL** (no existía). `src/lib/clienteCampos.ts`.
+> 5. **12 toggles a mano migrados a `<Toggle>`** (grep `translate-x` fuera de Toggle.tsx = 0); 2
+>    tenían el bug de contraste §31 (track `bg-amber-50` casi blanco) → `colorOn="bg-amber-500"`.
+> 6. **Helpers de formato** `fmtPesos/fmtEntero/fmtPct` (`src/lib/formato.ts`) — código viejo se
+>    migra de forma oportunista, NO pasada masiva.
+> 7. **Envío gratis condicional CONECTADO** — la config era write-only (hallazgo del relevamiento:
+>    nada la leía). Ahora `envio_gratis_reglas` v2 multi-regla (AND adentro / OR entre reglas) +
+>    **tope de km** (fail-closed si la distancia es desconocida); el POS pone el costo en $0 con
+>    banner reversible y suspende el autocálculo por km. `normalizarReglasGratis`/`envioGratisAplica`
+>    en `src/lib/enviosTarifas.ts` (la vieja `envioGratis` quedó @deprecated).
+> 8. **`InfoTip`** (`src/components/InfoTip.tsx`) — ⓘ estándar (hover/focus/tap, dark-aware).
+> 9. **Variables WhatsApp como chips** que insertan `{{Var}}` en el cursor del textarea.
+>
+> **Verde:** tsc · build · unit **1129** (64 nuevos: promosPago 22 · enviosTarifas +13 ·
+> clienteCampos 11 · combosVigencia 9 · formato 10) · **e2e spec 98 NUEVO** (3 mutantes que
+> siembran/restauran su precondición vía PostgREST; incluye venta real con verificación en DB del
+> prorrateo) · regresión 29/29 (specs 02/04/06/08/10/19) · **UAT §38**.
+>
+> **▶ Pendiente:**
+> 1. ⚠️ **Confirmar Vercel PRD = v1.136.0** (ver arriba). Si el segundo merge tampoco disparó el
+>    build, es un problema de la integración GitHub↔Vercel: GO debe redeployar a mano desde el
+>    dashboard de Vercel (Deploys → Redeploy sobre `main`).
+> 2. GO + Fede prueban TODO directo en PRD (pedido explícito de GO — aún sin clientes).
+> 3. Los 4 puntos "para conversar" del relevamiento siguen abiertos (A códigos GS1 de proveedor ·
+>    B unidades sueltas de paquete · C detalle fino de envío gratis · D integración MODO nunca
+>    validada contra la API real).
+
+> ### 📍 ESTADO ANTERIOR (2026-07-19, hard delete productos + auto-sufijo variante) — ~~EN DEV, SIN COMMITEAR~~ **RECONCILIADO: commiteado en `440e8ec9`, mergeado en PR #295, released v1.136.0, mig 278 en DEV y PROD** (ver bloque de arriba)
 >
 > **Disparador:** GO preguntó (1) si había un botón para eliminar varios productos a la vez (solo
 > existía Desactivar/Reactivar en bulk) y (2) por qué el ingreso de stock de un SKU vinculado a un

@@ -55,7 +55,7 @@ Al seleccionar uno o más productos, aparece barra de acciones masivas:
 | Precio | Actualiza precio de venta masivamente |
 | Proveedor | Asigna proveedor a los seleccionados |
 | Precio mayorista | Actualiza precio mayorista |
-| **Eliminar** (🟡 mig 278, EN DEV, sin commitear, 2026-07-19) | **Hard delete REAL** (antes no existía ningún hard delete, ni individual ni bulk — solo el toggle Activar/Desactivar). Llama a `eliminar_productos_fisico()` (RPC, guard server-side `fn_producto_tiene_actividad`): borra la fila de `productos` solo si el producto NUNCA tuvo actividad (venta, movimiento, OC, recepción, traslado, conteo, devolución, envío, combo/kit, mapeo marketplace — ~17 tablas). Reporta parciales: "N eliminados · M bloqueados". Ver [[wiki/database/migraciones]] fila 278. |
+| **Eliminar** (mig 278, ✅ PROD v1.136.0, 2026-07-19) | **Hard delete REAL** (antes no existía ningún hard delete, ni individual ni bulk — solo el toggle Activar/Desactivar). Llama a `eliminar_productos_fisico()` (RPC, guard server-side `fn_producto_tiene_actividad`): borra la fila de `productos` solo si el producto NUNCA tuvo actividad (venta, movimiento, OC, recepción, traslado, conteo, devolución, envío, combo/kit, mapeo marketplace — ~17 tablas). Reporta parciales: "N eliminados · M bloqueados". Ver [[wiki/database/migraciones]] fila 278. |
 
 ### Panel lateral "Grupos"
 
@@ -88,7 +88,7 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | Proveedor | select | Lista del tenant |
 | Activo / Inactivo | toggle | Inactivo bloquea ingreso de stock (soft-delete lógico) |
 
-> [!NOTE] **🟡 Botón "Eliminar" individual (mig 278, EN DEV, sin commitear, 2026-07-19).** Hasta esta
+> [!NOTE] **Botón "Eliminar" individual (mig 278, ✅ PROD v1.136.0, 2026-07-19).** Hasta esta
 > sesión el botón "Eliminar" de esta página en realidad hacía `UPDATE productos SET activo=false` —
 > idéntico y redundante con el toggle Activo/Inactivo de arriba. Ahora hace un **hard delete real**
 > (`DELETE FROM productos`) vía la RPC `eliminar_productos_fisico`, solo si el producto nunca tuvo
@@ -159,7 +159,7 @@ Visible solo si el tenant tiene `marketplace_activo = true`.
 - Sin grupo: botón "Vincular a un grupo" → dropdown o "Nuevo grupo"
 - Con grupo: badge "Variante de: nombre", selects/inputs por atributo del grupo, lista de otras variantes con link a editar, botón "Desvincular"
 - Guardado: `grupo_id` + `variante_valores JSONB`
-- **🟡 Auto-sufijo de nombre (EN DEV, sin commitear, 2026-07-19):** al guardar un producto vinculado
+- **Auto-sufijo de nombre (✅ PROD v1.136.0, 2026-07-19):** al guardar un producto vinculado
   a un grupo con valores de variante cargados, el nombre se auto-completa con `— <valor>` (ej.
   "Remera Básica" → "Remera Básica — S"); si el valor cambia se despega el sufijo viejo antes de
   agregar el nuevo. Antes solo pasaba al usar "Generar variantes" desde el modal del grupo — vincular

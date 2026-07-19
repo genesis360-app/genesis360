@@ -13,6 +13,31 @@ updated: 2026-05-29
 
 ---
 
+## v1.136.0 — 🛍️🗑️ Backlog Config Ventas/Envíos de Fede (9 puntos) + hard delete de productos — release 2026-07-19 (PR #295) · ⚠️ Vercel PRD por confirmar
+
+Migs **278-281** en DEV y PROD (verificadas). Tag+release creados. ⚠️ El build de producción de
+Vercel no se disparó con el merge (webhook) — confirmar que `app.genesis360.pro` sirva v1.136.0.
+
+- **Descuento por método de pago** (% + tope + días + vigencia, panel "Promo" en Config→Ventas→
+  Métodos de pago): el POS lo aplica solo, lo registra en `ventas.promo_pago` (mig 281) y lo pliega
+  al prorrateo fiscal G0.6 — Σ ítems == total exacto. Pago mixto descuenta sobre lo abonado con
+  cada método.
+- **Envío gratis condicional CONECTADO** (la config existía pero nada la leía): multi-regla
+  (AND adentro, OR entre reglas) + tope de km fail-closed; el POS pone el costo en $0 con banner
+  reversible.
+- **Vigencia por fecha en combos** (mig 279) + badges vigente/programado/vencido + filtro en POS.
+- **Campos requeridos del cliente en POS** por checkbox (mig 280); el alta rápida ganó campo email.
+- "Alertas de ventas" con redacción clara (cuenta operaciones de devolución) + tooltips `InfoTip`
+  en las secciones confusas + variables WhatsApp como chips + helpers de formato + 12 toggles
+  legacy migrados a `<Toggle>` (2 con bug de contraste corregidos).
+- **Hard delete real de productos** (mig 278): "Eliminar" individual y masivo borra de verdad,
+  solo si el producto no tuvo NUNCA actividad (~19 tablas chequeadas server-side); si tuvo, se
+  bloquea con aviso. + **Auto-sufijo de variante** al vincular un producto existente a un Grupo
+  ("Remera — S") para que la variante se distinga en Inventario/ventas/tickets.
+- Validación: unit 1129 (64 nuevos) · e2e spec 98 mutante (venta real verificada en DB) +
+  regresión 29/29 · UAT §38. Detalle: [[wiki/features/ventas-pos]], [[wiki/features/productos]],
+  [[wiki/features/envios]].
+
 ## v1.135.0 — 🖨️🎨🧾 Fix impresión ticket + dark mode tokens + factura nombre+descripción + fix grupos de variantes — ✅ PROD (2026-07-19, PR #294)
 
 Mig **277** en DEV y PROD.

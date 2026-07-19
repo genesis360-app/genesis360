@@ -6,9 +6,46 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-19] release | v1.136.0 — Backlog Config Ventas/Envíos de Fede (9 puntos) + hard delete de productos
+
+**PR #295 mergeado a `main` (`82907baf`) + tag/release v1.136.0 (--latest).** Migs **278-281
+aplicadas y verificadas en DEV Y PROD** (2 funciones + columnas + backfill 0 pendientes, por query).
+Commit `440e8ec9` en `dev` pusheado (Vercel QA READY). ⚠️ **El build de PRODUCCIÓN de Vercel no se
+disparó con el merge** (verificado vía API: cero deployments post-push; `app.genesis360.pro` seguía
+en v1.135.0) — se re-disparó con el merge del commit de este wiki; confirmar PRD antes de dar el
+deploy por cerrado.
+
+**Pedido de GO:** implementar los 9 puntos "para implementar" del relevamiento de Fede
+(`project_revision_config_fede_tonga`) en autónomo, con tests (unit+e2e+UAT) y subirlo a DEV, QA
+y PRD directo ("lo pruebo directo en PRD con Fede, total aún no tenemos clientes").
+
+**Entrega B — los 9 puntos (migs 279-281):**
+1. **Descuento por método de pago** (% + tope + días + vigencia) — `metodos_pago.config.descuento`,
+   panel "Promo" en Config→Ventas→Métodos de pago; el POS lo aplica solo, línea verde, trazado en
+   `ventas.promo_pago` (mig 281) y plegado al prorrateo fiscal G0.6 (Σ items == total EXACTO,
+   verificado en DB por e2e). Lógica pura `src/lib/promosPago.ts` (22 unit).
+2. **Vigencia por fecha en combos** (mig 279) — badges + filtro POS (`comboVigente`, fecha local).
+3. **"Alertas de ventas" clara** — cuenta OPERACIONES de devolución; InfoTip con ejemplo.
+4. **Campos requeridos del cliente** (mig 280 jsonb+backfill) — checkboxes DNI/Tel/Email, enum
+   legacy sincronizado, alta rápida del POS gana input de EMAIL. `src/lib/clienteCampos.ts`.
+5. **Toggles** — 12 a mano → `<Toggle>`; 2 con bug de contraste §31 corregidos (amber real).
+6. **Formato** — `fmtPesos/fmtEntero/fmtPct` centrales; migración oportunista del resto.
+7. **Envío gratis condicional CONECTADO** (era write-only) — multi-regla AND/OR + tope de km
+   fail-closed; POS pone $0 con banner reversible. `envioGratisAplica` en `enviosTarifas.ts`.
+8. **`InfoTip`** nuevo aplicado en las secciones confusas.
+9. **Chips de variables WhatsApp** insertables en el cursor.
+
+**Entrega A (de la mañana, ahora released):** hard delete real de productos + auto-sufijo de
+variante — detalle en la entrada de abajo (que nació como "sin commitear": RECONCILIADA).
+
+**Verde:** tsc · build · unit 1129 (64 nuevos) · e2e spec 98 nuevo (3 mutantes con verificación
+en DB) + regresión 29/29 · UAT §38.
+
+---
+
 ## [2026-07-19] update | Hard delete real de productos + auto-sufijo de variante
 
-**🟡 EN DEV, SIN COMMITEAR** (nada en `git status` fuera de working tree — `supabase/migrations/278_hard_delete_productos.sql` sin trackear + `src/pages/ProductoFormPage.tsx`/`ProductosPage.tsx` modificados). PROD sigue v1.135.0 sin cambios; migraciones en PROD siguen en 001-277.
+**~~🟡 EN DEV, SIN COMMITEAR~~ → RECONCILIADO al cierre del día: commiteado en `440e8ec9`, mergeado en PR #295 y released como parte de v1.136.0; mig 278 en DEV y PROD** (ver entrada de arriba).
 
 **Disparador:** GO preguntó dos cosas sobre Productos: (1) si existía un botón para eliminar varios productos a la vez (solo había Desactivar/Reactivar en bulk); (2) por qué al ingresar inventario de un SKU vinculado a un "Grupo de variantes" (creó "Remera Básica" con talle S) no le pedía el talle.
 

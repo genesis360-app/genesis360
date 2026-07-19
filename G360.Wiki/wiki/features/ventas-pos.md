@@ -107,6 +107,27 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 - Polling cada 4s → pantalla "¡Pago recibido!" → botón Finalizar
 - Toast global en AppLayout cada 30s cuando llega pago MP
 
+### 🏷 Descuento por método de pago (v1.136.0, mig 281 — backlog Fede punto 1)
+- Config: Config→Ventas→Métodos de pago → botón **"Promo"** por método → `% + tope ($) + días de
+  semana + vigencia (desde/hasta)`. Se guarda en `metodos_pago.config.descuento` (jsonb que existía
+  reservado). **Distinto de `comision_pct`** (naranja = costo del tenant; verde = descuento al cliente).
+- POS: el selector muestra "🏷 N% off" junto al método; al elegirlo aparece la línea verde
+  "🏷 Promo <método> (N%)" y el total baja. **Medio único**: descuenta sobre el total (post
+  descuento general y combos, sin envío). **Pago mixto**: descuenta sobre lo abonado con cada
+  método (capado al total y al tope).
+- **REGLA #0**: el descuento entra al prorrateo fiscal G0.6 → `venta_items` suma EXACTO el total
+  cobrado (factura/NC/Libro IVA consistentes; verificado en DB por e2e 98) y queda trazado en
+  `ventas.promo_pago` (`[{metodo, pct, monto}]`).
+- Lógica pura: `src/lib/promosPago.ts` (`descuentoDeConfig` / `descuentoVigente` /
+  `calcularPromosPago`), 22 unit tests.
+
+### 👤 Campos requeridos del cliente en el alta rápida (v1.136.0, mig 280 — backlog Fede punto 4)
+- Config→Ventas→Operativa: checkboxes **DNI / Teléfono / Email** (el nombre es siempre obligatorio)
+  reemplazan el combo fijo de 4 opciones. `tenants.cliente_campos_requeridos` jsonb; el enum legacy
+  `cliente_datos_minimos` se mantiene sincronizado al guardar y sirve de fallback si el jsonb es NULL.
+- El alta rápida del POS ganó **input de email** (antes no existía) y placeholders con `*` dinámico.
+  Validación: `src/lib/clienteCampos.ts` (`validarClienteInline`).
+
 ---
 
 ## Pago parcial en reservas
@@ -127,6 +148,10 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 - Al bajar cantidad del umbral → quita el descuento
 - Sugerencia cuando falta 1 unidad para alcanzar umbral
 - Soporta `descuento_tipo`: pct / monto_ars / monto_usd (conversión via `useCotizacion`)
+- **Vigencia por fecha (v1.136.0, mig 279 — backlog Fede punto 2)**: `combos.vigencia_desde/hasta`
+  (ambos inclusive, NULL = sin límite). El POS filtra los no vigentes al cargar (`comboVigente` en
+  `ventasValidation.ts`, fecha LOCAL no UTC) y Config muestra badges vigente/programado/vencido —
+  una promo "del 1 al 15" vence sola, sin apagarla a mano.
 
 ---
 

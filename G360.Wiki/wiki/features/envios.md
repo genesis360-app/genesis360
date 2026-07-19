@@ -326,6 +326,18 @@ Relevado con GO (HTML `relevamiento-envios-reglas-negocio.html`, secciones A-I).
 - **EN7 (v1.45.0, mig 194 — PROD ✅):** **G2** envío propio asociado a un **vehículo** (recurso) + KM + **combustible auto-gasto** (categoría "Combustible", IVA crédito fiscal, link `envios.gasto_combustible_id`, suma KM a `recursos.km_acumulado`; estima monto con `recursos.consumo_litros_100km` × `tenants.envio_combustible_precio_litro`); botón "Registrar combustible" en el detalle del envío propio. **H1** nuevo tab **Reportes** (`EnviosReportesPanel`): pendientes/atrasados, cumplimiento por courier, pagos por mes, **margen logístico**, distribución por zona/CP, productividad de repartidores. **H2** sección **Alertas** (umbrales `tenants.envio_alerta_*`). **H3** export Excel/CSV/PDF + **etiquetas A4** (4/6/12 con QR, `etiquetasEnvioPDF.ts`, en tab Reparto). Libs puras `enviosRecurso.ts` + `enviosReportes.ts`.
 - **EN3 (v1.42.0, mig 191):** repartidores + asignación + productividad (`enviosReparto.ts`); tab **Reparto** (hoja de ruta PDF + link agrupado `/hoja-ruta/:token` + cumplimiento); token expiración config (E1); transportista llamar/WA/incidencia (E2, `envio_incidencias`); identidad config (E4); notif "en camino" WA (E5).
 - **EN4 (v1.43.0, mig 192):** motor de tarifas `enviosTarifas.ts` — factor KM, costo mínimo/tramos, recargo horario (B1-B3); cobro al cliente 100/margen/subsidio (B4); envío gratis condicional (B5); diferencia real vs cotizado a-favor/pérdida, precio al cliente inmutable (B6).
+  - **🏷 B5 v2 — envío gratis CONECTADO (v1.136.0, backlog Fede punto 7):** hallazgo del relevamiento
+    2026-07-19 — la config B5 se guardaba pero **ninguna venta la leía** (write-only desde su
+    creación). Ahora: `tenants.envio_gratis_reglas` v2 `{reglas: [...]}` **multi-regla** con
+    retrocompat del shape legacy (`normalizarReglasGratis`); semántica **AND dentro de la regla /
+    OR entre reglas** (monto mínimo · etiquetas de cliente · vigencia por fecha · **tope de km**
+    nuevo, fail-closed si la distancia es desconocida — nunca se regala un envío fuera de radio);
+    el POS (`VentasPage`) evalúa `envioGratisAplica` al activar "Incluir envío" y pone el costo en
+    **$0 con banner verde reversible** (guarda y restaura el costo previo; suspende el autocálculo
+    por km mientras aplica). Config→Envíos: editor de reglas dinámico con descripción humana
+    (`describirReglaGratis`). La vieja `envioGratis()` quedó `@deprecated`. e2e 98 + 13 unit nuevos.
+  - **💬 Plantilla WhatsApp (v1.136.0, backlog Fede punto 9):** las 6 variables son **chips
+    clickeables** que insertan `{{Var}}` en la posición del cursor del textarea (antes texto plano).
 - **EN5 (v1.44.0, mig 193):** DEPOSITO crea (A1); envíos libres sin venta `tipo`/`motivo` (A2); sugerencia courier por CP (A3); plazo despacho por canal + badge "Atrasado" (A4); múltiples envíos por venta con desglose `envio_items` (A5). Lib `enviosCreacion.ts`.
 
 **Plan deployable por fases (cada una a PROD con su versión):**

@@ -26,7 +26,7 @@ Permite agrupar múltiples SKUs que son variantes de un mismo artículo (ej: Rem
 > datos por ser soft-delete.
 
 > [!NOTE] **🟡 Auto-sufijo de nombre al vincular + aclaración de por qué el ingreso NO pide talle
-> (EN DEV, sin commitear, 2026-07-19).** GO preguntó por qué al hacer ingreso de inventario de
+> (✅ PROD v1.136.0, 2026-07-19).** GO preguntó por qué al hacer ingreso de inventario de
 > "Remera Básica" (vinculada a un grupo con Talle=S) no le pedía el talle. **Es el comportamiento
 > correcto por diseño, no un bug**: acá cada talle es un SKU SEPARADO (a diferencia de "Atributos de
 > variante", donde el talle se pide por LPN dentro del MISMO SKU — ver

@@ -1715,7 +1715,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku, descripcion))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -1756,6 +1756,7 @@ export default function VentasPage() {
         ...ventaItemsPdf.map((i: any) => ({
           codigo:         i.productos?.sku ?? null,
           descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
+          descripcion_extra: i.productos?.descripcion ?? null,
           cantidad:       Number(i.cantidad),
           precio_unitario: Number(i.precio_unitario),
           alicuota_iva:   Number(i.alicuota_iva ?? 21),
@@ -2060,7 +2061,7 @@ export default function VentasPage() {
   // ticket interno de devolución. La NC vive en `devoluciones` (nc_cae, nc_tipo, etc.).
   async function buildNCPDFDataPorDevolucion(devolucionId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: dev, error } = await supabase.from('devoluciones')
-      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva))')
+      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva, descripcion))')
       .eq('id', devolucionId).single()
     if (error) throw new Error(error.message)
     if (!dev?.nc_cae) return null
@@ -2086,6 +2087,7 @@ export default function VentasPage() {
       items: ((dev as any).devolucion_items ?? []).map((i: any) => ({
         codigo:          i.productos?.sku ?? null,
         descripcion:     i.productos?.nombre ?? 'Producto',
+        descripcion_extra: i.productos?.descripcion ?? null,
         cantidad:        Number(i.cantidad),
         precio_unitario: Number(i.precio_unitario),
         alicuota_iva:    Number(i.productos?.alicuota_iva ?? 21),

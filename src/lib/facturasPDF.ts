@@ -42,6 +42,7 @@ export interface FacturaPDFData {
   items: {
     codigo?: string | null        // SKU / código de artículo
     descripcion: string
+    descripcion_extra?: string | null  // descripción larga del producto (opcional) — 2da línea, gris chico
     cantidad: number
     precio_unitario: number
     alicuota_iva: number          // 0 | 10.5 | 21 | 27
@@ -197,14 +198,53 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   const codStyle: Record<number, { cellWidth: number }> = conCod ? { 0: { cellWidth: 20 } } : {}
   const off = conCod ? 1 : 0  // desplazamiento de índices de columna cuando hay Cód.
 
+  // Texto de la celda "Descripción": si el producto tiene descripcion_extra, se manda con
+  // un \n para que autoTable calcule bien el alto de la fila (2 líneas) — el dibujo real
+  // (nombre en negrita + descripción en gris chico) lo hacen los hooks de abajo, que
+  // suprimen el texto default de esa celda y lo redibujan a mano con 2 estilos.
+  const descripcionCelda = (item: FacturaPDFData['items'][number]) =>
+    item.descripcion_extra ? `${item.descripcion}\n${item.descripcion_extra}` : item.descripcion
+
+  // Dibuja "nombre" en negrita y, si hay, "descripcion_extra" debajo en gris chico —
+  // jspdf-autotable no soporta 2 estilos en una misma celda de forma nativa, así que se
+  // suprime el texto default (willDrawCell) y se redibuja a mano (didDrawCell).
+  const descripcionHooks = (descColIndex: number) => ({
+    willDrawCell: (hd: any) => {
+      if (hd.section === 'body' && hd.column.index === descColIndex && data.items[hd.row.index]?.descripcion_extra) {
+        hd.cell.text = []
+      }
+    },
+    didDrawCell: (hd: any) => {
+      if (hd.section !== 'body' || hd.column.index !== descColIndex) return
+      const item = data.items[hd.row.index]
+      if (!item?.descripcion_extra) return
+      const maxW = hd.cell.width - hd.cell.padding('left') - hd.cell.padding('right')
+      // getTextPos() da el TOPE del área de texto (valign default de autoTable = 'top'),
+      // no la línea base — autoTable ajusta con fontSize×(2−1.15) antes de dibujar (función
+      // interna autoTableText). Replicarlo acá alinea "nombre" exactamente con Cód./Cant./
+      // Subtotal de la misma fila (antes quedaba corrido hacia abajo con un offset a ojo).
+      const { x, y: topY } = hd.cell.getTextPos()
+      const k = (doc.internal as any).scaleFactor
+      const fontSizeMm = 8 / k
+      const y1 = topY + fontSizeMm * 0.85
+      doc.setFont('helvetica', 'bold').setFontSize(8).setTextColor(0)
+      doc.text(item.descripcion, x, y1)
+      doc.setFont('helvetica', 'normal').setFontSize(6.5).setTextColor(130)
+      const wrapped = doc.splitTextToSize(item.descripcion_extra, maxW) as string[]
+      doc.text(wrapped, x, y1 + fontSizeMm * 1.15)
+      doc.setTextColor(0)
+    },
+  })
+
   if (sinIVA) {
     const rows = data.items.map(item => [
       ...codCell(item),
-      item.descripcion,
+      descripcionCelda(item),
       String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
       fmtPesos(item.subtotal / item.cantidad),
       fmtPesos(item.subtotal),
     ])
+    const { willDrawCell, didDrawCell } = descripcionHooks(off)
     autoTable(doc, {
       startY:      tableY,
       margin:      { left: 14, right: 14 },
@@ -220,6 +260,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
         [off + 3]: { halign: 'right', cellWidth: 33 },
       },
       theme: 'striped',
+      willDrawCell, didDrawCell,
     })
   } else {
     const rows = data.items.map(item => {
@@ -228,7 +269,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       ivaGroups[item.alicuota_iva] = (ivaGroups[item.alicuota_iva] ?? 0) + ivaM
       return [
         ...codCell(item),
-        item.descripcion,
+        descripcionCelda(item),
         String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
         fmtPesos(item.subtotal / item.cantidad / (1 + item.alicuota_iva / 100)),
         `${item.alicuota_iva}%`,
@@ -237,6 +278,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
         fmtPesos(item.subtotal),
       ]
     })
+    const { willDrawCell, didDrawCell } = descripcionHooks(off)
     autoTable(doc, {
       startY:      tableY,
       margin:      { left: 14, right: 14 },
@@ -255,6 +297,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
         [off + 6]: { halign: 'right', cellWidth: 24 },
       },
       theme: 'striped',
+      willDrawCell, didDrawCell,
     })
   }
 

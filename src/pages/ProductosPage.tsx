@@ -454,6 +454,7 @@ export default function ProductosPage() {
   const [gruposPanel, setGruposPanel] = useState(false)
   const [grupoModal, setGrupoModal] = useState<{ open: boolean; grupo: ProductoGrupo | null }>({ open: false, grupo: null })
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
+  const [grupoEliminarConfirm, setGrupoEliminarConfirm] = useState<ProductoGrupo | null>(null)
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -800,6 +801,22 @@ export default function ProductosPage() {
       }
     },
     onSuccess: invalidar,
+  })
+
+  // Eliminar grupo de variantes: soft-delete (activo=false, mismo patrón que Motivos/Estados).
+  // NO borra ni desvincula los productos — quedan como productos sueltos (con su grupo_id
+  // apuntando a un grupo inactivo), simplemente dejan de listarse agrupados acá.
+  const eliminarGrupoMut = useMutation({
+    mutationFn: async (grupoId: string) => {
+      const { error } = await supabase.from('producto_grupos').update({ activo: false }).eq('id', grupoId)
+      if (error) throw error
+    },
+    onSuccess: () => {
+      toast.success('Grupo eliminado')
+      qc.invalidateQueries({ queryKey: ['producto-grupos', tenant?.id] })
+      setGrupoEliminarConfirm(null)
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const setDefaultMut = useMutation({
@@ -1311,6 +1328,13 @@ export default function ProductosPage() {
                       >
                         <Edit2 size={12} /> Editar grupo
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setGrupoEliminarConfirm(grupo)}
+                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition-colors flex-shrink-0 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
+                      >
+                        <Trash2 size={12} /> Eliminar
+                      </button>
                     </div>
                     {isOpen && (
                       variantes.length === 0 ? (
@@ -1739,6 +1763,34 @@ export default function ProductosPage() {
           grupo={grupoModal.grupo}
           onClose={() => setGrupoModal({ open: false, grupo: null })}
         />
+      )}
+
+      {/* ── Confirmar eliminar grupo de variantes ───────────────────────────── */}
+      {grupoEliminarConfirm && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-gray-900 dark:text-white">Eliminar grupo de variantes</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              ¿Eliminar <strong>{grupoEliminarConfirm.nombre}</strong>?
+              {(() => {
+                const n = filtered.filter(p => (p as any).grupo_id === grupoEliminarConfirm.id).length
+                return n > 0
+                  ? ` Tiene ${n} variante${n !== 1 ? 's' : ''} — no se borran, quedan como productos sueltos (dejan de listarse agrupadas acá).`
+                  : ' No tiene variantes generadas.'
+              })()}
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setGrupoEliminarConfirm(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={() => eliminarGrupoMut.mutate(grupoEliminarConfirm.id)} disabled={eliminarGrupoMut.isPending}
+                className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60">
+                {eliminarGrupoMut.isPending ? 'Eliminando...' : 'Eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ── Barra flotante de acciones bulk ─────────────────────────────────── */}

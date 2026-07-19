@@ -83,7 +83,7 @@ export default function FacturacionPage() {
   // Arma el FacturaPDFData + email del cliente para una factura emitida (descargar/imprimir/email)
   async function buildFacturaPDFDataById(facturaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('*, clientes(*, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre, sku))')
+      .select('*, clientes(*, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, iva_monto, productos(nombre, sku, descripcion))')
       .eq('id', facturaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta) throw new Error('Venta no encontrada')
@@ -116,6 +116,7 @@ export default function FacturacionPage() {
       items: (venta.venta_items ?? []).map((i: any) => ({
         codigo:         i.productos?.sku ?? null,
         descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
+        descripcion_extra: i.productos?.descripcion ?? null,
         cantidad:       Number(i.cantidad),
         precio_unitario: Number(i.precio_unitario),
         alicuota_iva:   Number(i.alicuota_iva ?? 21),

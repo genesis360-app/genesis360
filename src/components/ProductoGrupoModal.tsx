@@ -195,7 +195,7 @@ export default function ProductoGrupoModal({
         activo: true,
       }
 
-      if (isEditing && grupoId) {
+      if (grupoId) {
         const { error } = await supabase.from('producto_grupos').update(payload).eq('id', grupoId)
         if (error) throw error
         toast.success('Grupo actualizado')

@@ -19,6 +19,7 @@ import { useEmisoresFiscales } from '@/hooks/useEmisoresFiscales'
 import { logActividad } from '@/lib/actividadLog'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { useSearchParams } from 'react-router-dom'
+import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 import { evaluarUmbralGasto } from '@/lib/umbralGasto'
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
@@ -2488,8 +2489,9 @@ export default function GastosPage() {
                   <div
                     onClick={() => setEsCuota(v => !v)}
                     className="flex items-center gap-3 cursor-pointer select-none">
-                    <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${esCuota ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${esCuota ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    {/* pointer-events-none: el click lo maneja el contenedor — evita el doble toggle */}
+                    <div className="pointer-events-none">
+                      <Toggle checked={esCuota} onChange={() => {}} aria-label="Pago en cuotas" />
                     </div>
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                       <CreditCard size={14} /> Pago en cuotas (tarjeta de crédito)

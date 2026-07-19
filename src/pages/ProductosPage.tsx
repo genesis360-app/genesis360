@@ -12,6 +12,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { puedeVerCosto } from '@/lib/permisosCosto'
+import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -458,7 +459,7 @@ export default function ProductosPage() {
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  type BulkAction = 'categoria' | 'regla' | 'aging' | 'atributos' | 'activar' | 'desactivar' | 'precio_venta' | 'proveedor' | null
+  type BulkAction = 'categoria' | 'regla' | 'aging' | 'atributos' | 'activar' | 'desactivar' | 'eliminar' | 'precio_venta' | 'proveedor' | null
   const [bulkModal, setBulkModal] = useState<BulkAction>(null)
   const [bulkValue, setBulkValue] = useState('')
   const [bulkAtributos, setBulkAtributos] = useState({ tiene_series: false, tiene_lote: false, tiene_vencimiento: false })
@@ -689,6 +690,24 @@ export default function ProductosPage() {
         }
         toast.success(`Precio actualizado en ${n} producto${s ? 's' : ''}`)
         setSelectedIds(new Set()); setBulkModal(null); setBulkPrecioValor('')
+        qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
+        return
+      }
+
+      // Eliminar (hard delete real) — lógica especial, vía RPC con guard server-side
+      if (bulkModal === 'eliminar') {
+        const { data, error } = await supabase.rpc('eliminar_productos_fisico', { p_ids: ids })
+        if (error) throw error
+        const eliminados = (data ?? []).filter((r: any) => r.eliminado).length
+        const bloqueados = n - eliminados
+        if (eliminados > 0 && bloqueados > 0) {
+          toast.success(`${eliminados} eliminado${eliminados !== 1 ? 's' : ''} · ${bloqueados} bloqueado${bloqueados !== 1 ? 's' : ''} por tener actividad registrada (ventas, movimientos, etc.)`, { duration: 7000 })
+        } else if (eliminados > 0) {
+          toast.success(`${eliminados} producto${eliminados !== 1 ? 's' : ''} eliminado${eliminados !== 1 ? 's' : ''}`)
+        } else {
+          toast.error('Ninguno se pudo eliminar: todos tienen actividad registrada (ventas, movimientos, compras, etc.). Usá "Desactivar" en su lugar.', { duration: 7000 })
+        }
+        setSelectedIds(new Set()); setBulkModal(null)
         qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
         return
       }
@@ -1224,12 +1243,8 @@ export default function ProductosPage() {
               <span className="hidden sm:inline whitespace-nowrap">Agrupar variantes</span>
             </button>
             <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
-              <div className="relative">
-                <input type="checkbox" checked={showInactivos} onChange={e => setShowInactivos(e.target.checked)} className="sr-only" />
-                <div className={`w-8 h-4 rounded-full transition-colors ${showInactivos ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                  <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${showInactivos ? 'translate-x-4' : ''}`} />
-                </div>
-              </div>
+              <Toggle size="sm" checked={showInactivos} onChange={setShowInactivos}
+                aria-label="Ver inactivos" />
               <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Ver inactivos</span>
             </label>
             <button onClick={() => setScannerOpen(true)}
@@ -1840,6 +1855,10 @@ export default function ProductosPage() {
               </button>
             )
           })()}
+          <button onClick={() => setBulkModal('eliminar')}
+            className="flex items-center gap-1.5 text-xs bg-red-900 hover:bg-red-800 px-3 py-1.5 rounded-lg transition-colors shrink-0">
+            <Trash2 size={13} /> Eliminar
+          </button>
           <button onClick={() => setSelectedIds(new Set())}
             title="Limpiar selección"
             className="ml-1 text-gray-400 hover:text-white transition-colors shrink-0">
@@ -2008,6 +2027,30 @@ export default function ProductosPage() {
                 className={`flex-1 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors flex items-center justify-center gap-2 disabled:opacity-60
                   ${bulkModal === 'desactivar' ? 'bg-red-500 hover:bg-red-600' : 'bg-green-500 hover:bg-green-600'}`}>
                 {bulkSaving ? 'Procesando...' : bulkModal === 'desactivar' ? 'Desactivar' : 'Activar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal confirm eliminar (hard delete real) */}
+      {bulkModal === 'eliminar' && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-bold text-gray-900 dark:text-white">Eliminar productos</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              ¿Eliminar definitivamente <strong>{selectedIds.size}</strong> producto{selectedIds.size !== 1 ? 's' : ''}? Esta acción NO se puede deshacer.
+              Solo se borran los que no tengan actividad registrada (ventas, movimientos, compras, etc.) — el resto queda como está y te avisamos cuáles.
+              Si preferís ocultarlos sin perder el historial, usá &quot;Desactivar&quot; en su lugar.
+            </p>
+            <div className="flex gap-3">
+              <button onClick={() => setBulkModal(null)}
+                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                Cancelar
+              </button>
+              <button onClick={aplicarBulk} disabled={bulkSaving}
+                className="flex-1 bg-red-700 hover:bg-red-800 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60">
+                {bulkSaving ? 'Eliminando...' : 'Eliminar'}
               </button>
             </div>
           </div>

@@ -21,6 +21,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 
 interface FilaCliente {
@@ -1856,11 +1857,9 @@ export default function ClientesPage() {
                   <CreditCard size={12} /> Cuenta Corriente
                 </p>
                 <label className={`flex items-center gap-3 mb-3 ${puedeGestionarCC ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
-                  <div
-                    onClick={() => { if (puedeGestionarCC) setForm(f => ({ ...f, cuenta_corriente_habilitada: !f.cuenta_corriente_habilitada })) }}
-                    className={`w-10 h-6 rounded-full transition-colors flex items-center px-1 ${form.cuenta_corriente_habilitada ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                    <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${form.cuenta_corriente_habilitada ? 'translate-x-4' : 'translate-x-0'}`} />
-                  </div>
+                  <Toggle checked={form.cuenta_corriente_habilitada} disabled={!puedeGestionarCC}
+                    onChange={v => setForm(f => ({ ...f, cuenta_corriente_habilitada: v }))}
+                    aria-label="Habilitar cuenta corriente" />
                   <span className="text-sm text-gray-700 dark:text-gray-300">Habilitar cuenta corriente</span>
                 </label>
                 {!puedeGestionarCC && (

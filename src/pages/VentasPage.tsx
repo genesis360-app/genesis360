@@ -35,11 +35,15 @@ import { AddressAutocompleteInput } from '@/components/AddressAutocompleteInput'
 import { COURIERS, serviciosDe, esCourierApi } from '@/lib/couriers/catalogo'
 import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
-import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
+import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
+import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
+import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
 import { redondearPrecio } from '@/lib/precioRedondeo'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
+import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales'
@@ -194,7 +198,8 @@ export default function VentasPage() {
   const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
   const clienteCreacionInline = (tenant as any)?.cliente_creacion_inline ?? true
   const permiteCF           = (tenant as any)?.cliente_consumidor_final ?? true  // H5: ¿se puede vender como Consumidor Final?
-  const clienteDatosMinimos = (tenant as any)?.cliente_datos_minimos   ?? 'nombre'
+  // Mig 280 — campos requeridos por checkbox (jsonb), con fallback al enum legacy cliente_datos_minimos
+  const camposReqCliente    = camposRequeridosCliente(tenant as any)
 
   // ISS-085: formatea el número de ticket por sucursal
   // Solo usa formato CODIGO-NNNN si la sucursal tiene un código explícitamente configurado
@@ -344,7 +349,7 @@ export default function VentasPage() {
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [nuevoClienteOpen, setNuevoClienteOpen] = useState(false)
-  const [nuevoClienteForm, setNuevoClienteForm] = useState({ nombre: '', dni: '', telefono: '' })
+  const [nuevoClienteForm, setNuevoClienteForm] = useState({ nombre: '', dni: '', telefono: '', email: '' })
   const [savingCliente, setSavingCliente] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
   const [lpnPickerIdx, setLpnPickerIdx] = useState<number | null>(null)
@@ -371,6 +376,9 @@ export default function VentasPage() {
   const [envioCourier, setEnvioCourier] = useState('')
   const [envioServicio, setEnvioServicio] = useState('')
   const [costoEnvioVenta, setCostoEnvioVenta] = useState('')
+  // Punto 7 — envío gratis condicional aplicado en esta venta (suspende el autocálculo por km)
+  const [envioGratisAplicado, setEnvioGratisAplicado] = useState(false)
+  const costoPrevioGratisRef = useRef<string>('')
   // ISS-174 F2 — cotización por API en el POS
   const [cotizandoVenta, setCotizandoVenta] = useState(false)
   const [cotizacionesVenta, setCotizacionesVenta] = useState<CotizacionOpcion[]>([])
@@ -641,16 +649,26 @@ export default function VentasPage() {
   })
 
   // Métodos de pago con su cuenta de origen default (para acreditar movimientos informativos)
+  // + config (jsonb) para el descuento por método de pago (punto 1 Fede/GO, mig 281)
   const { data: metodosPagoCfg = [] } = useQuery<any[]>({
     queryKey: ['metodos_pago_cfg', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('metodos_pago')
-        .select('id, nombre, cuenta_origen_id, habilitado_ventas')
+        .select('id, nombre, cuenta_origen_id, habilitado_ventas, config')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       return data ?? []
     },
     enabled: !!tenant,
   })
+  // Descuentos por método vigentes HOY (se recalcula al abrir el POS; la fecha no cambia intra-venta)
+  const metodosConDescuento = useMemo(() => {
+    const hoy = hoyLocalISO()
+    const dia = new Date().getDay()
+    return (metodosPagoCfg as any[]).map(m => {
+      const d = descuentoDeConfig(m.config)
+      return { nombre: m.nombre as string, descuento: d && descuentoVigente(d, hoy, dia) ? d : null }
+    })
+  }, [metodosPagoCfg])
   const normalizarNombreMetodo = (s: string): string =>
     s.toLowerCase()
       .normalize('NFD').replace(/\p{Diacritic}/gu, '') // sin tildes
@@ -775,6 +793,9 @@ export default function VentasPage() {
 
   // Auto-calcular costo de envío cuando cambian km o precio/km
   useEffect(() => {
+    // No pisar el $0 del envío gratis condicional (punto 7): mientras la promo esté aplicada,
+    // el recálculo por km queda suspendido (si la promo se levanta, se restaura el costo previo).
+    if (envioGratisAplicado) return
     if (envioTipoVenta === 'km' && envioKmVenta && precioPorKmVenta) {
       const calc = parseFloat(envioKmVenta) * parseFloat(precioPorKmVenta)
       if (!isNaN(calc) && calc > 0) setCostoEnvioVenta(calc.toFixed(2))
@@ -901,20 +922,21 @@ export default function VentasPage() {
   const [seriesBusqueda, setSeriesBusqueda] = useState('')
 
   const registrarClienteInline = async () => {
-    const { nombre, dni, telefono } = nuevoClienteForm
-    if (!nombre.trim()) { toast.error('El nombre es obligatorio'); return }
-    if (clienteDatosMinimos !== 'nombre' && !dni.trim()) { toast.error('El DNI es obligatorio'); return }
+    const { nombre, dni, telefono, email } = nuevoClienteForm
+    // Punto 4 Fede/GO (mig 280): los campos obligatorios los define el tenant por checkbox
+    const err = validarClienteInline(nuevoClienteForm, camposReqCliente)
+    if (err) { toast.error(err); return }
     setSavingCliente(true)
     try {
       const { data, error } = await supabase.from('clientes')
-        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim(), telefono: telefono.trim() })
+        .insert({ tenant_id: tenant!.id, nombre: nombre.trim(), dni: dni.trim(), telefono: telefono.trim(), email: email.trim() || null })
         .select('id, nombre').single()
       if (error) throw error
       setClienteId(data.id)
       setClienteNombre(data.nombre)
       setClienteTelefono(telefono.trim())
       setNuevoClienteOpen(false)
-      setNuevoClienteForm({ nombre: '', dni: '', telefono: '' })
+      setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' })
       toast.success('Cliente registrado')
     } catch (err: any) {
       toast.error(err.message?.includes('clientes_dni_tenant') ? 'Ya existe un cliente con ese DNI' : (err.message ?? 'Error al registrar'))
@@ -929,7 +951,7 @@ export default function VentasPage() {
   // cancelar reserva, cambiar cliente, saldo, ticket) → ESC siempre cierra el modal visible.
   useModalKeyboard({ isOpen: ventaDetalle !== null && saldoModal === null && ticketVenta === null && devolucionVenta === null && ncModal === null && cancelReservaModal === null && cambiarClienteVenta === null && devComprobante === null, onClose: () => { setVentaDetalle(null); setEditandoPago(false) } })
   useModalKeyboard({ isOpen: facturaModal !== null, onClose: () => { setFacturaModal(null); setFacturaEmitida(null) } })
-  useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }, onConfirm: registrarClienteInline })
+  useModalKeyboard({ isOpen: nuevoClienteOpen, onClose: () => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' }) }, onConfirm: registrarClienteInline })
   useModalKeyboard({ isOpen: saldoModal !== null, onClose: () => setSaldoModal(null) })
   // Modales que se apilan sobre el detalle de venta — la NC va encima de la devolución.
   useModalKeyboard({ isOpen: devolucionVenta !== null && ncModal === null, onClose: () => setDevolucionVenta(null) })
@@ -2187,9 +2209,11 @@ export default function VentasPage() {
     queryKey: ['combos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('combos')
-        .select('id, nombre, descuento_pct, descuento_tipo, descuento_monto, combo_items(producto_id, cantidad)')
+        .select('id, nombre, descuento_pct, descuento_tipo, descuento_monto, vigencia_desde, vigencia_hasta, combo_items(producto_id, cantidad)')
         .eq('tenant_id', tenant!.id).eq('activo', true)
-      return data ?? []
+      // Vigencia por fecha (mig 279): un combo vencido o aún no iniciado no se ofrece en el POS.
+      const hoy = hoyLocalISO()
+      return (data ?? []).filter((c: any) => comboVigente(c, hoy))
     },
     enabled: !!tenant,
   })
@@ -2392,11 +2416,56 @@ export default function VentasPage() {
   const descTotalMonto = descuentoTotalTipo === 'pct' ? subtotal * descTotalVal / 100 : descTotalVal
   const descCombosMulti = combosActivosMulti.reduce((s, c) => s + c.monto, 0)
   // Redondear a 2 decimales para evitar discrepancias de display vs validación
-  const total = Math.round(Math.max(0, subtotal - descTotalMonto - descCombosMulti) * 100) / 100
+  const totalPrePromoPago = Math.round(Math.max(0, subtotal - descTotalMonto - descCombosMulti) * 100) / 100
+  // Punto 1 Fede/GO — descuento por método de pago (Config→Ventas→Métodos de pago→Promo).
+  // Con un solo medio aplica sobre el total; con pago mixto, sobre lo abonado con cada método.
+  // El total FINAL ya lo tiene restado → el prorrateo fiscal (G0.6) lo pliega en venta_items.
+  const { aplicadas: promosPagoAplicadas, totalDescuento: descPromoPago } = useMemo(
+    () => calcularPromosPago(mediosPago, metodosConDescuento, totalPrePromoPago, hoyLocalISO(), new Date().getDay()),
+    [mediosPago, metodosConDescuento, totalPrePromoPago],
+  )
+  const total = Math.round(Math.max(0, totalPrePromoPago - descPromoPago) * 100) / 100
 
   // Auto-calcular costo de envío por KM
   const costoEnvioNum = requiereEnvio ? (parseFloat(costoEnvioVenta) || 0) : 0
   const totalConEnvio = total + costoEnvioNum
+
+  // ── Punto 7 Fede/GO — Envío gratis condicional (Config→Envíos), ahora CONECTADO ────────
+  // La config existía pero nada la leía (hallazgo del relevamiento). Reglas multi (AND adentro,
+  // OR entre reglas) evaluadas sobre: total de mercadería (post-descuentos, sin envío),
+  // etiquetas del cliente, fecha de hoy y km del envío (si se conocen).
+  const reglasEnvioGratis = useMemo(() => normalizarReglasGratis((tenant as any)?.envio_gratis_reglas), [tenant])
+  const { data: etiquetasClienteSel = [] } = useQuery<string[]>({
+    queryKey: ['cliente-etiquetas', clienteId],
+    queryFn: async () => {
+      const { data } = await supabase.from('clientes').select('etiquetas').eq('id', clienteId!).single()
+      return ((data as any)?.etiquetas ?? []) as string[]
+    },
+    enabled: !!clienteId && reglasEnvioGratis.length > 0,
+  })
+  const envioGratisInfo = useMemo(() => {
+    if (!requiereEnvio || reglasEnvioGratis.length === 0) return { aplica: false, regla: null }
+    const km = envioTipoVenta === 'km' && envioKmVenta ? parseFloat(envioKmVenta) : null
+    return envioGratisAplica(reglasEnvioGratis, {
+      totalVenta: total,
+      etiquetasCliente: etiquetasClienteSel,
+      fecha: hoyLocalISO(),
+      km: Number.isFinite(km as number) ? km : null,
+    })
+  }, [requiereEnvio, reglasEnvioGratis, total, etiquetasClienteSel, envioTipoVenta, envioKmVenta])
+  useEffect(() => {
+    // Aplicar UNA vez al pasar a "aplica" (guarda el costo previo); restaurar si deja de aplicar.
+    // El usuario puede sobrescribir el campo a mano en cualquier momento — no lo re-pisamos.
+    if (envioGratisInfo.aplica && !envioGratisAplicado) {
+      costoPrevioGratisRef.current = costoEnvioVenta
+      setCostoEnvioVenta('0')
+      setEnvioGratisAplicado(true)
+    } else if (!envioGratisInfo.aplica && envioGratisAplicado) {
+      setCostoEnvioVenta(costoPrevioGratisRef.current)
+      setEnvioGratisAplicado(false)
+    }
+  }, [envioGratisInfo.aplica])  // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (!requiereEnvio) setEnvioGratisAplicado(false) }, [requiereEnvio])
 
   // Medios de pago helpers
   const updateMedioPago = (idx: number, field: keyof MedioPagoItem, value: string) =>
@@ -2672,6 +2741,8 @@ export default function VentasPage() {
           ? { cuotas_info: Object.values(cuotasSeleccion).find(c => c.cuotas > 0) }
           : {}),
         ...(costoEnvioNum > 0 ? { costo_envio: costoEnvioNum } : {}),
+        // Mig 281 — trazabilidad del descuento por método de pago (el total ya lo tiene restado)
+        ...(promosPagoAplicadas.length > 0 ? { promo_pago: promosPagoAplicadas } : {}),
         ...(estado === 'despachada' ? { despachado_at: new Date().toISOString() } : {}),
         ...(estado === 'reservada' ? { reservado_at: new Date().toISOString() } : {}),
       }).select().single()
@@ -2725,7 +2796,9 @@ export default function VentasPage() {
       // salían por el monto SIN descuento (sobre-facturaban). Acá se prorratea el descuento global sobre
       // las líneas para que sumen EXACTO `total` (= lo que paga el cliente), dejando `precio_unitario` y
       // `subtotal` como el precio EFECTIVO → factura, NC, caja y Libro IVA consistentes sobre un número.
-      const hayDescGlobal = (descTotalMonto + descCombosMulti) > 0.005
+      // El descuento por método de pago (descPromoPago) también reduce `total` → entra al mismo
+      // prorrateo para que venta_items sume EXACTO lo cobrado (factura/NC/Libro IVA consistentes).
+      const hayDescGlobal = (descTotalMonto + descCombosMulti + descPromoPago) > 0.005
       const subtotalesEfectivos = hayDescGlobal
         ? prorratearDescuentoGlobal(
             cart.map(item => ({
@@ -4892,14 +4965,17 @@ export default function VentasPage() {
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     <div className="grid grid-cols-2 gap-2">
                       <input value={nuevoClienteForm.dni} onChange={e => setNuevoClienteForm(f => ({ ...f, dni: e.target.value }))}
-                        placeholder="DNI *"
+                        placeholder={`DNI${camposReqCliente.dni ? ' *' : ''}`}
                         className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       <input value={nuevoClienteForm.telefono} onChange={e => setNuevoClienteForm(f => ({ ...f, telefono: e.target.value }))}
-                        placeholder="Teléfono *"
+                        placeholder={`Teléfono${camposReqCliente.telefono ? ' *' : ''}`}
                         className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     </div>
+                    <input value={nuevoClienteForm.email} onChange={e => setNuevoClienteForm(f => ({ ...f, email: e.target.value }))}
+                      placeholder={`Email${camposReqCliente.email ? ' *' : ''}`} type="email" autoComplete="off"
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     <div className="flex gap-2">
-                      <button onClick={() => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }}
+                      <button onClick={() => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '', email: '' }) }}
                         className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 text-sm py-2 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-700/50">
                         Cancelar
                       </button>
@@ -4970,14 +5046,26 @@ export default function VentasPage() {
                     <span className={`text-sm font-medium flex-1 ${requiereEnvio ? 'text-accent-text' : 'text-gray-600 dark:text-gray-400'}`}>
                       Incluir envío
                     </span>
-                    <div className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${requiereEnvio ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                      <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform ${requiereEnvio ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                    {/* pointer-events-none: el click lo maneja el header contenedor — evita doble toggle */}
+                    <div className="pointer-events-none">
+                      <Toggle checked={requiereEnvio} onChange={() => {}} aria-label="Incluir envío" />
                     </div>
                   </div>
 
                   {/* Panel expandido */}
                   {requiereEnvio && (
                     <div className="px-3 pb-3 pt-2 space-y-3 border-t border-accent-text/20">
+
+                      {/* Punto 7 — banner de envío gratis condicional */}
+                      {envioGratisAplicado && envioGratisInfo.regla && (
+                        <div className="flex items-start gap-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 px-2.5 py-2">
+                          <Gift size={14} className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                          <p className="text-xs text-green-700 dark:text-green-400">
+                            <strong>Envío gratis</strong> — {describirReglaGratis(envioGratisInfo.regla)}.
+                            El costo se puso en $0 (podés editarlo si no corresponde).
+                          </p>
+                        </div>
+                      )}
 
                       {!modoAvanzado ? (
                         /* Modo básico: el envío es SOLO un costo (sin courier/reparto/dirección;
@@ -5261,6 +5349,12 @@ export default function VentasPage() {
                     <span>−${c.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 ))}
+                {promosPagoAplicadas.map(p => (
+                  <div key={p.metodo} className="flex justify-between text-sm text-success">
+                    <span>🏷 Promo {p.metodo} ({p.pct}%)</span>
+                    <span>−${p.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ))}
                 {costoEnvioNum > 0 && (
                   <div className="flex justify-between text-sm text-gray-600 dark:text-gray-300">
                     <span className="flex items-center gap-1"><Truck size={13} /> Envío</span>
@@ -5309,7 +5403,10 @@ export default function VentasPage() {
                     <select value={mp.tipo} onChange={e => updateMedioPago(idx, 'tipo', e.target.value)}
                       className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                       <option value="">Medio de pago...</option>
-                      {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
+                      {MEDIOS_PAGO.map(m => {
+                        const promo = metodosConDescuento.find(x => x.nombre === m)?.descuento
+                        return <option key={m} value={m}>{m}{promo ? ` · 🏷 ${etiquetaPromo(promo)}` : ''}</option>
+                      })}
                       {/* ISS-090: CC como medio de pago parcial */}
                       {clienteCCEnabled && clienteId && (
                         <option value="Cuenta Corriente">💳 Cuenta Corriente</option>

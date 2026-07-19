@@ -30,6 +30,7 @@ import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
+import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '@/lib/supabase'
 import { getRebajeSort } from '@/lib/rebajeSort'
@@ -3865,10 +3866,8 @@ export default function InventarioPage() {
                       </div>
 
                       <label className="flex items-center gap-3 cursor-pointer pt-1">
-                        <div onClick={() => setFilterAlerta(v => !v)}
-                          className={`w-9 h-5 rounded-full transition-colors relative ${filterAlerta ? 'bg-accent' : 'bg-gray-200 dark:bg-gray-600'}`}>
-                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${filterAlerta ? 'translate-x-4' : ''}`} />
-                        </div>
+                        <Toggle checked={filterAlerta} onChange={() => setFilterAlerta(v => !v)}
+                          aria-label="Solo stock crítico" />
                         <span className="text-sm text-gray-700 dark:text-gray-300">Solo stock crítico</span>
                       </label>
                     </div>

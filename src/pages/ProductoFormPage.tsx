@@ -17,6 +17,7 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
+import { Toggle } from '@/components/Toggle'
 import ProductoGrupoModal, { type ProductoGrupo } from '@/components/ProductoGrupoModal'
 import toast from 'react-hot-toast'
 
@@ -74,6 +75,7 @@ export default function ProductoFormPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [scanning, setScanning] = useState(false)
   const [scanResult, setScanResult] = useState<string | null>(null)
@@ -90,6 +92,9 @@ export default function ProductoFormPage() {
   // Grupos de variantes
   const [grupoId, setGrupoId] = useState<string | null>(null)
   const [varianteValores, setVarianteValores] = useState<Record<string, string>>({})
+  // Snapshot de los valores tal como estaban al cargar la página — para poder despegar el
+  // sufijo VIEJO del nombre (ej. "— S") si el usuario cambia de talle antes de agregar el nuevo.
+  const [varianteValoresOriginal, setVarianteValoresOriginal] = useState<Record<string, string>>({})
   const [grupoModalOpen, setGrupoModalOpen] = useState(false)
   const [grupoSelectorOpen, setGrupoSelectorOpen] = useState(false)
 
@@ -310,7 +315,10 @@ export default function ProductoFormPage() {
       if (productoData.publicado_marketplace) setShowMarketplace(true)
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
       if (productoData.grupo_id) setGrupoId(productoData.grupo_id)
-      if (productoData.variante_valores) setVarianteValores(productoData.variante_valores as Record<string, string>)
+      if (productoData.variante_valores) {
+        setVarianteValores(productoData.variante_valores as Record<string, string>)
+        setVarianteValoresOriginal(productoData.variante_valores as Record<string, string>)
+      }
       setLoaded(true)
     }
   }, [productoData])
@@ -395,9 +403,29 @@ export default function ProductoFormPage() {
         const { data: urlData } = supabase.storage.from('productos').getPublicUrl(path)
         imagen_url = urlData.publicUrl
       }
+
+      // Auto-sufijo de variante: si el producto está vinculado a un Grupo de variantes y tiene
+      // valores cargados (ej. Talle: S), el nombre tiene que reflejarlo — es el único lugar donde
+      // Inventario/ventas/tickets muestran cuál variante es, ya que ahí no se ve ningún badge de
+      // "Talle: S" (solo el nombre). Mismo criterio que "Generar variantes" en el modal del grupo
+      // (ProductoGrupoModal), que ya arma el nombre como "Grupo — Valor". Si el usuario cambió de
+      // valor (ej. S → M), se despega primero el sufijo viejo para no dejarlo colgado.
+      let nombreFinal = form.nombre.trim()
+      if (grupoId) {
+        const sufijoNuevo = Object.values(varianteValores).filter(v => v && v.trim()).join(' / ')
+        const sufijoViejo = Object.values(varianteValoresOriginal).filter(v => v && v.trim()).join(' / ')
+        if (sufijoViejo && nombreFinal.endsWith(` — ${sufijoViejo}`)) {
+          nombreFinal = nombreFinal.slice(0, nombreFinal.length - ` — ${sufijoViejo}`.length).trim()
+        }
+        if (sufijoNuevo && !nombreFinal.endsWith(` — ${sufijoNuevo}`)) {
+          nombreFinal = `${nombreFinal} — ${sufijoNuevo}`
+        }
+      }
+      if (nombreFinal !== form.nombre.trim()) setForm(p => ({ ...p, nombre: nombreFinal }))
+
       const payload = {
         tenant_id: tenant!.id,
-        nombre: form.nombre.trim(), sku: skuFinal,
+        nombre: nombreFinal, sku: skuFinal,
         descripcion: form.descripcion.trim() || null,
         categoria_id: form.categoria_id || null, proveedor_id: form.proveedor_id || null,
         ubicacion_id: form.ubicacion_id || null,
@@ -446,13 +474,13 @@ export default function ProductoFormPage() {
         const { error } = await supabase.from('productos').update(payload).eq('id', id)
         if (error) throw error
         toast.success('Producto actualizado')
-        logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'editar', pagina: '/productos' })
+        logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: nombreFinal, accion: 'editar', pagina: '/productos' })
       } else {
         const { data: newProd, error } = await supabase.from('productos').insert(payload).select('id').single()
         if (error) { if (error.code === '23505') throw new Error('Ya existe un producto con ese SKU'); throw error }
         productoId = newProd.id
         toast.success('Producto creado')
-        logActividad({ entidad: 'producto', entidad_nombre: form.nombre, accion: 'crear', pagina: '/productos' })
+        logActividad({ entidad: 'producto', entidad_nombre: nombreFinal, accion: 'crear', pagina: '/productos' })
       }
 
       // Guardar ubicación predeterminada para la sucursal activa
@@ -499,29 +527,30 @@ export default function ProductoFormPage() {
   }
 
   const handleDelete = async () => {
-    // Verificar si tiene stock
-    const { data: lineas } = await supabase.from('inventario_lineas')
-      .select('id, cantidad, inventario_series(id)')
-      .eq('producto_id', id!).eq('activo', true)
+    if (!confirm(`¿Eliminar "${form.nombre}" definitivamente? Esta acción NO se puede deshacer — se borra el registro, no solo se desactiva. Si preferís conservarlo pero ocultarlo, usá el toggle "Activo / Inactivo" en su lugar.`)) return
 
-    const tieneStock = (lineas ?? []).some((l: any) =>
-      (l.cantidad > 0) || ((l.inventario_series ?? []).length > 0)
-    )
+    setDeleting(true)
+    try {
+      const { data, error } = await supabase.rpc('eliminar_productos_fisico', { p_ids: [id!] })
+      if (error) { toast.error(error.message); return }
 
-    if (tieneStock) {
-      toast.error('No se puede eliminar: el producto tiene stock en inventario. Rebajá el stock primero.')
-      return
-    }
+      const resultado = (data ?? [])[0]
+      if (!resultado?.eliminado) {
+        const motivo = resultado?.motivo ?? 'error desconocido'
+        if (motivo === 'tiene_actividad') {
+          toast.error('No se puede eliminar: el producto tiene movimientos, ventas, compras u otra actividad registrada. Usá el toggle "Activo / Inactivo" para ocultarlo en su lugar.', { duration: 7000 })
+        } else {
+          toast.error(`No se pudo eliminar: ${motivo}`)
+        }
+        return
+      }
 
-    if (!confirm('¿Eliminar este producto? Esta acción no se puede deshacer.')) return
-
-    const { error } = await supabase.from('productos').update({ activo: false }).eq('id', id!)
-    if (error) toast.error(error.message)
-    else {
       toast.success('Producto eliminado')
       logActividad({ entidad: 'producto', entidad_id: id, entidad_nombre: form.nombre, accion: 'eliminar', pagina: '/productos' })
       qc.invalidateQueries({ queryKey: ['productos'] })
       navigate('/productos')
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -712,9 +741,9 @@ export default function ProductoFormPage() {
               className="flex items-center gap-2 px-3 py-2 text-sm text-primary border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all disabled:opacity-50">
               <Copy size={15} /> Duplicar
             </button>
-            <button type="button" onClick={handleDelete}
-              className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 border border-red-200 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all">
-              Eliminar
+            <button type="button" onClick={handleDelete} disabled={deleting}
+              className="flex items-center gap-2 px-3 py-2 text-sm text-red-500 border border-red-200 rounded-xl hover:bg-red-50 dark:bg-red-900/20 transition-all disabled:opacity-50">
+              {deleting ? 'Eliminando...' : 'Eliminar'}
             </button>
           </div>
         )}
@@ -827,13 +856,9 @@ export default function ProductoFormPage() {
 
               {/* Toggle Activo / Inactivo */}
               <label className="flex items-center gap-3 cursor-pointer">
-                <div className="relative">
-                  <input type="checkbox" checked={form.activo}
-                    onChange={e => setForm(p => ({ ...p, activo: e.target.checked }))} className="sr-only" />
-                  <div className={`w-11 h-6 rounded-full transition-colors ${form.activo ? 'bg-green-500' : 'bg-gray-300'}`}>
-                    <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.activo ? 'translate-x-5' : ''}`} />
-                  </div>
-                </div>
+                <Toggle size="lg" colorOn="bg-green-500" checked={form.activo}
+                  onChange={v => setForm(p => ({ ...p, activo: v }))}
+                  aria-label="Activo / Inactivo" />
                 <span className="text-sm text-gray-700 dark:text-gray-300">Activo / Inactivo</span>
               </label>
             </div>
@@ -1273,13 +1298,7 @@ export default function ProductoFormPage() {
 
                   {/* tiene_series */}
                   <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
-                    <div className="relative mt-0.5">
-                      <input type="checkbox" checked={form.tiene_series} disabled={!modoAvanzado}
-                        onChange={e => setForm(p => ({ ...p, tiene_series: e.target.checked }))} className="sr-only" />
-                      <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_series ? 'bg-accent' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_series ? 'translate-x-5' : ''}`} />
-                      </div>
-                    </div>
+                    <div className="mt-0.5"><Toggle checked={form.tiene_series} disabled={!modoAvanzado} onChange={v => setForm(p => ({ ...p, tiene_series: v }))} aria-label="tiene_series" /></div>
                     <div>
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Control por número de serie</p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">Cada unidad tiene su propio N° de serie</p>
@@ -1288,13 +1307,7 @@ export default function ProductoFormPage() {
 
                   {/* tiene_lote */}
                   <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
-                    <div className="relative mt-0.5">
-                      <input type="checkbox" checked={form.tiene_lote} disabled={!modoAvanzado}
-                        onChange={e => setForm(p => ({ ...p, tiene_lote: e.target.checked }))} className="sr-only" />
-                      <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_lote ? 'bg-accent' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_lote ? 'translate-x-5' : ''}`} />
-                      </div>
-                    </div>
+                    <div className="mt-0.5"><Toggle checked={form.tiene_lote} disabled={!modoAvanzado} onChange={v => setForm(p => ({ ...p, tiene_lote: v }))} aria-label="tiene_lote" /></div>
                     <div>
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Control por lote</p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">El stock se agrupa por número de lote</p>
@@ -1304,13 +1317,7 @@ export default function ProductoFormPage() {
                   {/* tiene_vencimiento + inline shelf_life_dias + aging_profile_id */}
                   <div>
                     <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
-                      <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_vencimiento} disabled={!modoAvanzado}
-                          onChange={e => setForm(p => ({ ...p, tiene_vencimiento: e.target.checked }))} className="sr-only" />
-                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_vencimiento ? 'bg-accent' : 'bg-gray-300'}`}>
-                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_vencimiento ? 'translate-x-5' : ''}`} />
-                        </div>
-                      </div>
+                      <div className="mt-0.5"><Toggle checked={form.tiene_vencimiento} disabled={!modoAvanzado} onChange={v => setForm(p => ({ ...p, tiene_vencimiento: v }))} aria-label="tiene_vencimiento" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Fecha de vencimiento</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Registra fecha de vencimiento por línea</p>
@@ -1351,13 +1358,7 @@ export default function ProductoFormPage() {
 
                   {/* tiene_pais_origen */}
                   <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
-                    <div className="relative mt-0.5">
-                      <input type="checkbox" checked={form.tiene_pais_origen} disabled={!modoAvanzado}
-                        onChange={e => setForm(p => ({ ...p, tiene_pais_origen: e.target.checked }))} className="sr-only" />
-                      <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_pais_origen ? 'bg-accent' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_pais_origen ? 'translate-x-5' : ''}`} />
-                      </div>
-                    </div>
+                    <div className="mt-0.5"><Toggle checked={form.tiene_pais_origen} disabled={!modoAvanzado} onChange={v => setForm(p => ({ ...p, tiene_pais_origen: v }))} aria-label="tiene_pais_origen" /></div>
                     <div>
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">País de origen</p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">Registra el país de origen en cada ingreso de inventario</p>
@@ -1368,13 +1369,7 @@ export default function ProductoFormPage() {
                   {/* es_kit — kitting es modo avanzado; si el producto ya es kit, solo-lectura */}
                   {(modoAvanzado || form.es_kit) && (
                   <label className={`flex items-start gap-3 ${modoAvanzado ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
-                    <div className="relative mt-0.5">
-                      <input type="checkbox" checked={form.es_kit} disabled={!modoAvanzado}
-                        onChange={e => setForm(p => ({ ...p, es_kit: e.target.checked }))} className="sr-only" />
-                      <div className={`w-10 h-5 rounded-full transition-colors ${form.es_kit ? 'bg-accent' : 'bg-gray-300'}`}>
-                        <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.es_kit ? 'translate-x-5' : ''}`} />
-                      </div>
-                    </div>
+                    <div className="mt-0.5"><Toggle checked={form.es_kit} disabled={!modoAvanzado} onChange={v => setForm(p => ({ ...p, es_kit: v }))} aria-label="es_kit" /></div>
                     <div>
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Es un KIT</p>
                       <p className="text-xs text-gray-400 dark:text-gray-500">Se arma a partir de otros SKUs (kitting). Configurá la receta en Inventario → Kits.</p>
@@ -1401,13 +1396,7 @@ export default function ProductoFormPage() {
                     {/* tiene_talle */}
                     <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                       title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_talle} disabled={!!grupoId}
-                          onChange={e => toggleAtributoVariante('tiene_talle', e.target.checked)} className="sr-only" />
-                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_talle ? 'bg-accent' : 'bg-gray-300'}`}>
-                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_talle ? 'translate-x-5' : ''}`} />
-                        </div>
-                      </div>
+                      <div className="mt-0.5"><Toggle checked={form.tiene_talle} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_talle', v)} aria-label="tiene_talle" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Talle / Talla</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Registra el talle de cada unidad (ropa, calzado)</p>
@@ -1417,13 +1406,7 @@ export default function ProductoFormPage() {
                     {/* tiene_color */}
                     <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                       title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_color} disabled={!!grupoId}
-                          onChange={e => toggleAtributoVariante('tiene_color', e.target.checked)} className="sr-only" />
-                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_color ? 'bg-accent' : 'bg-gray-300'}`}>
-                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_color ? 'translate-x-5' : ''}`} />
-                        </div>
-                      </div>
+                      <div className="mt-0.5"><Toggle checked={form.tiene_color} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_color', v)} aria-label="tiene_color" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Color</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Identifica el color de cada unidad</p>
@@ -1433,13 +1416,7 @@ export default function ProductoFormPage() {
                     {/* tiene_encaje */}
                     <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                       title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_encaje} disabled={!!grupoId}
-                          onChange={e => toggleAtributoVariante('tiene_encaje', e.target.checked)} className="sr-only" />
-                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_encaje ? 'bg-accent' : 'bg-gray-300'}`}>
-                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_encaje ? 'translate-x-5' : ''}`} />
-                        </div>
-                      </div>
+                      <div className="mt-0.5"><Toggle checked={form.tiene_encaje} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_encaje', v)} aria-label="tiene_encaje" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Encaje</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Variante de encaje o ajuste</p>
@@ -1449,13 +1426,7 @@ export default function ProductoFormPage() {
                     {/* tiene_formato */}
                     <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                       title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_formato} disabled={!!grupoId}
-                          onChange={e => toggleAtributoVariante('tiene_formato', e.target.checked)} className="sr-only" />
-                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_formato ? 'bg-accent' : 'bg-gray-300'}`}>
-                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_formato ? 'translate-x-5' : ''}`} />
-                        </div>
-                      </div>
+                      <div className="mt-0.5"><Toggle checked={form.tiene_formato} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_formato', v)} aria-label="tiene_formato" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Formato</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Formato o presentación del producto</p>
@@ -1465,13 +1436,7 @@ export default function ProductoFormPage() {
                     {/* tiene_sabor_aroma */}
                     <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                       title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="relative mt-0.5">
-                        <input type="checkbox" checked={form.tiene_sabor_aroma} disabled={!!grupoId}
-                          onChange={e => toggleAtributoVariante('tiene_sabor_aroma', e.target.checked)} className="sr-only" />
-                        <div className={`w-10 h-5 rounded-full transition-colors ${form.tiene_sabor_aroma ? 'bg-accent' : 'bg-gray-300'}`}>
-                          <div className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white dark:bg-gray-800 rounded-full shadow transition-transform ${form.tiene_sabor_aroma ? 'translate-x-5' : ''}`} />
-                        </div>
-                      </div>
+                      <div className="mt-0.5"><Toggle checked={form.tiene_sabor_aroma} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_sabor_aroma', v)} aria-label="tiene_sabor_aroma" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Sabor / Aroma</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Sabor o aroma de cada unidad</p>
@@ -1703,12 +1668,10 @@ export default function ProductoFormPage() {
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Publicar en marketplace</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Visible para compradores del marketplace externo</p>
                       </div>
-                      <div className="relative ml-4 flex-shrink-0">
-                        <input type="checkbox" checked={form.publicado_marketplace}
-                          onChange={e => setForm(p => ({ ...p, publicado_marketplace: e.target.checked }))} className="sr-only" />
-                        <div className={`w-11 h-6 rounded-full transition-colors ${form.publicado_marketplace ? 'bg-violet-500' : 'bg-gray-300 dark:bg-gray-600'}`}>
-                          <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.publicado_marketplace ? 'translate-x-5' : ''}`} />
-                        </div>
+                      <div className="ml-4 flex-shrink-0">
+                        <Toggle size="lg" colorOn="bg-violet-500" checked={form.publicado_marketplace}
+                          onChange={v => setForm(p => ({ ...p, publicado_marketplace: v }))}
+                          aria-label="Publicado en marketplace" />
                       </div>
                     </label>
 

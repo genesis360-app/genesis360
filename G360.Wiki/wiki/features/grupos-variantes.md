@@ -25,6 +25,24 @@ Permite agrupar múltiples SKUs que son variantes de un mismo artículo (ej: Rem
 > BUENO (el de los 9 productos) en vez del vacío — detectado y revertido al toque, sin pérdida de
 > datos por ser soft-delete.
 
+> [!NOTE] **🟡 Auto-sufijo de nombre al vincular + aclaración de por qué el ingreso NO pide talle
+> (EN DEV, sin commitear, 2026-07-19).** GO preguntó por qué al hacer ingreso de inventario de
+> "Remera Básica" (vinculada a un grupo con Talle=S) no le pedía el talle. **Es el comportamiento
+> correcto por diseño, no un bug**: acá cada talle es un SKU SEPARADO (a diferencia de "Atributos de
+> variante", donde el talle se pide por LPN dentro del MISMO SKU — ver
+> [[wiki/features/atributos-variante]]) — el SKU que el operador elige al ingresar YA ES esa
+> variante, no hay ambigüedad que resolver. El detalle real que faltaba: en NINGÚN lado de
+> Inventario/Ventas/tickets se muestra un badge de variante (eso solo existe en el panel de "Grupos"
+> dentro de ProductosPage) — el **nombre del producto es el único lugar** donde se distingue la
+> variante en esas pantallas, y "Remera Básica" a secas no lo reflejaba. **Causa raíz:** "Generar
+> variantes" (alta automática desde el modal del grupo) sí arma el nombre como `Grupo — Valor`, pero
+> **vincular un producto YA EXISTENTE** a un grupo (el flujo que usó GO, desde `ProductoFormPage`) no
+> aplicaba ese sufijo. **Fix:** `ProductoFormPage.tsx` — al guardar un producto vinculado a un grupo
+> con valores de variante cargados, el nombre se auto-completa con `— <valor>` (mismo criterio que
+> "Generar variantes"); si el usuario cambia de valor (ej. S → M) se despega el sufijo viejo antes de
+> agregar el nuevo. El registro de prueba de GO ("Remera Básica", SKU-00092) fue renombrado a mano a
+> "Remera Básica — S" para reflejarlo de inmediato. Sin migración. Ver `log.md` 2026-07-19.
+
 ## Schema (migration 120)
 
 ```sql

@@ -1317,3 +1317,25 @@ propósito"** por "cruzar sucursales por diseño" — un traslado no le pertenec
 ninguna de las dos puntas, así que restringirlo por sucursal rompería la trazabilidad del propio
 mecanismo. `94_rls_aislamiento_sucursal_cross_check` documenta el comportamiento (test #2) como
 regresión de control de esa decisión, no como un bug a corregir.
+
+## 🛍️ §38 — Backlog Config Ventas/Envíos de Fede (9 puntos, migs 279-281) — 2026-07-19
+
+**Contexto:** GO pidió implementar de una los 9 puntos "para implementar" del relevamiento que
+dejó Fede probando la app (2026-07-19). Dos tocan PLATA (REGLA #0): el descuento por método de
+pago y el envío gratis condicional (cuya config existía pero **ninguna venta la leía** — era
+write-only desde su creación).
+
+| # | Punto | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Descuento por método de pago** (`metodos_pago.config.descuento`: % + tope + días + vigencia) | Config guarda la promo · el POS muestra "🏷 10% off" en el selector · al cobrar con ese método aparece la línea verde y el total baja · `ventas.promo_pago` (mig 281) registra el detalle · **Σ `venta_items.subtotal` == `ventas.total` EXACTO** (el prorrateo fiscal G0.6 pliega la promo en las líneas → factura/NC/Libro IVA consistentes) · pago mixto descuenta sobre lo abonado con cada método (capado al total y al tope) | unit `promosPago.test.ts` (22) + **e2e 98** (venta real con verificación en DB) |
+| 2 | **Vigencia por fecha en combos** (mig 279) | Combo con `vigencia_desde/hasta` solo aplica dentro del rango (inclusive, fecha LOCAL no UTC) · badges vigente/programado/vencido en Config · el POS filtra los no vigentes al cargar | unit `combosVigencia.test.ts` (9) — la lógica del POS es el mismo helper `comboVigente` |
+| 3 | **Redacción "Alertas de ventas"** | El campo ahora dice explícitamente que cuenta OPERACIONES de devolución (no unidades ni $) + InfoTip con ejemplo | revisión visual |
+| 4 | **Campos requeridos del cliente en POS** (mig 280, jsonb por campo) | Config con checkboxes DNI/Teléfono/Email (nombre siempre) · el enum legacy `cliente_datos_minimos` se mantiene sincronizado · el alta rápida del POS ganó input de EMAIL (no existía) · placeholders con `*` dinámico · validación bloquea con el mensaje del campo faltante · fallback al enum si el jsonb es NULL (tenant viejo) | unit `clienteCampos.test.ts` (11) + **e2e 98** (email requerido bloquea el alta) |
+| 5 | **Toggles inconsistentes** | Los 12 toggles a mano restantes migrados a `<Toggle>` (ProductoFormPage ×12 ya contados, CajaPage, ClientesPage, ConfigPage ×5, GastosPage, GruposEstadosPage, InventarioPage, ProductosPage, VentasPage) — `grep translate-x` fuera de Toggle.tsx = 0 · 2 tenían el bug de contraste §31 (track `bg-amber-50` casi blanco con knob blanco) → `colorOn="bg-amber-500"` | grep + typecheck + e2e de regresión de las 6 páginas |
+| 6 | **Formato numérico central** | `fmtPesos/fmtEntero/fmtPct` en `src/lib/formato.ts` — el código nuevo los usa; los ~340 llamados viejos se migran de forma oportunista (decisión: no hacer pasada masiva) | unit `formato.test.ts` (10) |
+| 7 | **Envío gratis condicional CONECTADO** (multi-regla + tope de km) | `envio_gratis_reglas` v2 `{reglas:[...]}` con retrocompat del shape legacy · semántica AND dentro de la regla / OR entre reglas · regla con `maxKm` y distancia desconocida NO aplica (fail-closed: nunca regalar un envío fuera de radio) · el POS auto-pone el costo en $0 con banner explicativo (editable, restaura el costo previo si la promo deja de aplicar) · el autocálculo por km no pisa el $0 | unit `enviosTarifas.test.ts` (+13) + **e2e 98** (banner + resumen sin línea de envío) |
+| 8 | **Tooltips ⓘ** | Componente `InfoTip` nuevo (hover/focus/tap, dark-aware, position:fixed para no cortarse en overflow) aplicado en: alertas de ventas, campos requeridos, vigencia de combos, promo por método (aclara descuento-al-cliente vs comisión), reglas de envío gratis | revisión visual |
+| 9 | **Chips de variables WhatsApp** | Las 6 variables de la plantilla son botones que insertan `{{Var}}` en la posición del cursor del textarea | revisión visual |
+
+**Verde:** tsc · build · unit **1129** (64 nuevos) · e2e 98 (3/3 mutantes) + regresión 29/29
+(specs 02/04/06/08/10/19). Migs 279-281 aplicadas en DEV.

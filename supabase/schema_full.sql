@@ -488,7 +488,9 @@ CREATE TABLE public.combos (
   created_at timestamp with time zone DEFAULT now(),
   descuento_tipo text NOT NULL DEFAULT 'pct'::text,
   descuento_monto numeric(12,2) NOT NULL DEFAULT 0,
-  sucursal_id uuid
+  sucursal_id uuid,
+  vigencia_desde date,
+  vigencia_hasta date
 );
 
 CREATE TABLE public.courier_credenciales (
@@ -2106,7 +2108,8 @@ CREATE TABLE public.tenants (
   manual_monto_mensual numeric(12,2),
   manual_paid_until timestamp with time zone,
   manual_ultimo_recordatorio_tipo text,
-  manual_ultimo_recordatorio_at timestamp with time zone
+  manual_ultimo_recordatorio_at timestamp with time zone,
+  cliente_campos_requeridos jsonb
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2311,7 +2314,8 @@ CREATE TABLE public.ventas (
   fecha_vencimiento_cc date,
   interes_cc numeric(12,2) NOT NULL DEFAULT 0,
   afip_provider_usado text,
-  emisor_id uuid
+  emisor_id uuid,
+  promo_pago jsonb
 );
 
 CREATE TABLE public.ventas_externas_logs (
@@ -4350,6 +4354,101 @@ BEGIN
 
   RETURN v_hasta;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_producto_tiene_actividad(p_producto_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id UUID;
+  v_caller_tenant UUID;
+BEGIN
+  SELECT tenant_id INTO v_tenant_id FROM productos WHERE id = p_producto_id;
+  IF v_tenant_id IS NULL THEN
+    RETURN true; -- no existe: tratarlo como no-eliminable, que el caller lo reporte como tal
+  END IF;
+
+  SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
+  IF v_caller_tenant IS DISTINCT FROM v_tenant_id THEN
+    RAISE EXCEPTION 'No autorizado';
+  END IF;
+
+  RETURN
+       EXISTS (SELECT 1 FROM movimientos_stock         WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM venta_items                WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM orden_compra_items         WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM recepcion_items            WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM traslado_items             WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_conteo_items    WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_conteos         WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM devolucion_items           WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM devolucion_proveedor_items WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM envio_items                WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM venta_item_despachos       WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_lineas          WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_series          WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM combo_items                WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM combos      WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM kit_recetas WHERE kit_producto_id = p_producto_id OR comp_producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM kitting_log WHERE kit_producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_meli_map WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_tn_map   WHERE producto_id = p_producto_id);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.eliminar_productos_fisico(p_ids uuid[])
+ RETURNS TABLE(producto_id uuid, eliminado boolean, motivo text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_id UUID;
+  v_tenant_id UUID;
+  v_caller_tenant UUID;
+BEGIN
+  SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
+  IF v_caller_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin tenant'; END IF;
+
+  FOREACH v_id IN ARRAY p_ids LOOP
+    SELECT tenant_id INTO v_tenant_id FROM productos WHERE id = v_id;
+
+    IF v_tenant_id IS NULL THEN
+      producto_id := v_id; eliminado := false; motivo := 'no_encontrado';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    IF v_tenant_id IS DISTINCT FROM v_caller_tenant THEN
+      producto_id := v_id; eliminado := false; motivo := 'no_autorizado';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    IF fn_producto_tiene_actividad(v_id) THEN
+      producto_id := v_id; eliminado := false; motivo := 'tiene_actividad';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    BEGIN
+      DELETE FROM alertas WHERE alertas.producto_id = v_id;
+      DELETE FROM productos WHERE productos.id = v_id;
+      producto_id := v_id; eliminado := true; motivo := NULL;
+    EXCEPTION
+      WHEN foreign_key_violation THEN
+        producto_id := v_id; eliminado := false; motivo := 'tiene_actividad';
+      WHEN OTHERS THEN
+        producto_id := v_id; eliminado := false; motivo := 'error: ' || SQLERRM;
+    END;
+    RETURN NEXT;
+  END LOOP;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_saldo_proveedor_cc(p_proveedor_id uuid)

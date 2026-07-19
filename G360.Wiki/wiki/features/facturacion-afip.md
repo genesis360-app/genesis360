@@ -3,7 +3,7 @@ title: Facturación Electrónica AFIP
 category: features
 tags: [afip, facturacion, cae, iva, argentina, fiscal, pdf, qr]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-07-09
+updated: 2026-07-19
 ---
 
 # Facturación Electrónica AFIP
@@ -122,6 +122,27 @@ Módulo de facturación electrónica conforme a RG 5616 AFIP. Implementado en v1
 - Ítems con IVA desglosado por tasa
 - Totales (neto + IVA por alícuota + total)
 - **QR AFIP** (RG 4291): JSON del comprobante → base64 → URL `https://www.afip.gob.ar/fe/qr/?p=<base64>`
+
+> **2026-07-19 (EN `dev` LOCAL, sin pushear, sin deploy) — ítem con nombre + descripción del
+> producto.** El ítem de Factura/NC ahora muestra el `nombre` del producto (como ya hacía) y,
+> debajo en gris chico, la `descripcion` del producto **si está cargada** (campo opcional que ya
+> existía en `productos` pero no se usaba en facturación). El ticket y el historial de venta NO
+> cambian (solo nombre) — pedido específico de GO para el documento fiscal. Implementación:
+> - Nuevo campo opcional `descripcion_extra` en `FacturaPDFData['items']`.
+> - Los 3 `SELECT` que arman `FacturaPDFData` ahora piden también `productos(...,descripcion)`: 2
+>   en `VentasPage.tsx` (Factura y Nota de Crédito) + 1 en `FacturacionPage.tsx` (emisión manual).
+> - Render vía hooks `willDrawCell`/`didDrawCell` de jspdf-autotable (no soporta 2 estilos en una
+>   misma celda de tabla): se suprime el texto default de la celda y se redibuja a mano (nombre en
+>   negrita arriba, descripción en gris más chico debajo).
+> - Un primer intento posicionó el texto con un offset fijo a ojo y quedó desalineado respecto a
+>   Cód./Cant./Subtotal de la misma fila (GO lo detectó mirando la factura real) — corregido
+>   replicando el cálculo exacto de la librería (`cell.getTextPos()` + el ajuste `fontSize ×
+>   (2 − 1.15)` que hace `autoTableText` internamente).
+> - Verificado descargando una factura REAL de DEV (venta con CAE real, producto "Yerba Mateico"
+>   con descripción "Yerba Mate Mateico" ya cargada) y extrayendo el texto del PDF con `pdfjs-dist`
+>   para confirmar la posición exacta.
+>
+> Ver `log.md` (2026-07-19).
 
 **Acceso al botón PDF:**
 - FacturacionPage → historial de emitidas (cualquier comprobante con CAE)

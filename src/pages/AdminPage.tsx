@@ -189,7 +189,7 @@ export default function AdminPage() {
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
           <input type="text" value={search} onChange={e => setSearch(e.target.value)}
             placeholder="Buscar por nombre o ID..."
-            className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+            className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
         </div>
         <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}
           className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none bg-white dark:bg-gray-800">
@@ -270,7 +270,7 @@ export default function AdminPage() {
                       </td>
                       <td className="px-4 py-3 text-center">
                         <button onClick={() => openEdit(t)}
-                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                           <Edit2 size={15} />
                         </button>
                       </td>
@@ -303,7 +303,7 @@ export default function AdminPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estado de suscripción</label>
                 <select value={editForm.subscription_status}
                   onChange={e => setEditForm(p => ({ ...p, subscription_status: e.target.value as SubscriptionStatus }))}
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent">
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                   {Object.entries(STATUS_CONFIG).map(([k, v]) => (
                     <option key={k} value={k}>{v.label}</option>
                   ))}
@@ -317,7 +317,7 @@ export default function AdminPage() {
                   {[1, 2, 5, 10, 999].map(n => (
                     <button key={n} onClick={() => setEditForm(p => ({ ...p, max_users: n }))}
                       className={`flex-1 py-2 rounded-xl border-2 text-sm font-medium transition-all
-                        ${editForm.max_users === n ? 'border-accent bg-blue-50 dark:bg-blue-900/20 text-primary' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'}`}>
+                        ${editForm.max_users === n ? 'border-accent-text bg-blue-50 dark:bg-blue-900/20 text-primary' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-500'}`}>
                       {n === 999 ? '∞' : n}
                     </button>
                   ))}
@@ -331,7 +331,7 @@ export default function AdminPage() {
                 </label>
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="365" value={editForm.trial_days}
                   onChange={e => setEditForm(p => ({ ...p, trial_days: parseInt(e.target.value) || 0 }))}
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent"
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text"
                   placeholder="0 = sin cambio" />
                 <p className="text-xs text-gray-400 dark:text-gray-400 mt-1">
                   Trial actual vence: {new Date(editTenant.trial_ends_at).toLocaleDateString('es-AR')}

@@ -1039,7 +1039,7 @@ export default function RecepcionesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-primary flex items-center gap-2">
-            <Warehouse size={22} className="text-accent" /> Recepciones
+            <Warehouse size={22} className="text-accent-text" /> Recepciones
           </h1>
           <p className="text-sm text-muted mt-0.5">Ingreso de mercadería desde proveedores</p>
         </div>
@@ -1053,13 +1053,13 @@ export default function RecepcionesPage() {
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" />
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-text" />
           </div>
         ) : recepciones.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
             <Warehouse size={40} className="mb-3 opacity-40" />
             <p className="font-medium">No hay recepciones aún</p>
-            <button onClick={() => setShowForm(true)} className="mt-3 text-accent text-sm hover:underline">
+            <button onClick={() => setShowForm(true)} className="mt-3 text-accent-text text-sm hover:underline">
               Crear la primera →
             </button>
           </div>
@@ -1191,7 +1191,7 @@ export default function RecepcionesPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proveedor</label>
             <select value={fProveedorId} onChange={e => { setFProveedorId(e.target.value); setFOcId('') }}
-              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
               <option value="">Sin proveedor</option>
               {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
@@ -1201,7 +1201,7 @@ export default function RecepcionesPage() {
               Contra OC <span className="text-gray-400 text-xs font-normal">(opcional)</span>
             </label>
             <select value={fOcId} onChange={e => setFOcId(e.target.value)}
-              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
               <option value="">Sin OC vinculada</option>
               {(ocsConfirmadas as any[]).map(oc => <option key={oc.id} value={oc.id}>OC #{oc.numero}</option>)}
             </select>
@@ -1210,7 +1210,7 @@ export default function RecepcionesPage() {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sucursal destino</label>
               <select value={fSucursalId} onChange={e => setFSucursalId(e.target.value)}
-                className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+                className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
                 <option value="">Sin sucursal</option>
                 {sucursales.map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
               </select>
@@ -1220,7 +1220,7 @@ export default function RecepcionesPage() {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas</label>
             <input type="text" value={fNotas} onChange={e => setFNotas(e.target.value)}
               placeholder="Opcional..."
-              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
           </div>
           {/* CO2/B7 — remito del proveedor */}
           <div className="sm:col-span-2">
@@ -1229,7 +1229,7 @@ export default function RecepcionesPage() {
             </label>
             <input type="file" accept="image/*,application/pdf"
               onChange={e => setRemitoFile(e.target.files?.[0] ?? null)}
-              className="w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-accent/10 file:text-accent file:text-sm file:font-medium" />
+              className="w-full text-sm text-gray-600 dark:text-gray-300 file:mr-3 file:px-3 file:py-1.5 file:rounded-lg file:border-0 file:bg-accent/10 file:text-accent-text file:text-sm file:font-medium" />
             {remitoFile && <p className="text-xs text-gray-500 mt-1">📎 {remitoFile.name}</p>}
           </div>
         </div>
@@ -1243,7 +1243,7 @@ export default function RecepcionesPage() {
           <h2 className="text-sm font-semibold text-primary uppercase tracking-wide">Productos a recibir</h2>
           <div className="flex items-center gap-3">
             <button onClick={() => { setScanStep('upload'); setScanItems([]); setScanPreviewUrl(null); setShowScanModal(true) }}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent border border-accent/40 rounded-lg hover:bg-accent/5 transition-colors">
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-accent-text border border-accent-text/40 rounded-lg hover:bg-accent/5 transition-colors">
               <Camera size={13} /> Escanear ticket
             </button>
             <span className="text-xs text-muted">{items.length} ítem(s)</span>
@@ -1252,7 +1252,7 @@ export default function RecepcionesPage() {
 
         {/* Buscador */}
         <div className="relative">
-          <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20">
+          <div className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl focus-within:border-accent-text focus-within:ring-2 focus-within:ring-accent-text/20">
             <Search size={15} className="text-gray-400 flex-shrink-0" />
             <input
               value={prodSearch}
@@ -1262,7 +1262,7 @@ export default function RecepcionesPage() {
               placeholder="Buscar producto por nombre o SKU..."
               className="flex-1 text-sm bg-transparent focus:outline-none text-gray-800 dark:text-gray-100" />
             <button type="button" onClick={() => setShowScanner(true)} title="Escanear código (GS1 o barras)"
-              className="flex-shrink-0 p-1 text-gray-400 hover:text-accent transition-colors">
+              className="flex-shrink-0 p-1 text-gray-400 hover:text-accent-text transition-colors">
               <ScanBarcode size={16} />
             </button>
           </div>
@@ -1272,7 +1272,7 @@ export default function RecepcionesPage() {
                 esSupervisorPlus ? (
                   <button type="button" onMouseDown={crearProductoRapido}
                     className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <span className="text-accent font-medium">➕ Crear producto "{prodSearch.trim()}"</span>
+                    <span className="text-accent-text font-medium">➕ Crear producto "{prodSearch.trim()}"</span>
                     <span className="block text-xs text-gray-400">Alta rápida — queda pendiente de revisión</span>
                   </button>
                 ) : (
@@ -1322,7 +1322,7 @@ export default function RecepcionesPage() {
                       type="number" min="0" value={it.cantidad_recibida}
                       onChange={e => updItem(it._key, { cantidad_recibida: e.target.value })}
                       onWheel={e => e.currentTarget.blur()}
-                      className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent dark:bg-gray-700" />
+                      className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent-text dark:bg-gray-700" />
                   </div>
                   <button onClick={() => removeItem(it._key)}
                     className="text-gray-400 hover:text-red-500 transition-colors flex-shrink-0">
@@ -1358,7 +1358,7 @@ export default function RecepcionesPage() {
                         <div className="col-span-2 sm:col-span-3">
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Estructura de embalaje</label>
                           <select value={it.estructura_id} onChange={e => updItem(it._key, { estructura_id: e.target.value })}
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600">
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600">
                             <option value="">Sin estructura</option>
                             {estructurasMap[it.producto_id].map(e => (
                               <option key={e.id} value={e.id}>{e.nombre}{e.is_default ? ' (default)' : ''}</option>
@@ -1369,7 +1369,7 @@ export default function RecepcionesPage() {
                       <div>
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ubicación</label>
                         <select value={it.ubicacion_id} onChange={e => updItem(it._key, { ubicacion_id: e.target.value })}
-                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600">
+                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600">
                           <option value="">Sin ubicación</option>
                           {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                         </select>
@@ -1377,7 +1377,7 @@ export default function RecepcionesPage() {
                       <div>
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Estado</label>
                         <select value={it.estado_id} onChange={e => updItem(it._key, { estado_id: e.target.value })}
-                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600">
+                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600">
                           <option value="">Sin estado</option>
                           {(estadosInv as any[]).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                         </select>
@@ -1386,20 +1386,20 @@ export default function RecepcionesPage() {
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">LPN</label>
                         <input type="text" value={it.lpn} onChange={e => updItem(it._key, { lpn: e.target.value })}
                           placeholder="LPN-001"
-                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs font-mono focus:outline-none focus:border-accent dark:bg-gray-600" />
+                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs font-mono focus:outline-none focus:border-accent-text dark:bg-gray-600" />
                       </div>
                       {it.tiene_lote && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nro. de lote</label>
                           <input type="text" value={it.nro_lote} onChange={e => updItem(it._key, { nro_lote: e.target.value })}
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs font-mono focus:outline-none focus:border-accent dark:bg-gray-600" />
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs font-mono focus:outline-none focus:border-accent-text dark:bg-gray-600" />
                         </div>
                       )}
                       {it.tiene_vencimiento && (
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha vencimiento</label>
                           <input type="date" value={it.fecha_vencimiento} onChange={e => updItem(it._key, { fecha_vencimiento: e.target.value })}
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600" />
                         </div>
                       )}
                       {it.tiene_pais_origen && (
@@ -1407,7 +1407,7 @@ export default function RecepcionesPage() {
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">País de Origen</label>
                           <input type="text" value={it.pais_origen} onChange={e => updItem(it._key, { pais_origen: e.target.value })}
                             placeholder="Ej: Argentina"
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600" />
                         </div>
                       )}
                       {it.tiene_talle && (
@@ -1458,7 +1458,7 @@ export default function RecepcionesPage() {
                             onChange={e => updItem(it._key, { precio_costo: e.target.value })}
                             onWheel={e => e.currentTarget.blur()}
                             placeholder={String(it.precio_costo_default)}
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600" />
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600" />
                         )}
                         {/* CO3/E1 — alerta de cambio de costo + el operador decide actualizar el maestro */}
                         {!ocPagada && (() => {
@@ -1481,7 +1481,7 @@ export default function RecepcionesPage() {
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Números de serie (uno por línea)</label>
                           <textarea value={it.series_txt} rows={3}
                             onChange={e => updItem(it._key, { series_txt: e.target.value, cantidad_recibida: String(e.target.value.split('\n').filter(s => s.trim()).length) })}
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs font-mono focus:outline-none focus:border-accent dark:bg-gray-600 resize-none" />
+                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs font-mono focus:outline-none focus:border-accent-text dark:bg-gray-600 resize-none" />
                         </div>
                       )}
                     </div>
@@ -1509,7 +1509,7 @@ export default function RecepcionesPage() {
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-2">
-                <Camera size={18} className="text-accent" />
+                <Camera size={18} className="text-accent-text" />
                 <h2 className="font-semibold text-primary">Escanear ticket de compra</h2>
               </div>
               <button onClick={() => { setShowScanModal(false); setScanStep('upload'); setScanItems([]) }}
@@ -1527,9 +1527,9 @@ export default function RecepcionesPage() {
                   <p className="text-sm text-muted">Fotografiá o subí el ticket del supermercado. Genesis360 va a detectar los productos, cantidades y precios automáticamente.</p>
                   <div
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex flex-col items-center justify-center gap-3 h-48 border-2 border-dashed border-gray-200 dark:border-gray-600 rounded-2xl cursor-pointer hover:border-accent hover:bg-accent/5 transition-all">
+                    className="flex flex-col items-center justify-center gap-3 h-48 border-2 border-dashed border-gray-200 dark:border-gray-600 rounded-2xl cursor-pointer hover:border-accent-text hover:bg-accent/5 transition-all">
                     <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center">
-                      <Upload size={22} className="text-accent" />
+                      <Upload size={22} className="text-accent-text" />
                     </div>
                     <div className="text-center">
                       <p className="text-sm font-medium text-primary">Tocá para seleccionar imagen</p>
@@ -1550,7 +1550,7 @@ export default function RecepcionesPage() {
                     <img src={scanPreviewUrl} alt="Ticket" className="w-full max-h-48 object-contain rounded-xl border border-gray-200 dark:border-gray-700" />
                   )}
                   <div className="flex flex-col items-center gap-3 py-6">
-                    <Loader2 size={32} className="text-accent animate-spin" />
+                    <Loader2 size={32} className="text-accent-text animate-spin" />
                     <p className="text-sm font-medium text-primary">Analizando ticket...</p>
                     <p className="text-xs text-muted">Claude está detectando los productos y precios</p>
                   </div>
@@ -1604,12 +1604,12 @@ export default function RecepcionesPage() {
                               <td className="px-3 py-2.5 text-center">
                                 <input type="number" min="1" value={item.cantidad}
                                   onChange={e => setScanItems(prev => prev.map(i => i._key === item._key ? { ...i, cantidad: Math.max(1, parseInt(e.target.value) || 1) } : i))}
-                                  className="w-14 text-center border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:border-accent" />
+                                  className="w-14 text-center border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:border-accent-text" />
                               </td>
                               <td className="px-3 py-2.5 text-right">
                                 <input type="number" min="0" step="0.01" value={item.precio_unitario}
                                   onChange={e => setScanItems(prev => prev.map(i => i._key === item._key ? { ...i, precio_unitario: parseFloat(e.target.value) || 0 } : i))}
-                                  className="w-24 text-right border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:border-accent" />
+                                  className="w-24 text-right border border-gray-200 dark:border-gray-600 rounded-lg px-1 py-0.5 bg-transparent focus:outline-none focus:border-accent-text" />
                               </td>
                             </tr>
                           ))}
@@ -1658,7 +1658,7 @@ export default function RecepcionesPage() {
         <button
           disabled={saving || items.length === 0}
           onClick={() => guardar(false)}
-          className="px-5 py-2.5 border border-accent text-accent rounded-xl text-sm font-medium hover:bg-accent/5 disabled:opacity-50 transition-colors">
+          className="px-5 py-2.5 border border-accent-text text-accent-text rounded-xl text-sm font-medium hover:bg-accent/5 disabled:opacity-50 transition-colors">
           {saving ? 'Guardando...' : 'Guardar borrador'}
         </button>
         <button

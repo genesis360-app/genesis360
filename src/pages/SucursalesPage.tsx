@@ -149,7 +149,7 @@ export default function SucursalesPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <Building2 size={24} className="text-accent" />
+          <Building2 size={24} className="text-accent-text" />
           <div>
             <h1 className="text-xl font-bold text-gray-900 dark:text-white">Sucursales</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">Gestioná las sucursales y tarifas de envío</p>
@@ -212,7 +212,7 @@ export default function SucursalesPage() {
                 </div>
                 <div className="flex items-center gap-1">
                   <button onClick={() => setExpandedId(expandedId === s.id ? null : s.id)}
-                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-accent px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                    className="flex items-center gap-1 text-xs text-gray-400 hover:text-accent-text px-2 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
                     <Truck size={13} /> Couriers
                   </button>
                   <button onClick={() => openEdit(s)}
@@ -253,7 +253,7 @@ export default function SucursalesPage() {
                                   if (e.key === 'Escape') setCourierEdit(null)
                                 }}
                                 placeholder="0.00"
-                                className="w-28 px-2 py-1 border border-accent rounded-lg text-xs text-right bg-white dark:bg-gray-700 text-primary focus:outline-none"
+                                className="w-28 px-2 py-1 border border-accent-text rounded-lg text-xs text-right bg-white dark:bg-gray-700 text-primary focus:outline-none"
                               />
                               <button onClick={() => saveCourierTarifa(s.id, courier, courierEdit!.precio)}
                                 className="text-green-600 p-0.5"><Check size={13} /></button>
@@ -263,7 +263,7 @@ export default function SucursalesPage() {
                           ) : (
                             <button
                               onClick={() => setCourierEdit({ courier: `${s.id}:${courier}`, precio: tarifa ? String(tarifa.precio) : '' })}
-                              className="text-xs px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors min-w-[72px] text-right">
+                              className="text-xs px-2 py-0.5 rounded border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text hover:text-accent-text transition-colors min-w-[72px] text-right">
                               {tarifa ? `$${Number(tarifa.precio).toLocaleString('es-AR')}` : '— sin precio —'}
                             </button>
                           )}
@@ -394,7 +394,7 @@ export default function SucursalesPage() {
               {/* Umbrales de autorización de gastos (v1.8.43) */}
               <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
                 <h3 className="font-semibold text-gray-700 dark:text-gray-200 text-sm mb-3 flex items-center gap-2">
-                  <span className="text-accent">$</span> Umbrales de autorización de gastos
+                  <span className="text-accent-text">$</span> Umbrales de autorización de gastos
                 </h3>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
                   Hasta este monto, el rol puede crear/editar/eliminar gastos sin pedir autorización. Dejá vacío para sin restricción (SUPERVISOR) o todo-requiere-autorización (CAJERO).

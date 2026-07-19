@@ -122,7 +122,7 @@ export function CodigoPerfilesPanel() {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-            <ScanBarcode size={16} className="text-accent" /> Códigos compuestos (GS1)
+            <ScanBarcode size={16} className="text-accent-text" /> Códigos compuestos (GS1)
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Perfiles para leer/generar códigos con varios campos (SKU, lote, vencimiento, cantidad…).</p>
         </div>
@@ -146,12 +146,12 @@ export function CodigoPerfilesPanel() {
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre</label>
               <input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
                 placeholder="Ej: Proveedor X — GS1"
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent" />
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Proveedor (opcional)</label>
               <select value={form.proveedor_id} onChange={e => setForm(f => ({ ...f, proveedor_id: e.target.value }))}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
                 <option value="">— Ninguno —</option>
                 {proveedores.map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
               </select>
@@ -159,7 +159,7 @@ export function CodigoPerfilesPanel() {
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tipo</label>
               <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value as any }))}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
                 <option value="gs1">GS1 estándar</option>
                 <option value="custom">Formato propio (no-GS1)</option>
               </select>
@@ -167,7 +167,7 @@ export function CodigoPerfilesPanel() {
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Simbología</label>
               <select value={form.simbologia} onChange={e => setForm(f => ({ ...f, simbologia: e.target.value as any }))}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
                 <option value="gs1_128">GS1-128 (barras 1D)</option>
                 <option value="datamatrix">GS1 DataMatrix (2D)</option>
                 <option value="qr">GS1 QR Code (2D)</option>
@@ -176,7 +176,7 @@ export function CodigoPerfilesPanel() {
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Al escanear (ingreso)</label>
               <select value={form.lectura_modo} onChange={e => setForm(f => ({ ...f, lectura_modo: e.target.value as any }))}
-                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
                 <option value="autocompletar">Autocompletar y confirmar</option>
                 <option value="directo">Crear el LPN directo</option>
               </select>
@@ -185,7 +185,7 @@ export function CodigoPerfilesPanel() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Separador (formato propio)</label>
                 <input value={form.separador} onChange={e => setForm(f => ({ ...f, separador: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text" />
               </div>
             )}
           </div>
@@ -194,7 +194,7 @@ export function CodigoPerfilesPanel() {
             <div className="flex flex-wrap gap-2">
               {AIS_SOPORTADOS.map(a => (
                 <button key={a.ai} type="button" onClick={() => toggleAi(a.ai)}
-                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${form.ais.includes(a.ai) ? 'bg-accent text-white border-accent' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-accent'}`}>
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition-colors ${form.ais.includes(a.ai) ? 'bg-accent text-white border-accent-text' : 'bg-white dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:border-accent-text'}`}>
                   {a.label}
                 </button>
               ))}
@@ -222,7 +222,7 @@ export function CodigoPerfilesPanel() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{p.nombre}</span>
-                  <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent">{p.simbologia === 'datamatrix' ? 'DataMatrix' : p.simbologia === 'qr' ? 'QR' : 'GS1-128'}</span>
+                  <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-accent/10 text-accent-text">{p.simbologia === 'datamatrix' ? 'DataMatrix' : p.simbologia === 'qr' ? 'QR' : 'GS1-128'}</span>
                   {p.tipo === 'custom' && <span className="text-[11px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400">custom</span>}
                   {p.proveedor_id && <span className="text-[11px] text-gray-400 dark:text-gray-500">· {provNombre(p.proveedor_id) ?? 'proveedor'}</span>}
                 </div>
@@ -234,7 +234,7 @@ export function CodigoPerfilesPanel() {
                 className={`p-1.5 rounded-lg ${p.activo ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}>
                 <Power size={15} />
               </button>
-              <button onClick={() => startEdit(p)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg"><Edit2 size={15} /></button>
+              <button onClick={() => startEdit(p)} className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg"><Edit2 size={15} /></button>
               <button onClick={() => { if (confirm('¿Eliminar este perfil?')) borrar.mutate(p.id) }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 size={15} /></button>
             </div>
           ))}

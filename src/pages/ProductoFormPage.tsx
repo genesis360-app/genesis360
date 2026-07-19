@@ -681,7 +681,7 @@ export default function ProductoFormPage() {
             <div className="flex items-center gap-2">
               <button type="button" onClick={() => setBarcodeScannerOpen(true)}
                 title="Escanear código de barras"
-                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-accent hover:border-accent transition-all bg-white dark:bg-gray-800">
+                className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-sm font-semibold border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:text-accent-text hover:border-accent-text transition-all bg-white dark:bg-gray-800">
                 <ScanLine size={15} /> Escanear barcode
               </button>
             <label className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold cursor-pointer transition-all
@@ -746,7 +746,7 @@ export default function ProductoFormPage() {
                 <input type="text" value={form.nombre} disabled={!canEdit}
                   onChange={e => setForm(p => ({ ...p, nombre: e.target.value }))}
                   placeholder="Ej: Tornillo hexagonal 1/4"
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 disabled:bg-gray-50 dark:bg-gray-700" />
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text focus:ring-2 focus:ring-accent-text/20 disabled:bg-gray-50 dark:bg-gray-700" />
               </div>
 
               {/* SKU | Código de barras */}
@@ -757,7 +757,7 @@ export default function ProductoFormPage() {
                     <input type="text" value={form.sku} disabled={!canEdit}
                       onChange={e => setForm(p => ({ ...p, sku: e.target.value.toUpperCase() }))}
                       placeholder="Ej: SKU-00001"
-                      className={`flex-1 px-4 py-2.5 border rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 ${skuTaken ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
+                      className={`flex-1 px-4 py-2.5 border rounded-xl text-sm font-mono focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700 ${skuTaken ? 'border-red-400 dark:border-red-500' : 'border-gray-200 dark:border-gray-700'}`} />
                     {!isEditing && (
                       <button type="button" onClick={() => setForm(p => ({ ...p, sku: generateSKU(form.nombre) }))}
                         title="Generar SKU automático"
@@ -773,7 +773,7 @@ export default function ProductoFormPage() {
                   <input type="text" value={form.codigo_barras} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, codigo_barras: e.target.value }))}
                     placeholder="7791234567890"
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm font-mono focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
                 </div>
               </div>
 
@@ -783,7 +783,7 @@ export default function ProductoFormPage() {
                 <input type="text" value={form.marca} disabled={!canEdit}
                   onChange={e => setForm(p => ({ ...p, marca: e.target.value }))}
                   placeholder="Ej: Hellmans"
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" />
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
               </div>
 
               {/* Descripción */}
@@ -792,7 +792,7 @@ export default function ProductoFormPage() {
                 <textarea value={form.descripcion} disabled={!canEdit} rows={2}
                   onChange={e => setForm(p => ({ ...p, descripcion: e.target.value }))}
                   placeholder="Descripción opcional..."
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none disabled:bg-gray-50 dark:bg-gray-700" />
+                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text resize-none disabled:bg-gray-50 dark:bg-gray-700" />
               </div>
             </div>
 
@@ -806,7 +806,7 @@ export default function ProductoFormPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
                   <select value={form.categoria_id} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, categoria_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="">Sin categoría</option>
                     {(categorias as any[]).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                   </select>
@@ -815,7 +815,7 @@ export default function ProductoFormPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proveedor</label>
                   <select value={form.proveedor_id} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, proveedor_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="">Sin proveedor</option>
                     {(proveedores as any[]).map(p => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                   </select>
@@ -875,7 +875,7 @@ export default function ProductoFormPage() {
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de costo</label>
                         {cotizNum > 0 && canEdit && (
                           <button type="button" onClick={toggleCosto}
-                            className="text-xs text-accent hover:underline">
+                            className="text-xs text-accent-text hover:underline">
                             {usdModoCosto ? 'Ingresar en ARS' : 'Ingresar en USD'}
                           </button>
                         )}
@@ -894,7 +894,7 @@ export default function ProductoFormPage() {
                               setForm(p => ({ ...p, precio_costo: e.target.value }))
                             }
                           }}
-                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
+                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
                       </div>
                       {cotizNum > 0 && (parseFloat(form.precio_costo) || 0) > 0 && (
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -910,7 +910,7 @@ export default function ProductoFormPage() {
                         <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de venta</label>
                         {cotizNum > 0 && canEdit && (
                           <button type="button" onClick={toggleVenta}
-                            className="text-xs text-accent hover:underline">
+                            className="text-xs text-accent-text hover:underline">
                             {usdModoVenta ? 'Ingresar en ARS' : 'Ingresar en USD'}
                           </button>
                         )}
@@ -929,7 +929,7 @@ export default function ProductoFormPage() {
                               setForm(p => ({ ...p, precio_venta: e.target.value }))
                             }
                           }}
-                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
+                          className="w-full pl-10 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
                       </div>
                       {cotizNum > 0 && (parseFloat(form.precio_venta) || 0) > 0 && (
                         <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -975,7 +975,7 @@ export default function ProductoFormPage() {
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">IVA incluido en el precio de venta</p>
                   <select value={form.alicuota_iva} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, alicuota_iva: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:opacity-50 disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:opacity-50 disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="0">Exento (0%)</option>
                     <option value="10.5">10,5%</option>
                     <option value="21">21% (general)</option>
@@ -990,7 +990,7 @@ export default function ProductoFormPage() {
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.1" disabled={!canEdit}
                       value={form.margen_objetivo}
                       onChange={e => setForm(p => ({ ...p, margen_objetivo: e.target.value }))}
-                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700"
+                      className="w-full pl-4 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700"
                       placeholder="Ej: 30" />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
                   </div>
@@ -1004,7 +1004,7 @@ export default function ProductoFormPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Moneda de venta</label>
                   <select value={form.moneda_venta} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, moneda_venta: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="local">Moneda local (precio en pesos)</option>
                     <option value="usd">Precio en USD (se convierte a pesos en el POS)</option>
                   </select>
@@ -1018,7 +1018,7 @@ export default function ProductoFormPage() {
                       <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.01" disabled={!canEdit}
                         value={form.precio_usd}
                         onChange={e => setForm(p => ({ ...p, precio_usd: e.target.value }))}
-                        className="w-full pl-12 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
+                        className="w-full pl-12 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" placeholder="0.00" />
                     </div>
                     {cotizacionNum > 0 && (parseFloat(form.precio_usd) || 0) > 0 && (
                       <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-1">
@@ -1038,7 +1038,7 @@ export default function ProductoFormPage() {
                   <button type="button" onClick={() => setShowMayorista(v => !v)}
                     className="flex items-center gap-3 w-full text-left group">
                     <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors
-                      ${showMayorista ? 'bg-accent border-accent' : 'border-gray-300 dark:border-gray-600 group-hover:border-accent'}`}>
+                      ${showMayorista ? 'bg-accent border-accent-text' : 'border-gray-300 dark:border-gray-600 group-hover:border-accent-text'}`}>
                       {showMayorista && <Check size={12} className="text-white" />}
                     </div>
                     <div>
@@ -1058,7 +1058,7 @@ export default function ProductoFormPage() {
                               placeholder="Cant. mín."
                               value={tier.cantidad_minima}
                               onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, cantidad_minima: e.target.value } : t))}
-                              className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                              className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
                           </div>
                           <div className="relative flex-1">
                             <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
@@ -1066,13 +1066,13 @@ export default function ProductoFormPage() {
                               placeholder="Precio"
                               value={tier.precio}
                               onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, precio: e.target.value } : t))}
-                              className="w-full pl-6 pr-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                              className="w-full pl-6 pr-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
                           </div>
                           <div className="flex-1">
                             <input type="text" placeholder="Etiqueta (ej: Docena)"
                               value={tier.descripcion}
                               onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, descripcion: e.target.value } : t))}
-                              className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                              className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
                           </div>
                           <button type="button" onClick={() => setTiersForm(prev => prev.filter((_, i) => i !== idx))}
                             className="text-red-400 hover:text-red-600 flex-shrink-0 transition-colors">
@@ -1082,7 +1082,7 @@ export default function ProductoFormPage() {
                       ))}
                       <button type="button"
                         onClick={() => setTiersForm(prev => [...prev, { _key: crypto.randomUUID(), cantidad_minima: '', precio: '', descripcion: '' }])}
-                        className="flex items-center gap-1.5 text-xs text-accent hover:underline transition-colors">
+                        className="flex items-center gap-1.5 text-xs text-accent-text hover:underline transition-colors">
                         <Plus size={13} /> Agregar tier
                       </button>
                       {tiersForm.length > 0 && parseFloat(form.precio_venta) > 0 && (
@@ -1107,14 +1107,14 @@ export default function ProductoFormPage() {
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Alerta cuando el stock baje de este valor</p>
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={form.stock_minimo} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, stock_minimo: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad de medida</label>
                   <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide este producto</p>
                   <select value={form.unidad_medida} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
                     {(unidadesCustom as any[]).length > 0 && (
                       <optgroup label="Personalizadas">
@@ -1143,7 +1143,7 @@ export default function ProductoFormPage() {
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{f.label}</label>
                       <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step={f.step} value={form[f.k]} disabled={!canEdit}
                         onChange={e => setForm(p => ({ ...p, [f.k]: e.target.value }))}
-                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
+                        className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" placeholder="0" />
                     </div>
                   ))}
                 </div>
@@ -1157,7 +1157,7 @@ export default function ProductoFormPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Ubicación predeterminada
                     {sucursalId && sucursales.length > 1 && (
-                      <span className="ml-1.5 text-xs font-normal text-accent">
+                      <span className="ml-1.5 text-xs font-normal text-accent-text">
                         · {(sucursales as any[]).find(s => s.id === sucursalId)?.nombre}
                       </span>
                     )}
@@ -1168,7 +1168,7 @@ export default function ProductoFormPage() {
                       disabled={!canEdit}
                       value={ubicSucursalActiva}
                       onChange={e => setUbicSucursalActiva(e.target.value)}
-                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                       <option value="">Sin ubicación</option>
                       {(ubicaciones as any[])
                         .filter((u: any) => u.sucursal_id === sucursalId || u.sucursal_id === null)
@@ -1180,7 +1180,7 @@ export default function ProductoFormPage() {
                     // Sin sucursal activa (vista global): selector global/fallback
                     <select value={form.ubicacion_id} disabled={!canEdit}
                       onChange={e => setForm(p => ({ ...p, ubicacion_id: e.target.value }))}
-                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                       <option value="">Sin ubicación</option>
                       {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                     </select>
@@ -1190,7 +1190,7 @@ export default function ProductoFormPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estado de inventario predeterminado</label>
                   <select value={form.estado_id} disabled={!canEdit}
                     onChange={e => setForm(p => ({ ...p, estado_id: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                     <option value="">Sin estado</option>
                     {(estados as any[]).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                   </select>
@@ -1208,7 +1208,7 @@ export default function ProductoFormPage() {
                 <select value={form.regla_inventario}
                   onChange={e => setForm(p => ({ ...p, regla_inventario: e.target.value }))}
                   disabled={!canEdit}
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700">
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                   <option value="">— Usar regla del negocio —</option>
                   {REGLAS_INVENTARIO.map(r => (
                     <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
@@ -1239,7 +1239,7 @@ export default function ProductoFormPage() {
                           value={stockMinimosSucursal[suc.id] ?? ''}
                           onChange={e => setStockMinimosSucursal(p => ({ ...p, [suc.id]: e.target.value }))}
                           disabled={!canEdit}
-                          className="w-24 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent disabled:bg-gray-50 dark:bg-gray-700 text-center" />
+                          className="w-24 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700 text-center" />
                       </div>
                     ))}
                   </div>
@@ -1327,7 +1327,7 @@ export default function ProductoFormPage() {
                             value={form.shelf_life_dias} disabled={!modoAvanzado}
                             onChange={e => setForm(p => ({ ...p, shelf_life_dias: e.target.value }))}
                             placeholder="Ej: 365"
-                            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                            className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                         </div>
                         {agingProfiles.length > 0 && (
                           <div>
@@ -1337,7 +1337,7 @@ export default function ProductoFormPage() {
                             </label>
                             <select value={form.aging_profile_id} disabled={!modoAvanzado}
                               onChange={e => setForm(p => ({ ...p, aging_profile_id: e.target.value }))}
-                              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                              className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                               <option value="">— Sin aging profile —</option>
                               {(agingProfiles as any[]).map((ap: any) => (
                                 <option key={ap.id} value={ap.id}>{ap.nombre}</option>
@@ -1486,10 +1486,10 @@ export default function ProductoFormPage() {
             {canEdit && (
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                 <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-                  <Boxes size={16} className="text-accent" />
+                  <Boxes size={16} className="text-accent-text" />
                   <span className="font-semibold text-gray-700 dark:text-gray-300">Grupo de variantes</span>
                   {grupoId && (
-                    <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent rounded-full">Vinculado</span>
+                    <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent-text rounded-full">Vinculado</span>
                   )}
                 </div>
 
@@ -1508,7 +1508,7 @@ export default function ProductoFormPage() {
                           {productosGrupos.length === 0 ? (
                             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-3">
                               Sin grupos creados.{' '}
-                              <button type="button" onClick={() => setGrupoModalOpen(true)} className="text-accent hover:underline">
+                              <button type="button" onClick={() => setGrupoModalOpen(true)} className="text-accent-text hover:underline">
                                 Crear uno
                               </button>
                             </p>
@@ -1555,7 +1555,7 @@ export default function ProductoFormPage() {
                             <button
                               type="button"
                               onClick={() => { setGrupoModalOpen(true); setGrupoSelectorOpen(false) }}
-                              className="flex-1 border border-accent text-accent py-2 rounded-xl text-sm hover:bg-accent/10 transition-colors"
+                              className="flex-1 border border-accent-text text-accent-text py-2 rounded-xl text-sm hover:bg-accent/10 transition-colors"
                             >
                               <Plus size={13} className="inline mr-1" />Nuevo grupo
                             </button>
@@ -1565,7 +1565,7 @@ export default function ProductoFormPage() {
                         <button
                           type="button"
                           onClick={() => setGrupoSelectorOpen(true)}
-                          className="w-full flex items-center justify-center gap-2 border border-dashed border-accent/40 text-accent py-2.5 rounded-xl text-sm hover:bg-accent/5 transition-colors"
+                          className="w-full flex items-center justify-center gap-2 border border-dashed border-accent-text/40 text-accent-text py-2.5 rounded-xl text-sm hover:bg-accent/5 transition-colors"
                         >
                           <Boxes size={15} /> Vincular a un grupo
                         </button>
@@ -1575,8 +1575,8 @@ export default function ProductoFormPage() {
                     /* Con grupo: mostrar datos */
                     <div className="space-y-4">
                       {/* Badge del grupo */}
-                      <div className="flex items-center gap-3 p-3 bg-accent/5 dark:bg-accent/10 rounded-xl border border-accent/20">
-                        <Boxes size={16} className="text-accent flex-shrink-0" />
+                      <div className="flex items-center gap-3 p-3 bg-accent/5 dark:bg-accent/10 rounded-xl border border-accent-text/20">
+                        <Boxes size={16} className="text-accent-text flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
                             Variante de: &quot;{grupoActual?.nombre ?? '…'}&quot;
@@ -1588,7 +1588,7 @@ export default function ProductoFormPage() {
                         <button
                           type="button"
                           onClick={() => setGrupoModalOpen(true)}
-                          className="text-xs text-accent hover:underline flex-shrink-0"
+                          className="text-xs text-accent-text hover:underline flex-shrink-0"
                         >
                           Ver grupo
                         </button>
@@ -1607,7 +1607,7 @@ export default function ProductoFormPage() {
                                 <select
                                   value={varianteValores[attr.nombre] ?? ''}
                                   onChange={e => setVarianteValores(prev => ({ ...prev, [attr.nombre]: e.target.value }))}
-                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent"
+                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
                                 >
                                   <option value="">— Seleccionar —</option>
                                   {attr.valores.map(v => (
@@ -1620,7 +1620,7 @@ export default function ProductoFormPage() {
                                   value={varianteValores[attr.nombre] ?? ''}
                                   onChange={e => setVarianteValores(prev => ({ ...prev, [attr.nombre]: e.target.value }))}
                                   placeholder={`Valor de ${attr.nombre}`}
-                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent"
+                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
                                 />
                               )}
                             </div>
@@ -1651,7 +1651,7 @@ export default function ProductoFormPage() {
                                 key={v.id}
                                 type="button"
                                 onClick={() => navigate(`/productos/${v.id}/editar`)}
-                                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-accent transition-colors"
+                                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-accent-text transition-colors"
                               >
                                 {v.sku} <ExternalLink size={10} />
                               </button>
@@ -1809,7 +1809,7 @@ export default function ProductoFormPage() {
             {/* Botón QR — solo si editando */}
             {isEditing && canEdit && (
               <button type="button" onClick={() => setShowQR(true)}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm text-accent border border-accent/30 rounded-xl hover:bg-accent/10 transition-all bg-white dark:bg-gray-800">
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 text-sm text-accent-text border border-accent-text/30 rounded-xl hover:bg-accent/10 transition-all bg-white dark:bg-gray-800">
                 <QrCode size={16} /> Ver QR del producto
               </button>
             )}

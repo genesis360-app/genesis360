@@ -3763,7 +3763,7 @@ export default function RrhhPage() {
           {/* Check-in rápido */}
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-              <Clock size={15} className="text-accent" /> Check-in rápido — {format(new Date(), "EEEE d 'de' MMMM", { locale: es })}
+              <Clock size={15} className="text-accent-text" /> Check-in rápido — {format(new Date(), "EEEE d 'de' MMMM", { locale: es })}
             </h3>
             <div className="flex flex-wrap items-center gap-3">
               <select value={checkinEmpleadoId} onChange={e => setCheckinEmpleadoId(e.target.value)}
@@ -3799,7 +3799,7 @@ export default function RrhhPage() {
           {/* RH6 — Fichado por QR público (kiosco). Solo DUEÑO/ADMIN/SUPER_USUARIO genera/rota el token. */}
           <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-5">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-2">
-              <QrCode size={15} className="text-accent" /> Fichado por QR (kiosco)
+              <QrCode size={15} className="text-accent-text" /> Fichado por QR (kiosco)
             </h3>
             <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
               Imprimí el QR y dejalo en la entrada. Cada empleado lo escanea, toca su nombre y queda registrada la entrada/salida (sin login).
@@ -3816,7 +3816,7 @@ export default function RrhhPage() {
                 {fichadoQr && (
                   <div className="text-center shrink-0">
                     <img src={fichadoQr} alt="QR de fichado" className="w-40 h-40 border border-gray-200 dark:border-gray-700 rounded-lg" />
-                    <a href={fichadoQr} download="qr-fichado.png" className="text-xs text-accent hover:underline mt-1 inline-block">Descargar PNG</a>
+                    <a href={fichadoQr} download="qr-fichado.png" className="text-xs text-accent-text hover:underline mt-1 inline-block">Descargar PNG</a>
                   </div>
                 )}
                 <div className="flex-1 min-w-0 space-y-2">
@@ -4786,13 +4786,13 @@ export default function RrhhPage() {
                   {supervisorIds.map((supId) => (
                     <div key={supId} className="flex flex-col items-start">
                       {/* Nodo supervisor */}
-                      <div className="flex items-center gap-3 bg-accent/5 dark:bg-accent/10 border-2 border-accent/30 rounded-xl px-4 py-3 shadow-sm ml-4">
-                        <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center font-bold text-accent text-sm flex-shrink-0">
+                      <div className="flex items-center gap-3 bg-accent/5 dark:bg-accent/10 border-2 border-accent-text/30 rounded-xl px-4 py-3 shadow-sm ml-4">
+                        <div className="w-10 h-10 rounded-full bg-accent/20 flex items-center justify-center font-bold text-accent-text text-sm flex-shrink-0">
                           {supNombres[supId]?.[0]?.toUpperCase() ?? '?'}
                         </div>
                         <div>
                           <p className="text-sm font-bold text-gray-900 dark:text-white">{supNombres[supId] ?? 'Supervisor'}</p>
-                          <p className="text-[11px] text-accent font-medium flex items-center gap-1"><UserCheck size={10}/>Supervisor</p>
+                          <p className="text-[11px] text-accent-text font-medium flex items-center gap-1"><UserCheck size={10}/>Supervisor</p>
                         </div>
                       </div>
 

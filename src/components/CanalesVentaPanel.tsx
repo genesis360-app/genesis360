@@ -97,7 +97,7 @@ export function CanalesVentaPanel() {
       {/* Catálogo de canales */}
       <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
         <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          <Store size={18} className="text-accent" /> Canales de venta
+          <Store size={18} className="text-accent-text" /> Canales de venta
         </h2>
         <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
           Definí los canales que aparecen en el POS y clasificá cada uno como <strong>online</strong> o <strong>presencial</strong> (las reglas de abajo se aplican según esa clasificación). MercadoPago no es un canal: es un medio de pago.

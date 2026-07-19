@@ -328,7 +328,7 @@ export function AppLayout() {
                     ? 'text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-500'
                     : isActive
                       ? 'bg-accent text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent dark:hover:text-accent nav-grad-hover'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent-text dark:hover:text-accent-text nav-grad-hover'
                   }`
                 }
               >
@@ -485,7 +485,7 @@ export function AppLayout() {
                       <select
                         value={sucursalId ?? ''}
                         onChange={e => handleCambiarSucursal(e.target.value || null)}
-                        className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
+                        className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent-text max-w-[140px]"
                         title="Filtrar por sucursal"
                       >
                         <option value="">Todas las sucursales</option>
@@ -498,7 +498,7 @@ export function AppLayout() {
                       <select
                         value={sucursalId ?? ''}
                         onChange={e => handleCambiarSucursal(e.target.value || null)}
-                        className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent max-w-[140px]"
+                        className="text-xs border border-border-ds rounded-lg px-2 py-1 bg-surface text-primary dark:text-white focus:outline-none focus:ring-1 focus:ring-accent-text max-w-[140px]"
                         title="Seleccioná una sucursal"
                       >
                         <option value="" disabled>Seleccioná sucursal</option>

@@ -118,7 +118,7 @@ export default function BibliotecaPage() {
     <div className="p-4 md:p-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-2">
-        <FolderOpen className="w-5 h-5 text-accent" />
+        <FolderOpen className="w-5 h-5 text-accent-text" />
         <h1 className="text-xl font-bold text-primary">Biblioteca de Archivos</h1>
         <span className="ml-2 text-xs text-muted">
           {(archivos as any[]).length} archivo{(archivos as any[]).length !== 1 ? 's' : ''}
@@ -207,7 +207,7 @@ export default function BibliotecaPage() {
       {/* Lista */}
       {isLoading ? (
         <div className="flex justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-text" />
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-12 text-muted">
@@ -221,7 +221,7 @@ export default function BibliotecaPage() {
               key={a.id}
               className="flex items-center gap-3 px-4 py-3 bg-surface rounded-xl border border-border-ds hover:bg-page transition-colors"
             >
-              <FileText className="w-5 h-5 text-accent shrink-0" />
+              <FileText className="w-5 h-5 text-accent-text shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-medium text-primary truncate">{a.nombre}</span>
@@ -240,7 +240,7 @@ export default function BibliotecaPage() {
               <button
                 onClick={() => descargar(a.storage_path, a.nombre)}
                 title="Descargar / Ver"
-                className="p-1.5 text-muted hover:text-accent rounded transition-colors shrink-0"
+                className="p-1.5 text-muted hover:text-accent-text rounded transition-colors shrink-0"
               >
                 <Download className="w-4 h-4" />
               </button>

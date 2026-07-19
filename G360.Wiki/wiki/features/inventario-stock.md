@@ -130,6 +130,11 @@ DEPOSITO no puede ejecutar cambios directamente — quedan pendientes de aprobac
 - Modal con 2 modos:
   - **Fusionar**: todo el stock pasa al LPN destino (los otros quedan `activo=false, cantidad=0`)
   - **LPN Madre**: asigna `parent_lpn_id` sin mover stock → los hijos muestran "↳ PLT-001"
+- **Desde 2026-07-18 (🟡 ronda 4 de atributos de variante, en el working tree de `dev`, sin
+  commitear):** el resumen de selección (`selectedLineasInfo`) muestra badges de
+  talle/color/encaje/formato/sabor·aroma junto a cada LPN elegido (`atributosDeLinea()`) — antes solo
+  mostraba LPN/cantidad/lote. Cambio de UI/display, sin tocar la lógica de fusión. Ver
+  [[wiki/features/atributos-variante]] "Ronda 4".
 
 ---
 
@@ -435,7 +440,7 @@ Modal: flex flex-col · max-h-[90vh]
 
 ---
 
-## Atributos de variante (talle/color/etc.) — 🟡 EN DEV, commiteado y pusheado (`a99bb270`/`c559f831`/`90de330b`), pendiente de mergear a `main`
+## Atributos de variante (talle/color/etc.) — ✅ PROD desde v1.134.0 (2026-07-18)
 
 Badges de talle/color/encaje/formato/sabor_aroma en el picker de "Rebaje manual", panel de detalle de
 movimiento, vista agrupada por ubicación y tabla de líneas por producto — respaldados por un catálogo

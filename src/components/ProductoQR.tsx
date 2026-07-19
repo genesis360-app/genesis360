@@ -67,7 +67,7 @@ export function ProductoQR({ productoId, nombre, sku, onClose }: Props) {
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
           <div className="flex items-center gap-2">
-            <QrCode size={17} className="text-accent" />
+            <QrCode size={17} className="text-accent-text" />
             <span className="font-semibold text-sm text-gray-800">Código QR</span>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 rounded-lg">

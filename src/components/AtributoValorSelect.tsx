@@ -40,7 +40,7 @@ export function AtributoValorSelect({
     enabled: !!tenantId,
   })
 
-  const cls = className ?? 'w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent dark:bg-gray-600'
+  const cls = className ?? 'w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600'
 
   const guardarNuevo = async () => {
     const v = nuevoValor.trim()

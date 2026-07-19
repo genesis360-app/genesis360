@@ -1206,7 +1206,7 @@ export default function EnviosPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Package2 size={22} className="text-accent" /> Envíos
+            <Package2 size={22} className="text-accent-text" /> Envíos
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             Seguimiento y gestión de envíos por canal
@@ -1242,13 +1242,13 @@ export default function EnviosPage() {
               <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
                 placeholder="Buscar por cliente, #envío o tracking…"
-                className="pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent w-64" />
+                className="pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent-text w-64" />
             </div>
 
             {/* Filtro estado */}
             <div className="relative">
               <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent">
+                className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent-text">
                 <option value="">Todos los estados</option>
                 {Object.entries(ESTADO_CFG).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
               </select>
@@ -1258,7 +1258,7 @@ export default function EnviosPage() {
             {/* Filtro courier */}
             <div className="relative">
               <select value={filtroCourier} onChange={e => setFiltroCourier(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent">
+                className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent-text">
                 <option value="">Todos los couriers</option>
                 {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -1268,7 +1268,7 @@ export default function EnviosPage() {
             {/* Filtro canal */}
             <div className="relative">
               <select value={filtroCanal} onChange={e => setFiltroCanal(e.target.value)}
-                className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent">
+                className="appearance-none pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent-text">
                 <option value="">Todos los canales</option>
                 {CANALES.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
@@ -1277,9 +1277,9 @@ export default function EnviosPage() {
 
             {/* Filtro fechas */}
             <input type="date" value={filtroDesde} onChange={e => setFiltroDesde(e.target.value)}
-              className="py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent" />
+              className="py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent-text" />
             <input type="date" value={filtroHasta} onChange={e => setFiltroHasta(e.target.value)}
-              className="py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent" />
+              className="py-2 px-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:border-accent-text" />
 
             {(hayFiltros || busqueda) && (
               <button onClick={() => { setFiltroEstado(''); setFiltroCourier(''); setFiltroCanal(''); setFiltroDesde(''); setFiltroHasta(''); setBusqueda('') }}
@@ -1291,12 +1291,12 @@ export default function EnviosPage() {
 
           {/* Lista */}
           {isLoading ? (
-            <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>
+            <div className="flex justify-center py-16"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-text" /></div>
           ) : enviosFiltrados.length === 0 ? (
             <div className="text-center py-16 text-gray-400 dark:text-gray-500">
               <Package2 size={40} className="mx-auto mb-3 opacity-30" />
               <p className="font-medium">No hay envíos{hayFiltros || busqueda ? ' con esos filtros' : ' registrados'}</p>
-              <button onClick={abrirNuevo} className="mt-3 text-accent text-sm font-medium hover:underline">
+              <button onClick={abrirNuevo} className="mt-3 text-accent-text text-sm font-medium hover:underline">
                 Crear el primero
               </button>
             </div>
@@ -1328,7 +1328,7 @@ export default function EnviosPage() {
                           <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                             <td className="px-4 py-3">
                               <button onClick={() => setExpandedId(expandedId === e.id ? null : e.id)}
-                                className="text-gray-400 hover:text-accent transition-colors">
+                                className="text-gray-400 hover:text-accent-text transition-colors">
                                 <ChevronRight size={16} className={`transition-transform ${expandedId === e.id ? 'rotate-90' : ''}`} />
                               </button>
                             </td>
@@ -1373,7 +1373,7 @@ export default function EnviosPage() {
                               {e.fecha_entrega_acordada ? formatFecha(e.fecha_entrega_acordada) : '—'}
                               {e.hora_entrega_acordada && <span className="ml-1">{e.hora_entrega_acordada.slice(0,5)}</span>}
                               {e.rango_horario_desde && e.rango_horario_hasta && (
-                                <span className="block text-[11px] text-accent">
+                                <span className="block text-[11px] text-accent-text">
                                   {e.rango_horario_desde.slice(0,5)} – {e.rango_horario_hasta.slice(0,5)}
                                 </span>
                               )}
@@ -1391,14 +1391,14 @@ export default function EnviosPage() {
                                 {sigEstado && (
                                   <button onClick={() => actualizarEstado.mutate({ id: e.id, estado: sigEstado, envio: e })}
                                     title={`Marcar como ${ESTADO_CFG[sigEstado].label}`}
-                                    className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                                    className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                                     <RefreshCw size={14} />
                                   </button>
                                 )}
                                 <button onClick={() => abrirEdicion(e)}
                                   disabled={e.estado === 'entregado'}
                                   title={e.estado === 'entregado' ? 'Envío entregado — no editable' : 'Editar'}
-                                  className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+                                  className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
                                   <Pencil size={14} />
                                 </button>
                                 <button onClick={() => { if (confirm('¿Eliminar este envío?')) eliminarEnvio.mutate(e.id) }}
@@ -1430,7 +1430,7 @@ export default function EnviosPage() {
                                     {!dom && e.destino_descripcion && (
                                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 whitespace-pre-line">{e.destino_descripcion}</p>
                                     )}
-                                    {e.zona_entrega && <p className="text-xs text-accent mt-0.5">Zona: {e.zona_entrega}</p>}
+                                    {e.zona_entrega && <p className="text-xs text-accent-text mt-0.5">Zona: {e.zona_entrega}</p>}
                                   </div>
 
                                   {/* Courier + tracking */}
@@ -1442,7 +1442,7 @@ export default function EnviosPage() {
                                         <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{e.tracking_number}</span>
                                         {e.tracking_url && (
                                           <a href={e.tracking_url} target="_blank" rel="noreferrer"
-                                            className="text-accent hover:text-accent/80"><ExternalLink size={12} /></a>
+                                            className="text-accent-text hover:text-accent-text/80"><ExternalLink size={12} /></a>
                                         )}
                                       </div>
                                     )}
@@ -1476,7 +1476,7 @@ export default function EnviosPage() {
                                               </span>
                                               {(lpn || ubic) && (
                                                 <div className="flex items-center gap-3 mt-0.5 ml-3">
-                                                  {lpn && <span className="flex items-center gap-1 text-accent font-mono bg-accent/10 px-1.5 py-0.5 rounded"><PackageCheck size={10} /> LPN: {lpn}</span>}
+                                                  {lpn && <span className="flex items-center gap-1 text-accent-text font-mono bg-accent/10 px-1.5 py-0.5 rounded"><PackageCheck size={10} /> LPN: {lpn}</span>}
                                                   {ubic && <span className="flex items-center gap-1 text-gray-500 dark:text-gray-400"><MapPin size={10} /> {ubic}</span>}
                                                 </div>
                                               )}
@@ -1506,7 +1506,7 @@ export default function EnviosPage() {
                                       {e.pod_notas && <span className="text-gray-500 dark:text-gray-400">{e.pod_notas}</span>}
                                       {e.pod_url && (
                                         <a href={e.pod_url} target="_blank" rel="noreferrer"
-                                          className="flex items-center gap-1 text-accent hover:underline">
+                                          className="flex items-center gap-1 text-accent-text hover:underline">
                                           <Upload size={11} /> Ver comprobante
                                         </a>
                                       )}
@@ -1552,7 +1552,7 @@ export default function EnviosPage() {
                                   </button>
                                   {e.tracking_url && (
                                     <a href={e.tracking_url} target="_blank" rel="noreferrer"
-                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-accent/30 rounded-lg text-accent hover:bg-accent/10 transition-colors">
+                                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-accent-text/30 rounded-lg text-accent-text hover:bg-accent/10 transition-colors">
                                       <ExternalLink size={13} /> Ver tracking
                                     </a>
                                   )}
@@ -1675,7 +1675,7 @@ export default function EnviosPage() {
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
             <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
-              <CreditCard size={16} className="text-accent" /> Pagos pendientes al courier
+              <CreditCard size={16} className="text-accent-text" /> Pagos pendientes al courier
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               Seleccioná los envíos a pagar, elegí el medio y marcá como pagados.
@@ -1686,14 +1686,14 @@ export default function EnviosPage() {
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Medio de pago</label>
                 <select value={pagoMedio} onChange={e => setPagoMedio(e.target.value)}
-                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent">
+                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text">
                   {MEDIOS_PAGO_COURIER.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de pago</label>
                 <input type="date" value={pagoFecha} onChange={e => setPagoFecha(e.target.value)}
-                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+                  className="border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text" />
               </div>
               {(() => {
                 const totalSel = (enviosPendientesPago as any[]).filter(e => pagosSeleccion.has(e.id)).reduce((s, e) => s + (e.costo_cotizado ?? 0), 0)
@@ -1703,14 +1703,14 @@ export default function EnviosPage() {
                   <div>
                     <label className="block text-xs text-amber-600 dark:text-amber-400 mb-1">🔒 Clave maestra (supera umbral)</label>
                     <input type="password" autoComplete="new-password" value={pagoClaveMaestra} onChange={e => setPagoClaveMaestra(e.target.value)}
-                      className="border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+                      className="border border-amber-300 dark:border-amber-700 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text" />
                   </div>
                 ) : null
               })()}
               <div className="flex-1 flex items-end justify-between gap-3">
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400">Seleccionados: <strong>{pagosSeleccion.size}</strong></p>
-                  <p className="text-sm font-bold text-accent">
+                  <p className="text-sm font-bold text-accent-text">
                     Total: ${(enviosPendientesPago as any[])
                       .filter(e => pagosSeleccion.has(e.id))
                       .reduce((s, e) => s + (e.costo_cotizado ?? 0), 0)
@@ -1806,7 +1806,7 @@ export default function EnviosPage() {
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
             <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
-              <FileText size={16} className="text-accent" /> Cargar factura del courier
+              <FileText size={16} className="text-accent-text" /> Cargar factura del courier
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               Cargá la factura/resumen del courier por período. El sistema la concilia contra lo registrado y avisa si hay diferencias.
@@ -1815,7 +1815,7 @@ export default function EnviosPage() {
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Courier</label>
                 <select value={factForm.courier} onChange={e => setFactForm(f => ({ ...f, courier: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent">
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text">
                   <option value="">Elegí courier…</option>
                   {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -1823,34 +1823,34 @@ export default function EnviosPage() {
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nº factura</label>
                 <input type="text" value={factForm.nro_factura} onChange={e => setFactForm(f => ({ ...f, nro_factura: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Total facturado</label>
                 <input type="number" onWheel={ev => ev.currentTarget.blur()} value={factForm.total_facturado} onChange={e => setFactForm(f => ({ ...f, total_facturado: e.target.value }))}
                   placeholder="0" min="0" step="0.01"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Período desde</label>
                 <input type="date" value={factForm.periodo_desde} onChange={e => setFactForm(f => ({ ...f, periodo_desde: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Período hasta</label>
                 <input type="date" value={factForm.periodo_hasta} onChange={e => setFactForm(f => ({ ...f, periodo_hasta: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Archivo (PDF/CSV, opcional)</label>
                 <input ref={factFileRef} type="file" accept=".pdf,.csv,image/*" onChange={e => setFactArchivo(e.target.files?.[0] ?? null)}
-                  className="w-full text-xs text-gray-600 dark:text-gray-300 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-accent/10 file:text-accent" />
+                  className="w-full text-xs text-gray-600 dark:text-gray-300 file:mr-2 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:bg-accent/10 file:text-accent-text" />
               </div>
             </div>
             <div className="flex items-end justify-between gap-3">
               <input type="text" value={factForm.notas} onChange={e => setFactForm(f => ({ ...f, notas: e.target.value }))}
                 placeholder="Notas (opcional)"
-                className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent" />
+                className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:outline-none focus:border-accent-text" />
               <button onClick={guardarFacturaCourier} disabled={savingFact || !factForm.courier}
                 className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold px-4 py-2 rounded-xl transition-all disabled:opacity-40 text-sm whitespace-nowrap">
                 <ClipboardCheck size={16} /> {savingFact ? 'Conciliando…' : 'Cargar y conciliar'}
@@ -1896,7 +1896,7 @@ export default function EnviosPage() {
                           </span>
                         )}
                         {f.archivo_url && (
-                          <a href={f.archivo_url} target="_blank" rel="noopener" className="text-accent hover:underline text-xs flex items-center gap-1">
+                          <a href={f.archivo_url} target="_blank" rel="noopener" className="text-accent-text hover:underline text-xs flex items-center gap-1">
                             <ExternalLink size={12} /> Ver
                           </a>
                         )}
@@ -1915,7 +1915,7 @@ export default function EnviosPage() {
         <div className="space-y-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5">
             <h3 className="font-semibold text-gray-800 dark:text-gray-100 mb-1 flex items-center gap-2">
-              <Navigation size={16} className="text-accent" /> Hoja de ruta (envío propio)
+              <Navigation size={16} className="text-accent-text" /> Hoja de ruta (envío propio)
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
               Planificá el reparto del día por repartidor: orden de visita, hoja de ruta PDF y link agrupado para el chofer.
@@ -1935,7 +1935,7 @@ export default function EnviosPage() {
                 </select>
               </div>
               <button onClick={generarHojaRutaPDF}
-                className="flex items-center gap-2 border border-accent/40 text-accent px-3 py-2 rounded-xl text-sm hover:bg-accent/10">
+                className="flex items-center gap-2 border border-accent-text/40 text-accent-text px-3 py-2 rounded-xl text-sm hover:bg-accent/10">
                 <Printer size={15} /> Hoja de ruta PDF
               </button>
               {/* EN7/H3 — etiquetas A4 con QR */}
@@ -1947,7 +1947,7 @@ export default function EnviosPage() {
                   <option value={12}>12/hoja</option>
                 </select>
                 <button onClick={generarEtiquetas}
-                  className="flex items-center gap-2 border border-accent/40 text-accent px-3 py-2 rounded-xl text-sm hover:bg-accent/10">
+                  className="flex items-center gap-2 border border-accent-text/40 text-accent-text px-3 py-2 rounded-xl text-sm hover:bg-accent/10">
                   <Tag size={15} /> Etiquetas A4
                 </button>
               </div>
@@ -1971,7 +1971,7 @@ export default function EnviosPage() {
                     <p className="text-xs text-gray-400">Entregados</p>
                   </div>
                   <div className="rounded-xl border border-gray-100 dark:border-gray-700 p-3 text-center">
-                    <p className="text-2xl font-bold text-accent">{c.pct}%</p>
+                    <p className="text-2xl font-bold text-accent-text">{c.pct}%</p>
                     <p className="text-xs text-gray-400">Cumplimiento</p>
                   </div>
                 </div>
@@ -1988,7 +1988,7 @@ export default function EnviosPage() {
               <div className="space-y-1.5">
                 {hojaRutaOrdenada().map((e: any, i: number) => (
                   <div key={e.id} className="flex items-center gap-3 p-2.5 rounded-lg border border-gray-100 dark:border-gray-700">
-                    <span className="w-6 h-6 rounded-full bg-accent/10 text-accent text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
+                    <span className="w-6 h-6 rounded-full bg-accent/10 text-accent-text text-xs font-bold flex items-center justify-center flex-shrink-0">{i + 1}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">
                         {e.ventas?.clientes?.nombre ?? '—'} <span className="text-gray-400 font-normal">#{e.numero}</span>
@@ -2021,7 +2021,7 @@ export default function EnviosPage() {
                       <div key={p.repartidorId ?? 'sin'} className="flex items-center gap-3 text-sm p-2 rounded-lg border border-gray-100 dark:border-gray-700">
                         <span className="flex-1 font-medium text-gray-700 dark:text-gray-200">{rep?.nombre ?? 'Sin asignar'}</span>
                         <span className="text-xs text-gray-500">{p.entregados}/{p.asignados} entregados</span>
-                        <span className="text-xs font-semibold text-accent">{p.pctCumplimiento}%</span>
+                        <span className="text-xs font-semibold text-accent-text">{p.pctCumplimiento}%</span>
                       </div>
                     )
                   })}
@@ -2052,7 +2052,7 @@ export default function EnviosPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de envío</label>
                 <select value={form.tipo} onChange={e => setForm(f => ({ ...f, tipo: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                   {TIPOS_ENVIO.map(t => <option key={t.v} value={t.v}>{t.t}</option>)}
                 </select>
               </div>
@@ -2061,13 +2061,13 @@ export default function EnviosPage() {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo</label>
                     <input type="text" value={form.motivo} onChange={e => setForm(f => ({ ...f, motivo: e.target.value }))}
-                      placeholder="Ej: muestra para cliente X" className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      placeholder="Ej: muestra para cliente X" className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   </div>
                   {form.tipo === 'traslado_interno' && (
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sucursal destino</label>
                       <select value={form.sucursal_destino_id} onChange={e => setForm(f => ({ ...f, sucursal_destino_id: e.target.value }))}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         <option value="">Elegí…</option>
                         {(sucursales as any[]).filter(s => s.id !== sucursalId).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
                       </select>
@@ -2093,7 +2093,7 @@ export default function EnviosPage() {
                         <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                         <input value={ventaSearch} onChange={e => setVentaSearch(e.target.value)}
                           placeholder="Buscar por número de venta…"
-                          className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          className="w-full pl-9 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       </div>
                       <div className="space-y-1 max-h-32 overflow-y-auto">
                         {(ventasRecientes as any[]).map((v: any) => (
@@ -2134,7 +2134,7 @@ export default function EnviosPage() {
                   {(domiciliosCliente as any[]).map((d: any) => (
                     <div key={d.id}>
                       <label className={`flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
-                        ${form.destino_id === d.id ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
+                        ${form.destino_id === d.id ? 'border-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent-text/40'}`}>
                         <input type="radio" checked={form.destino_id === d.id}
                           onChange={() => {
                             // EN5/A3 — sugerir courier por CP (solo si no se eligió uno)
@@ -2148,13 +2148,13 @@ export default function EnviosPage() {
                             setEditandoDomId(null)
                           }} className="accent-accent mt-0.5 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          {d.nombre && <span className="text-xs font-semibold text-accent">{d.nombre} </span>}
+                          {d.nombre && <span className="text-xs font-semibold text-accent-text">{d.nombre} </span>}
                           <span className="text-sm text-gray-800 dark:text-gray-100">{d.calle}{d.numero ? ` ${d.numero}` : ''}{d.piso_depto ? `, ${d.piso_depto}` : ''}</span>
                           <p className="text-xs text-gray-500 dark:text-gray-400">{[d.ciudad, d.provincia, d.codigo_postal].filter(Boolean).join(' · ')}</p>
                         </div>
                         <button type="button"
                           onClick={e => { e.preventDefault(); setEditandoDomId(editandoDomId === d.id ? null : d.id); setShowNuevoDom(false) }}
-                          className="p-1 text-gray-400 hover:text-accent flex-shrink-0 transition-colors" title="Editar dirección">
+                          className="p-1 text-gray-400 hover:text-accent-text flex-shrink-0 transition-colors" title="Editar dirección">
                           <Pencil size={13} />
                         </button>
                       </label>
@@ -2162,15 +2162,15 @@ export default function EnviosPage() {
                       {editandoDomId === d.id && (() => {
                         const [localDom, setLocalDom] = useState({ nombre: d.nombre ?? '', calle: d.calle ?? '', numero: d.numero ?? '', piso_depto: d.piso_depto ?? '', ciudad: d.ciudad ?? '', provincia: d.provincia ?? '', codigo_postal: d.codigo_postal ?? '' })
                         return (
-                          <div className="mt-1 mb-1 border border-accent/30 rounded-xl p-3 bg-accent/5 space-y-2">
+                          <div className="mt-1 mb-1 border border-accent-text/30 rounded-xl p-3 bg-accent/5 space-y-2">
                             <div className="grid grid-cols-2 gap-2">
-                              <input value={localDom.nombre} onChange={e => setLocalDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.calle} onChange={e => setLocalDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.numero} onChange={e => setLocalDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.piso_depto} onChange={e => setLocalDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.codigo_postal} onChange={e => setLocalDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.ciudad} onChange={e => setLocalDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                              <input value={localDom.provincia} onChange={e => setLocalDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.nombre} onChange={e => setLocalDom(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.calle} onChange={e => setLocalDom(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.numero} onChange={e => setLocalDom(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.piso_depto} onChange={e => setLocalDom(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.codigo_postal} onChange={e => setLocalDom(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.ciudad} onChange={e => setLocalDom(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              <input value={localDom.provincia} onChange={e => setLocalDom(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                             </div>
                             <div className="flex gap-2 justify-end">
                               <button type="button" onClick={() => setEditandoDomId(null)} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
@@ -2185,20 +2185,20 @@ export default function EnviosPage() {
                   {/* Agregar nueva dirección (solo si hay cliente) */}
                   {ventaSeleccionada?.clientes?.id && !showNuevoDom && (
                     <button type="button" onClick={() => { setShowNuevoDom(true); setEditandoDomId(null) }}
-                      className="w-full flex items-center gap-1.5 p-2.5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-500 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors">
+                      className="w-full flex items-center gap-1.5 p-2.5 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 text-sm text-gray-500 dark:text-gray-400 hover:border-accent-text hover:text-accent-text transition-colors">
                       <Plus size={14} /> Agregar nueva dirección
                     </button>
                   )}
                   {showNuevoDom && (
-                    <div className="border border-accent/30 rounded-xl p-3 bg-accent/5 space-y-2">
+                    <div className="border border-accent-text/30 rounded-xl p-3 bg-accent/5 space-y-2">
                       <div className="grid grid-cols-2 gap-2">
-                        <input value={domForm.nombre} onChange={e => setDomForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias (ej: Casa)" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                        <input value={domForm.calle} onChange={e => setDomForm(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                        <input value={domForm.numero} onChange={e => setDomForm(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                        <input value={domForm.piso_depto} onChange={e => setDomForm(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                        <input value={domForm.codigo_postal} onChange={e => setDomForm(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                        <input value={domForm.ciudad} onChange={e => setDomForm(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
-                        <input value={domForm.provincia} onChange={e => setDomForm(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <input value={domForm.nombre} onChange={e => setDomForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Alias (ej: Casa)" className="col-span-2 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <input value={domForm.calle} onChange={e => setDomForm(f => ({ ...f, calle: e.target.value }))} placeholder="Calle *" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <input value={domForm.numero} onChange={e => setDomForm(f => ({ ...f, numero: e.target.value }))} placeholder="Número" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <input value={domForm.piso_depto} onChange={e => setDomForm(f => ({ ...f, piso_depto: e.target.value }))} placeholder="Piso / Depto" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <input value={domForm.codigo_postal} onChange={e => setDomForm(f => ({ ...f, codigo_postal: e.target.value }))} placeholder="CP" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <input value={domForm.ciudad} onChange={e => setDomForm(f => ({ ...f, ciudad: e.target.value }))} placeholder="Ciudad" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        <input value={domForm.provincia} onChange={e => setDomForm(f => ({ ...f, provincia: e.target.value }))} placeholder="Provincia" className="border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       </div>
                       <div className="flex gap-2 justify-end">
                         <button type="button" onClick={() => setShowNuevoDom(false)} className="px-3 py-1.5 text-xs border border-gray-200 dark:border-gray-600 rounded-lg text-gray-500 dark:text-gray-400">Cancelar</button>
@@ -2209,7 +2209,7 @@ export default function EnviosPage() {
 
                   {/* Opción manual */}
                   <label className={`flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer transition-colors
-                    ${form.destino_id === '' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent/40'}`}>
+                    ${form.destino_id === '' ? 'border-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-600 hover:border-accent-text/40'}`}>
                     <input type="radio" checked={form.destino_id === ''}
                       onChange={() => { setForm(f => ({ ...f, destino_id: '' })); setShowNuevoDom(false) }} className="accent-accent" />
                     <span className="text-sm text-gray-600 dark:text-gray-300">Ingresar domicilio manualmente</span>
@@ -2217,7 +2217,7 @@ export default function EnviosPage() {
                   {form.destino_id === '' && !showNuevoDom && (
                     <textarea value={form.destino_descripcion} onChange={e => setForm(f => ({ ...f, destino_descripcion: e.target.value }))}
                       placeholder="Calle, número, ciudad, provincia, CP" rows={2}
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   )}
                 </div>
               </div>
@@ -2229,7 +2229,7 @@ export default function EnviosPage() {
                   {(['propio', 'tercero'] as const).map(t => (
                     <button key={t} type="button" onClick={() => setTipoEnvio(t)}
                       className={`flex-1 py-2 rounded-xl text-sm font-medium border-2 transition-colors
-                        ${tipoEnvio === t ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent/50'}`}>
+                        ${tipoEnvio === t ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent-text/50'}`}>
                       {t === 'propio' ? '🚗 Envío propio' : '📦 Courier / tercero'}
                     </button>
                   ))}
@@ -2266,13 +2266,13 @@ export default function EnviosPage() {
                       </div>
                     ) : distanciaKm !== null ? (
                       <>
-                        <Navigation size={14} className="text-accent flex-shrink-0" />
+                        <Navigation size={14} className="text-accent-text flex-shrink-0" />
                         <div className="flex-1 text-sm">
                           <span className="font-semibold text-primary">{distanciaKm} km</span>
                           <span className="text-gray-400 mx-1">×</span>
                           <span className="text-gray-600 dark:text-gray-400">${Number(sucursalActiva?.costo_km_envio || (tenant as any)?.costo_envio_por_km || 0).toLocaleString('es-AR')}/km</span>
                           <span className="text-gray-400 mx-1">=</span>
-                          <span className="font-semibold text-accent">${(distanciaKm * (sucursalActiva?.costo_km_envio || (tenant as any)?.costo_envio_por_km || 0)).toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
+                          <span className="font-semibold text-accent-text">${(distanciaKm * (sucursalActiva?.costo_km_envio || (tenant as any)?.costo_envio_por_km || 0)).toLocaleString('es-AR', { minimumFractionDigits: 0 })}</span>
                         </div>
                         {!sucursalActiva?.costo_km_envio && !(tenant as any)?.costo_envio_por_km && (
                           <span className="text-xs text-amber-500">Configurá el costo/km en Config → Envíos</span>
@@ -2291,7 +2291,7 @@ export default function EnviosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Courier</label>
                   <div className="relative">
                     <select value={form.courier} onChange={e => handleCourierChange(e.target.value)}
-                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                       <option value="">Sin especificar</option>
                       {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
@@ -2304,7 +2304,7 @@ export default function EnviosPage() {
                   {form.courier && SERVICIOS_POR_COURIER[form.courier] ? (
                     <div className="relative">
                       <select value={form.servicio} onChange={e => setForm(f => ({ ...f, servicio: e.target.value }))}
-                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         <option value="">Seleccionar servicio…</option>
                         {SERVICIOS_POR_COURIER[form.courier].map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
@@ -2313,7 +2313,7 @@ export default function EnviosPage() {
                   ) : (
                     <input type="text" value={form.servicio} onChange={e => setForm(f => ({ ...f, servicio: e.target.value }))}
                       placeholder={form.courier ? 'Ej: Estándar' : 'Elegí primero el courier'}
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   )}
                 </div>
                 {/* Tracking */}
@@ -2321,7 +2321,7 @@ export default function EnviosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Número de tracking</label>
                   <input type="text" value={form.tracking_number} onChange={e => setForm(f => ({ ...f, tracking_number: e.target.value }))}
                     placeholder="Código de seguimiento"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 {/* Canal — auto-populado desde la venta, read-only si viene de una venta */}
                 <div>
@@ -2336,7 +2336,7 @@ export default function EnviosPage() {
                   ) : (
                     <div className="relative">
                       <select value={form.canal} onChange={e => setForm(f => ({ ...f, canal: e.target.value }))}
-                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         {CANALES.map(c => <option key={c} value={c}>{c}</option>)}
                       </select>
                       <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -2348,16 +2348,16 @@ export default function EnviosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Costo de envío ($)
                     {form.courier && (courierTarifas as any[]).find(t => t.courier === form.courier) && (
-                      <span className="ml-1 text-xs text-accent">(tarifa configurada)</span>
+                      <span className="ml-1 text-xs text-accent-text">(tarifa configurada)</span>
                     )}
                   </label>
                   <input type="number" onWheel={e => e.currentTarget.blur()} value={form.costo_cotizado}
                     onChange={e => setForm(f => ({ ...f, costo_cotizado: e.target.value }))} placeholder="0" min="0"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 {/* ISS-174 — Cotizar por API del courier */}
                 {tipoEnvio === 'tercero' && esCourierApi(form.courier) && (
-                  <div className="col-span-2 rounded-xl border border-accent/30 bg-accent/5 p-3 space-y-2">
+                  <div className="col-span-2 rounded-xl border border-accent-text/30 bg-accent/5 p-3 space-y-2">
                     <div className="flex items-center gap-2 flex-wrap">
                       <button type="button" onClick={handleCotizar} disabled={cotizando}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-60 font-medium">
@@ -2367,7 +2367,7 @@ export default function EnviosPage() {
                       {!destinoCp && (
                         <input type="text" value={destinoCpManual} onChange={e => setDestinoCpManual(e.target.value)}
                           placeholder="CP destino" inputMode="numeric"
-                          className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          className="w-28 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       )}
                       <span className="text-[11px] text-gray-400">Origen CP {origenCp || '—'} → destino CP {destinoCp || '—'}</span>
                     </div>
@@ -2376,11 +2376,11 @@ export default function EnviosPage() {
                         {cotizaciones.map((op, i) => (
                           <button key={i} type="button" onClick={() => elegirCotizacion(op)}
                             className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg border text-xs transition-colors
-                              ${form.servicio === op.servicio ? 'border-accent bg-accent/10' : 'border-gray-200 dark:border-gray-600 hover:border-accent/50 bg-white dark:bg-gray-700'}`}>
+                              ${form.servicio === op.servicio ? 'border-accent-text bg-accent/10' : 'border-gray-200 dark:border-gray-600 hover:border-accent-text/50 bg-white dark:bg-gray-700'}`}>
                             <span className="font-medium text-gray-700 dark:text-gray-200">{op.servicio}</span>
                             <span className="flex items-center gap-3">
                               {op.plazo_dias != null && <span className="text-gray-400">{op.plazo_dias}d</span>}
-                              <span className="font-semibold text-accent">${op.precio.toLocaleString('es-AR')}</span>
+                              <span className="font-semibold text-accent-text">${op.precio.toLocaleString('es-AR')}</span>
                             </span>
                           </button>
                         ))}
@@ -2394,14 +2394,14 @@ export default function EnviosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Zona de entrega</label>
                   <input type="text" value={form.zona_entrega} onChange={e => setForm(f => ({ ...f, zona_entrega: e.target.value }))}
                     placeholder="Ej: CABA, GBA Norte"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 {/* EN3/G1 — Repartidor asignado (envío propio) */}
                 {(form.courier === 'Envío propio' || form.repartidor_id) && (repartidores as any[]).length > 0 && (
                   <div>
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Repartidor asignado</label>
                     <select value={form.repartidor_id} onChange={e => setForm(f => ({ ...f, repartidor_id: e.target.value }))}
-                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                      className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                       <option value="">Sin asignar</option>
                       {(repartidores as any[]).map(r => <option key={r.id} value={r.id}>{r.nombre}{r.vehiculo ? ` (${r.vehiculo})` : ''}</option>)}
                     </select>
@@ -2413,7 +2413,7 @@ export default function EnviosPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5"><Car size={13} className="text-gray-400" /> Vehículo</label>
                       <select value={form.recurso_id} onChange={e => setForm(f => ({ ...f, recurso_id: e.target.value }))}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         <option value="">Sin vehículo</option>
                         {(vehiculos as any[]).map(v => <option key={v.id} value={v.id}>{v.nombre}{v.consumo_litros_100km ? ` · ${v.consumo_litros_100km}L/100km` : ''}</option>)}
                       </select>
@@ -2423,7 +2423,7 @@ export default function EnviosPage() {
                       <input type="number" min="0" step="0.1" value={form.km_recorridos}
                         onChange={e => setForm(f => ({ ...f, km_recorridos: e.target.value }))}
                         placeholder={distanciaKm != null ? String(distanciaKm) : 'auto'}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <p className="col-span-2 text-[11px] text-gray-400 -mt-1 flex items-center gap-1"><Fuel size={11} /> El combustible se registra como gasto desde el detalle del envío (suma KM al vehículo).</p>
                   </div>
@@ -2433,14 +2433,14 @@ export default function EnviosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha de entrega acordada</label>
                   <input type="date" value={form.fecha_entrega_acordada}
                     onChange={e => setForm(f => ({ ...f, fecha_entrega_acordada: e.target.value }))}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 {/* Hora entrega */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Hora acordada</label>
                   <input type="time" value={form.hora_entrega_acordada}
                     onChange={e => setForm(f => ({ ...f, hora_entrega_acordada: e.target.value }))}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 {/* ISS-178 — Rango horario (alternativa a la hora exacta) */}
                 <div>
@@ -2453,7 +2453,7 @@ export default function EnviosPage() {
                         value={form.rango_horario_idx}
                         onChange={e => setForm(f => ({ ...f, rango_horario_idx: e.target.value }))}
                         disabled={rangos.length === 0}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
                       >
                         <option value="">{rangos.length === 0 ? 'Sin rangos configurados' : 'Sin definir'}</option>
                         {rangos.map((r, i) => (
@@ -2480,7 +2480,7 @@ export default function EnviosPage() {
                       <input type="number" onWheel={e => e.currentTarget.blur()} value={form[field]}
                         onChange={e => setForm(f => ({ ...f, [field]: e.target.value }))}
                         placeholder="0" min="0" step={step}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                   ))}
                 </div>
@@ -2491,7 +2491,7 @@ export default function EnviosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas</label>
                 <textarea value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
                   placeholder="Instrucciones especiales, referencias adicionales…" rows={2}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
               {/* POD — Prueba de entrega (solo en edición) */}
@@ -2504,13 +2504,13 @@ export default function EnviosPage() {
                     <div>
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha real de entrega</label>
                       <input type="date" value={form.pod_fecha} onChange={e => setForm(f => ({ ...f, pod_fecha: e.target.value }))}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div>
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Nombre de quien recibió</label>
                       <input type="text" value={form.pod_receptor} onChange={e => setForm(f => ({ ...f, pod_receptor: e.target.value }))}
                         placeholder="Ej: Juan García"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <div className="col-span-2">
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Comprobantes / fotos</label>
@@ -2527,7 +2527,7 @@ export default function EnviosPage() {
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Observaciones de entrega</label>
                       <textarea value={form.pod_notas} onChange={e => setForm(f => ({ ...f, pod_notas: e.target.value }))}
                         placeholder="Notas adicionales sobre la entrega…" rows={2}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                   </div>
                 </div>
@@ -2567,7 +2567,7 @@ export default function EnviosPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha real de entrega</label>
                 <input type="date" value={podForm.pod_fecha} onChange={e => setPodForm(f => ({ ...f, pod_fecha: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
               <div>
@@ -2576,7 +2576,7 @@ export default function EnviosPage() {
                 </label>
                 <input type="text" value={podForm.pod_receptor} onChange={e => setPodForm(f => ({ ...f, pod_receptor: e.target.value }))}
                   placeholder="Ej: Juan García"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
               {(podRequeridos.dni || podForm.pod_dni) && (
@@ -2584,7 +2584,7 @@ export default function EnviosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">DNI del receptor {podRequeridos.dni && <span className="text-red-500">*</span>}</label>
                   <input type="text" inputMode="numeric" value={podForm.pod_dni} onChange={e => setPodForm(f => ({ ...f, pod_dni: e.target.value }))}
                     placeholder="Ej: 30111222"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
               )}
 
@@ -2613,7 +2613,7 @@ export default function EnviosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Observaciones</label>
                 <textarea value={podForm.pod_notas} onChange={e => setPodForm(f => ({ ...f, pod_notas: e.target.value }))}
                   placeholder="Condición del paquete, horario real de entrega, etc." rows={2}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
             </div>
 
@@ -2646,7 +2646,7 @@ export default function EnviosPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo de la no entrega</label>
                 <select value={noEntregaSub} onChange={e => setNoEntregaSub(e.target.value as SubestadoNoEntrega)}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                   {SUBESTADOS_NO_ENTREGA.map(s => <option key={s.v} value={s.v}>{s.t}</option>)}
                 </select>
                 <p className="text-xs text-gray-400 mt-1">
@@ -2659,7 +2659,7 @@ export default function EnviosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Detalle</label>
                 <textarea value={noEntregaMotivo} onChange={e => setNoEntregaMotivo(e.target.value)} rows={2}
                   placeholder="Ej: timbre sin respuesta, dirección inexistente…"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
             </div>
             <div className="px-5 pb-5 flex gap-3">
@@ -2685,7 +2685,7 @@ export default function EnviosPage() {
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md">
               <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
                 <h2 className="font-semibold text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                  <DollarSign size={18} className="text-accent" /> Costo real del envío
+                  <DollarSign size={18} className="text-accent-text" /> Costo real del envío
                 </h2>
                 <button onClick={() => setDiffEnvio(null)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-400"><X size={18} /></button>
               </div>
@@ -2697,7 +2697,7 @@ export default function EnviosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Costo real ($)</label>
                   <input type="number" onWheel={ev => ev.currentTarget.blur()} value={diffCostoReal} onChange={e => setDiffCostoReal(e.target.value)}
                     min="0" step="0.01" autoFocus
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 {prev && prev.tipo !== 'neutro' && (
                   <>
@@ -2707,7 +2707,7 @@ export default function EnviosPage() {
                     <div>
                       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Motivo de la diferencia</label>
                       <select value={diffMotivo} onChange={e => setDiffMotivo(e.target.value)}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         {DIFERENCIA_MOTIVOS.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
                     </div>
@@ -2749,13 +2749,13 @@ export default function EnviosPage() {
                       const est = costoCombustible(parseFloat(e.target.value) || 0, { consumoLitros100km: veh?.consumo_litros_100km, precioLitro: (tenant as any)?.envio_combustible_precio_litro })
                       if (est > 0) setCombustibleMonto(String(est))
                     }}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Monto del gasto</label>
                   <input type="number" min="0" step="0.01" value={combustibleMonto}
                     onChange={e => setCombustibleMonto(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
               </div>
               {!(tenant as any)?.envio_combustible_precio_litro && (

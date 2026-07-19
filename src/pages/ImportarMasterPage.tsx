@@ -335,7 +335,7 @@ export default function ImportarMasterPage() {
                   <label key={tipo} className="flex items-center gap-3 cursor-pointer p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <input type="radio" name="tipoMaster" value={tipo} checked={tipoMaster === tipo}
                       onChange={() => cambiarTipo(tipo)} />
-                    <Icon size={15} className="text-accent flex-shrink-0" />
+                    <Icon size={15} className="text-accent-text flex-shrink-0" />
                     <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{cfg.label}</span>
                   </label>
                 )
@@ -353,10 +353,10 @@ export default function ImportarMasterPage() {
           {/* Plantilla */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-              <FileSpreadsheet size={16} className="text-accent" /> Plantilla
+              <FileSpreadsheet size={16} className="text-accent-text" /> Plantilla
             </h2>
             <button onClick={() => descargarPlantilla(tipoMaster)}
-              className="w-full flex items-center justify-center gap-2 border border-accent text-accent font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
+              className="w-full flex items-center justify-center gap-2 border border-accent-text text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/10 transition-all text-sm">
               <Download size={15} /> Descargar plantilla
             </button>
           </div>
@@ -364,10 +364,10 @@ export default function ImportarMasterPage() {
           {/* Upload */}
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
-              <Upload size={16} className="text-accent" /> Subir archivo
+              <Upload size={16} className="text-accent-text" /> Subir archivo
             </h2>
             <div
-              className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
+              className="border-2 border-dashed border-gray-200 dark:border-gray-700 rounded-xl p-6 text-center cursor-pointer hover:border-accent-text hover:bg-accent/5 transition-all"
               onClick={() => fileRef.current?.click()}
               onDragOver={e => e.preventDefault()}
               onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) procesarArchivo(f, tipoMaster) }}

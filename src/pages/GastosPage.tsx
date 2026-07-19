@@ -1582,7 +1582,7 @@ export default function GastosPage() {
                   : { tipo_iva: '', iva_deducible: false, alicuota_iva_custom: '' }),
               }))
             }}
-            className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+            className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
             <option value="">Seleccionar…</option>
             {comprobantesGasto.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
@@ -1602,7 +1602,7 @@ export default function GastosPage() {
         <div className="flex gap-2 items-center flex-wrap">
           <div className="relative flex-1 min-w-[140px]">
             <select value={vals.tipo_iva} onChange={e => setVals((f: any) => ({ ...f, tipo_iva: e.target.value, iva_deducible: true, alicuota_iva_custom: e.target.value === 'custom' ? f.alicuota_iva_custom : '' }))}
-              className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+              className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
               {TASAS_IVA.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
             <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -1612,7 +1612,7 @@ export default function GastosPage() {
               <input type="number" value={vals.alicuota_iva_custom}
                 onChange={e => setVals((f: any) => ({ ...f, alicuota_iva_custom: e.target.value }))}
                 placeholder="0,00" min="0" max="100" step="0.01"
-                className="w-20 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                className="w-20 border border-gray-200 dark:border-gray-600 rounded-xl px-2 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               <span className="text-sm text-gray-500">%</span>
             </div>
           )}
@@ -1679,7 +1679,7 @@ export default function GastosPage() {
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <TrendingDown size={22} className="text-accent" /> Gastos
+            <TrendingDown size={22} className="text-accent-text" /> Gastos
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             {tab === 'gastos' ? 'Últimos 30 días' : tab === 'historial' ? 'Historial completo con filtros' : 'Gastos estimados recurrentes'}
@@ -1725,7 +1725,7 @@ export default function GastosPage() {
             {categoriasUnicas.length > 0 && (
               <div className="relative">
                 <select value={filtroCategoria} onChange={e => setFiltroCategoria(e.target.value)}
-                  className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent cursor-pointer">
+                  className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent-text cursor-pointer">
                   <option value="">Todas las categorías</option>
                   {categoriasUnicas.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
@@ -1779,7 +1779,7 @@ export default function GastosPage() {
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
-                  <Filter size={18} className="text-accent" />
+                  <Filter size={18} className="text-accent-text" />
                 </div>
                 <p className="text-sm text-gray-500 dark:text-gray-400">Mayor categoría</p>
               </div>
@@ -1817,13 +1817,13 @@ export default function GastosPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-text" />
               </div>
             ) : gastosFiltrados.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <Receipt size={36} className="mb-3 opacity-30" />
                 <p className="font-medium text-sm">No hay gastos en los últimos 30 días</p>
-                <button onClick={abrirNuevo} className="mt-3 text-accent text-sm font-medium hover:underline">Registrar el primero</button>
+                <button onClick={abrirNuevo} className="mt-3 text-accent-text text-sm font-medium hover:underline">Registrar el primero</button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1863,7 +1863,7 @@ export default function GastosPage() {
                         </td>
                         <td className="px-4 py-3">
                           {g.categoria ? (
-                            <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded-lg font-medium">{g.categoria}</span>
+                            <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent-text text-xs rounded-lg font-medium">{g.categoria}</span>
                           ) : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}
                         </td>
                         <td className="px-4 py-3 text-gray-500 dark:text-gray-400 text-sm hidden md:table-cell">{formatMediosPago(g.medio_pago)}</td>
@@ -1889,7 +1889,7 @@ export default function GastosPage() {
                               </button>
                             ) : (
                               <>
-                                <button onClick={() => abrirEdicion(g)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><Pencil size={14} /></button>
+                                <button onClick={() => abrirEdicion(g)} className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"><Pencil size={14} /></button>
                                 <button onClick={() => eliminar(g.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={14} /></button>
                               </>
                             )}
@@ -1942,7 +1942,7 @@ export default function GastosPage() {
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</p>
                   <div className="relative">
                     <select value={histCategoria} onChange={e => setHistCategoria(e.target.value)}
-                      className="appearance-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent">
+                      className="appearance-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent-text">
                       <option value="">Todas</option>
                       {histCategoriasUnicas.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
@@ -1956,7 +1956,7 @@ export default function GastosPage() {
                 <div className="flex gap-1">
                   <div className="relative">
                     <select value={histMontoOp} onChange={e => setHistMontoOp(e.target.value)}
-                      className="appearance-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent">
+                      className="appearance-none bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent-text">
                       <option value="">—</option>
                       <option value="mayor">Mayor a</option>
                       <option value="menor">Menor a</option>
@@ -1967,7 +1967,7 @@ export default function GastosPage() {
                   {histMontoOp && (
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={histMontoVal}
                       onChange={e => setHistMontoVal(e.target.value)} placeholder="$0"
-                      className="w-24 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent" />
+                      className="w-24 bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent-text" />
                   )}
                 </div>
               </div>
@@ -1988,7 +1988,7 @@ export default function GastosPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {loadingHistorial ? (
               <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-text" />
               </div>
             ) : histFiltrados.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
@@ -2005,7 +2005,7 @@ export default function GastosPage() {
                         <div className="flex items-center gap-2">
                           <p className="font-medium text-gray-800 dark:text-gray-100 text-sm truncate">{g.descripcion}</p>
                           {g.categoria && (
-                            <span className="inline-block px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded font-medium flex-shrink-0">{g.categoria}</span>
+                            <span className="inline-block px-1.5 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent-text text-xs rounded font-medium flex-shrink-0">{g.categoria}</span>
                           )}
                           {(g.estado_pago === 'pendiente' || (!g.estado_pago && !g.medio_pago)) && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 font-medium flex-shrink-0">Sin pagar</span>
@@ -2078,7 +2078,7 @@ export default function GastosPage() {
                             </button>
                           ) : (
                             <>
-                              <button onClick={() => abrirEdicion(g)} className="flex items-center gap-1 text-xs text-accent hover:underline"><Pencil size={12} /> Editar</button>
+                              <button onClick={() => abrirEdicion(g)} className="flex items-center gap-1 text-xs text-accent-text hover:underline"><Pencil size={12} /> Editar</button>
                               <span className="text-gray-200 dark:text-gray-700">|</span>
                               <button onClick={() => eliminar(g.id)} className="flex items-center gap-1 text-xs text-red-500 hover:underline"><Trash2 size={12} /> Eliminar</button>
                             </>
@@ -2106,13 +2106,13 @@ export default function GastosPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
             {loadingFijos ? (
               <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" />
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-text" />
               </div>
             ) : (gastosFijos as any[]).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-14 text-gray-400">
                 <Repeat size={36} className="mb-3 opacity-30" />
                 <p className="font-medium text-sm">No hay gastos fijos configurados</p>
-                <button onClick={abrirNuevoFijo} className="mt-3 text-accent text-sm font-medium hover:underline">Crear el primero</button>
+                <button onClick={abrirNuevoFijo} className="mt-3 text-accent-text text-sm font-medium hover:underline">Crear el primero</button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -2166,7 +2166,7 @@ export default function GastosPage() {
                           </td>
                           <td className="px-4 py-3 hidden sm:table-cell">
                             {f.categoria ? (
-                              <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent text-xs rounded-lg font-medium">{f.categoria}</span>
+                              <span className="inline-block px-2 py-0.5 bg-purple-50 dark:bg-purple-900/20 text-accent-text text-xs rounded-lg font-medium">{f.categoria}</span>
                             ) : <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}
                           </td>
                           <td className="px-4 py-3 text-gray-600 dark:text-gray-300 capitalize">{f.frecuencia}</td>
@@ -2180,11 +2180,11 @@ export default function GastosPage() {
                             <div className="flex items-center gap-1 justify-end">
                               {f.activo && (
                                 <button onClick={() => abrirGenerarFijo(f)} title="Registrar este gasto"
-                                  className="flex items-center gap-1 px-2 py-1 text-xs text-accent border border-accent/30 hover:bg-accent/10 rounded-lg transition-colors">
+                                  className="flex items-center gap-1 px-2 py-1 text-xs text-accent-text border border-accent-text/30 hover:bg-accent/10 rounded-lg transition-colors">
                                   Generar
                                 </button>
                               )}
-                              <button onClick={() => abrirEdicionFijo(f)} className="p-1.5 text-gray-400 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Pencil size={14} /></button>
+                              <button onClick={() => abrirEdicionFijo(f)} className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><Pencil size={14} /></button>
                               <button onClick={() => eliminarFijo(f.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 size={14} /></button>
                             </div>
                           </td>
@@ -2320,7 +2320,7 @@ export default function GastosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción *</label>
                 <input type="text" value={form.descripcion} onChange={e => setForm(f => ({ ...f, descripcion: e.target.value }))}
                   placeholder="Ej: Pago de alquiler enero" autoFocus
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
               {/* Aviso cuando el gasto ya fue registrado en caja */}
@@ -2345,7 +2345,7 @@ export default function GastosPage() {
                   onChange={e => setForm(f => ({ ...f, monto: e.target.value }))}
                   disabled={!!(editandoId && originalTeniaPago) || esContador}
                   placeholder="0" min="0" step="0.01"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
               </div>
 
               {/* Información fiscal */}
@@ -2354,14 +2354,14 @@ export default function GastosPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
                 <input type="date" value={form.fecha} onChange={e => setForm(f => ({ ...f, fecha: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
                 <div className="relative">
                   <select value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     <option value="">Sin categoría</option>
                     {categoriasNombres.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -2394,7 +2394,7 @@ export default function GastosPage() {
                       recurso_id: e.target.value,
                       capitaliza_recurso: e.target.value ? f.capitaliza_recurso : false,
                     }))}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100"
                   >
                     <option value="">Sin recurso asociado</option>
                     {recursosSelect.map((r: any) => (
@@ -2432,7 +2432,7 @@ export default function GastosPage() {
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Medios de pago</label>
                   {!originalTeniaPago && mediosPago.length < MEDIOS_PAGO.length && (
                     <button type="button" onClick={() => setMediosPago(p => [...p, { tipo: '', monto: '' }])}
-                      className="text-xs text-accent hover:underline flex items-center gap-1">
+                      className="text-xs text-accent-text hover:underline flex items-center gap-1">
                       <Plus size={12} /> Agregar método
                     </button>
                   )}
@@ -2447,7 +2447,7 @@ export default function GastosPage() {
                       <div className="relative flex-1">
                         <select value={mp.tipo} disabled={bloqueado}
                           onChange={e => setMediosPago(p => p.map((m, i) => i === idx ? { ...m, tipo: e.target.value } : m))}
-                          className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">
+                          className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed">
                           <option value="">Elegir…</option>
                           {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                         </select>
@@ -2459,7 +2459,7 @@ export default function GastosPage() {
                           onChange={e => setMediosPago(p => p.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m))}
                           placeholder={restante > 0 ? String(restante.toFixed(0)) : '0'}
                           min="0" step="0.01"
-                          className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-60 disabled:cursor-not-allowed" />
                       </div>
                       {!bloqueado && mediosPago.length > 1 && (
                         <button type="button" onClick={() => setMediosPago(p => p.filter((_, i) => i !== idx))}
@@ -2484,7 +2484,7 @@ export default function GastosPage() {
 
               {/* Cuotas — solo si medio de pago es Tarjeta crédito y es creación */}
               {!editandoId && mediosPago.some(m => m.tipo === 'Tarjeta crédito') && (
-                <div className={`border-2 rounded-xl p-3 space-y-3 ${esCuota ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-600'}`}>
+                <div className={`border-2 rounded-xl p-3 space-y-3 ${esCuota ? 'border-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-600'}`}>
                   <div
                     onClick={() => setEsCuota(v => !v)}
                     className="flex items-center gap-3 cursor-pointer select-none">
@@ -2506,7 +2506,7 @@ export default function GastosPage() {
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cantidad de cuotas</label>
                           <select value={cuotasTotal} onChange={e => setCuotasTotal(e.target.value)}
-                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                             {[2,3,6,9,12,18,24].map(n => <option key={n} value={n}>{n} cuotas</option>)}
                           </select>
                         </div>
@@ -2515,11 +2515,11 @@ export default function GastosPage() {
                           <input type="number" min="0" step="0.1" onWheel={e => e.currentTarget.blur()}
                             value={tasaInteres} onChange={e => setTasaInteres(e.target.value)}
                             placeholder="0"
-                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                         </div>
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Valor por cuota</label>
-                          <p className="text-sm font-semibold text-accent px-2.5 py-1.5 bg-accent/10 rounded-lg">
+                          <p className="text-sm font-semibold text-accent-text px-2.5 py-1.5 bg-accent/10 rounded-lg">
                             ${montoCuota.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </p>
                         </div>
@@ -2572,7 +2572,7 @@ export default function GastosPage() {
                             setForm(f => ({ ...f, tipo_iva: ivaSugerido, iva_deducible: ivaSugerido === '21' }))
                           }
                         }}
-                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         <option value="">Seleccionar tipo de comprobante…</option>
                         {TIPOS_COMPROBANTE.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -2581,14 +2581,14 @@ export default function GastosPage() {
                     {!tipoComprobanteSelect && (
                       <input type="text" value={comprobanteNombre} onChange={e => setComprobanteNombre(e.target.value)}
                         placeholder="O escribí un título personalizado (opcional)"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     )}
                     <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
                       <input type="checkbox" checked={usarPrefixCategoria}
                         onChange={e => setUsarPrefixCategoria(e.target.checked)} className="accent-accent" />
                       Agregar categoría como prefijo
                       {usarPrefixCategoria && form.categoria && (
-                        <span className="text-accent font-medium">{form.categoria}_{tipoComprobanteSelect || comprobanteNombre || '…'}</span>
+                        <span className="text-accent-text font-medium">{form.categoria}_{tipoComprobanteSelect || comprobanteNombre || '…'}</span>
                       )}
                     </label>
                   </div>
@@ -2599,7 +2599,7 @@ export default function GastosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas</label>
                 <textarea value={form.notas} onChange={e => setForm(f => ({ ...f, notas: e.target.value }))}
                   placeholder="Detalles adicionales..." rows={2}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
             </div>
 
@@ -2618,7 +2618,7 @@ export default function GastosPage() {
                     <select
                       value={cajaSeleccionadaId ?? sesionDefault?.id ?? ''}
                       onChange={e => setCajaSeleccionadaId(e.target.value || null)}
-                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                       <option value="">— Seleccioná una caja —</option>
                       {sesionesOperativas.map((s: any) => {
                         const esPropia = s.usuario_id === user?.id
@@ -2645,7 +2645,7 @@ export default function GastosPage() {
                     </span>
                     {sesionesOperativas.length > 1 && (
                       <button onClick={() => setCajaSeleccionadaId('')}
-                        className="ml-auto text-accent hover:underline text-[10px]">
+                        className="ml-auto text-accent-text hover:underline text-[10px]">
                         cambiar
                       </button>
                     )}
@@ -2682,7 +2682,7 @@ export default function GastosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descripción *</label>
                 <input type="text" value={formFijo.descripcion} onChange={e => setFormFijo(f => ({ ...f, descripcion: e.target.value }))}
                   placeholder="Ej: Alquiler local" autoFocus
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
               <div>
@@ -2690,7 +2690,7 @@ export default function GastosPage() {
                 <input type="number" onWheel={e => e.currentTarget.blur()} value={formFijo.monto}
                   onChange={e => setFormFijo(f => ({ ...f, monto: e.target.value }))}
                   placeholder="0" min="0" step="0.01"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
 
               {/* Información fiscal */}
@@ -2701,7 +2701,7 @@ export default function GastosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Frecuencia</label>
                   <div className="relative">
                     <select value={formFijo.frecuencia} onChange={e => setFormFijo(f => ({ ...f, frecuencia: e.target.value }))}
-                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                      className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                       {FRECUENCIAS.map(fr => <option key={fr.value} value={fr.value}>{fr.label}</option>)}
                     </select>
                     <ChevronDown size={12} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -2711,7 +2711,7 @@ export default function GastosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Día del mes</label>
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="31" value={formFijo.dia_vencimiento}
                     onChange={e => setFormFijo(f => ({ ...f, dia_vencimiento: e.target.value }))} placeholder="Ej: 10"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                 </div>
               </div>
 
@@ -2720,7 +2720,7 @@ export default function GastosPage() {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alertar X días antes</label>
                   <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="30" value={formFijo.alerta_dias_antes}
                     onChange={e => setFormFijo(f => ({ ...f, alerta_dias_antes: e.target.value }))} placeholder="3"
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   <p className="text-xs text-gray-400 mt-1">Aparecerá un ícono 🔔 en la lista cuando falten {formFijo.alerta_dias_antes || 3} días o menos</p>
                 </div>
               )}
@@ -2729,7 +2729,7 @@ export default function GastosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Categoría</label>
                 <div className="relative">
                   <select value={formFijo.categoria} onChange={e => setFormFijo(f => ({ ...f, categoria: e.target.value }))}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     <option value="">Sin categoría</option>
                     {categoriasNombres.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -2741,7 +2741,7 @@ export default function GastosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Medio de pago habitual</label>
                 <div className="relative">
                   <select value={formFijo.medio_pago} onChange={e => setFormFijo(f => ({ ...f, medio_pago: e.target.value }))}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     <option value="">Elegir método…</option>
                     {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
@@ -2753,7 +2753,7 @@ export default function GastosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas</label>
                 <textarea value={formFijo.notas} onChange={e => setFormFijo(f => ({ ...f, notas: e.target.value }))}
                   placeholder="Detalles adicionales..." rows={2}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text resize-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
             </div>
 
@@ -2787,13 +2787,13 @@ export default function GastosPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha</label>
                 <input type="date" value={formGenerar.fecha} onChange={e => setFormGenerar(f => ({ ...f, fecha: e.target.value }))}
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Medios de pago</label>
                   <button type="button" onClick={() => setMediosPagoGenerar(p => [...p, { tipo: '', monto: '' }])}
-                    className="text-xs text-accent hover:underline flex items-center gap-1">
+                    className="text-xs text-accent-text hover:underline flex items-center gap-1">
                     <Plus size={12} /> Agregar
                   </button>
                 </div>
@@ -2802,7 +2802,7 @@ export default function GastosPage() {
                     <div className="relative flex-1">
                       <select value={mp.tipo}
                         onChange={e => setMediosPagoGenerar(p => p.map((m, i) => i === idx ? { ...m, tipo: e.target.value } : m))}
-                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-7 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         <option value="">Elegir…</option>
                         {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                       </select>
@@ -2810,7 +2810,7 @@ export default function GastosPage() {
                     </div>
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={mp.monto}
                       onChange={e => setMediosPagoGenerar(p => p.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m))}
-                      placeholder="0" min="0" step="0.01" className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      placeholder="0" min="0" step="0.01" className="w-24 border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     {mediosPagoGenerar.length > 1 && (
                       <button type="button" onClick={() => setMediosPagoGenerar(p => p.filter((_, i) => i !== idx))}
                         className="text-gray-400 hover:text-red-500"><X size={14} /></button>
@@ -2838,7 +2838,7 @@ export default function GastosPage() {
                     <div className="relative">
                       <select value={generarTipoComp}
                         onChange={e => { setGenerarTipoComp(e.target.value); if (e.target.value) setGenerarCompNombre('') }}
-                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                        className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                         <option value="">Tipo de comprobante…</option>
                         {TIPOS_COMPROBANTE.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
@@ -2847,13 +2847,13 @@ export default function GastosPage() {
                     {!generarTipoComp && (
                       <input type="text" value={generarCompNombre} onChange={e => setGenerarCompNombre(e.target.value)}
                         placeholder="O escribí un título personalizado"
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     )}
                     {modalGenerarFijo?.categoria && (
                       <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 cursor-pointer">
                         <input type="checkbox" checked={generarUsaPrefix} onChange={e => setGenerarUsaPrefix(e.target.checked)} className="accent-accent" />
                         Agregar categoría como prefijo
-                        {generarUsaPrefix && <span className="text-accent font-medium">{modalGenerarFijo.categoria}_{generarTipoComp || generarCompNombre || '…'}</span>}
+                        {generarUsaPrefix && <span className="text-accent-text font-medium">{modalGenerarFijo.categoria}_{generarTipoComp || generarCompNombre || '…'}</span>}
                       </label>
                     )}
                   </div>
@@ -2863,7 +2863,7 @@ export default function GastosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
                 <input type="text" value={formGenerar.notas} onChange={e => setFormGenerar(f => ({ ...f, notas: e.target.value }))}
                   placeholder="Ej: Factura N° 0001-00001234"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
             </div>
 
@@ -2883,7 +2883,7 @@ export default function GastosPage() {
                       <select
                         value={cajaGenerarFijoId ?? sesionPropia?.id ?? ''}
                         onChange={e => setCajaGenerarFijoId(e.target.value || null)}
-                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                         <option value="">— Seleccioná una caja —</option>
                         {sesionesOperativas.map((s: any) => (
                           <option key={s.id} value={s.id}>
@@ -2956,7 +2956,7 @@ export default function GastosPage() {
           {/* Filtros */}
           <div className="flex flex-wrap gap-3 items-center">
             <select value={ocFiltroEstadoPago} onChange={e => setOcFiltroEstadoPago(e.target.value)}
-              className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent">
+              className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent-text">
               <option value="">Todos los estados</option>
               <option value="pendiente_pago">Pendiente de pago</option>
               <option value="pago_parcial">Pago parcial</option>
@@ -2964,7 +2964,7 @@ export default function GastosPage() {
               <option value="pagada">Pagada</option>
             </select>
             <select value={ocFiltroProveedor} onChange={e => setOcFiltroProveedor(e.target.value)}
-              className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent">
+              className="appearance-none bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pl-3 pr-8 py-2 text-sm text-gray-700 dark:text-gray-300 outline-none focus:border-accent-text">
               <option value="">Todos los proveedores</option>
               {(proveedoresOC as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
             </select>
@@ -2979,7 +2979,7 @@ export default function GastosPage() {
 
           {/* Lista */}
           {loadingOcs ? (
-            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent" /></div>
+            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-accent-text" /></div>
           ) : ocsFiltradas.length === 0 ? (
             <div className="flex flex-col items-center py-16 text-gray-400">
               <ShoppingCart size={36} className="mb-3 opacity-30" />
@@ -3155,17 +3155,17 @@ export default function GastosPage() {
                             <div className="flex items-center gap-2">
                               <a href={supabase.storage.from('comprobantes-gastos').getPublicUrl((oc as any).comprobante_url).data.publicUrl}
                                 target="_blank" rel="noopener noreferrer"
-                                className="text-xs text-accent hover:underline flex items-center gap-1">
+                                className="text-xs text-accent-text hover:underline flex items-center gap-1">
                                 <Receipt size={12} /> {(oc as any).comprobante_titulo ?? 'Ver comprobante'}
                               </a>
-                              <label className="text-xs text-gray-400 hover:text-accent cursor-pointer">
+                              <label className="text-xs text-gray-400 hover:text-accent-text cursor-pointer">
                                 Cambiar
                                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden"
                                   onChange={e => { if (e.target.files?.[0]) subirComprobanteOC(oc.id, e.target.files[0]) }} />
                               </label>
                             </div>
                           ) : (
-                            <label className={`flex items-center gap-2 text-xs cursor-pointer ${ocSubiendoFile ? 'text-gray-400' : 'text-accent hover:underline'}`}>
+                            <label className={`flex items-center gap-2 text-xs cursor-pointer ${ocSubiendoFile ? 'text-gray-400' : 'text-accent-text hover:underline'}`}>
                               {ocSubiendoFile ? 'Subiendo...' : <><Receipt size={12} /> Adjuntar comprobante</>}
                               {!ocSubiendoFile && (
                                 <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden"
@@ -3248,7 +3248,7 @@ export default function GastosPage() {
                       <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={ocDescuentoTipo === 'pct' ? 100 : undefined} value={ocDescuento}
                         onChange={e => setOcDescuento(e.target.value)}
                         placeholder="0"
-                        className="w-full pl-7 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                        className="w-full pl-7 pr-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     </div>
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">El descuento reduce el saldo sin requerir pago.</p>
                   </div>
@@ -3262,13 +3262,13 @@ export default function GastosPage() {
                           <div key={i} className="flex gap-2 items-center">
                             <select value={m.tipo}
                               onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, tipo: e.target.value } : x))}
-                              className="flex-1 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                              className="flex-1 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                               {MEDIOS_OC_DB.map(t => <option key={t}>{t}</option>)}
                             </select>
                             <input type="number" onWheel={e => e.currentTarget.blur()}
                               value={m.monto} onChange={e => setOcMediosPago(prev => prev.map((x, j) => j === i ? { ...x, monto: e.target.value } : x))}
                               placeholder="$0"
-                              className="w-28 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              className="w-28 px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                             {ocMediosPago.length > 1 && (
                               <button onClick={() => setOcMediosPago(prev => prev.filter((_, j) => j !== i))}
                                 className="text-gray-400 hover:text-red-500"><X size={14} /></button>
@@ -3277,7 +3277,7 @@ export default function GastosPage() {
                         ))}
                       </div>
                       <button onClick={() => setOcMediosPago(prev => [...prev, { tipo: 'Transferencia', monto: '' }])}
-                        className="mt-2 flex items-center gap-1 text-xs text-accent hover:underline">
+                        className="mt-2 flex items-center gap-1 text-xs text-accent-text hover:underline">
                         <Plus size={12} /> Agregar medio
                       </button>
                       {/* CO5/D3 — comprobante de transferencia adjunto a la OC */}
@@ -3293,7 +3293,7 @@ export default function GastosPage() {
                               </button>
                             </div>
                           ) : (
-                            <label className="flex items-center gap-1.5 text-xs text-accent hover:underline cursor-pointer w-fit">
+                            <label className="flex items-center gap-1.5 text-xs text-accent-text hover:underline cursor-pointer w-fit">
                               <Paperclip size={12} />
                               {ocSubiendoFile ? 'Subiendo…' : 'Adjuntar comprobante de transferencia'}
                               <input type="file" accept="image/*,application/pdf" className="hidden" disabled={ocSubiendoFile}
@@ -3315,10 +3315,10 @@ export default function GastosPage() {
                             </button>
                           ))}
                           <input type="number" onWheel={e => e.currentTarget.blur()} value={ocPagoDias} onChange={e => setOcPagoDias(e.target.value)}
-                            className="w-16 px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs text-center focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="w-16 px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs text-center focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                         </div>
                         <input type="text" value={ocPagoCondiciones} onChange={e => setOcPagoCondiciones(e.target.value)}
-                          placeholder="Condiciones (opcional)" className="mt-2 w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                          placeholder="Condiciones (opcional)" className="mt-2 w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                       </div>
                     )}
                     {/* Auditoría #5 — datos del cheque (se crea vinculado a la OC en Gastos → Cheques) */}
@@ -3327,11 +3327,11 @@ export default function GastosPage() {
                         <p className="text-xs font-medium text-amber-800 dark:text-amber-300">🧾 Datos del cheque (queda registrado en Gastos → Cheques, vinculado a esta OC)</p>
                         <div className="grid grid-cols-3 gap-2">
                           <input type="text" value={ocChequeNro} onChange={e => setOcChequeNro(e.target.value)} placeholder="N° cheque"
-                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                           <input type="text" value={ocChequeBanco} onChange={e => setOcChequeBanco(e.target.value)} placeholder="Banco"
-                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                           <input type="date" value={ocChequeFechaCobro} onChange={e => setOcChequeFechaCobro(e.target.value)} title="Fecha de cobro *"
-                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                         </div>
                         <p className="text-[11px] text-amber-700 dark:text-amber-400">La fecha de cobro es obligatoria — alimenta la alerta de cheques próximos a cobrar.</p>
                       </div>
@@ -3344,7 +3344,7 @@ export default function GastosPage() {
                           {totalMedios > 0 && (
                             <div className="flex justify-between text-sm font-semibold">
                               <span className="text-gray-600 dark:text-gray-400">Total asignado</span>
-                              <span className={totalMedios > saldo + 0.5 ? 'text-red-500' : 'text-accent'}>${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                              <span className={totalMedios > saldo + 0.5 ? 'text-red-500' : 'text-accent-text'}>${totalMedios.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                             </div>
                           )}
                           {/* Selector de caja para el movimiento */}
@@ -3360,7 +3360,7 @@ export default function GastosPage() {
                         <select
                           value={ocCajaSeleccionadaId ?? ''}
                           onChange={e => setOcCajaSeleccionadaId(e.target.value || null)}
-                          className="w-full px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                          className="w-full px-2 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                           <option value="">— Seleccioná una caja —</option>
                           {(cajasAbiertasOC as any[]).map((s: any) => (
                             <option key={s.id} value={s.id}>{s.cajas?.nombre ?? 'Caja'}</option>
@@ -3475,12 +3475,12 @@ export default function GastosPage() {
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0.01" step="0.01"
                   value={pagoParcialmonto} onChange={e => setPagoParcialmonto(e.target.value)}
                   placeholder={`Máx. $${(pagoGastoModal.monto - pagoGastoModal.montoPagado).toLocaleString('es-AR', { maximumFractionDigits: 2 })}`}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Método de pago</label>
                 <select value={pagoParcialmedio} onChange={e => setPagoParcialmedio(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white">
                   <option value="">— elegir —</option>
                   {(metodosPagoCfg as any[]).map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
                 </select>
@@ -3491,11 +3491,11 @@ export default function GastosPage() {
                   <p className="text-xs font-medium text-amber-800 dark:text-amber-300">🧾 Datos del cheque (se registra en Gastos → Cheques)</p>
                   <div className="grid grid-cols-3 gap-2">
                     <input type="text" value={chqGastoNro} onChange={e => setChqGastoNro(e.target.value)} placeholder="N° cheque"
-                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     <input type="text" value={chqGastoBanco} onChange={e => setChqGastoBanco(e.target.value)} placeholder="Banco"
-                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                     <input type="date" value={chqGastoFechaCobro} onChange={e => setChqGastoFechaCobro(e.target.value)} title="Fecha de cobro *"
-                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                      className="px-2.5 py-1.5 border border-gray-200 dark:border-gray-600 rounded-xl text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   </div>
                   <p className="text-[11px] text-amber-700 dark:text-amber-400">La fecha de cobro es obligatoria.</p>
                 </div>

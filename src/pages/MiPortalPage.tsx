@@ -89,7 +89,7 @@ export default function MiPortalPage() {
     else toast.error('No se pudo abrir el documento')
   }
 
-  if (cargandoEmp) return <div className="flex items-center justify-center py-20"><Loader2 size={32} className="animate-spin text-accent" /></div>
+  if (cargandoEmp) return <div className="flex items-center justify-center py-20"><Loader2 size={32} className="animate-spin text-accent-text" /></div>
 
   if (!portalActivo || !emp) return (
     <div className="max-w-xl mx-auto mt-10 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-6 flex items-start gap-3">
@@ -112,7 +112,7 @@ export default function MiPortalPage() {
     <div className="space-y-6 max-w-3xl mx-auto">
       <div className="flex items-center gap-3">
         <div className="w-11 h-11 rounded-xl bg-accent/10 flex items-center justify-center">
-          <UserCircle2 size={22} className="text-accent" />
+          <UserCircle2 size={22} className="text-accent-text" />
         </div>
         <div>
           <h1 className="text-2xl font-bold text-primary">Mi Portal</h1>
@@ -124,7 +124,7 @@ export default function MiPortalPage() {
       {cap.recibos && (
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-            <FileText size={15} className="text-accent" /><h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Mis recibos de sueldo</h2>
+            <FileText size={15} className="text-accent-text" /><h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Mis recibos de sueldo</h2>
           </div>
           {(recibos as any[]).length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Todavía no tenés recibos.</p>
@@ -151,7 +151,7 @@ export default function MiPortalPage() {
       {cap.vacaciones && (
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
-            <div className="flex items-center gap-2"><Plane size={15} className="text-accent" /><h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Mis vacaciones</h2></div>
+            <div className="flex items-center gap-2"><Plane size={15} className="text-accent-text" /><h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Mis vacaciones</h2></div>
             <span className="text-xs text-gray-400 dark:text-gray-500">{diasAprobados} días aprobados</span>
           </div>
           {(vacaciones as any[]).length === 0 ? (
@@ -178,7 +178,7 @@ export default function MiPortalPage() {
       {cap.documentos && (
         <section className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
           <div className="px-5 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center gap-2">
-            <FolderOpen size={15} className="text-accent" /><h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Mis documentos</h2>
+            <FolderOpen size={15} className="text-accent-text" /><h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Mis documentos</h2>
           </div>
           {(documentos as any[]).length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-6">Sin documentos cargados.</p>

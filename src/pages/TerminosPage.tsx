@@ -22,7 +22,7 @@ export default function TerminosPage() {
           <p>
             {LEGAL_TITULAR.nombre} — {LEGAL_TITULAR.condicion} — CUIT {LEGAL_TITULAR.cuit}.
             {' '}Domicilio: {LEGAL_TITULAR.domicilio}. Contacto:{' '}
-            <a href={`mailto:${LEGAL_TITULAR.email}`} className="text-accent hover:underline">{LEGAL_TITULAR.email}</a>.
+            <a href={`mailto:${LEGAL_TITULAR.email}`} className="text-accent-text hover:underline">{LEGAL_TITULAR.email}</a>.
           </p>
         ) : (
           <p className="italic text-gray-400 dark:text-gray-500">
@@ -36,8 +36,8 @@ export default function TerminosPage() {
         <p>
           El Servicio se presta bajo la modalidad de software como servicio (SaaS). La creación de
           una cuenta, la contratación de un plan o el uso del Servicio implican la aceptación plena
-          de estos Términos, de la <a href="/privacidad" className="text-accent hover:underline">Política de Privacidad</a>
-          {' '}y de la <a href="/cookies" className="text-accent hover:underline">Política de Cookies</a>,
+          de estos Términos, de la <a href="/privacidad" className="text-accent-text hover:underline">Política de Privacidad</a>
+          {' '}y de la <a href="/cookies" className="text-accent-text hover:underline">Política de Cookies</a>,
           que forman parte integrante de este documento.
         </p>
       </LegalSection>
@@ -76,7 +76,7 @@ export default function TerminosPage() {
           <strong>Botón de arrepentimiento (Ley 24.240, art. 34):</strong> si sos consumidor,
           podés revocar la contratación dentro de los <strong>10 días corridos</strong> posteriores
           a tu primera compra, sin costo ni penalidad, desde tu cuenta o escribiéndonos a{' '}
-          <a href={`mailto:${BRAND.email}`} className="text-accent hover:underline">{BRAND.email}</a>.
+          <a href={`mailto:${BRAND.email}`} className="text-accent-text hover:underline">{BRAND.email}</a>.
           En ese caso se te reembolsa la <strong>totalidad</strong> de lo abonado y se da de baja el
           Servicio. Fuera de ese plazo, la cancelación interrumpe la renovación pero no genera
           reembolsos por el período en curso; conservás el acceso hasta el fin del período abonado.
@@ -184,7 +184,7 @@ export default function TerminosPage() {
       <LegalSection n={14} title="Contacto">
         <p>
           Ante cualquier consulta sobre estos Términos, escribinos a{' '}
-          <a href={`mailto:${BRAND.email}`} className="text-accent hover:underline">{BRAND.email}</a>.
+          <a href={`mailto:${BRAND.email}`} className="text-accent-text hover:underline">{BRAND.email}</a>.
         </p>
       </LegalSection>
     </LegalLayout>

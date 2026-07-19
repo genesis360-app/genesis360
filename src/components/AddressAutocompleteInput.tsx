@@ -188,7 +188,7 @@ export function AddressAutocompleteInput({
           placeholder={placeholder}
           disabled={disabled}
           autoComplete="off"
-          className={`w-full pl-8 pr-8 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className={`w-full pl-8 pr-8 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent-text ${className} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         />
         {(mapsLoading || loading) && (
           <Loader2 size={13} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 animate-spin" />
@@ -206,7 +206,7 @@ export function AddressAutocompleteInput({
               {filteredSaved.map((a, i) => (
                 <button key={`s${i}`} onMouseDown={e => { e.preventDefault(); pick(a) }}
                   className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm hover:bg-accent/5 transition-colors">
-                  <MapPin size={12} className="text-accent shrink-0" />
+                  <MapPin size={12} className="text-accent-text shrink-0" />
                   <span className="truncate text-gray-700 dark:text-gray-300">{a}</span>
                 </button>
               ))}
@@ -222,7 +222,7 @@ export function AddressAutocompleteInput({
               {suggs.map((s, i) => (
                 <button key={`g${i}`} onMouseDown={e => { e.preventDefault(); pick(s.value, s.placeId, s.postcode) }}
                   className="w-full text-left flex items-start gap-2 px-3 py-2 text-sm hover:bg-accent/5 transition-colors">
-                  <MapPin size={12} className="text-accent shrink-0 mt-0.5" />
+                  <MapPin size={12} className="text-accent-text shrink-0 mt-0.5" />
                   <span className="text-gray-700 dark:text-gray-300 leading-snug">{s.label}</span>
                 </button>
               ))}

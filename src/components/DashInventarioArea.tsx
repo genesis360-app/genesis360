@@ -484,7 +484,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
           <button onClick={() => setFilterOpen(v => !v)}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all
               ${filterOpen
-                ? 'border-accent bg-accent/5 text-accent'
+                ? 'border-accent-text bg-accent/5 text-accent-text'
                 : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
             <SlidersHorizontal size={14} />
             Filtros
@@ -500,7 +500,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
                 <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide mb-3">Estado logístico</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">Los filtros por LPN/ubicación se aplican directamente en el módulo Inventario.</p>
               </div>
-              <a href="/inventario" className="block w-full text-center text-xs font-medium text-accent hover:underline">
+              <a href="/inventario" className="block w-full text-center text-xs font-medium text-accent-text hover:underline">
                 Ir a Inventario →
               </a>
             </div>
@@ -518,7 +518,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
         {vista !== 'recursos' && (
           <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
             <div className="mb-3">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent-text">
                 <Package size={20} />
               </div>
             </div>
@@ -614,7 +614,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
         {vista !== 'recursos' && (
           <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
             <div className="mb-3">
-              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-accent">
+              <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-accent-text">
                 <BarChart2 size={20} />
               </div>
             </div>
@@ -654,7 +654,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
         {/* Gráfico 1: Dona Patrimonio */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <Package size={15} className="text-accent" />
+            <Package size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Composición del Patrimonio</h3>
           </div>
           {iLoading ? (
@@ -696,7 +696,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
         {/* Gráfico 2: Gauge Salud del Depósito */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-2">
-            <BarChart2 size={15} className="text-accent" />
+            <BarChart2 size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Salud del Depósito</h3>
           </div>
           {iLoading ? (
@@ -717,7 +717,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
       {vista !== 'recursos' && (
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <Clock size={15} className="text-accent" />
+            <Clock size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Envejecimiento del Capital</h3>
             <span className="ml-auto text-xs text-muted">Por antigüedad de LPN</span>
           </div>
@@ -781,7 +781,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
       {vista !== 'recursos' && (
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-1">
-            <Layers size={15} className="text-accent" />
+            <Layers size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Cuello de Botella de Combos</h3>
             <span className="ml-auto text-xs text-muted">Kits bloqueados por falta de componentes</span>
           </div>
@@ -806,7 +806,7 @@ export function DashInventarioArea({ section, embedded }: { section?: DashSectio
       {insights.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Zap size={15} className="text-accent" />
+            <Zap size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Director de Operaciones</h3>
             <span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span>
           </div>

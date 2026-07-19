@@ -1480,7 +1480,7 @@ export default function ProveedoresPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Truck className="w-5 h-5 text-accent" />
+          <Truck className="w-5 h-5 text-accent-text" />
           <h1 className="text-xl font-bold text-primary">Proveedores / Servicios</h1>
         </div>
         {tab === 'proveedores' && (
@@ -1535,7 +1535,7 @@ export default function ProveedoresPage() {
           </div>
 
           {loadingProv ? (
-            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>
+            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-text" /></div>
           ) : filteredProv.length === 0 ? (
             <div className="text-center py-12 text-muted">
               <Truck className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -1578,7 +1578,7 @@ export default function ProveedoresPage() {
                         <CreditCard className="w-4 h-4" />
                       </button>
                       <button onClick={() => setExpandedProvId(expandedProvId === p.id ? null : p.id)}
-                        className="p-1.5 rounded text-muted hover:text-accent" title="Ver productos">
+                        className="p-1.5 rounded text-muted hover:text-accent-text" title="Ver productos">
                         <ChevronRight className={`w-4 h-4 transition-transform ${expandedProvId === p.id ? 'rotate-90' : ''}`} />
                       </button>
                       <button onClick={() => toggleActivo.mutate({ id: p.id, activo: p.activo })}
@@ -1600,7 +1600,7 @@ export default function ProveedoresPage() {
                   {Array.isArray((p as any).etiquetas) && (p as any).etiquetas.length > 0 && (
                     <div className="flex flex-wrap gap-1 mt-2">
                       {(p as any).etiquetas.map((et: string) => (
-                        <span key={et} className="flex items-center gap-0.5 text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-2 py-0.5 rounded-full">
+                        <span key={et} className="flex items-center gap-0.5 text-xs bg-purple-50 dark:bg-purple-900/20 text-accent-text px-2 py-0.5 rounded-full">
                           <Tag className="w-2.5 h-2.5" />{et}
                         </span>
                       ))}
@@ -1612,10 +1612,10 @@ export default function ProveedoresPage() {
                     <div className="mt-3 border-t border-border-ds pt-3 space-y-3">
                       <div className="flex items-center justify-between">
                         <p className="text-sm font-semibold text-primary flex items-center gap-1.5">
-                          <Package className="w-4 h-4 text-accent" /> Productos de este proveedor
+                          <Package className="w-4 h-4 text-accent-text" /> Productos de este proveedor
                         </p>
                         <button onClick={() => { setShowProdProvForm(p.id); setEditProdProvId(null); setProdProvForm({ producto_id: '', precio_compra: '', cantidad_minima: '1', costo_envio: '', costos_extra: '', notas: '' }) }}
-                          className="flex items-center gap-1 text-xs text-accent hover:underline">
+                          className="flex items-center gap-1 text-xs text-accent-text hover:underline">
                           <Plus className="w-3 h-3" /> Vincular producto
                         </button>
                       </div>
@@ -1625,7 +1625,7 @@ export default function ProveedoresPage() {
                           <div className="relative">
                             <select value={prodProvForm.producto_id}
                               onChange={e => setProdProvForm(f => ({ ...f, producto_id: e.target.value }))}
-                              className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-7 py-2 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                              className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-7 py-2 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text">
                               <option value="">Seleccioná un producto…</option>
                               {(productosAll as any[]).map((pr: any) => (
                                 <option key={pr.id} value={pr.id}>{pr.nombre} ({pr.sku})</option>
@@ -1644,14 +1644,14 @@ export default function ProveedoresPage() {
                                 <label className="block text-xs text-muted mb-0.5">{label}</label>
                                 <input type="number" onWheel={e => e.currentTarget.blur()} value={prodProvForm[field]}
                                   onChange={e => setProdProvForm(f => ({ ...f, [field]: e.target.value }))} min="0"
-                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                               </div>
                             ))}
                           </div>
                           <input type="text" value={prodProvForm.notas}
                             onChange={e => setProdProvForm(f => ({ ...f, notas: e.target.value }))}
                             placeholder="Notas (opcional)"
-                            className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                            className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                           <div className="flex gap-2">
                             <button onClick={() => { setShowProdProvForm(null); setEditProdProvId(null) }}
                               className="flex-1 border border-border-ds text-muted py-1.5 rounded-lg text-sm hover:bg-gray-100 dark:hover:bg-gray-600">Cancelar</button>
@@ -1742,7 +1742,7 @@ export default function ProveedoresPage() {
               <div className="flex items-center justify-between">
                 <p className="text-sm font-semibold text-primary">Servicios generales del negocio</p>
                 <button onClick={() => { setShowServItemForm(''); setEditServItemId(null); setServItemForm(FORM_SERV_EMPTY) }}
-                  className="flex items-center gap-1 text-xs text-accent hover:underline">
+                  className="flex items-center gap-1 text-xs text-accent-text hover:underline">
                   <Plus className="w-3 h-3" /> Agregar
                 </button>
               </div>
@@ -1750,11 +1750,11 @@ export default function ProveedoresPage() {
                 <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2">
                   <input type="text" value={servItemForm.nombre} onChange={e => setServItemForm(f => ({ ...f, nombre: e.target.value }))}
                     placeholder="Nombre del servicio *"
-                    className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                    className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                   <div className="grid grid-cols-2 gap-2">
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={servItemForm.costo}
                       onChange={e => setServItemForm(f => ({ ...f, costo: e.target.value }))} placeholder="Costo ($)"
-                      className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                      className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                     <label className="flex items-center gap-2 text-sm text-primary cursor-pointer">
                       <input type="checkbox" checked={servItemForm.recurrente}
                         onChange={e => setServItemForm(f => ({ ...f, recurrente: e.target.checked }))} className="accent-accent" />
@@ -1764,12 +1764,12 @@ export default function ProveedoresPage() {
                   {servItemForm.recurrente && (
                     <div className="grid grid-cols-2 gap-2">
                       <select value={servItemForm.frecuencia} onChange={e => setServItemForm(f => ({ ...f, frecuencia: e.target.value }))}
-                        className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                        className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text">
                         {FRECUENCIAS_SERVICIO.map(fr => <option key={fr.value} value={fr.value}>{fr.label}</option>)}
                       </select>
                       <input type="date" value={servItemForm.proximo_vencimiento} title="Próximo vencimiento"
                         onChange={e => setServItemForm(f => ({ ...f, proximo_vencimiento: e.target.value }))}
-                        className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                        className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                     </div>
                   )}
                   <div className="flex gap-2">
@@ -1800,7 +1800,7 @@ export default function ProveedoresPage() {
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <button onClick={() => { setShowGenerales(true); setShowServItemForm(''); setEditServItemId(si.id); setServItemForm({ nombre: si.nombre ?? '', detalle: si.detalle ?? '', costo: si.costo != null ? String(si.costo) : '', forma_pago: si.forma_pago ?? '', hace_factura: !!si.hace_factura, notas: si.notas ?? '', recurrente: !!si.recurrente, frecuencia: si.frecuencia ?? 'mensual', proximo_vencimiento: si.proximo_vencimiento ?? '' }) }}
-                          className="text-muted hover:text-accent"><Pencil className="w-3.5 h-3.5" /></button>
+                          className="text-muted hover:text-accent-text"><Pencil className="w-3.5 h-3.5" /></button>
                         <button onClick={() => { if (confirm('¿Eliminar este servicio?')) deleteServItem.mutate(si.id) }}
                           className="text-muted hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
                       </div>
@@ -1853,7 +1853,7 @@ export default function ProveedoresPage() {
           )}
 
           {loadingProv ? (
-            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>
+            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-text" /></div>
           ) : filteredServicios.length === 0 ? (
             <div className="text-center py-12 text-muted">
               <Wrench className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -1866,7 +1866,7 @@ export default function ProveedoresPage() {
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Wrench className="w-4 h-4 text-accent flex-shrink-0" />
+                        <Wrench className="w-4 h-4 text-accent-text flex-shrink-0" />
                         <span className="font-semibold text-primary">{s.nombre}</span>
                         {s.razon_social && s.razon_social !== s.nombre && <span className="text-xs text-muted">({s.razon_social})</span>}
                         {!s.activo && <span className="text-xs bg-gray-100 dark:bg-gray-700 text-muted px-2 py-0.5 rounded-full">Inactivo</span>}
@@ -1879,7 +1879,7 @@ export default function ProveedoresPage() {
                       {Array.isArray(s.etiquetas) && s.etiquetas.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {s.etiquetas.map((et: string) => (
-                            <span key={et} className="flex items-center gap-0.5 text-xs bg-purple-50 dark:bg-purple-900/20 text-accent px-2 py-0.5 rounded-full">
+                            <span key={et} className="flex items-center gap-0.5 text-xs bg-purple-50 dark:bg-purple-900/20 text-accent-text px-2 py-0.5 rounded-full">
                               <Tag className="w-2.5 h-2.5" />{et}
                             </span>
                           ))}
@@ -1888,7 +1888,7 @@ export default function ProveedoresPage() {
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <button onClick={() => setExpandedServId(expandedServId === s.id ? null : s.id)}
-                        className="p-1.5 rounded text-muted hover:text-accent" title="Ver detalle">
+                        className="p-1.5 rounded text-muted hover:text-accent-text" title="Ver detalle">
                         <ChevronRight className={`w-4 h-4 transition-transform ${expandedServId === s.id ? 'rotate-90' : ''}`} />
                       </button>
                       <button onClick={() => toggleActivo.mutate({ id: s.id, activo: s.activo })}
@@ -1911,7 +1911,7 @@ export default function ProveedoresPage() {
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-sm font-semibold text-primary">Servicios que ofrece</p>
                           <button onClick={() => { setShowServItemForm(s.id); setEditServItemId(null); setServItemForm(FORM_SERV_EMPTY) }}
-                            className="flex items-center gap-1 text-xs text-accent hover:underline">
+                            className="flex items-center gap-1 text-xs text-accent-text hover:underline">
                             <Plus className="w-3 h-3" /> Agregar servicio
                           </button>
                         </div>
@@ -1920,18 +1920,18 @@ export default function ProveedoresPage() {
                           <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2 mb-2">
                             <input type="text" value={servItemForm.nombre} onChange={e => setServItemForm(f => ({ ...f, nombre: e.target.value }))}
                               placeholder="Nombre del servicio *"
-                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                             <textarea value={servItemForm.detalle} onChange={e => setServItemForm(f => ({ ...f, detalle: e.target.value }))}
                               placeholder="Detalle del servicio" rows={2}
-                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent resize-none" />
+                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text resize-none" />
                             <div className="grid grid-cols-2 gap-2">
                               <input type="number" onWheel={e => e.currentTarget.blur()} value={servItemForm.costo}
                                 onChange={e => setServItemForm(f => ({ ...f, costo: e.target.value }))} placeholder="Costo ($)"
-                                className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                                className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                               <div className="relative">
                               <select value={servItemForm.forma_pago}
                                 onChange={e => setServItemForm(f => ({ ...f, forma_pago: e.target.value }))}
-                                className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-7 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                                className="w-full appearance-none border border-border-ds rounded-lg pl-3 pr-7 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text">
                                 <option value="">Forma de pago…</option>
                                 {['Efectivo','Transferencia','Tarjeta débito','Tarjeta crédito','Cheque','Mercado Pago','Otro'].map(m => <option key={m} value={m}>{m}</option>)}
                               </select>
@@ -1952,14 +1952,14 @@ export default function ProveedoresPage() {
                             {servItemForm.recurrente && (
                               <div className="grid grid-cols-2 gap-2">
                                 <select value={servItemForm.frecuencia} onChange={e => setServItemForm(f => ({ ...f, frecuencia: e.target.value }))}
-                                  className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent">
+                                  className="border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text">
                                   {FRECUENCIAS_SERVICIO.map(fr => <option key={fr.value} value={fr.value}>{fr.label}</option>)}
                                 </select>
                                 <div>
                                   <input type="date" value={servItemForm.proximo_vencimiento}
                                     onChange={e => setServItemForm(f => ({ ...f, proximo_vencimiento: e.target.value }))}
                                     title="Próximo vencimiento" placeholder="Próximo vencimiento"
-                                    className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                                    className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                                 </div>
                               </div>
                             )}
@@ -1995,7 +1995,7 @@ export default function ProveedoresPage() {
                                 </div>
                                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                                   <button onClick={() => { setShowServItemForm(s.id); setEditServItemId(si.id); setServItemForm({ nombre: si.nombre ?? '', detalle: si.detalle ?? '', costo: si.costo != null ? String(si.costo) : '', forma_pago: si.forma_pago ?? '', hace_factura: !!si.hace_factura, notas: si.notas ?? '', recurrente: !!si.recurrente, frecuencia: si.frecuencia ?? 'mensual', proximo_vencimiento: si.proximo_vencimiento ?? '' }) }}
-                                    className="text-muted hover:text-accent"><Pencil className="w-3.5 h-3.5" /></button>
+                                    className="text-muted hover:text-accent-text"><Pencil className="w-3.5 h-3.5" /></button>
                                   <button onClick={() => { if (confirm('¿Eliminar este servicio?')) deleteServItem.mutate(si.id) }}
                                     className="text-muted hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
                                 </div>
@@ -2010,7 +2010,7 @@ export default function ProveedoresPage() {
                         <div className="flex items-center justify-between mb-2">
                           <p className="text-sm font-semibold text-primary">Presupuestos</p>
                           <button onClick={() => { setShowPresupForm(s.id); setPresupForm({ nombre: '', fecha: new Date().toISOString().split('T')[0], monto: '', notas: '', servicio_item_id: '' }); setPresupFile(null) }}
-                            className="flex items-center gap-1 text-xs text-accent hover:underline">
+                            className="flex items-center gap-1 text-xs text-accent-text hover:underline">
                             <Plus className="w-3 h-3" /> Añadir presupuesto
                           </button>
                         </div>
@@ -2019,24 +2019,24 @@ export default function ProveedoresPage() {
                           <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-3 space-y-2 mb-2">
                             <input type="text" value={presupForm.nombre}
                               onChange={e => setPresupForm(f => ({ ...f, nombre: e.target.value }))} placeholder="Nombre del presupuesto"
-                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                             <div className="grid grid-cols-2 gap-2">
                               <div>
                                 <label className="block text-xs text-muted mb-0.5">Fecha</label>
                                 <input type="date" value={presupForm.fecha}
                                   onChange={e => setPresupForm(f => ({ ...f, fecha: e.target.value }))}
-                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                               </div>
                               <div>
                                 <label className="block text-xs text-muted mb-0.5">Monto ($)</label>
                                 <input type="number" onWheel={e => e.currentTarget.blur()} value={presupForm.monto}
                                   onChange={e => setPresupForm(f => ({ ...f, monto: e.target.value }))} placeholder="0"
-                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                                  className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                               </div>
                             </div>
                             <textarea value={presupForm.notas} onChange={e => setPresupForm(f => ({ ...f, notas: e.target.value }))}
                               placeholder="Notas" rows={2}
-                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent resize-none" />
+                              className="w-full border border-border-ds rounded-lg px-3 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text resize-none" />
                             <div>
                               <input ref={presupFileRef} type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden"
                                 onChange={e => setPresupFile(e.target.files?.[0] ?? null)} />
@@ -2084,7 +2084,7 @@ export default function ProveedoresPage() {
                                       <div className="text-xs text-muted mt-0.5 flex gap-3 flex-wrap">
                                         <span>{ps.fecha}</span>
                                         {ps.monto != null && <span className="text-green-600 dark:text-green-400 font-medium">${Number(ps.monto).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
-                                        {ps.servicio_items?.nombre && <span className="text-accent">{ps.servicio_items.nombre}</span>}
+                                        {ps.servicio_items?.nombre && <span className="text-accent-text">{ps.servicio_items.nombre}</span>}
                                         {ps.notas && <span className="italic">{ps.notas}</span>}
                                       </div>
                                     </div>
@@ -2106,7 +2106,7 @@ export default function ProveedoresPage() {
                                             notas: ps.notas ?? '',
                                             servicio_item_id: ps.servicio_item_id ?? '',
                                           })
-                                        }} className="p-1 text-muted hover:text-accent" title="Editar">
+                                        }} className="p-1 text-muted hover:text-accent-text" title="Editar">
                                           <Pencil className="w-3.5 h-3.5" />
                                         </button>
                                       )}
@@ -2187,7 +2187,7 @@ export default function ProveedoresPage() {
           </div>
 
           {loadingOC ? (
-            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>
+            <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-text" /></div>
           ) : filteredOrdenes.length === 0 ? (
             <div className="text-center py-12 text-muted">
               <FileText className="w-10 h-10 mx-auto mb-2 opacity-30" />
@@ -2293,7 +2293,7 @@ export default function ProveedoresPage() {
                         {oc.estado === 'confirmada' && (
                           <button
                             onClick={() => navigate(`/recepciones?oc_id=${oc.id}&proveedor_id=${oc.proveedor_id}`)}
-                            className="p-1.5 rounded text-accent hover:bg-accent/10"
+                            className="p-1.5 rounded text-accent-text hover:bg-accent/10"
                             title="Recibir mercadería"
                           >
                             <Warehouse className="w-4 h-4" />
@@ -2447,7 +2447,7 @@ export default function ProveedoresPage() {
                     <label className="block text-xs font-semibold text-primary uppercase tracking-wide">Contactos adicionales</label>
                     <button type="button"
                       onClick={() => setContactos(prev => [...prev, { ...CONTACTO_VACIO }])}
-                      className="flex items-center gap-1 text-xs text-accent hover:text-accent/80 font-medium">
+                      className="flex items-center gap-1 text-xs text-accent-text hover:text-accent-text/80 font-medium">
                       <Plus size={12} /> Agregar contacto
                     </button>
                   </div>
@@ -2461,19 +2461,19 @@ export default function ProveedoresPage() {
                           <input value={c.nombre}
                             onChange={e => setContactos(prev => prev.map((x, i) => i === idx ? { ...x, nombre: e.target.value } : x))}
                             placeholder="Nombre *"
-                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                           <input value={c.puesto}
                             onChange={e => setContactos(prev => prev.map((x, i) => i === idx ? { ...x, puesto: e.target.value } : x))}
                             placeholder="Puesto / Cargo"
-                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                           <input value={c.email}
                             onChange={e => setContactos(prev => prev.map((x, i) => i === idx ? { ...x, email: e.target.value } : x))}
                             placeholder="Email"
-                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                           <input value={c.telefono}
                             onChange={e => setContactos(prev => prev.map((x, i) => i === idx ? { ...x, telefono: e.target.value } : x))}
                             placeholder="Teléfono"
-                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent" />
+                            className="border border-border-ds rounded-lg px-2.5 py-1.5 text-sm bg-surface text-primary focus:outline-none focus:border-accent-text" />
                         </div>
                         <div className="flex justify-end">
                           <button type="button" onClick={() => setContactos(prev => prev.filter((_, i) => i !== idx))}
@@ -2650,7 +2650,7 @@ export default function ProveedoresPage() {
                       type="button"
                       onClick={() => setOcForm(f => ({ ...f, tiene_envio: !f.tiene_envio, costo_envio: !f.tiene_envio ? f.costo_envio : '' }))}
                       className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-colors
-                        ${ocForm.tiene_envio ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent/40'}`}>
+                        ${ocForm.tiene_envio ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text/40'}`}>
                       <Truck size={14} />
                       {ocForm.tiene_envio ? 'Con envío' : 'Sin envío'}
                     </button>
@@ -2662,7 +2662,7 @@ export default function ProveedoresPage() {
                           value={ocForm.costo_envio}
                           onChange={e => setOcForm(f => ({ ...f, costo_envio: e.target.value }))}
                           placeholder="0.00"
-                          className="flex-1 px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent" />
+                          className="flex-1 px-3 py-2 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
                       </div>
                     )}
                   </div>
@@ -2678,7 +2678,7 @@ export default function ProveedoresPage() {
                         <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
                           value={ocForm[f]} onChange={e => setOcForm(prev => ({ ...prev, [f]: e.target.value }))}
                           placeholder="0.00"
-                          className="w-full px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent" />
+                          className="w-full px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
                       </div>
                     ))}
                   </div>
@@ -2711,10 +2711,10 @@ export default function ProveedoresPage() {
                               value={ocForm.anticipo_pct}
                               onChange={e => setOcForm(f => ({ ...f, anticipo_pct: e.target.value }))}
                               placeholder="Ej: 30"
-                              className="w-24 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent" />
+                              className="w-24 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-sm focus:outline-none focus:border-accent-text" />
                           </div>
                           {antPctNum > 0 && montoTotalOC > 0 && (
-                            <span className="text-xs text-accent font-medium">
+                            <span className="text-xs text-accent-text font-medium">
                               Anticipo ≈ ${montoAnticipo(montoTotalOC, antPctNum).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                             </span>
                           )}
@@ -2728,7 +2728,7 @@ export default function ProveedoresPage() {
                         <label className="text-xs font-medium text-muted">Plan de pagos (opcional)</label>
                         <button type="button"
                           onClick={() => setOcForm(f => ({ ...f, pago_schedule: [...f.pago_schedule, { etiqueta: '', base: 'confirmacion' as BaseCuota, pct: 0 }] }))}
-                          className="flex items-center gap-1 text-xs text-accent hover:underline">
+                          className="flex items-center gap-1 text-xs text-accent-text hover:underline">
                           <Plus className="w-3 h-3" /> Agregar cuota
                         </button>
                       </div>
@@ -2740,10 +2740,10 @@ export default function ProveedoresPage() {
                             <div key={i} className="flex items-center gap-2 flex-wrap">
                               <input value={c.etiqueta ?? ''} placeholder="Etiqueta"
                                 onChange={e => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.map((x, j) => j === i ? { ...x, etiqueta: e.target.value } : x) }))}
-                                className="w-28 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent" />
+                                className="w-28 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent-text" />
                               <select value={c.base}
                                 onChange={e => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.map((x, j) => j === i ? { ...x, base: e.target.value as BaseCuota } : x) }))}
-                                className="px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent">
+                                className="px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent-text">
                                 <option value="confirmacion">Al confirmar</option>
                                 <option value="recepcion">Al recibir</option>
                                 <option value="dias">A N días</option>
@@ -2751,12 +2751,12 @@ export default function ProveedoresPage() {
                               {c.base === 'dias' && (
                                 <input type="number" min={1} onWheel={e => e.currentTarget.blur()} value={c.dias ?? ''} placeholder="días"
                                   onChange={e => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.map((x, j) => j === i ? { ...x, dias: parseInt(e.target.value) || null } : x) }))}
-                                  className="w-16 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent" />
+                                  className="w-16 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent-text" />
                               )}
                               <div className="flex items-center gap-1">
                                 <input type="number" min={0} max={100} onWheel={e => e.currentTarget.blur()} value={c.pct || ''} placeholder="%"
                                   onChange={e => setOcForm(f => ({ ...f, pago_schedule: f.pago_schedule.map((x, j) => j === i ? { ...x, pct: parseFloat(e.target.value) || 0 } : x) }))}
-                                  className="w-16 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent" />
+                                  className="w-16 px-2 py-1.5 border border-border-ds rounded-lg bg-page text-primary text-xs focus:outline-none focus:border-accent-text" />
                                 <span className="text-xs text-muted">%</span>
                               </div>
                               {montoTotalOC > 0 && c.pct > 0 && (
@@ -2782,7 +2782,7 @@ export default function ProveedoresPage() {
                   <h3 className="text-sm font-semibold text-primary">Productos a pedir</h3>
                   <button
                     onClick={addOcItem}
-                    className="flex items-center gap-1 text-xs text-accent hover:underline"
+                    className="flex items-center gap-1 text-xs text-accent-text hover:underline"
                   >
                     <Plus className="w-3 h-3" /> Agregar línea
                   </button>
@@ -3292,7 +3292,7 @@ export default function ProveedoresPage() {
                   <div className="grid grid-cols-3 gap-2">
                     {([['credito_cc', 'Crédito en CC'], ['efectivo', 'Efectivo'], ['reposicion', 'Reposición']] as const).map(([f, label]) => (
                       <button key={f} onClick={() => setDevForma(f)}
-                        className={`px-2 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${devForma === f ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                        className={`px-2 py-2 rounded-lg text-xs font-medium border-2 transition-colors ${devForma === f ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
                         {label}
                       </button>
                     ))}
@@ -3360,9 +3360,9 @@ export default function ProveedoresPage() {
                   <div className="flex gap-2">
                     <input type="number" onWheel={e => e.currentTarget.blur()} value={ccPagoMonto} onChange={e => setCcPagoMonto(e.target.value)}
                       placeholder={`Hasta $${saldoCC.toLocaleString('es-AR', { maximumFractionDigits: 0 })}`}
-                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary" />
+                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary" />
                     <select value={ccPagoMedio} onChange={e => setCcPagoMedio(e.target.value)}
-                      className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-primary">
+                      className="px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
                       {['Efectivo','Transferencia','Tarjeta de débito','Cheque','Otro'].map(m => <option key={m}>{m}</option>)}
                     </select>
                   </div>
@@ -3382,7 +3382,7 @@ export default function ProveedoresPage() {
                 <div className="flex items-center justify-between mb-1.5">
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Nota de crédito</p>
                   <button onClick={() => { setShowNCForm(v => !v); if (!showNCForm) setNcNumero(ncNumeroSugerido) }}
-                    className="text-xs text-accent hover:underline">{showNCForm ? 'Cancelar' : '+ Cargar NC'}</button>
+                    className="text-xs text-accent-text hover:underline">{showNCForm ? 'Cancelar' : '+ Cargar NC'}</button>
                 </div>
                 {showNCForm && (
                   <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-2.5 space-y-2 mt-1">
@@ -3413,7 +3413,7 @@ export default function ProveedoresPage() {
               <div className="mx-5 mt-3">
                 <div className="flex items-center justify-between mb-1.5">
                   <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cuentas bancarias</p>
-                  <button onClick={() => setShowCuentaForm(v => !v)} className="text-xs text-accent hover:underline">{showCuentaForm ? 'Cancelar' : '+ Agregar'}</button>
+                  <button onClick={() => setShowCuentaForm(v => !v)} className="text-xs text-accent-text hover:underline">{showCuentaForm ? 'Cancelar' : '+ Agregar'}</button>
                 </div>
                 {(cuentasBancarias as any[]).map((cb: any) => (
                   <div key={cb.id} className="flex items-center justify-between gap-2 text-xs bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-1.5 mb-1">
@@ -3467,7 +3467,7 @@ export default function ProveedoresPage() {
                             {venc && <span className={vencida ? 'text-red-500 font-medium' : 'text-amber-500'}>· Vence {new Date(venc + 'T00:00:00').toLocaleDateString('es-AR')}</span>}
                             {m.adjunto_url && (
                               <a href={supabase.storage.from('comprobantes-gastos').getPublicUrl(m.adjunto_url).data.publicUrl}
-                                target="_blank" rel="noreferrer" className="text-accent hover:underline inline-flex items-center gap-1">
+                                target="_blank" rel="noreferrer" className="text-accent-text hover:underline inline-flex items-center gap-1">
                                 · <Paperclip className="w-3 h-3" /> Comprobante
                               </a>
                             )}

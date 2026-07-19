@@ -137,7 +137,7 @@ function haversineKmCoordsStatic(c1: string, c2: string): number | null {
  * Badge con la cantidad que el producto tiene en el carrito, para el tile de la vista galería.
  *
  * Problema que resuelve (reportado por GO): en galería, tocar un producto lo agregaba al carrito
- * SIN ningún feedback — el único que había era `hover:border-accent`, y en el celular el hover no
+ * SIN ningún feedback — el único que había era `hover:border-accent-text`, y en el celular el hover no
  * existe. El carrito vive debajo de una grilla scrolleable (`max-h-[28rem]`), así que suele estar
  * fuera de pantalla. Resultado: tocabas de nuevo creyendo que no había pasado nada y sumabas
  * unidades sin enterarte.
@@ -1203,7 +1203,7 @@ export default function VentasPage() {
     queryKey: ['venta-despachos', ventaDetalle?.id],
     queryFn: async () => {
       const { data } = await supabase.from('venta_item_despachos')
-        .select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie, origen')
+        .select('venta_item_id, lpn, ubicacion_nombre, cantidad, nro_serie, origen, talle, color, encaje, formato, sabor_aroma')
         .eq('venta_id', ventaDetalle!.id)
         .order('created_at', { ascending: true })
       return data ?? []
@@ -1715,7 +1715,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku, descripcion))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -1756,6 +1756,7 @@ export default function VentasPage() {
         ...ventaItemsPdf.map((i: any) => ({
           codigo:         i.productos?.sku ?? null,
           descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
+          descripcion_extra: i.productos?.descripcion ?? null,
           cantidad:       Number(i.cantidad),
           precio_unitario: Number(i.precio_unitario),
           alicuota_iva:   Number(i.alicuota_iva ?? 21),
@@ -2060,7 +2061,7 @@ export default function VentasPage() {
   // ticket interno de devolución. La NC vive en `devoluciones` (nc_cae, nc_tipo, etc.).
   async function buildNCPDFDataPorDevolucion(devolucionId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: dev, error } = await supabase.from('devoluciones')
-      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva))')
+      .select('nc_cae, nc_vencimiento_cae, nc_numero_comprobante, nc_tipo, nc_punto_venta, monto_total, created_at, ventas(emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal))), devolucion_items(cantidad, precio_unitario, productos(nombre, sku, alicuota_iva, descripcion))')
       .eq('id', devolucionId).single()
     if (error) throw new Error(error.message)
     if (!dev?.nc_cae) return null
@@ -2086,6 +2087,7 @@ export default function VentasPage() {
       items: ((dev as any).devolucion_items ?? []).map((i: any) => ({
         codigo:          i.productos?.sku ?? null,
         descripcion:     i.productos?.nombre ?? 'Producto',
+        descripcion_extra: i.productos?.descripcion ?? null,
         cantidad:        Number(i.cantidad),
         precio_unitario: Number(i.precio_unitario),
         alicuota_iva:    Number(i.productos?.alicuota_iva ?? 21),
@@ -2812,7 +2814,7 @@ export default function VentasPage() {
           const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
           let lineasQ = soloUbicado(
             supabase.from('inventario_lineas')
-              .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
+              .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
           )
           // Filtrar ESTRICTAMENTE por sucursal activa para no tocar stock de otra sucursal
@@ -2848,6 +2850,8 @@ export default function VentasPage() {
               linea_id: linea.id, lpn: linea.lpn ?? null,
               ubicacion_id: linea.ubicacion_id ?? null, ubicacion_nombre: linea.ubicaciones?.nombre ?? null,
               cantidad: rebajar, nro_serie: null, origen,
+              talle: linea.talle ?? null, color: linea.color ?? null, encaje: linea.encaje ?? null,
+              formato: linea.formato ?? null, sabor_aroma: linea.sabor_aroma ?? null,
             })
             return rebajar
           }
@@ -3948,7 +3952,7 @@ export default function VentasPage() {
             const sortLineas = getRebajeSort(prod?.regla_inventario, tenant!.regla_inventario, prod?.tiene_vencimiento ?? false)
             let complQ = soloUbicado(
               supabase.from('inventario_lineas')
-                .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, ubicaciones(nombre, prioridad, disponible_surtido)')
+                .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
                 .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
             )
             // Usar la sucursal de la venta original para no tocar lineas de otra sucursal
@@ -3978,6 +3982,8 @@ export default function VentasPage() {
                 linea_id: linea.id, lpn: (linea as any).lpn ?? null,
                 ubicacion_id: (linea as any).ubicacion_id ?? null, ubicacion_nombre: (linea as any).ubicaciones?.nombre ?? null,
                 cantidad: rebajar, nro_serie: null, origen,
+                talle: (linea as any).talle ?? null, color: (linea as any).color ?? null, encaje: (linea as any).encaje ?? null,
+                formato: (linea as any).formato ?? null, sabor_aroma: (linea as any).sabor_aroma ?? null,
               })
               return rebajar
             }
@@ -4351,7 +4357,7 @@ export default function VentasPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <ShoppingCart size={22} className="text-accent" /> Ventas
+            <ShoppingCart size={22} className="text-accent-text" /> Ventas
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Registrá y gestioná tus ventas</p>
         </div>
@@ -4435,7 +4441,7 @@ export default function VentasPage() {
                     placeholder="Buscar por nombre, SKU o código..."
                     onFocus={() => setSearchFocused(true)}
                     onBlur={() => setTimeout(() => setSearchFocused(false), 150)}
-                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                    className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                   {viewMode === 'lista' && productosBusqueda.length > 0 && searchFocused && (
                     <div className="absolute top-full mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 max-h-48 overflow-y-auto">
                       {(productosBusqueda as any[]).map(p => (
@@ -4473,7 +4479,7 @@ export default function VentasPage() {
                 <button
                   type="button"
                   onClick={() => setScannerOpen(true)}
-                  className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent transition-colors flex-shrink-0"
+                  className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent-text transition-colors flex-shrink-0"
                   title="Escanear código de barras"
                 >
                   <Camera size={17} />
@@ -4482,7 +4488,7 @@ export default function VentasPage() {
                   type="button"
                   onClick={() => setViewMode(v => v === 'lista' ? 'galeria' : 'lista')}
                   className={`px-3 py-2.5 border rounded-xl transition-colors flex-shrink-0
-                    ${viewMode === 'galeria' ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-accent'}`}
+                    ${viewMode === 'galeria' ? 'border-accent-text text-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50 hover:text-accent-text'}`}
                   title={viewMode === 'lista' ? 'Vista galería' : 'Vista lista'}
                 >
                   {viewMode === 'lista' ? <LayoutGrid size={17} /> : <List size={17} />}
@@ -4504,7 +4510,7 @@ export default function VentasPage() {
                         active:scale-95 motion-reduce:active:scale-100
                         ${enCarrito > 0
                           ? 'border-accent2 ring-1 ring-accent2/40'
-                          : 'border-gray-200 dark:border-gray-700 hover:border-accent'}`}>
+                          : 'border-gray-200 dark:border-gray-700 hover:border-accent-text'}`}>
                       <div className="relative w-full aspect-square bg-gray-50 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden mb-2">
                         {p.imagen_url
                           ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover rounded-lg" />
@@ -4657,7 +4663,7 @@ export default function VentasPage() {
                                 // Para UOM enteras: bloquear punto y coma
                                 if (!esDecimal(item.unidad_medida) && (e.key === '.' || e.key === ',')) e.preventDefault()
                               }}
-                              className="w-16 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent"
+                              className="w-16 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent-text"
                             />
                             <button onClick={() => updateItem(idx, 'cantidad', parseFloat((item.cantidad + stepCantidad(item.unidad_medida)).toFixed(3)))} title="Aumentar cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">+</button>
@@ -4690,7 +4696,7 @@ export default function VentasPage() {
                               {item.descuento_tipo === 'pct' ? '%' : '$'}
                             </button>
                           </div>
-                          {item.descuento > 0 && <span className="text-[10px] text-accent">por combo</span>}
+                          {item.descuento > 0 && <span className="text-[10px] text-accent-text">por combo</span>}
                         </div>
 
                         {/* Subtotal */}
@@ -4754,7 +4760,7 @@ export default function VentasPage() {
                       {item.tiene_series && (
                         <div className="mt-2">
                           <button onClick={() => setSeriesModal({ itemIdx: idx, lineas: item.series_disponibles })}
-                            className="flex items-center gap-1.5 text-xs text-accent hover:underline">
+                            className="flex items-center gap-1.5 text-xs text-accent-text hover:underline">
                             <Hash size={12} />
                             {item.series_seleccionadas.length > 0
                               ? `${item.series_seleccionadas.length} serie(s) seleccionada(s) — cambiar`
@@ -4814,7 +4820,7 @@ export default function VentasPage() {
                           if (opt.v) { setClienteId(null); setClienteNombre(''); setClienteTelefono(''); setClienteSearch(''); setClienteCCEnabled(false); setMediosPago(prev => prev.filter(m => m.tipo !== 'Cuenta Corriente')) }
                         }}
                         className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
-                          ${esConsumidorFinal === opt.v ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                          ${esConsumidorFinal === opt.v ? 'border-accent-text bg-accent/10 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
                         {opt.t}
                       </button>
                     ))}
@@ -4847,7 +4853,7 @@ export default function VentasPage() {
                       onFocus={() => setClienteDropOpen(true)}
                       onBlur={() => setTimeout(() => setClienteDropOpen(false), 150)}
                       placeholder="Buscar por nombre o DNI..."
-                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent"
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text"
                     />
                     {clienteDropOpen && clientesBusqueda.length > 0 && (
                       <div className="absolute z-20 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg max-h-40 overflow-y-auto">
@@ -4883,14 +4889,14 @@ export default function VentasPage() {
                     <p className="text-xs font-medium text-blue-700 dark:text-blue-400">Nuevo cliente</p>
                     <input value={nuevoClienteForm.nombre} onChange={e => setNuevoClienteForm(f => ({ ...f, nombre: e.target.value }))}
                       placeholder="Nombre completo *" autoFocus
-                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                      className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     <div className="grid grid-cols-2 gap-2">
                       <input value={nuevoClienteForm.dni} onChange={e => setNuevoClienteForm(f => ({ ...f, dni: e.target.value }))}
                         placeholder="DNI *"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       <input value={nuevoClienteForm.telefono} onChange={e => setNuevoClienteForm(f => ({ ...f, telefono: e.target.value }))}
                         placeholder="Teléfono *"
-                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                        className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => { setNuevoClienteOpen(false); setNuevoClienteForm({ nombre: '', dni: '', telefono: '' }) }}
@@ -4905,7 +4911,7 @@ export default function VentasPage() {
                   </div>
                 ) : (
                   <button onClick={() => setNuevoClienteOpen(true)}
-                    className="w-full text-sm text-accent border border-dashed border-accent/40 rounded-xl py-2 hover:bg-accent/5 transition-colors">
+                    className="w-full text-sm text-accent-text border border-dashed border-accent-text/40 rounded-xl py-2 hover:bg-accent/5 transition-colors">
                     + Registrar cliente nuevo
                   </button>
                 )
@@ -4951,17 +4957,17 @@ export default function VentasPage() {
                 </div>
                 <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}
                   placeholder="Notas (opcional)"
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent resize-none" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text resize-none" />
                 {/* Toggle envío */}
                 <div className={`rounded-xl border-2 overflow-hidden transition-all
-                  ${requiereEnvio ? 'border-accent' : 'border-gray-200 dark:border-gray-600'}`}>
+                  ${requiereEnvio ? 'border-accent-text' : 'border-gray-200 dark:border-gray-600'}`}>
                   {/* Header toggle */}
                   <div
                     onClick={() => setRequiereEnvio(v => !v)}
                     className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer select-none transition-colors
                       ${requiereEnvio ? 'bg-accent/5 dark:bg-accent/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
-                    <Truck size={16} className={requiereEnvio ? 'text-accent' : 'text-gray-400'} />
-                    <span className={`text-sm font-medium flex-1 ${requiereEnvio ? 'text-accent' : 'text-gray-600 dark:text-gray-400'}`}>
+                    <Truck size={16} className={requiereEnvio ? 'text-accent-text' : 'text-gray-400'} />
+                    <span className={`text-sm font-medium flex-1 ${requiereEnvio ? 'text-accent-text' : 'text-gray-600 dark:text-gray-400'}`}>
                       Incluir envío
                     </span>
                     <div className={`relative inline-flex h-5 w-9 flex-shrink-0 items-center rounded-full transition-colors ${requiereEnvio ? 'bg-accent' : 'bg-gray-300 dark:bg-gray-600'}`}>
@@ -4971,7 +4977,7 @@ export default function VentasPage() {
 
                   {/* Panel expandido */}
                   {requiereEnvio && (
-                    <div className="px-3 pb-3 pt-2 space-y-3 border-t border-accent/20">
+                    <div className="px-3 pb-3 pt-2 space-y-3 border-t border-accent-text/20">
 
                       {!modoAvanzado ? (
                         /* Modo básico: el envío es SOLO un costo (sin courier/reparto/dirección;
@@ -4980,7 +4986,7 @@ export default function VentasPage() {
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Costo de envío ($)</label>
                           <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
                             value={costoEnvioVenta} onChange={e => setCostoEnvioVenta(e.target.value)} placeholder="0.00"
-                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                           <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Se suma al total, al ticket y a la factura. La gestión completa de envíos (courier, reparto, dirección) está en modo avanzado.</p>
                         </div>
                       ) : (<>
@@ -4992,7 +4998,7 @@ export default function VentasPage() {
                           {(['propio', 'tercero'] as const).map(t => (
                             <button key={t} type="button" onClick={() => { setEnvioTransporte(t); if (t === 'propio') { setEnvioCourier(''); setEnvioServicio('') } }}
                               className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
-                                ${envioTransporte === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                                ${envioTransporte === t ? 'border-accent-text bg-accent/10 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
                               {t === 'propio' ? '🚗 Envío propio' : '📦 Courier / 3ro'}
                             </button>
                           ))}
@@ -5005,7 +5011,7 @@ export default function VentasPage() {
                           <div>
                             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Courier</label>
                             <select value={envioCourier} onChange={e => { setEnvioCourier(e.target.value); setEnvioServicio('') }}
-                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                               <option value="">Seleccionar…</option>
                               {COURIERS.map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
@@ -5014,7 +5020,7 @@ export default function VentasPage() {
                             <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Servicio</label>
                             <select value={envioServicio} onChange={e => setEnvioServicio(e.target.value)}
                               disabled={!envioCourier || serviciosDe(envioCourier).length === 0}
-                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-50">
+                              className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:opacity-50">
                               <option value="">Seleccionar…</option>
                               {serviciosDe(envioCourier).map(s => <option key={s} value={s}>{s}</option>)}
                             </select>
@@ -5024,7 +5030,7 @@ export default function VentasPage() {
 
                       {/* ISS-174 — Cotizar por API del courier (Envíos/couriers = modo avanzado) */}
                       {modoAvanzado && envioTransporte === 'tercero' && esCourierApi(envioCourier) && (
-                        <div className="rounded-lg border border-accent/30 bg-accent/5 p-2.5 space-y-2">
+                        <div className="rounded-lg border border-accent-text/30 bg-accent/5 p-2.5 space-y-2">
                           <div className="flex items-center gap-2 flex-wrap">
                             <button type="button" onClick={handleCotizarVenta} disabled={cotizandoVenta}
                               className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs bg-accent text-white rounded-lg hover:bg-accent/90 transition-colors disabled:opacity-60 font-medium">
@@ -5033,10 +5039,10 @@ export default function VentasPage() {
                             </button>
                             <input type="text" value={cpDestinoVenta} onChange={e => setCpDestinoVenta(e.target.value)}
                               placeholder={cpDestinoEfectivo ? `CP destino (${cpDestinoEfectivo})` : 'CP destino'} inputMode="numeric"
-                              className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                             <input type="number" value={pesoVenta} onChange={e => setPesoVenta(e.target.value)}
                               placeholder="Peso kg" min="0" step="0.1" onWheel={e => e.currentTarget.blur()}
-                              className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                              className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                           </div>
                           {cotizacionesVenta.length > 0 && (
                             <div className="space-y-1">
@@ -5044,11 +5050,11 @@ export default function VentasPage() {
                                 <button key={i} type="button"
                                   onClick={() => { setEnvioServicio(op.servicio); setEnvioTipoVenta('monto'); setCostoEnvioVenta(String(op.precio)); toast.success(`${op.servicio} — $${op.precio.toLocaleString('es-AR')}`) }}
                                   className={`w-full flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg border text-xs transition-colors
-                                    ${envioServicio === op.servicio ? 'border-accent bg-accent/10' : 'border-gray-200 dark:border-gray-600 hover:border-accent/50 bg-white dark:bg-gray-700'}`}>
+                                    ${envioServicio === op.servicio ? 'border-accent-text bg-accent/10' : 'border-gray-200 dark:border-gray-600 hover:border-accent-text/50 bg-white dark:bg-gray-700'}`}>
                                   <span className="font-medium text-gray-700 dark:text-gray-200">{op.servicio}</span>
                                   <span className="flex items-center gap-2">
                                     {op.plazo_dias != null && <span className="text-gray-400">{op.plazo_dias}d</span>}
-                                    <span className="font-semibold text-accent">${op.precio.toLocaleString('es-AR')}</span>
+                                    <span className="font-semibold text-accent-text">${op.precio.toLocaleString('es-AR')}</span>
                                   </span>
                                 </button>
                               ))}
@@ -5062,7 +5068,7 @@ export default function VentasPage() {
                         {(['monto', 'km'] as const).map(t => (
                           <button key={t} type="button" onClick={() => { setEnvioTipoVenta(t); setCostoEnvioVenta(''); setEnvioKmVenta(''); setPrecioPorKmVenta('') }}
                             className={`flex-1 py-1.5 rounded-lg text-xs font-medium border transition-colors
-                              ${envioTipoVenta === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+                              ${envioTipoVenta === t ? 'border-accent-text bg-accent/10 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
                             {t === 'monto' ? '$ Monto fijo' : '📍 Por KM'}
                           </button>
                         ))}
@@ -5075,7 +5081,7 @@ export default function VentasPage() {
                           <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
                             value={costoEnvioVenta} onChange={e => setCostoEnvioVenta(e.target.value)}
                             placeholder="0.00"
-                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                         </div>
                       ) : (
                         <div className="space-y-2">
@@ -5085,7 +5091,7 @@ export default function VentasPage() {
                               <input type="number" min="0" step="0.1" onWheel={e => e.currentTarget.blur()}
                                 value={envioKmVenta} onChange={e => setEnvioKmVenta(e.target.value)}
                                 placeholder="0"
-                                className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 ${envioOrigenGeoError ? 'border-red-300 dark:border-red-600' : 'border-gray-200 dark:border-gray-600'}`} />
+                                className={`w-full border rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 ${envioOrigenGeoError ? 'border-red-300 dark:border-red-600' : 'border-gray-200 dark:border-gray-600'}`} />
                             </div>
                             <div>
                               <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">$/km</label>
@@ -5095,11 +5101,11 @@ export default function VentasPage() {
                               <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
                                 value={precioPorKmVenta} onChange={e => setPrecioPorKmVenta(e.target.value)}
                                 placeholder="0.00"
-                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                             </div>
                           </div>
                           {costoEnvioNum > 0 && (
-                            <p className="text-xs text-accent font-medium">{envioKmVenta} km × ${precioPorKmVenta}/km = ${costoEnvioNum.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
+                            <p className="text-xs text-accent-text font-medium">{envioKmVenta} km × ${precioPorKmVenta}/km = ${costoEnvioNum.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
                           )}
                         </div>
                       )}
@@ -5140,7 +5146,7 @@ export default function VentasPage() {
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
                           Dirección de entrega
                           {domiciliosFormateadosVenta.length > 0 && (
-                            <span className="ml-1 text-accent">({domiciliosFormateadosVenta.length} guardada{domiciliosFormateadosVenta.length > 1 ? 's' : ''})</span>
+                            <span className="ml-1 text-accent-text">({domiciliosFormateadosVenta.length} guardada{domiciliosFormateadosVenta.length > 1 ? 's' : ''})</span>
                           )}
                         </label>
                         <AddressAutocompleteInput
@@ -5162,7 +5168,7 @@ export default function VentasPage() {
                           placeholder="Calle, número, ciudad..."
                         />
                         {calculandoDistancia && (
-                          <p className="text-xs text-accent mt-1 animate-pulse">Calculando distancia...</p>
+                          <p className="text-xs text-accent-text mt-1 animate-pulse">Calculando distancia...</p>
                         )}
                         {envioDestinoGeoError && !calculandoDistancia && (
                           <p className="text-xs text-red-500 mt-1">
@@ -5173,7 +5179,7 @@ export default function VentasPage() {
                         {envioOrigenVenta && envioDestinoVenta && (
                           <a href={`https://www.google.com/maps/dir/${encodeURIComponent(envioOrigenVenta)}/${envioDestinoCoords || encodeURIComponent(envioDestinoVenta)}`}
                             target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-accent mt-1 transition-colors">
+                            className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 hover:text-accent-text mt-1 transition-colors">
                             🗺 Ver ruta en Google Maps
                           </a>
                         )}
@@ -5184,7 +5190,7 @@ export default function VentasPage() {
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Fecha de entrega acordada</label>
                           <input type="date" value={envioFechaVenta} onChange={e => setEnvioFechaVenta(e.target.value)}
-                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                            className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                         </div>
                         <div>
                           <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Rango horario</label>
@@ -5197,7 +5203,7 @@ export default function VentasPage() {
                                 value={envioRangoHorarioIdx}
                                 onChange={e => setEnvioRangoHorarioIdx(e.target.value)}
                                 disabled={rangos.length === 0}
-                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
+                                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800"
                               >
                                 <option value="">{rangos.length === 0 ? 'Sin rangos configurados' : 'Sin definir'}</option>
                                 {rangos.map((r, i) => (
@@ -5301,7 +5307,7 @@ export default function VentasPage() {
                   <div key={idx}>
                   <div className="flex gap-2 items-center">
                     <select value={mp.tipo} onChange={e => updateMedioPago(idx, 'tipo', e.target.value)}
-                      className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                      className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                       <option value="">Medio de pago...</option>
                       {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                       {/* ISS-090: CC como medio de pago parcial */}
@@ -5318,7 +5324,7 @@ export default function VentasPage() {
                       onBlur={() => setCommittedAsignado(mediosPago.reduce((acc, m) => acc + (parseFloat(m.monto) || 0), 0))}
                       onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
                       placeholder="Monto"
-                      className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                      className="w-24 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     {mp.tipo === 'Mercado Pago' && parseFloat(mp.monto) > 0 && (
                       <button onClick={() => generarLinkMPCheckout(parseFloat(mp.monto))} disabled={generandoMpLink}
                         title="Generar QR / link de pago MP"
@@ -5357,7 +5363,7 @@ export default function VentasPage() {
                       <div className="mt-1.5 bg-gray-50 dark:bg-gray-700/50 rounded-xl p-3 space-y-2">
                         <div className="flex gap-2 flex-wrap">
                           <select value={sel?.banco ?? ''} onChange={e => setCuotasSeleccion(p => ({ ...p, [idx]: { ...p[idx], banco: e.target.value, cuotas: 0, interes: 0, sinInteres: false } }))}
-                            className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                            className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white">
                             <option value="">Banco...</option>
                             {cuotasBancos.map(b => <option key={b.id} value={b.nombre}>{b.nombre}</option>)}
                           </select>
@@ -5365,7 +5371,7 @@ export default function VentasPage() {
                             const cuota = banco.cuotas.find(c => c.cant === parseInt(e.target.value))
                             if (!cuota) return
                             setCuotasSeleccion(p => ({ ...p, [idx]: { ...(p[idx] ?? { banco: banco.nombre }), cuotas: cuota.cant, interes: cuota.interes, sinInteres: cuota.sin_interes } }))
-                          }} className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                          }} className="flex-1 text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1 focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white">
                             <option value="">Cuotas...</option>
                             {banco.cuotas.map(c => (
                               <option key={c.cant} value={c.cant}>
@@ -5393,7 +5399,7 @@ export default function VentasPage() {
                 ))}
 
                 <button onClick={addMedioPago}
-                  className="flex items-center gap-1 text-xs text-accent hover:underline">
+                  className="flex items-center gap-1 text-xs text-accent-text hover:underline">
                   <Plus size={12} /> Agregar otro medio
                 </button>
 
@@ -5440,7 +5446,7 @@ export default function VentasPage() {
                           )}
                         </label>
                         <select value={valorSelect} onChange={e => setCajaSeleccionadaId(e.target.value || null)}
-                          className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent">
+                          className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text">
                           {!valorSelect && <option value="">— Seleccioná una caja —</option>}
                           {(sesionesAbiertas as any[]).map(s => (
                             <option key={s.id} value={s.id}>
@@ -5468,7 +5474,7 @@ export default function VentasPage() {
                   <div>
                     <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Canal de venta</label>
                     <select value={canalPOS} onChange={e => setCanalPOS(e.target.value)}
-                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
+                      className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300">
                       {canalesActivos.length === 0 && <option value="POS">🏪 Presencial</option>}
                       {canalesActivos.map(c => (
                         <option key={c.id} value={c.nombre}>{c.icono ? `${c.icono} ` : ''}{c.nombre}</option>
@@ -5514,16 +5520,16 @@ export default function VentasPage() {
               <input type="text" value={searchHistorial} onChange={e => setSearchHistorial(e.target.value)}
                 placeholder="Buscar por N° o cliente..."
                 name="buscar-venta-historial" autoComplete="off"
-                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
             </div>
             <select value={filterEstado} onChange={e => setFilterEstado(e.target.value as EstadoVenta | '')}
-              className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+              className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
               <option value="">Todos los estados</option>
               {Object.entries(ESTADOS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
             {categoriasHistorial.length > 0 && (
               <select value={filterCategoria} onChange={e => setFilterCategoria(e.target.value)}
-                className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                 <option value="">Todas las categorías</option>
                 {categoriasHistorial.map((c: any) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
               </select>
@@ -5596,7 +5602,7 @@ export default function VentasPage() {
                 })}
                 {ventas.length >= ventasLimit && (
                   <button onClick={() => setVentasLimit(v => v + 50)}
-                    className="w-full py-3 text-sm text-accent hover:bg-accent/5 transition-colors border-t border-gray-100 dark:border-gray-700">
+                    className="w-full py-3 text-sm text-accent-text hover:bg-accent/5 transition-colors border-t border-gray-100 dark:border-gray-700">
                     Cargar más ventas
                   </button>
                 )}
@@ -5667,6 +5673,7 @@ export default function VentasPage() {
                               {d.nro_serie
                                 ? <>#{d.nro_serie}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>
                                 : <>{d.cantidad}u{d.lpn ? ` · LPN ${d.lpn}` : ''}{d.ubicacion_nombre ? ` · ${d.ubicacion_nombre}` : ''}</>}
+                              {atributosDeLinea(d).map(a => <span key={a.key}>· {a.emoji} {a.valor}</span>)}
                               {d.origen && <span className="text-gray-400 dark:text-gray-500">· {d.origen}</span>}
                             </span>
                           ))}
@@ -5754,7 +5761,7 @@ export default function VentasPage() {
                       <div className="flex gap-2 items-center pt-1">
                         <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={ventaDetalle.total} value={editMontoPagado}
                           onChange={e => setEditMontoPagado(e.target.value)}
-                          className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent"
+                          className="flex-1 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text"
                           placeholder="Nuevo monto cobrado" autoFocus />
                         <button onClick={guardarMontoPagado} disabled={savingMontoPagado}
                           className="px-3 py-1.5 bg-accent text-white text-xs font-semibold rounded-lg disabled:opacity-50">
@@ -5809,11 +5816,11 @@ export default function VentasPage() {
                                 {d.nc_tipo} #{d.nc_numero_comprobante}
                               </span>
                               <button title="Descargar NC (PDF fiscal)" disabled={descargandoNc} onClick={() => accionNCPDF(d.id, 'descargar')}
-                                className="p-1 text-gray-500 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"><FileDown size={13} /></button>
+                                className="p-1 text-gray-500 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"><FileDown size={13} /></button>
                               <button title="Imprimir NC" disabled={descargandoNc} onClick={() => accionNCPDF(d.id, 'imprimir')}
-                                className="p-1 text-gray-500 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"><Printer size={13} /></button>
+                                className="p-1 text-gray-500 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded disabled:opacity-50"><Printer size={13} /></button>
                               <button title="Enviar NC por email" onClick={() => abrirEnviarNCEmail(d.id)}
-                                className="p-1 text-gray-500 hover:text-accent hover:bg-gray-100 dark:hover:bg-gray-700 rounded"><Send size={13} /></button>
+                                className="p-1 text-gray-500 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded"><Send size={13} /></button>
                             </div>
                           ) : d.origen === 'facturada' && ventaDetalle?.cae && (tenant as any)?.facturacion_habilitada ? (
                             <button
@@ -5924,7 +5931,7 @@ export default function VentasPage() {
                   <button
                     onClick={() => ventaDetalle?.id && accionPresupuestoPDF(ventaDetalle.id, 'descargar')}
                     disabled={descargandoPresupuesto}
-                    className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
+                    className="w-full flex items-center justify-center gap-2 border border-accent-text/40 text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
                     {descargandoPresupuesto
                       ? <><RefreshCw size={15} className="animate-spin" /> Generando PDF…</>
                       : <><FileDown size={15} /> Descargar Presupuesto PDF</>}
@@ -5942,7 +5949,7 @@ export default function VentasPage() {
                   <button
                     onClick={descargarFacturaPDFVenta}
                     disabled={descargandoPdfVenta}
-                    className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
+                    className="w-full flex items-center justify-center gap-2 border border-accent-text/40 text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
                     {descargandoPdfVenta
                       ? <><RefreshCw size={15} className="animate-spin" /> Generando PDF…</>
                       : <><FileDown size={15} /> Descargar Factura PDF</>}
@@ -6202,7 +6209,7 @@ export default function VentasPage() {
                           <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={item.cantidad_original}
                             value={item.cantidad_devolver}
                             onChange={e => setDevItems(prev => prev.map((it, i) => i !== idx ? it : { ...it, cantidad_devolver: Math.min(item.cantidad_original, Math.max(0, parseInt(e.target.value) || 0)) }))}
-                            className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent" />
+                            className="w-20 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent-text" />
                           {item.cantidad_devolver > 0 && (
                             <span className="text-xs text-orange-600 dark:text-orange-400">${(item.precio_unitario * item.cantidad_devolver).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                           )}
@@ -6250,7 +6257,7 @@ export default function VentasPage() {
                 <label className="block text-sm font-medium text-primary mb-1">Motivo (opcional)</label>
                 <input type="text" value={devMotivo} onChange={e => setDevMotivo(e.target.value)}
                   placeholder="Producto dañado, talla incorrecta..."
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               </div>
 
               {/* A7 — Destino del stock devuelto (no aplica a series — esas siempre vuelven a su línea original).
@@ -6260,7 +6267,7 @@ export default function VentasPage() {
               <div>
                 <label className="block text-sm font-medium text-primary mb-1.5">Destino del stock devuelto</label>
                 <div className="flex flex-col sm:flex-row gap-2">
-                  <label className={`flex items-start gap-2 px-3 py-2 border rounded-lg cursor-pointer flex-1 transition-colors ${devDestinoStock === 'dev' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
+                  <label className={`flex items-start gap-2 px-3 py-2 border rounded-lg cursor-pointer flex-1 transition-colors ${devDestinoStock === 'dev' ? 'border-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
                     <input
                       type="radio"
                       name="dev-destino"
@@ -6274,7 +6281,7 @@ export default function VentasPage() {
                       <p className="text-[11px] text-muted">Va a la ubicación de devoluciones, excluida de venta. Default.</p>
                     </div>
                   </label>
-                  <label className={`flex items-start gap-2 px-3 py-2 border rounded-lg cursor-pointer flex-1 transition-colors ${devDestinoStock === 'vendible' ? 'border-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
+                  <label className={`flex items-start gap-2 px-3 py-2 border rounded-lg cursor-pointer flex-1 transition-colors ${devDestinoStock === 'vendible' ? 'border-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
                     <input
                       type="radio"
                       name="dev-destino"
@@ -6321,7 +6328,7 @@ export default function VentasPage() {
                   {devMediosPago.map((mp, idx) => (
                     <div key={idx} className="flex gap-2">
                       <select value={mp.tipo} onChange={e => setDevMediosPago(prev => prev.map((m, i) => i !== idx ? m : { ...m, tipo: e.target.value }))}
-                        className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                        className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                         <option value="">Sin devolución monetaria</option>
                         {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                         {devolucionVenta?.cliente_id && <option value="Crédito a favor">Crédito a favor (saldo del cliente)</option>}
@@ -6330,7 +6337,7 @@ export default function VentasPage() {
                         <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
                           onChange={e => setDevMediosPago(prev => prev.map((m, i) => i !== idx ? m : { ...m, monto: e.target.value }))}
                           placeholder="Monto"
-                          className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                          className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                       )}
                       {devMediosPago.length > 1 && (
                         <button onClick={() => setDevMediosPago(prev => prev.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500 p-1"><X size={16} /></button>
@@ -6338,7 +6345,7 @@ export default function VentasPage() {
                     </div>
                   ))}
                   <button onClick={() => setDevMediosPago(prev => [...prev, { tipo: '', monto: '' }])}
-                    className="text-xs text-accent hover:underline">+ Agregar medio</button>
+                    className="text-xs text-accent-text hover:underline">+ Agregar medio</button>
                 </div>
               </div>
             </div>
@@ -6401,7 +6408,7 @@ export default function VentasPage() {
                 </p>
               )}
             </div>
-            <div className="mt-5 flex gap-3">
+            <div className="mt-5 flex gap-3 no-print">
               <button onClick={() => { window.print(); }}
                 className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-sm flex items-center justify-center gap-2">
                 <Printer size={15} /> Imprimir
@@ -6427,7 +6434,7 @@ export default function VentasPage() {
               onKeyDown={e => { if (e.key === 'Enter') confirmarClaveMaestra() }}
               placeholder="Clave maestra"
               name="clave-maestra-venta" autoComplete="new-password"
-              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
             <div className="flex gap-2">
               <button onClick={() => { setClaveReq(null); setClaveInput('') }}
                 className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 py-2 rounded-xl text-sm">Cancelar</button>
@@ -6448,7 +6455,7 @@ export default function VentasPage() {
             <input type="text" value={clienteSearch} onChange={e => setClienteSearch(e.target.value)} autoFocus
               placeholder="Buscar por nombre o DNI…"
               name="buscar-cliente-cambio" autoComplete="off"
-              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+              className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
             <div className="max-h-52 overflow-y-auto space-y-1">
               {(clientesBusqueda as any[]).map(c => (
                 <button key={c.id} onClick={() => confirmarCambioCliente(c)}
@@ -6633,13 +6640,13 @@ export default function VentasPage() {
             </p>
             </div>{/* end scroll area */}
 
-            <div className="p-4 pt-2 border-t border-gray-100 dark:border-gray-700 shrink-0 space-y-2">
+            <div className="p-4 pt-2 border-t border-gray-100 dark:border-gray-700 shrink-0 space-y-2 no-print">
               {emailTicketOpen && (
                 <div className="flex gap-2">
                   <input type="email" value={emailTicketValue} onChange={e => setEmailTicketValue(e.target.value)}
                     placeholder="email@cliente.com" autoFocus
                     onKeyDown={e => { if (e.key === 'Enter') enviarTicketPorEmail(emailTicketValue) }}
-                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
                   <button onClick={() => enviarTicketPorEmail(emailTicketValue)} disabled={emailTicketSending}
                     className="px-3 py-1.5 bg-accent text-white rounded-lg text-sm font-medium disabled:opacity-60">
                     {emailTicketSending ? 'Enviando…' : 'Enviar'}
@@ -6681,7 +6688,7 @@ export default function VentasPage() {
                 placeholder="Buscar N/S o LPN..."
                 value={seriesBusqueda}
                 onChange={e => setSeriesBusqueda(e.target.value)}
-                className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent"
+                className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text"
                 autoFocus
               />
             </div>
@@ -6753,14 +6760,14 @@ export default function VentasPage() {
                   <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Motivo de la cancelación</label>
                   <select value={cancelReservaModal.motivo}
                     onChange={e => setCancelReservaModal({ ...cancelReservaModal, motivo: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
                     <option value="">Seleccioná un motivo…</option>
                     {MOTIVOS_CANCELACION_RESERVA.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                   <textarea value={cancelReservaModal.observacion} rows={2}
                     onChange={e => setCancelReservaModal({ ...cancelReservaModal, observacion: e.target.value })}
                     placeholder="Observación (opcional)"
-                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700" />
+                    className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
                 </div>
 
                 {sena > 0 && (
@@ -6870,13 +6877,13 @@ export default function VentasPage() {
                   <div key={idx} className="flex gap-2 items-center">
                     <select value={mp.tipo}
                       onChange={e => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.map((m, i) => i === idx ? { ...m, tipo: e.target.value } : m) } : s)}
-                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                       <option value="">Medio de pago...</option>
                       {MEDIOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={mp.monto}
                       onChange={e => setSaldoModal(s => s ? { ...s, mediosPago: s.mediosPago.map((m, i) => i === idx ? { ...m, monto: e.target.value } : m) } : s)}
-                      className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                      className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     {mp.tipo === 'Mercado Pago' && parseFloat(mp.monto) > 0 && (
                       <button onClick={() => generarLinkMP(saldoModal.ventaId, parseFloat(mp.monto))} disabled={generandoMpLink}
                         title="Generar QR / link MP"
@@ -6891,7 +6898,7 @@ export default function VentasPage() {
                   </div>
                 ))}
                 <button onClick={() => setSaldoModal(s => s ? { ...s, mediosPago: [...s.mediosPago, { tipo: '', monto: '' }] } : s)}
-                  className="text-xs text-accent hover:underline">+ Agregar medio</button>
+                  className="text-xs text-accent-text hover:underline">+ Agregar medio</button>
                 {faltante > 0.5 && (
                   <p className="text-xs text-amber-600 dark:text-amber-400">Falta asignar ${faltante.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
                 )}
@@ -6926,7 +6933,7 @@ export default function VentasPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {/* Card "Todos" */}
             <button onClick={() => setCanalFiltro(null)}
-              className={`rounded-xl p-4 text-left border-2 transition-all ${canalFiltro === null ? 'border-accent bg-accent/5' : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-accent/40'}`}>
+              className={`rounded-xl p-4 text-left border-2 transition-all ${canalFiltro === null ? 'border-accent-text bg-accent/5' : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-accent-text/40'}`}>
               <p className="text-xs text-gray-500 dark:text-gray-400 mb-1 font-medium">Todos los canales</p>
               <p className="text-xl font-bold text-primary">
                 ${canalStats.reduce((a, c) => a + c.total, 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
@@ -6945,7 +6952,7 @@ export default function VentasPage() {
               const selected = canalFiltro === ch.origen
               return (
                 <button key={ch.origen} onClick={() => setCanalFiltro(selected ? null : ch.origen)}
-                  className={`rounded-xl p-4 text-left border-2 transition-all ${selected ? 'border-accent bg-accent/5' : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-accent/40'}`}>
+                  className={`rounded-xl p-4 text-left border-2 transition-all ${selected ? 'border-accent-text bg-accent/5' : 'border-gray-100 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-accent-text/40'}`}>
                   <span className={`inline-block text-xs font-semibold px-2 py-0.5 rounded-full mb-2 ${color} ${bg}`}>{label}</span>
                   <p className="text-xl font-bold text-primary">${ch.total.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">{ch.count} venta{ch.count !== 1 ? 's' : ''} · 30 días</p>
@@ -6969,11 +6976,11 @@ export default function VentasPage() {
                 <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                 <input type="text" value={canalSearch} onChange={e => setCanalSearch(e.target.value)}
                   placeholder="Venta #, cliente, SKU, producto..."
-                  className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                  className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               </div>
               {/* Estado */}
               <select value={canalEstado} onChange={e => setCanalEstado(e.target.value)}
-                className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent">
+                className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                 <option value="">Todos los estados</option>
                 {Object.entries(ESTADOS).map(([k, v]) => (
                   <option key={k} value={k}>{v.label}</option>
@@ -6983,10 +6990,10 @@ export default function VentasPage() {
             <div className="flex gap-2 flex-wrap items-center">
               <span className="text-xs text-gray-500 dark:text-gray-400">Fecha:</span>
               <input type="date" value={canalDesde} onChange={e => setCanalDesde(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               <span className="text-xs text-gray-400">→</span>
               <input type="date" value={canalHasta} onChange={e => setCanalHasta(e.target.value)}
-                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                className="px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
               {(canalSearch || canalEstado || canalDesde || canalHasta || canalFiltro) && (
                 <button onClick={() => { setCanalSearch(''); setCanalEstado(''); setCanalDesde(''); setCanalHasta(''); setCanalFiltro(null) }}
                   className="text-xs text-red-500 hover:underline flex items-center gap-1">
@@ -7004,7 +7011,7 @@ export default function VentasPage() {
                 <span className="ml-2 text-xs text-gray-400 font-normal">({(canalVentas as any[]).length})</span>
               </p>
               {canalFiltro && (
-                <button onClick={() => setCanalFiltro(null)} className="text-xs text-accent hover:underline flex items-center gap-1">
+                <button onClick={() => setCanalFiltro(null)} className="text-xs text-accent-text hover:underline flex items-center gap-1">
                   <X size={12} /> Quitar filtro canal
                 </button>
               )}
@@ -7241,7 +7248,7 @@ export default function VentasPage() {
                       pv.emisor_id === id || (!pv.emisor_id && !!em?.es_default))
                     if (pvs.length > 0) setFacturaPV(pvs[0].numero)
                   }}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     {emisoresFiscales.map(em => (
                       <option key={em.id} value={em.id}>
                         {em.nombre} — {em.cuit}{em.id === facturaEmisorDefaultId ? ' (de la sucursal)' : ''}
@@ -7270,7 +7277,7 @@ export default function VentasPage() {
                     <button key={t} onClick={() => { if (!bloqueado) setFacturaTipo(t) }} disabled={bloqueado}
                       title={bloqueado ? 'Factura A requiere un cliente con CUIT (Responsable Inscripto)' : undefined}
                       className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed
-                        ${facturaTipo === t ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent/40'}`}>
+                        ${facturaTipo === t ? 'border-accent-text bg-accent/10 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:border-accent-text/40'}`}>
                       Factura {t}
                     </button>
                   )
@@ -7299,7 +7306,7 @@ export default function VentasPage() {
               {(pvsDelEmisor as any[]).length > 0 ? (
                 <div className="relative">
                   <select value={facturaPV} onChange={e => setFacturaPV(parseInt(e.target.value))}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     {(pvsDelEmisor as any[]).map((pv: any) => (
                       <option key={pv.id} value={pv.numero}>
                         {String(pv.numero).padStart(4,'0')}{pv.nombre ? ` — ${pv.nombre}` : ''}
@@ -7309,7 +7316,7 @@ export default function VentasPage() {
                 </div>
               ) : (
                 <input type="number" value={facturaPV} onChange={e => setFacturaPV(parseInt(e.target.value))} min="1"
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               )}
             </div>
           </div>
@@ -7339,7 +7346,7 @@ export default function VentasPage() {
           </div>
           <div className="p-5 space-y-2">
             <button onClick={() => accionFacturaPDF(facturaEmitida.ventaId, 'descargar')} disabled={descargandoPdfVenta}
-              className="w-full flex items-center justify-center gap-2 border border-accent/40 text-accent font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
+              className="w-full flex items-center justify-center gap-2 border border-accent-text/40 text-accent-text font-medium py-2.5 rounded-xl hover:bg-accent/5 transition-all text-sm disabled:opacity-50">
               {descargandoPdfVenta ? <><RefreshCw size={15} className="animate-spin" /> Generando PDF…</> : <><FileDown size={15} /> Descargar PDF</>}
             </button>
             <div className="grid grid-cols-2 gap-2">
@@ -7371,7 +7378,7 @@ export default function VentasPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Send size={18} className="text-accent" />
+                <Send size={18} className="text-accent-text" />
                 <h2 className="font-semibold text-gray-800 dark:text-gray-100">Enviar factura por email</h2>
               </div>
               <button onClick={() => setFacturaEmailModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -7383,7 +7390,7 @@ export default function VentasPage() {
                 onChange={e => setFacturaEmailValue(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !enviandoFacturaEmail) enviarFacturaEmail(facturaEmailModal.ventaId, facturaEmailValue) }}
                 placeholder="email@cliente.com"
-                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               <p className="text-[11px] text-gray-400">Se adjunta el PDF de la factura.</p>
             </div>
             <div className="px-5 pb-5 flex gap-2">
@@ -7406,7 +7413,7 @@ export default function VentasPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Send size={18} className="text-accent" />
+                <Send size={18} className="text-accent-text" />
                 <h2 className="font-semibold text-gray-800 dark:text-gray-100">Enviar nota de crédito por email</h2>
               </div>
               <button onClick={() => setNcEmailModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -7418,7 +7425,7 @@ export default function VentasPage() {
                 onChange={e => setNcEmailValue(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !enviandoNcEmail) enviarNCEmail(ncEmailModal.devolucionId, ncEmailValue) }}
                 placeholder="email@cliente.com"
-                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               <p className="text-[11px] text-gray-400">Se adjunta el PDF fiscal de la nota de crédito (AFIP).</p>
             </div>
             <div className="px-5 pb-5 flex gap-2">
@@ -7441,7 +7448,7 @@ export default function VentasPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <RotateCcw size={18} className="text-accent" />
+                <RotateCcw size={18} className="text-accent-text" />
                 <h2 className="font-semibold text-gray-800 dark:text-gray-100">Convertir en recurrente</h2>
               </div>
               <button onClick={() => setConvertirRecModal(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -7451,13 +7458,13 @@ export default function VentasPage() {
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nombre</label>
                 <input value={recNombre} onChange={e => setRecNombre(e.target.value)} autoFocus
-                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
+                  className="w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100" />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Frecuencia</label>
                 <div className="relative">
                   <select value={recFrecuencia} onChange={e => setRecFrecuencia(parseInt(e.target.value))}
-                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
+                    className="w-full appearance-none border border-gray-200 dark:border-gray-600 rounded-xl pl-3 pr-8 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100">
                     {FRECUENCIAS.map(f => <option key={f.dias} value={f.dias}>{f.label}</option>)}
                   </select>
                   <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
@@ -7482,7 +7489,7 @@ export default function VentasPage() {
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col">
             <div className="px-5 py-4 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between shrink-0">
               <div className="flex items-center gap-2">
-                <RotateCcw size={18} className="text-accent" />
+                <RotateCcw size={18} className="text-accent-text" />
                 <h2 className="font-semibold text-gray-800 dark:text-gray-100">Facturas recurrentes</h2>
               </div>
               <button onClick={() => setRecPanelOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
@@ -7493,14 +7500,14 @@ export default function VentasPage() {
               ) : (recurrentes as any[]).map(rec => {
                 const vencida = rec.activo && estaVencida(rec.proximo_at)
                 return (
-                  <div key={rec.id} className={`border rounded-xl p-3 ${vencida ? 'border-accent/50 bg-accent/5' : 'border-gray-200 dark:border-gray-700'}`}>
+                  <div key={rec.id} className={`border rounded-xl p-3 ${vencida ? 'border-accent-text/50 bg-accent/5' : 'border-gray-200 dark:border-gray-700'}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <p className="font-medium text-sm text-gray-800 dark:text-gray-100 truncate">{rec.nombre}</p>
                         <p className="text-xs text-gray-500 dark:text-gray-400">
                           {rec.cliente_nombre ?? 'Consumidor final'} · {frecuenciaLabel(rec.frecuencia_dias)} · ${totalRecurrente(rec.items ?? []).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                         </p>
-                        <p className={`text-xs mt-0.5 ${vencida ? 'text-accent font-semibold' : 'text-gray-400'}`}>
+                        <p className={`text-xs mt-0.5 ${vencida ? 'text-accent-text font-semibold' : 'text-gray-400'}`}>
                           {vencida ? '● Vence: ' : 'Próxima: '}{new Date(rec.proximo_at + 'T00:00:00').toLocaleDateString('es-AR')}{!rec.activo && ' · pausada'}
                         </p>
                       </div>
@@ -7541,8 +7548,8 @@ export default function VentasPage() {
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo de Nota de Crédito</label>
                 {/* La letra de la NC la fija la factura original (AFIP exige que coincidan) → no es elegible. */}
-                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 border-accent/30 bg-accent/5">
-                  <span className="text-sm font-semibold text-accent">{ncTipo}</span>
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 border-accent-text/30 bg-accent/5">
+                  <span className="text-sm font-semibold text-accent-text">{ncTipo}</span>
                   <span className="text-xs text-gray-500 dark:text-gray-400">· coincide con la Factura {ncModal.facturaLetra} original (obligatorio AFIP)</span>
                 </div>
               </div>
@@ -7551,14 +7558,14 @@ export default function VentasPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Punto de venta</label>
                 {(puntosVentaAfip as any[]).length > 0 ? (
                   <select value={ncPV} onChange={e => setNcPV(parseInt(e.target.value))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent">
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent-text">
                     {(puntosVentaAfip as any[]).map((pv: any) => (
                       <option key={pv.numero} value={pv.numero}>PV {pv.numero} — {pv.nombre}</option>
                     ))}
                   </select>
                 ) : (
                   <input type="number" value={ncPV} onChange={e => setNcPV(parseInt(e.target.value))} min="1"
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent" />
+                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm dark:bg-gray-700 dark:text-white focus:outline-none focus:border-accent-text" />
                 )}
               </div>
 
@@ -7597,12 +7604,12 @@ export default function VentasPage() {
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Monto a cobrar</label>
                 <input type="number" min="0" onWheel={e => e.currentTarget.blur()} value={cobrarCCMonto}
                   onChange={e => setCobrarCCMonto(e.target.value)}
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent" />
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Medio de pago</label>
                 <select value={cobrarCCMetodo} onChange={e => setCobrarCCMetodo(e.target.value)}
-                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                   {['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'MercadoPago', 'Otro'].map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
               </div>

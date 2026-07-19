@@ -319,7 +319,7 @@ export default function UsuariosPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Shield size={22} className="text-accent" /> Usuarios
+            <Shield size={22} className="text-accent-text" /> Usuarios
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Gestioná el equipo de tu negocio</p>
         </div>
@@ -362,7 +362,7 @@ export default function UsuariosPage() {
 
       {/* Formulario nuevo usuario */}
       {showInvitar && (
-        <form onSubmit={handleInvitar} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent/30 space-y-4">
+        <form onSubmit={handleInvitar} className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-accent-text/30 space-y-4">
           <h2 className="font-semibold text-gray-700 dark:text-gray-300">Nuevo usuario</h2>
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email *</label>
@@ -370,7 +370,7 @@ export default function UsuariosPage() {
               <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
               <input type="email" value={invEmail} onChange={e => setInvEmail(e.target.value)}
                 placeholder="usuario@email.com" required
-                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                className="w-full pl-8 pr-4 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
             </div>
           </div>
           <div>
@@ -383,7 +383,7 @@ export default function UsuariosPage() {
                 .map(([rol, cfg]) => (
                   <button key={rol} type="button" onClick={() => setInvRol(rol)}
                     className={`px-3 py-2.5 rounded-xl border-2 text-left transition-all
-                      ${invRol === rol ? 'border-accent bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'}`}>
+                      ${invRol === rol ? 'border-accent-text bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500'}`}>
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{cfg.label}</p>
                     <p className="text-xs text-gray-400 dark:text-gray-400 mt-0.5">{cfg.desc}</p>
                   </button>
@@ -416,7 +416,7 @@ export default function UsuariosPage() {
             <button key={r} onClick={() => setFilterRol(r)}
               className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
                 ${filterRol === r
-                  ? 'bg-accent text-white border-accent shadow-sm'
+                  ? 'bg-accent text-white border-accent-text shadow-sm'
                   : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
               {r === 'TODOS' ? 'Todos' : cfg!.label} ({count})
             </button>
@@ -453,7 +453,7 @@ export default function UsuariosPage() {
                               if (e.key === 'Enter') updateNombre.mutate({ userId: u.id, nombre: editingNombreValue.trim() })
                               if (e.key === 'Escape') setEditingNombreId(null)
                             }}
-                            className="text-sm font-medium px-2 py-0.5 border border-accent rounded-lg focus:outline-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 w-40"
+                            className="text-sm font-medium px-2 py-0.5 border border-accent-text rounded-lg focus:outline-none bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 w-40"
                           />
                           <button onClick={() => updateNombre.mutate({ userId: u.id, nombre: editingNombreValue.trim() })}
                             className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded">
@@ -470,7 +470,7 @@ export default function UsuariosPage() {
                           {canManage && u.activo && (
                             <button
                               onClick={() => { setEditingNombreId(u.id); setEditingNombreValue(u.nombre_display ?? '') }}
-                              className="p-0.5 text-gray-300 dark:text-gray-600 hover:text-accent rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                              className="p-0.5 text-gray-300 dark:text-gray-600 hover:text-accent-text rounded opacity-0 group-hover:opacity-100 transition-opacity">
                               <Edit size={12} />
                             </button>
                           )}
@@ -484,7 +484,7 @@ export default function UsuariosPage() {
                         {rolCfg.label}
                       </span>
                       {rolCustomAsignado && (
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent">
+                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-accent/10 text-accent-text">
                           <Sliders size={10} className="inline mr-1" />{rolCustomAsignado.nombre}
                         </span>
                       )}
@@ -499,7 +499,7 @@ export default function UsuariosPage() {
                     <div className="flex items-center gap-2 flex-wrap justify-end">
                       <select value={u.rol}
                         onChange={e => updateRol.mutate({ userId: u.id, rol: e.target.value as UserRole, rolAnterior: u.rol, nombreUsuario: u.nombre_display })}
-                        className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white">
+                        className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white">
                         {(Object.entries(ROLES) as [UserRole, any][])
                           .filter(([r]) => r !== 'DUEÑO')
                           .map(([r, cfg]) => (
@@ -519,8 +519,8 @@ export default function UsuariosPage() {
                               puede_ver_todas: !u.puede_ver_todas,
                             })}
                             className={`p-1.5 rounded-lg transition-colors ${u.puede_ver_todas
-                              ? 'text-accent bg-accent/10 hover:bg-accent/20'
-                              : 'text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10'}`}>
+                              ? 'text-accent-text bg-accent/10 hover:bg-accent/20'
+                              : 'text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10'}`}>
                             <Globe size={15} />
                           </button>
                           {/* Selector sucursal (solo cuando está restringido) */}
@@ -532,7 +532,7 @@ export default function UsuariosPage() {
                                 sucursal_id: e.target.value || null,
                                 puede_ver_todas: false,
                               })}
-                              className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent dark:bg-gray-700 dark:text-white max-w-[120px]">
+                              className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white max-w-[120px]">
                               <option value="">Sin sucursal</option>
                               {sucursales.map(s => (
                                 <option key={s.id} value={s.id}>{s.nombre}</option>
@@ -543,7 +543,7 @@ export default function UsuariosPage() {
                       )}
 
                       <button onClick={() => openUserPermisos(u)} title="Editar permisos del módulo por usuario"
-                        className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors">
+                        className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                         <Sliders size={15} />
                       </button>
                       {!esMiUsuario && (
@@ -570,17 +570,17 @@ export default function UsuariosPage() {
       {canManage && !modoAvanzado && (
         <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
           <div className="flex items-start gap-3">
-            <div className="bg-accent/10 rounded-lg p-2 flex-shrink-0"><Lock size={16} className="text-accent" /></div>
+            <div className="bg-accent/10 rounded-lg p-2 flex-shrink-0"><Lock size={16} className="text-accent-text" /></div>
             <div className="flex-1">
               <p className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                 Roles personalizados
-                <span className="text-[10px] uppercase tracking-wide bg-accent/10 text-accent px-1.5 py-0.5 rounded-full font-bold">Pro</span>
+                <span className="text-[10px] uppercase tracking-wide bg-accent/10 text-accent-text px-1.5 py-0.5 rounded-full font-bold">Pro</span>
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                 Creá roles con permisos a medida (módulo por módulo). Disponible en el <span className="font-medium">modo avanzado</span>.
                 En el plan básico contás con los roles fijos (Dueño, Supervisor, Cajero, Depósito, Contador, Lector).
               </p>
-              <a href="/suscripcion" className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-accent/80 mt-2">
+              <a href="/suscripcion" className="inline-flex items-center gap-1 text-xs font-semibold text-accent-text hover:text-accent-text/80 mt-2">
                 Ver planes →
               </a>
             </div>
@@ -592,10 +592,10 @@ export default function UsuariosPage() {
           <button onClick={() => setShowRolesSection(v => !v)}
             className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
             <div className="flex items-center gap-2">
-              <Sliders size={15} className="text-accent" />
+              <Sliders size={15} className="text-accent-text" />
               Roles personalizados
               {rolesCustom.length > 0 && (
-                <span className="text-xs bg-accent/10 text-accent px-2 py-0.5 rounded-full">{rolesCustom.length}</span>
+                <span className="text-xs bg-accent/10 text-accent-text px-2 py-0.5 rounded-full">{rolesCustom.length}</span>
               )}
             </div>
             {showRolesSection ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}
@@ -614,7 +614,7 @@ export default function UsuariosPage() {
                     <div className="flex items-center justify-between px-3 py-2.5 bg-gray-50 dark:bg-gray-700/50">
                       <button onClick={() => setExpandedRolId(expandedRolId === rol.id ? null : rol.id)}
                         className="flex items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-200 flex-1 text-left">
-                        <Sliders size={14} className="text-accent" />
+                        <Sliders size={14} className="text-accent-text" />
                         {rol.nombre}
                         <span className="text-xs text-gray-400 ml-1">
                           ({Object.values(rol.permisos).filter(p => p !== 'no_ver').length} módulos activos)
@@ -661,7 +661,7 @@ export default function UsuariosPage() {
               </div>
 
               <button onClick={() => { setEditingRol(null); setRolNombre(''); setRolPermisos(defaultPermisos()); setShowRolForm(true) }}
-                className="flex items-center gap-2 text-sm text-accent hover:text-accent/80 font-medium">
+                className="flex items-center gap-2 text-sm text-accent-text hover:text-accent-text/80 font-medium">
                 <Plus size={14} /> Nuevo rol personalizado
               </button>
             </div>
@@ -693,7 +693,7 @@ export default function UsuariosPage() {
                     const p = rolPermisos[m.key] ?? 'no_ver'
                     return (
                       <button key={m.key} type="button" onClick={() => cyclePermiso(m.key)}
-                        className="flex items-center justify-between gap-2 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-accent/50 transition-colors text-sm">
+                        className="flex items-center justify-between gap-2 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-accent-text/50 transition-colors text-sm">
                         <span className="text-gray-700 dark:text-gray-300">{m.label}</span>
                         <span className={`px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${PERMISO_COLORS[p]}`}>
                           {PERMISO_LABELS[p]}
@@ -739,7 +739,7 @@ export default function UsuariosPage() {
                       const next = order[(order.indexOf(p) + 1) % order.length]
                       setUserPermisosData(prev => ({ ...prev, [m.key]: next }))
                     }}
-                    className="flex items-center justify-between gap-2 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-accent/50 transition-colors text-sm">
+                    className="flex items-center justify-between gap-2 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg hover:border-accent-text/50 transition-colors text-sm">
                     <span className="text-gray-700 dark:text-gray-300">{m.label}</span>
                     <span className={`px-2 py-0.5 rounded text-xs font-medium flex-shrink-0 ${PERMISO_COLORS[p]}`}>
                       {PERMISO_LABELS[p]}
@@ -768,7 +768,7 @@ export default function UsuariosPage() {
         <button onClick={() => setShowPermisos(v => !v)}
           className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
           <div className="flex items-center gap-2">
-            <Shield size={15} className="text-accent" />
+            <Shield size={15} className="text-accent-text" />
             Permisos por rol
           </div>
           {showPermisos ? <ChevronUp size={15} className="text-gray-400" /> : <ChevronDown size={15} className="text-gray-400" />}

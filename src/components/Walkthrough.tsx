@@ -20,7 +20,7 @@ interface Slide {
 const SLIDES: Slide[] = [
   {
     icon: Sparkles,
-    color: 'text-accent',
+    color: 'text-accent-text',
     titulo: `Bienvenido a ${BRAND.name}`,
     descripcion: 'En 2 minutos te mostramos todo lo que podés hacer. Es rápido, prometido.',
     tip: 'Podés relanzar este tour desde el menú lateral cuando quieras.',
@@ -163,7 +163,7 @@ export function Walkthrough({ open, onClose }: Props) {
           <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">{slide.descripcion}</p>
 
           {slide.tip && (
-            <div className="mt-4 bg-accent/5 border border-accent/20 rounded-xl px-4 py-2.5 text-xs text-accent/80 text-left w-full">
+            <div className="mt-4 bg-accent/5 border border-accent-text/20 rounded-xl px-4 py-2.5 text-xs text-accent-text/80 text-left w-full">
               💡 {slide.tip}
             </div>
           )}

@@ -52,7 +52,7 @@ export function CotizacionWidget() {
             onChange={e => setInputVal(e.target.value)}
             onKeyDown={handleKey}
             autoFocus
-            className="flex-1 px-2 py-1 bg-accent/20 dark:bg-accent/30 text-gray-900 dark:text-white text-xs rounded-lg border border-accent focus:outline-none min-w-0"
+            className="flex-1 px-2 py-1 bg-accent/20 dark:bg-accent/30 text-gray-900 dark:text-white text-xs rounded-lg border border-accent-text focus:outline-none min-w-0"
             placeholder="ej: 1250"
           />
           <button onClick={handleSave} className="text-green-600 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 flex-shrink-0">

@@ -14,7 +14,7 @@ export default function LegalLayout({ title, children }: { title: string; childr
             <img src={BRAND.logo} alt={BRAND.name} className="w-8 h-8 object-contain" />
             <span className="font-bold text-gray-800 dark:text-gray-100">{BRAND.name}</span>
           </Link>
-          <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
+          <Link to="/" className="inline-flex items-center gap-1.5 text-sm font-medium text-accent-text hover:underline">
             <ArrowLeft size={16} /> Volver al inicio
           </Link>
         </div>
@@ -33,15 +33,15 @@ export default function LegalLayout({ title, children }: { title: string; childr
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-4 mt-8 text-sm">
-          <Link to="/terminos" className="text-gray-500 dark:text-gray-400 hover:text-accent">Términos y Condiciones</Link>
+          <Link to="/terminos" className="text-gray-500 dark:text-gray-400 hover:text-accent-text">Términos y Condiciones</Link>
           <span className="text-gray-300 dark:text-gray-600">·</span>
-          <Link to="/privacidad" className="text-gray-500 dark:text-gray-400 hover:text-accent">Política de Privacidad</Link>
+          <Link to="/privacidad" className="text-gray-500 dark:text-gray-400 hover:text-accent-text">Política de Privacidad</Link>
           <span className="text-gray-300 dark:text-gray-600">·</span>
-          <Link to="/cookies" className="text-gray-500 dark:text-gray-400 hover:text-accent">Cookies</Link>
+          <Link to="/cookies" className="text-gray-500 dark:text-gray-400 hover:text-accent-text">Cookies</Link>
           <span className="text-gray-300 dark:text-gray-600">·</span>
-          <a href="https://www.argentina.gob.ar/produccion/defensadelconsumidor" target="_blank" rel="noopener noreferrer" className="text-gray-500 dark:text-gray-400 hover:text-accent">Defensa del Consumidor</a>
+          <a href="https://www.argentina.gob.ar/produccion/defensadelconsumidor" target="_blank" rel="noopener noreferrer" className="text-gray-500 dark:text-gray-400 hover:text-accent-text">Defensa del Consumidor</a>
           <span className="text-gray-300 dark:text-gray-600">·</span>
-          <a href={`mailto:${BRAND.email}`} className="text-gray-500 dark:text-gray-400 hover:text-accent">Contacto</a>
+          <a href={`mailto:${BRAND.email}`} className="text-gray-500 dark:text-gray-400 hover:text-accent-text">Contacto</a>
         </div>
         <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-4">
           © {new Date().getFullYear()} {BRAND.name}. Todos los derechos reservados.

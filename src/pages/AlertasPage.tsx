@@ -344,7 +344,7 @@ export default function AlertasPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-          <Bell size={22} className="text-accent" /> Alertas
+          <Bell size={22} className="text-accent-text" /> Alertas
         </h1>
         <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">{totalAlertas} alerta{totalAlertas !== 1 ? 's' : ''} activa{totalAlertas !== 1 ? 's' : ''}</p>
       </div>

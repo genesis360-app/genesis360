@@ -146,7 +146,7 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
         title="Asistente IA"
         className={`relative inline-flex items-center justify-center w-9 h-9 rounded-xl transition-colors
           ${open
-            ? 'bg-accent/15 text-accent'
+            ? 'bg-accent/15 text-accent-text'
             : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
           }`}
       >
@@ -190,7 +190,7 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
                 <div className="grid grid-cols-2 gap-2">
                   {QUICK_ACTIONS.map(a => (
                     <button key={a.label} onClick={() => sendMessage(a.prompt)}
-                      className="text-left text-xs px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent hover:text-accent transition-colors leading-snug">
+                      className="text-left text-xs px-3 py-2 rounded-xl border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-accent-text hover:text-accent-text transition-colors leading-snug">
                       {a.label}
                     </button>
                   ))}

@@ -143,8 +143,8 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
               </button>
             </div>
           ) : (
-            <div className="inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-6 py-2.5 text-sm font-semibold text-white">
-              <Check size={15} className="text-accent" /> Tu plan: {app.planNombre} · ${app.montoActualMP.toLocaleString('es-AR')}/mes
+            <div className="inline-flex items-center gap-2 rounded-full border border-accent-text/40 bg-accent/10 px-6 py-2.5 text-sm font-semibold text-white">
+              <Check size={15} className="text-accent-text" /> Tu plan: {app.planNombre} · ${app.montoActualMP.toLocaleString('es-AR')}/mes
             </div>
           )
         ) : (
@@ -179,8 +179,8 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
           return (
           <div key={dim} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <div className="flex items-center gap-3 mb-4">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
-                <Icon size={20} className="text-accent" />
+              <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-accent-text/40 bg-accent/10">
+                <Icon size={20} className="text-accent-text" />
               </div>
               <div className="min-w-0">
                 <p className="font-semibold text-white leading-tight">{label}</p>
@@ -207,10 +207,10 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
                   return (
                     <button key={pack.cantidad} onClick={() => temporal!.onComprar(pack.cantidad)}
                       disabled={temporal!.comprando != null}
-                      className="relative flex flex-col items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-center text-gray-300 transition-all hover:border-accent/60 disabled:opacity-60">
+                      className="relative flex flex-col items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.02] p-3 text-center text-gray-300 transition-all hover:border-accent-text/60 disabled:opacity-60">
                       {comprando
-                        ? <RefreshCw size={18} className="animate-spin text-accent" />
-                        : <Zap size={18} className="text-accent" />}
+                        ? <RefreshCw size={18} className="animate-spin text-accent-text" />
+                        : <Zap size={18} className="text-accent-text" />}
                       <span className="text-[11px] leading-tight text-gray-300">
                         +{pack.cantidad.toLocaleString('es-AR')} {unidad}
                       </span>
@@ -225,9 +225,9 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
                     className={`relative flex flex-col items-center justify-center gap-1.5 rounded-xl border p-3 text-center transition-all
                       ${activo
                         ? 'border-transparent bg-accent text-white shadow-lg shadow-accent/30'
-                        : 'border-white/10 bg-white/[0.02] text-gray-300 hover:border-accent/60'}`}>
+                        : 'border-white/10 bg-white/[0.02] text-gray-300 hover:border-accent-text/60'}`}>
                     {activo && (
-                      <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-accent shadow">
+                      <span className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-white text-accent-text shadow">
                         <Check size={12} strokeWidth={3} />
                       </span>
                     )}
@@ -313,8 +313,8 @@ export default function PricingConfigurator({ ctaLabel, onCta, ctaLoading, app, 
       <div className="relative mt-5 grid grid-cols-2 gap-3 md:grid-cols-4">
         {BENEFICIOS.map(({ Icon, titulo, sub }) => (
           <div key={titulo} className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent/40 bg-accent/10">
-              <Icon size={18} className="text-accent" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-accent-text/40 bg-accent/10">
+              <Icon size={18} className="text-accent-text" />
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white leading-tight">{titulo}</p>

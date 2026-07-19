@@ -453,14 +453,14 @@ export default function TrasladosPanel() {
   })
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  const inputCls = 'w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800'
+  const inputCls = 'w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800'
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
-          <Truck size={16} className="text-accent" />
+          <Truck size={16} className="text-accent-text" />
           Traslados entre sucursales — el stock sale al despachar y entra cuando el destino confirma.
         </div>
         {puedeCrearTraslado(rol) && (
@@ -560,7 +560,7 @@ export default function TrasladosPanel() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
-              <h2 className="text-lg font-bold text-primary dark:text-white flex items-center gap-2"><Truck size={18} className="text-accent" /> Nuevo traslado</h2>
+              <h2 className="text-lg font-bold text-primary dark:text-white flex items-center gap-2"><Truck size={18} className="text-accent-text" /> Nuevo traslado</h2>
               <button onClick={() => { setShowNuevo(false); setItems([]) }} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
             <div className="p-5 space-y-4 overflow-y-auto flex-1">
@@ -623,7 +623,7 @@ export default function TrasladosPanel() {
                           <div className="flex flex-wrap gap-1.5">
                             {it.seriesDisp.map(s => (
                               <label key={s.id} className={`text-[11px] px-2 py-1 rounded-lg border cursor-pointer transition-colors
-                                ${it.seriesSel.includes(s.id) ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-600 text-gray-500'}`}>
+                                ${it.seriesSel.includes(s.id) ? 'border-accent-text bg-accent/10 text-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-500'}`}>
                                 <input type="checkbox" className="hidden" checked={it.seriesSel.includes(s.id)}
                                   onChange={() => setItems(prev => prev.map((x, i) => i !== idx ? x : {
                                     ...x, seriesSel: x.seriesSel.includes(s.id) ? x.seriesSel.filter(id => id !== s.id) : [...x.seriesSel, s.id],

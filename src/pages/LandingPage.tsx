@@ -227,7 +227,7 @@ export default function LandingPage() {
         <div className="max-w-6xl mx-auto px-4">
           <div className="grid md:grid-cols-2 gap-12 items-center">
             <div>
-              <span className="text-accent font-semibold text-sm uppercase tracking-wider">Trazabilidad completa</span>
+              <span className="text-accent-text font-semibold text-sm uppercase tracking-wider">Trazabilidad completa</span>
               <h2 className="text-3xl md:text-4xl font-bold text-primary mt-2 mb-4">
                 Sabés exactamente qué tenés y dónde está
               </h2>
@@ -318,7 +318,7 @@ export default function LandingPage() {
               <div key={plan.id}
                 className={`rounded-2xl p-6 border-2 flex flex-col relative
                   ${plan.destacado
-                    ? 'border-accent bg-primary text-white shadow-xl scale-105'
+                    ? 'border-accent-text bg-primary text-white shadow-xl scale-105'
                     : 'border-gray-200 bg-white text-gray-800'}`}>
                 {plan.destacado && (
                   <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-accent text-white text-xs font-bold px-3 py-1 rounded-full">

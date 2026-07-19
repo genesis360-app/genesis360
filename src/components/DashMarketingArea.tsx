@@ -235,7 +235,7 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
       {!embedded && (<>
       {/* Fórmula POAS */}
       <div className="bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-700 rounded-xl p-4">
-        <p className="text-xs font-semibold text-accent mb-1">La fórmula del POAS (Rentabilidad Real)</p>
+        <p className="text-xs font-semibold text-accent-text mb-1">La fórmula del POAS (Rentabilidad Real)</p>
         <p className="text-xs text-gray-600 dark:text-gray-400">POAS = (Ventas − Costo Productos − Flete − Comisiones) ÷ Inversión en Publicidad</p>
         <div className="flex items-center gap-4 mt-2 text-xs text-gray-500 dark:text-gray-400">
           <span className="text-green-600 dark:text-green-400">POAS &gt; 1x → Ganás dinero</span>
@@ -249,14 +249,14 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
         <p className="text-sm text-gray-500 dark:text-gray-400">Este mes · Gastos con categoría "Marketing" o "Publicidad"</p>
         <div className="relative" ref={filterRef}>
           <button onClick={() => setFilterOpen(v => !v)}
-            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all ${filterOpen ? 'border-accent bg-accent/5 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800'}`}>
+            className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all ${filterOpen ? 'border-accent-text bg-accent/5 text-accent-text' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800'}`}>
             <SlidersHorizontal size={14} /> Filtros
           </button>
           {filterOpen && (
             <div className="absolute right-0 top-full mt-2 w-64 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5">
               <div className="flex items-center justify-between mb-3"><h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Filtros</h3><button onClick={() => setFilterOpen(false)}><X size={14} className="text-gray-400" /></button></div>
               <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">Para activar este módulo, cargá los gastos de publicidad con categoría "Marketing" o "Publicidad".</p>
-              <a href="/gastos" className="block text-center text-xs font-medium text-accent hover:underline">Cargar gasto de publicidad →</a>
+              <a href="/gastos" className="block text-center text-xs font-medium text-accent-text hover:underline">Cargar gasto de publicidad →</a>
             </div>
           )}
         </div>
@@ -312,7 +312,7 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
       <div className="grid lg:grid-cols-2 gap-4">
         {/* Evolución inversión vs ganancia */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><TrendingUp size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Gasto vs Ganancia Real</h3><span className="ml-auto text-xs text-muted">Últimos 6 meses</span></div>
+          <div className="flex items-center gap-2 mb-4"><TrendingUp size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Gasto vs Ganancia Real</h3><span className="ml-auto text-xs text-muted">Últimos 6 meses</span></div>
           {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (mData?.evolData ?? []).length > 0 ? (
             <ResponsiveContainer width="100%" height={180}>
               <ComposedChart data={mData!.evolData} margin={{ top: 5, right: 10, left: 5, bottom: 0 }}>
@@ -328,7 +328,7 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
 
         {/* Donut por canal */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4"><BarChart2 size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">¿Dónde rinde más la plata?</h3></div>
+          <div className="flex items-center gap-2 mb-4"><BarChart2 size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">¿Dónde rinde más la plata?</h3></div>
           {isLoading ? <div className="h-40 animate-pulse bg-gray-100 dark:bg-gray-700 rounded-xl" /> : (mData?.canalData ?? []).length > 0 ? (
             <div className="flex items-center gap-4">
               <ResponsiveContainer width={130} height={130}><PieChart><Pie data={mData!.canalData} cx="50%" cy="50%" innerRadius={32} outerRadius={55} dataKey="total" paddingAngle={2} strokeWidth={0}>{mData!.canalData.map((_: any, i: number) => <Cell key={i} fill={CANAL_COLORS[i % CANAL_COLORS.length]} />)}</Pie><Tooltip formatter={(v: any) => fmt(Number(v))} /></PieChart></ResponsiveContainer>
@@ -348,7 +348,7 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
       {/* Radar de campañas / gastos marketing */}
       {(mData?.campData ?? []).length > 0 && (
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-1"><Target size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">El Radar de Campañas</h3><span className="ml-auto text-xs text-muted">POAS por destino de gasto</span></div>
+          <div className="flex items-center gap-2 mb-1"><Target size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">El Radar de Campañas</h3><span className="ml-auto text-xs text-muted">POAS por destino de gasto</span></div>
           <p className="text-xs text-muted mb-4 ml-5">Cada barra con POAS &lt; 1x = campaña a pérdida.</p>
           <ResponsiveContainer width="100%" height={160}>
             <BarChart data={mData!.campData} margin={{ top: 5, right: 10, left: 5, bottom: 30 }}>
@@ -372,7 +372,7 @@ export function DashMarketingArea({ section, embedded }: { section?: DashSection
       {/* Insights */}
       {insights.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3"><Zap size={15} className="text-accent" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Analista de Marketing</h3><span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span></div>
+          <div className="flex items-center gap-2 mb-3"><Zap size={15} className="text-accent-text" /><h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tu Analista de Marketing</h3><span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span></div>
           <div className="grid sm:grid-cols-2 gap-3">{insights.map((ins, i) => { const Icon = INSIGHT_ICONS[ins.tipo]; return <InsightCard key={i} variant={ins.tipo} icon={<Icon size={15} />} title={ins.titulo} description={ins.impacto} action={{ label: ins.accion, onClick: () => { window.location.href = ins.link } }} /> })}</div>
         </div>
       )}

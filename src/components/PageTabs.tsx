@@ -14,7 +14,7 @@ export interface PageTabItem {
  * Formato único: subrayado (estilo Clientes) con el activo remarcado en el
  * DEGRADÉ DE MARCA (violeta → cian) — texto con `text-gradient-brand` + barra
  * inferior `bg-brand-gradient`. El ícono del activo queda en violeta sólido
- * (`text-accent`): NO se le puede aplicar el degradé de texto o se vuelve transparente.
+ * (`text-accent-text`): NO se le puede aplicar el degradé de texto o se vuelve transparente.
  *
  * Incluye **drag-scroll** (arrastrar con el mouse) vía `useDragScroll`: las páginas
  * con muchas pestañas se pueden desplazar manteniendo apretado, sin perderse fuera
@@ -51,7 +51,7 @@ export function PageTabs({
                 ? 'border-transparent'
                 : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600 nav-grad-hover'}`}
           >
-            {Icon && <Icon size={15} className={isActive ? 'text-accent' : 'nav-grad-icon'} />}
+            {Icon && <Icon size={15} className={isActive ? 'text-accent-text' : 'nav-grad-icon'} />}
             <span className={isActive ? 'text-gradient-brand' : 'nav-grad-text'}>{label}</span>
             {badge ? (
               <span className="ml-1 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px] font-bold">

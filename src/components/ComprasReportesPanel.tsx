@@ -105,14 +105,14 @@ export default function ComprasReportesPanel({ tenant }: { tenant: any }) {
     { id: 'costos' as const, label: 'Evolución de costos', icon: <TrendingUp size={13} /> },
   ]
 
-  if (isLoading) return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent" /></div>
+  if (isLoading) return <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-text" /></div>
 
   return (
     <div className="space-y-4">
       <div className="flex gap-1.5 flex-wrap">
         {SECCIONES.map(s => (
           <button key={s.id} onClick={() => setSeccion(s.id)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${seccion === s.id ? 'bg-accent text-white border-accent' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${seccion === s.id ? 'bg-accent text-white border-accent-text' : 'border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'}`}>
             {s.icon}{s.label}
           </button>
         ))}

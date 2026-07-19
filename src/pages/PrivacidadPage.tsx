@@ -23,7 +23,7 @@ export default function PrivacidadPage() {
             ? <>{LEGAL_TITULAR.nombre} ({LEGAL_TITULAR.condicion}), CUIT {LEGAL_TITULAR.cuit}, con domicilio en {LEGAL_TITULAR.domicilio}, titular de {BRAND.name}</>
             : <>el titular de {BRAND.name} (datos identificatorios en definición, a completar antes de la puesta en producción)</>}.
           {' '}Para cualquier consulta o para ejercer tus derechos podés contactarnos en{' '}
-          <a href={`mailto:${LEGAL_TITULAR.email}`} className="text-accent hover:underline">{LEGAL_TITULAR.email}</a>.
+          <a href={`mailto:${LEGAL_TITULAR.email}`} className="text-accent-text hover:underline">{LEGAL_TITULAR.email}</a>.
         </p>
       </LegalSection>
 
@@ -31,7 +31,7 @@ export default function PrivacidadPage() {
         <ul className="list-disc pl-5 space-y-1">
           <li><strong>De registro y cuenta:</strong> nombre, correo electrónico, contraseña (almacenada de forma cifrada) y datos del negocio (nombre, tipo de comercio, país, teléfono).</li>
           <li><strong>De facturación:</strong> datos fiscales que cargues y la información necesaria para procesar pagos a través de nuestros proveedores de pago.</li>
-          <li><strong>De uso:</strong> registros de actividad, datos técnicos del dispositivo y de la sesión, necesarios para operar y asegurar el Servicio. El detalle de cookies y tecnologías similares está en nuestra <a href="/cookies" className="text-accent hover:underline">Política de Cookies</a>.</li>
+          <li><strong>De uso:</strong> registros de actividad, datos técnicos del dispositivo y de la sesión, necesarios para operar y asegurar el Servicio. El detalle de cookies y tecnologías similares está en nuestra <a href="/cookies" className="text-accent-text hover:underline">Política de Cookies</a>.</li>
           <li><strong>Datos que cargás en el Servicio:</strong> información de tus clientes, proveedores, empleados y operaciones. Respecto de estos datos, actuamos como encargados del tratamiento por cuenta tuya.</li>
         </ul>
       </LegalSection>
@@ -99,7 +99,7 @@ export default function PrivacidadPage() {
           Como titular de los datos, podés ejercer los derechos de acceso, rectificación,
           actualización y supresión de tus datos personales, conforme a los artículos 14 y 16 de la
           Ley 25.326. Para ejercerlos, escribinos a{' '}
-          <a href={`mailto:${BRAND.email}`} className="text-accent hover:underline">{BRAND.email}</a>.
+          <a href={`mailto:${BRAND.email}`} className="text-accent-text hover:underline">{BRAND.email}</a>.
           El titular de los datos tiene derecho a acceder de forma gratuita a sus datos en intervalos
           no inferiores a seis meses, salvo interés legítimo. La <strong>Agencia de Acceso a la
           Información Pública (AAIP)</strong>, órgano de control de la Ley 25.326, tiene la atribución
@@ -114,7 +114,7 @@ export default function PrivacidadPage() {
           expresamente lo aceptaste al registrarte o luego. Podés revocar ese consentimiento en
           cualquier momento, sin costo, usando el enlace para darte de baja incluido en cada correo o
           escribiéndonos a{' '}
-          <a href={`mailto:${BRAND.email}`} className="text-accent hover:underline">{BRAND.email}</a>.
+          <a href={`mailto:${BRAND.email}`} className="text-accent-text hover:underline">{BRAND.email}</a>.
           Aunque revoques el marketing, seguirás recibiendo comunicaciones operativas necesarias para
           la prestación del Servicio.
         </p>
@@ -137,7 +137,7 @@ export default function PrivacidadPage() {
       <LegalSection n={12} title="Contacto">
         <p>
           Ante cualquier consulta sobre esta Política o sobre el tratamiento de tus datos, escribinos
-          a <a href={`mailto:${BRAND.email}`} className="text-accent hover:underline">{BRAND.email}</a>.
+          a <a href={`mailto:${BRAND.email}`} className="text-accent-text hover:underline">{BRAND.email}</a>.
         </p>
       </LegalSection>
     </LegalLayout>

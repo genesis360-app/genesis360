@@ -13,7 +13,7 @@ updated: 2026-05-29
 
 ---
 
-## v1.134.0 — 🧵🚚 Atributos de variante FUNCIONALES + F3b (ARCA→resumen) + traslado real desde LpnAccionesModal — ✅ PROD (2026-07-18)
+## v1.134.0 — 🧵🚚 Atributos de variante FUNCIONALES + F3b (ARCA→resumen) + traslado real desde LpnAccionesModal — ✅ PROD (2026-07-18, PR #293)
 
 **Bundle de 2 sesiones** (F3b+variantes del 2026-07-17 + testing cross-sucursal con usuarios reales
 del 2026-07-18), deployado junto tras confirmación de GO. Migs **273-276** en DEV y PROD.

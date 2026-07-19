@@ -74,11 +74,11 @@ export default function RepartidoresPanel({ canEdit }: { canEdit: boolean }) {
     <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
       <div className="flex items-center justify-between">
         <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-          <Bike size={18} className="text-accent" /> Repartidores (envío propio)
+          <Bike size={18} className="text-accent-text" /> Repartidores (envío propio)
         </h3>
         {canEdit && !showForm && (
           <button onClick={() => { setForm(VACIO); setEditId(null); setShowForm(true) }}
-            className="text-xs flex items-center gap-1 text-accent hover:underline"><Plus size={13} /> Agregar</button>
+            className="text-xs flex items-center gap-1 text-accent-text hover:underline"><Plus size={13} /> Agregar</button>
         )}
       </div>
 
@@ -120,9 +120,9 @@ export default function RepartidoresPanel({ canEdit }: { canEdit: boolean }) {
               </div>
               {canEdit && (
                 <>
-                  <button onClick={() => toggleActivo(r)} className="text-xs text-gray-400 hover:text-accent">{r.activo ? 'Activo' : 'Inactivo'}</button>
+                  <button onClick={() => toggleActivo(r)} className="text-xs text-gray-400 hover:text-accent-text">{r.activo ? 'Activo' : 'Inactivo'}</button>
                   <button onClick={() => { setForm({ nombre: r.nombre, telefono: r.telefono ?? '', vehiculo: r.vehiculo ?? '', empleado_id: r.empleado_id ?? '' }); setEditId(r.id); setShowForm(true) }}
-                    className="p-1 text-gray-400 hover:text-accent"><Pencil size={14} /></button>
+                    className="p-1 text-gray-400 hover:text-accent-text"><Pencil size={14} /></button>
                 </>
               )}
             </div>

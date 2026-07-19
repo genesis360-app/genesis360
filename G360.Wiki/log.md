@@ -6,6 +6,234 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-19] update | 🎨🧾 4 hallazgos NUEVOS de GO/Fede probando en paralelo — fix impresión, contraste dark mode, factura con descripción, bug de grupos de variantes duplicados
+
+**Disparador:** GO (y Fede en paralelo) siguieron probando la app después de la entrada anterior de
+este mismo log ("🧵 Cierra 3 diferidos de Atributos de variante...") y reportaron 3 problemas de UI
+más un bug real no relacionado en "Grupos de variantes". Todo esto es trabajo **NUEVO** respecto a
+esa entrada anterior — no la repite. **Estado real (verificado con `git log`/`git status`, no
+asumido): 2 commits en `dev` LOCAL, `1ae43343` (ronda 4 de variantes + fix impresión + fix
+contraste, ya cubierto en la entrada anterior salvo los 2 fixes de UI, documentados recién acá) y
+`f64ad9be` (fix impresión completo + factura con descripción + grupos de variantes). `git
+rev-list --left-right --count dev...origin/dev` → `2 0` — **ninguno de los 2 está pusheado a
+GitHub**, por lo tanto nada llegó a `main` ni a Vercel/PROD. PROD sigue v1.134.0 sin cambios. La
+migración 277 sigue aplicada solo en DEV.
+
+1. **Fix: impresión de ticket/comprobante de devolución.** `window.print()` imprimía la pantalla
+   completa (sidebar, fondo, backdrop) en vez de solo el ticket. Causa: los marcadores
+   `id="ticket-print"` / `id="devolucion-print"` ya existían (pensados para esto) pero nunca se
+   había escrito la regla CSS que los usa. Fix: nueva regla `@media print` en `src/index.css`
+   (oculta todo excepto esos 2 ids) + clase `.no-print` nueva aplicada a las barras de botones
+   Imprimir/Email/Cerrar de ambos modales en `src/pages/VentasPage.tsx` para que no salgan en el
+   papel.
+
+2. **Fix sistémico de contraste en modo oscuro (no solo 2 botones).** GO reportó que los botones
+   "outline" (borde+texto violeta, sin relleno — ej. "Descargar Factura PDF") casi no se veían en
+   dark mode. El sistema de diseño ya es centralizado (`--color-accent` en `src/index.css` +
+   `tailwind.config.js`) pero el violeta de marca (`#7B00FF`) es el MISMO tono exacto en claro y
+   oscuro: funciona bien en botones sólidos (fondo violeta + texto blanco) pero pierde contraste
+   como texto/borde sobre fondo casi negro. Encontramos el precedente correcto ya aplicado solo al
+   scrollbar (violeta más luminoso en dark). Fix con el mismo criterio, extendido a toda la app:
+   - Nueva variable `--color-accent-text` en `src/index.css`: igual a `--color-accent` en modo
+     claro (`123 0 255`), pero `139 92 246` (violet-500, más luminoso) dentro de `.dark { ... }`.
+   - Nuevo token Tailwind `accent-text` en `tailwind.config.js` (mismo patrón que `accent`/`accent2`).
+   - Migración MECÁNICA (script con `perl`, no a mano) de **~1440 usos** de `text-accent`,
+     `border-accent` y `ring-accent` → `text-accent-text`, `border-accent-text`, `ring-accent-text`
+     en **91 archivos** de `src/`. **`bg-accent` (relleno sólido/degradé) NO se tocó** — ya tenía
+     buen contraste con texto blanco en los 2 modos, es intencionalmente el color de marca "posta"
+     sin variar.
+   - Verificado con captura real en DEV (antes/después) + build/tsc/unit/e2e todos verdes.
+   - **Gotcha nuevo:** los cambios a `tailwind.config.js` **NO se recargan en caliente** en un dev
+     server ya corriendo — hay que reiniciarlo (`npm run dev`) para que tome un token de color
+     nuevo. A diferencia de cambios a `.tsx`/`.css`, que sí hot-reloadean. Ver
+     [[wiki/architecture/frontend-stack]] (sección "Design System").
+
+3. **Factura/Nota de Crédito: nombre + descripción del producto.** GO preguntó qué mostrar en la
+   factura; se decidió mostrar el `nombre` del producto (como ya hacía) MÁS, debajo, en gris chico,
+   la `descripcion` del producto SI el producto la tiene cargada (campo opcional que ya existía en
+   `productos` pero no se usaba en ningún lado de facturación). El ticket y el historial de venta
+   NO cambian (solo nombre) — el pedido fue específicamente para el documento fiscal.
+   - Nuevo campo opcional `descripcion_extra` en `FacturaPDFData['items']`
+     (`src/lib/facturasPDF.ts`).
+   - Los 3 `SELECT` que traen los ítems ahora piden también `productos(...,descripcion)`: 2 en
+     `src/pages/VentasPage.tsx` (Factura y Nota de Crédito) + 1 en `src/pages/FacturacionPage.tsx`
+     (emisión manual).
+   - Render: como jspdf-autotable no soporta 2 estilos en una misma celda de tabla, se usan los
+     hooks `willDrawCell`/`didDrawCell` para suprimir el texto default de esa celda y redibujarlo a
+     mano (nombre en negrita arriba, descripción en gris más chico debajo).
+   - **Bug encontrado y corregido en el camino:** el primer intento posicionaba el texto con un
+     offset fijo a ojo y quedaba desalineado respecto al resto de la fila (Cód./Cant./Subtotal) —
+     GO lo detectó mirando la factura real. Corregido replicando el cálculo EXACTO que usa la
+     librería internamente (`cell.getTextPos()` + el ajuste de `fontSize × (2 − 1.15)` que hace la
+     función interna `autoTableText` de jspdf-autotable) para que la línea del nombre quede
+     perfectamente alineada con las demás columnas de la fila.
+   - Verificado descargando una factura REAL de DEV (venta con CAE real, producto "Yerba Mateico"
+     que ya tenía la descripción "Yerba Mate Mateico" cargada de antes) y extrayendo el texto del
+     PDF generado con `pdfjs-dist` para confirmar la posición exacta — no se validó solo mirando el
+     código. Ver [[wiki/features/facturacion-afip]].
+
+4. **🐛 Grupos de variantes — bug real de duplicado + feature nueva "Eliminar grupo".** GO reportó
+   que al crear un grupo "Remera Los Redondos" se le duplicó — 2 filas idénticas en
+   `producto_grupos`, una con los 9 productos-variante reales enganchados y otra vacía (0
+   productos), creadas 5 segundos aparte.
+   - **Causa raíz encontrada en el código (no adivinada):** en `src/components/ProductoGrupoModal.tsx`,
+     `guardarGrupo()` decide INSERT vs UPDATE con `if (isEditing && grupoId)` — pero `isEditing` es
+     una constante derivada del prop `grupo` con el que se abrió el modal (`const isEditing =
+     !!grupo`), que NUNCA cambia dentro de la misma sesión del modal, ni siquiera después de un
+     primer guardado exitoso (que sí actualiza `grupoId` vía `setGrupoId(data.id)`). Si dentro del
+     mismo modal (sin cerrarlo) se guarda una segunda vez — típicamente al clickear "Generar
+     variantes" más de una vez, ya que ese flujo llama a `guardarGrupo()` internamente y NO cierra
+     el modal (a diferencia de "Crear grupo", que sí cierra tras guardar) — la condición seguía
+     evaluando `false` y hacía un INSERT nuevo en vez de un UPDATE, duplicando el grupo.
+   - **Fix:** cambiar la condición a `if (grupoId)` a secas (sin `isEditing`) — una línea.
+   - **Feature nueva agregada de paso:** no existía NINGUNA forma de eliminar un grupo de variantes
+     (ni en la UI ni en el código, confirmado grepeando todo `src/`). Se agregó un botón "Eliminar"
+     en cada tarjeta de grupo (`src/pages/ProductosPage.tsx`, junto al ya existente "Editar
+     grupo"), con modal de confirmación, que hace soft-delete (`producto_grupos.activo = false` —
+     mismo patrón que Motivos/Estados). **No borra ni desvincula los productos** — quedan como
+     productos sueltos, simplemente dejan de listarse agrupados en esa vista. Sin migración (la
+     columna `activo` ya existía en `producto_grupos`).
+   - El grupo duplicado real de GO ("Remera Los Redondos") **sigue sin resolver a propósito** —
+     durante las pruebas, un script de test con un selector ambiguo desactivó por error el grupo
+     BUENO (el de los 9 productos) en vez del vacío; se detectó y revirtió al toque (sin pérdida de
+     datos, ya que es soft-delete). Se decidió NO seguir tocando esos 2 grupos por automatización y
+     pedirle a GO que use el botón nuevo él mismo sobre el duplicado vacío (lo va a poder
+     identificar fácil: dice "0 variantes"). Ver [[wiki/features/grupos-variantes]].
+
+**Verificación de la sesión:** tsc limpio · `npm run build` verde · `npm run test:unit` verde ·
+regresión e2e de specs relevantes verde. Sin migraciones nuevas en este lote (el soft-delete de
+grupos reusa la columna `activo` ya existente en `producto_grupos`).
+
+**Estado de git al cierre:** 2 commits (`1ae43343`, `f64ad9be`) en `dev` LOCAL, **ninguno pusheado a
+GitHub**, ninguno mergeado a `main`. PROD sigue v1.134.0 sin cambios. **Falta para el próximo
+release:** bump `APP_VERSION`, PR `dev→main`, push a GitHub, aplicar mig 277 en PROD.
+
+Ver [[wiki/features/atributos-variante]], [[wiki/features/grupos-variantes]],
+[[wiki/features/facturacion-afip]], [[wiki/architecture/frontend-stack]].
+
+---
+
+## [2026-07-18] update | 🧵 Cierra 3 diferidos de Atributos de variante — snapshot en despachos, badges en Combinar LPNs, e2e 95/96/97
+
+**Disparador:** los 3 ítems "no bloqueante" que había quedado documentados en la sección "Qué queda
+pendiente" de [[wiki/features/atributos-variante]] tras el deploy de v1.134.0 (ronda 3). Esta sesión
+los resuelve los tres. **Estado real: todo en el working tree de `dev`, SIN COMMITEAR** (verificado
+con `git status`/`git log` — no asumido). Migración 277 aplicada en DEV, NO en PROD. Sin bump de
+`APP_VERSION`, sin PR — queda listo para la próxima ventana de deploy junto con lo que se siga
+acumulando en `dev`.
+
+1. **`venta_item_despachos` ahora snapshotea el atributo consumido** — **mig 277**
+   (`277_venta_item_despachos_atributos_variante.sql`, aplicada en DEV, revisada por
+   migration-reviewer, mismo patrón aditivo que la mig 275 de `traslado_items`): agrega
+   `talle/color/encaje/formato/sabor_aroma` (TEXT nullable) a `venta_item_despachos`. Sin backfill
+   (no se puede reconstruir qué talle se vendió en despachos históricos). `src/pages/VentasPage.tsx`:
+   los 2 flujos de despacho (checkout directo desde el carrito, y "reserva → despachada") ahora
+   seleccionan esas 5 columnas de `inventario_lineas` al armar el plan de rebaje y las snapshotean en
+   `venta_item_despachos`; el panel de detalle de venta (modal `ventaDetalle`) muestra el atributo
+   junto al LPN/ubicación en el desglose de despacho vía `atributosDeLinea()`.
+2. **`selectedLineasInfo` (InventarioPage) ahora muestra atributos de variante** — el tipo
+   `SelectedLinea` se extendió con los 5 campos; los 2 lugares que populan el estado (vista agrupada
+   por ubicación y vista de líneas por producto) los propagan; el modal "Combinar LPNs" muestra
+   badges de atributo junto a cada LPN. Cambio puramente de UI/display, sin tocar movimiento de
+   stock.
+3. **Cobertura e2e para los 3 huecos de UAT §33** — 3 specs mutantes nuevos, self-contained (generan
+   su propia precondición, no dependen de fixtures compartidos):
+   - **`tests/e2e/95_rebaje_masivo_atributo_ambiguo_mutante.spec.ts`** (cierra fila #5):
+     `MasivoModal` tipo='rebaje' con 2 líneas de colores distintos exige elegir el color antes de
+     confirmar y consume solo la línea de esa variante (verificado por REST). 5/5 corridas verdes.
+   - **`tests/e2e/96_venta_bloqueada_atributo_ambiguo_mutante.spec.ts`** (cierra fila #6): checkout
+     del POS con 2 líneas de colores distintos rechaza sin elegir color (carrito no se limpia) y
+     completa tras elegir en el picker; verificado por REST que `venta_item_despachos` snapshoteó el
+     color correcto Y que solo la línea elegida se redujo (valida de paso el punto 1, end-to-end).
+     4/4 corridas verdes.
+   - **`tests/e2e/97_lpn_editar_atributo_obligatorio_mutante.spec.ts`** (cierra fila #7):
+     `LpnAccionesModal` → tab Editar rechaza vaciar el color ("Este producto requiere color"),
+     re-elegirlo persiste. Estable en corridas repetidas.
+
+   Con esto, **las 12 filas de la tabla del §33 de `uat-modo-basico.md` quedan con e2e real** (antes
+   9/12, ahora 12/12) — tabla actualizada.
+
+**Lección reusable (2 causas de flake encontradas y corregidas en el helper de ingreso manual usado
+por los 3 specs):** (a) el input del modo "+ Agregar nuevo valor…" de `AtributoValorSelect` tiene un
+placeholder ESPECÍFICO por atributo ("Ej: Rojo" para color, no un genérico "Nuevo valor" — el spec 89
+tenía ese locator mal pero nunca lo ejercitó porque el catálogo ya tenía datos); (b) hay que esperar
+el VALOR real del `<select>` (`toHaveValue`) tras el guardado async del nuevo valor, no un
+`waitForTimeout` fijo. También se encontró que en modo avanzado el filtro de venta del POS sigue
+excluyendo líneas con `estado_id NULL` aunque el grupo activo sea "Todos" (spec 96 necesitó setear un
+Estado real al ingresar).
+
+**Verificación de la sesión:** tsc limpio · `npm run build` verde · `npm run test:unit` → 1080
+passed + 5 todo (igual al baseline) · specs 95/96/97 estables en corridas repetidas · regresión e2e
+de specs relacionados (89, 90, 92, 93, 30) verde en aislado (2 fallaron en corrida conjunta por
+contención ambiental, confirmado no-regresión al aislarlos).
+
+Ver [[wiki/features/atributos-variante]], `tests/specs/uat-modo-basico.md` §33.
+
+---
+
+## [2026-07-18] update | 🤖 Redeploy EF ai-assistant (DEV+PROD) — cierra pendiente de knowledge desactualizado
+
+**Disparador:** pendiente arrastrado desde el 2026-07-17 (fix de pricing en `planes-pricing.md` /
+`app-reference.md` / `suscripciones-planes.md`, commiteado en `a99bb270`) y repetido en el bloque
+"ARRANCÁ ACÁ" del cierre de v1.134.0: el contenido correcto ya estaba en `knowledge.generated.ts`
+commiteado al repo, pero la Edge Function `ai-assistant` deployada seguía sirviendo una versión
+vieja del conocimiento (`KNOWLEDGE_GENERATED_AT` de 2026-07-13). Sesión autónoma y puntual — sin
+código nuevo, sin migración, sin bump de `APP_VERSION`: puro redeploy de un artefacto ya commiteado.
+
+1. `npm run ai:knowledge` — regeneró el archivo, pero el contenido resultante fue idéntico al ya
+   commiteado en `a99bb270` (solo cambiaba el timestamp de generación); descartado ese diff
+   cosmético con `git checkout --` para no ensuciar el árbol con un commit de solo-timestamp.
+2. **Deploy a DEV** (`gcmhzdedrkmmzfzfveig`) vía Supabase CLI
+   (`supabase functions deploy ai-assistant --project-ref gcmhzdedrkmmzfzfveig`, CLI v2.78.1) — sin
+   problemas (el bug de Supavisor es solo de conexión DB por pooler, no afecta el deploy de EFs que
+   va por Management API).
+3. Verificado con un dump de la función vía MCP: `KNOWLEDGE_GENERATED_AT` deployado en DEV pasó a
+   `2026-07-18T02:18:00.520Z` (coincide con el commit `a99bb270`, confirma que el contenido correcto
+   está activo). Smoke test HTTP: `OPTIONS` → 200, `POST` sin auth → 401 (guard de auth intacto).
+4. Con la autorización ya dada por GO en el cierre de la sesión anterior ("Puedes aplicar las migs y
+   todo lo pendiente a DEV y PRD"), se repitió el mismo procedimiento contra **PROD**
+   (`jjffnbrdjchquexdfgwq`): deploy vía CLI, verificación de `KNOWLEDGE_GENERATED_AT` =
+   `2026-07-18T02:18:00.520Z`, smoke test OPTIONS 200 / POST sin auth 401.
+
+**Resultado:** el Asistente IA en DEV y PROD sirve ahora el conocimiento correcto (pricing v2
+actualizado). Cierra el ítem 1 del pendiente "no bloqueante" de v1.134.0. Ver
+[[wiki/features/asistente-ia]].
+
+---
+
+## [2026-07-18] deploy | 🚀 v1.134.0 EN PROD — F3b + atributos de variante + traslado real desde LPN (PR #293)
+
+**GO probó los 3 flujos pendientes y autorizó el deploy completo a DEV y PROD** ("probé el 1 y el
+2 y funcionan bien... el 3 confirmado... Puedes aplicar las migs y todo lo pendiente a DEV y PRD"
++ "te doy el OK para q subas a PRD"). Deploy ejecutado de punta a punta:
+
+1. **Migraciones 273-276 aplicadas en PROD** — verificado antes de la 274 (guard grupo vs
+   atributos de variante): 0 filas en PROD violan la condición del CHECK.
+2. **Bump `APP_VERSION` → v1.134.0** + `schema_full.sql` actualizado a mano (columna
+   `ubicacion_sugerida_id` de la mig 276 — no hay Docker acá, patch manual dirigido en vez de
+   regenerar todo con `npm run schema:dump`).
+3. **PR #293 `dev → main`** — quedó `CONFLICTING` al abrirlo: `dev` y `main` habían divergido por
+   el mismo patrón de siempre (squash-merge de PRs anteriores nunca reconciliado de vuelta a
+   `dev` desde el PR #292). Resuelto con `git merge origin/main` → 6 archivos en conflicto
+   (`log.md`, `project_pendientes.md`, `roadmap.md`, `migraciones.md`,
+   `EmisoresFiscalesPanel.tsx`, `brand.ts`) — todos resueltos a favor de `dev` ("dev es
+   superconjunto", mismo criterio que las reconciliaciones anteriores). tsc + build + unit
+   1080+5 verdes post-merge → recién ahí el PR pasó a `MERGEABLE`.
+4. **CI verde** (GitHub Actions: Unit Tests ×2, Vercel build) → merge a `main` (`c534ddea`).
+5. **Tag `v1.134.0` + GitHub release** sobre el commit de merge.
+6. **Vercel producción `READY`**, alias `app.genesis360.pro`/`www.genesis360.pro` verificados
+   (smoke: `/` → 307 a `/login` → 200, esperado).
+
+Detalle completo del contenido deployado (F3b, atributos de variante 3 rondas, 4 hallazgos de la
+sesión de testing cross-sucursal, traslado real desde LpnAccionesModal): ver entrada anterior
+"🚚 Testing cross-sucursal..." y `tests/specs/uat-modo-basico.md` §33-§37.
+
+**Pendiente no bloqueante:** redeploy de la EF `ai-assistant` (pricing corregido, arrastra desde
+el 2026-07-17) · `venta_item_despachos` sin snapshot de talle/color · e2e formal de
+rebaje-masivo-ambigüedad y LpnAccionesModal-editar.
+
+---
+
 ## [2026-07-18] update | 🚚 Testing cross-sucursal con usuarios reales + traslado real desde LpnAccionesModal (autónomo)
 
 **Disparador:** GO pidió crear usuarios de prueba para Sucursal Sur de Almacén Jorgito (además de

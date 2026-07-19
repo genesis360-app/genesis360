@@ -284,7 +284,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <div className="flex items-center gap-2">
-            <Camera size={18} className="text-accent" />
+            <Camera size={18} className="text-accent-text" />
             <span className="font-semibold text-gray-800 dark:text-white text-sm">{title}</span>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
@@ -353,7 +353,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
               <div className="flex items-center gap-3">
                 {cameras.length > 1 && (
                   <button onClick={switchCamera}
-                    className="flex items-center gap-1.5 text-xs text-accent font-medium hover:text-primary">
+                    className="flex items-center gap-1.5 text-xs text-accent-text font-medium hover:text-primary">
                     <SwitchCamera size={14} /> Cambiar
                   </button>
                 )}
@@ -386,7 +386,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
                 onChange={e => setManualInput(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && submitManual()}
                 placeholder="Código de barras / QR"
-                className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent"
+                className="flex-1 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-accent-text"
               />
               <button onClick={submitManual}
                 className="bg-accent text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-primary">
@@ -395,7 +395,7 @@ export function BarcodeScanner({ onDetected, onClose, title = 'Escaneá un códi
             </div>
             {!error && (
               <button onClick={() => { setManualMode(false); initCamera(cameras[cameraIdx]?.deviceId) }}
-                className="mt-3 text-xs text-accent hover:underline flex items-center gap-1">
+                className="mt-3 text-xs text-accent-text hover:underline flex items-center gap-1">
                 <Camera size={12} /> Volver a la cámara
               </button>
             )}

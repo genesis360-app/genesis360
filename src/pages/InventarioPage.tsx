@@ -57,7 +57,7 @@ function InfoTip({ text }: { text: string }) {
     <div className="relative inline-block ml-1">
       <button type="button" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}
         onClick={() => setShow(!show)}
-        className="text-gray-400 dark:text-gray-500 hover:text-accent transition-colors align-middle">
+        className="text-gray-400 dark:text-gray-500 hover:text-accent-text transition-colors align-middle">
         <Info size={14} />
       </button>
       {show && (
@@ -301,7 +301,10 @@ export default function InventarioPage() {
   const [autMotivoRechazo, setAutMotivoRechazo] = useState('')
 
   // ── Combinar LPNs state (Sprint D) ─────────────────────────────────────────
-  type SelectedLinea = { id: string; lpn: string; cantidad: number; producto_id: string; nro_lote: string | null; fecha_vencimiento: string | null }
+  type SelectedLinea = {
+    id: string; lpn: string; cantidad: number; producto_id: string; nro_lote: string | null; fecha_vencimiento: string | null
+    talle?: string | null; color?: string | null; encaje?: string | null; formato?: string | null; sabor_aroma?: string | null
+  }
   const [selectedLineas, setSelectedLineas] = useState<string[]>([])
   const [selectedLineasInfo, setSelectedLineasInfo] = useState<SelectedLinea[]>([])
   const [showCombinarModal, setShowCombinarModal] = useState(false)
@@ -2421,7 +2424,7 @@ export default function InventarioPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-            <Boxes size={22} className="text-accent" /> Inventario
+            <Boxes size={22} className="text-accent-text" /> Inventario
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
             {tab === 'inventario' ? 'Líneas de stock y LPNs' :
@@ -2454,7 +2457,7 @@ export default function InventarioPage() {
               <Minus size={16} /> Rebaje
             </button>
             <button onClick={() => setMasivoModal('rebaje')} disabled={limiteAlcanzado}
-              className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-2 border-2 border-accent-text text-accent-text px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               title="Rebaje de múltiples SKUs">
               <Minus size={16} /> Masivo
             </button>
@@ -2468,7 +2471,7 @@ export default function InventarioPage() {
         )}
         {tab === 'inventario' && (
           <button onClick={() => navigate('/inventario/importar')}
-            className="flex items-center gap-2 border-2 border-accent text-accent px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all"
+            className="flex items-center gap-2 border-2 border-accent-text text-accent-text px-4 py-2.5 rounded-xl text-sm font-medium hover:bg-accent/10 transition-all"
             title="Importar stock desde Excel">
             <Upload size={16} /> Importar
           </button>
@@ -2499,11 +2502,11 @@ export default function InventarioPage() {
         {tab === 'inventario' && modoAvanzado && (
           <div className="flex gap-0.5 bg-gray-100 dark:bg-gray-700 rounded-xl p-1 flex-shrink-0 mb-px">
             <button onClick={() => setInvVista('producto')} title="Por producto"
-              className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'producto' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+              className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'producto' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent-text' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
               <LayoutList size={15} />
             </button>
             <button onClick={() => setInvVista('ubicacion')} title="Por ubicación"
-              className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'ubicacion' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+              className={`px-2.5 py-1.5 rounded-lg transition-colors ${invVista === 'ubicacion' ? 'bg-white dark:bg-gray-800 shadow-sm text-accent-text' : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
               <Building size={15} />
             </button>
           </div>
@@ -2551,7 +2554,7 @@ export default function InventarioPage() {
                     onBlur={() => setTimeout(() => setMasivoSearchFocused(false), 150)}
                     placeholder="Escanear o buscar SKU / nombre..."
                     autoFocus
-                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
+                    className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800"
                   />
                   {/* Dropdown sugerencias */}
                   {(masivoSearchFocused || masivoSearch.length > 0) && masivoBusqueda.length > 0 && (
@@ -2569,7 +2572,7 @@ export default function InventarioPage() {
                   )}
                 </div>
                 <button onClick={() => setMasivoScannerOpen(true)}
-                  className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 dark:text-gray-400 hover:text-accent hover:border-accent transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-500 dark:text-gray-400 hover:text-accent-text hover:border-accent-text transition-colors"
                   title="Escanear código">
                   <Camera size={18} />
                 </button>
@@ -2612,7 +2615,7 @@ export default function InventarioPage() {
                                     onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, cantidad: e.target.value } : r))}
                                     onWheel={e => e.currentTarget.blur()}
                                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); masivoSearchRef.current?.focus() } }}
-                                    className="w-full text-center px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800"
+                                    className="w-full text-center px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800"
                                   />
                                 )}
                               </td>
@@ -2620,7 +2623,7 @@ export default function InventarioPage() {
                               <td className="px-3 py-2">
                                 <select value={row.estado_id}
                                   onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, estado_id: e.target.value } : r))}
-                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                                   <option value="">Sin estado</option>
                                   {estados.map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                                 </select>
@@ -2630,7 +2633,7 @@ export default function InventarioPage() {
                               <td className="px-3 py-2">
                                 <select value={row.ubicacion_id}
                                   onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, ubicacion_id: e.target.value } : r))}
-                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                                  className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                                   <option value="">Sin ubic.</option>
                                   {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                                 </select>
@@ -2641,7 +2644,7 @@ export default function InventarioPage() {
                                 <button
                                   onClick={() => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, showExtra: !r.showExtra } : r))}
                                   title="Lote / Vencimiento / LPN / Series / Atributos de variante"
-                                  className={`p-1 rounded transition-colors ${row.showExtra ? 'text-accent' : 'text-gray-400 hover:text-gray-600'}`}>
+                                  className={`p-1 rounded transition-colors ${row.showExtra ? 'text-accent-text' : 'text-gray-400 hover:text-gray-600'}`}>
                                   <ChevronDown size={14} className={`transition-transform ${row.showExtra ? 'rotate-180' : ''}`} />
                                 </button>
                                 )}
@@ -2663,7 +2666,7 @@ export default function InventarioPage() {
                                         <label className="block text-gray-500 mb-1">Nro. lote{row.tiene_lote ? ' *' : ''}</label>
                                         <input type="text" value={row.nro_lote} placeholder="LOT-001"
                                           onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, nro_lote: e.target.value } : r))}
-                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
                                       </div>
                                     )}
                                     {(row.tiene_vencimiento || (modoAvanzado && !row.tiene_series)) && (
@@ -2671,7 +2674,7 @@ export default function InventarioPage() {
                                         <label className="block text-gray-500 mb-1">Vencimiento{row.tiene_vencimiento ? ' *' : ''}</label>
                                         <input type="date" value={row.fecha_vencimiento}
                                           onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, fecha_vencimiento: e.target.value } : r))}
-                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
                                       </div>
                                     )}
                                     {modoAvanzado && !row.tiene_series && (
@@ -2679,7 +2682,7 @@ export default function InventarioPage() {
                                         <label className="block text-gray-500 mb-1">LPN</label>
                                         <input type="text" value={row.lpn} placeholder="LPN-001"
                                           onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, lpn: e.target.value } : r))}
-                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800 font-mono" />
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 font-mono" />
                                       </div>
                                     )}
                                     {row.tiene_series && (
@@ -2687,7 +2690,7 @@ export default function InventarioPage() {
                                         <label className="block text-gray-500 mb-1">Números de serie (uno por línea)</label>
                                         <textarea rows={3} value={row.series_txt} placeholder={"SN-001\nSN-002\nSN-003"}
                                           onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, series_txt: e.target.value } : r))}
-                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800 font-mono text-xs resize-none" />
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 font-mono text-xs resize-none" />
                                         <p className="text-gray-400 mt-0.5">{row.series_txt.split('\n').filter(s => s.trim()).length} series</p>
                                       </div>
                                     )}
@@ -2702,7 +2705,7 @@ export default function InventarioPage() {
                                         <label className="block text-gray-500 mb-1">{a.label} *</label>
                                         <AtributoValorSelect tenantId={tenant!.id} atributo={a.atributo} value={row[a.campo]}
                                           onChange={v => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, [a.campo]: v } : r))}
-                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                          className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
                                       </div>
                                     ))}
                                   </div>
@@ -2746,7 +2749,7 @@ export default function InventarioPage() {
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
             <input type="text" value={movSearch} onChange={e => setMovSearch(e.target.value)}
               placeholder="Buscar por producto o SKU..."
-              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+              className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
           </div>
 
           {/* ── Filtros adicionales solo en tab Historial ── */}
@@ -2755,17 +2758,17 @@ export default function InventarioPage() {
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Desde</label>
                 <input type="date" value={filterHistFechaDesde} onChange={e => setFilterHistFechaDesde(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Hasta</label>
                 <input type="date" value={filterHistFechaHasta} onChange={e => setFilterHistFechaHasta(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
               </div>
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Categoría</label>
                 <select value={filterHistCatId} onChange={e => setFilterHistCatId(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                   <option value="">Todas</option>
                   {(categoriasHistorial as any[]).map((c: any) => (
                     <option key={c.id} value={c.id}>{c.nombre}</option>
@@ -2775,7 +2778,7 @@ export default function InventarioPage() {
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo</label>
                 <select value={filterHistTipo} onChange={e => setFilterHistTipo(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                   <option value="">Todos</option>
                   <option value="ingreso">Ingreso</option>
                   <option value="rebaje">Rebaje</option>
@@ -2790,12 +2793,12 @@ export default function InventarioPage() {
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Motivo</label>
                 <input type="text" value={filterHistMotivo} onChange={e => setFilterHistMotivo(e.target.value)}
                   placeholder="Buscar en el motivo..."
-                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
               </div>
               {(filterHistFechaDesde || filterHistFechaHasta || filterHistCatId || filterHistTipo || filterHistMotivo) && (
                 <div className="col-span-2 sm:col-span-4 flex justify-end">
                   <button onClick={() => { setFilterHistFechaDesde(''); setFilterHistFechaHasta(''); setFilterHistCatId(''); setFilterHistTipo(''); setFilterHistMotivo('') }}
-                    className="text-xs text-accent hover:underline">Limpiar filtros</button>
+                    className="text-xs text-accent-text hover:underline">Limpiar filtros</button>
                 </div>
               )}
             </div>
@@ -2855,7 +2858,7 @@ export default function InventarioPage() {
                           {m.venta_id && (
                             <button
                               onClick={e => { e.stopPropagation(); navigate(`/ventas?id=${m.venta_id}`) }}
-                              className="ml-2 inline-flex items-center gap-0.5 text-accent hover:underline font-medium"
+                              className="ml-2 inline-flex items-center gap-0.5 text-accent-text hover:underline font-medium"
                               title="Ver venta">
                               <ExternalLink size={11} />#{m.ventas?.numero}
                             </button>
@@ -2965,7 +2968,7 @@ export default function InventarioPage() {
                           <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide mb-0.5">Venta origen</p>
                           <button
                             onClick={() => { setMovDetalle(null); navigate(`/ventas?id=${movDetalle.venta_id}`) }}
-                            className="inline-flex items-center gap-1.5 text-sm font-medium text-accent hover:underline">
+                            className="inline-flex items-center gap-1.5 text-sm font-medium text-accent-text hover:underline">
                             <ExternalLink size={13} />
                             Venta #{movDetalle.ventas?.numero ?? '—'}
                           </button>
@@ -3095,9 +3098,9 @@ export default function InventarioPage() {
                       <input type="text" value={form.productoSearch} autoFocus
                         onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
                         placeholder="Buscar por nombre, SKU o código..."
-                        className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                        className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       <button type="button" onClick={() => setMovScannerOpen(true)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent-text transition-colors"
                         title="Escanear código de barras">
                         <Camera size={16} />
                       </button>
@@ -3142,8 +3145,8 @@ export default function InventarioPage() {
                   {selectedProduct && (
                   <>
                     {/* Chip del producto */}
-                    <div className="flex items-center gap-3 bg-accent/5 border border-accent/20 rounded-xl px-4 py-3">
-                      <Package size={16} className="text-accent flex-shrink-0" />
+                    <div className="flex items-center gap-3 bg-accent/5 border border-accent-text/20 rounded-xl px-4 py-3">
+                      <Package size={16} className="text-accent-text flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm text-primary truncate">{selectedProduct.nombre}</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -3170,7 +3173,7 @@ export default function InventarioPage() {
                         </label>
                         <select value={ingresoSucursalId ?? ''}
                           onChange={e => setIngresoSucursalId(e.target.value || null)}
-                          className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800">
+                          className="w-full px-3 py-2 border border-amber-300 dark:border-amber-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                           <option value="">Sin sucursal asignada</option>
                           {(sucursales as any[]).map((s: any) => (
                             <option key={s.id} value={s.id}>{s.nombre}</option>
@@ -3189,7 +3192,7 @@ export default function InventarioPage() {
                       </label>
                       <input type="text" value={form.lpn} onChange={e => setForm(p => ({ ...p, lpn: e.target.value }))}
                         placeholder="Ej: LPN-20260101-A1"
-                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                        className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                     </div>
                     )}
 
@@ -3197,7 +3200,7 @@ export default function InventarioPage() {
                       <div className="mb-3">
                         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estructura de embalaje</label>
                         <select value={ingresoEstructuraId} onChange={e => setIngresoEstructuraId(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent dark:bg-gray-700">
+                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
                           <option value="">Sin estructura</option>
                           {estructurasIngreso.map(e => (
                             <option key={e.id} value={e.id}>{e.nombre}{e.is_default ? ' (default)' : ''}</option>
@@ -3217,7 +3220,7 @@ export default function InventarioPage() {
                                 <input type="text" value={s}
                                   onChange={e => { const ns = [...series]; ns[i] = e.target.value; setSeries(ns) }}
                                   placeholder={`Serie ${i + 1}`}
-                                  className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent" />
+                                  className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
                               </div>
                               {series.length > 1 && (
                                 <button onClick={() => setSeries(series.filter((_, j) => j !== i))}
@@ -3226,7 +3229,7 @@ export default function InventarioPage() {
                             </div>
                           ))}
                           <button onClick={() => setSeries([...series, ''])}
-                            className="flex items-center gap-1 text-sm text-accent hover:underline">
+                            className="flex items-center gap-1 text-sm text-accent-text hover:underline">
                             <Plus size={14} /> Agregar serie
                           </button>
                         </div>
@@ -3255,8 +3258,8 @@ export default function InventarioPage() {
                                       onClick={() => setIngresoUnitAlt(u === uBase ? null : u)}
                                       className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
                                         (ingresoUnitAlt ?? uBase) === u
-                                          ? 'bg-accent text-white border-accent'
-                                          : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent'
+                                          ? 'bg-accent text-white border-accent-text'
+                                          : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text'
                                       }`}>{u}</button>
                                   ))}
                                 </div>
@@ -3265,9 +3268,9 @@ export default function InventarioPage() {
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0.001" step="any"
                               value={form.cantidad}
                               onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
-                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
+                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" placeholder="0" />
                             {hint !== null && (
-                              <p className="mt-1 text-xs text-accent">= {hint} {uBase}</p>
+                              <p className="mt-1 text-xs text-accent-text">= {hint} {uBase}</p>
                             )}
                           </div>
                         )
@@ -3280,7 +3283,7 @@ export default function InventarioPage() {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estado</label>
                           <select value={form.estadoId} onChange={e => setForm(p => ({ ...p, estadoId: e.target.value }))}
-                            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                             <option value="">Sin estado</option>
                             {(estados as any[]).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                           </select>
@@ -3301,7 +3304,7 @@ export default function InventarioPage() {
                             </div>
                           )}
                           <select value={form.ubicacionId} onChange={e => setForm(p => ({ ...p, ubicacionId: e.target.value }))}
-                            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                             <option value="">Sin ubicación</option>
                             {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                           </select>
@@ -3315,7 +3318,7 @@ export default function InventarioPage() {
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Proveedor</label>
                           <select value={form.proveedorId} onChange={e => setForm(p => ({ ...p, proveedorId: e.target.value }))}
-                            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                            className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                             <option value="">Sin proveedor</option>
                             {(proveedores as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
                           </select>
@@ -3328,7 +3331,7 @@ export default function InventarioPage() {
                           </label>
                           <input type="text" value={form.nroLote} onChange={e => setForm(p => ({ ...p, nroLote: e.target.value }))}
                             placeholder="Lote-001" required
-                            className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-accent
+                            className={`w-full px-3 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-accent-text
                               ${!form.nroLote.trim() ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                         </div>
                       )}
@@ -3341,7 +3344,7 @@ export default function InventarioPage() {
                         </label>
                         <input type="date" value={form.fechaVencimiento} onChange={e => setForm(p => ({ ...p, fechaVencimiento: e.target.value }))}
                           required
-                          className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-accent
+                          className={`w-full px-4 py-2.5 border rounded-xl text-sm focus:outline-none focus:border-accent-text
                             ${!form.fechaVencimiento ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-gray-200 dark:border-gray-700'}`} />
                       </div>
                     )}
@@ -3354,7 +3357,7 @@ export default function InventarioPage() {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">País de Origen</label>
                             <input type="text" value={form.paisOrigen} onChange={e => setForm(p => ({ ...p, paisOrigen: e.target.value }))}
                               placeholder="Ej: Argentina"
-                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_talle && (
@@ -3362,7 +3365,7 @@ export default function InventarioPage() {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Talle / Talla</label>
                             <AtributoValorSelect tenantId={tenant!.id} atributo="talle" value={form.talle}
                               onChange={v => setForm(p => ({ ...p, talle: v }))} placeholder="Ej: M, 42, XL"
-                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_color && (
@@ -3370,7 +3373,7 @@ export default function InventarioPage() {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Color</label>
                             <AtributoValorSelect tenantId={tenant!.id} atributo="color" value={form.color}
                               onChange={v => setForm(p => ({ ...p, color: v }))} placeholder="Ej: Rojo"
-                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_encaje && (
@@ -3378,7 +3381,7 @@ export default function InventarioPage() {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Encaje</label>
                             <AtributoValorSelect tenantId={tenant!.id} atributo="encaje" value={form.encaje}
                               onChange={v => setForm(p => ({ ...p, encaje: v }))} placeholder="Ej: Slim fit"
-                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_formato && (
@@ -3386,7 +3389,7 @@ export default function InventarioPage() {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Formato</label>
                             <AtributoValorSelect tenantId={tenant!.id} atributo="formato" value={form.formato}
                               onChange={v => setForm(p => ({ ...p, formato: v }))} placeholder="Ej: 500g, 1L"
-                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                           </div>
                         )}
                         {(selectedProduct as any).tiene_sabor_aroma && (
@@ -3394,7 +3397,7 @@ export default function InventarioPage() {
                             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Sabor / Aroma</label>
                             <AtributoValorSelect tenantId={tenant!.id} atributo="sabor_aroma" value={form.saborAroma}
                               onChange={v => setForm(p => ({ ...p, saborAroma: v }))} placeholder="Ej: Vainilla"
-                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                              className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                           </div>
                         )}
                       </div>
@@ -3410,7 +3413,7 @@ export default function InventarioPage() {
                               setIngresoMotivoSelect(val)
                               setForm(p => ({ ...p, motivo: val === '__otro__' ? '' : val }))
                             }}
-                            className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                            className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                             <option value="">Seleccioná un motivo...</option>
                             {(motivos as any[]).filter((m: any) => m.tipo === 'ingreso' || m.tipo === 'ambos')
                               .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
@@ -3420,13 +3423,13 @@ export default function InventarioPage() {
                             <input type="text" value={form.motivo}
                               onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
                               placeholder="Escribí el motivo..."
-                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                           )}
                         </div>
                       ) : (
                         <input type="text" value={form.motivo} onChange={e => setForm(p => ({ ...p, motivo: e.target.value }))}
                           placeholder="Ej: Compra a proveedor"
-                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       )}
                     </div>
                   </>
@@ -3469,9 +3472,9 @@ export default function InventarioPage() {
                       <input type="text" value={form.productoSearch} autoFocus
                         onChange={e => setForm(p => ({ ...p, productoSearch: e.target.value }))}
                         placeholder="Buscar por nombre, SKU o código..."
-                        className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                        className="w-full pl-8 pr-10 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                       <button type="button" onClick={() => setMovScannerOpen(true)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-accent-text transition-colors"
                         title="Escanear código de barras">
                         <Camera size={16} />
                       </button>
@@ -3506,8 +3509,8 @@ export default function InventarioPage() {
                   {selectedProduct && (
                   <>
                     {/* Chip del producto */}
-                    <div className="flex items-center gap-3 bg-accent/5 border border-accent/20 rounded-xl px-4 py-3">
-                      <Package size={16} className="text-accent flex-shrink-0" />
+                    <div className="flex items-center gap-3 bg-accent/5 border border-accent-text/20 rounded-xl px-4 py-3">
+                      <Package size={16} className="text-accent-text flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-sm text-primary truncate">{selectedProduct.nombre}</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">
@@ -3563,7 +3566,7 @@ export default function InventarioPage() {
                         <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
                         <input type="text" value={rebajeSearch} onChange={e => setRebajeSearch(e.target.value)}
                           placeholder="Buscar por ubicación, estado o lote..."
-                          className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent" />
+                          className="w-full pl-8 pr-4 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text" />
                       </div>
                       )}
 
@@ -3594,7 +3597,7 @@ export default function InventarioPage() {
                             .map((l: any) => (
                               <button key={l.id} onClick={() => { setRebajeLinea(l); setRebajeSeries([]) }}
                                 className={`w-full text-left px-4 py-3 rounded-xl border-2 transition-all text-sm
-                                  ${rebajeLinea?.id === l.id ? 'border-accent bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
+                                  ${rebajeLinea?.id === l.id ? 'border-accent-text bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
                                 <div className="flex items-center justify-between">
                                   <div className="flex items-center gap-2">
                                     {!modoAvanzado ? (
@@ -3684,8 +3687,8 @@ export default function InventarioPage() {
                                           onClick={() => setRebajeUnitAlt(u === uBase ? null : u)}
                                           className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
                                             (rebajeUnitAlt ?? uBase) === u
-                                              ? 'bg-accent text-white border-accent'
-                                              : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent'
+                                              ? 'bg-accent text-white border-accent-text'
+                                              : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text'
                                           }`}>{u}</button>
                                       ))}
                                     </div>
@@ -3693,9 +3696,9 @@ export default function InventarioPage() {
                                 </div>
                                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0.001" step="any"
                                   value={rebajeCantidad} onChange={e => setRebajeCantidad(e.target.value)}
-                                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" placeholder="0" />
+                                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" placeholder="0" />
                                 {hint !== null && (
-                                  <p className="mt-1 text-xs text-accent">= {hint} {uBase}</p>
+                                  <p className="mt-1 text-xs text-accent-text">= {hint} {uBase}</p>
                                 )}
                               </div>
                             )
@@ -3712,7 +3715,7 @@ export default function InventarioPage() {
                                   setRebajeMotivoSelect(val)
                                   setRebajeMotivo(val === '__otro__' ? '' : val)
                                 }}
-                                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent">
+                                className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                                 <option value="">Seleccioná un motivo...</option>
                                 {(motivos as any[]).filter((m: any) => (m.tipo === 'rebaje' || m.tipo === 'ambos') && !m.es_sistema)
                                   .map((m: any) => <option key={m.id} value={m.nombre}>{m.nombre}</option>)}
@@ -3721,13 +3724,13 @@ export default function InventarioPage() {
                               {rebajeMotivoSelect === '__otro__' && (
                                 <input type="text" value={rebajeMotivo} onChange={e => setRebajeMotivo(e.target.value)}
                                   placeholder="Escribí el motivo..."
-                                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                               )}
                             </div>
                           ) : (
                             <input type="text" value={rebajeMotivo} onChange={e => setRebajeMotivo(e.target.value)}
                               placeholder="Ej: Venta, pérdida, consumo..."
-                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent" />
+                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
                           )}
                         </div>
                       </>
@@ -3782,10 +3785,10 @@ export default function InventarioPage() {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
               <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)}
                 placeholder="Buscar por nombre, SKU, código, ubicación o LPN..."
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
             </div>
             <button onClick={() => setInvScannerOpen(true)}
-              className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent transition-colors bg-white dark:bg-gray-800"
+              className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent-text transition-colors bg-white dark:bg-gray-800"
               title="Escanear código de barras">
               <Camera size={17} />
             </button>
@@ -3799,7 +3802,7 @@ export default function InventarioPage() {
                   onClick={() => setFilterPanelOpen(v => !v)}
                   className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all
                     ${filterPanelOpen || activeCount > 0
-                      ? 'border-accent bg-accent/5 text-accent'
+                      ? 'border-accent-text bg-accent/5 text-accent-text'
                       : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}
                 >
                   <SlidersHorizontal size={14} />
@@ -3822,7 +3825,7 @@ export default function InventarioPage() {
                       <div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Categoría</p>
                         <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                           <option value="">Todas</option>
                           <option value="__sin__">Sin categoría</option>
                           {[...new Map((productos as any[]).filter(p => p.categoria_id).map(p => [p.categoria_id, (p as any).categorias?.nombre ?? p.categoria_id])).entries()].map(([id, nombre]) => (
@@ -3834,7 +3837,7 @@ export default function InventarioPage() {
                       <div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Ubicación</p>
                         <select value={filterUbic} onChange={e => setFilterUbic(e.target.value)}
-                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                           <option value="">Todas</option>
                           <option value="__sin__">Sin ubicación</option>
                           {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
@@ -3844,7 +3847,7 @@ export default function InventarioPage() {
                       <div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Estado</p>
                         <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}
-                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                           <option value="">Todos</option>
                           <option value="__sin__">Sin estado</option>
                           {(estados as any[]).map((e: any) => <option key={e.id} value={e.id}>{e.nombre}</option>)}
@@ -3854,7 +3857,7 @@ export default function InventarioPage() {
                       <div>
                         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Proveedor</p>
                         <select value={filterProv} onChange={e => setFilterProv(e.target.value)}
-                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                           <option value="">Todos</option>
                           <option value="__sin__">Sin proveedor</option>
                           {(proveedores as any[]).map((pr: any) => <option key={pr.id} value={pr.id}>{pr.nombre}</option>)}
@@ -3977,7 +3980,7 @@ export default function InventarioPage() {
                                   </div>
                                   <button
                                     onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: prod }) }}
-                                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors flex-shrink-0"
+                                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors flex-shrink-0"
                                     title="Acciones sobre este LPN">
                                     <Settings2 size={15} />
                                   </button>
@@ -4069,7 +4072,10 @@ export default function InventarioPage() {
                                         setSelectedLineas(prev => [...new Set([...prev, ...lineas.map((l: any) => l.id)])])
                                         setSelectedLineasInfo(prev => {
                                           const existing = new Set(prev.map(x => x.id))
-                                          return [...prev, ...lineas.filter((l: any) => !existing.has(l.id)).map((l: any) => ({ id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento }))]
+                                          return [...prev, ...lineas.filter((l: any) => !existing.has(l.id)).map((l: any) => ({
+                                            id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento,
+                                            talle: l.talle, color: l.color, encaje: l.encaje, formato: l.formato, sabor_aroma: l.sabor_aroma,
+                                          }))]
                                         })
                                       } else {
                                         const ids = new Set(lineas.map((l: any) => l.id))
@@ -4090,7 +4096,7 @@ export default function InventarioPage() {
                               </div>
                               {lineas.map((l: any) => (
                                 <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-2'} gap-2 items-center text-sm transition-colors
-                                  ${selectedLineas.includes(l.id) ? 'border-accent/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}`}>
+                                  ${selectedLineas.includes(l.id) ? 'border-accent-text/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}`}>
                                   {modoAvanzado && (
                                   <div className="col-span-1 flex items-center">
                                     <input type="checkbox" className="rounded accent-accent"
@@ -4098,7 +4104,10 @@ export default function InventarioPage() {
                                       onChange={e => {
                                         if (e.target.checked) {
                                           setSelectedLineas(prev => [...prev, l.id])
-                                          setSelectedLineasInfo(prev => [...prev, { id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento }])
+                                          setSelectedLineasInfo(prev => [...prev, {
+                                            id: l.id, lpn: l.lpn, cantidad: l.cantidad, producto_id: l.producto_id, nro_lote: l.nro_lote, fecha_vencimiento: l.fecha_vencimiento,
+                                            talle: l.talle, color: l.color, encaje: l.encaje, formato: l.formato, sabor_aroma: l.sabor_aroma,
+                                          }])
                                         } else {
                                           setSelectedLineas(prev => prev.filter(id => id !== l.id))
                                           setSelectedLineasInfo(prev => prev.filter(x => x.id !== l.id))
@@ -4217,7 +4226,7 @@ export default function InventarioPage() {
                                           {resto > 0 && (
                                             <button
                                               onClick={e => { e.stopPropagation(); setSeriesModal({ lpn: l.lpn, series: seriesActivas }) }}
-                                              className="text-xs text-accent hover:underline font-medium">
+                                              className="text-xs text-accent-text hover:underline font-medium">
                                               +{resto} más
                                             </button>
                                           )}
@@ -4231,7 +4240,7 @@ export default function InventarioPage() {
                                   <div className="col-span-1 flex justify-center">
                                     <button
                                       onClick={e => { e.stopPropagation(); setLpnAcciones({ linea: l, producto: p }) }}
-                                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent hover:bg-accent/10 rounded-lg transition-colors"
+                                      className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors"
                                       title={(l.cantidad_reservada ?? 0) > 0 ? `${l.cantidad_reservada} reservada(s) — solo movimiento parcial disponible` : 'Acciones sobre este LPN'}>
                                       <Settings2 size={15} />
                                     </button>
@@ -4261,9 +4270,9 @@ export default function InventarioPage() {
 
           {/* Barra flotante — LPNs seleccionados */}
           {selectedLineas.length >= 1 && (
-            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-accent/40 rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 flex-wrap max-w-[90vw]">
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 bg-white dark:bg-gray-800 border border-accent-text/40 rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-3 flex-wrap max-w-[90vw]">
               <span className="text-sm font-medium text-gray-800 dark:text-gray-100 flex-shrink-0">
-                <span className="font-bold text-accent">{selectedLineas.length}</span> LPN{selectedLineas.length !== 1 ? 's' : ''} seleccionado{selectedLineas.length !== 1 ? 's' : ''}
+                <span className="font-bold text-accent-text">{selectedLineas.length}</span> LPN{selectedLineas.length !== 1 ? 's' : ''} seleccionado{selectedLineas.length !== 1 ? 's' : ''}
               </span>
               <button
                 onClick={() => { setSelectedLineas([]); setSelectedLineasInfo([]) }}
@@ -4319,7 +4328,7 @@ export default function InventarioPage() {
               <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
                 <h3 className="font-semibold text-primary">Cambiar estado — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
                 <select value={bulkEstadoId} onChange={e => setBulkEstadoId(e.target.value)}
-                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                   <option value="">Seleccioná un estado</option>
                   {(estados as any[]).map((e: any) => (
                     <option key={e.id} value={e.id}>{e.nombre}</option>
@@ -4346,7 +4355,7 @@ export default function InventarioPage() {
               <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
                 <h3 className="font-semibold text-primary">Cambiar ubicación — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
                 <select value={bulkUbicacionId} onChange={e => setBulkUbicacionId(e.target.value)}
-                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent">
+                  className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                   <option value="">Seleccioná una ubicación</option>
                   {(ubicaciones as any[]).map((u: any) => (
                     <option key={u.id} value={u.id}>{u.nombre}</option>
@@ -4504,7 +4513,18 @@ export default function InventarioPage() {
                   <div className="space-y-1.5">
                     {selectedLineasInfo.map(l => (
                       <div key={l.id} className="flex items-center justify-between bg-gray-50 dark:bg-gray-700/50 rounded-lg px-3 py-2 text-sm">
-                        <span className="font-medium text-primary">{l.lpn}</span>
+                        <div>
+                          <span className="font-medium text-primary">{l.lpn}</span>
+                          {atributosDeLinea(l).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {atributosDeLinea(l).map(a => (
+                                <span key={a.key} className="text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-600 px-1.5 py-0.5 rounded">
+                                  {a.emoji} {a.valor}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                         <div className="text-right">
                           <span className="text-gray-600 dark:text-gray-400">{l.cantidad} u.</span>
                           {l.nro_lote && <p className="text-xs text-gray-400">Lote: {l.nro_lote}</p>}
@@ -4519,14 +4539,14 @@ export default function InventarioPage() {
                     <div className="grid grid-cols-2 gap-2">
                       <button onClick={() => setCombinarMode('fusionar')}
                         className={`p-3 rounded-xl border text-sm font-medium text-left transition-colors
-                          ${combinarMode === 'fusionar' ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'}`}>
+                          ${combinarMode === 'fusionar' ? 'border-accent-text bg-accent/10 text-accent-text' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'}`}>
                         <Combine size={16} className="mb-1.5" />
                         <p>Fusionar</p>
                         <p className="text-xs font-normal mt-0.5 text-gray-400">Todo el stock pasa a un LPN</p>
                       </button>
                       <button onClick={() => setCombinarMode('madre')}
                         className={`p-3 rounded-xl border text-sm font-medium text-left transition-colors
-                          ${combinarMode === 'madre' ? 'border-accent bg-accent/10 text-accent' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'}`}>
+                          ${combinarMode === 'madre' ? 'border-accent-text bg-accent/10 text-accent-text' : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300'}`}>
                         <Layers size={16} className="mb-1.5" />
                         <p>LPN Madre</p>
                         <p className="text-xs font-normal mt-0.5 text-gray-400">Agrupa bajo un pallet padre</p>
@@ -4547,7 +4567,7 @@ export default function InventarioPage() {
                           {selectedLineasInfo.map(l => (
                             <label key={l.id}
                               className={`flex items-center gap-3 p-2.5 rounded-xl border cursor-pointer transition-colors
-                                ${combinarDestinoId === l.id ? 'border-accent bg-accent/10' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
+                                ${combinarDestinoId === l.id ? 'border-accent-text bg-accent/10' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'}`}>
                               <input type="radio" name="destino" value={l.id}
                                 checked={combinarDestinoId === l.id}
                                 onChange={() => setCombinarDestinoId(l.id)}
@@ -4575,7 +4595,7 @@ export default function InventarioPage() {
                       <label className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide block mb-2">Código LPN Madre</label>
                       <input type="text" value={combinarParentLpn} onChange={e => setCombinarParentLpn(e.target.value)}
                         placeholder="Ej: PLT-001"
-                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent" />
+                        className="w-full border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 text-sm bg-white dark:bg-gray-900 text-primary focus:outline-none focus:border-accent-text" />
                       <p className="text-xs text-gray-400 mt-1.5">
                         Los LPNs seleccionados quedan asociados a este pallet/contenedor. No mueve stock.
                       </p>
@@ -4697,7 +4717,7 @@ export default function InventarioPage() {
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
               <input value={kitSearch} onChange={e => setKitSearch(e.target.value)}
                 placeholder="Buscar KIT por nombre o SKU..."
-                className="w-full pl-9 pr-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                className="w-full pl-9 pr-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30" />
             </div>
           </div>
 
@@ -4706,7 +4726,7 @@ export default function InventarioPage() {
             <div className="text-center py-16 text-gray-500 dark:text-gray-400">
               <Combine size={40} className="mx-auto mb-3 opacity-30" />
               <p className="font-medium">No hay KITs configurados</p>
-              <p className="text-sm mt-1">Marcá un producto como KIT desde <Link to="/productos" className="text-accent hover:underline">Productos</Link> y configurá su receta aquí.</p>
+              <p className="text-sm mt-1">Marcá un producto como KIT desde <Link to="/productos" className="text-accent-text hover:underline">Productos</Link> y configurá su receta aquí.</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -4724,7 +4744,7 @@ export default function InventarioPage() {
                       <button onClick={() => setKitExpandedId(isExpanded ? null : kit.id)}
                         className="flex-1 flex items-center gap-3 text-left">
                         <div className="w-8 h-8 bg-accent/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Combine size={16} className="text-accent" />
+                          <Combine size={16} className="text-accent-text" />
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-900 dark:text-white text-sm truncate">{kit.nombre}</p>
@@ -4808,7 +4828,7 @@ export default function InventarioPage() {
                               <div className="flex-1 relative">
                                 <input value={recetaCompSearch} onChange={e => setRecetaCompSearch(e.target.value)}
                                   placeholder="Buscar producto..."
-                                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30" />
                                 {compsBusqueda.length > 0 && (
                                   <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-20 max-h-40 overflow-y-auto">
                                     {compsBusqueda.map((p: any) => (
@@ -4824,7 +4844,7 @@ export default function InventarioPage() {
                               <input value={recetaCantidad} onChange={e => setRecetaCantidad(e.target.value)}
                                 type="number" min="0.001" step="0.001" placeholder="Cant."
                                 onWheel={e => e.currentTarget.blur()}
-                                className="w-20 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                                className="w-20 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-lg text-sm bg-white dark:bg-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30" />
                               <button onClick={() => setShowRecetaForm(null)}
                                 className="text-gray-400 hover:text-gray-600 px-2">
                                 <X size={16} />
@@ -4833,7 +4853,7 @@ export default function InventarioPage() {
                           </div>
                         ) : (
                           <button onClick={() => { setShowRecetaForm(kit.id); setRecetaCompSearch(''); setRecetaCantidad('1') }}
-                            className="flex items-center gap-1.5 text-accent hover:text-accent/80 text-sm font-medium transition-colors">
+                            className="flex items-center gap-1.5 text-accent-text hover:text-accent-text/80 text-sm font-medium transition-colors">
                             <Plus size={14} /> Agregar componente
                           </button>
                         )}
@@ -4868,7 +4888,7 @@ export default function InventarioPage() {
                       <input value={kittingCantidad} onChange={e => setKittingCantidad(e.target.value)}
                         type="number" min="1" step="1"
                         onWheel={e => e.currentTarget.blur()}
-                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30" />
                     </div>
 
                     {/* Preview consumo */}
@@ -4891,7 +4911,7 @@ export default function InventarioPage() {
                         })}
                         <div className="border-t border-gray-200 dark:border-gray-600 pt-1.5 flex items-center justify-between text-sm font-semibold">
                           <span className="text-gray-700 dark:text-gray-300">KITs producidos</span>
-                          <span className="text-accent">+{cantNum} {kit?.unidad_medida}</span>
+                          <span className="text-accent-text">+{cantNum} {kit?.unidad_medida}</span>
                         </div>
                       </div>
                     )}
@@ -4899,7 +4919,7 @@ export default function InventarioPage() {
                     <div>
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Ubicación destino (opcional)</label>
                       <select value={kittingUbicacionId} onChange={e => setKittingUbicacionId(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30">
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30">
                         <option value="">Sin ubicación</option>
                         {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                       </select>
@@ -4909,7 +4929,7 @@ export default function InventarioPage() {
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">Notas (opcional)</label>
                       <input value={kittingNotas} onChange={e => setKittingNotas(e.target.value)}
                         placeholder="Observaciones del armado..."
-                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30" />
                     </div>
 
                     <div className="flex gap-3 pt-2">
@@ -4940,7 +4960,7 @@ export default function InventarioPage() {
                   <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
                     <div>
                       <h3 className="font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                        <Copy size={16} className="text-accent" /> Clonar receta
+                        <Copy size={16} className="text-accent-text" /> Clonar receta
                       </h3>
                       <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Desde: {origen?.nombre}</p>
                     </div>
@@ -4950,7 +4970,7 @@ export default function InventarioPage() {
                     <div>
                       <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1">KIT destino *</label>
                       <select value={clonarDestinoId} onChange={e => setClonarDestinoId(e.target.value)}
-                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent/30">
+                        className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30">
                         <option value="">Seleccioná un KIT...</option>
                         {destinos.map((k: any) => (
                           <option key={k.id} value={k.id}>{k.nombre} ({k.sku})</option>
@@ -5015,7 +5035,7 @@ export default function InventarioPage() {
                     title={requiereSucursal && !sucursalId ? 'Seleccioná una sucursal específica para usar este alcance' : undefined}
                     onClick={() => { setConteoTipo(t); setConteoRefId(t === 'sucursal' ? '__all__' : ''); setConteoRows([]) }}
                     className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors border-2 disabled:opacity-50 disabled:cursor-not-allowed
-                      ${conteoTipo === t ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                      ${conteoTipo === t ? 'border-accent-text text-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
                     {label}
                   </button>
                   )
@@ -5030,7 +5050,7 @@ export default function InventarioPage() {
                     <button key={m} disabled={!!continuandoConteoId} title={desc}
                       onClick={() => setConteoModo(m)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors border disabled:opacity-50
-                        ${conteoModo === m ? 'border-accent text-accent bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                        ${conteoModo === m ? 'border-accent-text text-accent-text bg-accent/5' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`}>
                       {label}
                     </button>
                   ))}
@@ -5046,7 +5066,7 @@ export default function InventarioPage() {
                 ) : (
                   <select value={conteoRefId} disabled={!!continuandoConteoId}
                     onChange={e => { setConteoRefId(e.target.value); setConteoRows([]) }}
-                    className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:border-accent disabled:opacity-50">
+                    className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm bg-white dark:bg-gray-800 focus:outline-none focus:border-accent-text disabled:opacity-50">
                     {conteoTipo === 'ubicacion' && (
                       <>
                         <option value="">Seleccioná una ubicación</option>
@@ -5090,7 +5110,7 @@ export default function InventarioPage() {
               {/* F2b — scan-to-count: cámara persistente que suma a la fila del producto escaneado */}
               {conteoRows.length > 0 && (
                 <button onClick={() => setConteoScannerOpen(true)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-accent/40 hover:border-accent text-accent rounded-xl text-sm font-medium transition-colors">
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-accent-text/40 hover:border-accent-text text-accent-text rounded-xl text-sm font-medium transition-colors">
                   <ScanBarcode size={16} /> Escanear para contar
                 </button>
               )}
@@ -5125,7 +5145,7 @@ export default function InventarioPage() {
                           onChange={e => setReconteoClave(e.target.value)}
                           onKeyDown={e => e.key === 'Enter' && confirmarSkipReconteo()}
                           placeholder="Clave maestra"
-                          className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700" />
+                          className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700" />
                       )}
                       <div className="flex gap-2">
                         <button onClick={() => { setReconteoSkipModal(false); setReconteoClave('') }}
@@ -5202,7 +5222,7 @@ export default function InventarioPage() {
                                       updated[idx] = { ...row, cantidad_contada: v }
                                       setConteoRows(updated)
                                     }}
-                                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent bg-white dark:bg-gray-700" />
+                                    className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-center focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700" />
                                 </td>
                                 {verEsperado && (
                                   <td className={`px-3 py-2.5 text-right text-sm font-semibold
@@ -5215,7 +5235,7 @@ export default function InventarioPage() {
                                     {revelada
                                       ? <span className="text-gray-500 dark:text-gray-400">{fmtNum(row.cantidad_esperada)}{contadaNum !== null && !sinDiff ? <span className={diff > 0 ? 'text-green-600 ml-1' : 'text-red-500 ml-1'}>({diff > 0 ? '+' : ''}{fmtNum(diff)})</span> : ''}</span>
                                       : <button onClick={() => setConteoRevelados(prev => new Set(prev).add(row.linea_id))}
-                                          className="inline-flex items-center gap-1 text-accent hover:underline"><Eye size={12} /> Ver</button>}
+                                          className="inline-flex items-center gap-1 text-accent-text hover:underline"><Eye size={12} /> Ver</button>}
                                   </td>
                                 )}
                                 {reconteoActivo && (
@@ -5275,7 +5295,7 @@ export default function InventarioPage() {
                     <textarea value={conteoNotas} onChange={e => setConteoNotas(e.target.value)}
                       placeholder="Notas del conteo (opcional)..."
                       rows={2}
-                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-800 resize-none" />
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 resize-none" />
                   </div>
 
                   {/* F3b — banner de doble conteo formal cuando hay filas pendientes de recontar */}
@@ -5291,7 +5311,7 @@ export default function InventarioPage() {
                   <div className="flex gap-3 flex-wrap">
                     <button onClick={() => guardarConteoBorrador.mutate()}
                       disabled={guardarConteoBorrador.isPending}
-                      className="flex-1 py-2.5 border-2 border-accent text-accent rounded-xl text-sm font-semibold hover:bg-accent/5 transition-all disabled:opacity-50">
+                      className="flex-1 py-2.5 border-2 border-accent-text text-accent-text rounded-xl text-sm font-semibold hover:bg-accent/5 transition-all disabled:opacity-50">
                       {guardarConteoBorrador.isPending ? 'Guardando...' : 'Guardar borrador'}
                     </button>
                     {reconteoActivo && (
@@ -5346,7 +5366,7 @@ export default function InventarioPage() {
                   <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                     <button onClick={() => setConteoGestionOpen(o => !o)}
                       className="w-full flex items-center gap-2 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left">
-                      <BarChart3 size={16} className="text-accent flex-shrink-0" />
+                      <BarChart3 size={16} className="text-accent-text flex-shrink-0" />
                       <span className="font-medium text-sm text-gray-800 dark:text-gray-100">Clasificación ABC y conteo cíclico</span>
                       {sugerencias.length > 0 && (
                         <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">
@@ -5366,7 +5386,7 @@ export default function InventarioPage() {
                             <span className={`px-2 py-0.5 rounded-full font-medium ${claseBadge('C')}`}>C: {abcCount('C')}</span>
                           </div>
                           <button onClick={() => recalcularABC.mutate()} disabled={recalcularABC.isPending}
-                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent rounded-lg font-medium transition-colors disabled:opacity-50">
+                            className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-accent/10 hover:bg-accent/20 text-accent-text rounded-lg font-medium transition-colors disabled:opacity-50">
                             <RefreshCw size={13} className={recalcularABC.isPending ? 'animate-spin' : ''} /> Recalcular ABC
                           </button>
                         </div>
@@ -5395,7 +5415,7 @@ export default function InventarioPage() {
                         {/* Sugerencias de conteo cíclico */}
                         <div>
                           <div className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-300 mb-2">
-                            <CalendarClock size={14} className="text-accent" /> Conviene contar
+                            <CalendarClock size={14} className="text-accent-text" /> Conviene contar
                           </div>
                           {sugerencias.length === 0 ? (
                             <p className="text-xs text-gray-400 py-2">Nada vencido por ahora. Recalculá el ABC o esperá a que pase el ciclo.</p>
@@ -5446,7 +5466,7 @@ export default function InventarioPage() {
                     <div key={c.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
                       <button onClick={() => setConteoExpandedId(isExpanded ? null : c.id)}
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left">
-                        <ClipboardList size={16} className="text-accent flex-shrink-0" />
+                        <ClipboardList size={16} className="text-accent-text flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-medium text-gray-800 dark:text-gray-100 text-sm">
@@ -5670,7 +5690,7 @@ export default function InventarioPage() {
                             <div className="space-y-1.5">
                               <input type="text" value={autMotivoRechazo} onChange={e => setAutMotivoRechazo(e.target.value)}
                                 placeholder="Motivo de rechazo..."
-                                className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent bg-white dark:bg-gray-800" />
+                                className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
                               <div className="flex gap-1">
                                 <button onClick={() => rechazarAutorizacion.mutate({ id: aut.id, motivo: autMotivoRechazo })}
                                   disabled={rechazarAutorizacion.isPending || !autMotivoRechazo.trim()}

@@ -113,7 +113,7 @@ export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <ScanBarcode size={17} className="text-accent" />
+            <ScanBarcode size={17} className="text-accent-text" />
             <span className="font-semibold text-sm text-gray-800 dark:text-gray-100">Etiquetas GS1 — {lineas.length} LPN(s)</span>
           </div>
           <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"><X size={17} className="text-gray-500" /></button>
@@ -126,7 +126,7 @@ export function CodigoMasivoModal({ lineas, tenantId, onClose }: Props) {
             <>
               {perfiles.length > 0 && (
                 <select value={perfilId} onChange={e => setPerfilId(e.target.value)}
-                  className="w-full mb-3 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent">
+                  className="w-full mb-3 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
                   {perfiles.map(p => <option key={p.id} value={p.id}>{p.nombre} · {p.simbologia === 'datamatrix' ? 'DataMatrix' : p.simbologia === 'qr' ? 'QR' : 'GS1-128'}</option>)}
                 </select>
               )}

@@ -201,7 +201,7 @@ function PieTooltipCustom({ active, payload, fmt }: any) {
   return (
     <div className="bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 rounded-xl shadow-lg px-3 py-2 text-sm">
       <p className="font-semibold text-gray-800 dark:text-gray-100">{d.nombre}</p>
-      <p className="text-accent font-bold">{fmt(d.total)}</p>
+      <p className="text-accent-text font-bold">{fmt(d.total)}</p>
       <p className="text-xs text-gray-400 dark:text-gray-500">{d.pct}% del total</p>
     </div>
   )
@@ -490,7 +490,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Mostrando <span className="font-medium text-primary">{PERIODO_LABELS[periodo].toLowerCase()}</span>
           {moneda === 'USD' && <span className="ml-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded">USD</span>}
-          {canal && <span className="ml-1 text-xs bg-accent/10 text-accent px-1.5 py-0.5 rounded">Canal: {CANAL_DISPLAY[canal] ?? canal}</span>}
+          {canal && <span className="ml-1 text-xs bg-accent/10 text-accent-text px-1.5 py-0.5 rounded">Canal: {CANAL_DISPLAY[canal] ?? canal}</span>}
         </p>
 
         <div className="relative" ref={filterRef}>
@@ -498,7 +498,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
             onClick={() => setFilterOpen(v => !v)}
             className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all
               ${filterOpen || activeFilters > 0
-                ? 'border-accent bg-accent/5 text-accent'
+                ? 'border-accent-text bg-accent/5 text-accent-text'
                 : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}
           >
             <SlidersHorizontal size={14} />
@@ -538,11 +538,11 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
                     <div className="flex items-center gap-2 mt-2 text-xs">
                       <input type="date" max={hoy} value={customDesde.split('T')[0]}
                         onChange={e => setCustomDesde(new Date(e.target.value + 'T00:00:00').toISOString())}
-                        className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent" />
+                        className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent-text" />
                       <span className="text-gray-400">→</span>
                       <input type="date" max={hoy} value={customHasta.split('T')[0]}
                         onChange={e => setCustomHasta(new Date(e.target.value + 'T23:59:59').toISOString())}
-                        className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent" />
+                        className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent-text" />
                     </div>
                   )}
                 </div>
@@ -568,7 +568,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
                 <div>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Canal de venta</p>
                   <select value={canal} onChange={e => setCanal(e.target.value)}
-                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent">
+                    className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent-text">
                     <option value="">Todos los canales</option>
                     {(vData?.canalesDisp ?? []).map((c: string) => (
                       <option key={c} value={c}>{CANAL_DISPLAY[c] ?? c}</option>
@@ -579,7 +579,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
 
               {activeFilters > 0 && (
                 <button onClick={() => { setCanal('') }}
-                  className="w-full text-xs text-gray-400 hover:text-accent transition-colors">
+                  className="w-full text-xs text-gray-400 hover:text-accent-text transition-colors">
                   Limpiar filtros de contexto
                 </button>
               )}
@@ -601,7 +601,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
           badge={badgeVs(vData?.totalVendido ?? null, vData?.totalVendidoPrev ?? null)}
           sub="Dinero total generado antes de gastos."
           icon={
-            <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent">
+            <div className="inline-flex items-center justify-center w-10 h-10 rounded-lg bg-violet-100 dark:bg-violet-900/30 text-accent-text">
               <ShoppingCart size={20} />
             </div>
           }
@@ -683,7 +683,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         {/* Gráfico 1: El Camino de la Venta (Funnel) */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <TrendingUp size={15} className="text-accent" />
+            <TrendingUp size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">El Camino de la Venta</h3>
             <span className="ml-auto text-xs text-muted">Embudo · {periodoLabel}</span>
           </div>
@@ -706,7 +706,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
         {/* Gráfico 3: Por dónde compran (Pie canales) */}
         <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
           <div className="flex items-center gap-2 mb-4">
-            <BarChart2 size={15} className="text-accent" />
+            <BarChart2 size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">¿Por dónde compran?</h3>
             <span className="ml-auto text-xs text-muted">Canales · {periodoLabel}</span>
           </div>
@@ -748,7 +748,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       {/* Gráfico 2: Heatmap "Tus mejores momentos" */}
       <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
         <div className="flex items-center gap-2 mb-4">
-          <Clock size={15} className="text-accent" />
+          <Clock size={15} className="text-accent-text" />
           <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Tus mejores momentos</h3>
           <span className="ml-auto text-xs text-muted">Días × Horarios · {periodoLabel}</span>
         </div>
@@ -768,7 +768,7 @@ export function DashVentasArea({ section, embedded, gPeriodo, gMoneda, gCustomDe
       {insights.length > 0 && (
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <Zap size={15} className="text-accent" />
+            <Zap size={15} className="text-accent-text" />
             <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Lo que nos dicen los datos</h3>
             <span className="text-xs text-muted bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">{insights.length}</span>
           </div>

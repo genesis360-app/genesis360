@@ -37,7 +37,7 @@ export function UpgradePrompt({ feature, titulo, descripcion }: UpgradePromptPro
     <div className="flex flex-col items-center justify-center min-h-[60vh] px-4">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-8 max-w-md w-full text-center">
         <div className="inline-flex items-center justify-center w-16 h-16 bg-accent/10 rounded-2xl mb-4">
-          <Lock size={28} className="text-accent" />
+          <Lock size={28} className="text-accent-text" />
         </div>
         <h2 className="text-xl font-bold text-gray-800 dark:text-gray-100 mb-2">
           {titulo ?? defaultTitulos[feature] ?? `Disponible en plan ${planNombre}`}
@@ -46,7 +46,7 @@ export function UpgradePrompt({ feature, titulo, descripcion }: UpgradePromptPro
           {descripcion ?? defaultDescripciones[feature] ?? `Esta función requiere el plan ${planNombre} o superior.`}
         </p>
         <div className="bg-accent/5 dark:bg-accent/10 rounded-xl p-4 mb-6 text-left">
-          <p className="text-xs font-semibold text-accent uppercase tracking-wider mb-2 flex items-center gap-1.5">
+          <p className="text-xs font-semibold text-accent-text uppercase tracking-wider mb-2 flex items-center gap-1.5">
             <Zap size={12} /> Plan {planNombre}
           </p>
           {plan && plan.features.slice(0, 4).map(f => (

@@ -161,7 +161,7 @@ export default function PodFotosManager({ envioId, onPrincipalChange, readOnly =
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="text-xs px-3 py-1.5 rounded-lg border border-border-ds text-muted hover:text-accent hover:border-accent flex items-center gap-1.5 disabled:opacity-50"
+            className="text-xs px-3 py-1.5 rounded-lg border border-border-ds text-muted hover:text-accent-text hover:border-accent-text flex items-center gap-1.5 disabled:opacity-50"
           >
             {uploading ? <><Loader2 size={12} className="animate-spin" /> Subiendo…</> : <><Camera size={12} /> Agregar foto{fotos.length > 0 ? '(s)' : ''}</>}
           </button>

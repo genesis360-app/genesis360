@@ -2,7 +2,28 @@
 
 Permite agrupar múltiples SKUs que son variantes de un mismo artículo (ej: Remera S/M/L en Azul/Rojo). Cada SKU sigue siendo un producto normal con su propio stock, precio y LPNs.
 
-> [!NOTE] **No confundir con "Atributos de variante"** (`tiene_talle`/`tiene_color`/etc. en ProductoFormPage → Trazabilidad) — ese es un sistema DISTINTO donde el talle/color es un dato descriptivo **dentro del mismo SKU** (no un producto separado). Este documento cubre "Grupo de variantes" (SKU separado), que funciona bien y no se tocó. Ver [[wiki/features/atributos-variante]] (🟡 EN DEV, 2026-07-17) para el otro sistema.
+> [!NOTE] **No confundir con "Atributos de variante"** (`tiene_talle`/`tiene_color`/etc. en ProductoFormPage → Trazabilidad) — ese es un sistema DISTINTO donde el talle/color es un dato descriptivo **dentro del mismo SKU** (no un producto separado). Este documento cubre "Grupo de variantes" (SKU separado). Ver [[wiki/features/atributos-variante]] (✅ PROD rondas 1-3, 🟡 DEV ronda 4) para el otro sistema.
+
+> [!WARNING] **🐛 Bug real de duplicado + fix (2026-07-19, EN `dev` LOCAL, sin pushear, sin deploy
+> a PROD).** GO reportó que al crear el grupo "Remera Los Redondos" se le duplicó — 2 filas
+> idénticas en `producto_grupos`, una con los 9 productos-variante reales enganchados y otra vacía
+> (0 productos), creadas 5 segundos aparte. **Causa raíz (código, no adivinada):** en
+> `ProductoGrupoModal.guardarGrupo()`, la condición INSERT-vs-UPDATE era `if (isEditing &&
+> grupoId)` — pero `isEditing` es una constante derivada del prop `grupo` con el que se abrió el
+> modal (`const isEditing = !!grupo`), que **nunca cambia** dentro de la misma sesión del modal, ni
+> siquiera después de un primer guardado exitoso (que sí actualiza `grupoId` vía
+> `setGrupoId(data.id)`). Si dentro del mismo modal (sin cerrarlo) se guarda una segunda vez —
+> típicamente al clickear **"Generar variantes" más de una vez**, ya que ese flujo llama a
+> `guardarGrupo()` internamente y **NO cierra el modal** (a diferencia de "Crear grupo", que sí
+> cierra tras guardar) — la condición seguía dando `false` y hacía un INSERT nuevo en vez de un
+> UPDATE, duplicando el grupo. **Fix:** la condición pasó a `if (grupoId)` a secas (sin
+> `isEditing`) — una línea.
+>
+> **El grupo duplicado real de GO ("Remera Los Redondos") sigue sin resolver a propósito** — pedirle
+> a GO que use el botón "Eliminar grupo" (ver abajo) sobre el duplicado vacío ("0 variantes").
+> Durante las pruebas del fix, un script de test con selector ambiguo desactivó por error el grupo
+> BUENO (el de los 9 productos) en vez del vacío — detectado y revertido al toque, sin pérdida de
+> datos por ser soft-delete.
 
 ## Schema (migration 120)
 
@@ -35,8 +56,15 @@ Modal para crear/editar un grupo. Secciones:
 
 - **Botón "Grupos"** en barra de acciones → abre panel lateral (drawer) con lista de grupos y botón "Nuevo grupo".
 - **Toggle "Agrupar variantes"** (ícono Layers) junto al search bar. Alterna entre `viewMode: 'flat' | 'grouped'`.
-- **Vista agrupada**: productos sin grupo bajo "Productos individuales" (colapsable), grupos como secciones expandibles con tabla de variantes (Nombre/SKU | Variante | Precio | Stock), botón "Editar grupo".
+- **Vista agrupada**: productos sin grupo bajo "Productos individuales" (colapsable), grupos como secciones expandibles con tabla de variantes (Nombre/SKU | Variante | Precio | Stock), botones **"Editar grupo"** y **"Eliminar"**.
 - **Vista plana (default)**: badge `• Parte de "X"` bajo el nombre cuando `grupo_id` tiene valor.
+- **Eliminar grupo (2026-07-19, nuevo, EN `dev` LOCAL, sin pushear):** hasta esta sesión no existía
+  NINGUNA forma de sacar un grupo no deseado (ni en la UI ni en el código — confirmado grepeando
+  todo `src/`). Botón "Eliminar" en cada tarjeta de grupo → modal de confirmación → soft-delete
+  (`producto_grupos.activo = false`, mismo patrón que Motivos/Estados, mutación
+  `eliminarGrupoMut`). **No borra ni desvincula los productos** — quedan como productos sueltos
+  (con su `grupo_id` apuntando a un grupo inactivo), simplemente dejan de listarse agrupados en esa
+  vista. Sin migración nueva (la columna `activo` ya existía en `producto_grupos`).
 
 ### `src/pages/ProductoFormPage.tsx`
 

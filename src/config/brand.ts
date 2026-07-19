@@ -21,14 +21,14 @@ export const BTN = {
   primary:   'bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-50',
   secondary: 'border-2 border-gray-200 text-gray-600 font-semibold rounded-xl hover:bg-gray-50 transition-all disabled:opacity-50',
   danger:    'bg-red-500 hover:bg-red-600 text-white font-semibold rounded-xl transition-all disabled:opacity-50',
-  outline:   'border border-accent text-accent font-medium rounded-xl hover:bg-accent/10 transition-all',
+  outline:   'border border-accent-text text-accent-text font-medium rounded-xl hover:bg-accent/10 transition-all',
   ghost:     'hover:bg-gray-100 text-gray-600 rounded-lg transition-colors',
   sm:        'px-3 py-1.5 text-sm',
   md:        'px-4 py-2.5 text-sm',
   lg:        'px-6 py-3 text-base',
 }
 
-export const APP_VERSION = 'v1.134.0'
+export const APP_VERSION = 'v1.135.0'
 
 // Versión del texto legal (Términos y Condiciones + Política de Privacidad + Cookies).
 // Se guarda en tenants.terminos_version al aceptar en el alta (mig 249). Si el texto

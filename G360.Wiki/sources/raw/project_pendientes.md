@@ -6,7 +6,106 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📍 ARRANCÁ ACÁ (2026-07-18) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + atributos de variante, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main` · **+4 fixes/features nuevos post-`/clear`, SIN COMMITEAR (ver abajo) + mig 276 nueva SOLO en DEV**
+> ### ✅ ARRANCÁ ACÁ (2026-07-19, cierre) — **PROD = DEV = v1.134.0 (SIN CAMBIOS)** · PR #293 mergeado a `main` (`c534ddea`) · tag+release v1.134.0 · Vercel producción READY (`app.genesis360.pro` verificado 200) · migs **273-276 en DEV y PROD** · **2 commits NUEVOS en `dev` LOCAL (`1ae43343`, `f64ad9be`), NINGUNO PUSHEADO A GITHUB** (`git rev-list --left-right --count dev...origin/dev` → `2 0`) · **mig 277 aplicada SOLO en DEV**
+>
+> **GO probó los 3 flujos pedidos y autorizó el deploy completo** ("probé el 1 y el 2 y funcionan
+> bien... el 3 confirmado, se ve bien... Puedes aplicar las migs y todo lo pendiente a DEV y PRD" +
+> "te doy el OK para q subas a PRD"): traslado real desde LpnAccionesModal, ronda 3 de atributos de
+> variante, y el resumen ARCA de F3b (F3b). GO avisa que sigue probando y abre issue si encuentra algo.
+>
+> **Deployado en v1.134.0** (bundle de 2 sesiones — detalle completo en `log.md` 2026-07-18 y
+> `tests/specs/uat-modo-basico.md` §33-§37):
+> - F3b (ARCA→resumen readonly) + Atributos de variante funcionales (3 rondas, migs 273-275).
+> - 4 hallazgos de la sesión de testing cross-sucursal: estado_id del producto no se guardaba,
+>   ProductosPage sin categoría/estado/ubicación visibles, ubicaciones globales ausentes en
+>   Confirmar recepción, y el fix grande — **"Mover" LPN a otra sucursal genera un traslado real**
+>   en vez de reubicar directo (mig 276, riesgo REGLA #0 cerrado). Validado con DOS usuarios reales
+>   de sucursales distintas (specs 92/93).
+> - Validación RLS cross-sucursal con usuarios reales (spec 94).
+>
+> **Reconciliación del merge:** `dev` y `main` habían divergido por el patrón de squash-merge de
+> siempre (ver PRs anteriores) — se resolvió con `git merge origin/main` a `dev` (6 conflictos,
+> todos "dev es superconjunto", incluye `EmisoresFiscalesPanel.tsx`/`brand.ts`/wiki), tsc+build+unit
+> verdes post-merge, recién ahí el PR quedó `MERGEABLE`.
+>
+> **▶ Pendiente (no bloqueante):**
+> 1. Relevamientos sin responder: **Inventario/WMS** y **Ventas H-L** (GO + socio).
+> 2. El grupo de variantes duplicado real de GO ("Remera Los Redondos", ver bloque de abajo) sigue
+>    sin resolver a propósito — pedirle a GO que use el botón "Eliminar grupo" nuevo sobre el
+>    duplicado vacío (se identifica fácil: dice "0 variantes").
+>
+> ✅ **Resuelto 2026-07-18 (sesión separada, sin código/migración/versión):** redeploy de la EF
+> `ai-assistant` en DEV y PROD con el `knowledge.generated.ts` ya commiteado (`a99bb270`) —
+> `KNOWLEDGE_GENERATED_AT` verificado en `2026-07-18T02:18:00.520Z` en ambos ambientes, smoke
+> OPTIONS 200/POST 401 OK. Ver `log.md` ("Redeploy EF ai-assistant...").
+>
+> ✅ **Resuelto 2026-07-18 — cierra los 3 diferidos de Atributos de variante. Estado ACTUALIZADO
+> 2026-07-19: COMMITEADO en `dev` (`1ae43343`), SIN PUSHEAR A GITHUB, SIN DEPLOY A PROD** (era "sin
+> commitear" en el cierre de la entrada anterior de esta misma sesión — ya se commiteó junto con los
+> 2 fixes de UI de abajo): (1) `venta_item_despachos` ahora snapshotea talle/color/encaje/formato/
+> sabor_aroma del despacho (**mig 277 nueva, aplicada en DEV, NO en PROD** + `VentasPage.tsx`); (2)
+> `selectedLineasInfo` de `InventarioPage` (resumen de "Combinar LPNs") ahora muestra badges de
+> atributo; (3) **e2e specs 95/96/97 nuevos** cierran las 3 filas de UAT §33 que quedaban sin e2e
+> dedicado (rebaje masivo ambiguo, venta bloqueada por ambigüedad, editar LPN con atributo
+> obligatorio) — §33 pasa de 9/12 a **12/12 filas con e2e real**. Verde: tsc · build · unit 1080+5 ·
+> specs 95/96/97 estables. Ver `log.md` ("🧵 Cierra 3 diferidos de Atributos de variante...") y
+> [[wiki/features/atributos-variante]].
+>
+> ✅ **Resuelto 2026-07-19 (commit `1ae43343` + `f64ad9be`, en `dev` LOCAL, SIN PUSHEAR, SIN
+> DEPLOY) — 4 hallazgos NUEVOS de esta sesión** (GO/Fede probando la app en paralelo, después de la
+> entrada de wiki anterior — no repite lo de arriba):
+> 1. **Fix impresión de ticket/comprobante de devolución** — `window.print()` imprimía toda la
+>    pantalla (sidebar, fondo) en vez de solo el ticket; los ids `ticket-print`/`devolucion-print`
+>    ya existían pero nunca se había escrito la regla `@media print` que los usa. Nueva regla en
+>    `src/index.css` + clase `.no-print` en las barras de botones Imprimir/Email/Cerrar de ambos
+>    modales (`VentasPage.tsx`).
+> 2. **Fix sistémico de contraste dark mode** — los botones "outline" (borde+texto violeta sin
+>    relleno) casi no se veían en modo oscuro porque el violeta de marca (`#7B00FF`) es el MISMO
+>    tono en claro y oscuro. Nueva variable `--color-accent-text` (`src/index.css`, igual a
+>    `--color-accent` en claro, `139 92 246` violet-500 en `.dark`, mismo criterio ya usado solo
+>    para el scrollbar) + token Tailwind `accent-text` (`tailwind.config.js`) + migración MECÁNICA
+>    (script `perl`, no a mano) de **~1440 usos** de `text-accent`/`border-accent`/`ring-accent` →
+>    `*-accent-text` en **91 archivos** de `src/`. `bg-accent` (relleno sólido/degradé de marca) NO
+>    se tocó — ya tenía buen contraste. Verificado con captura real en DEV antes/después + build/
+>    tsc/unit/e2e verdes. **Gotcha:** `tailwind.config.js` NO hot-reload en un dev server ya
+>    corriendo — hay que reiniciarlo (`npm run dev`) para que tome un token de color nuevo (a
+>    diferencia de `.tsx`/`.css`, que sí).
+> 3. **Factura/NC: nombre + descripción del producto** — el ítem del PDF ahora muestra, debajo del
+>    `nombre` (como ya hacía), la `descripcion` del producto en gris chico **si el producto la
+>    tiene cargada** (campo ya existía en `productos`, no se usaba en facturación). Ticket e
+>    historial de venta NO cambian (solo nombre). Nuevo campo `descripcion_extra` en
+>    `FacturaPDFData['items']` (`src/lib/facturasPDF.ts`) + los 3 `SELECT` que arman
+>    `FacturaPDFData` (`VentasPage.tsx` ×2 Factura/NC, `FacturacionPage.tsx` ×1 emisión manual)
+>    piden `productos(...,descripcion)`. Render con hooks `willDrawCell`/`didDrawCell` de
+>    jspdf-autotable (no soporta 2 estilos en una celda). Un primer intento con offset a ojo quedó
+>    desalineado (GO lo detectó en la factura real) — corregido replicando el cálculo exacto de
+>    `cell.getTextPos()` + ajuste de `fontSize×(2−1.15)` de `autoTableText` interno. Verificado
+>    descargando una factura REAL de DEV (CAE real, producto "Yerba Mateico" con descripción ya
+>    cargada) y extrayendo el texto del PDF con `pdfjs-dist`.
+> 4. **🐛 Grupos de variantes — bug real de duplicado + feature "Eliminar grupo" nueva.** GO reportó
+>    que al crear el grupo "Remera Los Redondos" se le duplicó (2 filas en `producto_grupos`, una
+>    con los 9 productos reales y otra vacía, 5 segundos aparte). Causa raíz (código, no adivinada):
+>    `ProductoGrupoModal.guardarGrupo()` decidía INSERT vs UPDATE con `if (isEditing && grupoId)` —
+>    `isEditing` es una constante derivada del prop inicial que nunca cambia dentro de la sesión del
+>    modal, ni tras un primer guardado exitoso. El flujo "Generar variantes" llama a `guardarGrupo()`
+>    internamente SIN cerrar el modal (a diferencia de "Crear grupo", que sí cierra) → un segundo
+>    click hacía INSERT de nuevo. **Fix:** `if (grupoId)` a secas (1 línea). **Feature nueva:** no
+>    existía ninguna forma de eliminar un grupo (confirmado grepeando `src/`) — botón "Eliminar" en
+>    `ProductosPage.tsx` con modal de confirmación, soft-delete (`producto_grupos.activo = false`,
+>    mismo patrón que Motivos/Estados). **No borra ni desvincula productos** — quedan sueltos, solo
+>    dejan de listarse agrupados. Sin migración (columna `activo` ya existía). El grupo duplicado
+>    real de GO sigue sin resolver a propósito (un script de test con selector ambiguo casi
+>    desactiva el grupo BUENO en vez del vacío durante las pruebas — detectado y revertido al toque,
+>    sin pérdida de datos por ser soft-delete) — GO debe usar el botón nuevo él mismo sobre el
+>    duplicado vacío ("0 variantes").
+>
+> Verde acumulado de la sesión: tsc · build · unit 1080+5 · e2e specs relevantes estables. **Falta
+> para el próximo release (ambos commits juntos):** bump `APP_VERSION`, PR `dev→main`, push a
+> GitHub, aplicar mig 277 en PROD. Ver `log.md` (entrada de cierre de esta sesión) y
+> [[wiki/features/atributos-variante]] / [[wiki/features/grupos-variantes]] /
+> [[wiki/features/facturacion-afip]].
+
+> ### 📍 ESTADO ANTERIOR (2026-07-18, pre-deploy) — **PROD sigue v1.133.0 (SIN CAMBIOS)** · `dev` tiene F3b + atributos de variante, COMMITEADO Y PUSHEADO (`a99bb270`, `c559f831`, `90de330b`) · migs **273+274+275 SOLO en DEV** · nada mergeado a `main` · **+4 fixes/features nuevos post-`/clear`, SIN COMMITEAR (ver abajo) + mig 276 nueva SOLO en DEV**
 >
 > **🐛🚚 4 fixes/features nuevos esta sesión (post-`/clear`, SIN COMMITEAR)** — disparados por GO
 > pidiendo usuarios de prueba de una 2da sucursal (Sur) para testear cross-sucursal:

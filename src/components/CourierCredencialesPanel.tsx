@@ -42,7 +42,7 @@ export function CourierCredencialesPanel() {
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
       <h3 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-        <Truck size={18} className="text-accent" /> Credenciales de courier (cotización por API)
+        <Truck size={18} className="text-accent-text" /> Credenciales de courier (cotización por API)
       </h3>
       <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">
         Cargá las credenciales de API de cada courier con el que tengas contrato. Se usan para cotizar y generar envíos automáticamente. Cada negocio usa su propia cuenta.
@@ -146,7 +146,7 @@ function CourierItem({ courier, row, canEdit, tenantId, onSaved }: {
                 autoComplete="off"
                 onChange={e => setVals(v => ({ ...v, [c.key]: e.target.value }))}
                 placeholder={c.placeholder}
-                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
+                className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 disabled:bg-gray-50 dark:disabled:bg-gray-800" />
             </div>
           ))}
           <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 pt-1">

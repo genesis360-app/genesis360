@@ -677,17 +677,17 @@ export default function DashboardPage() {
       {/* ── Row 1 — Header + Area tabs ─────────────────────────────────────────── */}
       <div className="space-y-3">
         <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
-          <LayoutDashboard size={22} className="text-accent" /> {tenant?.nombre ?? 'Dashboard'}
+          <LayoutDashboard size={22} className="text-accent-text" /> {tenant?.nombre ?? 'Dashboard'}
         </h1>
 
         {/* F3 — sugerencia de modo avanzado según tipo de comercio */}
         {mostrarSugerenciaWms && (
-          <div className="flex items-start gap-3 bg-accent/5 border border-accent/30 rounded-xl px-4 py-3">
+          <div className="flex items-start gap-3 bg-accent/5 border border-accent-text/30 rounded-xl px-4 py-3">
             <span className="text-lg leading-none mt-0.5">💡</span>
             <p className="flex-1 text-sm text-gray-700 dark:text-gray-300">
               Los negocios de <strong>{tenant?.tipo_comercio}</strong> suelen necesitar trazabilidad completa
               (lotes, series, vencimientos, órdenes de compra). Podés activar el <strong>modo avanzado</strong> cuando quieras.
-              {' '}<Link to="/configuracion" className="text-accent font-medium underline">Ir a Configuración</Link>
+              {' '}<Link to="/configuracion" className="text-accent-text font-medium underline">Ir a Configuración</Link>
             </p>
             <button
               onClick={() => { localStorage.setItem(`sugerencia-wms-${tenant?.id}`, '1'); setSugerenciaWmsDismissed(true) }}
@@ -702,7 +702,7 @@ export default function DashboardPage() {
             <button key={id} onClick={() => handleSetArea(id)}
               className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-sm font-medium transition-all border
                 ${area === id
-                  ? 'bg-accent text-white border-accent shadow-sm'
+                  ? 'bg-accent text-white border-accent-text shadow-sm'
                   : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}>
               {label}
             </button>
@@ -719,7 +719,7 @@ export default function DashboardPage() {
             <button key={id} onClick={() => setSubTab(id)}
               className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-all border-b-2
                 ${subTab === id
-                  ? 'text-accent border-accent'
+                  ? 'text-accent-text border-accent-text'
                   : 'text-gray-500 dark:text-gray-400 border-transparent hover:text-gray-700 dark:hover:text-gray-300'}`}>
               {lock && <Lock size={12} className="text-gray-400" />}
               {label}
@@ -743,7 +743,7 @@ export default function DashboardPage() {
                 onClick={() => setFilterOpen(v => !v)}
                 className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-full border text-sm font-medium transition-all
                   ${filterOpen || activeFilters > 0
-                    ? 'border-accent bg-accent/5 text-accent'
+                    ? 'border-accent-text bg-accent/5 text-accent-text'
                     : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}
               >
                 <SlidersHorizontal size={14} />
@@ -780,11 +780,11 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2 mt-2 text-xs">
                         <input type="date" max={hoy} value={customDesde.split('T')[0]}
                           onChange={e => setCustomDesde(new Date(e.target.value + 'T00:00:00').toISOString())}
-                          className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent" />
+                          className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent-text" />
                         <span className="text-gray-400">→</span>
                         <input type="date" max={hoy} value={customHasta.split('T')[0]}
                           onChange={e => setCustomHasta(new Date(e.target.value + 'T23:59:59').toISOString())}
-                          className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent" />
+                          className="flex-1 border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1 bg-white dark:bg-gray-700 text-primary focus:outline-none focus:border-accent-text" />
                       </div>
                     )}
                   </div>
@@ -954,7 +954,7 @@ export default function DashboardPage() {
           {/* Lista completa de recomendaciones */}
           <div>
             <div className="flex items-center gap-2 mb-3">
-              <Zap size={16} className="text-accent" />
+              <Zap size={16} className="text-accent-text" />
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">
                 {recomendaciones.length} insight{recomendaciones.length !== 1 ? 's' : ''} detectado{recomendaciones.length !== 1 ? 's' : ''}
               </h2>
@@ -977,12 +977,12 @@ export default function DashboardPage() {
                         <div className="mt-2.5">
                           {r.link === '/metricas' ? (
                             <button onClick={() => setSubTab('metricas')}
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary transition-colors">
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-accent-text hover:text-primary transition-colors">
                               {r.accion} <ChevronRight size={12} />
                             </button>
                           ) : (
                             <Link to={r.link}
-                              className="inline-flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary transition-colors">
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-accent-text hover:text-primary transition-colors">
                               {r.accion} <ChevronRight size={12} />
                             </Link>
                           )}
@@ -1066,7 +1066,7 @@ export default function DashboardPage() {
             <div className="grid lg:grid-cols-2 gap-4">
               <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
-                  <Activity size={16} className="text-accent" />
+                  <Activity size={16} className="text-accent-text" />
                   <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">La Balanza</h3>
                   <span className="ml-auto text-xs text-muted">Ventas vs Gastos · {labelPeriodo(periodo)}</span>
                 </div>
@@ -1074,7 +1074,7 @@ export default function DashboardPage() {
               </div>
               <div className="bg-surface border border-border-ds rounded-xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
-                  <DollarSign size={16} className="text-accent" />
+                  <DollarSign size={16} className="text-accent-text" />
                   <h3 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">El Mix de Caja</h3>
                   <span className="ml-auto text-xs text-muted">Origen de fondos · {labelPeriodo(periodo)}</span>
                 </div>
@@ -1102,7 +1102,7 @@ export default function DashboardPage() {
       {area === 'todo' && subTab === 'metricas' && (!limits || limits.puede_metricas) && fugasData.length > 0 && (
         <div className="bg-surface border border-border-ds rounded-xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-border-ds flex items-center gap-2">
-            <ShoppingCart size={16} className="text-accent" />
+            <ShoppingCart size={16} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 text-sm">Fugas y Movimientos</h2>
             <span className="ml-auto text-xs text-muted">Top 8 por monto · {labelPeriodo(periodo)}</span>
           </div>
@@ -1176,7 +1176,7 @@ export default function DashboardPage() {
               {(stats?.prodsInactivos?.length ?? 0) > 10 && (
                 <div className="px-5 py-2 text-xs text-gray-400 dark:text-gray-400 text-center">
                   +{(stats?.prodsInactivos?.length ?? 0) - 10} más —{' '}
-                  <button onClick={() => setSubTab('metricas')} className="text-accent hover:underline">Ver en Métricas</button>
+                  <button onClick={() => setSubTab('metricas')} className="text-accent-text hover:underline">Ver en Métricas</button>
                 </div>
               )}
             </div>
@@ -1190,10 +1190,10 @@ export default function DashboardPage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Zap size={16} className="text-accent" />
+            <Zap size={16} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Lo que necesitás saber</h2>
           </div>
-          <Link to="/recomendaciones" className="text-xs text-accent hover:underline">Ver todas →</Link>
+          <Link to="/recomendaciones" className="text-xs text-accent-text hover:underline">Ver todas →</Link>
         </div>
         <div className="space-y-2">
           {insights.map((insight, i) => {
@@ -1214,12 +1214,12 @@ export default function DashboardPage() {
                 </div>
                 {insight.link === '/metricas' ? (
                   <button onClick={() => setSubTab('metricas')}
-                    className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors">
+                    className="flex items-center gap-1 text-xs font-semibold text-accent-text hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors">
                     {insight.accion} <ChevronRight size={13} />
                   </button>
                 ) : (
                   <Link to={insight.link}
-                    className="flex items-center gap-1 text-xs font-semibold text-accent hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors">
+                    className="flex items-center gap-1 text-xs font-semibold text-accent-text hover:text-primary whitespace-nowrap flex-shrink-0 transition-colors">
                     {insight.accion} <ChevronRight size={13} />
                   </Link>
                 )}
@@ -1336,9 +1336,9 @@ export default function DashboardPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
-              <ShoppingCart size={16} className="text-accent" /> Top productos este mes
+              <ShoppingCart size={16} className="text-accent-text" /> Top productos este mes
             </h2>
-            <button onClick={() => setSubTab('metricas')} className="text-xs text-accent hover:underline">Ver más →</button>
+            <button onClick={() => setSubTab('metricas')} className="text-xs text-accent-text hover:underline">Ver más →</button>
           </div>
           {topProductos.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-400 py-4 text-center">Sin ventas este mes</p>
@@ -1363,7 +1363,7 @@ export default function DashboardPage() {
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm dark:shadow-gray-900">
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Movimientos recientes</h2>
-            <Link to="/inventario" className="text-xs text-accent hover:underline">Ver todos →</Link>
+            <Link to="/inventario" className="text-xs text-accent-text hover:underline">Ver todos →</Link>
           </div>
           {movRecientes.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-400 py-4 text-center">Sin movimientos aún</p>

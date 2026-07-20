@@ -16,8 +16,12 @@ import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
 import toast from 'react-hot-toast'
 import type { ProductoEstructura } from '@/lib/supabase'
+import { cadenaConversion, nombreUdm } from '@/lib/estructuras'
 
 type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar' | 'estructura'
+
+const nivelesDe = (e: ProductoEstructura) =>
+  [...(e.producto_estructura_niveles ?? [])].sort((a, b) => a.orden - b.orden)
 
 interface Props {
   linea: any
@@ -126,7 +130,8 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     queryKey: ['producto-estructuras', producto.id],
     queryFn: async () => {
       const { data } = await supabase.from('producto_estructuras')
-        .select('*').eq('producto_id', producto.id).order('is_default', { ascending: false }).order('nombre')
+        .select('*, producto_estructura_niveles(*, unidades_medida(nombre, simbolo))')
+        .eq('producto_id', producto.id).order('is_default', { ascending: false }).order('nombre')
       return (data ?? []) as ProductoEstructura[]
     },
     enabled: !!tenant,
@@ -962,26 +967,15 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                               {isCurrent && <span className="text-xs text-accent-text font-semibold">✓ Seleccionada</span>}
                             </div>
                             <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-0.5">
-                              {e.unidades_por_caja && (
-                                <span className="text-xs text-gray-400 dark:text-gray-500">
-                                  {e.unidades_por_caja} u/caja
+                              <span className="text-xs text-gray-400 dark:text-gray-500">
+                                {cadenaConversion(nivelesDe(e))}
+                              </span>
+                              {nivelesDe(e).filter(n => n.peso_kg != null || n.alto_cm != null).map(n => (
+                                <span key={n.id} className="text-xs text-gray-400 dark:text-gray-500">
+                                  {nombreUdm(n)}:{n.peso_kg != null ? ` ${n.peso_kg} kg` : ''}
+                                  {n.alto_cm != null ? ` ${n.alto_cm}×${n.ancho_cm ?? '—'}×${n.largo_cm ?? '—'} cm` : ''}
                                 </span>
-                              )}
-                              {e.cajas_por_pallet && (
-                                <span className="text-xs text-gray-400 dark:text-gray-500">
-                                  {e.cajas_por_pallet} cajas/pallet
-                                </span>
-                              )}
-                              {e.peso_unidad && (
-                                <span className="text-xs text-gray-400 dark:text-gray-500">
-                                  {e.peso_unidad} kg/u
-                                </span>
-                              )}
-                              {e.alto_caja && e.ancho_caja && e.largo_caja && (
-                                <span className="text-xs text-gray-400 dark:text-gray-500">
-                                  Caja: {e.alto_caja}×{e.ancho_caja}×{e.largo_caja} cm
-                                </span>
-                              )}
+                              ))}
                             </div>
                           </button>
                         )

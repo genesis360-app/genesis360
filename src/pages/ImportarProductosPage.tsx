@@ -314,6 +314,11 @@ export default function ImportarProductosPage() {
     setImportandoProd(true)
     let creados = 0, actualizados = 0, errores = 0
 
+    // UdM predefinidas del tenant — las columnas estr_* del CSV mapean a Unidad/Caja/Pallet (mig 282)
+    const { data: udmRows } = await supabase.from('unidades_medida')
+      .select('id, nombre').eq('tenant_id', tenant!.id).in('nombre', ['Unidad', 'Caja', 'Pallet'])
+    const udmId = (nombre: string) => (udmRows ?? []).find(u => u.nombre === nombre)?.id as string | undefined
+
     for (const fila of filasProducto.filter(f => {
       if (f.errores.length > 0) return false
       if (f.estado === 'nuevo' && modo === 'actualizar') return false
@@ -372,32 +377,52 @@ export default function ImportarProductosPage() {
         }
 
         if (hasEstr && productoId) {
-          const estrPayload = {
-            tenant_id: tenant!.id,
-            producto_id: productoId,
-            nombre: fila.estr_nombre ?? 'Default',
-            is_default: true,
-            unidades_por_caja: fila.estr_unidades_por_caja ?? null,
-            cajas_por_pallet:  fila.estr_cajas_por_pallet ?? null,
-            peso_unidad:  fila.estr_peso_unidad  ?? null,
-            alto_unidad:  fila.estr_alto_unidad  ?? null,
-            ancho_unidad: fila.estr_ancho_unidad ?? null,
-            largo_unidad: fila.estr_largo_unidad ?? null,
-            peso_caja:    fila.estr_peso_caja    ?? null,
-            alto_caja:    fila.estr_alto_caja    ?? null,
-            ancho_caja:   fila.estr_ancho_caja   ?? null,
-            largo_caja:   fila.estr_largo_caja   ?? null,
-            peso_pallet:  fila.estr_peso_pallet  ?? null,
-            alto_pallet:  fila.estr_alto_pallet  ?? null,
-            ancho_pallet: fila.estr_ancho_pallet ?? null,
-            largo_pallet: fila.estr_largo_pallet ?? null,
+          // Niveles dinámicos (mig 282): Unidad base siempre; Caja/Pallet si el CSV trae datos
+          const niveles: any[] = [{
+            unidad_medida_id: udmId('Unidad'),
+            factor: 1,
+            peso_kg: fila.estr_peso_unidad  ?? null,
+            alto_cm: fila.estr_alto_unidad  ?? null,
+            ancho_cm: fila.estr_ancho_unidad ?? null,
+            largo_cm: fila.estr_largo_unidad ?? null,
+          }]
+          if (fila.estr_unidades_por_caja || fila.estr_peso_caja || fila.estr_alto_caja) {
+            niveles.push({
+              unidad_medida_id: udmId('Caja'),
+              factor: fila.estr_unidades_por_caja ?? 1,
+              peso_kg: fila.estr_peso_caja  ?? null,
+              alto_cm: fila.estr_alto_caja  ?? null,
+              ancho_cm: fila.estr_ancho_caja ?? null,
+              largo_cm: fila.estr_largo_caja ?? null,
+            })
           }
+          if (fila.estr_cajas_por_pallet || fila.estr_peso_pallet || fila.estr_alto_pallet) {
+            niveles.push({
+              unidad_medida_id: udmId('Pallet'),
+              factor: fila.estr_cajas_por_pallet ?? 1,
+              peso_kg: fila.estr_peso_pallet  ?? null,
+              alto_cm: fila.estr_alto_pallet  ?? null,
+              ancho_cm: fila.estr_ancho_pallet ?? null,
+              largo_cm: fila.estr_largo_pallet ?? null,
+            })
+          }
+
+          const nombreEstr = fila.estr_nombre ?? 'Default'
           const { data: estrExisting } = await supabase.from('producto_estructuras').select('id').eq('producto_id', productoId).eq('is_default', true).maybeSingle()
-          if (estrExisting) {
-            await supabase.from('producto_estructuras').update(estrPayload).eq('id', estrExisting.id)
+          let estrId = estrExisting?.id as string | undefined
+          if (estrId) {
+            await supabase.from('producto_estructuras').update({ nombre: nombreEstr }).eq('id', estrId)
           } else {
-            await supabase.from('producto_estructuras').insert(estrPayload)
+            estrId = crypto.randomUUID()
+            await supabase.from('producto_estructuras').insert({
+              id: estrId, tenant_id: tenant!.id, producto_id: productoId,
+              nombre: nombreEstr, is_default: true,
+            })
           }
+          const { error: eNiveles } = await supabase.rpc('fn_estructura_guardar_niveles', {
+            p_estructura_id: estrId, p_niveles: niveles,
+          })
+          if (eNiveles) throw eNiveles
         }
       } catch { errores++ }
     }

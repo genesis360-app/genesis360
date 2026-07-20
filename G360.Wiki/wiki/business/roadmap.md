@@ -3,7 +3,7 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-05-29
+updated: 2026-07-19
 ---
 
 # Roadmap y Versiones
@@ -12,6 +12,15 @@ updated: 2026-05-29
 **Última actualización:** 19 de Julio, 2026
 
 ---
+
+## v1.137.0 — 📦 Estructuras con niveles dinámicos por UdM (Fase 1 footprint estilo Blue Yonder) — 🟡 DEV (2026-07-19)
+
+Migs **282-283 SOLO en DEV**. Modelo nuevo `producto_estructura_niveles` (N niveles por
+estructura, cada uno una UdM del tenant, factor vs nivel anterior, `unidades_base`
+server-side vía RPC transaccional) + Pallet predefinida + backfill del modelo viejo (columnas
+fijas deprecadas). Tab Estructura reescrito, LpnAccionesModal, importador CSV vía RPC. unit
+1151 · e2e 99 · UAT §39. **Roadmap fases 2-5** (operar por UdM, Zonas + reglas de almacenaje,
+picking por UdM, reabastecimiento) en [[wiki/features/estructuras-udm]].
 
 ## v1.136.0 — 🛍️🗑️ Backlog Config Ventas/Envíos de Fede (9 puntos) + hard delete de productos — ✅ PROD (2026-07-19, PR #295+#296)
 

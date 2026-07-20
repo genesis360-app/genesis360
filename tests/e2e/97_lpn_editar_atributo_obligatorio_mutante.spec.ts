@@ -29,9 +29,10 @@ test.describe('LpnAccionesModal → Editar exige atributo de variante obligatori
     await expect(nombreInput).toBeVisible({ timeout: 8000 })
     await nombreInput.fill(nombreProducto)
 
-    const colorToggle = page.locator('label').filter({ hasText: 'Color' }).locator('input[type="checkbox"]')
+    // <Toggle> estándar desde v1.136: button role="switch" con aria-label, no checkbox
+    const colorToggle = page.getByRole('switch', { name: 'tiene_color' })
     await expect(colorToggle).toBeAttached({ timeout: 8000 })
-    if (!(await colorToggle.isChecked())) await colorToggle.click({ force: true })
+    if ((await colorToggle.getAttribute('aria-checked')) !== 'true') await colorToggle.click({ force: true })
 
     await page.getByRole('button', { name: /Crear producto/i }).click()
     await expect(page).toHaveURL(/\/productos$/, { timeout: 15000 }).catch(async () => {

@@ -6,7 +6,50 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-07-19, release v1.136.0) — **PR #295 MERGEADO a `main` (`82907baf`) + tag/release v1.136.0** · migs **278-281 en DEV Y PROD (verificadas)** · ✅ **Vercel PRD CONFIRMADO sirviendo v1.136.0** (bundle `index-C1iD59WS.js`; el webhook del merge #295 nunca disparó — el merge del PR #296 (docs) lo re-disparó, deployment `dpl_BQRQrq3P…` target=production READY sobre `7bde1c03`)
+> ### 📦 ARRANCÁ ACÁ (2026-07-19 noche, v1.137.0 EN DEV) — Fase 1 de ESTRUCTURAS con niveles dinámicos por UdM (footprint estilo Blue Yonder) — migs **282-283 SOLO EN DEV**, sin commitear al arrancar el cierre, PROD sigue v1.136.0
+>
+> **Pedido GO:** estructuras como el pack structure/footprint de Blue Yonder — por SKU varias
+> estructuras, niveles = CUALQUIER UdM de Configuración → Unidades (no solo unidad/caja/pallet),
+> con cantidades/medidas/pesos, para después picking/almacenaje por UdM y reglas de almacenaje.
+> Plan de 5 fases acordado (GO eligió TODO + reabastecimiento). **Decisiones tomadas por GO:**
+> factor vs NIVEL ANTERIOR (estilo BY) · crear ZONAS/Áreas (entidad nueva) · reglas de almacenaje
+> SUGIEREN (no bloquean). **Esta sesión ejecutó la Fase 1 completa.**
+>
+> **Qué hay hecho (v1.137.0):**
+> 1. **Mig 282**: `producto_estructura_niveles` (orden 1=base, `factor` INT ≥1 vs nivel anterior,
+>    `unidades_base` BIGINT **calculada server-side**, peso/dims opcionales, RLS tenant) + RPC
+>    transaccional `fn_estructura_guardar_niveles` (SECURITY INVOKER; única puerta de escritura,
+>    valida factores/UdM y recalcula — REGLA #0) + **Pallet** predefinida (seed
+>    `fn_seed_tenant_defaults` + backfill) + backfill columnas fijas → niveles (deprecadas, drop
+>    en mig futura post-verificación PROD).
+> 2. **Mig 283**: fix del backfill — estructuras del importador CSV (conversión SIN dims)
+>    quedaban sin nivel Caja/Pallet con el criterio "peso+alto"; reconstruidas (66→119 niveles,
+>    0 conversiones perdidas, verificado).
+> 3. **Frontend**: tab Estructura reescrito (niveles dinámicos, equivalencia viva) ·
+>    LpnAccionesModal · importador CSV vía RPC · `src/lib/estructuras.ts` (lógica pura).
+> 4. **Verde**: tsc · build · unit **1151** (22 nuevos `estructuras.test.ts`) · **e2e 99 NUEVO**
+>    (UI completa + DB verifica `unidades_base` server-side + RPC directa factor 0 → 400 con
+>    niveles intactos) · regresión = suite completa (241 passed · 32 skipped) · **UAT §39**.
+>    `APP_VERSION` = v1.137.0. **Hallazgo de regresión:** specs 89/95/96/97 estaban ROTOS desde
+>    v1.136 (la migración de toggles a `<Toggle>` cambió checkbox → `button role="switch"` y la
+>    regresión de ese release solo corrió 02-19) — selectores corregidos en esta sesión.
+> 5. **Wiki**: página NUEVA `wiki/features/estructuras-udm.md` (modelo + gotchas + roadmap fases)
+>    · wms/productos/configuracion/inventario-stock/index/migraciones · **app-reference.md TOCADO
+>    → al deployar: `npm run ai:knowledge` + redeploy EF `ai-assistant` (DEV y PROD)**.
+>
+> **▶ Pendiente inmediato:**
+> 1. Commit a `dev` + push + tag/release v1.137.0 (regla: release cada sesión con código).
+> 2. Deploy a PROD cuando GO lo pida: aplicar migs 282-283 en PROD (aditivas, no-op de datos) ANTES
+>    del merge, PR dev→main, verificar bundle con curl (gotcha webhook Vercel del #295).
+> 3. **Fases siguientes del plan** (detalle en `wiki/features/estructuras-udm.md`): F2 operar por
+>    UdM al ingresar stock ("5 cajas" → 60 unidades, UdM trazada en LPN) · F3 Zonas + reglas de
+>    almacenaje por UdM con sugerencia editable · F4 `wms_tareas` + picking por UdM (respeta
+>    `rebajeSort` FIFO/FEFO) · F5 reabastecimiento reserva→picking (mín/máx, sin pg_cron →
+>    on-demand + al confirmar picking). Preguntas abiertas para GO: picking ¿solo
+>    envíos/preparación o también mostrador? (recomendado: solo envíos; el POS rebaja inmediato) ·
+>    ¿OC por UdM en F2? · factores siempre enteros (¿algún caso real de fracción?).
+
+> ### 🚀 ESTADO ANTERIOR (2026-07-19, release v1.136.0) — **PR #295 MERGEADO a `main` (`82907baf`) + tag/release v1.136.0** · migs **278-281 en DEV Y PROD (verificadas)** · ✅ **Vercel PRD CONFIRMADO sirviendo v1.136.0** (bundle `index-C1iD59WS.js`; el webhook del merge #295 nunca disparó — el merge del PR #296 (docs) lo re-disparó, deployment `dpl_BQRQrq3P…` target=production READY sobre `7bde1c03`)
 >
 > **Qué entró en v1.136.0** (2 entregas, GO autorizó pipeline completo en autónomo — "haz todo
 > y lo subes directo a DEV, QA y PRD"):

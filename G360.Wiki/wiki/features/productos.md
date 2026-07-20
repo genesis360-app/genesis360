@@ -197,21 +197,24 @@ Patrón idéntico a `producto_stock_minimo_sucursal` (migration 052).
 
 ---
 
-## Unidades de medida personalizables (migration 119 · ISS-120)
+## Unidades de medida personalizables (migration 119 · ISS-120 · conectadas a estructuras en 282)
 
 ```sql
 unidades_medida(
   tenant_id UUID,
   nombre TEXT,      -- ej: "Docena"
   simbolo TEXT,     -- ej: "doc"
-  activo BOOLEAN
+  activo BOOLEAN,
+  predefinida BOOLEAN  -- mig 148; seed: Unidad/Kilogramo/Gramo/Litro/Metro/Caja + Pallet (282)
 )
 RLS: tenant isolation
 ```
 
 - CRUD en `ConfigPage` → tab "Unidades"
 - En `ProductoFormPage`: selector UdM con `<optgroup label="Predefinidas">` y `<optgroup label="Personalizadas">`
-- Predefinidas: Unidad, Kg, g, L, ml, m, cm, caja, pack (hardcodeadas en UI)
+- **Desde mig 282 toda UdM del tenant es elegible como NIVEL de una estructura de producto**
+  (footprints con conversión caja/pallet/etc.) — ver [[wiki/features/estructuras-udm]]. Antes
+  eran solo una etiqueta de texto en `productos.unidad_medida`.
 
 ---
 

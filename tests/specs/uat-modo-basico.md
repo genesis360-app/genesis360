@@ -1339,3 +1339,27 @@ write-only desde su creación).
 
 **Verde:** tsc · build · unit **1129** (64 nuevos) · e2e 98 (3/3 mutantes) + regresión 29/29
 (specs 02/04/06/08/10/19). Migs 279-281 aplicadas en DEV.
+
+## 📦 §39 — Estructuras con niveles dinámicos por UdM (Fase 1 footprint, migs 282-283) — 2026-07-19
+
+**Contexto:** GO pidió que las estructuras funcionen como el "pack structure / footprint" de Blue
+Yonder: varias estructuras por SKU (ya existía vía `is_default`) pero con niveles DINÁMICOS — antes
+unidad/caja/pallet eran columnas fijas de `producto_estructuras` y las `unidades_medida` del tenant
+(mig 119) no se conectaban con nada. Ahora cada nivel es una fila (`producto_estructura_niveles`)
+que apunta a una UdM del tenant, con factor de conversión **contra el nivel anterior** (caja = 12
+unidades, pallet = 40 cajas) y peso/dims propios. Es la Fase 1 del plan (siguen: operar por UdM al
+ingresar, zonas + reglas de almacenaje, picking por UdM, reabastecimiento).
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Crear estructura de 3 niveles** (Unidad base → Caja ×12 → Pallet ×40) | El modal preselecciona la UdM base según `productos.unidad_medida` · sugiere Caja/Pallet al agregar niveles · muestra la equivalencia viva "= 480 × Unidad" · la card muestra la cadena completa | **e2e 99** (flujo UI completo) |
+| 2 | **`unidades_base` la calcula el SERVER** | El cliente solo manda factores; la RPC `fn_estructura_guardar_niveles` recalcula el producto acumulado (1/12/480) — verificado leyendo la DB por REST, no la UI | **e2e 99** (aserción en DB) |
+| 3 | **Guard server-side de factores** (REGLA #0: conversiones exactas) | Llamar la RPC directo por REST con factor 0 → 400 · factores no enteros → rechazo · y por ser transaccional los niveles anteriores quedan INTACTOS (no borra-y-falla) | **e2e 99** (RPC directa bypasseando la UI) |
+| 4 | **Validación UI espejo** | Factor vacío/no entero/repetir UdM/nivel sin UdM → mensaje exacto sin submit (los no enteros además los frena la validación nativa `step="1"`) | unit `estructuras.test.ts` (22) + e2e 99 |
+| 5 | **Backfill de estructuras viejas** | 57 estructuras DEV → niveles equivalentes (Pack 6: Unidad/Caja ×6/Pallet ×27 = 162 ✓) · **gotcha cazado**: las creadas por el importador CSV tenían conversión SIN dims y el criterio "peso+alto" de la 282 las dejaba sin nivel Caja/Pallet → mig 283 las reconstruye (0 conversiones perdidas, verificado por query) | queries en DEV post-mig |
+| 6 | **UdM "Pallet" predefinida** | Seed de tenant nuevo (`fn_seed_tenant_defaults`, SECURITY DEFINER por gotcha mig 166) + backfill a los 10 tenants DEV | query `unidades_medida` |
+| 7 | **Consumers actualizados** | LpnAccionesModal (chips desde niveles) · Recepciones/Inventario (solo usan id/nombre/default — sin cambios) · Importador CSV escribe niveles vía RPC (columnas `estr_*` del CSV sin cambios) | tsc + e2e 97 (regresión LpnAccionesModal) |
+
+**Verde:** tsc · build · unit **1151** (22 nuevos) · e2e 99 (nuevo) + regresión. Migs 282-283
+aplicadas en DEV. Columnas fijas viejas de `producto_estructuras` quedan DEPRECADAS (drop en
+migración de limpieza futura, post-verificación en PROD).

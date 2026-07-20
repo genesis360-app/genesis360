@@ -22,214 +22,104 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import type { ProductoEstructura } from '@/lib/supabase'
+import {
+  validarNiveles, nivelesAPayload, calcularUnidadesBase, cadenaConversion, nombreUdm,
+  type NivelForm,
+} from '@/lib/estructuras'
 import ProductoGrupoModal, { type ProductoGrupo } from '@/components/ProductoGrupoModal'
 
 type Tab = 'productos' | 'estructura'
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers / tipos del formulario de estructura (niveles dinámicos, mig 282) ──
 
-function nivelActivo(e: ProductoEstructura, nivel: 'unidad' | 'caja' | 'pallet'): boolean {
-  if (nivel === 'unidad') return e.peso_unidad != null && e.alto_unidad != null
-  if (nivel === 'caja')   return e.peso_caja   != null && e.alto_caja   != null
-  return e.peso_pallet != null && e.alto_pallet != null
-}
-
-function fmt(v: number | null | undefined, unit: string) {
-  if (v == null) return null
-  return `${v} ${unit}`
-}
-
-// ─── Tipos del formulario ────────────────────────────────────────────────────
-
-type NivelForm = {
-  activo: boolean
-  peso: string; alto: string; ancho: string; largo: string
-}
-type CajaForm  = NivelForm & { unidades_por_caja: string }
-type PalletForm = NivelForm & { cajas_por_pallet: string }
+type UdmOption = { id: string; nombre: string; simbolo: string | null }
 
 type EstrForm = {
   nombre: string
-  unidad: NivelForm
-  caja: CajaForm
-  pallet: PalletForm
+  niveles: NivelForm[]
 }
 
-const nivelVacio = (): NivelForm => ({ activo: false, peso: '', alto: '', ancho: '', largo: '' })
-const formVacio = (): EstrForm => ({
-  nombre: '',
-  unidad: nivelVacio(),
-  caja:   { ...nivelVacio(), unidades_por_caja: '' },
-  pallet: { ...nivelVacio(), cajas_por_pallet: '' },
-})
+const nivelFormVacio = (udmId = ''): NivelForm =>
+  ({ unidad_medida_id: udmId, factor: '', peso: '', alto: '', ancho: '', largo: '' })
 
 function formDesdeEstructura(e: ProductoEstructura): EstrForm {
-  return {
-    nombre: e.nombre,
-    unidad: {
-      activo: nivelActivo(e, 'unidad'),
-      peso:  String(e.peso_unidad  ?? ''),
-      alto:  String(e.alto_unidad  ?? ''),
-      ancho: String(e.ancho_unidad ?? ''),
-      largo: String(e.largo_unidad ?? ''),
-    },
-    caja: {
-      activo: nivelActivo(e, 'caja'),
-      unidades_por_caja: String(e.unidades_por_caja ?? ''),
-      peso:  String(e.peso_caja  ?? ''),
-      alto:  String(e.alto_caja  ?? ''),
-      ancho: String(e.ancho_caja ?? ''),
-      largo: String(e.largo_caja ?? ''),
-    },
-    pallet: {
-      activo: nivelActivo(e, 'pallet'),
-      cajas_por_pallet: String(e.cajas_por_pallet ?? ''),
-      peso:  String(e.peso_pallet  ?? ''),
-      alto:  String(e.alto_pallet  ?? ''),
-      ancho: String(e.ancho_pallet ?? ''),
-      largo: String(e.largo_pallet ?? ''),
-    },
-  }
+  const niveles = nivelesOrdenados(e).map(n => ({
+    unidad_medida_id: n.unidad_medida_id,
+    factor: String(n.factor),
+    peso:  n.peso_kg  != null ? String(n.peso_kg)  : '',
+    alto:  n.alto_cm  != null ? String(n.alto_cm)  : '',
+    ancho: n.ancho_cm != null ? String(n.ancho_cm) : '',
+    largo: n.largo_cm != null ? String(n.largo_cm) : '',
+  }))
+  return { nombre: e.nombre, niveles: niveles.length ? niveles : [nivelFormVacio()] }
+}
+
+function nivelesOrdenados(e: ProductoEstructura) {
+  return [...(e.producto_estructura_niveles ?? [])].sort((a, b) => a.orden - b.orden)
 }
 
 function validarForm(f: EstrForm): string | null {
   if (!f.nombre.trim()) return 'El nombre es obligatorio.'
-  const activados = [f.unidad.activo, f.caja.activo, f.pallet.activo].filter(Boolean).length
-  if (activados < 2) return 'Debés activar al menos 2 niveles (Unidad, Caja o Pallet).'
-
-  const checkNivel = (n: NivelForm, label: string): string | null => {
-    if (!n.activo) return null
-    if (!n.peso  || +n.peso  <= 0) return `${label}: ingresá el peso.`
-    if (!n.alto  || +n.alto  <= 0) return `${label}: ingresá el alto.`
-    if (!n.ancho || +n.ancho <= 0) return `${label}: ingresá el ancho.`
-    if (!n.largo || +n.largo <= 0) return `${label}: ingresá el largo.`
-    return null
-  }
-
-  if (f.caja.activo && (!f.caja.unidades_por_caja || +f.caja.unidades_por_caja <= 0))
-    return 'Caja: ingresá las unidades por caja.'
-  if (f.pallet.activo && (!f.pallet.cajas_por_pallet || +f.pallet.cajas_por_pallet <= 0))
-    return 'Pallet: ingresá las cajas por pallet.'
-
-  return (
-    checkNivel(f.unidad, 'Unidad') ||
-    checkNivel(f.caja,   'Caja')   ||
-    checkNivel(f.pallet, 'Pallet')
-  )
+  return validarNiveles(f.niveles)
 }
 
-function buildRecord(f: EstrForm, tenantId: string, productoId: string, isDefault: boolean) {
-  return {
-    tenant_id:  tenantId,
-    producto_id: productoId,
-    nombre:     f.nombre.trim(),
-    is_default: isDefault,
-    unidades_por_caja: f.caja.activo   ? +f.caja.unidades_por_caja   : null,
-    cajas_por_pallet:  f.pallet.activo ? +f.pallet.cajas_por_pallet  : null,
-    peso_unidad:  f.unidad.activo ? +f.unidad.peso  : null,
-    alto_unidad:  f.unidad.activo ? +f.unidad.alto  : null,
-    ancho_unidad: f.unidad.activo ? +f.unidad.ancho : null,
-    largo_unidad: f.unidad.activo ? +f.unidad.largo : null,
-    peso_caja:  f.caja.activo ? +f.caja.peso  : null,
-    alto_caja:  f.caja.activo ? +f.caja.alto  : null,
-    ancho_caja: f.caja.activo ? +f.caja.ancho : null,
-    largo_caja: f.caja.activo ? +f.caja.largo : null,
-    peso_pallet:  f.pallet.activo ? +f.pallet.peso  : null,
-    alto_pallet:  f.pallet.activo ? +f.pallet.alto  : null,
-    ancho_pallet: f.pallet.activo ? +f.pallet.ancho : null,
-    largo_pallet: f.pallet.activo ? +f.pallet.largo : null,
-  }
-}
-
-// ─── Sub-componentes ─────────────────────────────────────────────────────────
-
-function NivelSection({
-  label,
-  nivel,
-  onChange,
-  extra,
-}: {
-  label: string
-  nivel: NivelForm
-  onChange: (v: Partial<NivelForm>) => void
-  extra?: React.ReactNode
-}) {
-  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text'
-
-  return (
-    <div className={`rounded-xl border-2 transition-colors ${nivel.activo ? 'border-accent-text/40 bg-accent/5 dark:bg-accent/10' : 'border-gray-200 dark:border-gray-700'}`}>
-      <button type="button"
-        onClick={() => onChange({ activo: !nivel.activo })}
-        className="w-full flex items-center justify-between px-4 py-3">
-        <span className={`font-medium text-sm ${nivel.activo ? 'text-accent-text' : 'text-gray-600 dark:text-gray-400'}`}>
-          {label}
-        </span>
-        <span className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
-          ${nivel.activo ? 'bg-accent border-accent-text' : 'border-gray-300 dark:border-gray-600'}`}>
-          {nivel.activo && <span className="text-white text-xs font-bold">✓</span>}
-        </span>
-      </button>
-
-      {nivel.activo && (
-        <div className="px-4 pb-4 space-y-3">
-          {extra}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Peso (kg) *</label>
-              <input type="number" step="0.001" min="0" value={nivel.peso}
-                onChange={e => onChange({ peso: e.target.value })}
-                onWheel={e => e.currentTarget.blur()}
-                className={inp} placeholder="0.000" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Alto (cm) *</label>
-              <input type="number" step="0.01" min="0" value={nivel.alto}
-                onChange={e => onChange({ alto: e.target.value })}
-                onWheel={e => e.currentTarget.blur()}
-                className={inp} placeholder="0.00" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ancho (cm) *</label>
-              <input type="number" step="0.01" min="0" value={nivel.ancho}
-                onChange={e => onChange({ ancho: e.target.value })}
-                onWheel={e => e.currentTarget.blur()}
-                className={inp} placeholder="0.00" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Largo (cm) *</label>
-              <input type="number" step="0.01" min="0" value={nivel.largo}
-                onChange={e => onChange({ largo: e.target.value })}
-                onWheel={e => e.currentTarget.blur()}
-                className={inp} placeholder="0.00" />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Modal de formulario ──────────────────────────────────────────────────────
+// ─── Modal de formulario (niveles dinámicos por UdM) ─────────────────────────
 
 function EstrModal({
   editando,
+  unidades,
+  baseUdmNombre,
   onClose,
   onSave,
   saving,
 }: {
   editando: ProductoEstructura | null
+  unidades: UdmOption[]
+  /** productos.unidad_medida del SKU — preselecciona la UdM base al crear */
+  baseUdmNombre?: string | null
   onClose: () => void
   onSave: (form: EstrForm) => void
   saving: boolean
 }) {
-  const [form, setForm] = useState<EstrForm>(() =>
-    editando ? formDesdeEstructura(editando) : formVacio()
-  )
+  const [form, setForm] = useState<EstrForm>(() => {
+    if (editando) return formDesdeEstructura(editando)
+    const base =
+      unidades.find(u => u.nombre.toLowerCase() === (baseUdmNombre ?? '').toLowerCase()) ??
+      unidades.find(u => u.nombre === 'Unidad') ?? unidades[0]
+    return { nombre: '', niveles: [nivelFormVacio(base?.id)] }
+  })
   const [error, setError] = useState<string | null>(null)
 
-  const upd = (field: keyof EstrForm, val: any) => setForm(f => ({ ...f, [field]: val }))
+  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text'
 
-  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text'
+  const udmNombreDe = (id: string) => unidades.find(u => u.id === id)?.nombre ?? '—'
+  const usadas = new Set(form.niveles.map(n => n.unidad_medida_id))
+  // Equivalencia acumulada en vivo (null si algún factor todavía es inválido)
+  const equivalencias = calcularUnidadesBase(form.niveles.map((n, i) => (i === 0 ? 1 : Number(n.factor))))
+
+  const updNivel = (i: number, v: Partial<NivelForm>) =>
+    setForm(f => ({ ...f, niveles: f.niveles.map((n, j) => (j === i ? { ...n, ...v } : n)) }))
+
+  const agregarNivel = () => {
+    // Preselecciona la siguiente UdM "natural" que no esté usada (Caja → Pallet → primera libre)
+    const sugerida =
+      unidades.find(u => u.nombre === 'Caja' && !usadas.has(u.id)) ??
+      unidades.find(u => u.nombre === 'Pallet' && !usadas.has(u.id)) ??
+      unidades.find(u => !usadas.has(u.id))
+    setForm(f => ({ ...f, niveles: [...f.niveles, nivelFormVacio(sugerida?.id)] }))
+  }
+
+  const quitarNivel = (i: number) =>
+    setForm(f => ({ ...f, niveles: f.niveles.filter((_, j) => j !== i) }))
+
+  const moverNivel = (i: number, dir: -1 | 1) =>
+    setForm(f => {
+      const niveles = [...f.niveles]
+      const j = i + dir
+      if (j < 0 || j >= niveles.length) return f
+      ;[niveles[i], niveles[j]] = [niveles[j], niveles[i]]
+      return { ...f, niveles }
+    })
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -241,7 +131,7 @@ function EstrModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-lg font-bold text-primary">
             {editando ? 'Editar estructura' : 'Nueva estructura'}
@@ -258,53 +148,89 @@ function EstrModal({
               Nombre <span className="text-red-500">*</span>
             </label>
             <input type="text" value={form.nombre}
-              onChange={e => upd('nombre', e.target.value)}
-              className={inp} placeholder='Ej: "Caja 12 unidades", "Display 6 cajas"' />
+              onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+              className={inp} placeholder='Ej: "Footprint estándar", "Pack mayorista"' />
           </div>
 
-          {/* Niveles */}
+          {/* Niveles dinámicos */}
           <div className="space-y-3">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Niveles <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">(mínimo 2 requeridos)</span>
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Niveles <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">(el primero es la unidad base)</span>
+              </p>
+              <button type="button" onClick={agregarNivel}
+                disabled={usadas.size >= unidades.length}
+                className="flex items-center gap-1 text-xs font-semibold text-accent-text hover:underline disabled:opacity-40 disabled:no-underline">
+                <Plus size={13} /> Agregar nivel
+              </button>
+            </div>
 
-            <NivelSection
-              label="Unidad"
-              nivel={form.unidad}
-              onChange={v => upd('unidad', { ...form.unidad, ...v })}
-            />
-
-            <NivelSection
-              label="Caja"
-              nivel={form.caja}
-              onChange={v => upd('caja', { ...form.caja, ...v })}
-              extra={
-                <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Unidades por caja *</label>
-                  <input type="number" step="1" min="1" value={form.caja.unidades_por_caja}
-                    onChange={e => upd('caja', { ...form.caja, unidades_por_caja: e.target.value })}
-                    onWheel={e => e.currentTarget.blur()}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
-                    placeholder="12" />
+            {form.niveles.map((n, i) => (
+              <div key={i} className="rounded-xl border-2 border-gray-200 dark:border-gray-700 px-4 py-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-12 flex-shrink-0">
+                    {i === 0 ? 'BASE' : `Nivel ${i + 1}`}
+                  </span>
+                  <select value={n.unidad_medida_id}
+                    onChange={e => updNivel(i, { unidad_medida_id: e.target.value })}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
+                    <option value="">Unidad de medida…</option>
+                    {unidades.map(u => (
+                      <option key={u.id} value={u.id}
+                        disabled={u.id !== n.unidad_medida_id && usadas.has(u.id)}>
+                        {u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button type="button" onClick={() => moverNivel(i, -1)} disabled={i === 0}
+                      className="p-1 text-gray-400 hover:text-accent-text disabled:opacity-30 transition-colors" title="Subir">
+                      <ChevronUp size={15} />
+                    </button>
+                    <button type="button" onClick={() => moverNivel(i, 1)} disabled={i === form.niveles.length - 1}
+                      className="p-1 text-gray-400 hover:text-accent-text disabled:opacity-30 transition-colors" title="Bajar">
+                      <ChevronDown size={15} />
+                    </button>
+                    <button type="button" onClick={() => quitarNivel(i)} disabled={form.niveles.length === 1}
+                      className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-30 transition-colors" title="Quitar nivel">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
-              }
-            />
 
-            <NivelSection
-              label="Pallet"
-              nivel={form.pallet}
-              onChange={v => upd('pallet', { ...form.pallet, ...v })}
-              extra={
-                <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cajas por pallet *</label>
-                  <input type="number" step="1" min="1" value={form.pallet.cajas_por_pallet}
-                    onChange={e => upd('pallet', { ...form.pallet, cajas_por_pallet: e.target.value })}
-                    onWheel={e => e.currentTarget.blur()}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
-                    placeholder="40" />
+                {i > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Contiene</span>
+                    <input type="number" step="1" min="1" value={n.factor}
+                      onChange={e => updNivel(i, { factor: e.target.value })}
+                      onWheel={e => e.currentTarget.blur()}
+                      className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
+                      placeholder="12" />
+                    <span className="text-gray-500 dark:text-gray-400">
+                      × {udmNombreDe(form.niveles[i - 1].unidad_medida_id)}
+                    </span>
+                    {equivalencias && i > 1 && (
+                      <span className="text-xs text-accent-text font-medium ml-auto">
+                        = {equivalencias[i]} × {udmNombreDe(form.niveles[0].unidad_medida_id)}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {([['peso', 'Peso (kg)', '0.001'], ['alto', 'Alto (cm)', '0.01'],
+                     ['ancho', 'Ancho (cm)', '0.01'], ['largo', 'Largo (cm)', '0.01']] as const).map(([campo, label, step]) => (
+                    <div key={campo}>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+                      <input type="number" step={step} min="0" value={n[campo]}
+                        onChange={e => updNivel(i, { [campo]: e.target.value })}
+                        onWheel={e => e.currentTarget.blur()}
+                        className={inp} placeholder="—" />
+                    </div>
+                  ))}
                 </div>
-              }
-            />
+              </div>
+            ))}
           </div>
 
           {error && (
@@ -344,11 +270,7 @@ function EstrCard({
   onSetDefault: () => void
   solo: boolean
 }) {
-  const niveles: { label: string; n: 'unidad' | 'caja' | 'pallet' }[] = [
-    { label: 'Unidad', n: 'unidad' },
-    { label: 'Caja',   n: 'caja'   },
-    { label: 'Pallet', n: 'pallet' },
-  ]
+  const niveles = nivelesOrdenados(e)
 
   return (
     <div className={`bg-white dark:bg-gray-800 rounded-xl border-2 transition-colors
@@ -364,10 +286,7 @@ function EstrCard({
             )}
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            {[
-              e.unidades_por_caja  ? `${e.unidades_por_caja} u/caja`  : null,
-              e.cajas_por_pallet   ? `${e.cajas_por_pallet} c/pallet` : null,
-            ].filter(Boolean).join(' · ') || 'Sin conversiones'}
+            {cadenaConversion(niveles)}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -392,25 +311,18 @@ function EstrCard({
 
       {/* Detalle de niveles */}
       <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {niveles.map(({ label, n }) => {
-          const activo = nivelActivo(e, n)
-          if (!activo) return (
-            <div key={n} className="text-xs text-gray-300 dark:text-gray-600 italic">{label}: —</div>
-          )
-          const peso  = fmt(e[`peso_${n}`  as keyof ProductoEstructura] as number, 'kg')
-          const alto  = fmt(e[`alto_${n}`  as keyof ProductoEstructura] as number, 'cm')
-          const ancho = fmt(e[`ancho_${n}` as keyof ProductoEstructura] as number, 'cm')
-          const largo = fmt(e[`largo_${n}` as keyof ProductoEstructura] as number, 'cm')
-          return (
-            <div key={n}>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{label}</p>
-              <div className="space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
-                {peso  && <p>Peso: {peso}</p>}
-                {alto  && <p>Alto: {alto} · Ancho: {ancho} · Largo: {largo}</p>}
-              </div>
+        {niveles.map(n => (
+          <div key={n.id}>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+              {nombreUdm(n)}{n.orden === 1 && <span className="normal-case text-gray-400 dark:text-gray-500"> · base</span>}
+            </p>
+            <div className="space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
+              {n.orden > 1 && <p>{n.factor} × nivel anterior · = {n.unidades_base} × base</p>}
+              {n.peso_kg != null && <p>Peso: {n.peso_kg} kg</p>}
+              {n.alto_cm != null && <p>{n.alto_cm}×{n.ancho_cm ?? '—'}×{n.largo_cm ?? '—'} cm</p>}
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -564,7 +476,7 @@ export default function ProductosPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('producto_estructuras')
-        .select('*')
+        .select('*, producto_estructura_niveles(*, unidades_medida(nombre, simbolo))')
         .eq('tenant_id', tenant!.id)
         .eq('producto_id', expandedId!)
         .eq('is_default', true)
@@ -579,7 +491,7 @@ export default function ProductosPage() {
     queryKey: ['productos-estr-list', tenant?.id, estrSearch],
     queryFn: async () => {
       let q = supabase.from('productos')
-        .select('id, nombre, sku')
+        .select('id, nombre, sku, unidad_medida')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
@@ -596,7 +508,7 @@ export default function ProductosPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('producto_estructuras')
-        .select('*')
+        .select('*, producto_estructura_niveles(*, unidades_medida(nombre, simbolo))')
         .eq('tenant_id', tenant!.id)
         .eq('producto_id', estrProductoId!)
         .order('created_at')
@@ -604,6 +516,18 @@ export default function ProductosPage() {
       return (data ?? []) as ProductoEstructura[]
     },
     enabled: !!tenant && !!estrProductoId,
+  })
+
+  // UdM del tenant — niveles de estructura (predefinidas + personalizadas, mig 282)
+  const { data: unidadesMedida = [] } = useQuery({
+    queryKey: ['unidades_medida', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('unidades_medida')
+        .select('id, nombre, simbolo')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return (data ?? []) as UdmOption[]
+    },
+    enabled: !!tenant && tab === 'estructura',
   })
 
   const { data: proveedoresOC = [] } = useQuery({
@@ -782,30 +706,40 @@ export default function ProductosPage() {
   const crearMut = useMutation({
     mutationFn: async (form: EstrForm) => {
       const esDefault = estructuras.length === 0
-      const { error } = await supabase.from('producto_estructuras')
-        .insert(buildRecord(form, tenant!.id, estrProductoId!, esDefault))
+      // UUID en cliente: evita SELECT-after-INSERT bajo RLS
+      const id = crypto.randomUUID()
+      const { error } = await supabase.from('producto_estructuras').insert({
+        id, tenant_id: tenant!.id, producto_id: estrProductoId!,
+        nombre: form.nombre.trim(), is_default: esDefault,
+      })
       if (error) throw error
+      // Niveles vía RPC transaccional (valida y calcula unidades_base server-side)
+      const { error: eNiveles } = await supabase.rpc('fn_estructura_guardar_niveles', {
+        p_estructura_id: id, p_niveles: nivelesAPayload(form.niveles),
+      })
+      if (eNiveles) {
+        // Sin niveles la estructura queda inservible: rollback best-effort del header
+        await supabase.from('producto_estructuras').delete().eq('id', id)
+        throw eNiveles
+      }
     },
     onSuccess: () => { invalidar(); setEstrModal({ open: false, editando: null }) },
+    onError: (e: Error) => toast.error(e.message || 'No se pudo crear la estructura'),
   })
 
   const editarMut = useMutation({
     mutationFn: async ({ id, form }: { id: string; form: EstrForm }) => {
-      const { nombre, unidades_por_caja, cajas_por_pallet,
-        peso_unidad, alto_unidad, ancho_unidad, largo_unidad,
-        peso_caja, alto_caja, ancho_caja, largo_caja,
-        peso_pallet, alto_pallet, ancho_pallet, largo_pallet,
-      } = buildRecord(form, tenant!.id, estrProductoId!, false)
+      // Primero los niveles (transaccional: si falla, los anteriores quedan intactos)
+      const { error: eNiveles } = await supabase.rpc('fn_estructura_guardar_niveles', {
+        p_estructura_id: id, p_niveles: nivelesAPayload(form.niveles),
+      })
+      if (eNiveles) throw eNiveles
       const { error } = await supabase.from('producto_estructuras')
-        .update({ nombre, unidades_por_caja, cajas_por_pallet,
-          peso_unidad, alto_unidad, ancho_unidad, largo_unidad,
-          peso_caja, alto_caja, ancho_caja, largo_caja,
-          peso_pallet, alto_pallet, ancho_pallet, largo_pallet,
-        })
-        .eq('id', id)
+        .update({ nombre: form.nombre.trim() }).eq('id', id)
       if (error) throw error
     },
     onSuccess: () => { invalidar(); setEstrModal({ open: false, editando: null }) },
+    onError: (e: Error) => toast.error(e.message || 'No se pudo guardar la estructura'),
   })
 
   const eliminarMut = useMutation({
@@ -1658,23 +1592,20 @@ export default function ProductosPage() {
                               </div>
                               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{estructuraDefault.nombre}</p>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                {(['unidad', 'caja', 'pallet'] as const).map(n => {
-                                  if (!nivelActivo(estructuraDefault, n)) return null
-                                  const e = estructuraDefault
-                                  return (
-                                    <div key={n} className="bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700">
-                                      <p className="font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 text-xs">{n}</p>
-                                      {n === 'caja'   && e.unidades_por_caja  && <p className="text-gray-600 dark:text-gray-300">{e.unidades_por_caja} u/caja</p>}
-                                      {n === 'pallet' && e.cajas_por_pallet   && <p className="text-gray-600 dark:text-gray-300">{e.cajas_por_pallet} c/pallet</p>}
-                                      <p className="text-gray-600 dark:text-gray-300">
-                                        Peso: {e[`peso_${n}` as keyof ProductoEstructura]} kg
-                                      </p>
-                                      <p className="text-gray-600 dark:text-gray-300">
-                                        {e[`alto_${n}` as keyof ProductoEstructura]}×{e[`ancho_${n}` as keyof ProductoEstructura]}×{e[`largo_${n}` as keyof ProductoEstructura]} cm
-                                      </p>
-                                    </div>
-                                  )
-                                })}
+                                {nivelesOrdenados(estructuraDefault).map(n => (
+                                  <div key={n.id} className="bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700">
+                                    <p className="font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 text-xs">
+                                      {nombreUdm(n)}{n.orden === 1 ? ' · base' : ''}
+                                    </p>
+                                    {n.orden > 1 && (
+                                      <p className="text-gray-600 dark:text-gray-300">= {n.unidades_base} × base</p>
+                                    )}
+                                    {n.peso_kg != null && <p className="text-gray-600 dark:text-gray-300">Peso: {n.peso_kg} kg</p>}
+                                    {n.alto_cm != null && (
+                                      <p className="text-gray-600 dark:text-gray-300">{n.alto_cm}×{n.ancho_cm ?? '—'}×{n.largo_cm ?? '—'} cm</p>
+                                    )}
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}
@@ -2061,6 +1992,8 @@ export default function ProductosPage() {
       {estrModal.open && (
         <EstrModal
           editando={estrModal.editando}
+          unidades={unidadesMedida}
+          baseUdmNombre={(productosEstr as any[]).find(p => p.id === estrProductoId)?.unidad_medida ?? null}
           onClose={() => setEstrModal({ open: false, editando: null })}
           onSave={handleSaveModal}
           saving={saving}

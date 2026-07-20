@@ -6,6 +6,58 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-19] update | 📦 v1.137.0 — Fase 1: Estructuras con niveles dinámicos por UdM (footprints estilo Blue Yonder)
+
+**Pedido GO (sesión nueva post-/clear):** revisar la documentación existente de "estructuras",
+mejorar el feature al estilo **pack structure / footprint de Blue Yonder** (varias estructuras
+por SKU; dentro de cada una, unidad/caja/pallet Y CUALQUIER UdM creada en Configuración →
+Unidades, con cantidades, medidas y pesos, para después hacer picking/almacenaje por UdM y
+reglas de almacenaje) y documentarlo. Se armó el plan por fases, GO eligió el paquete COMPLETO
+(+ reabastecimiento reserva→picking) y decidió: factor **vs nivel anterior** (estilo BY),
+**crear Zonas/Áreas**, reglas que **sugieren** (no bloquean). Esta sesión ejecutó la **Fase 1**.
+
+**Hallazgo de partida:** la doc existía ([[wiki/features/wms]] Fase 1 mig 031 + productos.md UdM
+mig 119) pero el modelo tenía los 3 niveles HARDCODEADOS como columnas y las UdM del tenant no
+se conectaban con nada (solo etiqueta de texto). PROD tiene 0 estructuras (libertad de rediseño);
+DEV tenía 57 de prueba (migradas automático).
+
+**Implementado (v1.137.0, EN DEV — migs 282-283 aplicadas SOLO en DEV):**
+1. **Mig 282** — tabla `producto_estructura_niveles` (orden 1=base · `factor` INT ≥1 vs nivel
+   anterior · `unidades_base` = producto acumulado **calculado server-side** · peso/dims
+   opcionales >0 · UNIQUEs por orden y UdM · RLS tenant) + RPC transaccional
+   **`fn_estructura_guardar_niveles`** (SECURITY INVOKER, valida y recalcula — REGLA #0:
+   conversiones exactas, el cliente nunca manda la equivalencia) + **Pallet** como UdM
+   predefinida (seed + backfill 10 tenants) + backfill de columnas fijas → niveles. Columnas
+   viejas DEPRECADAS (drop en mig futura post-PROD).
+2. **Mig 283** — fix del backfill: las estructuras del importador CSV traían conversión SIN
+   dims y el criterio "peso+alto" las dejaba sin nivel Caja/Pallet → reconstruidas (66→119
+   niveles, 0 conversiones perdidas, verificado por query).
+3. **Frontend:** tab Estructura de `ProductosPage` reescrito (niveles dinámicos: agregar/quitar/
+   reordenar, UdM del tenant, factor "Contiene N × anterior", equivalencia viva "= 480 × base",
+   dims opcionales) · panel default del producto · `LpnAccionesModal` (cadena + chips por nivel) ·
+   importador CSV (mismas columnas `estr_*`, ahora escribe vía RPC) · `ProductoEstructura` +
+   `ProductoEstructuraNivel` en supabase.ts · lib pura **`src/lib/estructuras.ts`**.
+4. **Tests:** unit `estructuras.test.ts` (22) → suite **1151** verde · **e2e 99 nuevo**
+   (flujo UI completo + verificación en DB del cálculo server-side + RPC directa con factor 0 →
+   400 y niveles intactos) · regresión: terminó corriendo la **suite completa** (241 passed ·
+   32 skipped · 4 failed) — **las 4 fallas eran PREEXISTENTES de v1.136, no de esta entrega**:
+   los specs 89/95/96/97 (atributos de variante) buscaban `input[type="checkbox"]` en los
+   toggles de ProductoFormPage, que v1.136 migró al `<Toggle>` estándar (`button role="switch"`)
+   — y la regresión de ese release solo corrió 02-19, así que nadie lo vio. Selectores
+   corregidos a `getByRole('switch', { name: 'tiene_talle|tiene_color' })` + `aria-checked`.
+   **UAT §39**. Gotcha e2e: los inputs `step="1"` bloquean no-enteros con validación NATIVA
+   antes del submit.
+5. **Wiki:** página NUEVA [[wiki/features/estructuras-udm]] (modelo + gotchas + roadmap fases
+   2-5) · wms.md re-apuntado · productos.md/configuracion.md/inventario-stock.md ·
+   app-reference.md (⚠ requiere `npm run ai:knowledge` + redeploy EF `ai-assistant` al deployar)
+   · migraciones.md (282-283) · index.md.
+
+**▶ Fases siguientes (plan acordado, en estructuras-udm.md):** F2 operar por UdM al ingresar ·
+F3 Zonas + reglas de almacenaje (sugerencia editable) · F4 tareas WMS + picking por UdM ·
+F5 reabastecimiento. Abiertas: picking ¿solo envíos/preparación? · ¿OC por UdM? · factores enteros.
+
+---
+
 ## [2026-07-19] release | v1.136.0 — Backlog Config Ventas/Envíos de Fede (9 puntos) + hard delete de productos
 
 **PR #295 mergeado a `main` (`82907baf`) + tag/release v1.136.0 (--latest).** Migs **278-281

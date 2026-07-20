@@ -99,7 +99,7 @@ Tabs del modal según estado:
 - **Editar** — cambiar cantidad, estado, notas, LPN (si no hay reservas)
 - **Mover** — a otra ubicación o sucursal (parcial o total)
 - **Series** — gestión de números de serie individuales
-- **Estructura** — asignar estructura WMS al LPN
+- **Estructura** — asignar estructura WMS al LPN (desde v1.137.0 muestra los niveles dinámicos por UdM con su cadena de conversión — ver [[wiki/features/estructuras-udm]])
 - **Eliminar** — eliminar LPN (DEPOSITO requiere autorización)
 
 Si `cantidad_reservada > 0`: solo se muestra tab Mover + banner naranja.

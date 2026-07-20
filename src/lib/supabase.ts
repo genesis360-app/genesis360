@@ -337,22 +337,29 @@ export interface ProductoEstructura {
   producto_id: string
   nombre: string
   is_default: boolean
-  unidades_por_caja?: number | null
-  cajas_por_pallet?: number | null
-  peso_unidad?: number | null
-  alto_unidad?: number | null
-  ancho_unidad?: number | null
-  largo_unidad?: number | null
-  peso_caja?: number | null
-  alto_caja?: number | null
-  ancho_caja?: number | null
-  largo_caja?: number | null
-  peso_pallet?: number | null
-  alto_pallet?: number | null
-  ancho_pallet?: number | null
-  largo_pallet?: number | null
   created_at: string
   updated_at: string
+  // Join a niveles dinámicos (mig 282) — ordenar por `orden` client-side
+  producto_estructura_niveles?: ProductoEstructuraNivel[]
+}
+
+// Nivel dinámico de una estructura (mig 282): orden=1 es la UdM base, factor =
+// cuántos del nivel anterior contiene, unidades_base = equivalencia total en la base.
+export interface ProductoEstructuraNivel {
+  id: string
+  tenant_id: string
+  estructura_id: string
+  unidad_medida_id: string
+  orden: number
+  factor: number
+  unidades_base: number
+  peso_kg?: number | null
+  alto_cm?: number | null
+  ancho_cm?: number | null
+  largo_cm?: number | null
+  created_at: string
+  // Join
+  unidades_medida?: { nombre: string; simbolo: string | null } | null
 }
 
 export interface InventarioConteo {

@@ -1417,3 +1417,33 @@ no se confirma en silencio (el carrito se queda tal cual, sin error visible en p
 
 **Verde:** tsc · unit 1161 (10 nuevos `descuentoEstado.test.ts`) · **e2e 101 nuevo** (mutante).
 Migs 284-285 aplicadas en DEV.
+
+## 💲 §42 — Precio por Unidad de Medida en la estructura, FASE 1: modelo + ancla (backlog Fede, puntos 4/6/7, migs 286-287) — 2026-07-21
+
+**Contexto:** relevamiento dedicado con GO (mismo día, tras mapear el código real: HOY no existe
+ningún camino de venta/rebaje de stock en una UoM distinta a la base). Es el cambio de modelo más
+grande de los 7 puntos del backlog de Fede — se decidió fasearlo, mismo criterio que Estructuras
+Fase 1. **Esta entrega (Fase 1) es SOLO el modelo de datos + la carga de precio por nivel + el
+"ancla de precio" en la hoja de producto.** Vender por UoM en el POS, la interacción con combos
+(con el fix del bug de agrupamiento ya diseñado) y mostrar la UoM en el ticket/factura quedan para
+la Fase 2 — sin eso, esta entrega no cambia ningún comportamiento de venta/facturación existente.
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Precio/costo propio por nivel** (mig 286-287, `producto_estructura_niveles.precio_venta/costo`) | Nivel Caja con precio propio ($1.080) persiste TAL CUAL, no se recalcula a 12×precio_base ($1.200) | **e2e 102 nuevo** (RPC real, verificado en DB) |
+| 2 | **Nivel sin precio propio → se calcula proporcional al ANCLA, no en cadena** | Un precio "raro" cargado a mitad de camino (ej. Caja con precio propio) NO afecta el cálculo de otros niveles (ej. Pallet sigue calculándose desde el nivel anclado, nunca desde Caja) — evita efectos en cascada inesperados | unit `estructurasPrecio.test.ts` (13 casos, incluye el caso de "precio raro en el medio") |
+| 3 | **Ancla de precio en la hoja de producto** (`productos.nivel_precio_orden`, por ORDEN no por id) | Elegir "Caja" en "Estos precios corresponden a" (ProductoFormPage) relabelea los campos a "Precio de venta (por Caja)" y persiste `nivel_precio_orden=2` | **e2e 102 nuevo** |
+| 4 | **Por qué ORDEN y no FK a id** | `fn_estructura_guardar_niveles` borra y reinserta TODOS los niveles en cada guardado (ids nuevos siempre) — un FK a id se invalidaría en cada resave trivial. El orden es estable mientras no se achique la estructura por debajo de esa posición | revisión de código (mig 286, comentario largo) |
+| 5 | **Invalidación del ancla si la estructura se achica** | La RPC (287) pone `nivel_precio_orden=NULL` server-side si al guardar queda apuntando a un nivel que ya no existe — nunca queda apuntando "a la nada" | revisión de código (falta e2e dedicado del caso límite) |
+| 6 | **Aviso ANTES de borrar un nivel anclado** | `ProductosPage` (tab Estructura) muestra un `confirm()` explicando que el precio va a volver al nivel base, antes de dejar quitar un nivel — solo si el producto tiene ancla configurada y es la estructura default | revisión de código (el guard real es el de #5, esto es la UX previa) |
+
+**Verde:** tsc · build · unit **1177** (16 nuevos entre `descuentoEstado`/`estructurasPrecio`) ·
+**e2e 102 nuevo** (mutante) + regresión dirigida (02, 43, 90, 97, 99, 100) 13/13. Migs 286-287
+aplicadas en DEV.
+
+**▶ Fase 2 (sin arrancar, diseño ya cerrado en el relevamiento — ver wiki):** selector de UoM al
+vender en el POS (`venta_items.unidad_medida_id`/`cantidad_uom`, ya migrados pero sin consumidor
+todavía) · combos con UoM propia opcional (`combos.unidad_medida_id`, ya migrado) · agrupador de
+combos por `producto_id + unidad_medida_id` (fix del bug real encontrado en el relevamiento) ·
+mostrar la UoM vendida en el ticket/factura · extender el importador de productos con precio por
+nivel.

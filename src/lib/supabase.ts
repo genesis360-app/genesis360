@@ -357,6 +357,10 @@ export interface ProductoEstructuraNivel {
   alto_cm?: number | null
   ancho_cm?: number | null
   largo_cm?: number | null
+  // Precio por UoM (backlog Fede puntos 4/6/7, mig 286/287) — NULL = calculado proporcional
+  // al nivel anclado, ver precioEfectivoNivel en src/lib/estructuras.ts.
+  precio_venta?: number | null
+  precio_costo?: number | null
   created_at: string
   // Join
   unidades_medida?: { nombre: string; simbolo: string | null } | null

@@ -63,6 +63,9 @@ export default function ProductoFormPage() {
     precio_usd: '', moneda_venta: 'local',
     // ISS-174 — peso/medidas para cotizar envíos (fuente 'producto')
     peso_kg: '', largo_cm: '', ancho_cm: '', alto_cm: '',
+    // Ancla de precio por UoM (backlog Fede puntos 4/6/7) — orden del nivel de la estructura
+    // default cuyo precio_venta/costo ES precio_costo/precio_venta de este form. '' = base.
+    nivel_precio_orden: '',
   })
   const [showMarketplace, setShowMarketplace] = useState(false)
   const [showMayorista, setShowMayorista] = useState(false)
@@ -193,6 +196,21 @@ export default function ProductoFormPage() {
     enabled: isEditing && !!tenant,
   })
 
+  // Ancla de precio por UoM (backlog Fede puntos 4/6/7) — niveles de la estructura DEFAULT,
+  // para elegir a qué UoM corresponden precio_venta/precio_costo de este form.
+  const { data: estructuraDefault } = useQuery({
+    queryKey: ['estructura-default', id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_estructuras')
+        .select('id, producto_estructura_niveles(orden, unidades_base, unidades_medida(nombre, simbolo))')
+        .eq('producto_id', id!).eq('is_default', true).maybeSingle()
+      return data ?? null
+    },
+    enabled: isEditing && !!tenant,
+  })
+  const nivelesAncla = ((estructuraDefault?.producto_estructura_niveles ?? []) as any[])
+    .slice().sort((a, b) => a.orden - b.orden)
+
   const { data: stockMinimosSucursalData = [] } = useQuery({
     queryKey: ['producto-stock-minimo-sucursal', id],
     queryFn: async () => {
@@ -279,6 +297,7 @@ export default function ProductoFormPage() {
         precio_costo: productoData.precio_costo.toString(),
         precio_venta: productoData.precio_venta.toString(), stock_actual: productoData.stock_actual.toString(),
         stock_minimo: productoData.stock_minimo.toString(), unidad_medida: productoData.unidad_medida,
+        nivel_precio_orden: (productoData as any).nivel_precio_orden != null ? String((productoData as any).nivel_precio_orden) : '',
         codigo_barras: productoData.codigo_barras ?? '', activo: productoData.activo,
         tiene_series: productoData.tiene_series ?? false,
         tiene_lote: productoData.tiene_lote ?? false,
@@ -432,6 +451,9 @@ export default function ProductoFormPage() {
         estado_id: form.estado_id || null,
         precio_costo: Math.max(0, parseFloat(form.precio_costo) || 0),
         precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
+        // Ancla de precio por UoM (backlog Fede puntos 4/6/7) — orden del nivel de la
+        // estructura default al que corresponden precio_costo/precio_venta. '' = nivel base.
+        nivel_precio_orden: form.nivel_precio_orden !== '' ? parseInt(form.nivel_precio_orden) : null,
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
         peso_kg:  form.peso_kg  !== '' ? parseFloat(form.peso_kg)  : null,
@@ -569,6 +591,9 @@ export default function ProductoFormPage() {
         estado_id: form.estado_id || null,
         precio_costo: Math.max(0, parseFloat(form.precio_costo) || 0),
         precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
+        // Ancla de precio por UoM (backlog Fede puntos 4/6/7) — orden del nivel de la
+        // estructura default al que corresponden precio_costo/precio_venta. '' = nivel base.
+        nivel_precio_orden: form.nivel_precio_orden !== '' ? parseInt(form.nivel_precio_orden) : null,
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
         peso_kg:  form.peso_kg  !== '' ? parseFloat(form.peso_kg)  : null,
@@ -879,9 +904,38 @@ export default function ProductoFormPage() {
                 )}
               </div>
 
+              {/* Ancla de precio por UoM (backlog Fede puntos 4/6/7) — a qué nivel de la
+                  estructura default corresponden precio_costo/precio_venta de abajo. Solo
+                  aparece si el producto tiene una estructura con más de un nivel. */}
+              {nivelesAncla.length > 1 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Estos precios corresponden a
+                  </label>
+                  <select value={form.nivel_precio_orden} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, nivel_precio_orden: e.target.value }))}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                    {nivelesAncla.map((n: any) => (
+                      <option key={n.orden} value={n.orden === nivelesAncla[0].orden ? '' : String(n.orden)}>
+                        {n.unidades_medida?.nombre ?? '—'}{n.orden === nivelesAncla[0].orden ? ' (base)' : ` (= ${n.unidades_base} × ${nivelesAncla[0].unidades_medida?.nombre ?? '—'})`}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                    Los demás niveles de la estructura calculan su precio proporcional a este, salvo que se les cargue uno propio en la pestaña Estructura.
+                  </p>
+                </div>
+              )}
+
               {/* Precios costo + venta con toggles ARS/USD */}
               {(() => {
                 const cotizNum = cotizacionNum
+                // Nombre de la UdM anclada, para relabelear "Precio de costo/venta" (backlog
+                // Fede puntos 4/6/7) — '' en el label = nivel base, no hace falta aclarar.
+                const nivelAnclaSel = form.nivel_precio_orden !== ''
+                  ? nivelesAncla.find((n: any) => String(n.orden) === form.nivel_precio_orden)
+                  : null
+                const sufijoAncla = nivelAnclaSel ? ` (por ${nivelAnclaSel.unidades_medida?.nombre ?? '—'})` : ''
                 const toggleCosto = () => {
                   if (!usdModoCosto && cotizNum > 0)
                     setUsdInputCosto(((parseFloat(form.precio_costo) || 0) / cotizNum).toFixed(2))
@@ -897,7 +951,7 @@ export default function ProductoFormPage() {
                     {verCosto && (
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de costo</label>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de costo{sufijoAncla}</label>
                         {cotizNum > 0 && canEdit && (
                           <button type="button" onClick={toggleCosto}
                             className="text-xs text-accent-text hover:underline">
@@ -932,7 +986,7 @@ export default function ProductoFormPage() {
                     )}
                     <div>
                       <div className="flex items-center justify-between mb-1">
-                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de venta</label>
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Precio de venta{sufijoAncla}</label>
                         {cotizNum > 0 && canEdit && (
                           <button type="button" onClick={toggleVenta}
                             className="text-xs text-accent-text hover:underline">

@@ -55,7 +55,7 @@ type EstrForm = {
 }
 
 const nivelFormVacio = (udmId = ''): NivelForm =>
-  ({ unidad_medida_id: udmId, factor: '', peso: '', alto: '', ancho: '', largo: '' })
+  ({ unidad_medida_id: udmId, factor: '', peso: '', alto: '', ancho: '', largo: '', precioVenta: '', precioCosto: '' })
 
 function formDesdeEstructura(e: ProductoEstructura): EstrForm {
   const niveles = nivelesOrdenados(e).map(n => ({
@@ -65,6 +65,8 @@ function formDesdeEstructura(e: ProductoEstructura): EstrForm {
     alto:  n.alto_cm  != null ? String(n.alto_cm)  : '',
     ancho: n.ancho_cm != null ? String(n.ancho_cm) : '',
     largo: n.largo_cm != null ? String(n.largo_cm) : '',
+    precioVenta: n.precio_venta != null ? String(n.precio_venta) : '',
+    precioCosto: n.precio_costo != null ? String(n.precio_costo) : '',
   }))
   return { nombre: e.nombre, niveles: niveles.length ? niveles : [nivelFormVacio()] }
 }
@@ -84,6 +86,7 @@ function EstrModal({
   editando,
   unidades,
   baseUdmNombre,
+  tieneAnclaDePrecio,
   onClose,
   onSave,
   saving,
@@ -92,6 +95,8 @@ function EstrModal({
   unidades: UdmOption[]
   /** productos.unidad_medida del SKU — preselecciona la UdM base al crear */
   baseUdmNombre?: string | null
+  /** El producto tiene ancla de precio (nivel_precio_orden) configurada — backlog Fede 4/6/7 */
+  tieneAnclaDePrecio?: boolean
   onClose: () => void
   onSave: (form: EstrForm) => void
   saving: boolean
@@ -124,8 +129,21 @@ function EstrModal({
     setForm(f => ({ ...f, niveles: [...f.niveles, nivelFormVacio(sugerida?.id)] }))
   }
 
-  const quitarNivel = (i: number) =>
+  const quitarNivel = (i: number) => {
+    // Backlog Fede puntos 4/6/7 (REGLA #0: nunca invalidar en silencio un precio configurado
+    // a propósito) — si este producto tiene ancla de precio y es la estructura DEFAULT, avisar
+    // antes de confirmar el borrado. El server (fn_estructura_guardar_niveles) igual invalida
+    // sola el ancla si queda apuntando a un nivel que ya no existe — esto es solo el aviso previo.
+    if (tieneAnclaDePrecio && editando?.is_default) {
+      const ok = confirm(
+        'Este producto tiene un precio anclado a un nivel específico de esta estructura (ver ' +
+        '"Estos precios corresponden a" en la hoja del producto). Si el nivel que estás por ' +
+        'quitar es ese, el precio de venta va a volver a tomarse del nivel base al guardar. ¿Confirmás?',
+      )
+      if (!ok) return
+    }
     setForm(f => ({ ...f, niveles: f.niveles.filter((_, j) => j !== i) }))
+  }
 
   const moverNivel = (i: number, dir: -1 | 1) =>
     setForm(f => {
@@ -243,6 +261,35 @@ function EstrModal({
                         className={inp} placeholder="—" />
                     </div>
                   ))}
+                </div>
+
+                {/* Precio por UoM (backlog Fede puntos 4/6/7) — opcional, si no se carga se
+                    calcula proporcional al nivel anclado (ver "Ancla de precio" en la hoja del
+                    producto). El nivel BASE no lo edita acá: lo trae precio_venta/costo del
+                    producto — se muestra solo como referencia. */}
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-gray-100 dark:border-gray-700">
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Precio de venta {i === 0 && <span className="text-gray-400">(de la hoja del producto)</span>}
+                    </label>
+                    <input type="number" step="0.01" min="0" value={n.precioVenta ?? ''}
+                      disabled={i === 0}
+                      onChange={e => updNivel(i, { precioVenta: e.target.value })}
+                      onWheel={e => e.currentTarget.blur()}
+                      className={`${inp} disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400`}
+                      placeholder={i === 0 ? '—' : 'Calculado si vacío'} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Costo {i === 0 && <span className="text-gray-400">(de la hoja del producto)</span>}
+                    </label>
+                    <input type="number" step="0.01" min="0" value={n.precioCosto ?? ''}
+                      disabled={i === 0}
+                      onChange={e => updNivel(i, { precioCosto: e.target.value })}
+                      onWheel={e => e.currentTarget.blur()}
+                      className={`${inp} disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400`}
+                      placeholder={i === 0 ? '—' : 'Calculado si vacío'} />
+                  </div>
                 </div>
               </div>
             ))}
@@ -549,6 +596,18 @@ export default function ProductosPage() {
     enabled: !!tenant && tab === 'estructura',
   })
 
+  // Backlog Fede puntos 4/6/7 — para avisar antes de borrar un nivel si el producto tiene
+  // ancla de precio configurada (no hace falta saber CUÁL nivel exacto: cualquier borrado en
+  // la estructura default amerita el aviso, el detalle fino de si aplica lo valida el server).
+  const { data: nivelPrecioOrdenActual } = useQuery({
+    queryKey: ['producto-nivel-precio-orden', estrProductoId],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos').select('nivel_precio_orden').eq('id', estrProductoId!).maybeSingle()
+      return (data as any)?.nivel_precio_orden ?? null
+    },
+    enabled: !!tenant && tab === 'estructura' && !!estrProductoId,
+  })
+
   const { data: estructuras = [], isLoading: estrLoading } = useQuery({
     queryKey: ['producto-estructuras', tenant?.id, estrProductoId],
     queryFn: async () => {
@@ -631,6 +690,10 @@ export default function ProductosPage() {
   const invalidar = () => {
     qc.invalidateQueries({ queryKey: ['producto-estructuras', tenant?.id, estrProductoId] })
     if (expandedId) qc.invalidateQueries({ queryKey: ['estructura-default', tenant?.id, expandedId] })
+    // Backlog Fede 4/6/7 — el server puede haber invalidado el ancla de precio al guardar niveles
+    qc.invalidateQueries({ queryKey: ['producto-nivel-precio-orden', estrProductoId] })
+    qc.invalidateQueries({ queryKey: ['producto', estrProductoId] })
+    qc.invalidateQueries({ queryKey: ['estructura-default', estrProductoId] })
   }
 
   const aplicarBulk = async () => {
@@ -2226,6 +2289,7 @@ export default function ProductosPage() {
           editando={estrModal.editando}
           unidades={unidadesMedida}
           baseUdmNombre={(productosEstr as any[]).find(p => p.id === estrProductoId)?.unidad_medida ?? null}
+          tieneAnclaDePrecio={!!nivelPrecioOrdenActual}
           onClose={() => setEstrModal({ open: false, editando: null })}
           onSave={handleSaveModal}
           saving={saving}

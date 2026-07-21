@@ -82,10 +82,12 @@ describe('nivelesAPayload', () => {
     expect(p[0]).toEqual({
       unidad_medida_id: 'udm-1', factor: 1,
       peso_kg: 0.5, alto_cm: 10, ancho_cm: null, largo_cm: null,
+      precio_venta: null, precio_costo: null,
     })
     expect(p[1]).toEqual({
       unidad_medida_id: 'udm-2', factor: 12,
       peso_kg: null, alto_cm: null, ancho_cm: null, largo_cm: 30,
+      precio_venta: null, precio_costo: null,
     })
   })
   it('campos vacíos → null (no 0 ni NaN)', () => {

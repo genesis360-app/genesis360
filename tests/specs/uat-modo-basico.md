@@ -1363,3 +1363,31 @@ ingresar, zonas + reglas de almacenaje, picking por UdM, reabastecimiento).
 **Verde:** tsc · build · unit **1151** (22 nuevos) · e2e 99 (nuevo) + regresión. Migs 282-283
 aplicadas en DEV. Columnas fijas viejas de `producto_estructuras` quedan DEPRECADAS (drop en
 migración de limpieza futura, post-verificación en PROD).
+
+## 🔎 §40 — Botón "Filtros" en ProductosPage (panel pill+popover) + columna Estructura en Inventario — 2026-07-21
+
+**Contexto:** pedido de GO (2026-07-19): reemplazar el toggle suelto "Ver inactivos" de
+`ProductosPage` por un panel de filtros combinable (mismo patrón pill+popover que
+`InventarioPage` → tab Inventario), agregando Con/Sin estructura de embalaje, Categoría,
+Proveedor, Marca y un combobox de "Atributos de inventario" (tracking + variantes) combinables
+por OR. De paso, `InventarioPage` gana una columna "Estructura" en el detalle de líneas por
+producto (solo lectura, muestra el nombre de la estructura de la línea si tiene una asignada).
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Activos/Inactivos/Todos** reemplaza el toggle viejo | Default = Activos · producto desactivado por REST desaparece · botón "Inactivos" lo muestra | **e2e 100** |
+| 2 | **Con/Sin estructura de embalaje** | Producto con estructura (RPC `fn_estructura_guardar_niveles` real) visible en "Con", desaparece en "Sin" | **e2e 100** (estructura creada por REST, no mock) |
+| 3 | **Combobox de atributos (OR)** | Opciones NO listadas hasta enfocar/tipear · elegir 1 atributo que el producto SÍ tiene lo deja visible · sumar un 2º atributo que NO tiene (semántica OR = al menos uno) lo mantiene visible · aviso "al menos uno de los atributos" cuando hay 2+ elegidos | **e2e 100** |
+| 4 | **Categoría / Proveedor / Marca** | Selects derivados del propio listado (sin queries extra), con opción "Sin —" | revisión de código (sin caso e2e dedicado) |
+| 5 | **Columna Estructura en Inventario** (`InventarioPage`, detalle de líneas) | Chip con el nombre de la estructura si `inventario_lineas.producto_estructuras` no es null; "—" si no tiene | revisión visual + query join |
+
+**🐛 Bug real cazado por el e2e mutante (no por code review):** al elegir un atributo del
+combobox, el dropdown quedaba abierto (nunca se cerraba tras el click) y su lista, posicionada
+`absolute`, tapaba el botón "Limpiar todos los filtros" más abajo en el panel — interceptaba el
+click (`subtree intercepts pointer events`). Fix: cerrar el dropdown (`setAtributoDropOpen(false)`)
+al seleccionar una opción, además de al hacer click afuera.
+
+**Verde:** tsc · build · unit 1151 (sin nuevos, es UI/filtrado client-side) · **e2e 100 nuevo**
+(mutante, generó su propia precondición: producto real + `tiene_lote` + estructura vía RPC) +
+regresión dirigida (02, 23, 43, 89, 90, 95, 96, 97, 99 — todo lo que toca ProductosPage/
+InventarioPage/estructuras) 16/16 verde.

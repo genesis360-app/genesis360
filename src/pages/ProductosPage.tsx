@@ -5,6 +5,7 @@ import {
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
   DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle, Upload,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
@@ -12,7 +13,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { puedeVerCosto } from '@/lib/permisosCosto'
-import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -33,6 +33,21 @@ type Tab = 'productos' | 'estructura'
 // ─── Helpers / tipos del formulario de estructura (niveles dinámicos, mig 282) ──
 
 type UdmOption = { id: string; nombre: string; simbolo: string | null }
+
+// Atributos de inventario filtrables — mismos labels que ve el usuario en ProductoFormPage.
+// Las variantes cuentan como atributos de inventario (pedido GO 2026-07-19).
+const ATRIBUTOS_FILTRO: { key: string; label: string; grupo: string }[] = [
+  { key: 'tiene_series',      label: 'Control por número de serie', grupo: 'Tracking' },
+  { key: 'tiene_lote',        label: 'Control por lote',            grupo: 'Tracking' },
+  { key: 'tiene_vencimiento', label: 'Fecha de vencimiento',        grupo: 'Tracking' },
+  { key: 'tiene_pais_origen', label: 'País de origen',              grupo: 'Tracking' },
+  { key: 'es_kit',            label: 'KIT (producto armado)',       grupo: 'Tracking' },
+  { key: 'tiene_talle',       label: 'Talle / Talla',               grupo: 'Variantes' },
+  { key: 'tiene_color',       label: 'Color',                       grupo: 'Variantes' },
+  { key: 'tiene_encaje',      label: 'Encaje',                      grupo: 'Variantes' },
+  { key: 'tiene_formato',     label: 'Formato',                     grupo: 'Variantes' },
+  { key: 'tiene_sabor_aroma', label: 'Sabor / Aroma',               grupo: 'Variantes' },
+]
 
 type EstrForm = {
   nombre: string
@@ -357,7 +372,20 @@ export default function ProductosPage() {
   // Tab Productos
   const [search, setSearch] = useState('')
   const [filterAlerta, setFilterAlerta] = useState(false)
-  const [showInactivos, setShowInactivos] = useState(false)
+  // Panel de filtros (mismo patrón pill+popover que InventarioPage → tab Inventario)
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const filterPanelRef = useRef<HTMLDivElement>(null)
+  const [filterActivo, setFilterActivo] = useState<'activos' | 'inactivos' | 'todos'>('activos')
+  const [filterEstructura, setFilterEstructura] = useState<'' | 'con' | 'sin'>('')
+  const [filterCat, setFilterCat] = useState('')
+  const [filterProv, setFilterProv] = useState('')
+  const [filterMarca, setFilterMarca] = useState('')
+  // Atributos de inventario combinables (OR: matchea con AL MENOS UNO). Se eligen desde un
+  // combobox — las opciones no se listan todas de entrada, aparecen al enfocar/tipear.
+  const [filterAtributos, setFilterAtributos] = useState<string[]>([])
+  const [atributoQuery, setAtributoQuery] = useState('')
+  const [atributoDropOpen, setAtributoDropOpen] = useState(false)
+  const atributoBoxRef = useRef<HTMLDivElement>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
@@ -401,11 +429,18 @@ export default function ProductosPage() {
   const [applyingScan, setApplyingScan] = useState(false)
   const scanTicketRef = useRef<HTMLInputElement>(null)
 
-  // Cerrar dropdown al hacer click fuera
+  // Cerrar dropdowns al hacer click fuera
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node))
         setEstrDropdown(false)
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setFilterPanelOpen(false)
+        setAtributoDropOpen(false)
+      } else if (atributoBoxRef.current && !atributoBoxRef.current.contains(e.target as Node)) {
+        // Click dentro del panel pero fuera del combobox → cierra solo el dropdown de atributos
+        setAtributoDropOpen(false)
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -433,6 +468,17 @@ export default function ProductosPage() {
       return data ?? []
     },
     enabled: !!tenant,
+  })
+
+  // IDs de productos con al menos una estructura cargada — alimenta el filtro Con/Sin estructura
+  const { data: productosConEstructura } = useQuery({
+    queryKey: ['productos-con-estructura', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_estructuras')
+        .select('producto_id').eq('tenant_id', tenant!.id)
+      return new Set((data ?? []).map((r: any) => r.producto_id))
+    },
+    enabled: !!tenant && tab === 'productos',
   })
 
   // Stock disponible para venta (solo líneas en estados con es_disponible_venta = true).
@@ -788,11 +834,35 @@ export default function ProductosPage() {
   // ── Helpers UI ─────────────────────────────────────────────────────────────
 
   const filtered = productos.filter(p => {
-    if (!showInactivos && !(p as any).activo) return false
-    if (filterAlerta && (p as any).stock_actual > (p as any).stock_minimo) return false
+    const prod = p as any
+    if (filterActivo === 'activos' && !prod.activo) return false
+    if (filterActivo === 'inactivos' && prod.activo) return false
+    if (filterAlerta && prod.stock_actual > prod.stock_minimo) return false
+    if (filterEstructura === 'con' && !productosConEstructura?.has(prod.id)) return false
+    if (filterEstructura === 'sin' && productosConEstructura?.has(prod.id)) return false
+    if (filterCat && (filterCat === '__sin__' ? prod.categoria_id : prod.categoria_id !== filterCat)) return false
+    if (filterProv && (filterProv === '__sin__' ? prod.proveedor_id : prod.proveedor_id !== filterProv)) return false
+    if (filterMarca && (filterMarca === '__sin__' ? prod.marca : (prod.marca ?? '') !== filterMarca)) return false
+    // Atributos combinados: OR — muestra los que tienen AL MENOS UNO de los seleccionados
+    if (filterAtributos.length > 0 && !filterAtributos.some(k => prod[k])) return false
     return true
   })
   const stockCritico = productos.filter(p => (p as any).stock_actual <= (p as any).stock_minimo).length
+
+  const filtrosActivos =
+    (filterActivo !== 'activos' ? 1 : 0) + (filterEstructura ? 1 : 0) + (filterCat ? 1 : 0) +
+    (filterProv ? 1 : 0) + (filterMarca ? 1 : 0) + filterAtributos.length
+
+  // Opciones de los selects, derivadas del listado (sin queries extra)
+  const marcasDisponibles = [...new Set(productos.map(p => (p as any).marca).filter(Boolean))].sort() as string[]
+  const categoriasDisponibles = [...new Map(
+    productos.filter(p => (p as any).categoria_id)
+      .map(p => [(p as any).categoria_id, (p as any).categorias?.nombre ?? (p as any).categoria_id])
+  ).entries()] as [string, string][]
+  const proveedoresDisponibles = [...new Map(
+    productos.filter(p => (p as any).proveedor_id)
+      .map(p => [(p as any).proveedor_id, (p as any).proveedores?.nombre ?? (p as any).proveedor_id])
+  ).entries()] as [string, string][]
 
   function toggleSelect(id: string, e: React.MouseEvent) {
     e.stopPropagation()
@@ -1166,6 +1236,173 @@ export default function ProductosPage() {
                 placeholder="Buscar por nombre, SKU o código..."
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
             </div>
+            {/* Filtros — pill button con popover (mismo patrón que InventarioPage → tab Inventario) */}
+            <div className="relative shrink-0" ref={filterPanelRef}>
+              <button
+                onClick={() => setFilterPanelOpen(v => !v)}
+                className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-full border text-sm font-medium transition-all
+                  ${filterPanelOpen || filtrosActivos > 0
+                    ? 'border-accent-text bg-accent/5 text-accent-text'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}
+              >
+                <SlidersHorizontal size={14} />
+                <span className="hidden sm:inline">Filtros</span>
+                {filtrosActivos > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-accent text-white text-[10px] flex items-center justify-center font-bold">
+                    {filtrosActivos}
+                  </span>
+                )}
+              </button>
+
+              {filterPanelOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Filtros</h3>
+                    <button onClick={() => { setFilterPanelOpen(false); setAtributoDropOpen(false) }}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={14} /></button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Estado</p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {([['activos', 'Activos'], ['inactivos', 'Inactivos'], ['todos', 'Todos']] as const).map(([val, label]) => (
+                          <button key={val} onClick={() => setFilterActivo(val)}
+                            className={`text-xs px-2 py-1.5 rounded-lg border font-medium transition-colors
+                              ${filterActivo === val
+                                ? 'border-accent-text bg-accent/10 text-accent-text'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Estructura de embalaje</p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {([['', 'Todos'], ['con', 'Con'], ['sin', 'Sin']] as const).map(([val, label]) => (
+                          <button key={val || 'todos'} onClick={() => setFilterEstructura(val)}
+                            className={`text-xs px-2 py-1.5 rounded-lg border font-medium transition-colors
+                              ${filterEstructura === val
+                                ? 'border-accent-text bg-accent/10 text-accent-text'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Categoría</p>
+                      <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
+                        className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <option value="">Todas</option>
+                        <option value="__sin__">Sin categoría</option>
+                        {categoriasDisponibles.map(([id, nombre]) => (
+                          <option key={id} value={id}>{nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Proveedor</p>
+                      <select value={filterProv} onChange={e => setFilterProv(e.target.value)}
+                        className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <option value="">Todos</option>
+                        <option value="__sin__">Sin proveedor</option>
+                        {proveedoresDisponibles.map(([id, nombre]) => (
+                          <option key={id} value={id}>{nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Marca</p>
+                      <select value={filterMarca} onChange={e => setFilterMarca(e.target.value)}
+                        className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <option value="">Todas</option>
+                        <option value="__sin__">Sin marca</option>
+                        {marcasDisponibles.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+
+                    {/* Atributos de inventario — combobox: las opciones aparecen al enfocar/tipear,
+                        se combinan como chips (OR: muestra los que tienen al menos uno) */}
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Atributos de inventario</p>
+                      {filterAtributos.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                          {filterAtributos.map(k => {
+                            const attr = ATRIBUTOS_FILTRO.find(a => a.key === k)
+                            return (
+                              <span key={k} className="inline-flex items-center gap-1 text-xs bg-accent/10 text-accent-text px-2 py-1 rounded-lg font-medium">
+                                {attr?.label ?? k}
+                                <button onClick={() => setFilterAtributos(prev => prev.filter(x => x !== k))}
+                                  className="hover:text-red-500 transition-colors" title="Quitar">
+                                  <X size={11} />
+                                </button>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+                      <div className="relative" ref={atributoBoxRef}>
+                        <input type="text" value={atributoQuery}
+                          onChange={e => { setAtributoQuery(e.target.value); setAtributoDropOpen(true) }}
+                          onFocus={() => setAtributoDropOpen(true)}
+                          placeholder="Buscar atributo… (lote, serie, talle…)"
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300" />
+                        {atributoDropOpen && (() => {
+                          const q = atributoQuery.trim().toLowerCase()
+                          const disponibles = ATRIBUTOS_FILTRO.filter(a =>
+                            !filterAtributos.includes(a.key) &&
+                            (!q || a.label.toLowerCase().includes(q) || a.grupo.toLowerCase().includes(q)))
+                          if (disponibles.length === 0) return (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 px-3 py-2">
+                              <p className="text-xs text-gray-400 dark:text-gray-500">Sin atributos que coincidan</p>
+                            </div>
+                          )
+                          const grupos = [...new Set(disponibles.map(a => a.grupo))]
+                          return (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 max-h-52 overflow-y-auto py-1">
+                              {grupos.map(g => (
+                                <div key={g}>
+                                  <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{g}</p>
+                                  {disponibles.filter(a => a.grupo === g).map(a => (
+                                    <button key={a.key}
+                                      onClick={() => { setFilterAtributos(prev => [...prev, a.key]); setAtributoQuery(''); setAtributoDropOpen(false) }}
+                                      className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent-text transition-colors">
+                                      {a.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                      {filterAtributos.length > 1 && (
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                          Muestra productos con al menos uno de los atributos elegidos.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {filtrosActivos > 0 && (
+                    <button
+                      onClick={() => {
+                        setFilterActivo('activos'); setFilterEstructura(''); setFilterCat('')
+                        setFilterProv(''); setFilterMarca(''); setFilterAtributos([]); setAtributoQuery('')
+                      }}
+                      className="w-full text-xs text-red-500 hover:text-red-600 dark:text-red-400 transition-colors pt-1">
+                      × Limpiar todos los filtros
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setViewMode(v => v === 'flat' ? 'grouped' : 'flat')}
               title={viewMode === 'flat' ? 'Agrupar variantes' : 'Vista plana'}
@@ -1176,11 +1413,6 @@ export default function ProductosPage() {
               <Layers size={15} />
               <span className="hidden sm:inline whitespace-nowrap">Agrupar variantes</span>
             </button>
-            <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
-              <Toggle size="sm" checked={showInactivos} onChange={setShowInactivos}
-                aria-label="Ver inactivos" />
-              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Ver inactivos</span>
-            </label>
             <button onClick={() => setScannerOpen(true)}
               className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent-text transition-colors bg-white dark:bg-gray-800"
               title="Escanear código de barras">

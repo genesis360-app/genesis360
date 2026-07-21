@@ -77,6 +77,9 @@ producto_estructura_niveles     (NUEVA, mig 282)
 - **Recepciones / Inventario (ingreso)**: selector de estructura sin cambios (usa id/nombre/default).
 - **Importador CSV**: mismas columnas `estr_*` de siempre; ahora escribe niveles vía RPC
   (Unidad base siempre; Caja/Pallet si el CSV trae conversión o dims).
+- **Filtro "Con/Sin estructura" en `ProductosPage` → tab Productos (v1.138.0, 2026-07-21)**: panel
+  de filtros pill+popover permite filtrar el listado por productos con al menos una
+  `producto_estructuras` cargada o sin ninguna — ver [[wiki/features/productos]].
 
 ### Lógica pura — `src/lib/estructuras.ts`
 

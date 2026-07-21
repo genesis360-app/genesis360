@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos]
 sources: [CLAUDE.md, reglas_negocio.md]
-updated: 2026-06-03
+updated: 2026-07-21
 ---
 
 # Inventario y Stock
@@ -242,6 +242,20 @@ Toggle `LayoutList/Building` en tab Inventario:
 - Vista expandible por ubicación con líneas/producto/stock
 - Orden: Sin ubicación primero → A-Z
 - Acciones LPN disponibles en ambas vistas
+
+---
+
+## Columna "Estructura" en detalle de líneas por producto (✅ v1.138.0, 2026-07-21)
+
+En la tabla de líneas por producto de la tab Inventario (modo avanzado), columna de **solo
+lectura** que muestra el nombre de la `producto_estructuras` asociada a esa línea (chip con ícono
+`Layers`), o "—" si el LPN no tiene estructura asignada. Se resuelve con un join agregado al
+`SELECT` de `inventario_lineas` → `producto_estructuras(nombre)`, sin queries extra.
+
+Puramente informativa — no cambia ningún cálculo de stock ni de rebaje. Para asignar/editar la
+estructura de un LPN se sigue usando la tab **Estructura** de `LpnAccionesModal` (ver más abajo).
+No aparece en modo básico (columna gateada por `modoAvanzado`, igual que Estado/Ubicación/Lote-
+Venc./Series/Acciones).
 
 ---
 

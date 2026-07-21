@@ -6,7 +6,82 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📦 ARRANCÁ ACÁ (2026-07-19 noche, v1.137.0 EN DEV) — Fase 1 de ESTRUCTURAS con niveles dinámicos por UdM (footprint estilo Blue Yonder) — migs **282-283 SOLO EN DEV**, sin commitear al arrancar el cierre, PROD sigue v1.136.0
+> ### 🔎 ARRANCÁ ACÁ (2026-07-21, v1.138.0 EN DEV) — Botón "Filtros" en Productos + columna Estructura en Inventario — SIN migraciones nuevas, commiteado/pusheado/tag+release, PROD sigue v1.136.0
+>
+> **Qué se hizo:** reemplazo del toggle suelto "Ver inactivos" de `ProductosPage` (tab Productos)
+> por un panel de filtros combinable, pill+popover (mismo patrón visual que `InventarioPage` →
+> tab Inventario): Estado Activos/Inactivos/Todos · Con/Sin estructura de embalaje (usa
+> `producto_estructuras`, v1.137.0) · Categoría/Proveedor/Marca (derivados del listado, sin
+> queries extra) · combobox de "Atributos de inventario" (Tracking + Variantes) combinables por
+> OR, con chips y opciones que aparecen recién al enfocar/tipear. `InventarioPage` (tab
+> Inventario, detalle de líneas por producto) suma columna de solo lectura "Estructura" (nombre
+> de la `producto_estructuras` de la línea, o "—").
+>
+> **Bug real cazado por el e2e mutante nuevo (no por code review):** el dropdown de atributos no
+> se cerraba al seleccionar una opción, y su lista `position:absolute` tapaba el botón "Limpiar
+> todos los filtros" más abajo, interceptando el click (Playwright: "subtree intercepts pointer
+> events"). Fix de una línea: cerrar el dropdown también al elegir opción, no solo al click afuera.
+>
+> **Verde:** tsc · build · unit 1151 (sin nuevos, filtrado client-side puro) · **e2e 100 NUEVO**
+> (mutante — crea producto real por UI + `tiene_lote` + estructura vía RPC
+> `fn_estructura_guardar_niveles`, ejercita los 3 filtros) · regresión dirigida 16/16 (02, 23, 43,
+> 89, 90, 95, 96, 97, 99) · **UAT §40**. `APP_VERSION` = v1.138.0. Sin migraciones — puramente
+> UI/frontend, no toca DB ni RLS.
+>
+> **Wiki:** `productos.md` (panel de filtros reemplaza al toggle "Ver inactivos") ·
+> `inventario-stock.md` (columna Estructura) · `project_pendientes.md` · `index.md` · `log.md`.
+> No se tocó `roadmap.md` (no es release a PROD) ni `migraciones.md` (sin migraciones nuevas).
+>
+> **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main, no requiere pasos
+> especiales de migración porque no hay DDL nuevo).
+
+> ### 🟡 BACKLOG SIN RELEVAR (2026-07-21) — 7 puntos de la reunión GO+Fede, ninguno arrancado
+>
+> GO pegó notas de una reunión con Fede. **Ninguno de estos 7 puntos está diseñado ni relevado
+> contra el código todavía** — son pedidos crudos. Varios tocan REGLA #0 (plata y/o inventario) y
+> necesitan definición de producto antes de tocar código (mismo patrón que
+> `project_revision_config_fede_tonga`: relevar → Q&A con GO → diseño → fases).
+>
+> 1. **Tope máximo en descuento por método de pago** (Config→Ventas→Métodos de pago). Hoy el jsonb
+>    `metodos_pago.config.descuento` tiene tope en $ (implementado en v1.136.0, `promosPago.ts`) —
+>    confirmar si piden algo distinto (¿tope %? ¿tope acumulado mensual?) antes de asumir que es
+>    trivial. 🔴 REGLA #0 (plata).
+> 2. **Disponibilidad por días de semana** en el mismo descuento (ej. "solo lunes"). Hoy el jsonb
+>    tiene vigencia por rango de fecha (`combosVigencia.test.ts` es el patrón, pero para combos no
+>    para este descuento) — no día de semana. 🔴 REGLA #0 (plata).
+> 3. **Enlazar Estados de inventario con descuento — "aging profile".** Feature NUEVA: un estado en
+>    Config→Inventario→Estados (ej. "Próximo a Vencer") tendría un % de descuento propio; una venta
+>    con stock en ese estado aplicaría el descuento automático. Requiere diseñar: ¿cómo interactúa
+>    con `promo_pago` (v1.136.0) y con descuentos manuales? ¿aplica por LPN/línea o por ítem
+>    completo? ¿qué pasa si hay mezcla de estados en la misma venta? 🔴🔴 REGLA #0 (plata +
+>    inventario) — es la pieza más grande y más ambigua de las 7.
+> 4/7. **Precio de venta/costo por UoM en la estructura** (los dos puntos del mensaje son el mismo
+>    pedido). Hoy el precio/costo vive en `productos` (nivel único); pasar a "1 precio por nivel de
+>    `producto_estructura_niveles`" es un cambio de modelo grande — toca POS, facturación (AFIP:
+>    ¿qué precio va en el comprobante si la línea es "1 caja"?), reportes de margen. 🔴🔴 REGLA #0
+>    (plata + fiscal) — necesita diseño antes de cualquier migración.
+> 5. **Validación de cantidades entre niveles de estructura** — GO mismo lo planteó como pregunta
+>    abierta, no como decisión: ¿debería bloquearse crear un nivel superior con una cantidad
+>    "menor" que no tenga sentido jerárquico (ej. Pallet=167, Caja=6 después)? GO no está seguro si
+>    aplica o si hay casos reales que lo requieran. **No implementar sin antes acordar la regla
+>    exacta con GO** — alto riesgo de bloquear un caso de uso legítimo que no vimos.
+> 6. **UoM de "Stock e Inventario" en ProductoFormPage atada a la estructura default.** Debe listar
+>    solo las UoM que existen en los niveles de la estructura default del producto (no todas las
+>    UdM del tenant), y esa selección determina qué nivel de estructura "es" el que trae
+>    precio/costo/etc. **Depende del diseño del punto 4/7** (precio por UoM) — no tiene sentido
+>    implementarlo antes de resolver ese punto.
+>
+> **Confirmado con GO:** la nota original mencionaba también "detallar envío gratis condicional" y
+> "revisar QR de modo y conexiones" pero GO aclaró que NO forman parte de este batch — son solo
+> estos 7 puntos.
+>
+> **▶ Próxima sesión (si se retoma):** relevar 4/7 y 6 juntos (mismo cambio de modelo: precio por
+> UoM) antes que nada — son los que más tocan REGLA #0 y de los que depende más trabajo downstream.
+> El punto 3 (aging profile) es la feature más grande — probablemente merece su propio ciclo de
+> relevamiento completo (como estructuras-udm). El punto 5 necesita una conversación corta con GO
+> antes de cualquier código (no es cambio de modelo, es una regla de validación puntual).
+
+> ### 📦 ESTADO ANTERIOR (2026-07-19 noche, v1.137.0 EN DEV) — Fase 1 de ESTRUCTURAS con niveles dinámicos por UdM (footprint estilo Blue Yonder) — migs **282-283 SOLO EN DEV**, PROD sigue v1.136.0
 >
 > **Pedido GO:** estructuras como el pack structure/footprint de Blue Yonder — por SKU varias
 > estructuras, niveles = CUALQUIER UdM de Configuración → Unidades (no solo unidad/caja/pallet),
@@ -38,7 +113,8 @@ type: project
 >    → al deployar: `npm run ai:knowledge` + redeploy EF `ai-assistant` (DEV y PROD)**.
 >
 > **▶ Pendiente inmediato:**
-> 1. Commit a `dev` + push + tag/release v1.137.0 (regla: release cada sesión con código).
+> 1. ✅ ~~Commit a `dev` + push + tag/release v1.137.0~~ — hecho (y ya se sumó v1.138.0 encima,
+>    ver bloque de arriba).
 > 2. Deploy a PROD cuando GO lo pida: aplicar migs 282-283 en PROD (aditivas, no-op de datos) ANTES
 >    del merge, PR dev→main, verificar bundle con curl (gotcha webhook Vercel del #295).
 > 3. **Fases siguientes del plan** (detalle en `wiki/features/estructuras-udm.md`): F2 operar por

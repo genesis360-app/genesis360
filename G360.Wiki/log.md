@@ -6,6 +6,76 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-21] update | 🟡 Backlog crudo — 7 puntos de una reunión GO+Fede, sin relevar
+
+GO pegó notas de una reunión con Fede. Ninguno de los 7 puntos está diseñado ni relevado contra el
+código — se registraron en `project_pendientes.md` (sección "🟡 BACKLOG SIN RELEVAR 2026-07-21") y
+en memoria propia (`project_relevamiento_fede_2026-07-21`) para no perderlos, sin tocar código
+todavía. Resumen: (1) tope máximo en descuento por método de pago, (2) disponibilidad por día de
+semana en ese mismo descuento, (3) **"aging profile"** — enlazar un Estado de inventario (ej.
+"Próximo a Vencer") con un % de descuento que se aplica automático en la venta cuando el stock
+vendido está en ese estado (feature nueva, la más grande y ambigua de las 7), (4/7) precio de
+venta/costo **por UoM** en la estructura del producto (hoy vive a nivel `productos`, cambiar de
+modelo toca POS/facturación/reportes de margen), (5) validación de cantidades entre niveles de
+estructura — **GO mismo lo dejó como pregunta abierta**, no como decisión tomada, (6) la UoM de
+"Stock e Inventario" en `ProductoFormPage` debería listar solo las UoM de la estructura default del
+producto y determinar qué nivel trae precio/costo (depende del diseño del punto 4/7).
+
+Casi todos tocan REGLA #0 (plata y/o inventario/fiscal) — ninguno se codea sin relevamiento/Q&A con
+GO antes, mismo patrón que el backlog anterior de Fede (`project_revision_config_fede_tonga`).
+Prioridad sugerida si se retoma: 4/7 + 6 juntos primero (mismo cambio de modelo), 3 (aging profile)
+probablemente merece su propio ciclo de relevamiento completo, 5 solo necesita una charla corta.
+
+## [2026-07-21] update | 🔎 v1.138.0 — Botón Filtros en Productos + columna Estructura en Inventario
+
+**EN DEV (commit `bd3a0258`, tag/release `v1.138.0` con `--latest`), PROD sigue en v1.136.0.**
+Sin migraciones nuevas — puramente UI/frontend, no toca DB ni RLS.
+
+**Qué se hizo:** reemplazo del toggle suelto "Ver inactivos" de `ProductosPage` (tab Productos)
+por un panel de filtros combinable, pill+popover, con el mismo patrón visual que ya usa
+`InventarioPage` → tab Inventario. El panel incluye:
+- Estado: Activos / Inactivos / Todos (reemplaza el toggle `showInactivos` que existía antes)
+- Con / Sin estructura de embalaje (usa `producto_estructuras`, feature de v1.137.0)
+- Categoría / Proveedor / Marca (selects derivados del propio listado de productos, sin queries extra)
+- Combobox de "Atributos de inventario" combinables por OR: agrupa atributos de Tracking
+  (tiene_series, tiene_lote, tiene_vencimiento, tiene_pais_origen, es_kit) y de Variantes
+  (tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma) — las opciones del
+  combobox NO se listan de entrada, aparecen al enfocar/tipear; semántica OR (muestra productos
+  con AL MENOS UNO de los atributos elegidos, chips con X para quitar).
+
+Además, `InventarioPage` (tab Inventario, detalle de líneas por producto) suma una columna de
+solo lectura "Estructura" que muestra el nombre de la `producto_estructuras` asociada a la línea
+(o "—" si no tiene). Puramente informativo, no cambia ningún cálculo de stock.
+
+**Bug real encontrado por el e2e mutante nuevo (no por code review):** al elegir una opción del
+combobox de atributos, el dropdown quedaba abierto (no se cerraba tras el click) y su lista
+`position:absolute` tapaba visualmente el botón "Limpiar todos los filtros" más abajo en el panel,
+interceptando el click (Playwright: "subtree intercepts pointer events"). Fix de una línea: cerrar
+el dropdown (`setAtributoDropOpen(false)`) también al seleccionar una opción, no solo al hacer
+click afuera del panel.
+
+**Archivos tocados:** `src/pages/ProductosPage.tsx` (panel de filtros + estado + lógica de
+filtrado client-side), `src/pages/InventarioPage.tsx` (columna Estructura, join agregado al
+select de `inventario_lineas` → `producto_estructuras(nombre)`), `src/config/brand.ts`
+(APP_VERSION → v1.138.0).
+
+**Tests:** e2e nuevo `tests/e2e/100_productos_filtros_mutante.spec.ts` (mutante — genera su propia
+precondición: crea un producto real por UI, activa `tiene_lote` y crea una estructura con 1 nivel
+por REST/RPC real `fn_estructura_guardar_niveles`, después ejercita los 3 filtros nuevos). Verde:
+tsc + build + unit 1151 (sin tests unitarios nuevos, es filtrado client-side puro) + e2e 100 nuevo
++ regresión dirigida 16/16 specs (02_inventario, 23_inventario_ingreso_mutante,
+43_producto_creacion_mutante, 89_atributo_variante_obligatorio_mutante,
+90_producto_estado_predeterminado_mutante, 95_rebaje_masivo_atributo_ambiguo_mutante,
+96_venta_bloqueada_atributo_ambiguo_mutante, 97_lpn_editar_atributo_obligatorio_mutante,
+99_estructura_niveles_dinamicos_mutante). UAT §40.
+
+**Wiki:** `productos.md` (sección "Barra de búsqueda y filtros" reescrita, toggle "Ver inactivos"
+reemplazado por el panel de filtros) · `inventario-stock.md` (columna "Estructura" en el detalle
+de líneas por producto) · `project_pendientes.md` (versión DEV actualizada a v1.138.0) · `index.md`.
+No se tocó `roadmap.md` (no es release a PROD) ni `migraciones.md` (sin migraciones nuevas).
+
+---
+
 ## [2026-07-19] update | 📦 v1.137.0 — Fase 1: Estructuras con niveles dinámicos por UdM (footprints estilo Blue Yonder)
 
 **Pedido GO (sesión nueva post-/clear):** revisar la documentación existente de "estructuras",

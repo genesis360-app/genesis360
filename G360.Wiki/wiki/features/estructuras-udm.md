@@ -1,9 +1,9 @@
 ---
 title: Estructuras de producto + Unidades de Medida (footprints)
 category: features
-tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, udm]
-sources: [migrations 031, 119, 148, 282, 283, src/lib/estructuras.ts]
-updated: 2026-07-19
+tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, udm, precio-por-uom]
+sources: [migrations 031, 119, 148, 282, 283, 286, 287, src/lib/estructuras.ts]
+updated: 2026-07-21
 ---
 
 # Estructuras de producto con niveles dinámicos por UdM
@@ -107,6 +107,56 @@ cálculo server-side + RPC directa con factor 0 → 400 y niveles intactos). UAT
 
 ---
 
+## Precio por Unidad de Medida — Fase 1: modelo (migs 286-287, backlog Fede 4/6/7)
+
+Relevamiento a fondo de los puntos 4/6/7 del backlog de Fede (2026-07-21) antes de codear: hoy
+**no existe ningún camino de venta o rebaje de stock en una UoM distinta a la base** del producto
+— `convertirABase()` (ver arriba) es código MUERTO, escrito de antemano para una fase futura y
+todavía sin ningún invocador. Por el tamaño del cambio se decidió fasear: **esta entrega (v1.140.0)
+es SOLO el modelo de datos + la carga de precio por nivel + el "ancla de precio", sin tocar
+todavía POS/facturación/combos.**
+
+### Modelo (mig 286)
+
+- `producto_estructura_niveles.precio_venta` / `.precio_costo` — **opcionales, propios de cada
+  nivel** (`CHECK ≥ 0`). Persistidos por `fn_estructura_guardar_niveles` (extendida en mig 287,
+  mismo camino único de escritura que factor/peso/dims — ver arriba).
+- Si un nivel no tiene precio propio, el precio **EFECTIVO** se calcula PROPORCIONAL al nivel
+  "anclado" por relación de `unidades_base` (`precioEfectivoNivel()` en `src/lib/estructuras.ts`)
+  — **nunca encadenando por niveles intermedios**: un precio "raro" cargado a mitad de camino no
+  afecta el cálculo de ningún otro nivel.
+- `productos.nivel_precio_orden` — la **"ancla de precio"**: a qué nivel de la estructura DEFAULT
+  corresponden los `precio_venta`/`precio_costo` de la hoja de producto (default `NULL` = nivel
+  base/orden 1; se puede anclar a cualquier nivel, ej. "Caja"). Selector nuevo **"Estos precios
+  corresponden a"** en `ProductoFormPage` (ver [[wiki/features/productos]] → Card 3: Precios).
+  - **Es por ORDEN (posición), no por id.** `fn_estructura_guardar_niveles` borra y reinserta
+    TODOS los niveles en cada guardado (ids nuevos siempre) — un FK a id se invalidaría en cada
+    resave trivial. El orden es estable mientras no se achique la estructura por debajo de esa
+    posición.
+  - Si eso pasa, la RPC invalida el ancla **server-side** sola (vuelve a `NULL` = nivel base,
+    `ordenAnclaEfectivo()` con fallback seguro que nunca explota) y `ProductosPage` avisa ANTES de
+    dejar borrar un nivel anclado.
+- `venta_items.unidad_medida_id` / `.cantidad_uom` y `combos.unidad_medida_id` — migrados en la
+  mig 286 para dejar el terreno listo para la Fase 2, **sin ningún código que los use todavía.**
+
+### 🛑 Qué NO hace esta Fase 1
+
+**Todavía no se puede vender por una UoM distinta a la base en el POS.** El precio por nivel que
+carga esta Fase 1 es solo dato de catálogo — el POS, la facturación y los combos siguen operando
+100% en la UdM base del producto (`venta_items.cantidad` sigue en unidades base). La **Fase 2**
+(diseño ya cerrado con GO, sin código todavía) es la que conecta ese precio con una venta real.
+
+UAT §42 · e2e 102.
+
+### Roadmap de precio por UoM (backlog Fede 4/6/7 — numeración propia, distinta del roadmap de fases de abajo)
+
+| Fase | Qué | Estado |
+|---|---|---|
+| **1** | Modelo: precio propio por nivel + ancla de precio (`nivel_precio_orden`) | ✅ v1.140.0 (migs 286-287) |
+| **2** | Vender por UoM en el POS (elegir "Caja" en el carrito → precio del nivel, rebaje siempre en unidad base) + facturación + combos por UoM | ⬜ diseño cerrado, sin código |
+
+---
+
 ## Roadmap del plan (acordado con GO 2026-07-19)
 
 | Fase | Qué | Estado |
@@ -127,7 +177,8 @@ Abiertas: picking ¿solo envíos/preparación o también mostrador? (recomendado
 ## Links relacionados
 
 - [[wiki/features/wms]] — visión general WMS y fases históricas
-- [[wiki/features/productos]] — tab Estructura + UdM personalizables
+- [[wiki/features/productos]] — tab Estructura + UdM personalizables + Card 3 (ancla de precio)
 - [[wiki/features/inventario-stock]] — asignación de estructura a LPNs
 - [[wiki/features/configuracion]] — ABM Unidades de medida
-- [[wiki/database/migraciones]] — migs 282, 283
+- [[wiki/features/ventas-pos]] — Fase 2 (pendiente) conecta el precio por nivel con la venta real
+- [[wiki/database/migraciones]] — migs 282, 283, 286, 287

@@ -309,6 +309,12 @@ Filtros en tab Historial:
 - Función SQL `process_aging_profiles()` SECURITY DEFINER: calcula días restantes, aplica regla, cambia estado, inserta en actividad_log
 - EF `process-aging` + botón manual en ConfigPage → Aging Profiles
 - Pendiente: scheduler diario (pg_cron)
+- **Distinto del descuento automático por estado en la venta** (v1.139.0, migs 284-285 — backlog
+  Fede punto 3): Aging Profiles solo **mueve** una línea a otro `estado_id` según días a vencer,
+  sin aplicar ningún descuento por sí solo. El feature nuevo aplica un % **al vender** stock que
+  YA está en un estado con `estados_inventario.descuento_pct` configurado (sea porque un Aging
+  Profile lo movió ahí o por cualquier otro motivo). Ver [[wiki/features/ventas-pos]] →
+  "Descuento automático por estado de inventario".
 
 ---
 

@@ -141,6 +141,7 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | IVA | select | Alícuota aplicable |
 | Margen objetivo | number | % — activa insightMargen en Dashboard |
 | Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092) |
+| Estos precios corresponden a | select (nuevo, v1.140.0) | "Ancla de precio" (`productos.nivel_precio_orden`, mig 286): a qué nivel de la estructura DEFAULT corresponden Precio costo/Precio venta de este card (default = nivel base). Solo visible si el producto tiene estructura. Ver [[wiki/features/estructuras-udm]] → "Precio por Unidad de Medida". |
 
 ### Card 4: Stock e inventario
 

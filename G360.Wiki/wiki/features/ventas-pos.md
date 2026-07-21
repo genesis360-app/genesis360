@@ -2,8 +2,8 @@
 title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal]
-sources: [CLAUDE.md, reglas_negocio.md]
-updated: 2026-05-23
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285]
+updated: 2026-07-21
 ---
 
 # Ventas / POS
@@ -120,6 +120,28 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
   `ventas.promo_pago` (`[{metodo, pct, monto}]`).
 - Lógica pura: `src/lib/promosPago.ts` (`descuentoDeConfig` / `descuentoVigente` /
   `calcularPromosPago`), 22 unit tests.
+
+### 🏷 Descuento automático por estado de inventario (v1.139.0, migs 284-285 — backlog Fede punto 3)
+- Config: Config→Inventario→Estados → sub-tab "Permisos por estado" → columna nueva **% desc.**
+  por estado (`estados_inventario.descuento_pct`, `NUMERIC(5,2)`, `NULL`/0 = sin descuento; mig
+  284). Lo configura de antemano un DUEÑO/ADMIN.
+- Cuando una venta consume stock de un LPN que está en un estado con `descuento_pct` cargado, el %
+  se aplica **automáticamente** sobre esas unidades — **sin clave de supervisor** (la autorización
+  ya la dio quien configuró el estado) — y **se apila** con cualquier otro descuento de la venta
+  (general, combo, por método de pago de arriba).
+- Es un monto **POR LÍNEA** (se calcula sobre la previsualización de LPNs que el carrito ya arma
+  para planificar el rebaje de stock), **nunca** un descuento global prorrateado entre todos los
+  productos de la venta, e independiente del descuento manual/combo.
+- Trazabilidad igual que `promo_pago` (mismo criterio de la mig 281): `venta_items.
+  descuento_estado_pct` / `.descuento_estado_monto` + `ventas.descuento_estado` jsonb
+  (`[{estado_nombre, pct, cantidad, monto}]`, mig 285).
+- Lógica pura: `src/lib/descuentoEstado.ts`. Integrado en `VentasPage.tsx`. UAT §41 · e2e 101.
+- **Distinto de Aging Profiles** (mig 013, ver [[wiki/features/inventario-stock]] → "Aging
+  Profiles"): Aging Profiles solo **mueve** una línea a otro `estado_id` automáticamente según
+  días a vencer — no aplica ningún descuento por sí mismo. Este feature aplica el % cuando se
+  **vende** stock que YA está en un estado con descuento configurado, sea porque un Aging Profile
+  lo movió ahí, porque se cargó manual al ingresar, o por cualquier otro motivo — son dos features
+  relacionadas pero independientes entre sí.
 
 ### 👤 Campos requeridos del cliente en el alta rápida (v1.136.0, mig 280 — backlog Fede punto 4)
 - Config→Ventas→Operativa: checkboxes **DNI / Teléfono / Email** (el nombre es siempre obligatorio)

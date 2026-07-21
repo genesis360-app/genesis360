@@ -35,13 +35,14 @@ type: project
 > **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main, no requiere pasos
 > especiales de migración porque no hay DDL nuevo).
 
-> ### 🟡 RELEVAMIENTO Q&A — 7 puntos de la reunión GO+Fede: TODOS relevados, CERO código escrito (⚠ sesión cortada por reinicio de PC, retomar preguntando si arrancar implementación de 4/6/7)
+> ### 🟡 RELEVAMIENTO Q&A — 7 puntos de la reunión GO+Fede: TODOS resueltos, CERO código escrito (⚠ falta preguntar si arrancar implementación de 4/6/7 y agregar esa parte al Artifact)
 >
 > GO pegó notas de una reunión con Fede (backlog crudo, ver bloque histórico abajo) y pidió hacer la
-> ronda de preguntas ahí mismo, en el chat, en dos tandas: primero 1-2-3-5, después el relevamiento
-> dedicado de 4-6-7. Informe de la 1ª tanda publicado como Artifact para mostrarle a Fede — **no vive
-> en el repo**, pedirle el link a GO. La 2ª tanda (4/6/7) quedó resuelta en el chat pero SIN agregar
-> al Artifact todavía (sesión cortada). Acá el resumen accionable de las dos:
+> ronda de preguntas ahí mismo, en el chat, en varias tandas: primero 1-2-3-5, después el relevamiento
+> dedicado de 4-6-7 (interrumpido por un reinicio de PC), y una tanda de cierre para 3 puntos que
+> quedaban abiertos de 4-6-7. Informe de la 1ª tanda publicado como Artifact para mostrarle a Fede —
+> **no vive en el repo**, pedirle el link a GO. La parte de 4/6/7 quedó resuelta en el chat pero SIN
+> agregar al Artifact todavía. Acá el resumen accionable de las dos:
 >
 > #### Puntos 4, 6 y 7 — Precio por Unidad de Medida — diseño CERRADO, falta implementar
 >
@@ -73,18 +74,32 @@ type: project
 >    pudiendo ser Caja aunque el stock siga trackeando fino por Unidad. Resuelve el ejemplo original
 >    de Fede tal cual.
 >
+> **Ronda de cierre — los 3 puntos que quedaban abiertos, TODOS resueltos:**
+> 5. **Combos + multi-UoM del mismo producto — BUG REAL encontrado, no solo hipotético.** El
+>    auto-combo de hoy (`VentasPage.tsx:2305-2334`) agrupa TODAS las líneas del mismo `producto_id`
+>    y reconstruye las líneas resultantes clonando las propiedades de UNA sola línea
+>    "representativa". Hoy es inofensivo (todas las líneas de un producto comparten precio); con
+>    UoM, una línea "sueltas" y otra "por caja" con precios distintos se mezclarían mal. **GO
+>    propuso una idea mejor que las 2 que planteé:** que el combo tenga su propia UoM
+>    (`combos.unidad_medida_id`, nullable). `NULL` = combo válido solo en la UoM base — **ningún
+>    combo existente en DEV/PROD cambia de comportamiento**. El agrupador pasa a agrupar por
+>    `producto_id + unidad_medida_id`, no solo `producto_id` — mata el bug y da la feature de paso.
+> 6. **UoM en el ticket/factura: CONFIRMADO mostrarla** ("3 Cajas x $1.080" en vez de "36 Unidades
+>    x $90") — es la razón de ser de la feature.
+> 7. **Ancla de precio borrada — refinado, no silencioso.** Antes de borrar/editar el nivel que es
+>    la ancla de precio actual, el sistema **avisa explícitamente** qué va a pasar ("este nivel fija
+>    el precio actual — si lo eliminás, vuelve al nivel base a $X") y recién confirmado invalida y
+>    cae al nivel base.
+>
 > **Modelo de datos a construir (intención, sin migrar ni codear todavía):**
 > `producto_estructura_niveles` +`precio_venta`/+`precio_costo` (nullable, hereda por factor × nivel
 > anterior con precio) · `productos` +`nivel_precio_id` (FK, redefine el uso del `unidad_medida`
-> actual) · `venta_items` +`unidad_medida_id`/+`cantidad_uom` (nullable, trazabilidad/display).
+> actual) · `venta_items` +`unidad_medida_id`/+`cantidad_uom` (nullable, trazabilidad/display) ·
+> `combos` +`unidad_medida_id` (nullable, `NULL`=solo UoM base, preserva combos existentes).
 >
-> **Fuera del alcance de las preguntas a GO (detalle técnico, se resuelve al implementar):** qué pasa
-> con el ancla si se borra el nivel al que apunta (probable: invalidar → nivel base) · extender el
-> importador con precio por nivel · agregar unidad al PDF (asumido que sí, avisar si no) ·
-> interacción combos (3x2) con ventas por UoM — ¿cuenta unidades base o "paquetes"?.
->
-> **Es candidato a fasearse** (varias migraciones + rework POS + PDF + importador), como Estructuras
-> Fase 1 — no para implementar todo de una tirada.
+> **Es candidato a fasearse** (varias migraciones + rework POS + PDF + importador + combos), como
+> Estructuras Fase 1 — no para implementar todo de una tirada. **Diseño 100% cerrado, cero código
+> escrito — falta preguntarle a GO si arranca la implementación ahora o queda anotado.**
 >
 > #### Puntos 1, 2, 3, 5 — resumen de la 1ª tanda (detalle con el porqué de cada una, en el Artifact)
 >

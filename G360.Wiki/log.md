@@ -6,6 +6,27 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-21] update | 🔎 Relevamiento CERRADO — Precio por Unidad de Medida (puntos 4/6/7): bug real cazado en combos + últimas 3 decisiones
+
+Ronda de cierre del relevamiento dedicado (misma sesión, después del reinicio de PC): quedaban 3
+preguntas abiertas y las tres se resolvieron. La más relevante — **se encontró un bug real (no
+hipotético) en el motor de combos automáticos** (`VentasPage.tsx:2305-2334`): agrupa todas las
+líneas del carrito del mismo producto y reconstruye las resultantes clonando las propiedades de
+una sola línea "representativa"; hoy es inofensivo porque todas las líneas de un producto comparten
+precio, pero con precio por UoM (una línea "sueltas" y otra "por caja" con precios distintos) el
+mecanismo las mezclaría mal. GO propuso una solución mejor que las dos alternativas planteadas: que
+cada combo tenga su propia UoM opcional (`NULL` = solo aplica en la UoM base, así ningún combo
+existente en DEV/PROD cambia de comportamiento) — mata el bug de raíz agrupando por
+`producto_id + unidad_medida_id` en vez de solo `producto_id`. Las otras dos: el ticket/factura SÍ
+va a mostrar la UoM vendida ("3 Cajas × $1.080"), y si se borra el nivel de estructura que es la
+"ancla de precio" de un producto, el sistema avisa explícitamente antes de invalidarla y volver al
+nivel base (no es un fallback silencioso).
+
+Con esto, **los 7 puntos de la reunión con Fede quedan 100% relevados**: 5 con diseño cerrado (3,
+4, 5, 6, 7) y 2 en pausa esperando que GO confirme con Fede (1, 2). Artifact actualizado con el
+detalle completo de las 7. Cero código escrito en ningún punto — falta preguntarle a GO si arranca
+la implementación de 4/6/7 ahora o queda anotado para otra sesión.
+
 ## [2026-07-21] update | 🟡 Relevamiento dedicado — Precio por Unidad de Medida (puntos 4/6/7), diseño cerrado
 
 Continuación de la sesión anterior: se relevaron los 3 puntos derivados (precio por UoM en la

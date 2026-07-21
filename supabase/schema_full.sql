@@ -7,6 +7,15 @@
 -- (NO es pg_dump byte-a-byte). Regenerar con: node scripts/dump-schema.mjs
 -- (necesita conexión al pooler/directo; hoy bloqueada por el bug de Supavisor +
 --  falta de egress IPv6, así que este snapshot se generó vía MCP execute_sql).
+--
+-- ⚠ PARCHEADO A MANO 2026-07-21 (sin SUPABASE_ACCESS_TOKEN en el entorno, mismo
+-- bloqueo de siempre — ver reference_schema_dump_metodo): migraciones 284-287
+-- (descuento_pct en estados_inventario · trazabilidad de descuento por estado en
+-- venta_items/ventas · precio_venta/precio_costo por nivel de estructura + ancla
+-- de precio en productos.nivel_precio_orden + unidad_medida_id/cantidad_uom en
+-- venta_items/combos · fn_estructura_guardar_niveles extendida). Regenerar con
+-- el script completo la próxima vez que haya token a mano, para no acumular
+-- drift entre este snapshot y la DB real.
 -- ============================================================
 
 -- ============================================================
@@ -490,7 +499,8 @@ CREATE TABLE public.combos (
   descuento_monto numeric(12,2) NOT NULL DEFAULT 0,
   sucursal_id uuid,
   vigencia_desde date,
-  vigencia_hasta date
+  vigencia_hasta date,
+  unidad_medida_id uuid
 );
 
 CREATE TABLE public.courier_credenciales (
@@ -797,7 +807,8 @@ CREATE TABLE public.estados_inventario (
   es_devolucion boolean NOT NULL DEFAULT false,
   es_disponible_tn boolean NOT NULL DEFAULT true,
   es_disponible_venta boolean NOT NULL DEFAULT true,
-  es_disponible_meli boolean NOT NULL DEFAULT true
+  es_disponible_meli boolean NOT NULL DEFAULT true,
+  descuento_pct numeric(5,2)
 );
 
 CREATE TABLE public.gasto_cuotas (
@@ -1311,13 +1322,17 @@ CREATE TABLE public.producto_estructura_niveles (
   ancho_cm numeric(10,2),
   largo_cm numeric(10,2),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  precio_venta numeric(12,2),
+  precio_costo numeric(12,2),
   CONSTRAINT producto_estructura_niveles_orden_check CHECK (orden >= 1),
   CONSTRAINT producto_estructura_niveles_factor_check CHECK (factor >= 1),
   CONSTRAINT producto_estructura_niveles_unidades_base_check CHECK (unidades_base >= 1),
   CONSTRAINT producto_estructura_niveles_peso_kg_check CHECK (peso_kg IS NULL OR peso_kg > 0),
   CONSTRAINT producto_estructura_niveles_alto_cm_check CHECK (alto_cm IS NULL OR alto_cm > 0),
   CONSTRAINT producto_estructura_niveles_ancho_cm_check CHECK (ancho_cm IS NULL OR ancho_cm > 0),
-  CONSTRAINT producto_estructura_niveles_largo_cm_check CHECK (largo_cm IS NULL OR largo_cm > 0)
+  CONSTRAINT producto_estructura_niveles_largo_cm_check CHECK (largo_cm IS NULL OR largo_cm > 0),
+  CONSTRAINT producto_estructura_niveles_precio_venta_check CHECK (precio_venta IS NULL OR precio_venta >= 0),
+  CONSTRAINT producto_estructura_niveles_precio_costo_check CHECK (precio_costo IS NULL OR precio_costo >= 0)
 );
 
 CREATE TABLE public.producto_grupos (
@@ -1421,7 +1436,9 @@ END,
   clase_abc text,
   clase_abc_manual boolean NOT NULL DEFAULT false,
   ultimo_conteo_at timestamp with time zone,
-  pendiente_revision boolean NOT NULL DEFAULT false
+  pendiente_revision boolean NOT NULL DEFAULT false,
+  nivel_precio_orden integer,
+  CONSTRAINT productos_nivel_precio_orden_check CHECK (nivel_precio_orden IS NULL OR nivel_precio_orden >= 1)
 );
 
 CREATE TABLE public.proveedor_cc_movimientos (
@@ -2281,7 +2298,12 @@ CREATE TABLE public.venta_items (
   created_at timestamp with time zone DEFAULT now(),
   alicuota_iva numeric(5,2),
   iva_monto numeric(12,2),
-  lpn_plan jsonb
+  lpn_plan jsonb,
+  descuento_estado_pct numeric(5,2),
+  descuento_estado_monto numeric(12,2),
+  unidad_medida_id uuid,
+  cantidad_uom numeric(12,3),
+  CONSTRAINT venta_items_cantidad_uom_check CHECK (cantidad_uom IS NULL OR cantidad_uom > 0)
 );
 
 CREATE TABLE public.venta_series (
@@ -2337,7 +2359,8 @@ CREATE TABLE public.ventas (
   interes_cc numeric(12,2) NOT NULL DEFAULT 0,
   afip_provider_usado text,
   emisor_id uuid,
-  promo_pago jsonb
+  promo_pago jsonb,
+  descuento_estado jsonb
 );
 
 CREATE TABLE public.ventas_externas_logs (
@@ -2757,6 +2780,7 @@ ALTER TABLE public.combo_items ADD CONSTRAINT combo_items_tenant_id_fkey FOREIGN
 ALTER TABLE public.combos ADD CONSTRAINT combos_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.combos ADD CONSTRAINT combos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.combos ADD CONSTRAINT combos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.combos ADD CONSTRAINT combos_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.courier_factura_lineas ADD CONSTRAINT courier_factura_lineas_envio_id_fkey FOREIGN KEY (envio_id) REFERENCES envios(id) ON DELETE SET NULL;
 ALTER TABLE public.courier_factura_lineas ADD CONSTRAINT courier_factura_lineas_factura_id_fkey FOREIGN KEY (factura_id) REFERENCES courier_facturas(id) ON DELETE CASCADE;
@@ -3057,6 +3081,7 @@ ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_linea_id_fkey FOREIGN 
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
+ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_serie_id_fkey FOREIGN KEY (serie_id) REFERENCES inventario_series(id);
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
@@ -4218,16 +4243,37 @@ BEGIN
 
     v_acumulado := v_acumulado * v_factor;
 
+    IF (v_nivel->>'precio_venta') IS NOT NULL AND (v_nivel->>'precio_venta')::numeric < 0 THEN
+      RAISE EXCEPTION 'El precio de venta del nivel % no puede ser negativo', v_orden;
+    END IF;
+    IF (v_nivel->>'precio_costo') IS NOT NULL AND (v_nivel->>'precio_costo')::numeric < 0 THEN
+      RAISE EXCEPTION 'El costo del nivel % no puede ser negativo', v_orden;
+    END IF;
+
     INSERT INTO producto_estructura_niveles
       (tenant_id, estructura_id, unidad_medida_id, orden, factor, unidades_base,
-       peso_kg, alto_cm, ancho_cm, largo_cm)
+       peso_kg, alto_cm, ancho_cm, largo_cm, precio_venta, precio_costo)
     VALUES
       (v_tenant_id, p_estructura_id, v_udm_id, v_orden, v_factor, v_acumulado,
        NULLIF(v_nivel->>'peso_kg',  '')::numeric,
        NULLIF(v_nivel->>'alto_cm',  '')::numeric,
        NULLIF(v_nivel->>'ancho_cm', '')::numeric,
-       NULLIF(v_nivel->>'largo_cm', '')::numeric);
+       NULLIF(v_nivel->>'largo_cm', '')::numeric,
+       NULLIF(v_nivel->>'precio_venta', '')::numeric,
+       NULLIF(v_nivel->>'precio_costo', '')::numeric);
   END LOOP;
+
+  -- Si el nivel anclado (productos.nivel_precio_orden) ya no existe en la estructura DEFAULT
+  -- tras este guardado, se invalida solo — vuelve al nivel base (REGLA #0: nunca dejar un ancla
+  -- apuntando a la nada).
+  UPDATE productos p
+  SET nivel_precio_orden = NULL
+  WHERE p.nivel_precio_orden IS NOT NULL
+    AND p.nivel_precio_orden > v_orden
+    AND EXISTS (
+      SELECT 1 FROM producto_estructuras pe
+      WHERE pe.id = p_estructura_id AND pe.producto_id = p.id AND pe.is_default = true
+    );
 END;
 $function$
 

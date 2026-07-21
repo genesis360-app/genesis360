@@ -45,6 +45,16 @@ type: project
 >
 > **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main; las tres entregas son
 > aditivas, sin DDL destructivo, se pueden ir todas juntas).
+>
+> **▶ `app-reference.md` (base del Asistente IA) NO se tocó esta sesión** — no menciona descuento
+> por estado, precio por UoM ni venta por UoM. A propósito: exige `npm run ai:knowledge` + redeploy
+> de la EF `ai-assistant` (DEV y PROD), y redeployar mientras esto sigue en DEV haría que el
+> Asistente hable de features que todavía no existen en PROD. Actualizarlo junto con el deploy a
+> PROD, no antes.
+>
+> **▶ `schema_full.sql` parcheado A MANO** (sin `SUPABASE_ACCESS_TOKEN` en el entorno, mismo
+> bloqueo de siempre — ver [[reference_schema_dump_metodo]]) con las migs 284-287. Regenerar con
+> el script completo la próxima vez que haya token a mano.
 
 > ### 🟡 ESTADO ANTERIOR (2026-07-21, relevamiento) — 7 puntos de la reunión GO+Fede: TODOS resueltos en el chat, ANTES de la implementación de arriba
 >

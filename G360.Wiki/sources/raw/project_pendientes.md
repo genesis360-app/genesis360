@@ -35,51 +35,54 @@ type: project
 > **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main, no requiere pasos
 > especiales de migración porque no hay DDL nuevo).
 
-> ### 🟡 BACKLOG SIN RELEVAR (2026-07-21) — 7 puntos de la reunión GO+Fede, ninguno arrancado
+> ### 🟡 RELEVAMIENTO Q&A CERRADO (2026-07-21) — 7 puntos de la reunión GO+Fede: 2 resueltos, 2 en pausa, 3 derivados
 >
-> GO pegó notas de una reunión con Fede. **Ninguno de estos 7 puntos está diseñado ni relevado
-> contra el código todavía** — son pedidos crudos. Varios tocan REGLA #0 (plata y/o inventario) y
-> necesitan definición de producto antes de tocar código (mismo patrón que
-> `project_revision_config_fede_tonga`: relevar → Q&A con GO → diseño → fases).
+> GO pegó notas de una reunión con Fede (backlog crudo, ver bloque histórico abajo) y después pidió
+> hacer la ronda de preguntas ahí mismo, en el chat. Informe completo (preguntas, respuestas, el
+> porqué de cada una) publicado como Artifact para mostrarle a Fede — **no vive en el repo**, pedirle
+> el link a GO si hace falta releerlo. Acá el resumen accionable:
 >
-> 1. **Tope máximo en descuento por método de pago** (Config→Ventas→Métodos de pago). Hoy el jsonb
->    `metodos_pago.config.descuento` tiene tope en $ (implementado en v1.136.0, `promosPago.ts`) —
->    confirmar si piden algo distinto (¿tope %? ¿tope acumulado mensual?) antes de asumir que es
->    trivial. 🔴 REGLA #0 (plata).
-> 2. **Disponibilidad por días de semana** en el mismo descuento (ej. "solo lunes"). Hoy el jsonb
->    tiene vigencia por rango de fecha (`combosVigencia.test.ts` es el patrón, pero para combos no
->    para este descuento) — no día de semana. 🔴 REGLA #0 (plata).
-> 3. **Enlazar Estados de inventario con descuento — "aging profile".** Feature NUEVA: un estado en
->    Config→Inventario→Estados (ej. "Próximo a Vencer") tendría un % de descuento propio; una venta
->    con stock en ese estado aplicaría el descuento automático. Requiere diseñar: ¿cómo interactúa
->    con `promo_pago` (v1.136.0) y con descuentos manuales? ¿aplica por LPN/línea o por ítem
->    completo? ¿qué pasa si hay mezcla de estados en la misma venta? 🔴🔴 REGLA #0 (plata +
->    inventario) — es la pieza más grande y más ambigua de las 7.
-> 4/7. **Precio de venta/costo por UoM en la estructura** (los dos puntos del mensaje son el mismo
->    pedido). Hoy el precio/costo vive en `productos` (nivel único); pasar a "1 precio por nivel de
->    `producto_estructura_niveles`" es un cambio de modelo grande — toca POS, facturación (AFIP:
->    ¿qué precio va en el comprobante si la línea es "1 caja"?), reportes de margen. 🔴🔴 REGLA #0
->    (plata + fiscal) — necesita diseño antes de cualquier migración.
-> 5. **Validación de cantidades entre niveles de estructura** — GO mismo lo planteó como pregunta
->    abierta, no como decisión: ¿debería bloquearse crear un nivel superior con una cantidad
->    "menor" que no tenga sentido jerárquico (ej. Pallet=167, Caja=6 después)? GO no está seguro si
->    aplica o si hay casos reales que lo requieran. **No implementar sin antes acordar la regla
->    exacta con GO** — alto riesgo de bloquear un caso de uso legítimo que no vimos.
-> 6. **UoM de "Stock e Inventario" en ProductoFormPage atada a la estructura default.** Debe listar
->    solo las UoM que existen en los niveles de la estructura default del producto (no todas las
->    UdM del tenant), y esa selección determina qué nivel de estructura "es" el que trae
->    precio/costo/etc. **Depende del diseño del punto 4/7** (precio por UoM) — no tiene sentido
->    implementarlo antes de resolver ese punto.
+> **✅ Punto 3 — Descuento automático por estado de inventario ("aging profile"). RESUELTO, dirección
+> tomada, falta diseño fino antes de codear.** Ojo: el "Aging Profile" que YA EXISTE (`aging_profiles`
+> + `aging_profile_reglas`, mig 013) hace algo DISTINTO — cambia el `estado_id` automático por días a
+> vencer, sin ningún descuento. Lo que pide Fede es una pieza nueva. Decisiones: (a) el % de descuento
+> va en **cualquier** `estados_inventario` (no solo los usados por un Aging Profile) — más flexible,
+> sirve también para "Dañado"/"Segunda selección"; (b) se aplica **automático, sin clave de
+> supervisor** — el estado ya lo configuró a propósito un DUEÑO/ADMIN de antemano, no es una decisión
+> del cajero en el momento; (c) **se apila** con descuento general/combos/método de pago, mismo
+> criterio que `promo_pago` (v1.136.0), plegado al mismo prorrateo fiscal G0.6. 🔴🔴 REGLA #0 (plata +
+> inventario) — falta definir el detalle de implementación (dónde vive el %, trazabilidad en factura)
+> antes de escribir código, pero ya no es ambiguo en el diseño.
+>
+> **✅ Punto 5 — Validación de cantidades entre niveles de estructura. CERRADO, sin cambios.** GO lo
+> había dejado como pregunta abierta (no sabía si aplicaba). Decisión: **sin restricción por ahora**
+> — no hay evidencia de un caso real que la necesite y una regla mal pensada podría bloquear un caso
+> de uso legítimo no visto. Retomar solo si aparece un caso concreto con la regla exacta en mano.
+>
+> **🟡 Puntos 1 y 2 — Tope y disponibilidad por día en descuento por método de pago. EN PAUSA.**
+> Hallazgo: **los dos YA ESTÁN implementados** desde v1.136.0 — Config→Ventas→Métodos de pago→panel
+> "Promo" tiene tope en $ y selector de días de semana (`promosPago.ts`, `ConfigPage.tsx:5160-5182`).
+> GO va a confirmar con Fede si esto ya cubre el pedido o si pedía algo más específico (¿tope %? ¿tope
+> acumulado por período en vez de por venta?) antes de decidir si se cierra o se amplía.
+>
+> **🔵 Puntos 4, 7 y 6 — Precio por UoM en la estructura + UoM de la hoja de producto atada a la
+> estructura default. DERIVADOS a un relevamiento propio** (mismo criterio que la Fase 1 de
+> Estructuras dinámicas) — es el cambio de modelo más grande de los 7, toca POS + factura AFIP (¿qué
+> precio/cantidad va en el comprobante si se vende "3 Cajas"?) + reportes de margen. Dirección ya
+> conversada como punto de partida (a validar en el relevamiento dedicado): `productos.precio_venta/
+> precio_costo` sigue siendo el precio del **nivel base** de la estructura; niveles superiores (Caja,
+> Pallet) pueden tener precio propio opcional, si no se carga se calcula por factor × precio base. El
+> punto 6 depende de esto: la recomendación dada (a confirmar en el relevamiento dedicado) es que el
+> usuario pueda elegir a qué nivel de la estructura default apunta el campo "unidad de medida" de la
+> hoja de producto (no forzosamente el nivel base) — más flexible, cubre tanto al negocio que piensa
+> todo en cajas como al que trackea fino por Unidad pero quiere el precio "de cabecera" en Caja.
 >
 > **Confirmado con GO:** la nota original mencionaba también "detallar envío gratis condicional" y
-> "revisar QR de modo y conexiones" pero GO aclaró que NO forman parte de este batch — son solo
-> estos 7 puntos.
+> "revisar QR de modo y conexiones" pero GO aclaró que NO forman parte de este batch.
 >
-> **▶ Próxima sesión (si se retoma):** relevar 4/7 y 6 juntos (mismo cambio de modelo: precio por
-> UoM) antes que nada — son los que más tocan REGLA #0 y de los que depende más trabajo downstream.
-> El punto 3 (aging profile) es la feature más grande — probablemente merece su propio ciclo de
-> relevamiento completo (como estructuras-udm). El punto 5 necesita una conversación corta con GO
-> antes de cualquier código (no es cambio de modelo, es una regla de validación puntual).
+> **▶ Próxima sesión (si se retoma):** (a) GO trae la respuesta de Fede sobre 1/2 → cerrar o ampliar;
+> (b) puntos 3 y 5 ya pueden pasar a diseño técnico + implementación cuando se prioricen; (c) abrir
+> relevamiento dedicado para 4/7/6 (precio por UoM) — el más grande y el que más REGLA #0 toca.
 
 > ### 📦 ESTADO ANTERIOR (2026-07-19 noche, v1.137.0 EN DEV) — Fase 1 de ESTRUCTURAS con niveles dinámicos por UdM (footprint estilo Blue Yonder) — migs **282-283 SOLO EN DEV**, PROD sigue v1.136.0
 >

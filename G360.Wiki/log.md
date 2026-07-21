@@ -6,25 +6,33 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
-## [2026-07-21] update | 🟡 Backlog crudo — 7 puntos de una reunión GO+Fede, sin relevar
+## [2026-07-21] update | 🟡 Relevamiento Q&A — 7 puntos de una reunión GO+Fede: 2 resueltos, 2 en pausa, 3 derivados
 
-GO pegó notas de una reunión con Fede. Ninguno de los 7 puntos está diseñado ni relevado contra el
-código — se registraron en `project_pendientes.md` (sección "🟡 BACKLOG SIN RELEVAR 2026-07-21") y
-en memoria propia (`project_relevamiento_fede_2026-07-21`) para no perderlos, sin tocar código
-todavía. Resumen: (1) tope máximo en descuento por método de pago, (2) disponibilidad por día de
-semana en ese mismo descuento, (3) **"aging profile"** — enlazar un Estado de inventario (ej.
-"Próximo a Vencer") con un % de descuento que se aplica automático en la venta cuando el stock
-vendido está en ese estado (feature nueva, la más grande y ambigua de las 7), (4/7) precio de
-venta/costo **por UoM** en la estructura del producto (hoy vive a nivel `productos`, cambiar de
-modelo toca POS/facturación/reportes de margen), (5) validación de cantidades entre niveles de
-estructura — **GO mismo lo dejó como pregunta abierta**, no como decisión tomada, (6) la UoM de
-"Stock e Inventario" en `ProductoFormPage` debería listar solo las UoM de la estructura default del
-producto y determinar qué nivel trae precio/costo (depende del diseño del punto 4/7).
+GO pegó notas de una reunión con Fede (7 puntos crudos, ninguno relevado) y pidió resolverlos en el
+momento con una ronda de preguntas en el chat. Antes de preguntar se revisó cada punto contra el
+código real, lo que cambió el resultado de varios: dos puntos resultaron YA implementados, y uno
+("aging profile") resultó estar confundido con una feature homónima que ya existe pero hace otra
+cosa. Informe completo (pregunta → respuesta → porqué de cada decisión) publicado como Artifact
+para que GO se lo muestre a Fede; resumen accionable en `project_pendientes.md` ("RELEVAMIENTO Q&A
+CERRADO 2026-07-21") y en memoria (`project_relevamiento_fede_2026-07-21`).
 
-Casi todos tocan REGLA #0 (plata y/o inventario/fiscal) — ninguno se codea sin relevamiento/Q&A con
-GO antes, mismo patrón que el backlog anterior de Fede (`project_revision_config_fede_tonga`).
-Prioridad sugerida si se retoma: 4/7 + 6 juntos primero (mismo cambio de modelo), 3 (aging profile)
-probablemente merece su propio ciclo de relevamiento completo, 5 solo necesita una charla corta.
+**✅ Resueltos:** (3) descuento automático por estado de inventario — NO es lo mismo que el "Aging
+Profile" existente (mig 013, cambia `estado_id` por días a vencer, sin descuento); decidido: % en
+cualquier estado, automático sin clave de supervisor, se apila con otros descuentos igual que
+`promo_pago`. (5) validación de cantidades entre niveles de estructura — sin restricción por ahora,
+GO mismo la había dejado como pregunta abierta y no hay caso real que la justifique.
+
+**🟡 En pausa:** (1) y (2) tope + disponibilidad por día en descuento por método de pago — YA
+ESTÁN implementados desde v1.136.0 (panel "Promo", `promosPago.ts`); GO confirma con Fede si
+pedía algo más específico antes de cerrar o ampliar.
+
+**🔵 Derivados a relevamiento propio:** (4), (7) y (6) — precio de venta/costo por UoM en la
+estructura + la UoM de la hoja de producto atada a la estructura default. Es el cambio de modelo
+más grande de los 7 (POS + factura AFIP + reportes de margen) — se abre su propio ciclo de
+relevamiento en vez de resolverlo apurado, mismo criterio que la Fase 1 de Estructuras dinámicas.
+
+Casi todo lo resuelto toca REGLA #0 (plata y/o inventario/fiscal). Sin código todavía en ningún
+punto — esta sesión fue puramente de relevamiento/decisión.
 
 ## [2026-07-21] update | 🔎 v1.138.0 — Botón Filtros en Productos + columna Estructura en Inventario
 

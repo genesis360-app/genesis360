@@ -107,7 +107,9 @@ cálculo server-side + RPC directa con factor 0 → 400 y niveles intactos). UAT
 
 ---
 
-## Precio por Unidad de Medida — Fase 1: modelo (migs 286-287, backlog Fede 4/6/7)
+## Precio por Unidad de Medida (backlog Fede 4/6/7) — Fase 1 modelo + Fase 2 venta, AMBAS EN DEV
+
+### ✅ Fase 1: modelo (migs 286-287)
 
 Relevamiento a fondo de los puntos 4/6/7 del backlog de Fede (2026-07-21) antes de codear: hoy
 **no existe ningún camino de venta o rebaje de stock en una UoM distinta a la base** del producto
@@ -139,21 +141,27 @@ todavía POS/facturación/combos.**
 - `venta_items.unidad_medida_id` / `.cantidad_uom` y `combos.unidad_medida_id` — migrados en la
   mig 286 para dejar el terreno listo para la Fase 2, **sin ningún código que los use todavía.**
 
-### 🛑 Qué NO hace esta Fase 1
-
-**Todavía no se puede vender por una UoM distinta a la base en el POS.** El precio por nivel que
-carga esta Fase 1 es solo dato de catálogo — el POS, la facturación y los combos siguen operando
-100% en la UdM base del producto (`venta_items.cantidad` sigue en unidades base). La **Fase 2**
-(diseño ya cerrado con GO, sin código todavía) es la que conecta ese precio con una venta real.
-
 UAT §42 · e2e 102.
+
+### ✅ Fase 2: vender por UoM en el POS (v1.141.0, misma sesión)
+
+La Fase 2 se implementó en la misma sesión, inmediatamente después de la Fase 1 — el carrito del
+POS **ya puede vender "por Caja"** usando el precio de ese nivel. `venta_items.cantidad` sigue
+siempre en unidades base (stock/rebaje/margen sin cambios); `unidad_medida_id`/`cantidad_uom`
+trazan qué UoM se vendió. Detalle completo (selector, precedencia sobre tier mayorista, fix de un
+bug real en el agrupador de combos, UoM en el ticket/factura) en
+[[wiki/features/ventas-pos]] → "Venta por Unidad de Medida". UAT §43 · e2e 103, 104.
+
+**Único pendiente real:** extender `ImportarProductosPage` con columnas de precio por nivel — no
+bloqueante, nadie lo pidió con urgencia.
 
 ### Roadmap de precio por UoM (backlog Fede 4/6/7 — numeración propia, distinta del roadmap de fases de abajo)
 
 | Fase | Qué | Estado |
 |---|---|---|
 | **1** | Modelo: precio propio por nivel + ancla de precio (`nivel_precio_orden`) | ✅ v1.140.0 (migs 286-287) |
-| **2** | Vender por UoM en el POS (elegir "Caja" en el carrito → precio del nivel, rebaje siempre en unidad base) + facturación + combos por UoM | ⬜ diseño cerrado, sin código |
+| **2** | Vender por UoM en el POS + combos por UoM + UoM en factura/ticket | ✅ v1.141.0 |
+| — | Importador de productos con precio por nivel | ⬜ sin arrancar, no bloqueante |
 
 ---
 

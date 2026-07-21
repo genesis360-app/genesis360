@@ -6,6 +6,44 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-21] update | 🛒 v1.141.0 — Venta por Unidad de Medida en el POS, Fase 2 (backlog Fede 4/6/7) — CIERRA el backlog completo de la reunión con Fede
+
+Continuación inmediata de v1.140.0 (Fase 1): el carrito del POS ya puede vender "por Caja" (o
+cualquier nivel de la estructura default) usando el precio de ese nivel, en vez de siempre la
+unidad base. `venta_items.cantidad` sigue SIEMPRE en unidades base — stock, rebaje y reportes de
+margen no cambiaron; la UoM elegida es una capa de precio + trazabilidad + display encima
+(`unidad_medida_id`/`cantidad_uom`, ya migrados en la 286).
+
+**Lo implementado:** selector de UoM en el carrito (default = 1 unidad base siempre, para no
+sorprender con el precio de una caja "por las dudas") · precio del nivel propio, o calculado
+proporcional a la ancla si no lo tiene (`precioEfectivoNivel`, ya de la Fase 1) · precedencia
+sobre tier mayorista (elegir explícitamente una UoM pisa el tier automático) · UoM visible en el
+PDF de factura/NC y en el ticket no fiscal ("3 Cajas" en vez de "36").
+
+**Fix de un bug real encontrado en el relevamiento:** el agrupador automático de combos
+(`VentasPage.tsx`) reconstruía todas las filas de un producto clonando las propiedades de UNA
+sola fila "representativa" — con dos UoM del mismo producto en el carrito hubiera mezclado precio/
+descuento de una en la otra. Ahora agrupa por `producto_id + unidad_medida_id`
+(`claveUomItem`/`comboAplicaUom`), tanto en el auto-combo como en `findCombo`/`aplicarCombo`
+(manual) y los combos multi-SKU. Un combo con `unidad_medida_id` NULL (el default de TODOS los
+combos ya cargados) sigue aplicando solo a la UoM base — cero cambio de comportamiento para ellos.
+
+**Bug real encontrado TESTEANDO** (no hipotético, casi queda sin cubrir): re-agregar al carrito un
+producto que ya estaba vendiéndose "por Caja" sumaba +1 unidad BASE en vez de +1 Caja,
+desincronizando `cantidad_uom` de `cantidad`. El e2e mutante 104 (armado para probar el fix de
+combos) lo encontró antes de commitear — fix: la rama de "incrementar si ya está en el carrito"
+ahora respeta la UoM ya seleccionada de esa línea.
+
+Verde: tsc · build · unit 1177 · **e2e 103 y 104 nuevos** (mutantes) + regresión amplia 18/18
+(incluye facturación con CAE real, tier mayorista, descuento general, descuento por estado). UAT
+§43. Sin migraciones nuevas (usa las de la mig 286, Fase 1). `APP_VERSION` = v1.141.0, tag+release.
+
+**Con esto se completan las 7 preguntas del backlog original de Fede** (relevamiento 2026-07-21):
+punto 3 y puntos 4/6/7 implementados de punta a punta en DEV; puntos 1/2 en pausa (ya existían,
+GO confirma con Fede si pedía algo más); punto 5 cerrado sin código (sin restricción). Único
+pendiente real no bloqueante: extender el importador de productos con precio por nivel. Ninguna
+de las 3 entregas de la sesión (v1.139/140/141) llegó a PROD todavía — sigue en v1.136.0.
+
 ## [2026-07-21] update | 💲 v1.139.0 + v1.140.0 — Descuento por estado (punto 3, COMPLETO) + Precio por UoM Fase 1 (puntos 4/6/7)
 
 GO pidió "comienza a implementar todo lo que puedas" sobre el backlog de Fede ya relevado. Dos

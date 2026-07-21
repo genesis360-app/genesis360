@@ -1,8 +1,8 @@
 ---
 title: Ventas / POS
 category: features
-tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285]
+tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida]
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286]
 updated: 2026-07-21
 ---
 
@@ -174,6 +174,46 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
   (ambos inclusive, NULL = sin límite). El POS filtra los no vigentes al cargar (`comboVigente` en
   `ventasValidation.ts`, fecha LOCAL no UTC) y Config muestra badges vigente/programado/vencido —
   una promo "del 1 al 15" vence sola, sin apagarla a mano.
+- **UoM propia (v1.141.0, mig 286 — backlog Fede puntos 4/6/7 Fase 2)**: `combos.unidad_medida_id`
+  opcional. `NULL` (el default de todos los combos ya cargados, cero cambio de comportamiento) =
+  el combo solo aplica a ventas en la UoM BASE del producto; con un valor, es específico de esa
+  UoM (ej. una promo solo "por Caja"). Fix de un bug real encontrado en el relevamiento: el
+  agrupador automático de combos (`VentasPage.tsx`) antes reconstruía todas las filas de un
+  producto clonando las propiedades de UNA sola fila "representativa" — con dos UoM del mismo
+  producto en el carrito (ej. sueltas + por caja) hubiera mezclado precio/descuento de una en la
+  otra. Ahora agrupa por `producto_id + unidad_medida_id` (`claveUomItem`/`comboAplicaUom`), tanto
+  en el auto-combo como en `findCombo`/`aplicarCombo` (manual) y los combos multi-SKU.
+
+---
+
+## Venta por Unidad de Medida (v1.141.0, backlog Fede puntos 4/6/7 Fase 2)
+
+Un producto con estructura (`producto_estructuras`, ver `estructuras-udm.md`) puede venderse "por
+Caja"/"por Pallet"/etc. en vez de siempre la unidad base — usa el precio propio del nivel elegido
+(o uno calculado proporcional a la "ancla de precio" del producto si no tiene precio propio, ver
+`productos.md`).
+
+- **Selector en el carrito**: al agregar un producto con estructura de 2+ niveles aparece un
+  dropdown de UoM junto a la cantidad. Default = 1 unidad BASE siempre (nunca sorprende con el
+  precio de una caja "por las dudas", ni siquiera si el producto tiene su ancla de precio anclada
+  a un nivel no-base) — vender por otra UoM es una elección explícita del cajero.
+- **`venta_items.cantidad` SIGUE siempre en unidades base** — stock, rebaje (`rebajeSort`,
+  `lpn_fuentes`) y reportes de margen (`RentabilidadPage`) no cambiaron en absoluto. La UoM
+  elegida se traza aparte: `venta_items.unidad_medida_id` + `cantidad_uom` (mig 286), puramente
+  informativo/display.
+- **Conversión visible**: "= 36 Unidad" al lado del selector, para verificar la equivalencia antes
+  de cobrar.
+- **Precedencia sobre tier mayorista**: si el cajero elige explícitamente vender "por Caja", ese
+  precio pisa cualquier tier automático por cantidad (decisión de producto — es una elección a
+  mano para ese empaque, no algo que deba competir con el tier).
+- **Se muestra en el comprobante**: el PDF de factura/NC y el ticket no fiscal imprimen "3 Cajas"
+  (con el precio de la Caja) en vez de "36" (unidades base) — es la razón de ser de la feature.
+- **Bug real encontrado testeando** (no hipotético): re-agregar al carrito un producto que ya
+  estaba vendiéndose "por Caja" sumaba +1 unidad BASE en vez de +1 Caja, dejando `cantidad_uom`
+  desincronizado de `cantidad`. Corregido: la rama de "incrementar si ya está en el carrito"
+  ahora respeta la UoM ya seleccionada de esa línea.
+- **Fuera de esta entrega**: extender `ImportarProductosPage` con columnas de precio por nivel —
+  es lo único del diseño original que quedó sin hacer.
 
 ---
 

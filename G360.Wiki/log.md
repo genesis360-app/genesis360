@@ -6,6 +6,48 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-21] update | 💲 v1.139.0 + v1.140.0 — Descuento por estado (punto 3, COMPLETO) + Precio por UoM Fase 1 (puntos 4/6/7)
+
+GO pidió "comienza a implementar todo lo que puedas" sobre el backlog de Fede ya relevado. Dos
+entregas separadas, cada una versionada:
+
+**v1.139.0 — Punto 3 (descuento automático por estado), implementación COMPLETA.** Antes de
+codear se resolvió el gap de diseño que había quedado pendiente (¿cuándo se sabe qué estado se
+va a consumir, en relación al momento de facturar?): confirmado por código que la factura SIEMPRE
+se emite en el mismo momento que el despacho real (nunca antes), así que el descuento se computa
+sobre la previsualización de LPNs que el carrito ya usa para planificar el rebaje —sin necesidad
+de tocar el momento de facturación. Migs 284 (`estados_inventario.descuento_pct`) y 285
+(trazabilidad `venta_items`/`ventas`). Es un monto POR LÍNEA (no un descuento global prorrateado
+como "Descuento general"/combos/promo por método de pago) e independiente de descuento manual/
+combo — se resta aparte, nunca colisiona. UI en Config→Inventario→Estados, lib pura
+`descuentoEstado.ts` (10 unit), integrado en `VentasPage`. **e2e 101 nuevo** validó el flujo
+completo (estado nuevo con 15% → producto → ingreso real por UI → venta directa → verificación
+en DB: 4u×$1.000×15%=$600 descontados). UAT §41.
+
+**v1.140.0 — Puntos 4/6/7 (precio por Unidad de Medida), SOLO FASE 1.** Antes de codear, un
+agente mapeó el código real (POS, rebaje de stock, EF `emitir-factura`/WSFE, PDF, tier
+mayorista, combos, `RentabilidadPage`, importadores) — hallazgo central: **hoy no existe ningún
+camino donde se venda o rebaje stock en una UoM distinta a la base** (`convertirABase()` en
+`estructuras.ts` es código muerto de la Fase 2 del roadmap de Estructuras, nunca invocado). Por
+el tamaño del cambio se decidió fasearlo, mismo criterio que Estructuras Fase 1. Esta entrega
+(Fase 1): `producto_estructura_niveles.precio_venta/costo` opcionales por nivel (migs 286-287,
+la RPC `fn_estructura_guardar_niveles` los persiste igual que factor/dims) + `productos.
+nivel_precio_orden` ("ancla de precio" — a qué nivel de la estructura DEFAULT corresponden los
+precios de la hoja de producto, por ORDEN no por id porque la RPC reinserta todos los niveles en
+cada guardado) + `precioEfectivoNivel` en `estructuras.ts` (el precio de un nivel sin precio
+propio se calcula proporcional al ANCLA, nunca en cadena por niveles intermedios — 13 unit
+nuevos) + selector "Estos precios corresponden a" en `ProductoFormPage` (relabelea "Precio de
+venta (por Caja)" dinámicamente) + precio editable por nivel en `ProductosPage` tab Estructura +
+aviso antes de borrar un nivel anclado. **e2e 102 nuevo** validó persistencia real vía RPC + el
+selector de ancla end-to-end. UAT §42. `venta_items.unidad_medida_id/cantidad_uom` +
+`combos.unidad_medida_id` ya migrados (286) pero SIN consumidor todavía — quedan listos para la
+Fase 2 (vender por UoM en el POS, con el fix del bug real de agrupamiento de combos ya diseñado
+en el relevamiento, mostrar la UoM en el ticket/factura, extender el importador).
+
+**Verde en ambas entregas:** tsc · build · unit 1177 total (26 nuevos entre las dos) · e2e 101 y
+102 nuevos + regresión dirigida (13+10 specs) sin fallas. Migs 284-287 aplicadas en DEV. Ninguna
+de las dos entregas deployó a PROD (queda en DEV, PROD sigue v1.136.0).
+
 ## [2026-07-21] update | 🔎 Relevamiento CERRADO — Precio por Unidad de Medida (puntos 4/6/7): bug real cazado en combos + últimas 3 decisiones
 
 Ronda de cierre del relevamiento dedicado (misma sesión, después del reinicio de PC): quedaban 3

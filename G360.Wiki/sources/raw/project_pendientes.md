@@ -6,7 +6,46 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🔎 ARRANCÁ ACÁ (2026-07-21, v1.138.0 EN DEV) — Botón "Filtros" en Productos + columna Estructura en Inventario — SIN migraciones nuevas, commiteado/pusheado/tag+release, PROD sigue v1.136.0
+> ### 💲 ARRANCÁ ACÁ (2026-07-21, v1.140.0 EN DEV) — Precio por UoM Fase 1 (backlog Fede 4/6/7) + Descuento por estado (punto 3) — migs 284-287 SOLO EN DEV, PROD sigue v1.136.0
+>
+> **Sesión de implementación autónoma** ("comienza a implementar todo lo que puedas") sobre el
+> backlog de Fede ya relevado en sesiones anteriores. Dos entregas separadas, cada una con su
+> versión/tag/release:
+>
+> **v1.139.0 — Punto 3, descuento automático por estado de inventario.** COMPLETO de punta a
+> punta: migración `estados_inventario.descuento_pct` (284) + trazabilidad en `venta_items`/
+> `ventas` (285) + UI en Config→Inventario→Estados + lib pura `descuentoEstado.ts` + integrado en
+> `VentasPage` (se calcula sobre la MISMA previsualización de LPNs que ya usa el carrito para
+> planificar el rebaje — nunca después del despacho; es un monto POR LÍNEA, no un descuento
+> global prorrateado; independiente de descuento manual/combo). **e2e 101 nuevo** validó el flujo
+> completo (estado nuevo → producto → ingreso real por UI → venta → verificación en DB). UAT §41.
+>
+> **v1.140.0 — Puntos 4/6/7, precio por Unidad de Medida — SOLO FASE 1 (modelo + ancla).** Antes
+> de codear, un agente mapeó el código real y encontró que HOY no existe ningún camino de venta/
+> rebaje de stock en una UoM distinta a la base — por eso se decidió fasearlo, mismo criterio que
+> Estructuras Fase 1. Esta entrega: `producto_estructura_niveles.precio_venta/costo` opcionales
+> por nivel (mig 286-287, calculados proporcional al nivel ANCLADO si no se cargan, nunca en
+> cadena) + `productos.nivel_precio_orden` ("ancla de precio", por ORDEN no por id — la RPC
+> reinserta todos los niveles en cada guardado) + selector "Estos precios corresponden a" en
+> `ProductoFormPage` (relabelea los campos dinámicamente) + precio editable por nivel en
+> `ProductosPage` tab Estructura + aviso antes de borrar un nivel anclado. **e2e 102 nuevo**. UAT
+> §42. `venta_items.unidad_medida_id/cantidad_uom` + `combos.unidad_medida_id` YA MIGRADOS (286)
+> pero sin consumidor todavía — son la base de la Fase 2.
+>
+> **🟡 Fase 2 de 4/6/7 — SIN ARRANCAR, diseño ya cerrado (detalle completo en el Artifact del
+> relevamiento, pedirle el link a GO):**
+> 1. Selector de UoM al vender en el POS (`VentasPage`) — tipear cantidad + elegir nivel, el
+>    sistema sabe la equivalencia en unidades base y usa el precio de ese nivel.
+> 2. **Bug real ya encontrado y con fix diseñado**: el agrupador de combos automático
+>    (`VentasPage.tsx:2305-2334`) mezcla mal líneas del mismo producto si tienen distinta UoM/
+>    precio — hay que agrupar por `producto_id + unidad_medida_id`, no solo `producto_id`. Ya
+>    migrado `combos.unidad_medida_id` (NULL = solo UoM base, ningún combo existente cambia de
+>    comportamiento).
+> 3. Mostrar la UoM vendida en el ticket/factura (ej. "3 Cajas × $1.080").
+> 4. Extender `ImportarProductosPage` con columnas de precio por nivel.
+>
+> **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main; ambas entregas son
+> aditivas, sin DDL destructivo). Confirmar con GO si arranca la Fase 2 de 4/6/7 en otra sesión.
 >
 > **Qué se hizo:** reemplazo del toggle suelto "Ver inactivos" de `ProductosPage` (tab Productos)
 > por un panel de filtros combinable, pill+popover (mismo patrón visual que `InventarioPage` →

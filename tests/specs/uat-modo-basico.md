@@ -1447,3 +1447,28 @@ todavía) · combos con UoM propia opcional (`combos.unidad_medida_id`, ya migra
 combos por `producto_id + unidad_medida_id` (fix del bug real encontrado en el relevamiento) ·
 mostrar la UoM vendida en el ticket/factura · extender el importador de productos con precio por
 nivel.
+
+## 🛒 §43 — Venta por Unidad de Medida en el POS, FASE 2 (backlog Fede 4/6/7, sin migraciones nuevas — usa 286) — 2026-07-21
+
+**Contexto:** cierra la Fase 2 que había quedado diseñada pero sin código en §42. El carrito del
+POS ahora puede vender "por Caja" (o cualquier nivel de la estructura default) en vez de siempre
+la unidad base, usando el precio propio (o calculado proporcional al ancla) de ese nivel. El
+stock, el rebaje y los reportes de margen NO cambian: `venta_items.cantidad` sigue siempre en
+unidades base — la UoM elegida es una capa de precio + trazabilidad + display encima.
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Default = 1 unidad base al agregar al carrito** | Nunca sorprende con el precio de una caja "por las dudas" — incluso si el producto tiene ancla de precio en un nivel no-base, el precio del nivel BASE se calcula proporcional (`precioEfectivoNivel`) para el agregado inicial | revisión de código + e2e 103 |
+| 2 | **Selector de UoM en el carrito** | Elegir "Caja" + cantidad "3" → cambia `cantidad` (base) a 36, `precio_unitario` a 90 (1080/12, NO recalculado — el precio propio de Caja se respeta tal cual) | **e2e 103 nuevo** (mutante, RPC real + venta real) |
+| 3 | **Conversión visible antes de cobrar** | "= 36 Unidad" al lado del selector, para que el cajero verifique la equivalencia antes de cerrar la venta | e2e 103 |
+| 4 | **Trazabilidad en venta_items** | `unidad_medida_id` = id de Caja, `cantidad_uom` = 3, `cantidad` = 36 (base), `subtotal` = 3.240 (3×1.080) | **e2e 103** (verificado en DB) |
+| 5 | **🐛 BUG REAL encontrado armando el spec 104**: re-agregar al carrito un producto que ya está seleccionado "por Caja" sumaba +1 UNIDAD BASE (no +1 Caja) — dejaba `cantidad_uom` desincronizado de `cantidad` (ej. cantidad_uom seguía en "2" pero cantidad ya no eran múltiplo de 12) | Fix: la rama de "incrementar si ya está en el carrito" ahora respeta la UoM seleccionada de la línea existente (`seleccionarNivelUom`, no `cantidad+1` a ciegas) | **e2e 104** (detectó el bug, no hipotético — casi queda sin cubrir) |
+| 6 | **Combos con UoM propia** (`combos.unidad_medida_id`, NULL = solo UoM base) | Un combo "3×10% off" configurado sin UoM (el default de TODOS los combos ya cargados, cero cambio de comportamiento para ellos) aplica normal vendiendo suelto, pero se DESACTIVA al cambiar la misma línea a "por Caja" — aunque 3 Cajas = 36 unidades base "cumplirían" el umbral si solo se mirara la cantidad | **e2e 104 nuevo** (mutante) |
+| 7 | **Agrupador de combos por producto_id + UoM** (fix del bug de fondo) | `claveUomItem`/`comboAplicaUom` en `VentasPage.tsx` — el auto-combo, `findCombo`/`aplicarCombo` manual, y los combos multi-SKU ya NO agrupan/buscan solo por `producto_id` | revisión de código + e2e 104 (ejercita el auto-combo real) |
+| 8 | **PDF de factura/NC + ticket muestran la UoM vendida** | "3 Cajas" en vez de "36" en la columna Cantidad, precio unitario = el de la Caja (no el prorrateado a unidad base) — mismo criterio en el ticket no fiscal | revisión de código (sin caso e2e dedicado — cubierto indirectamente por no romper el PDF real de spec 21) |
+| 9 | **Tier mayorista y descuento por estado siguen funcionando sin cambios** | Ninguno de los dos toca `unidad_medida_id`/`cantidad_uom` — la venta por UoM es ortogonal | regresión 54 (tier) + 101 (descuento por estado) sin fallas |
+
+**Verde:** tsc · build · unit 1177 (sin nuevos — es integración de UI/POS, la lógica pura ya
+estaba testeada en `estructurasPrecio.test.ts`) · **e2e 103 y 104 nuevos** (mutantes) + regresión
+amplia 18/18 (04, 19, 21 con CAE real, 45, 48, 54, 82, 98, 101, 102). Sin migraciones nuevas —
+usa las columnas de la mig 286 (Fase 1) que quedaron sin consumidor hasta ahora.

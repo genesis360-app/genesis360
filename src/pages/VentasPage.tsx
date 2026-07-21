@@ -38,6 +38,7 @@ import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
+import { precioEfectivoNivel, ordenAnclaEfectivo, convertirABase } from '@/lib/estructuras'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
@@ -96,6 +97,17 @@ async function stockVendibleSucursal(productoId: string, sucursalId: string | nu
     .reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
 }
 
+// Nivel de la estructura DEFAULT de un producto, para el selector de UoM del carrito
+// (backlog Fede puntos 4/6/7, Fase 2). Ver src/lib/estructuras.ts (precioEfectivoNivel).
+interface NivelPrecioCarrito {
+  orden: number
+  unidad_medida_id: string
+  nombre: string
+  unidades_base: number
+  precio_venta: number | null
+  precio_costo: number | null
+}
+
 interface CartItem {
   producto_id: string
   nombre: string
@@ -121,6 +133,15 @@ interface CartItem {
   // descuento/descuento_tipo (manual/combo): se resta aparte en getItemSubtotal.
   descuento_estado_monto?: number
   descuento_estado_detalle?: DescuentoEstadoDetalle[]
+  // Venta por Unidad de Medida (backlog Fede puntos 4/6/7, Fase 2) — niveles de la estructura
+  // DEFAULT del producto (con precio propio si lo tienen), para elegir vender "por Caja" en vez
+  // de por unidad. `cantidad` (arriba) SIEMPRE queda en unidades base — esto es selección +
+  // trazabilidad/display, ver src/lib/estructuras.ts (precioEfectivoNivel).
+  nivelesUom?: NivelPrecioCarrito[]
+  nivelAnclaOrden?: number          // orden del nivel anclado (productos.nivel_precio_orden, o 1)
+  nivelSeleccionadoOrden?: number   // orden del nivel elegido para vender (1 = base, sin UoM)
+  unidad_medida_id?: string | null  // FK del nivel elegido, null = base (venta_items.unidad_medida_id)
+  cantidad_uom?: number | null      // cantidad tipeada EN esa UoM, ej. 3 (venta_items.cantidad_uom)
   imagen_url?: string
   es_kit?: boolean
   alicuota_iva?: number
@@ -1066,7 +1087,7 @@ export default function VentasPage() {
 
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit, alicuota_iva, precio_usd, moneda_venta')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit, alicuota_iva, precio_usd, moneda_venta, nivel_precio_orden')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
         .limit(viewMode === 'galeria' ? 60 : 20)
@@ -1312,6 +1333,14 @@ export default function VentasPage() {
     if (totalEnCarrito > 0) {
       if (totalEnCarrito >= stockDisponible) { toast.error(`Stock disponible: ${stockDisponible}`); return }
       const idx = cart.findIndex(c => c.producto_id === p.id)
+      const existente = cart[idx]
+      // Venta por UoM (backlog Fede 4/6/7, Fase 2) — si la línea ya está vendiéndose "por Caja",
+      // +1 tiene que sumar 1 CAJA (no 1 unidad base suelta, que dejaría cantidad_uom desincronizado
+      // de cantidad). Reusa seleccionarNivelUom, que ya hace la conversión completa.
+      if ((existente.nivelSeleccionadoOrden ?? 1) !== 1) {
+        seleccionarNivelUom(idx, existente.nivelSeleccionadoOrden!, (existente.cantidad_uom ?? 1) + 1)
+        return
+      }
       setCart(prev => prev.map((c, i) => i === idx ? { ...c, cantidad: c.cantidad + 1 } : c))
       return
     }
@@ -1397,15 +1426,51 @@ export default function VentasPage() {
     const precioBase = esUSD
       ? Math.round(((p as any).precio_usd as number) * (cotizacionUSD as number) * 100) / 100
       : p.precio_venta
+
+    // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — niveles de la estructura DEFAULT
+    // con precio propio o calculado. Fuera de alcance para productos en USD (el ancla de precio
+    // es en ARS, mezclar ambos requeriría diseño aparte — no hay pedido de eso todavía).
+    let nivelesUom: NivelPrecioCarrito[] | undefined
+    let nivelAnclaOrden = 1
+    let precioBaseAncla = precioBase
+    let costoBaseAncla = p.precio_costo ?? 0
+    if (!esUSD && !p.tiene_series) {
+      const { data: estrDef } = await supabase.from('producto_estructuras')
+        .select('producto_estructura_niveles(orden, unidad_medida_id, unidades_base, precio_venta, precio_costo, unidades_medida(nombre))')
+        .eq('producto_id', p.id).eq('is_default', true).maybeSingle()
+      const nivelesRaw = ((estrDef as any)?.producto_estructura_niveles ?? []) as any[]
+      if (nivelesRaw.length > 1) {
+        const nivelesBrutos = nivelesRaw
+          .map(n => ({
+            orden: n.orden, unidad_medida_id: n.unidad_medida_id,
+            nombre: n.unidades_medida?.nombre ?? '—', unidades_base: n.unidades_base,
+            precio_venta: n.precio_venta != null ? Number(n.precio_venta) : null,
+            precio_costo: n.precio_costo != null ? Number(n.precio_costo) : null,
+          }))
+          .sort((a, b) => a.orden - b.orden)
+        nivelAnclaOrden = ordenAnclaEfectivo(nivelesBrutos, (p as any).nivel_precio_orden ?? null)
+        // El nivel anclado SIEMPRE vale lo que dice productos.precio_venta/costo — fuente única,
+        // pisa cualquier precio propio que ese mismo nivel tenga guardado en la estructura (evita
+        // que ambos campos diverjan silenciosamente).
+        nivelesUom = nivelesBrutos.map(n => n.orden === nivelAnclaOrden
+          ? { ...n, precio_venta: precioBase, precio_costo: p.precio_costo ?? 0 }
+          : n)
+        // Precio/costo del nivel BASE (orden 1) — lo que se vende por default al agregar al
+        // carrito ("1" siempre es 1 unidad base, nunca sorprende con el precio de una caja).
+        precioBaseAncla = precioEfectivoNivel(nivelesUom, 1, nivelAnclaOrden, precioBase, 'precio_venta') ?? precioBase
+        costoBaseAncla = precioEfectivoNivel(nivelesUom, 1, nivelAnclaOrden, p.precio_costo ?? 0, 'precio_costo') ?? (p.precio_costo ?? 0)
+      }
+    }
+
     const newItem: CartItem = {
       producto_id: p.id,
       nombre: p.nombre,
       sku: p.sku,
       unidad_medida: p.unidad_medida ?? 'unidad',
-      precio_unitario: precioBase,
+      precio_unitario: precioBaseAncla,
       precio_usd_origen: esUSD ? ((p as any).precio_usd as number) : undefined,
       tiers: (tiersMayoristaMap as any)[p.id],
-      precio_costo: p.precio_costo ?? 0,
+      precio_costo: costoBaseAncla,
       cantidad: 1,
       descuento: 0,
       descuento_tipo: 'pct',
@@ -1420,6 +1485,7 @@ export default function VentasPage() {
       alicuota_iva: (p as any).alicuota_iva ?? 21,
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
+      nivelesUom, nivelAnclaOrden, nivelSeleccionadoOrden: 1, unidad_medida_id: null, cantidad_uom: null,
     }
     // Descuento automático por estado de inventario (backlog Fede, punto 3) — sobre el precio
     // efectivo (tier + redondeo) de ESTE ítem, igual base que usa getItemSubtotal.
@@ -1427,6 +1493,59 @@ export default function VentasPage() {
     newItem.descuento_estado_monto = descEstado.monto
     newItem.descuento_estado_detalle = descEstado.detalle
     setCart(prev => [...prev, newItem])
+  }
+
+  // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — precio efectivo de un nivel de
+  // ESTE ítem del carrito, usando el nivel anclado (ya con precio de productos.precio_venta/
+  // costo baked-in en item.nivelesUom, ver agregarProducto) como ancla de la proporción.
+  const precioDeNivelCarrito = (item: CartItem, orden: number, campo: 'precio_venta' | 'precio_costo'): number | null => {
+    if (!item.nivelesUom) return null
+    const ancla = item.nivelAnclaOrden ?? 1
+    const precioAncla = item.nivelesUom.find(n => n.orden === ancla)?.[campo] ?? null
+    return precioEfectivoNivel(item.nivelesUom, orden, ancla, precioAncla, campo)
+  }
+
+  // Cambia la UoM/cantidad-en-esa-UoM de una línea del carrito. `cantidad` (base) y
+  // `precio_unitario` (por unidad base) se recalculan siempre — son la fuente real de verdad
+  // para stock/subtotal/prorrateo; unidad_medida_id/cantidad_uom son trazabilidad/display.
+  const seleccionarNivelUom = (idx: number, ordenNivel: number, cantidadUom: number) => {
+    setCart(prev => prev.map((item, i) => {
+      if (i !== idx || !item.nivelesUom) return item
+      const nivel = item.nivelesUom.find(n => n.orden === ordenNivel)
+      const cant = Math.max(1, Math.floor(cantidadUom) || 1)
+      if (!nivel || !Number.isInteger(cant) || cant < 1) return item
+
+      const maxDisp = item.lineas_disponibles?.reduce((s, l) => s + Math.max(0, l.cantidad - (l.cantidad_reservada ?? 0)), 0) ?? Infinity
+      const cantidadBaseDeseada = convertirABase(cant, nivel)
+      const cantidadBase = Math.min(cantidadBaseDeseada, Math.max(nivel.unidades_base, maxDisp))
+      if (cantidadBase < cantidadBaseDeseada) toast.error(`Stock máximo disponible: ${maxDisp}`)
+
+      const precioNivel = precioDeNivelCarrito(item, ordenNivel, 'precio_venta')
+      if (precioNivel == null) { toast.error('No se pudo calcular el precio para esa unidad de medida'); return item }
+      const costoNivel = precioDeNivelCarrito(item, ordenNivel, 'precio_costo')
+      const precioPorBase = Math.round((precioNivel / nivel.unidades_base) * 100) / 100
+      const costoPorBase = costoNivel != null ? Math.round((costoNivel / nivel.unidades_base) * 100) / 100 : item.precio_costo
+
+      const updated: CartItem = {
+        ...item,
+        nivelSeleccionadoOrden: ordenNivel,
+        unidad_medida_id: ordenNivel === 1 ? null : nivel.unidad_medida_id,
+        cantidad_uom: ordenNivel === 1 ? null : cant,
+        cantidad: cantidadBase,
+        precio_unitario: precioPorBase,
+        precio_costo: costoPorBase,
+      }
+      if (!item.tiene_series && item.lineas_disponibles) {
+        const fuentes = calcularLpnFuentes(item.lineas_disponibles, cantidadBase)
+        updated.lpn_fuentes = fuentes
+        updated.linea_id = fuentes[0]?.linea_id
+        updated.lpn = fuentes[0]?.lpn ?? undefined
+        const descEstado = calcularDescuentoEstadoLinea(fuentes, precioPorBase)
+        updated.descuento_estado_monto = descEstado.monto
+        updated.descuento_estado_detalle = descEstado.detalle
+      }
+      return updated
+    }))
   }
 
   const overrideLpnSource = (cartIdx: number, lineaId: string) => {
@@ -1451,7 +1570,7 @@ export default function VentasPage() {
   }
 
   const procesarScan = async (code: string) => {
-    const PROD_COLS = 'id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva, precio_usd, moneda_venta'
+    const PROD_COLS = 'id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva, precio_usd, moneda_venta, nivel_precio_orden'
     let prod: any = null
     let cantidadScan = 1   // ISS-127 F3: cantidad a sumar (1 por default; del código GS1 si trae AI 30)
 
@@ -1765,7 +1884,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, productos(nombre, sku, descripcion))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -1808,6 +1927,8 @@ export default function VentasPage() {
           descripcion:    i.descripcion ?? i.productos?.nombre ?? 'Producto',
           descripcion_extra: i.productos?.descripcion ?? null,
           cantidad:       Number(i.cantidad),
+          unidad_medida:  i.unidades_medida?.nombre ?? null,
+          cantidad_uom:   i.cantidad_uom != null ? Number(i.cantidad_uom) : null,
           precio_unitario: Number(i.precio_unitario),
           alicuota_iva:   Number(i.alicuota_iva ?? 21),
           subtotal:       Number(i.subtotal),
@@ -2237,7 +2358,7 @@ export default function VentasPage() {
     queryKey: ['combos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('combos')
-        .select('id, nombre, descuento_pct, descuento_tipo, descuento_monto, vigencia_desde, vigencia_hasta, combo_items(producto_id, cantidad)')
+        .select('id, nombre, descuento_pct, descuento_tipo, descuento_monto, vigencia_desde, vigencia_hasta, unidad_medida_id, combo_items(producto_id, cantidad)')
         .eq('tenant_id', tenant!.id).eq('activo', true)
       // Vigencia por fecha (mig 279): un combo vencido o aún no iniciado no se ofrece en el POS.
       const hoy = hoyLocalISO()
@@ -2292,6 +2413,7 @@ export default function VentasPage() {
         if (items.length !== 1) return false
         const ci = items[0]
         if (ci.producto_id !== productoId || cantidad < ci.cantidad) return false
+        if ((c.unidad_medida_id ?? null) !== (item.unidad_medida_id ?? null)) return false
         const tipo = c.descuento_tipo ?? 'pct'
         if (tipo === 'pct' && item.descuento_tipo === 'pct' && item.descuento === c.descuento_pct) return false
         if (tipo === 'monto_ars' && item.descuento_tipo === 'monto' && item.descuento === c.descuento_monto) return false
@@ -2319,10 +2441,19 @@ export default function VentasPage() {
   }
 
   // Auto-aplicar combos cuando cambia el carrito
+  // Backlog Fede 4/6/7 (Fase 2) — BUG REAL encontrado en el relevamiento: agrupar solo por
+  // producto_id mezclaba mal líneas del mismo producto vendidas en UoM/precio distinto (ej.
+  // "sueltas" + "por Caja"), porque reconstruía todas las filas resultantes clonando las
+  // propiedades de UNA sola fila "representativa". Fix: agrupar por producto_id + UoM, y un
+  // combo con `unidad_medida_id` solo aplica a esa UoM (NULL = solo UoM base — preserva el
+  // comportamiento de TODOS los combos ya cargados, que no tienen UoM propia).
+  const claveUomItem = (item: CartItem) => `${item.producto_id}|${item.unidad_medida_id ?? ''}`
+  const comboAplicaUom = (combo: any, item: CartItem) => (combo.unidad_medida_id ?? null) === (item.unidad_medida_id ?? null)
+
   const autoComboSig = useRef('')
   useEffect(() => {
     if (!combosDisp.length) return
-    const sig = cart.map(i => `${i.producto_id}:${i.cantidad}:${i.descuento}:${i.descuento_tipo}`).join('|')
+    const sig = cart.map(i => `${claveUomItem(i)}:${i.cantidad}:${i.descuento}:${i.descuento_tipo}`).join('|')
     if (sig === autoComboSig.current) return
     autoComboSig.current = sig
 
@@ -2331,25 +2462,26 @@ export default function VentasPage() {
     const processed = new Set<string>()
 
     for (const item of cart) {
-      if (item.tiene_series || processed.has(item.producto_id)) continue
-      processed.add(item.producto_id)
+      const clave = claveUomItem(item)
+      if (item.tiene_series || processed.has(clave)) continue
+      processed.add(clave)
 
-      const productRows = cart.filter(r => r.producto_id === item.producto_id)
+      const productRows = cart.filter(r => claveUomItem(r) === clave)
       const totalQty = productRows.reduce((s, r) => s + r.cantidad, 0)
 
       const singleCombos = (combosDisp as any[]).filter(c => (c.combo_items?.length ?? 0) === 1)
       const combo = singleCombos
-        .filter(c => c.combo_items[0].producto_id === item.producto_id && totalQty >= c.combo_items[0].cantidad)
+        .filter(c => c.combo_items[0].producto_id === item.producto_id && comboAplicaUom(c, item) && totalQty >= c.combo_items[0].cantidad)
         .sort((a: any, b: any) => b.combo_items[0].cantidad - a.combo_items[0].cantidad)[0]
 
       if (!combo) {
         const tieneDescCombo = productRows.some(r => r.descuento > 0)
         if (tieneDescCombo) {
-          changes.set(item.producto_id, productRows.map(r => ({ ...r, descuento: 0, descuento_tipo: 'pct' as DescTipo })))
+          changes.set(clave, productRows.map(r => ({ ...r, descuento: 0, descuento_tipo: 'pct' as DescTipo })))
           toast('Descuento de combo removido', { icon: 'ℹ️' })
         }
         const comboMasCercano = singleCombos
-          .filter(c => c.combo_items[0].producto_id === item.producto_id && c.combo_items[0].cantidad > totalQty)
+          .filter(c => c.combo_items[0].producto_id === item.producto_id && comboAplicaUom(c, item) && c.combo_items[0].cantidad > totalQty)
           .sort((a: any, b: any) => a.combo_items[0].cantidad - b.combo_items[0].cantidad)[0]
         if (comboMasCercano && comboMasCercano.combo_items[0].cantidad - totalQty === 1) {
           toast(`💡 Agregá 1 más: combo ${comboMasCercano.combo_items[0].cantidad}× con ${comboDescLabel(comboMasCercano)}`, { duration: 4000 })
@@ -2364,7 +2496,7 @@ export default function VentasPage() {
       const curSig = productRows.map(r => `${r.cantidad}:${r.descuento}:${r.descuento_tipo}`).sort().join(',')
       const tgtSig = target.map(r => `${r.cantidad}:${r.descuento}:${r.descuento_tipo}`).sort().join(',')
       if (curSig !== tgtSig) {
-        changes.set(item.producto_id, target)
+        changes.set(clave, target)
         toast.success(`Combo aplicado: ${combo.combo_items[0].cantidad}× con ${comboDescLabel(combo)}`)
       }
     }
@@ -2373,14 +2505,15 @@ export default function VentasPage() {
       const done = new Set<string>()
       const newCart: CartItem[] = []
       for (const item of cart) {
-        if (changes.has(item.producto_id) && !done.has(item.producto_id)) {
-          done.add(item.producto_id)
-          newCart.push(...changes.get(item.producto_id)!)
-        } else if (!changes.has(item.producto_id)) {
+        const clave = claveUomItem(item)
+        if (changes.has(clave) && !done.has(clave)) {
+          done.add(clave)
+          newCart.push(...changes.get(clave)!)
+        } else if (!changes.has(clave)) {
           newCart.push(item)
         }
       }
-      const newSig = newCart.map(i => `${i.producto_id}:${i.cantidad}:${i.descuento}:${i.descuento_tipo}`).join('|')
+      const newSig = newCart.map(i => `${claveUomItem(i)}:${i.cantidad}:${i.descuento}:${i.descuento_tipo}`).join('|')
       autoComboSig.current = newSig
       setCart(newCart)
     }
@@ -2389,20 +2522,24 @@ export default function VentasPage() {
     const multiCombos = (combosDisp as any[]).filter(c => (c.combo_items?.length ?? 0) > 1)
     const newMulti: {id: string; nombre: string; monto: number}[] = []
     for (const combo of multiCombos) {
+      // Backlog Fede 4/6/7 — el combo tiene una UoM propia (NULL = solo UoM base del producto);
+      // solo cuentan las líneas del carrito vendidas en ESA UoM, nunca mezcla "sueltas" con "caja".
+      const rowsEnUom = (productoId: string) =>
+        cart.filter(i => i.producto_id === productoId && (combo.unidad_medida_id ?? null) === (i.unidad_medida_id ?? null))
       const allPresent = (combo.combo_items ?? []).every((ci: any) => {
-        const qty = cart.filter(i => i.producto_id === ci.producto_id).reduce((s, i) => s + i.cantidad, 0)
+        const qty = rowsEnUom(ci.producto_id).reduce((s, i) => s + i.cantidad, 0)
         return qty >= ci.cantidad
       })
       if (allPresent) {
         const subtotalCombo = (combo.combo_items ?? []).reduce((s: number, ci: any) => {
-          const cartItem = cart.find(i => i.producto_id === ci.producto_id)
+          const cartItem = rowsEnUom(ci.producto_id)[0]
           return s + (cartItem?.precio_unitario ?? 0) * ci.cantidad
         }, 0)
         const monto = calcularDescuentoComboMulti(combo, subtotalCombo, cotizacionUSD || 1)
         newMulti.push({ id: combo.id, nombre: combo.nombre, monto })
       } else {
         const totalFaltantes = (combo.combo_items ?? []).reduce((s: number, ci: any) => {
-          const qty = cart.filter(i => i.producto_id === ci.producto_id).reduce((s2, i) => s2 + i.cantidad, 0)
+          const qty = rowsEnUom(ci.producto_id).reduce((s2, i) => s2 + i.cantidad, 0)
           return s + Math.max(0, ci.cantidad - qty)
         }, 0)
         if (totalFaltantes === 1) {
@@ -2885,6 +3022,10 @@ export default function VentasPage() {
           lpn_plan: lpnPlan,
           descuento_estado_pct: descEstadoDetalle.length === 1 ? descEstadoDetalle[0].pct : null,
           descuento_estado_monto: item.descuento_estado_monto || null,
+          // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — trazabilidad/display de
+          // qué UoM se vendió. cantidad (arriba) sigue en unidades base, sin cambios.
+          unidad_medida_id: item.unidad_medida_id ?? null,
+          cantidad_uom: item.cantidad_uom ?? null,
         }
       })
       const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
@@ -4767,7 +4908,7 @@ export default function VentasPage() {
 
                       <div className="flex items-center gap-3 mt-2">
                         {/* Cantidad */}
-                        {!item.tiene_series && (
+                        {!item.tiene_series && (item.nivelSeleccionadoOrden ?? 1) === 1 && (
                           <div className="flex items-center gap-1">
                             <button onClick={() => updateItem(idx, 'cantidad', Math.max(stepCantidad(item.unidad_medida), parseFloat((item.cantidad - stepCantidad(item.unidad_medida)).toFixed(3))))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
@@ -4786,6 +4927,50 @@ export default function VentasPage() {
                             />
                             <button onClick={() => updateItem(idx, 'cantidad', parseFloat((item.cantidad + stepCantidad(item.unidad_medida)).toFixed(3)))} title="Aumentar cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">+</button>
+                          </div>
+                        )}
+
+                        {/* Cantidad EN LA UoM elegida (backlog Fede 4/6/7, Fase 2) — reemplaza los
+                            controles de arriba cuando se vende "por Caja"/"por Pallet" en vez de
+                            la unidad base; item.cantidad (unidades base) se recalcula solo. */}
+                        {!item.tiene_series && (item.nivelSeleccionadoOrden ?? 1) !== 1 && (
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => seleccionarNivelUom(idx, item.nivelSeleccionadoOrden!, Math.max(1, (item.cantidad_uom ?? 1) - 1))} title="Reducir cantidad"
+                              className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
+                            <input
+                              key={`qtyuom-${idx}-${item.cantidad_uom}-${item.nivelSeleccionadoOrden}`}
+                              type="text" inputMode="numeric"
+                              defaultValue={String(item.cantidad_uom ?? 1)}
+                              onBlur={e => seleccionarNivelUom(idx, item.nivelSeleccionadoOrden!, parseInt(e.target.value) || 1)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') { (e.target as HTMLInputElement).blur(); return }
+                                if (e.key === '.' || e.key === ',') e.preventDefault()
+                              }}
+                              className="w-14 text-center text-sm font-medium border border-gray-200 dark:border-gray-700 rounded-lg py-0.5 focus:outline-none focus:border-accent-text"
+                            />
+                            <button onClick={() => seleccionarNivelUom(idx, item.nivelSeleccionadoOrden!, (item.cantidad_uom ?? 1) + 1)} title="Aumentar cantidad"
+                              className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">+</button>
+                          </div>
+                        )}
+
+                        {/* Selector de UoM (backlog Fede 4/6/7, Fase 2) — solo si el producto
+                            tiene estructura con más de un nivel. "= 36 Unidad" ayuda a verificar
+                            que la conversión es la esperada antes de cobrar. */}
+                        {!item.tiene_series && item.nivelesUom && item.nivelesUom.length > 1 && (
+                          <div className="flex items-center gap-1.5">
+                            <select value={item.nivelSeleccionadoOrden ?? 1}
+                              onChange={e => seleccionarNivelUom(idx, parseInt(e.target.value), 1)}
+                              title="Unidad de medida de venta"
+                              className="text-xs border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 focus:outline-none focus:border-accent-text">
+                              {item.nivelesUom.map(n => (
+                                <option key={n.orden} value={n.orden}>{n.nombre}</option>
+                              ))}
+                            </select>
+                            {(item.nivelSeleccionadoOrden ?? 1) !== 1 && (
+                              <span className="text-xs text-gray-400 dark:text-gray-500">
+                                = {item.cantidad} {item.nivelesUom[0].nombre}
+                              </span>
+                            )}
                           </div>
                         )}
 
@@ -6660,11 +6845,15 @@ export default function VentasPage() {
               {(ticketVenta.items ?? []).map((item: any, i: number) => {
                 const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
                 const precioOriginalItem = item.precio_unitario * cant
+                // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — mostrar "3 Cajas" en
+                // vez de las unidades base internas si se vendió en una UoM distinta a la base.
+                const nivelVendido = item.nivelesUom?.find((n: any) => n.orden === item.nivelSeleccionadoOrden)
+                const cantMostrar = item.cantidad_uom && nivelVendido ? `${item.cantidad_uom} ${nivelVendido.nombre}` : String(cant)
                 return (
                   <div key={i} className="flex justify-between text-sm">
                     <div className="flex-1 min-w-0 pr-2">
                       <span className="font-medium">{item.nombre}</span>
-                      <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs">× {cant}</span>
+                      <span className="text-gray-400 dark:text-gray-500 ml-1 text-xs">× {cantMostrar}</span>
                       {item.descuento > 0 && (
                         <span className="text-green-600 dark:text-green-400 text-xs ml-1">
                           -{item.descuento_tipo === 'pct' ? `${item.descuento}%` : `$${item.descuento}`}

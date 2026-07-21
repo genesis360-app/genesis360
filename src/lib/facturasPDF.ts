@@ -44,6 +44,10 @@ export interface FacturaPDFData {
     descripcion: string
     descripcion_extra?: string | null  // descripción larga del producto (opcional) — 2da línea, gris chico
     cantidad: number
+    // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — nombre de la UoM vendida si fue
+    // distinta a la unidad base (ej. "Caja"). `cantidad` de arriba sigue en unidades base.
+    unidad_medida?: string | null
+    cantidad_uom?: number | null
     precio_unitario: number
     alicuota_iva: number          // 0 | 10.5 | 21 | 27
     subtotal: number              // precio × cantidad (con IVA incluido)
@@ -205,6 +209,17 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   const descripcionCelda = (item: FacturaPDFData['items'][number]) =>
     item.descripcion_extra ? `${item.descripcion}\n${item.descripcion_extra}` : item.descripcion
 
+  // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — si la línea se vendió en una UoM
+  // distinta a la base (ej. "3 Cajas"), se muestra esa cantidad/precio, no las unidades base
+  // internas (36 u. a $90) que confundirían al cliente que pidió "3 cajas a $1.080".
+  const cantidadCelda = (item: FacturaPDFData['items'][number]) => {
+    const n = item.cantidad_uom && item.unidad_medida ? item.cantidad_uom : item.cantidad
+    const nTxt = n % 1 === 0 ? String(n) : n.toFixed(3)
+    return item.cantidad_uom && item.unidad_medida ? `${nTxt} ${item.unidad_medida}` : nTxt
+  }
+  const precioUnitarioEfectivo = (item: FacturaPDFData['items'][number]) =>
+    item.cantidad_uom && item.unidad_medida ? item.subtotal / item.cantidad_uom : item.subtotal / item.cantidad
+
   // Dibuja "nombre" en negrita y, si hay, "descripcion_extra" debajo en gris chico —
   // jspdf-autotable no soporta 2 estilos en una misma celda de forma nativa, así que se
   // suprime el texto default (willDrawCell) y se redibuja a mano (didDrawCell).
@@ -240,8 +255,8 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
     const rows = data.items.map(item => [
       ...codCell(item),
       descripcionCelda(item),
-      String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
-      fmtPesos(item.subtotal / item.cantidad),
+      cantidadCelda(item),
+      fmtPesos(precioUnitarioEfectivo(item)),
       fmtPesos(item.subtotal),
     ])
     const { willDrawCell, didDrawCell } = descripcionHooks(off)
@@ -270,8 +285,8 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       return [
         ...codCell(item),
         descripcionCelda(item),
-        String(item.cantidad % 1 === 0 ? item.cantidad : item.cantidad.toFixed(3)),
-        fmtPesos(item.subtotal / item.cantidad / (1 + item.alicuota_iva / 100)),
+        cantidadCelda(item),
+        fmtPesos(precioUnitarioEfectivo(item) / (1 + item.alicuota_iva / 100)),
         `${item.alicuota_iva}%`,
         fmtPesos(neto),
         fmtPesos(ivaM),

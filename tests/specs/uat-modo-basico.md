@@ -1391,3 +1391,29 @@ al seleccionar una opción, además de al hacer click afuera.
 (mutante, generó su propia precondición: producto real + `tiene_lote` + estructura vía RPC) +
 regresión dirigida (02, 23, 43, 89, 90, 95, 96, 97, 99 — todo lo que toca ProductosPage/
 InventarioPage/estructuras) 16/16 verde.
+
+## 💸 §41 — Descuento automático por estado de inventario (backlog Fede, punto 3, migs 284-285) — 2026-07-21
+
+**Contexto:** relevamiento con GO (mismo día): un estado de inventario (Config→Inventario→
+Estados) puede tener un % de descuento propio; una venta cuyo stock consumido esté en ese estado
+aplica el % automáticamente, sin clave de supervisor, apilado con cualquier otro descuento de la
+venta (general, combo, por método de pago). No confundir con el "Aging Profile" ya existente (mig
+013), que solo cambia el `estado_id` automático por días a vencer — no tiene ningún descuento.
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Configurar % por estado** | Config→Inventario→Estados, columna nueva junto a los toggles de venta/TN/ML/devolución — input inline, valida 0 < pct ≤ 100 | revisión de código + migración 284 |
+| 2 | **Preview de descuento en el carrito, ANTES de confirmar** | Al agregar el producto (o cambiar cantidad, o reasignar LPN a mano) se recalcula sobre la MISMA previsualización de LPNs que ya usa el carrito para planificar el rebaje (`calcularLpnFuentes`) — nunca se inventa después del despacho | **e2e 101** (línea "↳ Incluye desc. \<estado\> (15%)" visible en el resumen antes de cobrar) |
+| 3 | **Es un monto POR LÍNEA, no un descuento global prorrateado** | Solo reduce el precio de las unidades que vienen de un estado con descuento — nunca "contamina" el precio de otro producto de la misma venta (a diferencia de "Descuento general"/combos/promo por método de pago, que sí se prorratean entre todas las líneas) | unit `descuentoEstado.test.ts` (10) |
+| 4 | **Independiente de descuento manual/combo** | Se resta aparte en `getItemSubtotal` (no toca `item.descuento`/`descuento_tipo`) → nunca colisiona con la lógica de agrupamiento de combos por producto | revisión de código |
+| 5 | **Trazabilidad fiscal (REGLA #0)** | `venta_items.descuento_estado_pct`/`descuento_estado_monto` por línea + `ventas.descuento_estado` (detalle agregado, mismo criterio que `promo_pago` mig 281) — el total cobrado coincide exacto con lo trazado | **e2e 101** (verificado en DB: 4 u. × $1.000 × 15% = $600 descontados, subtotal $3.400) |
+| 6 | **Venta completa end-to-end** | Estado nuevo con 15% (por REST, no toca estados compartidos) → producto con precio conocido → ingreso REAL por UI en ese estado (no INSERT directo, respeta `movimientos_stock`) → venta directa en efectivo → verificación en DB | **e2e 101 nuevo** (mutante) |
+
+**Gotcha de e2e encontrado armando el spec (no bug de producto):** el POS filtra por el "grupo de
+estados" default ("Ver stock de: Disponible ★") — un estado recién creado no pertenece a ningún
+grupo, así que queda invisible salvo que se seleccione "Todos". Y con más de una caja abierta
+(otro spec/sesión), `registrarVenta` exige elegir "Registrar en caja" explícito — sin eso la venta
+no se confirma en silencio (el carrito se queda tal cual, sin error visible en pantalla).
+
+**Verde:** tsc · unit 1161 (10 nuevos `descuentoEstado.test.ts`) · **e2e 101 nuevo** (mutante).
+Migs 284-285 aplicadas en DEV.

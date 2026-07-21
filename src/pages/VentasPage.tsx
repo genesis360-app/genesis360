@@ -37,6 +37,7 @@ import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
+import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
@@ -115,6 +116,11 @@ interface CartItem {
   lineas_disponibles?: LineaDisponible[]   // todas las líneas ordenadas por sort activo
   lpn_fuentes?: LpnFuente[]               // computed: qué líneas cubren la cantidad actual
   lpn_manual_ids?: string[]               // ISS-075: linea_ids que el operador eligió explícitamente (origen='manual'); el resto del plan es 'auto'
+  // Descuento automático por estado de inventario (backlog Fede, punto 3) — computed a partir
+  // de lpn_fuentes cada vez que se recalculan (ver descuentoEstado.ts). Independiente de
+  // descuento/descuento_tipo (manual/combo): se resta aparte en getItemSubtotal.
+  descuento_estado_monto?: number
+  descuento_estado_detalle?: DescuentoEstadoDetalle[]
   imagen_url?: string
   es_kit?: boolean
   alicuota_iva?: number
@@ -1358,7 +1364,7 @@ export default function VentasPage() {
       const evIds2 = (evData2 ?? []).map((e: any) => e.id)
       const estadosFinal2 = estadosFiltro2.length > 0 ? estadosFiltro2.filter(id => evIds2.includes(id)) : evIds2
       let lq = supabase.from('inventario_lineas')
-        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
+        .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido), estados_inventario(nombre, descuento_pct)')
         .eq('producto_id', p.id).eq('activo', true).gt('cantidad', 0)
       if (modoAvanzado && estadosFinal2.length > 0) lq = lq.in('estado_id', estadosFinal2)
       const { data: lineasRaw2 } = await lq
@@ -1373,6 +1379,11 @@ export default function VentasPage() {
         cantidad: l.cantidad,
         cantidad_reservada: l.cantidad_reservada ?? 0,
         ubicacion: (l.ubicaciones as any)?.nombre ?? null,
+        // Descuento automático por estado (backlog Fede, punto 3) — Number.isFinite porque el
+        // `numeric` de Postgres llega como string (ver REGLA #0 gotcha de alícuota AFIP).
+        estado_nombre: (l.estados_inventario as any)?.nombre ?? null,
+        estado_descuento_pct: Number.isFinite(parseFloat((l.estados_inventario as any)?.descuento_pct))
+          ? parseFloat((l.estados_inventario as any).descuento_pct) : null,
         talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
         formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
       }))
@@ -1410,6 +1421,11 @@ export default function VentasPage() {
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
     }
+    // Descuento automático por estado de inventario (backlog Fede, punto 3) — sobre el precio
+    // efectivo (tier + redondeo) de ESTE ítem, igual base que usa getItemSubtotal.
+    const descEstado = calcularDescuentoEstadoLinea(lpnFuentes, precioTierEfectivo(newItem))
+    newItem.descuento_estado_monto = descEstado.monto
+    newItem.descuento_estado_detalle = descEstado.detalle
     setCart(prev => [...prev, newItem])
   }
 
@@ -1422,7 +1438,14 @@ export default function VentasPage() {
       const fuentes = calcularLpnFuentes(reordered, item.cantidad)
       // ISS-075: registrar este LPN como elegido manualmente (para distinguir manual vs auto en el rebaje)
       const manualIds = Array.from(new Set([...(item.lpn_manual_ids ?? []), lineaId]))
-      return { ...item, lineas_disponibles: reordered, lpn_fuentes: fuentes, lpn_manual_ids: manualIds, linea_id: fuentes[0]?.linea_id, lpn: fuentes[0]?.lpn ?? undefined }
+      // Descuento automático por estado (backlog Fede, punto 3) — el operador eligió a mano de
+      // qué LPN sale, recalcula si ESE LPN tiene descuento de estado.
+      const descEstado = calcularDescuentoEstadoLinea(fuentes, precioTierEfectivo(item))
+      return {
+        ...item, lineas_disponibles: reordered, lpn_fuentes: fuentes, lpn_manual_ids: manualIds,
+        linea_id: fuentes[0]?.linea_id, lpn: fuentes[0]?.lpn ?? undefined,
+        descuento_estado_monto: descEstado.monto, descuento_estado_detalle: descEstado.detalle,
+      }
     }))
     setLpnPickerIdx(null)
   }
@@ -1554,6 +1577,11 @@ export default function VentasPage() {
         updated.lpn_fuentes = fuentes
         updated.linea_id = fuentes[0]?.linea_id
         updated.lpn = fuentes[0]?.lpn ?? undefined
+        // Descuento automático por estado (backlog Fede, punto 3) — recalcula sobre la nueva
+        // previsualización de fuentes, misma base de precio que getItemSubtotal.
+        const descEstado = calcularDescuentoEstadoLinea(fuentes, precioTierEfectivo(updated))
+        updated.descuento_estado_monto = descEstado.monto
+        updated.descuento_estado_detalle = descEstado.detalle
       }
       return updated
     }))
@@ -2402,8 +2430,10 @@ export default function VentasPage() {
   const getItemSubtotal = (item: CartItem) => {
     const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
     const base = precioTierEfectivo(item) * cant
-    if (item.descuento_tipo === 'pct') return base * (1 - item.descuento / 100)
-    return Math.max(0, base - item.descuento)
+    const conDescItem = item.descuento_tipo === 'pct' ? base * (1 - item.descuento / 100) : Math.max(0, base - item.descuento)
+    // Descuento automático por estado (backlog Fede, punto 3) — independiente del descuento
+    // manual/combo de arriba, se resta aparte (nunca colisiona con la lógica de combos).
+    return Math.max(0, conDescItem - (item.descuento_estado_monto || 0))
   }
 
   const subtotal = cart.reduce((acc, item) => acc + getItemSubtotal(item), 0)
@@ -2425,6 +2455,14 @@ export default function VentasPage() {
     [mediosPago, metodosConDescuento, totalPrePromoPago],
   )
   const total = Math.round(Math.max(0, totalPrePromoPago - descPromoPago) * 100) / 100
+
+  // Punto 3 Fede/GO — descuento automático por estado de inventario (ver descuentoEstado.ts).
+  // Ya está restado en `subtotal` (vía getItemSubtotal) — este detalle combinado es solo para
+  // mostrarlo en el resumen del ticket y trazarlo en ventas.descuento_estado (mig 285).
+  const descuentoEstadoAplicado = useMemo(
+    () => combinarDetalleDescuentoEstado(cart.map(i => i.descuento_estado_detalle ?? [])),
+    [cart],
+  )
 
   // Auto-calcular costo de envío por KM
   const costoEnvioNum = requiereEnvio ? (parseFloat(costoEnvioVenta) || 0) : 0
@@ -2743,6 +2781,8 @@ export default function VentasPage() {
         ...(costoEnvioNum > 0 ? { costo_envio: costoEnvioNum } : {}),
         // Mig 281 — trazabilidad del descuento por método de pago (el total ya lo tiene restado)
         ...(promosPagoAplicadas.length > 0 ? { promo_pago: promosPagoAplicadas } : {}),
+        // Mig 285 — trazabilidad del descuento automático por estado (el total ya lo tiene restado)
+        ...(descuentoEstadoAplicado.length > 0 ? { descuento_estado: descuentoEstadoAplicado } : {}),
         ...(estado === 'despachada' ? { despachado_at: new Date().toISOString() } : {}),
         ...(estado === 'reservada' ? { reservado_at: new Date().toISOString() } : {}),
       }).select().single()
@@ -2830,6 +2870,10 @@ export default function VentasPage() {
         const lpnPlan = (!item.tiene_series && (item.lpn_fuentes ?? []).length > 0)
           ? item.lpn_fuentes!.map(f => ({ linea_id: f.linea_id, lpn: f.lpn ?? null, cantidad: f.cantidad, manual: f.linea_id ? manualIds.has(f.linea_id) : false }))
           : null
+        // Punto 3 Fede/GO — trazabilidad del descuento por estado en esta línea (ya restado en
+        // itemSubtotal vía getItemSubtotal, esto es solo para reportes/historial). pct solo si
+        // fue un único estado — con mezcla de estados en la misma línea, monto es el dato posta.
+        const descEstadoDetalle = item.descuento_estado_detalle ?? []
         return {
           tenant_id: tenant!.id, venta_id: venta.id, producto_id: item.producto_id, linea_id: lineaId,
           cantidad: cant, precio_unitario: precioUnit, precio_costo_historico: item.precio_costo || null,
@@ -2839,6 +2883,8 @@ export default function VentasPage() {
           subtotal: itemSubtotal,
           alicuota_iva: ivaRate, iva_monto: parseFloat(ivaMonto.toFixed(2)),
           lpn_plan: lpnPlan,
+          descuento_estado_pct: descEstadoDetalle.length === 1 ? descEstadoDetalle[0].pct : null,
+          descuento_estado_monto: item.descuento_estado_monto || null,
         }
       })
       const { data: insertedItems, error: itemsError } = await supabase.from('venta_items').insert(itemPayloads).select()
@@ -5337,6 +5383,15 @@ export default function VentasPage() {
                     </>
                   )
                 })()}
+                {/* Punto 3 Fede/GO — el descuento por estado ya está DENTRO de "Subtotal" (es
+                    por ítem, no un descuento global) — esta línea es solo informativa, no resta
+                    de nuevo. */}
+                {descuentoEstadoAplicado.map(d => (
+                  <div key={d.estado_nombre} className="flex justify-between text-xs text-success -mt-1 pl-3">
+                    <span>↳ Incluye desc. {d.estado_nombre} ({d.pct}%)</span>
+                    <span>−${d.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                ))}
                 {descTotalMonto > 0 && (
                   <div className="flex justify-between text-sm text-success">
                     <span>Desc. general {descuentoTotalTipo === 'pct' ? `(${descTotalVal}%)` : `($${descTotalVal})`}</span>

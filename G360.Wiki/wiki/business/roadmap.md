@@ -3,15 +3,60 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-07-19
+updated: 2026-07-21
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 19 de Julio, 2026
+**Última actualización:** 21 de Julio, 2026
 
 ---
+
+## v1.142.0 — 🛑 Precio por nivel en el importador de productos + fix crítico (backlog Fede, CIERRA 4/6/7) — 🟡 DEV (2026-07-21)
+
+Mig **288 SOLO en DEV**. `ImportarProductosPage.tsx` gana columnas opcionales de precio por nivel
+(`estr_precio_ancla` + `estr_precio_venta_caja`/`estr_precio_costo_caja`/`estr_precio_venta_pallet`/
+`estr_precio_costo_pallet`) — cierra el único pendiente real que quedaba del backlog de Fede sobre
+precio por UoM. **Bug crítico hallado por el e2e 105 (verificación real en DB, no solo UI): el
+importador de productos NUNCA funcionó** — el payload de insert/update siempre mandaba `notas`,
+columna que ninguna migración había creado; PostgREST rechazaba el request completo (`PGRST204`) y
+el código nunca revisaba `error`, así que reportaba "X creados" con la tabla en CERO filas nuevas.
+Fix: mig 288 agrega `productos.notas` + manejo real de errores en el importador (`erroresDetalle`)
+— mismo código-olor corregido por prevención en `ImportarMasterPage.tsx`. Detalle en
+[[wiki/features/estructuras-udm]].
+
+## v1.141.0 — 🛒 Venta por Unidad de Medida en el POS, Fase 2 (backlog Fede 4/6/7) — 🟡 DEV (2026-07-21)
+
+Sin migraciones nuevas (usa la mig 286). El carrito del POS ya puede vender "por Caja" (o cualquier
+nivel de la estructura default) usando el precio de ese nivel — `venta_items.cantidad` sigue
+siempre en unidades base (stock/rebaje/margen sin cambios). Fix de un bug real de agrupamiento de
+combos con multi-UoM del mismo producto (`producto_id + unidad_medida_id`) + UoM visible en
+factura/ticket + fix de un segundo bug real (re-agregar un producto ya vendido "por Caja" sumaba
++1 unidad base). e2e 103/104 · UAT §43. Detalle en [[wiki/features/ventas-pos]].
+
+## v1.140.0 — 💲 Precio por Unidad de Medida en la estructura, Fase 1 (backlog Fede 4/6/7) — 🟡 DEV (2026-07-21)
+
+Migs **286-287 SOLO en DEV**. `producto_estructura_niveles.precio_venta/costo` opcionales por nivel
+(proporcional al ancla si no se cargan) + `productos.nivel_precio_orden` ("ancla de precio", por
+orden no por id) + selector "Estos precios corresponden a" en `ProductoFormPage`. e2e 102 · UAT §42.
+Detalle en [[wiki/features/estructuras-udm]].
+
+## v1.139.0 — 💲 Descuento automático por estado de inventario (backlog Fede punto 3) — 🟡 DEV (2026-07-21)
+
+Migs **284-285 SOLO en DEV**. Un estado de inventario configurado con % de descuento (Config→
+Inventario→Estados) aplica el descuento automático, sin clave de supervisor, a cualquier venta que
+consuma stock de un LPN en ese estado — monto POR LÍNEA, se apila con descuento general/combo/
+método de pago. Lib pura `descuentoEstado.ts`. e2e 101 · UAT §41. Detalle en
+[[wiki/features/ventas-pos]].
+
+## v1.138.0 — 🔎 Botón "Filtros" en Productos + columna Estructura en Inventario — 🟡 DEV (2026-07-21)
+
+Sin migraciones nuevas (puro frontend). Panel de filtros pill+popover en `ProductosPage` (Estado
+Activos/Inactivos/Todos, Con/Sin estructura, Categoría/Proveedor/Marca, Atributos combinables por
+OR) + columna de solo lectura "Estructura" en `InventarioPage`. Bug real cazado por el e2e 100 (el
+dropdown de atributos no se cerraba y tapaba el botón "Limpiar todos los filtros"). e2e 100 ·
+UAT §40. Detalle en [[wiki/features/productos]] e [[wiki/features/inventario-stock]].
 
 ## v1.137.0 — 📦 Estructuras con niveles dinámicos por UdM (Fase 1 footprint estilo Blue Yonder) — 🟡 DEV (2026-07-19)
 

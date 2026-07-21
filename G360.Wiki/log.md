@@ -6,6 +6,48 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-21] update | 🛑 v1.142.0 — Precio por nivel en el importador de productos (cierra el backlog de Fede) + fix crítico: el importador NUNCA funcionó
+
+Continuación inmediata de la sesión anterior (v1.139/140/141.0): se resuelve el único pendiente
+real que quedaba de las 7 preguntas del backlog de Fede — extender `ImportarProductosPage.tsx` con
+precio por nivel. Nuevas columnas opcionales en la plantilla Excel: `estr_precio_ancla`
+(Unidad/Caja/Pallet, setea `productos.nivel_precio_orden` por NOMBRE, resuelto al orden real de la
+fila) + `estr_precio_venta_caja`/`estr_precio_costo_caja`/`estr_precio_venta_pallet`/
+`estr_precio_costo_pallet` (precio propio opcional por nivel, calculado proporcional al ancla si no
+se carga — mismo mecanismo de `estructuras.ts` desde v1.140.0). Validación en la previsualización:
+una fila con ancla a un nivel sin datos de estructura de ese nivel en la misma fila se marca error y
+nunca se importa. El nivel base (Unidad) nunca recibe precio propio desde el importador, igual que
+en la ficha manual. Sin migración nueva para esta parte (usa las columnas de las migs 286/287).
+
+**Bug crítico encontrado y arreglado en la misma sesión, NO relacionado con el pedido: el importador
+de productos NUNCA funcionó.** Escribiendo el e2e de verificación (spec 105, con chequeo REAL en DB,
+no solo UI) se descubrió que el payload de insert/update siempre mandaba un campo `notas` que NO
+EXISTE como columna en `productos` (ninguna migración la creó nunca). PostgREST rechazaba el
+INSERT/UPDATE COMPLETO (`PGRST204: Could not find the 'notas' column`), pero el código solo
+desestructuraba `data` sin revisar `error` — así que el importador reportaba "X creados" mientras la
+tabla quedaba en CERO filas nuevas. Confirmado con inserts directos por REST (con `notas`→400, sin
+`notas`→201 OK) y con SQL directo contra DEV (cero filas de los productos de prueba tras varias
+corridas "exitosas" según la UI). **Fix: mig 288** agrega `productos.notas` (columna que la
+plantilla/UI ya pedían, nunca se creó) + el importador ahora revisa el `error` real de cada
+insert/update (ya no infla `creados`/`actualizados` a ciegas) y muestra el detalle de las filas
+fallidas (`erroresDetalle`) en el banner de resultado. **Mismo patrón de riesgo (ignorar `error`)
+encontrado y corregido por prevención en `ImportarMasterPage.tsx`** (combos, reglas de aging, grupos
+de estados, categorías/proveedores/ubicaciones/estados/motivos) — sin falla activa confirmada ahí
+(se verificó por SQL que todas sus columnas usadas sí existen), pero mismo código-olor en las 4
+ramas.
+
+Verde: tsc · build · **e2e 105 nuevo** (`105_importador_precio_uom_mutante.spec.ts`) contra DEV real,
+con verificación POSITIVA en DB (no solo UI): precio propio por nivel persiste tal cual sin
+recalcular, ancla por nombre persiste `nivel_precio_orden`, fila con ancla inválida se rechaza y
+nunca se crea. Sin este spec el bug de `notas` no se hubiera detectado — la UI mentía "2 creados" de
+forma consistente y convincente. Mig 288 aplicada en DEV vía MCP, falta aplicar en PROD.
+`APP_VERSION` = v1.142.0, commit `ae5f63b1` en `dev`.
+
+**Con esto se cierran los 7 puntos del backlog de Fede a nivel código** (puntos 3, 4, 6 y 7
+completos de punta a punta, importador incluido; puntos 1/2 en pausa esperando que GO confirme con
+Fede; punto 5 cerrado sin código). Ninguna de las 4 entregas de la sesión (v1.139/140/141/142)
+llegó a PROD todavía — sigue en v1.136.0.
+
 ## [2026-07-21] update | 🛒 v1.141.0 — Venta por Unidad de Medida en el POS, Fase 2 (backlog Fede 4/6/7) — CIERRA el backlog completo de la reunión con Fede
 
 Continuación inmediata de v1.140.0 (Fase 1): el carrito del POS ya puede vender "por Caja" (o

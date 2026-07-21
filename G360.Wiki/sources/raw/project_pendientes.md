@@ -6,7 +6,67 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛒 ARRANCÁ ACÁ (2026-07-21, v1.141.0 EN DEV) — Backlog de Fede COMPLETO: punto 3 + puntos 4/6/7 Fase 1 y Fase 2 — migs 284-287 SOLO EN DEV, PROD sigue v1.136.0
+> ### 🛑 ARRANCÁ ACÁ (2026-07-21 noche, v1.142.0 EN DEV) — Precio por nivel en el importador (CIERRA el backlog de Fede) + fix crítico: el importador de productos NUNCA funcionó — mig 288 SOLO EN DEV, PROD sigue v1.136.0
+>
+> Continuación inmediata de la sesión anterior (v1.139/140/141.0): se resolvió el único pendiente
+> real que quedaba de las 7 preguntas del backlog de Fede — extender `ImportarProductosPage` con
+> precio por nivel.
+>
+> **Lo implementado:** nuevas columnas opcionales en la plantilla Excel de `ImportarProductosPage` —
+> `estr_precio_ancla` (Unidad/Caja/Pallet, setea `productos.nivel_precio_orden` por NOMBRE, resuelto
+> al orden real de la fila) + `estr_precio_venta_caja`/`estr_precio_costo_caja`/
+> `estr_precio_venta_pallet`/`estr_precio_costo_pallet` (precio propio opcional por nivel,
+> proporcional al ancla si no se carga — mismo mecanismo de `estructuras.ts` desde v1.140.0).
+> Validación en la previsualización: una fila con ancla a un nivel sin NINGÚN dato de estructura de
+> ese nivel en esa misma fila se marca error y NUNCA se intenta importar. El nivel base (Unidad)
+> nunca recibe precio propio desde el importador (igual que en la ficha manual). Sin migración
+> nueva para esto (usa las columnas de las migs 286/287).
+>
+> **🛑 Bug crítico encontrado y arreglado, NO relacionado con el pedido:** escribiendo el e2e de
+> verificación (spec 105, con chequeo REAL en DB, no solo UI) se descubrió que **el importador de
+> productos NUNCA funcionó** — el payload de insert/update siempre mandó un campo `notas` que NO
+> EXISTE como columna en `productos` (ninguna migración la creó jamás). PostgREST rechazaba el
+> INSERT/UPDATE COMPLETO (`PGRST204: Could not find the 'notas' column`), pero el código solo
+> desestructuraba `data` sin revisar `error` → el importador reportaba "X creados" mientras la tabla
+> quedaba en CERO filas nuevas. Confirmado con inserts directos por REST (con `notas`→400, sin
+> `notas`→201 OK) y con SQL directo contra DEV (cero filas de los productos de prueba tras varias
+> corridas "exitosas" según la UI). **Fix: mig 288** agrega `productos.notas` (columna que la
+> plantilla/UI ya pedían, era la intención original, nunca se creó) + el importador ahora revisa el
+> `error` real de cada insert/update (ya no infla `creados`/`actualizados` a ciegas) y expone el
+> detalle de las filas fallidas (`erroresDetalle`) en el banner de resultado. **Mismo patrón de
+> riesgo corregido por prevención en `ImportarMasterPage.tsx`** (combos, reglas de aging, grupos de
+> estados, categorías/proveedores/ubicaciones/estados/motivos) — ahí NO había una falla activa
+> confirmada (se verificó por SQL que todas las columnas usadas sí existen), pero el mismo
+> código-olor estaba presente en las 4 ramas.
+>
+> **Verde:** tsc · build · **e2e 105 nuevo** (`105_importador_precio_uom_mutante.spec.ts`) corrido
+> contra DEV real, con verificación POSITIVA en DB (no solo UI): precio propio de nivel persiste tal
+> cual sin recalcular, ancla por nombre persiste `nivel_precio_orden`, fila con ancla inválida se
+> rechaza y nunca se crea en DB. Sin este spec el bug de `notas` no se hubiera detectado — la UI
+> mentía "2 creados" de forma consistente y convincente. `APP_VERSION` = v1.142.0, commit `ae5f63b1`
+> en `dev`. Mig 288 aplicada en DEV vía MCP; **falta aplicar en PROD** al deployar. Falta tag +
+> GitHub release de v1.142.0 (pendiente de quien cierre esta sesión).
+>
+> **Con esto los 7 puntos del backlog de Fede quedan 100% completos a nivel código** (puntos 3, 4, 6
+> y 7 implementados de punta a punta, importador incluido; puntos 1/2 en pausa esperando que GO
+> confirme con Fede; punto 5 cerrado sin código). Ninguna de las 4 entregas de la sesión
+> (v1.139/140/141/142) llegó a PROD todavía — sigue en v1.136.0.
+>
+> **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main; las 4 entregas son
+> aditivas, sin DDL destructivo, se pueden ir todas juntas — mig 288 incluida).
+>
+> **▶ `app-reference.md` (base del Asistente IA) SIGUE sin tocar** (arrastrado de la sesión
+> anterior) — no menciona descuento por estado, precio por UoM, venta por UoM ni el importador con
+> precio por nivel. A propósito: exige `npm run ai:knowledge` + redeploy de la EF `ai-assistant`
+> (DEV y PROD); actualizarlo junto con el deploy a PROD, no antes (evita que el Asistente hable de
+> features que todavía no existen en PROD).
+>
+> **▶ `schema_full.sql` sigue parcheado A MANO hasta la mig 287** (sin `SUPABASE_ACCESS_TOKEN` en el
+> entorno, mismo bloqueo de siempre — ver [[reference_schema_dump_metodo]]) — **todavía le falta la
+> mig 288** (`productos.notas`). Regenerar con el script completo o parchear a mano la próxima vez
+> que haya token a mano.
+
+> ### 🛒 ESTADO ANTERIOR (2026-07-21, v1.141.0 EN DEV) — Backlog de Fede COMPLETO: punto 3 + puntos 4/6/7 Fase 1 y Fase 2 — migs 284-287 SOLO EN DEV, PROD sigue v1.136.0
 >
 > **Sesión de implementación autónoma** ("comienza a implementar todo lo que puedas") sobre el
 > backlog de Fede ya relevado en sesiones anteriores. Tres entregas separadas, cada una con su

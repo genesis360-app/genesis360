@@ -1,8 +1,8 @@
 ---
 title: Estructuras de producto + Unidades de Medida (footprints)
 category: features
-tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, udm, precio-por-uom]
-sources: [migrations 031, 119, 148, 282, 283, 286, 287, src/lib/estructuras.ts]
+tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, udm, precio-por-uom, importador]
+sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, src/lib/estructuras.ts, src/pages/ImportarProductosPage.tsx]
 updated: 2026-07-21
 ---
 
@@ -107,7 +107,7 @@ cálculo server-side + RPC directa con factor 0 → 400 y niveles intactos). UAT
 
 ---
 
-## Precio por Unidad de Medida (backlog Fede 4/6/7) — Fase 1 modelo + Fase 2 venta, AMBAS EN DEV
+## Precio por Unidad de Medida (backlog Fede 4/6/7) — Fase 1 modelo + Fase 2 venta + Fase 3 importador, TODAS EN DEV
 
 ### ✅ Fase 1: modelo (migs 286-287)
 
@@ -152,8 +152,49 @@ trazan qué UoM se vendió. Detalle completo (selector, precedencia sobre tier m
 bug real en el agrupador de combos, UoM en el ticket/factura) en
 [[wiki/features/ventas-pos]] → "Venta por Unidad de Medida". UAT §43 · e2e 103, 104.
 
-**Único pendiente real:** extender `ImportarProductosPage` con columnas de precio por nivel — no
-bloqueante, nadie lo pidió con urgencia.
+### ✅ Importador de productos con precio por nivel (v1.142.0) — CIERRA el pendiente
+
+Continuación de la sesión anterior: `ImportarProductosPage.tsx` gana columnas opcionales en la
+plantilla Excel:
+
+- **`estr_precio_ancla`** (`Unidad`/`Caja`/`Pallet`, case-insensitive) — setea
+  `productos.nivel_precio_orden` buscando el nivel por NOMBRE en la estructura que la fila termina
+  generando (se resuelve al ORDEN real, no al nombre — mismo motivo por el que el ancla es por
+  orden y no por FK, ver arriba).
+- **`estr_precio_venta_caja`** / **`estr_precio_costo_caja`** / **`estr_precio_venta_pallet`** /
+  **`estr_precio_costo_pallet`** — precio propio opcional por nivel; si no se carga, se calcula
+  proporcional al ancla (mismo `precioEfectivoNivel()` de la Fase 1, sin cálculo nuevo).
+- El nivel **BASE (Unidad)** nunca recibe precio propio desde el importador — siempre deriva de
+  `precio_venta`/`precio_costo` de cabecera del producto, igual que la ficha manual
+  (`ProductoFormPage`/`ProductosPage`).
+- **Validación en la previsualización**: una fila con `estr_precio_ancla=Caja` pero SIN ningún dato
+  de estructura de Caja en esa misma fila se marca como error y **nunca se intenta importar** (se
+  descarta antes de tocar la DB).
+
+**🛑 Bug crítico encontrado y arreglado en la misma sesión, NO relacionado con el pedido — el
+importador de productos NUNCA funcionó.** Escribiendo el e2e de verificación (spec 105, con chequeo
+REAL en DB en vez de solo UI) se descubrió que el payload de insert/update de `productos` siempre
+mandaba un campo `notas` que **no existía como columna** (ninguna migración la había creado nunca).
+PostgREST rechazaba el INSERT/UPDATE **COMPLETO** (`PGRST204: Could not find the 'notas' column`),
+pero el código nunca revisaba el `error` de la respuesta — solo desestructuraba `data` — así que el
+importador reportaba "X creados" mientras la tabla de productos quedaba en **CERO filas nuevas**.
+Confirmado con inserts directos por REST (con `notas`→400; sin `notas`→201 OK) y con SQL directo
+contra DEV (cero filas de los productos de prueba tras varias corridas "exitosas" según la UI).
+
+**Fix:** mig **288** agrega `productos.notas` (columna que la plantilla/UI ya pedían — era la
+intención original, nunca se creó) + el importador ahora revisa el `error` real de cada
+insert/update (ya no infla `creados`/`actualizados` a ciegas) y muestra el detalle de las filas
+fallidas (`erroresDetalle`) en el banner de resultado. **Mismo patrón de riesgo** (ignorar `error`)
+se encontró y corrigió por prevención en `ImportarMasterPage.tsx` (combos, reglas de aging, grupos
+de estados, categorías/proveedores/ubicaciones/estados/motivos) — ahí NO había una falla activa
+confirmada (se verificó por SQL que todas sus columnas usadas sí existen), pero el mismo
+código-olor estaba presente en las 4 ramas.
+
+Verde: tsc · build · **e2e 105 nuevo** (`105_importador_precio_uom_mutante.spec.ts`) contra DEV real
+con verificación POSITIVA en DB: precio propio por nivel persiste tal cual (sin recalcular), ancla
+por nombre persiste `nivel_precio_orden`, fila con ancla inválida se rechaza y nunca se crea. Sin
+este spec el bug de `notas` no se hubiera detectado — la UI mentía "2 creados" de forma consistente
+y convincente. `APP_VERSION` = v1.142.0 (commit `ae5f63b1`, EN DEV — PROD sigue v1.136.0).
 
 ### Roadmap de precio por UoM (backlog Fede 4/6/7 — numeración propia, distinta del roadmap de fases de abajo)
 
@@ -161,7 +202,11 @@ bloqueante, nadie lo pidió con urgencia.
 |---|---|---|
 | **1** | Modelo: precio propio por nivel + ancla de precio (`nivel_precio_orden`) | ✅ v1.140.0 (migs 286-287) |
 | **2** | Vender por UoM en el POS + combos por UoM + UoM en factura/ticket | ✅ v1.141.0 |
-| — | Importador de productos con precio por nivel | ⬜ sin arrancar, no bloqueante |
+| **3** | Importador de productos con precio por nivel + fix crítico (`notas`) | ✅ v1.142.0 (mig 288) |
+
+**Con esto los 7 puntos del backlog de Fede quedan 100% completos a nivel código** (puntos 3, 4, 6
+y 7 de punta a punta; puntos 1/2 en pausa esperando que GO confirme con Fede; punto 5 cerrado sin
+código). Ninguna de las 4 entregas de la sesión (v1.139/140/141/142) llegó a PROD todavía.
 
 ---
 
@@ -188,5 +233,5 @@ Abiertas: picking ¿solo envíos/preparación o también mostrador? (recomendado
 - [[wiki/features/productos]] — tab Estructura + UdM personalizables + Card 3 (ancla de precio)
 - [[wiki/features/inventario-stock]] — asignación de estructura a LPNs
 - [[wiki/features/configuracion]] — ABM Unidades de medida
-- [[wiki/features/ventas-pos]] — Fase 2 (pendiente) conecta el precio por nivel con la venta real
-- [[wiki/database/migraciones]] — migs 282, 283, 286, 287
+- [[wiki/features/ventas-pos]] — Fase 2 (✅ v1.141.0) conecta el precio por nivel con la venta real
+- [[wiki/database/migraciones]] — migs 282, 283, 286, 287, 288

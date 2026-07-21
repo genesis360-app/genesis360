@@ -212,8 +212,11 @@ Caja"/"por Pallet"/etc. en vez de siempre la unidad base — usa el precio propi
   estaba vendiéndose "por Caja" sumaba +1 unidad BASE en vez de +1 Caja, dejando `cantidad_uom`
   desincronizado de `cantidad`. Corregido: la rama de "incrementar si ya está en el carrito"
   ahora respeta la UoM ya seleccionada de esa línea.
-- **Fuera de esta entrega**: extender `ImportarProductosPage` con columnas de precio por nivel —
-  es lo único del diseño original que quedó sin hacer.
+- **Fuera de esta entrega, cerrado después (v1.142.0)**: extender `ImportarProductosPage` con
+  columnas de precio por nivel — era lo único del diseño original que había quedado sin hacer; de
+  paso se encontró y arregló un bug crítico no relacionado (el importador de productos NUNCA
+  funcionó por una columna `notas` inexistente, mig 288). Detalle completo en
+  [[wiki/features/estructuras-udm]] → "Importador de productos con precio por nivel".
 
 ---
 

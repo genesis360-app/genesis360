@@ -6,6 +6,20 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-21] update | 🟡 Relevamiento dedicado — Precio por Unidad de Medida (puntos 4/6/7), diseño cerrado
+
+Continuación de la sesión anterior: se relevaron los 3 puntos derivados (precio por UoM en la
+estructura + ancla de precio en la hoja de producto) con la misma metodología — mapeo del código
+real primero, preguntas grounded después. Hallazgo central: hoy no existe ningún camino de venta o
+rebaje de stock en una UoM distinta a la base (`convertirABase()` en `estructuras.ts` es código
+muerto, escrito para la Fase 2 del roadmap de estructuras y nunca invocado). Decisiones cerradas:
+selector de nivel+cantidad en el carrito, `venta_items.cantidad` sigue en unidades base (columna
+nueva aparte para trazar la UoM vendida), el precio de UoM pisa el tier mayorista, y GO eligió
+construir ya (no diferir) un ancla de precio independiente en `productos` — resuelve el ejemplo
+original de Fede (precio de cabecera en Caja aunque el stock trackee fino por Unidad). Detalle
+completo en `project_pendientes.md`. **Diseño cerrado, CERO código escrito.** Sesión cortada por
+reinicio de PC antes de preguntarle a GO si arrancar la implementación — retomar por ahí.
+
 ## [2026-07-21] update | 🟡 Relevamiento Q&A — 7 puntos de una reunión GO+Fede: 2 resueltos, 2 en pausa, 3 derivados
 
 GO pegó notas de una reunión con Fede (7 puntos crudos, ninguno relevado) y pidió resolverlos en el

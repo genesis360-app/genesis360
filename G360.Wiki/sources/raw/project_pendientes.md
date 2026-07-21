@@ -35,12 +35,58 @@ type: project
 > **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main, no requiere pasos
 > especiales de migración porque no hay DDL nuevo).
 
-> ### 🟡 RELEVAMIENTO Q&A CERRADO (2026-07-21) — 7 puntos de la reunión GO+Fede: 2 resueltos, 2 en pausa, 3 derivados
+> ### 🟡 RELEVAMIENTO Q&A — 7 puntos de la reunión GO+Fede: TODOS relevados, CERO código escrito (⚠ sesión cortada por reinicio de PC, retomar preguntando si arrancar implementación de 4/6/7)
 >
-> GO pegó notas de una reunión con Fede (backlog crudo, ver bloque histórico abajo) y después pidió
-> hacer la ronda de preguntas ahí mismo, en el chat. Informe completo (preguntas, respuestas, el
-> porqué de cada una) publicado como Artifact para mostrarle a Fede — **no vive en el repo**, pedirle
-> el link a GO si hace falta releerlo. Acá el resumen accionable:
+> GO pegó notas de una reunión con Fede (backlog crudo, ver bloque histórico abajo) y pidió hacer la
+> ronda de preguntas ahí mismo, en el chat, en dos tandas: primero 1-2-3-5, después el relevamiento
+> dedicado de 4-6-7. Informe de la 1ª tanda publicado como Artifact para mostrarle a Fede — **no vive
+> en el repo**, pedirle el link a GO. La 2ª tanda (4/6/7) quedó resuelta en el chat pero SIN agregar
+> al Artifact todavía (sesión cortada). Acá el resumen accionable de las dos:
+>
+> #### Puntos 4, 6 y 7 — Precio por Unidad de Medida — diseño CERRADO, falta implementar
+>
+> Antes de preguntar, un agente mapeó el código real (POS, rebaje de stock, EF `emitir-factura`/WSFE,
+> PDF, tier mayorista, combos, `RentabilidadPage`, importadores). **Hallazgo central: HOY no existe
+> NINGÚN camino donde se venda o rebaje stock en una UoM distinta a la base** — `convertirABase()` ya
+> existe en `src/lib/estructuras.ts` (~línea 130) pero es código muerto, escrito para la Fase 2 del
+> roadmap de estructuras ("operar por UdM al ingresar") y nadie la invoca todavía. `venta_items.
+> cantidad`, `rebajeSort`, `movimientos_stock` y `RentabilidadPage` asumen siempre "cantidad =
+> unidades base". Otros hallazgos: AFIP/WSFE nunca recibe detalle de ítems (solo importes agregados
+> por alícuota) → agregar UoM a la factura no tiene riesgo fiscal de romper el envío, pero el PDF
+> (`facturasPDF.ts`) sí imprime cantidad/precio por línea sin campo de unidad; ya existe un precedente
+> casi idéntico en tier mayorista (`producto_precios_mayorista`, mig 092, `VentasPage.tsx:2241-2252`
+> `precioTierBase`) — precio explícito por volumen, misma idea con otra llave (`cantidad_minima` en
+> vez de `unidad_medida_id`); el margen usa un snapshot congelado (`venta_items.
+> precio_costo_historico`, copiado al agregar al carrito, `VentasPage.tsx:1397`), no el costo en vivo.
+>
+> **Decisiones tomadas (todas con la opción recomendada salvo la última):**
+> 1. Selector de nivel + cantidad en esa UoM en el carrito del POS (tipear "3" + elegir "Caja" → 36
+>    unidades base, precio de Caja).
+> 2. `venta_items.cantidad` SIGUE en unidades base (36) — no se toca rebaje de stock ni
+>    `RentabilidadPage`; se agrega columna nueva (`unidad_medida_id` + `cantidad_uom`) solo para
+>    trazar/mostrar qué UoM se vendió.
+> 3. Si se vende explícitamente "por Caja", ese precio pisa cualquier tier mayorista automático por
+>    cantidad.
+> 4. **GO eligió la opción MÁS GRANDE, no la recomendada:** el "ancla de precio" (punto 6) se
+>    construye YA, no se difiere — nueva columna FK en `productos` → `producto_estructura_niveles`
+>    (debe pertenecer a la estructura DEFAULT) que define a qué nivel apunta `precio_venta/costo`,
+>    pudiendo ser Caja aunque el stock siga trackeando fino por Unidad. Resuelve el ejemplo original
+>    de Fede tal cual.
+>
+> **Modelo de datos a construir (intención, sin migrar ni codear todavía):**
+> `producto_estructura_niveles` +`precio_venta`/+`precio_costo` (nullable, hereda por factor × nivel
+> anterior con precio) · `productos` +`nivel_precio_id` (FK, redefine el uso del `unidad_medida`
+> actual) · `venta_items` +`unidad_medida_id`/+`cantidad_uom` (nullable, trazabilidad/display).
+>
+> **Fuera del alcance de las preguntas a GO (detalle técnico, se resuelve al implementar):** qué pasa
+> con el ancla si se borra el nivel al que apunta (probable: invalidar → nivel base) · extender el
+> importador con precio por nivel · agregar unidad al PDF (asumido que sí, avisar si no) ·
+> interacción combos (3x2) con ventas por UoM — ¿cuenta unidades base o "paquetes"?.
+>
+> **Es candidato a fasearse** (varias migraciones + rework POS + PDF + importador), como Estructuras
+> Fase 1 — no para implementar todo de una tirada.
+>
+> #### Puntos 1, 2, 3, 5 — resumen de la 1ª tanda (detalle con el porqué de cada una, en el Artifact)
 >
 > **✅ Punto 3 — Descuento automático por estado de inventario ("aging profile"). RESUELTO, dirección
 > tomada, falta diseño fino antes de codear.** Ojo: el "Aging Profile" que YA EXISTE (`aging_profiles`

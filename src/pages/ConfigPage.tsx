@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -1607,6 +1607,23 @@ export default function ConfigPage() {
     const { error } = await supabase.from('estados_inventario').update({ es_disponible_meli: value }).eq('id', estadoId)
     if (error) toast.error(error.message)
     else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+  }
+  // Descuento automático por estado (backlog Fede, punto 3) — se aplica solo, sin clave, al
+  // vender stock que esté en este estado; se apila con otros descuentos de la venta.
+  const updateEstadoDescuento = async (estadoId: string, pctStr: string) => {
+    const trimmed = pctStr.trim()
+    const pct = trimmed === '' ? null : parseFloat(trimmed.replace(',', '.'))
+    if (pct !== null && (!Number.isFinite(pct) || pct <= 0 || pct > 100)) {
+      toast.error('El descuento debe ser mayor a 0 y hasta 100')
+      qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+      return
+    }
+    const { error } = await supabase.from('estados_inventario').update({ descuento_pct: pct }).eq('id', estadoId)
+    if (error) toast.error(error.message)
+    else {
+      toast.success(pct ? `Descuento automático ${pct}% asignado` : 'Descuento automático quitado')
+      qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+    }
   }
 
   // Motivos
@@ -3672,23 +3689,24 @@ export default function ConfigPage() {
                   <div>
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5">Permisos por estado</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      <ShoppingCart size={11} className="inline mr-0.5" /> = vendible · <Store size={11} className="inline mr-0.5" /> = TiendaNube · <span className="text-xs font-bold text-yellow-500">ML</span> = MercadoLibre · <RotateCcw size={11} className="inline mr-0.5 text-orange-500" /> = devoluciones
+                      <ShoppingCart size={11} className="inline mr-0.5" /> = vendible · <Store size={11} className="inline mr-0.5" /> = TiendaNube · <span className="text-xs font-bold text-yellow-500">ML</span> = MercadoLibre · <RotateCcw size={11} className="inline mr-0.5 text-orange-500" /> = devoluciones · <Percent size={11} className="inline mr-0.5 text-emerald-500" /> = descuento automático en venta
                     </p>
                   </div>
 
                   <div className="rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
                     {/* Header */}
-                    <div className="grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400">
+                    <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400">
                       <span>Estado</span>
                       <span className="w-8 text-center" title="Disponible para venta"><ShoppingCart size={13} /></span>
                       <span className="w-8 text-center" title="Sincroniza a TiendaNube"><Store size={13} /></span>
                       <span className="w-8 text-center text-yellow-500 font-bold" title="Sincroniza a MercadoLibre">ML</span>
                       <span className="w-8 text-center" title="Estado para devoluciones"><RotateCcw size={13} className="text-orange-500" /></span>
+                      <span className="w-20 text-center" title="Descuento automático en venta"><Percent size={13} className="inline text-emerald-500" /></span>
                     </div>
 
                     {(estados as any[]).map((e: any, i: number) => (
                       <div key={e.id}
-                        className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-2 px-3 py-2.5 items-center ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-gray-700/30'}`}>
+                        className={`grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-3 py-2.5 items-center ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-gray-700/30'}`}>
                         {/* Nombre con color */}
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
@@ -3734,6 +3752,21 @@ export default function ConfigPage() {
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
                           <RotateCcw size={14} />
                         </button>
+
+                        {/* % Descuento automático (punto 3 backlog Fede) */}
+                        <div className="w-20 flex items-center justify-center gap-0.5">
+                          <input
+                            type="number" min="0.01" max="100" step="0.5"
+                            key={`${e.id}-${e.descuento_pct ?? ''}`}
+                            defaultValue={e.descuento_pct ?? ''}
+                            onWheel={ev => ev.currentTarget.blur()}
+                            onBlur={ev => updateEstadoDescuento(e.id, ev.target.value)}
+                            onKeyDown={ev => ev.key === 'Enter' && ev.currentTarget.blur()}
+                            placeholder="—"
+                            title="% de descuento automático al vender stock en este estado"
+                            className={`w-14 px-1.5 py-1 text-xs text-center border rounded-lg focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800
+                              ${e.descuento_pct ? 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`} />
+                        </div>
                       </div>
                     ))}
                   </div>

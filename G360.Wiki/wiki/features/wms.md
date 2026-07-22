@@ -15,30 +15,29 @@ Visión: el sistema sugiere dónde almacenar cada SKU en base a dimensiones/peso
 ## Estado de fases
 
 ```
-Fase 1 ✅ (producto_estructuras)
+Fase 1 ✅ (producto_estructuras — rediseñada con niveles dinámicos por UdM en v1.137, migs 282-283)
   → Fase 2 ✅ (ubicaciones con dimensiones)
     → Fase 2.5 ✅ (KITs / Kitting)
-    → Fase 3 🔵 (tareas WMS + picking — pendiente)
-      → Fase 4 🔵 (surtido + cross-docking — largo plazo)
+    → Fase 3 🔵 (tareas WMS + picking — EN PLAN: fases 2-5 de [[wiki/features/estructuras-udm]])
+      → Fase 4 🔵 (surtido + cross-docking — reabastecimiento EN PLAN: fase 5 de estructuras-udm)
 ```
 
 ---
 
-## Fase 1 — Estructura de producto (migration 031, v0.57.0) ✅
+## Fase 1 — Estructura de producto (migration 031 → rediseñada en 282, v1.137.0) ✅
 
-**Tabla `producto_estructuras`:**
-- Niveles: `unidad` / `caja` / `pallet`
-- Por nivel: peso (kg) + dimensiones alto/ancho/largo (cm)
-- Conversiones: `unidades_por_caja`, `cajas_por_pallet`
-- Mínimo 2 niveles activos al crear
-- Un único default por SKU: `UNIQUE INDEX WHERE is_default = true`
-- Default reasignado automáticamente al eliminar el default actual
+> **Modelo actual (migs 282-283): niveles DINÁMICOS por Unidad de Medida** — estilo pack
+> structure/footprint de Blue Yonder. Cada estructura tiene N niveles, cada nivel apunta a una
+> UdM del tenant (`producto_estructura_niveles`), con factor contra el nivel anterior y
+> `unidades_base` calculada server-side (RPC `fn_estructura_guardar_niveles`). Los 3 niveles
+> fijos unidad/caja/pallet de la mig 031 quedaron deprecados.
+> **Detalle completo + roadmap de fases 2-5 (operar por UdM, zonas + reglas de almacenaje,
+> picking por UdM, reabastecimiento): [[wiki/features/estructuras-udm]].**
 
-**UI ProductosPage — Tab Estructura:**
-- CRUD completo con buscador/dropdown de producto
-- Modal `EstrModal` con toggle por nivel (`NivelSection`)
-- Tarjeta `EstrCard` con detalle por nivel
-- Panel expandible en tab Productos: muestra estructura default; link "Agregar estructura" si no tiene
+- Varias estructuras por SKU, un único default (`UNIQUE INDEX WHERE is_default = true`),
+  default reasignado automáticamente al eliminar el actual
+- UI ProductosPage → Tab Estructura: buscador de producto, cards con cadena de conversión,
+  modal de niveles dinámicos; panel expandible en tab Productos muestra la default
 
 ---
 
@@ -201,6 +200,7 @@ Detalle completo en [[wiki/features/multi-sucursal]] → "Traslados entre sucurs
 
 ## Links relacionados
 
+- [[wiki/features/estructuras-udm]] — estructuras con niveles dinámicos por UdM (footprints) + plan picking/almacenaje/reabastecimiento por UdM
 - [[wiki/features/modo-basico-avanzado]] — desde v1.55.0 las superficies WMS solo se muestran en modo de operación **Avanzado** (toggle por tenant, plan Pro+); el modo gatea UI, nunca datos
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/multi-sucursal]]

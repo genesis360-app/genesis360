@@ -50,7 +50,7 @@ export default function ImportarMasterPage() {
   const [tipoMaster, setTipoMaster] = useState<TipoMaster>('categorias')
   const [filas, setFilas] = useState<FilaMaster[]>([])
   const [importando, setImportando] = useState(false)
-  const [resultado, setResultado] = useState<{ creados: number; ignorados: number; errores: number } | null>(null)
+  const [resultado, setResultado] = useState<{ creados: number; ignorados: number; errores: number; erroresDetalle: { nombre: string; mensaje: string }[] } | null>(null)
 
   // Queries para dedup y resolución de referencias
   const { data: categorias = [] }  = useQuery({ queryKey: ['categorias', tenant?.id],  queryFn: async () => { const { data } = await supabase.from('categorias').select('id,nombre').eq('tenant_id', tenant!.id); return data ?? [] }, enabled: !!tenant })
@@ -152,6 +152,7 @@ export default function ImportarMasterPage() {
   const confirmarImportacion = async () => {
     setImportando(true)
     let creados = 0; let ignorados = 0; let errores = 0
+    const erroresDetalle: { nombre: string; mensaje: string }[] = []
     const nuevas = filas.filter(f => f.estado === 'nuevo')
 
     if (tipoMaster === 'combos') {
@@ -163,10 +164,10 @@ export default function ImportarMasterPage() {
         try {
           const skuKey = fila.extra.sku_producto?.toLowerCase()
           const productoId = skuMap[skuKey]
-          if (!productoId) { errores++; continue }
+          if (!productoId) { errores++; erroresDetalle.push({ nombre: fila.nombre, mensaje: `SKU "${fila.extra.sku_producto}" no encontrado` }); continue }
           const dtipo = fila.extra.descuento_tipo?.toLowerCase()
           const dval = parseFloat(fila.extra.descuento_valor) || 0
-          await supabase.from('combos').insert({
+          const { error: comboErr } = await supabase.from('combos').insert({
             tenant_id: tenant!.id,
             nombre: fila.nombre,
             producto_id: productoId,
@@ -175,8 +176,9 @@ export default function ImportarMasterPage() {
             descuento_pct: dtipo === 'pct' ? dval : 0,
             descuento_monto: dtipo !== 'pct' ? dval : 0,
           })
+          if (comboErr) throw comboErr
           creados++
-        } catch { errores++ }
+        } catch (e: any) { errores++; erroresDetalle.push({ nombre: fila.nombre, mensaje: e?.message ?? 'Error desconocido' }) }
       }
       qc.invalidateQueries({ queryKey: ['combos'] })
 
@@ -203,7 +205,11 @@ export default function ImportarMasterPage() {
           } else {
             const { data: newProfile, error } = await supabase.from('aging_profiles')
               .insert({ tenant_id: tenant!.id, nombre: nombrePerfil }).select('id').single()
-            if (error || !newProfile) { errores++; continue }
+            if (error || !newProfile) {
+              errores++
+              erroresDetalle.push({ nombre: nombrePerfil, mensaje: error?.message ?? 'No se pudo crear el perfil' })
+              continue
+            }
             profileId = newProfile.id
             creados++
           }
@@ -214,11 +220,12 @@ export default function ImportarMasterPage() {
             const estadoId = estadosMap[estadoNombre]
             if (!estadoId) continue
             const dias = parseInt(row.extra.dias) || 0
-            await supabase.from('aging_profile_reglas').insert({
+            const { error: reglaErr } = await supabase.from('aging_profile_reglas').insert({
               tenant_id: tenant!.id, profile_id: profileId, estado_id: estadoId, dias,
-            }).then(() => {})
+            })
+            if (reglaErr) throw reglaErr
           }
-        } catch { errores++ }
+        } catch (e: any) { errores++; erroresDetalle.push({ nombre: nombrePerfil, mensaje: e?.message ?? 'Error desconocido' }) }
       }
       qc.invalidateQueries({ queryKey: ['aging_profiles'] })
 
@@ -230,7 +237,10 @@ export default function ImportarMasterPage() {
       for (const fila of nuevas) {
         try {
           const esDefault = fila.extra.es_default?.toLowerCase() === 'si'
-          if (esDefault) await supabase.from('grupos_estados').update({ es_default: false }).eq('tenant_id', tenant!.id)
+          if (esDefault) {
+            const { error: unsetErr } = await supabase.from('grupos_estados').update({ es_default: false }).eq('tenant_id', tenant!.id)
+            if (unsetErr) throw unsetErr
+          }
 
           const { data: grupo, error: gErr } = await supabase.from('grupos_estados').insert({
             tenant_id: tenant!.id,
@@ -238,17 +248,22 @@ export default function ImportarMasterPage() {
             descripcion: fila.extra.descripcion || null,
             es_default: esDefault,
           }).select('id').single()
-          if (gErr || !grupo) { errores++; continue }
+          if (gErr || !grupo) {
+            errores++
+            erroresDetalle.push({ nombre: fila.nombre, mensaje: gErr?.message ?? 'No se pudo crear el grupo' })
+            continue
+          }
 
           const nombresEstados = (fila.extra.estados || '').split('|').map((s: string) => s.trim()).filter(Boolean)
           for (const nomEst of nombresEstados) {
             const estadoId = estadosMap[nomEst.toLowerCase()]
             if (estadoId) {
-              await supabase.from('grupo_estado_items').insert({ grupo_id: grupo.id, estado_id: estadoId })
+              const { error: itemErr } = await supabase.from('grupo_estado_items').insert({ grupo_id: grupo.id, estado_id: estadoId })
+              if (itemErr) throw itemErr
             }
           }
           creados++
-        } catch { errores++ }
+        } catch (e: any) { errores++; erroresDetalle.push({ nombre: fila.nombre, mensaje: e?.message ?? 'Error desconocido' }) }
       }
       qc.invalidateQueries({ queryKey: ['grupos_estados'] })
 
@@ -270,9 +285,10 @@ export default function ImportarMasterPage() {
           }
 
           const tabla = MASTER_CONFIG[tipoMaster].tabla!
-          await supabase.from(tabla).insert(payload)
+          const { error: insErr } = await supabase.from(tabla).insert(payload)
+          if (insErr) throw insErr
           creados++
-        } catch { errores++ }
+        } catch (e: any) { errores++; erroresDetalle.push({ nombre: fila.nombre, mensaje: e?.message ?? 'Error desconocido' }) }
       }
 
       const qKey = tipoMaster === 'estados' ? 'estados_inventario' : tipoMaster === 'motivos' ? 'motivos' : tipoMaster
@@ -280,7 +296,7 @@ export default function ImportarMasterPage() {
     }
 
     ignorados = ignorados || filas.filter(f => f.estado === 'existente').length
-    setResultado({ creados, ignorados, errores })
+    setResultado({ creados, ignorados, errores, erroresDetalle })
     setImportando(false)
     toast.success(`${MASTER_CONFIG[tipoMaster].label}: ${creados} creados`)
   }
@@ -316,6 +332,14 @@ export default function ImportarMasterPage() {
             <p className="text-sm text-green-700 dark:text-green-400 mt-0.5">
               {resultado.creados} creado{resultado.creados !== 1 ? 's' : ''} · {resultado.ignorados} ignorado{resultado.ignorados !== 1 ? 's' : ''} (ya existían) · {resultado.errores} error{resultado.errores !== 1 ? 'es' : ''}
             </p>
+            {resultado.erroresDetalle.length > 0 && (
+              <ul className="mt-1.5 text-xs text-red-600 dark:text-red-400 list-disc list-inside space-y-0.5">
+                {resultado.erroresDetalle.slice(0, 10).map((e, i) => (
+                  <li key={i}>{e.nombre}: {e.mensaje}</li>
+                ))}
+                {resultado.erroresDetalle.length > 10 && <li>… y {resultado.erroresDetalle.length - 10} más</li>}
+              </ul>
+            )}
             <button onClick={() => navigate('/configuracion')} className="mt-2 text-sm text-green-700 dark:text-green-400 font-medium hover:underline">
               Volver a Configuración →
             </button>

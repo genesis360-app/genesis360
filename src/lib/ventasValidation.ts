@@ -237,6 +237,9 @@ export interface LineaDisponible {
   encaje?: string | null
   formato?: string | null
   sabor_aroma?: string | null
+  // Descuento automático por estado de inventario (backlog Fede, punto 3) — ver descuentoEstado.ts.
+  estado_nombre?: string | null
+  estado_descuento_pct?: number | null
 }
 
 export interface LpnFuente {
@@ -244,6 +247,8 @@ export interface LpnFuente {
   lpn: string | null
   cantidad: number
   ubicacion?: string | null   // nombre de la ubicación
+  estado_nombre?: string | null
+  estado_descuento_pct?: number | null
   talle?: string | null
   color?: string | null
   encaje?: string | null
@@ -280,6 +285,7 @@ export function calcularLpnFuentes(lineas: LineaDisponible[], cantidad: number):
     if (usar <= 0) continue
     fuentes.push({
       linea_id: l.id, lpn: l.lpn, cantidad: usar, ubicacion: l.ubicacion ?? null,
+      estado_nombre: l.estado_nombre ?? null, estado_descuento_pct: l.estado_descuento_pct ?? null,
       talle: l.talle ?? null, color: l.color ?? null, encaje: l.encaje ?? null,
       formato: l.formato ?? null, sabor_aroma: l.sabor_aroma ?? null,
     })

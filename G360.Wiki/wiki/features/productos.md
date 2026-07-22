@@ -3,7 +3,7 @@ title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
 sources: [CLAUDE.md]
-updated: 2026-07-19
+updated: 2026-07-21
 ---
 
 # Productos
@@ -22,8 +22,7 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 ### Barra de búsqueda y filtros
 
 - Search por nombre / SKU / código de barras
-- Filtros: Categoría, Proveedor
-- Toggle "Ver inactivos" — muestra productos con `activo = false` (opacity-60 + badge "Inactivo")
+- Botón píldora **"Filtros"** con popover (✅ v1.138.0, 2026-07-21 — ver sección dedicada abajo)
 - Toggle "Agrupar variantes" (ícono Layers) — alterna entre vista plana y vista agrupada por grupos
 
 ### Vista plana (default)
@@ -38,10 +37,45 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 - Grupos como secciones expandibles con tabla de variantes: Nombre/SKU | Variante | Precio | Stock
 - Botón "Editar grupo" en cada sección
 
+### Panel de filtros — pill button (✅ v1.138.0, 2026-07-21)
+
+Reemplaza al viejo toggle suelto "Ver inactivos" (ISS-122) por un panel combinable, mismo patrón
+visual pill+popover que ya usa `InventarioPage` → tab Inventario (ver
+[[wiki/features/inventario-stock]] → "Filtros tab Inventario — pill button"):
+
+- Botón píldora "Filtros" (`SlidersHorizontal`) con badge de cantidad de filtros activos
+- **Estado** — Activos / Inactivos / Todos (reemplaza el toggle `showInactivos` de antes; default
+  "Activos", igual comportamiento que el toggle viejo pero ahora con opción "Todos" a la vez)
+- **Estructura de embalaje** — Con / Sin / Todos, contra `producto_estructuras` (feature de
+  v1.137.0, sin query extra: se resuelve con un `SELECT producto_id` agregado)
+- **Categoría / Proveedor / Marca** — selects con opción "Sin X", derivados del propio listado de
+  productos (sin queries adicionales)
+- **Atributos de inventario** — combobox de chips combinables por **OR** (muestra productos con AL
+  MENOS UNO de los atributos elegidos). Las opciones no se listan de entrada: aparecen recién al
+  enfocar/tipear el input, agrupadas en dos secciones con los mismos labels que
+  `ProductoFormPage`:
+  - **Tracking**: Control por número de serie (`tiene_series`), Control por lote (`tiene_lote`),
+    Fecha de vencimiento (`tiene_vencimiento`), País de origen (`tiene_pais_origen`), KIT
+    (`es_kit`)
+  - **Variantes**: Talle/Talla, Color, Encaje, Formato, Sabor/Aroma
+  - Cada atributo elegido se agrega como chip con X para quitar; búsqueda por label o por grupo
+- Click fuera del panel lo cierra; click fuera del combobox (pero dentro del panel) solo cierra el
+  dropdown de atributos
+
+> [!NOTE] **Bug real cazado por el e2e mutante 100 (no por code review).** Al elegir una opción
+> del combobox de atributos el dropdown no se cerraba tras el click, y su lista `position:absolute`
+> tapaba el botón "Limpiar todos los filtros" más abajo, interceptando el click (Playwright:
+> "subtree intercepts pointer events"). Fix de una línea: cerrar el dropdown
+> (`setAtributoDropOpen(false)`) también al seleccionar una opción, no solo al hacer click afuera
+> del panel.
+
+Filtrado 100% client-side sobre el listado ya cargado (sin queries extra salvo el `SELECT
+producto_id` de `producto_estructuras`). Ver [[wiki/database/migraciones]] — sin migraciones
+nuevas, es puramente frontend.
+
 ### Productos inactivos (ISS-122)
 
-- Por defecto solo se muestran productos activos
-- Toggle "Ver inactivos" en barra de búsqueda
+- Por defecto solo se muestran productos activos (`Estado = Activos` en el panel de filtros)
 - Productos inactivos: fila con `opacity-60` + badge gris "Inactivo"
 - Acción rápida para reactivar desde la bulk action bar
 
@@ -107,6 +141,7 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | IVA | select | Alícuota aplicable |
 | Margen objetivo | number | % — activa insightMargen en Dashboard |
 | Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092) |
+| Estos precios corresponden a | select (nuevo, v1.140.0) | "Ancla de precio" (`productos.nivel_precio_orden`, mig 286): a qué nivel de la estructura DEFAULT corresponden Precio costo/Precio venta de este card (default = nivel base). Solo visible si el producto tiene estructura. Ver [[wiki/features/estructuras-udm]] → "Precio por Unidad de Medida". |
 
 ### Card 4: Stock e inventario
 
@@ -197,21 +232,24 @@ Patrón idéntico a `producto_stock_minimo_sucursal` (migration 052).
 
 ---
 
-## Unidades de medida personalizables (migration 119 · ISS-120)
+## Unidades de medida personalizables (migration 119 · ISS-120 · conectadas a estructuras en 282)
 
 ```sql
 unidades_medida(
   tenant_id UUID,
   nombre TEXT,      -- ej: "Docena"
   simbolo TEXT,     -- ej: "doc"
-  activo BOOLEAN
+  activo BOOLEAN,
+  predefinida BOOLEAN  -- mig 148; seed: Unidad/Kilogramo/Gramo/Litro/Metro/Caja + Pallet (282)
 )
 RLS: tenant isolation
 ```
 
 - CRUD en `ConfigPage` → tab "Unidades"
 - En `ProductoFormPage`: selector UdM con `<optgroup label="Predefinidas">` y `<optgroup label="Personalizadas">`
-- Predefinidas: Unidad, Kg, g, L, ml, m, cm, caja, pack (hardcodeadas en UI)
+- **Desde mig 282 toda UdM del tenant es elegible como NIVEL de una estructura de producto**
+  (footprints con conversión caja/pallet/etc.) — ver [[wiki/features/estructuras-udm]]. Antes
+  eran solo una etiqueta de texto en `productos.unidad_medida`.
 
 ---
 

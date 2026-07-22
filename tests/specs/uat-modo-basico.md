@@ -1339,3 +1339,136 @@ write-only desde su creación).
 
 **Verde:** tsc · build · unit **1129** (64 nuevos) · e2e 98 (3/3 mutantes) + regresión 29/29
 (specs 02/04/06/08/10/19). Migs 279-281 aplicadas en DEV.
+
+## 📦 §39 — Estructuras con niveles dinámicos por UdM (Fase 1 footprint, migs 282-283) — 2026-07-19
+
+**Contexto:** GO pidió que las estructuras funcionen como el "pack structure / footprint" de Blue
+Yonder: varias estructuras por SKU (ya existía vía `is_default`) pero con niveles DINÁMICOS — antes
+unidad/caja/pallet eran columnas fijas de `producto_estructuras` y las `unidades_medida` del tenant
+(mig 119) no se conectaban con nada. Ahora cada nivel es una fila (`producto_estructura_niveles`)
+que apunta a una UdM del tenant, con factor de conversión **contra el nivel anterior** (caja = 12
+unidades, pallet = 40 cajas) y peso/dims propios. Es la Fase 1 del plan (siguen: operar por UdM al
+ingresar, zonas + reglas de almacenaje, picking por UdM, reabastecimiento).
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Crear estructura de 3 niveles** (Unidad base → Caja ×12 → Pallet ×40) | El modal preselecciona la UdM base según `productos.unidad_medida` · sugiere Caja/Pallet al agregar niveles · muestra la equivalencia viva "= 480 × Unidad" · la card muestra la cadena completa | **e2e 99** (flujo UI completo) |
+| 2 | **`unidades_base` la calcula el SERVER** | El cliente solo manda factores; la RPC `fn_estructura_guardar_niveles` recalcula el producto acumulado (1/12/480) — verificado leyendo la DB por REST, no la UI | **e2e 99** (aserción en DB) |
+| 3 | **Guard server-side de factores** (REGLA #0: conversiones exactas) | Llamar la RPC directo por REST con factor 0 → 400 · factores no enteros → rechazo · y por ser transaccional los niveles anteriores quedan INTACTOS (no borra-y-falla) | **e2e 99** (RPC directa bypasseando la UI) |
+| 4 | **Validación UI espejo** | Factor vacío/no entero/repetir UdM/nivel sin UdM → mensaje exacto sin submit (los no enteros además los frena la validación nativa `step="1"`) | unit `estructuras.test.ts` (22) + e2e 99 |
+| 5 | **Backfill de estructuras viejas** | 57 estructuras DEV → niveles equivalentes (Pack 6: Unidad/Caja ×6/Pallet ×27 = 162 ✓) · **gotcha cazado**: las creadas por el importador CSV tenían conversión SIN dims y el criterio "peso+alto" de la 282 las dejaba sin nivel Caja/Pallet → mig 283 las reconstruye (0 conversiones perdidas, verificado por query) | queries en DEV post-mig |
+| 6 | **UdM "Pallet" predefinida** | Seed de tenant nuevo (`fn_seed_tenant_defaults`, SECURITY DEFINER por gotcha mig 166) + backfill a los 10 tenants DEV | query `unidades_medida` |
+| 7 | **Consumers actualizados** | LpnAccionesModal (chips desde niveles) · Recepciones/Inventario (solo usan id/nombre/default — sin cambios) · Importador CSV escribe niveles vía RPC (columnas `estr_*` del CSV sin cambios) | tsc + e2e 97 (regresión LpnAccionesModal) |
+
+**Verde:** tsc · build · unit **1151** (22 nuevos) · e2e 99 (nuevo) + regresión. Migs 282-283
+aplicadas en DEV. Columnas fijas viejas de `producto_estructuras` quedan DEPRECADAS (drop en
+migración de limpieza futura, post-verificación en PROD).
+
+## 🔎 §40 — Botón "Filtros" en ProductosPage (panel pill+popover) + columna Estructura en Inventario — 2026-07-21
+
+**Contexto:** pedido de GO (2026-07-19): reemplazar el toggle suelto "Ver inactivos" de
+`ProductosPage` por un panel de filtros combinable (mismo patrón pill+popover que
+`InventarioPage` → tab Inventario), agregando Con/Sin estructura de embalaje, Categoría,
+Proveedor, Marca y un combobox de "Atributos de inventario" (tracking + variantes) combinables
+por OR. De paso, `InventarioPage` gana una columna "Estructura" en el detalle de líneas por
+producto (solo lectura, muestra el nombre de la estructura de la línea si tiene una asignada).
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Activos/Inactivos/Todos** reemplaza el toggle viejo | Default = Activos · producto desactivado por REST desaparece · botón "Inactivos" lo muestra | **e2e 100** |
+| 2 | **Con/Sin estructura de embalaje** | Producto con estructura (RPC `fn_estructura_guardar_niveles` real) visible en "Con", desaparece en "Sin" | **e2e 100** (estructura creada por REST, no mock) |
+| 3 | **Combobox de atributos (OR)** | Opciones NO listadas hasta enfocar/tipear · elegir 1 atributo que el producto SÍ tiene lo deja visible · sumar un 2º atributo que NO tiene (semántica OR = al menos uno) lo mantiene visible · aviso "al menos uno de los atributos" cuando hay 2+ elegidos | **e2e 100** |
+| 4 | **Categoría / Proveedor / Marca** | Selects derivados del propio listado (sin queries extra), con opción "Sin —" | revisión de código (sin caso e2e dedicado) |
+| 5 | **Columna Estructura en Inventario** (`InventarioPage`, detalle de líneas) | Chip con el nombre de la estructura si `inventario_lineas.producto_estructuras` no es null; "—" si no tiene | revisión visual + query join |
+
+**🐛 Bug real cazado por el e2e mutante (no por code review):** al elegir un atributo del
+combobox, el dropdown quedaba abierto (nunca se cerraba tras el click) y su lista, posicionada
+`absolute`, tapaba el botón "Limpiar todos los filtros" más abajo en el panel — interceptaba el
+click (`subtree intercepts pointer events`). Fix: cerrar el dropdown (`setAtributoDropOpen(false)`)
+al seleccionar una opción, además de al hacer click afuera.
+
+**Verde:** tsc · build · unit 1151 (sin nuevos, es UI/filtrado client-side) · **e2e 100 nuevo**
+(mutante, generó su propia precondición: producto real + `tiene_lote` + estructura vía RPC) +
+regresión dirigida (02, 23, 43, 89, 90, 95, 96, 97, 99 — todo lo que toca ProductosPage/
+InventarioPage/estructuras) 16/16 verde.
+
+## 💸 §41 — Descuento automático por estado de inventario (backlog Fede, punto 3, migs 284-285) — 2026-07-21
+
+**Contexto:** relevamiento con GO (mismo día): un estado de inventario (Config→Inventario→
+Estados) puede tener un % de descuento propio; una venta cuyo stock consumido esté en ese estado
+aplica el % automáticamente, sin clave de supervisor, apilado con cualquier otro descuento de la
+venta (general, combo, por método de pago). No confundir con el "Aging Profile" ya existente (mig
+013), que solo cambia el `estado_id` automático por días a vencer — no tiene ningún descuento.
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Configurar % por estado** | Config→Inventario→Estados, columna nueva junto a los toggles de venta/TN/ML/devolución — input inline, valida 0 < pct ≤ 100 | revisión de código + migración 284 |
+| 2 | **Preview de descuento en el carrito, ANTES de confirmar** | Al agregar el producto (o cambiar cantidad, o reasignar LPN a mano) se recalcula sobre la MISMA previsualización de LPNs que ya usa el carrito para planificar el rebaje (`calcularLpnFuentes`) — nunca se inventa después del despacho | **e2e 101** (línea "↳ Incluye desc. \<estado\> (15%)" visible en el resumen antes de cobrar) |
+| 3 | **Es un monto POR LÍNEA, no un descuento global prorrateado** | Solo reduce el precio de las unidades que vienen de un estado con descuento — nunca "contamina" el precio de otro producto de la misma venta (a diferencia de "Descuento general"/combos/promo por método de pago, que sí se prorratean entre todas las líneas) | unit `descuentoEstado.test.ts` (10) |
+| 4 | **Independiente de descuento manual/combo** | Se resta aparte en `getItemSubtotal` (no toca `item.descuento`/`descuento_tipo`) → nunca colisiona con la lógica de agrupamiento de combos por producto | revisión de código |
+| 5 | **Trazabilidad fiscal (REGLA #0)** | `venta_items.descuento_estado_pct`/`descuento_estado_monto` por línea + `ventas.descuento_estado` (detalle agregado, mismo criterio que `promo_pago` mig 281) — el total cobrado coincide exacto con lo trazado | **e2e 101** (verificado en DB: 4 u. × $1.000 × 15% = $600 descontados, subtotal $3.400) |
+| 6 | **Venta completa end-to-end** | Estado nuevo con 15% (por REST, no toca estados compartidos) → producto con precio conocido → ingreso REAL por UI en ese estado (no INSERT directo, respeta `movimientos_stock`) → venta directa en efectivo → verificación en DB | **e2e 101 nuevo** (mutante) |
+
+**Gotcha de e2e encontrado armando el spec (no bug de producto):** el POS filtra por el "grupo de
+estados" default ("Ver stock de: Disponible ★") — un estado recién creado no pertenece a ningún
+grupo, así que queda invisible salvo que se seleccione "Todos". Y con más de una caja abierta
+(otro spec/sesión), `registrarVenta` exige elegir "Registrar en caja" explícito — sin eso la venta
+no se confirma en silencio (el carrito se queda tal cual, sin error visible en pantalla).
+
+**Verde:** tsc · unit 1161 (10 nuevos `descuentoEstado.test.ts`) · **e2e 101 nuevo** (mutante).
+Migs 284-285 aplicadas en DEV.
+
+## 💲 §42 — Precio por Unidad de Medida en la estructura, FASE 1: modelo + ancla (backlog Fede, puntos 4/6/7, migs 286-287) — 2026-07-21
+
+**Contexto:** relevamiento dedicado con GO (mismo día, tras mapear el código real: HOY no existe
+ningún camino de venta/rebaje de stock en una UoM distinta a la base). Es el cambio de modelo más
+grande de los 7 puntos del backlog de Fede — se decidió fasearlo, mismo criterio que Estructuras
+Fase 1. **Esta entrega (Fase 1) es SOLO el modelo de datos + la carga de precio por nivel + el
+"ancla de precio" en la hoja de producto.** Vender por UoM en el POS, la interacción con combos
+(con el fix del bug de agrupamiento ya diseñado) y mostrar la UoM en el ticket/factura quedan para
+la Fase 2 — sin eso, esta entrega no cambia ningún comportamiento de venta/facturación existente.
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Precio/costo propio por nivel** (mig 286-287, `producto_estructura_niveles.precio_venta/costo`) | Nivel Caja con precio propio ($1.080) persiste TAL CUAL, no se recalcula a 12×precio_base ($1.200) | **e2e 102 nuevo** (RPC real, verificado en DB) |
+| 2 | **Nivel sin precio propio → se calcula proporcional al ANCLA, no en cadena** | Un precio "raro" cargado a mitad de camino (ej. Caja con precio propio) NO afecta el cálculo de otros niveles (ej. Pallet sigue calculándose desde el nivel anclado, nunca desde Caja) — evita efectos en cascada inesperados | unit `estructurasPrecio.test.ts` (13 casos, incluye el caso de "precio raro en el medio") |
+| 3 | **Ancla de precio en la hoja de producto** (`productos.nivel_precio_orden`, por ORDEN no por id) | Elegir "Caja" en "Estos precios corresponden a" (ProductoFormPage) relabelea los campos a "Precio de venta (por Caja)" y persiste `nivel_precio_orden=2` | **e2e 102 nuevo** |
+| 4 | **Por qué ORDEN y no FK a id** | `fn_estructura_guardar_niveles` borra y reinserta TODOS los niveles en cada guardado (ids nuevos siempre) — un FK a id se invalidaría en cada resave trivial. El orden es estable mientras no se achique la estructura por debajo de esa posición | revisión de código (mig 286, comentario largo) |
+| 5 | **Invalidación del ancla si la estructura se achica** | La RPC (287) pone `nivel_precio_orden=NULL` server-side si al guardar queda apuntando a un nivel que ya no existe — nunca queda apuntando "a la nada" | revisión de código (falta e2e dedicado del caso límite) |
+| 6 | **Aviso ANTES de borrar un nivel anclado** | `ProductosPage` (tab Estructura) muestra un `confirm()` explicando que el precio va a volver al nivel base, antes de dejar quitar un nivel — solo si el producto tiene ancla configurada y es la estructura default | revisión de código (el guard real es el de #5, esto es la UX previa) |
+
+**Verde:** tsc · build · unit **1177** (16 nuevos entre `descuentoEstado`/`estructurasPrecio`) ·
+**e2e 102 nuevo** (mutante) + regresión dirigida (02, 43, 90, 97, 99, 100) 13/13. Migs 286-287
+aplicadas en DEV.
+
+**▶ Fase 2 (sin arrancar, diseño ya cerrado en el relevamiento — ver wiki):** selector de UoM al
+vender en el POS (`venta_items.unidad_medida_id`/`cantidad_uom`, ya migrados pero sin consumidor
+todavía) · combos con UoM propia opcional (`combos.unidad_medida_id`, ya migrado) · agrupador de
+combos por `producto_id + unidad_medida_id` (fix del bug real encontrado en el relevamiento) ·
+mostrar la UoM vendida en el ticket/factura · extender el importador de productos con precio por
+nivel.
+
+## 🛒 §43 — Venta por Unidad de Medida en el POS, FASE 2 (backlog Fede 4/6/7, sin migraciones nuevas — usa 286) — 2026-07-21
+
+**Contexto:** cierra la Fase 2 que había quedado diseñada pero sin código en §42. El carrito del
+POS ahora puede vender "por Caja" (o cualquier nivel de la estructura default) en vez de siempre
+la unidad base, usando el precio propio (o calculado proporcional al ancla) de ese nivel. El
+stock, el rebaje y los reportes de margen NO cambian: `venta_items.cantidad` sigue siempre en
+unidades base — la UoM elegida es una capa de precio + trazabilidad + display encima.
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Default = 1 unidad base al agregar al carrito** | Nunca sorprende con el precio de una caja "por las dudas" — incluso si el producto tiene ancla de precio en un nivel no-base, el precio del nivel BASE se calcula proporcional (`precioEfectivoNivel`) para el agregado inicial | revisión de código + e2e 103 |
+| 2 | **Selector de UoM en el carrito** | Elegir "Caja" + cantidad "3" → cambia `cantidad` (base) a 36, `precio_unitario` a 90 (1080/12, NO recalculado — el precio propio de Caja se respeta tal cual) | **e2e 103 nuevo** (mutante, RPC real + venta real) |
+| 3 | **Conversión visible antes de cobrar** | "= 36 Unidad" al lado del selector, para que el cajero verifique la equivalencia antes de cerrar la venta | e2e 103 |
+| 4 | **Trazabilidad en venta_items** | `unidad_medida_id` = id de Caja, `cantidad_uom` = 3, `cantidad` = 36 (base), `subtotal` = 3.240 (3×1.080) | **e2e 103** (verificado en DB) |
+| 5 | **🐛 BUG REAL encontrado armando el spec 104**: re-agregar al carrito un producto que ya está seleccionado "por Caja" sumaba +1 UNIDAD BASE (no +1 Caja) — dejaba `cantidad_uom` desincronizado de `cantidad` (ej. cantidad_uom seguía en "2" pero cantidad ya no eran múltiplo de 12) | Fix: la rama de "incrementar si ya está en el carrito" ahora respeta la UoM seleccionada de la línea existente (`seleccionarNivelUom`, no `cantidad+1` a ciegas) | **e2e 104** (detectó el bug, no hipotético — casi queda sin cubrir) |
+| 6 | **Combos con UoM propia** (`combos.unidad_medida_id`, NULL = solo UoM base) | Un combo "3×10% off" configurado sin UoM (el default de TODOS los combos ya cargados, cero cambio de comportamiento para ellos) aplica normal vendiendo suelto, pero se DESACTIVA al cambiar la misma línea a "por Caja" — aunque 3 Cajas = 36 unidades base "cumplirían" el umbral si solo se mirara la cantidad | **e2e 104 nuevo** (mutante) |
+| 7 | **Agrupador de combos por producto_id + UoM** (fix del bug de fondo) | `claveUomItem`/`comboAplicaUom` en `VentasPage.tsx` — el auto-combo, `findCombo`/`aplicarCombo` manual, y los combos multi-SKU ya NO agrupan/buscan solo por `producto_id` | revisión de código + e2e 104 (ejercita el auto-combo real) |
+| 8 | **PDF de factura/NC + ticket muestran la UoM vendida** | "3 Cajas" en vez de "36" en la columna Cantidad, precio unitario = el de la Caja (no el prorrateado a unidad base) — mismo criterio en el ticket no fiscal | revisión de código (sin caso e2e dedicado — cubierto indirectamente por no romper el PDF real de spec 21) |
+| 9 | **Tier mayorista y descuento por estado siguen funcionando sin cambios** | Ninguno de los dos toca `unidad_medida_id`/`cantidad_uom` — la venta por UoM es ortogonal | regresión 54 (tier) + 101 (descuento por estado) sin fallas |
+
+**Verde:** tsc · build · unit 1177 (sin nuevos — es integración de UI/POS, la lógica pura ya
+estaba testeada en `estructurasPrecio.test.ts`) · **e2e 103 y 104 nuevos** (mutantes) + regresión
+amplia 18/18 (04, 19, 21 con CAE real, 45, 48, 54, 82, 98, 101, 102). Sin migraciones nuevas —
+usa las columnas de la mig 286 (Fase 1) que quedaron sin consumidor hasta ahora.

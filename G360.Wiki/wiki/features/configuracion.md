@@ -109,9 +109,11 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs de Inventario:
 - **Categorías** → ABM de categorías de productos
 - **Ubicaciones** → ABM con WMS (dimensiones, tipo, mono-SKU, surtido, devolución)
-- **Estados** → ABM + Grupos de estados + Progresión (aging profiles)
+- **Estados** → ABM + Grupos de estados + Progresión (aging profiles) + **columna % desc.** en
+  "Permisos por estado" (v1.139.0, mig 284) — descuento automático al vender stock de ese estado,
+  ver [[wiki/features/ventas-pos]] → "Descuento automático por estado de inventario"
 - **Motivos** → ABM de motivos de movimiento (ingreso / rebaje / caja)
-- **Unidades de medida** → ABM de unidades custom
+- **Unidades de medida** → ABM de unidades custom — desde v1.137.0 toda UdM (predefinida o propia) es usable como nivel de las estructuras de producto (footprints); Pallet se sumó a las predefinidas (mig 282). Ver [[wiki/features/estructuras-udm]]
 
 ### Sub-tab: Atributos (✅ PROD desde v1.134.0, 2026-07-18)
 

@@ -26,10 +26,11 @@ test.describe('Atributo de variante obligatorio al ingresar stock (mutante)', ()
     await expect(nombreInput).toBeVisible({ timeout: 8000 })
     await nombreInput.fill(nombreProducto)
 
-    // Activar el toggle "Talle / Talla" (sección Atributos de variante, siempre visible)
-    const talleToggle = page.locator('label').filter({ hasText: 'Talle / Talla' }).locator('input[type="checkbox"]')
+    // Activar el toggle "Talle / Talla" — desde v1.136 es el <Toggle> estándar
+    // (button role="switch" con aria-label), ya no un input checkbox
+    const talleToggle = page.getByRole('switch', { name: 'tiene_talle' })
     await expect(talleToggle).toBeAttached({ timeout: 8000 })
-    const yaActivo = await talleToggle.isChecked()
+    const yaActivo = (await talleToggle.getAttribute('aria-checked')) === 'true'
     if (!yaActivo) await talleToggle.click({ force: true })
 
     const guardar = page.getByRole('button', { name: /Crear producto/i })

@@ -7,6 +7,15 @@
 -- (NO es pg_dump byte-a-byte). Regenerar con: node scripts/dump-schema.mjs
 -- (necesita conexión al pooler/directo; hoy bloqueada por el bug de Supavisor +
 --  falta de egress IPv6, así que este snapshot se generó vía MCP execute_sql).
+--
+-- ⚠ PARCHEADO A MANO 2026-07-21 (sin SUPABASE_ACCESS_TOKEN en el entorno, mismo
+-- bloqueo de siempre — ver reference_schema_dump_metodo): migraciones 284-287
+-- (descuento_pct en estados_inventario · trazabilidad de descuento por estado en
+-- venta_items/ventas · precio_venta/precio_costo por nivel de estructura + ancla
+-- de precio en productos.nivel_precio_orden + unidad_medida_id/cantidad_uom en
+-- venta_items/combos · fn_estructura_guardar_niveles extendida). Regenerar con
+-- el script completo la próxima vez que haya token a mano, para no acumular
+-- drift entre este snapshot y la DB real.
 -- ============================================================
 
 -- ============================================================
@@ -490,7 +499,8 @@ CREATE TABLE public.combos (
   descuento_monto numeric(12,2) NOT NULL DEFAULT 0,
   sucursal_id uuid,
   vigencia_desde date,
-  vigencia_hasta date
+  vigencia_hasta date,
+  unidad_medida_id uuid
 );
 
 CREATE TABLE public.courier_credenciales (
@@ -797,7 +807,8 @@ CREATE TABLE public.estados_inventario (
   es_devolucion boolean NOT NULL DEFAULT false,
   es_disponible_tn boolean NOT NULL DEFAULT true,
   es_disponible_venta boolean NOT NULL DEFAULT true,
-  es_disponible_meli boolean NOT NULL DEFAULT true
+  es_disponible_meli boolean NOT NULL DEFAULT true,
+  descuento_pct numeric(5,2)
 );
 
 CREATE TABLE public.gasto_cuotas (
@@ -1298,6 +1309,32 @@ CREATE TABLE public.producto_estructuras (
   updated_at timestamp with time zone DEFAULT now()
 );
 
+CREATE TABLE public.producto_estructura_niveles (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  estructura_id uuid NOT NULL,
+  unidad_medida_id uuid NOT NULL,
+  orden integer NOT NULL,
+  factor integer NOT NULL DEFAULT 1,
+  unidades_base bigint NOT NULL DEFAULT 1,
+  peso_kg numeric(10,4),
+  alto_cm numeric(10,2),
+  ancho_cm numeric(10,2),
+  largo_cm numeric(10,2),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  precio_venta numeric(12,2),
+  precio_costo numeric(12,2),
+  CONSTRAINT producto_estructura_niveles_orden_check CHECK (orden >= 1),
+  CONSTRAINT producto_estructura_niveles_factor_check CHECK (factor >= 1),
+  CONSTRAINT producto_estructura_niveles_unidades_base_check CHECK (unidades_base >= 1),
+  CONSTRAINT producto_estructura_niveles_peso_kg_check CHECK (peso_kg IS NULL OR peso_kg > 0),
+  CONSTRAINT producto_estructura_niveles_alto_cm_check CHECK (alto_cm IS NULL OR alto_cm > 0),
+  CONSTRAINT producto_estructura_niveles_ancho_cm_check CHECK (ancho_cm IS NULL OR ancho_cm > 0),
+  CONSTRAINT producto_estructura_niveles_largo_cm_check CHECK (largo_cm IS NULL OR largo_cm > 0),
+  CONSTRAINT producto_estructura_niveles_precio_venta_check CHECK (precio_venta IS NULL OR precio_venta >= 0),
+  CONSTRAINT producto_estructura_niveles_precio_costo_check CHECK (precio_costo IS NULL OR precio_costo >= 0)
+);
+
 CREATE TABLE public.producto_grupos (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -1399,7 +1436,9 @@ END,
   clase_abc text,
   clase_abc_manual boolean NOT NULL DEFAULT false,
   ultimo_conteo_at timestamp with time zone,
-  pendiente_revision boolean NOT NULL DEFAULT false
+  pendiente_revision boolean NOT NULL DEFAULT false,
+  nivel_precio_orden integer,
+  CONSTRAINT productos_nivel_precio_orden_check CHECK (nivel_precio_orden IS NULL OR nivel_precio_orden >= 1)
 );
 
 CREATE TABLE public.proveedor_cc_movimientos (
@@ -2259,7 +2298,12 @@ CREATE TABLE public.venta_items (
   created_at timestamp with time zone DEFAULT now(),
   alicuota_iva numeric(5,2),
   iva_monto numeric(12,2),
-  lpn_plan jsonb
+  lpn_plan jsonb,
+  descuento_estado_pct numeric(5,2),
+  descuento_estado_monto numeric(12,2),
+  unidad_medida_id uuid,
+  cantidad_uom numeric(12,3),
+  CONSTRAINT venta_items_cantidad_uom_check CHECK (cantidad_uom IS NULL OR cantidad_uom > 0)
 );
 
 CREATE TABLE public.venta_series (
@@ -2315,7 +2359,8 @@ CREATE TABLE public.ventas (
   interes_cc numeric(12,2) NOT NULL DEFAULT 0,
   afip_provider_usado text,
   emisor_id uuid,
-  promo_pago jsonb
+  promo_pago jsonb,
+  descuento_estado jsonb
 );
 
 CREATE TABLE public.ventas_externas_logs (
@@ -2514,6 +2559,9 @@ ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_pkey PRIMARY
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_origen_pago_check CHECK ((origen_pago = ANY (ARRAY['mp_recurrente'::text, 'mp_manual'::text, 'manual_staff'::text])));
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_pkey PRIMARY KEY (id);
 ALTER TABLE public.platform_facturas_claims ADD CONSTRAINT platform_facturas_claims_pkey PRIMARY KEY (payment_ref);
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_pkey PRIMARY KEY (id);
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_orden_key UNIQUE (estructura_id, orden);
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_unidad_medida_id_key UNIQUE (estructura_id, unidad_medida_id);
 ALTER TABLE public.producto_estructuras ADD CONSTRAINT producto_estructuras_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_cantidad_minima_check CHECK ((cantidad_minima > 0));
@@ -2732,6 +2780,7 @@ ALTER TABLE public.combo_items ADD CONSTRAINT combo_items_tenant_id_fkey FOREIGN
 ALTER TABLE public.combos ADD CONSTRAINT combos_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.combos ADD CONSTRAINT combos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.combos ADD CONSTRAINT combos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.combos ADD CONSTRAINT combos_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
 ALTER TABLE public.courier_credenciales ADD CONSTRAINT courier_credenciales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.courier_factura_lineas ADD CONSTRAINT courier_factura_lineas_envio_id_fkey FOREIGN KEY (envio_id) REFERENCES envios(id) ON DELETE SET NULL;
 ALTER TABLE public.courier_factura_lineas ADD CONSTRAINT courier_factura_lineas_factura_id_fkey FOREIGN KEY (factura_id) REFERENCES courier_facturas(id) ON DELETE CASCADE;
@@ -2875,6 +2924,9 @@ ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_sucursal_id_fkey
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_biller_id_fkey FOREIGN KEY (biller_id) REFERENCES platform_billers(id) ON DELETE RESTRICT;
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_tenant_origen_id_fkey FOREIGN KEY (tenant_origen_id) REFERENCES tenants(id) ON DELETE SET NULL;
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_fkey FOREIGN KEY (estructura_id) REFERENCES producto_estructuras(id) ON DELETE CASCADE;
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE RESTRICT;
 ALTER TABLE public.producto_estructuras ADD CONSTRAINT producto_estructuras_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_estructuras ADD CONSTRAINT producto_estructuras_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_categoria_id_fkey FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL;
@@ -3029,6 +3081,7 @@ ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_linea_id_fkey FOREIGN 
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
+ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_serie_id_fkey FOREIGN KEY (serie_id) REFERENCES inventario_series(id);
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
@@ -3320,6 +3373,9 @@ CREATE INDEX idx_ppm_producto ON public.producto_precios_mayorista USING btree (
 CREATE INDEX idx_presup_prov ON public.servicio_presupuestos USING btree (proveedor_id);
 CREATE INDEX idx_prod_ubic_suc_producto ON public.producto_ubicacion_sucursal USING btree (producto_id);
 CREATE INDEX idx_prod_ubic_suc_tenant ON public.producto_ubicacion_sucursal USING btree (tenant_id);
+CREATE INDEX idx_pen_estructura ON public.producto_estructura_niveles USING btree (estructura_id);
+CREATE INDEX idx_pen_tenant ON public.producto_estructura_niveles USING btree (tenant_id);
+CREATE INDEX idx_pen_udm ON public.producto_estructura_niveles USING btree (unidad_medida_id);
 CREATE UNIQUE INDEX idx_producto_estructuras_default ON public.producto_estructuras USING btree (tenant_id, producto_id) WHERE (is_default = true);
 CREATE INDEX idx_producto_estructuras_producto ON public.producto_estructuras USING btree (producto_id);
 CREATE INDEX idx_producto_estructuras_tenant ON public.producto_estructuras USING btree (tenant_id);
@@ -4136,6 +4192,92 @@ AS $function$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;$function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_estructura_guardar_niveles(p_estructura_id uuid, p_niveles jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id  uuid;
+  v_nivel      jsonb;
+  v_orden      integer := 0;
+  v_factor     integer;
+  v_udm_id     uuid;
+  v_acumulado  bigint := 1;
+  v_udm_count  integer;
+BEGIN
+  -- RLS aplica (SECURITY INVOKER): si la estructura no es del tenant del caller, no se ve.
+  SELECT tenant_id INTO v_tenant_id FROM producto_estructuras WHERE id = p_estructura_id;
+  IF v_tenant_id IS NULL THEN
+    RAISE EXCEPTION 'Estructura inexistente o sin permisos';
+  END IF;
+
+  IF p_niveles IS NULL OR jsonb_typeof(p_niveles) <> 'array' OR jsonb_array_length(p_niveles) < 1 THEN
+    RAISE EXCEPTION 'La estructura necesita al menos un nivel';
+  END IF;
+
+  SELECT count(DISTINCT n->>'unidad_medida_id') INTO v_udm_count
+  FROM jsonb_array_elements(p_niveles) n;
+  IF v_udm_count <> jsonb_array_length(p_niveles) THEN
+    RAISE EXCEPTION 'No se puede repetir la misma unidad de medida en dos niveles';
+  END IF;
+
+  DELETE FROM producto_estructura_niveles WHERE estructura_id = p_estructura_id;
+
+  FOR v_nivel IN SELECT * FROM jsonb_array_elements(p_niveles) LOOP
+    v_orden := v_orden + 1;
+    v_udm_id := (v_nivel->>'unidad_medida_id')::uuid;
+
+    IF NOT EXISTS (SELECT 1 FROM unidades_medida WHERE id = v_udm_id AND tenant_id = v_tenant_id) THEN
+      RAISE EXCEPTION 'Unidad de medida inválida en el nivel %', v_orden;
+    END IF;
+
+    IF v_orden = 1 THEN
+      v_factor := 1;
+    ELSE
+      v_factor := (v_nivel->>'factor')::integer;
+      IF v_factor IS NULL OR v_factor < 1 THEN
+        RAISE EXCEPTION 'El factor del nivel % debe ser un entero mayor o igual a 1', v_orden;
+      END IF;
+    END IF;
+
+    v_acumulado := v_acumulado * v_factor;
+
+    IF (v_nivel->>'precio_venta') IS NOT NULL AND (v_nivel->>'precio_venta')::numeric < 0 THEN
+      RAISE EXCEPTION 'El precio de venta del nivel % no puede ser negativo', v_orden;
+    END IF;
+    IF (v_nivel->>'precio_costo') IS NOT NULL AND (v_nivel->>'precio_costo')::numeric < 0 THEN
+      RAISE EXCEPTION 'El costo del nivel % no puede ser negativo', v_orden;
+    END IF;
+
+    INSERT INTO producto_estructura_niveles
+      (tenant_id, estructura_id, unidad_medida_id, orden, factor, unidades_base,
+       peso_kg, alto_cm, ancho_cm, largo_cm, precio_venta, precio_costo)
+    VALUES
+      (v_tenant_id, p_estructura_id, v_udm_id, v_orden, v_factor, v_acumulado,
+       NULLIF(v_nivel->>'peso_kg',  '')::numeric,
+       NULLIF(v_nivel->>'alto_cm',  '')::numeric,
+       NULLIF(v_nivel->>'ancho_cm', '')::numeric,
+       NULLIF(v_nivel->>'largo_cm', '')::numeric,
+       NULLIF(v_nivel->>'precio_venta', '')::numeric,
+       NULLIF(v_nivel->>'precio_costo', '')::numeric);
+  END LOOP;
+
+  -- Si el nivel anclado (productos.nivel_precio_orden) ya no existe en la estructura DEFAULT
+  -- tras este guardado, se invalida solo — vuelve al nivel base (REGLA #0: nunca dejar un ancla
+  -- apuntando a la nada).
+  UPDATE productos p
+  SET nivel_precio_orden = NULL
+  WHERE p.nivel_precio_orden IS NOT NULL
+    AND p.nivel_precio_orden > v_orden
+    AND EXISTS (
+      SELECT 1 FROM producto_estructuras pe
+      WHERE pe.id = p_estructura_id AND pe.producto_id = p.id AND pe.is_default = true
+    );
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_gastos_iva_guard()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -4521,12 +4663,13 @@ BEGIN
     (NEW.id, 'Bloqueado',  '#ef4444', false, false, false, false);
 
   INSERT INTO unidades_medida (tenant_id, nombre, simbolo, activo, predefinida) VALUES
-    (NEW.id, 'Unidad',     'u',   true, true),
-    (NEW.id, 'Kilogramo',  'kg',  true, true),
-    (NEW.id, 'Gramo',      'g',   true, true),
-    (NEW.id, 'Litro',      'L',   true, true),
-    (NEW.id, 'Metro',      'm',   true, true),
-    (NEW.id, 'Caja',       'caja',true, true)
+    (NEW.id, 'Unidad',     'u',      true, true),
+    (NEW.id, 'Kilogramo',  'kg',     true, true),
+    (NEW.id, 'Gramo',      'g',      true, true),
+    (NEW.id, 'Litro',      'L',      true, true),
+    (NEW.id, 'Metro',      'm',      true, true),
+    (NEW.id, 'Caja',       'caja',   true, true),
+    (NEW.id, 'Pallet',     'pallet', true, true)
   ON CONFLICT (tenant_id, nombre) DO NOTHING;
 
   INSERT INTO cuentas_origen (tenant_id, nombre, tipo, moneda, activo)
@@ -6838,6 +6981,7 @@ ALTER TABLE public.planes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas_claims ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.producto_estructura_niveles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_estructuras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_grupos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_precios_mayorista ENABLE ROW LEVEL SECURITY;
@@ -7318,6 +7462,13 @@ CREATE POLICY oc_tenant ON public.ordenes_compra AS PERMISSIVE FOR ALL TO public
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY planes_select_public ON public.planes AS PERMISSIVE FOR SELECT TO anon, authenticated
   USING (true);
+CREATE POLICY pen_tenant ON public.producto_estructura_niveles AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))))
+  WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
+   FROM users
+  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY pe_tenant_delete ON public.producto_estructuras AS PERMISSIVE FOR DELETE TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -7901,6 +8052,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pl
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_billers TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas_claims TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.producto_estructura_niveles TO authenticated;
+GRANT ALL ON public.producto_estructura_niveles TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO service_role;

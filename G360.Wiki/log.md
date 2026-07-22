@@ -6,14 +6,303 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-21] update | 🛑 v1.142.0 — Precio por nivel en el importador de productos (cierra el backlog de Fede) + fix crítico: el importador NUNCA funcionó
+
+Continuación inmediata de la sesión anterior (v1.139/140/141.0): se resuelve el único pendiente
+real que quedaba de las 7 preguntas del backlog de Fede — extender `ImportarProductosPage.tsx` con
+precio por nivel. Nuevas columnas opcionales en la plantilla Excel: `estr_precio_ancla`
+(Unidad/Caja/Pallet, setea `productos.nivel_precio_orden` por NOMBRE, resuelto al orden real de la
+fila) + `estr_precio_venta_caja`/`estr_precio_costo_caja`/`estr_precio_venta_pallet`/
+`estr_precio_costo_pallet` (precio propio opcional por nivel, calculado proporcional al ancla si no
+se carga — mismo mecanismo de `estructuras.ts` desde v1.140.0). Validación en la previsualización:
+una fila con ancla a un nivel sin datos de estructura de ese nivel en la misma fila se marca error y
+nunca se importa. El nivel base (Unidad) nunca recibe precio propio desde el importador, igual que
+en la ficha manual. Sin migración nueva para esta parte (usa las columnas de las migs 286/287).
+
+**Bug crítico encontrado y arreglado en la misma sesión, NO relacionado con el pedido: el importador
+de productos NUNCA funcionó.** Escribiendo el e2e de verificación (spec 105, con chequeo REAL en DB,
+no solo UI) se descubrió que el payload de insert/update siempre mandaba un campo `notas` que NO
+EXISTE como columna en `productos` (ninguna migración la creó nunca). PostgREST rechazaba el
+INSERT/UPDATE COMPLETO (`PGRST204: Could not find the 'notas' column`), pero el código solo
+desestructuraba `data` sin revisar `error` — así que el importador reportaba "X creados" mientras la
+tabla quedaba en CERO filas nuevas. Confirmado con inserts directos por REST (con `notas`→400, sin
+`notas`→201 OK) y con SQL directo contra DEV (cero filas de los productos de prueba tras varias
+corridas "exitosas" según la UI). **Fix: mig 288** agrega `productos.notas` (columna que la
+plantilla/UI ya pedían, nunca se creó) + el importador ahora revisa el `error` real de cada
+insert/update (ya no infla `creados`/`actualizados` a ciegas) y muestra el detalle de las filas
+fallidas (`erroresDetalle`) en el banner de resultado. **Mismo patrón de riesgo (ignorar `error`)
+encontrado y corregido por prevención en `ImportarMasterPage.tsx`** (combos, reglas de aging, grupos
+de estados, categorías/proveedores/ubicaciones/estados/motivos) — sin falla activa confirmada ahí
+(se verificó por SQL que todas sus columnas usadas sí existen), pero mismo código-olor en las 4
+ramas.
+
+Verde: tsc · build · **e2e 105 nuevo** (`105_importador_precio_uom_mutante.spec.ts`) contra DEV real,
+con verificación POSITIVA en DB (no solo UI): precio propio por nivel persiste tal cual sin
+recalcular, ancla por nombre persiste `nivel_precio_orden`, fila con ancla inválida se rechaza y
+nunca se crea. Sin este spec el bug de `notas` no se hubiera detectado — la UI mentía "2 creados" de
+forma consistente y convincente. Mig 288 aplicada en DEV vía MCP, falta aplicar en PROD.
+`APP_VERSION` = v1.142.0, commit `ae5f63b1` en `dev`.
+
+**Con esto se cierran los 7 puntos del backlog de Fede a nivel código** (puntos 3, 4, 6 y 7
+completos de punta a punta, importador incluido; puntos 1/2 en pausa esperando que GO confirme con
+Fede; punto 5 cerrado sin código). Ninguna de las 4 entregas de la sesión (v1.139/140/141/142)
+llegó a PROD todavía — sigue en v1.136.0.
+
+## [2026-07-21] update | 🛒 v1.141.0 — Venta por Unidad de Medida en el POS, Fase 2 (backlog Fede 4/6/7) — CIERRA el backlog completo de la reunión con Fede
+
+Continuación inmediata de v1.140.0 (Fase 1): el carrito del POS ya puede vender "por Caja" (o
+cualquier nivel de la estructura default) usando el precio de ese nivel, en vez de siempre la
+unidad base. `venta_items.cantidad` sigue SIEMPRE en unidades base — stock, rebaje y reportes de
+margen no cambiaron; la UoM elegida es una capa de precio + trazabilidad + display encima
+(`unidad_medida_id`/`cantidad_uom`, ya migrados en la 286).
+
+**Lo implementado:** selector de UoM en el carrito (default = 1 unidad base siempre, para no
+sorprender con el precio de una caja "por las dudas") · precio del nivel propio, o calculado
+proporcional a la ancla si no lo tiene (`precioEfectivoNivel`, ya de la Fase 1) · precedencia
+sobre tier mayorista (elegir explícitamente una UoM pisa el tier automático) · UoM visible en el
+PDF de factura/NC y en el ticket no fiscal ("3 Cajas" en vez de "36").
+
+**Fix de un bug real encontrado en el relevamiento:** el agrupador automático de combos
+(`VentasPage.tsx`) reconstruía todas las filas de un producto clonando las propiedades de UNA
+sola fila "representativa" — con dos UoM del mismo producto en el carrito hubiera mezclado precio/
+descuento de una en la otra. Ahora agrupa por `producto_id + unidad_medida_id`
+(`claveUomItem`/`comboAplicaUom`), tanto en el auto-combo como en `findCombo`/`aplicarCombo`
+(manual) y los combos multi-SKU. Un combo con `unidad_medida_id` NULL (el default de TODOS los
+combos ya cargados) sigue aplicando solo a la UoM base — cero cambio de comportamiento para ellos.
+
+**Bug real encontrado TESTEANDO** (no hipotético, casi queda sin cubrir): re-agregar al carrito un
+producto que ya estaba vendiéndose "por Caja" sumaba +1 unidad BASE en vez de +1 Caja,
+desincronizando `cantidad_uom` de `cantidad`. El e2e mutante 104 (armado para probar el fix de
+combos) lo encontró antes de commitear — fix: la rama de "incrementar si ya está en el carrito"
+ahora respeta la UoM ya seleccionada de esa línea.
+
+Verde: tsc · build · unit 1177 · **e2e 103 y 104 nuevos** (mutantes) + regresión amplia 18/18
+(incluye facturación con CAE real, tier mayorista, descuento general, descuento por estado). UAT
+§43. Sin migraciones nuevas (usa las de la mig 286, Fase 1). `APP_VERSION` = v1.141.0, tag+release.
+
+**Con esto se completan las 7 preguntas del backlog original de Fede** (relevamiento 2026-07-21):
+punto 3 y puntos 4/6/7 implementados de punta a punta en DEV; puntos 1/2 en pausa (ya existían,
+GO confirma con Fede si pedía algo más); punto 5 cerrado sin código (sin restricción). Único
+pendiente real no bloqueante: extender el importador de productos con precio por nivel. Ninguna
+de las 3 entregas de la sesión (v1.139/140/141) llegó a PROD todavía — sigue en v1.136.0.
+
+## [2026-07-21] update | 💲 v1.139.0 + v1.140.0 — Descuento por estado (punto 3, COMPLETO) + Precio por UoM Fase 1 (puntos 4/6/7)
+
+GO pidió "comienza a implementar todo lo que puedas" sobre el backlog de Fede ya relevado. Dos
+entregas separadas, cada una versionada:
+
+**v1.139.0 — Punto 3 (descuento automático por estado), implementación COMPLETA.** Antes de
+codear se resolvió el gap de diseño que había quedado pendiente (¿cuándo se sabe qué estado se
+va a consumir, en relación al momento de facturar?): confirmado por código que la factura SIEMPRE
+se emite en el mismo momento que el despacho real (nunca antes), así que el descuento se computa
+sobre la previsualización de LPNs que el carrito ya usa para planificar el rebaje —sin necesidad
+de tocar el momento de facturación. Migs 284 (`estados_inventario.descuento_pct`) y 285
+(trazabilidad `venta_items`/`ventas`). Es un monto POR LÍNEA (no un descuento global prorrateado
+como "Descuento general"/combos/promo por método de pago) e independiente de descuento manual/
+combo — se resta aparte, nunca colisiona. UI en Config→Inventario→Estados, lib pura
+`descuentoEstado.ts` (10 unit), integrado en `VentasPage`. **e2e 101 nuevo** validó el flujo
+completo (estado nuevo con 15% → producto → ingreso real por UI → venta directa → verificación
+en DB: 4u×$1.000×15%=$600 descontados). UAT §41.
+
+**v1.140.0 — Puntos 4/6/7 (precio por Unidad de Medida), SOLO FASE 1.** Antes de codear, un
+agente mapeó el código real (POS, rebaje de stock, EF `emitir-factura`/WSFE, PDF, tier
+mayorista, combos, `RentabilidadPage`, importadores) — hallazgo central: **hoy no existe ningún
+camino donde se venda o rebaje stock en una UoM distinta a la base** (`convertirABase()` en
+`estructuras.ts` es código muerto de la Fase 2 del roadmap de Estructuras, nunca invocado). Por
+el tamaño del cambio se decidió fasearlo, mismo criterio que Estructuras Fase 1. Esta entrega
+(Fase 1): `producto_estructura_niveles.precio_venta/costo` opcionales por nivel (migs 286-287,
+la RPC `fn_estructura_guardar_niveles` los persiste igual que factor/dims) + `productos.
+nivel_precio_orden` ("ancla de precio" — a qué nivel de la estructura DEFAULT corresponden los
+precios de la hoja de producto, por ORDEN no por id porque la RPC reinserta todos los niveles en
+cada guardado) + `precioEfectivoNivel` en `estructuras.ts` (el precio de un nivel sin precio
+propio se calcula proporcional al ANCLA, nunca en cadena por niveles intermedios — 13 unit
+nuevos) + selector "Estos precios corresponden a" en `ProductoFormPage` (relabelea "Precio de
+venta (por Caja)" dinámicamente) + precio editable por nivel en `ProductosPage` tab Estructura +
+aviso antes de borrar un nivel anclado. **e2e 102 nuevo** validó persistencia real vía RPC + el
+selector de ancla end-to-end. UAT §42. `venta_items.unidad_medida_id/cantidad_uom` +
+`combos.unidad_medida_id` ya migrados (286) pero SIN consumidor todavía — quedan listos para la
+Fase 2 (vender por UoM en el POS, con el fix del bug real de agrupamiento de combos ya diseñado
+en el relevamiento, mostrar la UoM en el ticket/factura, extender el importador).
+
+**Verde en ambas entregas:** tsc · build · unit 1177 total (26 nuevos entre las dos) · e2e 101 y
+102 nuevos + regresión dirigida (13+10 specs) sin fallas. Migs 284-287 aplicadas en DEV. Ninguna
+de las dos entregas deployó a PROD (queda en DEV, PROD sigue v1.136.0).
+
+## [2026-07-21] update | 🔎 Relevamiento CERRADO — Precio por Unidad de Medida (puntos 4/6/7): bug real cazado en combos + últimas 3 decisiones
+
+Ronda de cierre del relevamiento dedicado (misma sesión, después del reinicio de PC): quedaban 3
+preguntas abiertas y las tres se resolvieron. La más relevante — **se encontró un bug real (no
+hipotético) en el motor de combos automáticos** (`VentasPage.tsx:2305-2334`): agrupa todas las
+líneas del carrito del mismo producto y reconstruye las resultantes clonando las propiedades de
+una sola línea "representativa"; hoy es inofensivo porque todas las líneas de un producto comparten
+precio, pero con precio por UoM (una línea "sueltas" y otra "por caja" con precios distintos) el
+mecanismo las mezclaría mal. GO propuso una solución mejor que las dos alternativas planteadas: que
+cada combo tenga su propia UoM opcional (`NULL` = solo aplica en la UoM base, así ningún combo
+existente en DEV/PROD cambia de comportamiento) — mata el bug de raíz agrupando por
+`producto_id + unidad_medida_id` en vez de solo `producto_id`. Las otras dos: el ticket/factura SÍ
+va a mostrar la UoM vendida ("3 Cajas × $1.080"), y si se borra el nivel de estructura que es la
+"ancla de precio" de un producto, el sistema avisa explícitamente antes de invalidarla y volver al
+nivel base (no es un fallback silencioso).
+
+Con esto, **los 7 puntos de la reunión con Fede quedan 100% relevados**: 5 con diseño cerrado (3,
+4, 5, 6, 7) y 2 en pausa esperando que GO confirme con Fede (1, 2). Artifact actualizado con el
+detalle completo de las 7. Cero código escrito en ningún punto — falta preguntarle a GO si arranca
+la implementación de 4/6/7 ahora o queda anotado para otra sesión.
+
+## [2026-07-21] update | 🟡 Relevamiento dedicado — Precio por Unidad de Medida (puntos 4/6/7), diseño cerrado
+
+Continuación de la sesión anterior: se relevaron los 3 puntos derivados (precio por UoM en la
+estructura + ancla de precio en la hoja de producto) con la misma metodología — mapeo del código
+real primero, preguntas grounded después. Hallazgo central: hoy no existe ningún camino de venta o
+rebaje de stock en una UoM distinta a la base (`convertirABase()` en `estructuras.ts` es código
+muerto, escrito para la Fase 2 del roadmap de estructuras y nunca invocado). Decisiones cerradas:
+selector de nivel+cantidad en el carrito, `venta_items.cantidad` sigue en unidades base (columna
+nueva aparte para trazar la UoM vendida), el precio de UoM pisa el tier mayorista, y GO eligió
+construir ya (no diferir) un ancla de precio independiente en `productos` — resuelve el ejemplo
+original de Fede (precio de cabecera en Caja aunque el stock trackee fino por Unidad). Detalle
+completo en `project_pendientes.md`. **Diseño cerrado, CERO código escrito.** Sesión cortada por
+reinicio de PC antes de preguntarle a GO si arrancar la implementación — retomar por ahí.
+
+## [2026-07-21] update | 🟡 Relevamiento Q&A — 7 puntos de una reunión GO+Fede: 2 resueltos, 2 en pausa, 3 derivados
+
+GO pegó notas de una reunión con Fede (7 puntos crudos, ninguno relevado) y pidió resolverlos en el
+momento con una ronda de preguntas en el chat. Antes de preguntar se revisó cada punto contra el
+código real, lo que cambió el resultado de varios: dos puntos resultaron YA implementados, y uno
+("aging profile") resultó estar confundido con una feature homónima que ya existe pero hace otra
+cosa. Informe completo (pregunta → respuesta → porqué de cada decisión) publicado como Artifact
+para que GO se lo muestre a Fede; resumen accionable en `project_pendientes.md` ("RELEVAMIENTO Q&A
+CERRADO 2026-07-21") y en memoria (`project_relevamiento_fede_2026-07-21`).
+
+**✅ Resueltos:** (3) descuento automático por estado de inventario — NO es lo mismo que el "Aging
+Profile" existente (mig 013, cambia `estado_id` por días a vencer, sin descuento); decidido: % en
+cualquier estado, automático sin clave de supervisor, se apila con otros descuentos igual que
+`promo_pago`. (5) validación de cantidades entre niveles de estructura — sin restricción por ahora,
+GO mismo la había dejado como pregunta abierta y no hay caso real que la justifique.
+
+**🟡 En pausa:** (1) y (2) tope + disponibilidad por día en descuento por método de pago — YA
+ESTÁN implementados desde v1.136.0 (panel "Promo", `promosPago.ts`); GO confirma con Fede si
+pedía algo más específico antes de cerrar o ampliar.
+
+**🔵 Derivados a relevamiento propio:** (4), (7) y (6) — precio de venta/costo por UoM en la
+estructura + la UoM de la hoja de producto atada a la estructura default. Es el cambio de modelo
+más grande de los 7 (POS + factura AFIP + reportes de margen) — se abre su propio ciclo de
+relevamiento en vez de resolverlo apurado, mismo criterio que la Fase 1 de Estructuras dinámicas.
+
+Casi todo lo resuelto toca REGLA #0 (plata y/o inventario/fiscal). Sin código todavía en ningún
+punto — esta sesión fue puramente de relevamiento/decisión.
+
+## [2026-07-21] update | 🔎 v1.138.0 — Botón Filtros en Productos + columna Estructura en Inventario
+
+**EN DEV (commit `bd3a0258`, tag/release `v1.138.0` con `--latest`), PROD sigue en v1.136.0.**
+Sin migraciones nuevas — puramente UI/frontend, no toca DB ni RLS.
+
+**Qué se hizo:** reemplazo del toggle suelto "Ver inactivos" de `ProductosPage` (tab Productos)
+por un panel de filtros combinable, pill+popover, con el mismo patrón visual que ya usa
+`InventarioPage` → tab Inventario. El panel incluye:
+- Estado: Activos / Inactivos / Todos (reemplaza el toggle `showInactivos` que existía antes)
+- Con / Sin estructura de embalaje (usa `producto_estructuras`, feature de v1.137.0)
+- Categoría / Proveedor / Marca (selects derivados del propio listado de productos, sin queries extra)
+- Combobox de "Atributos de inventario" combinables por OR: agrupa atributos de Tracking
+  (tiene_series, tiene_lote, tiene_vencimiento, tiene_pais_origen, es_kit) y de Variantes
+  (tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma) — las opciones del
+  combobox NO se listan de entrada, aparecen al enfocar/tipear; semántica OR (muestra productos
+  con AL MENOS UNO de los atributos elegidos, chips con X para quitar).
+
+Además, `InventarioPage` (tab Inventario, detalle de líneas por producto) suma una columna de
+solo lectura "Estructura" que muestra el nombre de la `producto_estructuras` asociada a la línea
+(o "—" si no tiene). Puramente informativo, no cambia ningún cálculo de stock.
+
+**Bug real encontrado por el e2e mutante nuevo (no por code review):** al elegir una opción del
+combobox de atributos, el dropdown quedaba abierto (no se cerraba tras el click) y su lista
+`position:absolute` tapaba visualmente el botón "Limpiar todos los filtros" más abajo en el panel,
+interceptando el click (Playwright: "subtree intercepts pointer events"). Fix de una línea: cerrar
+el dropdown (`setAtributoDropOpen(false)`) también al seleccionar una opción, no solo al hacer
+click afuera del panel.
+
+**Archivos tocados:** `src/pages/ProductosPage.tsx` (panel de filtros + estado + lógica de
+filtrado client-side), `src/pages/InventarioPage.tsx` (columna Estructura, join agregado al
+select de `inventario_lineas` → `producto_estructuras(nombre)`), `src/config/brand.ts`
+(APP_VERSION → v1.138.0).
+
+**Tests:** e2e nuevo `tests/e2e/100_productos_filtros_mutante.spec.ts` (mutante — genera su propia
+precondición: crea un producto real por UI, activa `tiene_lote` y crea una estructura con 1 nivel
+por REST/RPC real `fn_estructura_guardar_niveles`, después ejercita los 3 filtros nuevos). Verde:
+tsc + build + unit 1151 (sin tests unitarios nuevos, es filtrado client-side puro) + e2e 100 nuevo
++ regresión dirigida 16/16 specs (02_inventario, 23_inventario_ingreso_mutante,
+43_producto_creacion_mutante, 89_atributo_variante_obligatorio_mutante,
+90_producto_estado_predeterminado_mutante, 95_rebaje_masivo_atributo_ambiguo_mutante,
+96_venta_bloqueada_atributo_ambiguo_mutante, 97_lpn_editar_atributo_obligatorio_mutante,
+99_estructura_niveles_dinamicos_mutante). UAT §40.
+
+**Wiki:** `productos.md` (sección "Barra de búsqueda y filtros" reescrita, toggle "Ver inactivos"
+reemplazado por el panel de filtros) · `inventario-stock.md` (columna "Estructura" en el detalle
+de líneas por producto) · `project_pendientes.md` (versión DEV actualizada a v1.138.0) · `index.md`.
+No se tocó `roadmap.md` (no es release a PROD) ni `migraciones.md` (sin migraciones nuevas).
+
+---
+
+## [2026-07-19] update | 📦 v1.137.0 — Fase 1: Estructuras con niveles dinámicos por UdM (footprints estilo Blue Yonder)
+
+**Pedido GO (sesión nueva post-/clear):** revisar la documentación existente de "estructuras",
+mejorar el feature al estilo **pack structure / footprint de Blue Yonder** (varias estructuras
+por SKU; dentro de cada una, unidad/caja/pallet Y CUALQUIER UdM creada en Configuración →
+Unidades, con cantidades, medidas y pesos, para después hacer picking/almacenaje por UdM y
+reglas de almacenaje) y documentarlo. Se armó el plan por fases, GO eligió el paquete COMPLETO
+(+ reabastecimiento reserva→picking) y decidió: factor **vs nivel anterior** (estilo BY),
+**crear Zonas/Áreas**, reglas que **sugieren** (no bloquean). Esta sesión ejecutó la **Fase 1**.
+
+**Hallazgo de partida:** la doc existía ([[wiki/features/wms]] Fase 1 mig 031 + productos.md UdM
+mig 119) pero el modelo tenía los 3 niveles HARDCODEADOS como columnas y las UdM del tenant no
+se conectaban con nada (solo etiqueta de texto). PROD tiene 0 estructuras (libertad de rediseño);
+DEV tenía 57 de prueba (migradas automático).
+
+**Implementado (v1.137.0, EN DEV — migs 282-283 aplicadas SOLO en DEV):**
+1. **Mig 282** — tabla `producto_estructura_niveles` (orden 1=base · `factor` INT ≥1 vs nivel
+   anterior · `unidades_base` = producto acumulado **calculado server-side** · peso/dims
+   opcionales >0 · UNIQUEs por orden y UdM · RLS tenant) + RPC transaccional
+   **`fn_estructura_guardar_niveles`** (SECURITY INVOKER, valida y recalcula — REGLA #0:
+   conversiones exactas, el cliente nunca manda la equivalencia) + **Pallet** como UdM
+   predefinida (seed + backfill 10 tenants) + backfill de columnas fijas → niveles. Columnas
+   viejas DEPRECADAS (drop en mig futura post-PROD).
+2. **Mig 283** — fix del backfill: las estructuras del importador CSV traían conversión SIN
+   dims y el criterio "peso+alto" las dejaba sin nivel Caja/Pallet → reconstruidas (66→119
+   niveles, 0 conversiones perdidas, verificado por query).
+3. **Frontend:** tab Estructura de `ProductosPage` reescrito (niveles dinámicos: agregar/quitar/
+   reordenar, UdM del tenant, factor "Contiene N × anterior", equivalencia viva "= 480 × base",
+   dims opcionales) · panel default del producto · `LpnAccionesModal` (cadena + chips por nivel) ·
+   importador CSV (mismas columnas `estr_*`, ahora escribe vía RPC) · `ProductoEstructura` +
+   `ProductoEstructuraNivel` en supabase.ts · lib pura **`src/lib/estructuras.ts`**.
+4. **Tests:** unit `estructuras.test.ts` (22) → suite **1151** verde · **e2e 99 nuevo**
+   (flujo UI completo + verificación en DB del cálculo server-side + RPC directa con factor 0 →
+   400 y niveles intactos) · regresión: terminó corriendo la **suite completa** (241 passed ·
+   32 skipped · 4 failed) — **las 4 fallas eran PREEXISTENTES de v1.136, no de esta entrega**:
+   los specs 89/95/96/97 (atributos de variante) buscaban `input[type="checkbox"]` en los
+   toggles de ProductoFormPage, que v1.136 migró al `<Toggle>` estándar (`button role="switch"`)
+   — y la regresión de ese release solo corrió 02-19, así que nadie lo vio. Selectores
+   corregidos a `getByRole('switch', { name: 'tiene_talle|tiene_color' })` + `aria-checked`.
+   **UAT §39**. Gotcha e2e: los inputs `step="1"` bloquean no-enteros con validación NATIVA
+   antes del submit.
+5. **Wiki:** página NUEVA [[wiki/features/estructuras-udm]] (modelo + gotchas + roadmap fases
+   2-5) · wms.md re-apuntado · productos.md/configuracion.md/inventario-stock.md ·
+   app-reference.md (⚠ requiere `npm run ai:knowledge` + redeploy EF `ai-assistant` al deployar)
+   · migraciones.md (282-283) · index.md.
+
+**▶ Fases siguientes (plan acordado, en estructuras-udm.md):** F2 operar por UdM al ingresar ·
+F3 Zonas + reglas de almacenaje (sugerencia editable) · F4 tareas WMS + picking por UdM ·
+F5 reabastecimiento. Abiertas: picking ¿solo envíos/preparación? · ¿OC por UdM? · factores enteros.
+
+---
+
 ## [2026-07-19] release | v1.136.0 — Backlog Config Ventas/Envíos de Fede (9 puntos) + hard delete de productos
 
 **PR #295 mergeado a `main` (`82907baf`) + tag/release v1.136.0 (--latest).** Migs **278-281
 aplicadas y verificadas en DEV Y PROD** (2 funciones + columnas + backfill 0 pendientes, por query).
-Commit `440e8ec9` en `dev` pusheado (Vercel QA READY). ⚠️ **El build de PRODUCCIÓN de Vercel no se
-disparó con el merge** (verificado vía API: cero deployments post-push; `app.genesis360.pro` seguía
-en v1.135.0) — se re-disparó con el merge del commit de este wiki; confirmar PRD antes de dar el
-deploy por cerrado.
+Commit `440e8ec9` en `dev` pusheado (Vercel QA READY). **Gotcha de deploy nuevo:** el build de
+PRODUCCIÓN de Vercel NO se disparó con el merge #295 (webhook perdido — verificado vía API: cero
+deployments post-push; `app.genesis360.pro` siguió en v1.135.0 ~1h). Se resolvió con un segundo
+merge (PR #296, el wiki de cierre): deployment `dpl_BQRQrq3P…` target=production READY sobre
+`7bde1c03` → **✅ PRD CONFIRMADO sirviendo v1.136.0** (bundle `index-C1iD59WS.js`, verificado por
+curl al bundle real, no narrativa).
 
 **Pedido de GO:** implementar los 9 puntos "para implementar" del relevamiento de Fede
 (`project_revision_config_fede_tonga`) en autónomo, con tests (unit+e2e+UAT) y subirlo a DEV, QA

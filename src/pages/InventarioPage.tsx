@@ -480,7 +480,7 @@ export default function InventarioPage() {
     queryFn: async () => {
       let q = supabase
         .from('inventario_lineas')
-        .select('*, estados_inventario(nombre,color,es_disponible_venta), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida)')
+        .select('*, estados_inventario(nombre,color,es_disponible_venta), ubicaciones(nombre,prioridad), proveedores(nombre), inventario_series(id, nro_serie, activo, reservado), productos(nombre,sku,unidad_medida), producto_estructuras(nombre)')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('created_at', { ascending: true })
@@ -4057,8 +4057,8 @@ export default function InventarioPage() {
                             <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Sin líneas de inventario. Registrá un ingreso para este producto.</p>
                           ) : (
                             <div className="overflow-x-auto -mx-4 px-4">
-                            <div className="space-y-2 min-w-[680px]">
-                              <div className={`grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-2'} gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1`}>
+                            <div className="space-y-2 min-w-[760px]">
+                              <div className={`grid ${modoAvanzado ? 'grid-cols-9' : 'grid-cols-2'} gap-2 text-xs font-semibold text-gray-500 dark:text-gray-400 px-3 mb-1`}>
                                 {modoAvanzado && (
                                 <span className="col-span-1 flex items-center">
                                   <input type="checkbox" className="rounded accent-accent"
@@ -4089,12 +4089,13 @@ export default function InventarioPage() {
                                 <span className="col-span-1 text-right">Cantidad</span>
                                 {modoAvanzado && <span className="col-span-1">Estado</span>}
                                 {modoAvanzado && <span className="col-span-1">Ubicación</span>}
+                                {modoAvanzado && <span className="col-span-1">Estructura</span>}
                                 {modoAvanzado && <span className="col-span-1">Lote / Venc.</span>}
                                 {modoAvanzado && <span className="col-span-1">Series</span>}
                                 {modoAvanzado && <span className="col-span-1 text-center">Acciones</span>}
                               </div>
                               {lineas.map((l: any) => (
-                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-8' : 'grid-cols-2'} gap-2 items-center text-sm transition-colors
+                                <div key={l.id} className={`bg-white dark:bg-gray-800 rounded-xl border px-3 py-2.5 grid ${modoAvanzado ? 'grid-cols-9' : 'grid-cols-2'} gap-2 items-center text-sm transition-colors
                                   ${selectedLineas.includes(l.id) ? 'border-accent-text/50 bg-accent/5 dark:bg-accent/10' : 'border-gray-100 dark:border-gray-700'}`}>
                                   {modoAvanzado && (
                                   <div className="col-span-1 flex items-center">
@@ -4183,6 +4184,18 @@ export default function InventarioPage() {
                                     {l.ubicaciones?.nombre ? (
                                       <span className="inline-flex items-center gap-1 text-xs text-gray-600 dark:text-gray-400">
                                         <MapPin size={11} /> {l.ubicaciones.nombre}
+                                      </span>
+                                    ) : <span className="text-xs text-gray-300">—</span>}
+                                  </div>
+                                  )}
+
+                                  {modoAvanzado && (
+                                  <div className="col-span-1">
+                                    {l.producto_estructuras?.nombre ? (
+                                      <span className="inline-flex items-center gap-1 text-xs bg-accent/10 text-accent-text px-1.5 py-0.5 rounded-lg font-medium max-w-full"
+                                        title={`Estructura: ${l.producto_estructuras.nombre}`}>
+                                        <Layers size={10} className="shrink-0" />
+                                        <span className="truncate">{l.producto_estructuras.nombre}</span>
                                       </span>
                                     ) : <span className="text-xs text-gray-300">—</span>}
                                   </div>

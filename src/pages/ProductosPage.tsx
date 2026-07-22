@@ -5,6 +5,7 @@ import {
   Edit2, Layers, X, Star, Trash2, ChevronUp, Ruler, ShoppingCart,
   CheckSquare, Square, Tag, RotateCcw, Clock, Settings2, Check, Zap, Download,
   DollarSign, Percent, Truck, ToggleRight, Boxes, Loader2, CheckCircle, Upload,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
@@ -12,7 +13,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { puedeVerCosto } from '@/lib/permisosCosto'
-import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
@@ -22,214 +22,137 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import type { ProductoEstructura } from '@/lib/supabase'
+import {
+  validarNiveles, nivelesAPayload, calcularUnidadesBase, cadenaConversion, nombreUdm,
+  type NivelForm,
+} from '@/lib/estructuras'
 import ProductoGrupoModal, { type ProductoGrupo } from '@/components/ProductoGrupoModal'
 
 type Tab = 'productos' | 'estructura'
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Helpers / tipos del formulario de estructura (niveles dinámicos, mig 282) ──
 
-function nivelActivo(e: ProductoEstructura, nivel: 'unidad' | 'caja' | 'pallet'): boolean {
-  if (nivel === 'unidad') return e.peso_unidad != null && e.alto_unidad != null
-  if (nivel === 'caja')   return e.peso_caja   != null && e.alto_caja   != null
-  return e.peso_pallet != null && e.alto_pallet != null
-}
+type UdmOption = { id: string; nombre: string; simbolo: string | null }
 
-function fmt(v: number | null | undefined, unit: string) {
-  if (v == null) return null
-  return `${v} ${unit}`
-}
-
-// ─── Tipos del formulario ────────────────────────────────────────────────────
-
-type NivelForm = {
-  activo: boolean
-  peso: string; alto: string; ancho: string; largo: string
-}
-type CajaForm  = NivelForm & { unidades_por_caja: string }
-type PalletForm = NivelForm & { cajas_por_pallet: string }
+// Atributos de inventario filtrables — mismos labels que ve el usuario en ProductoFormPage.
+// Las variantes cuentan como atributos de inventario (pedido GO 2026-07-19).
+const ATRIBUTOS_FILTRO: { key: string; label: string; grupo: string }[] = [
+  { key: 'tiene_series',      label: 'Control por número de serie', grupo: 'Tracking' },
+  { key: 'tiene_lote',        label: 'Control por lote',            grupo: 'Tracking' },
+  { key: 'tiene_vencimiento', label: 'Fecha de vencimiento',        grupo: 'Tracking' },
+  { key: 'tiene_pais_origen', label: 'País de origen',              grupo: 'Tracking' },
+  { key: 'es_kit',            label: 'KIT (producto armado)',       grupo: 'Tracking' },
+  { key: 'tiene_talle',       label: 'Talle / Talla',               grupo: 'Variantes' },
+  { key: 'tiene_color',       label: 'Color',                       grupo: 'Variantes' },
+  { key: 'tiene_encaje',      label: 'Encaje',                      grupo: 'Variantes' },
+  { key: 'tiene_formato',     label: 'Formato',                     grupo: 'Variantes' },
+  { key: 'tiene_sabor_aroma', label: 'Sabor / Aroma',               grupo: 'Variantes' },
+]
 
 type EstrForm = {
   nombre: string
-  unidad: NivelForm
-  caja: CajaForm
-  pallet: PalletForm
+  niveles: NivelForm[]
 }
 
-const nivelVacio = (): NivelForm => ({ activo: false, peso: '', alto: '', ancho: '', largo: '' })
-const formVacio = (): EstrForm => ({
-  nombre: '',
-  unidad: nivelVacio(),
-  caja:   { ...nivelVacio(), unidades_por_caja: '' },
-  pallet: { ...nivelVacio(), cajas_por_pallet: '' },
-})
+const nivelFormVacio = (udmId = ''): NivelForm =>
+  ({ unidad_medida_id: udmId, factor: '', peso: '', alto: '', ancho: '', largo: '', precioVenta: '', precioCosto: '' })
 
 function formDesdeEstructura(e: ProductoEstructura): EstrForm {
-  return {
-    nombre: e.nombre,
-    unidad: {
-      activo: nivelActivo(e, 'unidad'),
-      peso:  String(e.peso_unidad  ?? ''),
-      alto:  String(e.alto_unidad  ?? ''),
-      ancho: String(e.ancho_unidad ?? ''),
-      largo: String(e.largo_unidad ?? ''),
-    },
-    caja: {
-      activo: nivelActivo(e, 'caja'),
-      unidades_por_caja: String(e.unidades_por_caja ?? ''),
-      peso:  String(e.peso_caja  ?? ''),
-      alto:  String(e.alto_caja  ?? ''),
-      ancho: String(e.ancho_caja ?? ''),
-      largo: String(e.largo_caja ?? ''),
-    },
-    pallet: {
-      activo: nivelActivo(e, 'pallet'),
-      cajas_por_pallet: String(e.cajas_por_pallet ?? ''),
-      peso:  String(e.peso_pallet  ?? ''),
-      alto:  String(e.alto_pallet  ?? ''),
-      ancho: String(e.ancho_pallet ?? ''),
-      largo: String(e.largo_pallet ?? ''),
-    },
-  }
+  const niveles = nivelesOrdenados(e).map(n => ({
+    unidad_medida_id: n.unidad_medida_id,
+    factor: String(n.factor),
+    peso:  n.peso_kg  != null ? String(n.peso_kg)  : '',
+    alto:  n.alto_cm  != null ? String(n.alto_cm)  : '',
+    ancho: n.ancho_cm != null ? String(n.ancho_cm) : '',
+    largo: n.largo_cm != null ? String(n.largo_cm) : '',
+    precioVenta: n.precio_venta != null ? String(n.precio_venta) : '',
+    precioCosto: n.precio_costo != null ? String(n.precio_costo) : '',
+  }))
+  return { nombre: e.nombre, niveles: niveles.length ? niveles : [nivelFormVacio()] }
+}
+
+function nivelesOrdenados(e: ProductoEstructura) {
+  return [...(e.producto_estructura_niveles ?? [])].sort((a, b) => a.orden - b.orden)
 }
 
 function validarForm(f: EstrForm): string | null {
   if (!f.nombre.trim()) return 'El nombre es obligatorio.'
-  const activados = [f.unidad.activo, f.caja.activo, f.pallet.activo].filter(Boolean).length
-  if (activados < 2) return 'Debés activar al menos 2 niveles (Unidad, Caja o Pallet).'
-
-  const checkNivel = (n: NivelForm, label: string): string | null => {
-    if (!n.activo) return null
-    if (!n.peso  || +n.peso  <= 0) return `${label}: ingresá el peso.`
-    if (!n.alto  || +n.alto  <= 0) return `${label}: ingresá el alto.`
-    if (!n.ancho || +n.ancho <= 0) return `${label}: ingresá el ancho.`
-    if (!n.largo || +n.largo <= 0) return `${label}: ingresá el largo.`
-    return null
-  }
-
-  if (f.caja.activo && (!f.caja.unidades_por_caja || +f.caja.unidades_por_caja <= 0))
-    return 'Caja: ingresá las unidades por caja.'
-  if (f.pallet.activo && (!f.pallet.cajas_por_pallet || +f.pallet.cajas_por_pallet <= 0))
-    return 'Pallet: ingresá las cajas por pallet.'
-
-  return (
-    checkNivel(f.unidad, 'Unidad') ||
-    checkNivel(f.caja,   'Caja')   ||
-    checkNivel(f.pallet, 'Pallet')
-  )
+  return validarNiveles(f.niveles)
 }
 
-function buildRecord(f: EstrForm, tenantId: string, productoId: string, isDefault: boolean) {
-  return {
-    tenant_id:  tenantId,
-    producto_id: productoId,
-    nombre:     f.nombre.trim(),
-    is_default: isDefault,
-    unidades_por_caja: f.caja.activo   ? +f.caja.unidades_por_caja   : null,
-    cajas_por_pallet:  f.pallet.activo ? +f.pallet.cajas_por_pallet  : null,
-    peso_unidad:  f.unidad.activo ? +f.unidad.peso  : null,
-    alto_unidad:  f.unidad.activo ? +f.unidad.alto  : null,
-    ancho_unidad: f.unidad.activo ? +f.unidad.ancho : null,
-    largo_unidad: f.unidad.activo ? +f.unidad.largo : null,
-    peso_caja:  f.caja.activo ? +f.caja.peso  : null,
-    alto_caja:  f.caja.activo ? +f.caja.alto  : null,
-    ancho_caja: f.caja.activo ? +f.caja.ancho : null,
-    largo_caja: f.caja.activo ? +f.caja.largo : null,
-    peso_pallet:  f.pallet.activo ? +f.pallet.peso  : null,
-    alto_pallet:  f.pallet.activo ? +f.pallet.alto  : null,
-    ancho_pallet: f.pallet.activo ? +f.pallet.ancho : null,
-    largo_pallet: f.pallet.activo ? +f.pallet.largo : null,
-  }
-}
-
-// ─── Sub-componentes ─────────────────────────────────────────────────────────
-
-function NivelSection({
-  label,
-  nivel,
-  onChange,
-  extra,
-}: {
-  label: string
-  nivel: NivelForm
-  onChange: (v: Partial<NivelForm>) => void
-  extra?: React.ReactNode
-}) {
-  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text'
-
-  return (
-    <div className={`rounded-xl border-2 transition-colors ${nivel.activo ? 'border-accent-text/40 bg-accent/5 dark:bg-accent/10' : 'border-gray-200 dark:border-gray-700'}`}>
-      <button type="button"
-        onClick={() => onChange({ activo: !nivel.activo })}
-        className="w-full flex items-center justify-between px-4 py-3">
-        <span className={`font-medium text-sm ${nivel.activo ? 'text-accent-text' : 'text-gray-600 dark:text-gray-400'}`}>
-          {label}
-        </span>
-        <span className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors
-          ${nivel.activo ? 'bg-accent border-accent-text' : 'border-gray-300 dark:border-gray-600'}`}>
-          {nivel.activo && <span className="text-white text-xs font-bold">✓</span>}
-        </span>
-      </button>
-
-      {nivel.activo && (
-        <div className="px-4 pb-4 space-y-3">
-          {extra}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Peso (kg) *</label>
-              <input type="number" step="0.001" min="0" value={nivel.peso}
-                onChange={e => onChange({ peso: e.target.value })}
-                onWheel={e => e.currentTarget.blur()}
-                className={inp} placeholder="0.000" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Alto (cm) *</label>
-              <input type="number" step="0.01" min="0" value={nivel.alto}
-                onChange={e => onChange({ alto: e.target.value })}
-                onWheel={e => e.currentTarget.blur()}
-                className={inp} placeholder="0.00" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ancho (cm) *</label>
-              <input type="number" step="0.01" min="0" value={nivel.ancho}
-                onChange={e => onChange({ ancho: e.target.value })}
-                onWheel={e => e.currentTarget.blur()}
-                className={inp} placeholder="0.00" />
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Largo (cm) *</label>
-              <input type="number" step="0.01" min="0" value={nivel.largo}
-                onChange={e => onChange({ largo: e.target.value })}
-                onWheel={e => e.currentTarget.blur()}
-                className={inp} placeholder="0.00" />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Modal de formulario ──────────────────────────────────────────────────────
+// ─── Modal de formulario (niveles dinámicos por UdM) ─────────────────────────
 
 function EstrModal({
   editando,
+  unidades,
+  baseUdmNombre,
+  tieneAnclaDePrecio,
   onClose,
   onSave,
   saving,
 }: {
   editando: ProductoEstructura | null
+  unidades: UdmOption[]
+  /** productos.unidad_medida del SKU — preselecciona la UdM base al crear */
+  baseUdmNombre?: string | null
+  /** El producto tiene ancla de precio (nivel_precio_orden) configurada — backlog Fede 4/6/7 */
+  tieneAnclaDePrecio?: boolean
   onClose: () => void
   onSave: (form: EstrForm) => void
   saving: boolean
 }) {
-  const [form, setForm] = useState<EstrForm>(() =>
-    editando ? formDesdeEstructura(editando) : formVacio()
-  )
+  const [form, setForm] = useState<EstrForm>(() => {
+    if (editando) return formDesdeEstructura(editando)
+    const base =
+      unidades.find(u => u.nombre.toLowerCase() === (baseUdmNombre ?? '').toLowerCase()) ??
+      unidades.find(u => u.nombre === 'Unidad') ?? unidades[0]
+    return { nombre: '', niveles: [nivelFormVacio(base?.id)] }
+  })
   const [error, setError] = useState<string | null>(null)
 
-  const upd = (field: keyof EstrForm, val: any) => setForm(f => ({ ...f, [field]: val }))
+  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text'
 
-  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-xl px-3 py-2.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text'
+  const udmNombreDe = (id: string) => unidades.find(u => u.id === id)?.nombre ?? '—'
+  const usadas = new Set(form.niveles.map(n => n.unidad_medida_id))
+  // Equivalencia acumulada en vivo (null si algún factor todavía es inválido)
+  const equivalencias = calcularUnidadesBase(form.niveles.map((n, i) => (i === 0 ? 1 : Number(n.factor))))
+
+  const updNivel = (i: number, v: Partial<NivelForm>) =>
+    setForm(f => ({ ...f, niveles: f.niveles.map((n, j) => (j === i ? { ...n, ...v } : n)) }))
+
+  const agregarNivel = () => {
+    // Preselecciona la siguiente UdM "natural" que no esté usada (Caja → Pallet → primera libre)
+    const sugerida =
+      unidades.find(u => u.nombre === 'Caja' && !usadas.has(u.id)) ??
+      unidades.find(u => u.nombre === 'Pallet' && !usadas.has(u.id)) ??
+      unidades.find(u => !usadas.has(u.id))
+    setForm(f => ({ ...f, niveles: [...f.niveles, nivelFormVacio(sugerida?.id)] }))
+  }
+
+  const quitarNivel = (i: number) => {
+    // Backlog Fede puntos 4/6/7 (REGLA #0: nunca invalidar en silencio un precio configurado
+    // a propósito) — si este producto tiene ancla de precio y es la estructura DEFAULT, avisar
+    // antes de confirmar el borrado. El server (fn_estructura_guardar_niveles) igual invalida
+    // sola el ancla si queda apuntando a un nivel que ya no existe — esto es solo el aviso previo.
+    if (tieneAnclaDePrecio && editando?.is_default) {
+      const ok = confirm(
+        'Este producto tiene un precio anclado a un nivel específico de esta estructura (ver ' +
+        '"Estos precios corresponden a" en la hoja del producto). Si el nivel que estás por ' +
+        'quitar es ese, el precio de venta va a volver a tomarse del nivel base al guardar. ¿Confirmás?',
+      )
+      if (!ok) return
+    }
+    setForm(f => ({ ...f, niveles: f.niveles.filter((_, j) => j !== i) }))
+  }
+
+  const moverNivel = (i: number, dir: -1 | 1) =>
+    setForm(f => {
+      const niveles = [...f.niveles]
+      const j = i + dir
+      if (j < 0 || j >= niveles.length) return f
+      ;[niveles[i], niveles[j]] = [niveles[j], niveles[i]]
+      return { ...f, niveles }
+    })
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -241,7 +164,7 @@ function EstrModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
           <h2 className="text-lg font-bold text-primary">
             {editando ? 'Editar estructura' : 'Nueva estructura'}
@@ -258,53 +181,118 @@ function EstrModal({
               Nombre <span className="text-red-500">*</span>
             </label>
             <input type="text" value={form.nombre}
-              onChange={e => upd('nombre', e.target.value)}
-              className={inp} placeholder='Ej: "Caja 12 unidades", "Display 6 cajas"' />
+              onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
+              className={inp} placeholder='Ej: "Footprint estándar", "Pack mayorista"' />
           </div>
 
-          {/* Niveles */}
+          {/* Niveles dinámicos */}
           <div className="space-y-3">
-            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Niveles <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">(mínimo 2 requeridos)</span>
-            </p>
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Niveles <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">(el primero es la unidad base)</span>
+              </p>
+              <button type="button" onClick={agregarNivel}
+                disabled={usadas.size >= unidades.length}
+                className="flex items-center gap-1 text-xs font-semibold text-accent-text hover:underline disabled:opacity-40 disabled:no-underline">
+                <Plus size={13} /> Agregar nivel
+              </button>
+            </div>
 
-            <NivelSection
-              label="Unidad"
-              nivel={form.unidad}
-              onChange={v => upd('unidad', { ...form.unidad, ...v })}
-            />
-
-            <NivelSection
-              label="Caja"
-              nivel={form.caja}
-              onChange={v => upd('caja', { ...form.caja, ...v })}
-              extra={
-                <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Unidades por caja *</label>
-                  <input type="number" step="1" min="1" value={form.caja.unidades_por_caja}
-                    onChange={e => upd('caja', { ...form.caja, unidades_por_caja: e.target.value })}
-                    onWheel={e => e.currentTarget.blur()}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
-                    placeholder="12" />
+            {form.niveles.map((n, i) => (
+              <div key={i} className="rounded-xl border-2 border-gray-200 dark:border-gray-700 px-4 py-3 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-12 flex-shrink-0">
+                    {i === 0 ? 'BASE' : `Nivel ${i + 1}`}
+                  </span>
+                  <select value={n.unidad_medida_id}
+                    onChange={e => updNivel(i, { unidad_medida_id: e.target.value })}
+                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
+                    <option value="">Unidad de medida…</option>
+                    {unidades.map(u => (
+                      <option key={u.id} value={u.id}
+                        disabled={u.id !== n.unidad_medida_id && usadas.has(u.id)}>
+                        {u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    <button type="button" onClick={() => moverNivel(i, -1)} disabled={i === 0}
+                      className="p-1 text-gray-400 hover:text-accent-text disabled:opacity-30 transition-colors" title="Subir">
+                      <ChevronUp size={15} />
+                    </button>
+                    <button type="button" onClick={() => moverNivel(i, 1)} disabled={i === form.niveles.length - 1}
+                      className="p-1 text-gray-400 hover:text-accent-text disabled:opacity-30 transition-colors" title="Bajar">
+                      <ChevronDown size={15} />
+                    </button>
+                    <button type="button" onClick={() => quitarNivel(i)} disabled={form.niveles.length === 1}
+                      className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-30 transition-colors" title="Quitar nivel">
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
                 </div>
-              }
-            />
 
-            <NivelSection
-              label="Pallet"
-              nivel={form.pallet}
-              onChange={v => upd('pallet', { ...form.pallet, ...v })}
-              extra={
-                <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cajas por pallet *</label>
-                  <input type="number" step="1" min="1" value={form.pallet.cajas_por_pallet}
-                    onChange={e => upd('pallet', { ...form.pallet, cajas_por_pallet: e.target.value })}
-                    onWheel={e => e.currentTarget.blur()}
-                    className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
-                    placeholder="40" />
+                {i > 0 && (
+                  <div className="flex items-center gap-2 text-sm">
+                    <span className="text-gray-500 dark:text-gray-400">Contiene</span>
+                    <input type="number" step="1" min="1" value={n.factor}
+                      onChange={e => updNivel(i, { factor: e.target.value })}
+                      onWheel={e => e.currentTarget.blur()}
+                      className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
+                      placeholder="12" />
+                    <span className="text-gray-500 dark:text-gray-400">
+                      × {udmNombreDe(form.niveles[i - 1].unidad_medida_id)}
+                    </span>
+                    {equivalencias && i > 1 && (
+                      <span className="text-xs text-accent-text font-medium ml-auto">
+                        = {equivalencias[i]} × {udmNombreDe(form.niveles[0].unidad_medida_id)}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {([['peso', 'Peso (kg)', '0.001'], ['alto', 'Alto (cm)', '0.01'],
+                     ['ancho', 'Ancho (cm)', '0.01'], ['largo', 'Largo (cm)', '0.01']] as const).map(([campo, label, step]) => (
+                    <div key={campo}>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+                      <input type="number" step={step} min="0" value={n[campo]}
+                        onChange={e => updNivel(i, { [campo]: e.target.value })}
+                        onWheel={e => e.currentTarget.blur()}
+                        className={inp} placeholder="—" />
+                    </div>
+                  ))}
                 </div>
-              }
-            />
+
+                {/* Precio por UoM (backlog Fede puntos 4/6/7) — opcional, si no se carga se
+                    calcula proporcional al nivel anclado (ver "Ancla de precio" en la hoja del
+                    producto). El nivel BASE no lo edita acá: lo trae precio_venta/costo del
+                    producto — se muestra solo como referencia. */}
+                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-gray-100 dark:border-gray-700">
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Precio de venta {i === 0 && <span className="text-gray-400">(de la hoja del producto)</span>}
+                    </label>
+                    <input type="number" step="0.01" min="0" value={n.precioVenta ?? ''}
+                      disabled={i === 0}
+                      onChange={e => updNivel(i, { precioVenta: e.target.value })}
+                      onWheel={e => e.currentTarget.blur()}
+                      className={`${inp} disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400`}
+                      placeholder={i === 0 ? '—' : 'Calculado si vacío'} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                      Costo {i === 0 && <span className="text-gray-400">(de la hoja del producto)</span>}
+                    </label>
+                    <input type="number" step="0.01" min="0" value={n.precioCosto ?? ''}
+                      disabled={i === 0}
+                      onChange={e => updNivel(i, { precioCosto: e.target.value })}
+                      onWheel={e => e.currentTarget.blur()}
+                      className={`${inp} disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400`}
+                      placeholder={i === 0 ? '—' : 'Calculado si vacío'} />
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
           {error && (
@@ -344,11 +332,7 @@ function EstrCard({
   onSetDefault: () => void
   solo: boolean
 }) {
-  const niveles: { label: string; n: 'unidad' | 'caja' | 'pallet' }[] = [
-    { label: 'Unidad', n: 'unidad' },
-    { label: 'Caja',   n: 'caja'   },
-    { label: 'Pallet', n: 'pallet' },
-  ]
+  const niveles = nivelesOrdenados(e)
 
   return (
     <div className={`bg-white dark:bg-gray-800 rounded-xl border-2 transition-colors
@@ -364,10 +348,7 @@ function EstrCard({
             )}
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            {[
-              e.unidades_por_caja  ? `${e.unidades_por_caja} u/caja`  : null,
-              e.cajas_por_pallet   ? `${e.cajas_por_pallet} c/pallet` : null,
-            ].filter(Boolean).join(' · ') || 'Sin conversiones'}
+            {cadenaConversion(niveles)}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -392,25 +373,18 @@ function EstrCard({
 
       {/* Detalle de niveles */}
       <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {niveles.map(({ label, n }) => {
-          const activo = nivelActivo(e, n)
-          if (!activo) return (
-            <div key={n} className="text-xs text-gray-300 dark:text-gray-600 italic">{label}: —</div>
-          )
-          const peso  = fmt(e[`peso_${n}`  as keyof ProductoEstructura] as number, 'kg')
-          const alto  = fmt(e[`alto_${n}`  as keyof ProductoEstructura] as number, 'cm')
-          const ancho = fmt(e[`ancho_${n}` as keyof ProductoEstructura] as number, 'cm')
-          const largo = fmt(e[`largo_${n}` as keyof ProductoEstructura] as number, 'cm')
-          return (
-            <div key={n}>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">{label}</p>
-              <div className="space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
-                {peso  && <p>Peso: {peso}</p>}
-                {alto  && <p>Alto: {alto} · Ancho: {ancho} · Largo: {largo}</p>}
-              </div>
+        {niveles.map(n => (
+          <div key={n.id}>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
+              {nombreUdm(n)}{n.orden === 1 && <span className="normal-case text-gray-400 dark:text-gray-500"> · base</span>}
+            </p>
+            <div className="space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
+              {n.orden > 1 && <p>{n.factor} × nivel anterior · = {n.unidades_base} × base</p>}
+              {n.peso_kg != null && <p>Peso: {n.peso_kg} kg</p>}
+              {n.alto_cm != null && <p>{n.alto_cm}×{n.ancho_cm ?? '—'}×{n.largo_cm ?? '—'} cm</p>}
             </div>
-          )
-        })}
+          </div>
+        ))}
       </div>
     </div>
   )
@@ -445,7 +419,20 @@ export default function ProductosPage() {
   // Tab Productos
   const [search, setSearch] = useState('')
   const [filterAlerta, setFilterAlerta] = useState(false)
-  const [showInactivos, setShowInactivos] = useState(false)
+  // Panel de filtros (mismo patrón pill+popover que InventarioPage → tab Inventario)
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false)
+  const filterPanelRef = useRef<HTMLDivElement>(null)
+  const [filterActivo, setFilterActivo] = useState<'activos' | 'inactivos' | 'todos'>('activos')
+  const [filterEstructura, setFilterEstructura] = useState<'' | 'con' | 'sin'>('')
+  const [filterCat, setFilterCat] = useState('')
+  const [filterProv, setFilterProv] = useState('')
+  const [filterMarca, setFilterMarca] = useState('')
+  // Atributos de inventario combinables (OR: matchea con AL MENOS UNO). Se eligen desde un
+  // combobox — las opciones no se listan todas de entrada, aparecen al enfocar/tipear.
+  const [filterAtributos, setFilterAtributos] = useState<string[]>([])
+  const [atributoQuery, setAtributoQuery] = useState('')
+  const [atributoDropOpen, setAtributoDropOpen] = useState(false)
+  const atributoBoxRef = useRef<HTMLDivElement>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showLimitModal, setShowLimitModal] = useState(false)
   const [scannerOpen, setScannerOpen] = useState(false)
@@ -489,11 +476,18 @@ export default function ProductosPage() {
   const [applyingScan, setApplyingScan] = useState(false)
   const scanTicketRef = useRef<HTMLInputElement>(null)
 
-  // Cerrar dropdown al hacer click fuera
+  // Cerrar dropdowns al hacer click fuera
   useEffect(() => {
     function handler(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node))
         setEstrDropdown(false)
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setFilterPanelOpen(false)
+        setAtributoDropOpen(false)
+      } else if (atributoBoxRef.current && !atributoBoxRef.current.contains(e.target as Node)) {
+        // Click dentro del panel pero fuera del combobox → cierra solo el dropdown de atributos
+        setAtributoDropOpen(false)
+      }
     }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
@@ -521,6 +515,17 @@ export default function ProductosPage() {
       return data ?? []
     },
     enabled: !!tenant,
+  })
+
+  // IDs de productos con al menos una estructura cargada — alimenta el filtro Con/Sin estructura
+  const { data: productosConEstructura } = useQuery({
+    queryKey: ['productos-con-estructura', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_estructuras')
+        .select('producto_id').eq('tenant_id', tenant!.id)
+      return new Set((data ?? []).map((r: any) => r.producto_id))
+    },
+    enabled: !!tenant && tab === 'productos',
   })
 
   // Stock disponible para venta (solo líneas en estados con es_disponible_venta = true).
@@ -564,7 +569,7 @@ export default function ProductosPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('producto_estructuras')
-        .select('*')
+        .select('*, producto_estructura_niveles(*, unidades_medida(nombre, simbolo))')
         .eq('tenant_id', tenant!.id)
         .eq('producto_id', expandedId!)
         .eq('is_default', true)
@@ -579,7 +584,7 @@ export default function ProductosPage() {
     queryKey: ['productos-estr-list', tenant?.id, estrSearch],
     queryFn: async () => {
       let q = supabase.from('productos')
-        .select('id, nombre, sku')
+        .select('id, nombre, sku, unidad_medida')
         .eq('tenant_id', tenant!.id)
         .eq('activo', true)
         .order('nombre')
@@ -591,12 +596,24 @@ export default function ProductosPage() {
     enabled: !!tenant && tab === 'estructura',
   })
 
+  // Backlog Fede puntos 4/6/7 — para avisar antes de borrar un nivel si el producto tiene
+  // ancla de precio configurada (no hace falta saber CUÁL nivel exacto: cualquier borrado en
+  // la estructura default amerita el aviso, el detalle fino de si aplica lo valida el server).
+  const { data: nivelPrecioOrdenActual } = useQuery({
+    queryKey: ['producto-nivel-precio-orden', estrProductoId],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos').select('nivel_precio_orden').eq('id', estrProductoId!).maybeSingle()
+      return (data as any)?.nivel_precio_orden ?? null
+    },
+    enabled: !!tenant && tab === 'estructura' && !!estrProductoId,
+  })
+
   const { data: estructuras = [], isLoading: estrLoading } = useQuery({
     queryKey: ['producto-estructuras', tenant?.id, estrProductoId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('producto_estructuras')
-        .select('*')
+        .select('*, producto_estructura_niveles(*, unidades_medida(nombre, simbolo))')
         .eq('tenant_id', tenant!.id)
         .eq('producto_id', estrProductoId!)
         .order('created_at')
@@ -604,6 +621,18 @@ export default function ProductosPage() {
       return (data ?? []) as ProductoEstructura[]
     },
     enabled: !!tenant && !!estrProductoId,
+  })
+
+  // UdM del tenant — niveles de estructura (predefinidas + personalizadas, mig 282)
+  const { data: unidadesMedida = [] } = useQuery({
+    queryKey: ['unidades_medida', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('unidades_medida')
+        .select('id, nombre, simbolo')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      return (data ?? []) as UdmOption[]
+    },
+    enabled: !!tenant && tab === 'estructura',
   })
 
   const { data: proveedoresOC = [] } = useQuery({
@@ -661,6 +690,10 @@ export default function ProductosPage() {
   const invalidar = () => {
     qc.invalidateQueries({ queryKey: ['producto-estructuras', tenant?.id, estrProductoId] })
     if (expandedId) qc.invalidateQueries({ queryKey: ['estructura-default', tenant?.id, expandedId] })
+    // Backlog Fede 4/6/7 — el server puede haber invalidado el ancla de precio al guardar niveles
+    qc.invalidateQueries({ queryKey: ['producto-nivel-precio-orden', estrProductoId] })
+    qc.invalidateQueries({ queryKey: ['producto', estrProductoId] })
+    qc.invalidateQueries({ queryKey: ['estructura-default', estrProductoId] })
   }
 
   const aplicarBulk = async () => {
@@ -782,30 +815,40 @@ export default function ProductosPage() {
   const crearMut = useMutation({
     mutationFn: async (form: EstrForm) => {
       const esDefault = estructuras.length === 0
-      const { error } = await supabase.from('producto_estructuras')
-        .insert(buildRecord(form, tenant!.id, estrProductoId!, esDefault))
+      // UUID en cliente: evita SELECT-after-INSERT bajo RLS
+      const id = crypto.randomUUID()
+      const { error } = await supabase.from('producto_estructuras').insert({
+        id, tenant_id: tenant!.id, producto_id: estrProductoId!,
+        nombre: form.nombre.trim(), is_default: esDefault,
+      })
       if (error) throw error
+      // Niveles vía RPC transaccional (valida y calcula unidades_base server-side)
+      const { error: eNiveles } = await supabase.rpc('fn_estructura_guardar_niveles', {
+        p_estructura_id: id, p_niveles: nivelesAPayload(form.niveles),
+      })
+      if (eNiveles) {
+        // Sin niveles la estructura queda inservible: rollback best-effort del header
+        await supabase.from('producto_estructuras').delete().eq('id', id)
+        throw eNiveles
+      }
     },
     onSuccess: () => { invalidar(); setEstrModal({ open: false, editando: null }) },
+    onError: (e: Error) => toast.error(e.message || 'No se pudo crear la estructura'),
   })
 
   const editarMut = useMutation({
     mutationFn: async ({ id, form }: { id: string; form: EstrForm }) => {
-      const { nombre, unidades_por_caja, cajas_por_pallet,
-        peso_unidad, alto_unidad, ancho_unidad, largo_unidad,
-        peso_caja, alto_caja, ancho_caja, largo_caja,
-        peso_pallet, alto_pallet, ancho_pallet, largo_pallet,
-      } = buildRecord(form, tenant!.id, estrProductoId!, false)
+      // Primero los niveles (transaccional: si falla, los anteriores quedan intactos)
+      const { error: eNiveles } = await supabase.rpc('fn_estructura_guardar_niveles', {
+        p_estructura_id: id, p_niveles: nivelesAPayload(form.niveles),
+      })
+      if (eNiveles) throw eNiveles
       const { error } = await supabase.from('producto_estructuras')
-        .update({ nombre, unidades_por_caja, cajas_por_pallet,
-          peso_unidad, alto_unidad, ancho_unidad, largo_unidad,
-          peso_caja, alto_caja, ancho_caja, largo_caja,
-          peso_pallet, alto_pallet, ancho_pallet, largo_pallet,
-        })
-        .eq('id', id)
+        .update({ nombre: form.nombre.trim() }).eq('id', id)
       if (error) throw error
     },
     onSuccess: () => { invalidar(); setEstrModal({ open: false, editando: null }) },
+    onError: (e: Error) => toast.error(e.message || 'No se pudo guardar la estructura'),
   })
 
   const eliminarMut = useMutation({
@@ -854,11 +897,35 @@ export default function ProductosPage() {
   // ── Helpers UI ─────────────────────────────────────────────────────────────
 
   const filtered = productos.filter(p => {
-    if (!showInactivos && !(p as any).activo) return false
-    if (filterAlerta && (p as any).stock_actual > (p as any).stock_minimo) return false
+    const prod = p as any
+    if (filterActivo === 'activos' && !prod.activo) return false
+    if (filterActivo === 'inactivos' && prod.activo) return false
+    if (filterAlerta && prod.stock_actual > prod.stock_minimo) return false
+    if (filterEstructura === 'con' && !productosConEstructura?.has(prod.id)) return false
+    if (filterEstructura === 'sin' && productosConEstructura?.has(prod.id)) return false
+    if (filterCat && (filterCat === '__sin__' ? prod.categoria_id : prod.categoria_id !== filterCat)) return false
+    if (filterProv && (filterProv === '__sin__' ? prod.proveedor_id : prod.proveedor_id !== filterProv)) return false
+    if (filterMarca && (filterMarca === '__sin__' ? prod.marca : (prod.marca ?? '') !== filterMarca)) return false
+    // Atributos combinados: OR — muestra los que tienen AL MENOS UNO de los seleccionados
+    if (filterAtributos.length > 0 && !filterAtributos.some(k => prod[k])) return false
     return true
   })
   const stockCritico = productos.filter(p => (p as any).stock_actual <= (p as any).stock_minimo).length
+
+  const filtrosActivos =
+    (filterActivo !== 'activos' ? 1 : 0) + (filterEstructura ? 1 : 0) + (filterCat ? 1 : 0) +
+    (filterProv ? 1 : 0) + (filterMarca ? 1 : 0) + filterAtributos.length
+
+  // Opciones de los selects, derivadas del listado (sin queries extra)
+  const marcasDisponibles = [...new Set(productos.map(p => (p as any).marca).filter(Boolean))].sort() as string[]
+  const categoriasDisponibles = [...new Map(
+    productos.filter(p => (p as any).categoria_id)
+      .map(p => [(p as any).categoria_id, (p as any).categorias?.nombre ?? (p as any).categoria_id])
+  ).entries()] as [string, string][]
+  const proveedoresDisponibles = [...new Map(
+    productos.filter(p => (p as any).proveedor_id)
+      .map(p => [(p as any).proveedor_id, (p as any).proveedores?.nombre ?? (p as any).proveedor_id])
+  ).entries()] as [string, string][]
 
   function toggleSelect(id: string, e: React.MouseEvent) {
     e.stopPropagation()
@@ -1232,6 +1299,173 @@ export default function ProductosPage() {
                 placeholder="Buscar por nombre, SKU o código..."
                 className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
             </div>
+            {/* Filtros — pill button con popover (mismo patrón que InventarioPage → tab Inventario) */}
+            <div className="relative shrink-0" ref={filterPanelRef}>
+              <button
+                onClick={() => setFilterPanelOpen(v => !v)}
+                className={`inline-flex items-center gap-2 px-3.5 py-2.5 rounded-full border text-sm font-medium transition-all
+                  ${filterPanelOpen || filtrosActivos > 0
+                    ? 'border-accent-text bg-accent/5 text-accent-text'
+                    : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600 bg-white dark:bg-gray-800'}`}
+              >
+                <SlidersHorizontal size={14} />
+                <span className="hidden sm:inline">Filtros</span>
+                {filtrosActivos > 0 && (
+                  <span className="w-4 h-4 rounded-full bg-accent text-white text-[10px] flex items-center justify-center font-bold">
+                    {filtrosActivos}
+                  </span>
+                )}
+              </button>
+
+              {filterPanelOpen && (
+                <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-2xl shadow-xl z-50 p-5 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-800 dark:text-gray-100 text-sm">Filtros</h3>
+                    <button onClick={() => { setFilterPanelOpen(false); setAtributoDropOpen(false) }}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X size={14} /></button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Estado</p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {([['activos', 'Activos'], ['inactivos', 'Inactivos'], ['todos', 'Todos']] as const).map(([val, label]) => (
+                          <button key={val} onClick={() => setFilterActivo(val)}
+                            className={`text-xs px-2 py-1.5 rounded-lg border font-medium transition-colors
+                              ${filterActivo === val
+                                ? 'border-accent-text bg-accent/10 text-accent-text'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Estructura de embalaje</p>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {([['', 'Todos'], ['con', 'Con'], ['sin', 'Sin']] as const).map(([val, label]) => (
+                          <button key={val || 'todos'} onClick={() => setFilterEstructura(val)}
+                            className={`text-xs px-2 py-1.5 rounded-lg border font-medium transition-colors
+                              ${filterEstructura === val
+                                ? 'border-accent-text bg-accent/10 text-accent-text'
+                                : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-300'}`}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Categoría</p>
+                      <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
+                        className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <option value="">Todas</option>
+                        <option value="__sin__">Sin categoría</option>
+                        {categoriasDisponibles.map(([id, nombre]) => (
+                          <option key={id} value={id}>{nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Proveedor</p>
+                      <select value={filterProv} onChange={e => setFilterProv(e.target.value)}
+                        className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <option value="">Todos</option>
+                        <option value="__sin__">Sin proveedor</option>
+                        {proveedoresDisponibles.map(([id, nombre]) => (
+                          <option key={id} value={id}>{nombre}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Marca</p>
+                      <select value={filterMarca} onChange={e => setFilterMarca(e.target.value)}
+                        className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
+                        <option value="">Todas</option>
+                        <option value="__sin__">Sin marca</option>
+                        {marcasDisponibles.map(m => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                    </div>
+
+                    {/* Atributos de inventario — combobox: las opciones aparecen al enfocar/tipear,
+                        se combinan como chips (OR: muestra los que tienen al menos uno) */}
+                    <div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Atributos de inventario</p>
+                      {filterAtributos.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-1.5">
+                          {filterAtributos.map(k => {
+                            const attr = ATRIBUTOS_FILTRO.find(a => a.key === k)
+                            return (
+                              <span key={k} className="inline-flex items-center gap-1 text-xs bg-accent/10 text-accent-text px-2 py-1 rounded-lg font-medium">
+                                {attr?.label ?? k}
+                                <button onClick={() => setFilterAtributos(prev => prev.filter(x => x !== k))}
+                                  className="hover:text-red-500 transition-colors" title="Quitar">
+                                  <X size={11} />
+                                </button>
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+                      <div className="relative" ref={atributoBoxRef}>
+                        <input type="text" value={atributoQuery}
+                          onChange={e => { setAtributoQuery(e.target.value); setAtributoDropOpen(true) }}
+                          onFocus={() => setAtributoDropOpen(true)}
+                          placeholder="Buscar atributo… (lote, serie, talle…)"
+                          className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300" />
+                        {atributoDropOpen && (() => {
+                          const q = atributoQuery.trim().toLowerCase()
+                          const disponibles = ATRIBUTOS_FILTRO.filter(a =>
+                            !filterAtributos.includes(a.key) &&
+                            (!q || a.label.toLowerCase().includes(q) || a.grupo.toLowerCase().includes(q)))
+                          if (disponibles.length === 0) return (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 px-3 py-2">
+                              <p className="text-xs text-gray-400 dark:text-gray-500">Sin atributos que coincidan</p>
+                            </div>
+                          )
+                          const grupos = [...new Set(disponibles.map(a => a.grupo))]
+                          return (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg z-10 max-h-52 overflow-y-auto py-1">
+                              {grupos.map(g => (
+                                <div key={g}>
+                                  <p className="px-3 pt-1.5 pb-0.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{g}</p>
+                                  {disponibles.filter(a => a.grupo === g).map(a => (
+                                    <button key={a.key}
+                                      onClick={() => { setFilterAtributos(prev => [...prev, a.key]); setAtributoQuery(''); setAtributoDropOpen(false) }}
+                                      className="w-full text-left px-3 py-1.5 text-sm text-gray-700 dark:text-gray-300 hover:bg-accent/5 hover:text-accent-text transition-colors">
+                                      {a.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          )
+                        })()}
+                      </div>
+                      {filterAtributos.length > 1 && (
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">
+                          Muestra productos con al menos uno de los atributos elegidos.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {filtrosActivos > 0 && (
+                    <button
+                      onClick={() => {
+                        setFilterActivo('activos'); setFilterEstructura(''); setFilterCat('')
+                        setFilterProv(''); setFilterMarca(''); setFilterAtributos([]); setAtributoQuery('')
+                      }}
+                      className="w-full text-xs text-red-500 hover:text-red-600 dark:text-red-400 transition-colors pt-1">
+                      × Limpiar todos los filtros
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setViewMode(v => v === 'flat' ? 'grouped' : 'flat')}
               title={viewMode === 'flat' ? 'Agrupar variantes' : 'Vista plana'}
@@ -1242,11 +1476,6 @@ export default function ProductosPage() {
               <Layers size={15} />
               <span className="hidden sm:inline whitespace-nowrap">Agrupar variantes</span>
             </button>
-            <label className="flex items-center gap-1.5 cursor-pointer select-none shrink-0">
-              <Toggle size="sm" checked={showInactivos} onChange={setShowInactivos}
-                aria-label="Ver inactivos" />
-              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Ver inactivos</span>
-            </label>
             <button onClick={() => setScannerOpen(true)}
               className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent-text transition-colors bg-white dark:bg-gray-800"
               title="Escanear código de barras">
@@ -1658,23 +1887,20 @@ export default function ProductosPage() {
                               </div>
                               <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{estructuraDefault.nombre}</p>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                {(['unidad', 'caja', 'pallet'] as const).map(n => {
-                                  if (!nivelActivo(estructuraDefault, n)) return null
-                                  const e = estructuraDefault
-                                  return (
-                                    <div key={n} className="bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700">
-                                      <p className="font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 text-xs">{n}</p>
-                                      {n === 'caja'   && e.unidades_por_caja  && <p className="text-gray-600 dark:text-gray-300">{e.unidades_por_caja} u/caja</p>}
-                                      {n === 'pallet' && e.cajas_por_pallet   && <p className="text-gray-600 dark:text-gray-300">{e.cajas_por_pallet} c/pallet</p>}
-                                      <p className="text-gray-600 dark:text-gray-300">
-                                        Peso: {e[`peso_${n}` as keyof ProductoEstructura]} kg
-                                      </p>
-                                      <p className="text-gray-600 dark:text-gray-300">
-                                        {e[`alto_${n}` as keyof ProductoEstructura]}×{e[`ancho_${n}` as keyof ProductoEstructura]}×{e[`largo_${n}` as keyof ProductoEstructura]} cm
-                                      </p>
-                                    </div>
-                                  )
-                                })}
+                                {nivelesOrdenados(estructuraDefault).map(n => (
+                                  <div key={n.id} className="bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700">
+                                    <p className="font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 text-xs">
+                                      {nombreUdm(n)}{n.orden === 1 ? ' · base' : ''}
+                                    </p>
+                                    {n.orden > 1 && (
+                                      <p className="text-gray-600 dark:text-gray-300">= {n.unidades_base} × base</p>
+                                    )}
+                                    {n.peso_kg != null && <p className="text-gray-600 dark:text-gray-300">Peso: {n.peso_kg} kg</p>}
+                                    {n.alto_cm != null && (
+                                      <p className="text-gray-600 dark:text-gray-300">{n.alto_cm}×{n.ancho_cm ?? '—'}×{n.largo_cm ?? '—'} cm</p>
+                                    )}
+                                  </div>
+                                ))}
                               </div>
                             </div>
                           )}
@@ -2061,6 +2287,9 @@ export default function ProductosPage() {
       {estrModal.open && (
         <EstrModal
           editando={estrModal.editando}
+          unidades={unidadesMedida}
+          baseUdmNombre={(productosEstr as any[]).find(p => p.id === estrProductoId)?.unidad_medida ?? null}
+          tieneAnclaDePrecio={!!nivelPrecioOrdenActual}
           onClose={() => setEstrModal({ open: false, editando: null })}
           onSave={handleSaveModal}
           saving={saving}

@@ -258,7 +258,7 @@ Catálogo base del negocio. **Global** — mismo catálogo en todas las sucursal
 
 **Tabs:**
 - **Productos**: listado con búsqueda por nombre/SKU/código de barras
-- **Estructuras**: definición de estructuras de embalaje escalonadas (unidad → caja → pallet) con dimensiones y pesos
+- **Estructuras**: definición de estructuras de embalaje con niveles dinámicos por unidad de medida (ej. unidad → caja → pallet, o cualquier UdM del negocio) con factores de conversión, dimensiones y pesos
 
 **Listado — fila expandida al hacer clic:**
 - Badge de stock disponible para venta (filtrado por sucursal activa, calculado desde `inventario_lineas`)
@@ -291,12 +291,11 @@ Catálogo base del negocio. **Global** — mismo catálogo en todas las sucursal
 - MercadoLibre: habilitar sync
 
 **Tab Estructuras — detalle:**
-Cada producto puede tener una o más estructuras de embalaje. Una estructura define 3 niveles escalonados:
-- **Unidad**: peso (kg), alto/ancho/largo (cm)
-- **Caja**: unidades por caja, peso (kg), alto/ancho/largo (cm)
-- **Pallet**: cajas por pallet, peso (kg), alto/ancho/largo (cm)
+Cada producto puede tener una o más estructuras de embalaje ("footprints", estilo pack structure de Blue Yonder). Una estructura tiene **niveles dinámicos**: cada nivel es una **unidad de medida del negocio** (las de Configuración → Unidades: Unidad, Caja, Pallet, Docena, Display o cualquier UdM propia) con:
+- **Factor de conversión contra el nivel anterior** (ej.: Caja = 12 × Unidad, Pallet = 40 × Caja) — el sistema calcula y muestra la equivalencia total en la unidad base (480 × Unidad)
+- **Peso (kg) y alto/ancho/largo (cm)** opcionales por nivel
 
-Se requieren mínimo 2 niveles activos. Se puede marcar una estructura como default. Las estructuras se asignan también a los LPNs desde el modal de acciones del LPN. Sirve para logística (cálculo de volumen, peso de embarques).
+El primer nivel es la unidad base (se preselecciona con la unidad de medida del producto). Los factores son siempre enteros ≥ 1. Se pueden agregar, quitar y reordenar niveles. Se puede marcar una estructura como default. Las estructuras se asignan también a los LPNs desde el modal de acciones del LPN. Sirve para logística (conversión de cantidades, cálculo de volumen, peso de embarques) y es la base del picking/almacenaje por unidad de medida.
 
 > ⚠️ Las estructuras NO son combos/kits. Los combos (bundles promocionales) se configuran en `/configuracion` → tab Combos. Los kits de armado se gestionan en Inventario → tab Kits.
 
@@ -1052,7 +1051,7 @@ productos (catálogo)
 |----------|------------------|--------|
 | **Kit** (`es_kit = true`) | Inventario → tab Kits | Producto ensamblado físicamente desde componentes. Implica movimiento de inventario: consume componentes, genera stock del producto kit. |
 | **Combo** | Configuración → tab Combos | Bundle promocional para POS. No implica movimiento físico. Solo define precio especial para N productos vendidos juntos (descuento % o monto). |
-| **Estructura** | Productos → tab Estructuras | Embalaje logístico (unidad/caja/pallet con dimensiones y pesos). No implica stock ni precio. |
+| **Estructura** | Productos → tab Estructuras | Embalaje logístico con niveles dinámicos por unidad de medida (ej. unidad/caja/pallet, con factores de conversión, dimensiones y pesos). No implica stock ni precio. |
 
 ### Reglas de rebaje (orden de consumo al vender)
 - **FIFO**: primer LPN creado se consume primero (por `created_at`)

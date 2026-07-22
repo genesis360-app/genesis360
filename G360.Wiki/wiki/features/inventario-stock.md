@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos]
 sources: [CLAUDE.md, reglas_negocio.md]
-updated: 2026-06-03
+updated: 2026-07-21
 ---
 
 # Inventario y Stock
@@ -99,7 +99,7 @@ Tabs del modal según estado:
 - **Editar** — cambiar cantidad, estado, notas, LPN (si no hay reservas)
 - **Mover** — a otra ubicación o sucursal (parcial o total)
 - **Series** — gestión de números de serie individuales
-- **Estructura** — asignar estructura WMS al LPN
+- **Estructura** — asignar estructura WMS al LPN (desde v1.137.0 muestra los niveles dinámicos por UdM con su cadena de conversión — ver [[wiki/features/estructuras-udm]])
 - **Eliminar** — eliminar LPN (DEPOSITO requiere autorización)
 
 Si `cantidad_reservada > 0`: solo se muestra tab Mover + banner naranja.
@@ -245,6 +245,20 @@ Toggle `LayoutList/Building` en tab Inventario:
 
 ---
 
+## Columna "Estructura" en detalle de líneas por producto (✅ v1.138.0, 2026-07-21)
+
+En la tabla de líneas por producto de la tab Inventario (modo avanzado), columna de **solo
+lectura** que muestra el nombre de la `producto_estructuras` asociada a esa línea (chip con ícono
+`Layers`), o "—" si el LPN no tiene estructura asignada. Se resuelve con un join agregado al
+`SELECT` de `inventario_lineas` → `producto_estructuras(nombre)`, sin queries extra.
+
+Puramente informativa — no cambia ningún cálculo de stock ni de rebaje. Para asignar/editar la
+estructura de un LPN se sigue usando la tab **Estructura** de `LpnAccionesModal` (ver más abajo).
+No aparece en modo básico (columna gateada por `modoAvanzado`, igual que Estado/Ubicación/Lote-
+Venc./Series/Acciones).
+
+---
+
 ## Mono-SKU en ubicaciones (migration 052)
 
 `ubicaciones.mono_sku BOOLEAN DEFAULT FALSE`  
@@ -295,6 +309,12 @@ Filtros en tab Historial:
 - Función SQL `process_aging_profiles()` SECURITY DEFINER: calcula días restantes, aplica regla, cambia estado, inserta en actividad_log
 - EF `process-aging` + botón manual en ConfigPage → Aging Profiles
 - Pendiente: scheduler diario (pg_cron)
+- **Distinto del descuento automático por estado en la venta** (v1.139.0, migs 284-285 — backlog
+  Fede punto 3): Aging Profiles solo **mueve** una línea a otro `estado_id` según días a vencer,
+  sin aplicar ningún descuento por sí solo. El feature nuevo aplica un % **al vender** stock que
+  YA está en un estado con `estados_inventario.descuento_pct` configurado (sea porque un Aging
+  Profile lo movió ahí o por cualquier otro motivo). Ver [[wiki/features/ventas-pos]] →
+  "Descuento automático por estado de inventario".
 
 ---
 

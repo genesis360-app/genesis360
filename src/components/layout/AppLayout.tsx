@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2,
+  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2, ScanBarcode,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -42,6 +42,7 @@ const navItems = [
   { to: '/proveedores',   icon: Truck,           label: 'Prov./Servicios', modulo: 'proveedores',  ownerOnly: true },
   { to: '/recursos',      icon: Landmark,        label: 'Recursos',       modulo: 'recursos',      ownerOnly: true, avanzadoOnly: true },
   { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
+  { to: '/picking',       icon: ScanBarcode,     label: 'Picking',       modulo: 'picking',        supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
   { to: '/biblioteca',    icon: FolderOpen,      label: 'Biblioteca',     modulo: 'biblioteca',    ownerOnly: true, avanzadoOnly: true },
   { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true,           depositoVisible: true },
   { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',           modulo: 'rrhh',          ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
@@ -60,7 +61,7 @@ const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta', '/mi-portal']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
 const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion', '/ventas', '/clientes', '/mi-portal']  // J3: CONTADOR read-only en Ventas · CL1-H2: read-only en Clientes
-const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones', '/envios', '/mi-portal']
+const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones', '/envios', '/mi-portal', '/picking']
 
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen]       = useState(false)

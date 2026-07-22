@@ -47,6 +47,7 @@ const ProveedoresPage     = lazy(() => import('@/pages/ProveedoresPage'))
 const BibliotecaPage      = lazy(() => import('@/pages/BibliotecaPage'))
 const RecursosPage        = lazy(() => import('@/pages/RecursosPage'))
 const RecepcionesPage     = lazy(() => import('@/pages/RecepcionesPage'))
+const PickingPage         = lazy(() => import('@/pages/PickingPage'))
 const EnviosPage          = lazy(() => import('@/pages/EnviosPage'))
 const FacturacionPage     = lazy(() => import('@/pages/FacturacionPage'))
 const TransportistePage   = lazy(() => import('@/pages/TransportistePage'))
@@ -173,6 +174,7 @@ function App() {
                   <Route path="/historial" element={<HistorialPage />} />
                   <Route path="/proveedores" element={<ProveedoresPage />} />
                   <Route path="/recepciones" element={<RecepcionesPage />} />
+                  <Route path="/picking"     element={<PickingPage />} />
                   <Route path="/envios"        element={<EnviosPage />} />
                   <Route path="/facturacion"  element={<FacturacionPage />} />
                   <Route path="/biblioteca" element={<BibliotecaPage />} />

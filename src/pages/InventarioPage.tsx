@@ -42,7 +42,7 @@ import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
 import * as XLSX from 'xlsx'
 
-type Tab = 'inventario' | 'agregar' | 'quitar' | 'traslados' | 'kits' | 'conteo' | 'historial' | 'autorizaciones'
+type Tab = 'inventario' | 'agregar' | 'quitar' | 'traslados' | 'kits' | 'conteo' | 'historial' | 'autorizaciones' | 'wms'
 type ModalType = 'ingreso' | 'rebaje' | null
 
 const emptyIngreso = {
@@ -694,6 +694,39 @@ export default function InventarioPage() {
     },
     enabled: !!tenant && tab === 'autorizaciones' && puedeVerAutorizaciones,
   })
+
+  // ── Tab WMS: tareas de picking/reabastecimiento (mig 289) — vista de gestión para el DUEÑO.
+  // Misma fuente y RPCs que /picking (mobile); acá es una lista de escritorio sin escaneo.
+  const { data: wmsTareas = [], isLoading: loadingWms } = useQuery({
+    queryKey: ['wms_tareas', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('wms_tareas')
+        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero)')
+        .eq('tenant_id', tenant!.id)
+        .in('estado', ['pendiente', 'en_curso'])
+        .order('prioridad', { ascending: false })
+        .order('created_at')
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      const { data, error } = await q
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'wms',
+  })
+  const [completandoWms, setCompletandoWms] = useState<string | null>(null)
+  const completarTareaWms = async (t: any) => {
+    if (t.tarea_precedente_id) {
+      const prec = (wmsTareas as any[]).find(x => x.id === t.tarea_precedente_id)
+      if (prec && prec.estado !== 'completada') { toast.error('Primero hay que completar el reabastecimiento de esta tarea'); return }
+    }
+    setCompletandoWms(t.id)
+    const rpc = t.tipo === 'replenishment' ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+    const { error } = await supabase.rpc(rpc, { p_tarea_id: t.id })
+    setCompletandoWms(null)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    toast.success('Tarea completada')
+  }
 
   // ── Helper: stock por sucursal activa (o global si no hay sucursal) ──────────
   // Uso: movimientos_stock.stock_antes / stock_despues + display en formularios
@@ -2496,6 +2529,7 @@ export default function InventarioPage() {
             // Autorizaciones: aprobación de ajustes/conteos. También en BÁSICO: el tab Conteo
             // genera ajustes que requieren aprobación (corregido 2026-06-19, antes se ocultaba mal).
             ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: CheckCircle2 }] : []),
+            ...(modoAvanzado ? [{ id: 'wms', label: 'Tareas WMS', icon: ScanBarcode }] : []),
           ]}
           active={tab}
           onChange={(id) => setTab(id as Tab)}
@@ -5724,6 +5758,55 @@ export default function InventarioPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'wms' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500 dark:text-gray-400">Tareas de picking y reabastecimiento pendientes (logística de depósito — no toca ventas ni rebajes).</p>
+            <Link to="/picking" className="flex-shrink-0 text-sm text-accent-text font-medium hover:underline flex items-center gap-1">
+              <ScanBarcode size={14} /> Abrir vista de picking →
+            </Link>
+          </div>
+
+          {loadingWms ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : wmsTareas.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ScanBarcode size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay tareas WMS pendientes</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(wmsTareas as any[]).map(t => {
+                const esReab = t.tipo === 'replenishment'
+                const precedente = t.tarea_precedente_id ? (wmsTareas as any[]).find(x => x.id === t.tarea_precedente_id) : null
+                const bloqueada = !!precedente && precedente.estado !== 'completada'
+                return (
+                  <div key={t.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 flex items-center gap-3">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                      {esReab ? 'Reabastecimiento' : 'Picking'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{t.productos?.nombre ?? '—'} <span className="text-xs text-gray-400 font-normal">{t.productos?.sku}</span></p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {t.ubicacion_origen?.nombre ?? 'sin ubicación'}{esReab && t.ubicacion_destino ? ` → ${t.ubicacion_destino.nombre}` : ''}
+                        {t.envios?.numero ? ` · Envío #${t.envios.numero}` : ''}{t.lpn_origen ? ` · LPN ${t.lpn_origen}` : ''}
+                      </p>
+                    </div>
+                    <button onClick={() => completarTareaWms(t)} disabled={bloqueada || completandoWms === t.id}
+                      title={bloqueada ? 'Esperando que se complete el reabastecimiento' : undefined}
+                      className="flex-shrink-0 bg-accent hover:bg-accent/90 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                      {completandoWms === t.id ? '...' : 'Completar'}
+                    </button>
                   </div>
                 )
               })}

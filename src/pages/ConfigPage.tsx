@@ -30,7 +30,7 @@ import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
-type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'atributos' | 'codigos'
+type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'atributos' | 'codigos' | 'zonas'
 type AtributoVariante = 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'
 type ConSubTab = 'integraciones' | 'api'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
@@ -1415,6 +1415,7 @@ export default function ConfigPage() {
   const [newUbicLargo, setNewUbicLargo] = useState('')
   const [newUbicPeso, setNewUbicPeso] = useState('')
   const [newUbicPallets, setNewUbicPallets] = useState('')
+  const [newUbicZonaId, setNewUbicZonaId] = useState('')
   const [editUbicId, setEditUbicId] = useState<string | null>(null)
   const [editUbicNombre, setEditUbicNombre] = useState('')
   const [editUbicDesc, setEditUbicDesc] = useState('')
@@ -1429,6 +1430,7 @@ export default function ConfigPage() {
   const [editUbicWmsOpen, setEditUbicWmsOpen] = useState(false)
   const [editUbicMonoSku, setEditUbicMonoSku] = useState(false)
   const [editUbicSucursalId, setEditUbicSucursalId] = useState('')
+  const [editUbicZonaId, setEditUbicZonaId] = useState('')
   const [ubicSearch, setUbicSearch] = useState('')
 
   const addUbicacion = async () => {
@@ -1448,6 +1450,7 @@ export default function ConfigPage() {
       largo_cm: newUbicLargo ? parseFloat(newUbicLargo) : null,
       peso_max_kg: newUbicPeso ? parseFloat(newUbicPeso) : null,
       capacidad_pallets: newUbicPallets ? parseInt(newUbicPallets) : null,
+      zona_id: newUbicZonaId || null,
     })
     if (error) { toast.error(error.message); return }
     toast.success('Ubicación agregada')
@@ -1455,7 +1458,7 @@ export default function ConfigPage() {
     logActividad({ entidad: 'ubicacion', entidad_nombre: newUbicNombre.trim(), accion: 'crear', pagina: '/configuracion' })
     setNewUbicNombre(''); setNewUbicDesc(''); setNewUbicPrioridad('0'); setNewUbicSecuencia('')
     setNewUbicSucursalId(''); setNewUbicMonoSku(false); setNewUbicWmsOpen(false)
-    setNewUbicTipo(''); setNewUbicAlto(''); setNewUbicAncho(''); setNewUbicLargo(''); setNewUbicPeso(''); setNewUbicPallets('')
+    setNewUbicTipo(''); setNewUbicAlto(''); setNewUbicAncho(''); setNewUbicLargo(''); setNewUbicPeso(''); setNewUbicPallets(''); setNewUbicZonaId('')
   }
   const startEditUbic = (u: any) => {
     setEditUbicId(u.id)
@@ -1472,6 +1475,7 @@ export default function ConfigPage() {
     setEditUbicWmsOpen(!!(u.tipo_ubicacion || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
     setEditUbicMonoSku(u.mono_sku ?? false)
     setEditUbicSucursalId(u.sucursal_id ?? '')
+    setEditUbicZonaId(u.zona_id ?? '')
   }
   const saveUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
@@ -1488,6 +1492,7 @@ export default function ConfigPage() {
       capacidad_pallets: editUbicPallets ? parseInt(editUbicPallets) : null,
       mono_sku: editUbicMonoSku,
       sucursal_id: editUbicSucursalId || null,
+      zona_id: editUbicZonaId || null,
     }).eq('id', id)
     if (error) { toast.error(error.message); return }
     toast.success('Actualizada')
@@ -1559,6 +1564,132 @@ export default function ConfigPage() {
     const { error } = await supabase.from('ubicaciones').update({ disponible_meli: nuevo }).eq('id', u.id)
     if (error) { toast.error(error.message); return }
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+  }
+
+  // ── Zonas + reglas de almacenaje + reabastecimiento (WMS Fase 3-5) ────────────────────
+  const { data: zonas = [], isLoading: loadingZonas } = useQuery({
+    queryKey: ['zonas', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('zonas').select('*').eq('tenant_id', tenant!.id).order('nombre'); return data ?? [] },
+    enabled: !!tenant && tab === 'inventario',
+  })
+  const [newZonaNombre, setNewZonaNombre] = useState('')
+  const [newZonaDesc, setNewZonaDesc] = useState('')
+  const [newZonaSucursalId, setNewZonaSucursalId] = useState('')
+  const [editZonaId, setEditZonaId] = useState<string | null>(null)
+  const [editZonaNombre, setEditZonaNombre] = useState('')
+  const [editZonaDesc, setEditZonaDesc] = useState('')
+  const [editZonaSucursalId, setEditZonaSucursalId] = useState('')
+
+  const addZona = async () => {
+    if (!newZonaNombre.trim()) return
+    const { error } = await supabase.from('zonas').insert({
+      tenant_id: tenant!.id, nombre: newZonaNombre.trim(), descripcion: newZonaDesc || null,
+      sucursal_id: newZonaSucursalId || sucursalId || null,
+    })
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['zonas'] })
+    logActividad({ entidad: 'zona', entidad_nombre: newZonaNombre.trim(), accion: 'crear', pagina: '/configuracion' })
+    setNewZonaNombre(''); setNewZonaDesc(''); setNewZonaSucursalId('')
+    toast.success('Zona creada')
+  }
+  const startEditZona = (z: any) => {
+    setEditZonaId(z.id); setEditZonaNombre(z.nombre); setEditZonaDesc(z.descripcion ?? ''); setEditZonaSucursalId(z.sucursal_id ?? '')
+  }
+  const saveZona = async (id: string) => {
+    if (!editZonaNombre.trim()) return
+    const { error } = await supabase.from('zonas').update({
+      nombre: editZonaNombre.trim(), descripcion: editZonaDesc || null, sucursal_id: editZonaSucursalId || null,
+    }).eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['zonas'] })
+    setEditZonaId(null)
+    toast.success('Zona actualizada')
+  }
+  const deleteZona = async (id: string) => {
+    const z = (zonas as any[]).find(x => x.id === id)
+    if (!confirm(`¿Eliminar la zona "${z?.nombre}"? Las ubicaciones que la usen quedarán sin zona.`)) return
+    const { error } = await supabase.from('zonas').delete().eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['zonas'] })
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+    toast.success('Zona eliminada')
+  }
+
+  // Reglas de almacenaje: UdM → zona sugerida (sugerencia editable, nunca bloquea)
+  const { data: reglasAlmacenaje = [] } = useQuery({
+    queryKey: ['reglas_almacenaje', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('reglas_almacenaje').select('*').eq('tenant_id', tenant!.id); return data ?? [] },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'zonas',
+  })
+  const setReglaAlmacenaje = async (unidadMedidaId: string, zonaId: string) => {
+    if (!zonaId) {
+      const { error } = await supabase.from('reglas_almacenaje').delete().eq('tenant_id', tenant!.id).eq('unidad_medida_id', unidadMedidaId)
+      if (error) { toast.error(error.message); return }
+    } else {
+      const { error } = await supabase.from('reglas_almacenaje')
+        .upsert({ tenant_id: tenant!.id, unidad_medida_id: unidadMedidaId, zona_id: zonaId }, { onConflict: 'tenant_id,unidad_medida_id' })
+      if (error) { toast.error(error.message); return }
+    }
+    qc.invalidateQueries({ queryKey: ['reglas_almacenaje'] })
+  }
+
+  // Reabastecimiento: 2 flags independientes + umbrales por producto+ubicación
+  const t289 = tenant as any
+  const toggleReabOnDemand = async () => {
+    const nuevo = !t289?.wms_reabastecimiento_on_demand
+    const { data, error } = await supabase.from('tenants').update({ wms_reabastecimiento_on_demand: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Reabastecimiento on-demand habilitado' : 'Reabastecimiento on-demand deshabilitado')
+  }
+  const toggleReabUmbral = async () => {
+    const nuevo = !t289?.wms_reabastecimiento_umbral
+    const { data, error } = await supabase.from('tenants').update({ wms_reabastecimiento_umbral: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Reabastecimiento por umbral habilitado' : 'Reabastecimiento por umbral deshabilitado')
+  }
+
+  const { data: umbrales = [], isLoading: loadingUmbrales } = useQuery({
+    queryKey: ['producto_ubicacion_umbrales', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_ubicacion_umbrales')
+        .select('*, productos(nombre, sku), ubicaciones(nombre)').eq('tenant_id', tenant!.id)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'zonas',
+  })
+  const ubicacionesPicking = (ubicaciones as any[]).filter(u => u.tipo_ubicacion === 'picking')
+  const [umbralProdBusqueda, setUmbralProdBusqueda] = useState('')
+  const { data: umbralProdResultados = [] } = useQuery({
+    queryKey: ['productos-busqueda-umbral', tenant?.id, umbralProdBusqueda],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos').select('id, nombre, sku').eq('tenant_id', tenant!.id).eq('activo', true)
+        .ilike('nombre', `%${umbralProdBusqueda}%`).limit(8)
+      return data ?? []
+    },
+    enabled: !!tenant && umbralProdBusqueda.trim().length >= 2,
+  })
+  const [umbralProdSel, setUmbralProdSel] = useState<{ id: string; nombre: string } | null>(null)
+  const [umbralUbicId, setUmbralUbicId] = useState('')
+  const [umbralMin, setUmbralMin] = useState('')
+  const [umbralMax, setUmbralMax] = useState('')
+
+  const addUmbral = async () => {
+    if (!umbralProdSel || !umbralUbicId || !umbralMin.trim()) return
+    const { error } = await supabase.from('producto_ubicacion_umbrales').upsert({
+      tenant_id: tenant!.id, producto_id: umbralProdSel.id, ubicacion_id: umbralUbicId,
+      stock_minimo: parseInt(umbralMin) || 0, stock_maximo: umbralMax.trim() ? parseInt(umbralMax) : null,
+    }, { onConflict: 'tenant_id,producto_id,ubicacion_id' })
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['producto_ubicacion_umbrales'] })
+    setUmbralProdSel(null); setUmbralProdBusqueda(''); setUmbralUbicId(''); setUmbralMin(''); setUmbralMax('')
+    toast.success('Umbral guardado')
+  }
+  const deleteUmbral = async (id: string) => {
+    const { error } = await supabase.from('producto_ubicacion_umbrales').delete().eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['producto_ubicacion_umbrales'] })
   }
 
   // Estados de inventario
@@ -3299,8 +3430,9 @@ export default function ConfigPage() {
               { id: 'unidades' as InvSubTab, label: 'Unidades', icon: Ruler },
               { id: 'atributos' as InvSubTab, label: 'Atributos', icon: Shirt },
               { id: 'codigos' as InvSubTab, label: 'Códigos', icon: ScanBarcode },
-              // Reglas (FIFO/conteos), Ubicaciones, Estados y Códigos GS1 son WMS → solo avanzado
-            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
+              { id: 'zonas' as InvSubTab, label: 'Zonas y picking', icon: Navigation },
+              // Reglas (FIFO/conteos), Ubicaciones, Estados, Códigos GS1 y Zonas/picking son WMS → solo avanzado
+            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos', 'zonas'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
             active={invSubTab}
             onChange={(id) => setInvSubTab(id as InvSubTab)}
           />
@@ -3497,6 +3629,13 @@ export default function ConfigPage() {
                   <option value="camara">Cámara frigorífica</option>
                   <option value="cross_dock">Cross-dock</option>
                 </select>
+                {zonas.length > 0 && (
+                  <select value={newUbicZonaId} onChange={e => setNewUbicZonaId(e.target.value)}
+                    className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
+                    <option value="">Sin zona</option>
+                    {(zonas as any[]).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                  </select>
+                )}
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={newUbicAlto} onChange={e => setNewUbicAlto(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={newUbicAncho} onChange={e => setNewUbicAncho(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Largo (cm)" value={newUbicLargo} onChange={e => setNewUbicLargo(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
@@ -3571,6 +3710,13 @@ export default function ConfigPage() {
                               <option value="camara">Cámara frigorífica</option>
                               <option value="cross_dock">Cross-dock</option>
                             </select>
+                            {zonas.length > 0 && (
+                              <select value={editUbicZonaId} onChange={e => setEditUbicZonaId(e.target.value)}
+                                className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
+                                <option value="">Sin zona</option>
+                                {(zonas as any[]).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                              </select>
+                            )}
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={editUbicAlto} onChange={e => setEditUbicAlto(e.target.value)}
                               className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={editUbicAncho} onChange={e => setEditUbicAncho(e.target.value)}
@@ -3654,6 +3800,197 @@ export default function ConfigPage() {
               {ubicaciones.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay ubicaciones cargadas.</p>}
             </div>
           )}
+        </div>
+          )}
+
+          {invSubTab === 'zonas' && (
+        <div className="space-y-4">
+          {/* Reabastecimiento — 2 triggers independientes */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+            <div className="flex items-center gap-2">
+              <Navigation size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reabastecimiento</h2>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Mueve stock de zonas de reserva (bulk/estiba/cámara) a zonas de picking. Se pueden habilitar por separado, juntos o ninguno.</p>
+            <label className="flex items-center gap-3 cursor-pointer py-1">
+              <Toggle checked={!!t289?.wms_reabastecimiento_on_demand} onChange={toggleReabOnDemand} />
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">On-demand</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Al preparar un picking que no encuentra stock en la zona de picking, se genera automáticamente una tarea de reabastecimiento desde bulk/reserva (pallet completo o cajas sueltas, según la estructura del producto).</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer py-1">
+              <Toggle checked={!!t289?.wms_reabastecimiento_umbral} onChange={toggleReabUmbral} />
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Por umbral (mín/máx)</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Genera tareas proactivas cuando el stock de un producto en una ubicación de picking cae por debajo del mínimo configurado abajo.</p>
+              </div>
+            </label>
+          </div>
+
+          {/* Zonas */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <MapPin size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Zonas</h2>
+              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{zonas.length} cargadas</span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Áreas del depósito que agrupan ubicaciones (ej. "Zona Picking A", "Bulk Norte"). Asigná cada ubicación a una zona desde el tab Ubicaciones.</p>
+
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <input type="text" placeholder="Nombre de la zona" value={newZonaNombre}
+                  onChange={e => setNewZonaNombre(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addZona()}
+                  className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                <button onClick={addZona} disabled={!newZonaNombre.trim()}
+                  className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                  <Plus size={15} /> Agregar
+                </button>
+              </div>
+              <input type="text" placeholder="Descripción (opcional)" value={newZonaDesc}
+                onChange={e => setNewZonaDesc(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+              {sucursales.length > 1 && (
+                <select value={newZonaSucursalId} onChange={e => setNewZonaSucursalId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                  <option value="">Global (todas las sucursales)</option>
+                  {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              )}
+            </div>
+
+            {loadingZonas ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
+              <div className="space-y-2">
+                {(zonas as any[]).map(z => (
+                  <div key={z.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5">
+                    {editZonaId === z.id ? (
+                      <div className="flex-1 flex flex-wrap gap-2 items-center">
+                        <input type="text" value={editZonaNombre} onChange={e => setEditZonaNombre(e.target.value)}
+                          className="flex-1 min-w-0 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                        <input type="text" value={editZonaDesc} onChange={e => setEditZonaDesc(e.target.value)}
+                          placeholder="Descripción" className="w-40 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                        {sucursales.length > 1 && (
+                          <select value={editZonaSucursalId} onChange={e => setEditZonaSucursalId(e.target.value)}
+                            className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                            <option value="">Global</option>
+                            {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                          </select>
+                        )}
+                        <button onClick={() => saveZona(z.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
+                        <button onClick={() => setEditZonaId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{z.nombre}</span>
+                          {z.descripcion && <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{z.descripcion}</span>}
+                          {z.sucursal_id && <span className="ml-2 text-xs text-blue-500">{(sucursales as any[]).find(s => s.id === z.sucursal_id)?.nombre}</span>}
+                        </div>
+                        <button onClick={() => startEditZona(z)} className="text-gray-400 dark:text-gray-500 hover:text-accent-text p-1"><Pencil size={14} /></button>
+                        <button onClick={() => deleteZona(z.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {zonas.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay zonas cargadas.</p>}
+              </div>
+            )}
+          </div>
+
+          {/* Reglas de almacenaje */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <Ruler size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reglas de almacenaje</h2>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Sugerencia (no bloqueante) de a qué zona llevar el stock que ingresa en cada Unidad de Medida — ej. "Pallet → Zona Bulk". Se puede elegir otra ubicación al ingresar igual.</p>
+            {zonas.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500">Creá al menos una zona arriba para poder configurar reglas.</p>
+            ) : (
+              <div className="space-y-2">
+                {(unidadesMedida as any[]).map(um => {
+                  const regla = (reglasAlmacenaje as any[]).find(r => r.unidad_medida_id === um.id)
+                  return (
+                    <div key={um.id} className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+                      <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">{um.nombre}</span>
+                      <select value={regla?.zona_id ?? ''} onChange={e => setReglaAlmacenaje(um.id, e.target.value)}
+                        className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                        <option value="">Sin sugerencia</option>
+                        {(zonas as any[]).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                      </select>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Umbrales de reabastecimiento */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingDown size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Umbrales de reabastecimiento</h2>
+              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{umbrales.length} cargados</span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Mín/máx de stock (unidades base) por producto en una ubicación de picking. Solo tiene efecto si "Por umbral" está habilitado arriba.</p>
+
+            {ubicacionesPicking.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500">No hay ninguna ubicación marcada como tipo "Picking" todavía — configurala en el tab Ubicaciones.</p>
+            ) : (
+              <>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                    <input type="text" placeholder="Buscar producto..." value={umbralProdSel ? umbralProdSel.nombre : umbralProdBusqueda}
+                      onChange={e => { setUmbralProdBusqueda(e.target.value); setUmbralProdSel(null) }}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                    {!umbralProdSel && umbralProdBusqueda.trim().length >= 2 && (umbralProdResultados as any[]).length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                        {(umbralProdResultados as any[]).map(p => (
+                          <button key={p.id} type="button" onClick={() => { setUmbralProdSel({ id: p.id, nombre: p.nombre }); setUmbralProdBusqueda('') }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between">
+                            <span>{p.nombre}</span><span className="text-xs text-gray-400">{p.sku}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <select value={umbralUbicId} onChange={e => setUmbralUbicId(e.target.value)}
+                      className="flex-1 min-w-[10rem] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                      <option value="">Ubicación de picking...</option>
+                      {ubicacionesPicking.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Mínimo" value={umbralMin}
+                      onChange={e => setUmbralMin(e.target.value)}
+                      className="w-24 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Máximo (opc.)" value={umbralMax}
+                      onChange={e => setUmbralMax(e.target.value)}
+                      className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                    <button onClick={addUmbral} disabled={!umbralProdSel || !umbralUbicId || !umbralMin.trim()}
+                      className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                      <Plus size={15} /> Agregar
+                    </button>
+                  </div>
+                </div>
+
+                {loadingUmbrales ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
+                  <div className="space-y-2">
+                    {(umbrales as any[]).map(u => (
+                      <div key={u.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5 text-sm">
+                        <span className="flex-1 font-medium text-gray-800 dark:text-gray-100">{u.productos?.nombre ?? '—'}</span>
+                        <span className="text-gray-400 dark:text-gray-500">{u.ubicaciones?.nombre ?? '—'}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">mín {u.stock_minimo}{u.stock_maximo != null ? ` · máx ${u.stock_maximo}` : ''}</span>
+                        <button onClick={() => deleteUmbral(u.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                      </div>
+                    ))}
+                    {umbrales.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay umbrales configurados.</p>}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
           )}
 

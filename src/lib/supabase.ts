@@ -291,6 +291,12 @@ export interface Ubicacion {
   capacidad_pallets?: number | null
   // Sprint B
   mono_sku?: boolean
+  disponible_tn?: boolean
+  disponible_meli?: boolean
+  sucursal_id?: string | null
+  secuencia?: number | null
+  // WMS Fase 3 — zonas
+  zona_id?: string | null
 }
 
 export interface Producto {

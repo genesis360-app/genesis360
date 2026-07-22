@@ -8,6 +8,7 @@ export type EntidadLog =
   | 'categoria'
   | 'proveedor'
   | 'ubicacion'
+  | 'zona'
   | 'estado'
   | 'motivo'
   | 'atributo_variante'

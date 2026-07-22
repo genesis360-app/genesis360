@@ -39,12 +39,26 @@ type: project
 > v1.137.0 a v1.142.0 quedan obsoletos** — corregidos in-line para no contradecir. Estado real:
 > **PROD = DEV = v1.142.0**.
 >
-> **▶ Pendiente:**
-> 1. **`app-reference.md`** (base del Asistente IA) — el motivo por el que se había pateado
->    ("redeployar mientras esto seguía en DEV haría que el Asistente hable de features que no
->    existen en PROD") **ya no aplica** — el deploy a PROD ya pasó. Ahora sí corresponde: `npm run
->    ai:knowledge` + redeploy de la EF `ai-assistant` en DEV y PROD. **Pendiente de próxima sesión o
->    decisión de GO — no ejecutado en esta sesión** (esta sesión fue solo reconciliación de wiki).
+> **✅ CERRADO (2026-07-22, mismo día): `app-reference.md` + conocimiento del Asistente IA.** El
+> pendiente #1 de abajo (dejado abierto por la sesión de deploy) se resolvió en la misma jornada:
+> se actualizó `wiki/overview/app-reference.md` con las features que faltaban — venta por Unidad de
+> Medida en el POS (3.2), descuento automático por estado de inventario (3.2 y 3.20), precio por
+> nivel de estructura + ancla de precio (3.5), panel de Filtros en Productos (3.5), columnas nuevas
+> del importador de productos (`estr_precio_ancla` + precio por nivel + `notas`, 4.6). De paso se
+> corrigió el pie del documento, que citaba "App v1.100.0" fijo (desactualizado, y contradecía la
+> propia regla del documento de no repetir cifras volátiles como la versión) — ahora solo cita la
+> fecha de actualización de contenido. Se corrió `npm run ai:knowledge` (44 secciones regeneradas) y
+> se redeployó la EF `ai-assistant` en DEV (`gcmhzdedrkmmzfzfveig`) y PROD (`jjffnbrdjchquexdfgwq`)
+> vía Supabase CLI (el `deploy_edge_function` del MCP no era práctico: `knowledge.generated.ts` pesa
+> ~70KB y el tool exige el contenido inline). Verificado en DEV con `npm run ai:smoke` (5 preguntas
+> doradas, 0 fallas) + 3 preguntas ad-hoc sobre las features nuevas (UoM en el carrito, descuento por
+> estado, precio por nivel en el importador) respondidas correctamente citando UI real, sin inventar
+> botones. Verificado en PROD con smoke OPTIONS (200 OK). Commit `8efa9960` en `dev`, PR #298
+> `dev→main` con checks verdes, **mergeado a `main`** (`05043d4d`). Detalle: `wiki/features/asistente-ia.md`
+> ("Redeploy 2026-07-22").
+>
+> **▶ Pendiente (sin cambios):**
+> 1. ~~`app-reference.md` + redeploy EF `ai-assistant`~~ — ✅ cerrado arriba (2026-07-22).
 > 2. **`schema_full.sql`** sigue parcheado A MANO hasta la mig 287 (ahora también le falta la 288) —
 >    bloqueado por falta de `SUPABASE_ACCESS_TOKEN` en el entorno, mismo gotcha de siempre (ver
 >    [[reference_schema_dump_metodo]]). Regenerar con el script completo cuando haya token a mano.
@@ -103,12 +117,9 @@ type: project
 > **▶ Pendiente inmediato:** ~~deploy a PROD cuando GO lo pida~~ — ✅ hecho el 2026-07-22 (PR #297,
 > migs 282-288 aplicadas, ver bloque de arriba).
 >
-> **▶ `app-reference.md` (base del Asistente IA) SIGUE sin tocar** (arrastrado de la sesión
-> anterior) — no menciona descuento por estado, precio por UoM, venta por UoM ni el importador con
-> precio por nivel. A propósito: exige `npm run ai:knowledge` + redeploy de la EF `ai-assistant`
-> (DEV y PROD); en el momento de escribir esto se pateaba para "actualizarlo junto con el deploy a
-> PROD, no antes" — **ese deploy ya pasó (2026-07-22), ahora sí corresponde hacerlo** (ver pendiente
-> actualizado en el bloque de arriba).
+> **▶ `app-reference.md` (base del Asistente IA)** — ✅ **cerrado el 2026-07-22** (ver bloque de
+> arriba): ya documenta descuento por estado, precio por UoM, venta por UoM y el importador con
+> precio por nivel; `npm run ai:knowledge` corrido + EF `ai-assistant` redeployada en DEV y PROD.
 >
 > **▶ `schema_full.sql` sigue parcheado A MANO hasta la mig 287** (sin `SUPABASE_ACCESS_TOKEN` en el
 > entorno, mismo bloqueo de siempre — ver [[reference_schema_dump_metodo]]) — **todavía le falta la

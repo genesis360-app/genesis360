@@ -6,6 +6,38 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-22] update | 🤖 app-reference.md al día + redeploy EF ai-assistant (DEV+PROD) — cierra el último pendiente del deploy v1.137.0-v1.142.0
+
+Cierra el pendiente que había quedado abierto en la reconciliación del deploy a PROD (bloque
+"ARRANCÁ ACÁ" del mismo día, commit `b86a0ccd`): la base de conocimiento del Asistente IA
+(`wiki/overview/app-reference.md`) no mencionaba ninguna de las features de v1.137.0-v1.142.0.
+
+Se actualizó `app-reference.md` con lo que faltaba: venta por Unidad de Medida en el POS (3.2),
+descuento automático por estado de inventario (3.2 y 3.20), precio por nivel de estructura + ancla
+de precio (3.5), panel de Filtros en Productos (3.5), y las columnas nuevas del importador de
+productos — `estr_precio_ancla` + precio por nivel + `notas` (4.6). De paso se corrigió el pie del
+documento, que citaba "App v1.100.0" fijo (desactualizado, y contradecía la propia regla del
+documento de no repetir cifras volátiles como la versión) — ahora dice solo la fecha de
+actualización de contenido, sin número de versión.
+
+Se corrió `npm run ai:knowledge` (regeneró `supabase/functions/ai-assistant/knowledge.generated.ts`,
+44 secciones) y se redeployó la Edge Function `ai-assistant` en **DEV** (`gcmhzdedrkmmzfzfveig`) y
+**PROD** (`jjffnbrdjchquexdfgwq`) vía Supabase CLI (`supabase functions deploy ai-assistant
+--project-ref ...`) — el deploy vía MCP no era práctico porque `knowledge.generated.ts` pesa ~70KB y
+el tool requiere el contenido inline.
+
+**Verificado en DEV** con `npm run ai:smoke` (5 preguntas doradas, 0 fallas) + 3 preguntas ad-hoc
+sobre las features nuevas ("¿puedo vender por caja con precio distinto?", "¿cómo configuro
+descuento por estado próximo a vencer?", "¿puedo cargar precio de caja en el importador?") — las 3
+respondidas correctamente citando la UI real (selector de UoM en el carrito, `descuento_pct` en
+Estados, `estr_precio_ancla` en el importador), sin inventar botones. **Verificado en PROD** con
+smoke OPTIONS (200 OK, función viva).
+
+Commiteado en `dev` (`8efa9960`), PR #298 `dev→main` con checks verdes, **mergeado a `main`**
+(`05043d4d`). Con esto, todos los pendientes de la sesión de deploy de v1.137.0-v1.142.0 quedan
+cerrados salvo `schema_full.sql` (bloqueado por falta de `SUPABASE_ACCESS_TOKEN`, sin cambios) y los
+puntos 1/2 del backlog de Fede (en pausa esperando confirmación con Fede).
+
 ## [2026-07-22] deploy | 🚀 v1.137.0 a v1.142.0 — DEPLOY REAL a PROD (migs 282-288 + PR #297 + Vercel verificado con curl)
 
 Deploy real a producción de las 6 versiones que se habían acumulado en `dev` sin llegar a PROD:

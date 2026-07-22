@@ -63,6 +63,23 @@ al wiki en general que alimente el conocimiento), correr `npm run ai:knowledge` 
 **en el mismo momento** — no dejarlo como pendiente para después. Detalle: `log.md` (2026-07-18,
 "Redeploy EF ai-assistant...").
 
+## Redeploy 2026-07-22 (DEV+PROD) — cierra el conocimiento faltante de v1.137.0-v1.142.0
+
+Tras el deploy real a PROD de v1.137.0 a v1.142.0 (Estructuras dinámicas por UdM, Filtros en
+Productos, descuento por estado, precio por UoM Fase 1/2, precio por nivel en el importador),
+`app-reference.md` había quedado sin documentar ninguna de esas features — quedó como pendiente
+explícito de esa sesión de deploy. Cerrado en la misma jornada: se agregaron las secciones nuevas
+(venta por Unidad de Medida en el POS, descuento automático por estado, precio por nivel de
+estructura + ancla de precio, panel de Filtros en Productos, columnas del importador
+`estr_precio_ancla`/precio por nivel/`notas`) y se corrigió el pie del documento, que citaba una
+versión fija desactualizada (v1.100.0) contradiciendo su propia regla de no repetir cifras
+volátiles. `npm run ai:knowledge` regenerado (44 secciones) + EF `ai-assistant` redeployada en DEV
+(`gcmhzdedrkmmzfzfveig`) y PROD (`jjffnbrdjchquexdfgwq`) vía Supabase CLI (el `deploy_edge_function`
+del MCP no es práctico acá: `knowledge.generated.ts` pesa ~70KB y el tool exige el contenido
+inline). Verificado con `npm run ai:smoke` en DEV (5 preguntas doradas, 0 fallas) + 3 preguntas
+ad-hoc sobre las features nuevas (respuestas correctas citando UI real, sin inventar botones) y
+smoke OPTIONS 200 en PROD. Commit `8efa9960` en `dev`, PR #298 mergeado a `main` (`05043d4d`).
+
 ## Validación (2026-07-07, DEV)
 
 - Fases 1+2: CAJERO modo básico, "¿cómo emito una factura?" → guió por Ventas → Historial → "Emitir factura AFIP" (real), config AFIP atribuida al DUEÑO. Off-topic declinado 2/2.

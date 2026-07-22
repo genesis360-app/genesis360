@@ -6,7 +6,54 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🛑 ARRANCÁ ACÁ (2026-07-21 noche, v1.142.0 EN DEV) — Precio por nivel en el importador (CIERRA el backlog de Fede) + fix crítico: el importador de productos NUNCA funcionó — mig 288 SOLO EN DEV, PROD sigue v1.136.0
+> ### 🚀 ARRANCÁ ACÁ (2026-07-22, DEPLOY REAL a PROD) — **v1.137.0 a v1.142.0 YA ESTÁN EN PROD** · migs 282-288 aplicadas en PROD (verificadas) · PR #297 mergeado a `main` (`0109abf4`) · **Vercel PRD CONFIRMADO sirviendo v1.142.0** (curl real a los 3 dominios)
+>
+> Deploy real a producción de las 6 versiones que se habían acumulado en `dev` desde la sesión del
+> 19/07 sin llegar a PROD: **v1.137.0** (Estructuras dinámicas por UdM Fase 1), **v1.138.0**
+> (Filtros en Productos + columna Estructura, sin migración), **v1.139.0** (descuento por estado),
+> **v1.140.0** (precio por UoM Fase 1), **v1.141.0** (precio por UoM Fase 2 — venta por UoM en el
+> POS), **v1.142.0** (precio por nivel en el importador + fix crítico del bug de `notas`).
+>
+> **Migraciones aplicadas en PROD** (proyecto Supabase `jjffnbrdjchquexdfgwq`), en orden:
+> `282_estructura_niveles_dinamicos`, `283_backfill_estructura_niveles_conversiones`,
+> `284_estados_inventario_descuento`, `285_venta_descuento_estado`, `286_precio_por_uom`,
+> `287_fn_estructura_niveles_precio`, `288_productos_notas`. Confirmado con `list_migrations` de
+> PROD que las 7 quedaron aplicadas, y con `execute_sql` que las columnas/tabla/función realmente
+> existen. Revisadas antes por el subagente `migration-reviewer`: sin DDL destructivo, idempotentes,
+> RLS+GRANTs completos. `producto_estructuras` tenía 0 filas en PROD antes de aplicar, así que los
+> backfills de 282/283 fueron no-op (confirmado, cero sorpresas de datos). Advisors de seguridad de
+> PROD chequeados post-aplicación: nada nuevo introducido por estas 7 migraciones.
+>
+> **PR #297 `dev`→`main`** creado, checks verdes (Unit Tests + Vercel preview), **mergeado a `main`**
+> (commit `0109abf455eea1cd1907bb2fef4ca62c5ef1f609`). Vercel disparó el build de producción solo
+> (`target: production`) sobre el merge commit, deployment `dpl_5mmYAPQhR1FLyM8vcmuh7gbyXmnQ`, quedó
+> `READY`, aliased a `genesis360.pro`/`app.genesis360.pro`/`www.genesis360.pro`. **Verificado con
+> curl real a ambos dominios** (no solo el estado de Vercel, siguiendo el gotcha conocido del
+> webhook perdido de la mig 295/296): el bundle JS servido en vivo contiene la cadena `v1.142.0`.
+> PROD ya está sirviendo el código nuevo, confirmado, no es una suposición.
+>
+> Tag `v1.142.0` y GitHub release ya existían de antes (creados sobre el commit de `dev` en la
+> sesión anterior) — no hizo falta crear nada nuevo de eso.
+>
+> **Con esto, todos los bloques de abajo que decían "SOLO EN DEV" / "PROD sigue v1.136.0" para
+> v1.137.0 a v1.142.0 quedan obsoletos** — corregidos in-line para no contradecir. Estado real:
+> **PROD = DEV = v1.142.0**.
+>
+> **▶ Pendiente:**
+> 1. **`app-reference.md`** (base del Asistente IA) — el motivo por el que se había pateado
+>    ("redeployar mientras esto seguía en DEV haría que el Asistente hable de features que no
+>    existen en PROD") **ya no aplica** — el deploy a PROD ya pasó. Ahora sí corresponde: `npm run
+>    ai:knowledge` + redeploy de la EF `ai-assistant` en DEV y PROD. **Pendiente de próxima sesión o
+>    decisión de GO — no ejecutado en esta sesión** (esta sesión fue solo reconciliación de wiki).
+> 2. **`schema_full.sql`** sigue parcheado A MANO hasta la mig 287 (ahora también le falta la 288) —
+>    bloqueado por falta de `SUPABASE_ACCESS_TOKEN` en el entorno, mismo gotcha de siempre (ver
+>    [[reference_schema_dump_metodo]]). Regenerar con el script completo cuando haya token a mano.
+> 3. Puntos 1/2 del backlog de Fede siguen en pausa esperando que GO confirme con Fede (sin cambios).
+> 4. Los 4 puntos "para conversar" del relevamiento de Config Ventas/Envíos (A códigos GS1 de
+>    proveedor · B unidades sueltas de paquete · C detalle fino de envío gratis · D integración MODO
+>    nunca validada contra la API real) siguen abiertos, sin plan (arrastrado de v1.136.0).
+
+> ### 🛑 ESTADO ANTERIOR (2026-07-21 noche, v1.142.0) — Precio por nivel en el importador (CIERRA el backlog de Fede) + fix crítico: el importador de productos NUNCA funcionó — mig 288 (junto con 282-287) YA EN PROD desde el 2026-07-22 (ver bloque de arriba)
 >
 > Continuación inmediata de la sesión anterior (v1.139/140/141.0): se resolvió el único pendiente
 > real que quedaba de las 7 preguntas del backlog de Fede — extender `ImportarProductosPage` con
@@ -49,28 +96,31 @@ type: project
 >
 > **Con esto los 7 puntos del backlog de Fede quedan 100% completos a nivel código** (puntos 3, 4, 6
 > y 7 implementados de punta a punta, importador incluido; puntos 1/2 en pausa esperando que GO
-> confirme con Fede; punto 5 cerrado sin código). Ninguna de las 4 entregas de la sesión
-> (v1.139/140/141/142) llegó a PROD todavía — sigue en v1.136.0.
+> confirme con Fede; punto 5 cerrado sin código). **✅ Las 4 entregas de la sesión (v1.139/140/141/142)
+> llegaron a PROD el 2026-07-22** (ver bloque de arriba — en el momento de escribir esto seguían
+> solo en DEV, sigue v1.136.0).
 >
-> **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main; las 4 entregas son
-> aditivas, sin DDL destructivo, se pueden ir todas juntas — mig 288 incluida).
+> **▶ Pendiente inmediato:** ~~deploy a PROD cuando GO lo pida~~ — ✅ hecho el 2026-07-22 (PR #297,
+> migs 282-288 aplicadas, ver bloque de arriba).
 >
 > **▶ `app-reference.md` (base del Asistente IA) SIGUE sin tocar** (arrastrado de la sesión
 > anterior) — no menciona descuento por estado, precio por UoM, venta por UoM ni el importador con
 > precio por nivel. A propósito: exige `npm run ai:knowledge` + redeploy de la EF `ai-assistant`
-> (DEV y PROD); actualizarlo junto con el deploy a PROD, no antes (evita que el Asistente hable de
-> features que todavía no existen en PROD).
+> (DEV y PROD); en el momento de escribir esto se pateaba para "actualizarlo junto con el deploy a
+> PROD, no antes" — **ese deploy ya pasó (2026-07-22), ahora sí corresponde hacerlo** (ver pendiente
+> actualizado en el bloque de arriba).
 >
 > **▶ `schema_full.sql` sigue parcheado A MANO hasta la mig 287** (sin `SUPABASE_ACCESS_TOKEN` en el
 > entorno, mismo bloqueo de siempre — ver [[reference_schema_dump_metodo]]) — **todavía le falta la
 > mig 288** (`productos.notas`). Regenerar con el script completo o parchear a mano la próxima vez
-> que haya token a mano.
+> que haya token a mano (sin cambios respecto al bloque de arriba).
 
-> ### 🛒 ESTADO ANTERIOR (2026-07-21, v1.141.0 EN DEV) — Backlog de Fede COMPLETO: punto 3 + puntos 4/6/7 Fase 1 y Fase 2 — migs 284-287 SOLO EN DEV, PROD sigue v1.136.0
+> ### 🛒 ESTADO ANTERIOR (2026-07-21, v1.141.0) — Backlog de Fede COMPLETO: punto 3 + puntos 4/6/7 Fase 1 y Fase 2 — migs 284-287 (junto con 282-283 y 288) YA EN PROD desde el 2026-07-22 (ver bloque de arriba)
 >
 > **Sesión de implementación autónoma** ("comienza a implementar todo lo que puedas") sobre el
 > backlog de Fede ya relevado en sesiones anteriores. Tres entregas separadas, cada una con su
-> versión/tag/release, TODAS en `dev`, NINGUNA deployada a PROD todavía:
+> versión/tag/release, TODAS en `dev` en su momento (las 3 llegaron a PROD el 2026-07-22, ver
+> bloque de arriba):
 >
 > **v1.139.0 — Punto 3, descuento automático por estado de inventario. COMPLETO.** Migración
 > `estados_inventario.descuento_pct` (284) + trazabilidad en `venta_items`/`ventas` (285) + UI en
@@ -103,14 +153,15 @@ type: project
 > desactualizado respecto a esta implementación, si hace falta mostrárselo a Fede de nuevo
 > conviene actualizarlo primero o resumir verbal lo que cambió.
 >
-> **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (PR dev→main; las tres entregas son
-> aditivas, sin DDL destructivo, se pueden ir todas juntas).
+> **▶ Pendiente inmediato:** ~~deploy a PROD cuando GO lo pida~~ — ✅ hecho el 2026-07-22 (PR #297,
+> ver bloque de arriba).
 >
 > **▶ `app-reference.md` (base del Asistente IA) NO se tocó esta sesión** — no menciona descuento
 > por estado, precio por UoM ni venta por UoM. A propósito: exige `npm run ai:knowledge` + redeploy
-> de la EF `ai-assistant` (DEV y PROD), y redeployar mientras esto sigue en DEV haría que el
-> Asistente hable de features que todavía no existen en PROD. Actualizarlo junto con el deploy a
-> PROD, no antes.
+> de la EF `ai-assistant` (DEV y PROD); en el momento de escribir esto se pateaba porque redeployar
+> mientras esto seguía en DEV haría que el Asistente hable de features que todavía no existen en
+> PROD — **ese deploy ya pasó (2026-07-22), ahora sí corresponde** (ver pendiente actualizado en el
+> bloque de arriba).
 >
 > **▶ `schema_full.sql` parcheado A MANO** (sin `SUPABASE_ACCESS_TOKEN` en el entorno, mismo
 > bloqueo de siempre — ver [[reference_schema_dump_metodo]]) con las migs 284-287. Regenerar con
@@ -226,7 +277,7 @@ type: project
 > (b) puntos 3 y 5 ya pueden pasar a diseño técnico + implementación cuando se prioricen; (c) abrir
 > relevamiento dedicado para 4/7/6 (precio por UoM) — el más grande y el que más REGLA #0 toca.
 
-> ### 📦 ESTADO ANTERIOR (2026-07-19 noche, v1.137.0 EN DEV) — Fase 1 de ESTRUCTURAS con niveles dinámicos por UdM (footprint estilo Blue Yonder) — migs **282-283 SOLO EN DEV**, PROD sigue v1.136.0
+> ### 📦 ESTADO ANTERIOR (2026-07-19 noche, v1.137.0) — Fase 1 de ESTRUCTURAS con niveles dinámicos por UdM (footprint estilo Blue Yonder) — migs **282-283** (junto con 284-288) **YA EN PROD desde el 2026-07-22** (ver bloque de arriba)
 >
 > **Pedido GO:** estructuras como el pack structure/footprint de Blue Yonder — por SKU varias
 > estructuras, niveles = CUALQUIER UdM de Configuración → Unidades (no solo unidad/caja/pallet),
@@ -260,8 +311,8 @@ type: project
 > **▶ Pendiente inmediato:**
 > 1. ✅ ~~Commit a `dev` + push + tag/release v1.137.0~~ — hecho (y ya se sumó v1.138.0 encima,
 >    ver bloque de arriba).
-> 2. Deploy a PROD cuando GO lo pida: aplicar migs 282-283 en PROD (aditivas, no-op de datos) ANTES
->    del merge, PR dev→main, verificar bundle con curl (gotcha webhook Vercel del #295).
+> 2. ✅ ~~Deploy a PROD cuando GO lo pida: aplicar migs 282-283 en PROD...~~ — hecho el 2026-07-22
+>    (PR #297, migs 282-288 completas, bundle verificado con curl, ver bloque de arriba).
 > 3. **Fases siguientes del plan** (detalle en `wiki/features/estructuras-udm.md`): F2 operar por
 >    UdM al ingresar stock ("5 cajas" → 60 unidades, UdM trazada en LPN) · F3 Zonas + reglas de
 >    almacenaje por UdM con sugerencia editable · F4 `wms_tareas` + picking por UdM (respeta

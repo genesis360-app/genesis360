@@ -3,7 +3,7 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286]
-updated: 2026-07-21
+updated: 2026-07-22
 ---
 
 # Ventas / POS
@@ -121,7 +121,7 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 - Lógica pura: `src/lib/promosPago.ts` (`descuentoDeConfig` / `descuentoVigente` /
   `calcularPromosPago`), 22 unit tests.
 
-### 🏷 Descuento automático por estado de inventario (v1.139.0, migs 284-285 — backlog Fede punto 3)
+### 🏷 Descuento automático por estado de inventario (v1.139.0, migs 284-285 — backlog Fede punto 3) — ✅ EN PROD (deploy real 2026-07-22, PR #297)
 - Config: Config→Inventario→Estados → sub-tab "Permisos por estado" → columna nueva **% desc.**
   por estado (`estados_inventario.descuento_pct`, `NUMERIC(5,2)`, `NULL`/0 = sin descuento; mig
   284). Lo configura de antemano un DUEÑO/ADMIN.
@@ -186,7 +186,7 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
 
 ---
 
-## Venta por Unidad de Medida (v1.141.0, backlog Fede puntos 4/6/7 Fase 2)
+## Venta por Unidad de Medida (v1.141.0, backlog Fede puntos 4/6/7 Fase 2) — ✅ EN PROD (deploy real 2026-07-22, PR #297)
 
 Un producto con estructura (`producto_estructuras`, ver `estructuras-udm.md`) puede venderse "por
 Caja"/"por Pallet"/etc. en vez de siempre la unidad base — usa el precio propio del nivel elegido

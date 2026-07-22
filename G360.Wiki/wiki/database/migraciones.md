@@ -3,22 +3,25 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-07-21
+updated: 2026-07-22
 ---
 
 # Historial de Migraciones (001-288)
 
-**Total al 2026-07-21:** 288 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-22:** 288 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**282-283 (Fase 1 de Estructuras con niveles dinámicos por UdM, v1.137.0) EN DEV · PROD ⬜** — 282 tabla
+**282-283 (Fase 1 de Estructuras con niveles dinámicos por UdM, v1.137.0) EN DEV Y PROD ✅ (deploy real
+2026-07-22, PR #297)** — 282 tabla
 `producto_estructura_niveles` + RPC `fn_estructura_guardar_niveles`; 283 fix del backfill de conversiones
-del importador CSV. Ver [[wiki/features/estructuras-udm]].
-**284-285 (descuento automático por estado de inventario, backlog Fede punto 3, v1.139.0) EN DEV · PROD ⬜**
+del importador CSV. `producto_estructuras` tenía 0 filas en PROD antes de aplicar → backfill no-op,
+confirmado. Ver [[wiki/features/estructuras-udm]].
+**284-285 (descuento automático por estado de inventario, backlog Fede punto 3, v1.139.0) EN DEV Y PROD ✅
+(deploy real 2026-07-22, PR #297)**
 — 284 `estados_inventario.descuento_pct`; 285 `venta_items.descuento_estado_pct/monto` +
 `ventas.descuento_estado` jsonb (trazabilidad, mismo criterio que `promo_pago` de la 281). Ver
 [[wiki/features/ventas-pos]] → "Descuento automático por estado de inventario".
 **286-287 (precio por Unidad de Medida en la estructura, backlog Fede puntos 4/6/7 — Fase 1 v1.140.0 +
-Fase 2 v1.141.0, AMBAS mismo día) EN DEV · PROD ⬜** — 286 `producto_estructura_niveles.
+Fase 2 v1.141.0, AMBAS mismo día) EN DEV Y PROD ✅ (deploy real 2026-07-22, PR #297)** — 286 `producto_estructura_niveles.
 precio_venta/precio_costo` + `productos.nivel_precio_orden` (ancla de precio) + `venta_items.
 unidad_medida_id/cantidad_uom` + `combos.unidad_medida_id`; 287 extiende `fn_estructura_guardar_niveles`
 para persistir precio por nivel. **Ya se puede vender por UoM en el POS** (Fase 2, v1.141.0 — selector en
@@ -26,7 +29,7 @@ el carrito, precio del nivel, combos con UoM propia, UoM en factura/ticket; `ven
 siempre en unidades base). Ver [[wiki/features/estructuras-udm]] y [[wiki/features/ventas-pos]] → "Venta
 por Unidad de Medida".
 **288 (fix crítico + cierra el pendiente de precio por nivel en el importador, backlog Fede puntos 4/6/7,
-v1.142.0, misma sesión que 286-287) EN DEV · PROD ⬜** — agrega `productos.notas TEXT`, columna que
+v1.142.0, misma sesión que 286-287) EN DEV Y PROD ✅ (deploy real 2026-07-22, PR #297)** — agrega `productos.notas TEXT`, columna que
 `ImportarProductosPage.tsx` y su plantilla Excel pedían desde siempre pero que NINGUNA migración había
 creado nunca: el payload de insert/update de productos siempre mandó `notas` → PostgREST rechazaba el
 INSERT/UPDATE COMPLETO (`PGRST204`), y el código nunca revisaba el `error` de la respuesta (solo

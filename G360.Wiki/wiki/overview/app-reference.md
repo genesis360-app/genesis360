@@ -2,7 +2,7 @@
 title: Referencia completa de funcionalidades — Genesis360
 category: overview
 tags: [referencia, módulos, funcionalidades, procesos, flujos]
-updated: 2026-07-01
+updated: 2026-07-22
 ---
 
 # Genesis360 — Referencia completa de funcionalidades
@@ -134,12 +134,14 @@ Caja registradora principal. Permite ventas, presupuestos y devoluciones.
 - **Toggle galería/lista**: cambia la vista de los resultados
 - **Carrito** (panel derecho o inferior en mobile): líneas con producto, cantidad editable, precio unitario, descuento por línea individual
 - **Descuento global**: campo sobre el subtotal (% o valor fijo)
+- **Descuento automático por estado de inventario** (v1.139.0): si el stock consumido en una línea viene de un estado con `descuento_pct` configurado (ej. "Próximo a Vencer" con 15%), el descuento se aplica solo sobre esas unidades, sin clave de supervisor, apilado con el descuento general/combos/promo por método de pago (nunca los reemplaza). Se calcula sobre la misma previsualización de LPNs que el carrito usa para planificar el rebaje, así que lo cobrado siempre coincide con lo despachado.
 - **Selector de cliente**: busca cliente existente o crea uno nuevo inline con nombre + teléfono
 - **Medios de pago**: uno o múltiples simultáneos — Efectivo, Tarjeta débito, Tarjeta crédito, Transferencia, MercadoPago, **MODO** (QR interoperable bancario), **Cuenta Corriente** (parcial o total, solo clientes con CC habilitada), Cheque, Otro. Cada uno con monto asignable. Muestra vuelto calculado automáticamente cuando supera el total.
 - **Modo venta**: Venta / Presupuesto / Reserva
 - **Canal de venta** (v1.8.22): selector antes del botón de confirmar — Presencial (default), Instagram, Facebook, WhatsApp, Otros. Se guarda en ventas.origen.
 - **Notas**: texto libre asociado a la venta
 - **Cuotas tarjeta de crédito** (v1.8.22): al seleccionar "Tarjeta crédito" con monto > 0, aparece picker de banco y cuotas. Muestra monto por cuota, total con interés, badge verde "Sin interés". Requiere configurar bancos en Configuración → Métodos de pago.
+- **Selector de Unidad de Medida por línea** (v1.141.0): si el producto tiene una estructura con más de un nivel (ej. Unidad → Caja), aparece un selector para vender "por Caja" en vez de siempre la unidad base. Default = 1 unidad base (nunca sorprende con el precio de una caja "por las dudas"). El precio usado es el propio del nivel si lo tiene, o proporcional a la "ancla de precio" del producto si no. `venta_items.cantidad` sigue siempre en unidades base — el rebaje de stock y los reportes de margen no cambian, la UoM es una capa de precio + trazabilidad + display (se muestra en ticket/factura, ej. "3 Cajas x $1.080"). Elegir una UoM explícita pisa cualquier tier mayorista automático.
 - **Botón "Confirmar venta"** (parte inferior derecha): ejecuta la venta
 
 **Al confirmar venta:**
@@ -271,6 +273,7 @@ Catálogo base del negocio. **Global** — mismo catálogo en todas las sucursal
 **Acciones principales:**
 - **+ Nuevo producto** (esquina superior derecha): va a `/productos/nuevo`
 - **Escanear** (ícono cámara): busca por código
+- **Filtros** (v1.138.0): panel combinable — Activos/Inactivos/Todos, Con/Sin estructura de embalaje, Categoría, Proveedor, Marca, y atributos de inventario (tracking + variantes) combinables por OR
 - **Importar** → `/importar/productos`
 - **Bulk actions** (aparece al seleccionar con checkbox):
   - Cambiar precio (porcentaje o valor fijo a todos los seleccionados)
@@ -296,6 +299,8 @@ Cada producto puede tener una o más estructuras de embalaje ("footprints", esti
 - **Peso (kg) y alto/ancho/largo (cm)** opcionales por nivel
 
 El primer nivel es la unidad base (se preselecciona con la unidad de medida del producto). Los factores son siempre enteros ≥ 1. Se pueden agregar, quitar y reordenar niveles. Se puede marcar una estructura como default. Las estructuras se asignan también a los LPNs desde el modal de acciones del LPN. Sirve para logística (conversión de cantidades, cálculo de volumen, peso de embarques) y es la base del picking/almacenaje por unidad de medida.
+
+**Precio por nivel de la estructura (v1.140-142.0):** cada nivel puede tener su propio precio de venta/costo (ej. el precio de "1 Caja" no tiene que ser necesariamente 12× el precio de "1 Unidad" — si no se carga, se calcula proporcional). En la hoja del producto, el selector **"Estos precios corresponden a"** define la "ancla de precio": a qué nivel de la estructura default corresponden `precio_venta`/`precio_costo` de cabecera (por default, el nivel base; puede anclarse a Caja o Pallet si el negocio piensa el precio en esos términos). El nivel base nunca tiene precio propio — siempre deriva del precio de cabecera. El **importador de productos** (`/importar/productos`) soporta cargar esto por Excel — ver 4.6.
 
 > ⚠️ Las estructuras NO son combos/kits. Los combos (bundles promocionales) se configuran en `/configuracion` → tab Combos. Los kits de armado se gestionan en Inventario → tab Kits.
 
@@ -695,7 +700,7 @@ Setup completo del negocio y sus parámetros. Solo DUEÑO.
 - **Negocio**: nombre, logo, tipo de comercio, CUIT, datos fiscales, contacto, moneda principal
 - **Categorías**: CRUD de categorías de productos
 - **Ubicaciones**: CRUD de ubicaciones del depósito. Cada ubicación puede tener `sucursal_id` (específica de una sucursal) o ser "Global" (visible en todas). Badge azul o "Global" en la lista. Selector de sucursal en el formulario de edición. Flag `disponible_surtido`: si `false`, el stock de esa ubicación NO se considera para venta.
-- **Estados de inventario**: CRUD de estados (Disponible, Cuarentena, Devuelto, etc.). Flags: `es_disponible_venta` (si ese stock puede venderse), `es_disponible_tn` (si sincroniza con TiendaNube).
+- **Estados de inventario**: CRUD de estados (Disponible, Cuarentena, Devuelto, etc.). Flags: `es_disponible_venta` (si ese stock puede venderse), `es_disponible_tn` (si sincroniza con TiendaNube). **Descuento automático** (`descuento_pct`, v1.139.0): % opcional que se aplica solo al vender stock en ese estado (ver 3.2 Ventas/POS) — no confundir con "Progresión" (Aging Profiles), que solo cambia el estado automático por días a vencer, sin ningún descuento.
 - **Motivos de movimiento**: CRUD de motivos para movimientos de caja (ej: "Pago proveedor") y stock (ej: "Merma").
 - **Métodos de pago**: activar/desactivar cuáles aparecen en el POS (Efectivo, Tarjeta, etc.). Sección "Cuotas por banco": agregar bancos (nombre) con sus planes de cuotas (N cuotas, interés %, flag sin interés). Se usa en el POS al pagar con Tarjeta crédito. Config guardada en tenants.cuotas_bancos JSONB.
 - **Combos**: crear bundles promocionales para el POS. Un combo = N productos juntos con un descuento (% o monto fijo). Ej: "Combo familiar: producto A + producto B con 20% off". Se seleccionan en el POS como si fuera un ítem más. Distinto de Kits (que son ensamblados en inventario físico).
@@ -812,7 +817,7 @@ Configuración de grupos de estados de inventario. Permiten filtrar visualmente 
 
 Carga masiva del catálogo desde Excel (.xlsx).
 
-**Columnas soportadas:** nombre, SKU, código de barras, categoría, proveedor, precio venta, precio costo, moneda (ARS/USD), alícuota IVA (0/10.5/21/27), unidad de medida, stock mínimo, regla inventario (FIFO/FEFO/LEFO/LIFO/Manual), tiene series, tiene lote, tiene vencimiento, estructura (cajas, pallets, peso, dimensiones).
+**Columnas soportadas:** nombre, SKU, código de barras, categoría, proveedor, precio venta, precio costo, moneda (ARS/USD), alícuota IVA (0/10.5/21/27), unidad de medida, stock mínimo, notas internas, regla inventario (FIFO/FEFO/LEFO/LIFO/Manual), tiene series, tiene lote, tiene vencimiento, estructura (cajas, pallets, peso, dimensiones) + **precio por nivel** (v1.142.0): `estr_precio_ancla` (Unidad/Caja/Pallet, a qué nivel corresponden los precios de cabecera) y precio de venta/costo propio opcional por nivel de Caja/Pallet. Una fila con ancla a un nivel sin datos de estructura de ese nivel se rechaza en la previsualización.
 
 **Modos:** Crear nuevos / Actualizar existentes por SKU / Ambos.
 
@@ -1181,4 +1186,4 @@ Convención de flags: `ownerOnly` = DUEÑO+ADMIN · `supervisorOnly` = DUEÑO+SU
 
 ---
 
-*Última actualización: 2026-07-01 — App v1.100.0 (PROD = DEV). Cifras de estado (versión/migraciones/tests) en `sources/raw/project_pendientes.md`.*
+*Última actualización de contenido: 2026-07-22. Cifras de estado (versión/migraciones/tests) en `sources/raw/project_pendientes.md`.*

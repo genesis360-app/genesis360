@@ -3,7 +3,7 @@ title: Estructuras de producto + Unidades de Medida (footprints)
 category: features
 tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, udm, precio-por-uom, importador]
 sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, src/lib/estructuras.ts, src/pages/ImportarProductosPage.tsx]
-updated: 2026-07-21
+updated: 2026-07-22
 ---
 
 # Estructuras de producto con niveles dinámicos por UdM
@@ -107,7 +107,7 @@ cálculo server-side + RPC directa con factor 0 → 400 y niveles intactos). UAT
 
 ---
 
-## Precio por Unidad de Medida (backlog Fede 4/6/7) — Fase 1 modelo + Fase 2 venta + Fase 3 importador, TODAS EN DEV
+## Precio por Unidad de Medida (backlog Fede 4/6/7) — Fase 1 modelo + Fase 2 venta + Fase 3 importador, TODAS EN PROD (deploy real 2026-07-22, PR #297)
 
 ### ✅ Fase 1: modelo (migs 286-287)
 
@@ -194,7 +194,8 @@ Verde: tsc · build · **e2e 105 nuevo** (`105_importador_precio_uom_mutante.spe
 con verificación POSITIVA en DB: precio propio por nivel persiste tal cual (sin recalcular), ancla
 por nombre persiste `nivel_precio_orden`, fila con ancla inválida se rechaza y nunca se crea. Sin
 este spec el bug de `notas` no se hubiera detectado — la UI mentía "2 creados" de forma consistente
-y convincente. `APP_VERSION` = v1.142.0 (commit `ae5f63b1`, EN DEV — PROD sigue v1.136.0).
+y convincente. `APP_VERSION` = v1.142.0 (commit `ae5f63b1`). **EN PROD desde el 2026-07-22** (PR
+#297 mergeado a `main`, mig 288 aplicada en PROD, Vercel confirmado con curl sirviendo v1.142.0).
 
 ### Roadmap de precio por UoM (backlog Fede 4/6/7 — numeración propia, distinta del roadmap de fases de abajo)
 
@@ -206,7 +207,8 @@ y convincente. `APP_VERSION` = v1.142.0 (commit `ae5f63b1`, EN DEV — PROD sigu
 
 **Con esto los 7 puntos del backlog de Fede quedan 100% completos a nivel código** (puntos 3, 4, 6
 y 7 de punta a punta; puntos 1/2 en pausa esperando que GO confirme con Fede; punto 5 cerrado sin
-código). Ninguna de las 4 entregas de la sesión (v1.139/140/141/142) llegó a PROD todavía.
+código). **Las 4 entregas de la sesión (v1.139/140/141/142) llegaron a PROD el 2026-07-22** (PR
+#297, migs 284-288 aplicadas, ver [[wiki/business/roadmap]] y [[wiki/database/migraciones]]).
 
 ---
 

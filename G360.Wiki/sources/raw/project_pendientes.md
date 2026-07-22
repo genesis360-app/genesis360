@@ -6,7 +6,70 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-07-22, DEPLOY REAL a PROD) — **v1.137.0 a v1.142.0 YA ESTÁN EN PROD** · migs 282-288 aplicadas en PROD (verificadas) · PR #297 mergeado a `main` (`0109abf4`) · **Vercel PRD CONFIRMADO sirviendo v1.142.0** (curl real a los 3 dominios)
+> ### 🏗️ ARRANCÁ ACÁ (2026-07-22 noche, v1.143.0 EN DEV) — WMS Zonas + Picking + Reabastecimiento (cierra Fases 3, 4 y 5 del roadmap de Estructuras dinámicas por UdM) — **SOLO EN DEV, SIN deploy a PROD (PROD sigue v1.142.0)**
+>
+> Feature grande nueva, completa en una sola sesión: cierra las Fases 3 ("Zonas" + reglas de
+> almacenaje), 4 (Tareas WMS y picking) y 5 (Reabastecimiento) del roadmap de
+> [[wiki/features/estructuras-udm]] acordado con GO el 2026-07-19 (la Fase 2, "operar por UdM al
+> ingresar stock", sigue **sin implementar**, ⬜ — no se tocó esta sesión). Migraciones nuevas
+> `289_wms_zonas_tareas_reabastecimiento.sql` y `290_wms_rpcs.sql`, aplicadas en **DEV**
+> (`gcmhzdedrkmmzfzfveig`) — **decisión explícita: NO se aplicaron en PROD y no hubo deploy**, el
+> deploy queda para cuando GO lo pida (mismo criterio que las demás entregas de la semana sobre
+> movimiento real de stock).
+>
+> **Decisión de arquitectura clave (confirmada con GO en el chat):** el picking es una capa de
+> **logística pura** — nunca decide qué LPN consume una venta ni cuándo se rebaja stock. El motor de
+> ventas (`VentasPage.tsx`, `rebajeSort.ts`) queda exactamente igual. Las tareas de picking leen la
+> decisión YA TOMADA por la venta (`venta_item_despachos` si está despachada, `venta_items.lpn_plan`
+> si es una reserva pendiente) y guían al depósito. Si el LPN vive fuera de una zona de picking, se
+> encadena una tarea de reabastecimiento que ejecuta la MISMA operación que ya existe en
+> `LpnAccionesModal` → tab Mover (reduce el LPN origen, crea uno nuevo en destino) — no se inventó un
+> mecanismo nuevo de movimiento de stock. Con esto queda **resuelta** la pregunta abierta que había
+> dejado v1.137.0 ("¿picking solo envíos/preparación o también mostrador?" → solo envíos/despachos).
+>
+> **Schema (mig 289):** `zonas` (catálogo, RLS tenant-only como `ubicaciones`, agrupa ubicaciones vía
+> `ubicaciones.zona_id` nueva) · `reglas_almacenaje` (catálogo, UdM → zona sugerida al ingresar stock,
+> sugerencia editable, nunca bloquea) · `producto_ubicacion_umbrales` (catálogo, mín/máx por
+> producto+ubicación de picking para el reabastecimiento por umbral) · `wms_tareas` (operativa, RLS
+> **por sucursal** — mismo patrón que `inventario_lineas`/`envios` — tipo picking/replenishment/
+> putaway/conteo, estado, prioridad, producto, cantidad en unidades base, ubicación origen/destino,
+> `envio_id`, `tarea_precedente_id` que encadena reabastecimiento→picking, origen envio/manual/
+> umbral) · 2 flags independientes en `tenants`: `wms_reabastecimiento_on_demand` (default true) y
+> `wms_reabastecimiento_umbral` (default false), habilitables por separado, juntos o ninguno.
+>
+> **RPCs (mig 290), todas SECURITY INVOKER:** `fn_generar_tareas_picking_envio(envio_id)` genera las
+> tareas de un envío encadenando reabastecimiento si hace falta · `fn_completar_tarea_reabastecimiento
+> (tarea_id)` mueve el stock de verdad (mismo mecanismo de "Mover LPN") · `fn_completar_tarea_picking
+> (tarea_id)` solo bookkeeping, nunca toca `inventario_lineas`, bloqueada si la tarea precedente no
+> está completada · `fn_generar_tareas_reabastecimiento_umbral(tenant_id)` sweep on-demand (sin
+> pg_cron, mismo patrón "Procesar ahora" de Aging Profiles) · helpers
+> `fn_wms_elegir_ubicacion_picking` y `fn_wms_describir_cantidad`.
+>
+> **UI:** nueva sección "Zonas y picking" en Config → Inventario (2 toggles de reabastecimiento +
+> CRUD Zonas + Reglas de almacenaje UdM→zona + Umbrales producto+ubicación; selector de zona en el
+> form de Ubicaciones) · ruta nueva **`/picking`** (`PickingPage.tsx`, mobile-first, escaneo de
+> código de barras reusando `BarcodeScanner`) · tab **"Tareas WMS"** nuevo en `InventarioPage` (vista
+> de escritorio para el DUEÑO, link directo a `/picking`) · gating `modoAvanzado` + rol DEPOSITO (nav
+> en `AppLayout.tsx` + redirect guard + ruta en `App.tsx`), mismo patrón que "Recepciones".
+>
+> **Verificación:** revisado por el subagente `migration-reviewer` antes de aplicar (aprobado, con
+> una mejora de concurrencia aplicada — `FOR UPDATE SKIP LOCKED`). Smoke test manual completo contra
+> DEV con datos reales (producto + ubicaciones picking/bulk + venta despachada + envío → generar
+> tareas → completar reabastecimiento → verificar stock movido sin pérdida ni duplicación → completar
+> picking) — encontró y corrigió **2 bugs reales antes del e2e** (un error de sintaxis PL/pgSQL, un
+> cast numeric→integer faltante) y **1 bug propio del reabastecimiento por umbral** (podía elegir la
+> misma ubicación como origen y destino). Verde: tsc · build · **1177 tests unitarios** · regresión
+> e2e (13 specs) · **e2e nuevo 106** (mutante, verificación real en DB).
+>
+> `APP_VERSION` = **v1.143.0**, commit `547ef330` en `dev`, **pusheado a `origin/dev`**. Migs 289-290
+> aplicadas SOLO en DEV.
+>
+> **▶ Pendiente inmediato:** deploy a PROD cuando GO lo pida (migraciones 289-290 son aditivas, sin
+> DDL destructivo). Puntos 1/2 del backlog de Fede siguen en pausa (sin cambios). Los 4 puntos "para
+> conversar" del relevamiento de Config Ventas/Envíos siguen abiertos (sin cambios, arrastrado de
+> v1.136.0).
+
+> ### 🛑 ESTADO ANTERIOR (2026-07-22, DEPLOY REAL a PROD) — **v1.137.0 a v1.142.0 YA ESTÁN EN PROD** · migs 282-288 aplicadas en PROD (verificadas) · PR #297 mergeado a `main` (`0109abf4`) · **Vercel PRD CONFIRMADO sirviendo v1.142.0** (curl real a los 3 dominios)
 >
 > Deploy real a producción de las 6 versiones que se habían acumulado en `dev` desde la sesión del
 > 19/07 sin llegar a PROD: **v1.137.0** (Estructuras dinámicas por UdM Fase 1), **v1.138.0**

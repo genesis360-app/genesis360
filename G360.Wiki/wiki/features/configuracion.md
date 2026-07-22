@@ -1,9 +1,9 @@
 ---
 title: Módulo Configuración
 category: features
-tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales]
-sources: [CLAUDE.md]
-updated: 2026-05-20
+tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking]
+sources: [CLAUDE.md, migrations 289, 290]
+updated: 2026-07-22
 ---
 
 # Módulo Configuración
@@ -27,7 +27,7 @@ La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con se
 | **Ventas** | Sub-tabs: Métodos de pago · Descuentos y combos · Operativa |
 | **Caja** | Contraseña maestra, umbral bóveda |
 | **Clientes** | Placeholder — próximamente |
-| **Inventario** | Sub-tabs: Reglas de stock · Categorías · Ubicaciones · Estados · Motivos · Unidades · Atributos (🟡 EN DEV) |
+| **Inventario** | Sub-tabs: Reglas de stock · Categorías · Ubicaciones · Estados · Motivos · Unidades · Atributos (✅ PROD v1.134.0) · **Zonas y picking** (🟡 EN DEV, v1.143.0) |
 | **Envíos** | Costo por km, plantilla WhatsApp |
 | **Facturación** | CUIT, condición IVA, razón social, domicilio fiscal, umbral factura B, token AFIP, certificados, puntos de venta |
 | **RRHH** | Asistencia/tardanzas, Nómina, Documentos (v1.81.x, H4) |
@@ -122,6 +122,23 @@ Catálogo configurable de valores para talle/color/encaje/formato/sabor·aroma (
 Alimenta `AtributoValorSelect` en Recepciones/Ingreso manual y el picker de rebaje en VentasPage.
 Detalle: [[wiki/features/atributos-variante]].
 
+### Sub-tab: Zonas y picking (🟡 EN DEV desde v1.143.0, migs 289-290 — sin deploy a PROD)
+
+Cierra las Fases 3-5 del roadmap de [[wiki/features/estructuras-udm]]:
+
+- **2 toggles de reabastecimiento**, independientes (habilitables por separado, juntos o ninguno):
+  `tenants.wms_reabastecimiento_on_demand` (default ON, encadena reabastecimiento al generar
+  picking de un envío) y `tenants.wms_reabastecimiento_umbral` (default OFF, sweep manual
+  "Procesar ahora" cuando el stock de una ubicación de picking cae bajo el mínimo configurado).
+- **CRUD de Zonas** (`zonas`, catálogo tenant-scoped) — agrupan ubicaciones; el form de
+  **Ubicaciones** ganó un selector de zona.
+- **CRUD de Reglas de almacenaje** (`reglas_almacenaje`) — UdM → zona sugerida al ingresar stock;
+  la sugerencia es editable, nunca bloquea.
+- **CRUD de Umbrales** (`producto_ubicacion_umbrales`) — mín/máx por producto+ubicación de picking,
+  usado por el sweep de reabastecimiento por umbral.
+
+Detalle completo del schema/RPCs/UI: [[wiki/features/wms]] → "Fase 3" y "Fase 4".
+
 ---
 
 ## Envíos
@@ -192,4 +209,6 @@ Conectar cuentas externas por sucursal:
 - [[wiki/features/caja]]
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/inventario-stock]]
+- [[wiki/features/wms]] — "Zonas y picking" (v1.143.0)
+- [[wiki/features/estructuras-udm]] — roadmap de Zonas/Picking/Reabastecimiento
 - [[wiki/integrations/roadmap-apis]]

@@ -6,6 +6,55 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-22] update | 🏗️ v1.143.0 EN DEV — WMS Zonas + Picking + Reabastecimiento (cierra Fases 3, 4 y 5 de Estructuras-UdM)
+
+Feature grande nueva completada en esta sesión: cierra las Fases 3 ("Zonas" + reglas de
+almacenaje), 4 (Tareas WMS y picking) y 5 (Reabastecimiento reserva→picking) del roadmap de
+`wiki/features/estructuras-udm.md` acordado con GO el 2026-07-19. La Fase 2 ("operar por UdM al
+ingresar stock") sigue sin implementar, no se tocó esta sesión.
+
+**Decisión de arquitectura clave** (confirmada con GO en el chat): el picking es una capa de
+logística pura, nunca decide qué LPN consume una venta ni cuándo se rebaja stock — el motor de
+ventas (`VentasPage.tsx`, `rebajeSort.ts`) no se tocó. Las tareas de picking leen la decisión ya
+tomada por la venta (`venta_item_despachos` si está despachada, `venta_items.lpn_plan` si es una
+reserva pendiente) y guían al depósito; si el LPN está fuera de una zona de picking se encadena una
+tarea de reabastecimiento que usa el mismo mecanismo de "Mover LPN" de `LpnAccionesModal` (reduce
+LPN origen, crea uno nuevo en destino) — sin mecanismo nuevo de movimiento de stock. Con esto queda
+resuelta la pregunta abierta de v1.137.0 sobre el alcance del picking (solo envíos/despachos, nunca
+mostrador).
+
+**Migraciones 289 y 290**, aplicadas en DEV (`gcmhzdedrkmmzfzfveig`): **289** agrega el schema
+(`zonas` catálogo agrupando `ubicaciones` vía `zona_id`, `reglas_almacenaje` catálogo UdM→zona
+sugerida sin bloquear, `producto_ubicacion_umbrales` catálogo mín/máx por producto+ubicación, y
+`wms_tareas` operativa con RLS **por sucursal** — mismo patrón que `inventario_lineas`/`envios` —
+tipo picking/replenishment/putaway/conteo, `envio_id`, `tarea_precedente_id` que encadena
+reabastecimiento→picking; 2 flags independientes en `tenants` para el reabastecimiento on-demand y
+por umbral, habilitables por separado); **290** agrega las RPCs SECURITY INVOKER
+`fn_generar_tareas_picking_envio`, `fn_completar_tarea_reabastecimiento`,
+`fn_completar_tarea_picking`, `fn_generar_tareas_reabastecimiento_umbral` + helpers
+`fn_wms_elegir_ubicacion_picking`/`fn_wms_describir_cantidad`. **NO aplicadas en PROD, sin deploy** —
+decisión explícita de dejarlo en DEV hasta que GO lo pida, mismo criterio que el resto de las
+entregas de la semana sobre movimiento real de stock.
+
+**UI:** sección nueva "Zonas y picking" en Config → Inventario (2 toggles de reabastecimiento + CRUD
+Zonas/Reglas de almacenaje/Umbrales, selector de zona en el form de Ubicaciones), ruta nueva
+`/picking` (`PickingPage.tsx`, mobile-first, con escaneo de código de barras reusando
+`BarcodeScanner`) y tab "Tareas WMS" en `InventarioPage` (vista de escritorio para el DUEÑO, link a
+`/picking`) — gateados por `modoAvanzado` + rol DEPOSITO, mismo patrón que "Recepciones".
+
+Revisado por el subagente `migration-reviewer` antes de aplicar (aprobado, sumó una mejora de
+concurrencia — `FOR UPDATE SKIP LOCKED`). Smoke test manual completo contra DEV con datos reales
+(producto + ubicaciones picking/bulk + venta despachada + envío → generar tareas → completar
+reabastecimiento → verificar stock movido sin pérdida ni duplicación → completar picking) — encontró
+y corrigió 2 bugs reales antes del e2e (un error de sintaxis PL/pgSQL, un cast numeric→integer
+faltante) y 1 bug propio del reabastecimiento por umbral (podía elegir la misma ubicación como
+origen y destino). Verde: tsc · build · **1177 tests unitarios** · regresión e2e (13 specs) · **e2e
+nuevo 106** (mutante, verificación real en DB).
+
+`APP_VERSION` = **v1.143.0**, commit `547ef330` en `dev`, pusheado a `origin/dev`. Sin PR a `main`
+todavía — deploy a PROD pendiente de que GO lo pida (migraciones 289-290 aditivas, sin DDL
+destructivo).
+
 ## [2026-07-22] update | 🗄️ schema_full.sql regenerado completo (mig 288) — cierra el pendiente #2 del bloque "ARRANCÁ ACÁ"
 
 Cierra el pendiente #2 que había quedado abierto en la reconciliación del deploy a PROD de

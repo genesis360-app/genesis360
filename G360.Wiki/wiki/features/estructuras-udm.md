@@ -1,8 +1,8 @@
 ---
 title: Estructuras de producto + Unidades de Medida (footprints)
 category: features
-tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, udm, precio-por-uom, importador]
-sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, src/lib/estructuras.ts, src/pages/ImportarProductosPage.tsx]
+tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, zonas, reabastecimiento, udm, precio-por-uom, importador]
+sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, src/lib/estructuras.ts, src/pages/ImportarProductosPage.tsx]
 updated: 2026-07-22
 ---
 
@@ -218,14 +218,21 @@ código). **Las 4 entregas de la sesión (v1.139/140/141/142) llegaron a PROD el
 |---|---|---|
 | **1** | Niveles dinámicos por UdM (modelo + RPC + UI + backfill) | ✅ v1.137.0 (migs 282-283) |
 | **2** | Operar por UdM al ingresar stock (recibir "5 cajas" → 60 unidades; UdM trazada en el LPN; stock SIEMPRE en unidad base) | ⬜ |
-| **3** | **Zonas** (nueva entidad que agrupa ubicaciones) + **reglas de almacenaje** por UdM → zona/ubicación, con **sugerencia editable** al ingresar (no bloquea) | ⬜ |
-| **4** | Tareas WMS (`wms_tareas`) + **picking por UdM** (listas que respetan FIFO/FEFO de `rebajeSort` y sugieren "2 cajas" en vez de "24 unidades") | ⬜ |
-| **5** | **Reabastecimiento** reserva → posición de surtido/picking (mín/máx por producto+ubicación con UdM de reposición; generación on-demand + al confirmar picking — sin pg_cron) | ⬜ |
+| **3** | **Zonas** (nueva entidad que agrupa ubicaciones) + **reglas de almacenaje** por UdM → zona/ubicación, con **sugerencia editable** al ingresar (no bloquea) | ✅ v1.143.0 (mig 289) |
+| **4** | Tareas WMS (`wms_tareas`) + **picking por UdM** (listas que respetan FIFO/FEFO de `rebajeSort` y sugieren "2 cajas" en vez de "24 unidades") | ✅ v1.143.0 (migs 289-290) |
+| **5** | **Reabastecimiento** reserva → posición de surtido/picking (mín/máx por producto+ubicación con UdM de reposición; generación on-demand + al confirmar picking — sin pg_cron) | ✅ v1.143.0 (migs 289-290) |
+
+**Fases 3, 4 y 5 EN DEV desde v1.143.0 (migs 289-290), SIN deploy a PROD** — deploy pendiente de que
+GO lo pida. Detalle completo del schema/RPCs/UI implementado (bastante fiel al sketch original de
+`wms_tareas`, con 2 columnas agregadas para el encadenamiento real — `envio_id` y
+`tarea_precedente_id`, que no estaban en el sketch): [[wiki/features/wms]] → "Fase 3" y "Fase 4".
+Solo queda pendiente del roadmap la **Fase 2** (operar por UdM al ingresar stock).
 
 Decisiones ya tomadas por GO: factor **vs nivel anterior** (estilo BY) · crear **Zonas/Áreas** ·
-reglas de almacenaje **sugieren** (no bloquean) · reabastecimiento incluido en el paquete.
-Abiertas: picking ¿solo envíos/preparación o también mostrador? (recomendado: solo envíos) ·
-¿OC por UdM? · factores siempre enteros (confirmar si aparece un caso real de fracción).
+reglas de almacenaje **sugieren** (no bloquean) · reabastecimiento incluido en el paquete · **picking
+es una capa de logística pura, solo para envíos/despachos, nunca mostrador** (confirmado y
+resuelto en la sesión de v1.143.0 — lee la decisión de LPN ya tomada por la venta, nunca la toma).
+Abiertas: ¿OC por UdM? · factores siempre enteros (confirmar si aparece un caso real de fracción).
 
 ---
 
@@ -236,4 +243,4 @@ Abiertas: picking ¿solo envíos/preparación o también mostrador? (recomendado
 - [[wiki/features/inventario-stock]] — asignación de estructura a LPNs
 - [[wiki/features/configuracion]] — ABM Unidades de medida
 - [[wiki/features/ventas-pos]] — Fase 2 (✅ v1.141.0) conecta el precio por nivel con la venta real
-- [[wiki/database/migraciones]] — migs 282, 283, 286, 287, 288
+- [[wiki/database/migraciones]] — migs 282, 283, 286, 287, 288, 289, 290

@@ -13,6 +13,24 @@ updated: 2026-07-22
 
 ---
 
+## v1.143.0 — 🏗️ WMS Zonas + Picking + Reabastecimiento (cierra Fases 3, 4 y 5 del roadmap de Estructuras-UdM) — 🟡 DEV (2026-07-22)
+
+Migs **289-290 SOLO en DEV**. Feature grande nueva: `zonas` + `reglas_almacenaje` +
+`producto_ubicacion_umbrales` + `wms_tareas` (RLS por sucursal, mig 289) + RPCs SECURITY INVOKER
+`fn_generar_tareas_picking_envio`/`fn_completar_tarea_reabastecimiento`/`fn_completar_tarea_picking`/
+`fn_generar_tareas_reabastecimiento_umbral` (mig 290). **Decisión de arquitectura confirmada con GO:
+el picking es logística pura** — nunca decide qué LPN consume una venta ni cuándo se rebaja stock
+(`VentasPage.tsx`/`rebajeSort.ts` sin cambios); lee la decisión de LPN ya tomada por la venta y, si
+el LPN está fuera de zona de picking, encadena una tarea de reabastecimiento que reusa el mecanismo
+de "Mover LPN" de `LpnAccionesModal`. UI: sección "Zonas y picking" en Config→Inventario, ruta nueva
+`/picking` (mobile-first, escaneo de barcode) y tab "Tareas WMS" en `InventarioPage`, gateados por
+modoAvanzado + rol DEPOSITO. Revisado por `migration-reviewer` (sumó `FOR UPDATE SKIP LOCKED`);
+smoke test manual con datos reales en DEV encontró y corrigió 2 bugs de la RPC + 1 bug del
+reabastecimiento por umbral. unit 1177 · **e2e 106 nuevo** (mutante, DB real) · regresión e2e 13
+specs. `APP_VERSION` = v1.143.0, commit `547ef330` en `dev`, pusheado a `origin/dev`. **Sin deploy a
+PROD** (decisión explícita, queda para cuando GO lo pida). Detalle en [[wiki/features/wms]] y
+[[wiki/features/estructuras-udm]].
+
 ## v1.142.0 — 🛑 Precio por nivel en el importador de productos + fix crítico (backlog Fede, CIERRA 4/6/7) — ✅ PROD (2026-07-22, PR #297)
 
 **Deploy real a PROD el 2026-07-22**: PR #297 `dev`→`main` mergeado (`0109abf4`), Vercel PRD

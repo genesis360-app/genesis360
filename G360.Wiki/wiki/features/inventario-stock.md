@@ -1,8 +1,8 @@
 ---
 title: Inventario y Stock
 category: features
-tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos]
-sources: [CLAUDE.md, reglas_negocio.md]
+tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking]
+sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290]
 updated: 2026-07-22
 ---
 
@@ -36,6 +36,7 @@ Toda unidad de stock es una `inventario_lineas` identificada por:
 6. **Conteos** — conteo por ubicación o producto con ajuste automático
 7. **Historial** — movimientos con filtros fecha/cat/tipo/motivo (badge "Traslado" ámbar para tipo `traslado`)
 8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO
+9. **Tareas WMS** (🟡 EN DEV, v1.143.0, migs 289-290) — vista de escritorio para el DUEÑO de las tareas de picking/reabastecimiento generadas; link directo a la ruta mobile `/picking`. Ver [[wiki/features/wms]] → "Fase 3"
 
 ---
 
@@ -259,6 +260,25 @@ Venc./Series/Acciones).
 
 ---
 
+## Tab "Tareas WMS" (🟡 EN DEV desde v1.143.0, migs 289-290 — cierra Fases 3-5 de estructuras-udm)
+
+Vista de escritorio para el **DUEÑO** de las tareas de picking/reabastecimiento (`wms_tareas`)
+generadas al despachar un envío o por el sweep de reabastecimiento por umbral, con link directo a la
+ruta mobile **`/picking`** (`PickingPage.tsx`, escaneo de código de barras vía `BarcodeScanner`)
+donde el rol **DEPOSITO** completa las tareas físicamente en el depósito.
+
+**El picking es logística pura** — no decide qué LPN consume una venta ni cuándo se rebaja stock;
+lee la decisión ya tomada por la venta (`venta_item_despachos`/`venta_items.lpn_plan`). Si el LPN
+vive fuera de una zona de picking, se genera automáticamente una tarea de reabastecimiento
+precedente que reusa el mismo mecanismo de "Mover LPN" de `LpnAccionesModal`. Gateado por
+`modoAvanzado` + rol DEPOSITO, mismo patrón que "Recepciones".
+
+Detalle completo del schema/RPCs: [[wiki/features/wms]] → "Fase 3" y "Fase 4". Configuración de
+Zonas/Reglas de almacenaje/Umbrales: [[wiki/features/configuracion]] → "Zonas y picking". **Solo
+DEV — sin deploy a PROD**, deploy pendiente de que GO lo pida.
+
+---
+
 ## Mono-SKU en ubicaciones (migration 052)
 
 `ubicaciones.mono_sku BOOLEAN DEFAULT FALSE`  
@@ -476,10 +496,13 @@ variantes" (SKU separado). Detalle completo: [[wiki/features/atributos-variante]
 
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/alertas]]
-- [[wiki/features/wms]]
+- [[wiki/features/wms]] — "Fase 3"/"Fase 4" (Tareas WMS/picking/reabastecimiento, v1.143.0)
+- [[wiki/features/estructuras-udm]] — roadmap completo Zonas/Picking/Reabastecimiento
+- [[wiki/features/configuracion]] — sección "Zonas y picking"
 - [[wiki/features/escaneo-barcode]]
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/productos]]
 - [[wiki/features/atributos-variante]]
 - [[wiki/database/triggers]]
+- [[wiki/database/migraciones]] — migs 289, 290
 - [[wiki/database/schema-overview]]

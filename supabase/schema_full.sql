@@ -1,21 +1,10 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-07-13T22:16:01.492Z desde DEV (gcmhzdedrkmmzfzfveig)
--- Última migración aplicada: 20260712232300 · 139 tablas
+-- Generado 2026-07-22T04:21:19.512Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260721231312 · 141 tablas
 --
--- Reconstruido desde el catálogo de Postgres vía la Management API de Supabase
--- (NO es pg_dump byte-a-byte). Regenerar con: node scripts/dump-schema.mjs
--- (necesita conexión al pooler/directo; hoy bloqueada por el bug de Supavisor +
---  falta de egress IPv6, así que este snapshot se generó vía MCP execute_sql).
---
--- ⚠ PARCHEADO A MANO 2026-07-21 (sin SUPABASE_ACCESS_TOKEN en el entorno, mismo
--- bloqueo de siempre — ver reference_schema_dump_metodo): migraciones 284-287
--- (descuento_pct en estados_inventario · trazabilidad de descuento por estado en
--- venta_items/ventas · precio_venta/precio_costo por nivel de estructura + ancla
--- de precio en productos.nivel_precio_orden + unidad_medida_id/cantidad_uom en
--- venta_items/combos · fn_estructura_guardar_niveles extendida). Regenerar con
--- el script completo la próxima vez que haya token a mano, para no acumular
--- drift entre este snapshot y la DB real.
+-- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
+-- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
 -- ============================================================
 
 -- ============================================================
@@ -27,6 +16,11 @@ CREATE EXTENSION IF NOT EXISTS pg_stat_statements WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
 CREATE EXTENSION IF NOT EXISTS supabase_vault WITH SCHEMA vault;
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp" WITH SCHEMA extensions;
+
+-- ============================================================
+-- TIPOS ENUM
+-- ============================================================
+
 
 -- ============================================================
 -- TABLAS
@@ -153,7 +147,7 @@ CREATE TABLE public.atributos_variante_valores (
   valor text NOT NULL,
   orden integer NOT NULL DEFAULT 0,
   activo boolean NOT NULL DEFAULT true,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.autorizaciones_cc (
@@ -1285,6 +1279,23 @@ CREATE TABLE public.platform_facturas_claims (
   claimed_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
+CREATE TABLE public.producto_estructura_niveles (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  estructura_id uuid NOT NULL,
+  unidad_medida_id uuid NOT NULL,
+  orden integer NOT NULL,
+  factor integer NOT NULL DEFAULT 1,
+  unidades_base bigint NOT NULL DEFAULT 1,
+  peso_kg numeric(10,4),
+  alto_cm numeric(10,2),
+  ancho_cm numeric(10,2),
+  largo_cm numeric(10,2),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  precio_venta numeric(12,2),
+  precio_costo numeric(12,2)
+);
+
 CREATE TABLE public.producto_estructuras (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -1307,32 +1318,6 @@ CREATE TABLE public.producto_estructuras (
   largo_pallet numeric(10,2),
   created_at timestamp with time zone DEFAULT now(),
   updated_at timestamp with time zone DEFAULT now()
-);
-
-CREATE TABLE public.producto_estructura_niveles (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL,
-  estructura_id uuid NOT NULL,
-  unidad_medida_id uuid NOT NULL,
-  orden integer NOT NULL,
-  factor integer NOT NULL DEFAULT 1,
-  unidades_base bigint NOT NULL DEFAULT 1,
-  peso_kg numeric(10,4),
-  alto_cm numeric(10,2),
-  ancho_cm numeric(10,2),
-  largo_cm numeric(10,2),
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  precio_venta numeric(12,2),
-  precio_costo numeric(12,2),
-  CONSTRAINT producto_estructura_niveles_orden_check CHECK (orden >= 1),
-  CONSTRAINT producto_estructura_niveles_factor_check CHECK (factor >= 1),
-  CONSTRAINT producto_estructura_niveles_unidades_base_check CHECK (unidades_base >= 1),
-  CONSTRAINT producto_estructura_niveles_peso_kg_check CHECK (peso_kg IS NULL OR peso_kg > 0),
-  CONSTRAINT producto_estructura_niveles_alto_cm_check CHECK (alto_cm IS NULL OR alto_cm > 0),
-  CONSTRAINT producto_estructura_niveles_ancho_cm_check CHECK (ancho_cm IS NULL OR ancho_cm > 0),
-  CONSTRAINT producto_estructura_niveles_largo_cm_check CHECK (largo_cm IS NULL OR largo_cm > 0),
-  CONSTRAINT producto_estructura_niveles_precio_venta_check CHECK (precio_venta IS NULL OR precio_venta >= 0),
-  CONSTRAINT producto_estructura_niveles_precio_costo_check CHECK (precio_costo IS NULL OR precio_costo >= 0)
 );
 
 CREATE TABLE public.producto_grupos (
@@ -1438,7 +1423,7 @@ END,
   ultimo_conteo_at timestamp with time zone,
   pendiente_revision boolean NOT NULL DEFAULT false,
   nivel_precio_orden integer,
-  CONSTRAINT productos_nivel_precio_orden_check CHECK (nivel_precio_orden IS NULL OR nivel_precio_orden >= 1)
+  notas text
 );
 
 CREATE TABLE public.proveedor_cc_movimientos (
@@ -2302,8 +2287,7 @@ CREATE TABLE public.venta_items (
   descuento_estado_pct numeric(5,2),
   descuento_estado_monto numeric(12,2),
   unidad_medida_id uuid,
-  cantidad_uom numeric(12,3),
-  CONSTRAINT venta_items_cantidad_uom_check CHECK (cantidad_uom IS NULL OR cantidad_uom > 0)
+  cantidad_uom numeric(12,3)
 );
 
 CREATE TABLE public.venta_series (
@@ -2407,8 +2391,8 @@ ALTER TABLE public.alertas ADD CONSTRAINT alertas_pkey PRIMARY KEY (id);
 ALTER TABLE public.api_keys ADD CONSTRAINT api_keys_pkey PRIMARY KEY (id);
 ALTER TABLE public.archivos_biblioteca ADD CONSTRAINT archivos_biblioteca_pkey PRIMARY KEY (id);
 ALTER TABLE public.archivos_biblioteca ADD CONSTRAINT archivos_biblioteca_tipo_check CHECK ((tipo = ANY (ARRAY['certificado_afip_crt'::text, 'certificado_afip_key'::text, 'contrato'::text, 'factura_proveedor'::text, 'manual'::text, 'otro'::text])));
-ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_pkey PRIMARY KEY (id);
 ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_atributo_check CHECK ((atributo = ANY (ARRAY['talle'::text, 'color'::text, 'encaje'::text, 'formato'::text, 'sabor_aroma'::text])));
+ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_pkey PRIMARY KEY (id);
 ALTER TABLE public.atributos_variante_valores ADD CONSTRAINT atributos_variante_valores_valor_check CHECK ((btrim(valor) <> ''::text));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'aprobada'::text, 'rechazada'::text, 'cancelada'::text])));
 ALTER TABLE public.autorizaciones_cc ADD CONSTRAINT autorizaciones_cc_motivo_bloqueo_check CHECK ((motivo_bloqueo = ANY (ARRAY['limite_excedido'::text, 'oc_vencida'::text])));
@@ -2486,6 +2470,7 @@ ALTER TABLE public.envio_pod_fotos ADD CONSTRAINT envio_pod_fotos_pkey PRIMARY K
 ALTER TABLE public.envios ADD CONSTRAINT envios_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'despachado'::text, 'en_camino'::text, 'en_bodega'::text, 'entregado'::text, 'devolucion'::text, 'cancelado'::text])));
 ALTER TABLE public.envios ADD CONSTRAINT envios_pkey PRIMARY KEY (id);
 ALTER TABLE public.envios ADD CONSTRAINT envios_token_transportista_key UNIQUE (token_transportista);
+ALTER TABLE public.estados_inventario ADD CONSTRAINT estados_inventario_descuento_pct_check CHECK (((descuento_pct IS NULL) OR ((descuento_pct > (0)::numeric) AND (descuento_pct <= (100)::numeric))));
 ALTER TABLE public.estados_inventario ADD CONSTRAINT estados_inventario_pkey PRIMARY KEY (id);
 ALTER TABLE public.gasto_cuotas ADD CONSTRAINT gasto_cuotas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'pagado'::text])));
 ALTER TABLE public.gasto_cuotas ADD CONSTRAINT gasto_cuotas_pkey PRIMARY KEY (id);
@@ -2559,9 +2544,18 @@ ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_pkey PRIMARY
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_origen_pago_check CHECK ((origen_pago = ANY (ARRAY['mp_recurrente'::text, 'mp_manual'::text, 'manual_staff'::text])));
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_pkey PRIMARY KEY (id);
 ALTER TABLE public.platform_facturas_claims ADD CONSTRAINT platform_facturas_claims_pkey PRIMARY KEY (payment_ref);
-ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_pkey PRIMARY KEY (id);
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_alto_cm_check CHECK (((alto_cm IS NULL) OR (alto_cm > (0)::numeric)));
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_ancho_cm_check CHECK (((ancho_cm IS NULL) OR (ancho_cm > (0)::numeric)));
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_orden_key UNIQUE (estructura_id, orden);
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_unidad_medida_id_key UNIQUE (estructura_id, unidad_medida_id);
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_factor_check CHECK ((factor >= 1));
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_largo_cm_check CHECK (((largo_cm IS NULL) OR (largo_cm > (0)::numeric)));
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_orden_check CHECK ((orden >= 1));
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_peso_kg_check CHECK (((peso_kg IS NULL) OR (peso_kg > (0)::numeric)));
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_pkey PRIMARY KEY (id);
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_precio_costo_check CHECK (((precio_costo IS NULL) OR (precio_costo >= (0)::numeric)));
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_precio_venta_check CHECK (((precio_venta IS NULL) OR (precio_venta >= (0)::numeric)));
+ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_unidades_base_check CHECK ((unidades_base >= 1));
 ALTER TABLE public.producto_estructuras ADD CONSTRAINT producto_estructuras_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_cantidad_minima_check CHECK ((cantidad_minima > 0));
@@ -2573,9 +2567,10 @@ ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursal_stock_minimo_check CHECK ((stock_minimo >= 0));
 ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion_sucursal_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion_sucursal_producto_id_sucursal_id_key UNIQUE (producto_id, sucursal_id);
+ALTER TABLE public.productos ADD CONSTRAINT chk_productos_grupo_sin_atributos_variante CHECK ((NOT ((grupo_id IS NOT NULL) AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_alicuota_iva_check CHECK ((alicuota_iva = ANY (ARRAY[(0)::numeric, 10.5, (21)::numeric, (27)::numeric])));
 ALTER TABLE public.productos ADD CONSTRAINT productos_clase_abc_check CHECK (((clase_abc IS NULL) OR (clase_abc = ANY (ARRAY['A'::text, 'B'::text, 'C'::text]))));
-ALTER TABLE public.productos ADD CONSTRAINT chk_productos_grupo_sin_atributos_variante CHECK ((NOT ((grupo_id IS NOT NULL) AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma))));
+ALTER TABLE public.productos ADD CONSTRAINT productos_nivel_precio_orden_check CHECK (((nivel_precio_orden IS NULL) OR (nivel_precio_orden >= 1)));
 ALTER TABLE public.productos ADD CONSTRAINT productos_pkey PRIMARY KEY (id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_tenant_id_sku_key UNIQUE (tenant_id, sku);
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_pkey PRIMARY KEY (id);
@@ -2681,6 +2676,7 @@ ALTER TABLE public.users ADD CONSTRAINT users_rol_check CHECK ((rol = ANY (ARRAY
 ALTER TABLE public.venta_auditoria ADD CONSTRAINT venta_auditoria_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_check CHECK ((cantidad > (0)::numeric));
+ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_pkey PRIMARY KEY (id);
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'reservada'::text, 'despachada'::text, 'facturada'::text, 'cancelada'::text, 'devuelta'::text])));
@@ -3080,8 +3076,8 @@ ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_vent
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_linea_id_fkey FOREIGN KEY (linea_id) REFERENCES inventario_lineas(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
-ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
+ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_serie_id_fkey FOREIGN KEY (serie_id) REFERENCES inventario_series(id);
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
@@ -3098,7 +3094,7 @@ ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_sucursal
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 
 -- ============================================================
--- INDICES
+-- ÍNDICES
 -- ============================================================
 CREATE INDEX actividad_log_entidad_idx ON public.actividad_log USING btree (tenant_id, entidad);
 CREATE INDEX actividad_log_lpn_idx ON public.actividad_log USING btree (tenant_id, lpn);
@@ -3123,7 +3119,6 @@ CREATE INDEX idx_api_keys_key_hash ON public.api_keys USING btree (key_hash);
 CREATE INDEX idx_api_keys_tenant ON public.api_keys USING btree (tenant_id);
 CREATE INDEX idx_archivos_biblioteca_created_by ON public.archivos_biblioteca USING btree (created_by);
 CREATE INDEX idx_archivos_biblioteca_tenant ON public.archivos_biblioteca USING btree (tenant_id, tipo);
-CREATE UNIQUE INDEX uq_atributos_variante_valores_tenant_atributo_valor ON public.atributos_variante_valores USING btree (tenant_id, atributo, lower(btrim(valor)));
 CREATE INDEX idx_atributos_variante_valores_tenant_atributo ON public.atributos_variante_valores USING btree (tenant_id, atributo) WHERE activo;
 CREATE INDEX idx_aut_inv_tenant_estado ON public.autorizaciones_inventario USING btree (tenant_id, estado);
 CREATE INDEX idx_autoriz_cc_proveedor ON public.autorizaciones_cc USING btree (proveedor_id, estado);
@@ -3367,15 +3362,15 @@ CREATE INDEX idx_ordenes_compra_tenant ON public.ordenes_compra USING btree (ten
 CREATE INDEX idx_pcc_oc ON public.proveedor_cc_movimientos USING btree (oc_id) WHERE (oc_id IS NOT NULL);
 CREATE INDEX idx_pcc_tenant_proveedor ON public.proveedor_cc_movimientos USING btree (tenant_id, proveedor_id);
 CREATE INDEX idx_pcc_vencimiento ON public.proveedor_cc_movimientos USING btree (tenant_id, fecha_vencimiento) WHERE (fecha_vencimiento IS NOT NULL);
+CREATE INDEX idx_pen_estructura ON public.producto_estructura_niveles USING btree (estructura_id);
+CREATE INDEX idx_pen_tenant ON public.producto_estructura_niveles USING btree (tenant_id);
+CREATE INDEX idx_pen_udm ON public.producto_estructura_niveles USING btree (unidad_medida_id);
 CREATE INDEX idx_platform_facturas_biller_fecha ON public.platform_facturas USING btree (biller_id, created_at DESC);
 CREATE INDEX idx_platform_facturas_tenant_origen_id ON public.platform_facturas USING btree (tenant_origen_id);
 CREATE INDEX idx_ppm_producto ON public.producto_precios_mayorista USING btree (producto_id);
 CREATE INDEX idx_presup_prov ON public.servicio_presupuestos USING btree (proveedor_id);
 CREATE INDEX idx_prod_ubic_suc_producto ON public.producto_ubicacion_sucursal USING btree (producto_id);
 CREATE INDEX idx_prod_ubic_suc_tenant ON public.producto_ubicacion_sucursal USING btree (tenant_id);
-CREATE INDEX idx_pen_estructura ON public.producto_estructura_niveles USING btree (estructura_id);
-CREATE INDEX idx_pen_tenant ON public.producto_estructura_niveles USING btree (tenant_id);
-CREATE INDEX idx_pen_udm ON public.producto_estructura_niveles USING btree (unidad_medida_id);
 CREATE UNIQUE INDEX idx_producto_estructuras_default ON public.producto_estructuras USING btree (tenant_id, producto_id) WHERE (is_default = true);
 CREATE INDEX idx_producto_estructuras_producto ON public.producto_estructuras USING btree (producto_id);
 CREATE INDEX idx_producto_estructuras_tenant ON public.producto_estructuras USING btree (tenant_id);
@@ -3567,6 +3562,7 @@ CREATE INDEX idx_vid_venta ON public.venta_item_despachos USING btree (venta_id)
 CREATE UNIQUE INDEX uq_addon_batch_mp_payment ON public.addon_batch_changes USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_addon_batch_pendiente ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = 'pendiente_pago'::text);
 CREATE UNIQUE INDEX uq_addon_batch_programado ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = ANY (ARRAY['programado'::text, 'esperando_cobro'::text]));
+CREATE UNIQUE INDEX uq_atributos_variante_valores_tenant_atributo_valor ON public.atributos_variante_valores USING btree (tenant_id, atributo, lower(btrim(valor)));
 CREATE UNIQUE INDEX uq_billing_manual_pagos_mp_payment ON public.billing_manual_pagos USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_cuentas_origen_efectivo_por_tenant ON public.cuentas_origen USING btree (tenant_id) WHERE (tipo = 'efectivo'::text);
 CREATE UNIQUE INDEX uq_emisores_fiscales_default ON public.emisores_fiscales USING btree (tenant_id) WHERE es_default;
@@ -3576,8 +3572,6 @@ CREATE UNIQUE INDEX uq_tenant_addons_fijo_dim ON public.tenant_addons USING btre
 CREATE UNIQUE INDEX uq_tenant_addons_mp_payment ON public.tenant_addons USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_tenant_certificates_emisor ON public.tenant_certificates USING btree (emisor_id);
 CREATE UNIQUE INDEX uq_tenant_certificates_tenant_legacy ON public.tenant_certificates USING btree (tenant_id) WHERE (emisor_id IS NULL);
-
-
 -- ============================================================
 -- FUNCIONES
 -- ============================================================
@@ -3936,6 +3930,63 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.eliminar_productos_fisico(p_ids uuid[])
+ RETURNS TABLE(producto_id uuid, eliminado boolean, motivo text)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_id UUID;
+  v_tenant_id UUID;
+  v_caller_tenant UUID;
+BEGIN
+  SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
+  IF v_caller_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin tenant'; END IF;
+
+  FOREACH v_id IN ARRAY p_ids LOOP
+    SELECT tenant_id INTO v_tenant_id FROM productos WHERE id = v_id;
+
+    IF v_tenant_id IS NULL THEN
+      producto_id := v_id; eliminado := false; motivo := 'no_encontrado';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    IF v_tenant_id IS DISTINCT FROM v_caller_tenant THEN
+      producto_id := v_id; eliminado := false; motivo := 'no_autorizado';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    IF fn_producto_tiene_actividad(v_id) THEN
+      producto_id := v_id; eliminado := false; motivo := 'tiene_actividad';
+      RETURN NEXT;
+      CONTINUE;
+    END IF;
+
+    BEGIN
+      -- "producto_id" calificado con el nombre de tabla: eliminar_productos_fisico devuelve una
+      -- columna OUT llamada producto_id, y plpgsql trata el identificador sin calificar como
+      -- ambiguo entre esa variable OUT y la columna de la tabla (plpgsql.variable_conflict=error
+      -- por default) → "column reference producto_id is ambiguous" en runtime.
+      DELETE FROM alertas WHERE alertas.producto_id = v_id; -- notificaciones, no historial: se limpian solas
+      DELETE FROM productos WHERE productos.id = v_id;
+      producto_id := v_id; eliminado := true; motivo := NULL;
+    EXCEPTION
+      WHEN foreign_key_violation THEN
+        -- backstop: fn_producto_tiene_actividad ya debería haber filtrado esto antes.
+        producto_id := v_id; eliminado := false; motivo := 'tiene_actividad';
+      WHEN OTHERS THEN
+        -- error real (no un bloqueo esperado) — no lo disfracemos de "tiene actividad".
+        producto_id := v_id; eliminado := false; motivo := 'error: ' || SQLERRM;
+    END;
+    RETURN NEXT;
+  END LOOP;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fichar_qr(p_token text, p_empleado_id uuid)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -4192,6 +4243,48 @@ AS $function$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;$function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_espejo_emisor_default_a_tenant()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NOT NEW.es_default THEN
+    RETURN NEW;
+  END IF;
+
+  UPDATE tenants t SET
+    cuit                 = NEW.cuit,
+    razon_social_fiscal  = NEW.razon_social_fiscal,
+    condicion_iva_emisor = NEW.condicion_iva_emisor,
+    domicilio_fiscal     = NEW.domicilio_fiscal,
+    ingresos_brutos      = NEW.ingresos_brutos,
+    inicio_actividades   = NEW.inicio_actividades,
+    umbral_factura_b     = NEW.umbral_factura_b,
+    afip_produccion      = NEW.afip_produccion,
+    afip_provider        = NEW.afip_provider,
+    afipsdk_token        = NEW.afipsdk_token,
+    banco                = NEW.banco,
+    cbu                  = NEW.cbu,
+    alias_cbu            = NEW.alias_cbu,
+    leyenda_comprobante  = NEW.leyenda_comprobante,
+    logo_url             = NEW.logo_url
+  WHERE t.id = NEW.tenant_id
+    AND (t.cuit, t.razon_social_fiscal, t.condicion_iva_emisor, t.domicilio_fiscal,
+         t.ingresos_brutos, t.inicio_actividades, t.umbral_factura_b, t.afip_produccion,
+         t.afip_provider, t.afipsdk_token, t.banco, t.cbu, t.alias_cbu,
+         t.leyenda_comprobante, t.logo_url)
+        IS DISTINCT FROM
+        (NEW.cuit, NEW.razon_social_fiscal, NEW.condicion_iva_emisor, NEW.domicilio_fiscal,
+         NEW.ingresos_brutos, NEW.inicio_actividades, NEW.umbral_factura_b, NEW.afip_produccion,
+         NEW.afip_provider, NEW.afipsdk_token, NEW.banco, NEW.cbu, NEW.alias_cbu,
+         NEW.leyenda_comprobante, NEW.logo_url);
+
+  RETURN NEW;
+END $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_estructura_guardar_niveles(p_estructura_id uuid, p_niveles jsonb)
  RETURNS void
  LANGUAGE plpgsql
@@ -4206,7 +4299,6 @@ DECLARE
   v_acumulado  bigint := 1;
   v_udm_count  integer;
 BEGIN
-  -- RLS aplica (SECURITY INVOKER): si la estructura no es del tenant del caller, no se ve.
   SELECT tenant_id INTO v_tenant_id FROM producto_estructuras WHERE id = p_estructura_id;
   IF v_tenant_id IS NULL THEN
     RAISE EXCEPTION 'Estructura inexistente o sin permisos';
@@ -4263,9 +4355,6 @@ BEGIN
        NULLIF(v_nivel->>'precio_costo', '')::numeric);
   END LOOP;
 
-  -- Si el nivel anclado (productos.nivel_precio_orden) ya no existe en la estructura DEFAULT
-  -- tras este guardado, se invalida solo — vuelve al nivel base (REGLA #0: nunca dejar un ancla
-  -- apuntando a la nada).
   UPDATE productos p
   SET nivel_precio_orden = NULL
   WHERE p.nivel_precio_orden IS NOT NULL
@@ -4306,6 +4395,32 @@ BEGIN
   RETURN NEW;
 END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_guard_emisor_default()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF TG_OP = 'DELETE' THEN
+    IF OLD.es_default AND EXISTS (SELECT 1 FROM tenants WHERE id = OLD.tenant_id) THEN
+      RAISE EXCEPTION 'El emisor fiscal principal no se puede eliminar: es la identidad fiscal del negocio. Corregí sus datos en su lugar.'
+        USING ERRCODE = 'P0001';
+    END IF;
+    RETURN OLD;
+  END IF;
+  IF OLD.es_default AND NOT NEW.es_default THEN
+    RAISE EXCEPTION 'No se puede quitar la marca de principal al emisor default. Cambiar el emisor principal requiere una operación explícita (no implementada).'
+      USING ERRCODE = 'P0001';
+  END IF;
+  IF NEW.es_default AND NOT NEW.activo THEN
+    RAISE EXCEPTION 'El emisor fiscal principal no se puede desactivar.'
+      USING ERRCODE = 'P0001';
+  END IF;
+  RETURN NEW;
+END $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_guard_rol_admin()
@@ -4431,6 +4546,56 @@ AS $function$
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_producto_tiene_actividad(p_producto_id uuid)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id UUID;
+  v_caller_tenant UUID;
+BEGIN
+  SELECT tenant_id INTO v_tenant_id FROM productos WHERE id = p_producto_id;
+  IF v_tenant_id IS NULL THEN
+    RETURN true; -- no existe: tratarlo como no-eliminable, que el caller lo reporte como tal
+  END IF;
+
+  SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
+  IF v_caller_tenant IS DISTINCT FROM v_tenant_id THEN
+    RAISE EXCEPTION 'No autorizado';
+  END IF;
+
+  RETURN
+       EXISTS (SELECT 1 FROM movimientos_stock         WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM venta_items                WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM orden_compra_items         WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM recepcion_items            WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM traslado_items             WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_conteo_items    WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_conteos         WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM devolucion_items           WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM devolucion_proveedor_items WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM envio_items                WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM venta_item_despachos       WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_lineas          WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_series          WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM combo_items                WHERE producto_id = p_producto_id)
+    -- combos.producto_id / kit_recetas / kitting_log son ON DELETE CASCADE: sin este chequeo,
+    -- borrar un producto que es cabecera de combo o kit (o componente de la receta de OTRO kit)
+    -- arrastraría en cascada filas de combo_items / kit_recetas que pertenecen a OTROS productos,
+    -- y borraría el historial de armado/desarmado (kitting_log) sin dejar rastro.
+    OR EXISTS (SELECT 1 FROM combos      WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM kit_recetas WHERE kit_producto_id = p_producto_id OR comp_producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM kitting_log WHERE kit_producto_id = p_producto_id)
+    -- mapeos de marketplace: también CASCADE; no es histórico/fiscal, pero borrarlos en silencio
+    -- puede desincronizar stock/precio del lado de MercadoLibre/Tiendanube sin que nadie se entere.
+    OR EXISTS (SELECT 1 FROM inventario_meli_map WHERE producto_id = p_producto_id)
+    OR EXISTS (SELECT 1 FROM inventario_tn_map   WHERE producto_id = p_producto_id);
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_recalcular_salario()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -4496,101 +4661,6 @@ BEGIN
 
   RETURN v_hasta;
 END $function$
-
-
-CREATE OR REPLACE FUNCTION public.fn_producto_tiene_actividad(p_producto_id uuid)
- RETURNS boolean
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_tenant_id UUID;
-  v_caller_tenant UUID;
-BEGIN
-  SELECT tenant_id INTO v_tenant_id FROM productos WHERE id = p_producto_id;
-  IF v_tenant_id IS NULL THEN
-    RETURN true; -- no existe: tratarlo como no-eliminable, que el caller lo reporte como tal
-  END IF;
-
-  SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
-  IF v_caller_tenant IS DISTINCT FROM v_tenant_id THEN
-    RAISE EXCEPTION 'No autorizado';
-  END IF;
-
-  RETURN
-       EXISTS (SELECT 1 FROM movimientos_stock         WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM venta_items                WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM orden_compra_items         WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM recepcion_items            WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM traslado_items             WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM inventario_conteo_items    WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM inventario_conteos         WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM devolucion_items           WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM devolucion_proveedor_items WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM envio_items                WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM venta_item_despachos       WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM inventario_lineas          WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM inventario_series          WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM combo_items                WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM combos      WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM kit_recetas WHERE kit_producto_id = p_producto_id OR comp_producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM kitting_log WHERE kit_producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM inventario_meli_map WHERE producto_id = p_producto_id)
-    OR EXISTS (SELECT 1 FROM inventario_tn_map   WHERE producto_id = p_producto_id);
-END;
-$function$
-
-
-CREATE OR REPLACE FUNCTION public.eliminar_productos_fisico(p_ids uuid[])
- RETURNS TABLE(producto_id uuid, eliminado boolean, motivo text)
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_id UUID;
-  v_tenant_id UUID;
-  v_caller_tenant UUID;
-BEGIN
-  SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
-  IF v_caller_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin tenant'; END IF;
-
-  FOREACH v_id IN ARRAY p_ids LOOP
-    SELECT tenant_id INTO v_tenant_id FROM productos WHERE id = v_id;
-
-    IF v_tenant_id IS NULL THEN
-      producto_id := v_id; eliminado := false; motivo := 'no_encontrado';
-      RETURN NEXT;
-      CONTINUE;
-    END IF;
-
-    IF v_tenant_id IS DISTINCT FROM v_caller_tenant THEN
-      producto_id := v_id; eliminado := false; motivo := 'no_autorizado';
-      RETURN NEXT;
-      CONTINUE;
-    END IF;
-
-    IF fn_producto_tiene_actividad(v_id) THEN
-      producto_id := v_id; eliminado := false; motivo := 'tiene_actividad';
-      RETURN NEXT;
-      CONTINUE;
-    END IF;
-
-    BEGIN
-      DELETE FROM alertas WHERE alertas.producto_id = v_id;
-      DELETE FROM productos WHERE productos.id = v_id;
-      producto_id := v_id; eliminado := true; motivo := NULL;
-    EXCEPTION
-      WHEN foreign_key_violation THEN
-        producto_id := v_id; eliminado := false; motivo := 'tiene_actividad';
-      WHEN OTHERS THEN
-        producto_id := v_id; eliminado := false; motivo := 'error: ' || SQLERRM;
-    END;
-    RETURN NEXT;
-  END LOOP;
-END;
-$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_saldo_proveedor_cc(p_proveedor_id uuid)
@@ -4719,56 +4789,6 @@ BEGIN
      AND NEW.primera_compra_at IS NULL THEN
     NEW.primera_compra_at := now();
   END IF;
-  RETURN NEW;
-END $function$
-
-
-CREATE OR REPLACE FUNCTION public.fn_sync_emisor_fiscal_default()
- RETURNS trigger
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-BEGIN
-  IF NEW.cuit IS NULL THEN
-    RETURN NEW;  -- sin CUIT no hay identidad fiscal que espejar
-  END IF;
-
-  UPDATE emisores_fiscales SET
-    nombre               = COALESCE(NEW.razon_social_fiscal, NEW.nombre, nombre),
-    cuit                 = NEW.cuit,
-    razon_social_fiscal  = NEW.razon_social_fiscal,
-    condicion_iva_emisor = NEW.condicion_iva_emisor,
-    domicilio_fiscal     = NEW.domicilio_fiscal,
-    ingresos_brutos      = NEW.ingresos_brutos,
-    inicio_actividades   = NEW.inicio_actividades,
-    umbral_factura_b     = NEW.umbral_factura_b,
-    afip_produccion      = COALESCE(NEW.afip_produccion, false),
-    afip_provider        = COALESCE(NEW.afip_provider, 'propio'),
-    afipsdk_token        = NEW.afipsdk_token,
-    banco                = NEW.banco,
-    cbu                  = NEW.cbu,
-    alias_cbu            = NEW.alias_cbu,
-    leyenda_comprobante  = NEW.leyenda_comprobante,
-    logo_url             = NEW.logo_url,
-    updated_at           = now()
-  WHERE tenant_id = NEW.id AND es_default;
-
-  IF NOT FOUND THEN
-    INSERT INTO emisores_fiscales (
-      tenant_id, nombre, cuit, razon_social_fiscal, condicion_iva_emisor, domicilio_fiscal,
-      ingresos_brutos, inicio_actividades, umbral_factura_b, afip_produccion, afip_provider,
-      afipsdk_token, banco, cbu, alias_cbu, leyenda_comprobante, logo_url, es_default, activo
-    ) VALUES (
-      NEW.id, COALESCE(NEW.razon_social_fiscal, NEW.nombre, 'Emisor principal'), NEW.cuit,
-      NEW.razon_social_fiscal, NEW.condicion_iva_emisor, NEW.domicilio_fiscal,
-      NEW.ingresos_brutos, NEW.inicio_actividades, NEW.umbral_factura_b,
-      COALESCE(NEW.afip_produccion, false), COALESCE(NEW.afip_provider, 'propio'),
-      NEW.afipsdk_token, NEW.banco, NEW.cbu, NEW.alias_cbu, NEW.leyenda_comprobante,
-      NEW.logo_url, true, true
-    );
-  END IF;
-
   RETURN NEW;
 END $function$
 
@@ -5633,6 +5653,67 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -5707,67 +5788,6 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -6830,8 +6850,6 @@ DECLARE v_ok BOOLEAN; BEGIN
   RETURN v_ok;
 END;$function$
 
-
-
 -- ============================================================
 -- TRIGGERS
 -- ============================================================
@@ -6842,6 +6860,8 @@ CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones 
 CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH ROW EXECUTE FUNCTION set_cheque_numero();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();
+CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_espejo_emisor_default_a_tenant();
+CREATE TRIGGER trg_guard_emisor_default BEFORE DELETE OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_guard_emisor_default();
 CREATE TRIGGER empleados_update_timestamp BEFORE UPDATE ON public.empleados FOR EACH ROW EXECUTE FUNCTION update_empleados_timestamp();
 CREATE TRIGGER trg_envios_updated_at BEFORE UPDATE ON public.envios FOR EACH ROW EXECUTE FUNCTION fn_envios_updated_at();
 CREATE TRIGGER trg_set_envio_numero BEFORE INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION set_envio_numero();
@@ -6885,7 +6905,6 @@ CREATE TRIGGER trg_seed_canales_venta_new_tenant AFTER INSERT ON public.tenants 
 CREATE TRIGGER trg_seed_categorias_gasto_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_categorias_gasto_new_tenant();
 CREATE TRIGGER trg_seed_tenant_defaults AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_tenant_defaults();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
-CREATE TRIGGER trg_sync_emisor_fiscal_default AFTER INSERT OR UPDATE OF cuit, razon_social_fiscal, condicion_iva_emisor, domicilio_fiscal, ingresos_brutos, inicio_actividades, umbral_factura_b, afip_produccion, afip_provider, afipsdk_token, banco, cbu, alias_cbu, leyenda_comprobante, logo_url ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_sync_emisor_fiscal_default();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();
 CREATE TRIGGER trg_enforce_usuarios BEFORE INSERT OR UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('usuarios');
@@ -8052,8 +8071,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pl
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_billers TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.platform_facturas_claims TO service_role;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.producto_estructura_niveles TO authenticated;
-GRANT ALL ON public.producto_estructura_niveles TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructura_niveles TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructura_niveles TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO service_role;

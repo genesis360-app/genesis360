@@ -6,6 +6,43 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-22] deploy | 🚀 v1.137.0 a v1.142.0 — DEPLOY REAL a PROD (migs 282-288 + PR #297 + Vercel verificado con curl)
+
+Deploy real a producción de las 6 versiones que se habían acumulado en `dev` sin llegar a PROD:
+**v1.137.0** (Estructuras dinámicas por UdM Fase 1), **v1.138.0** (Filtros en Productos + columna
+Estructura, sin migración), **v1.139.0** (descuento por estado), **v1.140.0** (precio por UoM Fase
+1), **v1.141.0** (precio por UoM Fase 2 — venta por UoM en el POS), **v1.142.0** (precio por nivel
+en el importador + fix crítico del bug de `notas`).
+
+**Migraciones aplicadas en PROD** (proyecto Supabase `jjffnbrdjchquexdfgwq`), en orden:
+`282_estructura_niveles_dinamicos`, `283_backfill_estructura_niveles_conversiones`,
+`284_estados_inventario_descuento`, `285_venta_descuento_estado`, `286_precio_por_uom`,
+`287_fn_estructura_niveles_precio`, `288_productos_notas`. Confirmado con `list_migrations` de PROD
+que las 7 quedaron aplicadas, y con `execute_sql` que las columnas/tabla/función realmente existen.
+Revisadas antes por el subagente `migration-reviewer`: sin DDL destructivo, idempotentes,
+RLS+GRANTs completos. `producto_estructuras` tenía 0 filas en PROD antes de aplicar, así que los
+backfills de 282/283 fueron no-op (confirmado). Advisors de seguridad de PROD chequeados
+post-aplicación: nada nuevo introducido por estas migraciones.
+
+**PR #297 `dev`→`main`** creado, checks verdes (Unit Tests + Vercel preview), mergeado a `main`
+(commit `0109abf455eea1cd1907bb2fef4ca62c5ef1f609`). Vercel disparó el build de producción solo
+(`target: production`) sobre el merge commit, deployment `dpl_5mmYAPQhR1FLyM8vcmuh7gbyXmnQ`, quedó
+`READY`, aliased a `genesis360.pro`/`app.genesis360.pro`/`www.genesis360.pro`. **Verificado con curl
+real a ambos dominios** (no solo el estado de Vercel, siguiendo el gotcha conocido del webhook
+perdido de la mig 295/296): el bundle JS servido en vivo contiene la cadena `v1.142.0`. PROD ya está
+sirviendo el código nuevo, confirmado.
+
+Tag `v1.142.0` y GitHub release ya existían de antes (creados sobre el commit de `dev` en la sesión
+anterior) — no hizo falta crear nada nuevo de eso.
+
+Reconciliado el wiki: `project_pendientes.md` (bloque "ARRANCÁ ACÁ" nuevo + corregidos los bloques
+de v1.137.0 a v1.142.0 que decían "SOLO EN DEV"/"PROD sigue v1.136.0"), `roadmap.md` (releases
+pasados de 🟡 DEV a release real de PROD), páginas de feature afectadas, `index.md`. Pendiente
+(no ejecutado esta sesión): `app-reference.md` + `npm run ai:knowledge` + redeploy EF
+`ai-assistant` — ya no hay motivo para patearlo (el deploy a PROD ya pasó) pero queda para la
+próxima sesión o decisión de GO. `schema_full.sql` sigue bloqueado por falta de
+`SUPABASE_ACCESS_TOKEN` (sin cambios).
+
 ## [2026-07-21] update | 🛑 v1.142.0 — Precio por nivel en el importador de productos (cierra el backlog de Fede) + fix crítico: el importador NUNCA funcionó
 
 Continuación inmediata de la sesión anterior (v1.139/140/141.0): se resuelve el único pendiente

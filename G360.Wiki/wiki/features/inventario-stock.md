@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos]
 sources: [CLAUDE.md, reglas_negocio.md]
-updated: 2026-07-21
+updated: 2026-07-22
 ---
 
 # Inventario y Stock
@@ -245,7 +245,7 @@ Toggle `LayoutList/Building` en tab Inventario:
 
 ---
 
-## Columna "Estructura" en detalle de líneas por producto (✅ v1.138.0, 2026-07-21)
+## Columna "Estructura" en detalle de líneas por producto (✅ v1.138.0, EN PROD desde el 2026-07-22, PR #297)
 
 En la tabla de líneas por producto de la tab Inventario (modo avanzado), columna de **solo
 lectura** que muestra el nombre de la `producto_estructuras` asociada a esa línea (chip con ícono

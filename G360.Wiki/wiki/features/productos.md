@@ -3,7 +3,7 @@ title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
 sources: [CLAUDE.md]
-updated: 2026-07-21
+updated: 2026-07-22
 ---
 
 # Productos
@@ -22,7 +22,7 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 ### Barra de búsqueda y filtros
 
 - Search por nombre / SKU / código de barras
-- Botón píldora **"Filtros"** con popover (✅ v1.138.0, 2026-07-21 — ver sección dedicada abajo)
+- Botón píldora **"Filtros"** con popover (✅ v1.138.0, EN PROD desde el 2026-07-22 — ver sección dedicada abajo)
 - Toggle "Agrupar variantes" (ícono Layers) — alterna entre vista plana y vista agrupada por grupos
 
 ### Vista plana (default)
@@ -37,7 +37,7 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 - Grupos como secciones expandibles con tabla de variantes: Nombre/SKU | Variante | Precio | Stock
 - Botón "Editar grupo" en cada sección
 
-### Panel de filtros — pill button (✅ v1.138.0, 2026-07-21)
+### Panel de filtros — pill button (✅ v1.138.0, EN PROD desde el 2026-07-22, PR #297)
 
 Reemplaza al viejo toggle suelto "Ver inactivos" (ISS-122) por un panel combinable, mismo patrón
 visual pill+popover que ya usa `InventarioPage` → tab Inventario (ver
@@ -141,7 +141,7 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | IVA | select | Alícuota aplicable |
 | Margen objetivo | number | % — activa insightMargen en Dashboard |
 | Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092) |
-| Estos precios corresponden a | select (nuevo, v1.140.0) | "Ancla de precio" (`productos.nivel_precio_orden`, mig 286): a qué nivel de la estructura DEFAULT corresponden Precio costo/Precio venta de este card (default = nivel base). Solo visible si el producto tiene estructura. Ver [[wiki/features/estructuras-udm]] → "Precio por Unidad de Medida". |
+| Estos precios corresponden a | select (nuevo, v1.140.0, EN PROD desde el 2026-07-22) | "Ancla de precio" (`productos.nivel_precio_orden`, mig 286): a qué nivel de la estructura DEFAULT corresponden Precio costo/Precio venta de este card (default = nivel base). Solo visible si el producto tiene estructura. Ver [[wiki/features/estructuras-udm]] → "Precio por Unidad de Medida". |
 
 ### Card 4: Stock e inventario
 

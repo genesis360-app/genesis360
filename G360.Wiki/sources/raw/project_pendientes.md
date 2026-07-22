@@ -57,11 +57,23 @@ type: project
 > `dev→main` con checks verdes, **mergeado a `main`** (`05043d4d`). Detalle: `wiki/features/asistente-ia.md`
 > ("Redeploy 2026-07-22").
 >
+> **✅ CERRADO (2026-07-22, mismo día): `schema_full.sql` regenerado completo.** El pendiente #2 de
+> abajo (parcheado a mano, faltaba hasta la mig 288) se resolvió en la misma jornada: GO proveyó un
+> `SUPABASE_ACCESS_TOKEN` (Personal Access Token de supabase.com) puntual para esta corrida — se usó
+> solo como variable de entorno inline del comando, nunca se persistió en ningún archivo (ni
+> `.env.local`, ni commiteado). Con el token disponible, `npm run schema:dump` corrió en **modo API**
+> (el preferido, contra DEV `gcmhzdedrkmmzfzfveig`) y generó `supabase/schema_full.sql` completo
+> desde el catálogo real de Postgres: 441 KB, **141 tablas, 107 funciones, 61 triggers, 159 policies,
+> 6 vistas**, hasta la migración `20260721231312` (`288_productos_notas`, la última aplicada).
+> Reemplaza el parche a mano que venía arrastrándose desde hacía varias sesiones (llegaba solo hasta
+> la mig 287). Commit `52e40882` en `dev`, PR #299 `dev→main` con checks verdes, **mergeado a
+> `main`**. **⚠ Importante: el bloqueo de `SUPABASE_ACCESS_TOKEN` es por sesión/entorno, no algo
+> resuelto para siempre** — la próxima sesión de Claude Code puede no tener el token disponible y
+> volver a quedar bloqueada (ver [[reference_schema_dump_metodo]]).
+>
 > **▶ Pendiente (sin cambios):**
 > 1. ~~`app-reference.md` + redeploy EF `ai-assistant`~~ — ✅ cerrado arriba (2026-07-22).
-> 2. **`schema_full.sql`** sigue parcheado A MANO hasta la mig 287 (ahora también le falta la 288) —
->    bloqueado por falta de `SUPABASE_ACCESS_TOKEN` en el entorno, mismo gotcha de siempre (ver
->    [[reference_schema_dump_metodo]]). Regenerar con el script completo cuando haya token a mano.
+> 2. ~~`schema_full.sql` parcheado a mano~~ — ✅ cerrado arriba (2026-07-22, regenerado completo).
 > 3. Puntos 1/2 del backlog de Fede siguen en pausa esperando que GO confirme con Fede (sin cambios).
 > 4. Los 4 puntos "para conversar" del relevamiento de Config Ventas/Envíos (A códigos GS1 de
 >    proveedor · B unidades sueltas de paquete · C detalle fino de envío gratis · D integración MODO
@@ -121,10 +133,9 @@ type: project
 > arriba): ya documenta descuento por estado, precio por UoM, venta por UoM y el importador con
 > precio por nivel; `npm run ai:knowledge` corrido + EF `ai-assistant` redeployada en DEV y PROD.
 >
-> **▶ `schema_full.sql` sigue parcheado A MANO hasta la mig 287** (sin `SUPABASE_ACCESS_TOKEN` en el
-> entorno, mismo bloqueo de siempre — ver [[reference_schema_dump_metodo]]) — **todavía le falta la
-> mig 288** (`productos.notas`). Regenerar con el script completo o parchear a mano la próxima vez
-> que haya token a mano (sin cambios respecto al bloque de arriba).
+> **▶ `schema_full.sql`** — ✅ **cerrado el 2026-07-22** (ver bloque de arriba): regenerado completo
+> vía Management API con un `SUPABASE_ACCESS_TOKEN` provisto puntualmente por GO, ya incluye la
+> mig 288. Commit `52e40882`, PR #299 mergeado a `main`.
 
 > ### 🛒 ESTADO ANTERIOR (2026-07-21, v1.141.0) — Backlog de Fede COMPLETO: punto 3 + puntos 4/6/7 Fase 1 y Fase 2 — migs 284-287 (junto con 282-283 y 288) YA EN PROD desde el 2026-07-22 (ver bloque de arriba)
 >
@@ -174,9 +185,8 @@ type: project
 > PROD — **ese deploy ya pasó (2026-07-22), ahora sí corresponde** (ver pendiente actualizado en el
 > bloque de arriba).
 >
-> **▶ `schema_full.sql` parcheado A MANO** (sin `SUPABASE_ACCESS_TOKEN` en el entorno, mismo
-> bloqueo de siempre — ver [[reference_schema_dump_metodo]]) con las migs 284-287. Regenerar con
-> el script completo la próxima vez que haya token a mano.
+> **▶ `schema_full.sql`** — ✅ **cerrado el 2026-07-22** (ver bloque de arriba): regenerado completo
+> vía Management API, ya no depende del parche a mano de las migs 284-287.
 
 > ### 🟡 ESTADO ANTERIOR (2026-07-21, relevamiento) — 7 puntos de la reunión GO+Fede: TODOS resueltos en el chat, ANTES de la implementación de arriba
 >

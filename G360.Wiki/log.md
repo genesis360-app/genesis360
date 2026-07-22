@@ -6,6 +6,28 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-22] update | 🗄️ schema_full.sql regenerado completo (mig 288) — cierra el pendiente #2 del bloque "ARRANCÁ ACÁ"
+
+Cierra el pendiente #2 que había quedado abierto en la reconciliación del deploy a PROD de
+v1.137.0-v1.142.0 (bloque "ARRANCÁ ACÁ", ver entrada de abajo): `supabase/schema_full.sql` seguía
+parcheado A MANO hasta la mig 287, bloqueado por falta de `SUPABASE_ACCESS_TOKEN` en el entorno.
+
+GO proveyó un `SUPABASE_ACCESS_TOKEN` (Personal Access Token de supabase.com) puntual para esta
+corrida — se usó únicamente como variable de entorno inline del comando `npm run schema:dump`,
+nunca se persistió en ningún archivo (ni `.env.local`, ni commiteado). Con el token disponible, el
+script corrió en **modo API** (el preferido, contra DEV `gcmhzdedrkmmzfzfveig`) e introspeccionó el
+catálogo real de Postgres, generando `supabase/schema_full.sql` completo: 441 KB, **141 tablas, 107
+funciones, 61 triggers, 159 policies, 6 vistas**, hasta la migración `20260721231312`
+(`288_productos_notas`, la última aplicada). Reemplaza el parche a mano que venía arrastrándose
+desde hacía varias sesiones (llegaba solo hasta la mig 287, incompleto).
+
+Commit `52e40882` en `dev`, PR #299 `dev→main` con checks verdes, **mergeado a `main`**. Archivo de
+solo referencia/documentación — no lo importa ningún código en runtime, cero riesgo funcional.
+
+**⚠ Dato operativo para el futuro:** el bloqueo de `SUPABASE_ACCESS_TOKEN` es **por sesión/entorno,
+no algo resuelto para siempre** — la próxima sesión de Claude Code puede no tener el token
+disponible de nuevo y volver a estar bloqueada (ver [[reference_schema_dump_metodo]]).
+
 ## [2026-07-22] update | 🤖 app-reference.md al día + redeploy EF ai-assistant (DEV+PROD) — cierra el último pendiente del deploy v1.137.0-v1.142.0
 
 Cierra el pendiente que había quedado abierto en la reconciliación del deploy a PROD (bloque

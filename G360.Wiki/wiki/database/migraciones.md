@@ -6,10 +6,21 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-23
 ---
 
-# Historial de Migraciones (001-301)
+# Historial de Migraciones (001-302)
 
-**Total al 2026-07-23:** 301 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-23:** 302 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+**302 (Pedidos — validaciones de creación, EN DEV, SIN deploy a PROD)** — `pedidos.referencia text`
+(Nº externo / referencia del cliente, ej. su OC; el correlativo interno `numero`/`numero_sucursal`
+sigue 100% automático, este campo es aparte para no meter huecos ni colisiones) + `seed_tipos_pedido`
+actualizada para que los tenants NUEVOS nazcan con `cliente_obligatorio=true` en los 4 tipos (no
+afecta tenants existentes — es config por tenant, C3). Revisada por `migration-reviewer` (aditiva,
+`CREATE OR REPLACE` preserva el ACL; se agregó el REVOKE explícito por defensa en profundidad). El
+resto de las validaciones de esa ronda son client-side en `PedidosPage.tsx` (estado obligatorio +
+precargado del default del producto si el tenant usa estados · fecha de entrega obligatoria · cantidad
+entera salvo UoM fraccionaria vía `esDecimal` compartido con el POS · repetir producto en N líneas
+diferenciadas · aviso NO bloqueante de stock al armar, H2). Ver [[wiki/features/pedidos]] → PED2.
+
 **299-301 (Pedidos — cierra los 5 gaps documentados tras PED1-PED8, sigue EN DEV, SIN deploy a PROD,
 SIN commitear al cierre de la sesión anterior)** — cada una revisada por `migration-reviewer`
 (299 tuvo 2 rondas, ver detalle):

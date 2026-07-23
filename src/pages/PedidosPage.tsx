@@ -23,6 +23,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { BRAND } from '@/config/brand'
 import { ActionMenu } from '@/components/ActionMenu'
 import { puedeTransicionPedido, type PedidoTransicion, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
+import { esDecimal } from '@/lib/ventasValidation'
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   borrador:            { label: 'Borrador',            cls: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
@@ -62,12 +63,14 @@ export default function PedidosPage() {
   const [clienteSearch, setClienteSearch] = useState('')
   const [clienteDropOpen, setClienteDropOpen] = useState(false)
   const [fechaEntrega, setFechaEntrega] = useState('')
+  const [referencia, setReferencia] = useState('')
   const [requiereEnvio, setRequiereEnvio] = useState(false)
   const [notasCab, setNotasCab] = useState('')
   const [prodSearch, setProdSearch] = useState('')
   const [items, setItems] = useState<ItemDraft[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [filtroEstado, setFiltroEstado] = useState('')
+  const [busqueda, setBusqueda] = useState('')
 
   // ── Entregar (PED4): genera la venta real + rebaja stock reservado + asienta caja ────
   const [entregaModal, setEntregaModal] = useState<any | null>(null)
@@ -117,7 +120,13 @@ export default function PedidosPage() {
     enabled: !!tenant,
   })
 
-  const pedidosFiltrados = filtroEstado ? (pedidos as any[]).filter(p => p.estado === filtroEstado) : (pedidos as any[])
+  const q = busqueda.trim().toLowerCase()
+  const pedidosFiltrados = (pedidos as any[])
+    .filter(p => !filtroEstado || p.estado === filtroEstado)
+    .filter(p => !q ||
+      String(p.numero).includes(q) ||
+      (p.referencia ?? '').toLowerCase().includes(q) ||
+      (p.clientes?.nombre ?? p.cliente_nombre ?? '').toLowerCase().includes(q))
 
   // ── K3 (PED8): exportar Excel/PDF/CSV — una fila por línea de pedido, mismo criterio que
   // el resto de los módulos (XLSX.utils.json_to_sheet / jsPDF+autoTable / CSV a mano) ──────
@@ -125,12 +134,12 @@ export default function PedidosPage() {
     const cliente = p.clientes?.nombre ?? p.cliente_nombre ?? 'Sin cliente'
     const items = (p.pedido_items ?? []).filter((it: any) => it.estado !== 'cancelada')
     if (items.length === 0) return [{
-      Pedido: p.numero, Tipo: p.tipos_pedido?.nombre ?? '', Cliente: cliente, Estado: ESTADO_BADGE[p.estado]?.label ?? p.estado,
+      Pedido: p.numero, Referencia: p.referencia ?? '', Tipo: p.tipos_pedido?.nombre ?? '', Cliente: cliente, Estado: ESTADO_BADGE[p.estado]?.label ?? p.estado,
       'Entrega solicitada': p.fecha_entrega_solicitada ? new Date(p.fecha_entrega_solicitada).toLocaleDateString('es-AR') : '',
       Producto: '', SKU: '', Cantidad: '', Entregado: '',
     }]
     return items.map((it: any) => ({
-      Pedido: p.numero, Tipo: p.tipos_pedido?.nombre ?? '', Cliente: cliente, Estado: ESTADO_BADGE[p.estado]?.label ?? p.estado,
+      Pedido: p.numero, Referencia: p.referencia ?? '', Tipo: p.tipos_pedido?.nombre ?? '', Cliente: cliente, Estado: ESTADO_BADGE[p.estado]?.label ?? p.estado,
       'Entrega solicitada': p.fecha_entrega_solicitada ? new Date(p.fecha_entrega_solicitada).toLocaleDateString('es-AR') : '',
       Producto: it.productos?.nombre ?? '', SKU: it.productos?.sku ?? '',
       Cantidad: Number(it.cantidad), Entregado: Number(it.cantidad_entregada ?? 0),
@@ -236,7 +245,7 @@ export default function PedidosPage() {
     queryKey: ['productos-search-pedidos', tenant?.id, prodSearch],
     queryFn: async () => {
       const { data } = await supabase.from('productos')
-        .select('id, nombre, sku, unidad_medida')
+        .select('id, nombre, sku, unidad_medida, estado_id')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .or(`nombre.ilike.%${prodSearch}%,sku.ilike.%${prodSearch}%`)
         .order('nombre').limit(20)
@@ -246,14 +255,22 @@ export default function PedidosPage() {
   })
 
   const agregarItem = (p: any) => {
-    if (items.some(i => i.producto.id === p.id)) { toast.error('Ese producto ya está en el pedido'); return }
-    setItems(prev => [...prev, { producto: p, cantidad: '1', estadoId: '', talle: '', color: '', encaje: '', formato: '', saborAroma: '' }])
+    // Se permite repetir producto (caso legítimo: 3 "Nuevo" + 2 "Outlet" del mismo SKU) —
+    // el guard real contra dos líneas IDÉNTICAS (mismo estado y atributos) corre al guardar.
+    if (items.some(i => i.producto.id === p.id)) {
+      toast('Ese producto ya está en el pedido — diferenciá la línea nueva por estado o atributos', { icon: 'ℹ️' })
+    }
+    // Estado precargado con el default del producto (productos.estado_id) solo si sigue activo
+    // en el catálogo; si no tiene default (o quedó inactivo), va vacío y el guardado lo exige
+    // cuando el tenant usa estados de inventario.
+    const estadoDefault = (estadosInventario as any[]).some(es => es.id === p.estado_id) ? p.estado_id : ''
+    setItems(prev => [...prev, { producto: p, cantidad: '1', estadoId: estadoDefault, talle: '', color: '', encaje: '', formato: '', saborAroma: '' }])
     setProdSearch('')
   }
 
   const resetForm = () => {
     setTipoPedidoId(''); setClienteId(''); setClienteNombre(''); setClienteTelefono(''); setClienteSearch('')
-    setFechaEntrega(''); setRequiereEnvio(false); setNotasCab(''); setItems([]); setProdSearch('')
+    setFechaEntrega(''); setReferencia(''); setRequiereEnvio(false); setNotasCab(''); setItems([]); setProdSearch('')
   }
 
   // ── Crear pedido (borrador) ───────────────────────────────────────────────────
@@ -263,9 +280,48 @@ export default function PedidosPage() {
       if (!items.length) throw new Error('Agregá al menos una línea')
       if (tipoSel?.cliente_obligatorio && !clienteId && !clienteNombre.trim())
         throw new Error('Este tipo de pedido requiere cliente identificado')
+      if (!fechaEntrega) throw new Error('Elegí la fecha de entrega solicitada')
       for (const it of items) {
-        const cant = parseFloat(it.cantidad)
+        const cant = parseFloat(it.cantidad.replace(',', '.'))
         if (!cant || cant <= 0) throw new Error(`Cantidad inválida en ${it.producto.nombre}`)
+        // Enteras salvo UoM fraccionaria (kg/gr/lt/ml/…) — mismo criterio central que el POS
+        // (esDecimal, ventasValidation.ts): cuando cambie el modelo de UoM, cambia solo ahí.
+        if (!esDecimal(it.producto.unidad_medida) && !Number.isInteger(cant))
+          throw new Error(`La cantidad de ${it.producto.nombre} debe ser entera (se mide en ${it.producto.unidad_medida ?? 'unidades'})`)
+        // Estado obligatorio por línea cuando el tenant usa estados de inventario. Sin estados
+        // definidos, la línea va sin estado (= "cualquiera" al reservar), como siempre.
+        if (estadosInventario.length > 0 && !it.estadoId)
+          throw new Error(`Elegí el estado de inventario en ${it.producto.nombre}`)
+      }
+      // Dos líneas 100% idénticas (mismo producto + estado + atributos) no tienen sentido —
+      // repetir producto SÍ se permite mientras difieran en algo.
+      const firma = (it: ItemDraft) =>
+        [it.producto.id, it.estadoId, it.talle.trim(), it.color.trim(), it.encaje.trim(), it.formato.trim(), it.saborAroma.trim()].join('|')
+      const firmas = items.map(firma)
+      const dupIdx = firmas.findIndex((f, i) => firmas.indexOf(f) !== i)
+      if (dupIdx >= 0)
+        throw new Error(`Hay dos líneas idénticas de ${items[dupIdx].producto.nombre} — unificá la cantidad o diferencialas por estado/atributos`)
+
+      // H2 del relevamiento: aviso NO bloqueante si el stock disponible de hoy no alcanza
+      // (el bloqueo real sigue siendo al Lanzar, server-side). Best-effort: filtra por
+      // sucursal del pedido y estado de la línea, no por atributos.
+      let stockWarning: string | null = null
+      {
+        let q = supabase.from('inventario_lineas')
+          .select('producto_id, estado_id, cantidad, cantidad_reservada')
+          .eq('tenant_id', tenant!.id).eq('activo', true)
+          .in('producto_id', [...new Set(items.map(it => it.producto.id))])
+        if (sucursalId) q = q.eq('sucursal_id', sucursalId)
+        const { data: lineasStock } = await q
+        const faltantes: string[] = []
+        for (const it of items) {
+          const cant = parseFloat(it.cantidad.replace(',', '.'))
+          const disponible = (lineasStock ?? [])
+            .filter(l => l.producto_id === it.producto.id && (!it.estadoId || l.estado_id === it.estadoId))
+            .reduce((acc, l) => acc + Number(l.cantidad) - Number(l.cantidad_reservada ?? 0), 0)
+          if (cant > disponible) faltantes.push(`${it.producto.nombre} (pediste ${cant}, disponible ${disponible})`)
+        }
+        if (faltantes.length) stockWarning = faltantes.join(' · ')
       }
 
       const { data: cab, error: eCab } = await supabase.from('pedidos').insert({
@@ -276,6 +332,7 @@ export default function PedidosPage() {
         cliente_nombre: clienteId ? null : (clienteNombre.trim() || null),
         cliente_telefono: clienteId ? null : (clienteTelefono.trim() || null),
         fecha_entrega_solicitada: fechaEntrega || null,
+        referencia: referencia.trim() || null,
         requiere_envio: requiereEnvio,
         notas: notasCab.trim() || null,
         creado_por: user?.id ?? null,
@@ -286,7 +343,7 @@ export default function PedidosPage() {
         tenant_id: tenant!.id,
         pedido_id: cab.id,
         producto_id: it.producto.id,
-        cantidad: parseFloat(it.cantidad),
+        cantidad: parseFloat(it.cantidad.replace(',', '.')),
         estado_id: it.estadoId || null,
         talle: it.talle || null, color: it.color || null, encaje: it.encaje || null,
         formato: it.formato || null, sabor_aroma: it.saborAroma || null,
@@ -298,10 +355,11 @@ export default function PedidosPage() {
         entidad: 'pedido', entidad_id: cab.id,
         entidad_nombre: `Pedido #${cab.numero}`, accion: 'crear', pagina: '/pedidos',
       })
-      return { numero: cab.numero }
+      return { numero: cab.numero, stockWarning }
     },
     onSuccess: (d: any) => {
       toast.success(`Pedido #${d.numero} guardado como borrador`)
+      if (d.stockWarning) toast(`⚠ Stock ajustado para hoy: ${d.stockWarning}. Se valida en firme al lanzar.`, { duration: 7000, icon: '📦' })
       setShowNuevo(false); resetForm()
       qc.invalidateQueries({ queryKey: ['pedidos'] })
     },
@@ -556,7 +614,12 @@ export default function PedidosPage() {
         </button>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <div className="relative flex-1 min-w-[180px] max-w-[280px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={busqueda} onChange={e => setBusqueda(e.target.value)}
+            placeholder="Buscar nº, referencia o cliente…" className={`${inputCls} pl-9`} />
+        </div>
         <select value={filtroEstado} onChange={e => setFiltroEstado(e.target.value)}
           className={`${inputCls} max-w-[220px]`}>
           <option value="">Todos los estados</option>
@@ -602,6 +665,7 @@ export default function PedidosPage() {
                 <button onClick={() => setExpandedId(isExp ? null : p.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
                   {isExp ? <ChevronUp size={15} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />}
                   <span className="font-semibold text-sm text-primary dark:text-white">#{p.numero}</span>
+                  {p.referencia && <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded" title="Referencia / Nº externo">{p.referencia}</span>}
                   <span className="text-xs text-gray-400">{p.tipos_pedido?.nombre}</span>
                   <span className="text-sm text-gray-600 dark:text-gray-300 truncate flex items-center gap-1"><User size={12} className="text-gray-400" />{cliente}</span>
                   <span className="text-xs text-gray-400">{nItems} línea{nItems !== 1 ? 's' : ''}</span>
@@ -759,9 +823,15 @@ export default function PedidosPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha de entrega solicitada</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Fecha de entrega solicitada *</label>
                   <input type="date" value={fechaEntrega} onChange={e => setFechaEntrega(e.target.value)} className={inputCls} />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Referencia / Nº externo (opcional)</label>
+                <input value={referencia} onChange={e => setReferencia(e.target.value)}
+                  placeholder="Nº de pedido propio del cliente, ej. OC-ACME-123 — el interno se asigna solo" className={inputCls} />
               </div>
 
               {/* Cliente */}
@@ -834,8 +904,10 @@ export default function PedidosPage() {
               {/* Líneas agregadas */}
               {items.length > 0 && (
                 <div className="space-y-2">
-                  {items.map((it, idx) => (
-                    <div key={it.producto.id} className="border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
+                  {items.map((it, idx) => {
+                    const decimal = esDecimal(it.producto.unidad_medida)
+                    return (
+                    <div key={idx} className="border border-gray-200 dark:border-gray-700 rounded-xl p-3 space-y-2">
                       <div className="flex items-center gap-2 text-sm flex-wrap">
                         <span className="font-medium text-primary dark:text-white">{it.producto.nombre}</span>
                         <span className="text-xs text-gray-400">{it.producto.sku}</span>
@@ -843,15 +915,15 @@ export default function PedidosPage() {
                           className="ml-auto text-gray-400 hover:text-red-500"><X size={14} /></button>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <input type="number" min="0" step="0.01" value={it.cantidad}
+                        <input type="number" min="0" step={decimal ? '0.001' : '1'} value={it.cantidad}
                           onChange={e => setItems(prev => prev.map((x, i) => i === idx ? { ...x, cantidad: e.target.value } : x))}
                           onWheel={e => e.currentTarget.blur()}
                           className={`${inputCls} max-w-[100px]`} />
                         <span className="text-xs text-gray-400">{it.producto.unidad_medida ?? 'u'}</span>
                         {estadosInventario.length > 0 && (
                           <select value={it.estadoId} onChange={e => setItems(prev => prev.map((x, i) => i === idx ? { ...x, estadoId: e.target.value } : x))}
-                            className={`${inputCls} max-w-[160px]`}>
-                            <option value="">Estado (cualquiera)</option>
+                            className={`${inputCls} max-w-[160px] ${!it.estadoId ? 'border-amber-400 dark:border-amber-500' : ''}`}>
+                            <option value="">Estado * (elegí uno)</option>
                             {(estadosInventario as any[]).map(es => <option key={es.id} value={es.id}>{es.nombre}</option>)}
                           </select>
                         )}
@@ -862,19 +934,21 @@ export default function PedidosPage() {
                         <input placeholder="Otro atributo" value={it.formato} onChange={e => setItems(prev => prev.map((x, i) => i === idx ? { ...x, formato: e.target.value } : x))} className={`${inputCls} text-xs`} />
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notas (opcional)</label>
-                <input value={notasCab} onChange={e => setNotasCab(e.target.value)} placeholder="Referencia, preferencias del cliente…" className={inputCls} />
+                <input value={notasCab} onChange={e => setNotasCab(e.target.value)} placeholder="Preferencias del cliente, aclaraciones…" className={inputCls} />
               </div>
             </div>
             <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
               <button onClick={() => { setShowNuevo(false); resetForm() }}
                 className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl text-sm">Cancelar</button>
-              <button onClick={() => crearPedido.mutate()} disabled={crearPedido.isPending || !items.length || !tipoPedidoId}
+              <button onClick={() => crearPedido.mutate()}
+                disabled={crearPedido.isPending || !items.length || !tipoPedidoId || !fechaEntrega || (estadosInventario.length > 0 && items.some(it => !it.estadoId))}
                 className="bg-accent text-white font-semibold px-5 py-2 rounded-xl text-sm disabled:opacity-50 hover:bg-accent/90 transition-colors">
                 {crearPedido.isPending ? 'Guardando…' : 'Guardar borrador'}
               </button>

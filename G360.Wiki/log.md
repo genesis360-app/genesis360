@@ -6,7 +6,41 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
-## [2026-07-23] update | 🧾 Pedidos cierra los 5 gaps documentados (CC límite, des-pickeo encadenado, cancelar tras devolución, K3 exportes, editor E3 de roles) — migs 299-301
+## [2026-07-23] update | 🧾 Pedidos — validaciones de creación (referencia externa mig 302, estado obligatorio+precargado, fecha oblig., cantidad entera-según-UoM, líneas diferenciadas, aviso de stock) + relevamiento UoM vs Empaque
+
+GO reportó un issue del alta de pedido: el estado por línea debía precargarse con el default del
+producto y ser obligatorio; el nº de pedido debía permitir uno manual además del secuencial interno;
+faltaban validaciones. Sigue **TODO EN DEV, sin bump de `APP_VERSION` (v1.143.0), sin deploy a PROD**.
+
+Decisiones tomadas con GO (vía preguntas de diseño):
+- **Estado por línea:** obligatorio **solo si el tenant tiene estados de inventario activos** (un
+  tenant sin estados no queda bloqueado), precargado con `productos.estado_id` si sigue activo.
+- **Nº de pedido:** el correlativo interno queda intocable (siempre automático); el número "manual"
+  va en un campo **`pedidos.referencia`** aparte (texto libre, ej. la OC del cliente) — mig 302. Evita
+  huecos en la secuencia y colisiones (`numero` no tiene constraint de unicidad).
+- **Cliente:** se mantiene configurable por tipo (C3) — el default de los tipos nuevos pasa a
+  `cliente_obligatorio=true` (mig 302, solo tenants nuevos).
+- **Cantidad:** entera salvo UoM fraccionaria — usa el helper central `esDecimal` de
+  `ventasValidation.ts` (kg/gr/lt/ml… admiten decimales; unidad/caja/pieza no). GO pidió explícitamente
+  dejarlo preparado para cuando exista la venta por peso: al centralizar en `esDecimal`, cuando cambie
+  el modelo de UoM se ajusta ese único helper.
+- **Otras:** fecha de entrega obligatoria (habilita K2 sin ambigüedad), repetir producto en N líneas
+  permitido si difieren estado/atributos (solo se bloquean dos líneas idénticas), aviso NO bloqueante
+  de stock al armar (H2 — el bloqueo en firme sigue al Lanzar).
+
+**mig 302** revisada por `migration-reviewer` (aditiva; `CREATE OR REPLACE` preserva el ACL, se
+agregó el REVOKE explícito por defensa en profundidad). Verde: tsc + build. Aplicada solo en DEV.
+
+**Aparte, sin código:** se armó `relevamiento-unidades-medida-empaque-reglas-negocio.html` (HTML
+imprimible, mismo formato que el de Pedidos) tras una auditoría profunda del código — GO notó que
+"Unidad de medida" (ficha de producto, texto libre legacy hardcodeado) y "Estos precios corresponden
+a" (ancla de precio de la Estructura) conviven sin relación clara, y que Config→Inventario→Unidades
+mezcla unidades físicas reales (kg/L, conversión universal) con niveles de empaque (Caja/Pallet,
+factor por producto). Se confirmó que son **dos conceptos de negocio distintos mezclados en una sola
+tabla** (`unidades_medida`) y en un campo legacy. **Bug real hallado de paso** (anotado, sin arreglar
+todavía): el ancla de precio (`nivel_precio_orden`) no se revalida si se reordenan niveles o se cambia
+la Estructura default → puede quedar apuntando en silencio a otra unidad. GO lo va a revisar con Fede
+antes de definir el rediseño (es cambio de modelo, toca schema + POS + stock ya en PROD).
 
 Continuación inmediata de la entrada de abajo (misma sesión): tras cerrar PED6, GO pidió corregir
 también los 5 gaps que habían quedado documentados en la primera pasada de PED1-PED8. Sigue **TODO

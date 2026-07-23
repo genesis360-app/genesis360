@@ -2,7 +2,7 @@
 title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
-sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
+sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
 updated: 2026-07-23
 ---
 
@@ -128,14 +128,30 @@ generar tareas WMS reales — "lanzar" — es la Fase PED3, todavía no existe e
     (`tipoSel.cliente_obligatorio`).
   - Cliente: buscador de clientes existentes, **o texto libre** ("nombre suelto" sin alta formal) +
     teléfono opcional — mismo criterio que "venta directa" hoy en `VentasPage.tsx`.
-  - Fecha de entrega solicitada (date picker).
+  - **Fecha de entrega solicitada — obligatoria** (date picker); habilita las alertas de entrega
+    vencida (K2) sin ambigüedad.
+  - **Referencia / Nº externo (opcional, texto libre, `pedidos.referencia`, mig 302)** — el número
+    propio del cliente (ej. su OC "OC-ACME-123"). El correlativo interno (`numero`) sigue siendo 100%
+    automático; este campo es aparte para no meter huecos ni colisiones en la secuencia. Se muestra
+    como badge en la lista, es buscable y sale en los exportes.
   - Flag `requiere_envio` (checkbox) — "si no, es retiro en local, no se toca el módulo Envíos".
   - Buscador de productos por nombre/SKU (catálogo, no LPN — eso se resuelve al lanzar, PED3) → agrega
-    líneas con cantidad, estado de inventario opcional (`estado_id`, si el tenant tiene alguno
-    configurado) y atributos opcionales (talle/color/"otro atributo").
+    líneas con cantidad, estado de inventario y atributos opcionales (talle/color/"otro atributo").
   - Notas de cabecera.
   - "Guardar borrador" → inserta `pedidos` + `pedido_items` en una transacción del cliente (dos
     inserts secuenciales), `logActividad` entidad `'pedido'`.
+- **Validaciones de creación (ronda 2026-07-23, pedida por GO):**
+  - **Estado de inventario obligatorio por línea** cuando el tenant tiene estados activos; se
+    **precarga con el default del producto** (`productos.estado_id`, si sigue activo). Si el tenant
+    no usa estados, la línea va sin estado (= "cualquiera" al reservar), como antes.
+  - **Cantidad entera salvo UoM fraccionaria** — usa el helper central `esDecimal`
+    (`ventasValidation.ts`, mismo que el POS): kg/gr/lt/ml/… admiten decimales, unidad/caja/pieza no.
+    Cuando cambie el modelo de UoM (ver `relevamiento-unidades-medida-empaque`), se ajusta ese único
+    helper y Pedidos lo hereda.
+  - **Repetir producto en varias líneas SÍ se permite** (caso legítimo: 3 "Nuevo" + 2 "Outlet" del
+    mismo SKU) — solo se bloquean dos líneas 100% idénticas (mismo producto + estado + atributos).
+  - **Aviso NO bloqueante de stock** al guardar si la cantidad supera el disponible de hoy (H2 del
+    relevamiento) — el bloqueo en firme sigue siendo al Lanzar (server-side).
 - **Confirmar** (borrador→confirmado) y **Cancelar** (con `window.confirm`) — ambas mutaciones
   `logActividad` con `accion: 'cambio_estado'`.
 
@@ -488,7 +504,7 @@ stock).
 | Fase | Qué | Estado |
 |---|---|---|
 | **PED1** | Schema: `pedidos`/`pedido_items`/`tipos_pedido`, numeración, estados, permisos base | ✅ mig 292 |
-| **PED2** | UI armar Pedido: carrito sin precio, cliente, fechas, tipo, sucursal, atributos/estado de inventario por línea, KITs | ✅ (PedidosPage.tsx) |
+| **PED2** | UI armar Pedido: carrito sin precio, cliente, fecha/tipo, referencia externa (mig 302), atributos/estado por línea (obligatorio+precargado), cantidad entera-según-UoM, aviso de stock, KITs | ✅ (PedidosPage.tsx) |
 | **PED3** | **"Lanzar"**: `fn_generar_tareas_picking_pedido`, reserva de stock real (`inventario_lineas.cantidad_reservada`), validación bloqueante ("no hay stock — faltan N unidades"), envío condicional (`requiere_envio` → `envios.pedido_id`) | ✅ mig 294 |
 | **PED4** | Cumplimiento parcial: entregas en tandas (línea "parcial" con `cantidad − cantidad_entregada` visible, mismo patrón que `recepcion_items`), N ventas por Pedido, cierre automático/manual (`tenants.pedido_cierre_automatico`) | ✅ migs 295+297 |
 | **PED5** | Cancelación y des-pickeo: `fn_pedido_deslanzar`/`fn_cancelar_pedido` a nivel Pedido, flujo de **un-pick** (RPC `fn_unpick_tarea_wms`, inversa de `fn_completar_tarea_reabastecimiento`), incl. encadenado a reabastecimiento y cancelar tras venta devuelta | ✅ mig 296+300+301 |
@@ -562,7 +578,10 @@ stock).
   crédito (`clientes.limite_credito`) ahora también lo valida Pedidos (mig 299, ver arriba)
 - [[wiki/features/configuracion]] — tab "Pedidos" (PED7): numeración, cierre automático, tipos de
   pedido, editor E3 de roles por transición
-- [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297, 298, 299, 300, 301
+- [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297, 298, 299, 300, 301, 302
+- `relevamiento-unidades-medida-empaque-reglas-negocio.html` — relevamiento nuevo (2026-07-23) para
+  separar Unidad de Medida física (kg/g/L, conversión universal) de Nivel de Empaque (Caja/Pallet,
+  factor por producto); afecta el `esDecimal` que Pedidos usa para validar cantidad — sin implementar
 - `G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md` — las 45 preguntas + respuestas + diseño
   completo, fuente de esta página
 - `G360.Wiki/sources/raw/relevamiento_descuentos_respuestas.md` — relevamiento nuevo capturado de

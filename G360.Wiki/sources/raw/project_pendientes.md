@@ -6,7 +6,38 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🧾 ARRANCÁ ACÁ (2026-07-23, continuación) — Pedidos cierra los 5 gaps documentados (CC límite, des-pickeo encadenado, cancelar tras devolución, K3 exportes, editor E3 de roles) — migs 299-301 — módulo Pedidos 100% completo, sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
+> ### 🧾 ARRANCÁ ACÁ (2026-07-23, continuación) — Pedidos: validaciones de alta (mig 302 referencia externa + estado obligatorio/precargado, fecha oblig., cantidad entera-según-UoM, líneas diferenciadas, aviso de stock) + relevamiento nuevo UoM vs Empaque — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump: sigue v1.143.0)**
+>
+> GO reportó un issue del alta de pedido y definió las reglas por preguntas de diseño. Detalle
+> completo en `G360.Wiki/wiki/features/pedidos.md` → PED2 y en `log.md`.
+>
+> **`supabase/migrations/302_pedidos_referencia_validaciones.sql`** (aplicada en DEV, revisada por
+> `migration-reviewer`): `pedidos.referencia text` (Nº externo/OC del cliente — el correlativo interno
+> `numero` queda intocable, este campo es aparte para no meter huecos/colisiones) + `seed_tipos_pedido`
+> con `cliente_obligatorio=true` para tenants nuevos (no afecta existentes).
+>
+> **Client-side en `PedidosPage.tsx`:** estado por línea obligatorio **solo si el tenant usa estados**
+> (precargado con `productos.estado_id` si sigue activo) · fecha de entrega obligatoria · cantidad
+> entera salvo UoM fraccionaria (helper central `esDecimal`, `ventasValidation.ts`) · repetir producto
+> en N líneas permitido si difieren estado/atributos (bloquea solo líneas idénticas) · aviso NO
+> bloqueante de stock al armar (H2) · campo Referencia buscable + en exportes. Verde: tsc + build.
+>
+> **⚠ Relevamiento nuevo SIN implementar — `relevamiento-unidades-medida-empaque-reglas-negocio.html`:**
+> separar Unidad de Medida física (kg/g/L, conversión universal fija) de Nivel de Empaque (Caja/Pallet,
+> factor por producto). GO ya definió por conversación: (1) SÍ hace falta conversión real (Jamón: se
+> compra por Kilo, se vende por Gramo); (2) deben separarse, y la UoM elegida debe cambiar cómo se ve/
+> ingresa/despacha el inventario. **Bug real anotado** (sin arreglar): el ancla de precio
+> (`nivel_precio_orden`) no se revalida al reordenar niveles/cambiar la Estructura default → puede
+> apuntar en silencio a otra unidad. GO lo revisa con Fede antes del rediseño (cambio de modelo grande:
+> schema + POS + stock ya en PROD).
+>
+> **▶ Pendiente inmediato:**
+> 1. Commitear esta tanda (mig 302 + validaciones de PedidosPage + relevamiento UoM + wiki).
+> 2. Cuando GO cierre el relevamiento de UoM/Empaque → volcar respuestas al wiki + planificar fases
+>    (es lo más grande pendiente del área de inventario, toca Regla #0).
+> 3. Deploy a PROD del módulo WMS + Pedidos completo (v1.143.0, migs 289-302) sigue pendiente de GO.
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-23) — Pedidos cierra los 5 gaps documentados (CC límite, des-pickeo encadenado, cancelar tras devolución, K3 exportes, editor E3 de roles) — migs 299-301 — módulo Pedidos 100% completo, sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
 >
 > Continuación inmediata de la sesión anterior (PED6, ver bloque "ESTADO ANTERIOR" debajo). GO pidió
 > corregir también los 5 gaps documentados tras completar PED1-PED8 — ver

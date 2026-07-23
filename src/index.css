@@ -181,11 +181,12 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 @media print {
   body * { visibility: hidden; }
   #ticket-print, #ticket-print *,
-  #devolucion-print, #devolucion-print * { visibility: visible; }
-  #ticket-print, #devolucion-print {
+  #devolucion-print, #devolucion-print *,
+  #pedido-lista-print, #pedido-lista-print * { visibility: visible; }
+  #ticket-print, #devolucion-print, #pedido-lista-print {
     position: absolute; left: 0; top: 0; width: 100%;
     max-height: none !important; box-shadow: none !important;
   }
-  #ticket-print > div, #devolucion-print > div { overflow: visible !important; max-height: none !important; }
+  #ticket-print > div, #devolucion-print > div, #pedido-lista-print { overflow: visible !important; max-height: none !important; }
   .no-print { display: none !important; }
 }

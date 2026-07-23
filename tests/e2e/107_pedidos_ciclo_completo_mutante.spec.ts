@@ -290,4 +290,257 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
     await request.delete(`${SUPABASE_URL}/rest/v1/productos?id=eq.${producto.id}`, { headers })
     await request.delete(`${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${ubicPicking.id}`, { headers })
   })
+
+  test('Lanzar bolsa de pedidos (mig 298): 2 pedidos juntos quedan etiquetados con la misma bolsa, y un pedido ya lanzado no puede colarse en una bolsa nueva', async ({ page, request }) => {
+    test.setTimeout(60000)
+    const ts = Date.now()
+
+    await goto(page, '/dashboard')
+    await waitForApp(page)
+    const token = await tokenDesdeBrowser(page)
+    const headers = restHeaders(token)
+
+    const sucRes = await request.get(`${SUPABASE_URL}/rest/v1/sucursales?select=id,tenant_id&limit=1`, { headers })
+    const [suc] = (await sucRes.json()) as Array<{ id: string; tenant_id: string }>
+    const tenantId = suc.tenant_id
+
+    const tipoRes = await request.get(`${SUPABASE_URL}/rest/v1/tipos_pedido?tenant_id=eq.${tenantId}&select=id&limit=1`, { headers })
+    const [tipo] = (await tipoRes.json()) as Array<{ id: string }>
+
+    const prodRes = await request.post(`${SUPABASE_URL}/rest/v1/productos`, {
+      headers, data: {
+        tenant_id: tenantId, nombre: `E2E Pedido Bolsa ${ts}`, sku: `E2E-PED-BOLSA-${ts}`,
+        precio_costo: 20, precio_venta: 40, unidad_medida: 'unidad', activo: true, alicuota_iva: 21,
+      },
+    })
+    expect(prodRes.ok(), `[107] no se pudo crear el producto: ${await prodRes.text()}`).toBe(true)
+    const [producto] = (await prodRes.json()) as Array<{ id: string }>
+
+    const ubicRes = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
+      headers, data: [
+        { tenant_id: tenantId, nombre: `E2E Picking Bolsa ${ts}`, tipo_ubicacion: 'picking', activo: true },
+        { tenant_id: tenantId, nombre: `E2E Staging Bolsa ${ts}`, tipo_ubicacion: 'staging', activo: true },
+      ],
+    })
+    expect(ubicRes.ok(), `[107] no se pudieron crear las ubicaciones: ${await ubicRes.text()}`).toBe(true)
+    const ubics = (await ubicRes.json()) as Array<{ id: string; nombre: string }>
+    const ubicPicking = ubics.find(u => u.nombre.startsWith('E2E Picking'))!
+    const ubicStaging = ubics.find(u => u.nombre.startsWith('E2E Staging'))!
+
+    const lpn = `LPN-E2E-PED-BOLSA-${ts}`
+    await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
+      headers, data: { tenant_id: tenantId, producto_id: producto.id, lpn, cantidad: 10, ubicacion_id: ubicPicking.id, activo: true },
+    })
+
+    const crearPedido = async (n: number) => {
+      const pedidoRes = await request.post(`${SUPABASE_URL}/rest/v1/pedidos`, {
+        headers, data: { tenant_id: tenantId, tipo_pedido_id: tipo.id, cliente_nombre: `E2E Cliente Bolsa ${ts}-${n}`, estado: 'confirmado' },
+      })
+      expect(pedidoRes.ok(), `[107] no se pudo crear el pedido ${n}: ${await pedidoRes.text()}`).toBe(true)
+      const [pedido] = (await pedidoRes.json()) as Array<{ id: string; numero: number }>
+      await request.post(`${SUPABASE_URL}/rest/v1/pedido_items`, {
+        headers, data: { tenant_id: tenantId, pedido_id: pedido.id, producto_id: producto.id, cantidad: 1 },
+      })
+      return pedido
+    }
+
+    const pedidoA = await crearPedido(1)
+    const pedidoB = await crearPedido(2)
+
+    const bolsaRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_lanzar_bolsa_pedidos`, {
+      headers, data: { p_pedido_ids: [pedidoA.id, pedidoB.id], p_ubicacion_staging_id: ubicStaging.id },
+    })
+    expect(bolsaRes.ok(), `[107] fn_lanzar_bolsa_pedidos falló: ${await bolsaRes.text()}`).toBe(true)
+    const filas = (await bolsaRes.json()) as Array<{ pedido_id: string; tarea_id: string; tipo: string }>
+    expect(filas.length, '[107] cada pedido de la bolsa debe generar al menos 1 tarea').toBeGreaterThanOrEqual(2)
+    expect(new Set(filas.map(f => f.pedido_id))).toEqual(new Set([pedidoA.id, pedidoB.id]))
+
+    const lanzamientoRes = await request.get(`${SUPABASE_URL}/rest/v1/pedido_lanzamientos?ubicacion_staging_id=eq.${ubicStaging.id}&select=id`, { headers })
+    const [lanzamiento] = (await lanzamientoRes.json()) as Array<{ id: string }>
+    expect(lanzamiento, '[107] debe crearse una cabecera pedido_lanzamientos').toBeTruthy()
+
+    const tareasRes = await request.get(`${SUPABASE_URL}/rest/v1/wms_tareas?lanzamiento_id=eq.${lanzamiento.id}&select=pedido_id`, { headers })
+    const tareasBolsa = (await tareasRes.json()) as Array<{ pedido_id: string }>
+    expect(new Set(tareasBolsa.map(t => t.pedido_id)), '[107] TODAS las tareas de ambos pedidos deben quedar etiquetadas con la misma bolsa').toEqual(new Set([pedidoA.id, pedidoB.id]))
+
+    const pedidosPostRes = await request.get(`${SUPABASE_URL}/rest/v1/pedidos?id=in.(${pedidoA.id},${pedidoB.id})&select=id,estado`, { headers })
+    const pedidosPost = (await pedidosPostRes.json()) as Array<{ id: string; estado: string }>
+    expect(pedidosPost.every(p => p.estado === 'en_preparacion'), '[107] ambos pedidos deben quedar en_preparacion').toBe(true)
+
+    // Guard real (mig 298, hallazgo del migration-reviewer): un pedido YA lanzado no puede
+    // colarse en una bolsa nueva — debe rechazar la función ENTERA, no re-etiquetar en silencio.
+    const pedidoC = await crearPedido(3)
+    const bolsaConLanzadoRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_lanzar_bolsa_pedidos`, {
+      headers, data: { p_pedido_ids: [pedidoA.id, pedidoC.id], p_ubicacion_staging_id: ubicStaging.id },
+    })
+    expect(bolsaConLanzadoRes.ok(), '[107] una bolsa con un pedido ya lanzado debe RECHAZARSE, no aceptarse').toBe(false)
+
+    // pedidoC no debería haber generado ninguna tarea (la función abortó entera)
+    const tareasC = await request.get(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${pedidoC.id}&select=id`, { headers })
+    expect((await tareasC.json()) as unknown[], '[107] el pedido C no debe tener tareas — la bolsa rechazada no debe dejar nada a medias').toHaveLength(0)
+
+    await request.delete(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=in.(${pedidoA.id},${pedidoB.id},${pedidoC.id})`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/pedido_lanzamientos?id=eq.${lanzamiento.id}`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/pedido_items?pedido_id=in.(${pedidoA.id},${pedidoB.id},${pedidoC.id})`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/pedidos?id=in.(${pedidoA.id},${pedidoB.id},${pedidoC.id})`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/inventario_lineas?producto_id=eq.${producto.id}`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/alertas?producto_id=eq.${producto.id}`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/productos?id=eq.${producto.id}`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${ubicPicking.id}`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${ubicStaging.id}`, { headers })
+  })
+
+  test('Entregar con Cuenta Corriente sobre el límite se bloquea (fix mig 299) — y se puede entregar una vez levantado el límite', async ({ page, request }) => {
+    test.setTimeout(90000)
+    const ts = Date.now()
+
+    await goto(page, '/dashboard')
+    await waitForApp(page)
+    const token = await tokenDesdeBrowser(page)
+    const headers = restHeaders(token)
+
+    const sucRes = await request.get(`${SUPABASE_URL}/rest/v1/sucursales?select=id,tenant_id&limit=1`, { headers })
+    const [suc] = (await sucRes.json()) as Array<{ id: string; tenant_id: string }>
+    const tenantId = suc.tenant_id
+
+    const tipoRes = await request.get(`${SUPABASE_URL}/rest/v1/tipos_pedido?tenant_id=eq.${tenantId}&select=id&limit=1`, { headers })
+    const [tipo] = (await tipoRes.json()) as Array<{ id: string }>
+
+    // Guardamos la política actual del tenant para restaurarla al final — es un flag compartido
+    // por todo el tenant DEV, no algo que este test pueda dejar mutado.
+    const tenantPreRes = await request.get(`${SUPABASE_URL}/rest/v1/tenants?id=eq.${tenantId}&select=cc_enforcement_politica`, { headers })
+    const [tenantPre] = (await tenantPreRes.json()) as Array<{ cc_enforcement_politica: string | null }>
+    const politicaOriginal = tenantPre.cc_enforcement_politica
+
+    let clienteId: string | null = null
+    let productoId: string | null = null
+    let ubicPickingId: string | null = null
+    let pedidoId: string | null = null
+    let sesionId: string | null = null
+    let ventaId: string | null = null
+
+    try {
+      const politicaRes = await request.patch(`${SUPABASE_URL}/rest/v1/tenants?id=eq.${tenantId}`, {
+        headers, data: { cc_enforcement_politica: 'bloquear' },
+      })
+      expect(politicaRes.ok(), `[107] no se pudo fijar cc_enforcement_politica=bloquear: ${await politicaRes.text()}`).toBe(true)
+
+      const precioVenta = 500
+      const limiteBajo = 100 // por debajo del precio de una sola unidad → bloqueo determinista
+      const clienteRes = await request.post(`${SUPABASE_URL}/rest/v1/clientes`, {
+        headers, data: {
+          tenant_id: tenantId, nombre: `E2E Cliente CC Límite ${ts}`,
+          cuenta_corriente_habilitada: true, limite_credito: limiteBajo,
+        },
+      })
+      expect(clienteRes.ok(), `[107] no se pudo crear el cliente: ${await clienteRes.text()}`).toBe(true)
+      const [cliente] = (await clienteRes.json()) as Array<{ id: string }>
+      clienteId = cliente.id
+
+      const prodRes = await request.post(`${SUPABASE_URL}/rest/v1/productos`, {
+        headers, data: {
+          tenant_id: tenantId, nombre: `E2E Pedido CC Límite ${ts}`, sku: `E2E-PED-CC-${ts}`,
+          precio_costo: 250, precio_venta: precioVenta, unidad_medida: 'unidad', activo: true, alicuota_iva: 21,
+        },
+      })
+      expect(prodRes.ok(), `[107] no se pudo crear el producto: ${await prodRes.text()}`).toBe(true)
+      const [producto] = (await prodRes.json()) as Array<{ id: string }>
+      productoId = producto.id
+
+      const ubicRes = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
+        headers, data: { tenant_id: tenantId, nombre: `E2E Picking CC ${ts}`, tipo_ubicacion: 'picking', activo: true },
+      })
+      expect(ubicRes.ok(), `[107] no se pudo crear la ubicación: ${await ubicRes.text()}`).toBe(true)
+      const [ubicPicking] = (await ubicRes.json()) as Array<{ id: string }>
+      ubicPickingId = ubicPicking.id
+
+      const lpn = `LPN-E2E-PED-CC-${ts}`
+      await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
+        headers, data: { tenant_id: tenantId, producto_id: producto.id, lpn, cantidad: 5, ubicacion_id: ubicPicking.id, activo: true },
+      })
+
+      const pedidoRes = await request.post(`${SUPABASE_URL}/rest/v1/pedidos`, {
+        headers, data: { tenant_id: tenantId, tipo_pedido_id: tipo.id, cliente_id: cliente.id, estado: 'confirmado' },
+      })
+      expect(pedidoRes.ok(), `[107] no se pudo crear el pedido: ${await pedidoRes.text()}`).toBe(true)
+      const [pedido] = (await pedidoRes.json()) as Array<{ id: string }>
+      pedidoId = pedido.id
+
+      await request.post(`${SUPABASE_URL}/rest/v1/pedido_items`, {
+        headers, data: { tenant_id: tenantId, pedido_id: pedido.id, producto_id: producto.id, cantidad: 1 },
+      })
+
+      const lanzarRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_generar_tareas_picking_pedido`, { headers, data: { p_pedido_id: pedido.id } })
+      expect(lanzarRes.ok(), `[107] fn_generar_tareas_picking_pedido falló: ${await lanzarRes.text()}`).toBe(true)
+
+      await garantizarCajaAbierta(page, { caja: 'Caja1' })
+      const sesionRes = await request.get(`${SUPABASE_URL}/rest/v1/caja_sesiones?tenant_id=eq.${tenantId}&estado=eq.abierta&select=id&limit=1`, { headers })
+      const [sesion] = (await sesionRes.json()) as Array<{ id: string }>
+      expect(sesion, '[107] no se encontró ninguna caja abierta tras garantizarCajaAbierta').toBeTruthy()
+      sesionId = sesion.id
+
+      // ── Intento bloqueado: CC deja la deuda ($500) muy por encima del límite ($100) ──────
+      const entregaBloqueadaRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_generar_venta`, {
+        headers, data: {
+          p_pedido_id: pedido.id, p_sesion_caja_id: sesion.id,
+          p_medio_pago: [{ tipo: 'Cuenta Corriente', monto: null }],
+        },
+      })
+      expect(entregaBloqueadaRes.ok(), '[107] FIX MIG 299: entregar a CC sobre el límite debe RECHAZARSE, no aceptarse').toBe(false)
+      expect(await entregaBloqueadaRes.text(), '[107] el mensaje debe explicar que se superó el límite').toMatch(/supera el límite/i)
+
+      // ── Rollback transaccional: la excepción debe deshacer TODO lo que hizo la función antes
+      // de llegar al chequeo (venta header, consumo de reserva) — no debe quedar nada a medias.
+      const ventasTrasBloqueoRes = await request.get(`${SUPABASE_URL}/rest/v1/ventas?pedido_id=eq.${pedido.id}&select=id`, { headers })
+      expect((await ventasTrasBloqueoRes.json()) as unknown[], '[107] no debe quedar ninguna venta huérfana tras el bloqueo').toHaveLength(0)
+
+      const lineaTrasBloqueoRes = await request.get(`${SUPABASE_URL}/rest/v1/inventario_lineas?lpn=eq.${lpn}&select=cantidad,cantidad_reservada`, { headers })
+      const [lineaTrasBloqueo] = (await lineaTrasBloqueoRes.json()) as Array<{ cantidad: number; cantidad_reservada: number }>
+      expect(Number(lineaTrasBloqueo.cantidad), '[107] el bloqueo no debe tocar el stock físico').toBe(5)
+      expect(Number(lineaTrasBloqueo.cantidad_reservada), '[107] la reserva original debe seguir intacta, no consumida a medias').toBe(1)
+
+      // ── Se levanta el límite (mismo cliente, mismo pedido) → ahora sí debe entregar ──────
+      const subirLimiteRes = await request.patch(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${cliente.id}`, {
+        headers, data: { limite_credito: null },
+      })
+      expect(subirLimiteRes.ok(), `[107] no se pudo levantar el límite: ${await subirLimiteRes.text()}`).toBe(true)
+
+      const entregaOkRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_pedido_generar_venta`, {
+        headers, data: {
+          p_pedido_id: pedido.id, p_sesion_caja_id: sesion.id,
+          p_medio_pago: [{ tipo: 'Cuenta Corriente', monto: null }],
+        },
+      })
+      expect(entregaOkRes.ok(), `[107] sin límite configurado, fn_pedido_generar_venta debe pasar: ${await entregaOkRes.text()}`).toBe(true)
+      ventaId = (await entregaOkRes.json()) as string
+      expect(ventaId).toBeTruthy()
+
+      const ventaRes = await request.get(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${ventaId}&select=total,es_cuenta_corriente,estado`, { headers })
+      const [venta] = (await ventaRes.json()) as Array<{ total: number; es_cuenta_corriente: boolean; estado: string }>
+      expect(Number(venta.total)).toBe(precioVenta)
+      expect(venta.es_cuenta_corriente, '[107] la venta debe quedar marcada como CC').toBe(true)
+    } finally {
+      // ── Limpieza + restauración del flag compartido del tenant ──────────────────────────
+      if (ventaId) {
+        await request.delete(`${SUPABASE_URL}/rest/v1/movimientos_stock?venta_id=eq.${ventaId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/venta_item_despachos?venta_id=eq.${ventaId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/venta_items?venta_id=eq.${ventaId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${ventaId}`, { headers })
+      }
+      if (pedidoId) {
+        await request.delete(`${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${pedidoId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/pedido_items?pedido_id=eq.${pedidoId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${pedidoId}`, { headers })
+      }
+      if (productoId) {
+        await request.delete(`${SUPABASE_URL}/rest/v1/inventario_lineas?producto_id=eq.${productoId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/alertas?producto_id=eq.${productoId}`, { headers })
+        await request.delete(`${SUPABASE_URL}/rest/v1/productos?id=eq.${productoId}`, { headers })
+      }
+      if (ubicPickingId) await request.delete(`${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${ubicPickingId}`, { headers })
+      if (clienteId) await request.delete(`${SUPABASE_URL}/rest/v1/clientes?id=eq.${clienteId}`, { headers })
+      await request.patch(`${SUPABASE_URL}/rest/v1/tenants?id=eq.${tenantId}`, { headers, data: { cc_enforcement_politica: politicaOriginal } })
+      void sesionId // la sesión de caja es del tenant (fixture compartida vía garantizarCajaAbierta), no se borra acá
+    }
+  })
 })

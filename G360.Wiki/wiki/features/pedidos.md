@@ -1,21 +1,21 @@
 ---
 title: Módulo Pedidos (logística, separado de Ventas)
 category: features
-tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto]
-sources: [migrations 292, 294, 295, 296, 297, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx]
+tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
+sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
 updated: 2026-07-23
 ---
 
 # Módulo Pedidos
 
 > **🚧 Módulo NUEVO, arrancado 2026-07-22, EN DEV — SIN deploy a PROD.** El ciclo de vida completo
-> está construido y verificado con un e2e real contra DEV: **PED1 (schema) + PED2 (UI armar) + PED3
-> (lanzar) + PED4 (entregar/generar venta) + PED5 (cancelar/deslanzar/des-pickeo) + PED7 (Config) +
-> PED8 parcial (alertas)**. Quedan diferidos a propósito: **PED6** completo (bolsa de pedidos batch +
-> staging + listas imprimibles), K3 de PED8 (exportes), y varios gaps puntuales documentados más
-> abajo (devolución automática al cancelar con venta real, des-pickeo de tareas encadenadas a un
-> reabastecimiento, CC sin validar morosidad, editor granular de roles por transición). Nada de esto
-> pasó por PR/commit todavía — verificar `git status` antes de asumir que algo llegó a `dev`.
+> está construido y verificado con e2e real contra DEV: **PED1-PED8 completos**, incluida una
+> segunda ronda que cerró los 5 gaps que había dejado la primera pasada (ver "Correcciones
+> post-relevamiento" más abajo): CC en Pedidos ahora valida límite de crédito, el des-pickeo
+> funciona también para tareas encadenadas a un reabastecimiento, un pedido con venta ya devuelta se
+> puede cancelar, K3 (exportar a Excel/PDF/CSV) está implementado, y el editor de
+> `pedido_transiciones_roles` (E3) vive en Configuración → Pedidos. Nada de esto pasó por PR/commit
+> todavía — verificar `git status` antes de asumir que algo llegó a `dev`.
 
 Documento de **logística pura** — deliberadamente separado de Ventas/POS. Nace de una pregunta de GO
 el mismo día en que se corrigieron 3 bugs reales de picking (mig 291, ver
@@ -300,9 +300,11 @@ deshacer un picking (des-pickeo) no necesita revertir nada en `pedido_items`, so
 `inventario_lineas` y la propia `wms_tareas`.
 
 **UI (`PedidosPage.tsx`):** botón "Deshacer lanzamiento" para `en_preparacion`; botón "Cancelar" para
-cualquier estado no terminal salvo `entregado_parcial` (con `window.confirm`); en el detalle
-expandido de un pedido lanzado, cada tarea de picking `completada` DIRECTA (sin
-`tarea_precedente_id`) tiene un link "Deshacer" que abre un modal para elegir la ubicación destino.
+cualquier estado no terminal salvo `cancelado`; en el detalle expandido de un pedido lanzado, cada
+tarea de picking `completada` (directa **o** encadenada a un reabastecimiento, desde la mig 300 —
+ver "Correcciones post-relevamiento" más abajo) tiene un link "Deshacer" que abre un modal para
+elegir la ubicación destino. Ambos botones, además, respetan el editor de roles por transición
+(E3, PED7) — no se muestran si el rol del usuario no tiene permiso para esa transición.
 
 ---
 
@@ -312,16 +314,24 @@ Tab nuevo **"Pedidos"** gateado por modo avanzado (mismo criterio que "Envíos")
 
 - **Numeración**: tenant vs. sucursal (`tenants.pedido_numeracion`, radio buttons).
 - **Cierre automático**: toggle `tenants.pedido_cierre_automatico`.
+- **Quién puede hacer cada transición (E3, cerrado en la ronda de fixes)**: tabla rol×transición
+  (confirmar/lanzar/entregar/cancelar/deslanzar) sobre `tenants.pedido_transiciones_roles` (jsonb,
+  `Record<transición, roles[]>`). Lógica pura en `src/lib/pedidoTransiciones.ts`
+  (`puedeTransicionPedido`, mismo patrón que `ajusteAutorizacion.ts`/`cajaPermisos.ts`): una
+  transición **ausente** en la config usa el default de código (DUEÑO/SUPERVISOR/SUPER_USUARIO/
+  DEPOSITO pueden); una transición **presente** (incluso como array vacío) es una allow-list
+  estricta, sin fallback — permite bloquear una transición a propósito para todos salvo ADMIN.
+  `ADMIN` (staff cross-tenant) siempre puede, no aparece en la tabla editable — mismo criterio que
+  `is_admin()` a nivel DB, un tenant no puede bloquear al soporte. **Gate 100% client-side** (oculta
+  el botón), igual alcance que `ajuste_autorizacion_roles` — no reemplaza los guards server-side de
+  cada RPC (stock/caja/CC/idempotencia), que corren siempre sin importar el rol. Cubierto por
+  `tests/unit/pedidoTransiciones.test.ts` (8 casos).
 - **CRUD de `tipos_pedido`**: nombre, momento de factura (al confirmar/al entregar), cliente
   obligatorio, activar/desactivar — mismo patrón visual que "Zonas" (WMS).
 
-**Diferido a propósito:** editor granular de `pedido_transiciones_roles` (E3) — los defaults ya
-funcionan (DEPOSITO/SUPERVISOR/OWNER/ADMIN pueden todas las transiciones), es fine-tuning que no
-bloquea el uso real del módulo.
-
 ---
 
-## PED8 — Alertas (parcial — K2 del relevamiento; K1 cubierto por el filtro existente; K3 diferido)
+## PED8 — Alertas + exportes (completo: K1+K2+K3)
 
 `src/hooks/useAlertas.ts` (badge del sidebar) y `src/pages/AlertasPage.tsx` (`/alertas`) ganaron 2
 fuentes nuevas, solo modo avanzado:
@@ -331,23 +341,144 @@ fuentes nuevas, solo modo avanzado:
 
 Ambas suman al conteo del badge y tienen su sección propia en `/alertas` con link directo a
 `/pedidos`/`/picking`. **K1** (pedidos pendientes de lanzar agrupados por fecha) se cubre con el
-filtro de estado que ya existía en `/pedidos` — no se construyó un dashboard separado. **K3**
-(exportar a Excel/PDF/CSV) **queda diferido, no implementado**.
+filtro de estado que ya existía en `/pedidos` — no se construyó un dashboard separado.
+
+**K3 (cerrado en la ronda de fixes):** menú "Exportar" (`ActionMenu`, click no hover — mismo
+componente que Productos/Clientes) en la barra de filtros de `/pedidos`, con 3 salidas sobre la
+lista filtrada actual (respeta el filtro de estado activo):
+
+- **Excel** (`XLSX.utils.json_to_sheet` + `writeFile`).
+- **CSV** (armado manual, mismo patrón que el resto del código).
+- **PDF** (`jsPDF` + `jspdf-autotable`).
+
+Cada fila exportada aplana pedido+línea (número, cliente, tipo, estado, fecha, producto, cantidad
+pedida/entregada) — mismo criterio de "aplanar cabecera+líneas" que ya usan los exportes de
+Clientes/Caja.
 
 ---
 
-## PED6 — Bolsa de pedidos + staging + listas imprimibles — DIFERIDO EN SU TOTALIDAD
+## PED6 — Bolsa de pedidos + staging + listas imprimibles (mig 298, EN DEV, NO en PROD)
 
-Decisión consciente: es la fase más compleja del roadmap (lanzamiento batch de N pedidos con
-ubicación de staging elegida + agregar `'staging'` al CHECK de `ubicaciones.tipo_ubicacion`, hoy
-`picking/bulk/estiba/camara/cross_dock` + listas de picking imprimibles como fallback de escaneo) y
-la de menor urgencia — cada pedido ya se lanza individualmente, que es 100% funcional. Construir
-staging/batch a medias, sin la UI de lanzamiento batch que los usaría, hubiera sido superficie sin
-valor real. Próxima fase completa cuando GO la priorice.
+`supabase/migrations/298_pedidos_ped6_bolsa_staging.sql` — construida en una sesión posterior a
+PED3-PED5/PED7/PED8 (GO pidió explícitamente no dejarla diferida). Alcance elegido, más seguro que
+forzar un cambio de destino físico del picking: la "bolsa" agrupa N pedidos + la ubicación de
+staging elegida como **metadato organizativo** (para filtrar/agrupar en `/picking` y para la lista
+imprimible) — **sin tocar el mecanismo de reserva/generación de tareas ya probado**. La RPC nueva
+**`fn_lanzar_bolsa_pedidos(p_pedido_ids uuid[], p_ubicacion_staging_id uuid)`** NO reimplementa esa
+lógica: llama, pedido por pedido, a `fn_generar_tareas_picking_pedido` (mig 294, sin cambios) y
+etiqueta las tareas resultantes con `wms_tareas.lanzamiento_id` (nueva FK a `pedido_lanzamientos`,
+tabla nueva). Si algún pedido de la bolsa falla cualquier validación de esa RPC, la excepción aborta
+la función ENTERA — no hay bolsas parciales.
+
+`'staging'` se agregó al CHECK de `ubicaciones.tipo_ubicacion` (antes
+`picking/bulk/estiba/camara/cross_dock`, mig 032) — son las ubicaciones que se ofrecen al elegir
+dónde converge la mercadería de una bolsa.
+
+**Bug real encontrado por el `migration-reviewer` antes de aplicar:** sin un guard explícito, un
+pedido YA lanzado (con `wms_tareas` existentes) incluido por error en una bolsa nueva no generaba
+nada (`fn_generar_tareas_picking_pedido` es idempotente por diseño), pero el `UPDATE wms_tareas SET
+lanzamiento_id` de todos modos le reescribía la bolsa a esas tareas viejas **en silencio** —
+"robándoselas" a la bolsa/lanzamiento al que realmente pertenecían (rompe trazabilidad write-time).
+Se agregó `EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = ...)` que rechaza la bolsa entera si
+cualquier pedido ya fue lanzado. También se agregó, como defensa en profundidad (Regla #0 — la
+función se concede a `service_role`, que tiene BYPASSRLS): validar que TODOS los pedidos del array
+sean del mismo tenant (antes solo se validaba el primero), y que la ubicación de staging esté activa.
+
+**🐛 Bug real encontrado por el e2e (no por el review — un error `42702` real al correr contra DEV):**
+la función tiene `pedido_id` como columna de salida (`RETURNS TABLE`), que Postgres expone como
+variable PL/pgSQL en todo el cuerpo — una referencia sin calificar a `wms_tareas.pedido_id` dentro
+del `EXISTS` del guard de arriba era **ambigua** (podía referirse a la columna o a la variable de
+salida). Fix: calificar explícitamente `wms_tareas.pedido_id`. Corregido y verificado en DEV antes
+de darlo por cerrado.
+
+**Listas de picking imprimibles (L2-2):** modal en `PedidosPage.tsx` con una tabla imprimible
+(producto/cantidad/LPN/ubicación origen/destino) de las `wms_tareas` de un pedido lanzado — mismo
+patrón `window.print()` + `@media print` que ya usan el ticket de venta y el comprobante de
+devolución (`index.css`, id nuevo `#pedido-lista-print`). Fallback para cuando falla el escaneo.
+
+**UI (`PedidosPage.tsx`):** checkbox de selección por fila para pedidos `confirmado`; barra
+flotante "N seleccionados → Lanzar bolsa" con modal para elegir la ubicación de staging; botón
+imprimir (ícono) para cualquier pedido ya lanzado.
+
+**Verificación:** tsc + build + 1180 tests unitarios verdes + e2e nuevo (agregado a
+`tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts`) que crea 2 pedidos, los lanza juntos en
+bolsa, verifica que ambos quedan etiquetados con el mismo `lanzamiento_id`, y verifica explícitamente
+el guard: un tercer pedido ya lanzado no puede colarse en una bolsa nueva (la función rechaza
+entera, sin dejar nada a medias) — 4/4 verde contra datos reales de DEV.
 
 ---
 
-## Roadmap por fases (PED1-PED8) — todo excepto PED6/K3 construido y verificado
+## Correcciones post-relevamiento (ronda 2, 2026-07-23) — cierra los 5 gaps de la primera pasada
+
+Tras completar PED1-PED8, GO pidió corregir los 5 gaps que habían quedado documentados. Los 3 que
+tocan fiscal/stock pasaron por `migration-reviewer` antes de aplicarse (mig 299 tuvo **2 rondas de
+revisión**, ver abajo); los otros 2 (UI de Config + exportes) no.
+
+**1) CC en Pedidos sin validar límite de crédito (B1) — mig 299.** `fn_pedido_generar_venta` no
+validaba `limite_credito` cuando el medio de pago incluía Cuenta Corriente. El trigger genérico
+`fn_ventas_cc_guard` (mig 234, `BEFORE INSERT ON ventas`) YA cubre B4 (morosidad) para cualquier
+venta, incluidas las de Pedidos — por eso esta migración **no duplica** ese chequeo. Pero para B1
+(límite) el trigger de la mig 234 tiene un punto ciego real con Pedidos: lee `NEW.medio_pago` al
+momento del INSERT, y `fn_pedido_generar_venta` inserta la cabecera con `total=0` (el total recién
+se conoce al final, tras sumar líneas) y `monto: null` en el medio de pago (Pedidos siempre manda
+"cobra el total, se resuelve después") — el trigger ve `monto_cc=0` siempre y su propio chequeo de
+límite nunca dispara para ventas de Pedidos. Fix: se agrega el chequeo de B1 **dentro** de
+`fn_pedido_generar_venta`, en el momento en que el total ya se conoce de verdad, calculando la
+deuda INLINE escopeada por `tenant_id` (mismo criterio que la mig 234, sin pasar por la RPC
+`cliente_cc_estado` que depende de `auth.uid()`).
+- **1ra ronda de review:** encontró que la primera versión SÍ duplicaba B4 (vía `cliente_cc_estado`,
+  el mismo patrón `auth.uid()` que la propia mig 234 evitó a propósito) y que un monto CC negativo
+  neutralizaba el chequeo de límite. Fix: se sacó el duplicado de B4, se clampeó cada monto a
+  `GREATEST(x,0)`.
+- **2da ronda de review:** encontró que el **gate** de la validación (`IF v_monto_cc > 0.5`) seguía
+  dependiendo de un valor controlado por el llamante — una sola entrada CC con `monto` 0 o negativo
+  clampeaba a 0 y evadía el chequeo ENTERO, aunque la venta quedara igual marcada
+  `es_cuenta_corriente=true` con deuda real sin cubrir. Fix final: el gate usa
+  `v_total - v_monto_pagado` (el saldo real sin cubrir, ambos términos ya defendidos —
+  `v_total` sale de `productos.precio_venta` en DB, `v_monto_pagado` está clampeado y capado) en vez
+  de `v_monto_cc`. Aplicada a DEV recién con este fix.
+- Política `'avisar'` se trata como "permitir" acá a propósito (depende de un `confirm()` del
+  navegador que no existe server-side); solo se replica el bloqueo duro de `'bloquear'`.
+- **e2e:** nuevo test en `107_pedidos_ciclo_completo_mutante.spec.ts` — crea un cliente con
+  `limite_credito=100` y un pedido de $500 a CC con `cc_enforcement_politica='bloquear'`, verifica
+  que `fn_pedido_generar_venta` se rechaza con "supera el límite" y que el rollback es completo
+  (sin venta huérfana, reserva de stock intacta), después levanta el límite y reintenta el mismo
+  pedido para confirmar que sí entrega.
+
+**2) Des-pickeo de una tarea encadenada a un reabastecimiento — mig 300.** `fn_unpick_tarea_wms`
+(mig 296) solo funcionaba para picking DIRECTO. Causa raíz: para una tarea encadenada,
+`ubicacion_origen_id` es el DESTINO del reabastecimiento, pero `lpn_origen` sigue siendo el LPN de
+BULK original — ese texto nunca existió físicamente en la ubicación de picking (el reabastecimiento
+genera un LPN nuevo al mover el stock), así que el match exacto producto+ubicación+LPN daba `NULL`
+siempre. Fix: si el match exacto no encuentra nada Y la tarea está encadenada
+(`tarea_precedente_id IS NOT NULL`), un fallback busca cualquier línea reservada del mismo producto
+en esa ubicación (FEFO), agregando entre varias si hace falta. **Limitación residual aceptada**
+(misma clase de fungibilidad que el resto de WMS): si hubiera otra reserva del mismo producto sin
+distinguir atributo en la misma ubicación (de otro Pedido), el fallback podría tocar esa reserva
+ajena — el invariante global (total reservado = total real) se mantiene siempre, la trazabilidad
+fina puede desalinearse en ese edge case, igual que otros matches "por disponibilidad" del módulo.
+
+**3) Cancelar un pedido cuya venta ya se devolvió a mano — mig 301.** `fn_cancelar_pedido` (mig 296)
+bloqueaba para siempre la cancelación de un pedido que alguna vez generó una venta, incluso después
+de devolverla desde Ventas → Historial (el guard original no filtraba por estado de la venta). Fix:
+el guard ahora solo bloquea si existe una venta **activa** (`estado NOT IN ('cancelada',
+'devuelta')`) — una vez devuelta o cancelada a mano, el pedido puede cancelarse. La devolución
+automática end-to-end (disparar NC/CC por código) sigue **diferida a propósito**: reimplementaría en
+SQL una lógica fiscal compleja que hoy solo vive, testeada, en `VentasPage.tsx` (Regla #0 — un solo
+lugar calcula plata/emite comprobantes). La UI (`PedidosPage.tsx`) ahora muestra, en el detalle
+expandido, las ventas vinculadas al pedido con un link "Devolver esta venta" a
+`/ventas?id=<id>&devolver=1` (mismo patrón que ya usa `EnviosPage.tsx`).
+
+**4) K3 — exportes** y **5) editor E3 de `pedido_transiciones_roles`**: ver PED8 y PED7 arriba
+respectivamente (ya integrados a la descripción de esas fases, no se repite acá).
+
+**Verificación de esta ronda:** tsc + build + 1188 tests unitarios verdes (8 nuevos en
+`pedidoTransiciones.test.ts`) + 5/5 e2e verdes en `107_pedidos_ciclo_completo_mutante.spec.ts`
+(las 3 pruebas de la ronda anterior + un test nuevo del guard de CC).
+
+---
+
+## Roadmap por fases (PED1-PED8) — completo y verificado
 
 Mismo criterio que Envíos 2.0 (EN1-EN7) / RRHH 2.0 (RH1-8) / Compras (CO1-CO8): cada fase se
 construye, se prueba contra datos reales en DEV y se versiona por separado — no se deploya nada a
@@ -360,24 +491,21 @@ stock).
 | **PED2** | UI armar Pedido: carrito sin precio, cliente, fechas, tipo, sucursal, atributos/estado de inventario por línea, KITs | ✅ (PedidosPage.tsx) |
 | **PED3** | **"Lanzar"**: `fn_generar_tareas_picking_pedido`, reserva de stock real (`inventario_lineas.cantidad_reservada`), validación bloqueante ("no hay stock — faltan N unidades"), envío condicional (`requiere_envio` → `envios.pedido_id`) | ✅ mig 294 |
 | **PED4** | Cumplimiento parcial: entregas en tandas (línea "parcial" con `cantidad − cantidad_entregada` visible, mismo patrón que `recepcion_items`), N ventas por Pedido, cierre automático/manual (`tenants.pedido_cierre_automatico`) | ✅ migs 295+297 |
-| **PED5** | Cancelación y des-pickeo: `fn_pedido_deslanzar`/`fn_cancelar_pedido` a nivel Pedido, flujo de **un-pick** (RPC `fn_unpick_tarea_wms`, inversa de `fn_completar_tarea_reabastecimiento`) — solo picking DIRECTO, encadenado a reabastecimiento queda pendiente | ✅ mig 296 (parcial, ver gaps) |
-| **PED6** | Operación avanzada de depósito: **bolsa de pedidos** (lanzamiento batch de N pedidos con ubicación de staging elegida) + listas de picking imprimibles (PDF/HTML fallback) | ⬜ **diferido a propósito** |
-| **PED7** | Config: tab "Pedidos" en Configuración (numeración, tipos, cierre automático) — falta `pedido_transiciones_roles` (E3, diferido) | ✅ (ConfigPage.tsx, parcial) |
-| **PED8** | Reportes y alertas: K1 (cubierto por filtro existente) + K2 (entrega vencida + sin avanzar 24h) ✅ · K3 (exportes) ⬜ diferido | 🟡 parcial |
+| **PED5** | Cancelación y des-pickeo: `fn_pedido_deslanzar`/`fn_cancelar_pedido` a nivel Pedido, flujo de **un-pick** (RPC `fn_unpick_tarea_wms`, inversa de `fn_completar_tarea_reabastecimiento`), incl. encadenado a reabastecimiento y cancelar tras venta devuelta | ✅ mig 296+300+301 |
+| **PED6** | Operación avanzada de depósito: **bolsa de pedidos** (`fn_lanzar_bolsa_pedidos`, lanzamiento batch de N pedidos con ubicación de staging elegida) + listas de picking imprimibles (`window.print()`) | ✅ mig 298 |
+| **PED7** | Config: tab "Pedidos" en Configuración (numeración, tipos, cierre automático, editor E3 de roles por transición) | ✅ (ConfigPage.tsx, completo) |
+| **PED8** | Reportes y alertas: K1 (filtro existente) + K2 (entrega vencida + sin avanzar 24h) + K3 (exportar Excel/PDF/CSV) | ✅ completo |
 | *(fuera de Pedidos)* | Roles configurables por tenant (Picker/Auditor/Gruero) — iniciativa aparte, sin arrancar | ⬜ |
+| *(fuera de Pedidos)* | CC en Pedidos con validación de **límite** de crédito (B1) | ✅ mig 299 |
 
-### Gaps documentados (no bloquean el uso real, pendientes para retomar)
+### Gaps restantes (no bloquean el uso real — el resto se cerró en la ronda de fixes de arriba)
 
-- **Devolución automática al cancelar un pedido con venta real (A5)**: hoy `fn_cancelar_pedido`
-  BLOQUEA si el pedido ya generó una venta (en vez de dispararle la devolución automáticamente) —
-  hay que devolver la venta a mano desde Ventas → Historial primero.
-- **Des-pickeo de una tarea encadenada a un reabastecimiento**: `fn_unpick_tarea_wms` solo funciona
-  para picking DIRECTO (sin `tarea_precedente_id`); la UI oculta "Deshacer" para el resto.
-- **Cuenta Corriente en Pedidos sin validar morosidad/límite de crédito** (Ventas sí lo hace, client-side).
-- **`pedido_transiciones_roles` (E3)** sin editor — los defaults (DEPOSITO/SUPERVISOR/OWNER/ADMIN
-  pueden todo) ya funcionan.
-- **K3 (exportar a Excel/PDF/CSV)** no implementado.
-- **PED6 completo** (bolsa de pedidos + staging + listas imprimibles) diferido.
+- **Devolución automática al cancelar un pedido con venta real (A5)**: `fn_cancelar_pedido` ya
+  permite cancelar una vez que la venta se devolvió a mano (mig 301), pero no dispara esa devolución
+  automáticamente — sigue siendo un paso manual desde Ventas → Historial (diferido a propósito, ver
+  "Correcciones post-relevamiento").
+- **Roles custom de Depósito** (Picker/Auditor/Gruero, hallazgo J3): excede el alcance de Pedidos,
+  iniciativa aparte sin arrancar.
 
 ### Resumen ejecutivo de decisiones de diseño (detalle completo en `relevamiento_pedidos_respuestas.md`)
 
@@ -430,12 +558,18 @@ stock).
 - [[wiki/features/ventas-pos]] — Pedidos nunca pasa por `registrarVenta()`; el precio se resuelve
   directo en `fn_pedido_generar_venta` (PED4) sin usar el sistema de precio por nivel/lista de Ventas
   (gap documentado arriba); la factura AFIP se emite manualmente desde ahí (Historial → Facturar)
-- [[wiki/features/clientes-proveedores]] — cliente existente o "nombre suelto" (I2)
-- [[wiki/features/configuracion]] — tab "Pedidos" (PED7): numeración, cierre automático, tipos de pedido
-- [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297
+- [[wiki/features/clientes-proveedores]] — cliente existente o "nombre suelto" (I2); límite de
+  crédito (`clientes.limite_credito`) ahora también lo valida Pedidos (mig 299, ver arriba)
+- [[wiki/features/configuracion]] — tab "Pedidos" (PED7): numeración, cierre automático, tipos de
+  pedido, editor E3 de roles por transición
+- [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297, 298, 299, 300, 301
 - `G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md` — las 45 preguntas + respuestas + diseño
   completo, fuente de esta página
 - `G360.Wiki/sources/raw/relevamiento_descuentos_respuestas.md` — relevamiento nuevo capturado de
   paso durante esta sesión (Descuentos), sin relación con Pedidos, sin implementar todavía
-- `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` — e2e del ciclo completo (lanzar con
-  reabastecimiento → completar → entregar; deslanzar), verifica explícitamente el fix de la mig 297
+- `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` — e2e del ciclo completo: lanzar con
+  reabastecimiento → completar → entregar (verifica el fix de la mig 297); deslanzar; lanzar en
+  bolsa (verifica el guard de "pedido ya lanzado" de la mig 298); entregar a Cuenta Corriente sobre
+  el límite (verifica el fix de la mig 299) — 5/5 verde contra datos reales de DEV
+- `tests/unit/pedidoTransiciones.test.ts` — 8 casos de `puedeTransicionPedido` (defaults, config
+  explícita, allow-list vacía, bypass de ADMIN)

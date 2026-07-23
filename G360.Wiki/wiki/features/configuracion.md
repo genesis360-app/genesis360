@@ -2,8 +2,8 @@
 title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking]
-sources: [CLAUDE.md, migrations 289, 290]
-updated: 2026-07-22
+sources: [CLAUDE.md, migrations 289, 290, 292, 299]
+updated: 2026-07-23
 ---
 
 # Módulo Configuración
@@ -139,13 +139,14 @@ Cierra las Fases 3-5 del roadmap de [[wiki/features/estructuras-udm]]:
 
 Detalle completo del schema/RPCs/UI: [[wiki/features/wms]] → "Fase 3" y "Fase 4".
 
-> **🛑 Nota (2026-07-22):** el toggle `wms_reabastecimiento_on_demand` describía "encadena
-> reabastecimiento al generar picking de un envío" — con el pivote F4 de [[wiki/features/pedidos]]
-> (Ventas/Envíos ya NO generan tareas WMS), ese encadenamiento en la práctica solo se va a disparar
-> desde Pedidos (Fase PED3, sin construir todavía), no desde un envío de Ventas. Sin cambios en el
-> comportamiento actual de este toggle en sí. **Futuro (PED7, sin construir):** el módulo Pedidos va
-> a sumar una tab "Pedidos" propia en Configuración (numeración, tipos, transiciones por rol, cierre
-> automático) — todavía no existe.
+> **Nota (2026-07-22, actualizada 2026-07-23):** el toggle `wms_reabastecimiento_on_demand` describía
+> "encadena reabastecimiento al generar picking de un envío" — con el pivote F4 de
+> [[wiki/features/pedidos]] (Ventas/Envíos ya NO generan tareas WMS), ese encadenamiento en la
+> práctica solo se dispara desde Pedidos (`fn_generar_tareas_picking_pedido`, mig 294), no desde un
+> envío de Ventas. Sin cambios en el comportamiento actual de este toggle en sí. **Tab "Pedidos" ya
+> construida (PED7):** numeración, tipos de pedido, cierre automático, y editor de
+> `pedido_transiciones_roles` (E3, quién puede confirmar/lanzar/entregar/cancelar/deslanzar por rol)
+> — ver [[wiki/features/pedidos]] → PED7.
 
 ---
 
@@ -218,6 +219,7 @@ Conectar cuentas externas por sucursal:
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/wms]] — "Zonas y picking" (v1.143.0)
-- [[wiki/features/pedidos]] — módulo NUEVO, futura tab "Pedidos" en Config (PED7, sin construir)
+- [[wiki/features/pedidos]] — módulo NUEVO, tab "Pedidos" en Config (PED7, completa: numeración,
+  tipos, cierre automático, editor de roles por transición)
 - [[wiki/features/estructuras-udm]] — roadmap de Zonas/Picking/Reabastecimiento
 - [[wiki/integrations/roadmap-apis]]

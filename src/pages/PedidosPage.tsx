@@ -1,22 +1,28 @@
 /**
- * PedidosPage — módulo NUEVO "Pedidos" (PED2: armar cabecera+líneas, sin precio).
+ * PedidosPage — módulo NUEVO "Pedidos" (ciclo de vida completo: PED1-PED6).
  * Relevado con GO 2026-07-22 (ver G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md).
  *
  * Decisión de arquitectura clave: Pedidos es un documento separado de Ventas — NUNCA pasa
- * por registrarVenta()/el POS, nunca rebaja stock acá. Arma cabecera+líneas (sin precio: eso
- * lo resuelve el POS más adelante cuando el Pedido genera la venta real). "Lanzar" (generar
- * tareas WMS de picking/reabastecimiento) es la Fase PED3 — todavía no existe en esta página.
- * Por ahora el ciclo de vida cubierto es: borrador → confirmado → cancelado.
+ * por registrarVenta()/el POS, nunca rebaja stock directo (eso lo hace fn_pedido_generar_venta
+ * al entregar, PED4). Ciclo: borrador → confirmado → (Lanzar, PED3) en_preparacion →
+ * (Entregar, PED4) entregado(_parcial) → cancelado, con deshacer-lanzamiento/des-pickeo (PED5)
+ * y lanzamiento en bolsa con staging (PED6) disponibles en los puntos que corresponda.
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket } from 'lucide-react'
+import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download } from 'lucide-react'
 import toast from 'react-hot-toast'
+import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { logActividad } from '@/lib/actividadLog'
+import { BRAND } from '@/config/brand'
+import { ActionMenu } from '@/components/ActionMenu'
+import { puedeTransicionPedido, type PedidoTransicion, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   borrador:            { label: 'Borrador',            cls: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
@@ -40,6 +46,13 @@ export default function PedidosPage() {
   const { tenant, user } = useAuthStore()
   const { sucursalId, puedeVerTodas } = useSucursalFilter()
   const qc = useQueryClient()
+
+  // E3 — gate client-side por transición (config Pedidos → tabla de roles), mismo criterio que
+  // ajuste_autorizacion_roles (mig 228): filtra qué botón se muestra, no reemplaza los guards
+  // server-side de cada RPC (stock/caja/CC/idempotencia — esos SÍ corren siempre, para
+  // cualquier rol). Ver src/lib/pedidoTransiciones.ts.
+  const puedeYo = (transicion: PedidoTransicion) =>
+    puedeTransicionPedido(user?.rol, transicion, ((tenant as any)?.pedido_transiciones_roles ?? null) as PedidoTransicionesConfig)
 
   const [showNuevo, setShowNuevo] = useState(false)
   const [tipoPedidoId, setTipoPedidoId] = useState('')
@@ -106,6 +119,70 @@ export default function PedidosPage() {
 
   const pedidosFiltrados = filtroEstado ? (pedidos as any[]).filter(p => p.estado === filtroEstado) : (pedidos as any[])
 
+  // ── K3 (PED8): exportar Excel/PDF/CSV — una fila por línea de pedido, mismo criterio que
+  // el resto de los módulos (XLSX.utils.json_to_sheet / jsPDF+autoTable / CSV a mano) ──────
+  const filasExport = () => pedidosFiltrados.flatMap((p: any) => {
+    const cliente = p.clientes?.nombre ?? p.cliente_nombre ?? 'Sin cliente'
+    const items = (p.pedido_items ?? []).filter((it: any) => it.estado !== 'cancelada')
+    if (items.length === 0) return [{
+      Pedido: p.numero, Tipo: p.tipos_pedido?.nombre ?? '', Cliente: cliente, Estado: ESTADO_BADGE[p.estado]?.label ?? p.estado,
+      'Entrega solicitada': p.fecha_entrega_solicitada ? new Date(p.fecha_entrega_solicitada).toLocaleDateString('es-AR') : '',
+      Producto: '', SKU: '', Cantidad: '', Entregado: '',
+    }]
+    return items.map((it: any) => ({
+      Pedido: p.numero, Tipo: p.tipos_pedido?.nombre ?? '', Cliente: cliente, Estado: ESTADO_BADGE[p.estado]?.label ?? p.estado,
+      'Entrega solicitada': p.fecha_entrega_solicitada ? new Date(p.fecha_entrega_solicitada).toLocaleDateString('es-AR') : '',
+      Producto: it.productos?.nombre ?? '', SKU: it.productos?.sku ?? '',
+      Cantidad: Number(it.cantidad), Entregado: Number(it.cantidad_entregada ?? 0),
+    }))
+  })
+
+  const exportarExcel = () => {
+    const filas = filasExport()
+    if (filas.length === 0) { toast.error('No hay pedidos para exportar'); return }
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(filas), 'Pedidos')
+    XLSX.writeFile(wb, `pedidos_${new Date().toISOString().split('T')[0]}.xlsx`)
+    toast.success('Excel descargado')
+  }
+
+  const exportarCSV = () => {
+    const filas = filasExport()
+    if (filas.length === 0) { toast.error('No hay pedidos para exportar'); return }
+    const cols = Object.keys(filas[0])
+    const header = cols.map(c => `"${c}"`).join(',')
+    const rows = filas.map(r => cols.map(c => `"${String((r as any)[c] ?? '').replace(/"/g, '""')}"`).join(','))
+    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url; a.download = `pedidos_${new Date().toISOString().split('T')[0]}.csv`
+    a.click(); URL.revokeObjectURL(url)
+    toast.success('CSV descargado')
+  }
+
+  const exportarPDF = () => {
+    const filas = filasExport()
+    if (filas.length === 0) { toast.error('No hay pedidos para exportar'); return }
+    const cols = Object.keys(filas[0])
+    const doc = new jsPDF({ orientation: 'landscape' })
+    doc.setFillColor(30, 58, 95); doc.rect(0, 0, doc.internal.pageSize.width, 25, 'F')
+    doc.setTextColor(255, 255, 255); doc.setFontSize(16); doc.setFont('helvetica', 'bold')
+    doc.text(BRAND.name, 14, 12)
+    doc.setFontSize(11); doc.setFont('helvetica', 'normal')
+    doc.text('Reporte de Pedidos', 14, 20)
+    doc.setTextColor(60, 60, 60); doc.setFontSize(9)
+    doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, 14, 32)
+    autoTable(doc, {
+      startY: 38,
+      head: [cols],
+      body: filas.map(r => cols.map(c => String((r as any)[c] ?? ''))),
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [30, 58, 95], fontSize: 8 },
+    })
+    doc.save(`pedidos_${new Date().toISOString().split('T')[0]}.pdf`)
+    toast.success('PDF descargado')
+  }
+
   // ── Cajas abiertas (mismo criterio que VentasPage: excluye la Caja Fuerte) ──────────
   const { data: sesionesAbiertas = [] } = useQuery({
     queryKey: ['caja-sesiones-abiertas', tenant?.id],
@@ -125,6 +202,17 @@ export default function PedidosPage() {
       const { data } = await supabase.from('wms_tareas')
         .select('id, tipo, estado, producto_id, cantidad, lpn_origen, tarea_precedente_id, productos(nombre, sku)')
         .eq('pedido_id', expandedId!).order('created_at')
+      return data ?? []
+    },
+    enabled: !!expandedId,
+  })
+
+  // ── Ventas generadas por el pedido expandido (A5: guía para devolver antes de cancelar) ──
+  const { data: ventasPedidoExp = [] } = useQuery({
+    queryKey: ['pedido-ventas', expandedId],
+    queryFn: async () => {
+      const { data } = await supabase.from('ventas')
+        .select('id, numero, estado, total').eq('pedido_id', expandedId!).order('created_at')
       return data ?? []
     },
     enabled: !!expandedId,
@@ -237,6 +325,68 @@ export default function PedidosPage() {
       qc.invalidateQueries({ queryKey: ['wms_tareas'] })
     },
     onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ── Bolsa de pedidos (PED6): lanzar N pedidos juntos con una ubicación de staging ────
+  const [bolsaSeleccion, setBolsaSeleccion] = useState<Set<string>>(new Set())
+  const [bolsaModalOpen, setBolsaModalOpen] = useState(false)
+  const [bolsaUbicacionId, setBolsaUbicacionId] = useState('')
+
+  const toggleBolsaSeleccion = (pedidoId: string) => {
+    setBolsaSeleccion(prev => {
+      const next = new Set(prev)
+      if (next.has(pedidoId)) next.delete(pedidoId); else next.add(pedidoId)
+      return next
+    })
+  }
+
+  const { data: ubicacionesStaging = [] } = useQuery({
+    queryKey: ['ubicaciones-staging', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('ubicaciones')
+        .select('id, nombre').eq('tenant_id', tenant!.id).eq('tipo_ubicacion', 'staging').eq('activo', true).order('nombre')
+      return data ?? []
+    },
+    enabled: !!tenant && bolsaModalOpen,
+  })
+
+  const lanzarBolsa = useMutation({
+    mutationFn: async () => {
+      if (!bolsaUbicacionId) throw new Error('Elegí la ubicación de staging')
+      const ids = Array.from(bolsaSeleccion)
+      const { data, error } = await supabase.rpc('fn_lanzar_bolsa_pedidos', {
+        p_pedido_ids: ids, p_ubicacion_staging_id: bolsaUbicacionId,
+      })
+      if (error) throw error
+      for (const id of ids) {
+        const p = (pedidos as any[]).find(x => x.id === id)
+        logActividad({
+          entidad: 'pedido', entidad_id: id, entidad_nombre: `Pedido #${p?.numero ?? '?'}`,
+          accion: 'cambio_estado', campo: 'estado', valor_anterior: 'confirmado', valor_nuevo: 'en_preparacion', pagina: '/pedidos',
+        })
+      }
+      return { nPedidos: ids.length, nTareas: (data ?? []).length }
+    },
+    onSuccess: (d: any) => {
+      toast.success(`Bolsa lanzada — ${d.nPedidos} pedido(s), ${d.nTareas} tarea(s) generada(s) en Picking`)
+      setBolsaModalOpen(false); setBolsaUbicacionId(''); setBolsaSeleccion(new Set())
+      qc.invalidateQueries({ queryKey: ['pedidos'] })
+      qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  // ── Lista de picking imprimible (PED6, L2-2): fallback cuando falla el escaneo ───────
+  const [imprimirPedido, setImprimirPedido] = useState<any | null>(null)
+  const { data: tareasImprimir = [] } = useQuery({
+    queryKey: ['pedido-tareas-imprimir', imprimirPedido?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('wms_tareas')
+        .select('id, tipo, cantidad, lpn_origen, ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), productos(nombre, sku)')
+        .eq('pedido_id', imprimirPedido!.id).order('created_at')
+      return data ?? []
+    },
+    enabled: !!imprimirPedido,
   })
 
   // ── Des-pickeo (PED5, E4): deshacer una tarea de picking ya completada ──────────────
@@ -412,6 +562,21 @@ export default function PedidosPage() {
           <option value="">Todos los estados</option>
           {Object.entries(ESTADO_BADGE).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
+        <ActionMenu label="Exportar" items={[
+          { label: 'Exportar Excel', icon: Download, onClick: exportarExcel },
+          { label: 'Exportar CSV', icon: Download, onClick: exportarCSV },
+          { label: 'Exportar PDF', icon: Download, onClick: exportarPDF },
+        ]} />
+        {bolsaSeleccion.size > 0 && puedeYo('lanzar') && (
+          <div className="flex items-center gap-2 ml-auto bg-accent/10 border border-accent/30 rounded-xl px-3 py-1.5">
+            <span className="text-xs font-medium text-accent-text">{bolsaSeleccion.size} pedido(s) seleccionado(s)</span>
+            <button onClick={() => setBolsaModalOpen(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold bg-accent text-white px-3 py-1.5 rounded-lg hover:bg-accent/90 transition-colors">
+              <Layers size={13} /> Lanzar bolsa
+            </button>
+            <button onClick={() => setBolsaSeleccion(new Set())} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+          </div>
+        )}
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-700">
@@ -430,6 +595,10 @@ export default function PedidosPage() {
           return (
             <div key={p.id}>
               <div className="p-4 flex items-center gap-3 flex-wrap">
+                {p.estado === 'confirmado' && puedeYo('lanzar') && (
+                  <input type="checkbox" checked={bolsaSeleccion.has(p.id)} onChange={() => toggleBolsaSeleccion(p.id)}
+                    className="rounded flex-shrink-0" title="Seleccionar para lanzar en bolsa" />
+                )}
                 <button onClick={() => setExpandedId(isExp ? null : p.id)} className="flex items-center gap-3 flex-1 min-w-0 text-left">
                   {isExp ? <ChevronUp size={15} className="text-gray-400 flex-shrink-0" /> : <ChevronDown size={15} className="text-gray-400 flex-shrink-0" />}
                   <span className="font-semibold text-sm text-primary dark:text-white">#{p.numero}</span>
@@ -442,14 +611,14 @@ export default function PedidosPage() {
                   )}
                 </button>
                 <span className={`text-xs font-medium px-2 py-1 rounded-full ${badge.cls}`}>{badge.label}</span>
-                {p.estado === 'borrador' && (
+                {p.estado === 'borrador' && puedeYo('confirmar') && (
                   <button onClick={() => cambiarEstado.mutate({ pedido: p, nuevoEstado: 'confirmado' })}
                     disabled={cambiarEstado.isPending}
                     className="text-xs font-semibold bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50">
                     Confirmar
                   </button>
                 )}
-                {p.estado === 'confirmado' && (
+                {p.estado === 'confirmado' && puedeYo('lanzar') && (
                   <button onClick={() => lanzarPedido.mutate(p)}
                     disabled={lanzarPedido.isPending}
                     title="Genera las tareas de picking/reabastecimiento en Depósito y reserva el stock"
@@ -463,7 +632,14 @@ export default function PedidosPage() {
                     Ver en Picking
                   </button>
                 )}
-                {['en_preparacion', 'listo_para_entrega', 'entregado_parcial'].includes(p.estado) && (
+                {p.lanzado_at && (
+                  <button onClick={() => setImprimirPedido(p)}
+                    title="Lista de picking imprimible (fallback si falla el escaneo)"
+                    className="p-2 text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
+                    <Printer size={15} />
+                  </button>
+                )}
+                {['en_preparacion', 'listo_para_entrega', 'entregado_parcial'].includes(p.estado) && puedeYo('entregar') && (
                   <button onClick={() => abrirEntrega(p)}
                     title="Genera la venta real: rebaja el stock reservado y asienta el cobro en caja"
                     className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors">
@@ -477,7 +653,7 @@ export default function PedidosPage() {
                     Cerrar pedido
                   </button>
                 )}
-                {p.estado === 'en_preparacion' && (
+                {p.estado === 'en_preparacion' && puedeYo('deslanzar') && (
                   <button onClick={() => { if (confirm(`¿Deshacer el lanzamiento del pedido #${p.numero}? Se liberan las reservas de stock (solo si nada se pickeó todavía).`)) deslanzarPedido.mutate(p) }}
                     disabled={deslanzarPedido.isPending}
                     title="Vuelve a Confirmado y libera lo reservado — solo si ninguna tarea se completó todavía"
@@ -485,9 +661,10 @@ export default function PedidosPage() {
                     Deshacer lanzamiento
                   </button>
                 )}
-                {/* entregado_parcial ya generó una venta real — cancelar requiere devolverla
-                    primero desde Ventas → Historial (A5, todavía no automatizado acá). */}
-                {!['cancelado', 'entregado', 'entregado_parcial'].includes(p.estado) && (
+                {/* A5: si el pedido ya generó una venta ACTIVA, fn_cancelar_pedido bloquea con un
+                    mensaje claro — hay que devolverla primero desde Ventas → Historial (link en
+                    el detalle expandido, abajo). Una vez devuelta/cancelada, esto sí cancela. */}
+                {p.estado !== 'cancelado' && puedeYo('cancelar') && (
                   <button
                     onClick={() => { if (confirm(`¿Cancelar el pedido #${p.numero}?${p.lanzado_at ? ' Se liberan las reservas de stock (solo si nada se pickeó todavía).' : ''}`)) cancelarPedido.mutate(p) }}
                     disabled={cancelarPedido.isPending}
@@ -514,6 +691,22 @@ export default function PedidosPage() {
                     </div>
                   ))}
                   {p.notas && <p className="text-xs text-gray-400 italic pt-1">{p.notas}</p>}
+                  {(ventasPedidoExp as any[]).length > 0 && (
+                    <div className="pt-2 border-t border-gray-100 dark:border-gray-700 mt-2 space-y-1">
+                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Ventas generadas</p>
+                      {(ventasPedidoExp as any[]).map(v => (
+                        <div key={v.id} className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                          <span>Venta #{v.numero} · {v.estado} · ${Number(v.total).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                          {!['devuelta', 'cancelada'].includes(v.estado) && (
+                            <button onClick={() => navigate(`/ventas?id=${v.id}&devolver=1`)}
+                              className="text-accent-text underline ml-auto">
+                              Devolver esta venta
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   {p.lanzado_at && (
                     <div className="pt-2 border-t border-gray-100 dark:border-gray-700 mt-2 space-y-1">
                       <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Tareas de Depósito</p>
@@ -528,11 +721,10 @@ export default function PedidosPage() {
                             {t.tipo === 'replenishment' ? 'Reabastecimiento' : 'Picking'} · {t.estado}
                           </span>
                           <span>{t.productos?.nombre} ({Number(t.cantidad)})</span>
-                          {/* Solo picking DIRECTO (sin reabastecimiento de por medio) se puede
-                              des-pickear hoy — una tarea encadenada (tarea_precedente_id) mueve
-                              el LPN al reabastecer, así que el des-pickeo automático no lo
-                              encuentra (ver comentario de la mig 296). */}
-                          {t.tipo === 'picking' && t.estado === 'completada' && !t.tarea_precedente_id && (
+                          {/* Mig 300: fn_unpick_tarea_wms ya soporta tareas encadenadas a un
+                              reabastecimiento (fallback por producto+ubicación cuando el LPN
+                              exacto ya no existe ahí) — "Deshacer" ya no se oculta para esas. */}
+                          {t.tipo === 'picking' && t.estado === 'completada' && puedeYo('deslanzar') && (
                             <button onClick={() => setUnpickModal(t)}
                               className="text-red-500 hover:text-red-600 underline ml-auto">
                               Deshacer
@@ -785,6 +977,97 @@ export default function PedidosPage() {
               <button onClick={() => unpickTarea.mutate()} disabled={unpickTarea.isPending || !unpickUbicacionId}
                 className="bg-red-500 text-white font-semibold px-5 py-2 rounded-xl text-sm disabled:opacity-50 hover:bg-red-600 transition-colors">
                 {unpickTarea.isPending ? 'Deshaciendo…' : 'Deshacer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal lanzar bolsa (PED6) */}
+      {bolsaModalOpen && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700">
+              <h2 className="text-lg font-bold text-primary dark:text-white flex items-center gap-2">
+                <Layers size={18} className="text-accent-text" /> Lanzar bolsa de pedidos
+              </h2>
+              <button onClick={() => setBolsaModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Se van a lanzar {bolsaSeleccion.size} pedido(s) juntos — cada uno reserva su stock y genera
+                sus propias tareas de picking, agrupadas bajo la misma ubicación de convergencia.
+              </p>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ubicación de staging</label>
+                <select value={bolsaUbicacionId} onChange={e => setBolsaUbicacionId(e.target.value)} className={inputCls}>
+                  <option value="">Elegir ubicación…</option>
+                  {(ubicacionesStaging as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                </select>
+                {(ubicacionesStaging as any[]).length === 0 && (
+                  <p className="text-xs text-amber-600 mt-1">No hay ninguna ubicación tipo "staging" configurada — creá una en Inventario → Ubicaciones.</p>
+                )}
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3">
+              <button onClick={() => setBolsaModalOpen(false)}
+                className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl text-sm">Cancelar</button>
+              <button onClick={() => lanzarBolsa.mutate()} disabled={lanzarBolsa.isPending || !bolsaUbicacionId}
+                className="bg-accent text-white font-semibold px-5 py-2 rounded-xl text-sm disabled:opacity-50 hover:bg-accent/90 transition-colors">
+                {lanzarBolsa.isPending ? 'Lanzando…' : 'Lanzar bolsa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal lista de picking imprimible (PED6, L2-2) */}
+      {imprimirPedido && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-gray-100 dark:border-gray-700 no-print">
+              <h2 className="text-lg font-bold text-primary dark:text-white">Lista de picking — Pedido #{imprimirPedido.numero}</h2>
+              <button onClick={() => setImprimirPedido(null)} className="text-gray-400 hover:text-gray-600"><X size={20} /></button>
+            </div>
+            <div id="pedido-lista-print" className="p-5 overflow-y-auto flex-1">
+              <div className="mb-3">
+                <p className="font-semibold text-primary dark:text-white">Pedido #{imprimirPedido.numero}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {imprimirPedido.clientes?.nombre ?? imprimirPedido.cliente_nombre ?? 'Sin cliente'}
+                </p>
+              </div>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                    <th className="py-1.5 pr-2">Producto</th>
+                    <th className="py-1.5 pr-2">Cant.</th>
+                    <th className="py-1.5 pr-2">LPN</th>
+                    <th className="py-1.5 pr-2">Desde</th>
+                    <th className="py-1.5">Hacia</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(tareasImprimir as any[]).map(t => (
+                    <tr key={t.id} className="border-b border-gray-100 dark:border-gray-700">
+                      <td className="py-1.5 pr-2">{t.productos?.nombre} <span className="text-xs text-gray-400">{t.productos?.sku}</span></td>
+                      <td className="py-1.5 pr-2">{Number(t.cantidad)}</td>
+                      <td className="py-1.5 pr-2 text-xs">{t.lpn_origen ?? '—'}</td>
+                      <td className="py-1.5 pr-2">{t.ubicacion_origen?.nombre ?? '—'}</td>
+                      <td className="py-1.5">{t.tipo === 'replenishment' ? t.ubicacion_destino?.nombre ?? '—' : '(retirar)'}</td>
+                    </tr>
+                  ))}
+                  {(tareasImprimir as any[]).length === 0 && (
+                    <tr><td colSpan={5} className="py-4 text-center text-gray-400">Sin tareas todavía</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+            <div className="p-5 border-t border-gray-100 dark:border-gray-700 flex justify-end gap-3 no-print">
+              <button onClick={() => setImprimirPedido(null)}
+                className="border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium px-4 py-2 rounded-xl text-sm">Cerrar</button>
+              <button onClick={() => window.print()}
+                className="flex items-center gap-1.5 bg-accent text-white font-semibold px-5 py-2 rounded-xl text-sm hover:bg-accent/90 transition-colors">
+                <Printer size={15} /> Imprimir
               </button>
             </div>
           </div>

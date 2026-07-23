@@ -6,6 +6,104 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-23] update | 🧾 Pedidos cierra los 5 gaps documentados (CC límite, des-pickeo encadenado, cancelar tras devolución, K3 exportes, editor E3 de roles) — migs 299-301
+
+Continuación inmediata de la entrada de abajo (misma sesión): tras cerrar PED6, GO pidió corregir
+también los 5 gaps que habían quedado documentados en la primera pasada de PED1-PED8. Sigue **TODO
+EN DEV, sin bump de `APP_VERSION` (v1.143.0) ni release, sin deploy a PROD**.
+
+**1) `supabase/migrations/299_pedidos_cc_morosidad.sql`** — `fn_pedido_generar_venta` ahora valida
+límite de crédito (B1) cuando el medio de pago incluye Cuenta Corriente. El trigger genérico
+`fn_ventas_cc_guard` (mig 234) ya cubre B4/morosidad para cualquier venta incl. Pedidos, así que no
+se duplica — pero tiene un punto ciego real con Pedidos para B1 (lee `NEW.medio_pago` al INSERT, y
+Pedidos inserta con `total=0`/`monto:null`, así que el chequeo del trigger nunca dispara). **2
+rondas de `migration-reviewer`:** la 1ra encontró que la versión inicial SÍ duplicaba B4 (vía
+`cliente_cc_estado`, dependiente de `auth.uid()` — el mismo patrón que la 234 evitó a propósito) y
+que un monto CC negativo neutralizaba el chequeo de límite (corregido con `GREATEST(x,0)`); la 2da
+encontró que el *gate* de la validación seguía dependiendo de un valor controlado por el llamante
+(`v_monto_cc` — una sola entrada CC con monto ≤0 evadía el chequeo entero) y se corrigió usando
+`v_total - v_monto_pagado` (saldo real sin cubrir, ambos términos defendidos) como gate. Aplicada a
+DEV recién con el fix final.
+
+**2) `supabase/migrations/300_pedidos_unpick_encadenado.sql`** — `fn_unpick_tarea_wms` ahora también
+des-pickea tareas encadenadas a un reabastecimiento (antes solo picking directo). Causa raíz: para
+una tarea encadenada el `lpn_origen` es el LPN de bulk viejo, que nunca existió físicamente en la
+ubicación de picking. Fix: fallback por producto+ubicación (FEFO, sin filtro de LPN) cuando el match
+exacto falla y la tarea tiene `tarea_precedente_id`.
+
+**3) `supabase/migrations/301_pedidos_cancelar_venta_resuelta.sql`** — `fn_cancelar_pedido` ya no
+bloquea para siempre un pedido que generó una venta, si esa venta ya se devolvió/canceló a mano
+(antes el guard no filtraba por estado). La devolución automática end-to-end sigue diferida a
+propósito (Regla #0 — esa lógica fiscal vive solo en `VentasPage.tsx`); la UI (`PedidosPage.tsx`)
+ahora muestra las ventas vinculadas al pedido con link "Devolver esta venta" a
+`/ventas?id=<id>&devolver=1`.
+
+**4) K3 (exportes, sin migración):** menú "Exportar" (`ActionMenu`) en `/pedidos` con salidas a
+Excel (`xlsx`), CSV y PDF (`jspdf`+`autotable`) sobre la lista filtrada — mismo patrón que
+Clientes/Caja.
+
+**5) Editor E3 de `pedido_transiciones_roles` (sin migración nueva, reusa la columna jsonb de la mig
+292):** tab Config → Pedidos ganó una tabla rol×transición (confirmar/lanzar/entregar/cancelar/
+deslanzar). Lógica pura nueva `src/lib/pedidoTransiciones.ts` (`puedeTransicionPedido`, mismo patrón
+que `ajusteAutorizacion.ts`) — transición ausente en la config usa el default de código (DUEÑO/
+SUPERVISOR/SUPER_USUARIO/DEPOSITO); transición presente (incluso `[]`) es allow-list estricta.
+`ADMIN` (staff) siempre puede, no aparece en la tabla editable. Gate 100% client-side (mismo alcance
+que `ajuste_autorizacion_roles`), wireado en los 5 botones de transición + "Lanzar bolsa" + "Deshacer"
+(des-pickeo) de `PedidosPage.tsx`.
+
+**Verificación:** tsc + build + 1188 tests unitarios verdes (8 nuevos en `pedidoTransiciones.test.ts`)
++ **5/5 e2e verde** en `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` (los 3 tests de la
+tanda anterior + un test nuevo que crea un cliente con `limite_credito=100`, confirma que entregar un
+pedido de $500 a CC con `cc_enforcement_politica='bloquear'` se rechaza con rollback completo, y que
+levantando el límite el mismo pedido sí entrega).
+
+Migraciones 299-301 aplicadas solo en DEV (`gcmhzdedrkmmzfzfveig`). Ver [[wiki/features/pedidos]] →
+"Correcciones post-relevamiento".
+
+## [2026-07-23] update | 🧾 Pedidos cierra PED6 (bolsa de pedidos + staging + listas imprimibles, mig 298) — GO pidió no dejarlo diferido
+
+Continuación inmediata de la entrada de abajo (misma sesión): GO preguntó por qué PED6 había
+quedado diferido y pidió construirlo. Sigue **TODO EN DEV, sin bump de `APP_VERSION` (v1.143.0) ni
+release, sin deploy a PROD**.
+
+**`supabase/migrations/298_pedidos_ped6_bolsa_staging.sql`** — RPC nueva
+`fn_lanzar_bolsa_pedidos(p_pedido_ids uuid[], p_ubicacion_staging_id uuid)`. Decisión de diseño: en
+vez de reimplementar la reserva/generación de tareas para el lanzamiento batch, la bolsa agrupa N
+pedidos + la ubicación de staging elegida como **metadato organizativo** — la RPC llama, pedido por
+pedido, a `fn_generar_tareas_picking_pedido` (mig 294, sin cambios) y etiqueta las tareas resultantes
+con `wms_tareas.lanzamiento_id` (FK nueva a la tabla nueva `pedido_lanzamientos`). `'staging'` se
+agregó al CHECK de `ubicaciones.tipo_ubicacion`. Si cualquier pedido de la bolsa falla, la excepción
+aborta la función entera — no hay bolsas parciales.
+
+El `migration-reviewer` encontró un bug real antes de aplicar: sin un guard explícito, un pedido YA
+lanzado incluido por error en una bolsa nueva no generaba nada (la RPC delegada es idempotente por
+diseño), pero el `UPDATE wms_tareas SET lanzamiento_id` de todos modos le reescribía la bolsa a esas
+tareas viejas **en silencio** — rompiendo trazabilidad write-time. Se agregó un `EXISTS` que rechaza
+la bolsa entera si cualquier pedido ya fue lanzado, más defensa en profundidad (validar tenant
+homogéneo entre TODOS los pedidos del array, no solo el primero — la función se concede a
+`service_role`, que tiene BYPASSRLS).
+
+**🐛 Bug real encontrado por el e2e, no por el review:** al correr el test contra DEV, la función
+falló con `42702 column reference "pedido_id" is ambiguous` — tiene `pedido_id` como columna de
+salida (`RETURNS TABLE`), que Postgres expone como variable PL/pgSQL en todo el cuerpo, así que una
+referencia sin calificar a `wms_tareas.pedido_id` dentro del guard era ambigua. Fix: calificar
+explícitamente `wms_tareas.pedido_id`. Corregido y reverificado en DEV.
+
+**Listas de picking imprimibles (L2-2):** modal en `PedidosPage.tsx` con `window.print()` + regla
+`@media print` nueva (`#pedido-lista-print`, mismo patrón que el ticket de venta/comprobante de
+devolución en `index.css`) — fallback cuando falla el escaneo.
+
+**UI (`PedidosPage.tsx`):** checkbox de selección por pedido `confirmado`, barra flotante "Lanzar
+bolsa" con modal de ubicación de staging, botón imprimir para cualquier pedido lanzado. `ConfigPage.tsx`
+suma la opción "Staging" al selector de tipo de ubicación (alta y edición).
+
+**Verificación:** tsc + build + 1180 tests unitarios verdes + `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts`
+ganó un tercer test (bolsa de 2 pedidos + guard de "ya lanzado") — **4/4 verde** contra datos reales
+de DEV tras el fix de la ambigüedad de columna.
+
+`APP_VERSION` sigue v1.143.0 (sin bump, sin release). Migración 298 aplicada solo en DEV. Ver
+[[wiki/features/pedidos]] → PED6.
+
 ## [2026-07-23] update | 🧾 Módulo "Pedidos" completa su ciclo de vida entero — PED3 (lanzar), PED4 (entregar/generar venta), PED5 (cancelar/deslanzar/des-pickeo), PED7 (Config), PED8 parcial (alertas) — migs 294-297
 
 Continuación inmediata de la sesión anterior (PED1+PED2, mig 292 — ver entrada de abajo). Se

@@ -6,10 +6,58 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-23
 ---
 
-# Historial de Migraciones (001-297)
+# Historial de Migraciones (001-301)
 
-**Total al 2026-07-23:** 297 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-23:** 301 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+**299-301 (Pedidos — cierra los 5 gaps documentados tras PED1-PED8, sigue EN DEV, SIN deploy a PROD,
+SIN commitear al cierre de la sesión anterior)** — cada una revisada por `migration-reviewer`
+(299 tuvo 2 rondas, ver detalle):
+- **299** (CC en Pedidos valida límite de crédito, B1): `CREATE OR REPLACE fn_pedido_generar_venta`
+  agrega el chequeo de `limite_credito` (el trigger genérico `fn_ventas_cc_guard`, mig 234, ya cubre
+  B4/morosidad para cualquier venta incl. Pedidos, así que esta migración NO lo duplica — pero para
+  B1 el trigger tiene un punto ciego real con Pedidos: lee `NEW.medio_pago` al INSERT, y Pedidos
+  inserta con `total=0`/`monto:null` — el chequeo del trigger nunca dispara). Deuda calculada INLINE
+  por `tenant_id`, sin pasar por `cliente_cc_estado` (depende de `auth.uid()`, patrón que la propia
+  234 evitó). 🔴 **1ra ronda de review:** la versión inicial duplicaba B4 vía `cliente_cc_estado` y
+  un monto CC negativo neutralizaba el chequeo de límite — corregido (sacado el duplicado, clamps
+  `GREATEST(x,0)`). 🔴 **2da ronda:** el *gate* de la validación seguía dependiendo de un valor
+  controlado por el llamante (`v_monto_cc` — una sola entrada CC con monto ≤0 evadía el chequeo
+  ENTERO); corregido usando `v_total - v_monto_pagado` (saldo real sin cubrir, ambos términos ya
+  defendidos) como gate en vez de `v_monto_cc`.
+- **300** (des-pickeo de tarea encadenada a un reabastecimiento): `fn_unpick_tarea_wms` solo
+  funcionaba con match exacto producto+ubicación+LPN (picking DIRECTO) — para una tarea encadenada
+  el `lpn_origen` es el LPN de BULK viejo, que nunca existió físicamente en la ubicación de picking.
+  Fix: fallback que busca cualquier línea reservada del mismo producto en esa ubicación (FEFO) cuando
+  el match exacto falla Y la tarea tiene `tarea_precedente_id`. Limitación residual aceptada
+  (fungibilidad entre reservas del mismo producto sin distinguir atributo, misma clase que el resto
+  del match "por disponibilidad" de WMS).
+- **301** (cancelar pedido tras venta devuelta, A5 parcial): `fn_cancelar_pedido` bloqueaba para
+  siempre si el pedido alguna vez generó una venta, incluso ya devuelta a mano — el guard no filtraba
+  por estado de la venta. Fix: solo bloquea si existe una venta ACTIVA (`estado NOT IN ('cancelada',
+  'devuelta')`). La devolución automática end-to-end sigue diferida a propósito (esa lógica fiscal
+  vive solo en `VentasPage.tsx`, Regla #0); la UI ahora linkea a `/ventas?id=<id>&devolver=1`.
+
+Además, en la misma ronda: editor de `pedido_transiciones_roles` (E3) en Config → Pedidos
+(`src/lib/pedidoTransiciones.ts`, sin migración nueva — reusa la columna jsonb ya creada en la mig
+292) y exportes K3 (Excel/PDF/CSV) en `PedidosPage.tsx` (sin migración). Ver [[wiki/features/pedidos]]
+→ "Correcciones post-relevamiento" para el detalle completo de los 5 fixes.
+Verificación: tsc + build + 1188 tests unitarios verdes (8 nuevos) + 5/5 e2e verdes (spec 107,
+incl. un test nuevo del guard de CC contra datos reales de DEV).
+
+**298 (Pedidos PED6 — bolsa de pedidos + staging, sigue EN DEV, SIN deploy a PROD, SIN commitear al
+cierre de la sesión)** — RPC `fn_lanzar_bolsa_pedidos(p_pedido_ids uuid[], p_ubicacion_staging_id uuid)`:
+agrupa N pedidos lanzándolos juntos (llama a `fn_generar_tareas_picking_pedido` de la mig 294 sin
+cambios, pedido por pedido) y etiqueta las tareas con `wms_tareas.lanzamiento_id` (tabla nueva
+`pedido_lanzamientos`) — la ubicación de staging (`'staging'` nuevo en el CHECK de
+`ubicaciones.tipo_ubicacion`) es metadato organizativo, no cambia el mecanismo de reserva ya
+probado. 🔴 El `migration-reviewer` encontró que sin un guard, un pedido YA lanzado incluido en una
+bolsa nueva le "robaba" en silencio sus tareas a la bolsa/lanzamiento original (rompe trazabilidad
+write-time) — corregido con un `EXISTS` que rechaza la bolsa entera. 🐛 El e2e nuevo encontró
+además un bug real de Postgres (`42702 pedido_id ambiguous` — la función tiene `pedido_id` como
+columna de salida vía `RETURNS TABLE`, que colisiona con la columna homónima de `wms_tareas` sin
+calificar) — corregido calificando `wms_tareas.pedido_id`. Ver [[wiki/features/pedidos]] → PED6.
+
 **294-297 (módulo "Pedidos" completa PED3-PED5, sigue EN DEV, SIN deploy a PROD, SIN commitear al
 cierre de la sesión)** — cada una revisada por `migration-reviewer` antes de aplicar, con hallazgos
 reales corregidos en las 3:

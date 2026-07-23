@@ -6,7 +6,84 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🧾 ARRANCÁ ACÁ (2026-07-23) — Módulo "Pedidos" completa su ciclo de vida entero: PED3-PED5 + PED7 + PED8 parcial (migs 294-297) — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
+> ### 🧾 ARRANCÁ ACÁ (2026-07-23, continuación) — Pedidos cierra los 5 gaps documentados (CC límite, des-pickeo encadenado, cancelar tras devolución, K3 exportes, editor E3 de roles) — migs 299-301 — módulo Pedidos 100% completo, sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
+>
+> Continuación inmediata de la sesión anterior (PED6, ver bloque "ESTADO ANTERIOR" debajo). GO pidió
+> corregir también los 5 gaps documentados tras completar PED1-PED8 — ver
+> `G360.Wiki/wiki/features/pedidos.md` → "Correcciones post-relevamiento" para el detalle completo.
+>
+> **1) `supabase/migrations/299_pedidos_cc_morosidad.sql`** — `fn_pedido_generar_venta` valida
+> límite de crédito (B1) en Cuenta Corriente. **2 rondas de `migration-reviewer`**: 1ra encontró
+> duplicado de B4 (vía `cliente_cc_estado`, dependiente de `auth.uid()`) + un monto CC negativo que
+> neutralizaba el chequeo (corregido, clamps `GREATEST(x,0)`); 2da encontró que el *gate* seguía
+> dependiendo de un valor controlado por el llamante (`v_monto_cc`, una sola entrada ≤0 evadía todo
+> el chequeo) — corregido usando `v_total - v_monto_pagado` (saldo real sin cubrir) como gate.
+> Aplicada a DEV recién con el fix final.
+>
+> **2) `supabase/migrations/300_pedidos_unpick_encadenado.sql`** — `fn_unpick_tarea_wms` ahora
+> des-pickea también tareas encadenadas a un reabastecimiento (fallback FEFO por producto+ubicación
+> cuando el LPN exacto de bulk ya no existe físicamente en picking).
+>
+> **3) `supabase/migrations/301_pedidos_cancelar_venta_resuelta.sql`** — `fn_cancelar_pedido` ya no
+> bloquea para siempre si la venta generada ya se devolvió/canceló a mano. Devolución automática
+> end-to-end sigue diferida a propósito (Regla #0). UI linkea a `/ventas?id=<id>&devolver=1`.
+>
+> **4) K3 (sin migración):** menú "Exportar" (Excel/CSV/PDF) en `/pedidos`.
+>
+> **5) Editor E3 (sin migración nueva):** tab Config → Pedidos, tabla rol×transición sobre
+> `tenants.pedido_transiciones_roles`. Lógica pura nueva `src/lib/pedidoTransiciones.ts`
+> (`puedeTransicionPedido`) + gate wireado en los 5 botones de transición de `PedidosPage.tsx`.
+>
+> **Verificación:** tsc + build + 1188 tests unitarios verdes (8 nuevos) + **5/5 e2e verde** en
+> `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` (3 tests de la tanda PED6 + 1 nuevo del
+> guard de CC contra datos reales de DEV, con rollback transaccional verificado explícitamente).
+>
+> **▶ Pendiente inmediato:**
+> 1. Commitear el trabajo de esta sesión (migs 299-301 + editor E3 + exportes K3 + e2e ampliado +
+>    wiki) — nada de esto pasó por PR todavía.
+> 2. **Módulo Pedidos ya no tiene gaps documentados bloqueantes** — el único ítem que queda abierto
+>    a propósito es la devolución automática end-to-end al cancelar (A5), diferida (Regla #0: esa
+>    lógica fiscal vive solo en `VentasPage.tsx`). Roles custom de Depósito (Picker/Auditor/Gruero,
+>    hallazgo J3) siguen como iniciativa aparte sin arrancar.
+> 3. Deploy a PROD del módulo WMS + Pedidos completo (v1.143.0, migs 289-301) sigue pendiente de que
+>    GO lo pida.
+> 4. Judgment call sin resolver: no se creó tag/release de esta sesión (criterio: la sesión previa
+>    inmediata, EN DEV, tampoco taggeó) — GO puede pedir que sí se taggee si lo prefiere.
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-23) — Pedidos cierra PED6 (bolsa + staging + listas imprimibles, mig 298) — GO pidió no dejarlo diferido — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
+>
+> Continuación inmediata de la sesión anterior (PED3-PED5+PED7+PED8 parcial, ver bloque "ESTADO
+> ANTERIOR" debajo). GO preguntó por qué PED6 había quedado diferido y pidió construirlo — ver
+> `G360.Wiki/wiki/features/pedidos.md` → PED6 para el detalle completo.
+>
+> **`supabase/migrations/298_pedidos_ped6_bolsa_staging.sql`**: RPC `fn_lanzar_bolsa_pedidos(p_pedido_ids
+> uuid[], p_ubicacion_staging_id uuid)` — agrupa N pedidos lanzándolos juntos (llama a
+> `fn_generar_tareas_picking_pedido`, mig 294, sin cambios, pedido por pedido) y etiqueta las tareas
+> con `wms_tareas.lanzamiento_id` (tabla nueva `pedido_lanzamientos`); la ubicación de staging
+> (`'staging'` nuevo en `ubicaciones.tipo_ubicacion`) es metadato organizativo, no cambia la
+> reserva/generación de tareas ya probada. El `migration-reviewer` encontró que sin un guard, un
+> pedido YA lanzado incluido en una bolsa nueva le "robaba" en silencio sus tareas a la bolsa
+> original (rompe trazabilidad write-time) — corregido con un `EXISTS` que rechaza la bolsa entera,
+> más validación de tenant homogéneo entre TODOS los pedidos del array (defensa en profundidad,
+> la función se concede a `service_role`). **El e2e nuevo encontró además un bug real de Postgres**
+> (`42702 pedido_id ambiguous` — la función tiene `pedido_id` como columna de salida `RETURNS TABLE`,
+> colisiona con la columna homónima de `wms_tareas` sin calificar) — corregido y reverificado.
+> Lista de picking imprimible nueva (`window.print()`, modal en `PedidosPage.tsx`).
+>
+> **Verificación:** tsc + build + 1180 tests unitarios verdes + `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts`
+> ganó un tercer test (bolsa + guard "ya lanzado") — **4/4 verde** contra datos reales de DEV.
+>
+> **▶ Pendiente inmediato:**
+> 1. Commitear el trabajo de esta sesión (mig 298 + UI de bolsa/staging/imprimir + e2e ampliado) —
+>    nada de esto pasó por PR todavía.
+> 2. Los pendientes documentados de Pedidos siguen iguales (ver bloque "ESTADO ANTERIOR" debajo):
+>    devolución automática al cancelar con venta real (A5), des-pickeo de tareas encadenadas, CC sin
+>    validar morosidad, editor de `pedido_transiciones_roles` (E3), K3 (exportes). **PED6 ya NO está
+>    en esta lista — está construido.**
+> 3. Deploy a PROD del módulo WMS + Pedidos completo (v1.143.0, migs 289-298) sigue pendiente de que
+>    GO lo pida.
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-23) — Módulo "Pedidos" completa su ciclo de vida entero: PED3-PED5 + PED7 + PED8 parcial (migs 294-297) — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
 >
 > Continuación inmediata de la sesión anterior (PED1+PED2, mig 292 — ver bloque "ESTADO ANTERIOR"
 > debajo). Se construyó el resto del roadmap acordado con GO (`relevamiento_pedidos_respuestas.md`,

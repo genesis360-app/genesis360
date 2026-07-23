@@ -283,7 +283,7 @@ export interface Ubicacion {
   disponible_surtido?: boolean
   es_devolucion?: boolean
   // WMS Fase 2
-  tipo_ubicacion?: 'picking' | 'bulk' | 'estiba' | 'camara' | 'cross_dock' | null
+  tipo_ubicacion?: 'picking' | 'bulk' | 'estiba' | 'camara' | 'cross_dock' | 'staging' | null
   alto_cm?: number | null
   ancho_cm?: number | null
   largo_cm?: number | null

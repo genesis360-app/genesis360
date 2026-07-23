@@ -26,6 +26,7 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
+import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
@@ -1757,6 +1758,19 @@ export default function ConfigPage() {
     if (error) { toast.error(error.message); return }
     setTenant(data)
     toast.success(nuevo ? 'Cierre automático habilitado' : 'Cierre automático deshabilitado — habrá que cerrar el pedido a mano al llegar al 100%')
+  }
+
+  // E3 — pedido_transiciones_roles: quién puede ejecutar cada transición. Ausente en la config
+  // → default de código (puedeTransicionPedido); acá se materializa el default recién al primer
+  // toggle de esa transición, para no escribir de más si nunca se tocó.
+  const togglePedidoTransicionRol = async (transicion: typeof PEDIDO_TRANSICIONES[number]['key'], rol: string) => {
+    const config = ((tenant as any)?.pedido_transiciones_roles ?? null) as PedidoTransicionesConfig
+    const base = config?.[transicion] ?? PEDIDO_TRANSICION_ROLES_DEFAULT
+    const nuevosRoles = base.includes(rol) ? base.filter(r => r !== rol) : [...base, rol]
+    const nuevaConfig = { ...(config ?? {}), [transicion]: nuevosRoles }
+    const { data, error } = await supabase.from('tenants').update({ pedido_transiciones_roles: nuevaConfig }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
   }
 
   // Estados de inventario
@@ -3696,6 +3710,7 @@ export default function ConfigPage() {
                   <option value="estiba">Estiba / Pallet rack</option>
                   <option value="camara">Cámara frigorífica</option>
                   <option value="cross_dock">Cross-dock</option>
+                  <option value="staging">Staging (convergencia de bolsas de Pedidos)</option>
                 </select>
                 {zonas.length > 0 && (
                   <select value={newUbicZonaId} onChange={e => setNewUbicZonaId(e.target.value)}
@@ -3777,6 +3792,7 @@ export default function ConfigPage() {
                               <option value="estiba">Estiba / Pallet rack</option>
                               <option value="camara">Cámara frigorífica</option>
                               <option value="cross_dock">Cross-dock</option>
+                              <option value="staging">Staging (convergencia de bolsas de Pedidos)</option>
                             </select>
                             {zonas.length > 0 && (
                               <select value={editUbicZonaId} onChange={e => setEditUbicZonaId(e.target.value)}
@@ -5104,6 +5120,43 @@ export default function ConfigPage() {
                 <p className="text-xs text-gray-400 dark:text-gray-500">Si está habilitado, el pedido pasa solo a "Entregado" al completar todas sus líneas. Si lo desactivás, queda en "Entregado parcial" hasta que alguien lo cierre a mano.</p>
               </div>
             </label>
+          </div>
+
+          {/* E3 — pedido_transiciones_roles: quién puede hacer cada transición */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <UserCog size={18} className="text-accent-text" /> Quién puede hacer cada transición
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 mb-3">
+              Por default DUEÑO/SUPERVISOR/SUPER_USUARIO/DEPOSITO pueden todas las transiciones. Marcá o desmarcá roles por transición para ajustarlo — ADMIN (soporte) siempre puede, no se lista.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-400 dark:text-gray-500">
+                    <th className="font-medium pb-2 pr-3">Transición</th>
+                    {PEDIDO_ROLES_CONFIGURABLES.map(rol => (
+                      <th key={rol} className="font-medium pb-2 px-2 text-center whitespace-nowrap">{rol}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {PEDIDO_TRANSICIONES.map(({ key, label }) => (
+                    <tr key={key} className="border-t border-gray-100 dark:border-gray-700">
+                      <td className="py-2 pr-3 text-gray-700 dark:text-gray-300">{label}</td>
+                      {PEDIDO_ROLES_CONFIGURABLES.map(rol => (
+                        <td key={rol} className="text-center px-2">
+                          <input type="checkbox" disabled={!canEdit}
+                            checked={puedeTransicionPedido(rol, key, ((tenant as any)?.pedido_transiciones_roles ?? null) as PedidoTransicionesConfig)}
+                            onChange={() => togglePedidoTransicionRol(key, rol)}
+                            className="rounded disabled:opacity-50" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">

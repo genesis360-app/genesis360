@@ -37,6 +37,8 @@ const ENTIDAD_ICONS: Record<string, any> = {
   usuario: User,
   gasto: TrendingDown,
   combo: Gift,
+  wms_tarea: Truck,
+  pedido: Package,
 }
 
 const ENTIDAD_LABELS: Record<string, string> = {
@@ -51,6 +53,8 @@ const ENTIDAD_LABELS: Record<string, string> = {
   usuario: 'Usuario',
   gasto: 'Gasto',
   combo: 'Combo',
+  wms_tarea: 'Tarea WMS',
+  pedido: 'Pedido',
 }
 
 const ACCION_LABELS: Record<string, { label: string; color: string; bg: string }> = {

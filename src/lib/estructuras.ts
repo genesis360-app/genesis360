@@ -147,6 +147,26 @@ export function convertirABase(cantidad: number, nivel: Pick<NivelEstructura, 'u
   return cantidad * nivel.unidades_base
 }
 
+/**
+ * Nivel a preseleccionar en un selector de UdM al ingresar/rebajar stock: el que matchea
+ * `productos.unidad_medida` (comparación case-insensitive por nombre de la UdM), o el nivel
+ * base (orden más chico) si no matchea ninguno. Fase 2 — "toma como default la unidad de
+ * medida que esté cargada en el producto" (GO, 2026-07-22).
+ */
+export function nivelDefaultParaProducto(
+  niveles: NivelEstructuraDB[],
+  unidadMedidaProducto: string | null | undefined,
+): NivelEstructuraDB | null {
+  if (niveles.length === 0) return null
+  const ordenados = niveles.slice().sort((a, b) => a.orden - b.orden)
+  if (unidadMedidaProducto) {
+    const nombre = unidadMedidaProducto.trim().toLowerCase()
+    const match = ordenados.find(n => n.unidades_medida?.nombre?.trim().toLowerCase() === nombre)
+    if (match) return match
+  }
+  return ordenados[0]
+}
+
 // ── Precio por UoM (backlog Fede, puntos 4/6/7 — mig 286/287) ───────────────────────────
 // `productos.nivel_precio_orden` es el "ancla de precio": el ORDEN (no id — la RPC reinserta
 // todos los niveles en cada save) del nivel de la estructura DEFAULT cuyo precio_venta/costo

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -28,7 +28,7 @@ import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
+type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
 type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'atributos' | 'codigos' | 'zonas'
 type AtributoVariante = 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'
@@ -606,7 +606,7 @@ export default function ConfigPage() {
   // integraciones TiendaNube/MeLi sí quedan disponibles).
   useEffect(() => {
     if (modoAvanzado) return
-    if (tab === 'envios') setTab('negocio')
+    if (tab === 'envios' || tab === 'pedidos') setTab('negocio')
     if (['reglas', 'ubicaciones', 'estados', 'codigos'].includes(invSubTab)) setInvSubTab('categorias')
     if (conSubTab === 'api') setConSubTab('integraciones')
   }, [modoAvanzado, tab, invSubTab, conSubTab])
@@ -1692,6 +1692,73 @@ export default function ConfigPage() {
     qc.invalidateQueries({ queryKey: ['producto_ubicacion_umbrales'] })
   }
 
+  // ── Pedidos (PED7): numeración, tipos de pedido, cierre automático ────────────────────
+  const { data: tiposPedidoCfg = [], isLoading: loadingTiposPedido } = useQuery({
+    queryKey: ['tipos_pedido_cfg', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('tipos_pedido').select('*').eq('tenant_id', tenant!.id).order('orden')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'pedidos',
+  })
+  const [newTipoPedidoNombre, setNewTipoPedidoNombre] = useState('')
+  const [newTipoPedidoFactura, setNewTipoPedidoFactura] = useState<'al_confirmar' | 'al_entregar'>('al_entregar')
+  const [newTipoPedidoClienteOblig, setNewTipoPedidoClienteOblig] = useState(true)
+  const [editTipoPedidoId, setEditTipoPedidoId] = useState<string | null>(null)
+  const [editTipoPedidoNombre, setEditTipoPedidoNombre] = useState('')
+  const [editTipoPedidoFactura, setEditTipoPedidoFactura] = useState<'al_confirmar' | 'al_entregar'>('al_entregar')
+  const [editTipoPedidoClienteOblig, setEditTipoPedidoClienteOblig] = useState(true)
+
+  const addTipoPedido = async () => {
+    if (!newTipoPedidoNombre.trim()) return
+    const orden = ((tiposPedidoCfg as any[])[tiposPedidoCfg.length - 1]?.orden ?? 0) + 10
+    const { error } = await supabase.from('tipos_pedido').insert({
+      tenant_id: tenant!.id, nombre: newTipoPedidoNombre.trim(),
+      factura_momento: newTipoPedidoFactura, cliente_obligatorio: newTipoPedidoClienteOblig, orden,
+    })
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['tipos_pedido_cfg'] })
+    qc.invalidateQueries({ queryKey: ['tipos_pedido'] })
+    logActividad({ entidad: 'pedido', entidad_nombre: `Tipo: ${newTipoPedidoNombre.trim()}`, accion: 'crear', pagina: '/configuracion' })
+    setNewTipoPedidoNombre(''); setNewTipoPedidoFactura('al_entregar'); setNewTipoPedidoClienteOblig(true)
+    toast.success('Tipo de pedido creado')
+  }
+  const startEditTipoPedido = (t: any) => {
+    setEditTipoPedidoId(t.id); setEditTipoPedidoNombre(t.nombre)
+    setEditTipoPedidoFactura(t.factura_momento); setEditTipoPedidoClienteOblig(t.cliente_obligatorio)
+  }
+  const saveTipoPedido = async (id: string) => {
+    if (!editTipoPedidoNombre.trim()) return
+    const { error } = await supabase.from('tipos_pedido').update({
+      nombre: editTipoPedidoNombre.trim(), factura_momento: editTipoPedidoFactura, cliente_obligatorio: editTipoPedidoClienteOblig,
+    }).eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['tipos_pedido_cfg'] })
+    qc.invalidateQueries({ queryKey: ['tipos_pedido'] })
+    setEditTipoPedidoId(null)
+    toast.success('Tipo de pedido actualizado')
+  }
+  const toggleActivoTipoPedido = async (t: any) => {
+    const { error } = await supabase.from('tipos_pedido').update({ activo: !t.activo }).eq('id', t.id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['tipos_pedido_cfg'] })
+    qc.invalidateQueries({ queryKey: ['tipos_pedido'] })
+  }
+
+  const setPedidoNumeracion = async (valor: 'tenant' | 'sucursal') => {
+    const { data, error } = await supabase.from('tenants').update({ pedido_numeracion: valor }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success('Numeración de pedidos actualizada')
+  }
+  const togglePedidoCierreAutomatico = async () => {
+    const nuevo = !(tenant as any)?.pedido_cierre_automatico
+    const { data, error } = await supabase.from('tenants').update({ pedido_cierre_automatico: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Cierre automático habilitado' : 'Cierre automático deshabilitado — habrá que cerrar el pedido a mano al llegar al 100%')
+  }
+
   // Estados de inventario
   const { data: estados = [], isLoading: loadingEstados } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
@@ -2748,8 +2815,9 @@ export default function ConfigPage() {
         { id: 'caja',           label: 'Caja',            icon: Wallet },
         { id: 'clientes',       label: 'Clientes',        icon: Users },
         { id: 'inventario',     label: 'Inventario',      icon: Package },
-        // Envíos es módulo del modo avanzado
+        // Envíos y Pedidos son módulos del modo avanzado
         ...(modoAvanzado ? [{ id: 'envios' as Tab, label: 'Envíos', icon: Truck }] : []),
+        ...(modoAvanzado ? [{ id: 'pedidos' as Tab, label: 'Pedidos', icon: ListOrdered }] : []),
         { id: 'gastos',         label: 'Gastos',          icon: TrendingDown },
         { id: 'facturacion',    label: 'Facturación',     icon: Receipt },
         { id: 'rrhh',           label: 'RRHH',            icon: UserCog },
@@ -5002,6 +5070,119 @@ export default function ConfigPage() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ═══════════ TAB: PEDIDOS (PED7) ═══════════ */}
+      {tab === 'pedidos' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <ListOrdered size={18} className="text-accent-text" /> Numeración
+            </h2>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="radio" checked={((tenant as any)?.pedido_numeracion ?? 'sucursal') === 'sucursal'}
+                  onChange={() => setPedidoNumeracion('sucursal')} disabled={!canEdit} />
+                Correlativo por sucursal
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="radio" checked={(tenant as any)?.pedido_numeracion === 'tenant'}
+                  onChange={() => setPedidoNumeracion('tenant')} disabled={!canEdit} />
+                Correlativo único (todo el negocio)
+              </label>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Ambos números se calculan siempre — esto solo decide cuál se muestra como principal en la pantalla de Pedidos.</p>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Cierre del pedido</h2>
+            <label className="flex items-center gap-3 cursor-pointer py-1">
+              <Toggle checked={(tenant as any)?.pedido_cierre_automatico ?? true} onChange={togglePedidoCierreAutomatico} disabled={!canEdit} />
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Cierre automático al 100%</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Si está habilitado, el pedido pasa solo a "Entregado" al completar todas sus líneas. Si lo desactivás, queda en "Entregado parcial" hasta que alguien lo cierre a mano.</p>
+              </div>
+            </label>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-1">
+              <Tag size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Tipos de pedido</h2>
+              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{(tiposPedidoCfg as any[]).length} cargados</span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Cada tipo define si el cliente identificado es obligatorio y en qué momento se factura.</p>
+
+            {canEdit && (
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <input type="text" placeholder="Nombre del tipo (ej: Mayorista)" value={newTipoPedidoNombre}
+                    onChange={e => setNewTipoPedidoNombre(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addTipoPedido()}
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                  <button onClick={addTipoPedido} disabled={!newTipoPedidoNombre.trim()}
+                    className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                    <Plus size={15} /> Agregar
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-3 items-center">
+                  <select value={newTipoPedidoFactura} onChange={e => setNewTipoPedidoFactura(e.target.value as any)}
+                    className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-primary">
+                    <option value="al_confirmar">Factura al confirmar</option>
+                    <option value="al_entregar">Factura al entregar</option>
+                  </select>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={newTipoPedidoClienteOblig} onChange={e => setNewTipoPedidoClienteOblig(e.target.checked)} className="rounded" />
+                    Cliente obligatorio
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {loadingTiposPedido ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
+              <div className="space-y-2">
+                {(tiposPedidoCfg as any[]).map(t => (
+                  <div key={t.id} className={`flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5 ${!t.activo ? 'opacity-50' : ''}`}>
+                    {editTipoPedidoId === t.id ? (
+                      <div className="flex-1 flex flex-wrap gap-2 items-center">
+                        <input type="text" value={editTipoPedidoNombre} onChange={e => setEditTipoPedidoNombre(e.target.value)}
+                          className="flex-1 min-w-0 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                        <select value={editTipoPedidoFactura} onChange={e => setEditTipoPedidoFactura(e.target.value as any)}
+                          className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs bg-white dark:bg-gray-800 text-primary">
+                          <option value="al_confirmar">Al confirmar</option>
+                          <option value="al_entregar">Al entregar</option>
+                        </select>
+                        <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                          <input type="checkbox" checked={editTipoPedidoClienteOblig} onChange={e => setEditTipoPedidoClienteOblig(e.target.checked)} className="rounded" />
+                          Cliente oblig.
+                        </label>
+                        <button onClick={() => saveTipoPedido(t.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
+                        <button onClick={() => setEditTipoPedidoId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{t.nombre}</span>
+                          <span className="ml-2 text-xs text-gray-400">{t.factura_momento === 'al_confirmar' ? 'Factura al confirmar' : 'Factura al entregar'}</span>
+                          {t.cliente_obligatorio && <span className="ml-2 text-xs text-blue-500">Cliente obligatorio</span>}
+                        </div>
+                        {canEdit && (
+                          <>
+                            <button onClick={() => toggleActivoTipoPedido(t)} className="text-xs text-gray-400 hover:text-accent-text px-2">
+                              {t.activo ? 'Desactivar' : 'Activar'}
+                            </button>
+                            <button onClick={() => startEditTipoPedido(t)} className="text-gray-400 dark:text-gray-500 hover:text-accent-text p-1"><Pencil size={14} /></button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+                {(tiposPedidoCfg as any[]).length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay tipos de pedido cargados.</p>}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

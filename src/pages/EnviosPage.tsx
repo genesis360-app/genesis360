@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   Package2, Plus, ChevronRight, Search, X, Printer,
   ExternalLink, MapPin, Truck, Clock, CheckCircle, RotateCcw,
@@ -111,6 +111,7 @@ export default function EnviosPage() {
   }
   const qc = useQueryClient()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const etiquetaRef = useRef<HTMLInputElement>(null)
 
   const [tab, setTab]               = useState<TabEnvio>('envios')
@@ -136,7 +137,8 @@ export default function EnviosPage() {
   const [filtroCanal,   setFiltroCanal]   = useState('')
   const [filtroDesde,   setFiltroDesde]   = useState('')
   const [filtroHasta,   setFiltroHasta]   = useState('')
-  const [busqueda,      setBusqueda]      = useState('')
+  // Deep-link desde el detalle de una venta ("Ver envío"): /envios?busqueda=44
+  const [busqueda,      setBusqueda]      = useState(() => searchParams.get('busqueda') ?? '')
 
   // Selección de domicilio al crear envío
   const [ventaSearch, setVentaSearch]       = useState('')

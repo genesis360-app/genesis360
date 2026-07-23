@@ -6,7 +6,311 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🏗️ ARRANCÁ ACÁ (2026-07-22 noche, v1.143.0 EN DEV) — WMS Zonas + Picking + Reabastecimiento (cierra Fases 3, 4 y 5 del roadmap de Estructuras dinámicas por UdM) — **SOLO EN DEV, SIN deploy a PROD (PROD sigue v1.142.0)**
+> ### 🧾 ARRANCÁ ACÁ (2026-07-23) — Módulo "Pedidos" completa su ciclo de vida entero: PED3-PED5 + PED7 + PED8 parcial (migs 294-297) — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
+>
+> Continuación inmediata de la sesión anterior (PED1+PED2, mig 292 — ver bloque "ESTADO ANTERIOR"
+> debajo). Se construyó el resto del roadmap acordado con GO (`relevamiento_pedidos_respuestas.md`,
+> "Plan por fases"), con CADA migración revisada por el subagente `migration-reviewer` ANTES de
+> aplicar — encontró hallazgos reales en las 3 migraciones fiscales/de-stock (294, 295, 296),
+> corregidos en el momento.
+>
+> **PED3 — "Lanzar" (`supabase/migrations/294_pedidos_ped3_lanzar.sql`, aplicada en DEV):** RPC
+> `fn_generar_tareas_picking_pedido(p_pedido_id)` — valida stock disponible (bloquea con mensaje
+> específico si falta), reserva `inventario_lineas.cantidad_reservada` vía FEFO, genera `wms_tareas`
+> (picking directo o replenishment+picking encadenado), crea `envios` condicional si
+> `requiere_envio`, pasa el pedido a `en_preparacion`. El review encontró 2 bugs reales ANTES de
+> aplicar: (1) 🔴 faltaba filtrar por talle/color/encaje/formato/sabor_aroma de la línea del
+> pedido — sin eso, un pedido de "talle M" podía reservar/pickear "talle S" sin ningún error (acá no
+> hay un humano en el loop como en Ventas que frene la ambigüedad); (2) 🟡 faltaba excluir
+> `ubicacion_id IS NULL`/`disponible_surtido=false` — podía generar una tarea de reabastecimiento
+> con destino imposible de completar nunca. Ambos corregidos antes de aplicar.
+>
+> **PED4 — "Entregar" genera la venta real (`295_pedidos_ped4_entrega.sql` +
+> `297_wms_reabastecimiento_transferir_reserva.sql`, ambas aplicadas en DEV):** RPC
+> `fn_pedido_generar_venta(p_pedido_id, p_sesion_caja_id, p_medio_pago, p_entregas,
+> p_idempotency_key)` — Pedidos NUNCA pasa por el POS (`registrarVenta()`); reusa SOLO la mecánica
+> de rebaje (inserta `ventas`/`venta_items`/rebaja `inventario_lineas`/`movimientos_stock`/
+> `venta_item_despachos`/`caja_movimientos`), sin arrastrar promos/combos/series/CC del POS. La
+> factura AFIP NO se emite acá — queda para el flujo manual "Facturar" ya existente en Ventas →
+> Historial (mismo `venta_id`, sin reimplementar lógica fiscal). Soporta entrega parcial (G1-G3) y
+> cierre automático/manual (`tenants.pedido_cierre_automatico`, default true). El review encontró 3
+> bugs reales: (1) 🔴 el guard de estado no incluía `entregado_parcial` → la SEGUNDA entrega de
+> cualquier pedido con cumplimiento parcial fallaba SIEMPRE (rompía la feature central de la fase);
+> (2) 🔴 arreglar (1) reabría una ventana de reintento de red sin protección → se agregó
+> `p_idempotency_key` (`ventas.pedido_entrega_key` + índice único); (3) 🟡 ventana de carrera en la
+> sesión de caja → `FOR UPDATE` + validar que la caja sea de la misma sucursal del pedido. El
+> hallazgo MÁS severo del review fue en una función YA EXISTENTE y compartida con Ventas/envíos
+> (`fn_completar_tarea_reabastecimiento`, mig 290): al mover stock físico bulk→picking nunca
+> transfería `cantidad_reservada` al LPN nuevo — dejaba la reserva "pegada" en el origen (que puede
+> tener menos stock físico del que aparenta tras moverse) mientras el LPN de picking recién creado
+> quedaba SIN reserva ("stock fantasma", vendible a cualquiera sin autorización). Corregido en la
+> mig 297 (fix general de WMS, no solo de Pedidos) — **verificado explícitamente contra datos reales
+> en el e2e nuevo** (ver abajo). Pendiente no bloqueante documentado: Cuenta Corriente en Pedidos no
+> valida morosidad/límite de crédito.
+>
+> **PED5 — Cancelación + des-pickeo (`296_pedidos_ped5_cancelacion_unpick.sql`, aplicada en DEV):**
+> `fn_pedido_deslanzar` (F5, deshace "lanzar" sin cancelar el pedido entero, solo si nada se pickeó
+> todavía) · `fn_cancelar_pedido` (cancelación completa) · `fn_unpick_tarea_wms(p_tarea_id,
+> p_ubicacion_destino_id)` (E4, des-pickeo: para una tarea de picking YA completada, libera la
+> reserva y reubica físicamente el LPN). El review encontró 2 bugs reales: (1) 🔴 `fn_cancelar_pedido`
+> no chequeaba si el pedido ya tenía una VENTA REAL generada — el relevamiento (A5) dice que cancelar
+> con entrega real debería disparar la devolución de esa venta (reusar el flujo de devoluciones de
+> `VentasPage.tsx` con NC/CC es alcance mayor, **QUEDA DIFERIDO** a propósito); mientras tanto
+> `fn_cancelar_pedido` BLOQUEA con una excepción clara si ya existe una venta vinculada (más seguro
+> que dejarla huérfana), y la UI ya no ofrece "Cancelar" para `entregado_parcial`; (2) 🔴
+> `fn_unpick_tarea_wms` nunca puede des-pickear una tarea ENCADENADA a un reabastecimiento (el caso
+> más común, dado que reabastecimiento on-demand viene habilitado por default) — la UI oculta
+> "Deshacer" para esas tareas encadenadas, arreglarlo de raíz **QUEDA PENDIENTE documentado**.
+>
+> **PED7 — Tab "Pedidos" en Configuración (`src/pages/ConfigPage.tsx`, sin migración nueva):**
+> gateado por modo avanzado (mismo criterio que Envíos) — numeración (tenant/sucursal), cierre
+> automático, CRUD completo de `tipos_pedido`. **Diferido a propósito:** editor granular de
+> `pedido_transiciones_roles` (E3) — los defaults ya funcionan, es fine-tuning que no bloquea uso
+> real.
+>
+> **PED8 — Alertas, parcial (K2 del relevamiento):** `useAlertas.ts`/`AlertasPage.tsx` suman 2
+> fuentes nuevas (modo avanzado): pedidos con entrega vencida sin completar, y pedidos lanzados hace
+> +24hs sin avanzar. K1 (pendientes de lanzar) se cubre con el filtro de estado que ya existía en
+> `/pedidos`. **K3 (exportar Excel/PDF/CSV) queda diferido, no implementado.**
+>
+> **PED6 (bolsa de pedidos/lanzamiento batch + ubicaciones de staging + listas de picking
+> imprimibles) — DIFERIDO EN SU TOTALIDAD, decisión consciente:** cada pedido ya se lanza
+> individualmente (100% funcional); construir staging/batch a medias sin la UI que los use hubiera
+> sido superficie sin valor real. Próxima fase completa cuando GO la priorice.
+>
+> **Verificación:** `tsc --noEmit` limpio, `npm run build` verde, `npx vitest run` → **1180 tests
+> unitarios verdes** (80 archivos, sin cambios de esta sesión en el conteo). E2E nuevo
+> `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` (2 tests, **3/3 verde** incluido el setup)
+> contra datos reales de DEV: (a) ciclo completo con reabastecimiento (bulk→picking) → completar →
+> entregar, verificando EXPLÍCITAMENTE que la reserva se transfiere del origen al LPN nuevo (fix mig
+> 297: antes nacía en 0, ahora nace con la cantidad correcta) + venta real generada + rebaje +
+> `caja_movimientos` + `pedidos.estado='entregado'`; (b) deslanzar libera la reserva completa y
+> vuelve el pedido a `confirmado`. Durante la escritura del test se encontraron 2 bugs DEL TEST (no
+> de producción, ya corregidos): faltaba `sucursal_id` en las líneas de inventario sembradas
+> (`inventario_lineas.sucursal_id` debe matchear `pedidos.sucursal_id` o quedar NULL — comportamiento
+> correcto de la RPC) y una aserción asumía incorrectamente CUÁL ubicación picking elegiría
+> `fn_wms_elegir_ubicacion_picking` (elige la de mejor prioridad del tenant, no necesariamente la que
+> crea el test).
+>
+> **Estado de git al cierre de esta sesión:** working tree de `dev` con migraciones **294, 295, 296,
+> 297** + `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` nuevo + cambios en
+> `src/pages/PedidosPage.tsx`, `src/pages/ConfigPage.tsx`, `src/hooks/useAlertas.ts`,
+> `src/pages/AlertasPage.tsx` — **TODAVÍA NADA COMMITEADO**, verificar con `git status` antes de
+> asumir que algo de esto ya está en `dev`.
+>
+> **▶ Pendiente inmediato:**
+> 1. Commitear el trabajo de esta sesión completa (migraciones 294-297 + módulo Pedidos completo +
+>    e2e nuevo) — nada de esto pasó por PR todavía.
+> 2. Pendientes documentados de Pedidos, sin fecha: devolución automática al cancelar un pedido con
+>    venta real (A5); des-pickeo de tareas encadenadas a un reabastecimiento; CC sin validar
+>    morosidad/límite en Pedidos; editor de `pedido_transiciones_roles` (E3); PED6 completo (bolsa +
+>    staging + listas imprimibles); K3 (exportes).
+> 3. Roles configurables por tenant (Picker/Auditor/Gruero, J3) sigue sin arrancar — iniciativa
+>    aparte, fuera de Pedidos.
+> 4. Deploy a PROD del módulo WMS + Pedidos completo (v1.143.0, migs 289-297) sigue pendiente de que
+>    GO lo pida.
+> 5. Puntos 1/2 del backlog de Fede siguen en pausa (sin cambios).
+> 6. Los 4 puntos "para conversar" del relevamiento de Config Ventas/Envíos siguen abiertos (sin
+>    cambios, arrastrado de v1.136.0).
+> 7. Relevamiento nuevo de "Descuentos" (tope acumulado por período + método de pago por día +
+>    ampliación de descuento por estado + autorización granular en Inventario) — respuestas de GO
+>    capturadas en `G360.Wiki/sources/raw/relevamiento_descuentos_respuestas.md`, **nada implementado
+>    todavía**, GO pidió explícitamente terminar Pedidos primero.
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-22, continuación) — Módulo NUEVO "Pedidos" arranca (PED1+PED2, mig 292) + pivote de arquitectura F4 (Ventas YA NO genera tareas WMS) + Fase 2 de Estructuras-UdM CERRADA (mig 293) + fix real de caché stale en Productos — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
+>
+> Continuación inmediata de la sesión anterior (ver bloque "ESTADO ANTERIOR" debajo, mig 291):
+> después de los fixes de picking, GO cuestionó la arquitectura de fondo — ¿por qué el picking
+> depende de una venta de mostrador ya rebajada? Se hizo un relevamiento completo (documento
+> `relevamiento-pedidos-reglas-negocio.html`, 12 secciones, 45 preguntas, generado por el subagente
+> `relevamiento`) y GO respondió todo. Respuestas + diseño consolidado en
+> `G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md` (detalle completo ahí, no repetido acá).
+>
+> **Decisión de arquitectura clave (F4, pivote real, no una opción del cuestionario):** Pedidos es un
+> documento **100% separado** de Ventas — nunca pasa por `registrarVenta()`/el POS, nunca rebaja
+> stock directo. Y **crítico**: GO fue explícito — "Ventas no tiene que generar tareas... las tareas
+> (picking y replen) deben ser solo para los pedidos." Esto vuelve `fn_generar_tareas_picking_envio`
+> (migs 290/291) **código muerto en la práctica** — sigue existiendo (correcta si alguien la invocara
+> a mano) pero NUNCA se le agrega ningún gancho desde `VentasPage.tsx`/`EnviosPage.tsx`; el
+> picking/reabastecimiento de acá en más nace **exclusivamente** desde Pedidos (RPC futura
+> `fn_generar_tareas_picking_pedido`, todavía sin construir, Fase PED3). **Contradice/actualiza lo que
+> decía el wiki de WMS hasta ahora** sobre "de dónde nacen las tareas" — corregido en
+> [[wiki/features/wms]] y en la página nueva [[wiki/features/pedidos]]. Sin precio en `pedido_items`
+> (H1): el precio se resuelve una sola vez en el POS cuando el Pedido genera la venta real (todavía
+> sin construir, Fase PED3+).
+>
+> **PED1 — Schema, `supabase/migrations/292_pedidos_ped1_schema.sql`, aplicada en DEV
+> (`gcmhzdedrkmmzfzfveig`), NO en PROD:** `tipos_pedido` (catálogo por tenant, mismo patrón que
+> `canales_venta`, seed 4 tipos default + trigger nuevo tenant) · `pedidos` (cabecera, numeración
+> tenant+sucursal, RLS por sucursal igual que `wms_tareas`, estados `borrador→confirmado→
+> en_preparacion→listo_para_entrega→entregado(_parcial)→cancelado`) · `pedido_items` (líneas, **sin
+> precio**, cantidad en unidades base, `estado_id` opcional FK `estados_inventario` para pickear
+> respetando FIFO/FEFO, atributos opcionales) · trazabilidad nueva `ventas.pedido_id` /
+> `venta_items.pedido_item_id` / `envios.pedido_id`. El `migration-reviewer` encontró un bug real
+> ANTES de aplicar: el trigger de numeración sin `SECURITY DEFINER` hubiera duplicado el número de
+> pedido para usuarios restringidos a una sucursal — **mismo bug ya presente, sin corregir, en
+> `set_oc_numero`/`ordenes_compra` desde las migs 182+217** (hallazgo colateral anotado, fuera de
+> alcance, no se tocó). Corregido antes de aplicar en `pedidos`.
+>
+> **PED2 — UI, `src/pages/PedidosPage.tsx` nuevo, ruta `/pedidos`:** nav item nuevo en
+> `AppLayout.tsx` visible para DEPOSITO+SUPERVISOR+OWNER/ADMIN (**NO CAJERO** — a diferencia de
+> Ventas, se trata como operación logística desde el vamos), gateado por modo avanzado, ícono
+> `ListOrdered`. Armar pedido (tipo, cliente existente o nombre suelto, fecha de entrega solicitada,
+> flag `requiere_envio`, líneas sin precio), confirmar, cancelar. Probado en vivo contra el navegador
+> real (Playwright), pedido real creado y confirmado en Almacén Jorgito, limpiado después.
+> `logActividad` entidad nueva `'pedido'` (sumada a `src/lib/actividadLog.ts` + íconos/labels de
+> `HistorialPage.tsx`).
+>
+> **Roadmap pendiente de Pedidos** (documentado como plan en el archivo de respuestas, sección "Plan
+> por fases"): PED3 (lanzar → `fn_generar_tareas_picking_pedido`, reserva de stock real, validación
+> bloqueante, envío condicional) hasta PED8 (reportes) — nada construido todavía. Iniciativa aparte,
+> fuera de alcance de Pedidos, sin arrancar: "roles configurables por tenant" (Picker/Auditor/Gruero,
+> J3) que GO mencionó.
+>
+> **🐛 Bug real encontrado y arreglado — caché stale en `ProductoFormPage.tsx`:** GO reportó que el
+> selector "Estos precios corresponden a" (ancla de precio) no se guardaba a la primera. El guardado
+> en base SIEMPRE funcionó bien; el bug real era de LECTURA — `handleSubmit` solo invalidaba la caché
+> de React Query de la LISTA (`['productos']`), nunca la del producto individual (`['producto', id]`)
+> que usa el propio formulario, así que al reabrir servía el snapshot cacheado de ANTES de la edición.
+> **Afecta potencialmente TODOS los campos del form**, no solo la ancla. Fix: `qc.removeQueries({
+> queryKey: ['producto', id] })` en el éxito de `handleSubmit` (no alcanza con `invalidateQueries`).
+> Verificado en vivo contra el producto real de GO con navegación SPA real. Sin migración. Detalle:
+> [[wiki/features/productos]].
+>
+> **✅ Fase 2 de Estructuras-UdM CERRADA (mig 293) — ya NO es un pendiente del roadmap.** GO pidió
+> implementar "operar por UdM al ingresar stock" (único pendiente que quedaba en
+> [[wiki/features/estructuras-udm]] → "Roadmap del plan") y también extenderla a REBAJES, simple y
+> masivo. `supabase/migrations/293_uom_ingreso_rebaje.sql`, aplicada en DEV, NO en PROD:
+> `inventario_lineas.unidad_medida_id`/`.cantidad_uom` (UdM del LPN al recibir, permanente) +
+> `movimientos_stock.unidad_medida_id`/`.cantidad_uom` (UdM de la operación puntual — un rebaje puede
+> consumir de varios LPNs con distinta UdM de origen), ambas con `CHECK (cantidad_uom IS NULL OR
+> cantidad_uom > 0)` (el `migration-reviewer` marcó que faltaba, mismo patrón que
+> `venta_items.cantidad_uom` de la mig 286). `convertirABase()` ya existía desde Fase 1 (código
+> muerto hasta hoy) — el cálculo no es nuevo, solo se agregó dónde trazar la UdM usada. Helper nuevo
+> `nivelDefaultParaProducto()` en `src/lib/estructuras.ts` (matchea `productos.unidad_medida` contra
+> un nivel de la estructura para preseleccionar default, 3 tests nuevos, 25 tests totales del
+> archivo). Wireado en **4 superficies**: Ingreso simple y Rebaje simple (`InventarioPage.tsx`, pills
+> "Cargar en:"/"Rebajar en:", precedencia sobre el toggle kg/g genérico ya existente) · Ingreso
+> masivo (`InventarioPage.tsx`, flujo INLINE `masivoInline`/`masivoRows` — **`MasivoModal.tsx` hoy
+> solo se usa para Rebaje masivo**, dato no obvio a recordar) · Rebaje masivo
+> (`src/components/MasivoModal.tsx`, mismo patrón de pills). El selector de rebaje usa la estructura
+> del LPN puntual elegido (`inventario_lineas.estructura_id`), no la default genérica del producto.
+> **Bug real encontrado y arreglado durante las pruebas:** el texto de ayuda ("= 18 caja") usaba
+> `productos.unidad_medida` (texto libre, puede no matchear el nivel real) en vez del nombre real del
+> nivel base de la estructura — corregido en las 3 superficies ya wireadas cuando se encontró
+> (ingreso simple, rebaje simple, rebaje masivo). Detalle completo:
+> [[wiki/features/estructuras-udm]] → "Fase 2".
+>
+> **Verificación:** build + tsc + **1180 tests unitarios** (80 archivos) verdes. Probado en vivo en
+> navegador (Playwright contra dev server real) para ingreso simple y rebaje simple, contra el
+> producto real de GO (Bebida Coca Cola 2.5L, Almacén Jorgito) — verificado en base de datos real:
+> `cantidad_uom`, `unidad_medida_id`, `cantidad` (unidades base correctas), `movimientos_stock` con
+> la misma traza, `productos.stock_actual` recalculado bien por el trigger existente. Datos de
+> prueba limpiados, stock devuelto a 114 después de cada prueba. **Ingreso y rebaje masivo NO se
+> probaron clickeando en el navegador** (sí typecheck+build) — queda pendiente que GO los pruebe o
+> pedirlo en la próxima sesión.
+>
+> **Estado de git al cierre de esta sesión:** working tree de `dev` con migraciones **291, 292 y
+> 293** + `src/pages/PedidosPage.tsx` nuevo + `relevamiento-pedidos-reglas-negocio.html` nuevo +
+> `G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md` nuevo + ~20 archivos modificados de
+> `src/`/`tests/` (App.tsx, MasivoModal.tsx, AppLayout.tsx, actividadLog.ts, estructuras.ts,
+> EnviosPage.tsx, HistorialPage.tsx, InventarioPage.tsx, PickingPage.tsx, ProductoFormPage.tsx,
+> VentasPage.tsx, spec 106, estructuras.test.ts) — **TODAVÍA NADA COMMITEADO**, verificar con
+> `git status` antes de asumir que algo de esto ya está en `dev`.
+>
+> **▶ Pendiente inmediato:**
+> 1. Commitear el trabajo de esta sesión completa (migraciones 291+292+293, módulo Pedidos, Fase 2
+>    UdM, fix de caché) — nada de esto pasó por PR todavía.
+> 2. Correr la suite e2e completa (spec 106 reescrito + regresión) antes del próximo release — sigue
+>    sin correrse desde la sesión de mig 291.
+> 3. Probar ingreso y rebaje masivo con UdM clickeando en el navegador (solo typecheck+build hasta
+>    ahora).
+> 4. Seguir el roadmap de Pedidos: PED3 (lanzar → generación real de tareas WMS + reserva de stock +
+>    venta real) es el siguiente hito lógico, sin arrancar todavía.
+> 5. Deploy a PROD del módulo WMS (v1.143.0 completo, migs 289-293) sigue pendiente de que GO lo
+>    pida.
+> 6. Puntos 1/2 del backlog de Fede siguen en pausa (sin cambios).
+> 7. Los 4 puntos "para conversar" del relevamiento de Config Ventas/Envíos siguen abiertos (sin
+>    cambios, arrastrado de v1.136.0).
+
+> ### 🛑 ESTADO ANTERIOR (2026-07-22, ronda de pruebas manuales de GO sobre v1.143.0) — 3 bugs reales corregidos (mig 291) + 2 gaps de UX — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump de versión: sigue v1.143.0)**
+>
+> Continuación inmediata de la sesión anterior (ver bloque "ESTADO ANTERIOR" debajo): GO probó a mano
+> el módulo WMS (Zonas + Picking + Reabastecimiento, v1.143.0) contra datos reales del tenant
+> "Almacén Jorgito" en DEV y encontró varios problemas reales, los 3 corregidos en la misma sesión.
+> **Sin bump de `APP_VERSION` ni release — sigue siendo v1.143.0, todavía solo en DEV.**
+>
+> **Migración nueva `291_wms_fixes_picking_reabastecimiento.sql`**, aplicada en DEV
+> (`gcmhzdedrkmmzfzfveig`), **NO en PROD** — 3 fixes vía `CREATE OR REPLACE FUNCTION` (sin tablas ni
+> columnas nuevas):
+>
+> 1. **Bug real de trazabilidad** en `fn_generar_tareas_picking_envio` — la rama que lee
+>    `venta_item_despachos` ("Fuente 1", venta YA despachada, el rebaje real YA ocurrió) encadenaba
+>    una tarea de reabastecimiento igual que la rama de reserva pendiente ("Fuente 2", `lpn_plan`,
+>    nada consumido todavía) cuando el LPN vivía fuera de una zona de picking. Verificado con datos
+>    reales (venta #395, envío #44, "Bebida Coca Cola 2.5L"): el stock total quedaba matemáticamente
+>    correcto (114 = 115 − 1 vendida, el movimiento de reabastecimiento es neto cero), PERO se creaba
+>    un LPN nuevo en la zona de picking desvinculado del LPN que `venta_item_despachos` ya había
+>    fijado como el que cumplió la venta, y la tarea de picking quedaba con un `lpn_origen` que ya no
+>    estaba en la ubicación destino — rompía la trazabilidad por unidad. Fix: Fuente 1 ahora SIEMPRE
+>    genera directo la tarea de picking, nunca encadena reabastecimiento, apuntando al LPN/ubicación
+>    real que la venta ya usó. Fuente 2 no cambió.
+> 2. **Bug real reproducido por GO** en `fn_generar_tareas_reabastecimiento_umbral` — pedía siempre
+>    `stock_maximo − stock_actual` sin chequear cuánto había disponible de verdad en el origen
+>    elegido → si no alcanzaba, `fn_completar_tarea_reabastecimiento` fallaba con "no hay stock
+>    suficiente" al completar. El máximo es un TECHO, no una obligación. Fix: clampear la cantidad de
+>    la tarea al disponible real (`SUM(cantidad - cantidad_reservada)`) en la ubicación origen elegida
+>    antes de insertar la tarea.
+> 3. **Gap encontrado por GO**: no existía ninguna forma de cancelar una tarea de picking o
+>    reabastecimiento. Se agregó `fn_cancelar_tarea_wms(p_tarea_id, p_motivo)` — bloquea cancelar una
+>    tarea ya completada, no-op si ya está cancelada, cancela en cascada la tarea de picking
+>    dependiente si se cancela el reabastecimiento del que dependía.
+>
+> **Otro gap encontrado por GO, corregido en frontend (sin migración):** las tareas WMS no dejaban
+> rastro en el Historial — no había forma de saber quién completó o canceló una tarea y cuándo. Se
+> agregó `logActividad()` (entidad nueva `wms_tarea`, ícono/label en `HistorialPage.tsx`) en
+> `PickingPage.tsx` e `InventarioPage.tsx` (tab "Tareas WMS") al completar y al cancelar. Botón
+> "Cancelar" nuevo en ambas superficies.
+>
+> **Otro gap encontrado por GO, corregido en frontend:** el detalle de una venta (`VentasPage.tsx`)
+> no mostraba si tenía un envío asociado ni cuál — la relación solo se veía desde `/envios`. Se
+> agregó un badge "Envío #N · estado" en el header del modal de detalle de venta, clickeable, que
+> navega a `/envios?busqueda=N` (soporte nuevo de ese query param en `EnviosPage.tsx` para
+> pre-filtrar).
+>
+> **Verificación:** migración revisada por el subagente `migration-reviewer` (aprobada, sin hallazgos
+> bloqueantes) antes de aplicar. Se reescribió
+> `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts` en 2 tests separados (Fuente 1 sin
+> reabastecimiento / Fuente 2 con reabastecimiento) — el test viejo verificaba el comportamiento
+> buggy anterior. `npm run build` (tsc + vite build) verde. **Los tests e2e todavía no se corrieron
+> en esta sesión** — pendiente correrlos antes de dar el trabajo por cerrado.
+>
+> **Estado de git al cierre de esta sesión:** cambios en el working tree de `dev` (la migración +
+> `src/lib/actividadLog.ts` + `src/pages/EnviosPage.tsx` + `src/pages/HistorialPage.tsx` +
+> `src/pages/InventarioPage.tsx` + `src/pages/PickingPage.tsx` + `src/pages/VentasPage.tsx` + el spec
+> 106 reescrito) **TODAVÍA NO COMMITEADOS** — verificar con `git status` antes de asumir que ya están
+> en `dev`.
+>
+> **Pendiente de decisión arquitectónica (sin resolver, NO es una decisión tomada):** surgió una
+> discusión más grande en la sesión — GO cuestionó que el picking dependa de una venta ya
+> despachada/rebajada, en vez de un futuro módulo "Pedidos" separado de las ventas de mostrador.
+> Quedó como discusión abierta, ver conversación con GO del 2026-07-22 — **no implementar nada de
+> esto sin retomar la charla primero.**
+>
+> **▶ Pendiente inmediato:**
+> 1. Commitear el trabajo de esta sesión (migración 291 + fixes de frontend + spec 106 reescrito) —
+>    ✅ sigue pendiente, ver bloque de arriba (ahora junto con 292/293 y el resto de la sesión).
+> 2. Correr la suite e2e completa (spec 106 reescrito + regresión) antes del próximo release — sigue
+>    sin correrse, ver bloque de arriba.
+> 3. ~~Retomar con GO la discusión arquitectónica sobre picking vs. futuro módulo "Pedidos" (sin
+>    decisión tomada todavía).~~ — ✅ resuelto en el bloque de arriba: relevamiento completo hecho,
+>    GO respondió, arrancó el módulo Pedidos (PED1+PED2) con la decisión F4 tomada.
+> 4. Deploy a PROD del módulo WMS completo (v1.143.0 + mig 291) sigue pendiente de que GO lo pida.
+> 5. Puntos 1/2 del backlog de Fede siguen en pausa (sin cambios).
+> 6. Los 4 puntos "para conversar" del relevamiento de Config Ventas/Envíos siguen abiertos (sin
+>    cambios, arrastrado de v1.136.0).
+
+> ### 🛑 ESTADO ANTERIOR (2026-07-22 noche, v1.143.0 EN DEV) — WMS Zonas + Picking + Reabastecimiento (cierra Fases 3, 4 y 5 del roadmap de Estructuras dinámicas por UdM) — **SOLO EN DEV, SIN deploy a PROD (PROD sigue v1.142.0)**
 >
 > Feature grande nueva, completa en una sola sesión: cierra las Fases 3 ("Zonas" + reglas de
 > almacenaje), 4 (Tareas WMS y picking) y 5 (Reabastecimiento) del roadmap de

@@ -1,8 +1,8 @@
 ---
 title: Estructuras de producto + Unidades de Medida (footprints)
 category: features
-tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, zonas, reabastecimiento, udm, precio-por-uom, importador]
-sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, src/lib/estructuras.ts, src/pages/ImportarProductosPage.tsx]
+tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, zonas, reabastecimiento, udm, precio-por-uom, importador, ingreso-rebaje-uom]
+sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, 291, 293, src/lib/estructuras.ts, src/pages/ImportarProductosPage.tsx, src/pages/InventarioPage.tsx, src/components/MasivoModal.tsx]
 updated: 2026-07-22
 ---
 
@@ -212,35 +212,122 @@ código). **Las 4 entregas de la sesión (v1.139/140/141/142) llegaron a PROD el
 
 ---
 
+## Fase 2: Operar por UdM al ingresar y rebajar stock (✅ v1.143.0, mig 293 — EN DEV, sin deploy a PROD)
+
+GO pidió cerrar el único pendiente que quedaba del roadmap (2026-07-22, misma sesión de "Pedidos" y
+de los fixes de picking mig 291), y también **extenderlo a rebajes** (no solo ingreso) — simple y
+masivo, para ambos.
+
+### Modelo (mig 293)
+
+- `inventario_lineas.unidad_medida_id` (FK `unidades_medida`) + `.cantidad_uom` (numeric) — UdM en la
+  que se **recibió** ese LPN puntual (permanente, se fija al ingresar). `cantidad` de la línea sigue
+  SIEMPRE en unidades base.
+- `movimientos_stock.unidad_medida_id` + `.cantidad_uom` — UdM de la **operación puntual** (ingreso o
+  rebaje). Necesita ser una columna aparte de la de arriba porque un rebaje puede consumir de varios
+  LPNs con distinta UdM de origen — acá se traza en qué UdM lo tecleó el usuario para ESA operación,
+  no depende de una sola línea.
+- Ambas nullable (NULL cuando el producto no tiene estructura multi-nivel, sigue operando en unidad
+  base sin cambio de comportamiento), con `CHECK (cantidad_uom IS NULL OR cantidad_uom > 0)` — el
+  subagente `migration-reviewer` marcó que faltaba (mismo patrón que `venta_items.cantidad_uom` de la
+  mig 286) antes de aplicar.
+- **`convertirABase()` en `src/lib/estructuras.ts` YA EXISTÍA desde Fase 1** ("lista para Fase 2",
+  comentario en las migs 282/283, código muerto hasta esta sesión) — el cálculo no es nuevo, esta
+  migración solo agrega DÓNDE trazar qué UdM se usó.
+- Helper nuevo **`nivelDefaultParaProducto()`** en `src/lib/estructuras.ts` — matchea
+  `productos.unidad_medida` (texto libre, mismo gotcha ya conocido de la sección de arriba) contra el
+  nombre de un nivel de la estructura para preseleccionar el default (pedido explícito de GO: "toma
+  como default la UdM cargada en el producto"). 3 tests nuevos, 25 tests totales en
+  `tests/unit/estructuras.test.ts`.
+
+### UI — wireado en 4 superficies
+
+- **Ingreso simple y Rebaje simple** (`InventarioPage.tsx`, modal clásico "Ingreso"/"Rebaje"):
+  selector "Cargar en: / Rebajar en:" (pill buttons) que aparece cuando el producto tiene una
+  estructura default con más de 1 nivel — tiene **precedencia sobre el toggle genérico kg/g** que ya
+  existía (mecanismo distinto y previo, sin relación con las estructuras del producto — no confundir
+  los dos).
+- **Ingreso masivo** (`InventarioPage.tsx`, flujo INLINE `masivoInline`/`masivoRows`): selector
+  compacto (`<select>`) por fila. **Dato no obvio a recordar:** este flujo INLINE es un componente
+  separado y más nuevo que reemplazó al uso de `MasivoModal.tsx` para ingreso — **`MasivoModal.tsx`
+  hoy solo se usa para Rebaje masivo.**
+- **Rebaje masivo** (`src/components/MasivoModal.tsx`): mismo patrón de pills que los simples.
+- `inventario_lineas.estructura_id` (de Fase 1) se usa para saber con qué estructura se ingresó CADA
+  LPN puntual — el selector de rebaje usa la **estructura del LPN específico elegido**, no la default
+  genérica del producto (más preciso que asumir siempre la misma estructura).
+
+**🐛 Bug real encontrado y arreglado durante las pruebas:** el texto de ayuda ("= 18 caja") mostraba
+mal el nombre de la unidad porque usaba `productos.unidad_medida` (campo de texto libre — puede no
+matchear el nivel real de la estructura) en vez del nombre real del nivel base de la estructura. En
+el producto real de prueba, `unidad_medida` literalmente decía "caja" aunque la estructura tiene
+"Unidad" como base — mostraba "= 18 caja" en vez de "= 18 Unidad". Corregido en las 3 superficies que
+ya estaban wireadas cuando se encontró (ingreso simple, rebaje simple, rebaje masivo vía
+`MasivoModal.tsx`), usando el nombre real del nivel[0] de la estructura.
+
+**Verificación:** build + tsc + **1180 tests unitarios** (80 archivos) verdes. Probado en vivo en
+navegador (Playwright contra dev server real) para **ingreso simple y rebaje simple**, contra el
+producto real de GO (Bebida Coca Cola 2.5L, Almacén Jorgito) — verificado en base de datos real:
+`cantidad_uom`, `unidad_medida_id`, `cantidad` (unidades base correctas), `movimientos_stock` con la
+misma traza, `productos.stock_actual` recalculado bien por el trigger existente. Datos de prueba
+limpiados, stock devuelto a su valor original (114) después de cada prueba. **Ingreso y rebaje masivo
+NO se probaron clickeando en el navegador** (sí typecheck+build) — queda pendiente que GO los pruebe o
+pedirlo en la próxima sesión. `APP_VERSION` sigue v1.143.0 (sin bump, sin release). Mig 293 aplicada
+solo en DEV, **sin commitear al cierre de la sesión.**
+
+---
+
 ## Roadmap del plan (acordado con GO 2026-07-19)
 
 | Fase | Qué | Estado |
 |---|---|---|
 | **1** | Niveles dinámicos por UdM (modelo + RPC + UI + backfill) | ✅ v1.137.0 (migs 282-283) |
-| **2** | Operar por UdM al ingresar stock (recibir "5 cajas" → 60 unidades; UdM trazada en el LPN; stock SIEMPRE en unidad base) | ⬜ |
+| **2** | Operar por UdM al ingresar stock (recibir "5 cajas" → 60 unidades; UdM trazada en el LPN; stock SIEMPRE en unidad base) — extendido también a REBAJES (simple y masivo), pedido explícito de GO | ✅ v1.143.0 (mig 293) |
 | **3** | **Zonas** (nueva entidad que agrupa ubicaciones) + **reglas de almacenaje** por UdM → zona/ubicación, con **sugerencia editable** al ingresar (no bloquea) | ✅ v1.143.0 (mig 289) |
 | **4** | Tareas WMS (`wms_tareas`) + **picking por UdM** (listas que respetan FIFO/FEFO de `rebajeSort` y sugieren "2 cajas" en vez de "24 unidades") | ✅ v1.143.0 (migs 289-290) |
 | **5** | **Reabastecimiento** reserva → posición de surtido/picking (mín/máx por producto+ubicación con UdM de reposición; generación on-demand + al confirmar picking — sin pg_cron) | ✅ v1.143.0 (migs 289-290) |
 
-**Fases 3, 4 y 5 EN DEV desde v1.143.0 (migs 289-290), SIN deploy a PROD** — deploy pendiente de que
-GO lo pida. Detalle completo del schema/RPCs/UI implementado (bastante fiel al sketch original de
-`wms_tareas`, con 2 columnas agregadas para el encadenamiento real — `envio_id` y
-`tarea_precedente_id`, que no estaban en el sketch): [[wiki/features/wms]] → "Fase 3" y "Fase 4".
-Solo queda pendiente del roadmap la **Fase 2** (operar por UdM al ingresar stock).
+**Las 5 fases del roadmap quedan ✅ completas a nivel código, TODAS EN DEV desde v1.143.0 (migs
+289-290, 293), SIN deploy a PROD** — deploy pendiente de que GO lo pida. Detalle completo del
+schema/RPCs/UI implementado de Fases 3-4 (bastante fiel al sketch original de `wms_tareas`, con 2
+columnas agregadas para el encadenamiento real — `envio_id` y `tarea_precedente_id`, que no estaban
+en el sketch): [[wiki/features/wms]] → "Fase 3" y "Fase 4". Detalle de Fase 2: ver arriba.
+
+**🛑 Pivote de arquitectura (2026-07-22, mismo día, ver [[wiki/features/pedidos]]):** el picking/
+reabastecimiento de Fases 3-5 (`fn_generar_tareas_picking_envio`) fue diseñado para nacer desde
+Ventas/Envíos (venta despachada → tareas WMS) — GO **revirtió esa decisión** el mismo día: "Ventas no
+tiene que generar tareas... las tareas deben ser solo para los pedidos." La RPC sigue existiendo
+(sería correcta si alguien la invocara a mano) pero **nunca se le agrega ningún gancho desde
+`VentasPage.tsx`/`EnviosPage.tsx`** — de acá en más, todo el picking/reabastecimiento nace
+**exclusivamente** desde el módulo NUEVO **Pedidos** (`fn_generar_tareas_picking_pedido`, todavía sin
+construir, Fase PED3 de [[wiki/features/pedidos]]). No confundir con una reversión del trabajo de
+Fases 3-5 — el schema (`zonas`/`wms_tareas`/RPCs de completar tarea) sigue siendo la base que Pedidos
+va a usar, solo cambia **quién genera las tareas**.
+
+**🐛 2026-07-22 (mismo día): GO probó el picking/reabastecimiento a mano y encontró 3 bugs reales +
+2 gaps de UX**, corregidos vía mig **291** (sigue EN DEV, sin deploy a PROD, sin commitear al cierre
+de la sesión) — detalle completo en [[wiki/features/wms]] → "Fixes de la primera ronda de pruebas
+manuales de GO". Eso disparó la discusión de arquitectura sobre si el picking debería depender de una
+venta ya despachada o de un futuro módulo "Pedidos" separado — **✅ resuelta la misma sesión, más
+tarde ese mismo día**: nace el módulo Pedidos y el pivote F4 (ver arriba, "Pivote de arquitectura").
 
 Decisiones ya tomadas por GO: factor **vs nivel anterior** (estilo BY) · crear **Zonas/Áreas** ·
 reglas de almacenaje **sugieren** (no bloquean) · reabastecimiento incluido en el paquete · **picking
-es una capa de logística pura, solo para envíos/despachos, nunca mostrador** (confirmado y
-resuelto en la sesión de v1.143.0 — lee la decisión de LPN ya tomada por la venta, nunca la toma).
-Abiertas: ¿OC por UdM? · factores siempre enteros (confirmar si aparece un caso real de fracción).
+es una capa de logística pura, nunca decide qué LPN consume una venta** (sin cambios) · **el picking
+ahora nace exclusivamente desde Pedidos, no desde Ventas/Envíos** (pivote F4, ver arriba — supera la
+formulación anterior "solo para envíos/despachos, nunca mostrador": ahora ni siquiera los
+envíos/despachos de Ventas lo disparan). Abiertas: ¿OC por UdM? · factores siempre enteros (confirmar
+si aparece un caso real de fracción).
 
 ---
 
 ## Links relacionados
 
 - [[wiki/features/wms]] — visión general WMS y fases históricas
+- [[wiki/features/pedidos]] — módulo NUEVO que desde el pivote F4 (2026-07-22) es el único origen de
+  tareas de picking/reabastecimiento
 - [[wiki/features/productos]] — tab Estructura + UdM personalizables + Card 3 (ancla de precio)
-- [[wiki/features/inventario-stock]] — asignación de estructura a LPNs
+- [[wiki/features/inventario-stock]] — asignación de estructura a LPNs · ingreso/rebaje por UdM (Fase 2)
 - [[wiki/features/configuracion]] — ABM Unidades de medida
-- [[wiki/features/ventas-pos]] — Fase 2 (✅ v1.141.0) conecta el precio por nivel con la venta real
-- [[wiki/database/migraciones]] — migs 282, 283, 286, 287, 288, 289, 290
+- [[wiki/features/ventas-pos]] — Fase 2 de precio por UoM (✅ v1.141.0) conecta el precio por nivel con
+  la venta real
+- [[wiki/database/migraciones]] — migs 282, 283, 286, 287, 288, 289, 290, 291, 292, 293

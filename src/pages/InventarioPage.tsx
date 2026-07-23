@@ -36,6 +36,7 @@ import type { Producto, KitReceta, InventarioConteo, ProductoEstructura } from '
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
+import { convertirABase, nivelDefaultParaProducto, type NivelEstructuraDB } from '@/lib/estructuras'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
 import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
@@ -119,6 +120,11 @@ export default function InventarioPage() {
   const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
   const [rebajeUnitAlt, setRebajeUnitAlt] = useState<string | null>(null)
   const [ingresoEstructuraId, setIngresoEstructuraId] = useState('')
+  // Fase 2 Estructuras-UdM (GO, 2026-07-22): en qué nivel/UdM de la estructura se está
+  // cargando la cantidad (ej. "5 cajas" → 60 unidades). null = sin estructura multi-nivel,
+  // se opera en unidad base como siempre.
+  const [ingresoNivelOrden, setIngresoNivelOrden] = useState<number | null>(null)
+  const [rebajeNivelOrden, setRebajeNivelOrden] = useState<number | null>(null)
   // Sucursal explícita para el ingreso (solo cuando Dueño está en vista global "todas")
   const [ingresoSucursalId, setIngresoSucursalId] = useState<string | null>(null)
 
@@ -185,6 +191,12 @@ export default function InventarioPage() {
     encaje: string
     formato: string
     sabor_aroma: string
+    // Fase 2 Estructuras-UdM (GO, 2026-07-22): niveles de la estructura DEFAULT del producto,
+    // para cargar en una UdM del embalaje (ej. "5 cajas") en vez de unidad base. Se completa
+    // async después de agregar la fila (fetch fire-and-forget). Vacío = sin estructura
+    // multi-nivel, se opera igual que siempre.
+    niveles: NivelEstructuraDB[]
+    nivelOrden: number | null
   }
   const [masivoInline, setMasivoInline] = useState(false)
   const [masivoRows, setMasivoRows] = useState<MasivoRow[]>([])
@@ -437,6 +449,24 @@ export default function InventarioPage() {
     enabled: !!selectedProduct && modal === 'ingreso',
   })
 
+  // Fase 2 Estructuras-UdM — niveles de la estructura elegida arriba, para el selector de
+  // "en qué UdM estoy cargando la cantidad" (ej. Unidad / Caja / Pallet).
+  const { data: nivelesIngreso = [] } = useQuery({
+    queryKey: ['estructura-niveles-ingreso', ingresoEstructuraId],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_estructura_niveles')
+        .select('id, estructura_id, orden, factor, unidades_base, unidad_medida_id, unidades_medida(nombre, simbolo)')
+        .eq('estructura_id', ingresoEstructuraId)
+        .order('orden')
+      return (data ?? []) as unknown as NivelEstructuraDB[]
+    },
+    enabled: !!ingresoEstructuraId && modal === 'ingreso',
+  })
+  useEffect(() => {
+    const def = nivelDefaultParaProducto(nivelesIngreso, (selectedProduct as any)?.unidad_medida)
+    setIngresoNivelOrden(def?.orden ?? null)
+  }, [nivelesIngreso, selectedProduct])
+
   const { data: lineasProducto = [] } = useQuery({
     queryKey: ['lineas-producto', selectedProduct?.id, sucursalId],
     queryFn: async () => {
@@ -458,6 +488,26 @@ export default function InventarioPage() {
     },
     enabled: !!selectedProduct && modal === 'rebaje',
   })
+
+  // Fase 2 Estructuras-UdM — niveles de la estructura CON LA QUE SE INGRESÓ el LPN elegido
+  // para rebajar (más preciso que "la default del producto": es la que ese LPN puntual
+  // realmente tiene). Si el LPN no tiene estructura_id (dato viejo), no se muestra el
+  // selector — se opera en unidad base como siempre, sin cambio de comportamiento.
+  const { data: nivelesRebaje = [] } = useQuery({
+    queryKey: ['estructura-niveles-rebaje', rebajeLinea?.estructura_id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_estructura_niveles')
+        .select('id, estructura_id, orden, factor, unidades_base, unidad_medida_id, unidades_medida(nombre, simbolo)')
+        .eq('estructura_id', rebajeLinea!.estructura_id)
+        .order('orden')
+      return (data ?? []) as unknown as NivelEstructuraDB[]
+    },
+    enabled: !!rebajeLinea?.estructura_id && modal === 'rebaje',
+  })
+  useEffect(() => {
+    const def = nivelDefaultParaProducto(nivelesRebaje, (selectedProduct as any)?.unidad_medida)
+    setRebajeNivelOrden(def?.orden ?? null)
+  }, [nivelesRebaje, selectedProduct])
 
   // ── Inventario queries ─────────────────────────────────────────────────────
   const { data: productos = [], isLoading: invLoading } = useQuery({
@@ -719,13 +769,38 @@ export default function InventarioPage() {
       const prec = (wmsTareas as any[]).find(x => x.id === t.tarea_precedente_id)
       if (prec && prec.estado !== 'completada') { toast.error('Primero hay que completar el reabastecimiento de esta tarea'); return }
     }
+    const esReab = t.tipo === 'replenishment'
     setCompletandoWms(t.id)
-    const rpc = t.tipo === 'replenishment' ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+    const rpc = esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
     const { error } = await supabase.rpc(rpc, { p_tarea_id: t.id })
     setCompletandoWms(null)
     if (error) { toast.error(error.message); return }
     qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    logActividad({
+      entidad: 'wms_tarea', entidad_id: t.id, entidad_nombre: t.productos?.nombre ?? t.lpn_origen ?? undefined,
+      accion: 'cambio_estado', campo: 'estado', valor_anterior: t.estado, valor_nuevo: 'completada',
+      pagina: '/inventario', tipo_transaccion: esReab ? 'traslado' : undefined,
+      producto_id: t.producto_id, lpn: t.lpn_origen, sucursal_id: t.sucursal_id,
+    })
     toast.success('Tarea completada')
+  }
+  const cancelarTareaWms = async (t: any) => {
+    const esReab = t.tipo === 'replenishment'
+    const tieneDependiente = esReab && (wmsTareas as any[]).some(x => x.tarea_precedente_id === t.id)
+    const msg = `¿Cancelar esta tarea de ${esReab ? 'reabastecimiento' : 'picking'}?` +
+      (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
+    if (!window.confirm(msg)) return
+    setCompletandoWms(t.id)
+    const { error } = await supabase.rpc('fn_cancelar_tarea_wms', { p_tarea_id: t.id })
+    setCompletandoWms(null)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    logActividad({
+      entidad: 'wms_tarea', entidad_id: t.id, entidad_nombre: t.productos?.nombre ?? t.lpn_origen ?? undefined,
+      accion: 'cambio_estado', campo: 'estado', valor_anterior: t.estado, valor_nuevo: 'cancelada',
+      pagina: '/inventario', producto_id: t.producto_id, lpn: t.lpn_origen, sucursal_id: t.sucursal_id,
+    })
+    toast.success('Tarea cancelada')
   }
 
   // ── Helper: stock por sucursal activa (o global si no hay sucursal) ──────────
@@ -1085,9 +1160,23 @@ export default function InventarioPage() {
       const tieneSeries = (selectedProduct as any).tiene_series
       const tieneLote = (selectedProduct as any).tiene_lote
       const tieneVencimiento = (selectedProduct as any).tiene_vencimiento
-      const cant = tieneSeries
-        ? series.filter(s => s.trim()).length
-        : resolverCantidad(form.cantidad, ingresoUnitAlt, (selectedProduct as any).unidad_medida)
+      // Fase 2 Estructuras-UdM: si el producto tiene una estructura con más de un nivel,
+      // la cantidad se teclea en el nivel elegido (ej. "5 cajas") y se convierte a unidades
+      // base — tiene precedencia sobre el toggle genérico kg/g (resolverCantidad).
+      const nivelIngresoSel = nivelesIngreso.length > 1
+        ? nivelesIngreso.find(n => n.orden === ingresoNivelOrden) ?? null
+        : null
+      let cant: number
+      if (tieneSeries) {
+        cant = series.filter(s => s.trim()).length
+      } else if (nivelIngresoSel) {
+        const cantRaw = parseFloat(form.cantidad)
+        if (!Number.isInteger(cantRaw) || cantRaw <= 0)
+          throw new Error(`La cantidad en ${nivelIngresoSel.unidades_medida?.nombre ?? 'esta unidad'} tiene que ser un entero mayor a 0 (ej. 5 ${nivelIngresoSel.unidades_medida?.nombre ?? ''}, no 5.5)`)
+        cant = convertirABase(cantRaw, nivelIngresoSel)
+      } else {
+        cant = resolverCantidad(form.cantidad, ingresoUnitAlt, (selectedProduct as any).unidad_medida)
+      }
       if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
       if (tieneLote && !form.nroLote.trim()) throw new Error('Este producto requiere número de lote')
       if (tieneVencimiento && !form.fechaVencimiento) throw new Error('Este producto requiere fecha de vencimiento')
@@ -1154,6 +1243,8 @@ export default function InventarioPage() {
           precio_costo_snapshot: (selectedProduct as any).precio_costo || null,
           precio_venta_snapshot: (selectedProduct as any).precio_venta || null,
           estructura_id: ingresoEstructuraId || null,
+          unidad_medida_id: nivelIngresoSel?.unidad_medida_id ?? null,
+          cantidad_uom: nivelIngresoSel ? parseFloat(form.cantidad) : null,
           sucursal_id: sucursalId ?? ingresoSucursalId ?? null,
           ...((selectedProduct as any).tiene_pais_origen ? { pais_origen: form.paisOrigen || null } : {}),
           ...((selectedProduct as any).tiene_talle ? { talle: form.talle || null } : {}),
@@ -1195,6 +1286,8 @@ export default function InventarioPage() {
         usuario_id: user?.id,
         linea_id: linea.id,
         sucursal_id: sucursalId || null,
+        unidad_medida_id: nivelIngresoSel?.unidad_medida_id ?? null,
+        cantidad_uom: nivelIngresoSel ? parseFloat(form.cantidad) : null,
       })
 
       // ISS-075: datos para el log del Historial (se capturan antes de cerrar/reset el modal)
@@ -1232,6 +1325,25 @@ export default function InventarioPage() {
 
       const stockAntes = await getStockAntesSucursal(selectedProduct.id, sucursalId)
 
+      // Fase 2 Estructuras-UdM (GO, 2026-07-22): si el LPN elegido tiene una estructura con
+      // más de un nivel, la cantidad se teclea en el nivel elegido (ej. "2 cajas") — tiene
+      // precedencia sobre el toggle genérico kg/g (resolverCantidad).
+      const nivelRebajeSel = nivelesRebaje.length > 1
+        ? nivelesRebaje.find(n => n.orden === rebajeNivelOrden) ?? null
+        : null
+      let cant: number
+      if (tieneSeries) {
+        cant = rebajeSeries.length
+      } else if (nivelRebajeSel) {
+        const cantRaw = parseFloat(rebajeCantidad)
+        if (!Number.isInteger(cantRaw) || cantRaw <= 0)
+          throw new Error(`La cantidad en ${nivelRebajeSel.unidades_medida?.nombre ?? 'esta unidad'} tiene que ser un entero mayor a 0`)
+        cant = convertirABase(cantRaw, nivelRebajeSel)
+      } else {
+        cant = resolverCantidad(rebajeCantidad, rebajeUnitAlt, (selectedProduct as any).unidad_medida)
+      }
+      if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
+
       if (tieneSeries) {
         if (rebajeSeries.length === 0) throw new Error('Seleccioná al menos una serie')
         const { error: seriesError } = await supabase.from('inventario_series').update({ activo: false }).in('id', rebajeSeries)
@@ -1241,15 +1353,12 @@ export default function InventarioPage() {
           await supabase.from('inventario_lineas').update({ activo: false }).eq('id', rebajeLinea.id)
         }
       } else {
-        const cant = resolverCantidad(rebajeCantidad, rebajeUnitAlt, (selectedProduct as any).unidad_medida)
-        if (!cant || cant <= 0) throw new Error('Ingresá una cantidad válida')
         const disponible = rebajeLinea.cantidad - (rebajeLinea.cantidad_reservada ?? 0)
         if (cant > disponible) throw new Error(`Stock disponible insuficiente: ${disponible} u. (${rebajeLinea.cantidad} total − ${rebajeLinea.cantidad_reservada ?? 0} reservada(s))`)
         const nuevaCant = rebajeLinea.cantidad - cant
         await supabase.from('inventario_lineas').update({ cantidad: nuevaCant, activo: nuevaCant > 0 }).eq('id', rebajeLinea.id)
       }
 
-      const cant = tieneSeries ? rebajeSeries.length : resolverCantidad(rebajeCantidad, rebajeUnitAlt, (selectedProduct as any).unidad_medida)
       await supabase.from('movimientos_stock').insert({
         tenant_id: tenant!.id,
         producto_id: selectedProduct.id,
@@ -1261,6 +1370,8 @@ export default function InventarioPage() {
         usuario_id: user?.id,
         linea_id: rebajeLinea.id,
         sucursal_id: sucursalId || null,
+        unidad_medida_id: nivelRebajeSel?.unidad_medida_id ?? null,
+        cantidad_uom: nivelRebajeSel ? parseFloat(rebajeCantidad) : null,
       })
 
       // ISS-075: datos para el log del Historial (origen: ubicación + LPN de la línea rebajada)
@@ -2142,6 +2253,8 @@ export default function InventarioPage() {
   // ── Masivo inline helpers ─────────────────────────────────────────────────
   // ISS-127 F2: `overrides` pre-cargan cantidad/lote/venc desde un código GS1.
   const addMasivoRow = (prod: any, overrides?: { cantidad?: number; nro_lote?: string; fecha_vencimiento?: string }) => {
+    const nuevoId = crypto.randomUUID()
+    let esNueva = false
     setMasivoRows(prev => {
       // Same SKU + no lote required → increment quantity (nunca si trackea algún atributo:
       // cada fila puede terminar con un talle/color distinto, no se pueden fusionar a ciegas)
@@ -2154,8 +2267,9 @@ export default function InventarioPage() {
         setMasivoFocusIdx(existingIdx)
         return updated
       }
+      esNueva = true
       const newRow: MasivoRow = {
-        _id: crypto.randomUUID(),
+        _id: nuevoId,
         producto_id: prod.id,
         nombre: prod.nombre,
         sku: prod.sku,
@@ -2177,12 +2291,27 @@ export default function InventarioPage() {
         series_txt: '',
         showExtra: !!(prod.tiene_lote || prod.tiene_vencimiento || prod.tiene_series || tieneAlgunAtributo || overrides?.nro_lote || overrides?.fecha_vencimiento),
         talle: '', color: '', encaje: '', formato: '', sabor_aroma: '',
+        niveles: [], nivelOrden: null,
       }
       setMasivoFocusIdx(prev.length)
       return [...prev, newRow]
     })
     setMasivoSearch('')
     setTimeout(() => masivoSearchRef.current?.focus(), 50)
+    // Fase 2 Estructuras-UdM: traer los niveles de la estructura default (fire-and-forget,
+    // patchea la fila cuando llega — no bloquea agregar el producto a la lista).
+    if (esNueva) {
+      supabase.from('producto_estructuras')
+        .select('id, producto_estructura_niveles(id, estructura_id, orden, factor, unidades_base, unidad_medida_id, unidades_medida(nombre, simbolo))')
+        .eq('producto_id', prod.id).eq('is_default', true).maybeSingle()
+        .then(({ data: estr }) => {
+          const niveles = (((estr as any)?.producto_estructura_niveles ?? []) as NivelEstructuraDB[]).slice().sort((a, b) => a.orden - b.orden)
+          if (niveles.length > 1) {
+            const def = nivelDefaultParaProducto(niveles, prod.unidad_medida)
+            setMasivoRows(prev => prev.map(r => r._id === nuevoId ? { ...r, niveles, nivelOrden: def?.orden ?? null } : r))
+          }
+        })
+    }
   }
 
   const handleMasivoScan = async (code: string) => {
@@ -2238,9 +2367,21 @@ export default function InventarioPage() {
 
       for (const row of masivoRows) {
         try {
-          const cant = row.tiene_series
-            ? row.series_txt.split('\n').filter(s => s.trim()).length
-            : Math.max(0, parseFloat(row.cantidad) || 0)
+          // Fase 2 Estructuras-UdM: si el producto tiene una estructura con más de un nivel,
+          // la cantidad se teclea en el nivel elegido (ej. "5 cajas") y se convierte a base.
+          const nivelSel = row.niveles.length > 1
+            ? row.niveles.find(n => n.orden === row.nivelOrden) ?? null
+            : null
+          let cant: number
+          if (row.tiene_series) {
+            cant = row.series_txt.split('\n').filter(s => s.trim()).length
+          } else if (nivelSel) {
+            const cantRaw = parseInt(row.cantidad)
+            if (!Number.isInteger(cantRaw) || cantRaw <= 0) { errores.push(`${row.sku}: cantidad en ${nivelSel.unidades_medida?.nombre ?? 'esta unidad'} tiene que ser un entero mayor a 0`); continue }
+            cant = convertirABase(cantRaw, nivelSel)
+          } else {
+            cant = Math.max(0, parseFloat(row.cantidad) || 0)
+          }
           if (!cant || cant <= 0) { errores.push(`${row.sku}: cantidad inválida`); continue }
           if (row.tiene_lote && !row.nro_lote.trim()) { errores.push(`${row.sku}: requiere lote`); continue }
           if (row.tiene_vencimiento && !row.fecha_vencimiento) { errores.push(`${row.sku}: requiere vencimiento`); continue }
@@ -2270,6 +2411,8 @@ export default function InventarioPage() {
             encaje: row.tiene_encaje ? (row.encaje || null) : null,
             formato: row.tiene_formato ? (row.formato || null) : null,
             sabor_aroma: row.tiene_sabor_aroma ? (row.sabor_aroma || null) : null,
+            unidad_medida_id: nivelSel?.unidad_medida_id ?? null,
+            cantidad_uom: nivelSel ? parseFloat(row.cantidad) : null,
           }).select().single()
           if (lineaError) { errores.push(`${row.sku}: ${lineaError.message}`); continue }
 
@@ -2298,6 +2441,8 @@ export default function InventarioPage() {
             usuario_id: user?.id,
             linea_id: linea.id,
             sucursal_id: sucursalId || null,
+            unidad_medida_id: nivelSel?.unidad_medida_id ?? null,
+            cantidad_uom: nivelSel ? parseFloat(row.cantidad) : null,
           })
           exitos++
         } catch (e: any) {
@@ -2642,16 +2787,28 @@ export default function InventarioPage() {
                                 {row.tiene_series ? (
                                   <span className="text-xs text-gray-400 block text-center">ver abajo</span>
                                 ) : (
-                                  <input
-                                    type="number"
-                                    ref={el => { masivoQtyRefs.current[idx] = el }}
-                                    min="0.001" step="1"
-                                    value={row.cantidad}
-                                    onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, cantidad: e.target.value } : r))}
-                                    onWheel={e => e.currentTarget.blur()}
-                                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); masivoSearchRef.current?.focus() } }}
-                                    className="w-full text-center px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800"
-                                  />
+                                  <div className="space-y-1">
+                                    <input
+                                      type="number"
+                                      ref={el => { masivoQtyRefs.current[idx] = el }}
+                                      min="0.001" step="1"
+                                      value={row.cantidad}
+                                      onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, cantidad: e.target.value } : r))}
+                                      onWheel={e => e.currentTarget.blur()}
+                                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); masivoSearchRef.current?.focus() } }}
+                                      className="w-full text-center px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800"
+                                    />
+                                    {/* Fase 2 Estructuras-UdM: producto con estructura multi-nivel — elegir en qué UdM se carga */}
+                                    {row.niveles.length > 1 && (
+                                      <select value={row.nivelOrden ?? ''}
+                                        onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, nivelOrden: parseInt(e.target.value) } : r))}
+                                        className="w-full px-1.5 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-[11px] focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
+                                        {row.niveles.map(n => (
+                                          <option key={n.id} value={n.orden}>{n.unidades_medida?.nombre ?? '—'}</option>
+                                        ))}
+                                      </select>
+                                    )}
+                                  </div>
                                 )}
                               </td>
                               {modoAvanzado && (
@@ -3269,6 +3426,51 @@ export default function InventarioPage() {
                           </button>
                         </div>
                       </div>
+                    ) : nivelesIngreso.length > 1 ? (
+                      // Fase 2 Estructuras-UdM (GO, 2026-07-22): el producto tiene una
+                      // estructura de embalaje con más de un nivel — cargar la cantidad en
+                      // la UdM elegida (ej. "5 cajas") tiene precedencia sobre el toggle
+                      // genérico kg/g de abajo.
+                      (() => {
+                        // El nivel base de LA ESTRUCTURA (no productos.unidad_medida — es texto
+                        // libre que puede no matchear, ej. quedó en "caja" aunque la estructura
+                        // tenga "Unidad" como nivel 1; ver gotcha en CLAUDE.md).
+                        const uBase = nivelesIngreso[0]?.unidades_medida?.nombre ?? null
+                        const nivelSel = nivelesIngreso.find(n => n.orden === ingresoNivelOrden) ?? nivelesIngreso[0]
+                        const cantN = parseInt(form.cantidad)
+                        const hint = nivelSel && form.cantidad && Number.isInteger(cantN) && cantN > 0
+                          ? convertirABase(cantN, nivelSel)
+                          : null
+                        return (
+                          <div className="mb-3">
+                            <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                Cantidad
+                                {nivelSel?.unidades_medida?.nombre && <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({nivelSel.unidades_medida.nombre})</span>}
+                              </label>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                <span className="text-xs text-gray-400 dark:text-gray-500">Cargar en:</span>
+                                {nivelesIngreso.map(n => (
+                                  <button key={n.id} type="button"
+                                    onClick={() => setIngresoNivelOrden(n.orden)}
+                                    className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
+                                      ingresoNivelOrden === n.orden
+                                        ? 'bg-accent text-white border-accent-text'
+                                        : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text'
+                                    }`}>{n.unidades_medida?.nombre ?? '—'}</button>
+                                ))}
+                              </div>
+                            </div>
+                            <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
+                              value={form.cantidad}
+                              onChange={e => setForm(p => ({ ...p, cantidad: e.target.value }))}
+                              className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" placeholder="0" />
+                            {hint !== null && nivelSel?.orden !== nivelesIngreso[0]?.orden && (
+                              <p className="mt-1 text-xs text-accent-text">= {hint} {uBase}</p>
+                            )}
+                          </div>
+                        )
+                      })()
                     ) : (
                       (() => {
                         const uBase = (selectedProduct as any)?.unidad_medida ?? null
@@ -3696,6 +3898,49 @@ export default function InventarioPage() {
                               ))}
                             </div>
                           </div>
+                        ) : nivelesRebaje.length > 1 ? (
+                          // Fase 2 Estructuras-UdM — este LPN se ingresó con una estructura de
+                          // más de un nivel: rebajar en la UdM elegida (ej. "2 cajas").
+                          (() => {
+                            // El nivel base de LA ESTRUCTURA (no productos.unidad_medida — es
+                            // texto libre que puede no matchear, ver gotcha en CLAUDE.md).
+                            const uBase = nivelesRebaje[0]?.unidades_medida?.nombre ?? null
+                            const disponible = rebajeLinea.cantidad - (rebajeLinea.cantidad_reservada ?? 0)
+                            const nivelSel = nivelesRebaje.find(n => n.orden === rebajeNivelOrden) ?? nivelesRebaje[0]
+                            const cantN = parseInt(rebajeCantidad)
+                            const hint = nivelSel && rebajeCantidad && Number.isInteger(cantN) && cantN > 0
+                              ? convertirABase(cantN, nivelSel)
+                              : null
+                            return (
+                              <div className="mb-4">
+                                <div className="flex items-center justify-between mb-1 flex-wrap gap-1">
+                                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                    Cantidad a rebajar
+                                    {nivelSel?.unidades_medida?.nombre && <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">({nivelSel.unidades_medida.nombre})</span>}
+                                    <span className="ml-1 font-normal text-gray-400 dark:text-gray-500">— disponible: {disponible} {uBase}</span>
+                                  </label>
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="text-xs text-gray-400 dark:text-gray-500">Rebajar en:</span>
+                                    {nivelesRebaje.map(n => (
+                                      <button key={n.id} type="button"
+                                        onClick={() => setRebajeNivelOrden(n.orden)}
+                                        className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
+                                          rebajeNivelOrden === n.orden
+                                            ? 'bg-accent text-white border-accent-text'
+                                            : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text'
+                                        }`}>{n.unidades_medida?.nombre ?? '—'}</button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
+                                  value={rebajeCantidad} onChange={e => setRebajeCantidad(e.target.value)}
+                                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" placeholder="0" />
+                                {hint !== null && nivelSel?.orden !== nivelesRebaje[0]?.orden && (
+                                  <p className="mt-1 text-xs text-accent-text">= {hint} {uBase}</p>
+                                )}
+                              </div>
+                            )
+                          })()
                         ) : (
                           (() => {
                             const uBase = (selectedProduct as any)?.unidad_medida ?? null
@@ -5806,6 +6051,11 @@ export default function InventarioPage() {
                       title={bloqueada ? 'Esperando que se complete el reabastecimiento' : undefined}
                       className="flex-shrink-0 bg-accent hover:bg-accent/90 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
                       {completandoWms === t.id ? '...' : 'Completar'}
+                    </button>
+                    <button onClick={() => cancelarTareaWms(t)} disabled={completandoWms === t.id}
+                      title="Cancelar tarea"
+                      className="flex-shrink-0 text-gray-400 hover:text-red-500 disabled:opacity-50 p-1.5">
+                      <X size={16} />
                     </button>
                   </div>
                 )

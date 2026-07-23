@@ -1,9 +1,9 @@
 ---
 title: Módulo Envíos
 category: features
-tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md]
-updated: 2026-07-09
+tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
+sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292]
+updated: 2026-07-22
 ---
 
 # Módulo Envíos
@@ -13,6 +13,20 @@ updated: 2026-07-09
 > [!WARNING] **Bug corregido (2026-07-09, REGLA #0 — toca Pagos Courier):** crear un envío desde el modal manual **"Nuevo envío"** (no desde una venta) con tipo **"🚗 Envío propio"** dejaba `envios.courier = null` en vez de `'Envío propio'` (el `<select>` de courier queda oculto para ese tipo y nunca se togglea). Impacto: el botón "Registrar combustible" nunca aparecía (gate exacto `courier==='Envío propio'`) y `envioYaSaldado` — que decide `costo_pagado` al nacer el envío — también dependía de ese string, por lo que un envío realmente propio podía figurar indebidamente como pago pendiente en la pestaña **Pagos Courier**. **Fix** (commit `06d1bbae`) en `src/pages/EnviosPage.tsx`: `saveEnvio` deriva `courier` de `tipoEnvio` en vez de confiar en el select oculto; `envioYaSaldado` usa el `courier` ya corregido; `abrirEdicion` restaura `tipoEnvio` según el `courier` real del envío al editar (antes siempre arrancaba en "tercero"). Test de regresión: `tests/e2e/85_envio_propio_manual_courier_mutante.spec.ts`. Alcance real bajo: los envíos propios que ya existían en DEV se habían creado todos por el camino de Ventas (que sí setea `courier` bien), nunca por el modal manual.
 
 > **🚚 Envío en modo BÁSICO (v1.78.0, 2026-06-18 — EN DEV):** en básico el envío es **solo un campo de costo** en el POS (se guarda en `ventas.costo_envio`, sale en ticket y factura). **NO** hay courier/reparto/dirección ni se crea registro en `envios` (la inserción está gateada por `modoAvanzado`) — el módulo de Envíos queda oculto en básico. La gestión completa que describe esta página aplica **solo a modo avanzado**. El costo de envío cobrado al cliente ahora también entra en la **factura AFIP** (ver [[project_facturacion]] / [[project_costo_envio_factura]]).
+
+> **🔎 Deep-link `/envios?busqueda=N` (2026-07-22, EN DEV, sin commitear al cierre de sesión):** la
+> búsqueda de la pestaña Envíos ahora arranca pre-cargada con el query param `busqueda` si viene en
+> la URL. Lo usa el badge nuevo "Envío #N" del detalle de venta en [[wiki/features/ventas-pos]]
+> (gap encontrado por GO probando el WMS a mano) para saltar directo del detalle de una venta a su
+> envío, sin buscarlo a mano. Ver [[wiki/features/wms]] → "Fixes de la primera ronda de pruebas
+> manuales de GO".
+
+> **📦 `envios.pedido_id` (mig 292, 2026-07-22, EN DEV, sin commitear, sin UI todavía):** columna
+> nueva, nullable, agregada por el schema del módulo NUEVO [[wiki/features/pedidos]] (PED1) — un
+> envío se va a poder auto-crear al "lanzar" un Pedido con `requiere_envio=true` (Fase PED3, todavía
+> sin construir), ANTES de que exista la venta real; `envios.venta_id` se completa recién cuando el
+> Pedido termine facturando. Coexiste con `venta_id`, sin cambiar el comportamiento actual de esta
+> página.
 
 Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.  
 **Última actualización:** 2026-06-10 — **courier `probar` + logging diagnóstico en `courier-api`** (v1.49.0, PROD): botón "Probar credenciales" en Config → Envíos + logs del intercambio HTTP crudo (sin credenciales) para validar adapters con cuentas B2B. Antes: EN7 (envío propio + recursos + reportes/alertas) en PROD (v1.45.0, mig 194). Envíos cerrado salvo EN6 (integraciones courier, bloqueado por cuentas B2B). Ver "Relevamiento Envíos 2.0" al final.
@@ -359,6 +373,7 @@ Relevado con GO (HTML `relevamiento-envios-reglas-negocio.html`, secciones A-I).
 
 - [[wiki/features/clientes-proveedores]]
 - [[wiki/features/ventas-pos]]
+- [[wiki/features/pedidos]] — `envios.pedido_id` nuevo (mig 292), coexiste con `venta_id`
 - [[wiki/features/facturacion-afip]]
 
 ---

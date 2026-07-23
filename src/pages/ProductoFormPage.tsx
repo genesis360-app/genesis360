@@ -540,6 +540,16 @@ export default function ProductoFormPage() {
       }
 
       qc.invalidateQueries({ queryKey: ['productos'] })
+      // Bug real encontrado por GO (2026-07-22): `['producto', id]` (la query de ESTE form,
+      // distinta de la lista `['productos']` de arriba) quedaba con el snapshot de ANTES de
+      // guardar. React Query igual la sirve de la caché al reabrir el producto (stale-while-
+      // revalidate) mientras refetchea en segundo plano — pero el useEffect que siembra `form`
+      // solo corre una vez (`!loaded`), así que se quedaba pegado para siempre con el valor
+      // viejo de `nivel_precio_orden` ("Estos precios corresponden a" volvía a mostrar
+      // "Unidad" aunque el guardado en DB sí había funcionado). `removeQueries` (no solo
+      // invalidate) saca el snapshot viejo de la caché para que la próxima apertura arranque
+      // de cero, en vez de mostrar el viejo mientras refetchea.
+      if (isEditing) qc.removeQueries({ queryKey: ['producto', id] })
       navigate('/productos')
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar')

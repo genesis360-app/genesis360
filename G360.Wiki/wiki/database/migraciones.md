@@ -3,15 +3,94 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-07-22
+updated: 2026-07-23
 ---
 
-# Historial de Migraciones (001-290)
+# Historial de Migraciones (001-297)
 
-**Total al 2026-07-22:** 290 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-23:** 297 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+**294-297 (módulo "Pedidos" completa PED3-PED5, sigue EN DEV, SIN deploy a PROD, SIN commitear al
+cierre de la sesión)** — cada una revisada por `migration-reviewer` antes de aplicar, con hallazgos
+reales corregidos en las 3:
+- **294** (PED3, "Lanzar"): RPC `fn_generar_tareas_picking_pedido(p_pedido_id)` — valida stock
+  bloqueante, reserva `inventario_lineas.cantidad_reservada` vía FEFO (filtrando por
+  talle/color/encaje/formato/sabor_aroma — 🔴 hallazgo real, sin esto podía reservar/pickear la
+  variante equivocada, sin un humano en el loop como en Ventas), genera `wms_tareas`
+  (`pedido_id` nuevo, `origen` acepta `'pedido'`), envío condicional. 🟡 También excluye
+  `ubicacion_id IS NULL`/`disponible_surtido=false` (evita tareas con destino imposible de completar).
+- **295** (PED4, "Entregar" genera la venta real): RPC `fn_pedido_generar_venta(...)` — Pedidos nunca
+  pasa por el POS, reusa solo la mecánica de rebaje (`ventas`/`venta_items`/`inventario_lineas`/
+  `movimientos_stock`/`venta_item_despachos`/`caja_movimientos`), sin factura automática (queda
+  manual en Ventas → Historial). 🔴 El guard de estado no incluía `entregado_parcial` (rompía
+  entregas parciales múltiples, G1-G3) — corregido + se agregó `p_idempotency_key`
+  (`ventas.pedido_entrega_key` + índice único) para no duplicar en un reintento de red. 🟡 Ventana
+  TOCTOU en la sesión de caja — `FOR UPDATE` + validación de sucursal agregadas.
+- **297** (fix de WMS compartido, encontrado al construir 295): `fn_completar_tarea_reabastecimiento`
+  (mig 290) nunca transfería `cantidad_reservada` del origen al LPN nuevo del destino al mover stock
+  bulk→picking — dejaba "stock fantasma" sin reservar en picking. Fix general, no específico de
+  Pedidos (afecta también reservas de Ventas). Verificado explícitamente con datos reales en
+  `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts`.
+- **296** (PED5, cancelación + des-pickeo): `fn_pedido_deslanzar` (F5) + `fn_cancelar_pedido` +
+  `fn_unpick_tarea_wms(p_tarea_id, p_ubicacion_destino_id)` (E4). 🔴 `fn_cancelar_pedido` no
+  chequeaba si ya existía una venta real generada (A5 pide devolución automática, diferida a
+  propósito) — ahora bloquea con excepción clara en vez de dejar la venta huérfana. 🔴
+  `fn_unpick_tarea_wms` nunca puede des-pickear una tarea encadenada a un reabastecimiento (limitación
+  documentada, la UI oculta "Deshacer" para esos casos).
+
+Ver [[wiki/features/pedidos]] (PED3-PED8) y [[wiki/features/wms]] → Fase 4 (mig 297).
+Verificación de toda la tanda: tsc + build + 1180 tests unitarios verdes + e2e 107 nuevo (3/3 verde
+contra datos reales de DEV).
+
+**293 (Fase 2 del roadmap de estructuras-udm — operar por UdM al ingresar Y rebajar stock, cierra el
+único pendiente que quedaba del roadmap, sigue EN DEV, SIN deploy a PROD, SIN commitear al cierre de
+la sesión)** — `inventario_lineas.unidad_medida_id`/`.cantidad_uom` (UdM del LPN al recibir,
+permanente) + `movimientos_stock.unidad_medida_id`/`.cantidad_uom` (UdM de la operación puntual de
+ingreso o rebaje — necesario porque un rebaje puede consumir de varios LPNs con distinta UdM de
+origen), ambas con `CHECK (cantidad_uom IS NULL OR cantidad_uom > 0)` (agregado a pedido del
+`migration-reviewer`, mismo patrón que `venta_items.cantidad_uom` de la mig 286). `convertirABase()`
+en `src/lib/estructuras.ts` ya existía desde Fase 1 (código muerto hasta esta sesión) — el cálculo no
+es nuevo, solo se agregó dónde trazar la UdM usada. Wireado en 4 superficies (ingreso simple, rebaje
+simple, ingreso masivo, rebaje masivo) — ver [[wiki/features/estructuras-udm]] → "Fase 2". Bug real
+corregido de paso: el texto de ayuda mostraba el nombre de unidad incorrecto (`productos.unidad_medida`
+texto libre en vez del nombre real del nivel base de la estructura).
+**292 (schema del módulo NUEVO "Pedidos", PED1, sigue EN DEV, SIN deploy a PROD, SIN commitear al
+cierre de la sesión)** — `tipos_pedido` (catálogo por tenant, seed 4 tipos default + trigger nuevo
+tenant) + `pedidos` (cabecera, numeración tenant+sucursal, RLS por sucursal, estados
+`borrador→confirmado→en_preparacion→listo_para_entrega→entregado(_parcial)→cancelado`) +
+`pedido_items` (líneas SIN precio, cantidad en unidades base, `estado_id` opcional para pickear
+respetando FIFO/FEFO, atributos opcionales) + trazabilidad `ventas.pedido_id` /
+`venta_items.pedido_item_id` / `envios.pedido_id`. **Pivote de arquitectura (F4, confirmado con GO el
+mismo día): Ventas/Envíos YA NO generan tareas WMS — el picking/reabastecimiento nace exclusivamente
+desde Pedidos de acá en más** (`fn_generar_tareas_picking_envio` de las migs 290/291 queda código
+muerto en la práctica). El `migration-reviewer` encontró un bug real antes de aplicar: el trigger de
+numeración sin `SECURITY DEFINER` hubiera duplicado el número de pedido para usuarios restringidos a
+una sucursal (mismo bug ya presente, sin corregir, en `set_oc_numero`/`ordenes_compra` desde las migs
+182+217 — hallazgo colateral, fuera de alcance, no se tocó); corregido en `pedidos` antes de aplicar.
+UI nueva `src/pages/PedidosPage.tsx` (ruta `/pedidos`, PED2: armar/confirmar/cancelar, sin precio, sin
+lanzar todavía). Ver [[wiki/features/pedidos]] (página nueva) y [[wiki/features/wms]] → nota de
+vigencia al principio de "Fase 3".
+**291 (fixes reales encontrados por GO probando el WMS a mano, mismo día, sigue EN DEV, SIN deploy a
+PROD, SIN commitear al cierre de la sesión)** — 3 `CREATE OR REPLACE FUNCTION` (sin tablas/columnas
+nuevas), verificados contra datos reales del tenant "Almacén Jorgito" (venta #395/envío #44): (1)
+`fn_generar_tareas_picking_envio` — la rama "Fuente 1" (`venta_item_despachos`, venta ya despachada,
+consumo YA ocurrido) encadenaba reabastecimiento igual que la rama "Fuente 2" (reserva pendiente)
+cuando el LPN vivía fuera de zona de picking — rompía trazabilidad (LPN nuevo desvinculado del que
+`venta_item_despachos` ya había fijado) aunque el stock total daba correcto (movimiento neto cero);
+ahora Fuente 1 SIEMPRE genera picking directo, nunca reabastecimiento; (2)
+`fn_generar_tareas_reabastecimiento_umbral` — pedía siempre `stock_maximo − stock_actual` sin
+chequear el disponible real en el origen, fallaba al completar si no alcanzaba (bug reproducido por
+GO); ahora clampea al disponible real; (3) `fn_cancelar_tarea_wms(p_tarea_id, p_motivo)` nueva — no
+existía forma de cancelar una tarea, cancela en cascada el picking dependiente de un reabastecimiento
+cancelado. Frontend sin migración: `logActividad()` en Historial (entidad nueva `wms_tarea`) al
+completar/cancelar tareas + botón "Cancelar" en `PickingPage.tsx`/`InventarioPage.tsx`; badge "Envío
+#N" clickeable en el detalle de venta (`VentasPage.tsx`) que navega a `/envios?busqueda=N` (soporte
+nuevo del query param en `EnviosPage.tsx`). Revisada por `migration-reviewer` (aprobada, sin
+hallazgos bloqueantes). Test e2e 106 reescrito en 2 tests (el viejo verificaba el comportamiento
+buggy) — **e2e todavía sin correr esta sesión**. `npm run build` verde. `APP_VERSION` sigue v1.143.0,
+sin bump. Ver [[wiki/features/wms]] → "Fixes de la primera ronda de pruebas manuales de GO".
 **289-290 (WMS Zonas + Tareas + Reabastecimiento, cierra Fases 3-5 del roadmap de estructuras-udm,
-v1.143.0) EN DEV, SIN deploy a PROD** — 289 tabla `zonas` + `reglas_almacenaje` +
+v1.143.0) EN DEV, SIN deploy a PROD** (fixes reales de la 291 arriba) — 289 tabla `zonas` + `reglas_almacenaje` +
 `producto_ubicacion_umbrales` + `wms_tareas` (RLS por sucursal, mismo patrón que
 `inventario_lineas`/`envios`) + 2 flags independientes de reabastecimiento en `tenants`; 290 RPCs
 SECURITY INVOKER `fn_generar_tareas_picking_envio`/`fn_completar_tarea_reabastecimiento`/

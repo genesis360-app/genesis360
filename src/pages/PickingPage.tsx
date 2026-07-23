@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ScanBarcode, PackageCheck, PackageSearch, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck } from 'lucide-react'
+import { ArrowLeft, ScanBarcode, PackageCheck, PackageSearch, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 
 interface TareaWMS {
@@ -13,6 +14,8 @@ interface TareaWMS {
   tipo: 'picking' | 'replenishment' | 'putaway' | 'conteo'
   estado: 'pendiente' | 'en_curso' | 'completada' | 'cancelada'
   prioridad: number
+  producto_id: string | null
+  sucursal_id: string | null
   cantidad: number
   lpn_origen: string | null
   notas: string | null
@@ -88,13 +91,39 @@ export default function PickingPage() {
         return
       }
     }
+    const esReab = tarea.tipo === 'replenishment'
     setCompletando(tarea.id)
-    const rpc = tarea.tipo === 'replenishment' ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+    const rpc = esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
     const { error } = await supabase.rpc(rpc, { p_tarea_id: tarea.id })
     setCompletando(null)
     if (error) { toast.error(error.message); return }
     qc.invalidateQueries({ queryKey: ['wms_tareas'] })
-    toast.success(tarea.tipo === 'replenishment' ? 'Reabastecimiento completado — stock movido a picking' : 'Picking completado')
+    logActividad({
+      entidad: 'wms_tarea', entidad_id: tarea.id, entidad_nombre: tarea.productos?.nombre ?? tarea.lpn_origen ?? undefined,
+      accion: 'cambio_estado', campo: 'estado', valor_anterior: tarea.estado, valor_nuevo: 'completada',
+      pagina: '/picking', tipo_transaccion: esReab ? 'traslado' : undefined,
+      producto_id: tarea.producto_id, lpn: tarea.lpn_origen, sucursal_id: tarea.sucursal_id,
+    })
+    toast.success(esReab ? 'Reabastecimiento completado — stock movido a picking' : 'Picking completado')
+  }
+
+  const cancelarTarea = async (tarea: TareaWMS) => {
+    const esReab = tarea.tipo === 'replenishment'
+    const tieneDependiente = esReab && tareas.some(t => t.tarea_precedente_id === tarea.id)
+    const msg = `¿Cancelar esta tarea de ${esReab ? 'reabastecimiento' : 'picking'}?` +
+      (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
+    if (!window.confirm(msg)) return
+    setCompletando(tarea.id)
+    const { error } = await supabase.rpc('fn_cancelar_tarea_wms', { p_tarea_id: tarea.id })
+    setCompletando(null)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    logActividad({
+      entidad: 'wms_tarea', entidad_id: tarea.id, entidad_nombre: tarea.productos?.nombre ?? tarea.lpn_origen ?? undefined,
+      accion: 'cambio_estado', campo: 'estado', valor_anterior: tarea.estado, valor_nuevo: 'cancelada',
+      pagina: '/picking', producto_id: tarea.producto_id, lpn: tarea.lpn_origen, sucursal_id: tarea.sucursal_id,
+    })
+    toast.success('Tarea cancelada')
   }
 
   return (
@@ -165,10 +194,17 @@ export default function PickingPage() {
                     <AlertTriangle size={13} /> Esperando que se complete el reabastecimiento
                   </div>
                 )}
-                <button onClick={() => completarTarea(t)} disabled={bloqueada || completando === t.id}
-                  className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                  {completando === t.id ? 'Completando...' : <><CheckCircle2 size={16} /> {esReab ? 'Confirmar reabastecimiento' : 'Confirmar retiro'}</>}
-                </button>
+                <div className="flex gap-2">
+                  <button onClick={() => completarTarea(t)} disabled={bloqueada || completando === t.id}
+                    className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
+                    {completando === t.id ? 'Completando...' : <><CheckCircle2 size={16} /> {esReab ? 'Confirmar reabastecimiento' : 'Confirmar retiro'}</>}
+                  </button>
+                  <button onClick={() => cancelarTarea(t)} disabled={completando === t.id}
+                    title="Cancelar tarea" aria-label="Cancelar tarea"
+                    className="flex-shrink-0 px-3 py-2.5 border border-gray-200 dark:border-gray-700 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-200 dark:hover:border-red-900 text-gray-400 hover:text-red-500 rounded-xl disabled:opacity-50">
+                    <XCircle size={16} />
+                  </button>
+                </div>
               </div>
             )
           })}

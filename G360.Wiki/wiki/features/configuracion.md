@@ -139,6 +139,14 @@ Cierra las Fases 3-5 del roadmap de [[wiki/features/estructuras-udm]]:
 
 Detalle completo del schema/RPCs/UI: [[wiki/features/wms]] → "Fase 3" y "Fase 4".
 
+> **🛑 Nota (2026-07-22):** el toggle `wms_reabastecimiento_on_demand` describía "encadena
+> reabastecimiento al generar picking de un envío" — con el pivote F4 de [[wiki/features/pedidos]]
+> (Ventas/Envíos ya NO generan tareas WMS), ese encadenamiento en la práctica solo se va a disparar
+> desde Pedidos (Fase PED3, sin construir todavía), no desde un envío de Ventas. Sin cambios en el
+> comportamiento actual de este toggle en sí. **Futuro (PED7, sin construir):** el módulo Pedidos va
+> a sumar una tab "Pedidos" propia en Configuración (numeración, tipos, transiciones por rol, cierre
+> automático) — todavía no existe.
+
 ---
 
 ## Envíos
@@ -210,5 +218,6 @@ Conectar cuentas externas por sucursal:
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/wms]] — "Zonas y picking" (v1.143.0)
+- [[wiki/features/pedidos]] — módulo NUEVO, futura tab "Pedidos" en Config (PED7, sin construir)
 - [[wiki/features/estructuras-udm]] — roadmap de Zonas/Picking/Reabastecimiento
 - [[wiki/integrations/roadmap-apis]]

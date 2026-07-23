@@ -21,6 +21,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { logActividad } from '@/lib/actividadLog'
+import { convertirABase, nivelDefaultParaProducto, type NivelEstructuraDB } from '@/lib/estructuras'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { atributoAmbiguoEnLineas, filtrarLineasPorAtributo, type LineaConAtributos } from '@/lib/atributosVariante'
@@ -76,6 +77,11 @@ type MasivoItem = {
   encaje: string
   formato: string
   saborAroma: string
+  // Fase 2 Estructuras-UdM (GO, 2026-07-22): niveles de la estructura DEFAULT del producto,
+  // para cargar/rebajar en una UdM del embalaje (ej. "5 cajas") en vez de unidad base.
+  // Vacío = el producto no tiene estructura multi-nivel, se opera igual que siempre.
+  niveles: NivelEstructuraDB[]
+  nivelOrden: number | null
 }
 
 function mkItem(p: any): MasivoItem {
@@ -108,6 +114,7 @@ function mkItem(p: any): MasivoItem {
     expanded: false,
     lpnPreferido: '',
     talle: '', color: '', encaje: '', formato: '', saborAroma: '',
+    niveles: [], nivelOrden: null,
   }
 }
 
@@ -235,25 +242,45 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
     } catch { /* silencioso */ }
   }
 
-  function addProduct(p: any) {
+  async function addProduct(p: any) {
     const yaExiste = items.find(it => it.productoId === p.id)
     if (yaExiste) { toast.error('Ese producto ya está en la lista'); return }
     setItems(prev => [...prev, mkItem(p)])
+    setProdSearch('')
+    setDropdownOpen(false)
     // ISS-012: cargar líneas para preview en rebaje
     if (tipo === 'rebaje' && !p.tiene_series) {
       cargarLineasParaRebaje(p.id, p.regla_inventario, p.tiene_vencimiento ?? false)
     }
-    setProdSearch('')
-    setDropdownOpen(false)
+    // Fase 2 Estructuras-UdM: traer los niveles de la estructura default para el selector de UdM
+    const { data: estr } = await supabase.from('producto_estructuras')
+      .select('id, producto_estructura_niveles(id, estructura_id, orden, factor, unidades_base, unidad_medida_id, unidades_medida(nombre, simbolo))')
+      .eq('producto_id', p.id).eq('is_default', true).maybeSingle()
+    const niveles = (((estr as any)?.producto_estructura_niveles ?? []) as NivelEstructuraDB[])
+      .slice().sort((a, b) => a.orden - b.orden)
+    if (niveles.length > 1) {
+      const def = nivelDefaultParaProducto(niveles, p.unidad_medida)
+      setItems(prev => prev.map(it => it.productoId === p.id ? { ...it, niveles, nivelOrden: def?.orden ?? null } : it))
+    }
   }
 
   function removeItem(localId: string) {
     setItems(prev => prev.filter(it => it.localId !== localId))
   }
 
+  /** Nivel de UdM elegido para este ítem, o null si el producto no tiene estructura multi-nivel. */
+  function nivelSelDe(it: MasivoItem): NivelEstructuraDB | null {
+    return it.niveles.length > 1 ? (it.niveles.find(n => n.orden === it.nivelOrden) ?? null) : null
+  }
+
   function getCantidad(it: MasivoItem): number {
     if (tipo === 'ingreso' && it.tieneSeries) {
       return it.seriesText.split('\n').map(s => s.trim()).filter(Boolean).length
+    }
+    const nivelSel = nivelSelDe(it)
+    if (nivelSel) {
+      const cantRaw = parseInt(it.cantidad)
+      return (Number.isInteger(cantRaw) && cantRaw > 0) ? convertirABase(cantRaw, nivelSel) : 0
     }
     return parseInt(it.cantidad) || 0
   }
@@ -333,6 +360,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
 
       for (const it of itemsAProcess) {
         const cant = getCantidad(it)
+        const nivelSel = nivelSelDe(it)
 
         const { data: prodAntes } = await supabase.from('productos')
           .select('stock_actual').eq('id', it.productoId).single()
@@ -358,6 +386,8 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
               encaje: it.tieneEncaje ? (it.encaje || null) : null,
               formato: it.tieneFormato ? (it.formato || null) : null,
               sabor_aroma: it.tieneSaborAroma ? (it.saborAroma || null) : null,
+              unidad_medida_id: nivelSel?.unidad_medida_id ?? null,
+              cantidad_uom: nivelSel ? parseFloat(it.cantidad) : null,
             })
             .select().single()
           if (lineaErr) throw new Error(`${it.productoNombre}: ${lineaErr.message}`)
@@ -392,6 +422,8 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
             usuario_id: user?.id,
             linea_id: linea.id,
             sucursal_id: sucursalId || null,
+            unidad_medida_id: nivelSel?.unidad_medida_id ?? null,
+            cantidad_uom: nivelSel ? parseFloat(it.cantidad) : null,
           })
 
         } else {
@@ -466,6 +498,8 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
             usuario_id: user?.id,
             linea_id: primeraLinea?.id ?? null,
             sucursal_id: sucursalId || null,
+            unidad_medida_id: nivelSel?.unidad_medida_id ?? null,
+            cantidad_uom: nivelSel ? parseFloat(it.cantidad) : null,
           })
           // Guardar detalle de LPNs/lotes consumidos en el resultado para el toast
           ;(it as any).__lpnsConsumidos = lpnsConsumidos
@@ -646,16 +680,44 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                         </div>
                       ) : (
                         /* Cantidad normal */
-                        <div className="flex items-end gap-3">
+                        <div className="flex items-end gap-3 flex-wrap">
                           <div className="w-32">
-                            <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                              Cantidad ({it.unidadMedida}) *
-                            </label>
+                            {(() => {
+                              const nivelSel = nivelSelDe(it)
+                              return (
+                                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                                  Cantidad {nivelSel ? `(${nivelSel.unidades_medida?.nombre ?? '—'})` : `(${it.unidadMedida})`} *
+                                </label>
+                              )
+                            })()}
                             <input type="number" step="1" min="1" value={it.cantidad}
                               onChange={e => upd(it.localId, { cantidad: e.target.value })}
                               onWheel={e => e.currentTarget.blur()}
                               className={inp} placeholder="0" />
+                            {(() => {
+                              const nivelSel = nivelSelDe(it)
+                              const cantN = parseInt(it.cantidad)
+                              if (!nivelSel || nivelSel.orden === it.niveles[0]?.orden || !Number.isInteger(cantN) || cantN <= 0) return null
+                              // Nivel base DE LA ESTRUCTURA, no it.unidadMedida (texto libre que
+                              // puede no matchear — ver gotcha en CLAUDE.md).
+                              const uBase = it.niveles[0]?.unidades_medida?.nombre ?? it.unidadMedida
+                              return <p className="mt-1 text-[11px] text-accent-text">= {convertirABase(cantN, nivelSel)} {uBase}</p>
+                            })()}
                           </div>
+                          {it.niveles.length > 1 && (
+                            <div className="flex items-center gap-1 flex-wrap pb-1">
+                              <span className="text-xs text-gray-400 dark:text-gray-500">{tipo === 'ingreso' ? 'Cargar en:' : 'Rebajar en:'}</span>
+                              {it.niveles.map(n => (
+                                <button key={n.id} type="button"
+                                  onClick={() => upd(it.localId, { nivelOrden: n.orden })}
+                                  className={`text-xs px-2 py-0.5 rounded-full border transition-all ${
+                                    it.nivelOrden === n.orden
+                                      ? 'bg-accent text-white border-accent-text'
+                                      : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-accent-text'
+                                  }`}>{n.unidades_medida?.nombre ?? '—'}</button>
+                              ))}
+                            </div>
+                          )}
                           {tipo === 'rebaje' && (
                             <div className="flex-1 space-y-2">
                               <div>

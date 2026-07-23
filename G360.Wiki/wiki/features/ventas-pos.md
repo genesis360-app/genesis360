@@ -13,6 +13,14 @@ POS completo integrado con inventario, caja, clientes y facturación AFIP.
 **Página:** `src/pages/VentasPage.tsx`  
 **Acceso:** OWNER · SUPERVISOR · CAJERO · ADMIN
 
+> **🧾 Ventas nunca genera tareas WMS (pivote 2026-07-22, ver [[wiki/features/pedidos]]):** GO decidió
+> que el picking/reabastecimiento (`wms_tareas`) nace exclusivamente desde el módulo NUEVO Pedidos —
+> `registrarVenta()`/`cambiarEstado()` de esta página siguen sin ningún gancho hacia
+> `fn_generar_tareas_picking_envio`, ni lo van a tener. Pedidos, a su vez, **nunca pasa por
+> `registrarVenta()`** ni por el carrito de esta página — es un documento separado, sin precio en sus
+> líneas, que recién toca el POS cuando eventualmente genera la venta real (Fase PED3+, sin construir
+> todavía).
+
 ---
 
 ## Estados de una venta
@@ -66,6 +74,7 @@ Toggle en el checkout:
 - **Captura**: dentro del rebaje real de `registrarVenta` (Fase 2) y de la transición **reserva → despachada** (`cambiarEstado`). Solo se persiste para ventas `despachada` (la reserva aún no despacha). Insert fire-and-forget — si falla no rompe la venta.
 - **Snapshot**: `lpn`, `ubicacion_nombre` y `nro_serie` se guardan como texto; si después se edita/borra el LPN, la traza queda intacta. **Desde la mig 277** (✅ PROD, v1.135.0, 2026-07-19) también snapshotea `talle/color/encaje/formato/sabor_aroma` — antes el atributo de variante consumido solo era visible en el carrito antes de confirmar, no en el historial post-venta. Sin backfill (no se puede reconstruir el talle de despachos históricos). Ver [[wiki/features/atributos-variante]] "Ronda 4".
 - **Vista**: el modal de detalle de venta lee `venta_item_despachos` (query `venta-despachos`) y muestra por ítem el desglose (`Nu · LPN X · Ubicación` o `#serie · Ubicación`) + los badges de atributo de variante (`atributosDeLinea()`) cuando aplica. Fallback al LPN único (`inventario_lineas.lpn`) si no hay filas de despacho (ventas previas a la mig 153).
+- **🚚 Envío(s) asociado(s) — badge deep-link (2026-07-22, gap encontrado por GO probando el WMS, sigue EN DEV sin commitear):** el header del modal de detalle de venta muestra un badge "Envío #N · estado" por cada envío vinculado (`envios.venta_id`) — antes esa relación solo se veía entrando a `/envios` y buscando a mano. Clickeable, navega a `/envios?busqueda=N` (nuevo soporte de query param en `EnviosPage.tsx` que pre-filtra por número de envío). Ver [[wiki/features/wms]] → "Fixes de la primera ronda de pruebas manuales de GO" y [[wiki/features/envios]].
 
 ### Cantidades decimales
 - `UNIDADES_DECIMALES`: kg, g, gr, mg, l, lt, ml, m, m2, m3, cm, mm, km (case-insensitive)
@@ -411,6 +420,7 @@ Aplica en 5 puntos de `VentasPage.tsx`:
 
 - [[wiki/features/caja]]
 - [[wiki/features/inventario-stock]]
+- [[wiki/features/pedidos]] — módulo NUEVO separado, nunca pasa por esta página (ver nota al principio)
 - [[wiki/features/facturacion-afip]]
 - [[wiki/features/devoluciones]]
 - [[wiki/features/clientes-proveedores]]

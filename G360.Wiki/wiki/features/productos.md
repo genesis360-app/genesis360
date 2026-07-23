@@ -104,6 +104,25 @@ Botón "Grupos" en barra de acciones → panel lateral (drawer):
 
 La página de creación/edición fue reorganizada en 6 cards temáticos. Columna derecha: Imagen + QR (solo al editar).
 
+> [!NOTE] **🐛 Fix bug real de caché stale al reabrir un producto editado (2026-07-22, EN DEV, sin
+> commitear al cierre de sesión).** GO reportó que el selector "Estos precios corresponden a" (ancla
+> de precio, Card 3) no se guardaba a la primera — había que editarlo dos veces. Investigado contra un
+> producto real de GO (Bebida Coca Cola 2.5L, Almacén Jorgito): el **guardado en base siempre funcionó
+> bien** (`nivel_precio_orden` quedaba correcto en la DB al toque). El bug real era de **lectura**: al
+> guardar, `handleSubmit` solo invalidaba la caché de React Query de la LISTA (`['productos']`), nunca
+> la del producto individual (`['producto', id]`) que usa este mismo formulario — así que al reabrir el
+> producto, React Query servía el snapshot cacheado de ANTES de la edición (stale-while-revalidate)
+> mientras refrescaba en segundo plano, y como el `useEffect` que siembra el formulario solo corre una
+> vez (guard `!loaded`), quedaba pegado para siempre con el valor viejo. **Afecta potencialmente TODOS
+> los campos del form**, no solo la ancla — la ancla lo hizo más visible por ser un `<select>` fácil de
+> notar revertido, a diferencia de un precio que el usuario no siempre re-chequea. **Fix:**
+> `src/pages/ProductoFormPage.tsx`, en el éxito de `handleSubmit`, se agregó
+> `qc.removeQueries({ queryKey: ['producto', id] })` — no alcanza con `invalidateQueries`, hay que
+> evictar la entrada para que la próxima apertura arranque de cero. Verificado en vivo contra el
+> producto real de GO con navegación SPA real (no `page.goto()`, que resetearía la caché igual sin
+> probar nada): ancla cambiada ida y vuelta (Caja→Pallet→Caja) con reapertura real en el medio, en
+> ambos sentidos mostró lo recién guardado. **Sin migración — fix 100% frontend.**
+
 ### Card 1: Identificación
 
 | Campo | Tipo | Notas |

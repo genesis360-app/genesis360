@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
@@ -58,6 +58,13 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
   cancelada:  { label: 'Cancelada',  color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-100 dark:bg-red-900/30'    },
   facturada:  { label: 'Facturada',  color: 'text-purple-700', bg: 'bg-purple-100 dark:bg-purple-900/30' },
   devuelta:   { label: 'Devuelta',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
+}
+
+// Labels de envíos.estado — copia liviana de ESTADO_CFG en EnviosPage.tsx (no exportado),
+// solo para el badge de "Envío #N" en el detalle de venta.
+const ENVIO_ESTADO_LABELS: Record<string, string> = {
+  pendiente: 'Pendiente despacho', despachado: 'Despachado', en_camino: 'En camino',
+  en_bodega: 'En bodega', entregado: 'Entregado', devolucion: 'En devolución', cancelado: 'Cancelado',
 }
 
 // Fallback si el tenant aún no tiene métodos configurados — se prefiere la lista dinámica de Config
@@ -351,6 +358,7 @@ export default function VentasPage() {
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>(() => searchParams.get('id') ? 'historial' : 'nueva')
   // J3: CONTADOR es read-only → siempre en el historial, sin acceso al POS
   useEffect(() => { if (esContador && tab !== 'historial') setTab('historial') }, [esContador, tab])
@@ -1262,6 +1270,20 @@ export default function VentasPage() {
   const despachosPorItem = (despachosVenta as any[]).reduce((acc: Record<string, any[]>, d: any) => {
     (acc[d.venta_item_id] ??= []).push(d); return acc
   }, {})
+
+  // Envío(s) asociado(s) a la venta abierta — la relación hoy solo se ve desde /envios,
+  // no había forma de saber desde el detalle de la venta que tiene un envío ni cuál.
+  const { data: enviosVenta = [] } = useQuery({
+    queryKey: ['venta-envios', ventaDetalle?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('envios')
+        .select('id, numero, estado, courier, tracking_number')
+        .eq('venta_id', ventaDetalle!.id)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!ventaDetalle?.id,
+  })
 
   // 🔎 Búsqueda del historial: si hay término, se busca EN EL SERVIDOR (sin la ventana de 50).
   // Bug real que esto arregla (destapado por el spec 42, 2026-07-17): la búsqueda filtraba
@@ -5963,6 +5985,12 @@ export default function VentasPage() {
                   <span className="text-xs text-gray-400 dark:text-gray-500">
                     {new Date(ventaDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
+                  {(enviosVenta as any[]).map(e => (
+                    <button key={e.id} onClick={() => navigate(`/envios?busqueda=${e.numero}`)}
+                      title="Ver envío" className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1 hover:bg-indigo-200 dark:hover:bg-indigo-900/50">
+                      <Truck size={11} /> Envío #{e.numero} · {ENVIO_ESTADO_LABELS[e.estado] ?? e.estado}
+                    </button>
+                  ))}
                 </div>
               </div>
               <button onClick={() => { setVentaDetalle(null); setEditandoPago(false) }} title="Cerrar" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>

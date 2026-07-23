@@ -72,9 +72,10 @@
   detectado):</strong> si se reordenan los niveles de una Estructura (o se cambia cuál Estructura es
   la default), el ancla de precio (<code>nivel_precio_orden</code>) <strong>no se revalida</strong> —
   puede quedar apuntando en silencio a una unidad distinta de la que el usuario pensaba, y todos los
-  precios proporcionales de los demás niveles se recalculan mal en cascada. Ya está anotado para
-  arreglarse; se menciona acá porque es evidencia de que "ubicar la unidad por posición en vez de por
-  identidad" es una fuente real de errores, relevante para las decisiones de abajo (ver H2).</div>
+  precios proporcionales de los demás niveles se recalculan mal en cascada. <strong>Cómo lo arreglamos
+  es la pregunta F3</strong> (por identidad vs. por posición + aviso/bloqueo); se menciona acá porque
+  además es evidencia de que "ubicar la unidad por posición" es una fuente real de errores, relevante
+  para las decisiones de abajo (ver H2).</div>
 </div>
 
 <!-- ============================ A. EL MODELO DE DOS EJES ============================ -->
@@ -374,6 +375,31 @@
   </ul>
 </div>
 
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    🐛 El ancla de precio se guarda por POSICIÓN, no por identidad de unidad — ¿cómo lo arreglamos? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Bug real confirmado en la auditoría (ver recuadro del resumen ejecutivo): hoy
+  <code>productos.nivel_precio_orden</code> guarda el ORDEN del nivel anclado (1, 2, 3…), no la unidad.
+  Si alguien reordena los niveles de la Estructura, o cambia cuál Estructura es la default, el ancla
+  sigue apuntando a "la posición N" — que ahora puede ser otra unidad distinta de la que el usuario
+  eligió — <strong>sin ningún aviso</strong>, y recalcula mal todos los precios proporcionales. Es una
+  decisión de negocio (no solo técnica) porque define cuánto "recuerda" el sistema tu intención.</div>
+  <ul class="opciones">
+    <li>(a) Anclar por IDENTIDAD de unidad (no por posición): el precio queda pegado a "Kilogramo"/
+      "Caja", pase lo que pase con el orden — reordenar niveles nunca cambia a qué corresponde el
+      precio (el fix más robusto, es el que recomiendo)</li>
+    <li>(b) Seguir anclando por posición, pero AVISAR/pedir confirmación al reordenar o cambiar la
+      default si eso movería el ancla ("ojo: el precio va a pasar a corresponder a Pallet en vez de
+      Caja, ¿seguís?")</li>
+    <li>(c) Bloquear el reordenamiento/cambio de default mientras haya un precio anclado, hasta que
+      el usuario re-elija explícitamente el ancla</li>
+    <li>(d) Es un bug menor, arreglarlo por separado (no forma parte de este rediseño) — se corrige
+      solo con un aviso mínimo y listo</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
 <!-- ============================ G. MIGRACIÓN DE DATOS EXISTENTES ============================ -->
 <h2>G. Migración y compatibilidad con lo ya construido</h2>
 
@@ -454,6 +480,7 @@
     <li>(   ) C3/D1 — si el eje de Empaque puede arrancar desde una Unidad de Medida física</li>
     <li>(   ) E2/E3 — en qué unidad se guarda el stock real + qué pasa al cambiarla con stock existente</li>
     <li>(   ) F1 — ancla de precio única vs. una por eje</li>
+    <li>(   ) F3 — 🐛 cómo arreglar el ancla que se guarda por posición (por identidad / avisar / bloquear)</li>
     <li>(   ) G1 — cómo migrar la tabla <code>unidades_medida</code> actual sin romper nada</li>
     <li>(   ) Otro: ____</li>
   </ul>

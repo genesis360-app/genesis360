@@ -27,6 +27,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
+import { agruparPorFamilia, ETIQUETA_FAMILIA, type FamiliaFisica, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
@@ -2792,6 +2793,18 @@ export default function ConfigPage() {
     enabled: !!tenant && tab === 'inventario',
   })
 
+  // Fase 1 UoM: unidades de medida FÍSICAS (familias + conversión universal, mig 303)
+  const { data: unidadesFisicasCfg = [] } = useQuery<UnidadFisica[]>({
+    queryKey: ['unidades_medida_fisicas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('unidades_medida_fisicas')
+        .select('id, familia, nombre, simbolo, factor_base_familia, es_base_familia, permite_decimales')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('orden')
+      return (data ?? []) as UnidadFisica[]
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'unidades',
+  })
+
   const addUdm = async () => {
     if (!udmNombre.trim()) return
     if ((unidadesMedida as any[]).some((u: any) => u.nombre.toLowerCase() === udmNombre.trim().toLowerCase())) {
@@ -4467,12 +4480,45 @@ export default function ConfigPage() {
           )}
 
           {invSubTab === 'unidades' && (
+        <div className="space-y-4">
+        {/* Fase 1 UoM: Unidades de Medida FÍSICAS (conversión universal fija) — mig 303 */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Ruler size={18} className="text-accent-text" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Unidades de Medida</h2>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Cómo se <strong>mide o cuenta</strong> un producto. La conversión dentro de una familia es fija y universal
+            (1&nbsp;kg = 1000&nbsp;g siempre). La familia decide si admite decimales: <strong>Conteo</strong> (unidad) es entero;
+            <strong> Peso / Volumen / Longitud</strong> admiten decimales. Distinto de los <em>niveles de empaque</em> (Caja/Pallet), que se arman por producto.
+          </p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {(['conteo', 'peso', 'volumen', 'longitud'] as FamiliaFisica[]).map(fam => {
+              const us = agruparPorFamilia(unidadesFisicasCfg)[fam]
+              if (us.length === 0) return null
+              return (
+                <div key={fam} className="border border-gray-100 dark:border-gray-700 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-accent-text mb-1.5">{ETIQUETA_FAMILIA[fam]}{fam === 'conteo' ? ' · sin decimales' : ' · admite decimales'}</p>
+                  <div className="space-y-0.5">
+                    {us.map(u => (
+                      <div key={u.id} className="flex items-center justify-between text-sm">
+                        <span className="text-gray-700 dark:text-gray-300">{u.nombre} {u.simbolo && <span className="text-gray-400">({u.simbolo})</span>}</span>
+                        <span className="text-xs text-gray-400">{u.es_base_familia ? 'base' : `= ${u.factor_base_familia.toLocaleString('es-AR')} ${us.find(x => x.es_base_familia)?.simbolo ?? 'base'}`}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <Ruler size={18} className="text-accent-text" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Unidades de medida personalizadas</h2>
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Nombres de empaque personalizados</h2>
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">Definí unidades propias de tu negocio para usarlas en productos (además de las estándar).</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500">Nombres de bultos propios de tu negocio (además de Caja/Pallet) para armar las presentaciones de un producto.</p>
 
           {/* Agregar */}
           {canEdit && (
@@ -4547,6 +4593,7 @@ export default function ConfigPage() {
               ))}
             </div>
           )}
+        </div>
         </div>
           )}
 

@@ -2,11 +2,57 @@
 title: Estructuras de producto + Unidades de Medida (footprints)
 category: features
 tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, zonas, reabastecimiento, udm, precio-por-uom, importador, ingreso-rebaje-uom]
-sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, 291, 293, src/lib/estructuras.ts, src/pages/ImportarProductosPage.tsx, src/pages/InventarioPage.tsx, src/components/MasivoModal.tsx]
-updated: 2026-07-22
+sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, 291, 293, 303, src/lib/estructuras.ts, src/lib/unidadMedidaFisica.ts, src/pages/ImportarProductosPage.tsx, src/pages/InventarioPage.tsx, src/components/MasivoModal.tsx]
+updated: 2026-07-23
 ---
 
-# Estructuras de producto con niveles dinámicos por UdM
+> **🏗️ Rediseño en curso (2026-07-23) — UoM / Empaque / Variantes.** Tras una auditoría, GO decidió
+> separar tres ejes que hoy estaban mezclados: **Unidad de Medida física** (kg/g/L, conversión
+> universal fija), **Nivel de Empaque** (Caja/Pallet, factor por producto — hoy "Estructura") y
+> **Variantes** (SKU madre/hijo). El diseño completo + las decisiones cerradas están en
+> `diseño-uom-empaque-variantes.html` (raíz del repo) y el relevamiento en
+> `relevamiento-unidades-medida-empaque-reglas-negocio.html`. **Fase 1 (Unidad de Medida física) ya
+> está construida, ver abajo.** Las fases 2-5 (presentaciones paralelas, madre/hijo, migración de
+> stock, operar por presentación) siguen pendientes. Hallazgo del proceso: el "ancla de precio"
+> (`nivel_precio_orden`) se guarda por POSICIÓN y no se revalida al reordenar niveles / cambiar la
+> estructura default → puede apuntar en silencio a otra unidad (se arregla en Fase 2, anclando el
+> precio a la unidad base).
+
+## 🆕 Rediseño UoM — Fase 1: Unidad de Medida física (mig 303, EN DEV)
+
+Tabla nueva **`unidades_medida_fisicas`** (por tenant, RLS), separada del catálogo de empaque
+(`unidades_medida`) — decisión G1 de GO: tablas separadas. Modela las unidades con **conversión
+universal fija**, agrupadas en **familias**:
+
+| Familia | Unidades (base en negrita) | Decimales |
+|---|---|---|
+| Conteo | **Unidad** | ❌ (entero) |
+| Peso | Miligramo · **Gramo** · Kilogramo · Tonelada | ✅ |
+| Volumen | **Mililitro** · Litro | ✅ |
+| Longitud | Milímetro · Centímetro · **Metro** · Kilómetro | ✅ |
+
+`factor_base_familia` = cuántas unidades base atómicas equivale (Kg=1000 sobre Gramo). La conversión
+entre dos unidades de la misma familia es `cantidad × factor(desde)/factor(hacia)` — exacta,
+universal, para cualquier producto/tenant. `permite_decimales` = (familia≠conteo) — reemplaza al
+`esDecimal` hardcodeado de `ventasValidation.ts`.
+
+- **Lógica pura:** `src/lib/unidadMedidaFisica.ts` (`convertirFisica`, `familiaPermiteDecimales`,
+  `unidadBaseDeFamilia`, `agruparPorFamilia`, `mapearLegacyAFisica` — espejo del backfill SQL). 12
+  tests unitarios (`tests/unit/unidadMedidaFisica.test.ts`).
+- **`productos.unidad_medida_base_id`** (FK nueva, nullable, aditiva) reemplaza gradualmente al texto
+  legacy `productos.unidad_medida` (que se mantiene en sincronía desde el frontend por compatibilidad
+  — los consumidores viejos siguen leyendo el texto hasta la limpieza de una fase posterior).
+- **UI:** el selector "Unidad de medida" de `ProductoFormPage` ahora lista las físicas agrupadas por
+  familia (optgroups) y persiste el FK + el texto en sincronía; preselecciona del texto legacy si el
+  producto no tiene FK todavía. Config → Inventario → "Unidades" muestra las físicas por familia con
+  su factor de conversión, y la sección de personalizadas pasó a llamarse "Nombres de empaque".
+- **Migración:** seed por trigger de alta de tenant + backfill de existentes; backfill best-effort de
+  `unidad_medida_base_id` desde el texto legacy (en el tenant dev, 25/25 productos mapeados).
+- **Verificado:** `migration-reviewer` (APTA) · tsc · build · 12 unit · e2e `108_unidad_medida_fisica_mutante` (2/2 verde, DB real).
+
+---
+
+# Estructuras de producto con niveles dinámicos por UdM (modelo ACTUAL — cambia en Fase 2)
 
 Modelo estilo **pack structure / footprint de Blue Yonder** (pedido GO 2026-07-19): por cada SKU
 puede haber **varias estructuras** (una default), y cada estructura tiene **N niveles dinámicos**

@@ -6,7 +6,37 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🧾 ARRANCÁ ACÁ (2026-07-23, continuación) — Pedidos: validaciones de alta (mig 302 referencia externa + estado obligatorio/precargado, fecha oblig., cantidad entera-según-UoM, líneas diferenciadas, aviso de stock) + relevamiento nuevo UoM vs Empaque — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump: sigue v1.143.0)**
+> ### 📐 ARRANCÁ ACÁ (2026-07-23, continuación) — Rediseño UoM/Empaque/Variantes: relevamiento + diseño + FASE 1 construida (Unidad de Medida física, mig 303) — EN DEV, **SIN deploy a PROD**
+>
+> Nace de que GO detectó que "Unidad de medida" y "Estos precios corresponden a" conviven sin
+> relación clara. Auditoría → son **3 ejes de negocio mezclados**: identidad/variante · unidad física ·
+> empaque. Artefactos en la raíz del repo: `relevamiento-unidades-medida-empaque-reglas-negocio.html`
+> (28 preguntas) y `diseño-uom-empaque-variantes.html` (diseño consolidado, 5 fases). **Decisiones
+> cerradas por GO:** A2 ambos ejes · C5/C6 presentaciones paralelas · F1/F3 precio en base + overrides
+> (elimina ancla por posición) · G1 tablas separadas · Eje A atributos-LPN coexiste con madre/hijo.
+>
+> **✅ FASE 1 hecha (mig 303, aplicada en DEV):** tabla `unidades_medida_fisicas` (familias con
+> conversión universal Peso/Volumen/Longitud/Conteo) + seed/trigger/backfill; FK
+> `productos.unidad_medida_base_id` + backfill del texto legacy. Lógica pura `unidadMedidaFisica.ts`
+> (12 tests). Selector nuevo en `ProductoFormPage` + sección en Config → Inventario → Unidades. Verde:
+> tsc + build + unit + e2e 108 (2/2). Revisada por `migration-reviewer`. NO toca stock/precios.
+>
+> **▶ Pendiente inmediato (fases siguientes del rediseño, en orden):**
+> 1. **Fase 2 — Presentaciones paralelas:** migrar la cadena lineal (`producto_estructura_niveles`) a
+>    un modelo plano (cada presentación con factor DIRECTO a la base, hermanas permitidas). Eliminar
+>    `nivel_precio_orden`; precio canónico en base + overrides. 🛑 Toca PLATA (Regla #0) — la migración
+>    de precios back-calcula el precio base desde el nivel anclado, revisar con cuidado.
+> 3. **Fase 3 — Variantes madre/hijo:** `producto_padre_id` + diferenciador + propagación de nombre;
+>    reemplaza `producto_grupos` (los "atributos de variante" a nivel LPN COEXISTEN, decisión GO).
+> 4. **Fase 4 — Migración de stock "sin variante asignada" + guards de borrado multi-sucursal** (la
+>    parte más Regla #0: stock visible/contable pero no vendible hasta asignar).
+> 5. **Fase 5 — Operar por presentación** (recibir/vender eligiendo presentación; caja variable en
+>    recepción; decimales por familia en todo el sistema).
+> 6. Deploy a PROD de todo el rediseño (+ WMS + Pedidos, v1.143.0) sigue pendiente de que GO lo pida.
+> 7. No bloqueantes: confirmar familias/unidades finas (B2/B3), catálogo de nombres de empaque (C2),
+>    pack por LPN (C4-b, avanzado).
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-23) — Pedidos: validaciones de alta (mig 302 referencia externa + estado obligatorio/precargado, fecha oblig., cantidad entera-según-UoM, líneas diferenciadas, aviso de stock) + relevamiento nuevo UoM vs Empaque — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump: sigue v1.143.0)**
 >
 > GO reportó un issue del alta de pedido y definió las reglas por preguntas de diseño. Detalle
 > completo en `G360.Wiki/wiki/features/pedidos.md` → PED2 y en `log.md`.

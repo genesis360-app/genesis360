@@ -6,6 +6,40 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-23] update | 📐 Rediseño UoM/Empaque/Variantes — relevamiento + diseño + FASE 1 (Unidad de Medida física, mig 303)
+
+GO detectó que "Unidad de medida" (ficha de producto) y "Estos precios corresponden a" (ancla de
+precio de la Estructura) conviven sin relación clara, y que Config→Inventario→Unidades mezcla
+unidades físicas (kg/L, conversión universal) con niveles de empaque (Caja/Pallet, factor por
+producto). Tras una auditoría profunda del código se confirmó que son **tres ejes de negocio
+distintos mezclados**: identidad/variante, unidad de medida física, y empaque.
+
+**Artefactos de diseño (raíz del repo, HTML imprimible):**
+- `relevamiento-unidades-medida-empaque-reglas-negocio.html` — 28 preguntas (incluye ejemplos
+  trabajados: caja variable 10/12, dos cajas+dos pallets en una estructura, el bug del ancla).
+- `diseño-uom-empaque-variantes.html` — diseño consolidado: 3 ejes ortogonales, modelo de datos,
+  flujos, migración, 5 fases.
+
+**Decisiones cerradas por GO (desbloquean el arranque):** A2 = un producto puede tener ambos ejes
+(físico + empaque, caso Jamón) · C5/C6 = presentaciones paralelas (cada una con factor directo a la
+base, hermanas permitidas — no cadena lineal) · F1/F3 = precio canónico en la unidad base + overrides
+(elimina el ancla por posición) · G1 = tablas separadas (físicas ≠ empaque) · Eje A = "atributos de
+variante" (LPN) coexiste con madre/hijo.
+
+**Hallazgo (anotado, se arregla en Fase 2):** el ancla de precio `nivel_precio_orden` se guarda por
+POSICIÓN y no se revalida al reordenar niveles / cambiar la estructura default → puede apuntar en
+silencio a otra unidad y recalcular mal los precios proporcionales.
+
+**FASE 1 construida (mig 303, EN DEV, sin deploy a PROD):** tabla `unidades_medida_fisicas` (familias
+Peso/Volumen/Longitud/Conteo con conversión universal) + seed por trigger + backfill; FK
+`productos.unidad_medida_base_id` + backfill best-effort del texto legacy (25/25 productos mapeados en
+dev). Lógica pura `src/lib/unidadMedidaFisica.ts` (12 tests). Selector nuevo en `ProductoFormPage`
+(agrupado por familia, persiste el FK + texto en sincronía). Config → Inventario → "Unidades" muestra
+las físicas por familia; "personalizadas" → "Nombres de empaque". Migración revisada por
+`migration-reviewer` (APTA, se agregó el índice sugerido). NO toca stock/precios/fiscal. Verde: tsc +
+build + 12 unit + e2e `108_unidad_medida_fisica_mutante` (2/2 contra DB real). Ver
+[[wiki/features/estructuras-udm]] → "Rediseño UoM — Fase 1".
+
 ## [2026-07-23] update | 🧾 Pedidos — validaciones de creación (referencia externa mig 302, estado obligatorio+precargado, fecha oblig., cantidad entera-según-UoM, líneas diferenciadas, aviso de stock) + relevamiento UoM vs Empaque
 
 GO reportó un issue del alta de pedido: el estado por línea debía precargarse con el default del

@@ -15,6 +15,7 @@ import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
+import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, type FamiliaFisica, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
 import { Toggle } from '@/components/Toggle'
@@ -44,7 +45,7 @@ export default function ProductoFormPage() {
   const [form, setForm] = useState({
     nombre: '', sku: '', descripcion: '', categoria_id: '', proveedor_id: '',
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
-    stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
+    stock_minimo: '', unidad_medida: 'unidad', unidad_medida_base_id: '', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false,
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
     // Nuevos atributos
@@ -174,14 +175,26 @@ export default function ProductoFormPage() {
     enabled: !!tenant,
   })
 
-  const { data: unidadesCustom = [] } = useQuery({
-    queryKey: ['unidades_medida', tenant?.id],
+  // Fase 1 UoM: catálogo de unidades de medida FÍSICAS (familias + conversión universal, mig 303)
+  const { data: unidadesFisicas = [] } = useQuery<UnidadFisica[]>({
+    queryKey: ['unidades_medida_fisicas', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('unidades_medida').select('nombre, simbolo').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
-      return data ?? []
+      const { data } = await supabase.from('unidades_medida_fisicas')
+        .select('id, familia, nombre, simbolo, factor_base_familia, es_base_familia, permite_decimales')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('orden')
+      return (data ?? []) as UnidadFisica[]
     },
     enabled: !!tenant,
   })
+
+  // Preselección de la UdM física: si el producto todavía no tiene FK (nuevo, o legacy sin
+  // backfill), se resuelve del texto legacy (mismo mapeo que el backfill SQL de la mig 303).
+  // Solo actúa si está vacío → nunca pisa una elección del usuario.
+  useEffect(() => {
+    if (unidadesFisicas.length === 0 || form.unidad_medida_base_id) return
+    const m = mapearLegacyAFisica(form.unidad_medida, unidadesFisicas)
+    if (m) setForm(p => p.unidad_medida_base_id ? p : { ...p, unidad_medida_base_id: m.id })
+  }, [unidadesFisicas, form.unidad_medida, form.unidad_medida_base_id])
 
   const { data: tiersData = [] } = useQuery({
     queryKey: ['precios-mayorista', id],
@@ -297,6 +310,7 @@ export default function ProductoFormPage() {
         precio_costo: productoData.precio_costo.toString(),
         precio_venta: productoData.precio_venta.toString(), stock_actual: productoData.stock_actual.toString(),
         stock_minimo: productoData.stock_minimo.toString(), unidad_medida: productoData.unidad_medida,
+        unidad_medida_base_id: (productoData as any).unidad_medida_base_id ?? '',
         nivel_precio_orden: (productoData as any).nivel_precio_orden != null ? String((productoData as any).nivel_precio_orden) : '',
         codigo_barras: productoData.codigo_barras ?? '', activo: productoData.activo,
         tiene_series: productoData.tiene_series ?? false,
@@ -462,6 +476,7 @@ export default function ProductoFormPage() {
         alto_cm:  form.alto_cm  !== '' ? parseFloat(form.alto_cm)  : null,
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida,
+        unidad_medida_base_id: form.unidad_medida_base_id || null,
         codigo_barras: form.codigo_barras.trim() || null,
         imagen_url, activo: form.activo,
         tiene_series: form.tiene_series,
@@ -1200,19 +1215,33 @@ export default function ProductoFormPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad de medida</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide este producto</p>
-                  <select value={form.unidad_medida} disabled={!canEdit}
-                    onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
-                    {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                    {(unidadesCustom as any[]).length > 0 && (
-                      <optgroup label="Personalizadas">
-                        {(unidadesCustom as any[]).map((u: any) => (
-                          <option key={u.nombre} value={u.nombre}>{u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide/cuenta este producto (Peso/Volumen/Longitud admiten decimales; Conteo no)</p>
+                  {unidadesFisicas.length > 0 ? (
+                    <select value={form.unidad_medida_base_id} disabled={!canEdit}
+                      onChange={e => {
+                        const sel = unidadesFisicas.find(x => x.id === e.target.value)
+                        setForm(p => ({ ...p, unidad_medida_base_id: e.target.value, unidad_medida: sel ? sel.nombre : p.unidad_medida }))
+                      }}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                      <option value="">— Elegí una unidad —</option>
+                      {(['conteo', 'peso', 'volumen', 'longitud'] as FamiliaFisica[]).map(fam => {
+                        const us = agruparPorFamilia(unidadesFisicas)[fam]
+                        if (us.length === 0) return null
+                        return (
+                          <optgroup key={fam} label={ETIQUETA_FAMILIA[fam]}>
+                            {us.map(u => <option key={u.id} value={u.id}>{u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}</option>)}
+                          </optgroup>
+                        )
+                      })}
+                    </select>
+                  ) : (
+                    // Fallback si el catálogo de UdM físicas todavía no cargó (o tenant sin seed)
+                    <select value={form.unidad_medida} disabled={!canEdit}
+                      onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  )}
                 </div>
               </div>
 

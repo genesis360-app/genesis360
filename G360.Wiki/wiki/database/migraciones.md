@@ -6,10 +6,22 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-23
 ---
 
-# Historial de Migraciones (001-302)
+# Historial de Migraciones (001-303)
 
-**Total al 2026-07-23:** 302 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-23:** 303 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+**303 (rediseño UoM/Empaque/Variantes — FASE 1: Unidad de Medida física, EN DEV, SIN deploy a PROD)** —
+tabla nueva `unidades_medida_fisicas` (por tenant, RLS) con familias de conversión universal fija
+(Peso mg/g/kg/t · Volumen ml/L · Longitud mm/cm/m/km · Conteo unidad), `factor_base_familia` +
+`es_base_familia` + `permite_decimales` (=familia≠conteo). Función `seed_unidades_medida_fisicas` +
+trigger `AFTER INSERT ON tenants` (patrón `seed_tipos_pedido`) + backfill de tenants existentes.
+`productos.unidad_medida_base_id` (FK nullable a la nueva tabla, aditiva) + índice + backfill
+best-effort desde el texto legacy `productos.unidad_medida` (que se mantiene en sincronía desde el
+frontend por compatibilidad — se dropea en una limpieza de fase posterior). Revisada por
+`migration-reviewer` (APTA; se agregó el índice sugerido). NO toca stock/precios/fiscal (solo catálogo
++ FK descriptiva). Decisión G1 de GO: tablas SEPARADAS (físicas ≠ nombres de empaque). Ver el diseño
+completo en `diseño-uom-empaque-variantes.html` y [[wiki/features/estructuras-udm]] → "Rediseño UoM".
+
 **302 (Pedidos — validaciones de creación, EN DEV, SIN deploy a PROD)** — `pedidos.referencia text`
 (Nº externo / referencia del cliente, ej. su OC; el correlativo interno `numero`/`numero_sucursal`
 sigue 100% automático, este campo es aparte para no meter huecos ni colisiones) + `seed_tipos_pedido`

@@ -51,12 +51,14 @@
 </div>
 
 <div class="status">
-  <strong>Estado:</strong> PROPUESTA DE DISEÑO — no implementado, nada en DEV ni PROD. Varias
-  decisiones todavía dependen de las respuestas del relevamiento (marcadas <span class="pendiente"
-  style="display:inline;padding:0 4pt">🔴 pendiente Xn</span> con el código de la pregunta). El diseño
-  toma la opción recomendada en cada bifurcación para poder ser coherente, pero se ajusta si en el
-  relevamiento se elige otra. <strong>Toca Regla de Oro #0 (inventario/fiscal) de lleno</strong> — la
-  migración de datos existentes y los guards de stock son la parte más sensible.
+  <strong>Estado (act. 2026-07-23):</strong> PROPUESTA DE DISEÑO — no implementado, nada en DEV ni
+  PROD. <strong>Las decisiones BLOQUEANTES ya están cerradas por GO</strong> (ver §11): A2=ambos ejes ·
+  C5/C6=presentaciones paralelas · F1/F3=recomendado (precio canónico en base) · G1=<strong>tablas
+  separadas</strong> · Eje A=LPN (atributos de variante) COEXISTE con madre/hijo. Quedan pendientes solo
+  detalles no bloqueantes por fase (qué familias arrancan B2, catálogo de nombres de empaque C2, pack
+  por LPN C4-b, ancla vs override F1-detalle). <strong>Toca Regla de Oro #0 (inventario/fiscal) de
+  lleno</strong> — la migración de datos existentes (sobre todo precio) y los guards de stock son la
+  parte más sensible.
 </div>
 
 <!-- ============================================================ -->
@@ -119,7 +121,7 @@ Shopify: el producto ES el padre):</p>
   <tr><td><code>variante_diferenciador</code> text NULL</td><td>Valor que distingue el hijo ("Rojo M"). Único entre hermanos.</td></tr>
   <tr><td><code>nombre</code> (existente)</td><td>En la madre = fuente de verdad. En el hijo = copia compuesta <code>madre.nombre — diferenciador</code>, mantenida por trigger al cambiar el nombre de la madre — así todo consumidor (ticket, factura, búsqueda) sigue leyendo <code>productos.nombre</code> sin cambios.</td></tr>
 </table>
-<div class="pendiente">🔴 <strong>Pendiente:</strong> qué pasa con "atributos de variante" (talle/color a nivel de LPN dentro del mismo SKU) — ¿se deprecia o coexiste como opción liviana para quien no quiere un SKU por variante? Es un tradeoff real (ropa = SKU por variante correcto; ferretería = atributo a nivel de línea más liviano).</div>
+<div class="worked" style="background:#eef7ee">✅ <strong>Decidido (GO, 2026-07-23):</strong> "atributos de variante" (talle/color a nivel de LPN dentro del mismo SKU) <strong>COEXISTE</strong> con madre/hijo. Quedan los dos: SKU por variante (madre/hijo, ideal para ropa) y atributo a nivel de línea (más liviano, ferretería). Cada tenant/producto elige. (La exclusión mutua actual de mig 274 aplica entre "grupo" y "atributos" del MISMO producto; madre/hijo reemplaza al grupo pero no fuerza a los atributos-línea a desaparecer.)</div>
 </div>
 
 <!-- ============================================================ -->
@@ -139,7 +141,8 @@ Shopify: el producto ES el padre):</p>
   <li>La UdM base <strong>cambia cómo se ve, ingresa y despacha el inventario</strong> (palabras de GO):
     si el SKU está en "unidad", el stock se ve/recibe/despacha en unidades; en "kg", en kilos.</li>
 </ul>
-<div class="pendiente">🔴 <strong>Pendiente B2/B3/G1:</strong> qué familias arrancan · si el tenant puede sumar unidades custom dentro de una familia · si <code>unidades_medida</code> se parte en tabla nueva o se le agrega una columna <code>tipo</code> (recom.: agregar <code>tipo='fisica'</code> + <code>familia</code> + <code>factor_base_familia</code>, sin mover filas — menos riesgo con los FK existentes).</div>
+<div class="worked" style="background:#eef7ee">✅ <strong>Decidido (GO, 2026-07-23) — G1 = tablas SEPARADAS:</strong> tabla nueva <code>unidades_medida_fisicas</code> (familia + factor universal), y <code>unidades_medida</code> queda para los nombres de empaque (Caja/Pallet/Bulto). Default de familias para arrancar (B2): Peso (mg/g/kg/t), Volumen (ml/L), Longitud (mm/cm/m/km), Conteo (unidad). El producto elige familia + unidad base y transacciona en cualquier unidad de la misma familia (B3-a).</div>
+<div class="pendiente">🔴 <strong>No bloqueante (B2/B3):</strong> confirmar la lista fina de familias/unidades y si el tenant puede sumar unidades custom dentro de una familia (Fase 1 arranca con el default de arriba).</div>
 </div>
 
 <!-- ============================================================ -->
@@ -216,7 +219,8 @@ presentaciones; <em>una cosa que varía</em> (caja de 10/12) → recepción.
 <table>
   <tr><th>Tabla</th><th>Cambio</th></tr>
   <tr><td><code>productos</code></td><td>+ <code>producto_padre_id</code>, + <code>variante_diferenciador</code>, + <code>unidad_medida_base_id</code> (reemplaza el texto legacy <code>unidad_medida</code>), − <code>nivel_precio_orden</code>. <code>precio_venta/costo</code> pasan a ser "por unidad base".</td></tr>
-  <tr><td><code>unidades_medida</code></td><td>+ <code>tipo</code> ('fisica' | 'empaque'), + <code>familia</code>, + <code>factor_base_familia</code> (solo físicas). Las 'empaque' quedan como catálogo de <em>nombres</em> por tenant (Caja/Pallet/Bulto), sin factor (el factor es por producto).</td></tr>
+  <tr><td><code>unidades_medida_fisicas</code> <span class="tag tag-new">NUEVA (G1)</span></td><td>Catálogo de UdM físicas por tenant, seeded: <code>familia</code> ('peso'|'volumen'|'longitud'|'conteo'), <code>nombre</code>, <code>simbolo</code>, <code>factor_base_familia</code> (universal, ej. Kg=1000 sobre Gramo), <code>es_base_familia</code>, <code>permite_decimales</code>, <code>predefinida</code>, <code>activo</code>, <code>orden</code>.</td></tr>
+  <tr><td><code>unidades_medida</code> (existente)</td><td>Se depura: quedan solo los NOMBRES de empaque (Caja/Pallet/Bulto…). Las físicas (Kilogramo/Gramo/Litro/Metro/Unidad) migran a <code>unidades_medida_fisicas</code>.</td></tr>
   <tr><td><code>producto_presentaciones</code> <span class="tag tag-new">NUEVA</span></td><td>Reemplaza <code>producto_estructuras</code> + <code>producto_estructura_niveles</code>. Una fila por presentación de un SKU: <code>producto_id</code>, <code>nombre_empaque_id</code>, <code>etiqueta</code> ("Caja-6"), <code>factor_base</code> (directo a base), <code>es_base</code>, <code>precio_venta/costo</code> (override), <code>orden</code>, <code>activo</code>.</td></tr>
   <tr><td><code>inventario_lineas</code> / <code>movimientos_stock</code></td><td><code>cantidad</code> sigue en unidad base. Reusa <code>cantidad_uom</code>/<code>unidad_medida_id</code> (mig 293). + <code>factor_recepcion</code> para la caja variable (número libre de esa entrada). Avanzado/futuro: <code>pack_factor</code> por LPN (C4-b).</td></tr>
 </table>
@@ -291,12 +295,21 @@ reales en DEV y se versiona por separado; nada a PROD hasta que GO lo pida.</p>
 <div class="fase"><span class="fase-num">Avanzado (futuro)</span> Pack por LPN (C4-b): recordar que "este pallet vino en cajas de 10", para devolución al proveedor / picking por caja física.</div>
 
 <!-- ============================================================ -->
-<h2>10. Decisiones abiertas que bloquean el arranque</h2>
-<div class="pendiente"><strong>A2</strong> (relev.) — ¿un producto puede tener ambos ejes B y C a la vez (Jamón)? Define la arquitectura de Fase 1-2.</div>
-<div class="pendiente"><strong>C6 / C5</strong> — presentaciones paralelas vs cadena lineal (recom. paralelas) + cuántos niveles + de qué caja es cada pallet.</div>
-<div class="pendiente"><strong>F1 / F3</strong> — un ancla en base + overrides (recom.) vs dos anclas por eje · cómo se arregla el ancla por posición.</div>
-<div class="pendiente"><strong>G1</strong> — cómo se parte <code>unidades_medida</code> (tabla nueva vs columna <code>tipo</code>, recom. columna).</div>
-<div class="pendiente"><strong>Eje A</strong> — atributos de variante (LPN) ¿se depreca o coexiste con madre/hijo?</div>
+<h2>11. Decisiones — estado</h2>
+<h4>✅ Cerradas por GO (2026-07-23) — desbloquean el arranque</h4>
+<table>
+  <tr><th>Cód.</th><th>Decisión</th></tr>
+  <tr><td><strong>A2</strong></td><td>Un producto PUEDE tener ambos ejes a la vez (UdM física + empaque) — caso Jamón completo.</td></tr>
+  <tr><td><strong>C5 / C6</strong></td><td>Presentaciones paralelas (cada una con factor directo a base, hermanas permitidas); cantidad de niveles según escalones fijos reales.</td></tr>
+  <tr><td><strong>F1 / F3</strong></td><td>Precio canónico en la unidad base (una sola ancla) + overrides por presentación; se elimina el ancla por posición.</td></tr>
+  <tr><td><strong>G1</strong></td><td>Tablas SEPARADAS: <code>unidades_medida_fisicas</code> nueva + <code>unidades_medida</code> para nombres de empaque.</td></tr>
+  <tr><td><strong>Eje A</strong></td><td>Atributos de variante (LPN) COEXISTE con madre/hijo.</td></tr>
+</table>
+<h4>🔴 No bloqueantes (se resuelven por fase, con default razonable mientras tanto)</h4>
+<div class="pendiente"><strong>B2/B3</strong> — lista fina de familias/unidades y unidades custom por familia (Fase 1 arranca con el default: Peso/Volumen/Longitud/Conteo).</div>
+<div class="pendiente"><strong>C2</strong> — catálogo de nombres de empaque compartido vs texto libre (Fase 2).</div>
+<div class="pendiente"><strong>C4-b</strong> — pack por LPN (recordar "vino en cajas de 10") — modo avanzado, fase futura.</div>
+<div class="pendiente"><strong>Pallets del dibujo</strong> — de qué caja se compone cada pallet (dato del negocio, al cargar).</div>
 
 <div class="footer">
   Genesis360 · Diseño Unidad de Medida · Empaque · Variantes · 2026-07-23<br>

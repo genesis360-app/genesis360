@@ -21,20 +21,45 @@ type: project
 > (12 tests). Selector nuevo en `ProductoFormPage` + sección en Config → Inventario → Unidades. Verde:
 > tsc + build + unit + e2e 108 (2/2). Revisada por `migration-reviewer`. NO toca stock/precios.
 >
-> **▶ Pendiente inmediato (fases siguientes del rediseño, en orden):**
-> 1. **Fase 2 — Presentaciones paralelas:** migrar la cadena lineal (`producto_estructura_niveles`) a
->    un modelo plano (cada presentación con factor DIRECTO a la base, hermanas permitidas). Eliminar
->    `nivel_precio_orden`; precio canónico en base + overrides. 🛑 Toca PLATA (Regla #0) — la migración
->    de precios back-calcula el precio base desde el nivel anclado, revisar con cuidado.
-> 3. **Fase 3 — Variantes madre/hijo:** `producto_padre_id` + diferenciador + propagación de nombre;
->    reemplaza `producto_grupos` (los "atributos de variante" a nivel LPN COEXISTEN, decisión GO).
-> 4. **Fase 4 — Migración de stock "sin variante asignada" + guards de borrado multi-sucursal** (la
->    parte más Regla #0: stock visible/contable pero no vendible hasta asignar).
-> 5. **Fase 5 — Operar por presentación** (recibir/vender eligiendo presentación; caja variable en
->    recepción; decimales por familia en todo el sistema).
-> 6. Deploy a PROD de todo el rediseño (+ WMS + Pedidos, v1.143.0) sigue pendiente de que GO lo pida.
-> 7. No bloqueantes: confirmar familias/unidades finas (B2/B3), catálogo de nombres de empaque (C2),
->    pack por LPN (C4-b, avanzado).
+> **▶ PRÓXIMA SESIÓN (GO pidió /clear y seguir con FASE 2 + FASE 3). Metodología: cada migración por
+> `migration-reviewer` ANTES de aplicar + tests + verificar en DB real. Leer primero el diseño completo
+> en `diseño-uom-empaque-variantes.html` (§6 modelo de datos, §7 flujos).**
+>
+> **FASE 2 — Presentaciones paralelas + precio en base (🛑 toca PLATA, Regla #0).**
+> - Tabla nueva `producto_presentaciones` (reemplaza `producto_estructuras` + `producto_estructura_niveles`):
+>   `producto_id`, `nombre_empaque_id`/`etiqueta` ("Caja-6"), `factor_base` (DIRECTO a la base, no al
+>   nivel anterior — permite hermanas: dos cajas, dos pallets), `es_base`, `precio_venta`/`precio_costo`
+>   (override), `orden`, `activo`.
+> - **Migración de datos:** el `unidades_base` acumulado de la cadena actual ES el `factor_base` nuevo →
+>   copia directa. El precio: **eliminar `productos.nivel_precio_orden`** y back-calcular el precio base:
+>   `precio_base = precio_anclado / unidades_base(nivel_anclado)` — matemática exacta, PERO verificar el
+>   cálculo contra datos reales ANTES de dar por buena la migración (Regla #0). `productos.precio_venta/
+>   costo` pasan a ser "por unidad base".
+> - Consumidores a rewirear: `src/lib/estructuras.ts` (`precioEfectivoNivel`, `ordenAnclaEfectivo`),
+>   `ProductoFormPage` (selector "Estos precios corresponden a" → presentaciones; entry en cualquier
+>   presentación, normaliza a base al guardar), y el POS (`VentasPage` — el más sensible, fiscal).
+> - Arregla de paso el bug del ancla por posición (F3): al anclar el precio a la unidad base, reordenar
+>   niveles / cambiar default ya no lo corrompe.
+>
+> **FASE 3 — Variantes madre/hijo (reemplaza `producto_grupos`).**
+> - `productos.producto_padre_id` (NULL=madre/standalone · con valor=hijo) + `variante_diferenciador`
+>   (único entre hermanos). Nombre vive en la madre; hijos = `madre.nombre — diferenciador` (copia
+>   mantenida por trigger al cambiar el nombre de la madre, para que todo consumidor siga leyendo
+>   `productos.nombre`). Madre con hijos = no vendible (agrupador).
+> - Migración: por cada `producto_grupos`, promover/crear una madre; los productos del grupo pasan a
+>   `producto_padre_id`. "Atributos de variante" (LPN, talle/color) COEXISTE — NO se depreca (decisión GO).
+> - Listado de Productos: muestra solo madres; al abrir, sus hijos. Selector de SKU hijo en la ficha.
+> - ⚠ La migración de stock "sin variante asignada" + guards de borrado son la **FASE 4** (Regla #0
+>   fuerte) — NO mezclarla con la 3; la 3 es el modelo + UI, la 4 es la integridad de stock.
+>
+> **Después (no en esta tanda salvo que sobre):** Fase 4 (stock sin asignar + borrado multi-sucursal),
+> Fase 5 (operar por presentación: recibir/vender + caja variable + decimales por familia), deploy a
+> PROD de todo el rediseño (+ WMS + Pedidos). No bloqueantes: familias finas B2/B3, nombres de empaque
+> C2, pack por LPN C4-b.
+>
+> **Estado de git al cierre:** 8 commits en `dev` LOCAL sin pushear a `origin/dev` (último `cc28fbe8`).
+> Sobreviven al /clear. PROD sigue v1.142.0. Nada de esto (WMS v1.143 + Pedidos + rediseño UoM) se
+> deployó a PROD todavía.
 
 > ### 🧾 ESTADO ANTERIOR (2026-07-23) — Pedidos: validaciones de alta (mig 302 referencia externa + estado obligatorio/precargado, fecha oblig., cantidad entera-según-UoM, líneas diferenciadas, aviso de stock) + relevamiento nuevo UoM vs Empaque — sigue TODO EN DEV, **SIN deploy a PROD (PROD sigue v1.142.0, sin bump: sigue v1.143.0)**
 >

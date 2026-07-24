@@ -232,6 +232,55 @@
   </ul>
 </div>
 
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    📦 EJEMPLO TRABAJADO — mismo SKU (un solo código) que llega a veces en caja de 10 y a veces de 12 <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Caso real planteado por GO: un producto con <strong>un único código</strong> (no se
+  puede abrir en dos SKU — el cliente lo informa con el mismo código) que el proveedor manda a veces
+  en cajas de 10 y a veces de 12. <strong>Punto clave:</strong> si "caja" cambia de tamaño, entonces
+  NO es un factor fijo → no puede ser un nivel de la Estructura (un nivel de Estructura es siempre un
+  factor fijo, "1 caja = 12 unidades, siempre"). El stock real siempre se guarda en la unidad base
+  (unidades); "caja" pasa a ser una cantidad que se declara <strong>en el momento de la recepción</strong>,
+  no una propiedad del producto. Ej: entran 5 cajas de 12 → guarda 60 unidades; después 3 cajas de 10
+  → guarda 30 → total 90 unidades, un solo código, sin ambigüedad. La mig 293 ya guarda
+  <code>cantidad_uom</code>/<code>unidad_medida_id</code> en el movimiento ("cómo lo tecleó el
+  operador") sin tocar el stock canónico — el ajuste es permitir que la "cantidad por bulto" de esa
+  entrada sea un número LIBRE (10 o 12), no un factor congelado del producto.</div>
+  <div class="contexto"><strong>La pregunta que define cuánto construir:</strong> ¿hace falta RECORDAR,
+  después de recibido, cuánto entró como caja-de-10 vs caja-de-12?</div>
+  <ul class="opciones">
+    <li>(a) NO — una unidad es una unidad una vez en stock. La caja es solo un multiplicador de carga
+      en la recepción (campo libre "unidades por bulto" × "cantidad de bultos"), se traza en el
+      movimiento por si hay que auditarlo, y listo. Cubre la enorme mayoría de los negocios (lo
+      recomiendo para arrancar)</li>
+    <li>(b) SÍ, necesito saber que "este pallet/LPN vino en cajas de 10" (para devolver al proveedor
+      "una caja como vino", o si el picking se hace por caja física) → el pack se guarda en el LPN
+      (la línea de inventario), no en el producto — es lo que hace un WMS de packs mixtos, más pesado,
+      modo avanzado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C5</span><span class="pregunta-titulo">
+    ¿Cuántos niveles tiene una Estructura con este modelo nuevo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Aclaración importante que surge del ejemplo C4: la regla NO es "siempre un solo
+  nivel". La regla es <strong>máximo 1 Estructura por SKU, y cada nivel es un factor FIJO</strong>. La
+  Estructura tiene tantos niveles como escalones de empaque ESTABLES tenga el SKU. Un escalón cuyo
+  tamaño varía (la caja de 10/12) no es un nivel — se va a la recepción (C4).</div>
+  <ul class="opciones">
+    <li>(a) Depende del producto: puede ser 1 solo nivel (Unidad, ej. ropa vendida por unidad, o el
+      caso C4 donde arriba todo es variable) o varios niveles fijos (ej. Gaseosa: Unidad → Pack de 6
+      fijo → Pallet de 100 packs fijo) — la Estructura acompaña los escalones estables reales</li>
+    <li>(b) Siempre un solo nivel base (Unidad) — todo lo de arriba (caja/pallet) se declara siempre
+      en recepción, nunca se modela como nivel (más simple pero pierde el "vender por pack" con precio
+      derivado automático)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
 <!-- ============================ D. COEXISTENCIA DE AMBOS EJES ============================ -->
 <h2>D. Si un producto usa ambos ejes a la vez (solo si A2 = sí/depende)</h2>
 

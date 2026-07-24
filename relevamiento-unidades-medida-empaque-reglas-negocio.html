@@ -281,6 +281,35 @@
   </ul>
 </div>
 
+<div class="pregunta">
+  <span class="pregunta-codigo">C6</span><span class="pregunta-titulo">
+    📦 EJEMPLO TRABAJADO — un SKU con DOS cajas (6 y 9) y DOS pallets (100 y 120) en la misma estructura: ¿cadena lineal o presentaciones paralelas? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Caso real dibujado por GO (EST 1): Unidad · Caja-6 · Caja-9 · Pallet-100 ·
+  Pallet-120, todo bajo el mismo código. <strong>Punto clave:</strong> Caja-6 y Caja-9 NO están en
+  cadena entre sí (una Caja-9 no está hecha de Cajas-6) — son <strong>hermanas</strong>, las dos
+  convierten directo a la unidad base (Caja-6 = 6 u, Caja-9 = 9 u). Igual los dos pallets. El modelo
+  ACTUAL es una <strong>cadena lineal</strong> (cada nivel = factor sobre el nivel anterior:
+  Unidad→Caja→Pallet, UNA de cada) — y por eso NO puede representar dos tamaños de caja en la misma
+  estructura. Para que el dibujo entre en UNA sola estructura hay que pasar el modelo a un
+  <strong>conjunto de presentaciones paralelas</strong>: cada presentación declara su propia
+  conversión a la base, y se permiten hermanas. No son productos separados (mismo código, stock
+  compartido) ni estructuras separadas (eso reintroduce la ambigüedad de "¿cuál caja?").
+  <strong>Ojo con los pallets:</strong> "Pallet-100" tiene que resolver a un número FIJO de unidades
+  base — hay que pinchar "100 de CUÁL caja" (100 × Caja-6 = 600 u, o 100 × Caja-9 = 900 u). Si un
+  mismo pallet puede armarse indistintamente con cualquier caja, entonces es variable → va a recepción
+  (C4), no es un nivel.</div>
+  <ul class="opciones">
+    <li>(a) Presentaciones paralelas: la Estructura es un conjunto de presentaciones, cada una con su
+      conversión directa a la base (Unidad=1, Caja-6=6, Caja-9=9, Pallet-A=600, Pallet-B=1080…),
+      permitiendo hermanas. Resuelve el dibujo en UNA estructura, sin ambigüedad (cada presentación
+      tiene identidad propia). Es un superconjunto de la cadena lineal (recomendado)</li>
+    <li>(b) Cadena lineal única (como hoy): un solo camino Unidad→Caja→Pallet; si hay dos tamaños de
+      caja NO entran en la misma estructura → habría que elegir uno, o sí abrir productos separados</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
 <!-- ============================ D. COEXISTENCIA DE AMBOS EJES ============================ -->
 <h2>D. Si un producto usa ambos ejes a la vez (solo si A2 = sí/depende)</h2>
 

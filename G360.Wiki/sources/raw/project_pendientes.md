@@ -6,7 +6,65 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-23, continuación) — Rediseño UoM/Empaque/Variantes: relevamiento + diseño + FASE 1 construida (Unidad de Medida física, mig 303) — EN DEV, **SIN deploy a PROD**
+> ### 📐 ARRANCÁ ACÁ (2026-07-24) — Rediseño UoM/Empaque/Variantes: **FASE 2 (precio en base + presentaciones, migs 304) y FASE 3 (variantes madre/hijo, mig 305) CONSTRUIDAS** — EN DEV, **SIN deploy a PROD**
+>
+> Continuación de Fase 1 (mig 303). GO pidió seguir con Fase 2 + 3 tras el /clear. Ambas hechas,
+> con cada migración revisada por `migration-reviewer` ANTES de aplicar y verificadas contra datos
+> reales de DEV. Diseño canónico: `diseño-uom-empaque-variantes.html` (§4/§5/§6 Fase 2, §2/§7 Fase 3).
+>
+> **✅ FASE 2 — Precio canónico en la unidad BASE + presentaciones paralelas (mig 304, TOCA PLATA).**
+> - Tabla nueva `producto_presentaciones` (plano, `factor_base` DIRECTO a la base — soporta hermanas
+>   a futuro). Se puebla 1:1 desde `producto_estructura_niveles` y se mantiene por trigger
+>   (`fn_rebuild_presentaciones` + `trg_pp_sync_niveles`/`trg_pp_sync_estructura`). `niveles` SIGUE
+>   siendo la fuente de CONVERSIÓN para Recepciones/Inventario/WMS hasta Fase 5. GRANT solo SELECT a
+>   authenticated (tabla 100% derivada). Hermanas bloqueadas hasta Fase 5 por `UNIQUE(producto,nombre_empaque)`.
+> - **Se ELIMINÓ `productos.nivel_precio_orden` (el "ancla por posición", bug F3).** Ahora
+>   `productos.precio_venta/costo` es SIEMPRE el precio por unidad base; una presentación = override
+>   propio ?? base × factor. **Back-calc de plata** verificado exacto contra los 6 productos anclados
+>   de DEV (Coca 3500/6=583.33 con Caja override 3500 exacto; el precio del nivel anclado se persiste
+>   como override para no driftear). Drift ≤ centavos solo en niveles derivados altos (Pallet).
+> - Rewire: `estructuras.ts` (`precioPresentacion` reemplaza `precioEfectivoNivel`/`ordenAnclaEfectivo`),
+>   ProductoFormPage (label "por Unidad base", sin selector de ancla), VentasPage/POS (lee
+>   `producto_presentaciones`), ProductosPage, ImportarProductosPage (sacada la columna `estr_precio_ancla`).
+> - `fn_estructura_guardar_niveles` reescrita SIN el bloque que seteaba `nivel_precio_orden`
+>   (habría roto todo guardado de estructura tras el DROP). Verde: tsc + build + 37 unit (nuevos de
+>   `precioPresentacion`) + e2e `102`/`105` (3/3 contra DB real).
+>
+> **✅ FASE 3 — Variantes madre/hijo (mig 305, reemplaza `producto_grupos`).**
+> - `productos.producto_padre_id` (NULL=madre/standalone · con valor=hijo) + `variante_diferenciador`
+>   (único entre hermanos). Nombre del hijo = `madre.nombre — diferenciador`, compuesto por trigger
+>   BEFORE y propagado por trigger AFTER al renombrar la madre. Guards: solo 2 niveles (no variante de
+>   variante), no self-parent, chequeo explícito de tenant (defensa service_role). Una madre con hijos
+>   = agrupador NO vendible (se DERIVA `EXISTS hijos`, sin flag).
+> - Migró 3 grupos con ≥2 productos (cookies bonobon×3, Cookies Bon o Bon×2, Remera Los Redondos×9) →
+>   madre + hijos con diferenciador limpio. Grupos de 1 producto → quedan standalone. `producto_grupos`/
+>   `grupo_id`/`variante_valores` DEPRECADOS (no dropeados). Migración idempotente (filtra `padre IS NULL`).
+> - Rewire UI: POS excluye madres agrupadoras (Regla #0, `.not('id','in',madreIds)` + guard en scan);
+>   ProductosPage vista agrupada por `producto_padre_id` (sacado el panel "Grupos" + `ProductoGrupoModal`);
+>   ProductoFormPage sección "Variantes" (madre→hijos, hijo→madre+hermanos, "Crear variante" que agrega
+>   un hijo — bloquea si el standalone tiene stock, esa reasignación es Fase 4). Atributos-variante
+>   (talle/color LPN) ahora COEXISTE con madre/hijo (decisión Eje A). `ProductoGrupoModal.tsx` = código
+>   muerto (nadie lo importa). Verde: tsc + build + e2e `109` (composición de nombre + propagación + 2 guards, 2/2).
+>
+> **▶ PRÓXIMA SESIÓN — Fase 4 + Fase 5:**
+> - **Fase 4** (la más Regla #0): al crear la PRIMERA variante de un standalone CON stock, ese stock
+>   queda "sin variante asignada" (visible/contable pero NO vendible) + pantalla de resolución que lo
+>   reparte a los hijos con `movimientos_stock` que lo tracen. Guards de borrado multi-sucursal (bloquear
+>   si stock>0 en CUALQUIER sucursal; el cartel nombra la sucursal). Hoy "Crear variante" bloquea si hay
+>   stock — Fase 4 lo habilita con la reasignación.
+> - **Fase 5** (operar por presentación): recibir/vender ELIGIENDO presentación; habilitar hermanas
+>   (Caja-6 y Caja-9) = migrar los consumidores de conversión (Recepciones/Inventario/WMS/`fn_wms_describir_cantidad`)
+>   de `niveles` a `producto_presentaciones` y levantar el `UNIQUE(producto,nombre_empaque)`; caja variable
+>   en recepción (factor libre); decimales por familia en todo el sistema. Limpieza: dropear
+>   `producto_estructuras`/`_niveles`/`producto_grupos`/`grupo_id`/`variante_valores`/`ProductoGrupoModal.tsx`.
+> - **🛑 Al deployar a PROD:** verificar el back-calc de plata contra los datos REALES de PROD (correr
+>   `SELECT ... WHERE nivel_precio_orden IS NOT NULL AND > 1` en PROD ANTES de aplicar mig 304), y que el
+>   frontend acompañe en el mismo deploy (el DROP de `nivel_precio_orden` rompe el POS viejo).
+>
+> **Estado de git al cierre:** commits en `dev` LOCAL sin pushear. PROD sigue v1.142.0. Nada del
+> rediseño UoM (Fases 1-3) + WMS + Pedidos se deployó a PROD todavía.
+
+> ### 📐 ESTADO ANTERIOR (2026-07-23) — Rediseño UoM/Empaque/Variantes: relevamiento + diseño + FASE 1 construida (Unidad de Medida física, mig 303) — EN DEV, **SIN deploy a PROD**
 >
 > Nace de que GO detectó que "Unidad de medida" y "Estos precios corresponden a" conviven sin
 > relación clara. Auditoría → son **3 ejes de negocio mezclados**: identidad/variante · unidad física ·

@@ -6,10 +6,37 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-23
 ---
 
-# Historial de Migraciones (001-303)
+# Historial de Migraciones (001-305)
 
-**Total al 2026-07-23:** 303 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-24:** 305 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**305 (rediseño UoM/Empaque/Variantes — FASE 3: variantes madre/hijo, EN DEV, SIN deploy a PROD)** —
+`productos.producto_padre_id` (auto-referencia, NULL=madre/standalone · con valor=hijo) +
+`variante_diferenciador` (único entre hermanos, unique parcial). Reemplaza `producto_grupos` (mig 120).
+Trigger BEFORE `trg_variante_compose_nombre` compone `nombre = madre.nombre — diferenciador` + guards
+(2 niveles, no self-parent, tenant explícito); trigger AFTER `trg_variante_propagar_nombre` propaga el
+rename de la madre a los hijos. Madre con hijos = agrupador no vendible (derivado `EXISTS hijos`). DO
+block migra grupos con ≥2 productos → madre + hijos (idempotente: filtra `producto_padre_id IS NULL`).
+`producto_grupos`/`grupo_id`/`variante_valores` deprecados (COMMENT, no dropeados). Revisada por
+`migration-reviewer` (encontró bug bloqueante de idempotencia — 2da corrida duplicaba madres — +
+cerró guard de 3 niveles + tenant, todo corregido). NO toca stock (los grupos ya tenían el stock en los
+productos → hijos; la madre nace en 0). La migración de stock "sin variante asignada" + guards de borrado
+son la FASE 4. Ver [[wiki/features/estructuras-udm]].
+
+**304 (rediseño UoM/Empaque/Variantes — FASE 2: precio en base + presentaciones, EN DEV, SIN deploy a PROD, 🛑 TOCA PLATA)** —
+tabla nueva `producto_presentaciones` (modelo plano, `factor_base` directo a la base, RLS, GRANT solo
+SELECT a authenticated por ser 100% derivada). Se puebla 1:1 desde `producto_estructura_niveles` y se
+mantiene por `fn_rebuild_presentaciones` (SECURITY DEFINER) + triggers `trg_pp_sync_niveles`/
+`trg_pp_sync_estructura`. **Se ELIMINÓ `productos.nivel_precio_orden`** (ancla por posición, bug F3):
+`productos.precio_venta/costo` pasa a ser SIEMPRE precio por unidad base; presentación = override propio
+?? base × factor. Back-calc de plata de los 6 productos anclados (persiste el precio del nivel anclado
+como override para no driftear; drift ≤ centavos solo en niveles derivados altos). `fn_estructura_guardar_niveles`
+reescrita sin el bloque de `nivel_precio_orden` (habría roto todo guardado tras el DROP). Hermanas
+bloqueadas hasta Fase 5 por `UNIQUE(producto,nombre_empaque)`. Revisada por `migration-reviewer`
+(GRANT solo-SELECT + guard de idempotencia en el back-calc, aplicados). Verificada contra los 6
+productos reales de DEV. Ver [[wiki/features/estructuras-udm]].
+
 **303 (rediseño UoM/Empaque/Variantes — FASE 1: Unidad de Medida física, EN DEV, SIN deploy a PROD)** —
 tabla nueva `unidades_medida_fisicas` (por tenant, RLS) con familias de conversión universal fija
 (Peso mg/g/kg/t · Volumen ml/L · Longitud mm/cm/m/km · Conteo unidad), `factor_base_familia` +

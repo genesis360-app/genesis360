@@ -50,9 +50,63 @@ universal, para cualquier producto/tenant. `permite_decimales` = (familia≠cont
   `unidad_medida_base_id` desde el texto legacy (en el tenant dev, 25/25 productos mapeados).
 - **Verificado:** `migration-reviewer` (APTA) · tsc · build · 12 unit · e2e `108_unidad_medida_fisica_mutante` (2/2 verde, DB real).
 
+## 🆕 Rediseño UoM — Fase 2: precio canónico en la unidad BASE + presentaciones (mig 304, EN DEV) — 🛑 TOCA PLATA
+
+Dos cambios acoplados (decisiones C5/C6 + F1/F3 de GO):
+
+**(A) Precio canónico en la unidad base.** Se **eliminó `productos.nivel_precio_orden`** (el "ancla por
+posición", bug F3: no se revalidaba al reordenar niveles / cambiar la estructura default → podía apuntar
+en silencio a otra unidad). A partir de acá `productos.precio_venta/costo` es **SIEMPRE el precio por
+unidad base**. El precio efectivo de una presentación = `override propio ?? precio_base × factor_base`
+(nueva función pura `precioPresentacion` en `src/lib/estructuras.ts`, reemplaza `precioEfectivoNivel`/
+`ordenAnclaEfectivo`). **Back-calc de plata** de los productos anclados: exacto contra los 6 de DEV
+(Coca 3500/6=583.33, con la Caja guardando override 3500 exacto para no driftear; drift ≤ centavos solo
+en niveles derivados altos como el Pallet). `fn_estructura_guardar_niveles` reescrita SIN el bloque que
+seteaba `nivel_precio_orden` (habría roto todo guardado tras el DROP).
+
+**(B) Tabla `producto_presentaciones`** (modelo PLANO: cada presentación con `factor_base` DIRECTO a la
+base — soporta hermanas Caja-6/Caja-9 a futuro). En esta fase se puebla **1:1** desde
+`producto_estructura_niveles` y se mantiene sincronizada por trigger (`fn_rebuild_presentaciones` +
+`trg_pp_sync_niveles`/`trg_pp_sync_estructura`). `niveles` **sigue siendo la fuente de CONVERSIÓN**
+(Recepciones/Inventario/WMS/`fn_wms_describir_cantidad`) hasta la Fase 5. GRANT solo SELECT a
+authenticated (tabla 100% derivada). Hermanas bloqueadas hasta Fase 5 por `UNIQUE(producto,nombre_empaque)`.
+
+- **Rewire de precio:** `ProductoFormPage` (label "por [unidad base]", sin selector de ancla),
+  `VentasPage`/POS (lee presentaciones + base), `ProductosPage`, `ImportarProductosPage` (sacada la
+  columna `estr_precio_ancla`; los precios por caja/pallet siguen como overrides de nivel).
+- **Verificado:** `migration-reviewer` (GRANT solo-SELECT + guard de idempotencia aplicados) · tsc ·
+  build · 37 unit (nuevos de `precioPresentacion`) · e2e `102`/`105` (3/3, DB real).
+
+## 🆕 Rediseño UoM — Fase 3: variantes madre/hijo (mig 305, EN DEV) — reemplaza `producto_grupos`
+
+Auto-referencia en `productos` (estilo Shopify: el producto ES el padre):
+- **`producto_padre_id`** (NULL=madre/standalone · con valor=hijo) + **`variante_diferenciador`**
+  (valor que distingue al hijo, ej. "Rojo / M", único entre hermanos).
+- **Nombre:** vive en la madre. El hijo lleva `madre.nombre — diferenciador`, compuesto por trigger
+  BEFORE `trg_variante_compose_nombre` y propagado por trigger AFTER `trg_variante_propagar_nombre` al
+  renombrar la madre — así todo consumidor sigue leyendo `productos.nombre` sin cambios.
+- **Guards:** solo 2 niveles (un hijo no puede ser padre); no self-parent; chequeo explícito de tenant
+  (defensa service_role además del RLS). Una madre CON hijos = **agrupador no vendible** (se DERIVA
+  `EXISTS hijos`, sin flag): el POS la excluye (`.not('id','in',madreIds)` + guard en el scan).
+- **Migración:** grupos con ≥2 productos → una madre (agrupador, precio 0, sku `VAR-*`) + los productos
+  pasan a hijos con diferenciador (de `variante_valores` o del nombre). Idempotente (`producto_padre_id
+  IS NULL`). Grupos de 1 producto → standalone. `producto_grupos`/`grupo_id`/`variante_valores`
+  DEPRECADOS (no dropeados). "Atributos de variante" (talle/color a nivel LPN) COEXISTE (decisión Eje A).
+- **UI:** `ProductosPage` vista agrupada por `producto_padre_id` (sacado el panel "Grupos" +
+  `ProductoGrupoModal`, ahora código muerto); `ProductoFormPage` sección "Variantes" (madre→hijos,
+  hijo→madre+hermanos, "Crear variante" que agrega un hijo — bloquea si el standalone tiene stock,
+  esa reasignación es Fase 4).
+- **Verificado:** `migration-reviewer` (encontró bug bloqueante de idempotencia + cerró guard de 3
+  niveles + tenant, corregidos) · tsc · build · e2e `109` (2/2: composición + propagación + guards).
+
+**▶ Falta (Fase 4 + 5):** Fase 4 = stock "sin variante asignada" al crear la 1ra variante de un
+standalone con stock + guards de borrado multi-sucursal (lo más Regla #0). Fase 5 = operar por
+presentación (recibir/vender eligiendo presentación, habilitar hermanas migrando la conversión a
+presentaciones, caja variable, decimales por familia) + limpieza de tablas deprecadas.
+
 ---
 
-# Estructuras de producto con niveles dinámicos por UdM (modelo ACTUAL — cambia en Fase 2)
+# Estructuras de producto con niveles dinámicos por UdM (modelo de CONVERSIÓN — sigue vigente; el PRECIO ya migró a presentaciones/base en Fase 2)
 
 Modelo estilo **pack structure / footprint de Blue Yonder** (pedido GO 2026-07-19): por cada SKU
 puede haber **varias estructuras** (una default), y cada estructura tiene **N niveles dinámicos**

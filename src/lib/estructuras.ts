@@ -22,8 +22,8 @@ export interface NivelEstructura {
   alto_cm?: number | null
   ancho_cm?: number | null
   largo_cm?: number | null
-  // Precio por UoM (backlog Fede puntos 4/6/7, mig 286/287) — opcionales, NULL = calculado
-  // proporcional al nivel anclado (ver precioEfectivoNivel).
+  // Override de precio del nivel (mig 286/287) — opcionales, NULL = deriva del precio base ×
+  // factor (rediseño UoM Fase 2, ver precioPresentacion). Se mirrorea a producto_presentaciones.
   precio_venta?: number | null
   precio_costo?: number | null
 }
@@ -167,39 +167,36 @@ export function nivelDefaultParaProducto(
   return ordenados[0]
 }
 
-// ── Precio por UoM (backlog Fede, puntos 4/6/7 — mig 286/287) ───────────────────────────
-// `productos.nivel_precio_orden` es el "ancla de precio": el ORDEN (no id — la RPC reinserta
-// todos los niveles en cada save) del nivel de la estructura DEFAULT cuyo precio_venta/costo
-// es EXACTAMENTE `productos.precio_venta/precio_costo`. NULL = ancla el nivel base (orden 1).
+// ── Precio por presentación — canónico en la unidad BASE (rediseño UoM Fase 2, mig 304) ────
+// `productos.precio_venta/precio_costo` es SIEMPRE el precio por unidad BASE. Cada presentación
+// (producto_presentaciones) declara su `factor_base` directo a la base y un override opcional.
+// Se ELIMINÓ el ancla por posición (`productos.nivel_precio_orden`, bug F3): reordenar niveles o
+// cambiar la estructura default ya no puede corromper a qué unidad corresponde el precio.
 
-/** Orden del nivel anclado, con fallback seguro al nivel base si quedó inválido (estructura
- *  se achicó por debajo de esa posición, o nunca se ancló nada). Nunca explota. */
-export function ordenAnclaEfectivo(
-  niveles: Pick<NivelEstructuraDB, 'orden'>[],
-  nivelPrecioOrden: number | null | undefined,
-): number {
-  if (nivelPrecioOrden != null && niveles.some(n => n.orden === nivelPrecioOrden)) return nivelPrecioOrden
-  return niveles[0]?.orden ?? 1
+/** Fila de presentación como viene de producto_presentaciones (mig 304). */
+export interface PresentacionDB {
+  id: string
+  producto_id: string
+  nombre_empaque_id: string | null
+  etiqueta: string
+  factor_base: number
+  es_base: boolean
+  precio_venta: number | null
+  precio_costo: number | null
+  orden: number
+  activo?: boolean
 }
 
 /**
- * Precio (o costo) EFECTIVO de un nivel: el propio si está cargado; si no, proporcional al
- * nivel anclado por relación de `unidades_base` (nunca encadenando por niveles intermedios —
- * así cargar un precio "raro" a mitad de camino no cambia el cálculo de los demás niveles).
- * Devuelve null si no se puede calcular (nivel/ancla inexistente, precio de ancla inválido).
+ * Precio (o costo) efectivo de una presentación: su override propio si está cargado; si no,
+ * deriva del precio base × factor_base (redondeado a 2 decimales). La presentación base
+ * (factor 1) devuelve el precio base tal cual. Matemática única, sin ancla mutable.
  */
-export function precioEfectivoNivel(
-  niveles: Pick<NivelEstructuraDB, 'orden' | 'unidades_base' | 'precio_venta' | 'precio_costo'>[],
-  orden: number,
-  ordenAnclado: number,
-  precioAncla: number | null | undefined,
-  campo: 'precio_venta' | 'precio_costo',
-): number | null {
-  const nivel = niveles.find(n => n.orden === orden)
-  if (!nivel) return null
-  const propio = nivel[campo]
-  if (propio != null) return propio
-  const anclado = niveles.find(n => n.orden === ordenAnclado)
-  if (!anclado || !(Number(precioAncla) > 0) || !(anclado.unidades_base > 0)) return null
-  return Math.round(Number(precioAncla) * (nivel.unidades_base / anclado.unidades_base) * 100) / 100
+export function precioPresentacion(
+  precioBase: number,
+  factorBase: number,
+  override: number | null | undefined,
+): number {
+  if (override != null) return override
+  return Math.round(Number(precioBase) * factorBase * 100) / 100
 }

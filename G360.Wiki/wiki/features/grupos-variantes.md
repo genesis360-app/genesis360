@@ -1,5 +1,14 @@
 # Grupos de variantes de producto
 
+> [!IMPORTANT] **⛔ DEPRECADO por el rediseño UoM — Fase 3 (mig 305, EN DEV).** El modelo de
+> `producto_grupos` (grupo separado + `productos.grupo_id`/`variante_valores`) fue **reemplazado por
+> variantes madre/hijo** con auto-referencia (`productos.producto_padre_id` + `variante_diferenciador`).
+> La migración 305 convirtió los grupos con ≥2 productos en madre + hijos; `producto_grupos`/`grupo_id`/
+> `variante_valores` y `ProductoGrupoModal.tsx` quedan como legacy (se dropean en la limpieza de una fase
+> posterior). El panel "Grupos" de ProductosPage y el selector de grupo de ProductoFormPage se
+> reemplazaron por la sección "Variantes" (madre→hijos). Ver [[wiki/features/estructuras-udm]] →
+> "Rediseño UoM — Fase 3". Este documento describe el modelo VIEJO (histórico).
+
 Permite agrupar múltiples SKUs que son variantes de un mismo artículo (ej: Remera S/M/L en Azul/Rojo). Cada SKU sigue siendo un producto normal con su propio stock, precio y LPNs.
 
 > [!NOTE] **No confundir con "Atributos de variante"** (`tiene_talle`/`tiene_color`/etc. en ProductoFormPage → Trazabilidad) — ese es un sistema DISTINTO donde el talle/color es un dato descriptivo **dentro del mismo SKU** (no un producto separado). Este documento cubre "Grupo de variantes" (SKU separado). Ver [[wiki/features/atributos-variante]] (✅ PROD, las 4 rondas) para el otro sistema.

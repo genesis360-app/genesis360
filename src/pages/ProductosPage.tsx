@@ -26,7 +26,6 @@ import {
   validarNiveles, nivelesAPayload, calcularUnidadesBase, cadenaConversion, nombreUdm,
   type NivelForm,
 } from '@/lib/estructuras'
-import ProductoGrupoModal, { type ProductoGrupo } from '@/components/ProductoGrupoModal'
 
 type Tab = 'productos' | 'estructura'
 
@@ -86,7 +85,6 @@ function EstrModal({
   editando,
   unidades,
   baseUdmNombre,
-  tieneAnclaDePrecio,
   onClose,
   onSave,
   saving,
@@ -95,8 +93,6 @@ function EstrModal({
   unidades: UdmOption[]
   /** productos.unidad_medida del SKU — preselecciona la UdM base al crear */
   baseUdmNombre?: string | null
-  /** El producto tiene ancla de precio (nivel_precio_orden) configurada — backlog Fede 4/6/7 */
-  tieneAnclaDePrecio?: boolean
   onClose: () => void
   onSave: (form: EstrForm) => void
   saving: boolean
@@ -130,18 +126,9 @@ function EstrModal({
   }
 
   const quitarNivel = (i: number) => {
-    // Backlog Fede puntos 4/6/7 (REGLA #0: nunca invalidar en silencio un precio configurado
-    // a propósito) — si este producto tiene ancla de precio y es la estructura DEFAULT, avisar
-    // antes de confirmar el borrado. El server (fn_estructura_guardar_niveles) igual invalida
-    // sola el ancla si queda apuntando a un nivel que ya no existe — esto es solo el aviso previo.
-    if (tieneAnclaDePrecio && editando?.is_default) {
-      const ok = confirm(
-        'Este producto tiene un precio anclado a un nivel específico de esta estructura (ver ' +
-        '"Estos precios corresponden a" en la hoja del producto). Si el nivel que estás por ' +
-        'quitar es ese, el precio de venta va a volver a tomarse del nivel base al guardar. ¿Confirmás?',
-      )
-      if (!ok) return
-    }
+    // Rediseño UoM Fase 2 (mig 304): el precio es canónico por unidad base + overrides por
+    // presentación. Quitar un nivel ya no puede corromper un ancla (se eliminó nivel_precio_orden)
+    // — a lo sumo borra el override propio de esa presentación. Sin aviso especial.
     setForm(f => ({ ...f, niveles: f.niveles.filter((_, j) => j !== i) }))
   }
 
@@ -438,11 +425,8 @@ export default function ProductosPage() {
   const [scannerOpen, setScannerOpen] = useState(false)
   const [viewMode, setViewMode] = useState<'flat' | 'grouped'>('flat')
 
-  // Grupos
-  const [gruposPanel, setGruposPanel] = useState(false)
-  const [grupoModal, setGrupoModal] = useState<{ open: boolean; grupo: ProductoGrupo | null }>({ open: false, grupo: null })
+  // Variantes madre/hijo — set de madres expandidas en la vista agrupada
   const [expandedGrupos, setExpandedGrupos] = useState<Set<string>>(new Set())
-  const [grupoEliminarConfirm, setGrupoEliminarConfirm] = useState<ProductoGrupo | null>(null)
 
   // Bulk actions
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -596,18 +580,6 @@ export default function ProductosPage() {
     enabled: !!tenant && tab === 'estructura',
   })
 
-  // Backlog Fede puntos 4/6/7 — para avisar antes de borrar un nivel si el producto tiene
-  // ancla de precio configurada (no hace falta saber CUÁL nivel exacto: cualquier borrado en
-  // la estructura default amerita el aviso, el detalle fino de si aplica lo valida el server).
-  const { data: nivelPrecioOrdenActual } = useQuery({
-    queryKey: ['producto-nivel-precio-orden', estrProductoId],
-    queryFn: async () => {
-      const { data } = await supabase.from('productos').select('nivel_precio_orden').eq('id', estrProductoId!).maybeSingle()
-      return (data as any)?.nivel_precio_orden ?? null
-    },
-    enabled: !!tenant && tab === 'estructura' && !!estrProductoId,
-  })
-
   const { data: estructuras = [], isLoading: estrLoading } = useQuery({
     queryKey: ['producto-estructuras', tenant?.id, estrProductoId],
     queryFn: async () => {
@@ -669,20 +641,6 @@ export default function ProductosPage() {
       return data ?? []
     },
     enabled: !!tenant && bulkModal === 'proveedor',
-  })
-
-  const { data: productosGrupos = [] } = useQuery({
-    queryKey: ['producto-grupos', tenant?.id],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('producto_grupos')
-        .select('*, categorias(nombre)')
-        .eq('tenant_id', tenant!.id)
-        .eq('activo', true)
-        .order('nombre')
-      return (data ?? []) as ProductoGrupo[]
-    },
-    enabled: !!tenant,
   })
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -865,21 +823,6 @@ export default function ProductosPage() {
     onSuccess: invalidar,
   })
 
-  // Eliminar grupo de variantes: soft-delete (activo=false, mismo patrón que Motivos/Estados).
-  // NO borra ni desvincula los productos — quedan como productos sueltos (con su grupo_id
-  // apuntando a un grupo inactivo), simplemente dejan de listarse agrupados acá.
-  const eliminarGrupoMut = useMutation({
-    mutationFn: async (grupoId: string) => {
-      const { error } = await supabase.from('producto_grupos').update({ activo: false }).eq('id', grupoId)
-      if (error) throw error
-    },
-    onSuccess: () => {
-      toast.success('Grupo eliminado')
-      qc.invalidateQueries({ queryKey: ['producto-grupos', tenant?.id] })
-      setGrupoEliminarConfirm(null)
-    },
-    onError: (e: Error) => toast.error(e.message),
-  })
 
   const setDefaultMut = useMutation({
     mutationFn: async (id: string) => {
@@ -911,6 +854,17 @@ export default function ProductosPage() {
     return true
   })
   const stockCritico = productos.filter(p => (p as any).stock_actual <= (p as any).stock_minimo).length
+
+  // Variantes madre/hijo (rediseño UoM Fase 3, mig 305). Una madre = producto sin padre que
+  // tiene ≥1 hijo; es agrupador (no vendible). El listado agrupado muestra madres → hijos.
+  const madreIdsConHijos = new Set(
+    productos.map(p => (p as any).producto_padre_id).filter(Boolean) as string[]
+  )
+  const esMadre = (p: any) => !p.producto_padre_id && madreIdsConHijos.has(p.id)
+  const madres = productos.filter(p => esMadre(p))
+  // La vista plana no lista las madres agrupadoras (no vendibles): sus variantes se ven como
+  // productos normales, y la madre se administra desde la vista agrupada / su ficha.
+  const filteredFlat = filtered.filter(p => !esMadre(p))
 
   const filtrosActivos =
     (filterActivo !== 'activos' ? 1 : 0) + (filterEstructura ? 1 : 0) + (filterCat ? 1 : 0) +
@@ -1111,7 +1065,6 @@ export default function ProductosPage() {
             items={[
               { label: 'Exportar JSON', icon: Download, onClick: () => exportarProductos('json') },
               { label: 'Exportar CSV',  icon: Download, onClick: () => exportarProductos('csv') },
-              { label: 'Grupos',        icon: Boxes,    onClick: () => setGruposPanel(true) },
               { label: 'Importar',      icon: Upload,   onClick: () => navigate('/productos/importar') },
               { label: 'Escanear ticket', icon: Camera, onClick: () => { setScanTicketStep('upload'); setScanTicketItems([]); setScanTicketPreview(null); setShowScanTicket(true) } },
             ]}
@@ -1486,9 +1439,9 @@ export default function ProductosPage() {
           {/* ════════ VISTA AGRUPADA ════════ */}
           {viewMode === 'grouped' && (
             <div className="space-y-4">
-              {/* Productos sin grupo */}
+              {/* Productos individuales (standalone: sin padre y sin hijos) */}
               {(() => {
-                const sinGrupo = filtered.filter(p => !(p as any).grupo_id)
+                const sinGrupo = filtered.filter(p => !(p as any).producto_padre_id && !esMadre(p))
                 if (sinGrupo.length === 0) return null
                 return (
                   <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
@@ -1539,50 +1492,38 @@ export default function ProductosPage() {
                 )
               })()}
 
-              {/* Grupos */}
-              {productosGrupos.map(grupo => {
-                const variantes = filtered.filter(p => (p as any).grupo_id === grupo.id)
-                const isOpen = expandedGrupos.has(grupo.id)
+              {/* Variantes: madre → hijos (rediseño UoM Fase 3) */}
+              {madres.map(madre => {
+                const variantes = filtered.filter(p => (p as any).producto_padre_id === (madre as any).id)
+                const isOpen = expandedGrupos.has((madre as any).id)
                 return (
-                  <div key={grupo.id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
+                  <div key={(madre as any).id} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
                     <div className="flex items-center gap-3 px-4 py-3 bg-gray-50 dark:bg-gray-700/50">
                       <button
                         type="button"
                         onClick={() => setExpandedGrupos(prev => {
                           const n = new Set(prev)
-                          n.has(grupo.id) ? n.delete(grupo.id) : n.add(grupo.id)
+                          n.has((madre as any).id) ? n.delete((madre as any).id) : n.add((madre as any).id)
                           return n
                         })}
                         className="flex-1 flex items-center gap-2 min-w-0 text-left hover:opacity-80 transition-opacity"
                       >
                         <Boxes size={15} className="text-accent-text flex-shrink-0" />
-                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{grupo.nombre}</span>
+                        <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{(madre as any).nombre}</span>
                         <span className="px-1.5 py-0.5 rounded-full text-xs bg-accent/10 text-accent-text flex-shrink-0">{variantes.length} variantes</span>
-                        {grupo.precio_base != null && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
-                            Base: ${grupo.precio_base.toLocaleString('es-AR')}
-                          </span>
-                        )}
+                        <span className="px-1.5 py-0.5 rounded-full text-xs bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400 flex-shrink-0">agrupador</span>
                         {isOpen ? <ChevronUp size={14} className="text-gray-400 ml-auto flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 ml-auto flex-shrink-0" />}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => setGrupoModal({ open: true, grupo })}
+                      <Link
+                        to={`/productos/${(madre as any).id}/editar`}
                         className="flex items-center gap-1 text-xs text-gray-400 hover:text-accent-text transition-colors flex-shrink-0 px-2 py-1 rounded-lg hover:bg-accent/10"
                       >
-                        <Edit2 size={12} /> Editar grupo
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setGrupoEliminarConfirm(grupo)}
-                        className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition-colors flex-shrink-0 px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20"
-                      >
-                        <Trash2 size={12} /> Eliminar
-                      </button>
+                        <Edit2 size={12} /> Editar madre
+                      </Link>
                     </div>
                     {isOpen && (
                       variantes.length === 0 ? (
-                        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Sin variantes. Generá combinaciones en &quot;Editar grupo&quot;.</p>
+                        <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Sin variantes.</p>
                       ) : (
                         <div className="overflow-x-auto">
                           <table className="w-full text-sm">
@@ -1607,13 +1548,11 @@ export default function ProductosPage() {
                                       <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{(v as any).sku}</p>
                                     </td>
                                     <td className="px-4 py-2.5 hidden sm:table-cell">
-                                      <div className="flex flex-wrap gap-1">
-                                        {(v as any).variante_valores && Object.entries((v as any).variante_valores as Record<string, string>).map(([k, val]) => (
-                                          <span key={k} className="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                                            {k}: {val}
-                                          </span>
-                                        ))}
-                                      </div>
+                                      {(v as any).variante_diferenciador && (
+                                        <span className="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                                          {(v as any).variante_diferenciador}
+                                        </span>
+                                      )}
                                     </td>
                                     <td className="px-4 py-2.5 text-right text-gray-700 dark:text-gray-300">
                                       ${((v as any).precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
@@ -1641,11 +1580,11 @@ export default function ProductosPage() {
                 )
               })}
 
-              {productosGrupos.length === 0 && filtered.every(p => !(p as any).grupo_id) && (
+              {madres.length === 0 && (
                 <div className="bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-12 text-center">
                   <Boxes size={36} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                  <p className="text-gray-500 dark:text-gray-400 font-medium">Sin grupos de variantes</p>
-                  <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Creá un grupo en el botón &quot;Grupos&quot; de arriba.</p>
+                  <p className="text-gray-500 dark:text-gray-400 font-medium">Sin productos con variantes</p>
+                  <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">Creá variantes desde la ficha de un producto (botón &quot;Crear variante&quot;).</p>
                 </div>
               )}
             </div>
@@ -1658,7 +1597,7 @@ export default function ProductosPage() {
               <div className="flex items-center justify-center py-16">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
-            ) : filtered.length === 0 ? (
+            ) : filteredFlat.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
                 <Package size={40} className="mb-3 opacity-50" />
                 <p className="font-medium">{search ? 'No se encontraron productos' : 'No hay productos aún'}</p>
@@ -1685,7 +1624,7 @@ export default function ProductosPage() {
                     </button>
                   )}
                 </div>
-                {filtered.map(p => {
+                {filteredFlat.map(p => {
                   const stock      = (p as any).stock_actual ?? 0
                   const disponible = stockDisponibleMap[p.id] ?? 0
                   const critDisp   = disponible <= (p as any).stock_minimo
@@ -1746,14 +1685,11 @@ export default function ProductosPage() {
                               )}
                             </div>
                           )}
-                          {(p as any).grupo_id && (() => {
-                            const g = productosGrupos.find(gr => gr.id === (p as any).grupo_id)
-                            return g ? (
-                              <p className="text-xs text-accent-text/70 dark:text-accent-text/60 mt-0.5">
-                                • Parte de &quot;{g.nombre}&quot;
-                              </p>
-                            ) : null
-                          })()}
+                          {(p as any).producto_padre_id && (p as any).variante_diferenciador && (
+                            <p className="text-xs text-accent-text/70 dark:text-accent-text/60 mt-0.5">
+                              • Variante: {(p as any).variante_diferenciador}
+                            </p>
+                          )}
                         </div>
 
                         <div className="hidden sm:block text-right flex-shrink-0">
@@ -1928,110 +1864,6 @@ export default function ProductosPage() {
           </div>
           )}
         </>
-      )}
-
-      {/* ── Panel lateral: Grupos ─────────────────────────────────────────────── */}
-      {gruposPanel && (
-        <div className="fixed inset-0 z-40 flex">
-          <div className="flex-1 bg-black/40" onClick={() => setGruposPanel(false)} />
-          <div className="w-full max-w-sm bg-white dark:bg-gray-800 shadow-2xl flex flex-col h-full">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
-              <div className="flex items-center gap-2">
-                <Boxes size={18} className="text-accent-text" />
-                <h2 className="text-base font-bold text-primary">Grupos de variantes</h2>
-              </div>
-              <button onClick={() => setGruposPanel(false)} className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              {productosGrupos.length === 0 ? (
-                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
-                  <Boxes size={36} className="mx-auto mb-3 opacity-30" />
-                  <p className="text-sm">Sin grupos aún. Creá el primero.</p>
-                </div>
-              ) : (
-                productosGrupos.map(g => (
-                  <div key={g.id} className="border border-gray-100 dark:border-gray-700 rounded-xl p-3 hover:border-accent-text/40 transition-colors">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{g.nombre}</p>
-                        {(g.categorias as any)?.nombre && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500">{(g.categorias as any).nombre}</p>
-                        )}
-                        {g.precio_base != null && (
-                          <p className="text-xs text-gray-500 dark:text-gray-400">Base: ${g.precio_base.toLocaleString('es-AR')}</p>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => { setGrupoModal({ open: true, grupo: g }); setGruposPanel(false) }}
-                        className="p-1.5 text-gray-400 hover:text-accent-text transition-colors flex-shrink-0"
-                        title="Editar grupo"
-                      >
-                        <Edit2 size={15} />
-                      </button>
-                    </div>
-                    {g.atributos && g.atributos.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {g.atributos.map((a, i) => (
-                          <span key={i} className="px-2 py-0.5 text-xs rounded-full bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400">
-                            {a.nombre} ({a.valores.length})
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="p-4 border-t border-gray-100 dark:border-gray-700">
-              <button
-                type="button"
-                onClick={() => { setGrupoModal({ open: true, grupo: null }); setGruposPanel(false) }}
-                className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm transition-all"
-              >
-                <Plus size={15} /> Nuevo grupo
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Modal de grupo ──────────────────────────────────────────────────── */}
-      {grupoModal.open && (
-        <ProductoGrupoModal
-          grupo={grupoModal.grupo}
-          onClose={() => setGrupoModal({ open: false, grupo: null })}
-        />
-      )}
-
-      {/* ── Confirmar eliminar grupo de variantes ───────────────────────────── */}
-      {grupoEliminarConfirm && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
-            <h3 className="font-bold text-gray-900 dark:text-white">Eliminar grupo de variantes</h3>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              ¿Eliminar <strong>{grupoEliminarConfirm.nombre}</strong>?
-              {(() => {
-                const n = filtered.filter(p => (p as any).grupo_id === grupoEliminarConfirm.id).length
-                return n > 0
-                  ? ` Tiene ${n} variante${n !== 1 ? 's' : ''} — no se borran, quedan como productos sueltos (dejan de listarse agrupadas acá).`
-                  : ' No tiene variantes generadas.'
-              })()}
-            </p>
-            <div className="flex gap-3">
-              <button onClick={() => setGrupoEliminarConfirm(null)}
-                className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                Cancelar
-              </button>
-              <button onClick={() => eliminarGrupoMut.mutate(grupoEliminarConfirm.id)} disabled={eliminarGrupoMut.isPending}
-                className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2.5 rounded-xl text-sm font-semibold transition-colors disabled:opacity-60">
-                {eliminarGrupoMut.isPending ? 'Eliminando...' : 'Eliminar'}
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* ── Barra flotante de acciones bulk ─────────────────────────────────── */}
@@ -2289,7 +2121,6 @@ export default function ProductosPage() {
           editando={estrModal.editando}
           unidades={unidadesMedida}
           baseUdmNombre={(productosEstr as any[]).find(p => p.id === estrProductoId)?.unidad_medida ?? null}
-          tieneAnclaDePrecio={!!nivelPrecioOrdenActual}
           onClose={() => setEstrModal({ open: false, editando: null })}
           onSave={handleSaveModal}
           saving={saving}

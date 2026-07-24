@@ -6,6 +6,41 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-24] update | 📐 Rediseño UoM/Empaque/Variantes — FASE 2 (precio en base + presentaciones, mig 304) y FASE 3 (variantes madre/hijo, mig 305)
+
+Continuación de Fase 1 tras el /clear (GO pidió seguir con Fase 2 + 3). Ambas construidas y
+verificadas contra datos reales de DEV, cada migración revisada por `migration-reviewer` ANTES de
+aplicar. Sigue **TODO EN DEV, sin deploy a PROD (PROD = v1.142.0)**.
+
+**FASE 2 — Precio canónico en la unidad BASE + presentaciones paralelas (mig 304, 🛑 TOCA PLATA):**
+tabla nueva `producto_presentaciones` (modelo plano, `factor_base` directo a la base; soporta
+hermanas a futuro) poblada 1:1 desde `producto_estructura_niveles` y mantenida por trigger
+(`fn_rebuild_presentaciones`). Se **eliminó `productos.nivel_precio_orden`** (el ancla por posición,
+bug F3): ahora `productos.precio_venta/costo` es SIEMPRE el precio por unidad base y cada presentación
+= override propio ?? base × factor. Back-calc de plata verificado exacto contra los 6 productos
+anclados de DEV (el precio del nivel anclado se persiste como override para no driftear). Rewire:
+`estructuras.ts` (`precioPresentacion`), ProductoFormPage, VentasPage/POS, ProductosPage, Importador.
+`niveles` se mantiene para conversión (Recepciones/Inventario/WMS) hasta Fase 5. Verde: tsc + build +
+37 unit + e2e `102`/`105` (3/3). El `migration-reviewer` pidió restringir el GRANT a solo-SELECT
+(tabla derivada) y un guard de idempotencia en el back-calc — ambos aplicados.
+
+**FASE 3 — Variantes madre/hijo (mig 305, reemplaza `producto_grupos`):** `productos.producto_padre_id`
++ `variante_diferenciador`; nombre del hijo compuesto por trigger (`madre.nombre — diferenciador`) y
+propagado al renombrar la madre. Guards: 2 niveles, no self-parent, tenant explícito. Madre con hijos =
+agrupador no vendible (derivado `EXISTS hijos`). Migró 3 grupos con ≥2 productos → madre + hijos.
+`producto_grupos`/`grupo_id`/`variante_valores` deprecados (no dropeados). Rewire UI: POS excluye
+agrupadores (Regla #0), ProductosPage agrupa por padre, ProductoFormPage sección "Variantes" + "Crear
+variante" (bloquea si el standalone tiene stock — reasignación es Fase 4). Atributos-variante COEXISTE
+(Eje A). El `migration-reviewer` encontró un bug **bloqueante de idempotencia** (2da corrida duplicaba
+madres) — corregido filtrando `producto_padre_id IS NULL`; + cerró el guard de 3 niveles y agregó el
+chequeo de tenant. Verde: tsc + build + e2e `109` (2/2, composición + propagación + guards).
+
+**▶ Próxima sesión = Fase 4 (stock "sin variante asignada" + guards de borrado multi-sucursal, la más
+Regla #0) + Fase 5 (operar por presentación: recibir/vender eligiendo presentación, habilitar hermanas
+migrando la conversión a presentaciones, caja variable, decimales por familia) + limpieza de tablas
+deprecadas.** 🛑 Al deployar a PROD: verificar el back-calc contra datos reales de PROD y que el
+frontend acompañe el DROP de `nivel_precio_orden` en el mismo deploy. Ver [[wiki/features/estructuras-udm]].
+
 ## [2026-07-23] update | 📐 Rediseño UoM/Empaque/Variantes — relevamiento + diseño + FASE 1 (Unidad de Medida física, mig 303)
 
 GO detectó que "Unidad de medida" (ficha de producto) y "Estos precios corresponden a" (ancla de

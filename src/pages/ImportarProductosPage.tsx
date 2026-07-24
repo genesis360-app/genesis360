@@ -60,8 +60,7 @@ interface FilaProducto {
   estr_alto_pallet?: number
   estr_ancho_pallet?: number
   estr_largo_pallet?: number
-  // Precio por Unidad de Medida (backlog Fede puntos 4/6/7, mig 286/287) — opcionales.
-  estr_precio_ancla?: 'Unidad' | 'Caja' | 'Pallet'
+  // Precio por presentación (rediseño UoM Fase 2, mig 304) — overrides opcionales de Caja/Pallet.
   estr_precio_venta_caja?: number
   estr_precio_costo_caja?: number
   estr_precio_venta_pallet?: number
@@ -110,7 +109,6 @@ export default function ImportarProductosPage() {
       'estr_peso_unidad','estr_alto_unidad','estr_ancho_unidad','estr_largo_unidad',
       'estr_peso_caja','estr_alto_caja','estr_ancho_caja','estr_largo_caja',
       'estr_peso_pallet','estr_alto_pallet','estr_ancho_pallet','estr_largo_pallet',
-      'estr_precio_ancla',
       'estr_precio_venta_caja','estr_precio_costo_caja',
       'estr_precio_venta_pallet','estr_precio_costo_pallet',
     ]
@@ -205,12 +203,11 @@ export default function ImportarProductosPage() {
       ['estr_ancho_pallet','no','Ancho de 1 pallet en cm. Ej: 80'],
       ['estr_largo_pallet','no','Largo de 1 pallet en cm. Ej: 120'],
       ['','',''],
-      ['── Precio por Unidad de Medida (opcional) ──','','Requiere datos de Caja y/o Pallet arriba'],
-      ['estr_precio_ancla','no','Unidad (default) / Caja / Pallet. A qué nivel corresponden precio_costo y precio_venta de arriba (ej: si vendés por Caja, cargá ahí el precio de 1 Caja y poné "Caja")'],
-      ['estr_precio_venta_caja','no','Precio de venta propio de 1 Caja. Vacío = se calcula proporcional al ancla'],
-      ['estr_precio_costo_caja','no','Costo propio de 1 Caja. Vacío = se calcula proporcional al ancla'],
-      ['estr_precio_venta_pallet','no','Precio de venta propio de 1 Pallet. Vacío = se calcula proporcional al ancla'],
-      ['estr_precio_costo_pallet','no','Costo propio de 1 Pallet. Vacío = se calcula proporcional al ancla'],
+      ['── Precio por presentación (opcional) ──','','precio_costo/precio_venta de arriba son por unidad BASE. Estos son overrides de Caja/Pallet'],
+      ['estr_precio_venta_caja','no','Precio de venta propio de 1 Caja. Vacío = se calcula proporcional al precio base'],
+      ['estr_precio_costo_caja','no','Costo propio de 1 Caja. Vacío = se calcula proporcional al precio base'],
+      ['estr_precio_venta_pallet','no','Precio de venta propio de 1 Pallet. Vacío = se calcula proporcional al precio base'],
+      ['estr_precio_costo_pallet','no','Costo propio de 1 Pallet. Vacío = se calcula proporcional al precio base'],
     ])
     wsRef['!cols'] = [{ wch:26 },{ wch:12 },{ wch:60 }]
     XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
@@ -281,14 +278,8 @@ export default function ImportarProductosPage() {
           const estr_ancho_pallet      = parseNum(row.estr_ancho_pallet)
           const estr_largo_pallet      = parseNum(row.estr_largo_pallet)
 
-          // Precio por Unidad de Medida (backlog Fede puntos 4/6/7, mig 286/287) — opcional.
-          // Mismas condiciones que abajo (confirmarProductos) para decidir si habrá nivel Caja/Pallet.
-          const ANCLAS_VALIDAS = ['Unidad', 'Caja', 'Pallet'] as const
-          const anclaRaw = String(row.estr_precio_ancla || '').trim()
-          const estr_precio_ancla = ANCLAS_VALIDAS.find(a => a.toLowerCase() === anclaRaw.toLowerCase())
-          if (anclaRaw && !estr_precio_ancla) {
-            errores.push(`Ancla de precio "${anclaRaw}" inválida (Unidad/Caja/Pallet)`)
-          }
+          // Precio por presentación (rediseño UoM Fase 2, mig 304) — opcional. precio_venta/
+          // precio_costo del producto son por unidad BASE; los de Caja/Pallet son overrides.
           const estr_precio_venta_caja   = parseNum(row.estr_precio_venta_caja)
           const estr_precio_costo_caja   = parseNum(row.estr_precio_costo_caja)
           const estr_precio_venta_pallet = parseNum(row.estr_precio_venta_pallet)
@@ -300,14 +291,6 @@ export default function ImportarProductosPage() {
             [estr_precio_costo_pallet, 'costo de Pallet'],
           ] as const) {
             if (campo !== undefined && campo < 0) errores.push(`El ${label} no puede ser negativo`)
-          }
-          const tieneNivelCaja   = !!(estr_unidades_por_caja || estr_peso_caja || estr_alto_caja || estr_precio_venta_caja !== undefined || estr_precio_costo_caja !== undefined)
-          const tieneNivelPallet = !!(estr_cajas_por_pallet || estr_peso_pallet || estr_alto_pallet || estr_precio_venta_pallet !== undefined || estr_precio_costo_pallet !== undefined)
-          if (estr_precio_ancla === 'Caja' && !tieneNivelCaja) {
-            errores.push('Ancla de precio en Caja pero la fila no tiene datos de estructura de Caja')
-          }
-          if (estr_precio_ancla === 'Pallet' && !tieneNivelPallet) {
-            errores.push('Ancla de precio en Pallet pero la fila no tiene datos de estructura de Pallet')
           }
 
           // Validar categoria y proveedor — deben existir, no se crean automáticamente
@@ -355,7 +338,6 @@ export default function ImportarProductosPage() {
             estr_peso_pallet, estr_alto_pallet, estr_ancho_pallet, estr_largo_pallet,
             estr_cajas_por_pallet,
             estr_peso_unidad,
-            estr_precio_ancla,
             estr_precio_venta_caja, estr_precio_costo_caja,
             estr_precio_venta_pallet, estr_precio_costo_pallet,
             estado: errores.length > 0 ? 'error' : skusExistentes.has(sku) ? 'existente' : 'nuevo',
@@ -452,9 +434,6 @@ export default function ImportarProductosPage() {
             ancho_cm: fila.estr_ancho_unidad ?? null,
             largo_cm: fila.estr_largo_unidad ?? null,
           }]
-          // Orden (1-based) de cada nivel dentro de la estructura DEFAULT — es lo que espera
-          // productos.nivel_precio_orden (por orden, no por id: ver mig 286).
-          const ordenPorNombre: Record<string, number> = { Unidad: 1 }
           if (fila.estr_unidades_por_caja || fila.estr_peso_caja || fila.estr_alto_caja ||
               fila.estr_precio_venta_caja !== undefined || fila.estr_precio_costo_caja !== undefined) {
             niveles.push({
@@ -467,7 +446,6 @@ export default function ImportarProductosPage() {
               precio_venta: fila.estr_precio_venta_caja ?? null,
               precio_costo: fila.estr_precio_costo_caja ?? null,
             })
-            ordenPorNombre.Caja = niveles.length
           }
           if (fila.estr_cajas_por_pallet || fila.estr_peso_pallet || fila.estr_alto_pallet ||
               fila.estr_precio_venta_pallet !== undefined || fila.estr_precio_costo_pallet !== undefined) {
@@ -481,7 +459,6 @@ export default function ImportarProductosPage() {
               precio_venta: fila.estr_precio_venta_pallet ?? null,
               precio_costo: fila.estr_precio_costo_pallet ?? null,
             })
-            ordenPorNombre.Pallet = niveles.length
           }
 
           const nombreEstr = fila.estr_nombre ?? 'Default'
@@ -500,16 +477,7 @@ export default function ImportarProductosPage() {
             p_estructura_id: estrId, p_niveles: niveles,
           })
           if (eNiveles) throw eNiveles
-
-          // Ancla de precio (productos.nivel_precio_orden) — solo si la fila la especificó
-          // explícitamente. 'Unidad' resetea a NULL (default); Caja/Pallet solo si el nivel
-          // efectivamente quedó creado arriba (ordenPorNombre lo confirma).
-          if (fila.estr_precio_ancla) {
-            const orden = fila.estr_precio_ancla === 'Unidad' ? null : (ordenPorNombre[fila.estr_precio_ancla] ?? undefined)
-            if (orden !== undefined) {
-              await supabase.from('productos').update({ nivel_precio_orden: orden }).eq('id', productoId)
-            }
-          }
+          // El trigger trg_pp_sync_niveles (mig 304) reconstruye producto_presentaciones tras esto.
         }
       } catch (e: any) {
         errores++

@@ -99,10 +99,37 @@ Auto-referencia en `productos` (estilo Shopify: el producto ES el padre):
 - **Verificado:** `migration-reviewer` (encontró bug bloqueante de idempotencia + cerró guard de 3
   niveles + tenant, corregidos) · tsc · build · e2e `109` (2/2: composición + propagación + guards).
 
-**▶ Falta (Fase 4 + 5):** Fase 4 = stock "sin variante asignada" al crear la 1ra variante de un
-standalone con stock + guards de borrado multi-sucursal (lo más Regla #0). Fase 5 = operar por
-presentación (recibir/vender eligiendo presentación, habilitar hermanas migrando la conversión a
-presentaciones, caja variable, decimales por familia) + limpieza de tablas deprecadas.
+## 🆕 Rediseño UoM — Fase 2-bis: tiers de precio mayorista con operador (mig 306, EN DEV) — 🛑 PLATA
+
+Tras las **respuestas finales de Fede (2026-07-24)** el eje precio/venta se reencauzó: el precio vive
+**solo a nivel de unidad + tiers de cantidad** (sin overrides por presentación — la Estructura es
+logística pura), y para "vender un pallet" se usa un tier de cantidad, no un precio de bulto.
+
+- **`producto_precios_mayorista` (mig 306)** gana **`operador`** ('>','<','=','>=','<=', default '>=')
+  + **`orden`**. Resolución: se evalúan en `orden` asc, gana el **primer match**; si ninguno, precio
+  base por unidad. La cantidad comparada es el **TOTAL del SKU en el carrito** (agregación por SKU, no
+  por línea — el precio mayorista es por volumen). Permite reglas cerradas como "= 800 (un pallet)".
+- 🛑 **Bug de plata que encontró el `migration-reviewer`:** el POS viejo resolvía "gana el de MAYOR
+  cantidad_minima satisfecho" (last-match); con el algoritmo nuevo de first-match, el backfill de `orden`
+  se hace **DESC** por cantidad_minima para reproducirlo (si no, comprar 60 con tiers 10→$90/50→$80
+  cobraría $90 en vez de $80).
+- Lógica pura `src/lib/tiers.ts` (`precioTier`/`matchTier`/`mejorPrecioMayorista`, 10 unit tests). POS
+  (`VentasPage`): `precioTierBase` suma la cantidad del SKU en todo el carrito + resuelve por operador;
+  **`descEstadoDe`** recalcula el descuento por estado con el precio vigente (fuente única para plata +
+  venta_items + ticket — Regla #0). Ficha: dropdown de operador + persiste `orden`=índice.
+- **Verificado:** `migration-reviewer` (fix del backfill DESC) · tsc · build · 10 unit · e2e `110`
+  (persistencia de operador+orden desde la ficha, DB real).
+
+**▶ Falta de Fase 2-bis (próxima):** re-modelar `producto_presentaciones` a **árbol genealógico**
+(`padre_linea_id` explícito + factor_base resuelto + guards de ciclo y de borrado con hijos) + sacar los
+overrides de precio de presentación + atar el nivel base de la Estructura a la **UdM física de la ficha**
+(H2, una dirección). Fase 1-bis = catálogo COMPLETO de físicas (litros/galones/onzas/m²/m³) + enable/
+disable por tenant + presets por rubro + sacar "Nombres de empaque" de Config.
+
+**▶ Falta (Fase 4 + 5):** Fase 4 = stock decimal en **unidad atómica entera** (gramos/mL/mm, sin migrar
+columnas — decisión Fede) + E3 (cambio de UdM: same-family gratis, cross-family bloqueado con stock) +
+stock "sin variante asignada" + guards de borrado multi-sucursal (lo más Regla #0). Fase 5 = operar por
+presentación (recibir eligiendo línea del árbol, habilitar hermanas) + limpieza de tablas deprecadas.
 
 ---
 

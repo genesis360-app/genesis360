@@ -6,10 +6,20 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-23
 ---
 
-# Historial de Migraciones (001-305)
+# Historial de Migraciones (001-306)
 
-**Total al 2026-07-24:** 305 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-24:** 306 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**306 (rediseño UoM — FASE 2-bis: tiers de precio mayorista con OPERADOR, EN DEV, SIN deploy a PROD, 🛑 TOCA PLATA)** —
+`producto_precios_mayorista` (mig 092) gana `operador` ('>','<','=','>=','<=', default '>=') + `orden`
+(default 0). Resolución nueva (respuestas finales de Fede): se evalúan en `orden` asc, gana el PRIMER
+match; si ninguno, precio base. La cantidad comparada es el TOTAL del SKU en el carrito (agregación por
+SKU). Relaja `UNIQUE(producto_id, cantidad_minima)` → `UNIQUE(producto_id, cantidad_minima, operador)`.
+Backfill de `orden` **DESC** por cantidad_minima (🛑 bug de plata que encontró el `migration-reviewer`:
+el POS viejo era last-match "gana el de mayor umbral satisfecho"; con first-match + backfill ASC un
+cliente que compra 60 con tiers 10→$90/50→$80 pagaría $90 — el DESC lo reproduce bien). Lógica pura
+`src/lib/tiers.ts`. Ver [[wiki/features/estructuras-udm]] y [[wiki/features/ventas-pos]].
 
 **305 (rediseño UoM/Empaque/Variantes — FASE 3: variantes madre/hijo, EN DEV, SIN deploy a PROD)** —
 `productos.producto_padre_id` (auto-referencia, NULL=madre/standalone · con valor=hijo) +

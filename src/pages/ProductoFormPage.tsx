@@ -16,6 +16,7 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, type FamiliaFisica, type UnidadFisica } from '@/lib/unidadMedidaFisica'
+import { OPERADORES_TIER, type TierOperador } from '@/lib/tiers'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
 import { Toggle } from '@/components/Toggle'
@@ -66,7 +67,7 @@ export default function ProductoFormPage() {
   })
   const [showMarketplace, setShowMarketplace] = useState(false)
   const [showMayorista, setShowMayorista] = useState(false)
-  type TierForm = { _key: string; cantidad_minima: string; precio: string; descripcion: string }
+  type TierForm = { _key: string; cantidad_minima: string; precio: string; descripcion: string; operador: TierOperador }
   const [tiersForm, setTiersForm] = useState<TierForm[]>([])
   // Stock mínimo por sucursal (solo cuando editando)
   const [stockMinimosSucursal, setStockMinimosSucursal] = useState<Record<string, string>>({})
@@ -189,7 +190,7 @@ export default function ProductoFormPage() {
         .from('producto_precios_mayorista')
         .select('*')
         .eq('producto_id', id!)
-        .order('cantidad_minima')
+        .order('orden')
       return data ?? []
     },
     enabled: isEditing && !!tenant,
@@ -266,6 +267,7 @@ export default function ProductoFormPage() {
         cantidad_minima: String(t.cantidad_minima),
         precio: String(t.precio),
         descripcion: t.descripcion ?? '',
+        operador: (t.operador ?? '>=') as TierOperador,
       })))
       setShowMayorista(true)
     }
@@ -515,13 +517,16 @@ export default function ProductoFormPage() {
         if (showMayorista) {
           const tiersValidos = tiersForm.filter(t => t.cantidad_minima && t.precio !== '')
           if (tiersValidos.length > 0) {
+            // `orden` = índice en el form (el vendedor los ordena; gana el primer match, mig 306).
             const { error: tiersErr } = await supabase.from('producto_precios_mayorista').insert(
-              tiersValidos.map(t => ({
+              tiersValidos.map((t, i) => ({
                 tenant_id: tenant!.id,
                 producto_id: productoId,
                 cantidad_minima: parseInt(t.cantidad_minima),
                 precio: parseFloat(t.precio),
                 descripcion: t.descripcion.trim() || null,
+                operador: t.operador,
+                orden: i,
               }))
             )
             if (tiersErr) throw tiersErr
@@ -1164,9 +1169,15 @@ export default function ProductoFormPage() {
                       )}
                       {tiersForm.map((tier, idx) => (
                         <div key={tier._key} className="flex items-center gap-2">
-                          <div className="w-24">
+                          <select value={tier.operador}
+                            onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, operador: e.target.value as TierOperador } : t))}
+                            className="w-16 px-1 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700"
+                            title="Operador de la regla — se evalúan de arriba hacia abajo, gana la primera que coincide">
+                            {OPERADORES_TIER.map(o => <option key={o.valor} value={o.valor}>{o.valor}</option>)}
+                          </select>
+                          <div className="w-20">
                             <input type="number" min="1" step="1" onWheel={e => e.currentTarget.blur()}
-                              placeholder="Cant. mín."
+                              placeholder="Cant."
                               value={tier.cantidad_minima}
                               onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, cantidad_minima: e.target.value } : t))}
                               className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
@@ -1192,10 +1203,13 @@ export default function ProductoFormPage() {
                         </div>
                       ))}
                       <button type="button"
-                        onClick={() => setTiersForm(prev => [...prev, { _key: crypto.randomUUID(), cantidad_minima: '', precio: '', descripcion: '' }])}
+                        onClick={() => setTiersForm(prev => [...prev, { _key: crypto.randomUUID(), cantidad_minima: '', precio: '', descripcion: '', operador: '>=' }])}
                         className="flex items-center gap-1.5 text-xs text-accent-text hover:underline transition-colors">
                         <Plus size={13} /> Agregar tier
                       </button>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        Se evalúan de arriba hacia abajo (gana el primero que coincide con la cantidad total del producto en la venta). Poné los umbrales más grandes arriba. Usá <strong>=</strong> para un precio exacto (ej. un pallet completo).
+                      </p>
                       {tiersForm.length > 0 && parseFloat(form.precio_venta) > 0 && (
                         <p className="text-xs text-gray-400 dark:text-gray-500">
                           Precio minorista (1 u.): <span className="font-medium">${parseFloat(form.precio_venta).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>

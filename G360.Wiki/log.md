@@ -6,6 +6,37 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-24] update | 📐 Rediseño UoM — FASE 2-bis (respuestas finales de Fede): tiers de precio mayorista con OPERADOR + agregación por SKU (mig 306)
+
+Tras cerrar el relevamiento con Fede (respuestas finales 2026-07-24), el rumbo del eje precio/venta
+cambió: el precio vive **solo a nivel de unidad + tiers de cantidad** (sin overrides por presentación,
+la estructura es logística pura), el stock decimal se maneja en **unidad atómica entera** (gramos/mL/mm,
+sin migrar columnas), y el empaque pasa a un modelo de **"árbol genealógico"** (cada línea apunta a su
+padre explícito). Esto reencauza parte de la Fase 2 ya construida. Se arrancó por el **chunk 1**: los
+tiers con operador. Sigue **TODO EN DEV, sin deploy a PROD**.
+
+**mig 306** — `producto_precios_mayorista` gana `operador` ('>','<','=','>=','<=', default '>=') +
+`orden`. Resolución nueva (Fede): se evalúan en `orden` asc, gana el **primer match**; si ninguno,
+precio base. La cantidad comparada es el **TOTAL del SKU en el carrito** (agregación por SKU, no por
+línea — el precio mayorista es por volumen). Permite expresar "= 800 = un pallet completo", no solo
+umbrales. El `migration-reviewer` encontró un **bug de plata**: el POS viejo era "gana el de mayor
+cantidad_minima satisfecho" (last-match), y con first-match + backfill asc un cliente que compra 60 con
+tiers 10→$90/50→$80 pagaría $90 — corregido backfilleando `orden` **DESC** (mayor umbral primero).
+
+Lógica pura nueva `src/lib/tiers.ts` (`matchTier`/`precioTier`/`mejorPrecioMayorista`, 10 unit tests
+incl. la regresión del bug). POS (`VentasPage`): `precioTierBase` resuelve por operador + suma la
+cantidad del SKU en todo el carrito; **`descEstadoDe`** recalcula el descuento por estado con el precio
+vigente (fuente única para plata + venta_items + ticket, así nada queda stale si otra línea del mismo
+SKU mueve el tier — Regla #0). Ficha (`ProductoFormPage`): dropdown de operador por tier + persiste
+`orden`=índice (el reviewer marcó que sin esto el fix se revertía en el 1er guardado). Verde: tsc +
+build + 10 unit + e2e `110` (persistencia operador+orden desde la ficha, contra DB real).
+
+**▶ Falta de Fase 2-bis (próxima):** chunk 2 = re-modelar `producto_presentaciones` a árbol genealógico
+(`padre_linea_id` + factor_base resuelto + guards de ciclo/borrado) + sacar los overrides de precio +
+atar el nivel base a la UdM física de la ficha (H2). Fase 1-bis = catálogo completo de físicas +
+enable/disable + presets por rubro. Fase 4 = stock decimal atomic-base + E3. Detalle en
+`diseño-uom-empaque-variantes.html` y [[wiki/features/estructuras-udm]].
+
 ## [2026-07-24] update | 📐 Rediseño UoM/Empaque/Variantes — FASE 2 (precio en base + presentaciones, mig 304) y FASE 3 (variantes madre/hijo, mig 305)
 
 Continuación de Fase 1 tras el /clear (GO pidió seguir con Fase 2 + 3). Ambas construidas y

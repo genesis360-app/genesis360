@@ -39,6 +39,7 @@ import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSald
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
 import { precioPresentacion, convertirABase } from '@/lib/estructuras'
+import { precioTier, mejorPrecioMayorista, type TierMayorista } from '@/lib/tiers'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
@@ -123,7 +124,7 @@ interface CartItem {
   unidad_medida: string
   precio_unitario: number          // precio minorista base (1 u.) — ya convertido a moneda local
   precio_usd_origen?: number        // G5 — si el producto se vende en USD, su precio original en dólares
-  tiers?: { cantidad_minima: number; precio: number }[]  // G1/G2 — precios mayoristas por cantidad (asc)
+  tiers?: TierMayorista[]  // G1/G2 — precios mayoristas por cantidad, con operador + orden (mig 306)
   precio_costo: number
   cantidad: number
   descuento: number
@@ -2407,12 +2408,16 @@ export default function VentasPage() {
     queryKey: ['precios-mayorista', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('producto_precios_mayorista')
-        .select('producto_id, cantidad_minima, precio').eq('tenant_id', tenant!.id)
-      const map: Record<string, { cantidad_minima: number; precio: number }[]> = {}
+        .select('producto_id, cantidad_minima, precio, operador, orden').eq('tenant_id', tenant!.id)
+      const map: Record<string, TierMayorista[]> = {}
       for (const r of (data ?? []) as any[]) {
-        (map[r.producto_id] ??= []).push({ cantidad_minima: r.cantidad_minima, precio: Number(r.precio) })
+        (map[r.producto_id] ??= []).push({
+          cantidad_minima: r.cantidad_minima, precio: Number(r.precio),
+          operador: (r.operador ?? '>=') as TierMayorista['operador'], orden: r.orden ?? 0,
+        })
       }
-      for (const k in map) map[k].sort((a, b) => a.cantidad_minima - b.cantidad_minima)
+      // Ordenados por `orden` (gana el primer match, mig 306). precioTier igual reordena por las dudas.
+      for (const k in map) map[k].sort((a, b) => a.orden - b.orden)
       return map
     },
     enabled: !!tenant,
@@ -2423,16 +2428,19 @@ export default function VentasPage() {
   // SIN redondeo (lo aplica precioTierEfectivo) — se usa para detectar si un tier mayorista
   // bajó el precio respecto del minorista (display), independiente del redondeo configurado.
   const precioTierBase = (item: CartItem): number => {
-    const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
     // VF2/I2: la lista de precios por canal puede forzar minorista o mayorista
     const lista = reglaDe(canalPOS).lista_precio
     if (lista === 'minorista') return item.precio_unitario
-    if (lista === 'mayorista') return tiers[tiers.length - 1]?.precio ?? item.precio_unitario  // mejor tier (asc)
-    let precio = item.precio_unitario
-    for (const t of tiers) if (cant >= t.cantidad_minima) precio = t.precio  // tiers ya viene asc
-    return precio
+    if (lista === 'mayorista') return mejorPrecioMayorista(tiers) ?? item.precio_unitario
+    // Agregación por SKU (mig 306, decisión Fede): el tier se resuelve contra la cantidad TOTAL de
+    // este producto en el carrito (todas las líneas del mismo SKU sumadas), no por línea — el precio
+    // mayorista es por volumen. `cart` acá es el estado committeado (render-time correcto).
+    const cantTotalSku = cart
+      .filter(i => i.producto_id === item.producto_id)
+      .reduce((s, i) => s + (i.tiene_series ? i.series_seleccionadas.length : i.cantidad), 0)
+    return precioTier(tiers, cantTotalSku) ?? item.precio_unitario
   }
 
   // H4 — Precio unitario EFECTIVO (canónico): precio de lista/tier redondeado según
@@ -2440,6 +2448,13 @@ export default function VentasPage() {
   // factura) deriva de acá → el redondeo se propaga de forma consistente. Default 'none' = sin cambios.
   const precioTierEfectivo = (item: CartItem): number =>
     redondearPrecio(precioTierBase(item), (tenant as any)?.precio_redondeo)
+
+  // Descuento por estado recalculado con el precio de tier VIGENTE de la línea (mig 306: el tier
+  // depende del total del SKU en el carrito). Fuente ÚNICA — así la plata (getItemSubtotal), el
+  // detalle combinado del ticket y lo que se graba en venta_items nunca quedan stale si otra línea
+  // del mismo SKU movió el tier (Regla #0). Los campos item.descuento_estado_* son solo snapshot.
+  const descEstadoDe = (item: CartItem) =>
+    calcularDescuentoEstadoLinea(item.lpn_fuentes ?? [], precioTierEfectivo(item))
 
   const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
@@ -2605,7 +2620,7 @@ export default function VentasPage() {
     const conDescItem = item.descuento_tipo === 'pct' ? base * (1 - item.descuento / 100) : Math.max(0, base - item.descuento)
     // Descuento automático por estado (backlog Fede, punto 3) — independiente del descuento
     // manual/combo de arriba, se resta aparte (nunca colisiona con la lógica de combos).
-    return Math.max(0, conDescItem - (item.descuento_estado_monto || 0))
+    return Math.max(0, conDescItem - descEstadoDe(item).monto)
   }
 
   const subtotal = cart.reduce((acc, item) => acc + getItemSubtotal(item), 0)
@@ -2632,7 +2647,7 @@ export default function VentasPage() {
   // Ya está restado en `subtotal` (vía getItemSubtotal) — este detalle combinado es solo para
   // mostrarlo en el resumen del ticket y trazarlo en ventas.descuento_estado (mig 285).
   const descuentoEstadoAplicado = useMemo(
-    () => combinarDetalleDescuentoEstado(cart.map(i => i.descuento_estado_detalle ?? [])),
+    () => combinarDetalleDescuentoEstado(cart.map(i => descEstadoDe(i).detalle)),
     [cart],
   )
 
@@ -3045,7 +3060,10 @@ export default function VentasPage() {
         // Punto 3 Fede/GO — trazabilidad del descuento por estado en esta línea (ya restado en
         // itemSubtotal vía getItemSubtotal, esto es solo para reportes/historial). pct solo si
         // fue un único estado — con mezcla de estados en la misma línea, monto es el dato posta.
-        const descEstadoDetalle = item.descuento_estado_detalle ?? []
+        // Descuento por estado recalculado con el precio vigente (fuente única, ver descEstadoDe) —
+        // así lo grabado en venta_items coincide EXACTO con lo cobrado en itemSubtotal (Regla #0).
+        const descEstadoLinea = descEstadoDe(item)
+        const descEstadoDetalle = descEstadoLinea.detalle
         return {
           tenant_id: tenant!.id, venta_id: venta.id, producto_id: item.producto_id, linea_id: lineaId,
           cantidad: cant, precio_unitario: precioUnit, precio_costo_historico: item.precio_costo || null,
@@ -3056,7 +3074,7 @@ export default function VentasPage() {
           alicuota_iva: ivaRate, iva_monto: parseFloat(ivaMonto.toFixed(2)),
           lpn_plan: lpnPlan,
           descuento_estado_pct: descEstadoDetalle.length === 1 ? descEstadoDetalle[0].pct : null,
-          descuento_estado_monto: item.descuento_estado_monto || null,
+          descuento_estado_monto: descEstadoLinea.monto || null,
           // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — trazabilidad/display de
           // qué UoM se vendió. cantidad (arriba) sigue en unidades base, sin cambios.
           unidad_medida_id: item.unidad_medida_id ?? null,

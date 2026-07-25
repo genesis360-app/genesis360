@@ -6,7 +6,53 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-24) — Rediseño UoM/Empaque/Variantes: **FASE 2 (precio en base + presentaciones, migs 304) y FASE 3 (variantes madre/hijo, mig 305) CONSTRUIDAS** — EN DEV, **SIN deploy a PROD**
+> ### 📐 ARRANCÁ ACÁ (2026-07-24, cierre /clear) — Rediseño UoM: **relevamiento CERRADO con Fede + FASE 2-bis chunk 1 (tiers con operador, mig 306) hecho** — EN DEV, **SIN deploy a PROD**
+>
+> **🔑 Fede cerró el relevamiento (respuestas finales 2026-07-24) y su modelo ANULA parte de las
+> decisiones que yo ya había construido. Éstas mandan ahora:**
+> - **Precio SOLO a nivel de unidad + tiers de cantidad.** NO overrides de precio por presentación; el
+>   empaque es **logística pura, sin precio**. Para "vender un pallet" se usa un **tier de cantidad**.
+>   ⚠ Hay que **SACAR** los overrides `producto_presentaciones.precio_venta/costo` que metí en mig 304.
+>   (El precio-en-base + eliminar el ancla SÍ quedan — están alineados.)
+> - **Vender "2 cajas" en el POS SÍ se mantiene** (conveniencia de carga → calcula unidades base), pero
+>   el precio sale siempre de unidad+tiers, nunca de un override.
+> - **Empaque = ÁRBOL GENEALÓGICO** (ni cadena única ni paralelo puro): cada línea apunta EXPLÍCITO a una
+>   línea del nivel de abajo (su padre); `factor_base` se resuelve subiendo la cadena y se GUARDA resuelto
+>   (Pallet-A "=100 Caja-8" → 800 u). Guards: no ciclos, no borrar padre con hijos. ⚠ **Reemplaza el
+>   modelo plano/paralelo que construí en mig 304.**
+> - **Stock decimal = unidad ATÓMICA entera** (gramos/mL/mm), mostrando en la UdM de la ficha. NO migrar
+>   columnas de stock a numeric. Cambio de UdM: same-family gratis, cross-family bloqueado con stock (E3).
+> - **H2:** el nivel base de la Estructura DERIVA del campo "Unidad de medida" de la ficha (una dirección).
+> - **B2/H1:** Config→Inventario→Unidades = catálogo COMPLETO de físicas (litros/galones/onzas/m²/m³) +
+>   enable/disable por tenant + presets por rubro; SACAR los nombres de empaque de esa pantalla.
+> - **Tiers con OPERADOR** (`>`,`<`,`=`,`>=`,`<=`) + agregación por SKU (por volumen). Default `>=`.
+>
+> **✅ FASE 2-bis chunk 1 HECHO (mig 306, commit `cd1eec8f`):** tiers de precio mayorista con operador +
+> `orden` (gana el primer match; cantidad = total del SKU en el carrito). El `migration-reviewer` cazó un
+> bug de plata (el POS viejo era last-match "gana el de mayor umbral"; se corrigió backfilleando `orden`
+> DESC). Lógica pura `src/lib/tiers.ts` (10 unit). POS: `precioTierBase` por operador + agregación por SKU;
+> `descEstadoDe` recalcula el descuento por estado con el precio vigente (fuente única, Regla #0). Ficha:
+> dropdown de operador + persiste `orden`. Verde: tsc + build + 1206 unit + e2e `110` (DB real).
+>
+> **▶ PRÓXIMA SESIÓN — Fase 2-bis chunk 2 + Fase 1-bis** (metodología: cada migración por
+> `migration-reviewer` ANTES de aplicar + tests + verificar DB real):
+> - **Chunk 2 (🛑 reencauza mig 304):** re-modelar `producto_presentaciones` a **árbol genealógico**
+>   (`padre_linea_id` + `factor_base` resuelto + guards de ciclo y de borrado con hijos) · **SACAR los
+>   overrides de precio** de presentación · atar el nivel base de la Estructura a la **UdM física de la
+>   ficha** (H2). El POS mantiene vender "2 cajas" pero SOLO como conversión de cantidad (precio = base + tiers).
+> - **Fase 1-bis:** catálogo COMPLETO de físicas + enable/disable por tenant + presets por rubro + sacar
+>   "Nombres de empaque" de Config→Inventario→Unidades.
+> - Después: **Fase 4** (stock decimal atomic-base + E3 + stock "sin variante asignada" + guards de borrado
+>   multi-sucursal, lo más Regla #0) y **Fase 5** (operar por presentación end-to-end + limpieza de tablas
+>   deprecadas: `producto_estructura_niveles`, `producto_grupos`, `ProductoGrupoModal.tsx`).
+>
+> **Estado git al cierre:** commits en `dev` LOCAL sin pushear (último `cd1eec8f`, ahead 11 de origin/dev).
+> PROD sigue v1.142.0. Nada del rediseño UoM (Fases 1-3 + 2-bis) + WMS + Pedidos se deployó a PROD.
+> Migraciones EN DEV de esta tanda: 303 (Fase 1) · 304 (Fase 2) · 305 (Fase 3) · 306 (Fase 2-bis chunk 1).
+> Diseño canónico: `diseño-uom-empaque-variantes.html` (⚠ desactualizado respecto de las respuestas finales
+> de Fede — el árbol genealógico y el precio-solo-unidad+tiers no están reflejados ahí todavía).
+
+> ### 📐 ESTADO ANTERIOR (2026-07-24) — Rediseño UoM/Empaque/Variantes: FASE 2 (precio en base + presentaciones, mig 304) y FASE 3 (variantes madre/hijo, mig 305) — EN DEV
 >
 > Continuación de Fase 1 (mig 303). GO pidió seguir con Fase 2 + 3 tras el /clear. Ambas hechas,
 > con cada migración revisada por `migration-reviewer` ANTES de aplicar y verificadas contra datos

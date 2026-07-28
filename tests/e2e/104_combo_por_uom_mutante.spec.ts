@@ -15,7 +15,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, sembrarPresentaciones } from './helpers/fixtures'
 
 test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => {
   test('combo "3×10% off" (UoM base) aplica suelto, se desactiva al vender por Caja', async ({ page, request }) => {
@@ -58,20 +58,9 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     const [udmUnidad] = (await udmUnidadRes.json()) as Array<{ id: string }>
     const udmCajaRes = await request.get(`${SUPABASE_URL}/rest/v1/unidades_medida?nombre=eq.Caja&select=id`, { headers })
     const [udmCaja] = (await udmCajaRes.json()) as Array<{ id: string }>
-    const estrId = crypto.randomUUID()
-    await request.post(`${SUPABASE_URL}/rest/v1/producto_estructuras`, {
-      headers, data: { id: estrId, tenant_id: prod.tenant_id, producto_id: prod.id, nombre: 'Combo UoM E2E', is_default: true },
-    })
-    await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_estructura_guardar_niveles`, {
-      headers,
-      data: {
-        p_estructura_id: estrId,
-        p_niveles: [
-          { unidad_medida_id: udmUnidad.id, factor: 1 },
-          { unidad_medida_id: udmCaja.id, factor: FACTOR_CAJA },
-        ],
-      },
-    })
+    await sembrarPresentaciones(request, token, prod.id, 'unidad', [
+      { etiqueta: `Caja-${FACTOR_CAJA}`, factor_base: FACTOR_CAJA, nombre_empaque_id: udmCaja.id },
+    ])
 
     // 3) Combo "3×10% off" SOLO para la UoM base (unidad_medida_id NULL — el default de todos
     //    los combos existentes, este fix no les cambia el comportamiento)

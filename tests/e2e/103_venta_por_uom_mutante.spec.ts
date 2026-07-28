@@ -11,7 +11,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, sembrarPresentaciones } from './helpers/fixtures'
 
 test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
   test('vender 3 Cajas usa el precio de Caja y convierte a 36 unidades base', async ({ page, request }) => {
@@ -57,22 +57,9 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
     const [udmCaja] = (await udmCajaRes.json()) as Array<{ id: string }>
     expect(udmUnidad && udmCaja, '[103] faltan las UdM predefinidas Unidad/Caja').toBeTruthy()
 
-    const estrId = crypto.randomUUID()
-    await request.post(`${SUPABASE_URL}/rest/v1/producto_estructuras`, {
-      headers,
-      data: { id: estrId, tenant_id: prod.tenant_id, producto_id: prod.id, nombre: 'Venta UoM E2E', is_default: true },
-    })
-    const rpcRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_estructura_guardar_niveles`, {
-      headers,
-      data: {
-        p_estructura_id: estrId,
-        p_niveles: [
-          { unidad_medida_id: udmUnidad.id, factor: 1 },
-          { unidad_medida_id: udmCaja.id, factor: FACTOR_CAJA },
-        ],
-      },
-    })
-    expect(rpcRes.ok(), `[103] no se pudieron guardar los niveles: ${await rpcRes.text()}`).toBe(true)
+    await sembrarPresentaciones(request, token, prod.id, prod.unidad_medida ?? 'unidad', [
+      { etiqueta: `Caja-${FACTOR_CAJA}`, factor_base: FACTOR_CAJA, nombre_empaque_id: udmCaja.id },
+    ])
 
     // 3) Ingreso real de stock (suficiente para 3 cajas = 36 unidades) por UI
     await goto(page, '/inventario')

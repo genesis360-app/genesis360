@@ -239,7 +239,10 @@ export function presentacionesComoNiveles(filas: PresentacionFila[]) {
       orden: f.orden,
       factor: f.factor_base,
       unidades_base: f.factor_base,
-      unidad_medida_id: f.nombre_empaque_id ?? '',
+      // NULL cuando la presentación no tiene tipo de empaque (la BASE nunca lo tiene: es la
+      // unidad suelta). No devolver '' — se escribe en `inventario_lineas.unidad_medida_id`,
+      // que es uuid, y un string vacío revienta el INSERT del LPN.
+      unidad_medida_id: f.nombre_empaque_id,
       peso_kg: f.peso_kg,
       alto_cm: f.alto_cm,
       ancho_cm: f.ancho_cm,

@@ -11,7 +11,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, sembrarPresentaciones } from './helpers/fixtures'
 import { randomUUID } from 'node:crypto'
 
 test.describe('ProductosPage → botón Filtros (mutante)', () => {
@@ -51,17 +51,11 @@ test.describe('ProductosPage → botón Filtros (mutante)', () => {
     const [udm] = (await udmRes.json()) as Array<{ id: string }>
     expect(udm, '[100] falta la UdM predefinida Unidad').toBeTruthy()
 
-    const estrId = randomUUID()
-    const insRes = await request.post(`${SUPABASE_URL}/rest/v1/producto_estructuras`, {
-      headers,
-      data: { id: estrId, tenant_id: prod.tenant_id, producto_id: prod.id, nombre: 'Filtros E2E', is_default: true },
-    })
-    expect(insRes.ok(), '[100] no se pudo crear la estructura').toBe(true)
-    const rpcRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_estructura_guardar_niveles`, {
-      headers,
-      data: { p_estructura_id: estrId, p_niveles: [{ unidad_medida_id: udm.id, factor: 1 }] },
-    })
-    expect(rpcRes.ok(), '[100] no se pudieron guardar los niveles').toBe(true)
+    // Fase 5 (mig 310): "con empaque" = tener al menos una presentación NO base, porque la
+    // base la tiene TODO producto. Se siembra una Caja ×6 para que caiga del lado "Con".
+    await sembrarPresentaciones(request, token, prod.id, 'unidad', [
+      { etiqueta: 'Caja-6', factor_base: 6, nombre_empaque_id: udm.id },
+    ])
 
     // 3) Filtro Con/Sin estructura
     await goto(page, '/productos')

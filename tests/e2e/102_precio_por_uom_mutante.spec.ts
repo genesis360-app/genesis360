@@ -13,7 +13,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, sembrarPresentaciones } from './helpers/fixtures'
 
 test.describe('Presentaciones sin precio + árbol genealógico (mutante)', () => {
   test('empaque sin override: Caja = base×factor, padre_linea_id materializado, sin ancla', async ({ page, request }) => {
@@ -54,35 +54,11 @@ test.describe('Presentaciones sin precio + árbol genealógico (mutante)', () =>
     const [udmCaja] = (await udmCajaRes.json()) as Array<{ id: string }>
     expect(udmCaja, '[102] falta la UdM predefinida Caja').toBeTruthy()
 
-    const estrId = crypto.randomUUID()
-    const insRes = await request.post(`${SUPABASE_URL}/rest/v1/producto_estructuras`, {
-      headers,
-      data: { id: estrId, tenant_id: prod.tenant_id, producto_id: prod.id, nombre: 'Precio UoM E2E', is_default: true },
-    })
-    expect(insRes.ok(), `[102] no se pudo crear la estructura: ${await insRes.text()}`).toBe(true)
+    await sembrarPresentaciones(request, token, prod.id, prod.unidad_medida ?? 'unidad', [
+      { etiqueta: 'Caja-12', factor_base: 12, nombre_empaque_id: udmCaja.id },
+    ])
 
-    const rpcRes = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_estructura_guardar_niveles`, {
-      headers,
-      data: {
-        p_estructura_id: estrId,
-        p_niveles: [
-          { unidad_medida_id: udmUnidad.id, factor: 1 },
-          { unidad_medida_id: udmCaja.id, factor: 12, precio_venta: 1080 }, // el precio se ignora (mig 307)
-        ],
-      },
-    })
-    expect(rpcRes.ok(), `[102] no se pudieron guardar los niveles: ${await rpcRes.text()}`).toBe(true)
-
-    // 3) POSITIVO en DB: niveles con factor/unidades_base correctos (ya sin columnas de precio)
-    const nivelesRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/producto_estructura_niveles?estructura_id=eq.${estrId}&order=orden&select=orden,factor,unidades_base`,
-      { headers },
-    )
-    const niveles = (await nivelesRes.json()) as Array<{ orden: number; factor: number; unidades_base: number }>
-    expect(niveles).toHaveLength(2)
-    expect(Number(niveles[1].unidades_base), '[102] Caja = 12 unidades base').toBe(12)
-
-    // 4) POSITIVO en DB: el trigger auto-construyó producto_presentaciones con el ÁRBOL genealógico
+    // 3) POSITIVO en DB: producto_presentaciones con el ÁRBOL genealógico
     const presRes = await request.get(
       `${SUPABASE_URL}/rest/v1/producto_presentaciones?producto_id=eq.${prod.id}&order=orden&select=etiqueta,factor_base,es_base,padre_linea_id,id`,
       { headers },

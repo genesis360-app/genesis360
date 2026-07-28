@@ -173,6 +173,15 @@ describe('presentacionesComoNiveles (adaptador para los selectores de UoM)', () 
     expect(niveles.map(n => n.unidades_base)).toEqual([1, 12, 216])
     expect(niveles.map(n => n.unidades_medida.nombre)).toEqual(['unidad', 'Caja-12', 'Pallet'])
   })
+
+  it('🛑 la presentación BASE devuelve unidad_medida_id NULL, nunca "" (rompía el INSERT del LPN)', () => {
+    // Bug real cazado por los e2e 103/104: `inventario_lineas.unidad_medida_id` es uuid y los
+    // consumidores hacen `?? null`, que NO atrapa un string vacío → el ingreso de stock fallaba.
+    const filas: PresentacionFila[] = [
+      { id: 'u', etiqueta: 'unidad', nombre_empaque_id: null, factor_base: 1, es_base: true, padre_linea_id: null, orden: 0, peso_kg: null, alto_cm: null, ancho_cm: null, largo_cm: null },
+    ]
+    expect(presentacionesComoNiveles(filas)[0].unidad_medida_id).toBeNull()
+  })
 })
 
 describe('resumenArbol', () => {

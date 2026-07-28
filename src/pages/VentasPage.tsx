@@ -148,6 +148,8 @@ interface CartItem {
   // (por unidad base) NO cambia al elegir presentación. El descuento por volumen sale de los tiers.
   nivelesUom?: NivelPrecioCarrito[]
   nivelSeleccionadoOrden?: number   // orden de la presentación elegida para vender (base = sin UoM)
+  // ⚠ El `orden` es solo un identificador: para saber si la presentación elegida es la BASE hay
+  // que mirar `es_base` (ver `vendiendoEnBase`), NUNCA comparar contra un número.
   unidad_medida_id?: string | null  // FK del nivel elegido, null = base (venta_items.unidad_medida_id)
   cantidad_uom?: number | null      // cantidad tipeada EN esa UoM, ej. 3 (venta_items.cantidad_uom)
   imagen_url?: string
@@ -1370,7 +1372,7 @@ export default function VentasPage() {
       // Venta por UoM (backlog Fede 4/6/7, Fase 2) — si la línea ya está vendiéndose "por Caja",
       // +1 tiene que sumar 1 CAJA (no 1 unidad base suelta, que dejaría cantidad_uom desincronizado
       // de cantidad). Reusa seleccionarNivelUom, que ya hace la conversión completa.
-      if ((existente.nivelSeleccionadoOrden ?? 1) !== 1) {
+      if (!vendiendoEnBase(existente)) {
         seleccionarNivelUom(idx, existente.nivelSeleccionadoOrden!, (existente.cantidad_uom ?? 1) + 1)
         return
       }
@@ -1521,6 +1523,23 @@ export default function VentasPage() {
   // presentación es SOLO conversión de cantidad — `cantidad` (base) es la fuente de verdad para
   // stock/subtotal/prorrateo; `precio_unitario` (por unidad base) NO se toca (empaque sin precio
   // propio; el descuento por volumen sale de los tiers). unidad_medida_id/cantidad_uom = display.
+  /**
+   * ¿Esta línea del carrito se está vendiendo en la UNIDAD BASE (suelta) o en un empaque?
+   *
+   * 🛑 Se resuelve por el flag `es_base` de la presentación, NUNCA por `orden === 1`. Hasta la
+   * Fase 5 la base era siempre `orden = 1` (venía de producto_estructura_niveles); con el árbol
+   * de presentaciones (mig 310) la base es `orden = 0` y el `orden = 1` es la primera CAJA.
+   * Comparar contra el número hacía que vender "1 Caja" se registrara como venta en UoM base
+   * → se le aplicaban los combos configurados solo para la unidad suelta (bug de plata real,
+   * cazado por el e2e 104). Un ítem sin presentaciones se vende en base por definición.
+   */
+  const vendiendoEnBase = (item: CartItem, orden?: number): boolean => {
+    const niveles = item.nivelesUom
+    if (!niveles || niveles.length === 0) return true
+    const sel = niveles.find(n => n.orden === (orden ?? item.nivelSeleccionadoOrden))
+    return sel ? !!sel.es_base : true
+  }
+
   const seleccionarNivelUom = (idx: number, ordenNivel: number, cantidadUom: number) => {
     setCart(prev => prev.map((item, i) => {
       if (i !== idx || !item.nivelesUom) return item
@@ -1536,8 +1555,8 @@ export default function VentasPage() {
       const updated: CartItem = {
         ...item,
         nivelSeleccionadoOrden: ordenNivel,
-        unidad_medida_id: ordenNivel === 1 ? null : nivel.unidad_medida_id,
-        cantidad_uom: ordenNivel === 1 ? null : cant,
+        unidad_medida_id: nivel.es_base ? null : nivel.unidad_medida_id,
+        cantidad_uom: nivel.es_base ? null : cant,
         cantidad: cantidadBase,
       }
       if (!item.tiene_series && item.lineas_disponibles) {
@@ -4935,7 +4954,7 @@ export default function VentasPage() {
 
                       <div className="flex items-center gap-3 mt-2">
                         {/* Cantidad */}
-                        {!item.tiene_series && (item.nivelSeleccionadoOrden ?? 1) === 1 && (
+                        {!item.tiene_series && vendiendoEnBase(item) && (
                           <div className="flex items-center gap-1">
                             <button onClick={() => updateItem(idx, 'cantidad', Math.max(stepCantidad(item.unidad_medida), parseFloat((item.cantidad - stepCantidad(item.unidad_medida)).toFixed(3))))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
@@ -4960,7 +4979,7 @@ export default function VentasPage() {
                         {/* Cantidad EN LA UoM elegida (backlog Fede 4/6/7, Fase 2) — reemplaza los
                             controles de arriba cuando se vende "por Caja"/"por Pallet" en vez de
                             la unidad base; item.cantidad (unidades base) se recalcula solo. */}
-                        {!item.tiene_series && (item.nivelSeleccionadoOrden ?? 1) !== 1 && (
+                        {!item.tiene_series && !vendiendoEnBase(item) && (
                           <div className="flex items-center gap-1">
                             <button onClick={() => seleccionarNivelUom(idx, item.nivelSeleccionadoOrden!, Math.max(1, (item.cantidad_uom ?? 1) - 1))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
@@ -4993,7 +5012,7 @@ export default function VentasPage() {
                                 <option key={n.orden} value={n.orden}>{n.nombre}</option>
                               ))}
                             </select>
-                            {(item.nivelSeleccionadoOrden ?? 1) !== 1 && (
+                            {!vendiendoEnBase(item) && (
                               <span className="text-xs text-gray-400 dark:text-gray-500">
                                 = {item.cantidad} {item.nivelesUom[0].nombre}
                               </span>

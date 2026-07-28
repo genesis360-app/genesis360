@@ -6,10 +6,36 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-23
 ---
 
-# Historial de Migraciones (001-306)
+# Historial de Migraciones (001-308)
 
-**Total al 2026-07-24:** 306 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-27:** 308 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**308 (rediseño UoM — FASE 1-bis: catálogo completo de unidades físicas, EN DEV, SIN deploy a PROD)** —
+`unidades_medida_fisicas` (mig 303) suma la familia **'area'** (se relaja el CHECK de `familia` a
+peso/volumen/longitud/conteo/area) y el seed pasa de 11 a **27 unidades** (métrico + imperial —onza,
+libra, galón US, pulgada, pie, yarda, milla— + área m²/cm²/ha/km² + docena/millar). El seed ahora setea
+`activo` explícito (comunes activas, imperial/raras inactivas) y se re-corre para todos los tenants con
+`ON CONFLICT (tenant_id, nombre) DO NOTHING` → solo inserta las nuevas, **no pisa el `activo` toggleado**
+por el tenant (enable/disable por tenant). NO toca plata/stock/fiscal. Revisada por `migration-reviewer`
+(idempotencia, nombre del CHECK `unidades_medida_fisicas_familia_check`, superset del CHECK, factores de
+conversión exactos, SECURITY DEFINER/search_path — todo OK; cazó que el mirror frontend `FamiliaFisica`
+sin 'area' crasheaba el form de producto → corregido antes de aplicar). Presets por rubro viven en el
+frontend (`PRESETS_RUBRO`). Ver [[wiki/features/estructuras-udm]].
+
+**307 (rediseño UoM — FASE 2-bis chunk 2: empaque sin precio + árbol genealógico, EN DEV, SIN deploy a PROD, 🛑 TOCA PLATA)** —
+reencauza mig 304 con el modelo final de Fede: el **empaque es logística pura, sin precio propio**. DROP de
+`precio_venta`/`precio_costo` en `producto_presentaciones` Y en `producto_estructura_niveles` (el precio de
+una presentación = `productos.precio_venta` por unidad base × `factor_base`; el precio por volumen es un
+TIER de mig 306). `producto_presentaciones` gana **`padre_linea_id`** (self-FK, **NO ACTION** = guard de
+borrado-con-hijos que sí deja pasar el wipe del rebuild en 1 statement) + trigger `trg_pp_no_ciclo` (ciclo +
+mismo-producto + self-parent) + `UNIQUE(producto_id, orden)`. `fn_rebuild_presentaciones` reescrita: sin
+precio, setea `padre_linea_id` (cadena lineal: padre = orden inmediatamente menor; base = NULL) + **H2**
+(etiqueta de la presentación base = `productos.unidad_medida`). `fn_estructura_guardar_niveles` sin el bloque
+de precio por nivel. Revisada por `migration-reviewer` (FK NO ACTION vs wipe, ciclo durante el rebuild
+multi-fila, linkeo del padre, idempotencia, RLS/DEFINER/search_path — todo OK). Verificado en DEV: de 22
+productos con override, 20 eran E2E/Test (el resto ±2¢ por redondeo). Ver [[wiki/features/estructuras-udm]]
+y [[wiki/features/ventas-pos]].
 
 **306 (rediseño UoM — FASE 2-bis: tiers de precio mayorista con OPERADOR, EN DEV, SIN deploy a PROD, 🛑 TOCA PLATA)** —
 `producto_precios_mayorista` (mig 092) gana `operador` ('>','<','=','>=','<=', default '>=') + `orden`

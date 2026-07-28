@@ -11,12 +11,13 @@ updated: 2026-07-23
 > universal fija), **Nivel de Empaque** (Caja/Pallet, factor por producto — hoy "Estructura") y
 > **Variantes** (SKU madre/hijo). El diseño completo + las decisiones cerradas están en
 > `diseño-uom-empaque-variantes.html` (raíz del repo) y el relevamiento en
-> `relevamiento-unidades-medida-empaque-reglas-negocio.html`. **Fase 1 (Unidad de Medida física) ya
-> está construida, ver abajo.** Las fases 2-5 (presentaciones paralelas, madre/hijo, migración de
-> stock, operar por presentación) siguen pendientes. Hallazgo del proceso: el "ancla de precio"
-> (`nivel_precio_orden`) se guarda por POSICIÓN y no se revalida al reordenar niveles / cambiar la
-> estructura default → puede apuntar en silencio a otra unidad (se arregla en Fase 2, anclando el
-> precio a la unidad base).
+> `relevamiento-unidades-medida-empaque-reglas-negocio.html`. **Fases 1, 1-bis, 2, 2-bis (chunks 1 y 2)
+> y 3 ya están construidas (EN DEV, migs 303-308), ver abajo.** Faltan **Fase 4** (stock atómico + stock
+> "sin variante asignada" + borrado multi-sucursal — la más Regla #0) y **Fase 5** (operar por presentación
+> + habilitar hermanas + limpieza de tablas deprecadas). El "ancla de precio" (`nivel_precio_orden`, bug
+> por POSICIÓN) ya se eliminó en la Fase 2, y en el chunk 2 (mig 307) se sacaron también los overrides de
+> precio de presentación: el empaque es **logística pura, sin precio propio** (el precio por volumen es un
+> TIER, mig 306).
 
 ## 🆕 Rediseño UoM — Fase 1: Unidad de Medida física (mig 303, EN DEV)
 
@@ -120,16 +121,59 @@ logística pura), y para "vender un pallet" se usa un tier de cantidad, no un pr
 - **Verificado:** `migration-reviewer` (fix del backfill DESC) · tsc · build · 10 unit · e2e `110`
   (persistencia de operador+orden desde la ficha, DB real).
 
-**▶ Falta de Fase 2-bis (próxima):** re-modelar `producto_presentaciones` a **árbol genealógico**
-(`padre_linea_id` explícito + factor_base resuelto + guards de ciclo y de borrado con hijos) + sacar los
-overrides de precio de presentación + atar el nivel base de la Estructura a la **UdM física de la ficha**
-(H2, una dirección). Fase 1-bis = catálogo COMPLETO de físicas (litros/galones/onzas/m²/m³) + enable/
-disable por tenant + presets por rubro + sacar "Nombres de empaque" de Config.
+---
+
+## 🆕 Rediseño UoM — Fase 2-bis chunk 2: empaque sin precio + árbol genealógico (mig 307, EN DEV) — 🛑 PLATA
+
+Reencauza la Fase 2 (mig 304) con el modelo final de Fede: **el empaque es logística pura, sin precio
+propio**. Vender "2 cajas" en el POS queda como **conversión de cantidad** (2 × factor_base unidades base);
+el precio sale siempre de la unidad base + tiers.
+
+- **DROP de overrides:** se eliminan `precio_venta`/`precio_costo` de `producto_presentaciones` Y de
+  `producto_estructura_niveles`. El precio de una presentación es SIEMPRE `productos.precio_venta` (unidad
+  base) × `factor_base`. El "precio por bulto/volumen" es un TIER (mig 306), no un override de presentación.
+- **Árbol genealógico:** `producto_presentaciones` gana `padre_linea_id` (self-FK **NO ACTION** = guard de
+  borrado-con-hijos que igual deja pasar el wipe del rebuild en 1 statement) + trigger `trg_pp_no_ciclo`
+  (ciclo + mismo-producto + self-parent) + `UNIQUE(producto_id, orden)`. En Fase 2-bis los niveles siguen
+  siendo cadena lineal (hermanas bloqueadas hasta Fase 5): el padre = la presentación de orden inmediatamente
+  menor; la base tiene padre NULL.
+- **H2:** `fn_rebuild_presentaciones` setea la etiqueta de la presentación base = `productos.unidad_medida`
+  (el nivel base de la Estructura deriva de la UdM de la ficha, una dirección).
+- **Frontend:** `precioPresentacion(base, factor)` sin override (estructuras.ts); POS (`VentasPage`)
+  `seleccionarNivelUom` NO toca `precio_unitario`, solo la cantidad; editor de estructura (ProductosPage) sin
+  inputs de precio por nivel; ProductoFormPage + Importador sin columnas `estr_precio_*`.
+- **Verificado:** `migration-reviewer` (FK NO ACTION vs wipe del rebuild, ciclo en el UPDATE multi-fila,
+  linkeo del padre, idempotencia) · DB real (de 22 productos con override, 20 eran E2E/Test; los reales ±2¢
+  por redondeo del precio/unidad) · tsc · build · unit `estructurasPrecio`/`estructuras` reescritos · e2e
+  `102`/`103`/`104`/`105` reescritos al nuevo modelo + `110`.
+
+## 🆕 Rediseño UoM — Fase 1-bis: catálogo completo de unidades físicas + enable/disable + presets (mig 308, EN DEV)
+
+Decisión B2/H1 de Fede: Config→Inventario→"Unidades" = catálogo COMPLETO de físicas con enable/disable por
+tenant + presets por rubro; los nombres de empaque salen de esa pantalla.
+
+- **Catálogo (mig 308):** de 11 a **27 unidades** — métrico + imperial (onza, libra, galón US, pulgada, pie,
+  yarda, milla) + **familia nueva 'area'** (m²/cm²/ha/km²; se relaja el CHECK de `familia`) + docena/millar.
+  Comunes activas, imperial/raras inactivas por default. El seed setea `activo` explícito y se re-corre con
+  `ON CONFLICT DO NOTHING` → no pisa el `activo` toggleado por el tenant.
+- **enable/disable por tenant:** toggle `activo` por unidad en la config (la **base de familia no se apaga**
+  — es el ancla de conversión). El selector de la ficha y el POS solo muestran las activas.
+- **Presets por rubro:** `PRESETS_RUBRO` (8 rubros, dato de UI puro — el rubro no es campo del tenant); el
+  botón ACTIVA (aditivo) las unidades del rubro.
+- **"Nombres de empaque" → pestaña nueva "Empaque"** (invSubTab); "Unidades" queda solo con físicas.
+- **Frontend:** lib `FamiliaFisica`+'area', `FAMILIAS_FISICAS`, `PRESETS_RUBRO`, `UnidadFisica.activo`.
+- **Verificado:** `migration-reviewer` (cazó que el mirror `FamiliaFisica` sin 'area' crasheaba el form de
+  producto → corregido antes de aplicar; idempotencia, CHECK, factores exactos) · DB real (27 unidades, 1
+  base por familia, sin colisiones custom) · tsc · build · 15 unit · e2e `111`.
 
 **▶ Falta (Fase 4 + 5):** Fase 4 = stock decimal en **unidad atómica entera** (gramos/mL/mm, sin migrar
 columnas — decisión Fede) + E3 (cambio de UdM: same-family gratis, cross-family bloqueado con stock) +
 stock "sin variante asignada" + guards de borrado multi-sucursal (lo más Regla #0). Fase 5 = operar por
 presentación (recibir eligiendo línea del árbol, habilitar hermanas) + limpieza de tablas deprecadas.
+
+**🛑 Al deployar a PROD:** verificar back-calc/deltas de override contra datos REALES de PROD (mig 307) +
+frontend en el mismo deploy + regenerar `schema_full.sql` (needs `SUPABASE_ACCESS_TOKEN`) + query de
+colisión de nombres custom (mig 308).
 
 ---
 

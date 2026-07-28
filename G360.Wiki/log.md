@@ -6,6 +6,40 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-27] update | 📐 Rediseño UoM — FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308)
+
+Continuación tras /clear (GO pidió chunk 2 + Fase 1-bis). Cada migración revisada por
+`migration-reviewer` ANTES de aplicar + verificada contra DB real. Sigue **TODO EN DEV, PROD = v1.142.0**.
+
+**FASE 2-bis chunk 2 (mig 307, 🛑 TOCÓ PLATA — Regla #0):** reencauza mig 304 con el modelo final de
+Fede — el **empaque es logística pura, sin precio propio**. Se DROPEARON los overrides
+`precio_venta`/`precio_costo` de `producto_presentaciones` y de `producto_estructura_niveles`. El
+precio de una presentación es SIEMPRE `productos.precio_venta (unidad base) × factor_base`; el precio
+por volumen se expresa con TIERS (mig 306), no con un override de bulto. `producto_presentaciones`
+gana **`padre_linea_id`** (árbol genealógico; self-FK NO ACTION = guard de borrado-con-hijos) +
+trigger `trg_pp_no_ciclo` + `UNIQUE(producto_id, orden)`. `fn_rebuild_presentaciones` setea el padre
++ **H2** (etiqueta de la presentación base = `productos.unidad_medida`). Rewire: estructuras.ts
+(`precioPresentacion(base, factor)` sin override), VentasPage/POS (vender "2 cajas" = SOLO conversión
+de cantidad; `precio_unitario` no cambia), ProductosPage (editor sin precio por nivel), ProductoFormPage,
+Importador (sin columnas `estr_precio_*`). Verificado en DEV: de 22 productos con override, 20 eran
+E2E/Test; los reales (Coca 2.5L −2¢ por redondeo del precio/unidad) cambian según el modelo esperado.
+El `migration-reviewer` validó FK NO ACTION vs el wipe del rebuild, el ciclo, el linkeo del padre y la
+idempotencia. e2e 102/103/104/105 reescritos al nuevo modelo + 110 (tiers) verde.
+
+**FASE 1-bis (mig 308, NO toca plata):** Config→Inventario→"Unidades" = **catálogo COMPLETO de físicas**
+(27 unidades: métrico + imperial —onza/libra/galón US/pulgada/pie/yarda/milla— + **familia nueva 'area'**
+m²/cm²/ha/km² + docena/millar) con **enable/disable por tenant** (toggle `activo`; la base de familia no
+se apaga) + **presets por rubro** (8 botones, `PRESETS_RUBRO` aditivos). Comunes activas, imperial/raras
+inactivas por default. Los **"Nombres de empaque" se movieron a una pestaña nueva "Empaque"**. Lib:
+`FamiliaFisica`+'area', `FAMILIAS_FISICAS`, `PRESETS_RUBRO`, `UnidadFisica.activo`. El `migration-reviewer`
+cazó que el mirror frontend de `FamiliaFisica` sin 'area' crasheaba el form de producto → corregido antes
+de aplicar. e2e 111 nuevo (toggle persiste + preset activa m³ + pestaña Empaque, self-restore).
+
+Verde: tsc + build + 1204 unit + e2e 102/103/104/105/110/111. **Pendiente PROD:** regenerar
+`schema_full.sql` (sigue en mig 288, needs `SUPABASE_ACCESS_TOKEN`) + verificar deltas/colisiones contra
+datos reales de PROD. Próxima sesión = Fase 4 (stock sin variante asignada + borrado multi-sucursal) +
+Fase 5 (operar por presentación + limpieza de tablas deprecadas). Ver [[wiki/features/estructuras-udm]].
+
 ## [2026-07-24] update | 📐 Rediseño UoM — FASE 2-bis (respuestas finales de Fede): tiers de precio mayorista con OPERADOR + agregación por SKU (mig 306)
 
 Tras cerrar el relevamiento con Fede (respuestas finales 2026-07-24), el rumbo del eje precio/venta

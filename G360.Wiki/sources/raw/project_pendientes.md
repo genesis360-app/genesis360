@@ -6,7 +6,58 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-24, cierre /clear) — Rediseño UoM: **relevamiento CERRADO con Fede + FASE 2-bis chunk 1 (tiers con operador, mig 306) hecho** — EN DEV, **SIN deploy a PROD**
+> ### 📐 ARRANCÁ ACÁ (2026-07-27, cierre /clear) — Rediseño UoM: **FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308) hechas** — EN DEV, **SIN deploy a PROD**
+>
+> Continuación tras el /clear (GO pidió chunk 2 + Fase 1-bis). Metodología: cada migración por
+> `migration-reviewer` ANTES de aplicar + tests + verificación contra DB real. Ambas migraciones
+> revisadas, aplicadas en DEV y verificadas. Sigue **TODO EN DEV, PROD = v1.142.0**.
+>
+> **✅ FASE 2-bis chunk 2 (mig 307, commit `16865a4e`, 🛑 TOCÓ PLATA):** el empaque es LOGÍSTICA
+> PURA, sin precio propio. Se DROPEARON los overrides `precio_venta`/`precio_costo` de
+> `producto_presentaciones` Y de `producto_estructura_niveles`. El precio de una presentación es
+> SIEMPRE `productos.precio_venta (unidad base) × factor_base`; el precio por volumen se expresa
+> con TIERS (mig 306), no con un override de bulto. `producto_presentaciones` gana `padre_linea_id`
+> (árbol genealógico, self-FK NO ACTION = guard de borrado-con-hijos) + trigger `trg_pp_no_ciclo` +
+> `UNIQUE(producto_id, orden)`. `fn_rebuild_presentaciones` setea el padre + **H2** (etiqueta de la
+> presentación base = `productos.unidad_medida`). Rewire: estructuras.ts (`precioPresentacion(base,
+> factor)` sin override) + supabase.ts + VentasPage/POS (vender "2 cajas" = SOLO conversión de
+> cantidad, `precio_unitario` no cambia) + ProductosPage (editor sin inputs de precio por nivel) +
+> ProductoFormPage + Importador (sin columnas `estr_precio_*`). Verificado en DEV: 22 productos con
+> override eran E2E/Test salvo Coca 2.5L (override 3500 → 6×583.33=3499.98, −2¢ por redondeo del
+> precio/unidad — consecuencia esperada del modelo de Fede). e2e 102/103/104/105 reescritos + 110.
+>
+> **✅ FASE 1-bis (mig 308, commit `dcc17bc2`, NO toca plata):** Config→Inventario→"Unidades" =
+> catálogo COMPLETO de físicas (27 unidades: métrico + imperial + **familia nueva 'area'** m²/cm²/ha
+> + docena/millar) con **enable/disable por tenant** (toggle `activo`; la base de familia no se apaga)
+> + **presets por rubro** (8 botones, `PRESETS_RUBRO` en el frontend — aditivos). Las comunes activas,
+> imperial/raras inactivas por default. Los **"Nombres de empaque" se movieron a una pestaña nueva
+> "Empaque"** (invSubTab). Rewire lib: `FamiliaFisica`+'area', `FAMILIAS_FISICAS`, `PRESETS_RUBRO`,
+> `UnidadFisica.activo`. e2e 111 nuevo. El `migration-reviewer` cazó que el mirror frontend de
+> `FamiliaFisica` sin 'area' crasheaba el form de producto → corregido antes de aplicar.
+>
+> **▶ PRÓXIMA SESIÓN — Fase 4 + Fase 5** (metodología: migración por `migration-reviewer` + tests +
+> DB real):
+> - **Fase 4** (la más Regla #0): al crear la 1ra variante de un standalone CON stock, ese stock queda
+>   "sin variante asignada" (visible/contable pero NO vendible) + pantalla de resolución que lo reparte
+>   a los hijos con `movimientos_stock`; guards de borrado multi-sucursal (bloquear si stock>0 en
+>   CUALQUIER sucursal, el cartel nombra la sucursal). Hoy "Crear variante" BLOQUEA si hay stock.
+> - **Fase 5** (operar por presentación end-to-end): recibir/vender ELIGIENDO presentación; **habilitar
+>   hermanas** (Caja-6 y Caja-9) migrando la conversión de `niveles` a `producto_presentaciones` +
+>   levantar el `UNIQUE(producto,nombre_empaque)`; caja variable en recepción; decimales por familia;
+>   limpieza de tablas deprecadas (`producto_estructuras`/`_niveles`, `producto_grupos`, `grupo_id`,
+>   `variante_valores`, `ProductoGrupoModal.tsx`).
+>
+> **Estado git al cierre:** commits en `dev` LOCAL sin pushear (últimos `16865a4e` chunk 2 · `dcc17bc2`
+> Fase 1-bis). Migraciones EN DEV de todo el rediseño: 303 · 304 · 305 · 306 · 307 · 308.
+> **🛑 Pendiente al deployar a PROD:** (a) verificar el back-calc de plata + los deltas de override
+> contra datos REALES de PROD antes de mig 307; (b) el frontend acompaña en el mismo deploy (el DROP de
+> columnas rompe el POS/importador viejo); (c) `schema_full.sql` sigue en mig 288 — **regenerar con
+> `SUPABASE_ACCESS_TOKEN` (`npm run schema:dump`) antes/al deployar** (el modo PG falla por el bug de
+> Supavisor); (d) correr la query de colisión de nombres custom en PROD antes de mig 308.
+> Diseño canónico: `diseño-uom-empaque-variantes.html` (⚠ el árbol genealógico y el precio-solo-unidad
+> +tiers ya son el modelo final de Fede).
+
+> ### 📐 ESTADO ANTERIOR (2026-07-24, cierre /clear) — Rediseño UoM: relevamiento CERRADO con Fede + FASE 2-bis chunk 1 (tiers con operador, mig 306) — EN DEV, **SIN deploy a PROD**
 >
 > **🔑 Fede cerró el relevamiento (respuestas finales 2026-07-24) y su modelo ANULA parte de las
 > decisiones que yo ya había construido. Éstas mandan ahora:**

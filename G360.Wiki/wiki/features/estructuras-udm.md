@@ -227,6 +227,11 @@ cómo se MUESTRA. **Cruzar de familia** (kg → litros) **con stock ≠ 0 se blo
 (`trg_productos_udm_familia`): no existe conversión universal peso↔volumen, las cantidades guardadas
 pasarían a significar otra cosa.
 
+- **🛑 Serializados: BLOQUEADO a propósito (mig 312).** Un producto con `tiene_series` **y stock** no
+  puede convertirse en agrupador: la RPC no puede repartir series sin saber cuál va a cada variante, así
+  que el stock quedaría atrapado (ni vendible ni reasignable). Se bloquea en la UI y en el server
+  (`trg_variante_compose_nombre`). Es el único pendiente funcional del rediseño — ver
+  `project_pendientes.md` → "🔢 SERIALIZADOS".
 - **Lógica pura:** `src/lib/reasignacionVariante.ts` (16 unit). **UI:** `ReasignarStockVarianteModal`
   + aviso en la ficha del agrupador + badge *"N sin variante asignada"* en la lista de productos.
 - **e2e `112`**: verifica que 17 unidades entran y 17 salen (6+4 partiendo un LPN, 7 re-apuntando

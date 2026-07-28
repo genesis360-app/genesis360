@@ -8,7 +8,7 @@ updated: 2026-07-23
 
 # Módulo Pedidos
 
-> **🚧 Módulo NUEVO, arrancado 2026-07-22, EN DEV — SIN deploy a PROD.** El ciclo de vida completo
+> **✅ Módulo COMPLETO y EN PROD desde v1.144.0 (2026-07-28, PR #302, migs 292 + 294-302).** Arrancado el 2026-07-22. El ciclo de vida completo
 > está construido y verificado con e2e real contra DEV: **PED1-PED8 completos**, incluida una
 > segunda ronda que cerró los 5 gaps que había dejado la primera pasada (ver "Correcciones
 > post-relevamiento" más abajo): CC en Pedidos ahora valida límite de crédito, el des-pickeo
@@ -68,7 +68,7 @@ cuando corresponda extenderlo.
 
 ---
 
-## PED1 — Schema (mig 292, EN DEV, NO en PROD)
+## PED1 — Schema (mig 292, ✅ EN PROD)
 
 `supabase/migrations/292_pedidos_ped1_schema.sql`, aplicada en `gcmhzdedrkmmzfzfveig`:
 
@@ -164,7 +164,7 @@ de estado de Pedidos igual que cualquier otro documento.
 
 ---
 
-## PED3 — "Lanzar" (mig 294, EN DEV, NO en PROD)
+## PED3 — "Lanzar" (mig 294, ✅ EN PROD)
 
 `supabase/migrations/294_pedidos_ped3_lanzar.sql` — RPC nueva **`fn_generar_tareas_picking_pedido(p_pedido_id)`**,
 SECURITY INVOKER (respeta RLS del caller, mismo criterio que el resto de RPCs de `wms_tareas`):
@@ -209,7 +209,7 @@ sin cambios ahí). Al expandir un pedido lanzado se ve la lista de sus `wms_tare
 
 ---
 
-## PED4 — "Entregar" genera la venta real (migs 295 + 297, EN DEV, NO en PROD)
+## PED4 — "Entregar" genera la venta real (migs 295 + 297, ✅ EN PROD)
 
 `supabase/migrations/295_pedidos_ped4_entrega.sql` — RPC nueva **`fn_pedido_generar_venta(p_pedido_id,
 p_sesion_caja_id, p_medio_pago, p_entregas DEFAULT NULL, p_idempotency_key DEFAULT NULL)`**, retorna

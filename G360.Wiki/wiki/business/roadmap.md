@@ -13,6 +13,16 @@ updated: 2026-07-28
 
 ---
 
+## v1.144.1 — 🛑 guard: serializado con stock no puede volverse agrupador (mig 312) — ✅ **PROD** (2026-07-28)
+
+Corrige un hueco de la v1.144.0 detectado el mismo día. La Fase 4 permitió convertir en agrupador un
+producto con stock, pero el reparto rechaza los productos con número de serie (hay que elegir QUÉ serie
+va a cada variante y esa pantalla no existe) → ese stock quedaba **atrapado**: ni vendible ni
+reasignable. Ahora se bloquea en la UI **y en el servidor** (`trg_variante_compose_nombre`), con un
+mensaje que dice qué hacer. Incluye además el `schema_full.sql` regenerado al día.
+
+---
+
 ## v1.144.0 — 📐 Rediseño UoM completo + WMS + Pedidos — ✅ **PROD** (2026-07-28)
 
 Migs **289-311 en DEV y PROD**. Cierra las dos fases que faltaban del rediseño UoM/Empaque/Variantes y sube además todo lo acumulado en `dev` desde v1.142.0 (módulo WMS y módulo Pedidos).

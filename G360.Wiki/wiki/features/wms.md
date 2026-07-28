@@ -31,7 +31,7 @@ Visión: el sistema sugiere dónde almacenar cada SKU en base a dimensiones/peso
 Fase 1 ✅ (producto_estructuras — rediseñada con niveles dinámicos por UdM en v1.137, migs 282-283)
   → Fase 2 ✅ (ubicaciones con dimensiones)
     → Fase 2.5 ✅ (KITs / Kitting)
-    → Fase 3 ✅ (tareas WMS + picking — v1.143.0, migs 289-290, EN DEV sin deploy a PROD; fixes reales mig 291)
+    → Fase 3 ✅ (tareas WMS + picking — migs 289-290, ✅ **EN PROD desde v1.144.0**; fixes reales mig 291)
       → Fase 4 🔵 (reposición automática ✅ v1.143.0 — cross-docking real sigue pendiente; fix de
         transferencia de reserva mig 297, 2026-07-23, encontrado al construir Pedidos PED4)
 ```
@@ -115,7 +115,7 @@ movimientos_stock.tipo: + 'kitting' + 'des_kitting'
 
 ---
 
-## Fase 3 — Tareas WMS y Listas de Picking (✅ v1.143.0, migs 289-290 — EN DEV, sin deploy a PROD)
+## Fase 3 — Tareas WMS y Listas de Picking (✅ migs 289-291 — **EN PROD desde v1.144.0, 2026-07-28**)
 
 > **🛑 Nota de vigencia (2026-07-22, mismo día): con el pivote F4 de [[wiki/features/pedidos]], la RPC
 > `fn_generar_tareas_picking_envio` descripta abajo (que genera tareas desde envíos/ventas
@@ -190,12 +190,12 @@ generar tareas → completar reabastecimiento → verificar stock movido sin pé
 completar picking) — encontró y corrigió 2 bugs reales antes del e2e (un error de sintaxis PL/pgSQL,
 un cast numeric→integer faltante). Verde: tsc · build · **1177 tests unitarios** · regresión e2e (13
 specs) · **e2e nuevo 106** (mutante, verificación real en DB). `APP_VERSION` = v1.143.0, commit
-`547ef330` en `dev`. **Solo DEV — sin deploy a PROD**, decisión explícita (feature sobre movimiento
+`547ef330` en `dev`. Se deployó a PROD el 2026-07-28 dentro de v1.144.0 (PR #302). *(Nota histórica: al construirlo quedó solo en DEV, decisión explícita por ser una feature sobre movimiento
 real de stock, el deploy queda para cuando GO lo pida).
 
 Detalle completo del roadmap de las 5 fases: [[wiki/features/estructuras-udm]] → "Roadmap del plan".
 
-### Fixes de la primera ronda de pruebas manuales de GO (mig 291, 2026-07-22 — sigue EN DEV)
+### Fixes de la primera ronda de pruebas manuales de GO (mig 291, 2026-07-22 — ✅ EN PROD desde v1.144.0)
 
 GO probó a mano el módulo (recién descripto arriba) contra datos reales del tenant "Almacén Jorgito"
 en DEV y encontró varios problemas reales, corregidos en la misma sesión vía

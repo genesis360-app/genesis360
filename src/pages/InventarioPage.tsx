@@ -37,6 +37,7 @@ import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 import { convertirABase, nivelDefaultParaProducto, type NivelEstructuraDB } from '@/lib/estructuras'
+import { presentacionesComoNiveles, PRESENTACION_COLS } from '@/lib/presentaciones'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
 import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
@@ -119,7 +120,6 @@ export default function InventarioPage() {
   const [rebajeMotivoSelect, setRebajeMotivoSelect] = useState('')
   const [ingresoUnitAlt, setIngresoUnitAlt] = useState<string | null>(null)
   const [rebajeUnitAlt, setRebajeUnitAlt] = useState<string | null>(null)
-  const [ingresoEstructuraId, setIngresoEstructuraId] = useState('')
   // Fase 2 Estructuras-UdM (GO, 2026-07-22): en qué nivel/UdM de la estructura se está
   // cargando la cantidad (ej. "5 cajas" → 60 unidades). null = sin estructura multi-nivel,
   // se opera en unidad base como siempre.
@@ -433,34 +433,18 @@ export default function InventarioPage() {
     enabled: !!tenant,
   })
 
-  const { data: estructurasIngreso = [] } = useQuery<ProductoEstructura[]>({
-    queryKey: ['estructuras-producto', selectedProduct?.id],
+  // Fase 5 (mig 310): la conversión vive en `producto_presentaciones` (árbol con hermanas), no
+  // más en la cadena lineal de estructuras. Un solo árbol por producto → ya no hay que elegir
+  // "qué estructura" antes de elegir la presentación: se listan todas juntas.
+  const { data: nivelesIngreso = [] } = useQuery({
+    queryKey: ['presentaciones-ingreso', selectedProduct?.id],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('producto_estructuras')
-        .select('id, nombre, is_default')
-        .eq('producto_id', selectedProduct!.id)
-        .order('is_default', { ascending: false })
-      const list = (data ?? []) as ProductoEstructura[]
-      const def = list.find(e => e.is_default) ?? list[0]
-      if (def) setIngresoEstructuraId(def.id)
-      return list
+      const { data } = await supabase.from('producto_presentaciones')
+        .select(PRESENTACION_COLS)
+        .eq('producto_id', selectedProduct!.id).eq('activo', true)
+      return presentacionesComoNiveles((data ?? []) as any) as unknown as NivelEstructuraDB[]
     },
     enabled: !!selectedProduct && modal === 'ingreso',
-  })
-
-  // Fase 2 Estructuras-UdM — niveles de la estructura elegida arriba, para el selector de
-  // "en qué UdM estoy cargando la cantidad" (ej. Unidad / Caja / Pallet).
-  const { data: nivelesIngreso = [] } = useQuery({
-    queryKey: ['estructura-niveles-ingreso', ingresoEstructuraId],
-    queryFn: async () => {
-      const { data } = await supabase.from('producto_estructura_niveles')
-        .select('id, estructura_id, orden, factor, unidades_base, unidad_medida_id, unidades_medida(nombre, simbolo)')
-        .eq('estructura_id', ingresoEstructuraId)
-        .order('orden')
-      return (data ?? []) as unknown as NivelEstructuraDB[]
-    },
-    enabled: !!ingresoEstructuraId && modal === 'ingreso',
   })
   useEffect(() => {
     const def = nivelDefaultParaProducto(nivelesIngreso, (selectedProduct as any)?.unidad_medida)
@@ -489,20 +473,19 @@ export default function InventarioPage() {
     enabled: !!selectedProduct && modal === 'rebaje',
   })
 
-  // Fase 2 Estructuras-UdM — niveles de la estructura CON LA QUE SE INGRESÓ el LPN elegido
-  // para rebajar (más preciso que "la default del producto": es la que ese LPN puntual
-  // realmente tiene). Si el LPN no tiene estructura_id (dato viejo), no se muestra el
-  // selector — se opera en unidad base como siempre, sin cambio de comportamiento.
+  // Presentaciones del producto para rebajar "en cajas" en vez de en unidades sueltas.
+  // Fase 5 (mig 310): antes se leían los niveles de la estructura CON LA QUE SE INGRESÓ ese LPN;
+  // ahora el árbol es único por producto, así que se ofrecen todas sus presentaciones. La
+  // cantidad se sigue guardando SIEMPRE en unidad base — la presentación solo multiplica.
   const { data: nivelesRebaje = [] } = useQuery({
-    queryKey: ['estructura-niveles-rebaje', rebajeLinea?.estructura_id],
+    queryKey: ['presentaciones-rebaje', selectedProduct?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('producto_estructura_niveles')
-        .select('id, estructura_id, orden, factor, unidades_base, unidad_medida_id, unidades_medida(nombre, simbolo)')
-        .eq('estructura_id', rebajeLinea!.estructura_id)
-        .order('orden')
-      return (data ?? []) as unknown as NivelEstructuraDB[]
+      const { data } = await supabase.from('producto_presentaciones')
+        .select(PRESENTACION_COLS)
+        .eq('producto_id', selectedProduct!.id).eq('activo', true)
+      return presentacionesComoNiveles((data ?? []) as any) as unknown as NivelEstructuraDB[]
     },
-    enabled: !!rebajeLinea?.estructura_id && modal === 'rebaje',
+    enabled: !!selectedProduct && modal === 'rebaje',
   })
   useEffect(() => {
     const def = nivelDefaultParaProducto(nivelesRebaje, (selectedProduct as any)?.unidad_medida)
@@ -1242,7 +1225,6 @@ export default function InventarioPage() {
           fecha_vencimiento: form.fechaVencimiento || null,
           precio_costo_snapshot: (selectedProduct as any).precio_costo || null,
           precio_venta_snapshot: (selectedProduct as any).precio_venta || null,
-          estructura_id: ingresoEstructuraId || null,
           unidad_medida_id: nivelIngresoSel?.unidad_medida_id ?? null,
           cantidad_uom: nivelIngresoSel ? parseFloat(form.cantidad) : null,
           sucursal_id: sucursalId ?? ingresoSucursalId ?? null,
@@ -2050,7 +2032,6 @@ export default function InventarioPage() {
     setRebajeSearch(''); setRebajeGrupoId(null)
     setIngresoMotivoSelect(''); setRebajeMotivoSelect('')
     setIngresoUnitAlt(null); setRebajeUnitAlt(null)
-    setIngresoEstructuraId('')
     setIngresoSucursalId(null)
   }
 
@@ -2301,11 +2282,11 @@ export default function InventarioPage() {
     // Fase 2 Estructuras-UdM: traer los niveles de la estructura default (fire-and-forget,
     // patchea la fila cuando llega — no bloquea agregar el producto a la lista).
     if (esNueva) {
-      supabase.from('producto_estructuras')
-        .select('id, producto_estructura_niveles(id, estructura_id, orden, factor, unidades_base, unidad_medida_id, unidades_medida(nombre, simbolo))')
-        .eq('producto_id', prod.id).eq('is_default', true).maybeSingle()
-        .then(({ data: estr }) => {
-          const niveles = (((estr as any)?.producto_estructura_niveles ?? []) as NivelEstructuraDB[]).slice().sort((a, b) => a.orden - b.orden)
+      supabase.from('producto_presentaciones')
+        .select(PRESENTACION_COLS)
+        .eq('producto_id', prod.id).eq('activo', true)
+        .then(({ data }) => {
+          const niveles = presentacionesComoNiveles((data ?? []) as any) as unknown as NivelEstructuraDB[]
           if (niveles.length > 1) {
             const def = nivelDefaultParaProducto(niveles, prod.unidad_medida)
             setMasivoRows(prev => prev.map(r => r._id === nuevoId ? { ...r, niveles, nivelOrden: def?.orden ?? null } : r))
@@ -2483,6 +2464,9 @@ export default function InventarioPage() {
     if (tipo === 'des_kitting') return { label: 'Desarmado', bg: 'bg-purple-100 dark:bg-purple-900/30', text: 'text-purple-700 dark:text-purple-400' }
     if (tipo === 'ajuste') return { label: 'Ajuste', bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' }
     if (tipo === 'traslado') return { label: 'Traslado', bg: 'bg-amber-100 dark:bg-amber-900/30', text: 'text-amber-700 dark:text-amber-400' }
+    // Reasignación madre→variante (mig 309): NO es merma ni ajuste, el neto es cero. Va en el
+    // historial pero queda fuera de las pestañas Agregar/Quitar y de los KPI de merma/rotación.
+    if (tipo === 'reasignacion_variante') return { label: 'Reasignación', bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-400' }
     return { label: 'Rebaje', bg: 'bg-blue-100 dark:bg-blue-900/30', text: 'text-blue-700 dark:text-blue-400' }
   }
 
@@ -2979,6 +2963,8 @@ export default function InventarioPage() {
                   <option value="kitting">Kitting</option>
                   <option value="des_kitting">Desarmado</option>
                   <option value="ajuste">Ajuste (genérico)</option>
+                  <option value="traslado">Traslado</option>
+                  <option value="reasignacion_variante">Reasignación a variante</option>
                 </select>
               </div>
               <div className="col-span-2 sm:col-span-4">
@@ -3388,18 +3374,6 @@ export default function InventarioPage() {
                     </div>
                     )}
 
-                    {modoAvanzado && estructurasIngreso.length > 0 && (
-                      <div className="mb-3">
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Estructura de embalaje</label>
-                        <select value={ingresoEstructuraId} onChange={e => setIngresoEstructuraId(e.target.value)}
-                          className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
-                          <option value="">Sin estructura</option>
-                          {estructurasIngreso.map(e => (
-                            <option key={e.id} value={e.id}>{e.nombre}{e.is_default ? ' (default)' : ''}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
 
                     {tieneSeries ? (
                       <div className="mb-3">

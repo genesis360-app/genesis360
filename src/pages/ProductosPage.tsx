@@ -21,12 +21,10 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
-import type { ProductoEstructura } from '@/lib/supabase'
-import {
-  validarNiveles, nivelesAPayload, calcularUnidadesBase, cadenaConversion, nombreUdm,
-  type NivelForm,
-} from '@/lib/estructuras'
+import { PresentacionesEditor } from '@/components/PresentacionesEditor'
 
+/** 'estructura' = pestaña de EMPAQUE (árbol de presentaciones, Fase 5 mig 310). Se conserva el
+ *  id de la pestaña para no romper los deep-links y los tests que ya la referencian. */
 type Tab = 'productos' | 'estructura'
 
 // ─── Helpers / tipos del formulario de estructura (niveles dinámicos, mig 282) ──
@@ -48,308 +46,7 @@ const ATRIBUTOS_FILTRO: { key: string; label: string; grupo: string }[] = [
   { key: 'tiene_sabor_aroma', label: 'Sabor / Aroma',               grupo: 'Variantes' },
 ]
 
-type EstrForm = {
-  nombre: string
-  niveles: NivelForm[]
-}
 
-const nivelFormVacio = (udmId = ''): NivelForm =>
-  ({ unidad_medida_id: udmId, factor: '', peso: '', alto: '', ancho: '', largo: '' })
-
-function formDesdeEstructura(e: ProductoEstructura): EstrForm {
-  const niveles = nivelesOrdenados(e).map(n => ({
-    unidad_medida_id: n.unidad_medida_id,
-    factor: String(n.factor),
-    peso:  n.peso_kg  != null ? String(n.peso_kg)  : '',
-    alto:  n.alto_cm  != null ? String(n.alto_cm)  : '',
-    ancho: n.ancho_cm != null ? String(n.ancho_cm) : '',
-    largo: n.largo_cm != null ? String(n.largo_cm) : '',
-  }))
-  return { nombre: e.nombre, niveles: niveles.length ? niveles : [nivelFormVacio()] }
-}
-
-function nivelesOrdenados(e: ProductoEstructura) {
-  return [...(e.producto_estructura_niveles ?? [])].sort((a, b) => a.orden - b.orden)
-}
-
-function validarForm(f: EstrForm): string | null {
-  if (!f.nombre.trim()) return 'El nombre es obligatorio.'
-  return validarNiveles(f.niveles)
-}
-
-// ─── Modal de formulario (niveles dinámicos por UdM) ─────────────────────────
-
-function EstrModal({
-  editando,
-  unidades,
-  baseUdmNombre,
-  onClose,
-  onSave,
-  saving,
-}: {
-  editando: ProductoEstructura | null
-  unidades: UdmOption[]
-  /** productos.unidad_medida del SKU — preselecciona la UdM base al crear */
-  baseUdmNombre?: string | null
-  onClose: () => void
-  onSave: (form: EstrForm) => void
-  saving: boolean
-}) {
-  const [form, setForm] = useState<EstrForm>(() => {
-    if (editando) return formDesdeEstructura(editando)
-    const base =
-      unidades.find(u => u.nombre.toLowerCase() === (baseUdmNombre ?? '').toLowerCase()) ??
-      unidades.find(u => u.nombre === 'Unidad') ?? unidades[0]
-    return { nombre: '', niveles: [nivelFormVacio(base?.id)] }
-  })
-  const [error, setError] = useState<string | null>(null)
-
-  const inp = 'w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text'
-
-  const udmNombreDe = (id: string) => unidades.find(u => u.id === id)?.nombre ?? '—'
-  const usadas = new Set(form.niveles.map(n => n.unidad_medida_id))
-  // Equivalencia acumulada en vivo (null si algún factor todavía es inválido)
-  const equivalencias = calcularUnidadesBase(form.niveles.map((n, i) => (i === 0 ? 1 : Number(n.factor))))
-
-  const updNivel = (i: number, v: Partial<NivelForm>) =>
-    setForm(f => ({ ...f, niveles: f.niveles.map((n, j) => (j === i ? { ...n, ...v } : n)) }))
-
-  const agregarNivel = () => {
-    // Preselecciona la siguiente UdM "natural" que no esté usada (Caja → Pallet → primera libre)
-    const sugerida =
-      unidades.find(u => u.nombre === 'Caja' && !usadas.has(u.id)) ??
-      unidades.find(u => u.nombre === 'Pallet' && !usadas.has(u.id)) ??
-      unidades.find(u => !usadas.has(u.id))
-    setForm(f => ({ ...f, niveles: [...f.niveles, nivelFormVacio(sugerida?.id)] }))
-  }
-
-  const quitarNivel = (i: number) => {
-    // Rediseño UoM Fase 2 (mig 304): el precio es canónico por unidad base + overrides por
-    // presentación. Quitar un nivel ya no puede corromper un ancla (se eliminó nivel_precio_orden)
-    // — a lo sumo borra el override propio de esa presentación. Sin aviso especial.
-    setForm(f => ({ ...f, niveles: f.niveles.filter((_, j) => j !== i) }))
-  }
-
-  const moverNivel = (i: number, dir: -1 | 1) =>
-    setForm(f => {
-      const niveles = [...f.niveles]
-      const j = i + dir
-      if (j < 0 || j >= niveles.length) return f
-      ;[niveles[i], niveles[j]] = [niveles[j], niveles[i]]
-      return { ...f, niveles }
-    })
-
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const err = validarForm(form)
-    if (err) { setError(err); return }
-    setError(null)
-    onSave(form)
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-gray-700">
-          <h2 className="text-lg font-bold text-primary">
-            {editando ? 'Editar estructura' : 'Nueva estructura'}
-          </h2>
-          <button onClick={onClose} className="p-1.5 text-gray-400 hover:text-gray-600 transition-colors" title="Cerrar">
-            <X size={18} />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-5">
-          {/* Nombre */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Nombre <span className="text-red-500">*</span>
-            </label>
-            <input type="text" value={form.nombre}
-              onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))}
-              className={inp} placeholder='Ej: "Footprint estándar", "Pack mayorista"' />
-          </div>
-
-          {/* Niveles dinámicos */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                Niveles <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">(el primero es la unidad base)</span>
-              </p>
-              <button type="button" onClick={agregarNivel}
-                disabled={usadas.size >= unidades.length}
-                className="flex items-center gap-1 text-xs font-semibold text-accent-text hover:underline disabled:opacity-40 disabled:no-underline">
-                <Plus size={13} /> Agregar nivel
-              </button>
-            </div>
-
-            {form.niveles.map((n, i) => (
-              <div key={i} className="rounded-xl border-2 border-gray-200 dark:border-gray-700 px-4 py-3 space-y-3">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-gray-400 dark:text-gray-500 w-12 flex-shrink-0">
-                    {i === 0 ? 'BASE' : `Nivel ${i + 1}`}
-                  </span>
-                  <select value={n.unidad_medida_id}
-                    onChange={e => updNivel(i, { unidad_medida_id: e.target.value })}
-                    className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
-                    <option value="">Unidad de medida…</option>
-                    {unidades.map(u => (
-                      <option key={u.id} value={u.id}
-                        disabled={u.id !== n.unidad_medida_id && usadas.has(u.id)}>
-                        {u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button type="button" onClick={() => moverNivel(i, -1)} disabled={i === 0}
-                      className="p-1 text-gray-400 hover:text-accent-text disabled:opacity-30 transition-colors" title="Subir">
-                      <ChevronUp size={15} />
-                    </button>
-                    <button type="button" onClick={() => moverNivel(i, 1)} disabled={i === form.niveles.length - 1}
-                      className="p-1 text-gray-400 hover:text-accent-text disabled:opacity-30 transition-colors" title="Bajar">
-                      <ChevronDown size={15} />
-                    </button>
-                    <button type="button" onClick={() => quitarNivel(i)} disabled={form.niveles.length === 1}
-                      className="p-1 text-gray-400 hover:text-red-500 disabled:opacity-30 transition-colors" title="Quitar nivel">
-                      <Trash2 size={15} />
-                    </button>
-                  </div>
-                </div>
-
-                {i > 0 && (
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className="text-gray-500 dark:text-gray-400">Contiene</span>
-                    <input type="number" step="1" min="1" value={n.factor}
-                      onChange={e => updNivel(i, { factor: e.target.value })}
-                      onWheel={e => e.currentTarget.blur()}
-                      className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
-                      placeholder="12" />
-                    <span className="text-gray-500 dark:text-gray-400">
-                      × {udmNombreDe(form.niveles[i - 1].unidad_medida_id)}
-                    </span>
-                    {equivalencias && i > 1 && (
-                      <span className="text-xs text-accent-text font-medium ml-auto">
-                        = {equivalencias[i]} × {udmNombreDe(form.niveles[0].unidad_medida_id)}
-                      </span>
-                    )}
-                  </div>
-                )}
-
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {([['peso', 'Peso (kg)', '0.001'], ['alto', 'Alto (cm)', '0.01'],
-                     ['ancho', 'Ancho (cm)', '0.01'], ['largo', 'Largo (cm)', '0.01']] as const).map(([campo, label, step]) => (
-                    <div key={campo}>
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</label>
-                      <input type="number" step={step} min="0" value={n[campo]}
-                        onChange={e => updNivel(i, { [campo]: e.target.value })}
-                        onWheel={e => e.currentTarget.blur()}
-                        className={inp} placeholder="—" />
-                    </div>
-                  ))}
-                </div>
-
-                {/* Rediseño UoM Fase 2-bis (mig 307): el empaque es LOGÍSTICA PURA, sin precio
-                    propio. El precio de una Caja/Pallet = precio base (hoja del producto) × factor;
-                    el descuento por volumen se carga como "precio mayorista por cantidad" (tiers)
-                    en la hoja del producto, no acá. */}
-              </div>
-            ))}
-          </div>
-
-          {error && (
-            <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl px-4 py-2.5 text-sm text-red-600 dark:text-red-400">
-              {error}
-            </div>
-          )}
-
-          <div className="flex gap-3 pt-1">
-            <button type="button" onClick={onClose}
-              className="flex-1 border-2 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-semibold rounded-xl py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-all">
-              Cancelar
-            </button>
-            <button type="submit" disabled={saving}
-              className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl py-2.5 text-sm transition-all disabled:opacity-50">
-              {saving ? 'Guardando…' : editando ? 'Guardar cambios' : 'Crear estructura'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  )
-}
-
-// ─── Tarjeta de estructura ────────────────────────────────────────────────────
-
-function EstrCard({
-  e,
-  onEdit,
-  onDelete,
-  onSetDefault,
-  solo,
-}: {
-  e: ProductoEstructura
-  onEdit: () => void
-  onDelete: () => void
-  onSetDefault: () => void
-  solo: boolean
-}) {
-  const niveles = nivelesOrdenados(e)
-
-  return (
-    <div className={`bg-white dark:bg-gray-800 rounded-xl border-2 transition-colors
-      ${e.is_default ? 'border-accent-text/40' : 'border-gray-200 dark:border-gray-700'}`}>
-      <div className="flex items-center gap-3 px-4 py-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="font-semibold text-gray-800 dark:text-gray-100 truncate">{e.nombre}</p>
-            {e.is_default && (
-              <span className="inline-flex items-center gap-1 text-xs bg-accent/10 text-accent-text px-2 py-0.5 rounded-full font-medium flex-shrink-0">
-                <Star size={10} fill="currentColor" /> Default
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-            {cadenaConversion(niveles)}
-          </p>
-        </div>
-        <div className="flex items-center gap-1">
-          {!e.is_default && !solo && (
-            <button onClick={onSetDefault} title="Marcar como default"
-              className="p-1.5 text-gray-400 hover:text-accent-text transition-colors">
-              <Star size={15} />
-            </button>
-          )}
-          <button onClick={onEdit} title="Editar"
-            className="p-1.5 text-gray-400 hover:text-accent-text transition-colors">
-            <Edit2 size={15} />
-          </button>
-          {!solo && (
-            <button onClick={onDelete} title="Eliminar"
-              className="p-1.5 text-gray-400 hover:text-red-500 transition-colors">
-              <Trash2 size={15} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Detalle de niveles */}
-      <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
-        {niveles.map(n => (
-          <div key={n.id}>
-            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">
-              {nombreUdm(n)}{n.orden === 1 && <span className="normal-case text-gray-400 dark:text-gray-500"> · base</span>}
-            </p>
-            <div className="space-y-0.5 text-xs text-gray-700 dark:text-gray-300">
-              {n.orden > 1 && <p>{n.factor} × nivel anterior · = {n.unidades_base} × base</p>}
-              {n.peso_kg != null && <p>Peso: {n.peso_kg} kg</p>}
-              {n.alto_cm != null && <p>{n.alto_cm}×{n.ancho_cm ?? '—'}×{n.largo_cm ?? '—'} cm</p>}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 // ─── Componente principal ─────────────────────────────────────────────────────
 
@@ -423,7 +120,6 @@ export default function ProductosPage() {
   const [estrProductoId, setEstrProductoId] = useState<string | null>(null)
   const [estrProductoNombre, setEstrProductoNombre] = useState('')
   const [estrDropdown, setEstrDropdown] = useState(false)
-  const [estrModal, setEstrModal] = useState<{ open: boolean; editando: ProductoEstructura | null }>({ open: false, editando: null })
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   // Scan ticket
@@ -475,12 +171,14 @@ export default function ProductosPage() {
     enabled: !!tenant,
   })
 
-  // IDs de productos con al menos una estructura cargada — alimenta el filtro Con/Sin estructura
+  // IDs de productos con empaque cargado — alimenta el filtro Con/Sin empaque.
+  // Fase 5 (mig 310): TODO producto tiene su presentación base, así que "con empaque" es
+  // tener al menos una presentación NO base (una caja, un pallet…).
   const { data: productosConEstructura } = useQuery({
-    queryKey: ['productos-con-estructura', tenant?.id],
+    queryKey: ['productos-con-empaque', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('producto_estructuras')
-        .select('producto_id').eq('tenant_id', tenant!.id)
+      const { data } = await supabase.from('producto_presentaciones')
+        .select('producto_id').eq('tenant_id', tenant!.id).eq('es_base', false)
       return new Set((data ?? []).map((r: any) => r.producto_id))
     },
     enabled: !!tenant && tab === 'productos',
@@ -522,18 +220,16 @@ export default function ProductosPage() {
     enabled: !!tenant,
   })
 
-  const { data: estructuraDefault } = useQuery({
-    queryKey: ['estructura-default', tenant?.id, expandedId],
+  // Empaque del producto expandido en la lista (Fase 5, mig 310)
+  const { data: presentacionesDelExpandido = [] } = useQuery({
+    queryKey: ['presentaciones-expandido', tenant?.id, expandedId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from('producto_estructuras')
-        .select('*, producto_estructura_niveles(*, unidades_medida(nombre, simbolo))')
-        .eq('tenant_id', tenant!.id)
-        .eq('producto_id', expandedId!)
-        .eq('is_default', true)
-        .maybeSingle()
+        .from('producto_presentaciones')
+        .select('id, etiqueta, factor_base, es_base, peso_kg, alto_cm, ancho_cm, largo_cm')
+        .eq('tenant_id', tenant!.id).eq('producto_id', expandedId!).order('orden')
       if (error) throw error
-      return data as ProductoEstructura | null
+      return (data ?? []) as any[]
     },
     enabled: !!tenant && !!expandedId,
   })
@@ -552,21 +248,6 @@ export default function ProductosPage() {
       return data ?? []
     },
     enabled: !!tenant && tab === 'estructura',
-  })
-
-  const { data: estructuras = [], isLoading: estrLoading } = useQuery({
-    queryKey: ['producto-estructuras', tenant?.id, estrProductoId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('producto_estructuras')
-        .select('*, producto_estructura_niveles(*, unidades_medida(nombre, simbolo))')
-        .eq('tenant_id', tenant!.id)
-        .eq('producto_id', estrProductoId!)
-        .order('created_at')
-      if (error) throw error
-      return (data ?? []) as ProductoEstructura[]
-    },
-    enabled: !!tenant && !!estrProductoId,
   })
 
   // UdM del tenant — niveles de estructura (predefinidas + personalizadas, mig 282)
@@ -619,15 +300,6 @@ export default function ProductosPage() {
 
   // ── Mutations ──────────────────────────────────────────────────────────────
 
-  const invalidar = () => {
-    qc.invalidateQueries({ queryKey: ['producto-estructuras', tenant?.id, estrProductoId] })
-    if (expandedId) qc.invalidateQueries({ queryKey: ['estructura-default', tenant?.id, expandedId] })
-    // Backlog Fede 4/6/7 — el server puede haber invalidado el ancla de precio al guardar niveles
-    qc.invalidateQueries({ queryKey: ['producto-nivel-precio-orden', estrProductoId] })
-    qc.invalidateQueries({ queryKey: ['producto', estrProductoId] })
-    qc.invalidateQueries({ queryKey: ['estructura-default', estrProductoId] })
-  }
-
   const aplicarBulk = async () => {
     if (selectedIds.size === 0 || !bulkModal) return
     setBulkSaving(true)
@@ -665,12 +337,25 @@ export default function ProductosPage() {
         if (error) throw error
         const eliminados = (data ?? []).filter((r: any) => r.eliminado).length
         const bloqueados = n - eliminados
+        // Si algo quedó bloqueado, el server ya lo frenó; acá explicamos POR QUÉ nombrando la
+        // sucursal con stock (Fase 4, mig 309) — en multi-sucursal "acá tengo 0" no alcanza.
+        let porStock = ''
+        if (bloqueados > 0) {
+          const idsBloqueados = (data ?? []).filter((r: any) => !r.eliminado).map((r: any) => r.producto_id)
+          const { data: stockSuc } = await supabase.rpc('fn_stock_por_sucursal', { p_producto_ids: idsBloqueados })
+          const filas = (stockSuc ?? []) as { producto_nombre: string; sucursal_nombre: string; cantidad: number }[]
+          if (filas.length > 0) {
+            porStock = ' — con stock: ' + filas.slice(0, 4)
+              .map(f => `${f.producto_nombre} (${f.sucursal_nombre}: ${f.cantidad} u)`).join(' · ')
+              + (filas.length > 4 ? ` y ${filas.length - 4} más` : '')
+          }
+        }
         if (eliminados > 0 && bloqueados > 0) {
-          toast.success(`${eliminados} eliminado${eliminados !== 1 ? 's' : ''} · ${bloqueados} bloqueado${bloqueados !== 1 ? 's' : ''} por tener actividad registrada (ventas, movimientos, etc.)`, { duration: 7000 })
+          toast.success(`${eliminados} eliminado${eliminados !== 1 ? 's' : ''} · ${bloqueados} bloqueado${bloqueados !== 1 ? 's' : ''} por tener actividad registrada (ventas, movimientos, etc.)${porStock}`, { duration: 9000 })
         } else if (eliminados > 0) {
           toast.success(`${eliminados} producto${eliminados !== 1 ? 's' : ''} eliminado${eliminados !== 1 ? 's' : ''}`)
         } else {
-          toast.error('Ninguno se pudo eliminar: todos tienen actividad registrada (ventas, movimientos, compras, etc.). Usá "Desactivar" en su lugar.', { duration: 7000 })
+          toast.error(`Ninguno se pudo eliminar: todos tienen actividad registrada (ventas, movimientos, compras, etc.). Usá "Desactivar" en su lugar.${porStock}`, { duration: 9000 })
         }
         setSelectedIds(new Set()); setBulkModal(null)
         qc.invalidateQueries({ queryKey: ['productos', tenant?.id] })
@@ -742,73 +427,6 @@ export default function ProductosPage() {
       setOcModal(null)
     },
     onError: () => toast.error('No se pudo agregar a la OC'),
-  })
-
-  const crearMut = useMutation({
-    mutationFn: async (form: EstrForm) => {
-      const esDefault = estructuras.length === 0
-      // UUID en cliente: evita SELECT-after-INSERT bajo RLS
-      const id = crypto.randomUUID()
-      const { error } = await supabase.from('producto_estructuras').insert({
-        id, tenant_id: tenant!.id, producto_id: estrProductoId!,
-        nombre: form.nombre.trim(), is_default: esDefault,
-      })
-      if (error) throw error
-      // Niveles vía RPC transaccional (valida y calcula unidades_base server-side)
-      const { error: eNiveles } = await supabase.rpc('fn_estructura_guardar_niveles', {
-        p_estructura_id: id, p_niveles: nivelesAPayload(form.niveles),
-      })
-      if (eNiveles) {
-        // Sin niveles la estructura queda inservible: rollback best-effort del header
-        await supabase.from('producto_estructuras').delete().eq('id', id)
-        throw eNiveles
-      }
-    },
-    onSuccess: () => { invalidar(); setEstrModal({ open: false, editando: null }) },
-    onError: (e: Error) => toast.error(e.message || 'No se pudo crear la estructura'),
-  })
-
-  const editarMut = useMutation({
-    mutationFn: async ({ id, form }: { id: string; form: EstrForm }) => {
-      // Primero los niveles (transaccional: si falla, los anteriores quedan intactos)
-      const { error: eNiveles } = await supabase.rpc('fn_estructura_guardar_niveles', {
-        p_estructura_id: id, p_niveles: nivelesAPayload(form.niveles),
-      })
-      if (eNiveles) throw eNiveles
-      const { error } = await supabase.from('producto_estructuras')
-        .update({ nombre: form.nombre.trim() }).eq('id', id)
-      if (error) throw error
-    },
-    onSuccess: () => { invalidar(); setEstrModal({ open: false, editando: null }) },
-    onError: (e: Error) => toast.error(e.message || 'No se pudo guardar la estructura'),
-  })
-
-  const eliminarMut = useMutation({
-    mutationFn: async (est: ProductoEstructura) => {
-      const { error } = await supabase.from('producto_estructuras').delete().eq('id', est.id)
-      if (error) throw error
-      if (est.is_default) {
-        const siguiente = estructuras.find(e => e.id !== est.id)
-        if (siguiente) {
-          await supabase.from('producto_estructuras').update({ is_default: true }).eq('id', siguiente.id)
-        }
-      }
-    },
-    onSuccess: invalidar,
-  })
-
-
-  const setDefaultMut = useMutation({
-    mutationFn: async (id: string) => {
-      await supabase.from('producto_estructuras')
-        .update({ is_default: false })
-        .eq('tenant_id', tenant!.id)
-        .eq('producto_id', estrProductoId!)
-      const { error } = await supabase.from('producto_estructuras')
-        .update({ is_default: true }).eq('id', id)
-      if (error) throw error
-    },
-    onSuccess: invalidar,
   })
 
   // ── Helpers UI ─────────────────────────────────────────────────────────────
@@ -1009,16 +627,6 @@ export default function ProductosPage() {
     }
   }
 
-  function handleSaveModal(form: EstrForm) {
-    if (estrModal.editando) {
-      editarMut.mutate({ id: estrModal.editando.id, form })
-    } else {
-      crearMut.mutate(form)
-    }
-  }
-
-  const saving = crearMut.isPending || editarMut.isPending
-
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
@@ -1127,62 +735,24 @@ export default function ProductosPage() {
             </div>
           </div>
 
-          {/* Lista de estructuras del producto seleccionado */}
+          {/* Árbol de presentaciones del producto seleccionado (Fase 5, mig 310) */}
           {estrProductoId ? (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Estructuras de <span className="font-semibold text-gray-800 dark:text-gray-200">{estrProductoNombre}</span>
-                  {!estrLoading && (
-                    <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
-                      ({estructuras.length} {estructuras.length === 1 ? 'estructura' : 'estructuras'})
-                    </span>
-                  )}
-                </p>
-                <button
-                  onClick={() => setEstrModal({ open: true, editando: null })}
-                  className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all">
-                  <Plus size={15} /> Nueva estructura
-                </button>
-              </div>
-
-              {estrLoading ? (
-                <div className="flex items-center justify-center py-12">
-                  <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-accent-text" />
-                </div>
-              ) : estructuras.length === 0 ? (
-                <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-100 dark:border-gray-700 p-12 text-center">
-                  <Ruler size={36} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
-                  <p className="text-gray-500 dark:text-gray-400 font-medium">Sin estructuras aún</p>
-                  <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
-                    Creá la primera para este producto.
-                  </p>
-                  <button
-                    onClick={() => setEstrModal({ open: true, editando: null })}
-                    className="mt-4 flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2 rounded-xl text-sm font-medium transition-all mx-auto">
-                    <Plus size={15} /> Nueva estructura
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {estructuras.map(e => (
-                    <EstrCard
-                      key={e.id}
-                      e={e}
-                      solo={estructuras.length === 1}
-                      onEdit={() => setEstrModal({ open: true, editando: e })}
-                      onDelete={() => eliminarMut.mutate(e)}
-                      onSetDefault={() => setDefaultMut.mutate(e.id)}
-                    />
-                  ))}
-                </div>
-              )}
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 space-y-4">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Empaque de <span className="font-semibold text-gray-800 dark:text-gray-200">{estrProductoNombre}</span>
+              </p>
+              <PresentacionesEditor
+                productoId={estrProductoId}
+                productoNombre={estrProductoNombre}
+                empaques={unidadesMedida}
+                canEdit
+              />
             </div>
           ) : (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 p-12 text-center">
               <Layers size={36} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
               <p className="text-gray-400 dark:text-gray-500 text-sm">
-                Buscá un producto arriba para ver y gestionar sus estructuras.
+                Buscá un producto arriba para ver y gestionar su empaque.
               </p>
             </div>
           )}
@@ -1486,6 +1056,14 @@ export default function ProductosPage() {
                         <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 truncate">{(madre as any).nombre}</span>
                         <span className="px-1.5 py-0.5 rounded-full text-xs bg-accent/10 text-accent-text flex-shrink-0">{variantes.length} variantes</span>
                         <span className="px-1.5 py-0.5 rounded-full text-xs bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-400 flex-shrink-0">agrupador</span>
+                        {/* Stock que quedó en la madre al crearle variantes: contable pero NO
+                            vendible hasta repartirlo (Fase 4, mig 309). Se avisa acá para que no
+                            haya stock "escondido" sin entrar a la ficha. */}
+                        {((madre as any).stock_actual ?? 0) > 0 && (
+                          <span className="px-1.5 py-0.5 rounded-full text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 flex-shrink-0">
+                            {(madre as any).stock_actual} sin variante asignada
+                          </span>
+                        )}
                         {isOpen ? <ChevronUp size={14} className="text-gray-400 ml-auto flex-shrink-0" /> : <ChevronDown size={14} className="text-gray-400 ml-auto flex-shrink-0" />}
                       </button>
                       <Link
@@ -1782,12 +1360,12 @@ export default function ProductosPage() {
                             )}
                           </div>
 
-                          {/* Estructura default */}
-                          {estructuraDefault && (
+                          {/* Empaque del producto (árbol de presentaciones, Fase 5 mig 310) */}
+                          {presentacionesDelExpandido.length > 1 && (
                             <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
                               <div className="flex items-center justify-between mb-2">
                                 <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1">
-                                  <Layers size={12} /> Estructura default
+                                  <Layers size={12} /> Empaque
                                 </p>
                                 <button
                                   onClick={e => { e.stopPropagation(); setTab('estructura'); setEstrProductoId(p.id); setEstrProductoNombre(p.nombre) }}
@@ -1795,19 +1373,18 @@ export default function ProductosPage() {
                                   Gestionar →
                                 </button>
                               </div>
-                              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">{estructuraDefault.nombre}</p>
                               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-                                {nivelesOrdenados(estructuraDefault).map(n => (
-                                  <div key={n.id} className="bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700">
+                                {presentacionesDelExpandido.map(pp => (
+                                  <div key={pp.id} className="bg-white dark:bg-gray-800 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-700">
                                     <p className="font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1 text-xs">
-                                      {nombreUdm(n)}{n.orden === 1 ? ' · base' : ''}
+                                      {pp.etiqueta}{pp.es_base ? ' · base' : ''}
                                     </p>
-                                    {n.orden > 1 && (
-                                      <p className="text-gray-600 dark:text-gray-300">= {n.unidades_base} × base</p>
+                                    {!pp.es_base && (
+                                      <p className="text-gray-600 dark:text-gray-300">= {pp.factor_base} × base</p>
                                     )}
-                                    {n.peso_kg != null && <p className="text-gray-600 dark:text-gray-300">Peso: {n.peso_kg} kg</p>}
-                                    {n.alto_cm != null && (
-                                      <p className="text-gray-600 dark:text-gray-300">{n.alto_cm}×{n.ancho_cm ?? '—'}×{n.largo_cm ?? '—'} cm</p>
+                                    {pp.peso_kg != null && <p className="text-gray-600 dark:text-gray-300">Peso: {pp.peso_kg} kg</p>}
+                                    {pp.alto_cm != null && (
+                                      <p className="text-gray-600 dark:text-gray-300">{pp.alto_cm}×{pp.ancho_cm ?? '—'}×{pp.largo_cm ?? '—'} cm</p>
                                     )}
                                   </div>
                                 ))}
@@ -1820,11 +1397,11 @@ export default function ProductosPage() {
                               className="flex items-center gap-1.5 text-sm text-accent-text hover:underline font-medium">
                               <Edit2 size={13} /> Editar producto
                             </Link>
-                            {!estructuraDefault && (
+                            {presentacionesDelExpandido.length <= 1 && (
                               <button
                                 onClick={e => { e.stopPropagation(); setTab('estructura'); setEstrProductoId(p.id); setEstrProductoNombre(p.nombre) }}
                                 className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-accent-text transition-colors">
-                                <Layers size={13} /> Agregar estructura
+                                <Layers size={13} /> Agregar empaque
                               </button>
                             )}
                           </div>
@@ -2087,18 +1664,6 @@ export default function ProductosPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* Modal de estructura */}
-      {estrModal.open && (
-        <EstrModal
-          editando={estrModal.editando}
-          unidades={unidadesMedida}
-          baseUdmNombre={(productosEstr as any[]).find(p => p.id === estrProductoId)?.unidad_medida ?? null}
-          onClose={() => setEstrModal({ open: false, editando: null })}
-          onSave={handleSaveModal}
-          saving={saving}
-        />
       )}
 
       {scannerOpen && (

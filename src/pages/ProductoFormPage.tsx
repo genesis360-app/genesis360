@@ -2,7 +2,7 @@ import imageCompression from 'browser-image-compression'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check, Boxes, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check, Boxes, ExternalLink, AlertTriangle } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -19,6 +19,7 @@ import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, FAMILIAS_FISI
 import { OPERADORES_TIER, type TierOperador } from '@/lib/tiers'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
+import { ReasignarStockVarianteModal } from '@/components/ReasignarStockVarianteModal'
 import { Toggle } from '@/components/Toggle'
 import toast from 'react-hot-toast'
 
@@ -95,6 +96,8 @@ export default function ProductoFormPage() {
   const [varianteDiferenciador, setVarianteDiferenciador] = useState('')
   const [crearVarianteAbierto, setCrearVarianteAbierto] = useState(false)
   const [nuevaVarianteDif, setNuevaVarianteDif] = useState('')
+  // Modal de reparto del stock "sin variante asignada" (Fase 4, mig 309)
+  const [reasignarAbierto, setReasignarAbierto] = useState(false)
 
   // "Atributos de variante" (tiene_talle/color/etc.) COEXISTE con madre/hijo (decisión Eje A de
   // GO): son dos formas de manejar variantes y cada tenant/producto elige. Ya no se bloquean.
@@ -259,6 +262,20 @@ export default function ProductoFormPage() {
 
   const esHijo = !!productoPadreId
   const esMadre = hijos.length > 0
+
+  // Stock "sin variante asignada" (Fase 4, mig 309): el que quedó colgando de la MADRE cuando se
+  // le crearon variantes. Contable pero NO vendible → hay que repartirlo entre los hijos.
+  // Sin filtro de sucursal: si no, quedaría stock invisible para el usuario parado en otra.
+  const { data: stockSinAsignar = 0 } = useQuery({
+    queryKey: ['stock-sin-variante-total', id],
+    queryFn: async () => {
+      const { data } = await supabase.from('inventario_lineas')
+        .select('cantidad').eq('tenant_id', tenant!.id).eq('producto_id', id!)
+        .eq('activo', true).gt('cantidad', 0)
+      return (data ?? []).reduce((a: number, l: any) => a + (l.cantidad ?? 0), 0)
+    },
+    enabled: isEditing && !!tenant && esMadre,
+  })
 
   useEffect(() => {
     if (tiersData.length > 0) {
@@ -564,7 +581,17 @@ export default function ProductoFormPage() {
       if (!resultado?.eliminado) {
         const motivo = resultado?.motivo ?? 'error desconocido'
         if (motivo === 'tiene_actividad') {
-          toast.error('No se puede eliminar: el producto tiene movimientos, ventas, compras u otra actividad registrada. Usá el toggle "Activo / Inactivo" para ocultarlo en su lugar.', { duration: 7000 })
+          // El bloqueo ya lo hizo el server (fn_producto_tiene_actividad). Acá solo lo EXPLICAMOS:
+          // si lo que traba es stock, el cartel nombra la/las sucursal(es) — estar parado en una
+          // sucursal con 0 no alcanza si otra todavía tiene unidades (Fase 4, mig 309).
+          const { data: porSucursal } = await supabase.rpc('fn_stock_por_sucursal', { p_producto_ids: [id!] })
+          const conStock = (porSucursal ?? []) as { sucursal_nombre: string; cantidad: number }[]
+          if (conStock.length > 0) {
+            const detalle = conStock.map(s => `${s.sucursal_nombre}: ${s.cantidad} u`).join(' · ')
+            toast.error(`No se puede eliminar: todavía tiene stock en ${detalle}. Dejalo en 0 en TODAS las sucursales o usá el toggle "Activo / Inactivo".`, { duration: 9000 })
+          } else {
+            toast.error('No se puede eliminar: el producto tiene movimientos, ventas, compras u otra actividad registrada. Usá el toggle "Activo / Inactivo" para ocultarlo en su lugar.', { duration: 7000 })
+          }
         } else {
           toast.error(`No se pudo eliminar: ${motivo}`)
         }
@@ -588,11 +615,20 @@ export default function ProductoFormPage() {
     if (!dif) { toast.error('Poné un diferenciador para la variante (ej. "Rojo / M")'); return }
     if (!isEditing || !id || !tenant || !productoData) return
     const madreId = productoPadreId ?? id
-    // Convertir un standalone CON stock en madre dejaría ese stock huérfano (no vendible) — esa
-    // reasignación es la Fase 4. Por ahora se bloquea (Regla #0: nunca dejar stock sin asignar).
-    if (!productoPadreId && !esMadre && Number((productoData as any).stock_actual ?? 0) > 0) {
-      toast.error('Este producto tiene stock. Reasignar stock a variantes llega en una próxima fase — hacelo desde un producto en 0.', { duration: 8000 })
-      return
+    // Convertir un standalone CON stock en madre deja ese stock "sin variante asignada": sigue
+    // contando en inventario pero NO se puede vender (el POS excluye a las madres agrupadoras).
+    // Desde la Fase 4 se permite, avisando, y se resuelve con el modal de reparto (mig 309).
+    const stockQuedaSinAsignar =
+      !productoPadreId && !esMadre && Number((productoData as any).stock_actual ?? 0) > 0
+    if (stockQuedaSinAsignar) {
+      const stock = Number((productoData as any).stock_actual ?? 0)
+      if (!confirm(
+        `"${form.nombre}" tiene ${stock} unidad(es) de stock.\n\n` +
+        `Al crear la primera variante este producto pasa a ser un AGRUPADOR: deja de venderse ` +
+        `directamente y ese stock queda "sin variante asignada" — sigue contando en inventario, ` +
+        `pero no se puede vender hasta que lo repartas entre las variantes.\n\n` +
+        `Después de crearla vas a poder repartirlo desde la ficha del agrupador. ¿Seguimos?`
+      )) return
     }
     setSaving(true)
     try {
@@ -1611,6 +1647,27 @@ export default function ProductoFormPage() {
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         Este producto es un <strong>agrupador</strong>: no se vende directamente, se venden sus variantes.
                       </p>
+
+                      {/* Stock sin variante asignada (Fase 4): contable pero NO vendible */}
+                      {stockSinAsignar > 0 && (
+                        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 space-y-2">
+                          <div className="flex gap-2">
+                            <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-800 dark:text-amber-300">
+                              <strong>{stockSinAsignar} unidad(es) sin variante asignada.</strong> Este stock
+                              sigue contando en inventario, pero <strong>no se puede vender</strong> hasta
+                              repartirlo entre las variantes.
+                            </p>
+                          </div>
+                          {canEdit && (
+                            <button type="button" onClick={() => setReasignarAbierto(true)}
+                              className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg text-xs font-semibold transition-colors">
+                              Repartir entre las variantes
+                            </button>
+                          )}
+                        </div>
+                      )}
+
                       <div className="border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-50 dark:divide-gray-700">
                         {(hijos as any[]).map(h => (
                           <button key={h.id} type="button" onClick={() => navigate(`/productos/${h.id}/editar`)}
@@ -1825,6 +1882,15 @@ export default function ProductoFormPage() {
           title="Escanear código de barras"
           onDetected={code => { setForm(p => ({ ...p, codigo_barras: code })); setBarcodeScannerOpen(false) }}
           onClose={() => setBarcodeScannerOpen(false)}
+        />
+      )}
+
+      {reasignarAbierto && id && (
+        <ReasignarStockVarianteModal
+          madreId={id}
+          madreNombre={form.nombre}
+          hijos={hijos as any[]}
+          onClose={() => { setReasignarAbierto(false); qc.invalidateQueries({ queryKey: ['stock-sin-variante-total', id] }) }}
         />
       )}
     </div>

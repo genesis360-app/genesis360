@@ -18,7 +18,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 export type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO' | 'ADMIN'
 export type SubscriptionStatus = 'trial' | 'active' | 'inactive' | 'cancelled'
-export type MovimientoTipo = 'ingreso' | 'rebaje' | 'ajuste' | 'kitting' | 'des_kitting'
+export type MovimientoTipo =
+  | 'ingreso' | 'rebaje' | 'ajuste' | 'kitting' | 'des_kitting'
+  | 'ajuste_ingreso' | 'ajuste_rebaje' | 'traslado'
+  /** Madre agrupadora → variante hijo (mig 309). Siempre en pares, neto cero: no es merma. */
+  | 'reasignacion_variante'
 
 export interface Tenant {
   id: string

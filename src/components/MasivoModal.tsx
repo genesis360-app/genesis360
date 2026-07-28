@@ -22,6 +22,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { getRebajeSort } from '@/lib/rebajeSort'
 import { logActividad } from '@/lib/actividadLog'
 import { convertirABase, nivelDefaultParaProducto, type NivelEstructuraDB } from '@/lib/estructuras'
+import { presentacionesComoNiveles, PRESENTACION_COLS } from '@/lib/presentaciones'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { atributoAmbiguoEnLineas, filtrarLineasPorAtributo, type LineaConAtributos } from '@/lib/atributosVariante'
@@ -252,12 +253,11 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
     if (tipo === 'rebaje' && !p.tiene_series) {
       cargarLineasParaRebaje(p.id, p.regla_inventario, p.tiene_vencimiento ?? false)
     }
-    // Fase 2 Estructuras-UdM: traer los niveles de la estructura default para el selector de UdM
-    const { data: estr } = await supabase.from('producto_estructuras')
-      .select('id, producto_estructura_niveles(id, estructura_id, orden, factor, unidades_base, unidad_medida_id, unidades_medida(nombre, simbolo))')
-      .eq('producto_id', p.id).eq('is_default', true).maybeSingle()
-    const niveles = (((estr as any)?.producto_estructura_niveles ?? []) as NivelEstructuraDB[])
-      .slice().sort((a, b) => a.orden - b.orden)
+    // Fase 5 (mig 310): las presentaciones del producto alimentan el selector de UdM
+    const { data: pres } = await supabase.from('producto_presentaciones')
+      .select(PRESENTACION_COLS)
+      .eq('producto_id', p.id).eq('activo', true)
+    const niveles = presentacionesComoNiveles((pres ?? []) as any) as unknown as NivelEstructuraDB[]
     if (niveles.length > 1) {
       const def = nivelDefaultParaProducto(niveles, p.unidad_medida)
       setItems(prev => prev.map(it => it.productoId === p.id ? { ...it, niveles, nivelOrden: def?.orden ?? null } : it))

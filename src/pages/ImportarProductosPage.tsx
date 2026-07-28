@@ -389,56 +389,53 @@ export default function ImportarProductosPage() {
         }
 
         if (hasEstr && productoId) {
-          // Niveles dinámicos (mig 282): Unidad base siempre; Caja/Pallet si el CSV trae datos.
-          // Rediseño UoM Fase 2-bis (mig 307): el empaque es logística pura, sin precio propio —
-          // los niveles solo llevan factor + dimensiones. El precio de una presentación es
-          // precio_base × factor; el precio por volumen se carga como tier (precio mayorista).
-          const niveles: any[] = [{
-            unidad_medida_id: udmId('Unidad'),
-            factor: 1,
+          // Empaque = árbol de presentaciones (Fase 5, mig 310 — antes eran "estructuras" con
+          // niveles lineales). Base siempre; Caja/Pallet si el CSV trae datos. El padre se
+          // referencia por índice ANTERIOR del array, así que la cadena no puede tener ciclos.
+          // El empaque es logística pura, sin precio propio (mig 307): solo factor + dimensiones.
+          // `factor_base` es la equivalencia RESUELTA en unidades base (Pallet = cajas × u/caja).
+          const uPorCaja  = fila.estr_unidades_por_caja ?? 0
+          const cajasPall = fila.estr_cajas_por_pallet ?? 0
+
+          const lineas: any[] = [{
+            padre_idx: null,
+            nombre_empaque_id: null,
+            etiqueta: (fila.unidad_medida ?? 'Unidad').trim() || 'Unidad',
+            factor_base: 1,
             peso_kg: fila.estr_peso_unidad  ?? null,
             alto_cm: fila.estr_alto_unidad  ?? null,
             ancho_cm: fila.estr_ancho_unidad ?? null,
             largo_cm: fila.estr_largo_unidad ?? null,
           }]
-          if (fila.estr_unidades_por_caja || fila.estr_peso_caja || fila.estr_alto_caja) {
-            niveles.push({
-              unidad_medida_id: udmId('Caja'),
-              factor: fila.estr_unidades_por_caja ?? 1,
+          if (uPorCaja > 1) {
+            lineas.push({
+              padre_idx: 0,
+              nombre_empaque_id: udmId('Caja'),
+              etiqueta: `Caja-${uPorCaja}`,
+              factor_base: uPorCaja,
               peso_kg: fila.estr_peso_caja  ?? null,
               alto_cm: fila.estr_alto_caja  ?? null,
               ancho_cm: fila.estr_ancho_caja ?? null,
               largo_cm: fila.estr_largo_caja ?? null,
             })
-          }
-          if (fila.estr_cajas_por_pallet || fila.estr_peso_pallet || fila.estr_alto_pallet) {
-            niveles.push({
-              unidad_medida_id: udmId('Pallet'),
-              factor: fila.estr_cajas_por_pallet ?? 1,
-              peso_kg: fila.estr_peso_pallet  ?? null,
-              alto_cm: fila.estr_alto_pallet  ?? null,
-              ancho_cm: fila.estr_ancho_pallet ?? null,
-              largo_cm: fila.estr_largo_pallet ?? null,
-            })
+            if (cajasPall > 1) {
+              lineas.push({
+                padre_idx: 1,
+                nombre_empaque_id: udmId('Pallet'),
+                etiqueta: `Pallet-${cajasPall * uPorCaja}`,
+                factor_base: cajasPall * uPorCaja,
+                peso_kg: fila.estr_peso_pallet  ?? null,
+                alto_cm: fila.estr_alto_pallet  ?? null,
+                ancho_cm: fila.estr_ancho_pallet ?? null,
+                largo_cm: fila.estr_largo_pallet ?? null,
+              })
+            }
           }
 
-          const nombreEstr = fila.estr_nombre ?? 'Default'
-          const { data: estrExisting } = await supabase.from('producto_estructuras').select('id').eq('producto_id', productoId).eq('is_default', true).maybeSingle()
-          let estrId = estrExisting?.id as string | undefined
-          if (estrId) {
-            await supabase.from('producto_estructuras').update({ nombre: nombreEstr }).eq('id', estrId)
-          } else {
-            estrId = crypto.randomUUID()
-            await supabase.from('producto_estructuras').insert({
-              id: estrId, tenant_id: tenant!.id, producto_id: productoId,
-              nombre: nombreEstr, is_default: true,
-            })
-          }
-          const { error: eNiveles } = await supabase.rpc('fn_estructura_guardar_niveles', {
-            p_estructura_id: estrId, p_niveles: niveles,
+          const { error: ePres } = await supabase.rpc('fn_presentaciones_guardar', {
+            p_producto_id: productoId, p_lineas: lineas,
           })
-          if (eNiveles) throw eNiveles
-          // El trigger trg_pp_sync_niveles (mig 304) reconstruye producto_presentaciones tras esto.
+          if (ePres) throw ePres
         }
       } catch (e: any) {
         errores++

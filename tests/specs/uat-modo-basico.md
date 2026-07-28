@@ -1472,3 +1472,66 @@ unidades base — la UoM elegida es una capa de precio + trazabilidad + display 
 estaba testeada en `estructurasPrecio.test.ts`) · **e2e 103 y 104 nuevos** (mutantes) + regresión
 amplia 18/18 (04, 19, 21 con CAE real, 45, 48, 54, 82, 98, 101, 102). Sin migraciones nuevas —
 usa las columnas de la mig 286 (Fase 1) que quedaron sin consumidor hasta ahora.
+
+---
+
+## 📐 §44 — Rediseño UoM, FASE 4: stock "sin variante asignada" + borrado multi-sucursal + E3 (mig 309) — 2026-07-28
+
+🛑 **REGLA #0 (INVENTARIO): esta feature MUEVE STOCK ENTRE SKUs.** Lo que hay que proteger es que no
+se pierda ni se duplique una sola unidad, y que todo quede trazado.
+
+Al crearle la primera variante a un producto **con stock**, ese producto pasa a ser **madre
+agrupadora**: deja de ser vendible (el POS excluye a las madres desde la Fase 3) pero su stock sigue
+existiendo y contando en inventario. Eso es el stock **"sin variante asignada"**. Hasta ahora la UI
+**bloqueaba** esa operación; ahora se permite con aviso explícito y se resuelve repartiéndolo.
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **Crear la 1ra variante con stock ya no se bloquea** | Confirmación explícita que dice cuántas unidades quedan sin asignar y que dejan de ser vendibles hasta repartirlas | revisión de código (`handleCrearVariante`) |
+| 2 | **El stock NO desaparece al crear variantes** | La madre conserva sus 17 unidades tras crearle 2 hijos — sigue contando en inventario y en los reportes | **e2e 112** (verificado en DB) |
+| 3 | **🛑 Conservación exacta al repartir** | 17 unidades entran, 17 salen: madre 0 · Rojo 13 (6 parciales + 7 de un LPN entero) · Azul 4. Ni una unidad creada ni perdida | **e2e 112** + verificación manual en DEV con 2 LPN en 2 sucursales |
+| 4 | **LPN entero a un solo hijo = re-apunta** | La caja física conserva su LPN y su etiqueta, solo cambia de dueño (no hay que re-etiquetar nada) | **e2e 112** (`lpn` intacto, `producto_id` = hijo) |
+| 5 | **LPN partido queda en 0 y DESACTIVADO** | Un LPN vacío no puede seguir `activo=true`: ningún picker/listado debe ofrecerlo como disponible | **e2e 112** — lo pidió el `migration-reviewer` (hallazgo 🔴) |
+| 6 | **Par de movimientos con neto CERO** | 3 asignaciones → 6 filas de `movimientos_stock`; lo que entregó la madre (17) == lo que recibieron los hijos | **e2e 112** |
+| 7 | **NO se registra como merma** | El tipo es `reasignacion_variante`, NO `ajuste_rebaje` — el Dashboard cuenta los `ajuste_rebaje` del mes como MERMAS y esto no es una pérdida | **e2e 112** (asserta 0 `ajuste_rebaje`) |
+| 8 | **Rechazo: LPN con unidades reservadas** | Un LPN comprometido con un pedido no se puede mover (la reserva quedaría apuntando a otro producto) | **e2e 112** (negativo server-side) |
+| 9 | **Rechazo: sobre-asignación** | Repartir 99 de un LPN de 10 se rechaza y **no mueve nada** | **e2e 112** |
+| 10 | **Rechazo: destino que no es hijo de esa madre** | No se puede "reasignar" a un producto cualquiera | **e2e 112** |
+| 11 | **Tras los 3 rechazos el stock queda intacto** | La madre sigue en 17 y el hijo en 0 — ningún rechazo dejó algo a medias | **e2e 112** |
+| 12 | **Serializados: bloqueado a propósito** | Con `tiene_series` hay que decir QUÉ serie va a cada variante; repartir "6 y 4" a ciegas rompería la trazabilidad → se rechaza con mensaje claro (falta UI, queda abierto) | revisión de código + guard en la RPC |
+| 13 | **🛑 Sync de marketplaces al cambiar de producto** | Bug latente: el re-apuntado NO disparaba el trigger de TiendaNube y el de MercadoLibre solo encolaba el producto nuevo → el listado publicado del producto viejo quedaba con stock desactualizado (**riesgo de sobreventa**). Ahora ambos encolan los DOS productos | revisión de los triggers reales en DB + fix en la mig 309 |
+| 14 | **Cartel de borrado que NOMBRA la sucursal** | Estar parado en la Sucursal A con 0 no alcanza si la B tiene 5: el mensaje dice qué sucursal y cuántas unidades. El BLOQUEO ya existía server-side; esto solo lo explica | `fn_stock_por_sucursal` verificada en DEV (Rojo con stock en Norte Y Sur) |
+| 15 | **E3 — cambio de UdM física** | Misma familia (kg↔g) con stock: **permitido** (el stock se guarda en la unidad atómica, solo cambia cómo se muestra). Cruzar de familia (unidad→kg) con stock: **bloqueado** por trigger | verificado en DEV con los 2 casos |
+
+**Verde:** tsc · build · unit 1243 (16 nuevos en `reasignacionVariante.test.ts`) · **e2e 112 nuevo**.
+El `migration-reviewer` cazó 2 hallazgos 🔴 **antes** de aplicar la migración.
+
+---
+
+## 📦 §45 — Rediseño UoM, FASE 5: presentaciones = fuente de verdad + hermanas + limpieza (migs 310/311) — 2026-07-28
+
+El empaque deja de ser una **cadena lineal** (`producto_estructura_niveles`) y pasa a ser un **árbol
+genealógico** editable (`producto_presentaciones`), que admite **hermanas**: "Caja-12" y "Caja-10" del
+mismo producto. 🛑 Lo crítico es que la **conversión a unidad base siga siendo exacta**: es lo que
+multiplica las cantidades de stock.
+
+| # | Escenario | Qué se verificó | Cómo |
+|---|---|---|---|
+| 1 | **🛑 El backfill no pierde ni cambia una conversión** | `unidades_base` del nivel viejo == `factor_base` de la presentación nueva, para TODOS: **0 conversiones perdidas**, 0 árboles incoherentes | query de integridad contra la DB de DEV |
+| 2 | **Todo producto queda con presentación base** | 314/314 productos con su base (factor 1). Antes solo 92 tenían estructura | query de integridad |
+| 3 | **Se recuperan las estructuras "letra muerta"** | Las no-default nunca se materializaban (el rebuild solo miraba la default). Leche La Serenísima quedó con Caja-12→Pallet-216 **y** su hermana Caja-10→Pallet-360 | verificado en DEV |
+| 4 | **Hermanas conviven** | Dos presentaciones del mismo tipo de empaque con factores distintos, ambas colgando de la base | **e2e 99** (reescrito) |
+| 5 | **Productos nuevos nacen con su base** | Trigger `trg_productos_presentacion_base` — sin esto un producto creado después del backfill quedaba con cero presentaciones | **e2e 99** |
+| 6 | **Rechazo: hijo que no es más grande que su padre** | Una "caja" que contiene 1 unidad no es un empaque | **e2e 99** (negativo server-side) |
+| 7 | **🛑 Rechazo: hijo que no es múltiplo entero del padre** | Un pallet de 30 sobre cajas de 12 no existe — la conversión dejaría de ser exacta | **e2e 99** |
+| 8 | **Rechazo: dos bases / etiquetas repetidas / base con factor ≠ 1** | La base es única y vale 1 unidad; los nombres visibles no se repiten | **e2e 99** |
+| 9 | **Tras los 5 rechazos el árbol guardado queda intacto** | Ningún rechazo deja el empaque a medias | **e2e 99** |
+| 10 | **Sin ciclos por construcción** | El padre se referencia por índice ANTERIOR del array → es imposible armar un ciclo desde la UI | revisión de la RPC + `construirPayload` (23 unit) |
+| 11 | **🛑 BUG DE PLATA cazado por el e2e** | El POS identificaba la presentación base por `orden === 1`; con el árbol la base es orden **0** y el orden 1 es la primera **Caja** → vender "1 Caja" se registraba como venta en UoM base y **se le aplicaban los combos de la unidad suelta** ($1.080 en vez de $1.200). Corregido con el flag `es_base` | **e2e 104** (lo detectó), fix verificado con 103 y 104 verdes |
+| 12 | **Ingreso/rebaje de stock por presentación** | Los selectores de UoM de Inventario/Masivo/Recepciones leen presentaciones sin cambiar la aritmética (`factor_base` → `unidades_base`) | e2e 23/29/35/103/104 + regresión de inventario |
+| 13 | **🛑 La base no rompe el INSERT del LPN** | El adaptador devolvía `''` (no `null`) como `unidad_medida_id` de la base y los consumidores hacen `?? null`, que no atrapa el string vacío → el ingreso de stock fallaba. Unit de regresión agregado | **e2e 103/104** (lo detectaron) + unit |
+| 14 | **Limpieza sin pérdida de datos** | `producto_grupos`/`grupo_id`/`variante_valores` dropeadas; el único producto que no se había migrado conserva su dato ("Talle: S") en `notas` | verificado en DEV post-migración |
+| 15 | **No se borra trazabilidad** | `producto_estructuras`/`_niveles` **se conservan** solo-lectura: `inventario_lineas.estructura_id` las referencia como histórico de recepción | decisión documentada en la mig 310 |
+
+**Verde:** tsc · build · unit 1243 (23 nuevos en `presentaciones.test.ts`) · **e2e 99 reescrito** +
+100/102/103/104 migrados a sembrar por `fn_presentaciones_guardar`.

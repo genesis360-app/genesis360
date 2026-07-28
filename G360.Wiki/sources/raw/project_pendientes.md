@@ -51,8 +51,8 @@ type: project
 > `es_base` (`vendiendoEnBase()`). Un ordinal no puede gobernar una decisión de plata.
 >
 > **▶ PRÓXIMA SESIÓN — no hay pendientes del rediseño ni de deploy.** Lo que queda abierto:
-> - **Serializados en la reasignación** (Fase 4 dejó bloqueado el caso `tiene_series`: hay que elegir
->   QUÉ número de serie va a cada variante — necesita UI propia).
+> - **Serializados en la reasignación** — el ÚNICO pendiente funcional del rediseño. Ver el bloque
+>   "🔢 SERIALIZADOS" abajo para el alcance concreto de lo que falta.
 > - `schema_full.sql` **NO se pudo regenerar** esta sesión: `npm run schema:dump` necesita un
 >   `SUPABASE_ACCESS_TOKEN` (el modo PG falla por el bug de Supavisor). Refleja hasta la 308 —
 >   pedirle el token a GO y regenerarlo (DEV y PROD están idénticos en 311).
@@ -60,6 +60,31 @@ type: project
 >   EF `ai-assistant`. Si en la próxima sesión se documenta el rediseño ahí, sí hay que hacerlo.
 > - Retomar los pendientes NO-UoM del backlog general (ver más abajo).
 >
+> #### 🔢 SERIALIZADOS — qué falta exactamente (único pendiente del rediseño UoM)
+>
+> **Estado hoy (v1.144.1, mig 312): BLOQUEADO Y SEGURO, no hay riesgo.** Un producto con
+> `tiene_series` y stock **no puede** convertirse en agrupador de variantes — se rechaza en la UI y
+> en el servidor (`trg_variante_compose_nombre`). Antes de la mig 312 se podía, y ese stock quedaba
+> **atrapado**: no vendible (la madre con hijos no se vende) y no reasignable (la RPC lo rechaza).
+>
+> **Por qué no se resolvió con lo demás:** para un producto serializado cada unidad **es** un número
+> de serie concreto. Decir "6 a Rojo y 4 a Azul" no alcanza: hay que decir **cuál** serie va a cuál
+> variante, o el historial de esa unidad física queda apuntando al SKU equivocado (Regla #0,
+> trazabilidad). Además `recalcular_stock` cuenta `inventario_series`, no `inventario_lineas.cantidad`.
+>
+> **Qué habría que hacer (estimado: 1 sesión):**
+> 1. **DB** — extender `fn_reasignar_stock_variante` para que cada asignación acepte una LISTA de
+>    series (`inventario_series.id`) en vez de solo una cantidad. Mover esas filas al LPN destino
+>    actualizando su `producto_id`. Guards: la serie pertenece a la línea origen, está activa, no
+>    reservada, y la cantidad coincide con el largo de la lista.
+> 2. **UI** — en `ReasignarStockVarianteModal`, si el producto es serializado, mostrar la lista de
+>    series con un selector de variante por cada una (en vez de los inputs de cantidad).
+> 3. **Tests** — unit del armado de la selección + e2e que verifique que cada serie termina bajo el
+>    SKU correcto y que `recalcular_stock` da los números correctos.
+> 4. Sacar el guard de la mig 312 (o acotarlo) recién cuando lo anterior esté verde.
+>
+> **Cuántos afecta:** 1 producto serializado en DEV y 1 en PROD. Es un caso real pero angosto.
+
 > ### 📐 ESTADO ANTERIOR (2026-07-27, cierre /clear) — Rediseño UoM: **FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308) hechas** — EN DEV, **SIN deploy a PROD**
 >
 > Continuación tras el /clear (GO pidió chunk 2 + Fase 1-bis). Metodología: cada migración por

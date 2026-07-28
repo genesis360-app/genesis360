@@ -48,12 +48,16 @@ type: project
 >   `variante_valores`, `ProductoGrupoModal.tsx`).
 >
 > **Estado git al cierre:** commits en `dev` LOCAL sin pushear (últimos `16865a4e` chunk 2 · `dcc17bc2`
-> Fase 1-bis). Migraciones EN DEV de todo el rediseño: 303 · 304 · 305 · 306 · 307 · 308.
-> **🛑 Pendiente al deployar a PROD:** (a) verificar el back-calc de plata + los deltas de override
-> contra datos REALES de PROD antes de mig 307; (b) el frontend acompaña en el mismo deploy (el DROP de
-> columnas rompe el POS/importador viejo); (c) `schema_full.sql` sigue en mig 288 — **regenerar con
-> `SUPABASE_ACCESS_TOKEN` (`npm run schema:dump`) antes/al deployar** (el modo PG falla por el bug de
-> Supavisor); (d) correr la query de colisión de nombres custom en PROD antes de mig 308.
+> Fase 1-bis · `6f848f8f` wiki · `c9df57db` schema_full.sql). Migraciones EN DEV de todo el rediseño:
+> 303 · 304 · 305 · 306 · 307 · 308. ✅ `schema_full.sql` REGENERADO al día (524 KB, 151 tablas, refleja
+> 303-308). **🛑 Pendiente al deployar a PROD:** (a) verificar el back-calc de plata + los deltas de
+> override contra datos REALES de PROD antes de mig 307; (b) el frontend acompaña en el mismo deploy (el
+> DROP de columnas rompe el POS/importador viejo); (c) correr la query de colisión de nombres custom en
+> PROD antes de mig 308.
+> **🔐 Seguridad:** el `SUPABASE_ACCESS_TOKEN` que GO pasó para regenerar el schema comparte prefijo
+> (`sbp_60df…`) con el token documentado como "leaked y rotado" el 2026-07-09 (ver
+> `reference_seguridad.md`). GO debería **rotarlo de nuevo** (se pegó en el chat). No se persistió en
+> ningún archivo del repo (se usó inline).
 > Diseño canónico: `diseño-uom-empaque-variantes.html` (⚠ el árbol genealógico y el precio-solo-unidad
 > +tiers ya son el modelo final de Fede).
 

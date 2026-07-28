@@ -35,10 +35,12 @@ inactivas por default. Los **"Nombres de empaque" se movieron a una pestaña nue
 cazó que el mirror frontend de `FamiliaFisica` sin 'area' crasheaba el form de producto → corregido antes
 de aplicar. e2e 111 nuevo (toggle persiste + preset activa m³ + pestaña Empaque, self-restore).
 
-Verde: tsc + build + 1204 unit + e2e 102/103/104/105/110/111. **Pendiente PROD:** regenerar
-`schema_full.sql` (sigue en mig 288, needs `SUPABASE_ACCESS_TOKEN`) + verificar deltas/colisiones contra
-datos reales de PROD. Próxima sesión = Fase 4 (stock sin variante asignada + borrado multi-sucursal) +
-Fase 5 (operar por presentación + limpieza de tablas deprecadas). Ver [[wiki/features/estructuras-udm]].
+Verde: tsc + build + 1204 unit + e2e 102/103/104/105/110/111. **`schema_full.sql` regenerado** al cierre
+(GO pasó un `SUPABASE_ACCESS_TOKEN` puntual, usado inline y NO persistido; 524 KB, 151 tablas, refleja
+303-308). **Pendiente PROD:** verificar deltas de override + colisiones de nombres contra datos reales de
+PROD. **🔐 Seguridad:** el token pasado comparte prefijo (`sbp_60df…`) con el documentado como leaked+rotado
+el 2026-07-09 → GO debería rotarlo de nuevo. Próxima sesión = Fase 4 (stock sin variante asignada + borrado
+multi-sucursal) + Fase 5 (operar por presentación + limpieza de tablas deprecadas). Ver [[wiki/features/estructuras-udm]].
 
 ## [2026-07-24] update | 📐 Rediseño UoM — FASE 2-bis (respuestas finales de Fede): tiers de precio mayorista con OPERADOR + agregación por SKU (mig 306)
 

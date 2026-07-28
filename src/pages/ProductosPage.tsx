@@ -54,7 +54,7 @@ type EstrForm = {
 }
 
 const nivelFormVacio = (udmId = ''): NivelForm =>
-  ({ unidad_medida_id: udmId, factor: '', peso: '', alto: '', ancho: '', largo: '', precioVenta: '', precioCosto: '' })
+  ({ unidad_medida_id: udmId, factor: '', peso: '', alto: '', ancho: '', largo: '' })
 
 function formDesdeEstructura(e: ProductoEstructura): EstrForm {
   const niveles = nivelesOrdenados(e).map(n => ({
@@ -64,8 +64,6 @@ function formDesdeEstructura(e: ProductoEstructura): EstrForm {
     alto:  n.alto_cm  != null ? String(n.alto_cm)  : '',
     ancho: n.ancho_cm != null ? String(n.ancho_cm) : '',
     largo: n.largo_cm != null ? String(n.largo_cm) : '',
-    precioVenta: n.precio_venta != null ? String(n.precio_venta) : '',
-    precioCosto: n.precio_costo != null ? String(n.precio_costo) : '',
   }))
   return { nombre: e.nombre, niveles: niveles.length ? niveles : [nivelFormVacio()] }
 }
@@ -250,34 +248,10 @@ function EstrModal({
                   ))}
                 </div>
 
-                {/* Precio por UoM (backlog Fede puntos 4/6/7) — opcional, si no se carga se
-                    calcula proporcional al nivel anclado (ver "Ancla de precio" en la hoja del
-                    producto). El nivel BASE no lo edita acá: lo trae precio_venta/costo del
-                    producto — se muestra solo como referencia. */}
-                <div className="grid grid-cols-2 gap-3 pt-1 border-t border-gray-100 dark:border-gray-700">
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      Precio de venta {i === 0 && <span className="text-gray-400">(de la hoja del producto)</span>}
-                    </label>
-                    <input type="number" step="0.01" min="0" value={n.precioVenta ?? ''}
-                      disabled={i === 0}
-                      onChange={e => updNivel(i, { precioVenta: e.target.value })}
-                      onWheel={e => e.currentTarget.blur()}
-                      className={`${inp} disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400`}
-                      placeholder={i === 0 ? '—' : 'Calculado si vacío'} />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                      Costo {i === 0 && <span className="text-gray-400">(de la hoja del producto)</span>}
-                    </label>
-                    <input type="number" step="0.01" min="0" value={n.precioCosto ?? ''}
-                      disabled={i === 0}
-                      onChange={e => updNivel(i, { precioCosto: e.target.value })}
-                      onWheel={e => e.currentTarget.blur()}
-                      className={`${inp} disabled:bg-gray-50 dark:disabled:bg-gray-800 disabled:text-gray-400`}
-                      placeholder={i === 0 ? '—' : 'Calculado si vacío'} />
-                  </div>
-                </div>
+                {/* Rediseño UoM Fase 2-bis (mig 307): el empaque es LOGÍSTICA PURA, sin precio
+                    propio. El precio de una Caja/Pallet = precio base (hoja del producto) × factor;
+                    el descuento por volumen se carga como "precio mayorista por cantidad" (tiers)
+                    en la hoja del producto, no acá. */}
               </div>
             ))}
           </div>

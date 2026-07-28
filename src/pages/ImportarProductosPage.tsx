@@ -60,11 +60,8 @@ interface FilaProducto {
   estr_alto_pallet?: number
   estr_ancho_pallet?: number
   estr_largo_pallet?: number
-  // Precio por presentación (rediseño UoM Fase 2, mig 304) — overrides opcionales de Caja/Pallet.
-  estr_precio_venta_caja?: number
-  estr_precio_costo_caja?: number
-  estr_precio_venta_pallet?: number
-  estr_precio_costo_pallet?: number
+  // Rediseño UoM Fase 2-bis (mig 307): el empaque es logística pura, sin precio propio — se
+  // eliminaron los overrides estr_precio_* de Caja/Pallet. El precio por volumen es un tier.
   estado: 'nuevo' | 'existente' | 'error'
   errores: string[]
 }
@@ -109,8 +106,6 @@ export default function ImportarProductosPage() {
       'estr_peso_unidad','estr_alto_unidad','estr_ancho_unidad','estr_largo_unidad',
       'estr_peso_caja','estr_alto_caja','estr_ancho_caja','estr_largo_caja',
       'estr_peso_pallet','estr_alto_pallet','estr_ancho_pallet','estr_largo_pallet',
-      'estr_precio_venta_caja','estr_precio_costo_caja',
-      'estr_precio_venta_pallet','estr_precio_costo_pallet',
     ]
     const ws = XLSX.utils.aoa_to_sheet([
       headers,
@@ -151,8 +146,6 @@ export default function ImportarProductosPage() {
       { wch:12 },{ wch:12 },{ wch:12 },{ wch:12 },
       { wch:12 },{ wch:12 },{ wch:12 },{ wch:12 },
       { wch:16 },
-      { wch:20 },{ wch:20 },
-      { wch:22 },{ wch:22 },
     ]
     const wb = XLSX.utils.book_new()
     XLSX.utils.book_append_sheet(wb, ws, 'Productos')
@@ -202,12 +195,6 @@ export default function ImportarProductosPage() {
       ['estr_alto_pallet','no','Alto de 1 pallet en cm. Ej: 120'],
       ['estr_ancho_pallet','no','Ancho de 1 pallet en cm. Ej: 80'],
       ['estr_largo_pallet','no','Largo de 1 pallet en cm. Ej: 120'],
-      ['','',''],
-      ['── Precio por presentación (opcional) ──','','precio_costo/precio_venta de arriba son por unidad BASE. Estos son overrides de Caja/Pallet'],
-      ['estr_precio_venta_caja','no','Precio de venta propio de 1 Caja. Vacío = se calcula proporcional al precio base'],
-      ['estr_precio_costo_caja','no','Costo propio de 1 Caja. Vacío = se calcula proporcional al precio base'],
-      ['estr_precio_venta_pallet','no','Precio de venta propio de 1 Pallet. Vacío = se calcula proporcional al precio base'],
-      ['estr_precio_costo_pallet','no','Costo propio de 1 Pallet. Vacío = se calcula proporcional al precio base'],
     ])
     wsRef['!cols'] = [{ wch:26 },{ wch:12 },{ wch:60 }]
     XLSX.utils.book_append_sheet(wb, wsRef, 'Referencia')
@@ -278,21 +265,6 @@ export default function ImportarProductosPage() {
           const estr_ancho_pallet      = parseNum(row.estr_ancho_pallet)
           const estr_largo_pallet      = parseNum(row.estr_largo_pallet)
 
-          // Precio por presentación (rediseño UoM Fase 2, mig 304) — opcional. precio_venta/
-          // precio_costo del producto son por unidad BASE; los de Caja/Pallet son overrides.
-          const estr_precio_venta_caja   = parseNum(row.estr_precio_venta_caja)
-          const estr_precio_costo_caja   = parseNum(row.estr_precio_costo_caja)
-          const estr_precio_venta_pallet = parseNum(row.estr_precio_venta_pallet)
-          const estr_precio_costo_pallet = parseNum(row.estr_precio_costo_pallet)
-          for (const [campo, label] of [
-            [estr_precio_venta_caja, 'precio de venta de Caja'],
-            [estr_precio_costo_caja, 'costo de Caja'],
-            [estr_precio_venta_pallet, 'precio de venta de Pallet'],
-            [estr_precio_costo_pallet, 'costo de Pallet'],
-          ] as const) {
-            if (campo !== undefined && campo < 0) errores.push(`El ${label} no puede ser negativo`)
-          }
-
           // Validar categoria y proveedor — deben existir, no se crean automáticamente
           const catNombre = String(row.categoria || '').trim()
           const provNombre = String(row.proveedor || '').trim()
@@ -338,8 +310,6 @@ export default function ImportarProductosPage() {
             estr_peso_pallet, estr_alto_pallet, estr_ancho_pallet, estr_largo_pallet,
             estr_cajas_por_pallet,
             estr_peso_unidad,
-            estr_precio_venta_caja, estr_precio_costo_caja,
-            estr_precio_venta_pallet, estr_precio_costo_pallet,
             estado: errores.length > 0 ? 'error' : skusExistentes.has(sku) ? 'existente' : 'nuevo',
             errores,
           } as FilaProducto
@@ -400,9 +370,7 @@ export default function ImportarProductosPage() {
         }
 
         const hasEstr = !!(fila.estr_nombre || fila.estr_unidades_por_caja || fila.estr_cajas_por_pallet ||
-          fila.estr_peso_unidad || fila.estr_alto_unidad || fila.estr_peso_caja || fila.estr_peso_pallet ||
-          fila.estr_precio_venta_caja !== undefined || fila.estr_precio_costo_caja !== undefined ||
-          fila.estr_precio_venta_pallet !== undefined || fila.estr_precio_costo_pallet !== undefined)
+          fila.estr_peso_unidad || fila.estr_alto_unidad || fila.estr_peso_caja || fila.estr_peso_pallet)
         let productoId: string | null = null
 
         if (fila.estado === 'nuevo') {
@@ -422,10 +390,9 @@ export default function ImportarProductosPage() {
 
         if (hasEstr && productoId) {
           // Niveles dinámicos (mig 282): Unidad base siempre; Caja/Pallet si el CSV trae datos.
-          // Precio por nivel (mig 286/287, backlog Fede 4/6/7): el nivel Unidad (base) nunca
-          // lleva precio propio acá — siempre deriva de precio_venta/costo de la hoja del
-          // producto (directo si el ancla es Unidad, proporcional si el ancla es otro nivel),
-          // igual que el nivel base deshabilitado en la pestaña Estructura del producto.
+          // Rediseño UoM Fase 2-bis (mig 307): el empaque es logística pura, sin precio propio —
+          // los niveles solo llevan factor + dimensiones. El precio de una presentación es
+          // precio_base × factor; el precio por volumen se carga como tier (precio mayorista).
           const niveles: any[] = [{
             unidad_medida_id: udmId('Unidad'),
             factor: 1,
@@ -434,8 +401,7 @@ export default function ImportarProductosPage() {
             ancho_cm: fila.estr_ancho_unidad ?? null,
             largo_cm: fila.estr_largo_unidad ?? null,
           }]
-          if (fila.estr_unidades_por_caja || fila.estr_peso_caja || fila.estr_alto_caja ||
-              fila.estr_precio_venta_caja !== undefined || fila.estr_precio_costo_caja !== undefined) {
+          if (fila.estr_unidades_por_caja || fila.estr_peso_caja || fila.estr_alto_caja) {
             niveles.push({
               unidad_medida_id: udmId('Caja'),
               factor: fila.estr_unidades_por_caja ?? 1,
@@ -443,12 +409,9 @@ export default function ImportarProductosPage() {
               alto_cm: fila.estr_alto_caja  ?? null,
               ancho_cm: fila.estr_ancho_caja ?? null,
               largo_cm: fila.estr_largo_caja ?? null,
-              precio_venta: fila.estr_precio_venta_caja ?? null,
-              precio_costo: fila.estr_precio_costo_caja ?? null,
             })
           }
-          if (fila.estr_cajas_por_pallet || fila.estr_peso_pallet || fila.estr_alto_pallet ||
-              fila.estr_precio_venta_pallet !== undefined || fila.estr_precio_costo_pallet !== undefined) {
+          if (fila.estr_cajas_por_pallet || fila.estr_peso_pallet || fila.estr_alto_pallet) {
             niveles.push({
               unidad_medida_id: udmId('Pallet'),
               factor: fila.estr_cajas_por_pallet ?? 1,
@@ -456,8 +419,6 @@ export default function ImportarProductosPage() {
               alto_cm: fila.estr_alto_pallet  ?? null,
               ancho_cm: fila.estr_ancho_pallet ?? null,
               largo_cm: fila.estr_largo_pallet ?? null,
-              precio_venta: fila.estr_precio_venta_pallet ?? null,
-              precio_costo: fila.estr_precio_costo_pallet ?? null,
             })
           }
 

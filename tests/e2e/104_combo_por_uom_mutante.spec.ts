@@ -23,8 +23,9 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     const sufijo = Date.now()
     const nombreProducto = `E2E ComboUoM ${sufijo}`
     const PRECIO_UNIDAD = 100
-    const PRECIO_CAJA = 1080
     const FACTOR_CAJA = 12
+    // Empaque sin precio propio (mig 307): la Caja cobra precio_base × factor = 100×12 = 1200.
+    const PRECIO_CAJA = FACTOR_CAJA * PRECIO_UNIDAD
 
     await goto(page, '/dashboard')
     await waitForApp(page)
@@ -67,7 +68,7 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
         p_estructura_id: estrId,
         p_niveles: [
           { unidad_medida_id: udmUnidad.id, factor: 1 },
-          { unidad_medida_id: udmCaja.id, factor: FACTOR_CAJA, precio_venta: PRECIO_CAJA, precio_costo: 650 },
+          { unidad_medida_id: udmCaja.id, factor: FACTOR_CAJA },
         ],
       },
     })
@@ -196,6 +197,6 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     expect(item.unidad_medida_id, '[104] vendida por Caja').toBe(udmCaja.id)
     expect(item.cantidad, '[104] 1 Caja = 12 unidades base').toBe(12)
     expect(item.descuento, '[104] sin descuento de combo (el combo es solo de la UoM base)').toBe(0)
-    expect(Number(item.subtotal), '[104] subtotal = precio de Caja intacto, $1.080').toBeCloseTo(PRECIO_CAJA, 0)
+    expect(Number(item.subtotal), '[104] subtotal = precio de Caja (base × factor) = $1.200').toBeCloseTo(PRECIO_CAJA, 0)
   })
 })

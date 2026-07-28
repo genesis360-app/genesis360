@@ -1,13 +1,13 @@
 /**
  * 103_venta_por_uom_mutante.spec.ts
- * E2E MUTANTE — Vender por Unidad de Medida en el POS (backlog Fede 4/6/7, Fase 2): elegir un
- * nivel de la estructura del producto (ej. "Caja") en el carrito usa el precio de ESE nivel,
- * convierte la cantidad a unidades base para el stock, y queda trazado en venta_items.
+ * E2E MUTANTE — Vender por presentación en el POS (rediseño UoM Fase 2-bis, mig 307): elegir una
+ * presentación (ej. "Caja") en el carrito es SOLO una conversión de cantidad — convierte a
+ * unidades base para el stock y el precio, y queda trazado en venta_items. El empaque NO tiene
+ * precio propio: la Caja cobra precio_base × factor (mig 307).
  *
- * Genera su propia precondición: producto nuevo ($100 la Unidad) + estructura Unidad→Caja ×12
- * con precio propio en Caja ($1.080, no 12×100=$1.200) vía RPC real + ingreso de stock real por
- * UI. Vende 3 Cajas y verifica en DB: cantidad=36 (unidades base), unidad_medida_id=Caja,
- * cantidad_uom=3, precio_unitario≈90 (1080/12), subtotal=3240.
+ * Genera su propia precondición: producto nuevo ($100 la unidad) + estructura Unidad→Caja ×12 vía
+ * RPC real + ingreso de stock real por UI. Vende 3 Cajas y verifica en DB: cantidad=36 (unidades
+ * base), unidad_medida_id=Caja, cantidad_uom=3, precio_unitario=100 (por unidad base), subtotal=3600.
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
@@ -19,9 +19,9 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
     const sufijo = Date.now()
     const nombreProducto = `E2E VentaUoM ${sufijo}`
     const PRECIO_UNIDAD = 100
-    const PRECIO_CAJA = 1080 // no 12×100=1200 — a propósito, para probar que NO se recalcula
     const FACTOR_CAJA = 12
     const CAJAS_A_VENDER = 3
+    // Empaque sin precio propio (mig 307): la Caja cobra precio_base × factor = 100×12 = 1200.
 
     await goto(page, '/dashboard')
     await waitForApp(page)
@@ -68,7 +68,7 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
         p_estructura_id: estrId,
         p_niveles: [
           { unidad_medida_id: udmUnidad.id, factor: 1 },
-          { unidad_medida_id: udmCaja.id, factor: FACTOR_CAJA, precio_venta: PRECIO_CAJA, precio_costo: 650 },
+          { unidad_medida_id: udmCaja.id, factor: FACTOR_CAJA },
         ],
       },
     })
@@ -151,12 +151,13 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
       await page.waitForTimeout(300)
     }
 
-    // "= 36 Unidad" confirma la conversión visible antes de cobrar
-    await expect(page.getByText(/= 36 Unidad/)).toBeVisible({ timeout: 5000 })
+    // "= 36 unidad" confirma la conversión visible antes de cobrar (la etiqueta base deriva de
+    // productos.unidad_medida — H2 mig 307, minúscula para el default 'unidad')
+    await expect(page.getByText(/= 36 unidad/i)).toBeVisible({ timeout: 5000 })
 
-    const totalEsperado = CAJAS_A_VENDER * PRECIO_CAJA // 3240, NO 3×12×100=3600
+    const totalEsperado = CAJAS_A_VENDER * FACTOR_CAJA * PRECIO_UNIDAD // 3600 = 36 unidades × $100
     const total = await totalDelCarrito(page)
-    expect(total, `[103] el total debería usar el precio de Caja ($${PRECIO_CAJA}), no 12×$100`).toBeCloseTo(totalEsperado, 0)
+    expect(total, `[103] empaque sin precio: total = 36 × $${PRECIO_UNIDAD} = $${totalEsperado}`).toBeCloseTo(totalEsperado, 0)
 
     // 5) Cobrar y finalizar
     const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
@@ -187,7 +188,7 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
     expect(item.cantidad, '[103] cantidad en unidades BASE (3 cajas × 12)').toBe(36)
     expect(item.cantidad_uom, '[103] cantidad_uom = 3 (cajas)').toBe(3)
     expect(item.unidad_medida_id, '[103] unidad_medida_id = Caja').toBe(udmCaja.id)
-    expect(Number(item.precio_unitario), '[103] precio por unidad base = 1080/12 = 90').toBeCloseTo(90, 1)
-    expect(Number(item.subtotal), '[103] subtotal = 3 × 1080 = 3240').toBeCloseTo(3240, 0)
+    expect(Number(item.precio_unitario), '[103] precio por unidad base = 100 (empaque sin precio propio)').toBeCloseTo(100, 1)
+    expect(Number(item.subtotal), '[103] subtotal = 36 × 100 = 3600').toBeCloseTo(3600, 0)
   })
 })

@@ -363,10 +363,9 @@ export interface ProductoEstructuraNivel {
   alto_cm?: number | null
   ancho_cm?: number | null
   largo_cm?: number | null
-  // Override de precio del nivel (mig 286/287) — NULL = deriva del precio base × factor
-  // (rediseño UoM Fase 2, ver precioPresentacion en src/lib/estructuras.ts).
-  precio_venta?: number | null
-  precio_costo?: number | null
+  // Empaque = logística pura, SIN precio propio (mig 307): se eliminó el override de precio por
+  // nivel. El precio de una presentación es precio_base × factor (ver precioPresentacion); el
+  // precio por volumen es un tier (mig 306).
   created_at: string
   // Join
   unidades_medida?: { nombre: string; simbolo: string | null } | null

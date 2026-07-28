@@ -38,7 +38,7 @@ import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
-import { precioPresentacion, convertirABase } from '@/lib/estructuras'
+import { convertirABase } from '@/lib/estructuras'
 import { precioTier, mejorPrecioMayorista, type TierMayorista } from '@/lib/tiers'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
@@ -105,16 +105,16 @@ async function stockVendibleSucursal(productoId: string, sucursalId: string | nu
     .reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
 }
 
-// Presentación de un producto, para el selector de UoM del carrito (rediseño UoM Fase 2,
-// mig 304). Ver src/lib/estructuras.ts (precioPresentacion).
+// Presentación de un producto, para el selector de UoM del carrito (rediseño UoM Fase 2-bis,
+// mig 307). El empaque es LOGÍSTICA PURA, sin precio propio: elegir "por Caja" es solo una
+// CONVERSIÓN DE CANTIDAD (× factor_base a unidades base). El precio_unitario del ítem (por
+// unidad base) no cambia; el descuento por volumen sale de los tiers (mig 306).
 interface NivelPrecioCarrito {
   orden: number
   unidad_medida_id: string
   nombre: string
   unidades_base: number        // = producto_presentaciones.factor_base
-  es_base: boolean             // la presentación base: su precio_venta/costo ES el precio base del SKU
-  precio_venta: number | null  // base: precio base del producto · no-base: override propio (o null = deriva)
-  precio_costo: number | null
+  es_base: boolean             // la presentación base (factor 1 = la UdM de la ficha)
 }
 
 interface CartItem {
@@ -142,11 +142,10 @@ interface CartItem {
   // descuento/descuento_tipo (manual/combo): se resta aparte en getItemSubtotal.
   descuento_estado_monto?: number
   descuento_estado_detalle?: DescuentoEstadoDetalle[]
-  // Venta por presentación (rediseño UoM Fase 2, mig 304) — presentaciones del producto
-  // (producto_presentaciones), para elegir vender "por Caja" en vez de por unidad. `cantidad`
-  // (arriba) SIEMPRE queda en unidades base — esto es selección + trazabilidad/display. El
-  // precio deriva del precio base (productos.precio_venta) × factor, salvo override de la
-  // presentación. Ver src/lib/estructuras.ts (precioPresentacion).
+  // Venta por presentación (rediseño UoM Fase 2-bis, mig 307) — presentaciones del producto
+  // (producto_presentaciones), para elegir vender "por Caja" en vez de por unidad. Es SOLO una
+  // conversión de cantidad: `cantidad` (arriba) SIEMPRE queda en unidades base, y `precio_unitario`
+  // (por unidad base) NO cambia al elegir presentación. El descuento por volumen sale de los tiers.
   nivelesUom?: NivelPrecioCarrito[]
   nivelSeleccionadoOrden?: number   // orden de la presentación elegida para vender (base = sin UoM)
   unidad_medida_id?: string | null  // FK del nivel elegido, null = base (venta_items.unidad_medida_id)
@@ -1461,30 +1460,26 @@ export default function VentasPage() {
       ? Math.round(((p as any).precio_usd as number) * (cotizacionUSD as number) * 100) / 100
       : p.precio_venta
 
-    // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — niveles de la estructura DEFAULT
-    // con precio propio o calculado. Fuera de alcance para productos en USD (el ancla de precio
-    // es en ARS, mezclar ambos requeriría diseño aparte — no hay pedido de eso todavía).
+    // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2-bis mig 307) — presentaciones de la
+    // estructura DEFAULT. Elegir "por Caja" es SOLO conversión de cantidad (× factor_base); el
+    // precio sale siempre de precio_unitario (base) + tiers. Fuera de alcance para productos en USD.
     let nivelesUom: NivelPrecioCarrito[] | undefined
     // Precio/costo base (1 unidad base) — lo que se vende por default al agregar al carrito.
-    // Con el rediseño UoM (mig 304) productos.precio_venta/costo YA es el precio por unidad base.
+    // Con el rediseño UoM productos.precio_venta/costo YA es el precio por unidad base.
     const precioBaseUnit = precioBase
     const costoBaseUnit = p.precio_costo ?? 0
     if (!esUSD && !p.tiene_series) {
       const { data: presRaw } = await supabase.from('producto_presentaciones')
-        .select('orden, nombre_empaque_id, etiqueta, factor_base, es_base, precio_venta, precio_costo')
+        .select('orden, nombre_empaque_id, etiqueta, factor_base, es_base')
         .eq('producto_id', p.id).order('orden')
       const presentaciones = (presRaw ?? []) as any[]
       if (presentaciones.length > 1) {
-        // La presentación base carga el precio base del producto (fuente única); las no-base
-        // guardan su override propio (o null = deriva de base × factor en precioDeNivelCarrito).
         nivelesUom = presentaciones.map(pr => ({
           orden: pr.orden,
           unidad_medida_id: pr.nombre_empaque_id,
           nombre: pr.etiqueta ?? '—',
           unidades_base: Number(pr.factor_base),
           es_base: pr.es_base,
-          precio_venta: pr.es_base ? precioBaseUnit : (pr.precio_venta != null ? Number(pr.precio_venta) : null),
-          precio_costo: pr.es_base ? costoBaseUnit : (pr.precio_costo != null ? Number(pr.precio_costo) : null),
         }))
       }
     }
@@ -1522,23 +1517,10 @@ export default function VentasPage() {
     setCart(prev => [...prev, newItem])
   }
 
-  // Venta por presentación (rediseño UoM Fase 2, mig 304) — precio efectivo de una presentación
-  // de ESTE ítem del carrito: override propio de la presentación, o precio base × factor. El
-  // precio base vive en la presentación base (es_base) de item.nivelesUom (ver agregarProducto).
-  const precioDeNivelCarrito = (item: CartItem, orden: number, campo: 'precio_venta' | 'precio_costo'): number | null => {
-    if (!item.nivelesUom) return null
-    const nivel = item.nivelesUom.find(n => n.orden === orden)
-    if (!nivel) return null
-    const base = item.nivelesUom.find(n => n.es_base)
-    const precioBase = base?.[campo] ?? null
-    if (nivel.es_base) return precioBase
-    if (precioBase == null) return nivel[campo]  // sin precio base cargado: solo el override, si hay
-    return precioPresentacion(precioBase, nivel.unidades_base, nivel[campo])
-  }
-
-  // Cambia la UoM/cantidad-en-esa-UoM de una línea del carrito. `cantidad` (base) y
-  // `precio_unitario` (por unidad base) se recalculan siempre — son la fuente real de verdad
-  // para stock/subtotal/prorrateo; unidad_medida_id/cantidad_uom son trazabilidad/display.
+  // Cambia la UoM/cantidad-en-esa-UoM de una línea del carrito. Fase 2-bis (mig 307): elegir
+  // presentación es SOLO conversión de cantidad — `cantidad` (base) es la fuente de verdad para
+  // stock/subtotal/prorrateo; `precio_unitario` (por unidad base) NO se toca (empaque sin precio
+  // propio; el descuento por volumen sale de los tiers). unidad_medida_id/cantidad_uom = display.
   const seleccionarNivelUom = (idx: number, ordenNivel: number, cantidadUom: number) => {
     setCart(prev => prev.map((item, i) => {
       if (i !== idx || !item.nivelesUom) return item
@@ -1551,27 +1533,19 @@ export default function VentasPage() {
       const cantidadBase = Math.min(cantidadBaseDeseada, Math.max(nivel.unidades_base, maxDisp))
       if (cantidadBase < cantidadBaseDeseada) toast.error(`Stock máximo disponible: ${maxDisp}`)
 
-      const precioNivel = precioDeNivelCarrito(item, ordenNivel, 'precio_venta')
-      if (precioNivel == null) { toast.error('No se pudo calcular el precio para esa unidad de medida'); return item }
-      const costoNivel = precioDeNivelCarrito(item, ordenNivel, 'precio_costo')
-      const precioPorBase = Math.round((precioNivel / nivel.unidades_base) * 100) / 100
-      const costoPorBase = costoNivel != null ? Math.round((costoNivel / nivel.unidades_base) * 100) / 100 : item.precio_costo
-
       const updated: CartItem = {
         ...item,
         nivelSeleccionadoOrden: ordenNivel,
         unidad_medida_id: ordenNivel === 1 ? null : nivel.unidad_medida_id,
         cantidad_uom: ordenNivel === 1 ? null : cant,
         cantidad: cantidadBase,
-        precio_unitario: precioPorBase,
-        precio_costo: costoPorBase,
       }
       if (!item.tiene_series && item.lineas_disponibles) {
         const fuentes = calcularLpnFuentes(item.lineas_disponibles, cantidadBase)
         updated.lpn_fuentes = fuentes
         updated.linea_id = fuentes[0]?.linea_id
         updated.lpn = fuentes[0]?.lpn ?? undefined
-        const descEstado = calcularDescuentoEstadoLinea(fuentes, precioPorBase)
+        const descEstado = calcularDescuentoEstadoLinea(fuentes, precioTierEfectivo(updated))
         updated.descuento_estado_monto = descEstado.monto
         updated.descuento_estado_detalle = descEstado.detalle
       }

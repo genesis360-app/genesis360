@@ -22,10 +22,9 @@ export interface NivelEstructura {
   alto_cm?: number | null
   ancho_cm?: number | null
   largo_cm?: number | null
-  // Override de precio del nivel (mig 286/287) — opcionales, NULL = deriva del precio base ×
-  // factor (rediseño UoM Fase 2, ver precioPresentacion). Se mirrorea a producto_presentaciones.
-  precio_venta?: number | null
-  precio_costo?: number | null
+  // Rediseño UoM Fase 2-bis chunk 2 (mig 307): el empaque es LOGÍSTICA PURA, sin precio propio.
+  // El precio de una presentación es SIEMPRE precio_base × factor (ver precioPresentacion); el
+  // precio por volumen se expresa con tiers (mig 306). Ya no hay override de precio por nivel.
 }
 
 /** Fila de nivel como viene de DB con el join a unidades_medida. */
@@ -44,8 +43,6 @@ export interface NivelForm {
   alto: string
   ancho: string
   largo: string
-  precioVenta?: string
-  precioCosto?: string
 }
 
 /**
@@ -95,11 +92,6 @@ export function validarNiveles(niveles: NivelForm[]): string | null {
       if (campo.trim() !== '' && !(Number(campo) > 0))
         return `${pos}: el ${label} debe ser mayor a 0.`
     }
-    // Precio/costo por nivel: opcionales, pero si se cargan deben ser >= 0 (mig 286/287)
-    for (const [campo, label] of [[n.precioVenta ?? '', 'precio de venta'], [n.precioCosto ?? '', 'costo']] as const) {
-      if (campo.trim() !== '' && !(Number(campo) >= 0))
-        return `${pos}: el ${label} no puede ser negativo.`
-    }
   }
   return null
 }
@@ -113,8 +105,6 @@ export function nivelesAPayload(niveles: NivelForm[]) {
     alto_cm: n.alto.trim() !== '' ? Number(n.alto) : null,
     ancho_cm: n.ancho.trim() !== '' ? Number(n.ancho) : null,
     largo_cm: n.largo.trim() !== '' ? Number(n.largo) : null,
-    precio_venta: (n.precioVenta ?? '').trim() !== '' ? Number(n.precioVenta) : null,
-    precio_costo: (n.precioCosto ?? '').trim() !== '' ? Number(n.precioCosto) : null,
   }))
 }
 
@@ -167,13 +157,15 @@ export function nivelDefaultParaProducto(
   return ordenados[0]
 }
 
-// ── Precio por presentación — canónico en la unidad BASE (rediseño UoM Fase 2, mig 304) ────
+// ── Precio por presentación — canónico en la unidad BASE (rediseño UoM Fase 2/2-bis) ────────
 // `productos.precio_venta/precio_costo` es SIEMPRE el precio por unidad BASE. Cada presentación
-// (producto_presentaciones) declara su `factor_base` directo a la base y un override opcional.
-// Se ELIMINÓ el ancla por posición (`productos.nivel_precio_orden`, bug F3): reordenar niveles o
-// cambiar la estructura default ya no puede corromper a qué unidad corresponde el precio.
+// (producto_presentaciones) declara su `factor_base` directo a la base. El empaque es LOGÍSTICA
+// PURA, SIN precio propio (mig 307, decisión Fede): el precio de una presentación es SIEMPRE
+// precio_base × factor_base; el precio por volumen se expresa con tiers (mig 306), no con un
+// override de bulto. Se eliminó el ancla por posición (`nivel_precio_orden`, mig 304) y los
+// overrides de precio por nivel/presentación (mig 307).
 
-/** Fila de presentación como viene de producto_presentaciones (mig 304). */
+/** Fila de presentación como viene de producto_presentaciones (mig 304/307). */
 export interface PresentacionDB {
   id: string
   producto_id: string
@@ -181,22 +173,16 @@ export interface PresentacionDB {
   etiqueta: string
   factor_base: number
   es_base: boolean
-  precio_venta: number | null
-  precio_costo: number | null
+  padre_linea_id: string | null   // árbol genealógico (mig 307); NULL = base
   orden: number
   activo?: boolean
 }
 
 /**
- * Precio (o costo) efectivo de una presentación: su override propio si está cargado; si no,
- * deriva del precio base × factor_base (redondeado a 2 decimales). La presentación base
- * (factor 1) devuelve el precio base tal cual. Matemática única, sin ancla mutable.
+ * Precio (o costo) efectivo de una presentación = precio base (por unidad) × factor_base,
+ * redondeado a 2 decimales. La presentación base (factor 1) devuelve el precio base tal cual.
+ * Empaque sin precio propio: no hay override (mig 307). El descuento por volumen es un tier.
  */
-export function precioPresentacion(
-  precioBase: number,
-  factorBase: number,
-  override: number | null | undefined,
-): number {
-  if (override != null) return override
+export function precioPresentacion(precioBase: number, factorBase: number): number {
   return Math.round(Number(precioBase) * factorBase * 100) / 100
 }

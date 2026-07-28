@@ -202,7 +202,7 @@ export default function ProductoFormPage() {
     queryKey: ['producto-presentaciones', id],
     queryFn: async () => {
       const { data } = await supabase.from('producto_presentaciones')
-        .select('orden, etiqueta, factor_base, es_base, precio_venta, precio_costo')
+        .select('orden, etiqueta, factor_base, es_base')
         .eq('producto_id', id!).order('orden')
       return (data ?? []) as any[]
     },
@@ -955,14 +955,15 @@ export default function ProductoFormPage() {
                 )}
               </div>
 
-              {/* Rediseño UoM Fase 2 (mig 304): el precio es SIEMPRE por unidad BASE. Ya no hay
-                  ancla por posición (bug F3 eliminado). Las presentaciones (Caja/Pallet) derivan
-                  su precio del base × factor, salvo override propio en la pestaña Estructura. */}
+              {/* Rediseño UoM Fase 2-bis (mig 307): el precio es SIEMPRE por unidad BASE. El
+                  empaque es logística pura, sin precio propio: las presentaciones (Caja/Pallet)
+                  cobran base × factor. El descuento por volumen se carga como precio mayorista
+                  por cantidad (tiers), más abajo. */}
               {presentacionBase && presentaciones.length > 1 && (
                 <p className="text-xs text-gray-500 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-2">
                   Estos precios son por <strong>{presentacionBase.etiqueta}</strong> (unidad base). Las demás presentaciones
-                  ({presentaciones.filter((p: any) => !p.es_base).map((p: any) => p.etiqueta).join(', ')}) derivan su precio
-                  proporcional, salvo que se les cargue uno propio en la pestaña Estructura.
+                  ({presentaciones.filter((p: any) => !p.es_base).map((p: any) => p.etiqueta).join(', ')}) cobran
+                  base × factor. Para un precio por volumen, usá el precio mayorista por cantidad.
                 </p>
               )}
 

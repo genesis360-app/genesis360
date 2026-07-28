@@ -1,71 +1,54 @@
 import { describe, it, expect } from 'vitest'
 import { precioPresentacion, nivelesAPayload, validarNiveles, type NivelForm } from '@/lib/estructuras'
 
-// Rediseño UoM Fase 2 (mig 304) — precio canónico por unidad BASE + overrides por presentación.
-// Reemplaza el modelo de ancla por posición (precioEfectivoNivel/ordenAnclaEfectivo, mig 286/287),
-// que se eliminó junto con productos.nivel_precio_orden (bug F3).
+// Rediseño UoM Fase 2-bis chunk 2 (mig 307) — el empaque es LOGÍSTICA PURA, sin precio propio.
+// El precio de una presentación es SIEMPRE precio_base (por unidad) × factor_base; se eliminaron
+// los overrides de precio por nivel/presentación (mig 286/287/304). El precio por volumen se
+// expresa con tiers (mig 306, src/lib/tiers.ts), NO con un override de bulto.
 
 describe('precioPresentacion', () => {
   it('presentación base (factor 1) → devuelve el precio base', () => {
-    expect(precioPresentacion(100, 1, null)).toBe(100)
+    expect(precioPresentacion(100, 1)).toBe(100)
   })
 
-  it('sin override → deriva del precio base × factor_base', () => {
+  it('deriva SIEMPRE del precio base × factor_base', () => {
     // Base $100/unidad. Caja ×12 → 1200. Pallet ×480 → 48000.
-    expect(precioPresentacion(100, 12, null)).toBe(1200)
-    expect(precioPresentacion(100, 480, null)).toBe(48000)
-  })
-
-  it('con override → se usa tal cual, sin importar el factor', () => {
-    expect(precioPresentacion(100, 12, 1080)).toBe(1080)
-  })
-
-  it('override de un nivel NO afecta a otros (cada presentación es independiente)', () => {
-    // La Caja tiene override 5000, pero el Pallet (sin override) sigue derivando del base.
-    expect(precioPresentacion(100, 12, 5000)).toBe(5000)
-    expect(precioPresentacion(100, 480, null)).toBe(48000)
+    expect(precioPresentacion(100, 12)).toBe(1200)
+    expect(precioPresentacion(100, 480)).toBe(48000)
   })
 
   it('redondea a 2 decimales al derivar (drift controlado)', () => {
     // Base 583.33 (Coca back-calc). Caja ×6 → 3499.98; Pallet ×162 → 94499.46.
-    expect(precioPresentacion(583.33, 6, null)).toBe(3499.98)
-    expect(precioPresentacion(583.33, 162, null)).toBe(94499.46)
-  })
-
-  it('override 0 es válido (no se confunde con null/derivar)', () => {
-    expect(precioPresentacion(100, 12, 0)).toBe(0)
+    expect(precioPresentacion(583.33, 6)).toBe(3499.98)
+    expect(precioPresentacion(583.33, 162)).toBe(94499.46)
   })
 
   it('funciona igual para costo (misma función, es solo un número)', () => {
-    expect(precioPresentacion(60, 12, null)).toBe(720)
+    expect(precioPresentacion(60, 12)).toBe(720)
   })
 })
 
-describe('nivelesAPayload — precio_venta/precio_costo', () => {
-  const base: NivelForm = { unidad_medida_id: 'u1', factor: '1', peso: '', alto: '', ancho: '', largo: '', precioVenta: '', precioCosto: '' }
+describe('nivelesAPayload — empaque sin precio (mig 307)', () => {
+  const base: NivelForm = { unidad_medida_id: 'u1', factor: '1', peso: '', alto: '', ancho: '', largo: '' }
 
-  it('vacío → null (deriva del base)', () => {
-    const [p] = nivelesAPayload([base])
-    expect(p.precio_venta).toBeNull()
-    expect(p.precio_costo).toBeNull()
-  })
-  it('con valor → se manda como number (override)', () => {
-    const [p] = nivelesAPayload([{ ...base, precioVenta: '1080', precioCosto: '650' }])
-    expect(p.precio_venta).toBe(1080)
-    expect(p.precio_costo).toBe(650)
+  it('el payload NO incluye precio_venta/precio_costo (empaque logística pura)', () => {
+    // índice 0 = base (factor forzado a 1); índice 1 = Caja ×12
+    const payload = nivelesAPayload([base, { ...base, unidad_medida_id: 'u2', factor: '12' }])
+    for (const p of payload) {
+      expect(p).not.toHaveProperty('precio_venta')
+      expect(p).not.toHaveProperty('precio_costo')
+    }
+    expect(payload[1].factor).toBe(12)
   })
 })
 
-describe('validarNiveles — precio_venta/precio_costo negativos', () => {
-  const base: NivelForm = { unidad_medida_id: 'u1', factor: '1', peso: '', alto: '', ancho: '', largo: '', precioVenta: '', precioCosto: '' }
+describe('validarNiveles — ya no valida precio por nivel', () => {
+  const base: NivelForm = { unidad_medida_id: 'u1', factor: '1', peso: '', alto: '', ancho: '', largo: '' }
 
-  it('precio negativo rechaza', () => {
-    expect(validarNiveles([{ ...base, precioVenta: '-10' }])).toMatch(/precio de venta/)
+  it('un nivel base válido pasa', () => {
+    expect(validarNiveles([base])).toBeNull()
   })
-  it('costo negativo rechaza', () => {
-    expect(validarNiveles([{ ...base, precioCosto: '-1' }])).toMatch(/costo/)
-  })
-  it('0 es válido (no negativo)', () => {
-    expect(validarNiveles([{ ...base, precioVenta: '0', precioCosto: '0' }])).toBeNull()
+  it('sigue validando factor entero ≥ 1 de los niveles no-base', () => {
+    expect(validarNiveles([base, { ...base, unidad_medida_id: 'u2', factor: '0' }])).toMatch(/factor/)
   })
 })

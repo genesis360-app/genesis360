@@ -6,6 +6,40 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-28] update | 🔢 v1.145.0 — reasignar stock de productos SERIALIZADOS (mig 313): cierra el rediseño UoM
+
+GO pidió avanzar con el último pendiente. En un producto con número de serie **cada unidad ES una
+serie concreta**: repartir "6 y 4" a ciegas dejaría el historial de esa unidad física (garantía, RMA,
+recall) bajo el SKU equivocado. Ahora `fn_reasignar_stock_variante` acepta, por asignación, la LISTA
+de series a mover, y el modal muestra un selector de variante por cada serie.
+
+**Verificado contra el modelo real, no asumido:** `recalcular_stock` cuenta `inventario_series` y NO
+`inventario_lineas.cantidad` para estos productos (en DEV hay uno con `sum(cantidad)=100` y 26 series
+activas — la cantidad de la línea es decorativa), y `inventario_series` ya tenía trigger
+`series_recalcular_stock`, así que mover una serie de producto recalcula ambos lados solo.
+
+**Decisión de diseño:** en serializados NUNCA se re-apunta la línea, SIEMPRE nace un LPN nuevo. Una
+línea puede tener series INACTIVAS (vendidas) que son historial de la madre y no se pueden
+re-etiquetar; re-apuntarla dejaría `serie.producto_id ≠ linea.producto_id`. El LPN viejo se desactiva
+si se queda sin series activas. Con esto se **levanta el guard de la mig 312** (ya no hay callejón sin
+salida).
+
+Guards: serie de otra línea / vendida / reservada · la misma serie a dos variantes · serializado
+repartido "por cantidad" sin decir qué series · destino que no maneja series igual que la madre.
+Además `FOR UPDATE` sobre las FILAS DE SERIE: el lock de la línea no frena una venta concurrente que
+consuma una serie sin tocar `inventario_lineas`.
+
+**El `migration-reviewer` no estuvo disponible** (límite de cuota de la cuenta), así que la revisión
+la hice con el mismo checklist y corregí dos cosas ANTES de aplicar: el re-apuntado que rompía la
+coherencia serie↔línea y el lock faltante sobre las series. Probado en DEV con escenario real
+(4 series, una vendida → 2 a "4G", 1 a "5G", 1 sin mover; conservación exacta, la vendida intacta,
+5 negativos rechazados sin mover nada).
+
+Verde: tsc · build · **1251 unit** (9 nuevos; uno cazó un orden de validación que escondía el motivo
+real del rechazo) · **e2e 112 extendido** (caso serializado end-to-end, 2/2).
+**EN PROD:** PR #304, tag+release v1.145.0, mig 313 en DEV y PROD.
+Ver [[wiki/features/estructuras-udm]].
+
 ## [2026-07-28] update | 🛑 v1.144.1 — guard: no convertir en agrupador un producto SERIALIZADO CON STOCK (mig 312)
 
 Hueco abierto por la propia Fase 4 y detectado al responderle a GO "¿cómo resolvemos lo de los

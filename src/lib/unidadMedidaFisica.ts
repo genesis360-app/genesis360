@@ -7,7 +7,7 @@
 //   cantidad × (factor_base_familia[desde] / factor_base_familia[hacia])
 // (1 kg = 1000 g siempre, para cualquier producto/tenant). Entre familias distintas: no hay.
 
-export type FamiliaFisica = 'peso' | 'volumen' | 'longitud' | 'conteo'
+export type FamiliaFisica = 'peso' | 'volumen' | 'longitud' | 'conteo' | 'area'
 
 export interface UnidadFisica {
   id: string
@@ -17,6 +17,7 @@ export interface UnidadFisica {
   factor_base_familia: number
   es_base_familia: boolean
   permite_decimales: boolean
+  activo?: boolean   // enable/disable por tenant (Fase 1-bis, mig 308)
 }
 
 /** Solo la familia Conteo es entera; peso/volumen/longitud admiten decimales. */
@@ -57,10 +58,13 @@ export function unidadBaseDeFamilia(unidades: UnidadFisica[], familia: FamiliaFi
   return unidades.find(u => u.familia === familia && u.es_base_familia) ?? null
 }
 
+/** Todas las familias físicas, en orden de presentación. */
+export const FAMILIAS_FISICAS: FamiliaFisica[] = ['conteo', 'peso', 'volumen', 'longitud', 'area']
+
 /** Agrupa las unidades por familia, para armar selects con optgroups. */
 export function agruparPorFamilia(unidades: UnidadFisica[]): Record<FamiliaFisica, UnidadFisica[]> {
-  const out: Record<FamiliaFisica, UnidadFisica[]> = { conteo: [], peso: [], volumen: [], longitud: [] }
-  for (const u of unidades) out[u.familia].push(u)
+  const out: Record<FamiliaFisica, UnidadFisica[]> = { conteo: [], peso: [], volumen: [], longitud: [], area: [] }
+  for (const u of unidades) (out[u.familia] ??= []).push(u)
   for (const f of Object.keys(out) as FamiliaFisica[]) out[f].sort((a, b) => a.factor_base_familia - b.factor_base_familia)
   return out
 }
@@ -70,7 +74,24 @@ export const ETIQUETA_FAMILIA: Record<FamiliaFisica, string> = {
   peso: 'Peso',
   volumen: 'Volumen',
   longitud: 'Longitud',
+  area: 'Área / Superficie',
 }
+
+/**
+ * Presets por rubro (Fase 1-bis): al elegir uno, se ACTIVAN (activo=true) las unidades físicas
+ * listadas — de forma aditiva, sin desactivar las demás. Los nombres deben coincidir con el
+ * catálogo seed de la mig 308. Es dato de UI puro (no vive en DB): el rubro no es un campo del tenant.
+ */
+export const PRESETS_RUBRO: { label: string; unidades: string[] }[] = [
+  { label: 'Almacén / Kiosco',        unidades: ['Unidad', 'Gramo', 'Kilogramo', 'Mililitro', 'Litro'] },
+  { label: 'Carnicería / Fiambrería', unidades: ['Unidad', 'Gramo', 'Kilogramo'] },
+  { label: 'Verdulería',              unidades: ['Unidad', 'Gramo', 'Kilogramo', 'Docena'] },
+  { label: 'Bebidas / Vinoteca',      unidades: ['Unidad', 'Mililitro', 'Litro'] },
+  { label: 'Ferretería',              unidades: ['Unidad', 'Gramo', 'Kilogramo', 'Metro', 'Centímetro', 'Docena'] },
+  { label: 'Textil / Mercería',       unidades: ['Unidad', 'Metro', 'Centímetro', 'Docena'] },
+  { label: 'Corralón / Materiales',   unidades: ['Unidad', 'Kilogramo', 'Tonelada', 'Metro', 'Metro cuadrado', 'Metro cúbico'] },
+  { label: 'Farmacia / Cosmética',    unidades: ['Unidad', 'Miligramo', 'Gramo', 'Mililitro'] },
+]
 
 /**
  * Mapea un texto legacy de `productos.unidad_medida` a una unidad física del catálogo, best-effort.

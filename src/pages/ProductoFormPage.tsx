@@ -15,7 +15,7 @@ import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
-import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, type FamiliaFisica, type UnidadFisica } from '@/lib/unidadMedidaFisica'
+import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import { OPERADORES_TIER, type TierOperador } from '@/lib/tiers'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
@@ -1246,7 +1246,7 @@ export default function ProductoFormPage() {
                       }}
                       className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                       <option value="">— Elegí una unidad —</option>
-                      {(['conteo', 'peso', 'volumen', 'longitud'] as FamiliaFisica[]).map(fam => {
+                      {FAMILIAS_FISICAS.map(fam => {
                         const us = agruparPorFamilia(unidadesFisicas)[fam]
                         if (us.length === 0) return null
                         return (

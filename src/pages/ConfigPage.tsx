@@ -27,12 +27,12 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
-import { agruparPorFamilia, ETIQUETA_FAMILIA, type FamiliaFisica, type UnidadFisica } from '@/lib/unidadMedidaFisica'
+import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
-type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'atributos' | 'codigos' | 'zonas'
+type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'empaque' | 'atributos' | 'codigos' | 'zonas'
 type AtributoVariante = 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'
 type ConSubTab = 'integraciones' | 'api'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
@@ -2793,17 +2793,40 @@ export default function ConfigPage() {
     enabled: !!tenant && tab === 'inventario',
   })
 
-  // Fase 1 UoM: unidades de medida FÍSICAS (familias + conversión universal, mig 303)
+  // Fase 1-bis UoM: catálogo COMPLETO de unidades físicas (mig 303/308). Trae TODAS (activas e
+  // inactivas) para gestionarlas — queryKey propio, distinto del de la ficha de producto (que
+  // solo quiere las activas). El tenant prende/apaga cada una (enable/disable).
   const { data: unidadesFisicasCfg = [] } = useQuery<UnidadFisica[]>({
-    queryKey: ['unidades_medida_fisicas', tenant?.id],
+    queryKey: ['unidades_medida_fisicas_all', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('unidades_medida_fisicas')
-        .select('id, familia, nombre, simbolo, factor_base_familia, es_base_familia, permite_decimales')
-        .eq('tenant_id', tenant!.id).eq('activo', true).order('orden')
+        .select('id, familia, nombre, simbolo, factor_base_familia, es_base_familia, permite_decimales, activo')
+        .eq('tenant_id', tenant!.id).order('orden')
       return (data ?? []) as UnidadFisica[]
     },
     enabled: !!tenant && tab === 'inventario' && invSubTab === 'unidades',
   })
+
+  // Enable/disable de una unidad física (Fase 1-bis). La base de familia no se puede apagar (es
+  // el ancla de conversión). Invalida ambos queryKeys (config + ficha de producto).
+  const toggleUnidadFisica = async (u: UnidadFisica, activo: boolean) => {
+    if (u.es_base_familia && !activo) { toast.error('La unidad base de la familia no se puede desactivar.'); return }
+    const { error } = await supabase.from('unidades_medida_fisicas')
+      .update({ activo }).eq('id', u.id).eq('tenant_id', tenant!.id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['unidades_medida_fisicas_all'] })
+    qc.invalidateQueries({ queryKey: ['unidades_medida_fisicas'] })
+  }
+
+  // Preset por rubro (Fase 1-bis): ACTIVA (aditivo) las unidades del rubro elegido.
+  const aplicarPresetRubro = async (nombres: string[]) => {
+    const { error } = await supabase.from('unidades_medida_fisicas')
+      .update({ activo: true }).eq('tenant_id', tenant!.id).in('nombre', nombres)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['unidades_medida_fisicas_all'] })
+    qc.invalidateQueries({ queryKey: ['unidades_medida_fisicas'] })
+    toast.success('Unidades del rubro activadas')
+  }
 
   const addUdm = async () => {
     if (!udmNombre.trim()) return
@@ -3523,6 +3546,7 @@ export default function ConfigPage() {
               { id: 'estados' as InvSubTab, label: 'Estados', icon: CircleDot },
               { id: 'motivos' as InvSubTab, label: 'Motivos', icon: MessageSquare },
               { id: 'unidades' as InvSubTab, label: 'Unidades', icon: Ruler },
+              { id: 'empaque' as InvSubTab, label: 'Empaque', icon: Package },
               { id: 'atributos' as InvSubTab, label: 'Atributos', icon: Shirt },
               { id: 'codigos' as InvSubTab, label: 'Códigos', icon: ScanBarcode },
               { id: 'zonas' as InvSubTab, label: 'Zonas y picking', icon: Navigation },
@@ -4481,7 +4505,7 @@ export default function ConfigPage() {
 
           {invSubTab === 'unidades' && (
         <div className="space-y-4">
-        {/* Fase 1 UoM: Unidades de Medida FÍSICAS (conversión universal fija) — mig 303 */}
+        {/* Fase 1-bis UoM: catálogo COMPLETO de Unidades FÍSICAS con enable/disable + presets — migs 303/308 */}
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
           <div className="flex items-center gap-2 mb-1">
             <Ruler size={18} className="text-accent-text" />
@@ -4489,22 +4513,47 @@ export default function ConfigPage() {
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500">
             Cómo se <strong>mide o cuenta</strong> un producto. La conversión dentro de una familia es fija y universal
-            (1&nbsp;kg = 1000&nbsp;g siempre). La familia decide si admite decimales: <strong>Conteo</strong> (unidad) es entero;
-            <strong> Peso / Volumen / Longitud</strong> admiten decimales. Distinto de los <em>niveles de empaque</em> (Caja/Pallet), que se arman por producto.
+            (1&nbsp;kg = 1000&nbsp;g siempre). <strong>Activá</strong> las que uses para que aparezcan al cargar productos;
+            las demás quedan ocultas. La unidad <em>base</em> de cada familia no se puede apagar. Los <em>nombres de
+            empaque</em> (Caja/Pallet) están en la pestaña Empaque.
           </p>
+
+          {canEdit && (
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-3">
+              <p className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">Activar unidades típicas de tu rubro:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {PRESETS_RUBRO.map(preset => (
+                  <button key={preset.label} onClick={() => aplicarPresetRubro(preset.unidades)}
+                    className="px-2.5 py-1 text-xs rounded-full border border-accent-text/30 text-accent-text hover:bg-accent/10 transition-colors">
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="grid sm:grid-cols-2 gap-3">
-            {(['conteo', 'peso', 'volumen', 'longitud'] as FamiliaFisica[]).map(fam => {
+            {FAMILIAS_FISICAS.map(fam => {
               const us = agruparPorFamilia(unidadesFisicasCfg)[fam]
               if (us.length === 0) return null
+              const base = us.find(x => x.es_base_familia)
               return (
                 <div key={fam} className="border border-gray-100 dark:border-gray-700 rounded-lg p-3">
                   <p className="text-xs font-semibold text-accent-text mb-1.5">{ETIQUETA_FAMILIA[fam]}{fam === 'conteo' ? ' · sin decimales' : ' · admite decimales'}</p>
                   <div className="space-y-0.5">
                     {us.map(u => (
-                      <div key={u.id} className="flex items-center justify-between text-sm">
-                        <span className="text-gray-700 dark:text-gray-300">{u.nombre} {u.simbolo && <span className="text-gray-400">({u.simbolo})</span>}</span>
-                        <span className="text-xs text-gray-400">{u.es_base_familia ? 'base' : `= ${u.factor_base_familia.toLocaleString('es-AR')} ${us.find(x => x.es_base_familia)?.simbolo ?? 'base'}`}</span>
-                      </div>
+                      <label key={u.id} className={`flex items-center justify-between text-sm gap-2 py-0.5 ${canEdit && !u.es_base_familia ? 'cursor-pointer' : ''}`}>
+                        <span className="flex items-center gap-2 min-w-0">
+                          <input type="checkbox" checked={u.activo !== false}
+                            disabled={!canEdit || u.es_base_familia}
+                            onChange={e => toggleUnidadFisica(u, e.target.checked)}
+                            className="accent-accent-text disabled:opacity-40 flex-shrink-0" />
+                          <span className={`truncate ${u.activo !== false ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
+                            {u.nombre} {u.simbolo && <span className="text-gray-400">({u.simbolo})</span>}
+                          </span>
+                        </span>
+                        <span className="text-xs text-gray-400 flex-shrink-0">{u.es_base_familia ? 'base' : `= ${u.factor_base_familia.toLocaleString('es-AR')} ${base?.simbolo ?? 'base'}`}</span>
+                      </label>
                     ))}
                   </div>
                 </div>
@@ -4512,13 +4561,17 @@ export default function ConfigPage() {
             })}
           </div>
         </div>
+        </div>
+          )}
 
+          {invSubTab === 'empaque' && (
+        <div className="space-y-4">
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <Ruler size={18} className="text-accent-text" />
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Nombres de empaque personalizados</h2>
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">Nombres de bultos propios de tu negocio (además de Caja/Pallet) para armar las presentaciones de un producto.</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500">Nombres de bultos propios de tu negocio (además de Caja/Pallet) para armar las presentaciones de un producto. Distinto de las <em>unidades de medida</em> físicas (Peso/Volumen/…), que están en la pestaña Unidades.</p>
 
           {/* Agregar */}
           {canEdit && (

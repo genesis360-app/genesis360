@@ -1,13 +1,18 @@
 # Grupos de variantes de producto
 
-> [!IMPORTANT] **⛔ DEPRECADO por el rediseño UoM — Fase 3 (mig 305, EN DEV).** El modelo de
-> `producto_grupos` (grupo separado + `productos.grupo_id`/`variante_valores`) fue **reemplazado por
-> variantes madre/hijo** con auto-referencia (`productos.producto_padre_id` + `variante_diferenciador`).
-> La migración 305 convirtió los grupos con ≥2 productos en madre + hijos; `producto_grupos`/`grupo_id`/
-> `variante_valores` y `ProductoGrupoModal.tsx` quedan como legacy (se dropean en la limpieza de una fase
-> posterior). El panel "Grupos" de ProductosPage y el selector de grupo de ProductoFormPage se
-> reemplazaron por la sección "Variantes" (madre→hijos). Ver [[wiki/features/estructuras-udm]] →
-> "Rediseño UoM — Fase 3". Este documento describe el modelo VIEJO (histórico).
+> [!IMPORTANT] **⛔ ELIMINADO — este modelo YA NO EXISTE en la base (mig 311, EN DEV al 2026-07-28).**
+> `producto_grupos`, `productos.grupo_id` y `productos.variante_valores` fueron **DROPEADOS**, y
+> `ProductoGrupoModal.tsx` borrado del repo. El modelo vigente es **variantes madre/hijo** con
+> auto-referencia (`productos.producto_padre_id` + `variante_diferenciador`, mig 305): la migración 305
+> convirtió los grupos con ≥2 productos en madre + hijos, y la 311 preservó en `notas` el dato del único
+> producto que había quedado sin migrar (un grupo de 1 producto). El panel "Grupos" de ProductosPage y el
+> selector de grupo de ProductoFormPage se reemplazaron por la sección "Variantes" (madre→hijos).
+>
+> **Lo que hay que leer en su lugar:** [[wiki/features/estructuras-udm]] → "Rediseño UoM — Fase 3"
+> (modelo madre/hijo), **"Fase 4"** (stock *sin variante asignada*: qué pasa con el stock de un producto
+> al que se le crean variantes, y cómo repartirlo) y **"Fase 5"** (limpieza).
+>
+> Este documento se conserva SOLO como referencia histórica de un modelo que ya no está en la DB.
 
 Permite agrupar múltiples SKUs que son variantes de un mismo artículo (ej: Remera S/M/L en Azul/Rojo). Cada SKU sigue siendo un producto normal con su propio stock, precio y LPNs.
 

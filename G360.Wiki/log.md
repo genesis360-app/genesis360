@@ -6,6 +6,69 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-28] update | 📐 Rediseño UoM COMPLETO — FASE 4 (stock sin variante asignada, mig 309) + FASE 5 (presentaciones = fuente de verdad + hermanas + limpieza, migs 310/311)
+
+Sesión autónoma pedida por GO: "seguí hasta completar todas las fases". Cierra el rediseño
+UoM/Empaque/Variantes entero. Cada migración pasó por `migration-reviewer` **antes** de aplicarse y
+se verificó contra datos REALES de DEV. `APP_VERSION` = **v1.144.0**.
+
+**FASE 4 (mig 309, 🛑 MUEVE STOCK — Regla #0).** Stock **"sin variante asignada"**: al crearle la
+primera variante a un producto con stock, ese stock queda colgando de la madre agrupadora — sigue
+contando en inventario pero **no es vendible** (el POS excluye a las madres desde la Fase 3). Antes
+la UI directamente **bloqueaba** esa operación; ahora se permite con aviso y se resuelve con
+`fn_reasignar_stock_variante`: UNA transacción, líneas bloqueadas `FOR UPDATE` en orden
+determinístico, **par de `movimientos_stock` por asignación → neto CERO**. Línea entera a un solo
+hijo = **re-apunta el `producto_id` del LPN** (misma caja física, conserva etiqueta, no hay que
+re-etiquetar); parcial = descuenta del origen y crea línea nueva heredando ubicación/estado/lote/
+vencimiento/costo/`parent_lpn_id`, **desactivando el origen si queda en 0**. Guards: serializados,
+reservas de pedido, LPN contenedor, sobre-asignación y destino que no es hijo. Tipo de movimiento
+**nuevo** `reasignacion_variante` — NO se reusó `ajuste_rebaje` a propósito: el Dashboard de
+Inventario cuenta esos movimientos como **MERMA** y reasignar habría inflado una pérdida inexistente.
+`fn_stock_por_sucursal` hace que el cartel de borrado **nombre la sucursal** con stock (el bloqueo
+server-side ya existía; faltaba explicarlo). **E3**: cambiar la UdM física dentro de la misma familia
+es libre; cruzar de familia con stock se bloquea por trigger.
+**🛑 Bug latente que destapó la reasignación:** cambiar el `producto_id` de una línea **no disparaba**
+el sync de TiendaNube (trigger acotado a cantidad/reservada/activo) y el de MercadoLibre solo
+encolaba el producto NUEVO → el listado publicado del producto viejo quedaba con stock desactualizado
+= **riesgo de sobreventa**. Ambas funciones encolan ahora los dos productos. El `migration-reviewer`
+cazó ese hallazgo y el del LPN partido que quedaba activo en 0, **antes** de aplicar.
+Verificado en DEV con un escenario real: 17 unidades en 2 LPN de 2 sucursales → 13 + 4, nada perdido.
+
+**FASE 5 (migs 310/311).** `producto_presentaciones` deja de ser un espejo derivado de
+`producto_estructura_niveles` y pasa a ser la **FUENTE DE VERDAD** del empaque. Se levanta el
+`UNIQUE(producto, nombre_empaque)` → **HERMANAS** (Caja-12 y Caja-10 del mismo producto, pedido
+explícito de Fede). Backfill verificado: **0 conversiones perdidas**, 314/314 productos con
+presentación base, 0 árboles incoherentes, y se **recuperaron** las estructuras no-default que hasta
+hoy eran letra muerta (Leche La Serenísima: Caja-12→Pallet-216 + Caja-10→Pallet-360; Cellulse:
+Caja-20 + Caja-15). RPC `fn_presentaciones_guardar` (el padre se referencia por índice ANTERIOR del
+array → sin ciclos por construcción; valida una sola base con factor 1, etiquetas únicas, hijo más
+grande que el padre y **múltiplo entero**). Trigger `trg_productos_presentacion_base` siembra la base
+de todo producto nuevo y mantiene H2. Editor nuevo `PresentacionesEditor` (UN árbol por producto,
+"Pallet = 18 × Caja") reemplaza el CRUD de "Estructuras"; Inventario, Recepciones, Masivo, LPN e
+Importador leen/escriben presentaciones. Limpieza (mig 311): **dropeadas** `producto_grupos`,
+`productos.grupo_id` y `productos.variante_valores` (preservando en `notas` el único producto sin
+migrar) + borrado `ProductoGrupoModal.tsx` + **revocada** `fn_estructura_guardar_niveles` de
+`authenticated`. `producto_estructuras`/`_niveles` **NO se dropean**: `inventario_lineas.estructura_id`
+las referencia como histórico de recepción (Regla #0, trazabilidad).
+
+**🛑 Bug de PLATA que cazó el e2e.** El POS decidía si una línea se vendía "en unidad suelta"
+comparando `nivelSeleccionadoOrden === 1` — cierto mientras la base venía de la cadena lineal
+(siempre orden 1), FALSO con el árbol (base = orden 0, orden 1 = primera Caja). Vender "1 Caja" se
+registraba como venta en UoM base y **se le aplicaban los combos configurados solo para la unidad
+suelta** (10% off sobre una caja de $1.200 que no correspondía), además de perder
+`venta_items.unidad_medida_id/cantidad_uom`. Se reemplazaron las 6 comparaciones contra el ordinal
+por el flag `es_base` (`vendiendoEnBase()`). También se corrigió que el adaptador devolvía `''` en
+vez de `null` como `unidad_medida_id` de la base, lo que rompía el INSERT del LPN al ingresar stock.
+
+**Verde:** tsc · build · **1243 unit** (`presentaciones.test.ts` 23 + `reasignacionVariante.test.ts` 16,
+nuevos) · e2e **`99` reescrito** (árbol + hermanas + 5 negativos server-side, reemplaza al de
+estructuras lineales) · **`112` nuevo** (Fase 4: conservación de las 17 unidades, re-apuntado, LPN
+partido desactivado, par de movimientos, 3 rechazos) · `100/102/103/104` migrados a sembrar por
+`fn_presentaciones_guardar`. **Pendiente:** `schema_full.sql` no se pudo regenerar (falta el
+`SUPABASE_ACCESS_TOKEN`; refleja hasta la 308) y la reasignación de productos **serializados** quedó
+bloqueada a propósito (hay que elegir qué serie va a cada variante → UI propia).
+Ver [[wiki/features/estructuras-udm]] y [[wiki/features/grupos-variantes]].
+
 ## [2026-07-27] update | 📐 Rediseño UoM — FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308)
 
 Continuación tras /clear (GO pidió chunk 2 + Fase 1-bis). Cada migración revisada por

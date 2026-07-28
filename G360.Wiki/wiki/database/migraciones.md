@@ -3,13 +3,61 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-07-23
+updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-308)
+# Historial de Migraciones (001-311)
 
-**Total al 2026-07-27:** 308 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-28:** 311 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**311 (rediseño UoM — FASE 5 chunk C: limpieza del modelo viejo de variantes, EN DEV, SIN deploy a PROD)** —
+DDL destructivo: se **dropean `producto_grupos`, `productos.grupo_id` y `productos.variante_valores`**
+(modelo de variantes de la mig 120, reemplazado por madre/hijo `producto_padre_id` en la mig 305). Antes
+de dropear se **preserva en `notas`** el dato de los productos que la mig 305 dejó sin migrar a propósito
+(grupos de 1 producto — en DEV era uno solo, "Talle: S"). ⚠ NO confundir con el **Eje A** (atributos de
+variante a nivel LPN: `inventario_lineas.talle/color/...` + `atributos_variante_valores`), que COEXISTE y
+no se toca. También se **REVOCA `fn_estructura_guardar_niveles` de `authenticated`**: desde la mig 310 la
+fuente de verdad del empaque es `producto_presentaciones`, y dejar viva la RPC vieja permitiría "guardar
+bien" una conversión que ya nadie lee → drift silencioso. `service_role` conserva su GRANT explícito.
+Revisada por `migration-reviewer` (sumó el guard `jsonb_typeof = 'object'` para que un dato inesperado en
+PROD no aborte un DDL destructivo a medias, y el guard anti-duplicado de la nota). Se borró también
+`src/components/ProductoGrupoModal.tsx` (código muerto que habría explotado en runtime si se reenganchaba).
+
+**310 (rediseño UoM — FASE 5 chunk A: presentaciones = FUENTE DE VERDAD + hermanas, EN DEV, SIN deploy a PROD)** —
+Invierte la fuente de verdad del empaque: `producto_presentaciones` deja de ser un espejo derivado por
+trigger de `producto_estructura_niveles` y pasa a ser **la tabla que manda** (se dropean
+`trg_pp_sync_niveles` y `trg_pp_sync_estructura`). Se levanta `UNIQUE(producto_id, nombre_empaque_id)` →
+habilita **HERMANAS** (Caja-12 y Caja-10 del mismo producto, pedido de Fede); sigue vigente
+`UNIQUE(producto_id, etiqueta)`. **Backfill verificado contra datos reales: 0 conversiones perdidas,
+314/314 productos con presentación base, 0 árboles incoherentes**, y se RECUPERARON las estructuras
+no-default que hasta hoy eran letra muerta (Leche: Caja-12→Pallet-216 + Caja-10→Pallet-360). RPC nueva
+**`fn_presentaciones_guardar`** (reemplaza `fn_estructura_guardar_niveles`): el padre se referencia por
+**índice ANTERIOR del array** → sin ciclos por construcción; valida una sola base con factor 1, etiquetas
+únicas, hijo más grande que el padre y **múltiplo entero**. Trigger **`trg_productos_presentacion_base`**
+siembra la base de todo producto nuevo y mantiene H2 (etiqueta base = `productos.unidad_medida`).
+`producto_estructuras`/`_niveles` quedan DEPRECADAS pero **NO se dropean**: `inventario_lineas.estructura_id`
+las referencia como histórico de recepción (borrarlas sería perder trazabilidad, Regla #0).
+Revisada por `migration-reviewer` (sumó peso/dimensiones al backfill de la base, el trigger de siembra
+para productos nuevos, y limpieza de código muerto).
+
+**309 (rediseño UoM — FASE 4: stock "sin variante asignada" + borrado multi-sucursal + E3, EN DEV, SIN deploy a PROD, 🛑 MUEVE STOCK)** —
+**`fn_reasignar_stock_variante(madre, jsonb)`**: reparte entre los hijos el stock que queda colgando de
+una madre agrupadora cuando se le crea la primera variante (visible y contable, pero NO vendible). Una
+transacción, líneas bloqueadas `FOR UPDATE` en orden determinístico, **par de `movimientos_stock` por
+asignación → neto CERO**. Línea entera a un solo hijo = **re-apunta el LPN** (misma caja física, conserva
+etiqueta); parcial = descuenta y crea línea nueva heredando ubicación/estado/lote/vencimiento/costo/
+`parent_lpn_id`, **desactivando el origen si queda en 0**. Guards: serializados, reservas, LPN contenedor,
+sobre-asignación, destino que no es hijo. **Tipo nuevo `reasignacion_variante`** — NO se reusó
+`ajuste_rebaje` a propósito: el Dashboard lo cuenta como MERMA y habría inflado una pérdida inexistente.
+**🛑 Bug latente corregido en la misma migración:** cambiar el `producto_id` de una línea NO disparaba el
+sync de TiendaNube (trigger acotado a cantidad/reservada/activo) y el de MercadoLibre solo encolaba el
+producto NUEVO → el listado publicado del producto viejo quedaba con stock desactualizado (**riesgo de
+sobreventa**); ambas funciones encolan ahora los dos productos. **`fn_stock_por_sucursal(uuid[])`** para
+que el cartel de borrado NOMBRE la sucursal con stock (el bloqueo server-side ya existía). **E3**:
+trigger `trg_productos_udm_familia` — cambiar la UdM física dentro de la misma familia es libre, cruzar
+de familia con stock se bloquea. Revisada por `migration-reviewer`, que cazó 2 hallazgos 🔴 (el LPN
+partido que quedaba activo en 0 y el sync de marketplaces) **antes** de aplicarla.
 
 **308 (rediseño UoM — FASE 1-bis: catálogo completo de unidades físicas, EN DEV, SIN deploy a PROD)** —
 `unidades_medida_fisicas` (mig 303) suma la familia **'area'** (se relaja el CHECK de `familia` a

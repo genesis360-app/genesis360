@@ -2,8 +2,8 @@
 title: Estructuras de producto + Unidades de Medida (footprints)
 category: features
 tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, zonas, reabastecimiento, udm, precio-por-uom, importador, ingreso-rebaje-uom]
-sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, 291, 293, 303, src/lib/estructuras.ts, src/lib/unidadMedidaFisica.ts, src/pages/ImportarProductosPage.tsx, src/pages/InventarioPage.tsx, src/components/MasivoModal.tsx]
-updated: 2026-07-23
+sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, 291, 293, 303, 304, 305, 306, 307, 308, 309, 310, 311, src/lib/estructuras.ts, src/lib/presentaciones.ts, src/lib/reasignacionVariante.ts, src/lib/unidadMedidaFisica.ts, src/components/PresentacionesEditor.tsx, src/components/ReasignarStockVarianteModal.tsx, src/pages/ImportarProductosPage.tsx, src/pages/InventarioPage.tsx, src/components/MasivoModal.tsx]
+updated: 2026-07-28
 ---
 
 > **🏗️ Rediseño en curso (2026-07-23) — UoM / Empaque / Variantes.** Tras una auditoría, GO decidió
@@ -11,13 +11,13 @@ updated: 2026-07-23
 > universal fija), **Nivel de Empaque** (Caja/Pallet, factor por producto — hoy "Estructura") y
 > **Variantes** (SKU madre/hijo). El diseño completo + las decisiones cerradas están en
 > `diseño-uom-empaque-variantes.html` (raíz del repo) y el relevamiento en
-> `relevamiento-unidades-medida-empaque-reglas-negocio.html`. **Fases 1, 1-bis, 2, 2-bis (chunks 1 y 2)
-> y 3 ya están construidas (EN DEV, migs 303-308), ver abajo.** Faltan **Fase 4** (stock atómico + stock
-> "sin variante asignada" + borrado multi-sucursal — la más Regla #0) y **Fase 5** (operar por presentación
-> + habilitar hermanas + limpieza de tablas deprecadas). El "ancla de precio" (`nivel_precio_orden`, bug
-> por POSICIÓN) ya se eliminó en la Fase 2, y en el chunk 2 (mig 307) se sacaron también los overrides de
-> precio de presentación: el empaque es **logística pura, sin precio propio** (el precio por volumen es un
-> TIER, mig 306).
+> `relevamiento-unidades-medida-empaque-reglas-negocio.html`. **✅ TODAS las fases están construidas
+> (1, 1-bis, 2, 2-bis chunks 1 y 2, 3, 4 y 5 — migs 303-311, EN DEV al 2026-07-28).** El "ancla de
+> precio" (`nivel_precio_orden`, bug por POSICIÓN) se eliminó en la Fase 2, y en el chunk 2 (mig 307)
+> se sacaron también los overrides de precio de presentación: el empaque es **logística pura, sin
+> precio propio** (el precio por volumen es un TIER, mig 306). Desde la **Fase 5** (mig 310)
+> `producto_presentaciones` es la **fuente de verdad** del empaque y admite **hermanas**;
+> `producto_estructuras`/`_niveles` quedaron deprecadas (solo lectura histórica).
 
 ## 🆕 Rediseño UoM — Fase 1: Unidad de Medida física (mig 303, EN DEV)
 
@@ -175,13 +175,135 @@ presentación (recibir eligiendo línea del árbol, habilitar hermanas) + limpie
 frontend en el mismo deploy + regenerar `schema_full.sql` (needs `SUPABASE_ACCESS_TOKEN`) + query de
 colisión de nombres custom (mig 308).
 
+## 🆕 Rediseño UoM — Fase 4: stock "sin variante asignada" + borrado multi-sucursal + E3 (mig 309, EN DEV) — 🛑 MUEVE STOCK
+
+Cuando a un producto standalone **con stock** se le crea la primera variante, ese producto pasa a
+ser **madre agrupadora**: deja de ser vendible (el POS excluye a las madres desde la Fase 3) pero su
+stock **sigue existiendo y contando en inventario**. Ese es el stock **"sin variante asignada"**:
+visible y contable, pero **no vendible** hasta repartirlo. Hasta la Fase 4 la UI directamente
+**bloqueaba** crear la primera variante si había stock; ahora se permite, avisando.
+
+**`fn_reasignar_stock_variante(madre, jsonb)`** reparte ese stock entre los hijos:
+
+- Todo en **UNA transacción**, con las líneas bloqueadas `FOR UPDATE` en orden determinístico
+  (dos usuarios reasignando el mismo LPN hacen cola, no deadlock).
+- **Línea entera a un solo hijo** → se **RE-APUNTA** el `producto_id` de la línea: es la misma caja
+  física, conserva su LPN y su etiqueta (no hay que re-etiquetar nada).
+- **Parcial** (o repartida entre varios hijos) → se descuenta del origen y nace una línea nueva
+  heredando ubicación / estado / lote / vencimiento / costo / `parent_lpn_id`; si el origen queda
+  en 0 se **desactiva** (que ningún picker lo ofrezca como disponible).
+- **Par de `movimientos_stock` por asignación** (salida de la madre + entrada del hijo) → **neto
+  CERO**, todo trazado.
+- **Guards:** serializados (hay que elegir QUÉ serie va a cada hijo → fase futura), líneas con
+  unidades reservadas para un pedido, LPN contenedor con hijos, sobre-asignación, y destino que no
+  es hijo de esa madre.
+
+**Tipo de movimiento nuevo: `reasignacion_variante`.** ⚠ **No se reusó `ajuste_rebaje` a propósito:**
+el Dashboard de Inventario cuenta los `ajuste_rebaje` del mes como **MERMAS**, así que reasignar
+habría inflado la merma con una pérdida que no existió. El tipo nuevo no matchea ningún filtro de
+KPI (merma / rotación / runway) — correcto, porque el neto de la operación es cero. Aparece en el
+Historial con el badge **"Reasignación"**.
+
+**🛑 Bug latente que destapó la reasignación (sync de marketplaces).** Cambiar el `producto_id` de
+una línea nunca había pasado en la práctica, y los dos triggers de sync estaban mal preparados:
+
+- **TiendaNube**: `trg_tn_stock_sync` escuchaba solo `UPDATE OF cantidad, cantidad_reservada,
+  activo` → el re-apuntado **no disparaba el trigger**, ni para la madre ni para el hijo.
+- **MercadoLibre**: el trigger sí disparaba, pero `fn_enqueue_meli_stock_sync` solo encolaba
+  `NEW.producto_id` → el lado de la **madre** (que bajó a 0) nunca se sincronizaba.
+
+En ambos casos el listado publicado quedaba con stock viejo → **riesgo de sobreventa**. Las dos
+funciones encolan ahora **los dos productos** cuando `producto_id` cambia, y el trigger de TN suma
+`producto_id` a su lista de columnas.
+
+**Guard de borrado multi-sucursal.** El bloqueo server-side ya existía (`fn_producto_tiene_actividad`
+chequea `inventario_lineas`); lo que faltaba era **explicarlo**. `fn_stock_por_sucursal(uuid[])`
+devuelve el desglose y el cartel pasa de un genérico *"tiene actividad"* a **nombrar la sucursal**:
+estar parado en la Sucursal A con 0 no alcanza si la B todavía tiene 5.
+
+**E3 — cambio de unidad de medida física.** Dentro de la **misma familia** (kg ↔ g) es **libre**: el
+stock se guarda en la unidad atómica de la familia, así que cambiar la unidad de la ficha solo cambia
+cómo se MUESTRA. **Cruzar de familia** (kg → litros) **con stock ≠ 0 se bloquea** por trigger
+(`trg_productos_udm_familia`): no existe conversión universal peso↔volumen, las cantidades guardadas
+pasarían a significar otra cosa.
+
+- **Lógica pura:** `src/lib/reasignacionVariante.ts` (16 unit). **UI:** `ReasignarStockVarianteModal`
+  + aviso en la ficha del agrupador + badge *"N sin variante asignada"* en la lista de productos.
+- **e2e `112`**: verifica que 17 unidades entran y 17 salen (6+4 partiendo un LPN, 7 re-apuntando
+  otro), que el LPN entero conserva su etiqueta, que el partido queda desactivado en 0, el par de
+  movimientos, y los 3 rechazos server-side.
+
+## 🆕 Rediseño UoM — Fase 5: presentaciones = FUENTE DE VERDAD + hermanas + limpieza (migs 310/311, EN DEV)
+
+Se **invierte la fuente de verdad del empaque**: `producto_presentaciones` deja de ser un espejo
+derivado por trigger de `producto_estructura_niveles` y pasa a ser la **tabla que manda**.
+
+**Por qué:** la cadena lineal no puede expresar **HERMANAS** — dos presentaciones del mismo tipo de
+empaque con factores distintos, *"Caja-12"* y *"Caja-10"* del mismo producto (pedido explícito de
+Fede). Lo impedía `UNIQUE (producto_id, nombre_empaque_id)`, que se levanta. Sigue vigente
+`UNIQUE(producto_id, etiqueta)`: lo que tiene que ser único es el **nombre visible**.
+
+**Backfill (mig 310), verificado contra datos reales de DEV:**
+
+- **0 conversiones perdidas** · **314/314 productos** con su presentación base · 0 árboles
+  incoherentes. `unidades_base` del nivel ES el `factor_base` de la presentación (mismo número).
+- Se **RECUPERARON** las estructuras no-default, que hasta hoy eran letra muerta (el rebuild solo
+  miraba la default): *Leche La Serenísima 1L* quedó con **Caja-12 → Pallet-216** y su hermana
+  **Caja-10 → Pallet-360**; *Cellulse Rolling Paper* con **Caja-20** y **Caja-15**.
+- Las etiquetas se desambiguan solas con el factor cuando colisionan (`Caja` → `Caja-10`).
+
+**`fn_presentaciones_guardar(producto, jsonb)`** reemplaza a `fn_estructura_guardar_niveles`. El
+padre se referencia por **índice ANTERIOR del array** → el árbol **no puede tener ciclos por
+construcción**. Valida: una sola base con factor 1, etiquetas únicas, y que cada hijo sea **más
+grande que su padre** y un **múltiplo entero** de él (un empaque contiene un número entero de su
+empaque hijo; 3 cajas y media no existe).
+
+**`trg_productos_presentacion_base`** siembra la presentación base de todo producto nuevo y mantiene
+**H2** (la etiqueta de la base sigue al campo "Unidad de medida" de la ficha).
+
+**UI:** el CRUD de "Estructuras" (varias por SKU, cada una con su cadena) se reemplaza por el
+**`PresentacionesEditor`**: UN árbol por producto, donde cada línea declara **de cuál cuelga** y
+**cuántas contiene** ("Pallet = 18 × Caja"). Inventario (ingreso/rebaje/masivo), Recepciones, el
+modal de LPN y el Importador leen las presentaciones vía el adaptador `presentacionesComoNiveles`,
+que mapea `factor_base → unidades_base` sin tocar la aritmética ya probada.
+
+**Limpieza (mig 311):**
+
+- Se **dropean** `producto_grupos`, `productos.grupo_id` y `productos.variante_valores` (modelo viejo
+  de variantes, mig 120 — reemplazado por madre/hijo en la mig 305). El único producto que no se
+  había migrado (un grupo de 1 producto) conserva su dato en `notas`. Se borra `ProductoGrupoModal.tsx`.
+- Se **revoca** `fn_estructura_guardar_niveles` de `authenticated`: dejarla viva permitiría "guardar
+  bien" una conversión que ya nadie lee → drift silencioso.
+- **`producto_estructuras` / `producto_estructura_niveles` NO se dropean**: `inventario_lineas.estructura_id`
+  las referencia como **histórico de recepción**; borrarlas sería perder trazabilidad (Regla #0).
+  Quedan solo-lectura, marcadas como deprecadas.
+
+**🛑 Bug de plata que cazó el e2e al migrar.** El POS decidía si una línea se vendía "en unidad
+suelta" comparando `nivelSeleccionadoOrden === 1`. Eso era cierto mientras la base venía de
+`producto_estructura_niveles` (siempre orden 1); con el árbol la base es **orden 0** y el orden 1 es
+la primera **Caja** → vender "1 Caja" se registraba como venta en UoM base y **se le aplicaban los
+combos configurados solo para la unidad suelta**. Se reemplazó por el flag `es_base`
+(`vendiendoEnBase()`): un ordinal nunca debería gobernar una decisión de plata.
+
+- **Lógica pura:** `src/lib/presentaciones.ts` (23 unit). **e2e `99`** (reescrito): hermanas
+  conviven, el árbol resuelve factores, y **5 negativos server-side** (hijo más chico que el padre,
+  no-múltiplo, dos bases, etiquetas repetidas, base con factor ≠ 1) dejan el árbol intacto.
+
 ---
 
-# Estructuras de producto con niveles dinámicos por UdM (modelo de CONVERSIÓN — sigue vigente; el PRECIO ya migró a presentaciones/base en Fase 2)
+# Estructuras de producto con niveles dinámicos por UdM (⚠ DEPRECADO en la Fase 5 — solo lectura histórica)
+
+> **⚠ Deprecado (mig 310/311).** Lo que sigue describe el modelo de **estructuras con cadena lineal**
+> (migs 282-283), que dejó de ser la fuente de verdad del empaque: ahora manda
+> `producto_presentaciones` (árbol genealógico, ver Fase 5 arriba). Las tablas se conservan porque
+> `inventario_lineas.estructura_id` las referencia como histórico de recepción, pero la app ya no las
+> escribe y `fn_estructura_guardar_niveles` no tiene GRANT a `authenticated`. Se mantiene esta
+> sección como referencia de lo que hay en los datos viejos.
 
 Modelo estilo **pack structure / footprint de Blue Yonder** (pedido GO 2026-07-19): por cada SKU
-puede haber **varias estructuras** (una default), y cada estructura tiene **N niveles dinámicos**
-donde cada nivel es una **unidad de medida del tenant** con factor de conversión, peso y
+podía haber **varias estructuras** (una default), y cada estructura tenía **N niveles dinámicos**
+⚠ *(en la Fase 5 esto se unificó en UN árbol por producto con hermanas, ver arriba)*, donde cada nivel
+era una **unidad de medida del tenant** con factor de conversión, peso y
 dimensiones. Reemplaza el modelo viejo de 3 niveles hardcodeados (unidad/caja/pallet como
 columnas fijas, mig 031).
 
@@ -289,7 +411,13 @@ todavía sin ningún invocador. Por el tamaño del cambio se decidió fasear: **
 es SOLO el modelo de datos + la carga de precio por nivel + el "ancla de precio", sin tocar
 todavía POS/facturación/combos.**
 
-### Modelo (mig 286)
+### Modelo (mig 286) — ⚠ SUPERADO
+
+> **⚠ Histórico.** Todo lo que sigue en esta subsección (precio propio por nivel + "ancla de precio"
+> `nivel_precio_orden`) **ya no existe**: la Fase 2 (mig 304) eliminó el ancla y el chunk 2 (mig 307)
+> dropeó los overrides de precio de nivel/presentación. Hoy el precio vive **solo en la unidad base +
+> tiers de cantidad** (mig 306) y el empaque es logística pura. Se conserva para entender los datos y
+> las decisiones viejas.
 
 - `producto_estructura_niveles.precio_venta` / `.precio_costo` — **opcionales, propios de cada
   nivel** (`CHECK ≥ 0`). Persistidos por `fn_estructura_guardar_niveles` (extendida en mig 287,
@@ -327,6 +455,12 @@ bug real en el agrupador de combos, UoM en el ticket/factura) en
 
 Continuación de la sesión anterior: `ImportarProductosPage.tsx` gana columnas opcionales en la
 plantilla Excel:
+
+> **⚠ Histórico (mig 307).** Las columnas de precio del importador (`estr_precio_ancla`,
+> `estr_precio_venta_caja`, `estr_precio_costo_caja`, `estr_precio_venta_pallet`,
+> `estr_precio_costo_pallet`) **fueron ELIMINADAS**: el empaque no lleva precio. Hoy el importador
+> solo acepta `estr_unidades_por_caja` / `estr_cajas_por_pallet` + peso/dimensiones, y desde la Fase 5
+> (mig 310) escribe directo en `producto_presentaciones` vía `fn_presentaciones_guardar`.
 
 - **`estr_precio_ancla`** (`Unidad`/`Caja`/`Pallet`, case-insensitive) — setea
   `productos.nivel_precio_orden` buscando el nivel por NOMBRE en la estructura que la fila termina

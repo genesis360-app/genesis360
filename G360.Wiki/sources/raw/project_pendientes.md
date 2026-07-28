@@ -6,7 +6,51 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-27, cierre /clear) — Rediseño UoM: **FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308) hechas** — EN DEV, **SIN deploy a PROD**
+> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO (Fases 4 y 5, migs 309-311)** · v1.144.0
+>
+> **El rediseño UoM terminó: no quedan fases pendientes.** Esta sesión cerró las dos que faltaban,
+> con la misma metodología (cada migración por `migration-reviewer` ANTES de aplicar + verificación
+> contra datos REALES de DEV + tests).
+>
+> **✅ FASE 4 (mig 309, 🛑 MUEVE STOCK).** Stock **"sin variante asignada"**: al crear la primera
+> variante de un producto con stock, ese stock queda colgando de la madre agrupadora — contable pero
+> **no vendible** — y se reparte con `fn_reasignar_stock_variante` (una transacción, `FOR UPDATE`,
+> par de `movimientos_stock` → **neto CERO**). Línea entera a un hijo = **re-apunta el LPN** (conserva
+> su etiqueta); parcial = descuenta + crea línea nueva y **desactiva el origen si queda en 0**. Tipo
+> nuevo `reasignacion_variante` (NO se reusó `ajuste_rebaje`: el Dashboard lo cuenta como MERMA).
+> Antes la UI **bloqueaba** crear la 1ra variante con stock; ahora se permite, avisando.
+> `fn_stock_por_sucursal` hace que el cartel de borrado **nombre la sucursal** con stock. E3: cambiar
+> la UdM física dentro de la misma familia es libre, cruzar de familia con stock se bloquea (trigger).
+> **🛑 Bug latente corregido:** cambiar el `producto_id` de una línea NO sincronizaba stock con
+> TiendaNube ni con el lado viejo de MercadoLibre → **riesgo de sobreventa** en el marketplace.
+>
+> **✅ FASE 5 (migs 310/311).** `producto_presentaciones` pasa a ser la **FUENTE DE VERDAD** del
+> empaque (dejó de ser un espejo derivado de `producto_estructura_niveles`) y se habilitan las
+> **HERMANAS** (Caja-12 y Caja-10 del mismo producto — pedido de Fede). Backfill verificado contra
+> datos reales: **0 conversiones perdidas**, 314/314 productos con presentación base, y se
+> **recuperaron** las estructuras no-default que eran letra muerta (Leche: Caja-12→Pallet-216 +
+> Caja-10→Pallet-360). RPC `fn_presentaciones_guardar` (padre por índice anterior → sin ciclos;
+> valida una sola base, etiquetas únicas, hijo más grande y **múltiplo entero**). Trigger
+> `trg_productos_presentacion_base` siembra la base de todo producto nuevo (H2). Editor nuevo
+> `PresentacionesEditor` reemplaza el CRUD de "Estructuras"; Inventario, Recepciones, Masivo, LPN e
+> Importador migrados. Limpieza: **dropeadas** `producto_grupos`/`grupo_id`/`variante_valores` +
+> borrado `ProductoGrupoModal.tsx`; `producto_estructuras`/`_niveles` **se conservan** solo-lectura
+> (`inventario_lineas.estructura_id` las referencia como histórico — borrarlas sería perder
+> trazabilidad).
+>
+> **🛑 Bug de PLATA que cazó el e2e:** el POS identificaba la presentación base por `orden === 1`;
+> con el árbol la base es orden **0** y el 1 es la primera **Caja** → vender "1 Caja" se registraba
+> como venta en UoM base y **se le aplicaban los combos de la unidad suelta**. Corregido con el flag
+> `es_base` (`vendiendoEnBase()`). Un ordinal no puede gobernar una decisión de plata.
+>
+> **▶ PRÓXIMA SESIÓN — no hay pendientes del rediseño.** Lo que queda abierto:
+> - **Serializados en la reasignación** (Fase 4 dejó bloqueado el caso `tiene_series`: hay que elegir
+>   QUÉ número de serie va a cada variante — necesita UI propia).
+> - `schema_full.sql` **NO se pudo regenerar** esta sesión: `npm run schema:dump` necesita un
+>   `SUPABASE_ACCESS_TOKEN` (el modo PG falla por el bug de Supavisor). Refleja hasta la 308.
+> - Retomar los pendientes NO-UoM del backlog general (ver más abajo).
+>
+> ### 📐 ESTADO ANTERIOR (2026-07-27, cierre /clear) — Rediseño UoM: **FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308) hechas** — EN DEV, **SIN deploy a PROD**
 >
 > Continuación tras el /clear (GO pidió chunk 2 + Fase 1-bis). Metodología: cada migración por
 > `migration-reviewer` ANTES de aplicar + tests + verificación contra DB real. Ambas migraciones

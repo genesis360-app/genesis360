@@ -3,13 +3,49 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-07-22
+updated: 2026-07-28
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 22 de Julio, 2026
+**Última actualización:** 28 de Julio, 2026
+
+---
+
+## v1.144.0 — 📐 Rediseño UoM: Fases 4 y 5 (cierra el rediseño completo) — 🟡 DEV (2026-07-28)
+
+Migs **309-311 SOLO en DEV**. Cierra las dos fases que faltaban del rediseño UoM/Empaque/Variantes.
+
+**Fase 4 (mig 309) — 🛑 mueve STOCK entre SKUs.** `fn_reasignar_stock_variante` reparte entre los
+hijos el stock "sin variante asignada" que queda colgando de una madre agrupadora (contable pero no
+vendible). Atómica, líneas bloqueadas `FOR UPDATE`, **par de `movimientos_stock` por asignación →
+neto CERO**; línea entera = re-apunta el LPN (conserva su etiqueta física), parcial = descuenta y
+crea línea nueva desactivando el origen si queda en 0. Tipo de movimiento nuevo
+`reasignacion_variante` (NO se reusó `ajuste_rebaje`: el Dashboard lo cuenta como merma). Se
+**desbloqueó** crear la primera variante con stock, que antes estaba prohibido. `fn_stock_por_sucursal`
+hace que el cartel de borrado NOMBRE la sucursal con stock. E3: cambiar la UdM física dentro de la
+misma familia es libre, cruzar de familia con stock se bloquea por trigger.
+**🛑 Bug latente corregido:** cambiar el `producto_id` de una línea no sincronizaba stock con
+TiendaNube ni el lado viejo de MercadoLibre → riesgo de **sobreventa** en el marketplace.
+
+**Fase 5 (migs 310/311).** `producto_presentaciones` pasa a ser la **fuente de verdad** del empaque
+(antes era un espejo derivado de `producto_estructura_niveles`) y se habilitan las **HERMANAS**
+(Caja-12 y Caja-10 del mismo producto, pedido de Fede). Backfill verificado: **0 conversiones
+perdidas**, 314/314 productos con presentación base, y se recuperaron las estructuras no-default que
+eran letra muerta. RPC `fn_presentaciones_guardar` (padre por índice anterior → sin ciclos; valida
+múltiplo entero y una sola base). Editor nuevo `PresentacionesEditor` reemplaza el CRUD de
+Estructuras; Inventario, Recepciones, Masivo, LPN e Importador migrados. Limpieza: se dropean
+`producto_grupos`/`grupo_id`/`variante_valores` y se borra `ProductoGrupoModal.tsx`;
+`producto_estructuras`/`_niveles` se conservan solo-lectura (histórico de `inventario_lineas.estructura_id`).
+
+**🛑 Bug de plata que cazó el e2e:** el POS identificaba la presentación base por `orden === 1`; con
+el árbol la base es orden 0 y el 1 es la primera Caja → vender "1 Caja" aplicaba los combos de la
+unidad suelta. Se reemplazó por el flag `es_base`.
+
+Cada migración pasó por `migration-reviewer` **antes** de aplicarse (cazó 2 hallazgos 🔴 en la 309).
+Verde: tsc · build · **1243 unit** (2 archivos nuevos) · e2e `99` reescrito + **`112` nuevo** +
+100/102/103/104 migrados. `APP_VERSION` = v1.144.0. **Sin deploy a PROD al momento de escribir esto.**
 
 ---
 

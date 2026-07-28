@@ -620,6 +620,21 @@ export default function ProductoFormPage() {
     // Desde la Fase 4 se permite, avisando, y se resuelve con el modal de reparto (mig 309).
     const stockQuedaSinAsignar =
       !productoPadreId && !esMadre && Number((productoData as any).stock_actual ?? 0) > 0
+
+    // 🛑 Regla #0 — serializados: el reparto exige decir QUÉ número de serie va a cada variante
+    // (repartir "6 y 4" a ciegas rompería la trazabilidad), y esa pantalla todavía no existe. Si
+    // dejáramos crear la variante igual, el stock quedaría atrapado: NO vendible (la madre pasa a
+    // agrupador) y NO reasignable (la RPC lo rechaza). Se bloquea acá, como antes.
+    if (stockQuedaSinAsignar && (productoData as any).tiene_series) {
+      toast.error(
+        'Este producto lleva número de serie y tiene stock. Para repartirlo entre variantes hay que ' +
+        'elegir qué serie va a cada una, y esa pantalla todavía no está. Dejá el stock en 0 (o creá ' +
+        'las variantes en un producto nuevo) antes de convertirlo en agrupador.',
+        { duration: 10000 },
+      )
+      return
+    }
+
     if (stockQuedaSinAsignar) {
       const stock = Number((productoData as any).stock_actual ?? 0)
       if (!confirm(

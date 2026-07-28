@@ -13,9 +13,11 @@ updated: 2026-07-28
 
 ---
 
-## v1.144.0 — 📐 Rediseño UoM: Fases 4 y 5 (cierra el rediseño completo) — 🟡 DEV (2026-07-28)
+## v1.144.0 — 📐 Rediseño UoM completo + WMS + Pedidos — ✅ **PROD** (2026-07-28)
 
-Migs **309-311 SOLO en DEV**. Cierra las dos fases que faltaban del rediseño UoM/Empaque/Variantes.
+Migs **289-311 en DEV y PROD**. Cierra las dos fases que faltaban del rediseño UoM/Empaque/Variantes y sube además todo lo acumulado en `dev` desde v1.142.0 (módulo WMS y módulo Pedidos).
+
+**✅ EN PROD desde el 2026-07-28** (PR #302, tag v1.144.0, migs 289-311 aplicadas en PROD, bundle de `app.genesis360.pro` verificado por curl sirviendo v1.144.0).
 
 **Fase 4 (mig 309) — 🛑 mueve STOCK entre SKUs.** `fn_reasignar_stock_variante` reparte entre los
 hijos el stock "sin variante asignada" que queda colgando de una madre agrupadora (contable pero no
@@ -45,7 +47,7 @@ unidad suelta. Se reemplazó por el flag `es_base`.
 
 Cada migración pasó por `migration-reviewer` **antes** de aplicarse (cazó 2 hallazgos 🔴 en la 309).
 Verde: tsc · build · **1243 unit** (2 archivos nuevos) · e2e `99` reescrito + **`112` nuevo** +
-100/102/103/104 migrados. `APP_VERSION` = v1.144.0. **Sin deploy a PROD al momento de escribir esto.**
+100/102/103/104 migrados. `APP_VERSION` = v1.144.0.
 
 ---
 

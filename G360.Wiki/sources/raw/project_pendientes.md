@@ -6,11 +6,18 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO (Fases 4 y 5, migs 309-311)** · v1.144.0
+> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD** (v1.144.0, migs 289-311)
 >
-> **El rediseño UoM terminó: no quedan fases pendientes.** Esta sesión cerró las dos que faltaban,
-> con la misma metodología (cada migración por `migration-reviewer` ANTES de aplicar + verificación
-> contra datos REALES de DEV + tests).
+> **El rediseño UoM terminó Y SE DEPLOYÓ.** Esta sesión cerró las dos fases que faltaban y además
+> subió a PROD TODO lo que estaba acumulado en `dev` desde v1.142.0: **WMS (289-291), Pedidos
+> (292, 294-302) y el rediseño UoM completo (303-311)** — 23 migraciones.
+> **✅ EN PROD desde el 2026-07-28** (PR #302, tag v1.144.0, migs 289-311 aplicadas en PROD, bundle de `app.genesis360.pro` verificado por curl sirviendo v1.144.0).
+> Metodología: cada migración por `migration-reviewer` ANTES de aplicar + verificación contra datos
+> REALES + tests. Antes de tocar PROD se corrieron pre-checks sobre sus datos reales: **0 estructuras,
+> 0 niveles, 0 productos con ancla de precio y 0 con grupo** → las migraciones que tocan plata no
+> tenían filas que convertir y la destructiva (311) dropeó 2 grupos vacíos. Post-deploy verificado:
+> 23 productos todos con presentación base, 0 árboles incoherentes, `stock_actual` coherente con las
+> líneas, 29 ventas y sus 2 CAE intactas.
 >
 > **✅ FASE 4 (mig 309, 🛑 MUEVE STOCK).** Stock **"sin variante asignada"**: al crear la primera
 > variante de un producto con stock, ese stock queda colgando de la madre agrupadora — contable pero
@@ -43,11 +50,14 @@ type: project
 > como venta en UoM base y **se le aplicaban los combos de la unidad suelta**. Corregido con el flag
 > `es_base` (`vendiendoEnBase()`). Un ordinal no puede gobernar una decisión de plata.
 >
-> **▶ PRÓXIMA SESIÓN — no hay pendientes del rediseño.** Lo que queda abierto:
+> **▶ PRÓXIMA SESIÓN — no hay pendientes del rediseño ni de deploy.** Lo que queda abierto:
 > - **Serializados en la reasignación** (Fase 4 dejó bloqueado el caso `tiene_series`: hay que elegir
 >   QUÉ número de serie va a cada variante — necesita UI propia).
 > - `schema_full.sql` **NO se pudo regenerar** esta sesión: `npm run schema:dump` necesita un
->   `SUPABASE_ACCESS_TOKEN` (el modo PG falla por el bug de Supavisor). Refleja hasta la 308.
+>   `SUPABASE_ACCESS_TOKEN` (el modo PG falla por el bug de Supavisor). Refleja hasta la 308 —
+>   pedirle el token a GO y regenerarlo (DEV y PROD están idénticos en 311).
+> - **`app-reference.md` NO se tocó**, así que no hace falta `npm run ai:knowledge` ni redeploy de la
+>   EF `ai-assistant`. Si en la próxima sesión se documenta el rediseño ahí, sí hay que hacerlo.
 > - Retomar los pendientes NO-UoM del backlog general (ver más abajo).
 >
 > ### 📐 ESTADO ANTERIOR (2026-07-27, cierre /clear) — Rediseño UoM: **FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308) hechas** — EN DEV, **SIN deploy a PROD**

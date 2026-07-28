@@ -12,14 +12,14 @@ updated: 2026-07-28
 > **Variantes** (SKU madre/hijo). El diseño completo + las decisiones cerradas están en
 > `diseño-uom-empaque-variantes.html` (raíz del repo) y el relevamiento en
 > `relevamiento-unidades-medida-empaque-reglas-negocio.html`. **✅ TODAS las fases están construidas
-> (1, 1-bis, 2, 2-bis chunks 1 y 2, 3, 4 y 5 — migs 303-311, EN DEV al 2026-07-28).** El "ancla de
+> y EN PROD (1, 1-bis, 2, 2-bis chunks 1 y 2, 3, 4 y 5 — migs 303-311, deploy real v1.144.0 el 2026-07-28).** El "ancla de
 > precio" (`nivel_precio_orden`, bug por POSICIÓN) se eliminó en la Fase 2, y en el chunk 2 (mig 307)
 > se sacaron también los overrides de precio de presentación: el empaque es **logística pura, sin
 > precio propio** (el precio por volumen es un TIER, mig 306). Desde la **Fase 5** (mig 310)
 > `producto_presentaciones` es la **fuente de verdad** del empaque y admite **hermanas**;
 > `producto_estructuras`/`_niveles` quedaron deprecadas (solo lectura histórica).
 
-## 🆕 Rediseño UoM — Fase 1: Unidad de Medida física (mig 303, EN DEV)
+## 🆕 Rediseño UoM — Fase 1: Unidad de Medida física (mig 303, EN PROD)
 
 Tabla nueva **`unidades_medida_fisicas`** (por tenant, RLS), separada del catálogo de empaque
 (`unidades_medida`) — decisión G1 de GO: tablas separadas. Modela las unidades con **conversión
@@ -51,7 +51,7 @@ universal, para cualquier producto/tenant. `permite_decimales` = (familia≠cont
   `unidad_medida_base_id` desde el texto legacy (en el tenant dev, 25/25 productos mapeados).
 - **Verificado:** `migration-reviewer` (APTA) · tsc · build · 12 unit · e2e `108_unidad_medida_fisica_mutante` (2/2 verde, DB real).
 
-## 🆕 Rediseño UoM — Fase 2: precio canónico en la unidad BASE + presentaciones (mig 304, EN DEV) — 🛑 TOCA PLATA
+## 🆕 Rediseño UoM — Fase 2: precio canónico en la unidad BASE + presentaciones (mig 304, EN PROD) — 🛑 TOCA PLATA
 
 Dos cambios acoplados (decisiones C5/C6 + F1/F3 de GO):
 
@@ -78,7 +78,7 @@ authenticated (tabla 100% derivada). Hermanas bloqueadas hasta Fase 5 por `UNIQU
 - **Verificado:** `migration-reviewer` (GRANT solo-SELECT + guard de idempotencia aplicados) · tsc ·
   build · 37 unit (nuevos de `precioPresentacion`) · e2e `102`/`105` (3/3, DB real).
 
-## 🆕 Rediseño UoM — Fase 3: variantes madre/hijo (mig 305, EN DEV) — reemplaza `producto_grupos`
+## 🆕 Rediseño UoM — Fase 3: variantes madre/hijo (mig 305, EN PROD) — reemplaza `producto_grupos`
 
 Auto-referencia en `productos` (estilo Shopify: el producto ES el padre):
 - **`producto_padre_id`** (NULL=madre/standalone · con valor=hijo) + **`variante_diferenciador`**
@@ -100,7 +100,7 @@ Auto-referencia en `productos` (estilo Shopify: el producto ES el padre):
 - **Verificado:** `migration-reviewer` (encontró bug bloqueante de idempotencia + cerró guard de 3
   niveles + tenant, corregidos) · tsc · build · e2e `109` (2/2: composición + propagación + guards).
 
-## 🆕 Rediseño UoM — Fase 2-bis: tiers de precio mayorista con operador (mig 306, EN DEV) — 🛑 PLATA
+## 🆕 Rediseño UoM — Fase 2-bis: tiers de precio mayorista con operador (mig 306, EN PROD) — 🛑 PLATA
 
 Tras las **respuestas finales de Fede (2026-07-24)** el eje precio/venta se reencauzó: el precio vive
 **solo a nivel de unidad + tiers de cantidad** (sin overrides por presentación — la Estructura es
@@ -123,7 +123,7 @@ logística pura), y para "vender un pallet" se usa un tier de cantidad, no un pr
 
 ---
 
-## 🆕 Rediseño UoM — Fase 2-bis chunk 2: empaque sin precio + árbol genealógico (mig 307, EN DEV) — 🛑 PLATA
+## 🆕 Rediseño UoM — Fase 2-bis chunk 2: empaque sin precio + árbol genealógico (mig 307, EN PROD) — 🛑 PLATA
 
 Reencauza la Fase 2 (mig 304) con el modelo final de Fede: **el empaque es logística pura, sin precio
 propio**. Vender "2 cajas" en el POS queda como **conversión de cantidad** (2 × factor_base unidades base);
@@ -147,7 +147,7 @@ el precio sale siempre de la unidad base + tiers.
   por redondeo del precio/unidad) · tsc · build · unit `estructurasPrecio`/`estructuras` reescritos · e2e
   `102`/`103`/`104`/`105` reescritos al nuevo modelo + `110`.
 
-## 🆕 Rediseño UoM — Fase 1-bis: catálogo completo de unidades físicas + enable/disable + presets (mig 308, EN DEV)
+## 🆕 Rediseño UoM — Fase 1-bis: catálogo completo de unidades físicas + enable/disable + presets (mig 308, EN PROD)
 
 Decisión B2/H1 de Fede: Config→Inventario→"Unidades" = catálogo COMPLETO de físicas con enable/disable por
 tenant + presets por rubro; los nombres de empaque salen de esa pantalla.
@@ -175,7 +175,7 @@ presentación (recibir eligiendo línea del árbol, habilitar hermanas) + limpie
 frontend en el mismo deploy + regenerar `schema_full.sql` (needs `SUPABASE_ACCESS_TOKEN`) + query de
 colisión de nombres custom (mig 308).
 
-## 🆕 Rediseño UoM — Fase 4: stock "sin variante asignada" + borrado multi-sucursal + E3 (mig 309, EN DEV) — 🛑 MUEVE STOCK
+## 🆕 Rediseño UoM — Fase 4: stock "sin variante asignada" + borrado multi-sucursal + E3 (mig 309, EN PROD) — 🛑 MUEVE STOCK
 
 Cuando a un producto standalone **con stock** se le crea la primera variante, ese producto pasa a
 ser **madre agrupadora**: deja de ser vendible (el POS excluye a las madres desde la Fase 3) pero su
@@ -233,7 +233,7 @@ pasarían a significar otra cosa.
   otro), que el LPN entero conserva su etiqueta, que el partido queda desactivado en 0, el par de
   movimientos, y los 3 rechazos server-side.
 
-## 🆕 Rediseño UoM — Fase 5: presentaciones = FUENTE DE VERDAD + hermanas + limpieza (migs 310/311, EN DEV)
+## 🆕 Rediseño UoM — Fase 5: presentaciones = FUENTE DE VERDAD + hermanas + limpieza (migs 310/311, EN PROD)
 
 Se **invierte la fuente de verdad del empaque**: `producto_presentaciones` deja de ser un espejo
 derivado por trigger de `producto_estructura_niveles` y pasa a ser la **tabla que manda**.

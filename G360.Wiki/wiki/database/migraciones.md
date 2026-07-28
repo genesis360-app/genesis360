@@ -11,7 +11,7 @@ updated: 2026-07-28
 **Total al 2026-07-28:** 311 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
 
-**311 (rediseño UoM — FASE 5 chunk C: limpieza del modelo viejo de variantes, EN DEV, SIN deploy a PROD)** —
+**311 (rediseño UoM — FASE 5 chunk C: limpieza del modelo viejo de variantes, EN DEV y PROD)** —
 DDL destructivo: se **dropean `producto_grupos`, `productos.grupo_id` y `productos.variante_valores`**
 (modelo de variantes de la mig 120, reemplazado por madre/hijo `producto_padre_id` en la mig 305). Antes
 de dropear se **preserva en `notas`** el dato de los productos que la mig 305 dejó sin migrar a propósito
@@ -24,7 +24,7 @@ Revisada por `migration-reviewer` (sumó el guard `jsonb_typeof = 'object'` para
 PROD no aborte un DDL destructivo a medias, y el guard anti-duplicado de la nota). Se borró también
 `src/components/ProductoGrupoModal.tsx` (código muerto que habría explotado en runtime si se reenganchaba).
 
-**310 (rediseño UoM — FASE 5 chunk A: presentaciones = FUENTE DE VERDAD + hermanas, EN DEV, SIN deploy a PROD)** —
+**310 (rediseño UoM — FASE 5 chunk A: presentaciones = FUENTE DE VERDAD + hermanas, EN DEV y PROD)** —
 Invierte la fuente de verdad del empaque: `producto_presentaciones` deja de ser un espejo derivado por
 trigger de `producto_estructura_niveles` y pasa a ser **la tabla que manda** (se dropean
 `trg_pp_sync_niveles` y `trg_pp_sync_estructura`). Se levanta `UNIQUE(producto_id, nombre_empaque_id)` →
@@ -41,7 +41,7 @@ las referencia como histórico de recepción (borrarlas sería perder trazabilid
 Revisada por `migration-reviewer` (sumó peso/dimensiones al backfill de la base, el trigger de siembra
 para productos nuevos, y limpieza de código muerto).
 
-**309 (rediseño UoM — FASE 4: stock "sin variante asignada" + borrado multi-sucursal + E3, EN DEV, SIN deploy a PROD, 🛑 MUEVE STOCK)** —
+**309 (rediseño UoM — FASE 4: stock "sin variante asignada" + borrado multi-sucursal + E3, EN DEV y PROD, 🛑 MUEVE STOCK)** —
 **`fn_reasignar_stock_variante(madre, jsonb)`**: reparte entre los hijos el stock que queda colgando de
 una madre agrupadora cuando se le crea la primera variante (visible y contable, pero NO vendible). Una
 transacción, líneas bloqueadas `FOR UPDATE` en orden determinístico, **par de `movimientos_stock` por

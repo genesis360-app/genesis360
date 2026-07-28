@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-07-28T03:41:36.137Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260728031041 · 151 tablas
+-- Generado 2026-07-28T16:09:23.492Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260728075828 · 150 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1375,20 +1375,6 @@ CREATE TABLE public.producto_estructuras (
   updated_at timestamp with time zone DEFAULT now()
 );
 
-CREATE TABLE public.producto_grupos (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  tenant_id uuid NOT NULL,
-  nombre text NOT NULL,
-  descripcion text,
-  imagen_url text,
-  precio_base numeric DEFAULT 0,
-  categoria_id uuid,
-  atributos jsonb NOT NULL DEFAULT '[]'::jsonb,
-  activo boolean NOT NULL DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now()
-);
-
 CREATE TABLE public.producto_precios_mayorista (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   tenant_id uuid NOT NULL,
@@ -1494,8 +1480,6 @@ END,
   tiene_encaje boolean NOT NULL DEFAULT false,
   tiene_formato boolean NOT NULL DEFAULT false,
   tiene_sabor_aroma boolean NOT NULL DEFAULT false,
-  grupo_id uuid,
-  variante_valores jsonb,
   gtin text,
   precio_usd numeric(12,2),
   moneda_venta text NOT NULL DEFAULT 'local'::text,
@@ -2692,7 +2676,7 @@ ALTER TABLE public.motivos_movimiento ADD CONSTRAINT motivos_movimiento_tipo_che
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_cantidad_check CHECK ((cantidad > (0)::numeric));
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_pkey PRIMARY KEY (id);
-ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check CHECK ((tipo = ANY (ARRAY['ingreso'::text, 'rebaje'::text, 'ajuste'::text, 'kitting'::text, 'des_kitting'::text, 'ajuste_ingreso'::text, 'ajuste_rebaje'::text, 'traslado'::text])));
+ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check CHECK ((tipo = ANY (ARRAY['ingreso'::text, 'rebaje'::text, 'ajuste'::text, 'kitting'::text, 'des_kitting'::text, 'ajuste_ingreso'::text, 'ajuste_rebaje'::text, 'traslado'::text, 'reasignacion_variante'::text])));
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_pkey PRIMARY KEY (id);
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tipo_check CHECK ((tipo = ANY (ARRAY['huerfana'::text, 'drift_mp_cobra'::text, 'drift_acceso_gratis'::text])));
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tipo_preapproval_id_key UNIQUE (tipo, preapproval_id);
@@ -2727,7 +2711,6 @@ ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructur
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_unidades_base_check CHECK ((unidades_base >= 1));
 ALTER TABLE public.producto_estructuras ADD CONSTRAINT producto_estructuras_pkey PRIMARY KEY (id);
-ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_cantidad_minima_check CHECK ((cantidad_minima > 0));
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_operador_chk CHECK ((operador = ANY (ARRAY['>'::text, '<'::text, '='::text, '>='::text, '<='::text])));
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_pkey PRIMARY KEY (id);
@@ -2740,7 +2723,6 @@ ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentacione
 ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_peso_kg_check CHECK (((peso_kg IS NULL) OR (peso_kg > (0)::numeric)));
 ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_producto_id_etiqueta_key UNIQUE (producto_id, etiqueta);
-ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_producto_id_nombre_empaque_id_key UNIQUE (producto_id, nombre_empaque_id);
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursa_tenant_id_producto_id_sucursa_key UNIQUE (tenant_id, producto_id, sucursal_id);
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursal_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursal_stock_minimo_check CHECK ((stock_minimo >= 0));
@@ -2750,7 +2732,6 @@ ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_stock_minimo_check CHECK ((stock_minimo >= 0));
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_tenant_id_producto_id_ubicacion_key UNIQUE (tenant_id, producto_id, ubicacion_id);
-ALTER TABLE public.productos ADD CONSTRAINT chk_productos_grupo_sin_atributos_variante CHECK ((NOT ((grupo_id IS NOT NULL) AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_alicuota_iva_check CHECK ((alicuota_iva = ANY (ARRAY[(0)::numeric, 10.5, (21)::numeric, (27)::numeric])));
 ALTER TABLE public.productos ADD CONSTRAINT productos_clase_abc_check CHECK (((clase_abc IS NULL) OR (clase_abc = ANY (ARRAY['A'::text, 'B'::text, 'C'::text]))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_hijo_tiene_diferenciador CHECK (((producto_padre_id IS NULL) OR (variante_diferenciador IS NOT NULL)));
@@ -3143,8 +3124,6 @@ ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructur
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE RESTRICT;
 ALTER TABLE public.producto_estructuras ADD CONSTRAINT producto_estructuras_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_estructuras ADD CONSTRAINT producto_estructuras_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
-ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_categoria_id_fkey FOREIGN KEY (categoria_id) REFERENCES categorias(id) ON DELETE SET NULL;
-ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_nombre_empaque_id_fkey FOREIGN KEY (nombre_empaque_id) REFERENCES unidades_medida(id) ON DELETE RESTRICT;
@@ -3164,7 +3143,6 @@ ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion
 ALTER TABLE public.productos ADD CONSTRAINT productos_aging_profile_id_fkey FOREIGN KEY (aging_profile_id) REFERENCES aging_profiles(id) ON DELETE SET NULL;
 ALTER TABLE public.productos ADD CONSTRAINT productos_categoria_id_fkey FOREIGN KEY (categoria_id) REFERENCES categorias(id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_estado_id_fkey FOREIGN KEY (estado_id) REFERENCES estados_inventario(id);
-ALTER TABLE public.productos ADD CONSTRAINT productos_grupo_id_fkey FOREIGN KEY (grupo_id) REFERENCES producto_grupos(id) ON DELETE SET NULL;
 ALTER TABLE public.productos ADD CONSTRAINT productos_producto_padre_id_fkey FOREIGN KEY (producto_padre_id) REFERENCES productos(id) ON DELETE RESTRICT;
 ALTER TABLE public.productos ADD CONSTRAINT productos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3637,8 +3615,6 @@ CREATE INDEX idx_prod_ubic_suc_tenant ON public.producto_ubicacion_sucursal USIN
 CREATE UNIQUE INDEX idx_producto_estructuras_default ON public.producto_estructuras USING btree (tenant_id, producto_id) WHERE (is_default = true);
 CREATE INDEX idx_producto_estructuras_producto ON public.producto_estructuras USING btree (producto_id);
 CREATE INDEX idx_producto_estructuras_tenant ON public.producto_estructuras USING btree (tenant_id);
-CREATE INDEX idx_producto_grupos_categoria_id ON public.producto_grupos USING btree (categoria_id);
-CREATE INDEX idx_producto_grupos_tenant ON public.producto_grupos USING btree (tenant_id);
 CREATE INDEX idx_producto_precios_mayorista_tenant_id ON public.producto_precios_mayorista USING btree (tenant_id);
 CREATE INDEX idx_producto_ubicacion_sucursal_sucursal_id ON public.producto_ubicacion_sucursal USING btree (sucursal_id);
 CREATE INDEX idx_producto_ubicacion_sucursal_ubicacion_id ON public.producto_ubicacion_sucursal USING btree (ubicacion_id);
@@ -3646,7 +3622,6 @@ CREATE INDEX idx_productos_aging_profile_id ON public.productos USING btree (agi
 CREATE INDEX idx_productos_categoria ON public.productos USING btree (categoria_id);
 CREATE INDEX idx_productos_clase_abc ON public.productos USING btree (tenant_id, clase_abc, ultimo_conteo_at);
 CREATE INDEX idx_productos_estado_id ON public.productos USING btree (estado_id);
-CREATE INDEX idx_productos_grupo ON public.productos USING btree (grupo_id);
 CREATE INDEX idx_productos_gtin ON public.productos USING btree (tenant_id, gtin);
 CREATE INDEX idx_productos_marketplace ON public.productos USING btree (tenant_id, publicado_marketplace) WHERE (publicado_marketplace = true);
 CREATE INDEX idx_productos_padre ON public.productos USING btree (producto_padre_id) WHERE (producto_padre_id IS NOT NULL);
@@ -4600,21 +4575,31 @@ CREATE OR REPLACE FUNCTION public.fn_enqueue_meli_stock_sync()
  SET search_path TO 'public'
 AS $function$
 DECLARE
-  v_tenant_id UUID;
-  v_producto_id UUID;
+  v_tenant_id   uuid;
+  v_ids         uuid[];
+  v_producto_id uuid;
 BEGIN
-  v_tenant_id  := COALESCE(NEW.tenant_id, OLD.tenant_id);
-  v_producto_id := COALESCE(NEW.producto_id, OLD.producto_id);
-  IF v_tenant_id IS NULL OR v_producto_id IS NULL THEN RETURN NEW; END IF;
-  IF NOT EXISTS (SELECT 1 FROM inventario_meli_map WHERE tenant_id = v_tenant_id AND producto_id = v_producto_id AND sync_stock = TRUE) THEN RETURN NEW; END IF;
-  INSERT INTO integration_job_queue (tenant_id, integracion, tipo, payload, status, next_attempt_at)
-  SELECT v_tenant_id, 'MercadoLibre', 'sync_stock',
-         jsonb_build_object('producto_id', v_producto_id, 'meli_item_id', meli_item_id, 'meli_variation_id', meli_variation_id),
-         'pending', NOW()
-  FROM inventario_meli_map
-  WHERE tenant_id = v_tenant_id AND producto_id = v_producto_id AND sync_stock = TRUE
-  ON CONFLICT DO NOTHING;
-  RETURN NEW;
+  v_tenant_id := COALESCE(NEW.tenant_id, OLD.tenant_id);
+  IF v_tenant_id IS NULL THEN RETURN COALESCE(NEW, OLD); END IF;
+
+  v_ids := ARRAY[COALESCE(NEW.producto_id, OLD.producto_id)];
+  IF TG_OP = 'UPDATE' AND OLD.producto_id IS DISTINCT FROM NEW.producto_id
+     AND OLD.producto_id IS NOT NULL THEN
+    v_ids := v_ids || OLD.producto_id;
+  END IF;
+
+  FOREACH v_producto_id IN ARRAY v_ids LOOP
+    CONTINUE WHEN v_producto_id IS NULL;
+    INSERT INTO integration_job_queue (tenant_id, integracion, tipo, payload, status, next_attempt_at)
+    SELECT v_tenant_id, 'MercadoLibre', 'sync_stock',
+           jsonb_build_object('producto_id', v_producto_id, 'meli_item_id', meli_item_id, 'meli_variation_id', meli_variation_id),
+           'pending', NOW()
+    FROM inventario_meli_map
+    WHERE tenant_id = v_tenant_id AND producto_id = v_producto_id AND sync_stock = TRUE
+    ON CONFLICT DO NOTHING;
+  END LOOP;
+
+  RETURN COALESCE(NEW, OLD);
 END;
 $function$
 
@@ -4626,43 +4611,42 @@ CREATE OR REPLACE FUNCTION public.fn_enqueue_tn_stock_sync()
  SET search_path TO 'public'
 AS $function$
 DECLARE
-  v_producto_id UUID;
-  v_tenant_id   UUID;
+  v_tenant_id   uuid;
+  v_ids         uuid[];
+  v_producto_id uuid;
 BEGIN
-  IF TG_OP = 'DELETE' THEN
-    v_producto_id := OLD.producto_id;
-    v_tenant_id   := OLD.tenant_id;
-  ELSE
-    v_producto_id := NEW.producto_id;
-    v_tenant_id   := NEW.tenant_id;
+  v_tenant_id := COALESCE(NEW.tenant_id, OLD.tenant_id);
+  IF v_tenant_id IS NULL THEN RETURN COALESCE(NEW, OLD); END IF;
+
+  v_ids := ARRAY[COALESCE(NEW.producto_id, OLD.producto_id)];
+  IF TG_OP = 'UPDATE' AND OLD.producto_id IS DISTINCT FROM NEW.producto_id
+     AND OLD.producto_id IS NOT NULL THEN
+    v_ids := v_ids || OLD.producto_id;
   END IF;
 
-  -- Insertar job para cada mapeo activo del producto (sync_stock=true)
-  -- Si ya hay un job pendiente para este producto, no duplicar
-  INSERT INTO integration_job_queue (tenant_id, sucursal_id, integracion, tipo, payload, next_attempt_at)
-  SELECT
-    itm.tenant_id,
-    itm.sucursal_id,
-    'TiendaNube',
-    'sync_stock',
-    jsonb_build_object(
-      'producto_id',   v_producto_id::text,
-      'tn_product_id', itm.tn_product_id,
-      'tn_variant_id', itm.tn_variant_id
-    ),
-    NOW()
-  FROM inventario_tn_map itm
-  WHERE itm.producto_id = v_producto_id
-    AND itm.tenant_id   = v_tenant_id
-    AND itm.sync_stock  = true
-    AND NOT EXISTS (
-      SELECT 1 FROM integration_job_queue q
-      WHERE q.tenant_id   = itm.tenant_id
-        AND q.integracion  = 'TiendaNube'
-        AND q.tipo         = 'sync_stock'
-        AND q.status       = 'pending'
-        AND q.payload->>'producto_id' = v_producto_id::text
-    );
+  FOREACH v_producto_id IN ARRAY v_ids LOOP
+    CONTINUE WHEN v_producto_id IS NULL;
+    INSERT INTO integration_job_queue (tenant_id, sucursal_id, integracion, tipo, payload, next_attempt_at)
+    SELECT itm.tenant_id, itm.sucursal_id, 'TiendaNube', 'sync_stock',
+           jsonb_build_object(
+             'producto_id',   v_producto_id::text,
+             'tn_product_id', itm.tn_product_id,
+             'tn_variant_id', itm.tn_variant_id
+           ),
+           NOW()
+    FROM inventario_tn_map itm
+    WHERE itm.producto_id = v_producto_id
+      AND itm.tenant_id   = v_tenant_id
+      AND itm.sync_stock  = true
+      AND NOT EXISTS (
+        SELECT 1 FROM integration_job_queue q
+        WHERE q.tenant_id    = itm.tenant_id
+          AND q.integracion  = 'TiendaNube'
+          AND q.tipo         = 'sync_stock'
+          AND q.status       = 'pending'
+          AND q.payload->>'producto_id' = v_producto_id::text
+      );
+  END LOOP;
 
   RETURN COALESCE(NEW, OLD);
 END;
@@ -5728,6 +5712,122 @@ AS $function$
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_presentaciones_guardar(p_producto_id uuid, p_lineas jsonb)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_caller_tenant uuid;
+  v_prod_tenant   uuid;
+  v_n             int;
+  v_i             int;
+  v_linea         jsonb;
+  v_padre_idx     int;
+  v_factor        bigint;
+  v_factor_padre  bigint;
+  v_etiqueta      text;
+  v_empaque       uuid;
+  v_ids           uuid[];
+  v_nueva_id      uuid;
+  v_bases         int := 0;
+BEGIN
+  SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
+  IF v_caller_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin tenant'; END IF;
+
+  SELECT tenant_id INTO v_prod_tenant FROM productos WHERE id = p_producto_id;
+  IF v_prod_tenant IS NULL THEN RAISE EXCEPTION 'El producto no existe'; END IF;
+  IF v_prod_tenant IS DISTINCT FROM v_caller_tenant THEN RAISE EXCEPTION 'No autorizado'; END IF;
+
+  IF p_lineas IS NULL OR jsonb_typeof(p_lineas) <> 'array' OR jsonb_array_length(p_lineas) < 1 THEN
+    RAISE EXCEPTION 'El producto necesita al menos la presentacion base';
+  END IF;
+  v_n := jsonb_array_length(p_lineas);
+
+  FOR v_i IN 0 .. v_n - 1 LOOP
+    v_linea    := p_lineas -> v_i;
+    v_etiqueta := btrim(COALESCE(v_linea->>'etiqueta', ''));
+    v_factor   := NULLIF(v_linea->>'factor_base', '')::bigint;
+
+    IF v_etiqueta = '' THEN
+      RAISE EXCEPTION 'La presentacion %a no tiene nombre', v_i + 1;
+    END IF;
+    IF v_factor IS NULL OR v_factor < 1 THEN
+      RAISE EXCEPTION '"%": la equivalencia en unidades base debe ser un entero >= 1', v_etiqueta;
+    END IF;
+
+    IF EXISTS (
+      SELECT 1 FROM jsonb_array_elements(p_lineas) WITH ORDINALITY AS t(el, ord)
+      WHERE t.ord - 1 < v_i AND btrim(COALESCE(t.el->>'etiqueta','')) = v_etiqueta
+    ) THEN
+      RAISE EXCEPTION 'Hay dos presentaciones llamadas "%": los nombres tienen que ser distintos', v_etiqueta;
+    END IF;
+
+    v_padre_idx := NULLIF(v_linea->>'padre_idx', '')::int;
+    IF v_padre_idx IS NULL THEN
+      v_bases := v_bases + 1;
+      IF v_factor <> 1 THEN
+        RAISE EXCEPTION 'La presentacion base ("%") tiene que equivaler a 1 unidad', v_etiqueta;
+      END IF;
+    ELSE
+      IF v_padre_idx < 0 OR v_padre_idx >= v_i THEN
+        RAISE EXCEPTION '"%" tiene que colgar de una presentacion mas chica ya definida', v_etiqueta;
+      END IF;
+      v_factor_padre := NULLIF((p_lineas -> v_padre_idx)->>'factor_base','')::bigint;
+      IF v_factor <= v_factor_padre THEN
+        RAISE EXCEPTION '"%" (% u) tiene que ser MAS GRANDE que la presentacion de la que cuelga (% u)',
+          v_etiqueta, v_factor, v_factor_padre;
+      END IF;
+      IF v_factor % v_factor_padre <> 0 THEN
+        RAISE EXCEPTION '"%" (% u) tiene que contener un numero entero de "%" (% u)',
+          v_etiqueta, v_factor, COALESCE((p_lineas -> v_padre_idx)->>'etiqueta','-'), v_factor_padre;
+      END IF;
+    END IF;
+
+    v_empaque := NULLIF(v_linea->>'nombre_empaque_id','')::uuid;
+    IF v_empaque IS NOT NULL AND NOT EXISTS (
+      SELECT 1 FROM unidades_medida WHERE id = v_empaque AND tenant_id = v_caller_tenant
+    ) THEN
+      RAISE EXCEPTION 'El nombre de empaque de "%" no es valido', v_etiqueta;
+    END IF;
+  END LOOP;
+
+  IF v_bases <> 1 THEN
+    RAISE EXCEPTION 'Tiene que haber exactamente UNA presentacion base (la de 1 unidad)';
+  END IF;
+
+  DELETE FROM producto_presentaciones WHERE producto_id = p_producto_id;
+
+  v_ids := ARRAY[]::uuid[];
+  FOR v_i IN 0 .. v_n - 1 LOOP
+    v_linea     := p_lineas -> v_i;
+    v_padre_idx := NULLIF(v_linea->>'padre_idx', '')::int;
+    v_nueva_id  := gen_random_uuid();
+
+    INSERT INTO producto_presentaciones
+      (id, tenant_id, producto_id, nombre_empaque_id, etiqueta, factor_base, es_base,
+       padre_linea_id, orden, activo, peso_kg, alto_cm, ancho_cm, largo_cm)
+    VALUES (
+      v_nueva_id, v_caller_tenant, p_producto_id,
+      NULLIF(v_linea->>'nombre_empaque_id','')::uuid,
+      btrim(v_linea->>'etiqueta'),
+      (v_linea->>'factor_base')::bigint,
+      v_padre_idx IS NULL,
+      CASE WHEN v_padre_idx IS NULL THEN NULL ELSE v_ids[v_padre_idx + 1] END,
+      v_i, COALESCE((v_linea->>'activo')::boolean, true),
+      NULLIF(v_linea->>'peso_kg','')::numeric,
+      NULLIF(v_linea->>'alto_cm','')::numeric,
+      NULLIF(v_linea->>'ancho_cm','')::numeric,
+      NULLIF(v_linea->>'largo_cm','')::numeric
+    );
+
+    v_ids := v_ids || v_nueva_id;
+  END LOOP;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_producto_tiene_actividad(p_producto_id uuid)
  RETURNS boolean
  LANGUAGE plpgsql
@@ -5774,6 +5874,195 @@ BEGIN
     -- puede desincronizar stock/precio del lado de MercadoLibre/Tiendanube sin que nadie se entere.
     OR EXISTS (SELECT 1 FROM inventario_meli_map WHERE producto_id = p_producto_id)
     OR EXISTS (SELECT 1 FROM inventario_tn_map   WHERE producto_id = p_producto_id);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_reasignar_stock_variante(p_madre_id uuid, p_asignaciones jsonb)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_caller_tenant uuid;
+  v_madre         RECORD;
+  v_linea         RECORD;
+  v_chk           RECORD;
+  v_asig          RECORD;
+  v_hijo          RECORD;
+  v_dest_linea    uuid;
+  v_madre_antes   int;
+  v_madre_desp    int;
+  v_hijo_antes    int;
+  v_hijo_desp     int;
+  v_total_lineas  int := 0;
+  v_total_unid    int := 0;
+BEGIN
+  SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
+  IF v_caller_tenant IS NULL THEN
+    RAISE EXCEPTION 'Usuario sin tenant';
+  END IF;
+
+  SELECT id, tenant_id, nombre, tiene_series INTO v_madre
+  FROM productos WHERE id = p_madre_id;
+  IF v_madre.id IS NULL THEN
+    RAISE EXCEPTION 'El producto no existe';
+  END IF;
+  IF v_madre.tenant_id IS DISTINCT FROM v_caller_tenant THEN
+    RAISE EXCEPTION 'No autorizado';
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM productos WHERE producto_padre_id = p_madre_id) THEN
+    RAISE EXCEPTION '"%" no tiene variantes: no hay a quién reasignarle el stock', v_madre.nombre;
+  END IF;
+
+  IF COALESCE(v_madre.tiene_series, false) THEN
+    RAISE EXCEPTION 'Los productos con número de serie todavía no se pueden reasignar automáticamente: hay que elegir qué serie va a cada variante';
+  END IF;
+
+  IF p_asignaciones IS NULL OR jsonb_typeof(p_asignaciones) <> 'array'
+     OR jsonb_array_length(p_asignaciones) = 0 THEN
+    RAISE EXCEPTION 'No se recibió ninguna asignación';
+  END IF;
+
+  FOR v_chk IN
+    SELECT a.linea_id, sum(a.cantidad)::int AS total
+    FROM (
+      SELECT (e->>'linea_id')::uuid AS linea_id, (e->>'cantidad')::int AS cantidad
+      FROM jsonb_array_elements(p_asignaciones) e
+    ) a
+    GROUP BY a.linea_id
+    ORDER BY a.linea_id
+  LOOP
+    SELECT * INTO v_linea FROM inventario_lineas WHERE id = v_chk.linea_id FOR UPDATE;
+
+    IF v_linea.id IS NULL THEN
+      RAISE EXCEPTION 'Una de las líneas de stock ya no existe (refrescá la pantalla)';
+    END IF;
+    IF v_linea.tenant_id IS DISTINCT FROM v_caller_tenant THEN
+      RAISE EXCEPTION 'No autorizado';
+    END IF;
+    IF v_linea.producto_id IS DISTINCT FROM p_madre_id THEN
+      RAISE EXCEPTION 'La línea % no pertenece a "%"', v_linea.lpn, v_madre.nombre;
+    END IF;
+    IF NOT COALESCE(v_linea.activo, true) THEN
+      RAISE EXCEPTION 'La línea % está inactiva', v_linea.lpn;
+    END IF;
+    IF COALESCE(v_linea.cantidad_reservada, 0) > 0 THEN
+      RAISE EXCEPTION 'La línea % tiene % unidad(es) reservadas para un pedido: liberá la reserva antes de reasignar',
+        v_linea.lpn, v_linea.cantidad_reservada;
+    END IF;
+    IF EXISTS (
+      SELECT 1 FROM inventario_lineas c
+      WHERE c.tenant_id = v_linea.tenant_id AND c.parent_lpn_id = v_linea.lpn
+        AND COALESCE(c.activo, true)
+    ) THEN
+      RAISE EXCEPTION 'La línea % es un LPN contenedor (tiene LPN hijos): desarmalo antes de reasignar', v_linea.lpn;
+    END IF;
+    IF v_chk.total <= 0 THEN
+      RAISE EXCEPTION 'Las cantidades a reasignar tienen que ser mayores a cero';
+    END IF;
+    IF v_chk.total > v_linea.cantidad THEN
+      RAISE EXCEPTION 'La línea % tiene % unidades y se intentan reasignar %',
+        v_linea.lpn, v_linea.cantidad, v_chk.total;
+    END IF;
+
+    v_total_lineas := v_total_lineas + 1;
+  END LOOP;
+
+  FOR v_hijo IN
+    SELECT DISTINCT (e->>'hijo_id')::uuid AS hijo_id
+    FROM jsonb_array_elements(p_asignaciones) e
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM productos h
+      WHERE h.id = v_hijo.hijo_id
+        AND h.producto_padre_id = p_madre_id
+        AND h.tenant_id = v_caller_tenant
+    ) THEN
+      RAISE EXCEPTION 'El destino elegido no es una variante de "%"', v_madre.nombre;
+    END IF;
+    IF EXISTS (SELECT 1 FROM productos h WHERE h.id = v_hijo.hijo_id AND h.tiene_series) THEN
+      RAISE EXCEPTION 'La variante destino maneja números de serie: no se puede reasignar automáticamente';
+    END IF;
+  END LOOP;
+
+  FOR v_asig IN
+    SELECT (e->>'linea_id')::uuid AS linea_id,
+           (e->>'hijo_id')::uuid  AS hijo_id,
+           (e->>'cantidad')::int  AS cantidad,
+           (SELECT count(*) FROM jsonb_array_elements(p_asignaciones) e2
+             WHERE (e2->>'linea_id')::uuid = (e->>'linea_id')::uuid) AS destinos_de_la_linea
+    FROM jsonb_array_elements(p_asignaciones) e
+  LOOP
+    IF v_asig.cantidad <= 0 THEN
+      RAISE EXCEPTION 'Cantidad inválida';
+    END IF;
+
+    SELECT * INTO v_linea FROM inventario_lineas WHERE id = v_asig.linea_id;
+
+    SELECT stock_actual INTO v_madre_antes FROM productos WHERE id = p_madre_id;
+    SELECT stock_actual INTO v_hijo_antes  FROM productos WHERE id = v_asig.hijo_id;
+
+    IF v_asig.destinos_de_la_linea = 1 AND v_asig.cantidad = v_linea.cantidad THEN
+      UPDATE inventario_lineas
+        SET producto_id = v_asig.hijo_id, estructura_id = NULL, updated_at = now()
+        WHERE id = v_asig.linea_id;
+      v_dest_linea := v_asig.linea_id;
+    ELSE
+      UPDATE inventario_lineas
+        SET cantidad = cantidad - v_asig.cantidad,
+            activo   = (cantidad - v_asig.cantidad) > 0,
+            updated_at = now()
+        WHERE id = v_asig.linea_id;
+
+      INSERT INTO inventario_lineas (
+        tenant_id, producto_id, lpn, cantidad, cantidad_reservada,
+        estado_id, ubicacion_id, proveedor_id, nro_lote, fecha_vencimiento,
+        precio_costo_snapshot, precio_venta_snapshot, activo, sucursal_id,
+        notas, pais_origen, parent_lpn_id, talle, color, encaje, formato, sabor_aroma
+      ) VALUES (
+        v_linea.tenant_id, v_asig.hijo_id, '', v_asig.cantidad, 0,
+        v_linea.estado_id, v_linea.ubicacion_id, v_linea.proveedor_id, v_linea.nro_lote, v_linea.fecha_vencimiento,
+        v_linea.precio_costo_snapshot, v_linea.precio_venta_snapshot, true, v_linea.sucursal_id,
+        v_linea.notas, v_linea.pais_origen, v_linea.parent_lpn_id,
+        v_linea.talle, v_linea.color, v_linea.encaje, v_linea.formato, v_linea.sabor_aroma
+      ) RETURNING id INTO v_dest_linea;
+    END IF;
+
+    SELECT stock_actual INTO v_madre_desp FROM productos WHERE id = p_madre_id;
+    SELECT stock_actual INTO v_hijo_desp  FROM productos WHERE id = v_asig.hijo_id;
+
+    INSERT INTO movimientos_stock (
+      tenant_id, producto_id, tipo, cantidad, stock_antes, stock_despues,
+      motivo, sucursal_id, linea_id, usuario_id
+    ) VALUES (
+      v_caller_tenant, p_madre_id, 'reasignacion_variante', v_asig.cantidad, v_madre_antes, v_madre_desp,
+      'Reasignación de stock sin variante asignada → ' ||
+        COALESCE((SELECT variante_diferenciador FROM productos WHERE id = v_asig.hijo_id), 'variante') ||
+        ' (LPN ' || v_linea.lpn || ')',
+      v_linea.sucursal_id, v_asig.linea_id, auth.uid()
+    );
+
+    INSERT INTO movimientos_stock (
+      tenant_id, producto_id, tipo, cantidad, stock_antes, stock_despues,
+      motivo, sucursal_id, linea_id, usuario_id
+    ) VALUES (
+      v_caller_tenant, v_asig.hijo_id, 'reasignacion_variante', v_asig.cantidad, v_hijo_antes, v_hijo_desp,
+      'Stock recibido de "' || v_madre.nombre || '" (sin variante asignada, LPN ' || v_linea.lpn || ')',
+      v_linea.sucursal_id, v_dest_linea, auth.uid()
+    );
+
+    v_total_unid := v_total_unid + v_asig.cantidad;
+  END LOOP;
+
+  RETURN jsonb_build_object(
+    'ok', true,
+    'unidades_reasignadas', v_total_unid,
+    'lineas_afectadas', v_total_lineas,
+    'stock_sin_asignar_restante', (SELECT stock_actual FROM productos WHERE id = p_madre_id)
+  );
 END;
 $function$
 
@@ -6038,6 +6327,39 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_stock_por_sucursal(p_producto_ids uuid[])
+ RETURNS TABLE(producto_id uuid, producto_nombre text, sucursal_id uuid, sucursal_nombre text, cantidad bigint)
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_caller_tenant uuid;
+BEGIN
+  SELECT u.tenant_id INTO v_caller_tenant FROM users u WHERE u.id = auth.uid();
+  IF v_caller_tenant IS NULL THEN
+    RAISE EXCEPTION 'Usuario sin tenant';
+  END IF;
+
+  RETURN QUERY
+  SELECT il.producto_id,
+         p.nombre,
+         il.sucursal_id,
+         COALESCE(s.nombre, 'Sin sucursal'),
+         sum(il.cantidad)::bigint
+  FROM inventario_lineas il
+  JOIN productos p ON p.id = il.producto_id
+  LEFT JOIN sucursales s ON s.id = il.sucursal_id
+  WHERE il.producto_id = ANY(p_producto_ids)
+    AND il.tenant_id = v_caller_tenant
+    AND COALESCE(il.activo, true)
+  GROUP BY il.producto_id, p.nombre, il.sucursal_id, s.nombre
+  HAVING sum(il.cantidad) > 0
+  ORDER BY p.nombre, COALESCE(s.nombre, 'Sin sucursal');
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_tenant_limite(p_tenant_id uuid, p_dim text)
@@ -8140,6 +8462,80 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.trg_producto_sembrar_presentacion_base()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_etiqueta text := COALESCE(NULLIF(btrim(NEW.unidad_medida), ''), 'Unidad');
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO producto_presentaciones
+      (tenant_id, producto_id, nombre_empaque_id, etiqueta, factor_base, es_base,
+       padre_linea_id, orden, activo)
+    VALUES (NEW.tenant_id, NEW.id, NULL, v_etiqueta, 1, true, NULL, 0, true)
+    ON CONFLICT DO NOTHING;
+    RETURN NEW;
+  END IF;
+
+  UPDATE producto_presentaciones pp
+    SET etiqueta = v_etiqueta
+  WHERE pp.producto_id = NEW.id AND pp.es_base
+    AND pp.etiqueta IS DISTINCT FROM v_etiqueta
+    AND NOT EXISTS (
+      SELECT 1 FROM producto_presentaciones otra
+      WHERE otra.producto_id = NEW.id AND otra.id <> pp.id AND otra.etiqueta = v_etiqueta
+    );
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_producto_udm_cambio_familia()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_fam_old  text;
+  v_fam_new  text;
+  v_nom_old  text;
+  v_nom_new  text;
+  v_con_stock boolean;
+BEGIN
+  IF NEW.unidad_medida_base_id IS NOT DISTINCT FROM OLD.unidad_medida_base_id THEN
+    RETURN NEW;
+  END IF;
+  IF OLD.unidad_medida_base_id IS NULL OR NEW.unidad_medida_base_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT familia, nombre INTO v_fam_old, v_nom_old
+  FROM unidades_medida_fisicas WHERE id = OLD.unidad_medida_base_id;
+  SELECT familia, nombre INTO v_fam_new, v_nom_new
+  FROM unidades_medida_fisicas WHERE id = NEW.unidad_medida_base_id;
+
+  IF v_fam_old IS NULL OR v_fam_new IS NULL OR v_fam_old = v_fam_new THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT COALESCE(OLD.stock_actual, 0) <> 0
+         OR EXISTS (SELECT 1 FROM inventario_lineas il
+                    WHERE il.producto_id = NEW.id AND COALESCE(il.activo, true) AND il.cantidad <> 0)
+    INTO v_con_stock;
+
+  IF v_con_stock THEN
+    RAISE EXCEPTION 'No se puede cambiar la unidad de medida de % (%) a % (%) porque el producto tiene stock: no hay conversión entre esas familias. Dejá el stock en 0 o creá un producto nuevo.',
+      v_nom_old, v_fam_old, v_nom_new, v_fam_new;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.trg_seed_umf_new_tenant()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8475,7 +8871,7 @@ CREATE TRIGGER lineas_lpn_trigger BEFORE INSERT ON public.inventario_lineas FOR 
 CREATE TRIGGER lineas_recalcular_stock AFTER INSERT OR DELETE OR UPDATE OF cantidad, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
 CREATE TRIGGER lineas_updated_at BEFORE UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_meli_stock_sync AFTER INSERT OR DELETE OR UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_meli_stock_sync();
-CREATE TRIGGER trg_tn_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_tn_stock_sync();
+CREATE TRIGGER trg_tn_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_tn_stock_sync();
 CREATE TRIGGER series_recalcular_stock AFTER INSERT OR DELETE OR UPDATE ON public.inventario_series FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
 CREATE TRIGGER trg_updated_at_meli_cred BEFORE UPDATE ON public.meli_credentials FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_updated_at_mp_creds BEFORE UPDATE ON public.mercadopago_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_mp_creds();
@@ -8484,16 +8880,16 @@ CREATE TRIGGER trg_oc_cierre BEFORE DELETE OR UPDATE ON public.ordenes_compra FO
 CREATE TRIGGER trg_set_oc_numero BEFORE INSERT ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION set_oc_numero();
 CREATE TRIGGER trg_updated_at_oc BEFORE UPDATE ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION set_updated_at_oc();
 CREATE TRIGGER trg_set_pedido_numero BEFORE INSERT ON public.pedidos FOR EACH ROW EXECUTE FUNCTION set_pedido_numero();
-CREATE TRIGGER trg_pp_sync_niveles AFTER INSERT OR DELETE OR UPDATE ON public.producto_estructura_niveles FOR EACH ROW EXECUTE FUNCTION trg_sync_presentaciones_niveles();
 CREATE TRIGGER tr_producto_estructuras_updated_at BEFORE UPDATE ON public.producto_estructuras FOR EACH ROW EXECUTE FUNCTION update_updated_at();
-CREATE TRIGGER trg_pp_sync_estructura AFTER INSERT OR DELETE OR UPDATE OF is_default ON public.producto_estructuras FOR EACH ROW EXECUTE FUNCTION trg_sync_presentaciones_estructura();
 CREATE TRIGGER trg_pp_no_ciclo BEFORE INSERT OR UPDATE OF padre_linea_id ON public.producto_presentaciones FOR EACH ROW EXECUTE FUNCTION trg_pp_no_ciclo();
 CREATE TRIGGER productos_stock_auto_resolver AFTER UPDATE OF stock_actual ON public.productos FOR EACH ROW EXECUTE FUNCTION auto_resolver_alerta_stock();
 CREATE TRIGGER productos_stock_check AFTER UPDATE OF stock_actual ON public.productos FOR EACH ROW EXECUTE FUNCTION check_stock_minimo();
 CREATE TRIGGER productos_updated_at BEFORE UPDATE ON public.productos FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_enforce_sku BEFORE INSERT OR UPDATE OF activo ON public.productos FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('sku');
 CREATE TRIGGER trg_productos_compose_nombre BEFORE INSERT OR UPDATE OF producto_padre_id, variante_diferenciador, nombre ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_compose_nombre();
+CREATE TRIGGER trg_productos_presentacion_base AFTER INSERT OR UPDATE OF unidad_medida ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_sembrar_presentacion_base();
 CREATE TRIGGER trg_productos_propagar_nombre AFTER UPDATE OF nombre ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_propagar_nombre();
+CREATE TRIGGER trg_productos_udm_familia BEFORE UPDATE OF unidad_medida_base_id ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_udm_cambio_familia();
 CREATE TRIGGER trg_set_recepcion_numero BEFORE INSERT ON public.recepciones FOR EACH ROW EXECUTE FUNCTION trg_fn_set_recepcion_numero();
 CREATE TRIGGER trg_updated_at_recepcion BEFORE UPDATE ON public.recepciones FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_recursos_updated_at BEFORE UPDATE ON public.recursos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -8615,7 +9011,6 @@ ALTER TABLE public.platform_facturas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas_claims ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_estructura_niveles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_estructuras ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.producto_grupos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_precios_mayorista ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_presentaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_stock_minimo_sucursal ENABLE ROW LEVEL SECURITY;
@@ -9132,10 +9527,6 @@ CREATE POLICY pe_tenant_select ON public.producto_estructuras AS PERMISSIVE FOR 
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
 CREATE POLICY pe_tenant_update ON public.producto_estructuras AS PERMISSIVE FOR UPDATE TO public
-  USING ((tenant_id IN ( SELECT users.tenant_id
-   FROM users
-  WHERE (users.id = ( SELECT auth.uid() AS uid)))));
-CREATE POLICY tenant_isolation ON public.producto_grupos AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
@@ -9734,9 +10125,6 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pr
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_estructuras TO service_role;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_grupos TO anon;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_grupos TO authenticated;
-GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_grupos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_precios_mayorista TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_precios_mayorista TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_precios_mayorista TO service_role;

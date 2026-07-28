@@ -244,7 +244,26 @@ test.describe('WMS — Picking y reabastecimiento (mutante)', () => {
     expect(Number(origenLinea?.cantidad), '[106] el LPN de bulk debería haber quedado en 15 (20-5)').toBe(15)
     expect(origenLinea?.ubicacion_id).toBe(ubicBulk.id)
     expect(Number(destinoLinea?.cantidad), '[106] el LPN nuevo en picking debería tener las 5 unidades movidas').toBe(5)
-    expect(destinoLinea?.ubicacion_id).toBe(ubicPicking.id)
+
+    // 🛑 El invariante real es que el stock aterrice EXACTAMENTE donde la tarea dijo que iba a
+    // aterrizar (`wms_tareas.ubicacion_destino_id`), y que esa ubicación sea de picking. NO se
+    // puede exigir que sea la ubicación que creó este spec: cuál se elige lo decide
+    // `fn_wms_elegir_ubicacion_picking` entre TODAS las de picking del tenant (prefiere una que
+    // ya tenga el producto, después secuencia/prioridad), así que con más de una cargada en el
+    // tenant —cosa normal— la elegida puede ser otra y el reabastecimiento sigue siendo correcto.
+    const tareaReabRes = await request.get(
+      `${SUPABASE_URL}/rest/v1/wms_tareas?id=eq.${tareaReabId}&select=ubicacion_destino_id`, { headers },
+    )
+    const [tareaReab] = (await tareaReabRes.json()) as Array<{ ubicacion_destino_id: string }>
+    expect(destinoLinea?.ubicacion_id,
+      '[106] el stock reabastecido tiene que quedar en la ubicación destino declarada por la tarea')
+      .toBe(tareaReab.ubicacion_destino_id)
+
+    const ubicDestRes = await request.get(
+      `${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${tareaReab.ubicacion_destino_id}&select=tipo_ubicacion`, { headers },
+    )
+    const [ubicDest] = (await ubicDestRes.json()) as Array<{ tipo_ubicacion: string }>
+    expect(ubicDest?.tipo_ubicacion, '[106] el destino del reabastecimiento tiene que ser zona de picking').toBe('picking')
 
     await expect(btnPicking).toBeEnabled({ timeout: 5000 })
     await btnPicking.click()

@@ -8,9 +8,18 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ## [2026-07-28] update | 📐 Rediseño UoM COMPLETO — FASE 4 (stock sin variante asignada, mig 309) + FASE 5 (presentaciones = fuente de verdad + hermanas + limpieza, migs 310/311)
 
-Sesión autónoma pedida por GO: "seguí hasta completar todas las fases". Cierra el rediseño
-UoM/Empaque/Variantes entero. Cada migración pasó por `migration-reviewer` **antes** de aplicarse y
-se verificó contra datos REALES de DEV. `APP_VERSION` = **v1.144.0**.
+Sesión autónoma pedida por GO: "seguí hasta completar todas las fases ... y pasas todo a DEV y PRD".
+Cierra el rediseño UoM/Empaque/Variantes entero **y lo deploya a PROD junto con todo lo que estaba
+acumulado en `dev` desde v1.142.0** (WMS + Pedidos): **23 migraciones, 289 a 311**. Cada migración pasó
+por `migration-reviewer` **antes** de aplicarse y se verificó contra datos REALES. `APP_VERSION` = **v1.144.0**.
+
+**✅ EN PROD (2026-07-28):** PR #302 mergeado a `main` (`8af01d9d`), tag + release v1.144.0, migs 289-311
+aplicadas en PROD, y **bundle de `app.genesis360.pro` verificado por curl sirviendo v1.144.0** (no la
+narrativa: se leyó el JS real). Pre-checks sobre datos reales de PROD antes de tocar nada: 0 estructuras,
+0 niveles, 0 productos con ancla de precio y 0 con grupo → las migraciones que tocan plata no tenían
+filas que convertir y la 311 (destructiva) dropeó 2 grupos vacíos. Post-deploy: 23 productos todos con
+presentación base, 0 árboles incoherentes, `stock_actual` coherente con las líneas, 29 ventas y sus 2
+CAE intactas.
 
 **FASE 4 (mig 309, 🛑 MUEVE STOCK — Regla #0).** Stock **"sin variante asignada"**: al crearle la
 primera variante a un producto con stock, ese stock queda colgando de la madre agrupadora — sigue

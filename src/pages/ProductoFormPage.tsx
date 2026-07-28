@@ -269,6 +269,20 @@ export default function ProductoFormPage() {
   const { data: stockSinAsignar = 0 } = useQuery({
     queryKey: ['stock-sin-variante-total', id],
     queryFn: async () => {
+      // 🛑 En productos serializados el stock lo cuentan las SERIES: `inventario_lineas.cantidad`
+      // es decorativa (el ingreso crea la línea en 0 y carga las series aparte). Contar la
+      // cantidad de la línea acá daría un número que no es el stock real.
+      // `tiene_series` se lee acá adentro y no de `productoData` porque esta query se declara
+      // ANTES que esa (orden de hooks).
+      const { data: prod } = await supabase.from('productos')
+        .select('tiene_series').eq('id', id!).maybeSingle()
+      if ((prod as any)?.tiene_series) {
+        const { count } = await supabase.from('inventario_series')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenant!.id).eq('producto_id', id!)
+          .eq('activo', true).eq('reservado', false)
+        return count ?? 0
+      }
       const { data } = await supabase.from('inventario_lineas')
         .select('cantidad').eq('tenant_id', tenant!.id).eq('producto_id', id!)
         .eq('activo', true).gt('cantidad', 0)
@@ -621,20 +635,6 @@ export default function ProductoFormPage() {
     const stockQuedaSinAsignar =
       !productoPadreId && !esMadre && Number((productoData as any).stock_actual ?? 0) > 0
 
-    // 🛑 Regla #0 — serializados: el reparto exige decir QUÉ número de serie va a cada variante
-    // (repartir "6 y 4" a ciegas rompería la trazabilidad), y esa pantalla todavía no existe. Si
-    // dejáramos crear la variante igual, el stock quedaría atrapado: NO vendible (la madre pasa a
-    // agrupador) y NO reasignable (la RPC lo rechaza). Se bloquea acá, como antes.
-    if (stockQuedaSinAsignar && (productoData as any).tiene_series) {
-      toast.error(
-        'Este producto lleva número de serie y tiene stock. Para repartirlo entre variantes hay que ' +
-        'elegir qué serie va a cada una, y esa pantalla todavía no está. Dejá el stock en 0 (o creá ' +
-        'las variantes en un producto nuevo) antes de convertirlo en agrupador.',
-        { duration: 10000 },
-      )
-      return
-    }
-
     if (stockQuedaSinAsignar) {
       const stock = Number((productoData as any).stock_actual ?? 0)
       if (!confirm(
@@ -642,7 +642,14 @@ export default function ProductoFormPage() {
         `Al crear la primera variante este producto pasa a ser un AGRUPADOR: deja de venderse ` +
         `directamente y ese stock queda "sin variante asignada" — sigue contando en inventario, ` +
         `pero no se puede vender hasta que lo repartas entre las variantes.\n\n` +
-        `Después de crearla vas a poder repartirlo desde la ficha del agrupador. ¿Seguimos?`
+        `Después de crearla vas a poder repartirlo desde la ficha del agrupador` +
+        ((productoData as any).tiene_series
+          ? `, eligiendo a qué variante va cada número de serie.
+
+¿Seguimos?`
+          : `.
+
+¿Seguimos?`)
       )) return
     }
     setSaving(true)
@@ -1905,6 +1912,7 @@ export default function ProductoFormPage() {
           madreId={id}
           madreNombre={form.nombre}
           hijos={hijos as any[]}
+          serializado={!!(productoData as any)?.tiene_series}
           onClose={() => { setReasignarAbierto(false); qc.invalidateQueries({ queryKey: ['stock-sin-variante-total', id] }) }}
         />
       )}

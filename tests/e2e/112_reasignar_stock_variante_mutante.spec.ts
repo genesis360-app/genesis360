@@ -178,3 +178,143 @@ test.describe('Stock sin variante asignada (mutante)', () => {
     expect(vacio.ok(), '[112] el LPN ya no pertenece a la madre: debe rechazarse').toBe(false)
   })
 })
+
+test.describe('Stock sin variante asignada — SERIALIZADOS (mutante)', () => {
+  test('cada serie va a la variante elegida, la vendida no se toca y los rechazos no mueven nada', async ({ page, request }) => {
+    test.setTimeout(120000)
+    const sello = Date.now()
+    const nombreMadre = `E2E SerieVar ${sello}`
+
+    await goto(page, '/productos')
+    await waitForApp(page)
+    const token = await tokenDesdeBrowser(page)
+    const headers = restHeaders(token)
+
+    const sucRes = await request.get(`${SUPABASE_URL}/rest/v1/sucursales?select=id,tenant_id&limit=1`, { headers })
+    const [suc] = (await sucRes.json()) as Array<{ id: string; tenant_id: string }>
+    expect(suc, '[112s] el tenant de prueba no tiene sucursales').toBeTruthy()
+
+    // 1) Madre SERIALIZADA + 2 hijos serializados
+    const crearProd = async (extra: Record<string, unknown>) => {
+      const res = await request.post(`${SUPABASE_URL}/rest/v1/productos`, {
+        headers: { ...headers, Prefer: 'return=representation' },
+        data: {
+          tenant_id: suc.tenant_id, precio_venta: 1000, precio_costo: 500,
+          unidad_medida: 'unidad', activo: true, stock_minimo: 0, tiene_series: true, ...extra,
+        },
+      })
+      expect(res.ok(), `[112s] no se pudo crear el producto: ${await res.text()}`).toBe(true)
+      return ((await res.json()) as Array<{ id: string }>)[0].id
+    }
+    const madreId = await crearProd({ nombre: nombreMadre, sku: `E2E-SER-${sello}` })
+    const hijo4G = await crearProd({ nombre: 'x', sku: `E2E-SER-4G-${sello}`, producto_padre_id: madreId, variante_diferenciador: '4G' })
+    const hijo5G = await crearProd({ nombre: 'x', sku: `E2E-SER-5G-${sello}`, producto_padre_id: madreId, variante_diferenciador: '5G' })
+
+    // 🛑 Que una madre SERIALIZADA pueda volverse agrupadora es justo lo que la mig 312 bloqueaba
+    // y la 313 habilitó: sin el reparto por series sería un callejón sin salida (stock ni vendible
+    // ni reasignable).
+
+    // 2) Un LPN con 3 series activas + 1 ya vendida (activo=false)
+    const lineaRes = await request.post(`${SUPABASE_URL}/rest/v1/inventario_lineas`, {
+      headers: { ...headers, Prefer: 'return=representation' },
+      data: { tenant_id: suc.tenant_id, producto_id: madreId, lpn: `E2E-SER-LPN-${sello}`, cantidad: 0, sucursal_id: suc.id, activo: true },
+    })
+    const [linea] = (await lineaRes.json()) as Array<{ id: string; lpn: string }>
+
+    const seriesRes = await request.post(`${SUPABASE_URL}/rest/v1/inventario_series`, {
+      headers: { ...headers, Prefer: 'return=representation' },
+      data: [
+        { tenant_id: suc.tenant_id, producto_id: madreId, linea_id: linea.id, nro_serie: `SN-A-${sello}`, activo: true },
+        { tenant_id: suc.tenant_id, producto_id: madreId, linea_id: linea.id, nro_serie: `SN-B-${sello}`, activo: true },
+        { tenant_id: suc.tenant_id, producto_id: madreId, linea_id: linea.id, nro_serie: `SN-C-${sello}`, activo: true },
+        { tenant_id: suc.tenant_id, producto_id: madreId, linea_id: linea.id, nro_serie: `SN-VENDIDA-${sello}`, activo: false },
+      ],
+    })
+    expect(seriesRes.ok(), `[112s] no se pudieron sembrar las series: ${await seriesRes.text()}`).toBe(true)
+    const series = (await seriesRes.json()) as Array<{ id: string; nro_serie: string }>
+    const idDe = (frag: string) => series.find(s => s.nro_serie.startsWith(frag))!.id
+
+    const stockDe = async (id: string) => {
+      const r = await request.get(`${SUPABASE_URL}/rest/v1/productos?id=eq.${id}&select=stock_actual`, { headers })
+      return Number(((await r.json()) as Array<{ stock_actual: number }>)[0]?.stock_actual ?? 0)
+    }
+    // 🛑 El stock de un serializado son sus SERIES activas — la vendida no cuenta
+    expect(await stockDe(madreId), '[112s] la madre arranca con 3 (la vendida no cuenta)').toBe(3)
+
+    const reasignar = (asignaciones: unknown[]) =>
+      request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_reasignar_stock_variante`, {
+        headers, data: { p_madre_id: madreId, p_asignaciones: asignaciones },
+      })
+
+    // 3) 🛑 NEGATIVOS — ninguno puede mover una serie
+    const vendida = await reasignar([{ linea_id: linea.id, hijo_id: hijo4G, series: [idDe('SN-VENDIDA')] }])
+    expect(vendida.ok(), '[112s] una serie YA VENDIDA no se puede reasignar (es historial)').toBe(false)
+
+    const duplicada = await reasignar([
+      { linea_id: linea.id, hijo_id: hijo4G, series: [idDe('SN-A')] },
+      { linea_id: linea.id, hijo_id: hijo5G, series: [idDe('SN-A')] },
+    ])
+    expect(duplicada.ok(), '[112s] la misma serie no puede ir a dos variantes').toBe(false)
+
+    const sinSeries = await reasignar([{ linea_id: linea.id, hijo_id: hijo4G, cantidad: 2 }])
+    expect(sinSeries.ok(), '[112s] en serializados no se puede repartir por cantidad a ciegas').toBe(false)
+
+    expect(await stockDe(madreId), '[112s] tras los rechazos no se movió nada').toBe(3)
+
+    // 4) POSITIVO — A y B a 4G, C a 5G
+    const okRes = await reasignar([
+      { linea_id: linea.id, hijo_id: hijo4G, series: [idDe('SN-A'), idDe('SN-B')] },
+      { linea_id: linea.id, hijo_id: hijo5G, series: [idDe('SN-C')] },
+    ])
+    expect(okRes.ok(), `[112s] el reparto por series falló: ${await okRes.text()}`).toBe(true)
+
+    // 🛑 Conservación: 3 antes = 3 después
+    const sMadre = await stockDe(madreId), s4G = await stockDe(hijo4G), s5G = await stockDe(hijo5G)
+    expect(sMadre, '[112s] la madre queda sin series sin asignar').toBe(0)
+    expect(s4G, '[112s] 4G se quedó con 2 series').toBe(2)
+    expect(s5G, '[112s] 5G se quedó con 1 serie').toBe(1)
+    expect(sMadre + s4G + s5G, '🛑 [112s] no se puede perder ni crear una serie').toBe(3)
+
+    // 5) Cada serie quedó bajo el SKU correcto — y la VENDIDA sigue en la madre
+    const finalRes = await request.get(
+      `${SUPABASE_URL}/rest/v1/inventario_series?nro_serie=like.*${sello}&select=nro_serie,producto_id,activo`, { headers },
+    )
+    const finales = (await finalRes.json()) as Array<{ nro_serie: string; producto_id: string; activo: boolean }>
+    const duenoDe = (frag: string) => finales.find(s => s.nro_serie.startsWith(frag))!.producto_id
+    expect(duenoDe('SN-A'), '[112s] SN-A quedó en 4G').toBe(hijo4G)
+    expect(duenoDe('SN-B'), '[112s] SN-B quedó en 4G').toBe(hijo4G)
+    expect(duenoDe('SN-C'), '[112s] SN-C quedó en 5G').toBe(hijo5G)
+    expect(duenoDe('SN-VENDIDA'),
+      '🛑 [112s] la serie vendida NO se re-etiqueta: pertenece al historial del SKU con el que se vendió')
+      .toBe(madreId)
+
+    // 6) Coherencia serie↔línea: ninguna serie puede colgar de un LPN de otro producto
+    const cohRes = await request.get(
+      `${SUPABASE_URL}/rest/v1/inventario_series?nro_serie=like.*${sello}&select=nro_serie,producto_id,inventario_lineas(producto_id)`, { headers },
+    )
+    const coh = (await cohRes.json()) as Array<{ nro_serie: string; producto_id: string; inventario_lineas: { producto_id: string } }>
+    coh.forEach(c => expect(c.inventario_lineas.producto_id,
+      `🛑 [112s] ${c.nro_serie} cuelga de un LPN de otro producto`).toBe(c.producto_id))
+
+    // 7) Trazabilidad: par de movimientos con neto cero
+    const movsRes = await request.get(
+      `${SUPABASE_URL}/rest/v1/movimientos_stock?producto_id=in.(${madreId},${hijo4G},${hijo5G})&tipo=eq.reasignacion_variante&select=producto_id,cantidad`,
+      { headers },
+    )
+    const movs = (await movsRes.json()) as Array<{ producto_id: string; cantidad: number }>
+    expect(movs, '[112s] 2 asignaciones × 2 lados = 4 movimientos').toHaveLength(4)
+    const salidas = movs.filter(m => m.producto_id === madreId).reduce((s, m) => s + Number(m.cantidad), 0)
+    const entradas = movs.filter(m => m.producto_id !== madreId).reduce((s, m) => s + Number(m.cantidad), 0)
+    expect(salidas).toBe(3)
+    expect(entradas, '🛑 [112s] neto cero').toBe(salidas)
+
+    // Cleanup
+    const ids = [madreId, hijo4G, hijo5G]
+    for (const t of ['inventario_series', 'movimientos_stock', 'inventario_lineas', 'producto_presentaciones', 'alertas']) {
+      await request.delete(`${SUPABASE_URL}/rest/v1/${t}?producto_id=in.(${ids.join(',')})`, { headers })
+    }
+    await request.delete(`${SUPABASE_URL}/rest/v1/productos?producto_padre_id=eq.${madreId}`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/alertas?producto_id=eq.${madreId}`, { headers })
+    await request.delete(`${SUPABASE_URL}/rest/v1/productos?id=eq.${madreId}`, { headers })
+  })
+})

@@ -13,6 +13,21 @@ updated: 2026-07-28
 
 ---
 
+## v1.145.0 — 🔢 Reasignar stock de productos SERIALIZADOS (mig 313) — ✅ **PROD** (2026-07-28)
+
+Cierra el **último pendiente** del rediseño UoM/Empaque/Variantes. El reparto del stock "sin variante
+asignada" ahora soporta productos con número de serie: se elige **a qué variante va cada serie**, en vez
+de repartir cantidades (repartir a ciegas dejaría el historial de esa unidad física —garantía, RMA,
+recall— bajo el SKU equivocado). Las series **ya vendidas no se tocan**: quedan con el producto con el
+que se vendieron. Con esto se levanta el guard de la v1.144.1, que impedía convertir en agrupador un
+serializado con stock justamente porque no había forma de repartirlo.
+
+Verde: tsc · build · **1251 unit** · e2e `112` extendido (caso serializado end-to-end: conservación de
+las 3 series, cada una bajo el SKU correcto, la vendida intacta, coherencia serie↔línea, par de
+movimientos con neto cero y 3 rechazos server-side).
+
+---
+
 ## v1.144.1 — 🛑 guard: serializado con stock no puede volverse agrupador (mig 312) — ✅ **PROD** (2026-07-28)
 
 Corrige un hueco de la v1.144.0 detectado el mismo día. La Fase 4 permitió convertir en agrupador un

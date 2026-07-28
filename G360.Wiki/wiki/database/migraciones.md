@@ -6,10 +6,29 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-312)
+# Historial de Migraciones (001-313)
 
-**Total al 2026-07-28:** 312 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-28:** 313 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**313 (reasignar stock de productos SERIALIZADOS + levanta el guard de la 312, EN DEV y PROD, 🛑 MUEVE STOCK)** —
+Cierra el último pendiente del rediseño UoM. `fn_reasignar_stock_variante` pasa a aceptar, por asignación,
+la **LISTA de series** a mover (`"series":[uuid,...]`) en vez de una cantidad: en un producto con número
+de serie cada unidad ES una serie concreta y hay que decir CUÁL va a CUÁL variante, o el historial de esa
+unidad física (garantía, RMA, recall) queda bajo el SKU equivocado.
+**Verificado contra el modelo real (no asumido):** `recalcular_stock` cuenta `inventario_series` y NO
+`inventario_lineas.cantidad` para estos productos (en DEV hay uno con `sum(cantidad)=100` y 26 series);
+`inventario_series` ya tiene trigger `series_recalcular_stock`, así que mover una serie de producto
+recalcula ambos lados solo. Por eso lo que se mueve son las FILAS DE SERIE.
+**Decisión de diseño:** en serializados NUNCA se re-apunta la línea, SIEMPRE nace un LPN nuevo — una línea
+puede tener series INACTIVAS (ya vendidas) que pertenecen al historial de la madre y no se pueden
+re-etiquetar; re-apuntar dejaría `serie.producto_id ≠ linea.producto_id`. El LPN viejo se desactiva si se
+queda sin series activas, conservando su historial.
+Guards: serie de otra línea/vendida/reservada, la misma serie a dos variantes, serializado sin mandar
+series, y destino que no maneja series igual que la madre. Se bloquean también las FILAS DE SERIE con
+`FOR UPDATE` (el lock de la línea no frena una venta concurrente que consuma una serie).
+Además **levanta el guard de la mig 312**: ya no hay callejón sin salida, así que un serializado con stock
+vuelve a poder convertirse en agrupador.
 
 **312 (🛑 guard: no convertir en agrupador un producto SERIALIZADO CON STOCK, EN DEV y PROD)** —
 Cierra un hueco abierto por la propia mig 309. Esa migración desbloqueó crear la primera variante de un

@@ -6,7 +6,7 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD** (v1.144.1, migs 289-312)
+> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD, sin pendientes funcionales** (v1.145.0, migs 289-313)
 >
 > **El rediseño UoM terminó Y SE DEPLOYÓ.** Esta sesión cerró las dos fases que faltaban y además
 > subió a PROD TODO lo que estaba acumulado en `dev` desde v1.142.0: **WMS (289-291), Pedidos
@@ -51,10 +51,9 @@ type: project
 > `es_base` (`vendiendoEnBase()`). Un ordinal no puede gobernar una decisión de plata.
 >
 > **▶ PRÓXIMA SESIÓN — no hay pendientes del rediseño ni de deploy.** Lo que queda abierto:
-> - **Serializados en la reasignación** — el ÚNICO pendiente funcional del rediseño (bloqueado y
->   seguro desde la mig 312). Ver el bloque "🔢 SERIALIZADOS" abajo para el alcance concreto.
-> - **Decisión de GO:** ¿reconstruir el CHECK que impedía los dos sistemas de variante en el mismo
->   SKU? (se perdió con la mig 311). Ver el bloque de arriba.
+> - ✅ **Serializados: RESUELTO (mig 313, v1.145.0)** — ya no queda ningún pendiente funcional.
+> - 🟡 **Decisión de GO (única cosa abierta):** ¿reconstruir el CHECK que impedía los dos sistemas de
+>   variante en el mismo SKU? (se perdió con la mig 311). Ver el bloque de abajo.
 > - `schema_full.sql` **NO se pudo regenerar** esta sesión: `npm run schema:dump` necesita un
 >   `SUPABASE_ACCESS_TOKEN` (el modo PG falla por el bug de Supavisor). Refleja hasta la 308 —
 >   pedirle el token a GO y regenerarlo (DEV y PROD están idénticos en 311).
@@ -75,30 +74,15 @@ type: project
 > los dos sistemas coexisten" también habilita usarlos juntos en el mismo producto?** Si GO quiere el
 > guard, es un CHECK de una línea (nueva migración).
 >
-> #### 🔢 SERIALIZADOS — qué falta exactamente (único pendiente FUNCIONAL del rediseño UoM)
+> #### ✅ 🔢 SERIALIZADOS — RESUELTO (mig 313, v1.145.0, 2026-07-28)
 >
-> **Estado hoy (v1.144.1, mig 312): BLOQUEADO Y SEGURO, no hay riesgo.** Un producto con
-> `tiene_series` y stock **no puede** convertirse en agrupador de variantes — se rechaza en la UI y
-> en el servidor (`trg_variante_compose_nombre`). Antes de la mig 312 se podía, y ese stock quedaba
-> **atrapado**: no vendible (la madre con hijos no se vende) y no reasignable (la RPC lo rechaza).
->
-> **Por qué no se resolvió con lo demás:** para un producto serializado cada unidad **es** un número
-> de serie concreto. Decir "6 a Rojo y 4 a Azul" no alcanza: hay que decir **cuál** serie va a cuál
-> variante, o el historial de esa unidad física queda apuntando al SKU equivocado (Regla #0,
-> trazabilidad). Además `recalcular_stock` cuenta `inventario_series`, no `inventario_lineas.cantidad`.
->
-> **Qué habría que hacer (estimado: 1 sesión):**
-> 1. **DB** — extender `fn_reasignar_stock_variante` para que cada asignación acepte una LISTA de
->    series (`inventario_series.id`) en vez de solo una cantidad. Mover esas filas al LPN destino
->    actualizando su `producto_id`. Guards: la serie pertenece a la línea origen, está activa, no
->    reservada, y la cantidad coincide con el largo de la lista.
-> 2. **UI** — en `ReasignarStockVarianteModal`, si el producto es serializado, mostrar la lista de
->    series con un selector de variante por cada una (en vez de los inputs de cantidad).
-> 3. **Tests** — unit del armado de la selección + e2e que verifique que cada serie termina bajo el
->    SKU correcto y que `recalcular_stock` da los números correctos.
-> 4. Sacar el guard de la mig 312 (o acotarlo) recién cuando lo anterior esté verde.
->
-> **Cuántos afecta:** 1 producto serializado en DEV y 1 en PROD. Es un caso real pero angosto.
+> El reparto del stock "sin variante asignada" soporta productos con número de serie: se elige **a qué
+> variante va cada serie** (no se reparte por cantidad). Las series **ya vendidas no se tocan** — quedan
+> con el producto con el que se vendieron, que es su historial. En serializados nunca se re-apunta el
+> LPN: nace uno nuevo, porque re-apuntarlo dejaría las series vendidas colgando de un LPN de otro
+> producto. Guards: serie de otra línea / vendida / reservada, la misma serie a dos variantes,
+> serializado sin mandar series, y destino que no maneja series igual que la madre. Se levantó el guard
+> de la mig 312 (ya no hay callejón sin salida). e2e `112` cubre el caso end-to-end.
 
 > ### 📐 ESTADO ANTERIOR (2026-07-27, cierre /clear) — Rediseño UoM: **FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308) hechas** — EN DEV, **SIN deploy a PROD**
 >

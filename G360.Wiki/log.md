@@ -6,6 +6,35 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-28] update | 🛑 v1.144.1 — guard: no convertir en agrupador un producto SERIALIZADO CON STOCK (mig 312)
+
+Hueco abierto por la propia Fase 4 y detectado al responderle a GO "¿cómo resolvemos lo de los
+serializados?". Estuvo vivo en PROD unos minutos.
+
+La mig 309 desbloqueó crear la primera variante de un producto CON stock (queda "sin variante
+asignada" y se reparte después). Pero `fn_reasignar_stock_variante` **rechaza a propósito** los
+productos con número de serie: repartir "6 y 4" sin decir QUÉ serie va a cada variante rompería la
+trazabilidad. Combinadas, las dos cosas dejaban una **trampa**: el stock de un serializado
+convertido en agrupador quedaba **atrapado** — no vendible (madre con hijos) y no reasignable (RPC
+lo rechaza). Sin salida desde la app.
+
+**Fix en los dos lados:** UI (`ProductoFormPage`, mensaje que explica qué hacer) + **server (mig 312,
+guard en `trg_variante_compose_nombre`)**, porque la UI se cachea y el importador/EFs escriben con
+service_role sin pasar por ella. Solo bloquea la CONVERSIÓN en agrupador (madre sin hijos todavía);
+agregarle otra variante a un agrupador existente no se toca. Verificado en DEV: el serializado con
+stock se rechaza, y el mismo producto sin stock crea la variante con el nombre bien compuesto
+("TEST312 Serial — Azul", con la raya de siempre — se detectó y corrigió a tiempo que la primera
+aplicación había cambiado el separador a guion simple).
+
+Aparte: **`schema_full.sql` regenerado al día** (GO pasó un `SUPABASE_ACCESS_TOKEN` puntual, usado
+inline y **borrado después**; 538 KB, 150 tablas — una menos porque la 311 dropeó `producto_grupos`).
+🔐 **Hallazgo de seguridad:** ese token estaba en texto plano en `.claude/settings.json` (14 entradas
+de permisos de sesiones viejas). NO está en git (`.gitignore` lo excluye) así que no llegó al repo
+público, pero se limpiaron las 14 entradas. **El token es el mismo que figura como "leaked y rotado"
+el 2026-07-09 en `reference_seguridad.md` y sigue funcionando → NO fue rotado. Hay que rotarlo de verdad.**
+
+EN PROD: PR #303, tag+release v1.144.1, mig 312 aplicada en DEV y PROD.
+
 ## [2026-07-28] update | 📐 Rediseño UoM COMPLETO — FASE 4 (stock sin variante asignada, mig 309) + FASE 5 (presentaciones = fuente de verdad + hermanas + limpieza, migs 310/311)
 
 Sesión autónoma pedida por GO: "seguí hasta completar todas las fases ... y pasas todo a DEV y PRD".

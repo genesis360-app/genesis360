@@ -28,7 +28,7 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 ### Vista plana (default)
 
 - Lista todos los productos
-- Badge `• Parte de "X"` bajo el nombre cuando el producto tiene `grupo_id`
+- Badge `• Variante: X` bajo el nombre cuando el producto es hijo de una madre (`producto_padre_id` + `variante_diferenciador`, mig 305) — ⚠ antes era `• Parte de "X"` con `grupo_id`, columna **dropeada** en la mig 311
 - Productos inactivos: `opacity-60` + badge "Inactivo" (ISS-122)
 
 ### Vista agrupada (grupos de variantes)
@@ -95,8 +95,7 @@ Al seleccionar uno o más productos, aparece barra de acciones masivas:
 
 Botón "Grupos" en barra de acciones → panel lateral (drawer):
 - Lista de grupos existentes con nombre y cantidad de variantes
-- Botón "Nuevo grupo" → abre `ProductoGrupoModal`
-- Click en grupo → abre `ProductoGrupoModal` en modo edición
+- ⛔ **ELIMINADO (mig 311, v1.144.0).** El panel "Grupos" y `ProductoGrupoModal.tsx` ya no existen: las variantes son madre/hijo (`producto_padre_id`) y se administran desde la sección "Variantes" de la ficha del producto. Ver [[wiki/features/estructuras-udm]] → Fases 3/4/5
 
 ---
 
@@ -104,7 +103,7 @@ Botón "Grupos" en barra de acciones → panel lateral (drawer):
 
 La página de creación/edición fue reorganizada en 6 cards temáticos. Columna derecha: Imagen + QR (solo al editar).
 
-> [!NOTE] **🐛 Fix bug real de caché stale al reabrir un producto editado (2026-07-22, EN DEV, sin
+> [!NOTE] **🐛 Fix bug real de caché stale al reabrir un producto editado (2026-07-22, ✅ EN PROD desde v1.144.0, sin
 > commitear al cierre de sesión).** GO reportó que el selector "Estos precios corresponden a" (ancla
 > de precio, Card 3) no se guardaba a la primera — había que editarlo dos veces. Investigado contra un
 > producto real de GO (Bebida Coca Cola 2.5L, Almacén Jorgito): el **guardado en base siempre funcionó
@@ -160,7 +159,7 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | IVA | select | Alícuota aplicable |
 | Margen objetivo | number | % — activa insightMargen en Dashboard |
 | Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092) |
-| Estos precios corresponden a | select (nuevo, v1.140.0, EN PROD desde el 2026-07-22) | "Ancla de precio" (`productos.nivel_precio_orden`, mig 286): a qué nivel de la estructura DEFAULT corresponden Precio costo/Precio venta de este card (default = nivel base). Solo visible si el producto tiene estructura. Ver [[wiki/features/estructuras-udm]] → "Precio por Unidad de Medida". |
+| ~~Estos precios corresponden a~~ | ⛔ **ELIMINADO (mig 304, v1.144.0)** | Era el "ancla de precio" (`productos.nivel_precio_orden`), un bug por POSICIÓN: no se revalidaba al reordenar niveles. Hoy `precio_venta`/`precio_costo` son **SIEMPRE por unidad base** y el precio de una presentación se deriva (`base × factor_base`); el precio por volumen se carga como **tier de cantidad**. Ver [[wiki/features/estructuras-udm]] → Fase 2 y Fase 2-bis. |
 
 ### Card 4: Stock e inventario
 

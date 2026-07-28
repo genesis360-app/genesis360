@@ -227,6 +227,12 @@ cómo se MUESTRA. **Cruzar de familia** (kg → litros) **con stock ≠ 0 se blo
 (`trg_productos_udm_familia`): no existe conversión universal peso↔volumen, las cantidades guardadas
 pasarían a significar otra cosa.
 
+- **🔢 Serializados: SOPORTADOS (mig 313, v1.145.0).** En un producto con número de serie el reparto se
+  hace eligiendo **a qué variante va cada serie**, no por cantidad: cada unidad ES una serie concreta y
+  su historial (garantía, RMA, recall) tiene que quedar bajo el SKU correcto. Las series **ya vendidas
+  no se tocan** — quedan con el producto con el que se vendieron. En serializados nunca se re-apunta el
+  LPN: nace uno nuevo (si se re-apuntara, las series vendidas quedarían colgando de un LPN de otro
+  producto). El guard de la mig 312 se levantó al quedar resuelto el caso.
 - **Lógica pura:** `src/lib/reasignacionVariante.ts` (16 unit). **UI:** `ReasignarStockVarianteModal`
   + aviso en la ficha del agrupador + badge *"N sin variante asignada"* en la lista de productos.
 - **e2e `112`**: verifica que 17 unidades entran y 17 salen (6+4 partiendo un LPN, 7 re-apuntando

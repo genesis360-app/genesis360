@@ -36,7 +36,7 @@ Genesis360 tiene **dos** mecanismos de variante que conviven, con propósitos di
 
 | Sistema | Página / tabla | Qué es | Estado |
 |---|---|---|---|
-| **Grupo de variantes** | `ProductoGrupoModal.tsx` / `producto_grupos` | Cada variante es un **producto (SKU) separado** con su propio stock, precio, LPNs | ✅ Funcionaba bien, sin tocar en esta sesión. Ver [[wiki/features/grupos-variantes]] |
+| **Variantes madre/hijo** | `productos.producto_padre_id` + `variante_diferenciador` (mig 305) | Cada variante es un **producto (SKU) separado** con su propio stock, precio, LPNs | ✅ Vigente. ⚠ Reemplazó a `producto_grupos`/`ProductoGrupoModal.tsx`, **dropeados en la mig 311 (v1.144.0)**. Ver [[wiki/features/estructuras-udm]] → Fases 3/4/5 |
 | **Atributos de variante** (esta página) | `ProductoFormPage` → Trazabilidad → toggles `tiene_talle`/`tiene_color`/`tiene_encaje`/`tiene_formato`/`tiene_sabor_aroma` | Atributo **descriptivo dentro del mismo SKU** — un mismo producto (p.ej. "Remera básica") tiene stock con distintos talles/colores en `inventario_lineas`, sin ser productos separados | ✅ PROD desde v1.134.0 — era el sistema roto, se arregló en esta sesión |
 
 GO confirmó por AskUserQuestion cuál arreglar (el #2) y que quería un **catálogo configurable** de
@@ -158,9 +158,15 @@ no se adivinó nada:
    - `ProductoFormPage`: los 5 toggles de "Atributos de variante" se deshabilitan si el producto ya
      tiene `grupo_id`, y viceversa (vincular a un grupo se bloquea si algún toggle ya está activo) —
      con copy explicando cuándo usar cada sistema.
-   - **Mig 274** (`chk_productos_grupo_sin_atributos_variante`, aplicada en DEV): CHECK constraint que
-     bloquea la combinación **incluso por API/SQL directo** — verificado intentando la violación por
-     SQL, rechazada con el error del constraint.
+   - **Mig 274** (`chk_productos_grupo_sin_atributos_variante`): CHECK constraint que bloqueaba la
+     combinación **incluso por API/SQL directo**.
+     > ⚠ **Ese CHECK YA NO EXISTE (mig 311, v1.144.0):** se fue junto con la columna `grupo_id` que
+     > referenciaba. Hoy **nada impide** que un mismo SKU sea variante madre/hijo (`producto_padre_id`)
+     > **y** tenga atributos de variante a nivel LPN (`tiene_talle`/`tiene_color`/…) al mismo tiempo —
+     > que es justo la combinación que había causado el incidente original. Al 2026-07-28 hay **0
+     > productos** en esa situación. **🟡 DECISIÓN PENDIENTE DE GO:** ¿se reconstruye el guard contra
+     > `producto_padre_id`, o la decisión "Eje A: los dos sistemas coexisten" también habilita usarlos
+     > juntos en el MISMO SKU? Ver `project_pendientes.md`.
    - Dato de prueba corregido en DEV: "Variante1" (Almacén Jorgito) → `tiene_talle=false` (queda solo
      como miembro del grupo, que es el modelo correcto para "cada talle es un SKU separado").
 

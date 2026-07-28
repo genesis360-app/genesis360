@@ -42,7 +42,7 @@ type: reference
 | MP Public Key | ✅ Nueva (PRD activado con genesis360.pro) `APP_USR-1edf...` |
 | MP Access Token | ✅ Nuevo `APP_USR-7675...` |
 | Resend API Key | ✅ Rotada `re_BYtz...` |
-| Supabase Access Token | ✅ Rotado `sbp_60df...` |
+| Supabase Access Token | 🔴 **NO rotado** — el `sbp_60df...` que figuraba como rotado el 2026-07-09 SIGUE FUNCIONANDO (verificado el 2026-07-28 regenerando el schema). Además estaba en texto plano en `.claude/settings.json` (local, NO en git). **Rotarlo de verdad en supabase.com/dashboard/account/tokens.** |
 | GitHub Token | ✅ Rotado `ghp_dF2N...` |
 
 ### Supabase JWT Keys

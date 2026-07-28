@@ -3,6 +3,8 @@ import {
   cantidadDe, totalAsignado, restanteDeLinea, totalAMover,
   construirAsignaciones, validarBorrador, repartirEnPartesIguales,
   type LineaSinAsignar, type BorradorAsignacion,
+  construirAsignacionesSeries, validarBorradorSeries, totalSeriesAsignadas, seriesAsignadasDeLinea,
+  type SerieDisponible,
 } from '@/lib/reasignacionVariante'
 
 // Fase 4 del rediseño UoM (mig 309): repartir el stock "sin variante asignada" de una madre
@@ -113,5 +115,61 @@ describe('repartirEnPartesIguales', () => {
 
   it('sin hijos no reparte nada (no puede quedar stock asignado a nadie)', () => {
     expect(repartirEnPartesIguales([L('a', 10)], [])).toEqual({})
+  })
+})
+
+// ── Productos SERIALIZADOS (mig 313) ────────────────────────────────────────────────────
+// Cada unidad ES un número de serie concreto: el reparto se hace eligiendo CUÁL serie va a
+// CUÁL variante, no repartiendo cantidades. 🛑 Si se adivinara, el historial de esa unidad
+// física (garantía, RMA, recall) quedaría bajo el SKU equivocado.
+describe('serializados', () => {
+  const S = (id: string, linea: string): SerieDisponible => ({ id, nro_serie: `SN-${id}`, linea_id: linea })
+  const series = [S('a', 'L1'), S('b', 'L1'), S('c', 'L1'), S('d', 'L2')]
+
+  it('cuenta solo las series efectivamente asignadas', () => {
+    expect(totalSeriesAsignadas(series, {})).toBe(0)
+    expect(totalSeriesAsignadas(series, { a: 'rojo', b: '' })).toBe(1)
+    expect(totalSeriesAsignadas(series, { a: 'rojo', b: 'azul', d: 'rojo' })).toBe(3)
+  })
+
+  it('lista las series asignadas de una línea puntual', () => {
+    const asignadas = seriesAsignadasDeLinea(series, { a: 'rojo', d: 'azul' }, 'L1')
+    expect(asignadas.map(s => s.id)).toEqual(['a'])
+  })
+
+  it('agrupa el payload por (línea, hijo) y la cantidad sale del largo de la lista', () => {
+    const out = construirAsignacionesSeries(series, { a: 'rojo', b: 'rojo', c: 'azul', d: 'rojo' })
+    expect(out).toHaveLength(3)
+    const rojoL1 = out.find(o => o.linea_id === 'L1' && o.hijo_id === 'rojo')!
+    expect(rojoL1.series).toEqual(['a', 'b'])
+    expect(rojoL1.cantidad).toBe(2)
+    const rojoL2 = out.find(o => o.linea_id === 'L2' && o.hijo_id === 'rojo')!
+    expect(rojoL2.series).toEqual(['d'])
+    expect(rojoL2.cantidad).toBe(1)
+  })
+
+  it('🛑 la cantidad SIEMPRE coincide con el largo de la lista de series', () => {
+    const out = construirAsignacionesSeries(series, { a: 'rojo', b: 'azul', c: 'azul', d: 'azul' })
+    out.forEach(o => expect(o.cantidad).toBe(o.series!.length))
+    expect(out.reduce((s, o) => s + o.cantidad, 0)).toBe(4)
+  })
+
+  it('saltea las series sin destino (no se mueven)', () => {
+    const out = construirAsignacionesSeries(series, { a: 'rojo', b: '', c: undefined as any })
+    expect(out).toHaveLength(1)
+    expect(out[0].series).toEqual(['a'])
+  })
+
+  it('exige elegir al menos una serie', () => {
+    expect(validarBorradorSeries(series, {})).toMatch(/al menos un número de serie/)
+    expect(validarBorradorSeries(series, { a: '' })).toMatch(/al menos un número de serie/)
+  })
+
+  it('🛑 rechaza una serie que ya no está disponible (vendida/reservada entre medio)', () => {
+    expect(validarBorradorSeries(series, { fantasma: 'rojo' })).toMatch(/ya no está disponible/)
+  })
+
+  it('acepta un reparto parcial: no obliga a mover todas las series', () => {
+    expect(validarBorradorSeries(series, { a: 'rojo' })).toBeNull()
   })
 })

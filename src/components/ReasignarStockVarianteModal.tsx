@@ -7,7 +7,10 @@ import { logActividad } from '@/lib/actividadLog'
 import {
   cantidadDe, totalAsignado, restanteDeLinea, totalAMover,
   construirAsignaciones, validarBorrador, repartirEnPartesIguales,
+  construirAsignacionesSeries, validarBorradorSeries, totalSeriesAsignadas,
+  seriesAsignadasDeLinea,
   type BorradorAsignacion, type LineaSinAsignar,
+  type BorradorSeries, type SerieDisponible,
 } from '@/lib/reasignacionVariante'
 import toast from 'react-hot-toast'
 
@@ -21,6 +24,8 @@ interface Props {
   madreId: string
   madreNombre: string
   hijos: Hijo[]
+  /** El producto lleva número de serie: se reparte eligiendo QUÉ serie va a cada variante. */
+  serializado?: boolean
   onClose: () => void
 }
 
@@ -31,10 +36,29 @@ interface Props {
  * 🛑 Regla #0: la UI solo arma el pedido — todo lo mueve `fn_reasignar_stock_variante` (mig 309)
  * en UNA transacción, con las líneas bloqueadas y un par de `movimientos_stock` por asignación.
  */
-export function ReasignarStockVarianteModal({ madreId, madreNombre, hijos, onClose }: Props) {
+export function ReasignarStockVarianteModal({ madreId, madreNombre, hijos, serializado = false, onClose }: Props) {
   const { tenant } = useAuthStore()
   const qc = useQueryClient()
   const [borrador, setBorrador] = useState<BorradorAsignacion>({})
+  // Serializados: a qué variante va cada serie (mig 313)
+  const [borradorSeries, setBorradorSeries] = useState<BorradorSeries>({})
+
+  // Series disponibles para mover: activas, NO reservadas y de la madre. Las vendidas
+  // (activo=false) no aparecen a propósito — pertenecen al historial del SKU con el que se
+  // vendieron y re-etiquetarlas falsearía la trazabilidad.
+  const { data: series = [] } = useQuery({
+    queryKey: ['series-sin-variante', madreId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('inventario_series')
+        .select('id, nro_serie, linea_id')
+        .eq('tenant_id', tenant!.id).eq('producto_id', madreId)
+        .eq('activo', true).eq('reservado', false)
+        .order('nro_serie')
+      if (error) throw error
+      return (data ?? []) as SerieDisponible[]
+    },
+    enabled: !!tenant && serializado,
+  })
 
   // Líneas de stock que todavía cuelgan de la MADRE. Sin filtro de sucursal a propósito: el stock
   // sin asignar hay que verlo COMPLETO, esté en la sucursal que esté (si no, quedaría stock
@@ -67,18 +91,31 @@ export function ReasignarStockVarianteModal({ madreId, madreNombre, hijos, onClo
   const asignables = useMemo(() => lineas.filter(l => l.cantidad_reservada === 0), [lineas])
   const reservadas = useMemo(() => lineas.filter(l => l.cantidad_reservada > 0), [lineas])
 
-  const totalSinAsignar = lineas.reduce((a, l) => a + l.cantidad, 0)
-  const totalMoviendo = totalAMover(asignables, borrador)
+  // En serializados el stock lo cuentan las SERIES, no `inventario_lineas.cantidad` (que para
+  // estos productos es decorativa) — ver la cabecera de la mig 313.
+  const totalSinAsignar = serializado ? series.length : lineas.reduce((a, l) => a + l.cantidad, 0)
+  const totalMoviendo = serializado
+    ? totalSeriesAsignadas(series, borradorSeries)
+    : totalAMover(asignables, borrador)
+
+  const errorBorrador = serializado
+    ? validarBorradorSeries(series, borradorSeries)
+    : validarBorrador(asignables, borrador)
 
   const setCant = (lineaId: string, hijoId: string, valor: string) => {
     setBorrador(prev => ({ ...prev, [lineaId]: { ...(prev[lineaId] ?? {}), [hijoId]: valor.replace(/[^0-9]/g, '') } }))
   }
 
+  const setSerie = (serieId: string, hijoId: string) =>
+    setBorradorSeries(prev => ({ ...prev, [serieId]: hijoId }))
+
   const reasignar = useMutation({
     mutationFn: async () => {
-      const error = validarBorrador(asignables, borrador)
+      const error = errorBorrador
       if (error) throw new Error(error)
-      const asignaciones = construirAsignaciones(asignables, borrador)
+      const asignaciones = serializado
+        ? construirAsignacionesSeries(series, borradorSeries)
+        : construirAsignaciones(asignables, borrador)
       const { data, error: rpcErr } = await supabase.rpc('fn_reasignar_stock_variante', {
         p_madre_id: madreId,
         p_asignaciones: asignaciones,
@@ -97,11 +134,12 @@ export function ReasignarStockVarianteModal({ madreId, madreNombre, hijos, onClo
         producto_id: madreId,
       })
       qc.invalidateQueries({ queryKey: ['stock-sin-variante', madreId] })
+      qc.invalidateQueries({ queryKey: ['series-sin-variante', madreId] })
       qc.invalidateQueries({ queryKey: ['productos'] })
       qc.invalidateQueries({ queryKey: ['producto-hijos'] })
       qc.removeQueries({ queryKey: ['producto', madreId] })
       if ((data?.stock_sin_asignar_restante ?? 0) === 0) onClose()
-      else setBorrador({})
+      else { setBorrador({}); setBorradorSeries({}) }
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -136,6 +174,78 @@ export function ReasignarStockVarianteModal({ madreId, madreNombre, hijos, onClo
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
           {isLoading ? (
             <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">Cargando stock…</p>
+          ) : serializado ? (
+            /* ── SERIALIZADOS: se elige a qué variante va CADA número de serie ──────────
+               No se puede repartir por cantidad: cada unidad es una serie concreta y su
+               historial (garantía, RMA, recall) tiene que quedar bajo el SKU correcto. */
+            series.length === 0 ? (
+              <div className="text-center py-8">
+                <Check size={32} className="mx-auto text-green-500 mb-2" />
+                <p className="text-sm text-gray-600 dark:text-gray-300">No queda stock sin variante asignada.</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  Las series ya vendidas no se muestran: quedan con el producto con el que se vendieron.
+                </p>
+              </div>
+            ) : (
+              <>
+                {hijos.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">Asignar todas a:</span>
+                    {hijos.map(h => (
+                      <button key={h.id} type="button"
+                        onClick={() => setBorradorSeries(Object.fromEntries(series.map(s => [s.id, h.id])))}
+                        className="px-2 py-1 rounded-lg text-xs border border-accent-text/40 text-accent-text hover:bg-accent/5 transition-colors">
+                        {h.variante_diferenciador ?? h.sku}
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => setBorradorSeries({})}
+                      className="px-2 py-1 rounded-lg text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                      Limpiar
+                    </button>
+                  </div>
+                )}
+
+                {lineas.filter(l => series.some(s => s.linea_id === l.id)).map(linea => {
+                  const deLinea = series.filter(s => s.linea_id === linea.id)
+                  const asignadas = seriesAsignadasDeLinea(series, borradorSeries, linea.id).length
+                  return (
+                    <div key={linea.id} className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-2.5 bg-gray-50 dark:bg-gray-700/40">
+                        <span className="flex items-center gap-1.5 text-sm font-medium text-gray-800 dark:text-gray-100">
+                          <Package size={14} className="text-gray-400" /> {linea.lpn}
+                        </span>
+                        {linea.sucursal_nombre && (
+                          <span className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+                            <MapPin size={11} /> {linea.sucursal_nombre}
+                          </span>
+                        )}
+                        <span className={`ml-auto text-xs font-medium ${asignadas === deLinea.length ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
+                          {deLinea.length - asignadas} de {deLinea.length} sin asignar
+                        </span>
+                      </div>
+                      <div className="p-3 space-y-1.5">
+                        {deLinea.map(s => (
+                          <div key={s.id} className="flex items-center gap-2">
+                            <span className="flex-1 min-w-0 text-xs font-mono text-gray-700 dark:text-gray-200 truncate">
+                              {s.nro_serie}
+                            </span>
+                            <select
+                              value={borradorSeries[s.id] ?? ''}
+                              onChange={e => setSerie(s.id, e.target.value)}
+                              className="w-44 shrink-0 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
+                              <option value="">— no mover —</option>
+                              {hijos.map(h => (
+                                <option key={h.id} value={h.id}>{h.variante_diferenciador ?? h.sku}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })}
+              </>
+            )
           ) : lineas.length === 0 ? (
             <div className="text-center py-8">
               <Check size={32} className="mx-auto text-green-500 mb-2" />
@@ -216,10 +326,10 @@ export function ReasignarStockVarianteModal({ madreId, madreNombre, hijos, onClo
         </div>
 
         {/* Footer */}
-        {lineas.length > 0 && (
+        {(serializado ? series.length > 0 : lineas.length > 0) && (
           <div className="flex items-center gap-3 px-6 py-4 border-t border-gray-100 dark:border-gray-700">
             <p className="flex-1 text-xs text-gray-500 dark:text-gray-400">
-              {totalSinAsignar} unidad(es) sin asignar · repartiendo <strong>{totalMoviendo}</strong>
+              {totalSinAsignar} {serializado ? 'serie(s)' : 'unidad(es)'} sin asignar · repartiendo <strong>{totalMoviendo}</strong>
             </p>
             <button onClick={onClose}
               className="border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 px-4 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
@@ -227,7 +337,7 @@ export function ReasignarStockVarianteModal({ madreId, madreNombre, hijos, onClo
             </button>
             <button
               onClick={() => reasignar.mutate()}
-              disabled={reasignar.isPending || totalMoviendo === 0 || !!validarBorrador(asignables, borrador)}
+              disabled={reasignar.isPending || totalMoviendo === 0 || !!errorBorrador}
               className="bg-accent hover:bg-accent/90 text-white px-5 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-50">
               {reasignar.isPending ? 'Repartiendo…' : 'Repartir'}
             </button>

@@ -36,7 +36,7 @@ Toda unidad de stock es una `inventario_lineas` identificada por:
 6. **Conteos** — conteo por ubicación o producto con ajuste automático
 7. **Historial** — movimientos con filtros fecha/cat/tipo/motivo (badge "Traslado" ámbar para tipo `traslado`)
 8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO
-9. **Tareas WMS** (🟡 EN DEV, v1.143.0, migs 289-290) — vista de escritorio para el DUEÑO de las tareas de picking/reabastecimiento generadas; link directo a la ruta mobile `/picking`. Ver [[wiki/features/wms]] → "Fase 3"
+9. **Tareas WMS** (✅ EN PROD desde v1.144.0, migs 289-291) — vista de escritorio para el DUEÑO de las tareas de picking/reabastecimiento generadas; link directo a la ruta mobile `/picking`. Ver [[wiki/features/wms]] → "Fase 3"
 
 ---
 
@@ -260,7 +260,11 @@ Venc./Series/Acciones).
 
 ---
 
-## Ingreso y rebaje de stock por Unidad de Medida (🟡 EN DEV desde mig 293, 2026-07-22 — Fase 2 de estructuras-udm)
+## Ingreso y rebaje de stock por Unidad de Medida (✅ EN PROD desde v1.144.0, mig 293 — Fase 2 de estructuras-udm)
+
+> ⚠ **Actualizado en la Fase 5 (mig 310):** el selector ya no lee `producto_estructura_niveles` sino
+> `producto_presentaciones` (el árbol de empaque, que admite hermanas). La aritmética es la misma:
+> `factor_base` → unidades base. Ver [[wiki/features/estructuras-udm]] → Fase 5.
 
 Los modales de **Ingreso simple y Rebaje simple**, el **Ingreso masivo** (flujo inline) y el **Rebaje
 masivo** (`MasivoModal.tsx`) ganan un selector "Cargar en: / Rebajar en:" que aparece cuando el
@@ -269,11 +273,11 @@ producto tiene una estructura con más de 1 nivel — permite teclear "5 cajas" 
 sobre el toggle genérico kg/g ya existente (mecanismo distinto, sin relación con las estructuras del
 producto). Detalle completo (modelo, 4 superficies, bug del label corregido, verificación):
 [[wiki/features/estructuras-udm]] → "Fase 2". **Solo probado en vivo para ingreso/rebaje simple —
-masivo sin probar clickeando en el navegador, sin deploy a PROD.**
+masivo sin probar clickeando en el navegador.** (Deployado a PROD el 2026-07-28 en v1.144.0.)
 
 ---
 
-## Tab "Tareas WMS" (🟡 EN DEV desde v1.143.0, migs 289-290 — cierra Fases 3-5 de estructuras-udm)
+## Tab "Tareas WMS" (✅ EN PROD desde v1.144.0, migs 289-291 — cierra Fases 3-5 de estructuras-udm)
 
 Vista de escritorio para el **DUEÑO** de las tareas de picking/reabastecimiento (`wms_tareas`), con
 link directo a la ruta mobile **`/picking`** (`PickingPage.tsx`, escaneo de código de barras vía

@@ -25,6 +25,82 @@ export interface AsignacionRPC {
   linea_id: string
   hijo_id: string
   cantidad: number
+  /** Solo en productos SERIALIZADOS: qué números de serie concretos se mueven (mig 313). */
+  series?: string[]
+}
+
+// ── Productos SERIALIZADOS ──────────────────────────────────────────────────────────────
+// En un producto con número de serie cada unidad ES una serie concreta: no alcanza con decir
+// "6 y 4", hay que decir CUÁL va a CUÁL variante o el historial de esa unidad física (garantía,
+// RMA, recall) queda apuntando al SKU equivocado. Por eso acá el borrador es
+// `{ [serieId]: hijoId }` en vez de cantidades.
+
+export interface SerieDisponible {
+  id: string
+  nro_serie: string
+  linea_id: string
+}
+
+/** Borrador serializado: a qué variante va cada serie. Sin entrada = no se mueve. */
+export type BorradorSeries = Record<string, string>
+
+/** Series de una línea que el usuario asignó a algún hijo. */
+export function seriesAsignadasDeLinea(
+  series: SerieDisponible[],
+  borrador: BorradorSeries,
+  lineaId: string,
+): SerieDisponible[] {
+  return series.filter(s => s.linea_id === lineaId && !!borrador[s.id])
+}
+
+/** Total de series asignadas (= unidades que se van a mover). */
+export function totalSeriesAsignadas(series: SerieDisponible[], borrador: BorradorSeries): number {
+  return series.filter(s => !!borrador[s.id]).length
+}
+
+/**
+ * Convierte el borrador de series al payload de la RPC, agrupando por (línea, hijo).
+ * El orden es estable para que el resultado sea reproducible.
+ */
+export function construirAsignacionesSeries(
+  series: SerieDisponible[],
+  borrador: BorradorSeries,
+): AsignacionRPC[] {
+  const grupos = new Map<string, AsignacionRPC>()
+  for (const s of series) {
+    const hijoId = borrador[s.id]
+    if (!hijoId) continue
+    const clave = `${s.linea_id}|${hijoId}`
+    const actual = grupos.get(clave)
+    if (actual) {
+      actual.series!.push(s.id)
+      actual.cantidad += 1
+    } else {
+      grupos.set(clave, { linea_id: s.linea_id, hijo_id: hijoId, cantidad: 1, series: [s.id] })
+    }
+  }
+  return [...grupos.values()]
+}
+
+/** Valida el borrador serializado. Devuelve el mensaje de error o null. */
+export function validarBorradorSeries(
+  series: SerieDisponible[],
+  borrador: BorradorSeries,
+): string | null {
+  // El chequeo de "ya no está disponible" va PRIMERO: si la única serie elegida es una que se
+  // vendió/reservó entre medio, `totalSeriesAsignadas` la cuenta como 0 y el mensaje genérico
+  // ("elegí al menos una") escondería el motivo real. Es un espejo del guard de la RPC — que
+  // igual revalida, porque la UI se cachea.
+  const idsDisponibles = new Set(series.map(s => s.id))
+  for (const serieId of Object.keys(borrador)) {
+    if (borrador[serieId] && !idsDisponibles.has(serieId)) {
+      return 'Alguna de las series elegidas ya no está disponible. Refrescá la pantalla.'
+    }
+  }
+  if (totalSeriesAsignadas(series, borrador) === 0) {
+    return 'Elegí a qué variante va al menos un número de serie.'
+  }
+  return null
 }
 
 /** Parsea el texto de un input a entero ≥ 0 (vacío / basura → 0). */

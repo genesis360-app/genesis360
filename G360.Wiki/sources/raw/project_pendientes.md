@@ -6,7 +6,7 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD** (v1.144.0, migs 289-311)
+> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD, sin pendientes funcionales** (v1.145.0, migs 289-313)
 >
 > **El rediseño UoM terminó Y SE DEPLOYÓ.** Esta sesión cerró las dos fases que faltaban y además
 > subió a PROD TODO lo que estaba acumulado en `dev` desde v1.142.0: **WMS (289-291), Pedidos
@@ -51,8 +51,9 @@ type: project
 > `es_base` (`vendiendoEnBase()`). Un ordinal no puede gobernar una decisión de plata.
 >
 > **▶ PRÓXIMA SESIÓN — no hay pendientes del rediseño ni de deploy.** Lo que queda abierto:
-> - **Serializados en la reasignación** (Fase 4 dejó bloqueado el caso `tiene_series`: hay que elegir
->   QUÉ número de serie va a cada variante — necesita UI propia).
+> - ✅ **Serializados: RESUELTO (mig 313, v1.145.0)** — ya no queda ningún pendiente funcional.
+> - 🟡 **Decisión de GO (única cosa abierta):** ¿reconstruir el CHECK que impedía los dos sistemas de
+>   variante en el mismo SKU? (se perdió con la mig 311). Ver el bloque de abajo.
 > - `schema_full.sql` **NO se pudo regenerar** esta sesión: `npm run schema:dump` necesita un
 >   `SUPABASE_ACCESS_TOKEN` (el modo PG falla por el bug de Supavisor). Refleja hasta la 308 —
 >   pedirle el token a GO y regenerarlo (DEV y PROD están idénticos en 311).
@@ -60,6 +61,29 @@ type: project
 >   EF `ai-assistant`. Si en la próxima sesión se documenta el rediseño ahí, sí hay que hacerlo.
 > - Retomar los pendientes NO-UoM del backlog general (ver más abajo).
 >
+> #### 🟡 DECISIÓN PENDIENTE DE GO — ¿los dos sistemas de variante en el MISMO SKU?
+>
+> La mig 274 había creado un CHECK (`chk_productos_grupo_sin_atributos_variante`) que impedía que un
+> producto fuera "grupo de variantes" **y** tuviera atributos de variante a nivel LPN
+> (`tiene_talle`/`tiene_color`/…) al mismo tiempo — dos modelos de stock incompatibles en un SKU. Ese
+> CHECK **desapareció** en la mig 311, porque referenciaba la columna `grupo_id` que se dropeó.
+>
+> Hoy **nada impide** que un SKU sea variante madre/hijo (`producto_padre_id`) Y tenga atributos de
+> variante encima. Al 2026-07-28 hay **0 productos** en esa situación, así que no hay nada roto — pero
+> es una decisión abierta: **¿se reconstruye el guard contra `producto_padre_id`, o la decisión "Eje A:
+> los dos sistemas coexisten" también habilita usarlos juntos en el mismo producto?** Si GO quiere el
+> guard, es un CHECK de una línea (nueva migración).
+>
+> #### ✅ 🔢 SERIALIZADOS — RESUELTO (mig 313, v1.145.0, 2026-07-28)
+>
+> El reparto del stock "sin variante asignada" soporta productos con número de serie: se elige **a qué
+> variante va cada serie** (no se reparte por cantidad). Las series **ya vendidas no se tocan** — quedan
+> con el producto con el que se vendieron, que es su historial. En serializados nunca se re-apunta el
+> LPN: nace uno nuevo, porque re-apuntarlo dejaría las series vendidas colgando de un LPN de otro
+> producto. Guards: serie de otra línea / vendida / reservada, la misma serie a dos variantes,
+> serializado sin mandar series, y destino que no maneja series igual que la madre. Se levantó el guard
+> de la mig 312 (ya no hay callejón sin salida). e2e `112` cubre el caso end-to-end.
+
 > ### 📐 ESTADO ANTERIOR (2026-07-27, cierre /clear) — Rediseño UoM: **FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308) hechas** — EN DEV, **SIN deploy a PROD**
 >
 > Continuación tras el /clear (GO pidió chunk 2 + Fase 1-bis). Metodología: cada migración por

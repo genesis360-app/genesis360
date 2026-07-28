@@ -6,10 +6,40 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-311)
+# Historial de Migraciones (001-313)
 
-**Total al 2026-07-28:** 311 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-28:** 313 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**313 (reasignar stock de productos SERIALIZADOS + levanta el guard de la 312, EN DEV y PROD, 🛑 MUEVE STOCK)** —
+Cierra el último pendiente del rediseño UoM. `fn_reasignar_stock_variante` pasa a aceptar, por asignación,
+la **LISTA de series** a mover (`"series":[uuid,...]`) en vez de una cantidad: en un producto con número
+de serie cada unidad ES una serie concreta y hay que decir CUÁL va a CUÁL variante, o el historial de esa
+unidad física (garantía, RMA, recall) queda bajo el SKU equivocado.
+**Verificado contra el modelo real (no asumido):** `recalcular_stock` cuenta `inventario_series` y NO
+`inventario_lineas.cantidad` para estos productos (en DEV hay uno con `sum(cantidad)=100` y 26 series);
+`inventario_series` ya tiene trigger `series_recalcular_stock`, así que mover una serie de producto
+recalcula ambos lados solo. Por eso lo que se mueve son las FILAS DE SERIE.
+**Decisión de diseño:** en serializados NUNCA se re-apunta la línea, SIEMPRE nace un LPN nuevo — una línea
+puede tener series INACTIVAS (ya vendidas) que pertenecen al historial de la madre y no se pueden
+re-etiquetar; re-apuntar dejaría `serie.producto_id ≠ linea.producto_id`. El LPN viejo se desactiva si se
+queda sin series activas, conservando su historial.
+Guards: serie de otra línea/vendida/reservada, la misma serie a dos variantes, serializado sin mandar
+series, y destino que no maneja series igual que la madre. Se bloquean también las FILAS DE SERIE con
+`FOR UPDATE` (el lock de la línea no frena una venta concurrente que consuma una serie).
+Además **levanta el guard de la mig 312**: ya no hay callejón sin salida, así que un serializado con stock
+vuelve a poder convertirse en agrupador.
+
+**312 (🛑 guard: no convertir en agrupador un producto SERIALIZADO CON STOCK, EN DEV y PROD)** —
+Cierra un hueco abierto por la propia mig 309. Esa migración desbloqueó crear la primera variante de un
+producto CON stock (queda "sin variante asignada" y se reparte después), pero
+`fn_reasignar_stock_variante` **rechaza a propósito** los productos con número de serie: repartir "6 y
+4" sin decir QUÉ serie va a cada variante rompería la trazabilidad. Combinadas, dejaban una **trampa**:
+el stock de un serializado convertido en agrupador quedaba **atrapado** — no vendible (la madre con
+hijos no se vende) y no reasignable. Se agrega el guard en `trg_variante_compose_nombre` (server-side,
+porque la UI se cachea y el importador/EFs escriben con service_role), que bloquea SOLO la conversión en
+agrupador (madre todavía sin hijos); agregarle otra variante a un agrupador existente no se toca.
+Acompañado del mismo bloqueo en `ProductoFormPage` con un mensaje que explica qué hacer.
 
 **311 (rediseño UoM — FASE 5 chunk C: limpieza del modelo viejo de variantes, EN DEV y PROD)** —
 DDL destructivo: se **dropean `producto_grupos`, `productos.grupo_id` y `productos.variante_valores`**

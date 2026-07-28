@@ -13,6 +13,31 @@ updated: 2026-07-28
 
 ---
 
+## v1.145.0 — 🔢 Reasignar stock de productos SERIALIZADOS (mig 313) — ✅ **PROD** (2026-07-28)
+
+Cierra el **último pendiente** del rediseño UoM/Empaque/Variantes. El reparto del stock "sin variante
+asignada" ahora soporta productos con número de serie: se elige **a qué variante va cada serie**, en vez
+de repartir cantidades (repartir a ciegas dejaría el historial de esa unidad física —garantía, RMA,
+recall— bajo el SKU equivocado). Las series **ya vendidas no se tocan**: quedan con el producto con el
+que se vendieron. Con esto se levanta el guard de la v1.144.1, que impedía convertir en agrupador un
+serializado con stock justamente porque no había forma de repartirlo.
+
+Verde: tsc · build · **1251 unit** · e2e `112` extendido (caso serializado end-to-end: conservación de
+las 3 series, cada una bajo el SKU correcto, la vendida intacta, coherencia serie↔línea, par de
+movimientos con neto cero y 3 rechazos server-side).
+
+---
+
+## v1.144.1 — 🛑 guard: serializado con stock no puede volverse agrupador (mig 312) — ✅ **PROD** (2026-07-28)
+
+Corrige un hueco de la v1.144.0 detectado el mismo día. La Fase 4 permitió convertir en agrupador un
+producto con stock, pero el reparto rechaza los productos con número de serie (hay que elegir QUÉ serie
+va a cada variante y esa pantalla no existe) → ese stock quedaba **atrapado**: ni vendible ni
+reasignable. Ahora se bloquea en la UI **y en el servidor** (`trg_variante_compose_nombre`), con un
+mensaje que dice qué hacer. Incluye además el `schema_full.sql` regenerado al día.
+
+---
+
 ## v1.144.0 — 📐 Rediseño UoM completo + WMS + Pedidos — ✅ **PROD** (2026-07-28)
 
 Migs **289-311 en DEV y PROD**. Cierra las dos fases que faltaban del rediseño UoM/Empaque/Variantes y sube además todo lo acumulado en `dev` desde v1.142.0 (módulo WMS y módulo Pedidos).

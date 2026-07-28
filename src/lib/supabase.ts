@@ -18,7 +18,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 export type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO' | 'ADMIN'
 export type SubscriptionStatus = 'trial' | 'active' | 'inactive' | 'cancelled'
-export type MovimientoTipo = 'ingreso' | 'rebaje' | 'ajuste' | 'kitting' | 'des_kitting'
+export type MovimientoTipo =
+  | 'ingreso' | 'rebaje' | 'ajuste' | 'kitting' | 'des_kitting'
+  | 'ajuste_ingreso' | 'ajuste_rebaje' | 'traslado'
+  /** Madre agrupadora → variante hijo (mig 309). Siempre en pares, neto cero: no es merma. */
+  | 'reasignacion_variante'
 
 export interface Tenant {
   id: string
@@ -283,7 +287,7 @@ export interface Ubicacion {
   disponible_surtido?: boolean
   es_devolucion?: boolean
   // WMS Fase 2
-  tipo_ubicacion?: 'picking' | 'bulk' | 'estiba' | 'camara' | 'cross_dock' | null
+  tipo_ubicacion?: 'picking' | 'bulk' | 'estiba' | 'camara' | 'cross_dock' | 'staging' | null
   alto_cm?: number | null
   ancho_cm?: number | null
   largo_cm?: number | null
@@ -291,6 +295,12 @@ export interface Ubicacion {
   capacidad_pallets?: number | null
   // Sprint B
   mono_sku?: boolean
+  disponible_tn?: boolean
+  disponible_meli?: boolean
+  sucursal_id?: string | null
+  secuencia?: number | null
+  // WMS Fase 3 — zonas
+  zona_id?: string | null
 }
 
 export interface Producto {
@@ -357,10 +367,9 @@ export interface ProductoEstructuraNivel {
   alto_cm?: number | null
   ancho_cm?: number | null
   largo_cm?: number | null
-  // Precio por UoM (backlog Fede puntos 4/6/7, mig 286/287) — NULL = calculado proporcional
-  // al nivel anclado, ver precioEfectivoNivel en src/lib/estructuras.ts.
-  precio_venta?: number | null
-  precio_costo?: number | null
+  // Empaque = logística pura, SIN precio propio (mig 307): se eliminó el override de precio por
+  // nivel. El precio de una presentación es precio_base × factor (ver precioPresentacion); el
+  // precio por volumen es un tier (mig 306).
   created_at: string
   // Join
   unidades_medida?: { nombre: string; simbolo: string | null } | null

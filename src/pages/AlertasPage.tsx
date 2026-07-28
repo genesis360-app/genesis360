@@ -235,6 +235,42 @@ export default function AlertasPage() {
     enabled: !!tenant && modoAvanzado,
   })
 
+  // K2 (Pedidos): entrega vencida sin completar + lanzado hace +24h sin avanzar (modo avanzado)
+  const { data: pedidosVencidos = [] } = useQuery({
+    queryKey: ['pedidos-entrega-vencida', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const hoy = new Date().toISOString().split('T')[0]
+      const { data, error } = await applyFilter(supabase
+        .from('pedidos')
+        .select('id, numero, fecha_entrega_solicitada, estado, clientes(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .not('fecha_entrega_solicitada', 'is', null)
+        .lt('fecha_entrega_solicitada', hoy)
+        .not('estado', 'in', '("entregado","cancelado")')
+        .order('fecha_entrega_solicitada', { ascending: true }))
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && modoAvanzado,
+  })
+
+  const { data: pedidosSinAvanzar = [] } = useQuery({
+    queryKey: ['pedidos-sin-avanzar', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const hace24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
+      const { data, error } = await applyFilter(supabase
+        .from('pedidos')
+        .select('id, numero, lanzado_at, clientes(nombre)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'en_preparacion')
+        .lt('lanzado_at', hace24h)
+        .order('lanzado_at', { ascending: true }))
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && modoAvanzado,
+  })
+
   const { data: clientesConDeuda = [], isLoading: loadingDeuda } = useQuery({
     queryKey: ['clientes-con-deuda', tenant?.id, sucursalId],
     queryFn: async () => {
@@ -492,6 +528,68 @@ export default function AlertasPage() {
                     className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
                   >
                     Ver LPN
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pedidos con entrega vencida (K2, solo avanzado) */}
+          {modoAvanzado && pedidosVencidos.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-red-500 uppercase tracking-wider flex items-center gap-2">
+                <CalendarX size={14} />
+                Pedidos con entrega vencida ({pedidosVencidos.length})
+              </h2>
+              {(pedidosVencidos as any[]).map(p => (
+                <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-red-200 dark:border-red-900/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-red-100 dark:bg-red-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <CalendarX size={18} className="text-red-500 dark:text-red-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100">
+                        Pedido #{p.numero}
+                        {p.clientes?.nombre && <span className="font-normal text-gray-500 dark:text-gray-400"> — {p.clientes.nombre}</span>}
+                      </p>
+                      <p className="text-xs text-red-600 dark:text-red-400">
+                        Entrega esperada el {new Date(p.fecha_entrega_solicitada + 'T00:00:00').toLocaleDateString('es-AR')}
+                      </p>
+                    </div>
+                  </div>
+                  <Link to="/pedidos" className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                    Ver pedido
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Pedidos lanzados sin avanzar +24h (K2, solo avanzado) */}
+          {modoAvanzado && pedidosSinAvanzar.length > 0 && (
+            <div className="space-y-3">
+              <h2 className="text-sm font-semibold text-amber-500 uppercase tracking-wider flex items-center gap-2">
+                <Clock size={14} />
+                Pedidos sin avanzar hace más de 24hs ({pedidosSinAvanzar.length})
+              </h2>
+              {(pedidosSinAvanzar as any[]).map(p => (
+                <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-amber-200 dark:border-amber-900/40 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Clock size={18} className="text-amber-500 dark:text-amber-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-gray-800 dark:text-gray-100">
+                        Pedido #{p.numero}
+                        {p.clientes?.nombre && <span className="font-normal text-gray-500 dark:text-gray-400"> — {p.clientes.nombre}</span>}
+                      </p>
+                      <p className="text-xs text-amber-600 dark:text-amber-400">
+                        Lanzado {formatDistanceToNow(new Date(p.lanzado_at), { addSuffix: true, locale: es })} — sin completarse todavía
+                      </p>
+                    </div>
+                  </div>
+                  <Link to="/picking" className="flex-shrink-0 px-3 py-1.5 text-xs font-medium text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors">
+                    Ver en Picking
                   </Link>
                 </div>
               ))}

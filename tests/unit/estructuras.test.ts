@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   calcularUnidadesBase, validarNiveles, nivelesAPayload, cadenaConversion,
-  convertirABase, type NivelForm, type NivelEstructuraDB,
+  convertirABase, nivelDefaultParaProducto, type NivelForm, type NivelEstructuraDB,
 } from '@/lib/estructuras'
 
 // Fase 1 estructuras dinámicas (mig 282) — footprint estilo Blue Yonder.
@@ -82,12 +82,10 @@ describe('nivelesAPayload', () => {
     expect(p[0]).toEqual({
       unidad_medida_id: 'udm-1', factor: 1,
       peso_kg: 0.5, alto_cm: 10, ancho_cm: null, largo_cm: null,
-      precio_venta: null, precio_costo: null,
     })
     expect(p[1]).toEqual({
       unidad_medida_id: 'udm-2', factor: 12,
       peso_kg: null, alto_cm: null, ancho_cm: null, largo_cm: 30,
-      precio_venta: null, precio_costo: null,
     })
   })
   it('campos vacíos → null (no 0 ni NaN)', () => {
@@ -129,5 +127,24 @@ describe('convertirABase', () => {
   it('cantidad no entera o negativa → throw (nunca stock fraccionado silencioso)', () => {
     expect(() => convertirABase(1.5, { unidades_base: 12 })).toThrow()
     expect(() => convertirABase(-1, { unidades_base: 12 })).toThrow()
+  })
+})
+
+describe('nivelDefaultParaProducto', () => {
+  const unidad = nivelDB({ id: 'n1', orden: 1, unidades_base: 1, unidades_medida: { nombre: 'Unidad', simbolo: 'u' } })
+  const caja = nivelDB({ id: 'n2', orden: 2, unidades_base: 12, unidades_medida: { nombre: 'Caja', simbolo: null } })
+  const pallet = nivelDB({ id: 'n3', orden: 3, unidades_base: 480, unidades_medida: { nombre: 'Pallet', simbolo: null } })
+
+  it('matchea por nombre de UdM del producto (case-insensitive)', () => {
+    expect(nivelDefaultParaProducto([unidad, caja, pallet], 'Caja')?.id).toBe('n2')
+    expect(nivelDefaultParaProducto([unidad, caja, pallet], 'caja')?.id).toBe('n2')
+    expect(nivelDefaultParaProducto([unidad, caja, pallet], 'PALLET')?.id).toBe('n3')
+  })
+  it('sin match → nivel base (orden más chico)', () => {
+    expect(nivelDefaultParaProducto([caja, unidad, pallet], 'Kilogramo')?.id).toBe('n1')
+    expect(nivelDefaultParaProducto([caja, pallet], null)?.id).toBe('n2')
+  })
+  it('sin niveles → null', () => {
+    expect(nivelDefaultParaProducto([], 'Unidad')).toBeNull()
   })
 })

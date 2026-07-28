@@ -318,3 +318,58 @@ export async function totalDelCarrito(page: Page): Promise<number> {
   expect(total, '[fixtures] el total del carrito quedó en 0 — el producto no se agregó').toBeGreaterThan(0)
   return total
 }
+
+// ─── Empaque / presentaciones (rediseño UoM Fase 5, mig 310) ────────────────────────────
+
+/**
+ * Siembra el ÁRBOL de presentaciones de un producto vía la RPC real `fn_presentaciones_guardar`.
+ *
+ * Reemplaza al patrón viejo (crear `producto_estructuras` + `fn_estructura_guardar_niveles`):
+ * desde la mig 310 `producto_presentaciones` es la FUENTE DE VERDAD del empaque y la RPC vieja
+ * quedó sin GRANT a `authenticated` (mig 311). El padre se referencia por índice ANTERIOR del
+ * array, así que la cadena no puede tener ciclos.
+ *
+ * `lineas` describe cada presentación por su equivalencia RESUELTA en unidades base:
+ *   [{ etiqueta: 'Caja-12', factor_base: 12, padre_idx: 0 }]
+ * La base (factor 1, `padre_idx: null`) se antepone sola si no viene en la lista.
+ */
+export async function sembrarPresentaciones(
+  request: APIRequestContext,
+  token: string,
+  productoId: string,
+  etiquetaBase: string,
+  lineas: Array<{ etiqueta: string; factor_base: number; padre_idx?: number | null; nombre_empaque_id?: string | null }>,
+): Promise<void> {
+  const headers = restHeaders(token)
+  const payload = [
+    { padre_idx: null, nombre_empaque_id: null, etiqueta: etiquetaBase, factor_base: 1 },
+    ...lineas.map(l => ({
+      padre_idx: l.padre_idx === undefined ? 0 : l.padre_idx,
+      nombre_empaque_id: l.nombre_empaque_id ?? null,
+      etiqueta: l.etiqueta,
+      factor_base: l.factor_base,
+    })),
+  ]
+  const res = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_presentaciones_guardar`, {
+    headers,
+    data: { p_producto_id: productoId, p_lineas: payload },
+  })
+  expect(
+    res.ok(),
+    `[fixtures] fn_presentaciones_guardar falló al sembrar el empaque de ${productoId}: ${await res.text()}`,
+  ).toBe(true)
+}
+
+/** Presentaciones de un producto, ordenadas por factor (base primero). */
+export async function leerPresentaciones(
+  request: APIRequestContext,
+  token: string,
+  productoId: string,
+): Promise<Array<{ id: string; etiqueta: string; factor_base: number; es_base: boolean; padre_linea_id: string | null }>> {
+  const res = await request.get(
+    `${SUPABASE_URL}/rest/v1/producto_presentaciones?producto_id=eq.${productoId}` +
+      `&order=factor_base&select=id,etiqueta,factor_base,es_base,padre_linea_id`,
+    { headers: restHeaders(token) },
+  )
+  return (await res.json()) as any
+}

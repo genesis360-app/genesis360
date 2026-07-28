@@ -6,6 +6,788 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-28] update | 📐 Rediseño UoM COMPLETO — FASE 4 (stock sin variante asignada, mig 309) + FASE 5 (presentaciones = fuente de verdad + hermanas + limpieza, migs 310/311)
+
+Sesión autónoma pedida por GO: "seguí hasta completar todas las fases". Cierra el rediseño
+UoM/Empaque/Variantes entero. Cada migración pasó por `migration-reviewer` **antes** de aplicarse y
+se verificó contra datos REALES de DEV. `APP_VERSION` = **v1.144.0**.
+
+**FASE 4 (mig 309, 🛑 MUEVE STOCK — Regla #0).** Stock **"sin variante asignada"**: al crearle la
+primera variante a un producto con stock, ese stock queda colgando de la madre agrupadora — sigue
+contando en inventario pero **no es vendible** (el POS excluye a las madres desde la Fase 3). Antes
+la UI directamente **bloqueaba** esa operación; ahora se permite con aviso y se resuelve con
+`fn_reasignar_stock_variante`: UNA transacción, líneas bloqueadas `FOR UPDATE` en orden
+determinístico, **par de `movimientos_stock` por asignación → neto CERO**. Línea entera a un solo
+hijo = **re-apunta el `producto_id` del LPN** (misma caja física, conserva etiqueta, no hay que
+re-etiquetar); parcial = descuenta del origen y crea línea nueva heredando ubicación/estado/lote/
+vencimiento/costo/`parent_lpn_id`, **desactivando el origen si queda en 0**. Guards: serializados,
+reservas de pedido, LPN contenedor, sobre-asignación y destino que no es hijo. Tipo de movimiento
+**nuevo** `reasignacion_variante` — NO se reusó `ajuste_rebaje` a propósito: el Dashboard de
+Inventario cuenta esos movimientos como **MERMA** y reasignar habría inflado una pérdida inexistente.
+`fn_stock_por_sucursal` hace que el cartel de borrado **nombre la sucursal** con stock (el bloqueo
+server-side ya existía; faltaba explicarlo). **E3**: cambiar la UdM física dentro de la misma familia
+es libre; cruzar de familia con stock se bloquea por trigger.
+**🛑 Bug latente que destapó la reasignación:** cambiar el `producto_id` de una línea **no disparaba**
+el sync de TiendaNube (trigger acotado a cantidad/reservada/activo) y el de MercadoLibre solo
+encolaba el producto NUEVO → el listado publicado del producto viejo quedaba con stock desactualizado
+= **riesgo de sobreventa**. Ambas funciones encolan ahora los dos productos. El `migration-reviewer`
+cazó ese hallazgo y el del LPN partido que quedaba activo en 0, **antes** de aplicar.
+Verificado en DEV con un escenario real: 17 unidades en 2 LPN de 2 sucursales → 13 + 4, nada perdido.
+
+**FASE 5 (migs 310/311).** `producto_presentaciones` deja de ser un espejo derivado de
+`producto_estructura_niveles` y pasa a ser la **FUENTE DE VERDAD** del empaque. Se levanta el
+`UNIQUE(producto, nombre_empaque)` → **HERMANAS** (Caja-12 y Caja-10 del mismo producto, pedido
+explícito de Fede). Backfill verificado: **0 conversiones perdidas**, 314/314 productos con
+presentación base, 0 árboles incoherentes, y se **recuperaron** las estructuras no-default que hasta
+hoy eran letra muerta (Leche La Serenísima: Caja-12→Pallet-216 + Caja-10→Pallet-360; Cellulse:
+Caja-20 + Caja-15). RPC `fn_presentaciones_guardar` (el padre se referencia por índice ANTERIOR del
+array → sin ciclos por construcción; valida una sola base con factor 1, etiquetas únicas, hijo más
+grande que el padre y **múltiplo entero**). Trigger `trg_productos_presentacion_base` siembra la base
+de todo producto nuevo y mantiene H2. Editor nuevo `PresentacionesEditor` (UN árbol por producto,
+"Pallet = 18 × Caja") reemplaza el CRUD de "Estructuras"; Inventario, Recepciones, Masivo, LPN e
+Importador leen/escriben presentaciones. Limpieza (mig 311): **dropeadas** `producto_grupos`,
+`productos.grupo_id` y `productos.variante_valores` (preservando en `notas` el único producto sin
+migrar) + borrado `ProductoGrupoModal.tsx` + **revocada** `fn_estructura_guardar_niveles` de
+`authenticated`. `producto_estructuras`/`_niveles` **NO se dropean**: `inventario_lineas.estructura_id`
+las referencia como histórico de recepción (Regla #0, trazabilidad).
+
+**🛑 Bug de PLATA que cazó el e2e.** El POS decidía si una línea se vendía "en unidad suelta"
+comparando `nivelSeleccionadoOrden === 1` — cierto mientras la base venía de la cadena lineal
+(siempre orden 1), FALSO con el árbol (base = orden 0, orden 1 = primera Caja). Vender "1 Caja" se
+registraba como venta en UoM base y **se le aplicaban los combos configurados solo para la unidad
+suelta** (10% off sobre una caja de $1.200 que no correspondía), además de perder
+`venta_items.unidad_medida_id/cantidad_uom`. Se reemplazaron las 6 comparaciones contra el ordinal
+por el flag `es_base` (`vendiendoEnBase()`). También se corrigió que el adaptador devolvía `''` en
+vez de `null` como `unidad_medida_id` de la base, lo que rompía el INSERT del LPN al ingresar stock.
+
+**Verde:** tsc · build · **1243 unit** (`presentaciones.test.ts` 23 + `reasignacionVariante.test.ts` 16,
+nuevos) · e2e **`99` reescrito** (árbol + hermanas + 5 negativos server-side, reemplaza al de
+estructuras lineales) · **`112` nuevo** (Fase 4: conservación de las 17 unidades, re-apuntado, LPN
+partido desactivado, par de movimientos, 3 rechazos) · `100/102/103/104` migrados a sembrar por
+`fn_presentaciones_guardar`. **Pendiente:** `schema_full.sql` no se pudo regenerar (falta el
+`SUPABASE_ACCESS_TOKEN`; refleja hasta la 308) y la reasignación de productos **serializados** quedó
+bloqueada a propósito (hay que elegir qué serie va a cada variante → UI propia).
+Ver [[wiki/features/estructuras-udm]] y [[wiki/features/grupos-variantes]].
+
+## [2026-07-27] update | 📐 Rediseño UoM — FASE 2-bis chunk 2 (empaque sin precio + árbol genealógico, mig 307) + FASE 1-bis (catálogo completo de físicas, mig 308)
+
+Continuación tras /clear (GO pidió chunk 2 + Fase 1-bis). Cada migración revisada por
+`migration-reviewer` ANTES de aplicar + verificada contra DB real. Sigue **TODO EN DEV, PROD = v1.142.0**.
+
+**FASE 2-bis chunk 2 (mig 307, 🛑 TOCÓ PLATA — Regla #0):** reencauza mig 304 con el modelo final de
+Fede — el **empaque es logística pura, sin precio propio**. Se DROPEARON los overrides
+`precio_venta`/`precio_costo` de `producto_presentaciones` y de `producto_estructura_niveles`. El
+precio de una presentación es SIEMPRE `productos.precio_venta (unidad base) × factor_base`; el precio
+por volumen se expresa con TIERS (mig 306), no con un override de bulto. `producto_presentaciones`
+gana **`padre_linea_id`** (árbol genealógico; self-FK NO ACTION = guard de borrado-con-hijos) +
+trigger `trg_pp_no_ciclo` + `UNIQUE(producto_id, orden)`. `fn_rebuild_presentaciones` setea el padre
++ **H2** (etiqueta de la presentación base = `productos.unidad_medida`). Rewire: estructuras.ts
+(`precioPresentacion(base, factor)` sin override), VentasPage/POS (vender "2 cajas" = SOLO conversión
+de cantidad; `precio_unitario` no cambia), ProductosPage (editor sin precio por nivel), ProductoFormPage,
+Importador (sin columnas `estr_precio_*`). Verificado en DEV: de 22 productos con override, 20 eran
+E2E/Test; los reales (Coca 2.5L −2¢ por redondeo del precio/unidad) cambian según el modelo esperado.
+El `migration-reviewer` validó FK NO ACTION vs el wipe del rebuild, el ciclo, el linkeo del padre y la
+idempotencia. e2e 102/103/104/105 reescritos al nuevo modelo + 110 (tiers) verde.
+
+**FASE 1-bis (mig 308, NO toca plata):** Config→Inventario→"Unidades" = **catálogo COMPLETO de físicas**
+(27 unidades: métrico + imperial —onza/libra/galón US/pulgada/pie/yarda/milla— + **familia nueva 'area'**
+m²/cm²/ha/km² + docena/millar) con **enable/disable por tenant** (toggle `activo`; la base de familia no
+se apaga) + **presets por rubro** (8 botones, `PRESETS_RUBRO` aditivos). Comunes activas, imperial/raras
+inactivas por default. Los **"Nombres de empaque" se movieron a una pestaña nueva "Empaque"**. Lib:
+`FamiliaFisica`+'area', `FAMILIAS_FISICAS`, `PRESETS_RUBRO`, `UnidadFisica.activo`. El `migration-reviewer`
+cazó que el mirror frontend de `FamiliaFisica` sin 'area' crasheaba el form de producto → corregido antes
+de aplicar. e2e 111 nuevo (toggle persiste + preset activa m³ + pestaña Empaque, self-restore).
+
+Verde: tsc + build + 1204 unit + e2e 102/103/104/105/110/111. **`schema_full.sql` regenerado** al cierre
+(GO pasó un `SUPABASE_ACCESS_TOKEN` puntual, usado inline y NO persistido; 524 KB, 151 tablas, refleja
+303-308). **Pendiente PROD:** verificar deltas de override + colisiones de nombres contra datos reales de
+PROD. **🔐 Seguridad:** el token pasado comparte prefijo (`sbp_60df…`) con el documentado como leaked+rotado
+el 2026-07-09 → GO debería rotarlo de nuevo. Próxima sesión = Fase 4 (stock sin variante asignada + borrado
+multi-sucursal) + Fase 5 (operar por presentación + limpieza de tablas deprecadas). Ver [[wiki/features/estructuras-udm]].
+
+## [2026-07-24] update | 📐 Rediseño UoM — FASE 2-bis (respuestas finales de Fede): tiers de precio mayorista con OPERADOR + agregación por SKU (mig 306)
+
+Tras cerrar el relevamiento con Fede (respuestas finales 2026-07-24), el rumbo del eje precio/venta
+cambió: el precio vive **solo a nivel de unidad + tiers de cantidad** (sin overrides por presentación,
+la estructura es logística pura), el stock decimal se maneja en **unidad atómica entera** (gramos/mL/mm,
+sin migrar columnas), y el empaque pasa a un modelo de **"árbol genealógico"** (cada línea apunta a su
+padre explícito). Esto reencauza parte de la Fase 2 ya construida. Se arrancó por el **chunk 1**: los
+tiers con operador. Sigue **TODO EN DEV, sin deploy a PROD**.
+
+**mig 306** — `producto_precios_mayorista` gana `operador` ('>','<','=','>=','<=', default '>=') +
+`orden`. Resolución nueva (Fede): se evalúan en `orden` asc, gana el **primer match**; si ninguno,
+precio base. La cantidad comparada es el **TOTAL del SKU en el carrito** (agregación por SKU, no por
+línea — el precio mayorista es por volumen). Permite expresar "= 800 = un pallet completo", no solo
+umbrales. El `migration-reviewer` encontró un **bug de plata**: el POS viejo era "gana el de mayor
+cantidad_minima satisfecho" (last-match), y con first-match + backfill asc un cliente que compra 60 con
+tiers 10→$90/50→$80 pagaría $90 — corregido backfilleando `orden` **DESC** (mayor umbral primero).
+
+Lógica pura nueva `src/lib/tiers.ts` (`matchTier`/`precioTier`/`mejorPrecioMayorista`, 10 unit tests
+incl. la regresión del bug). POS (`VentasPage`): `precioTierBase` resuelve por operador + suma la
+cantidad del SKU en todo el carrito; **`descEstadoDe`** recalcula el descuento por estado con el precio
+vigente (fuente única para plata + venta_items + ticket, así nada queda stale si otra línea del mismo
+SKU mueve el tier — Regla #0). Ficha (`ProductoFormPage`): dropdown de operador por tier + persiste
+`orden`=índice (el reviewer marcó que sin esto el fix se revertía en el 1er guardado). Verde: tsc +
+build + 10 unit + e2e `110` (persistencia operador+orden desde la ficha, contra DB real).
+
+**▶ Falta de Fase 2-bis (próxima):** chunk 2 = re-modelar `producto_presentaciones` a árbol genealógico
+(`padre_linea_id` + factor_base resuelto + guards de ciclo/borrado) + sacar los overrides de precio +
+atar el nivel base a la UdM física de la ficha (H2). Fase 1-bis = catálogo completo de físicas +
+enable/disable + presets por rubro. Fase 4 = stock decimal atomic-base + E3. Detalle en
+`diseño-uom-empaque-variantes.html` y [[wiki/features/estructuras-udm]].
+
+## [2026-07-24] update | 📐 Rediseño UoM/Empaque/Variantes — FASE 2 (precio en base + presentaciones, mig 304) y FASE 3 (variantes madre/hijo, mig 305)
+
+Continuación de Fase 1 tras el /clear (GO pidió seguir con Fase 2 + 3). Ambas construidas y
+verificadas contra datos reales de DEV, cada migración revisada por `migration-reviewer` ANTES de
+aplicar. Sigue **TODO EN DEV, sin deploy a PROD (PROD = v1.142.0)**.
+
+**FASE 2 — Precio canónico en la unidad BASE + presentaciones paralelas (mig 304, 🛑 TOCA PLATA):**
+tabla nueva `producto_presentaciones` (modelo plano, `factor_base` directo a la base; soporta
+hermanas a futuro) poblada 1:1 desde `producto_estructura_niveles` y mantenida por trigger
+(`fn_rebuild_presentaciones`). Se **eliminó `productos.nivel_precio_orden`** (el ancla por posición,
+bug F3): ahora `productos.precio_venta/costo` es SIEMPRE el precio por unidad base y cada presentación
+= override propio ?? base × factor. Back-calc de plata verificado exacto contra los 6 productos
+anclados de DEV (el precio del nivel anclado se persiste como override para no driftear). Rewire:
+`estructuras.ts` (`precioPresentacion`), ProductoFormPage, VentasPage/POS, ProductosPage, Importador.
+`niveles` se mantiene para conversión (Recepciones/Inventario/WMS) hasta Fase 5. Verde: tsc + build +
+37 unit + e2e `102`/`105` (3/3). El `migration-reviewer` pidió restringir el GRANT a solo-SELECT
+(tabla derivada) y un guard de idempotencia en el back-calc — ambos aplicados.
+
+**FASE 3 — Variantes madre/hijo (mig 305, reemplaza `producto_grupos`):** `productos.producto_padre_id`
++ `variante_diferenciador`; nombre del hijo compuesto por trigger (`madre.nombre — diferenciador`) y
+propagado al renombrar la madre. Guards: 2 niveles, no self-parent, tenant explícito. Madre con hijos =
+agrupador no vendible (derivado `EXISTS hijos`). Migró 3 grupos con ≥2 productos → madre + hijos.
+`producto_grupos`/`grupo_id`/`variante_valores` deprecados (no dropeados). Rewire UI: POS excluye
+agrupadores (Regla #0), ProductosPage agrupa por padre, ProductoFormPage sección "Variantes" + "Crear
+variante" (bloquea si el standalone tiene stock — reasignación es Fase 4). Atributos-variante COEXISTE
+(Eje A). El `migration-reviewer` encontró un bug **bloqueante de idempotencia** (2da corrida duplicaba
+madres) — corregido filtrando `producto_padre_id IS NULL`; + cerró el guard de 3 niveles y agregó el
+chequeo de tenant. Verde: tsc + build + e2e `109` (2/2, composición + propagación + guards).
+
+**▶ Próxima sesión = Fase 4 (stock "sin variante asignada" + guards de borrado multi-sucursal, la más
+Regla #0) + Fase 5 (operar por presentación: recibir/vender eligiendo presentación, habilitar hermanas
+migrando la conversión a presentaciones, caja variable, decimales por familia) + limpieza de tablas
+deprecadas.** 🛑 Al deployar a PROD: verificar el back-calc contra datos reales de PROD y que el
+frontend acompañe el DROP de `nivel_precio_orden` en el mismo deploy. Ver [[wiki/features/estructuras-udm]].
+
+## [2026-07-23] update | 📐 Rediseño UoM/Empaque/Variantes — relevamiento + diseño + FASE 1 (Unidad de Medida física, mig 303)
+
+GO detectó que "Unidad de medida" (ficha de producto) y "Estos precios corresponden a" (ancla de
+precio de la Estructura) conviven sin relación clara, y que Config→Inventario→Unidades mezcla
+unidades físicas (kg/L, conversión universal) con niveles de empaque (Caja/Pallet, factor por
+producto). Tras una auditoría profunda del código se confirmó que son **tres ejes de negocio
+distintos mezclados**: identidad/variante, unidad de medida física, y empaque.
+
+**Artefactos de diseño (raíz del repo, HTML imprimible):**
+- `relevamiento-unidades-medida-empaque-reglas-negocio.html` — 28 preguntas (incluye ejemplos
+  trabajados: caja variable 10/12, dos cajas+dos pallets en una estructura, el bug del ancla).
+- `diseño-uom-empaque-variantes.html` — diseño consolidado: 3 ejes ortogonales, modelo de datos,
+  flujos, migración, 5 fases.
+
+**Decisiones cerradas por GO (desbloquean el arranque):** A2 = un producto puede tener ambos ejes
+(físico + empaque, caso Jamón) · C5/C6 = presentaciones paralelas (cada una con factor directo a la
+base, hermanas permitidas — no cadena lineal) · F1/F3 = precio canónico en la unidad base + overrides
+(elimina el ancla por posición) · G1 = tablas separadas (físicas ≠ empaque) · Eje A = "atributos de
+variante" (LPN) coexiste con madre/hijo.
+
+**Hallazgo (anotado, se arregla en Fase 2):** el ancla de precio `nivel_precio_orden` se guarda por
+POSICIÓN y no se revalida al reordenar niveles / cambiar la estructura default → puede apuntar en
+silencio a otra unidad y recalcular mal los precios proporcionales.
+
+**FASE 1 construida (mig 303, EN DEV, sin deploy a PROD):** tabla `unidades_medida_fisicas` (familias
+Peso/Volumen/Longitud/Conteo con conversión universal) + seed por trigger + backfill; FK
+`productos.unidad_medida_base_id` + backfill best-effort del texto legacy (25/25 productos mapeados en
+dev). Lógica pura `src/lib/unidadMedidaFisica.ts` (12 tests). Selector nuevo en `ProductoFormPage`
+(agrupado por familia, persiste el FK + texto en sincronía). Config → Inventario → "Unidades" muestra
+las físicas por familia; "personalizadas" → "Nombres de empaque". Migración revisada por
+`migration-reviewer` (APTA, se agregó el índice sugerido). NO toca stock/precios/fiscal. Verde: tsc +
+build + 12 unit + e2e `108_unidad_medida_fisica_mutante` (2/2 contra DB real). Ver
+[[wiki/features/estructuras-udm]] → "Rediseño UoM — Fase 1".
+
+## [2026-07-23] update | 🧾 Pedidos — validaciones de creación (referencia externa mig 302, estado obligatorio+precargado, fecha oblig., cantidad entera-según-UoM, líneas diferenciadas, aviso de stock) + relevamiento UoM vs Empaque
+
+GO reportó un issue del alta de pedido: el estado por línea debía precargarse con el default del
+producto y ser obligatorio; el nº de pedido debía permitir uno manual además del secuencial interno;
+faltaban validaciones. Sigue **TODO EN DEV, sin bump de `APP_VERSION` (v1.143.0), sin deploy a PROD**.
+
+Decisiones tomadas con GO (vía preguntas de diseño):
+- **Estado por línea:** obligatorio **solo si el tenant tiene estados de inventario activos** (un
+  tenant sin estados no queda bloqueado), precargado con `productos.estado_id` si sigue activo.
+- **Nº de pedido:** el correlativo interno queda intocable (siempre automático); el número "manual"
+  va en un campo **`pedidos.referencia`** aparte (texto libre, ej. la OC del cliente) — mig 302. Evita
+  huecos en la secuencia y colisiones (`numero` no tiene constraint de unicidad).
+- **Cliente:** se mantiene configurable por tipo (C3) — el default de los tipos nuevos pasa a
+  `cliente_obligatorio=true` (mig 302, solo tenants nuevos).
+- **Cantidad:** entera salvo UoM fraccionaria — usa el helper central `esDecimal` de
+  `ventasValidation.ts` (kg/gr/lt/ml… admiten decimales; unidad/caja/pieza no). GO pidió explícitamente
+  dejarlo preparado para cuando exista la venta por peso: al centralizar en `esDecimal`, cuando cambie
+  el modelo de UoM se ajusta ese único helper.
+- **Otras:** fecha de entrega obligatoria (habilita K2 sin ambigüedad), repetir producto en N líneas
+  permitido si difieren estado/atributos (solo se bloquean dos líneas idénticas), aviso NO bloqueante
+  de stock al armar (H2 — el bloqueo en firme sigue al Lanzar).
+
+**mig 302** revisada por `migration-reviewer` (aditiva; `CREATE OR REPLACE` preserva el ACL, se
+agregó el REVOKE explícito por defensa en profundidad). Verde: tsc + build. Aplicada solo en DEV.
+
+**Aparte, sin código:** se armó `relevamiento-unidades-medida-empaque-reglas-negocio.html` (HTML
+imprimible, mismo formato que el de Pedidos) tras una auditoría profunda del código — GO notó que
+"Unidad de medida" (ficha de producto, texto libre legacy hardcodeado) y "Estos precios corresponden
+a" (ancla de precio de la Estructura) conviven sin relación clara, y que Config→Inventario→Unidades
+mezcla unidades físicas reales (kg/L, conversión universal) con niveles de empaque (Caja/Pallet,
+factor por producto). Se confirmó que son **dos conceptos de negocio distintos mezclados en una sola
+tabla** (`unidades_medida`) y en un campo legacy. **Bug real hallado de paso** (anotado, sin arreglar
+todavía): el ancla de precio (`nivel_precio_orden`) no se revalida si se reordenan niveles o se cambia
+la Estructura default → puede quedar apuntando en silencio a otra unidad. GO lo va a revisar con Fede
+antes de definir el rediseño (es cambio de modelo, toca schema + POS + stock ya en PROD).
+
+Continuación inmediata de la entrada de abajo (misma sesión): tras cerrar PED6, GO pidió corregir
+también los 5 gaps que habían quedado documentados en la primera pasada de PED1-PED8. Sigue **TODO
+EN DEV, sin bump de `APP_VERSION` (v1.143.0) ni release, sin deploy a PROD**.
+
+**1) `supabase/migrations/299_pedidos_cc_morosidad.sql`** — `fn_pedido_generar_venta` ahora valida
+límite de crédito (B1) cuando el medio de pago incluye Cuenta Corriente. El trigger genérico
+`fn_ventas_cc_guard` (mig 234) ya cubre B4/morosidad para cualquier venta incl. Pedidos, así que no
+se duplica — pero tiene un punto ciego real con Pedidos para B1 (lee `NEW.medio_pago` al INSERT, y
+Pedidos inserta con `total=0`/`monto:null`, así que el chequeo del trigger nunca dispara). **2
+rondas de `migration-reviewer`:** la 1ra encontró que la versión inicial SÍ duplicaba B4 (vía
+`cliente_cc_estado`, dependiente de `auth.uid()` — el mismo patrón que la 234 evitó a propósito) y
+que un monto CC negativo neutralizaba el chequeo de límite (corregido con `GREATEST(x,0)`); la 2da
+encontró que el *gate* de la validación seguía dependiendo de un valor controlado por el llamante
+(`v_monto_cc` — una sola entrada CC con monto ≤0 evadía el chequeo entero) y se corrigió usando
+`v_total - v_monto_pagado` (saldo real sin cubrir, ambos términos defendidos) como gate. Aplicada a
+DEV recién con el fix final.
+
+**2) `supabase/migrations/300_pedidos_unpick_encadenado.sql`** — `fn_unpick_tarea_wms` ahora también
+des-pickea tareas encadenadas a un reabastecimiento (antes solo picking directo). Causa raíz: para
+una tarea encadenada el `lpn_origen` es el LPN de bulk viejo, que nunca existió físicamente en la
+ubicación de picking. Fix: fallback por producto+ubicación (FEFO, sin filtro de LPN) cuando el match
+exacto falla y la tarea tiene `tarea_precedente_id`.
+
+**3) `supabase/migrations/301_pedidos_cancelar_venta_resuelta.sql`** — `fn_cancelar_pedido` ya no
+bloquea para siempre un pedido que generó una venta, si esa venta ya se devolvió/canceló a mano
+(antes el guard no filtraba por estado). La devolución automática end-to-end sigue diferida a
+propósito (Regla #0 — esa lógica fiscal vive solo en `VentasPage.tsx`); la UI (`PedidosPage.tsx`)
+ahora muestra las ventas vinculadas al pedido con link "Devolver esta venta" a
+`/ventas?id=<id>&devolver=1`.
+
+**4) K3 (exportes, sin migración):** menú "Exportar" (`ActionMenu`) en `/pedidos` con salidas a
+Excel (`xlsx`), CSV y PDF (`jspdf`+`autotable`) sobre la lista filtrada — mismo patrón que
+Clientes/Caja.
+
+**5) Editor E3 de `pedido_transiciones_roles` (sin migración nueva, reusa la columna jsonb de la mig
+292):** tab Config → Pedidos ganó una tabla rol×transición (confirmar/lanzar/entregar/cancelar/
+deslanzar). Lógica pura nueva `src/lib/pedidoTransiciones.ts` (`puedeTransicionPedido`, mismo patrón
+que `ajusteAutorizacion.ts`) — transición ausente en la config usa el default de código (DUEÑO/
+SUPERVISOR/SUPER_USUARIO/DEPOSITO); transición presente (incluso `[]`) es allow-list estricta.
+`ADMIN` (staff) siempre puede, no aparece en la tabla editable. Gate 100% client-side (mismo alcance
+que `ajuste_autorizacion_roles`), wireado en los 5 botones de transición + "Lanzar bolsa" + "Deshacer"
+(des-pickeo) de `PedidosPage.tsx`.
+
+**Verificación:** tsc + build + 1188 tests unitarios verdes (8 nuevos en `pedidoTransiciones.test.ts`)
++ **5/5 e2e verde** en `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` (los 3 tests de la
+tanda anterior + un test nuevo que crea un cliente con `limite_credito=100`, confirma que entregar un
+pedido de $500 a CC con `cc_enforcement_politica='bloquear'` se rechaza con rollback completo, y que
+levantando el límite el mismo pedido sí entrega).
+
+Migraciones 299-301 aplicadas solo en DEV (`gcmhzdedrkmmzfzfveig`). Ver [[wiki/features/pedidos]] →
+"Correcciones post-relevamiento".
+
+## [2026-07-23] update | 🧾 Pedidos cierra PED6 (bolsa de pedidos + staging + listas imprimibles, mig 298) — GO pidió no dejarlo diferido
+
+Continuación inmediata de la entrada de abajo (misma sesión): GO preguntó por qué PED6 había
+quedado diferido y pidió construirlo. Sigue **TODO EN DEV, sin bump de `APP_VERSION` (v1.143.0) ni
+release, sin deploy a PROD**.
+
+**`supabase/migrations/298_pedidos_ped6_bolsa_staging.sql`** — RPC nueva
+`fn_lanzar_bolsa_pedidos(p_pedido_ids uuid[], p_ubicacion_staging_id uuid)`. Decisión de diseño: en
+vez de reimplementar la reserva/generación de tareas para el lanzamiento batch, la bolsa agrupa N
+pedidos + la ubicación de staging elegida como **metadato organizativo** — la RPC llama, pedido por
+pedido, a `fn_generar_tareas_picking_pedido` (mig 294, sin cambios) y etiqueta las tareas resultantes
+con `wms_tareas.lanzamiento_id` (FK nueva a la tabla nueva `pedido_lanzamientos`). `'staging'` se
+agregó al CHECK de `ubicaciones.tipo_ubicacion`. Si cualquier pedido de la bolsa falla, la excepción
+aborta la función entera — no hay bolsas parciales.
+
+El `migration-reviewer` encontró un bug real antes de aplicar: sin un guard explícito, un pedido YA
+lanzado incluido por error en una bolsa nueva no generaba nada (la RPC delegada es idempotente por
+diseño), pero el `UPDATE wms_tareas SET lanzamiento_id` de todos modos le reescribía la bolsa a esas
+tareas viejas **en silencio** — rompiendo trazabilidad write-time. Se agregó un `EXISTS` que rechaza
+la bolsa entera si cualquier pedido ya fue lanzado, más defensa en profundidad (validar tenant
+homogéneo entre TODOS los pedidos del array, no solo el primero — la función se concede a
+`service_role`, que tiene BYPASSRLS).
+
+**🐛 Bug real encontrado por el e2e, no por el review:** al correr el test contra DEV, la función
+falló con `42702 column reference "pedido_id" is ambiguous` — tiene `pedido_id` como columna de
+salida (`RETURNS TABLE`), que Postgres expone como variable PL/pgSQL en todo el cuerpo, así que una
+referencia sin calificar a `wms_tareas.pedido_id` dentro del guard era ambigua. Fix: calificar
+explícitamente `wms_tareas.pedido_id`. Corregido y reverificado en DEV.
+
+**Listas de picking imprimibles (L2-2):** modal en `PedidosPage.tsx` con `window.print()` + regla
+`@media print` nueva (`#pedido-lista-print`, mismo patrón que el ticket de venta/comprobante de
+devolución en `index.css`) — fallback cuando falla el escaneo.
+
+**UI (`PedidosPage.tsx`):** checkbox de selección por pedido `confirmado`, barra flotante "Lanzar
+bolsa" con modal de ubicación de staging, botón imprimir para cualquier pedido lanzado. `ConfigPage.tsx`
+suma la opción "Staging" al selector de tipo de ubicación (alta y edición).
+
+**Verificación:** tsc + build + 1180 tests unitarios verdes + `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts`
+ganó un tercer test (bolsa de 2 pedidos + guard de "ya lanzado") — **4/4 verde** contra datos reales
+de DEV tras el fix de la ambigüedad de columna.
+
+`APP_VERSION` sigue v1.143.0 (sin bump, sin release). Migración 298 aplicada solo en DEV. Ver
+[[wiki/features/pedidos]] → PED6.
+
+## [2026-07-23] update | 🧾 Módulo "Pedidos" completa su ciclo de vida entero — PED3 (lanzar), PED4 (entregar/generar venta), PED5 (cancelar/deslanzar/des-pickeo), PED7 (Config), PED8 parcial (alertas) — migs 294-297
+
+Continuación inmediata de la sesión anterior (PED1+PED2, mig 292 — ver entrada de abajo). Se
+construyó el resto del roadmap acordado con GO en `G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md`
+("Plan por fases", PED3-PED8). Sigue **TODO EN DEV, sin bump de `APP_VERSION` (sigue v1.143.0) ni
+release, sin deploy a PROD**.
+
+**Metodología: cada migración pasó por el subagente `migration-reviewer` ANTES de aplicarse** —
+encontró hallazgos reales en las 3 migraciones fiscales/de-stock (294, 295, 296), corregidos en el
+momento, antes de tocar la base de DEV.
+
+**PED3 — "Lanzar" (`supabase/migrations/294_pedidos_ped3_lanzar.sql`, aplicada en DEV
+`gcmhzdedrkmmzfzfveig`):** RPC nueva `fn_generar_tareas_picking_pedido(p_pedido_id)` — arranca desde
+`pedido_items` (nunca desde un envío/venta existente, a diferencia de `fn_generar_tareas_picking_envio`
+que sigue siendo código muerto en la práctica por la decisión F4 de la sesión anterior). Valida
+stock disponible ANTES de reservar nada (bloquea con `RAISE EXCEPTION` nombrando producto/SKU/
+faltante si no alcanza); reserva `inventario_lineas.cantidad_reservada` vía FEFO (mismo mecanismo
+que "Reservar stock" de Ventas); genera `wms_tareas` (picking directo si la línea ya está en zona
+picking, o `replenishment`+picking encadenado si no y el reabastecimiento on-demand está habilitado);
+si `pedidos.requiere_envio`, crea un `envios` con `pedido_id` (sin `venta_id` todavía); pasa
+`pedidos.estado` a `en_preparacion`. `wms_tareas` ganó columna `pedido_id` + `origen` acepta ahora
+también `'pedido'`.
+
+El `migration-reviewer` encontró 2 bugs reales antes de aplicar:
+1. 🔴 **Faltaba filtrar por atributo de variante** (talle/color/encaje/formato/sabor_aroma de la
+   línea del pedido) — sin esto, un pedido de "Remera talle M" podía terminar reservando/pickeando
+   "talle S" sin ningún error: a diferencia del POS (que tiene `atributoAmbiguoEnStock` bloqueando
+   el cobro con un humano en el loop), esta RPC corre 100% server-side sin nadie que frene la
+   ambigüedad. Corregido: se agregó el filtro por atributo en las dos queries (validación + reserva).
+2. 🟡 **Faltaba excluir `ubicacion_id IS NULL`/`disponible_surtido=false`** — una línea sin ubicar
+   (típico de stock legado) podía generar una tarea de reabastecimiento con `ubicacion_origen_id
+   NULL`, imposible de completar nunca (`fn_completar_tarea_reabastecimiento` compara
+   `il.ubicacion_id = tarea.ubicacion_origen_id`, y `NULL = NULL` nunca es verdadero en SQL) — quedaría
+   una reserva stuck para siempre. Corregido con el filtro correspondiente.
+
+El hallazgo #2 del mismo review (liberar `cantidad_reservada` al cancelar una tarea/pedido ya
+lanzado) quedó diferido a propósito para PED5 — mientras tanto la UI no ofrecía "Cancelar" para un
+pedido con `lanzado_at` seteado (ya resuelto de fondo en PED5, ver abajo).
+
+**PED4 — "Entregar" genera la venta real (`supabase/migrations/295_pedidos_ped4_entrega.sql` +
+`297_wms_reabastecimiento_transferir_reserva.sql`, ambas aplicadas en DEV):** RPC nueva
+`fn_pedido_generar_venta(p_pedido_id, p_sesion_caja_id, p_medio_pago, p_entregas,
+p_idempotency_key)`. Decisión de arquitectura ya confirmada (A1/H1, sesión anterior): Pedidos NUNCA
+pasa por el POS (`VentasPage.tsx`/`registrarVenta()`) — esta función reusa SOLO la mecánica de
+rebaje/movimientos que ya usa Ventas (`inventario_lineas`/`movimientos_stock`/`venta_item_despachos`/
+`caja_movimientos`), sin arrastrar promos/combos/series/CC-morosidad/descuentos del POS (Pedidos no
+los necesita — H1, sin precio en `pedido_items`, precio de lista al entregar). **La factura AFIP NO
+se emite automáticamente** — queda para el flujo manual "Facturar" ya existente en Ventas →
+Historial (`emitir-factura`, funciona sobre cualquier `venta_id` sin importar cómo se creó la venta;
+evita reimplementar lógica fiscal, Regla de Oro #0). Soporta entrega parcial (`p_entregas`, G1-G3:
+lo no entregado queda pendiente para una entrega posterior, un Pedido puede generar N ventas) y
+cierre automático/manual (`tenants.pedido_cierre_automatico`, columna nueva, default true).
+
+El `migration-reviewer` encontró 3 bugs reales:
+1. 🔴 **El guard de estado no incluía `'entregado_parcial'`** — la SEGUNDA entrega de cualquier
+   pedido con cumplimiento parcial (el caso central de esta fase) fallaba SIEMPRE con "El pedido
+   tiene que estar lanzado...". Corregido agregando el estado al guard.
+2. 🔴 **Ese mismo fix reabría una ventana de reintento de red sin protección** (un commit exitoso
+   con la respuesta perdida, reintentado, hubiera generado una venta/rebaje/cobro DUPLICADO).
+   Corregido con `p_idempotency_key` (nueva columna `ventas.pedido_entrega_key` + índice único
+   parcial `(pedido_id, pedido_entrega_key)`): un reintento con la misma key devuelve la venta ya
+   generada en vez de duplicar.
+3. 🟡 **Ventana TOCTOU en la sesión de caja** — el chequeo de `caja_sesiones.estado='abierta'` no
+   tomaba lock ni validaba sucursal. Corregido con `FOR UPDATE` (bloquea la sesión durante toda la
+   función) + validación de que la caja sea de la misma sucursal del pedido.
+
+**El hallazgo MÁS severo del review** fue en una función YA EXISTENTE y compartida con Ventas/envíos
+(`fn_completar_tarea_reabastecimiento`, mig 290, sin cambios desde entonces): al mover stock físico
+bulk→picking, decrementaba `cantidad` en el origen pero **nunca transfería `cantidad_reservada`** al
+LPN nuevo creado en el destino (nacía con reserva 0 por default). Consecuencia real: la reserva
+quedaba "pegada" en un origen que, tras moverse, puede tener menos stock físico del que aparenta,
+mientras el LPN de picking recién llegado —donde el operario retira físicamente— queda **sin
+reserva**, vendible a cualquier otro cliente/pedido sin que nadie lo autorizara ("stock fantasma").
+Corregido en la migración separada **297** (fix general de WMS, no específico de Pedidos — el mismo
+gap existía también para reservas de Ventas): ahora transfiere `LEAST(cantidad_movida,
+cantidad_reservada_origen)` del origen al LPN nuevo. **Verificado explícitamente contra datos reales**
+en el e2e nuevo (ver Verificación abajo) — antes del fix el LPN nuevo nacía con `cantidad_reservada=0`,
+después nace con la cantidad correcta.
+
+Pendiente no bloqueante documentado: Cuenta Corriente como medio de pago en Pedidos no valida
+morosidad ni límite de crédito (Ventas sí lo hace, aunque solo client-side).
+
+**PED5 — Cancelación + des-pickeo (`supabase/migrations/296_pedidos_ped5_cancelacion_unpick.sql`,
+aplicada en DEV):** 3 RPCs nuevas + 1 helper interno (`fn_pedido_liberar_tareas_pendientes`):
+- `fn_pedido_deslanzar(p_pedido_id)` (F5): deshace "lanzar" sin cancelar el pedido entero — vuelve a
+  `confirmado`, libera reservas, limpia `lanzado_at`/`lanzado_por`, cancela el envío auto-generado si
+  no se despachó. Solo si ninguna tarea WMS del pedido está `completada`.
+- `fn_cancelar_pedido(p_pedido_id)`: cancelación completa, mismo guard.
+- `fn_unpick_tarea_wms(p_tarea_id, p_ubicacion_destino_id)` (E4, "des-pickeo"): para una tarea de
+  picking YA completada, libera la reserva y reubica físicamente el LPN donde el operador elija
+  (inverso de `fn_completar_tarea_reabastecimiento`).
+
+El `migration-reviewer` encontró 2 bugs reales:
+1. 🔴 **`fn_cancelar_pedido` no chequeaba si el pedido ya tenía una venta real generada.** El
+   relevamiento (A5) dice explícito que cancelar un pedido con entrega real debería disparar la
+   devolución de la(s) venta(s) asociada(s) (reusando el flujo de devoluciones de `VentasPage.tsx`,
+   con NC/CC) — implementar esa devolución automática es alcance mayor y **queda diferido a
+   propósito**. Mientras tanto, `fn_cancelar_pedido` **bloquea** con una excepción clara si ya existe
+   una venta vinculada a ese pedido (más seguro que cancelarlo dejando la venta real huérfana), y la
+   UI (`PedidosPage.tsx`) dejó de ofrecer "Cancelar" para pedidos en `entregado_parcial`.
+2. 🔴 **`fn_unpick_tarea_wms` nunca puede des-pickear una tarea ENCADENADA a un reabastecimiento** —
+   su `lpn_origen` apunta a un texto que nunca existió físicamente en la ubicación destino (el LPN
+   real se generó con timestamp al completar el reabastecimiento). Es el caso más común
+   (reabastecimiento on-demand viene habilitado por default), así que un mensaje de error genérico
+   sería engañoso. Se agregó un mensaje específico para ese caso y la UI oculta el botón "Deshacer"
+   para tareas con `tarea_precedente_id` seteado — arreglarlo de raíz (matchear por
+   producto+ubicación sin depender del texto del LPN) **queda pendiente documentado**.
+
+También se cerró una ventana de carrera menor: el guard "¿hay alguna tarea completada?" ahora toma
+`FOR UPDATE` sobre TODAS las tareas del pedido antes de evaluarse, para que no quede desactualizado
+por una tarea que se completa justo en el medio.
+
+**PED7 — Tab "Pedidos" en Configuración (`src/pages/ConfigPage.tsx`, sin migración nueva — usa
+columnas ya creadas en PED1/PED4):** tab nuevo gateado por modo avanzado (mismo criterio que
+Envíos), con numeración (tenant vs. sucursal), cierre automático, y CRUD completo de `tipos_pedido`
+(nombre, momento de factura, cliente obligatorio, activar/desactivar). Diferido a propósito: editor
+granular de `pedido_transiciones_roles` (E3) — los defaults ya funcionan (DEPOSITO/SUPERVISOR/
+OWNER/ADMIN pueden todas las transiciones), es fine-tuning que no bloquea el uso real.
+
+**PED8 — Alertas, parcial (K2 del relevamiento):** `src/hooks/useAlertas.ts` y
+`src/pages/AlertasPage.tsx` ganaron 2 fuentes nuevas (solo modo avanzado): pedidos con
+`fecha_entrega_solicitada` vencida sin completar, y pedidos lanzados (`en_preparacion`) hace más de
+24hs sin avanzar — ambas suman al badge del sidebar y tienen su sección en `/alertas` con link
+directo a `/pedidos`/`/picking`. K1 (pedidos pendientes de lanzar agrupados por fecha) se cubre con
+el filtro de estado que ya existía en `/pedidos`. **K3 (exportar a Excel/PDF/CSV) queda diferido, no
+implementado.**
+
+**PED6 (bolsa de pedidos/lanzamiento batch + ubicaciones de staging + listas de picking imprimibles)
+— DIFERIDO EN SU TOTALIDAD, decisión consciente:** es la fase más compleja y de menor urgencia (cada
+pedido ya se puede lanzar individualmente, 100% funcional); implementarla a medias (ej. agregar el
+tipo de ubicación `'staging'` sin la UI de lanzamiento batch que lo usaría) hubiera sido superficie
+sin valor real. Queda como próxima fase completa cuando GO la priorice.
+
+**Verificación:** `npx tsc --noEmit` limpio, `npm run build` (vite) exitoso, `npx vitest run` →
+**1180 tests unitarios verdes** (80 archivos, sin cambios de conteo). E2E nuevo
+`tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` (2 tests, **3/3 verde** incluido el setup de
+auth) corrido contra datos reales de DEV (`npx dotenv -e tests/e2e/.env.test.local -- playwright
+test 107 --project=chromium`):
+- **Test A** (el más importante): stock arranca en ubicación `bulk` → lanzar genera
+  `replenishment`+picking encadenado y reserva 6 unidades en la línea de bulk → se completa el
+  reabastecimiento vía `/picking` (mismo mecanismo que el spec 106) → **se verifica explícitamente
+  que la reserva viajó con el stock** (línea de bulk queda con `cantidad_reservada=0`, LPN nuevo en
+  picking nace con `cantidad_reservada=6` — el fix de la mig 297 funcionando) → se completa el
+  picking (ya no bloqueado) → se genera la venta real con una caja abierta real
+  (`garantizarCajaAbierta`) → se verifica `ventas`/`venta_items`/`movimientos_stock`/
+  `caja_movimientos`/`pedido_items.cantidad_entregada`/`pedidos.estado='entregado'`, todo correcto.
+- **Test B**: lanzar + deslanzar antes de pickear → la reserva se libera completamente
+  (`cantidad_reservada` vuelve a 0) y el pedido vuelve a `confirmado`.
+
+Durante la escritura del test se encontraron 2 bugs DEL TEST (no de producción, corregidos en el
+momento): (1) las líneas de inventario sembradas no tenían `sucursal_id`, que debe matchear
+`pedidos.sucursal_id` o quedar NULL — comportamiento correcto de la RPC, dato del test incompleto;
+(2) una aserción asumía incorrectamente cuál ubicación picking elegiría
+`fn_wms_elegir_ubicacion_picking` (elige la de mejor prioridad del tenant completo, no
+necesariamente la creada por el test).
+
+**De paso, capturado sin implementar:** GO pasó respuestas de un relevamiento nuevo de "Descuentos"
+(tope acumulado por período + método de pago por día de semana + ampliación de descuento por estado
++ autorización granular de cambios en Inventario) — guardadas en
+`G360.Wiki/sources/raw/relevamiento_descuentos_respuestas.md`, **nada implementado todavía**, GO
+pidió explícitamente terminar Pedidos primero.
+
+**Estado de git al cierre de esta sesión:** working tree de `dev` con migraciones **294, 295, 296,
+297** + `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` nuevo + cambios en
+`src/pages/PedidosPage.tsx`, `src/pages/ConfigPage.tsx`, `src/hooks/useAlertas.ts`,
+`src/pages/AlertasPage.tsx` — **TODAVÍA NADA COMMITEADO**, verificar con `git status` antes de
+asumir que algo de esto ya está en `dev`.
+
+`APP_VERSION` sigue **v1.143.0** (sin bump, sin release). Migraciones 294-297 aplicadas SOLO en DEV,
+sin deploy a PROD. Ver [[wiki/features/pedidos]], [[wiki/features/wms]],
+[[wiki/database/migraciones]].
+
+## [2026-07-22] update | 🧾 Arranca el módulo NUEVO "Pedidos" (PED1+PED2, mig 292) — pivote de arquitectura F4 (Ventas YA NO genera tareas WMS) + Fase 2 de Estructuras-UdM CERRADA (mig 293) + fix real de caché stale en Productos
+
+Continuación inmediata de la sesión anterior (fixes de picking mig 291, ver entrada de abajo). Sigue
+todo **EN DEV, sin bump de `APP_VERSION` (sigue v1.143.0) ni release, sin deploy a PROD**. Nada de lo
+de esta sesión está commiteado — verificar con `git status` antes de asumir algo distinto.
+
+**1) Módulo NUEVO "Pedidos" — arranca PED1+PED2 de 8 fases planeadas.** Después de los fixes de
+picking, GO cuestionó la arquitectura: ¿por qué el picking depende de una venta de mostrador ya
+rebajada? Se hizo un relevamiento completo (documento `relevamiento-pedidos-reglas-negocio.html`, 12
+secciones, 45 preguntas, generado por el subagente `relevamiento`) y GO respondió todo. Las
+respuestas + diseño consolidado quedaron en
+`G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md` (detalle completo de las 45 preguntas
+ahí, no repetido acá).
+
+**Decisión de arquitectura clave (F4, pivote real, no una opción del cuestionario):** Pedidos es un
+documento **100% separado** de Ventas — nunca pasa por `registrarVenta()`/el POS, nunca rebaja stock
+directo. Y crítico: GO fue explícito — "Ventas no tiene que generar tareas... las tareas (picking y
+replen) deben ser solo para los pedidos." Esto vuelve `fn_generar_tareas_picking_envio` (migs
+290/291) **código muerto en la práctica** — sigue existiendo (sería correcta si alguien la invocara a
+mano) pero nunca se le agrega ningún gancho desde `VentasPage.tsx`/`EnviosPage.tsx`; el
+picking/reabastecimiento de acá en más nace **exclusivamente** desde Pedidos (RPC futura
+`fn_generar_tareas_picking_pedido`, todavía sin construir, Fase PED3). Este es un cambio real de
+rumbo respecto a lo que decía el wiki de WMS hasta ahora sobre "de dónde nacen las tareas" — corregido
+en [[wiki/features/wms]] y en la página nueva [[wiki/features/pedidos]] para que la próxima sesión no
+asuma que Ventas sigue generando tareas. Sin precio en `pedido_items` (H1): el precio se resuelve una
+sola vez en el POS cuando el Pedido genera la venta real (todavía sin construir, Fase PED3+).
+
+**PED1 — Schema, `supabase/migrations/292_pedidos_ped1_schema.sql`, aplicada en DEV
+(`gcmhzdedrkmmzfzfveig`), NO en PROD:** `tipos_pedido` (catálogo por tenant, mismo patrón que
+`canales_venta`, seed 4 tipos default — Mayorista/E-commerce/Encargo telefónico/Retiro en local — +
+trigger para tenants nuevos) · `pedidos` (cabecera: numeración tenant+sucursal mismo patrón que
+OC/ventas, RLS por sucursal igual que `wms_tareas`, estados `borrador→confirmado→en_preparacion→
+listo_para_entrega→entregado(_parcial)→cancelado`) · `pedido_items` (líneas, **sin precio**, cantidad
+en unidades base, `estado_id` opcional FK `estados_inventario` para indicar de qué estado de
+inventario pickear respetando FIFO/FEFO, atributos opcionales talle/color/encaje/formato/
+sabor_aroma) · trazabilidad nueva `ventas.pedido_id`, `venta_items.pedido_item_id`, `envios.pedido_id`.
+El `migration-reviewer` encontró un bug real ANTES de aplicar: el trigger de numeración sin
+`SECURITY DEFINER` hubiera duplicado el número de pedido para usuarios restringidos a una sucursal —
+**mismo bug ya presente, sin corregir, en `set_oc_numero`/`ordenes_compra` desde las migs 182+217**
+(hallazgo colateral anotado como pendiente, fuera de alcance, no se tocó). Corregido antes de aplicar
+en `pedidos`.
+
+**PED2 — UI, `src/pages/PedidosPage.tsx` nuevo, ruta `/pedidos`:** nav item nuevo en `AppLayout.tsx`
+visible para DEPOSITO + SUPERVISOR + OWNER/ADMIN (**NO CAJERO** — a diferencia de Ventas, se trata
+como operación logística desde el vamos), gateado por modo avanzado, ícono `ListOrdered`. Armar
+pedido (tipo, cliente —existente o "nombre suelto" sin alta formal—, fecha de entrega solicitada,
+flag `requiere_envio`, líneas de producto sin precio), confirmar, cancelar. Probado en vivo contra el
+navegador real (Playwright) con un pedido real creado y confirmado en Almacén Jorgito, limpiado
+después. `logActividad` entidad nueva `'pedido'` (sumada a `src/lib/actividadLog.ts` y a los mapas de
+íconos/labels de `HistorialPage.tsx`).
+
+**Roadmap pendiente de Pedidos** (documentado como plan en el archivo de respuestas, sección final
+"Plan por fases"): PED3 (lanzar → `fn_generar_tareas_picking_pedido`, reserva de stock real,
+validación bloqueante, envío condicional) hasta PED8 (reportes) — nada de eso construido todavía.
+Quedó pendiente, fuera de alcance de Pedidos, un pedido de "roles configurables por tenant"
+(Picker/Auditor/Gruero) que GO mencionó — anotado como iniciativa aparte, no iniciada.
+
+**2) 🐛 Bug real encontrado y arreglado — caché stale en `ProductoFormPage.tsx`.** GO reportó que el
+campo "Estos precios corresponden a" (ancla de precio, backlog Fede v1.140-142) no se guardaba a la
+primera — había que editarlo dos veces. Investigación con datos reales (Bebida Coca Cola 2.5L, Almacén
+Jorgito) confirmó: el GUARDADO en base SIEMPRE funcionó bien (`nivel_precio_orden` quedaba correcto en
+la DB al toque). El bug real era de LECTURA: al guardar, `handleSubmit` solo invalidaba la caché de
+React Query de la LISTA (`['productos']`), nunca la del producto individual (`['producto', id]`) que
+usa el propio formulario — así que al reabrir el mismo producto, React Query servía el snapshot
+cacheado de ANTES de la edición (stale-while-revalidate) mientras refrescaba en segundo plano, y como
+el `useEffect` que siembra el formulario solo corre una vez (guard `!loaded`), se quedaba pegado para
+siempre con el valor viejo — **afecta potencialmente TODOS los campos del form**, no solo la ancla (la
+ancla lo hizo más visible por ser un `<select>` fácil de notar revertido, a diferencia de un precio que
+el usuario no siempre re-chequea). **Fix:** `src/pages/ProductoFormPage.tsx`, en el éxito de
+`handleSubmit`, se agregó `qc.removeQueries({ queryKey: ['producto', id] })` (no alcanza con
+`invalidateQueries`, hay que evictar la entrada para que la próxima apertura arranque de cero).
+Verificado en vivo contra el producto real de GO con navegación SPA real (no `page.goto()`, que
+resetearía la caché igual sin probar nada) — cambié la ancla ida y vuelta (Caja→Pallet→Caja) con
+reapertura real en el medio, en ambos sentidos mostró lo recién guardado. **Sin migración — fix 100%
+frontend.** Ver [[wiki/features/productos]].
+
+**3) ✅ Fase 2 del roadmap Estructuras-UdM — CIERRA el pendiente que quedaba abierto.**
+`wiki/features/estructuras-udm.md` tenía como único pendiente del roadmap la "Fase 2: Operar por UdM
+al ingresar stock (recibir '5 cajas' → 60 unidades; UdM trazada en el LPN; stock SIEMPRE en unidad
+base)". GO pidió implementarla hoy, y también extenderla a REBAJES (no solo ingreso) — simple Y
+masivo, para ambos.
+
+**Migración `supabase/migrations/293_uom_ingreso_rebaje.sql`, aplicada en DEV, NO en PROD:**
+`inventario_lineas.unidad_medida_id` (FK `unidades_medida`) + `.cantidad_uom` (numeric) — UdM en la
+que se RECIBIÓ ese LPN puntual (permanente, se fija al ingresar) · `movimientos_stock.unidad_medida_id`
++ `.cantidad_uom` — UdM de la OPERACIÓN puntual (ingreso o rebaje; necesario porque un rebaje puede
+consumir de varios LPNs con distinta UdM de origen). Ambas con `CHECK (cantidad_uom IS NULL OR
+cantidad_uom > 0)` — el `migration-reviewer` marcó que faltaba (mismo patrón que
+`venta_items.cantidad_uom` de la mig 286) antes de aplicar. `convertirABase()` en
+`src/lib/estructuras.ts` YA EXISTÍA desde Fase 1 ("lista para Fase 2", código muerto hasta hoy) — el
+cálculo no es nuevo, esta migración solo agrega DÓNDE trazar qué UdM se usó.
+
+**Helper nuevo:** `nivelDefaultParaProducto()` en `src/lib/estructuras.ts` — matchea
+`productos.unidad_medida` (texto libre) contra el nombre de un nivel de la estructura para
+preseleccionar el default ("toma como default la UdM cargada en el producto", pedido explícito de
+GO). 3 tests nuevos en `tests/unit/estructuras.test.ts` (25 tests totales en el archivo, todos verdes).
+
+**Wireado en 4 superficies:** Ingreso simple y Rebaje simple (`InventarioPage.tsx`, modal clásico
+"Ingreso"/"Rebaje"): selector "Cargar en: / Rebajar en:" (pill buttons) que aparece cuando el producto
+tiene una estructura default con más de 1 nivel — tiene precedencia sobre el toggle genérico kg/g que
+ya existía (mecanismo distinto y previo, sin relación con las estructuras del producto). Ingreso
+masivo (`InventarioPage.tsx`, flujo INLINE `masivoInline`/`masivoRows` — **ojo, es un componente
+separado y más nuevo que reemplazó al uso de `MasivoModal.tsx` para ingreso; `MasivoModal.tsx` hoy solo
+se usa para Rebaje masivo**, dato no obvio que vale la pena recordar): selector compacto (`<select>`)
+por fila. Rebaje masivo (`src/components/MasivoModal.tsx`): mismo patrón de pills que los simples.
+`inventario_lineas.estructura_id` (de Fase 1) se usa para saber con qué estructura se ingresó CADA LPN
+puntual — el selector de rebaje usa la estructura del LPN específico elegido, no la default genérica
+del producto (más preciso).
+
+**Bug real encontrado y arreglado durante las pruebas:** el texto de ayuda ("= 18 caja") mostraba mal
+el nombre de la unidad porque usaba `productos.unidad_medida` (campo de texto libre, gotcha ya
+conocido — puede no matchear el nivel real de la estructura) en vez del nombre real del nivel base de
+la estructura. En el producto real de prueba, `unidad_medida` literalmente decía "caja" aunque la
+estructura tiene "Unidad" como base — mostraba "= 18 caja" en vez de "= 18 Unidad". Corregido en las 3
+superficies que ya estaban wireadas cuando se encontró (ingreso simple, rebaje simple, rebaje masivo
+vía `MasivoModal.tsx`) usando el nombre real del nivel[0] de la estructura.
+
+**Verificación:** build + tsc + **1180 tests unitarios** (80 archivos) verdes. Probado en vivo en
+navegador (Playwright contra dev server real) para ingreso simple y rebaje simple, contra el producto
+real de GO (Bebida Coca Cola 2.5L, Almacén Jorgito) — verificado en base de datos real: `cantidad_uom`,
+`unidad_medida_id`, `cantidad` (unidades base correctas), `movimientos_stock` con la misma traza,
+`productos.stock_actual` recalculado bien por el trigger existente. Datos de prueba limpiados, stock
+devuelto a su valor original (114) después de cada prueba. **Ingreso y rebaje masivo NO se probaron
+clickeando en el navegador** (sí typecheck+build), queda pendiente que GO los pruebe o pedirlo en la
+próxima sesión. Ver [[wiki/features/estructuras-udm]] → "Fase 2".
+
+**Estado de git al cierre de esta sesión:** working tree de `dev` con migraciones **291, 292 y 293** +
+`src/pages/PedidosPage.tsx` nuevo + `relevamiento-pedidos-reglas-negocio.html` nuevo +
+`G360.Wiki/sources/raw/relevamiento_pedidos_respuestas.md` nuevo + ~20 archivos modificados de
+`src/`/`tests/` (`App.tsx`, `MasivoModal.tsx`, `AppLayout.tsx`, `actividadLog.ts`, `estructuras.ts`,
+`EnviosPage.tsx`, `HistorialPage.tsx`, `InventarioPage.tsx`, `PickingPage.tsx`,
+`ProductoFormPage.tsx`, `VentasPage.tsx`, spec 106, `estructuras.test.ts`) — **TODAVÍA NADA
+COMMITEADO**, verificar con `git status` antes de asumir que algo de esto ya está en `dev`.
+
+`APP_VERSION` sigue **v1.143.0** (sin bump, sin release). Migraciones 291, 292 y 293 aplicadas SOLO en
+DEV, sin deploy a PROD. Ver [[wiki/features/wms]], [[wiki/features/pedidos]],
+[[wiki/features/estructuras-udm]], [[wiki/features/productos]], [[wiki/database/migraciones]].
+
+## [2026-07-22] update | 🐛 v1.143.0 sigue EN DEV — GO probó a mano el WMS y encontró 3 bugs reales (mig 291) + 2 gaps de UX
+
+Continuación inmediata de la sesión anterior (ver entrada de abajo): GO hizo una ronda de pruebas
+manuales del módulo WMS (Zonas + Picking + Reabastecimiento, v1.143.0) contra datos reales del
+tenant "Almacén Jorgito" en DEV y encontró varios problemas reales, los 3 corregidos en la misma
+sesión. **Sin bump de `APP_VERSION` ni release — sigue v1.143.0, todavía solo en DEV.**
+
+**Migración nueva `291_wms_fixes_picking_reabastecimiento.sql`**, aplicada en DEV
+(`gcmhzdedrkmmzfzfveig`), **NO en PROD**. 3 fixes vía `CREATE OR REPLACE FUNCTION` (sin tablas ni
+columnas nuevas):
+
+1. **Bug real de trazabilidad** en `fn_generar_tareas_picking_envio` — la rama que lee
+   `venta_item_despachos` ("Fuente 1", venta YA despachada, el rebaje real YA ocurrió) encadenaba una
+   tarea de reabastecimiento igual que la rama de reserva pendiente ("Fuente 2", `lpn_plan`, nada
+   consumido todavía) cuando el LPN vivía fuera de una zona de picking. Verificado con datos reales
+   (venta #395, envío #44, "Bebida Coca Cola 2.5L"): el stock total (`productos.stock_actual`) quedaba
+   matemáticamente correcto (114 = 115 − 1 vendida, el movimiento de reabastecimiento es neto cero),
+   PERO se creaba un LPN nuevo en la zona de picking desvinculado del LPN que `venta_item_despachos`
+   ya había fijado como el que cumplió la venta, y la tarea de picking quedaba con un `lpn_origen`
+   viejo que ya no estaba en la ubicación destino — rompía la trazabilidad por unidad. Fix: Fuente 1
+   ahora SIEMPRE genera directo la tarea de picking, nunca encadena reabastecimiento, apuntando al
+   LPN/ubicación real que la venta ya usó. Fuente 2 no cambió (ahí sí tiene sentido preparar stock a
+   futuro, nada se consumió todavía).
+2. **Bug real reproducido por GO** en `fn_generar_tareas_reabastecimiento_umbral` — pedía siempre
+   `stock_maximo − stock_actual` sin chequear cuánto había disponible de verdad en el origen elegido
+   → si no alcanzaba, `fn_completar_tarea_reabastecimiento` fallaba con "no hay stock suficiente" al
+   completar. GO señaló correctamente que el máximo es un TECHO, no una obligación. Fix: clampear la
+   cantidad de la tarea al disponible real (`SUM(cantidad - cantidad_reservada)`) en la ubicación
+   origen elegida, antes de insertar la tarea.
+3. **Gap encontrado por GO**: no existía ninguna forma de cancelar una tarea de picking o
+   reabastecimiento. Se agregó `fn_cancelar_tarea_wms(p_tarea_id, p_motivo)` — bloquea cancelar una
+   tarea ya completada, no-op si ya está cancelada, y cancela en cascada la tarea de picking
+   dependiente si se cancela el reabastecimiento del que dependía (para no dejarla bloqueada para
+   siempre).
+
+**Otro gap encontrado por GO, corregido en frontend (sin migración):** las tareas WMS no dejaban
+ningún rastro en el Historial (`actividad_log`/`HistorialPage.tsx`) — no había forma de saber quién
+completó o canceló una tarea y cuándo. Se agregó `logActividad()` (entidad nueva `wms_tarea`, con
+ícono/label en `HistorialPage.tsx`) en `PickingPage.tsx` e `InventarioPage.tsx` (tab "Tareas WMS")
+tanto al completar como al cancelar una tarea, más un botón "Cancelar" nuevo en ambas superficies.
+
+**Otro gap encontrado por GO, corregido en frontend:** el detalle de una venta (modal en
+`VentasPage.tsx`) no mostraba si esa venta tenía un envío asociado ni cuál — la relación solo se
+veía desde `/envios`. Se agregó un badge "Envío #N · estado" en el header del modal de detalle de
+venta, clickeable, que navega a `/envios?busqueda=N` (se agregó soporte de ese query param en
+`EnviosPage.tsx` para pre-filtrar por número de envío).
+
+**Verificación:** migración revisada por el subagente `migration-reviewer` (aprobada, sin hallazgos
+bloqueantes) antes de aplicar. Se reescribió `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts`
+en 2 tests separados (Fuente 1 sin reabastecimiento / Fuente 2 con reabastecimiento) para reflejar el
+comportamiento nuevo — el test viejo verificaba el comportamiento buggy anterior. `npm run build`
+(tsc + vite build) verde. **Los tests e2e todavía no se corrieron en esta sesión** — pendiente
+correrlos antes de dar el trabajo por cerrado.
+
+**Estado de git al cierre de esta sesión:** cambios en el working tree de `dev` (migración +
+`src/lib/actividadLog.ts` + `src/pages/EnviosPage.tsx` + `src/pages/HistorialPage.tsx` +
+`src/pages/InventarioPage.tsx` + `src/pages/PickingPage.tsx` + `src/pages/VentasPage.tsx` + el spec
+106 reescrito) **TODAVÍA NO COMMITEADOS** — verificar con `git status` antes de asumir que ya están
+en `dev`.
+
+**Pendiente de decisión arquitectónica (sin resolver, NO es una decisión tomada):** surgió una
+discusión más grande en la sesión — GO cuestionó que el picking dependa de una venta ya
+despachada/rebajada, en vez de un futuro módulo "Pedidos" separado de las ventas de mostrador.
+Quedó como discusión abierta, ver conversación con GO del 2026-07-22 — no implementar nada de esto
+sin retomar la charla primero.
+
+`APP_VERSION` sigue **v1.143.0** (sin bump, sin release). Migración 291 aplicada SOLO en DEV, sin
+deploy a PROD (sin cambios respecto a la decisión de la sesión anterior). Ver [[wiki/features/wms]],
+[[wiki/database/migraciones]].
+
+## [2026-07-22] update | 🏗️ v1.143.0 EN DEV — WMS Zonas + Picking + Reabastecimiento (cierra Fases 3, 4 y 5 de Estructuras-UdM)
+
+Feature grande nueva completada en esta sesión: cierra las Fases 3 ("Zonas" + reglas de
+almacenaje), 4 (Tareas WMS y picking) y 5 (Reabastecimiento reserva→picking) del roadmap de
+`wiki/features/estructuras-udm.md` acordado con GO el 2026-07-19. La Fase 2 ("operar por UdM al
+ingresar stock") sigue sin implementar, no se tocó esta sesión.
+
+**Decisión de arquitectura clave** (confirmada con GO en el chat): el picking es una capa de
+logística pura, nunca decide qué LPN consume una venta ni cuándo se rebaja stock — el motor de
+ventas (`VentasPage.tsx`, `rebajeSort.ts`) no se tocó. Las tareas de picking leen la decisión ya
+tomada por la venta (`venta_item_despachos` si está despachada, `venta_items.lpn_plan` si es una
+reserva pendiente) y guían al depósito; si el LPN está fuera de una zona de picking se encadena una
+tarea de reabastecimiento que usa el mismo mecanismo de "Mover LPN" de `LpnAccionesModal` (reduce
+LPN origen, crea uno nuevo en destino) — sin mecanismo nuevo de movimiento de stock. Con esto queda
+resuelta la pregunta abierta de v1.137.0 sobre el alcance del picking (solo envíos/despachos, nunca
+mostrador).
+
+**Migraciones 289 y 290**, aplicadas en DEV (`gcmhzdedrkmmzfzfveig`): **289** agrega el schema
+(`zonas` catálogo agrupando `ubicaciones` vía `zona_id`, `reglas_almacenaje` catálogo UdM→zona
+sugerida sin bloquear, `producto_ubicacion_umbrales` catálogo mín/máx por producto+ubicación, y
+`wms_tareas` operativa con RLS **por sucursal** — mismo patrón que `inventario_lineas`/`envios` —
+tipo picking/replenishment/putaway/conteo, `envio_id`, `tarea_precedente_id` que encadena
+reabastecimiento→picking; 2 flags independientes en `tenants` para el reabastecimiento on-demand y
+por umbral, habilitables por separado); **290** agrega las RPCs SECURITY INVOKER
+`fn_generar_tareas_picking_envio`, `fn_completar_tarea_reabastecimiento`,
+`fn_completar_tarea_picking`, `fn_generar_tareas_reabastecimiento_umbral` + helpers
+`fn_wms_elegir_ubicacion_picking`/`fn_wms_describir_cantidad`. **NO aplicadas en PROD, sin deploy** —
+decisión explícita de dejarlo en DEV hasta que GO lo pida, mismo criterio que el resto de las
+entregas de la semana sobre movimiento real de stock.
+
+**UI:** sección nueva "Zonas y picking" en Config → Inventario (2 toggles de reabastecimiento + CRUD
+Zonas/Reglas de almacenaje/Umbrales, selector de zona en el form de Ubicaciones), ruta nueva
+`/picking` (`PickingPage.tsx`, mobile-first, con escaneo de código de barras reusando
+`BarcodeScanner`) y tab "Tareas WMS" en `InventarioPage` (vista de escritorio para el DUEÑO, link a
+`/picking`) — gateados por `modoAvanzado` + rol DEPOSITO, mismo patrón que "Recepciones".
+
+Revisado por el subagente `migration-reviewer` antes de aplicar (aprobado, sumó una mejora de
+concurrencia — `FOR UPDATE SKIP LOCKED`). Smoke test manual completo contra DEV con datos reales
+(producto + ubicaciones picking/bulk + venta despachada + envío → generar tareas → completar
+reabastecimiento → verificar stock movido sin pérdida ni duplicación → completar picking) — encontró
+y corrigió 2 bugs reales antes del e2e (un error de sintaxis PL/pgSQL, un cast numeric→integer
+faltante) y 1 bug propio del reabastecimiento por umbral (podía elegir la misma ubicación como
+origen y destino). Verde: tsc · build · **1177 tests unitarios** · regresión e2e (13 specs) · **e2e
+nuevo 106** (mutante, verificación real en DB).
+
+`APP_VERSION` = **v1.143.0**, commit `547ef330` en `dev`, pusheado a `origin/dev`. Sin PR a `main`
+todavía — deploy a PROD pendiente de que GO lo pida (migraciones 289-290 aditivas, sin DDL
+destructivo).
+
+## [2026-07-22] update | 🗄️ schema_full.sql regenerado completo (mig 288) — cierra el pendiente #2 del bloque "ARRANCÁ ACÁ"
+
+Cierra el pendiente #2 que había quedado abierto en la reconciliación del deploy a PROD de
+v1.137.0-v1.142.0 (bloque "ARRANCÁ ACÁ", ver entrada de abajo): `supabase/schema_full.sql` seguía
+parcheado A MANO hasta la mig 287, bloqueado por falta de `SUPABASE_ACCESS_TOKEN` en el entorno.
+
+GO proveyó un `SUPABASE_ACCESS_TOKEN` (Personal Access Token de supabase.com) puntual para esta
+corrida — se usó únicamente como variable de entorno inline del comando `npm run schema:dump`,
+nunca se persistió en ningún archivo (ni `.env.local`, ni commiteado). Con el token disponible, el
+script corrió en **modo API** (el preferido, contra DEV `gcmhzdedrkmmzfzfveig`) e introspeccionó el
+catálogo real de Postgres, generando `supabase/schema_full.sql` completo: 441 KB, **141 tablas, 107
+funciones, 61 triggers, 159 policies, 6 vistas**, hasta la migración `20260721231312`
+(`288_productos_notas`, la última aplicada). Reemplaza el parche a mano que venía arrastrándose
+desde hacía varias sesiones (llegaba solo hasta la mig 287, incompleto).
+
+Commit `52e40882` en `dev`, PR #299 `dev→main` con checks verdes, **mergeado a `main`**. Archivo de
+solo referencia/documentación — no lo importa ningún código en runtime, cero riesgo funcional.
+
+**⚠ Dato operativo para el futuro:** el bloqueo de `SUPABASE_ACCESS_TOKEN` es **por sesión/entorno,
+no algo resuelto para siempre** — la próxima sesión de Claude Code puede no tener el token
+disponible de nuevo y volver a estar bloqueada (ver [[reference_schema_dump_metodo]]).
+
 ## [2026-07-22] update | 🤖 app-reference.md al día + redeploy EF ai-assistant (DEV+PROD) — cierra el último pendiente del deploy v1.137.0-v1.142.0
 
 Cierra el pendiente que había quedado abierto en la reconciliación del deploy a PROD (bloque

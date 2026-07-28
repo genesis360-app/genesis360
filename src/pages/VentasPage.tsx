@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useSearchParams, Link } from 'react-router-dom'
+import { useSearchParams, useNavigate, Link } from 'react-router-dom'
 import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2 } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
@@ -38,7 +38,8 @@ import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
-import { precioEfectivoNivel, ordenAnclaEfectivo, convertirABase } from '@/lib/estructuras'
+import { convertirABase } from '@/lib/estructuras'
+import { precioTier, mejorPrecioMayorista, type TierMayorista } from '@/lib/tiers'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
@@ -58,6 +59,13 @@ const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }>
   cancelada:  { label: 'Cancelada',  color: 'text-red-700 dark:text-red-400',    bg: 'bg-red-100 dark:bg-red-900/30'    },
   facturada:  { label: 'Facturada',  color: 'text-purple-700', bg: 'bg-purple-100 dark:bg-purple-900/30' },
   devuelta:   { label: 'Devuelta',   color: 'text-orange-700 dark:text-orange-400', bg: 'bg-orange-100 dark:bg-orange-900/30' },
+}
+
+// Labels de envíos.estado — copia liviana de ESTADO_CFG en EnviosPage.tsx (no exportado),
+// solo para el badge de "Envío #N" en el detalle de venta.
+const ENVIO_ESTADO_LABELS: Record<string, string> = {
+  pendiente: 'Pendiente despacho', despachado: 'Despachado', en_camino: 'En camino',
+  en_bodega: 'En bodega', entregado: 'Entregado', devolucion: 'En devolución', cancelado: 'Cancelado',
 }
 
 // Fallback si el tenant aún no tiene métodos configurados — se prefiere la lista dinámica de Config
@@ -97,15 +105,16 @@ async function stockVendibleSucursal(productoId: string, sucursalId: string | nu
     .reduce((s: number, l: any) => s + (Number(l.cantidad) || 0), 0)
 }
 
-// Nivel de la estructura DEFAULT de un producto, para el selector de UoM del carrito
-// (backlog Fede puntos 4/6/7, Fase 2). Ver src/lib/estructuras.ts (precioEfectivoNivel).
+// Presentación de un producto, para el selector de UoM del carrito (rediseño UoM Fase 2-bis,
+// mig 307). El empaque es LOGÍSTICA PURA, sin precio propio: elegir "por Caja" es solo una
+// CONVERSIÓN DE CANTIDAD (× factor_base a unidades base). El precio_unitario del ítem (por
+// unidad base) no cambia; el descuento por volumen sale de los tiers (mig 306).
 interface NivelPrecioCarrito {
   orden: number
   unidad_medida_id: string
   nombre: string
-  unidades_base: number
-  precio_venta: number | null
-  precio_costo: number | null
+  unidades_base: number        // = producto_presentaciones.factor_base
+  es_base: boolean             // la presentación base (factor 1 = la UdM de la ficha)
 }
 
 interface CartItem {
@@ -115,7 +124,7 @@ interface CartItem {
   unidad_medida: string
   precio_unitario: number          // precio minorista base (1 u.) — ya convertido a moneda local
   precio_usd_origen?: number        // G5 — si el producto se vende en USD, su precio original en dólares
-  tiers?: { cantidad_minima: number; precio: number }[]  // G1/G2 — precios mayoristas por cantidad (asc)
+  tiers?: TierMayorista[]  // G1/G2 — precios mayoristas por cantidad, con operador + orden (mig 306)
   precio_costo: number
   cantidad: number
   descuento: number
@@ -133,13 +142,14 @@ interface CartItem {
   // descuento/descuento_tipo (manual/combo): se resta aparte en getItemSubtotal.
   descuento_estado_monto?: number
   descuento_estado_detalle?: DescuentoEstadoDetalle[]
-  // Venta por Unidad de Medida (backlog Fede puntos 4/6/7, Fase 2) — niveles de la estructura
-  // DEFAULT del producto (con precio propio si lo tienen), para elegir vender "por Caja" en vez
-  // de por unidad. `cantidad` (arriba) SIEMPRE queda en unidades base — esto es selección +
-  // trazabilidad/display, ver src/lib/estructuras.ts (precioEfectivoNivel).
+  // Venta por presentación (rediseño UoM Fase 2-bis, mig 307) — presentaciones del producto
+  // (producto_presentaciones), para elegir vender "por Caja" en vez de por unidad. Es SOLO una
+  // conversión de cantidad: `cantidad` (arriba) SIEMPRE queda en unidades base, y `precio_unitario`
+  // (por unidad base) NO cambia al elegir presentación. El descuento por volumen sale de los tiers.
   nivelesUom?: NivelPrecioCarrito[]
-  nivelAnclaOrden?: number          // orden del nivel anclado (productos.nivel_precio_orden, o 1)
-  nivelSeleccionadoOrden?: number   // orden del nivel elegido para vender (1 = base, sin UoM)
+  nivelSeleccionadoOrden?: number   // orden de la presentación elegida para vender (base = sin UoM)
+  // ⚠ El `orden` es solo un identificador: para saber si la presentación elegida es la BASE hay
+  // que mirar `es_base` (ver `vendiendoEnBase`), NUNCA comparar contra un número.
   unidad_medida_id?: string | null  // FK del nivel elegido, null = base (venta_items.unidad_medida_id)
   cantidad_uom?: number | null      // cantidad tipeada EN esa UoM, ej. 3 (venta_items.cantidad_uom)
   imagen_url?: string
@@ -351,6 +361,7 @@ export default function VentasPage() {
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { cotizacion: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>(() => searchParams.get('id') ? 'historial' : 'nueva')
   // J3: CONTADOR es read-only → siempre en el historial, sin acceso al POS
   useEffect(() => { if (esContador && tab !== 'historial') setTab('historial') }, [esContador, tab])
@@ -1085,14 +1096,24 @@ export default function VentasPage() {
           : grupoDefault
       const estadosFiltro = grupoActivo?.estado_ids ?? []
 
+      // Madres agrupadoras (con hijos) = NO vendibles (rediseño UoM Fase 3, mig 305). Se venden
+      // los hijos, no la madre. Regla #0: nunca dejar vender un agrupador (precio 0). Se excluyen.
+      const { data: madresData } = await supabase.from('productos')
+        .select('producto_padre_id')
+        .eq('tenant_id', tenant!.id)
+        .not('producto_padre_id', 'is', null)
+      const madreIds = [...new Set((madresData ?? []).map((r: any) => r.producto_padre_id).filter(Boolean))]
+
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit, alicuota_iva, precio_usd, moneda_venta, nivel_precio_orden')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit, alicuota_iva, precio_usd, moneda_venta')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
         .limit(viewMode === 'galeria' ? 60 : 20)
       if (productoSearch.length > 0)
         prodQuery = prodQuery.or(`nombre.ilike.%${productoSearch}%,sku.ilike.%${productoSearch}%`)
+      if (madreIds.length > 0)
+        prodQuery = prodQuery.not('id', 'in', `(${madreIds.join(',')})`)
       const { data: prods } = await prodQuery
 
       if (!prods || prods.length === 0) return []
@@ -1263,6 +1284,20 @@ export default function VentasPage() {
     (acc[d.venta_item_id] ??= []).push(d); return acc
   }, {})
 
+  // Envío(s) asociado(s) a la venta abierta — la relación hoy solo se ve desde /envios,
+  // no había forma de saber desde el detalle de la venta que tiene un envío ni cuál.
+  const { data: enviosVenta = [] } = useQuery({
+    queryKey: ['venta-envios', ventaDetalle?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('envios')
+        .select('id, numero, estado, courier, tracking_number')
+        .eq('venta_id', ventaDetalle!.id)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!ventaDetalle?.id,
+  })
+
   // 🔎 Búsqueda del historial: si hay término, se busca EN EL SERVIDOR (sin la ventana de 50).
   // Bug real que esto arregla (destapado por el spec 42, 2026-07-17): la búsqueda filtraba
   // client-side SOLO sobre las últimas `ventasLimit` (50) ventas → buscar el número de una
@@ -1337,7 +1372,7 @@ export default function VentasPage() {
       // Venta por UoM (backlog Fede 4/6/7, Fase 2) — si la línea ya está vendiéndose "por Caja",
       // +1 tiene que sumar 1 CAJA (no 1 unidad base suelta, que dejaría cantidad_uom desincronizado
       // de cantidad). Reusa seleccionarNivelUom, que ya hace la conversión completa.
-      if ((existente.nivelSeleccionadoOrden ?? 1) !== 1) {
+      if (!vendiendoEnBase(existente)) {
         seleccionarNivelUom(idx, existente.nivelSeleccionadoOrden!, (existente.cantidad_uom ?? 1) + 1)
         return
       }
@@ -1427,38 +1462,27 @@ export default function VentasPage() {
       ? Math.round(((p as any).precio_usd as number) * (cotizacionUSD as number) * 100) / 100
       : p.precio_venta
 
-    // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — niveles de la estructura DEFAULT
-    // con precio propio o calculado. Fuera de alcance para productos en USD (el ancla de precio
-    // es en ARS, mezclar ambos requeriría diseño aparte — no hay pedido de eso todavía).
+    // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2-bis mig 307) — presentaciones de la
+    // estructura DEFAULT. Elegir "por Caja" es SOLO conversión de cantidad (× factor_base); el
+    // precio sale siempre de precio_unitario (base) + tiers. Fuera de alcance para productos en USD.
     let nivelesUom: NivelPrecioCarrito[] | undefined
-    let nivelAnclaOrden = 1
-    let precioBaseAncla = precioBase
-    let costoBaseAncla = p.precio_costo ?? 0
+    // Precio/costo base (1 unidad base) — lo que se vende por default al agregar al carrito.
+    // Con el rediseño UoM productos.precio_venta/costo YA es el precio por unidad base.
+    const precioBaseUnit = precioBase
+    const costoBaseUnit = p.precio_costo ?? 0
     if (!esUSD && !p.tiene_series) {
-      const { data: estrDef } = await supabase.from('producto_estructuras')
-        .select('producto_estructura_niveles(orden, unidad_medida_id, unidades_base, precio_venta, precio_costo, unidades_medida(nombre))')
-        .eq('producto_id', p.id).eq('is_default', true).maybeSingle()
-      const nivelesRaw = ((estrDef as any)?.producto_estructura_niveles ?? []) as any[]
-      if (nivelesRaw.length > 1) {
-        const nivelesBrutos = nivelesRaw
-          .map(n => ({
-            orden: n.orden, unidad_medida_id: n.unidad_medida_id,
-            nombre: n.unidades_medida?.nombre ?? '—', unidades_base: n.unidades_base,
-            precio_venta: n.precio_venta != null ? Number(n.precio_venta) : null,
-            precio_costo: n.precio_costo != null ? Number(n.precio_costo) : null,
-          }))
-          .sort((a, b) => a.orden - b.orden)
-        nivelAnclaOrden = ordenAnclaEfectivo(nivelesBrutos, (p as any).nivel_precio_orden ?? null)
-        // El nivel anclado SIEMPRE vale lo que dice productos.precio_venta/costo — fuente única,
-        // pisa cualquier precio propio que ese mismo nivel tenga guardado en la estructura (evita
-        // que ambos campos diverjan silenciosamente).
-        nivelesUom = nivelesBrutos.map(n => n.orden === nivelAnclaOrden
-          ? { ...n, precio_venta: precioBase, precio_costo: p.precio_costo ?? 0 }
-          : n)
-        // Precio/costo del nivel BASE (orden 1) — lo que se vende por default al agregar al
-        // carrito ("1" siempre es 1 unidad base, nunca sorprende con el precio de una caja).
-        precioBaseAncla = precioEfectivoNivel(nivelesUom, 1, nivelAnclaOrden, precioBase, 'precio_venta') ?? precioBase
-        costoBaseAncla = precioEfectivoNivel(nivelesUom, 1, nivelAnclaOrden, p.precio_costo ?? 0, 'precio_costo') ?? (p.precio_costo ?? 0)
+      const { data: presRaw } = await supabase.from('producto_presentaciones')
+        .select('orden, nombre_empaque_id, etiqueta, factor_base, es_base')
+        .eq('producto_id', p.id).order('orden')
+      const presentaciones = (presRaw ?? []) as any[]
+      if (presentaciones.length > 1) {
+        nivelesUom = presentaciones.map(pr => ({
+          orden: pr.orden,
+          unidad_medida_id: pr.nombre_empaque_id,
+          nombre: pr.etiqueta ?? '—',
+          unidades_base: Number(pr.factor_base),
+          es_base: pr.es_base,
+        }))
       }
     }
 
@@ -1467,10 +1491,10 @@ export default function VentasPage() {
       nombre: p.nombre,
       sku: p.sku,
       unidad_medida: p.unidad_medida ?? 'unidad',
-      precio_unitario: precioBaseAncla,
+      precio_unitario: precioBaseUnit,
       precio_usd_origen: esUSD ? ((p as any).precio_usd as number) : undefined,
       tiers: (tiersMayoristaMap as any)[p.id],
-      precio_costo: costoBaseAncla,
+      precio_costo: costoBaseUnit,
       cantidad: 1,
       descuento: 0,
       descuento_tipo: 'pct',
@@ -1485,7 +1509,7 @@ export default function VentasPage() {
       alicuota_iva: (p as any).alicuota_iva ?? 21,
       series_seleccionadas: [],
       series_disponibles: seriesDisp,
-      nivelesUom, nivelAnclaOrden, nivelSeleccionadoOrden: 1, unidad_medida_id: null, cantidad_uom: null,
+      nivelesUom, nivelSeleccionadoOrden: nivelesUom?.find(n => n.es_base)?.orden ?? 1, unidad_medida_id: null, cantidad_uom: null,
     }
     // Descuento automático por estado de inventario (backlog Fede, punto 3) — sobre el precio
     // efectivo (tier + redondeo) de ESTE ítem, igual base que usa getItemSubtotal.
@@ -1495,19 +1519,27 @@ export default function VentasPage() {
     setCart(prev => [...prev, newItem])
   }
 
-  // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — precio efectivo de un nivel de
-  // ESTE ítem del carrito, usando el nivel anclado (ya con precio de productos.precio_venta/
-  // costo baked-in en item.nivelesUom, ver agregarProducto) como ancla de la proporción.
-  const precioDeNivelCarrito = (item: CartItem, orden: number, campo: 'precio_venta' | 'precio_costo'): number | null => {
-    if (!item.nivelesUom) return null
-    const ancla = item.nivelAnclaOrden ?? 1
-    const precioAncla = item.nivelesUom.find(n => n.orden === ancla)?.[campo] ?? null
-    return precioEfectivoNivel(item.nivelesUom, orden, ancla, precioAncla, campo)
+  // Cambia la UoM/cantidad-en-esa-UoM de una línea del carrito. Fase 2-bis (mig 307): elegir
+  // presentación es SOLO conversión de cantidad — `cantidad` (base) es la fuente de verdad para
+  // stock/subtotal/prorrateo; `precio_unitario` (por unidad base) NO se toca (empaque sin precio
+  // propio; el descuento por volumen sale de los tiers). unidad_medida_id/cantidad_uom = display.
+  /**
+   * ¿Esta línea del carrito se está vendiendo en la UNIDAD BASE (suelta) o en un empaque?
+   *
+   * 🛑 Se resuelve por el flag `es_base` de la presentación, NUNCA por `orden === 1`. Hasta la
+   * Fase 5 la base era siempre `orden = 1` (venía de producto_estructura_niveles); con el árbol
+   * de presentaciones (mig 310) la base es `orden = 0` y el `orden = 1` es la primera CAJA.
+   * Comparar contra el número hacía que vender "1 Caja" se registrara como venta en UoM base
+   * → se le aplicaban los combos configurados solo para la unidad suelta (bug de plata real,
+   * cazado por el e2e 104). Un ítem sin presentaciones se vende en base por definición.
+   */
+  const vendiendoEnBase = (item: CartItem, orden?: number): boolean => {
+    const niveles = item.nivelesUom
+    if (!niveles || niveles.length === 0) return true
+    const sel = niveles.find(n => n.orden === (orden ?? item.nivelSeleccionadoOrden))
+    return sel ? !!sel.es_base : true
   }
 
-  // Cambia la UoM/cantidad-en-esa-UoM de una línea del carrito. `cantidad` (base) y
-  // `precio_unitario` (por unidad base) se recalculan siempre — son la fuente real de verdad
-  // para stock/subtotal/prorrateo; unidad_medida_id/cantidad_uom son trazabilidad/display.
   const seleccionarNivelUom = (idx: number, ordenNivel: number, cantidadUom: number) => {
     setCart(prev => prev.map((item, i) => {
       if (i !== idx || !item.nivelesUom) return item
@@ -1520,27 +1552,19 @@ export default function VentasPage() {
       const cantidadBase = Math.min(cantidadBaseDeseada, Math.max(nivel.unidades_base, maxDisp))
       if (cantidadBase < cantidadBaseDeseada) toast.error(`Stock máximo disponible: ${maxDisp}`)
 
-      const precioNivel = precioDeNivelCarrito(item, ordenNivel, 'precio_venta')
-      if (precioNivel == null) { toast.error('No se pudo calcular el precio para esa unidad de medida'); return item }
-      const costoNivel = precioDeNivelCarrito(item, ordenNivel, 'precio_costo')
-      const precioPorBase = Math.round((precioNivel / nivel.unidades_base) * 100) / 100
-      const costoPorBase = costoNivel != null ? Math.round((costoNivel / nivel.unidades_base) * 100) / 100 : item.precio_costo
-
       const updated: CartItem = {
         ...item,
         nivelSeleccionadoOrden: ordenNivel,
-        unidad_medida_id: ordenNivel === 1 ? null : nivel.unidad_medida_id,
-        cantidad_uom: ordenNivel === 1 ? null : cant,
+        unidad_medida_id: nivel.es_base ? null : nivel.unidad_medida_id,
+        cantidad_uom: nivel.es_base ? null : cant,
         cantidad: cantidadBase,
-        precio_unitario: precioPorBase,
-        precio_costo: costoPorBase,
       }
       if (!item.tiene_series && item.lineas_disponibles) {
         const fuentes = calcularLpnFuentes(item.lineas_disponibles, cantidadBase)
         updated.lpn_fuentes = fuentes
         updated.linea_id = fuentes[0]?.linea_id
         updated.lpn = fuentes[0]?.lpn ?? undefined
-        const descEstado = calcularDescuentoEstadoLinea(fuentes, precioPorBase)
+        const descEstado = calcularDescuentoEstadoLinea(fuentes, precioTierEfectivo(updated))
         updated.descuento_estado_monto = descEstado.monto
         updated.descuento_estado_detalle = descEstado.detalle
       }
@@ -1570,7 +1594,7 @@ export default function VentasPage() {
   }
 
   const procesarScan = async (code: string) => {
-    const PROD_COLS = 'id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva, precio_usd, moneda_venta, nivel_precio_orden'
+    const PROD_COLS = 'id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, codigo_barras, es_kit, alicuota_iva, precio_usd, moneda_venta'
     let prod: any = null
     let cantidadScan = 1   // ISS-127 F3: cantidad a sumar (1 por default; del código GS1 si trae AI 30)
 
@@ -1591,6 +1615,11 @@ export default function VentasPage() {
       if (!prods || prods.length === 0) { toast.error(`No se encontró ningún producto con código "${code}"`); return }
       prod = prods[0]
     }
+    // Guard: una madre agrupadora (con hijos) no se vende — se venden sus variantes (Regla #0).
+    const { count: hijosCount } = await supabase.from('productos')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenant!.id).eq('producto_padre_id', prod.id)
+    if ((hijosCount ?? 0) > 0) { toast.error('Ese producto tiene variantes — elegí una variante para vender'); return }
     const { data: lineasScan } = await applyFilter(
       supabase.from('inventario_lineas')
         .select('cantidad, cantidad_reservada, ubicaciones(disponible_surtido), inventario_series(id, activo, reservado)')
@@ -2372,12 +2401,16 @@ export default function VentasPage() {
     queryKey: ['precios-mayorista', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('producto_precios_mayorista')
-        .select('producto_id, cantidad_minima, precio').eq('tenant_id', tenant!.id)
-      const map: Record<string, { cantidad_minima: number; precio: number }[]> = {}
+        .select('producto_id, cantidad_minima, precio, operador, orden').eq('tenant_id', tenant!.id)
+      const map: Record<string, TierMayorista[]> = {}
       for (const r of (data ?? []) as any[]) {
-        (map[r.producto_id] ??= []).push({ cantidad_minima: r.cantidad_minima, precio: Number(r.precio) })
+        (map[r.producto_id] ??= []).push({
+          cantidad_minima: r.cantidad_minima, precio: Number(r.precio),
+          operador: (r.operador ?? '>=') as TierMayorista['operador'], orden: r.orden ?? 0,
+        })
       }
-      for (const k in map) map[k].sort((a, b) => a.cantidad_minima - b.cantidad_minima)
+      // Ordenados por `orden` (gana el primer match, mig 306). precioTier igual reordena por las dudas.
+      for (const k in map) map[k].sort((a, b) => a.orden - b.orden)
       return map
     },
     enabled: !!tenant,
@@ -2388,16 +2421,19 @@ export default function VentasPage() {
   // SIN redondeo (lo aplica precioTierEfectivo) — se usa para detectar si un tier mayorista
   // bajó el precio respecto del minorista (display), independiente del redondeo configurado.
   const precioTierBase = (item: CartItem): number => {
-    const cant = item.tiene_series ? item.series_seleccionadas.length : item.cantidad
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
     // VF2/I2: la lista de precios por canal puede forzar minorista o mayorista
     const lista = reglaDe(canalPOS).lista_precio
     if (lista === 'minorista') return item.precio_unitario
-    if (lista === 'mayorista') return tiers[tiers.length - 1]?.precio ?? item.precio_unitario  // mejor tier (asc)
-    let precio = item.precio_unitario
-    for (const t of tiers) if (cant >= t.cantidad_minima) precio = t.precio  // tiers ya viene asc
-    return precio
+    if (lista === 'mayorista') return mejorPrecioMayorista(tiers) ?? item.precio_unitario
+    // Agregación por SKU (mig 306, decisión Fede): el tier se resuelve contra la cantidad TOTAL de
+    // este producto en el carrito (todas las líneas del mismo SKU sumadas), no por línea — el precio
+    // mayorista es por volumen. `cart` acá es el estado committeado (render-time correcto).
+    const cantTotalSku = cart
+      .filter(i => i.producto_id === item.producto_id)
+      .reduce((s, i) => s + (i.tiene_series ? i.series_seleccionadas.length : i.cantidad), 0)
+    return precioTier(tiers, cantTotalSku) ?? item.precio_unitario
   }
 
   // H4 — Precio unitario EFECTIVO (canónico): precio de lista/tier redondeado según
@@ -2405,6 +2441,13 @@ export default function VentasPage() {
   // factura) deriva de acá → el redondeo se propaga de forma consistente. Default 'none' = sin cambios.
   const precioTierEfectivo = (item: CartItem): number =>
     redondearPrecio(precioTierBase(item), (tenant as any)?.precio_redondeo)
+
+  // Descuento por estado recalculado con el precio de tier VIGENTE de la línea (mig 306: el tier
+  // depende del total del SKU en el carrito). Fuente ÚNICA — así la plata (getItemSubtotal), el
+  // detalle combinado del ticket y lo que se graba en venta_items nunca quedan stale si otra línea
+  // del mismo SKU movió el tier (Regla #0). Los campos item.descuento_estado_* son solo snapshot.
+  const descEstadoDe = (item: CartItem) =>
+    calcularDescuentoEstadoLinea(item.lpn_fuentes ?? [], precioTierEfectivo(item))
 
   const findCombo = (productoId: string, cantidad: number, item: CartItem) => {
     return (combosDisp as any[])
@@ -2570,7 +2613,7 @@ export default function VentasPage() {
     const conDescItem = item.descuento_tipo === 'pct' ? base * (1 - item.descuento / 100) : Math.max(0, base - item.descuento)
     // Descuento automático por estado (backlog Fede, punto 3) — independiente del descuento
     // manual/combo de arriba, se resta aparte (nunca colisiona con la lógica de combos).
-    return Math.max(0, conDescItem - (item.descuento_estado_monto || 0))
+    return Math.max(0, conDescItem - descEstadoDe(item).monto)
   }
 
   const subtotal = cart.reduce((acc, item) => acc + getItemSubtotal(item), 0)
@@ -2597,7 +2640,7 @@ export default function VentasPage() {
   // Ya está restado en `subtotal` (vía getItemSubtotal) — este detalle combinado es solo para
   // mostrarlo en el resumen del ticket y trazarlo en ventas.descuento_estado (mig 285).
   const descuentoEstadoAplicado = useMemo(
-    () => combinarDetalleDescuentoEstado(cart.map(i => i.descuento_estado_detalle ?? [])),
+    () => combinarDetalleDescuentoEstado(cart.map(i => descEstadoDe(i).detalle)),
     [cart],
   )
 
@@ -3010,7 +3053,10 @@ export default function VentasPage() {
         // Punto 3 Fede/GO — trazabilidad del descuento por estado en esta línea (ya restado en
         // itemSubtotal vía getItemSubtotal, esto es solo para reportes/historial). pct solo si
         // fue un único estado — con mezcla de estados en la misma línea, monto es el dato posta.
-        const descEstadoDetalle = item.descuento_estado_detalle ?? []
+        // Descuento por estado recalculado con el precio vigente (fuente única, ver descEstadoDe) —
+        // así lo grabado en venta_items coincide EXACTO con lo cobrado en itemSubtotal (Regla #0).
+        const descEstadoLinea = descEstadoDe(item)
+        const descEstadoDetalle = descEstadoLinea.detalle
         return {
           tenant_id: tenant!.id, venta_id: venta.id, producto_id: item.producto_id, linea_id: lineaId,
           cantidad: cant, precio_unitario: precioUnit, precio_costo_historico: item.precio_costo || null,
@@ -3021,7 +3067,7 @@ export default function VentasPage() {
           alicuota_iva: ivaRate, iva_monto: parseFloat(ivaMonto.toFixed(2)),
           lpn_plan: lpnPlan,
           descuento_estado_pct: descEstadoDetalle.length === 1 ? descEstadoDetalle[0].pct : null,
-          descuento_estado_monto: item.descuento_estado_monto || null,
+          descuento_estado_monto: descEstadoLinea.monto || null,
           // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — trazabilidad/display de
           // qué UoM se vendió. cantidad (arriba) sigue en unidades base, sin cambios.
           unidad_medida_id: item.unidad_medida_id ?? null,
@@ -4908,7 +4954,7 @@ export default function VentasPage() {
 
                       <div className="flex items-center gap-3 mt-2">
                         {/* Cantidad */}
-                        {!item.tiene_series && (item.nivelSeleccionadoOrden ?? 1) === 1 && (
+                        {!item.tiene_series && vendiendoEnBase(item) && (
                           <div className="flex items-center gap-1">
                             <button onClick={() => updateItem(idx, 'cantidad', Math.max(stepCantidad(item.unidad_medida), parseFloat((item.cantidad - stepCantidad(item.unidad_medida)).toFixed(3))))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
@@ -4933,7 +4979,7 @@ export default function VentasPage() {
                         {/* Cantidad EN LA UoM elegida (backlog Fede 4/6/7, Fase 2) — reemplaza los
                             controles de arriba cuando se vende "por Caja"/"por Pallet" en vez de
                             la unidad base; item.cantidad (unidades base) se recalcula solo. */}
-                        {!item.tiene_series && (item.nivelSeleccionadoOrden ?? 1) !== 1 && (
+                        {!item.tiene_series && !vendiendoEnBase(item) && (
                           <div className="flex items-center gap-1">
                             <button onClick={() => seleccionarNivelUom(idx, item.nivelSeleccionadoOrden!, Math.max(1, (item.cantidad_uom ?? 1) - 1))} title="Reducir cantidad"
                               className="w-7 h-7 rounded-lg border border-gray-200 dark:border-gray-700 flex items-center justify-center text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50">−</button>
@@ -4966,7 +5012,7 @@ export default function VentasPage() {
                                 <option key={n.orden} value={n.orden}>{n.nombre}</option>
                               ))}
                             </select>
-                            {(item.nivelSeleccionadoOrden ?? 1) !== 1 && (
+                            {!vendiendoEnBase(item) && (
                               <span className="text-xs text-gray-400 dark:text-gray-500">
                                 = {item.cantidad} {item.nivelesUom[0].nombre}
                               </span>
@@ -5963,6 +6009,12 @@ export default function VentasPage() {
                   <span className="text-xs text-gray-400 dark:text-gray-500">
                     {new Date(ventaDetalle.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}
                   </span>
+                  {(enviosVenta as any[]).map(e => (
+                    <button key={e.id} onClick={() => navigate(`/envios?busqueda=${e.numero}`)}
+                      title="Ver envío" className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1 hover:bg-indigo-200 dark:hover:bg-indigo-900/50">
+                      <Truck size={11} /> Envío #{e.numero} · {ENVIO_ESTADO_LABELS[e.estado] ?? e.estado}
+                    </button>
+                  ))}
                 </div>
               </div>
               <button onClick={() => { setVentaDetalle(null); setEditandoPago(false) }} title="Cerrar" className="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:text-gray-400"><X size={20} /></button>

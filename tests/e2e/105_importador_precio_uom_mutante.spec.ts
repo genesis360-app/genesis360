@@ -1,17 +1,16 @@
 /**
  * 105_importador_precio_uom_mutante.spec.ts
- * E2E MUTANTE — Extiende ImportarProductosPage con precio por nivel de estructura y ancla de
- * precio (backlog Fede puntos 4/6/7, pendiente que quedó abierto tras v1.139/140/141.0 —
- * "extender el importador con precio por nivel").
+ * E2E MUTANTE — Importador con estructura de empaque (rediseño UoM Fase 2-bis, mig 307). El
+ * empaque es LOGÍSTICA PURA, sin precio propio: el importador ya NO acepta columnas de precio por
+ * presentación (estr_precio_*, eliminadas). precio_venta/precio_costo del importador son SIEMPRE
+ * por unidad base; la Caja cobra precio_base × factor. El trigger trg_pp_sync_niveles construye
+ * producto_presentaciones con el árbol genealógico (padre_linea_id).
  *
- * Sube un .xlsx (generado en memoria, sin depender de un archivo fixture en disco) con 3 filas:
- *  A) precio PROPIO en el nivel Caja (estr_precio_venta_caja/costo_caja) — sin ancla — debe
- *     persistir tal cual, NO recalculado como factor × precio de cabecera.
- *  B) ancla de precio en Caja por NOMBRE (estr_precio_ancla=Caja) SIN precio propio en el nivel
- *     — productos.nivel_precio_orden debe quedar en 2 y el nivel Caja sin precio propio (deriva
- *     del precio de cabecera, igual que el selector manual de ProductoFormPage — ver spec 102).
- *  C) ancla de precio en Pallet SIN datos de estructura de Pallet en la fila — debe rechazarse
- *     en la previsualización (validación client-side nueva) y NUNCA crearse en DB.
+ * Sube un .xlsx (en memoria, sin fixture en disco) con 3 filas:
+ *  A) producto con estructura Unidad→Caja ×12 — se crea + producto_presentaciones queda con el
+ *     árbol (base padre NULL, Caja → base), sin columnas de precio.
+ *  B) producto simple sin estructura — se crea con su precio base.
+ *  C) precio_venta del producto NEGATIVO — se rechaza en la previsualización, nunca se crea.
  *
  * Genera su propia precondición (SKUs con timestamp, no depende de fixtures de DEV).
  */
@@ -20,13 +19,13 @@ import * as XLSX from 'xlsx'
 import { goto, waitForApp } from './helpers/navigation'
 import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
 
-test.describe('Importador de productos — precio por Unidad de Medida (mutante)', () => {
-  test('precio propio por nivel + ancla por nombre + fila con ancla inválida rechazada', async ({ page, request }) => {
+test.describe('Importador de productos — estructura sin precio de empaque (mutante)', () => {
+  test('importa estructura Unidad→Caja (empaque sin precio) + árbol construido + precio negativo rechazado', async ({ page, request }) => {
     test.setTimeout(90000)
     const ts = Date.now()
-    const nombreA = `E2E Import PrecioProp ${ts}`, skuA = `E2E-IMP-A-${ts}`
-    const nombreB = `E2E Import Ancla ${ts}`, skuB = `E2E-IMP-B-${ts}`
-    const nombreC = `E2E Import AnclaInvalida ${ts}`, skuC = `E2E-IMP-C-${ts}`
+    const nombreA = `E2E Import Estructura ${ts}`, skuA = `E2E-IMP-A-${ts}`
+    const nombreB = `E2E Import Simple ${ts}`, skuB = `E2E-IMP-B-${ts}`
+    const nombreC = `E2E Import Negativo ${ts}`, skuC = `E2E-IMP-C-${ts}`
 
     const rows = [
       {
@@ -34,23 +33,19 @@ test.describe('Importador de productos — precio por Unidad de Medida (mutante)
         precio_costo: 60, precio_costo_moneda: 'ARS',
         precio_venta: 100, precio_venta_moneda: 'ARS',
         unidad_medida: 'unidad',
-        estr_unidades_por_caja: 12,
-        estr_precio_venta_caja: 1080, estr_precio_costo_caja: 650,
+        estr_unidades_por_caja: 12,   // estructura Unidad→Caja; la Caja cobra 100×12 (sin override)
       },
       {
         nombre: nombreB, sku: skuB,
-        precio_costo: 650, precio_costo_moneda: 'ARS',
-        precio_venta: 1080, precio_venta_moneda: 'ARS',
+        precio_costo: 60, precio_costo_moneda: 'ARS',
+        precio_venta: 100, precio_venta_moneda: 'ARS',
         unidad_medida: 'unidad',
-        estr_unidades_por_caja: 12,
-        estr_precio_ancla: 'Caja',
       },
       {
         nombre: nombreC, sku: skuC,
         precio_costo: 10, precio_costo_moneda: 'ARS',
-        precio_venta: 20, precio_venta_moneda: 'ARS',
+        precio_venta: -5, precio_venta_moneda: 'ARS',   // inválido: precio de venta del producto negativo
         unidad_medida: 'unidad',
-        estr_precio_ancla: 'Pallet', // inválida: la fila no trae NINGÚN dato de estructura de Pallet
       },
     ]
     const wb = XLSX.utils.book_new()
@@ -61,12 +56,12 @@ test.describe('Importador de productos — precio por Unidad de Medida (mutante)
     await waitForApp(page)
 
     await page.locator('input[type="file"]').setInputFiles({
-      name: 'import-precio-uom.xlsx',
+      name: 'import-estructura-uom.xlsx',
       mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       buffer,
     })
 
-    // Previsualización: 2 nuevos + 1 con error (ancla en Pallet sin estructura de Pallet)
+    // Previsualización: 2 nuevos + 1 con error (precio de venta negativo)
     await expect(page.getByText(skuA)).toBeVisible({ timeout: 10000 })
     const nuevosCount = page.locator('xpath=//p[contains(text(),"Nuevos")]/preceding-sibling::p[1]')
     const erroresCount = page.locator('xpath=//p[contains(text(),"Con errores")]/preceding-sibling::p[1]')
@@ -74,63 +69,40 @@ test.describe('Importador de productos — precio por Unidad de Medida (mutante)
     await expect(erroresCount).toHaveText('1')
 
     const filaC = page.locator('tr', { hasText: skuC })
-    await expect(filaC).toContainText(/Ancla de precio en Pallet/)
+    await expect(filaC).toContainText(/Precio venta inválido/)
 
-    // Confirmar — solo A y B deben crearse (C quedó afuera del batch en la previsualización,
-    // así que ni siquiera se intenta: el contador de "errores" del resultado final es 0, no 1 —
-    // ese contador cuenta excepciones DURANTE el import, no filas ya rechazadas antes)
+    // Confirmar — solo A y B deben crearse (C quedó afuera del batch en la previsualización)
     await page.getByRole('button', { name: /Confirmar \(/ }).click()
     await expect(page.getByText(/2 creados · 0 actualizados · 0 errores/)).toBeVisible({ timeout: 15000 })
 
     const token = await tokenDesdeBrowser(page)
     const headers = restHeaders(token)
 
-    // C) NUNCA se creó — la validación bloqueó la fila con ancla inválida
+    // C) NUNCA se creó — la validación bloqueó la fila con precio negativo
     const prodCRes = await request.get(`${SUPABASE_URL}/rest/v1/productos?sku=eq.${skuC}&select=id`, { headers })
-    expect((await prodCRes.json()) as unknown[], '[105] la fila con ancla inválida NO debería haber creado un producto').toHaveLength(0)
+    expect((await prodCRes.json()) as unknown[], '[105] la fila con precio negativo NO debería haber creado un producto').toHaveLength(0)
 
-    // A) precio propio del nivel Caja persiste TAL CUAL (no 12×100=1200)
-    const prodARes = await request.get(
-      `${SUPABASE_URL}/rest/v1/productos?sku=eq.${skuA}&select=id,nivel_precio_orden`, { headers },
-    )
-    const [prodA] = (await prodARes.json()) as Array<{ id: string; nivel_precio_orden: number | null }>
+    // A) estructura creada → producto_presentaciones con el ÁRBOL genealógico (mig 307), sin precio
+    const prodARes = await request.get(`${SUPABASE_URL}/rest/v1/productos?sku=eq.${skuA}&select=id`, { headers })
+    const [prodA] = (await prodARes.json()) as Array<{ id: string }>
     expect(prodA, '[105] no se encontró el producto A por REST').toBeTruthy()
-    expect(prodA.nivel_precio_orden, '[105] A no especificó ancla — debe quedar en el default (NULL)').toBeNull()
-
-    const estrARes = await request.get(
-      `${SUPABASE_URL}/rest/v1/producto_estructuras?producto_id=eq.${prodA.id}&is_default=eq.true&select=id`, { headers },
-    )
-    const [estrA] = (await estrARes.json()) as Array<{ id: string }>
-    expect(estrA, '[105] no se creó la estructura default de A').toBeTruthy()
-    const nivelesARes = await request.get(
-      `${SUPABASE_URL}/rest/v1/producto_estructura_niveles?estructura_id=eq.${estrA.id}&order=orden&select=orden,precio_venta,precio_costo,unidades_base`,
+    const presARes = await request.get(
+      `${SUPABASE_URL}/rest/v1/producto_presentaciones?producto_id=eq.${prodA.id}&order=orden&select=es_base,factor_base,padre_linea_id,id`,
       { headers },
     )
-    const nivelesA = (await nivelesARes.json()) as Array<{ orden: number; precio_venta: number | null; precio_costo: number | null; unidades_base: number }>
-    expect(nivelesA).toHaveLength(2)
-    expect(nivelesA[0].precio_venta, '[105] el nivel base nunca lleva precio propio desde el importador').toBeNull()
-    expect(Number(nivelesA[1].precio_venta), '[105] el nivel Caja debería guardar 1080, no 12×100').toBe(1080)
-    expect(Number(nivelesA[1].precio_costo)).toBe(650)
-    expect(nivelesA[1].unidades_base).toBe(12)
+    const presA = (await presARes.json()) as Array<{ es_base: boolean; factor_base: number; padre_linea_id: string | null; id: string }>
+    expect(presA, '[105] el trigger debería haber creado 2 presentaciones para A').toHaveLength(2)
+    expect(presA[0].es_base, '[105] la primera presentación de A es la base').toBe(true)
+    expect(presA[0].padre_linea_id, '[105] la base es la raíz del árbol (padre NULL)').toBeNull()
+    expect(Number(presA[1].factor_base), '[105] la Caja = 12 unidades base').toBe(12)
+    expect(presA[1].padre_linea_id, '[105] la Caja apunta a la base como padre').toBe(presA[0].id)
+    // La columna de precio ya NO existe en el select → empaque sin precio propio
+    expect(presA[1]).not.toHaveProperty('precio_venta')
 
-    // B) ancla por nombre "Caja" → nivel_precio_orden=2, SIN precio propio en el nivel (deriva del header)
-    const prodBRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/productos?sku=eq.${skuB}&select=id,nivel_precio_orden`, { headers },
-    )
-    const [prodB] = (await prodBRes.json()) as Array<{ id: string; nivel_precio_orden: number | null }>
+    // B) producto simple se creó con su precio base intacto
+    const prodBRes = await request.get(`${SUPABASE_URL}/rest/v1/productos?sku=eq.${skuB}&select=id,precio_venta`, { headers })
+    const [prodB] = (await prodBRes.json()) as Array<{ id: string; precio_venta: number }>
     expect(prodB, '[105] no se encontró el producto B por REST').toBeTruthy()
-    expect(prodB.nivel_precio_orden, '[105] B ancló el precio en Caja (orden 2) por nombre desde el CSV').toBe(2)
-
-    const estrBRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/producto_estructuras?producto_id=eq.${prodB.id}&is_default=eq.true&select=id`, { headers },
-    )
-    const [estrB] = (await estrBRes.json()) as Array<{ id: string }>
-    const nivelesBRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/producto_estructura_niveles?estructura_id=eq.${estrB.id}&order=orden&select=orden,precio_venta,precio_costo`,
-      { headers },
-    )
-    const nivelesB = (await nivelesBRes.json()) as Array<{ orden: number; precio_venta: number | null; precio_costo: number | null }>
-    expect(nivelesB).toHaveLength(2)
-    expect(nivelesB[1].precio_venta, '[105] el nivel anclado no necesita precio propio — deriva del header').toBeNull()
+    expect(Number(prodB.precio_venta), '[105] B mantiene su precio base 100').toBe(100)
   })
 })

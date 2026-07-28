@@ -1,8 +1,8 @@
 ---
 title: Inventario y Stock
 category: features
-tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos]
-sources: [CLAUDE.md, reglas_negocio.md]
+tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm]
+sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293]
 updated: 2026-07-22
 ---
 
@@ -36,6 +36,7 @@ Toda unidad de stock es una `inventario_lineas` identificada por:
 6. **Conteos** — conteo por ubicación o producto con ajuste automático
 7. **Historial** — movimientos con filtros fecha/cat/tipo/motivo (badge "Traslado" ámbar para tipo `traslado`)
 8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO
+9. **Tareas WMS** (🟡 EN DEV, v1.143.0, migs 289-290) — vista de escritorio para el DUEÑO de las tareas de picking/reabastecimiento generadas; link directo a la ruta mobile `/picking`. Ver [[wiki/features/wms]] → "Fase 3"
 
 ---
 
@@ -259,6 +260,45 @@ Venc./Series/Acciones).
 
 ---
 
+## Ingreso y rebaje de stock por Unidad de Medida (🟡 EN DEV desde mig 293, 2026-07-22 — Fase 2 de estructuras-udm)
+
+Los modales de **Ingreso simple y Rebaje simple**, el **Ingreso masivo** (flujo inline) y el **Rebaje
+masivo** (`MasivoModal.tsx`) ganan un selector "Cargar en: / Rebajar en:" que aparece cuando el
+producto tiene una estructura con más de 1 nivel — permite teclear "5 cajas" en vez de "60 unidades"
+(el sistema convierte y `cantidad`/`stock_actual` siguen SIEMPRE en unidad base). Tiene precedencia
+sobre el toggle genérico kg/g ya existente (mecanismo distinto, sin relación con las estructuras del
+producto). Detalle completo (modelo, 4 superficies, bug del label corregido, verificación):
+[[wiki/features/estructuras-udm]] → "Fase 2". **Solo probado en vivo para ingreso/rebaje simple —
+masivo sin probar clickeando en el navegador, sin deploy a PROD.**
+
+---
+
+## Tab "Tareas WMS" (🟡 EN DEV desde v1.143.0, migs 289-290 — cierra Fases 3-5 de estructuras-udm)
+
+Vista de escritorio para el **DUEÑO** de las tareas de picking/reabastecimiento (`wms_tareas`), con
+link directo a la ruta mobile **`/picking`** (`PickingPage.tsx`, escaneo de código de barras vía
+`BarcodeScanner`) donde el rol **DEPOSITO** completa las tareas físicamente en el depósito.
+
+**El picking es logística pura** — no decide qué LPN consume una venta ni cuándo se rebaja stock;
+lee la decisión ya tomada por la venta (`venta_item_despachos`/`venta_items.lpn_plan`). Si el LPN
+vive fuera de una zona de picking, se genera automáticamente una tarea de reabastecimiento
+precedente que reusa el mismo mecanismo de "Mover LPN" de `LpnAccionesModal`. Gateado por
+`modoAvanzado` + rol DEPOSITO, mismo patrón que "Recepciones".
+
+> [!WARNING] **🛑 Pivote de arquitectura (2026-07-22, mismo día): de dónde nacen las tareas
+> cambió.** Esta sección describía las tareas como generadas "al despachar un envío" — GO decidió
+> que **Ventas/Envíos ya NO generan tareas WMS**, eso es exclusivo del módulo NUEVO
+> [[wiki/features/pedidos]] de acá en más (`fn_generar_tareas_picking_envio` de las migs 290/291
+> queda código muerto en la práctica, sin ningún gancho desde el frontend). Este tab va a seguir
+> mostrando `wms_tareas` sin cambios en sí mismo, pero el origen real de esas filas cambia. Detalle:
+> [[wiki/features/wms]] → nota de vigencia al principio de "Fase 3".
+
+Detalle completo del schema/RPCs: [[wiki/features/wms]] → "Fase 3" y "Fase 4". Configuración de
+Zonas/Reglas de almacenaje/Umbrales: [[wiki/features/configuracion]] → "Zonas y picking". **Solo
+DEV — sin deploy a PROD**, deploy pendiente de que GO lo pida.
+
+---
+
 ## Mono-SKU en ubicaciones (migration 052)
 
 `ubicaciones.mono_sku BOOLEAN DEFAULT FALSE`  
@@ -475,11 +515,15 @@ variantes" (SKU separado). Detalle completo: [[wiki/features/atributos-variante]
 ## Links relacionados
 
 - [[wiki/features/ventas-pos]]
+- [[wiki/features/pedidos]] — módulo NUEVO, único origen de tareas WMS desde el pivote F4 (2026-07-22)
 - [[wiki/features/alertas]]
-- [[wiki/features/wms]]
+- [[wiki/features/wms]] — "Fase 3"/"Fase 4" (Tareas WMS/picking/reabastecimiento, v1.143.0)
+- [[wiki/features/estructuras-udm]] — roadmap completo Zonas/Picking/Reabastecimiento + Fase 2 (ingreso/rebaje por UdM, mig 293)
+- [[wiki/features/configuracion]] — sección "Zonas y picking"
 - [[wiki/features/escaneo-barcode]]
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/productos]]
 - [[wiki/features/atributos-variante]]
 - [[wiki/database/triggers]]
+- [[wiki/database/migraciones]] — migs 289, 290
 - [[wiki/database/schema-overview]]

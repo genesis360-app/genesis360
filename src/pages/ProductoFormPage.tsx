@@ -2,7 +2,7 @@ import imageCompression from 'browser-image-compression'
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check, Boxes, ExternalLink } from 'lucide-react'
+import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check, Boxes, ExternalLink, AlertTriangle } from 'lucide-react'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -15,10 +15,12 @@ import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
+import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, type UnidadFisica } from '@/lib/unidadMedidaFisica'
+import { OPERADORES_TIER, type TierOperador } from '@/lib/tiers'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { ProductoQR } from '@/components/ProductoQR'
+import { ReasignarStockVarianteModal } from '@/components/ReasignarStockVarianteModal'
 import { Toggle } from '@/components/Toggle'
-import ProductoGrupoModal, { type ProductoGrupo } from '@/components/ProductoGrupoModal'
 import toast from 'react-hot-toast'
 
 const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
@@ -44,7 +46,7 @@ export default function ProductoFormPage() {
   const [form, setForm] = useState({
     nombre: '', sku: '', descripcion: '', categoria_id: '', proveedor_id: '',
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
-    stock_minimo: '', unidad_medida: 'unidad', codigo_barras: '', activo: true,
+    stock_minimo: '', unidad_medida: 'unidad', unidad_medida_base_id: '', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false,
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
     // Nuevos atributos
@@ -63,13 +65,10 @@ export default function ProductoFormPage() {
     precio_usd: '', moneda_venta: 'local',
     // ISS-174 — peso/medidas para cotizar envíos (fuente 'producto')
     peso_kg: '', largo_cm: '', ancho_cm: '', alto_cm: '',
-    // Ancla de precio por UoM (backlog Fede puntos 4/6/7) — orden del nivel de la estructura
-    // default cuyo precio_venta/costo ES precio_costo/precio_venta de este form. '' = base.
-    nivel_precio_orden: '',
   })
   const [showMarketplace, setShowMarketplace] = useState(false)
   const [showMayorista, setShowMayorista] = useState(false)
-  type TierForm = { _key: string; cantidad_minima: string; precio: string; descripcion: string }
+  type TierForm = { _key: string; cantidad_minima: string; precio: string; descripcion: string; operador: TierOperador }
   const [tiersForm, setTiersForm] = useState<TierForm[]>([])
   // Stock mínimo por sucursal (solo cuando editando)
   const [stockMinimosSucursal, setStockMinimosSucursal] = useState<Record<string, string>>({})
@@ -92,26 +91,18 @@ export default function ProductoFormPage() {
   const [usdInputCosto, setUsdInputCosto] = useState('')
   const [usdInputVenta, setUsdInputVenta] = useState('')
 
-  // Grupos de variantes
-  const [grupoId, setGrupoId] = useState<string | null>(null)
-  const [varianteValores, setVarianteValores] = useState<Record<string, string>>({})
-  // Snapshot de los valores tal como estaban al cargar la página — para poder despegar el
-  // sufijo VIEJO del nombre (ej. "— S") si el usuario cambia de talle antes de agregar el nuevo.
-  const [varianteValoresOriginal, setVarianteValoresOriginal] = useState<Record<string, string>>({})
-  const [grupoModalOpen, setGrupoModalOpen] = useState(false)
-  const [grupoSelectorOpen, setGrupoSelectorOpen] = useState(false)
+  // Variantes madre/hijo (rediseño UoM Fase 3, mig 305)
+  const [productoPadreId, setProductoPadreId] = useState<string | null>(null)
+  const [varianteDiferenciador, setVarianteDiferenciador] = useState('')
+  const [crearVarianteAbierto, setCrearVarianteAbierto] = useState(false)
+  const [nuevaVarianteDif, setNuevaVarianteDif] = useState('')
+  // Modal de reparto del stock "sin variante asignada" (Fase 4, mig 309)
+  const [reasignarAbierto, setReasignarAbierto] = useState(false)
 
-  // "Atributos de variante" (tiene_talle/color/encaje/formato/sabor_aroma) y "Grupo de
-  // variantes" son dos modelos de stock incompatibles para el mismo producto: el primero
-  // trackea el atributo en las líneas de UN SOLO SKU; el segundo hace que cada valor sea un
-  // SKU/producto separado. Combinarlos en el mismo producto generó datos inconsistentes en la
-  // práctica (bug reportado por GO, 2026-07-18) — se bloquean mutuamente.
+  // "Atributos de variante" (tiene_talle/color/etc.) COEXISTE con madre/hijo (decisión Eje A de
+  // GO): son dos formas de manejar variantes y cada tenant/producto elige. Ya no se bloquean.
   const ATRIBUTOS_VARIANTE_CAMPOS = ['tiene_talle', 'tiene_color', 'tiene_encaje', 'tiene_formato', 'tiene_sabor_aroma'] as const
   const toggleAtributoVariante = (campo: typeof ATRIBUTOS_VARIANTE_CAMPOS[number], checked: boolean) => {
-    if (checked && grupoId) {
-      toast.error('Este producto ya está vinculado a un Grupo de variantes — no se puede combinar con "Atributos de variante". Son dos formas distintas de manejar el stock; desvinculalo del grupo primero si necesitás esto.', { duration: 7000 })
-      return
-    }
     setForm(p => ({ ...p, [campo]: checked }))
   }
 
@@ -174,14 +165,26 @@ export default function ProductoFormPage() {
     enabled: !!tenant,
   })
 
-  const { data: unidadesCustom = [] } = useQuery({
-    queryKey: ['unidades_medida', tenant?.id],
+  // Fase 1 UoM: catálogo de unidades de medida FÍSICAS (familias + conversión universal, mig 303)
+  const { data: unidadesFisicas = [] } = useQuery<UnidadFisica[]>({
+    queryKey: ['unidades_medida_fisicas', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('unidades_medida').select('nombre, simbolo').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
-      return data ?? []
+      const { data } = await supabase.from('unidades_medida_fisicas')
+        .select('id, familia, nombre, simbolo, factor_base_familia, es_base_familia, permite_decimales')
+        .eq('tenant_id', tenant!.id).eq('activo', true).order('orden')
+      return (data ?? []) as UnidadFisica[]
     },
     enabled: !!tenant,
   })
+
+  // Preselección de la UdM física: si el producto todavía no tiene FK (nuevo, o legacy sin
+  // backfill), se resuelve del texto legacy (mismo mapeo que el backfill SQL de la mig 303).
+  // Solo actúa si está vacío → nunca pisa una elección del usuario.
+  useEffect(() => {
+    if (unidadesFisicas.length === 0 || form.unidad_medida_base_id) return
+    const m = mapearLegacyAFisica(form.unidad_medida, unidadesFisicas)
+    if (m) setForm(p => p.unidad_medida_base_id ? p : { ...p, unidad_medida_base_id: m.id })
+  }, [unidadesFisicas, form.unidad_medida, form.unidad_medida_base_id])
 
   const { data: tiersData = [] } = useQuery({
     queryKey: ['precios-mayorista', id],
@@ -190,26 +193,25 @@ export default function ProductoFormPage() {
         .from('producto_precios_mayorista')
         .select('*')
         .eq('producto_id', id!)
-        .order('cantidad_minima')
+        .order('orden')
       return data ?? []
     },
     enabled: isEditing && !!tenant,
   })
 
-  // Ancla de precio por UoM (backlog Fede puntos 4/6/7) — niveles de la estructura DEFAULT,
-  // para elegir a qué UoM corresponden precio_venta/precio_costo de este form.
-  const { data: estructuraDefault } = useQuery({
-    queryKey: ['estructura-default', id],
+  // Rediseño UoM Fase 2 (mig 304) — precio canónico por unidad BASE. Cargamos la presentación
+  // base para etiquetar los campos de precio ("por Unidad"). Ya NO hay ancla por posición.
+  const { data: presentaciones = [] } = useQuery({
+    queryKey: ['producto-presentaciones', id],
     queryFn: async () => {
-      const { data } = await supabase.from('producto_estructuras')
-        .select('id, producto_estructura_niveles(orden, unidades_base, unidades_medida(nombre, simbolo))')
-        .eq('producto_id', id!).eq('is_default', true).maybeSingle()
-      return data ?? null
+      const { data } = await supabase.from('producto_presentaciones')
+        .select('orden, etiqueta, factor_base, es_base')
+        .eq('producto_id', id!).order('orden')
+      return (data ?? []) as any[]
     },
     enabled: isEditing && !!tenant,
   })
-  const nivelesAncla = ((estructuraDefault?.producto_estructura_niveles ?? []) as any[])
-    .slice().sort((a, b) => a.orden - b.orden)
+  const presentacionBase = presentaciones.find((p: any) => p.es_base) ?? null
 
   const { data: stockMinimosSucursalData = [] } = useQuery({
     queryKey: ['producto-stock-minimo-sucursal', id],
@@ -224,34 +226,55 @@ export default function ProductoFormPage() {
     enabled: isEditing && !!tenant,
   })
 
-  const { data: productosGrupos = [] } = useQuery({
-    queryKey: ['producto-grupos', tenant?.id],
+  // Madre (si este producto es hijo)
+  const { data: madre = null } = useQuery({
+    queryKey: ['producto-madre', productoPadreId],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('producto_grupos')
-        .select('*, categorias(nombre)')
-        .eq('tenant_id', tenant!.id)
-        .eq('activo', true)
-        .order('nombre')
-      return (data ?? []) as ProductoGrupo[]
+      const { data } = await supabase.from('productos').select('id, nombre').eq('id', productoPadreId!).maybeSingle()
+      return data as { id: string; nombre: string } | null
     },
-    enabled: !!tenant,
+    enabled: !!productoPadreId,
   })
 
-  const grupoActual = productosGrupos.find(g => g.id === grupoId) ?? null
-
-  const { data: variantesDelGrupo = [] } = useQuery({
-    queryKey: ['grupo-variantes', grupoId],
+  // Hijos de ESTE producto (si es madre) — para mostrar/navegar sus variantes
+  const { data: hijos = [] } = useQuery({
+    queryKey: ['producto-hijos', id],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('productos')
-        .select('id, nombre, sku, precio_venta, stock_actual, variante_valores, activo')
-        .eq('grupo_id', grupoId!)
-        .eq('activo', true)
-        .order('nombre')
+      const { data } = await supabase.from('productos')
+        .select('id, nombre, sku, variante_diferenciador, precio_venta, stock_actual, activo')
+        .eq('producto_padre_id', id!).order('nombre')
       return data ?? []
     },
-    enabled: !!grupoId,
+    enabled: isEditing && !!tenant,
+  })
+
+  // Hermanos (otras variantes de la misma madre) — si este producto es hijo
+  const { data: hermanos = [] } = useQuery({
+    queryKey: ['producto-hermanos', productoPadreId, id],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos')
+        .select('id, nombre, sku, variante_diferenciador')
+        .eq('producto_padre_id', productoPadreId!).neq('id', id!).order('nombre')
+      return data ?? []
+    },
+    enabled: !!productoPadreId && !!id,
+  })
+
+  const esHijo = !!productoPadreId
+  const esMadre = hijos.length > 0
+
+  // Stock "sin variante asignada" (Fase 4, mig 309): el que quedó colgando de la MADRE cuando se
+  // le crearon variantes. Contable pero NO vendible → hay que repartirlo entre los hijos.
+  // Sin filtro de sucursal: si no, quedaría stock invisible para el usuario parado en otra.
+  const { data: stockSinAsignar = 0 } = useQuery({
+    queryKey: ['stock-sin-variante-total', id],
+    queryFn: async () => {
+      const { data } = await supabase.from('inventario_lineas')
+        .select('cantidad').eq('tenant_id', tenant!.id).eq('producto_id', id!)
+        .eq('activo', true).gt('cantidad', 0)
+      return (data ?? []).reduce((a: number, l: any) => a + (l.cantidad ?? 0), 0)
+    },
+    enabled: isEditing && !!tenant && esMadre,
   })
 
   useEffect(() => {
@@ -261,6 +284,7 @@ export default function ProductoFormPage() {
         cantidad_minima: String(t.cantidad_minima),
         precio: String(t.precio),
         descripcion: t.descripcion ?? '',
+        operador: (t.operador ?? '>=') as TierOperador,
       })))
       setShowMayorista(true)
     }
@@ -297,7 +321,7 @@ export default function ProductoFormPage() {
         precio_costo: productoData.precio_costo.toString(),
         precio_venta: productoData.precio_venta.toString(), stock_actual: productoData.stock_actual.toString(),
         stock_minimo: productoData.stock_minimo.toString(), unidad_medida: productoData.unidad_medida,
-        nivel_precio_orden: (productoData as any).nivel_precio_orden != null ? String((productoData as any).nivel_precio_orden) : '',
+        unidad_medida_base_id: (productoData as any).unidad_medida_base_id ?? '',
         codigo_barras: productoData.codigo_barras ?? '', activo: productoData.activo,
         tiene_series: productoData.tiene_series ?? false,
         tiene_lote: productoData.tiene_lote ?? false,
@@ -333,11 +357,8 @@ export default function ProductoFormPage() {
       })
       if (productoData.publicado_marketplace) setShowMarketplace(true)
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
-      if (productoData.grupo_id) setGrupoId(productoData.grupo_id)
-      if (productoData.variante_valores) {
-        setVarianteValores(productoData.variante_valores as Record<string, string>)
-        setVarianteValoresOriginal(productoData.variante_valores as Record<string, string>)
-      }
+      setProductoPadreId((productoData as any).producto_padre_id ?? null)
+      setVarianteDiferenciador((productoData as any).variante_diferenciador ?? '')
       setLoaded(true)
     }
   }, [productoData])
@@ -423,24 +444,14 @@ export default function ProductoFormPage() {
         imagen_url = urlData.publicUrl
       }
 
-      // Auto-sufijo de variante: si el producto está vinculado a un Grupo de variantes y tiene
-      // valores cargados (ej. Talle: S), el nombre tiene que reflejarlo — es el único lugar donde
-      // Inventario/ventas/tickets muestran cuál variante es, ya que ahí no se ve ningún badge de
-      // "Talle: S" (solo el nombre). Mismo criterio que "Generar variantes" en el modal del grupo
-      // (ProductoGrupoModal), que ya arma el nombre como "Grupo — Valor". Si el usuario cambió de
-      // valor (ej. S → M), se despega primero el sufijo viejo para no dejarlo colgado.
-      let nombreFinal = form.nombre.trim()
-      if (grupoId) {
-        const sufijoNuevo = Object.values(varianteValores).filter(v => v && v.trim()).join(' / ')
-        const sufijoViejo = Object.values(varianteValoresOriginal).filter(v => v && v.trim()).join(' / ')
-        if (sufijoViejo && nombreFinal.endsWith(` — ${sufijoViejo}`)) {
-          nombreFinal = nombreFinal.slice(0, nombreFinal.length - ` — ${sufijoViejo}`.length).trim()
-        }
-        if (sufijoNuevo && !nombreFinal.endsWith(` — ${sufijoNuevo}`)) {
-          nombreFinal = `${nombreFinal} — ${sufijoNuevo}`
-        }
+      // El nombre de un hijo lo compone el trigger de DB (madre.nombre — diferenciador, mig 305):
+      // acá mandamos el nombre tal cual y el diferenciador; el trigger BEFORE lo recompone.
+      if (productoPadreId && !varianteDiferenciador.trim()) {
+        toast.error('El diferenciador de la variante es obligatorio (ej. "Rojo / M").')
+        setSaving(false)
+        return
       }
-      if (nombreFinal !== form.nombre.trim()) setForm(p => ({ ...p, nombre: nombreFinal }))
+      const nombreFinal = form.nombre.trim()
 
       const payload = {
         tenant_id: tenant!.id,
@@ -451,9 +462,6 @@ export default function ProductoFormPage() {
         estado_id: form.estado_id || null,
         precio_costo: Math.max(0, parseFloat(form.precio_costo) || 0),
         precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
-        // Ancla de precio por UoM (backlog Fede puntos 4/6/7) — orden del nivel de la
-        // estructura default al que corresponden precio_costo/precio_venta. '' = nivel base.
-        nivel_precio_orden: form.nivel_precio_orden !== '' ? parseInt(form.nivel_precio_orden) : null,
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
         peso_kg:  form.peso_kg  !== '' ? parseFloat(form.peso_kg)  : null,
@@ -462,6 +470,7 @@ export default function ProductoFormPage() {
         alto_cm:  form.alto_cm  !== '' ? parseFloat(form.alto_cm)  : null,
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida,
+        unidad_medida_base_id: form.unidad_medida_base_id || null,
         codigo_barras: form.codigo_barras.trim() || null,
         imagen_url, activo: form.activo,
         tiene_series: form.tiene_series,
@@ -487,9 +496,9 @@ export default function ProductoFormPage() {
         precio_marketplace: form.precio_marketplace !== '' ? parseFloat(form.precio_marketplace) : null,
         stock_reservado_marketplace: parseInt(form.stock_reservado_marketplace) || 0,
         descripcion_marketplace: form.descripcion_marketplace.trim() || null,
-        // Grupos de variantes
-        grupo_id: grupoId || null,
-        variante_valores: grupoId && Object.keys(varianteValores).length > 0 ? varianteValores : null,
+        // Variantes madre/hijo (rediseño UoM Fase 3): el diferenciador solo aplica a hijos.
+        // El vínculo producto_padre_id se crea/rompe por la acción "Crear variante", no acá.
+        variante_diferenciador: productoPadreId ? (varianteDiferenciador.trim() || null) : null,
       }
       let productoId: string = id ?? ''
       if (isEditing) {
@@ -525,13 +534,16 @@ export default function ProductoFormPage() {
         if (showMayorista) {
           const tiersValidos = tiersForm.filter(t => t.cantidad_minima && t.precio !== '')
           if (tiersValidos.length > 0) {
+            // `orden` = índice en el form (el vendedor los ordena; gana el primer match, mig 306).
             const { error: tiersErr } = await supabase.from('producto_precios_mayorista').insert(
-              tiersValidos.map(t => ({
+              tiersValidos.map((t, i) => ({
                 tenant_id: tenant!.id,
                 producto_id: productoId,
                 cantidad_minima: parseInt(t.cantidad_minima),
                 precio: parseFloat(t.precio),
                 descripcion: t.descripcion.trim() || null,
+                operador: t.operador,
+                orden: i,
               }))
             )
             if (tiersErr) throw tiersErr
@@ -540,6 +552,15 @@ export default function ProductoFormPage() {
       }
 
       qc.invalidateQueries({ queryKey: ['productos'] })
+      // Bug real encontrado por GO (2026-07-22): `['producto', id]` (la query de ESTE form,
+      // distinta de la lista `['productos']` de arriba) quedaba con el snapshot de ANTES de
+      // guardar. React Query igual la sirve de la caché al reabrir el producto (stale-while-
+      // revalidate) mientras refetchea en segundo plano — pero el useEffect que siembra `form`
+      // solo corre una vez (`!loaded`), así que se quedaba pegado para siempre con el valor
+      // viejo (el guardado en DB sí había funcionado). `removeQueries` (no solo invalidate) saca
+      // el snapshot viejo de la caché para que la próxima apertura arranque de cero, en vez de
+      // mostrar el viejo mientras refetchea.
+      if (isEditing) qc.removeQueries({ queryKey: ['producto', id] })
       navigate('/productos')
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Error al guardar')
@@ -560,7 +581,17 @@ export default function ProductoFormPage() {
       if (!resultado?.eliminado) {
         const motivo = resultado?.motivo ?? 'error desconocido'
         if (motivo === 'tiene_actividad') {
-          toast.error('No se puede eliminar: el producto tiene movimientos, ventas, compras u otra actividad registrada. Usá el toggle "Activo / Inactivo" para ocultarlo en su lugar.', { duration: 7000 })
+          // El bloqueo ya lo hizo el server (fn_producto_tiene_actividad). Acá solo lo EXPLICAMOS:
+          // si lo que traba es stock, el cartel nombra la/las sucursal(es) — estar parado en una
+          // sucursal con 0 no alcanza si otra todavía tiene unidades (Fase 4, mig 309).
+          const { data: porSucursal } = await supabase.rpc('fn_stock_por_sucursal', { p_producto_ids: [id!] })
+          const conStock = (porSucursal ?? []) as { sucursal_nombre: string; cantidad: number }[]
+          if (conStock.length > 0) {
+            const detalle = conStock.map(s => `${s.sucursal_nombre}: ${s.cantidad} u`).join(' · ')
+            toast.error(`No se puede eliminar: todavía tiene stock en ${detalle}. Dejalo en 0 en TODAS las sucursales o usá el toggle "Activo / Inactivo".`, { duration: 9000 })
+          } else {
+            toast.error('No se puede eliminar: el producto tiene movimientos, ventas, compras u otra actividad registrada. Usá el toggle "Activo / Inactivo" para ocultarlo en su lugar.', { duration: 7000 })
+          }
         } else {
           toast.error(`No se pudo eliminar: ${motivo}`)
         }
@@ -573,6 +604,65 @@ export default function ProductoFormPage() {
       navigate('/productos')
     } finally {
       setDeleting(false)
+    }
+  }
+
+  // Crear variante (rediseño UoM Fase 3): agrega un hijo. Si este producto es standalone, se
+  // convierte en madre (agrupador) y el hijo hereda su ficha; si ya es madre/hijo, agrega otra
+  // variante bajo la misma madre. El nombre del hijo lo compone el trigger de DB.
+  const handleCrearVariante = async () => {
+    const dif = nuevaVarianteDif.trim()
+    if (!dif) { toast.error('Poné un diferenciador para la variante (ej. "Rojo / M")'); return }
+    if (!isEditing || !id || !tenant || !productoData) return
+    const madreId = productoPadreId ?? id
+    // Convertir un standalone CON stock en madre deja ese stock "sin variante asignada": sigue
+    // contando en inventario pero NO se puede vender (el POS excluye a las madres agrupadoras).
+    // Desde la Fase 4 se permite, avisando, y se resuelve con el modal de reparto (mig 309).
+    const stockQuedaSinAsignar =
+      !productoPadreId && !esMadre && Number((productoData as any).stock_actual ?? 0) > 0
+    if (stockQuedaSinAsignar) {
+      const stock = Number((productoData as any).stock_actual ?? 0)
+      if (!confirm(
+        `"${form.nombre}" tiene ${stock} unidad(es) de stock.\n\n` +
+        `Al crear la primera variante este producto pasa a ser un AGRUPADOR: deja de venderse ` +
+        `directamente y ese stock queda "sin variante asignada" — sigue contando en inventario, ` +
+        `pero no se puede vender hasta que lo repartas entre las variantes.\n\n` +
+        `Después de crearla vas a poder repartirlo desde la ficha del agrupador. ¿Seguimos?`
+      )) return
+    }
+    setSaving(true)
+    try {
+      const src = productoData as any
+      const slug = dif.toUpperCase().replace(/[^A-Z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 12) || 'VAR'
+      const nuevoSku = `${src.sku}-${slug}-${crypto.randomUUID().slice(0, 4)}`
+      const nuevo = {
+        tenant_id: tenant.id,
+        nombre: dif,  // placeholder — el trigger BEFORE recompone a "madre — diferenciador"
+        sku: nuevoSku,
+        producto_padre_id: madreId,
+        variante_diferenciador: dif,
+        categoria_id: src.categoria_id ?? null,
+        proveedor_id: src.proveedor_id ?? null,
+        unidad_medida: src.unidad_medida ?? 'unidad',
+        unidad_medida_base_id: src.unidad_medida_base_id ?? null,
+        precio_venta: src.precio_venta ?? 0,
+        precio_costo: src.precio_costo ?? 0,
+        alicuota_iva: src.alicuota_iva ?? 21,
+        stock_actual: 0,
+        stock_minimo: src.stock_minimo ?? 0,
+        activo: true,
+      }
+      const { data: created, error } = await supabase.from('productos').insert(nuevo).select('id').single()
+      if (error) throw error
+      toast.success('Variante creada')
+      setCrearVarianteAbierto(false); setNuevaVarianteDif('')
+      qc.invalidateQueries({ queryKey: ['productos'] })
+      qc.removeQueries({ queryKey: ['producto', id] })
+      navigate(`/productos/${created.id}/editar`)
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo crear la variante')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -591,9 +681,6 @@ export default function ProductoFormPage() {
         estado_id: form.estado_id || null,
         precio_costo: Math.max(0, parseFloat(form.precio_costo) || 0),
         precio_venta: Math.max(0, parseFloat(form.precio_venta) || 0),
-        // Ancla de precio por UoM (backlog Fede puntos 4/6/7) — orden del nivel de la
-        // estructura default al que corresponden precio_costo/precio_venta. '' = nivel base.
-        nivel_precio_orden: form.nivel_precio_orden !== '' ? parseInt(form.nivel_precio_orden) : null,
         precio_usd: form.precio_usd !== '' ? parseFloat(form.precio_usd) : null,
         moneda_venta: form.moneda_venta || 'local',
         peso_kg:  form.peso_kg  !== '' ? parseFloat(form.peso_kg)  : null,
@@ -904,38 +991,25 @@ export default function ProductoFormPage() {
                 )}
               </div>
 
-              {/* Ancla de precio por UoM (backlog Fede puntos 4/6/7) — a qué nivel de la
-                  estructura default corresponden precio_costo/precio_venta de abajo. Solo
-                  aparece si el producto tiene una estructura con más de un nivel. */}
-              {nivelesAncla.length > 1 && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Estos precios corresponden a
-                  </label>
-                  <select value={form.nivel_precio_orden} disabled={!canEdit}
-                    onChange={e => setForm(p => ({ ...p, nivel_precio_orden: e.target.value }))}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
-                    {nivelesAncla.map((n: any) => (
-                      <option key={n.orden} value={n.orden === nivelesAncla[0].orden ? '' : String(n.orden)}>
-                        {n.unidades_medida?.nombre ?? '—'}{n.orden === nivelesAncla[0].orden ? ' (base)' : ` (= ${n.unidades_base} × ${nivelesAncla[0].unidades_medida?.nombre ?? '—'})`}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
-                    Los demás niveles de la estructura calculan su precio proporcional a este, salvo que se les cargue uno propio en la pestaña Estructura.
-                  </p>
-                </div>
+              {/* Rediseño UoM Fase 2-bis (mig 307): el precio es SIEMPRE por unidad BASE. El
+                  empaque es logística pura, sin precio propio: las presentaciones (Caja/Pallet)
+                  cobran base × factor. El descuento por volumen se carga como precio mayorista
+                  por cantidad (tiers), más abajo. */}
+              {presentacionBase && presentaciones.length > 1 && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 bg-blue-50 dark:bg-blue-900/20 rounded-lg px-3 py-2">
+                  Estos precios son por <strong>{presentacionBase.etiqueta}</strong> (unidad base). Las demás presentaciones
+                  ({presentaciones.filter((p: any) => !p.es_base).map((p: any) => p.etiqueta).join(', ')}) cobran
+                  base × factor. Para un precio por volumen, usá el precio mayorista por cantidad.
+                </p>
               )}
 
               {/* Precios costo + venta con toggles ARS/USD */}
               {(() => {
                 const cotizNum = cotizacionNum
-                // Nombre de la UdM anclada, para relabelear "Precio de costo/venta" (backlog
-                // Fede puntos 4/6/7) — '' en el label = nivel base, no hace falta aclarar.
-                const nivelAnclaSel = form.nivel_precio_orden !== ''
-                  ? nivelesAncla.find((n: any) => String(n.orden) === form.nivel_precio_orden)
-                  : null
-                const sufijoAncla = nivelAnclaSel ? ` (por ${nivelAnclaSel.unidades_medida?.nombre ?? '—'})` : ''
+                // Rediseño UoM Fase 2: los precios son por la unidad base; el sufijo lo aclara
+                // solo si el producto tiene presentaciones (Caja/Pallet) sobre una base con nombre.
+                const sufijoAncla = (presentacionBase && presentaciones.length > 1)
+                  ? ` (por ${presentacionBase.etiqueta})` : ''
                 const toggleCosto = () => {
                   if (!usdModoCosto && cotizNum > 0)
                     setUsdInputCosto(((parseFloat(form.precio_costo) || 0) / cotizNum).toFixed(2))
@@ -1132,9 +1206,15 @@ export default function ProductoFormPage() {
                       )}
                       {tiersForm.map((tier, idx) => (
                         <div key={tier._key} className="flex items-center gap-2">
-                          <div className="w-24">
+                          <select value={tier.operador}
+                            onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, operador: e.target.value as TierOperador } : t))}
+                            className="w-16 px-1 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700"
+                            title="Operador de la regla — se evalúan de arriba hacia abajo, gana la primera que coincide">
+                            {OPERADORES_TIER.map(o => <option key={o.valor} value={o.valor}>{o.valor}</option>)}
+                          </select>
+                          <div className="w-20">
                             <input type="number" min="1" step="1" onWheel={e => e.currentTarget.blur()}
-                              placeholder="Cant. mín."
+                              placeholder="Cant."
                               value={tier.cantidad_minima}
                               onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, cantidad_minima: e.target.value } : t))}
                               className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
@@ -1160,10 +1240,13 @@ export default function ProductoFormPage() {
                         </div>
                       ))}
                       <button type="button"
-                        onClick={() => setTiersForm(prev => [...prev, { _key: crypto.randomUUID(), cantidad_minima: '', precio: '', descripcion: '' }])}
+                        onClick={() => setTiersForm(prev => [...prev, { _key: crypto.randomUUID(), cantidad_minima: '', precio: '', descripcion: '', operador: '>=' }])}
                         className="flex items-center gap-1.5 text-xs text-accent-text hover:underline transition-colors">
                         <Plus size={13} /> Agregar tier
                       </button>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        Se evalúan de arriba hacia abajo (gana el primero que coincide con la cantidad total del producto en la venta). Poné los umbrales más grandes arriba. Usá <strong>=</strong> para un precio exacto (ej. un pallet completo).
+                      </p>
                       {tiersForm.length > 0 && parseFloat(form.precio_venta) > 0 && (
                         <p className="text-xs text-gray-400 dark:text-gray-500">
                           Precio minorista (1 u.): <span className="font-medium">${parseFloat(form.precio_venta).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
@@ -1190,19 +1273,33 @@ export default function ProductoFormPage() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unidad de medida</label>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide este producto</p>
-                  <select value={form.unidad_medida} disabled={!canEdit}
-                    onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
-                    className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
-                    {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
-                    {(unidadesCustom as any[]).length > 0 && (
-                      <optgroup label="Personalizadas">
-                        {(unidadesCustom as any[]).map((u: any) => (
-                          <option key={u.nombre} value={u.nombre}>{u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}</option>
-                        ))}
-                      </optgroup>
-                    )}
-                  </select>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cómo se mide/cuenta este producto (Peso/Volumen/Longitud admiten decimales; Conteo no)</p>
+                  {unidadesFisicas.length > 0 ? (
+                    <select value={form.unidad_medida_base_id} disabled={!canEdit}
+                      onChange={e => {
+                        const sel = unidadesFisicas.find(x => x.id === e.target.value)
+                        setForm(p => ({ ...p, unidad_medida_base_id: e.target.value, unidad_medida: sel ? sel.nombre : p.unidad_medida }))
+                      }}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                      <option value="">— Elegí una unidad —</option>
+                      {FAMILIAS_FISICAS.map(fam => {
+                        const us = agruparPorFamilia(unidadesFisicas)[fam]
+                        if (us.length === 0) return null
+                        return (
+                          <optgroup key={fam} label={ETIQUETA_FAMILIA[fam]}>
+                            {us.map(u => <option key={u.id} value={u.id}>{u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}</option>)}
+                          </optgroup>
+                        )
+                      })}
+                    </select>
+                  ) : (
+                    // Fallback si el catálogo de UdM físicas todavía no cargó (o tenant sin seed)
+                    <select value={form.unidad_medida} disabled={!canEdit}
+                      onChange={e => setForm(p => ({ ...p, unidad_medida: e.target.value }))}
+                      className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                      {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  )}
                 </div>
               </div>
 
@@ -1443,14 +1540,13 @@ export default function ProductoFormPage() {
                       <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
                         Para UN SOLO producto/SKU cuyo stock se banca junto pero se distingue por talle/color en el
                         depósito (te lo va a pedir en cada ingreso y venta). Si cada talle/color tiene precio o SKU
-                        propio, usá <strong>&quot;Grupo de variantes&quot;</strong> más abajo en su lugar — no se pueden combinar.
+                        propio, usá <strong>&quot;Variantes&quot;</strong> más abajo (madre/hijo) en su lugar.
                       </p>
                     </div>
 
                     {/* tiene_talle */}
-                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="mt-0.5"><Toggle checked={form.tiene_talle} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_talle', v)} aria-label="tiene_talle" /></div>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="mt-0.5"><Toggle checked={form.tiene_talle} onChange={v => toggleAtributoVariante('tiene_talle', v)} aria-label="tiene_talle" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Talle / Talla</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Registra el talle de cada unidad (ropa, calzado)</p>
@@ -1458,9 +1554,8 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_color */}
-                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="mt-0.5"><Toggle checked={form.tiene_color} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_color', v)} aria-label="tiene_color" /></div>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="mt-0.5"><Toggle checked={form.tiene_color} onChange={v => toggleAtributoVariante('tiene_color', v)} aria-label="tiene_color" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Color</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Identifica el color de cada unidad</p>
@@ -1468,9 +1563,8 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_encaje */}
-                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="mt-0.5"><Toggle checked={form.tiene_encaje} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_encaje', v)} aria-label="tiene_encaje" /></div>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="mt-0.5"><Toggle checked={form.tiene_encaje} onChange={v => toggleAtributoVariante('tiene_encaje', v)} aria-label="tiene_encaje" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Encaje</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Variante de encaje o ajuste</p>
@@ -1478,9 +1572,8 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_formato */}
-                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="mt-0.5"><Toggle checked={form.tiene_formato} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_formato', v)} aria-label="tiene_formato" /></div>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="mt-0.5"><Toggle checked={form.tiene_formato} onChange={v => toggleAtributoVariante('tiene_formato', v)} aria-label="tiene_formato" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Formato</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Formato o presentación del producto</p>
@@ -1488,9 +1581,8 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_sabor_aroma */}
-                    <label className={`flex items-start gap-3 ${grupoId ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
-                      title={grupoId ? 'Este producto ya está vinculado a un Grupo de variantes — no se puede combinar' : undefined}>
-                      <div className="mt-0.5"><Toggle checked={form.tiene_sabor_aroma} disabled={!!grupoId} onChange={v => toggleAtributoVariante('tiene_sabor_aroma', v)} aria-label="tiene_sabor_aroma" /></div>
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <div className="mt-0.5"><Toggle checked={form.tiene_sabor_aroma} onChange={v => toggleAtributoVariante('tiene_sabor_aroma', v)} aria-label="tiene_sabor_aroma" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Sabor / Aroma</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Sabor o aroma de cada unidad</p>
@@ -1501,196 +1593,125 @@ export default function ProductoFormPage() {
               </div>
             )}
 
-            {/* Card — Grupo de variantes */}
-            {canEdit && (
+            {/* Card — Variantes (madre/hijo, rediseño UoM Fase 3) */}
+            {canEdit && isEditing && (
               <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
                 <div className="flex items-center gap-2 px-5 py-4 border-b border-gray-100 dark:border-gray-700">
                   <Boxes size={16} className="text-accent-text" />
-                  <span className="font-semibold text-gray-700 dark:text-gray-300">Grupo de variantes</span>
-                  {grupoId && (
-                    <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent-text rounded-full">Vinculado</span>
-                  )}
+                  <span className="font-semibold text-gray-700 dark:text-gray-300">Variantes</span>
+                  {esHijo && <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-accent/10 text-accent-text rounded-full">Variante</span>}
+                  {esMadre && <span className="ml-auto px-2 py-0.5 text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded-full">Agrupador</span>}
                 </div>
 
                 <div className="px-5 py-4 space-y-4">
-                  {!grupoId ? (
-                    /* Sin grupo: selector */
-                    <div className="space-y-3">
-                      <p className="text-xs text-gray-500 dark:text-gray-400">
-                        Vinculá este producto a un grupo si cada talle/color es un SKU/producto separado con su
-                        propio precio y stock independiente (ej. "Remera — S" y "Remera — M" son dos productos).
-                        Si en cambio querés UN solo producto que trackee el talle en el depósito, no uses esto —
-                        activá "Atributos de variante" más arriba en su lugar.
-                      </p>
-                      {grupoSelectorOpen ? (
-                        <div className="space-y-2">
-                          {productosGrupos.length === 0 ? (
-                            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-3">
-                              Sin grupos creados.{' '}
-                              <button type="button" onClick={() => setGrupoModalOpen(true)} className="text-accent-text hover:underline">
-                                Crear uno
-                              </button>
-                            </p>
-                          ) : (
-                            <div className="space-y-1 max-h-48 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-xl p-1">
-                              {productosGrupos.map(g => (
-                                <button
-                                  key={g.id}
-                                  type="button"
-                                  onClick={() => {
-                                    if (ATRIBUTOS_VARIANTE_CAMPOS.some(c => form[c])) {
-                                      toast.error('Este producto tiene "Atributos de variante" activados (talle/color/etc.) — no se puede combinar con Grupo de variantes. Desactivalos primero si necesitás esto.', { duration: 7000 })
-                                      return
-                                    }
-                                    setGrupoId(g.id)
-                                    // Pre-cargar atributos como claves vacías
-                                    if (g.atributos) {
-                                      const vv: Record<string, string> = {}
-                                      g.atributos.forEach(a => { vv[a.nombre] = '' })
-                                      setVarianteValores(vv)
-                                    }
-                                    setGrupoSelectorOpen(false)
-                                  }}
-                                  className="w-full text-left px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-700/50 rounded-lg transition-colors"
-                                >
-                                  <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{g.nombre}</p>
-                                  {g.atributos && g.atributos.length > 0 && (
-                                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
-                                      {g.atributos.map(a => a.nombre).join(', ')}
-                                    </p>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
-                          )}
-                          <div className="flex gap-2">
-                            <button
-                              type="button"
-                              onClick={() => setGrupoSelectorOpen(false)}
-                              className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                            >
-                              Cancelar
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => { setGrupoModalOpen(true); setGrupoSelectorOpen(false) }}
-                              className="flex-1 border border-accent-text text-accent-text py-2 rounded-xl text-sm hover:bg-accent/10 transition-colors"
-                            >
-                              <Plus size={13} className="inline mr-1" />Nuevo grupo
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setGrupoSelectorOpen(true)}
-                          className="w-full flex items-center justify-center gap-2 border border-dashed border-accent-text/40 text-accent-text py-2.5 rounded-xl text-sm hover:bg-accent/5 transition-colors"
-                        >
-                          <Boxes size={15} /> Vincular a un grupo
-                        </button>
-                      )}
-                    </div>
-                  ) : (
-                    /* Con grupo: mostrar datos */
+                  {esHijo ? (
+                    /* Es un hijo: mostrar la madre + hermanos + diferenciador editable */
                     <div className="space-y-4">
-                      {/* Badge del grupo */}
                       <div className="flex items-center gap-3 p-3 bg-accent/5 dark:bg-accent/10 rounded-xl border border-accent-text/20">
                         <Boxes size={16} className="text-accent-text flex-shrink-0" />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-                            Variante de: &quot;{grupoActual?.nombre ?? '…'}&quot;
-                          </p>
-                          {(grupoActual?.categorias as any)?.nombre && (
-                            <p className="text-xs text-gray-400 dark:text-gray-500">{(grupoActual?.categorias as any).nombre}</p>
-                          )}
+                          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Variante de: &quot;{madre?.nombre ?? '…'}&quot;</p>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => setGrupoModalOpen(true)}
-                          className="text-xs text-accent-text hover:underline flex-shrink-0"
-                        >
-                          Ver grupo
-                        </button>
+                        {madre && (
+                          <button type="button" onClick={() => navigate(`/productos/${madre.id}/editar`)} className="text-xs text-accent-text hover:underline flex-shrink-0">
+                            Ver madre
+                          </button>
+                        )}
                       </div>
-
-                      {/* Atributos de este variante */}
-                      {grupoActual?.atributos && grupoActual.atributos.length > 0 && (
-                        <div className="space-y-3">
-                          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Valores de esta variante</p>
-                          {grupoActual.atributos.map(attr => (
-                            <div key={attr.nombre} className="flex items-center gap-3">
-                              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 w-24 flex-shrink-0">
-                                {attr.nombre}:
-                              </label>
-                              {attr.valores.length > 0 ? (
-                                <select
-                                  value={varianteValores[attr.nombre] ?? ''}
-                                  onChange={e => setVarianteValores(prev => ({ ...prev, [attr.nombre]: e.target.value }))}
-                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
-                                >
-                                  <option value="">— Seleccionar —</option>
-                                  {attr.valores.map(v => (
-                                    <option key={v} value={v}>{v}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <input
-                                  type="text"
-                                  value={varianteValores[attr.nombre] ?? ''}
-                                  onChange={e => setVarianteValores(prev => ({ ...prev, [attr.nombre]: e.target.value }))}
-                                  placeholder={`Valor de ${attr.nombre}`}
-                                  className="flex-1 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
-                                />
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Valores actuales como badges */}
-                      {Object.keys(varianteValores).filter(k => varianteValores[k]).length > 0 && (
-                        <div className="flex flex-wrap gap-1.5">
-                          {Object.entries(varianteValores).filter(([, v]) => v).map(([k, v]) => (
-                            <span key={k} className="px-2 py-0.5 rounded-full text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
-                              {k}: {v}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-
-                      {/* Ver todas las variantes del grupo */}
-                      {variantesDelGrupo.length > 0 && (
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Diferenciador</label>
+                        <input type="text" value={varianteDiferenciador}
+                          onChange={e => setVarianteDiferenciador(e.target.value)}
+                          placeholder="Ej. Rojo / M"
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text" />
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">El nombre completo (&quot;{madre?.nombre ?? '…'} — {varianteDiferenciador || '…'}&quot;) se arma solo al guardar.</p>
+                      </div>
+                      {hermanos.length > 0 && (
                         <div>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">
-                            {variantesDelGrupo.length} variante{variantesDelGrupo.length !== 1 ? 's' : ''} en el grupo:
-                          </p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Otras variantes:</p>
                           <div className="flex flex-wrap gap-1">
-                            {(variantesDelGrupo as any[]).slice(0, 5).map(v => (
-                              <button
-                                key={v.id}
-                                type="button"
-                                onClick={() => navigate(`/productos/${v.id}/editar`)}
-                                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-accent-text transition-colors"
-                              >
-                                {v.sku} <ExternalLink size={10} />
+                            {(hermanos as any[]).slice(0, 8).map(h => (
+                              <button key={h.id} type="button" onClick={() => navigate(`/productos/${h.id}/editar`)}
+                                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-accent-text transition-colors">
+                                {h.variante_diferenciador ?? h.sku} <ExternalLink size={10} />
                               </button>
                             ))}
-                            {variantesDelGrupo.length > 5 && (
-                              <span className="text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5">+{variantesDelGrupo.length - 5} más</span>
-                            )}
+                            {hermanos.length > 8 && <span className="text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5">+{hermanos.length - 8} más</span>}
                           </div>
                         </div>
                       )}
-
-                      {/* Desvincular */}
-                      <button
-                        type="button"
-                        onClick={() => { setGrupoId(null); setVarianteValores({}) }}
-                        className="text-xs text-red-500 hover:text-red-600 hover:underline transition-colors"
-                      >
-                        Desvincular del grupo
-                      </button>
                     </div>
+                  ) : esMadre ? (
+                    /* Es una madre: mostrar los hijos + agregar variante */
+                    <div className="space-y-3">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Este producto es un <strong>agrupador</strong>: no se vende directamente, se venden sus variantes.
+                      </p>
+
+                      {/* Stock sin variante asignada (Fase 4): contable pero NO vendible */}
+                      {stockSinAsignar > 0 && (
+                        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 space-y-2">
+                          <div className="flex gap-2">
+                            <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-800 dark:text-amber-300">
+                              <strong>{stockSinAsignar} unidad(es) sin variante asignada.</strong> Este stock
+                              sigue contando en inventario, pero <strong>no se puede vender</strong> hasta
+                              repartirlo entre las variantes.
+                            </p>
+                          </div>
+                          {canEdit && (
+                            <button type="button" onClick={() => setReasignarAbierto(true)}
+                              className="w-full bg-amber-600 hover:bg-amber-700 text-white py-2 rounded-lg text-xs font-semibold transition-colors">
+                              Repartir entre las variantes
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="border border-gray-200 dark:border-gray-700 rounded-xl divide-y divide-gray-50 dark:divide-gray-700">
+                        {(hijos as any[]).map(h => (
+                          <button key={h.id} type="button" onClick={() => navigate(`/productos/${h.id}/editar`)}
+                            className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-700/40 transition-colors">
+                            <span className="flex-1 min-w-0 text-sm text-gray-800 dark:text-gray-100 truncate">{h.variante_diferenciador}</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">${(h.precio_venta ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                            <ExternalLink size={12} className="text-gray-400" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    /* Standalone: opción de crear la primera variante */
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Si este producto viene en variantes (talle/color/sabor) con precio y stock propios,
+                      creá la primera con <strong>&quot;Crear variante&quot;</strong>. El producto pasa a ser un agrupador.
+                    </p>
+                  )}
+
+                  {/* Crear variante — disponible para madre o standalone (agrega un hijo) */}
+                  {!esHijo && (
+                    crearVarianteAbierto ? (
+                      <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-700">
+                        <input type="text" value={nuevaVarianteDif}
+                          onChange={e => setNuevaVarianteDif(e.target.value)}
+                          placeholder="Diferenciador de la nueva variante (ej. Rojo / M)"
+                          className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text" />
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => { setCrearVarianteAbierto(false); setNuevaVarianteDif('') }}
+                            className="flex-1 border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 py-2 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                            Cancelar
+                          </button>
+                          <button type="button" onClick={handleCrearVariante} disabled={saving}
+                            className="flex-1 bg-accent hover:bg-accent/90 text-white py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60">
+                            Crear variante
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button type="button" onClick={() => setCrearVarianteAbierto(true)}
+                        className="w-full flex items-center justify-center gap-2 border border-dashed border-accent-text/40 text-accent-text py-2.5 rounded-xl text-sm hover:bg-accent/5 transition-colors">
+                        <Plus size={15} /> Crear variante
+                      </button>
+                    )
                   )}
                 </div>
               </div>
@@ -1864,10 +1885,12 @@ export default function ProductoFormPage() {
         />
       )}
 
-      {grupoModalOpen && (
-        <ProductoGrupoModal
-          grupo={grupoActual}
-          onClose={() => setGrupoModalOpen(false)}
+      {reasignarAbierto && id && (
+        <ReasignarStockVarianteModal
+          madreId={id}
+          madreNombre={form.nombre}
+          hijos={hijos as any[]}
+          onClose={() => { setReasignarAbierto(false); qc.invalidateQueries({ queryKey: ['stock-sin-variante-total', id] }) }}
         />
       )}
     </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -26,11 +26,13 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
+import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
+import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import toast from 'react-hot-toast'
 
-type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
+type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
-type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'atributos' | 'codigos'
+type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'empaque' | 'atributos' | 'codigos' | 'zonas'
 type AtributoVariante = 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'
 type ConSubTab = 'integraciones' | 'api'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
@@ -606,7 +608,7 @@ export default function ConfigPage() {
   // integraciones TiendaNube/MeLi sí quedan disponibles).
   useEffect(() => {
     if (modoAvanzado) return
-    if (tab === 'envios') setTab('negocio')
+    if (tab === 'envios' || tab === 'pedidos') setTab('negocio')
     if (['reglas', 'ubicaciones', 'estados', 'codigos'].includes(invSubTab)) setInvSubTab('categorias')
     if (conSubTab === 'api') setConSubTab('integraciones')
   }, [modoAvanzado, tab, invSubTab, conSubTab])
@@ -1415,6 +1417,7 @@ export default function ConfigPage() {
   const [newUbicLargo, setNewUbicLargo] = useState('')
   const [newUbicPeso, setNewUbicPeso] = useState('')
   const [newUbicPallets, setNewUbicPallets] = useState('')
+  const [newUbicZonaId, setNewUbicZonaId] = useState('')
   const [editUbicId, setEditUbicId] = useState<string | null>(null)
   const [editUbicNombre, setEditUbicNombre] = useState('')
   const [editUbicDesc, setEditUbicDesc] = useState('')
@@ -1429,6 +1432,7 @@ export default function ConfigPage() {
   const [editUbicWmsOpen, setEditUbicWmsOpen] = useState(false)
   const [editUbicMonoSku, setEditUbicMonoSku] = useState(false)
   const [editUbicSucursalId, setEditUbicSucursalId] = useState('')
+  const [editUbicZonaId, setEditUbicZonaId] = useState('')
   const [ubicSearch, setUbicSearch] = useState('')
 
   const addUbicacion = async () => {
@@ -1448,6 +1452,7 @@ export default function ConfigPage() {
       largo_cm: newUbicLargo ? parseFloat(newUbicLargo) : null,
       peso_max_kg: newUbicPeso ? parseFloat(newUbicPeso) : null,
       capacidad_pallets: newUbicPallets ? parseInt(newUbicPallets) : null,
+      zona_id: newUbicZonaId || null,
     })
     if (error) { toast.error(error.message); return }
     toast.success('Ubicación agregada')
@@ -1455,7 +1460,7 @@ export default function ConfigPage() {
     logActividad({ entidad: 'ubicacion', entidad_nombre: newUbicNombre.trim(), accion: 'crear', pagina: '/configuracion' })
     setNewUbicNombre(''); setNewUbicDesc(''); setNewUbicPrioridad('0'); setNewUbicSecuencia('')
     setNewUbicSucursalId(''); setNewUbicMonoSku(false); setNewUbicWmsOpen(false)
-    setNewUbicTipo(''); setNewUbicAlto(''); setNewUbicAncho(''); setNewUbicLargo(''); setNewUbicPeso(''); setNewUbicPallets('')
+    setNewUbicTipo(''); setNewUbicAlto(''); setNewUbicAncho(''); setNewUbicLargo(''); setNewUbicPeso(''); setNewUbicPallets(''); setNewUbicZonaId('')
   }
   const startEditUbic = (u: any) => {
     setEditUbicId(u.id)
@@ -1472,6 +1477,7 @@ export default function ConfigPage() {
     setEditUbicWmsOpen(!!(u.tipo_ubicacion || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
     setEditUbicMonoSku(u.mono_sku ?? false)
     setEditUbicSucursalId(u.sucursal_id ?? '')
+    setEditUbicZonaId(u.zona_id ?? '')
   }
   const saveUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
@@ -1488,6 +1494,7 @@ export default function ConfigPage() {
       capacidad_pallets: editUbicPallets ? parseInt(editUbicPallets) : null,
       mono_sku: editUbicMonoSku,
       sucursal_id: editUbicSucursalId || null,
+      zona_id: editUbicZonaId || null,
     }).eq('id', id)
     if (error) { toast.error(error.message); return }
     toast.success('Actualizada')
@@ -1559,6 +1566,212 @@ export default function ConfigPage() {
     const { error } = await supabase.from('ubicaciones').update({ disponible_meli: nuevo }).eq('id', u.id)
     if (error) { toast.error(error.message); return }
     qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+  }
+
+  // ── Zonas + reglas de almacenaje + reabastecimiento (WMS Fase 3-5) ────────────────────
+  const { data: zonas = [], isLoading: loadingZonas } = useQuery({
+    queryKey: ['zonas', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('zonas').select('*').eq('tenant_id', tenant!.id).order('nombre'); return data ?? [] },
+    enabled: !!tenant && tab === 'inventario',
+  })
+  const [newZonaNombre, setNewZonaNombre] = useState('')
+  const [newZonaDesc, setNewZonaDesc] = useState('')
+  const [newZonaSucursalId, setNewZonaSucursalId] = useState('')
+  const [editZonaId, setEditZonaId] = useState<string | null>(null)
+  const [editZonaNombre, setEditZonaNombre] = useState('')
+  const [editZonaDesc, setEditZonaDesc] = useState('')
+  const [editZonaSucursalId, setEditZonaSucursalId] = useState('')
+
+  const addZona = async () => {
+    if (!newZonaNombre.trim()) return
+    const { error } = await supabase.from('zonas').insert({
+      tenant_id: tenant!.id, nombre: newZonaNombre.trim(), descripcion: newZonaDesc || null,
+      sucursal_id: newZonaSucursalId || sucursalId || null,
+    })
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['zonas'] })
+    logActividad({ entidad: 'zona', entidad_nombre: newZonaNombre.trim(), accion: 'crear', pagina: '/configuracion' })
+    setNewZonaNombre(''); setNewZonaDesc(''); setNewZonaSucursalId('')
+    toast.success('Zona creada')
+  }
+  const startEditZona = (z: any) => {
+    setEditZonaId(z.id); setEditZonaNombre(z.nombre); setEditZonaDesc(z.descripcion ?? ''); setEditZonaSucursalId(z.sucursal_id ?? '')
+  }
+  const saveZona = async (id: string) => {
+    if (!editZonaNombre.trim()) return
+    const { error } = await supabase.from('zonas').update({
+      nombre: editZonaNombre.trim(), descripcion: editZonaDesc || null, sucursal_id: editZonaSucursalId || null,
+    }).eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['zonas'] })
+    setEditZonaId(null)
+    toast.success('Zona actualizada')
+  }
+  const deleteZona = async (id: string) => {
+    const z = (zonas as any[]).find(x => x.id === id)
+    if (!confirm(`¿Eliminar la zona "${z?.nombre}"? Las ubicaciones que la usen quedarán sin zona.`)) return
+    const { error } = await supabase.from('zonas').delete().eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['zonas'] })
+    qc.invalidateQueries({ queryKey: ['ubicaciones'] })
+    toast.success('Zona eliminada')
+  }
+
+  // Reglas de almacenaje: UdM → zona sugerida (sugerencia editable, nunca bloquea)
+  const { data: reglasAlmacenaje = [] } = useQuery({
+    queryKey: ['reglas_almacenaje', tenant?.id],
+    queryFn: async () => { const { data } = await supabase.from('reglas_almacenaje').select('*').eq('tenant_id', tenant!.id); return data ?? [] },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'zonas',
+  })
+  const setReglaAlmacenaje = async (unidadMedidaId: string, zonaId: string) => {
+    if (!zonaId) {
+      const { error } = await supabase.from('reglas_almacenaje').delete().eq('tenant_id', tenant!.id).eq('unidad_medida_id', unidadMedidaId)
+      if (error) { toast.error(error.message); return }
+    } else {
+      const { error } = await supabase.from('reglas_almacenaje')
+        .upsert({ tenant_id: tenant!.id, unidad_medida_id: unidadMedidaId, zona_id: zonaId }, { onConflict: 'tenant_id,unidad_medida_id' })
+      if (error) { toast.error(error.message); return }
+    }
+    qc.invalidateQueries({ queryKey: ['reglas_almacenaje'] })
+  }
+
+  // Reabastecimiento: 2 flags independientes + umbrales por producto+ubicación
+  const t289 = tenant as any
+  const toggleReabOnDemand = async () => {
+    const nuevo = !t289?.wms_reabastecimiento_on_demand
+    const { data, error } = await supabase.from('tenants').update({ wms_reabastecimiento_on_demand: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Reabastecimiento on-demand habilitado' : 'Reabastecimiento on-demand deshabilitado')
+  }
+  const toggleReabUmbral = async () => {
+    const nuevo = !t289?.wms_reabastecimiento_umbral
+    const { data, error } = await supabase.from('tenants').update({ wms_reabastecimiento_umbral: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Reabastecimiento por umbral habilitado' : 'Reabastecimiento por umbral deshabilitado')
+  }
+
+  const { data: umbrales = [], isLoading: loadingUmbrales } = useQuery({
+    queryKey: ['producto_ubicacion_umbrales', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('producto_ubicacion_umbrales')
+        .select('*, productos(nombre, sku), ubicaciones(nombre)').eq('tenant_id', tenant!.id)
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'zonas',
+  })
+  const ubicacionesPicking = (ubicaciones as any[]).filter(u => u.tipo_ubicacion === 'picking')
+  const [umbralProdBusqueda, setUmbralProdBusqueda] = useState('')
+  const { data: umbralProdResultados = [] } = useQuery({
+    queryKey: ['productos-busqueda-umbral', tenant?.id, umbralProdBusqueda],
+    queryFn: async () => {
+      const { data } = await supabase.from('productos').select('id, nombre, sku').eq('tenant_id', tenant!.id).eq('activo', true)
+        .ilike('nombre', `%${umbralProdBusqueda}%`).limit(8)
+      return data ?? []
+    },
+    enabled: !!tenant && umbralProdBusqueda.trim().length >= 2,
+  })
+  const [umbralProdSel, setUmbralProdSel] = useState<{ id: string; nombre: string } | null>(null)
+  const [umbralUbicId, setUmbralUbicId] = useState('')
+  const [umbralMin, setUmbralMin] = useState('')
+  const [umbralMax, setUmbralMax] = useState('')
+
+  const addUmbral = async () => {
+    if (!umbralProdSel || !umbralUbicId || !umbralMin.trim()) return
+    const { error } = await supabase.from('producto_ubicacion_umbrales').upsert({
+      tenant_id: tenant!.id, producto_id: umbralProdSel.id, ubicacion_id: umbralUbicId,
+      stock_minimo: parseInt(umbralMin) || 0, stock_maximo: umbralMax.trim() ? parseInt(umbralMax) : null,
+    }, { onConflict: 'tenant_id,producto_id,ubicacion_id' })
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['producto_ubicacion_umbrales'] })
+    setUmbralProdSel(null); setUmbralProdBusqueda(''); setUmbralUbicId(''); setUmbralMin(''); setUmbralMax('')
+    toast.success('Umbral guardado')
+  }
+  const deleteUmbral = async (id: string) => {
+    const { error } = await supabase.from('producto_ubicacion_umbrales').delete().eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['producto_ubicacion_umbrales'] })
+  }
+
+  // ── Pedidos (PED7): numeración, tipos de pedido, cierre automático ────────────────────
+  const { data: tiposPedidoCfg = [], isLoading: loadingTiposPedido } = useQuery({
+    queryKey: ['tipos_pedido_cfg', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('tipos_pedido').select('*').eq('tenant_id', tenant!.id).order('orden')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'pedidos',
+  })
+  const [newTipoPedidoNombre, setNewTipoPedidoNombre] = useState('')
+  const [newTipoPedidoFactura, setNewTipoPedidoFactura] = useState<'al_confirmar' | 'al_entregar'>('al_entregar')
+  const [newTipoPedidoClienteOblig, setNewTipoPedidoClienteOblig] = useState(true)
+  const [editTipoPedidoId, setEditTipoPedidoId] = useState<string | null>(null)
+  const [editTipoPedidoNombre, setEditTipoPedidoNombre] = useState('')
+  const [editTipoPedidoFactura, setEditTipoPedidoFactura] = useState<'al_confirmar' | 'al_entregar'>('al_entregar')
+  const [editTipoPedidoClienteOblig, setEditTipoPedidoClienteOblig] = useState(true)
+
+  const addTipoPedido = async () => {
+    if (!newTipoPedidoNombre.trim()) return
+    const orden = ((tiposPedidoCfg as any[])[tiposPedidoCfg.length - 1]?.orden ?? 0) + 10
+    const { error } = await supabase.from('tipos_pedido').insert({
+      tenant_id: tenant!.id, nombre: newTipoPedidoNombre.trim(),
+      factura_momento: newTipoPedidoFactura, cliente_obligatorio: newTipoPedidoClienteOblig, orden,
+    })
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['tipos_pedido_cfg'] })
+    qc.invalidateQueries({ queryKey: ['tipos_pedido'] })
+    logActividad({ entidad: 'pedido', entidad_nombre: `Tipo: ${newTipoPedidoNombre.trim()}`, accion: 'crear', pagina: '/configuracion' })
+    setNewTipoPedidoNombre(''); setNewTipoPedidoFactura('al_entregar'); setNewTipoPedidoClienteOblig(true)
+    toast.success('Tipo de pedido creado')
+  }
+  const startEditTipoPedido = (t: any) => {
+    setEditTipoPedidoId(t.id); setEditTipoPedidoNombre(t.nombre)
+    setEditTipoPedidoFactura(t.factura_momento); setEditTipoPedidoClienteOblig(t.cliente_obligatorio)
+  }
+  const saveTipoPedido = async (id: string) => {
+    if (!editTipoPedidoNombre.trim()) return
+    const { error } = await supabase.from('tipos_pedido').update({
+      nombre: editTipoPedidoNombre.trim(), factura_momento: editTipoPedidoFactura, cliente_obligatorio: editTipoPedidoClienteOblig,
+    }).eq('id', id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['tipos_pedido_cfg'] })
+    qc.invalidateQueries({ queryKey: ['tipos_pedido'] })
+    setEditTipoPedidoId(null)
+    toast.success('Tipo de pedido actualizado')
+  }
+  const toggleActivoTipoPedido = async (t: any) => {
+    const { error } = await supabase.from('tipos_pedido').update({ activo: !t.activo }).eq('id', t.id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['tipos_pedido_cfg'] })
+    qc.invalidateQueries({ queryKey: ['tipos_pedido'] })
+  }
+
+  const setPedidoNumeracion = async (valor: 'tenant' | 'sucursal') => {
+    const { data, error } = await supabase.from('tenants').update({ pedido_numeracion: valor }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success('Numeración de pedidos actualizada')
+  }
+  const togglePedidoCierreAutomatico = async () => {
+    const nuevo = !(tenant as any)?.pedido_cierre_automatico
+    const { data, error } = await supabase.from('tenants').update({ pedido_cierre_automatico: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Cierre automático habilitado' : 'Cierre automático deshabilitado — habrá que cerrar el pedido a mano al llegar al 100%')
+  }
+
+  // E3 — pedido_transiciones_roles: quién puede ejecutar cada transición. Ausente en la config
+  // → default de código (puedeTransicionPedido); acá se materializa el default recién al primer
+  // toggle de esa transición, para no escribir de más si nunca se tocó.
+  const togglePedidoTransicionRol = async (transicion: typeof PEDIDO_TRANSICIONES[number]['key'], rol: string) => {
+    const config = ((tenant as any)?.pedido_transiciones_roles ?? null) as PedidoTransicionesConfig
+    const base = config?.[transicion] ?? PEDIDO_TRANSICION_ROLES_DEFAULT
+    const nuevosRoles = base.includes(rol) ? base.filter(r => r !== rol) : [...base, rol]
+    const nuevaConfig = { ...(config ?? {}), [transicion]: nuevosRoles }
+    const { data, error } = await supabase.from('tenants').update({ pedido_transiciones_roles: nuevaConfig }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
   }
 
   // Estados de inventario
@@ -2580,6 +2793,41 @@ export default function ConfigPage() {
     enabled: !!tenant && tab === 'inventario',
   })
 
+  // Fase 1-bis UoM: catálogo COMPLETO de unidades físicas (mig 303/308). Trae TODAS (activas e
+  // inactivas) para gestionarlas — queryKey propio, distinto del de la ficha de producto (que
+  // solo quiere las activas). El tenant prende/apaga cada una (enable/disable).
+  const { data: unidadesFisicasCfg = [] } = useQuery<UnidadFisica[]>({
+    queryKey: ['unidades_medida_fisicas_all', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('unidades_medida_fisicas')
+        .select('id, familia, nombre, simbolo, factor_base_familia, es_base_familia, permite_decimales, activo')
+        .eq('tenant_id', tenant!.id).order('orden')
+      return (data ?? []) as UnidadFisica[]
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'unidades',
+  })
+
+  // Enable/disable de una unidad física (Fase 1-bis). La base de familia no se puede apagar (es
+  // el ancla de conversión). Invalida ambos queryKeys (config + ficha de producto).
+  const toggleUnidadFisica = async (u: UnidadFisica, activo: boolean) => {
+    if (u.es_base_familia && !activo) { toast.error('La unidad base de la familia no se puede desactivar.'); return }
+    const { error } = await supabase.from('unidades_medida_fisicas')
+      .update({ activo }).eq('id', u.id).eq('tenant_id', tenant!.id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['unidades_medida_fisicas_all'] })
+    qc.invalidateQueries({ queryKey: ['unidades_medida_fisicas'] })
+  }
+
+  // Preset por rubro (Fase 1-bis): ACTIVA (aditivo) las unidades del rubro elegido.
+  const aplicarPresetRubro = async (nombres: string[]) => {
+    const { error } = await supabase.from('unidades_medida_fisicas')
+      .update({ activo: true }).eq('tenant_id', tenant!.id).in('nombre', nombres)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['unidades_medida_fisicas_all'] })
+    qc.invalidateQueries({ queryKey: ['unidades_medida_fisicas'] })
+    toast.success('Unidades del rubro activadas')
+  }
+
   const addUdm = async () => {
     if (!udmNombre.trim()) return
     if ((unidadesMedida as any[]).some((u: any) => u.nombre.toLowerCase() === udmNombre.trim().toLowerCase())) {
@@ -2617,8 +2865,9 @@ export default function ConfigPage() {
         { id: 'caja',           label: 'Caja',            icon: Wallet },
         { id: 'clientes',       label: 'Clientes',        icon: Users },
         { id: 'inventario',     label: 'Inventario',      icon: Package },
-        // Envíos es módulo del modo avanzado
+        // Envíos y Pedidos son módulos del modo avanzado
         ...(modoAvanzado ? [{ id: 'envios' as Tab, label: 'Envíos', icon: Truck }] : []),
+        ...(modoAvanzado ? [{ id: 'pedidos' as Tab, label: 'Pedidos', icon: ListOrdered }] : []),
         { id: 'gastos',         label: 'Gastos',          icon: TrendingDown },
         { id: 'facturacion',    label: 'Facturación',     icon: Receipt },
         { id: 'rrhh',           label: 'RRHH',            icon: UserCog },
@@ -3297,10 +3546,12 @@ export default function ConfigPage() {
               { id: 'estados' as InvSubTab, label: 'Estados', icon: CircleDot },
               { id: 'motivos' as InvSubTab, label: 'Motivos', icon: MessageSquare },
               { id: 'unidades' as InvSubTab, label: 'Unidades', icon: Ruler },
+              { id: 'empaque' as InvSubTab, label: 'Empaque', icon: Package },
               { id: 'atributos' as InvSubTab, label: 'Atributos', icon: Shirt },
               { id: 'codigos' as InvSubTab, label: 'Códigos', icon: ScanBarcode },
-              // Reglas (FIFO/conteos), Ubicaciones, Estados y Códigos GS1 son WMS → solo avanzado
-            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
+              { id: 'zonas' as InvSubTab, label: 'Zonas y picking', icon: Navigation },
+              // Reglas (FIFO/conteos), Ubicaciones, Estados, Códigos GS1 y Zonas/picking son WMS → solo avanzado
+            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos', 'zonas'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
             active={invSubTab}
             onChange={(id) => setInvSubTab(id as InvSubTab)}
           />
@@ -3496,7 +3747,15 @@ export default function ConfigPage() {
                   <option value="estiba">Estiba / Pallet rack</option>
                   <option value="camara">Cámara frigorífica</option>
                   <option value="cross_dock">Cross-dock</option>
+                  <option value="staging">Staging (convergencia de bolsas de Pedidos)</option>
                 </select>
+                {zonas.length > 0 && (
+                  <select value={newUbicZonaId} onChange={e => setNewUbicZonaId(e.target.value)}
+                    className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
+                    <option value="">Sin zona</option>
+                    {(zonas as any[]).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                  </select>
+                )}
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={newUbicAlto} onChange={e => setNewUbicAlto(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={newUbicAncho} onChange={e => setNewUbicAncho(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                 <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Largo (cm)" value={newUbicLargo} onChange={e => setNewUbicLargo(e.target.value)} className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
@@ -3570,7 +3829,15 @@ export default function ConfigPage() {
                               <option value="estiba">Estiba / Pallet rack</option>
                               <option value="camara">Cámara frigorífica</option>
                               <option value="cross_dock">Cross-dock</option>
+                              <option value="staging">Staging (convergencia de bolsas de Pedidos)</option>
                             </select>
+                            {zonas.length > 0 && (
+                              <select value={editUbicZonaId} onChange={e => setEditUbicZonaId(e.target.value)}
+                                className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
+                                <option value="">Sin zona</option>
+                                {(zonas as any[]).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                              </select>
+                            )}
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Alto (cm)" value={editUbicAlto} onChange={e => setEditUbicAlto(e.target.value)}
                               className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
                             <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.1" placeholder="Ancho (cm)" value={editUbicAncho} onChange={e => setEditUbicAncho(e.target.value)}
@@ -3654,6 +3921,197 @@ export default function ConfigPage() {
               {ubicaciones.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay ubicaciones cargadas.</p>}
             </div>
           )}
+        </div>
+          )}
+
+          {invSubTab === 'zonas' && (
+        <div className="space-y-4">
+          {/* Reabastecimiento — 2 triggers independientes */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+            <div className="flex items-center gap-2">
+              <Navigation size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reabastecimiento</h2>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Mueve stock de zonas de reserva (bulk/estiba/cámara) a zonas de picking. Se pueden habilitar por separado, juntos o ninguno.</p>
+            <label className="flex items-center gap-3 cursor-pointer py-1">
+              <Toggle checked={!!t289?.wms_reabastecimiento_on_demand} onChange={toggleReabOnDemand} />
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">On-demand</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Al preparar un picking que no encuentra stock en la zona de picking, se genera automáticamente una tarea de reabastecimiento desde bulk/reserva (pallet completo o cajas sueltas, según la estructura del producto).</p>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 cursor-pointer py-1">
+              <Toggle checked={!!t289?.wms_reabastecimiento_umbral} onChange={toggleReabUmbral} />
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Por umbral (mín/máx)</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Genera tareas proactivas cuando el stock de un producto en una ubicación de picking cae por debajo del mínimo configurado abajo.</p>
+              </div>
+            </label>
+          </div>
+
+          {/* Zonas */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <MapPin size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Zonas</h2>
+              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{zonas.length} cargadas</span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Áreas del depósito que agrupan ubicaciones (ej. "Zona Picking A", "Bulk Norte"). Asigná cada ubicación a una zona desde el tab Ubicaciones.</p>
+
+            <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
+              <div className="flex flex-wrap gap-2">
+                <input type="text" placeholder="Nombre de la zona" value={newZonaNombre}
+                  onChange={e => setNewZonaNombre(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addZona()}
+                  className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                <button onClick={addZona} disabled={!newZonaNombre.trim()}
+                  className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                  <Plus size={15} /> Agregar
+                </button>
+              </div>
+              <input type="text" placeholder="Descripción (opcional)" value={newZonaDesc}
+                onChange={e => setNewZonaDesc(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+              {sucursales.length > 1 && (
+                <select value={newZonaSucursalId} onChange={e => setNewZonaSucursalId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                  <option value="">Global (todas las sucursales)</option>
+                  {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                </select>
+              )}
+            </div>
+
+            {loadingZonas ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
+              <div className="space-y-2">
+                {(zonas as any[]).map(z => (
+                  <div key={z.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5">
+                    {editZonaId === z.id ? (
+                      <div className="flex-1 flex flex-wrap gap-2 items-center">
+                        <input type="text" value={editZonaNombre} onChange={e => setEditZonaNombre(e.target.value)}
+                          className="flex-1 min-w-0 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                        <input type="text" value={editZonaDesc} onChange={e => setEditZonaDesc(e.target.value)}
+                          placeholder="Descripción" className="w-40 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                        {sucursales.length > 1 && (
+                          <select value={editZonaSucursalId} onChange={e => setEditZonaSucursalId(e.target.value)}
+                            className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                            <option value="">Global</option>
+                            {(sucursales as any[]).map(s => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+                          </select>
+                        )}
+                        <button onClick={() => saveZona(z.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
+                        <button onClick={() => setEditZonaId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{z.nombre}</span>
+                          {z.descripcion && <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{z.descripcion}</span>}
+                          {z.sucursal_id && <span className="ml-2 text-xs text-blue-500">{(sucursales as any[]).find(s => s.id === z.sucursal_id)?.nombre}</span>}
+                        </div>
+                        <button onClick={() => startEditZona(z)} className="text-gray-400 dark:text-gray-500 hover:text-accent-text p-1"><Pencil size={14} /></button>
+                        <button onClick={() => deleteZona(z.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                      </>
+                    )}
+                  </div>
+                ))}
+                {zonas.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay zonas cargadas.</p>}
+              </div>
+            )}
+          </div>
+
+          {/* Reglas de almacenaje */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <Ruler size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reglas de almacenaje</h2>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Sugerencia (no bloqueante) de a qué zona llevar el stock que ingresa en cada Unidad de Medida — ej. "Pallet → Zona Bulk". Se puede elegir otra ubicación al ingresar igual.</p>
+            {zonas.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500">Creá al menos una zona arriba para poder configurar reglas.</p>
+            ) : (
+              <div className="space-y-2">
+                {(unidadesMedida as any[]).map(um => {
+                  const regla = (reglasAlmacenaje as any[]).find(r => r.unidad_medida_id === um.id)
+                  return (
+                    <div key={um.id} className="flex items-center gap-3 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2">
+                      <span className="text-sm text-gray-700 dark:text-gray-300 flex-1">{um.nombre}</span>
+                      <select value={regla?.zona_id ?? ''} onChange={e => setReglaAlmacenaje(um.id, e.target.value)}
+                        className="px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                        <option value="">Sin sugerencia</option>
+                        {(zonas as any[]).map(z => <option key={z.id} value={z.id}>{z.nombre}</option>)}
+                      </select>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Umbrales de reabastecimiento */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-2 mb-1">
+              <TrendingDown size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Umbrales de reabastecimiento</h2>
+              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{umbrales.length} cargados</span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Mín/máx de stock (unidades base) por producto en una ubicación de picking. Solo tiene efecto si "Por umbral" está habilitado arriba.</p>
+
+            {ubicacionesPicking.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500">No hay ninguna ubicación marcada como tipo "Picking" todavía — configurala en el tab Ubicaciones.</p>
+            ) : (
+              <>
+                <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
+                    <input type="text" placeholder="Buscar producto..." value={umbralProdSel ? umbralProdSel.nombre : umbralProdBusqueda}
+                      onChange={e => { setUmbralProdBusqueda(e.target.value); setUmbralProdSel(null) }}
+                      className="w-full pl-8 pr-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                    {!umbralProdSel && umbralProdBusqueda.trim().length >= 2 && (umbralProdResultados as any[]).length > 0 && (
+                      <div className="absolute z-10 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                        {(umbralProdResultados as any[]).map(p => (
+                          <button key={p.id} type="button" onClick={() => { setUmbralProdSel({ id: p.id, nombre: p.nombre }); setUmbralProdBusqueda('') }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between">
+                            <span>{p.nombre}</span><span className="text-xs text-gray-400">{p.sku}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <select value={umbralUbicId} onChange={e => setUmbralUbicId(e.target.value)}
+                      className="flex-1 min-w-[10rem] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                      <option value="">Ubicación de picking...</option>
+                      {ubicacionesPicking.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    </select>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Mínimo" value={umbralMin}
+                      onChange={e => setUmbralMin(e.target.value)}
+                      className="w-24 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Máximo (opc.)" value={umbralMax}
+                      onChange={e => setUmbralMax(e.target.value)}
+                      className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+                    <button onClick={addUmbral} disabled={!umbralProdSel || !umbralUbicId || !umbralMin.trim()}
+                      className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                      <Plus size={15} /> Agregar
+                    </button>
+                  </div>
+                </div>
+
+                {loadingUmbrales ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
+                  <div className="space-y-2">
+                    {(umbrales as any[]).map(u => (
+                      <div key={u.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5 text-sm">
+                        <span className="flex-1 font-medium text-gray-800 dark:text-gray-100">{u.productos?.nombre ?? '—'}</span>
+                        <span className="text-gray-400 dark:text-gray-500">{u.ubicaciones?.nombre ?? '—'}</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">mín {u.stock_minimo}{u.stock_maximo != null ? ` · máx ${u.stock_maximo}` : ''}</span>
+                        <button onClick={() => deleteUmbral(u.id)} className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={14} /></button>
+                      </div>
+                    ))}
+                    {umbrales.length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay umbrales configurados.</p>}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
         </div>
           )}
 
@@ -4046,12 +4504,74 @@ export default function ConfigPage() {
           )}
 
           {invSubTab === 'unidades' && (
+        <div className="space-y-4">
+        {/* Fase 1-bis UoM: catálogo COMPLETO de Unidades FÍSICAS con enable/disable + presets — migs 303/308 */}
+        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+          <div className="flex items-center gap-2 mb-1">
+            <Ruler size={18} className="text-accent-text" />
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Unidades de Medida</h2>
+          </div>
+          <p className="text-xs text-gray-400 dark:text-gray-500">
+            Cómo se <strong>mide o cuenta</strong> un producto. La conversión dentro de una familia es fija y universal
+            (1&nbsp;kg = 1000&nbsp;g siempre). <strong>Activá</strong> las que uses para que aparezcan al cargar productos;
+            las demás quedan ocultas. La unidad <em>base</em> de cada familia no se puede apagar. Los <em>nombres de
+            empaque</em> (Caja/Pallet) están en la pestaña Empaque.
+          </p>
+
+          {canEdit && (
+            <div className="bg-gray-50 dark:bg-gray-700/40 rounded-xl p-3">
+              <p className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">Activar unidades típicas de tu rubro:</p>
+              <div className="flex flex-wrap gap-1.5">
+                {PRESETS_RUBRO.map(preset => (
+                  <button key={preset.label} onClick={() => aplicarPresetRubro(preset.unidades)}
+                    className="px-2.5 py-1 text-xs rounded-full border border-accent-text/30 text-accent-text hover:bg-accent/10 transition-colors">
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            {FAMILIAS_FISICAS.map(fam => {
+              const us = agruparPorFamilia(unidadesFisicasCfg)[fam]
+              if (us.length === 0) return null
+              const base = us.find(x => x.es_base_familia)
+              return (
+                <div key={fam} className="border border-gray-100 dark:border-gray-700 rounded-lg p-3">
+                  <p className="text-xs font-semibold text-accent-text mb-1.5">{ETIQUETA_FAMILIA[fam]}{fam === 'conteo' ? ' · sin decimales' : ' · admite decimales'}</p>
+                  <div className="space-y-0.5">
+                    {us.map(u => (
+                      <label key={u.id} className={`flex items-center justify-between text-sm gap-2 py-0.5 ${canEdit && !u.es_base_familia ? 'cursor-pointer' : ''}`}>
+                        <span className="flex items-center gap-2 min-w-0">
+                          <input type="checkbox" checked={u.activo !== false}
+                            disabled={!canEdit || u.es_base_familia}
+                            onChange={e => toggleUnidadFisica(u, e.target.checked)}
+                            className="accent-accent-text disabled:opacity-40 flex-shrink-0" />
+                          <span className={`truncate ${u.activo !== false ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
+                            {u.nombre} {u.simbolo && <span className="text-gray-400">({u.simbolo})</span>}
+                          </span>
+                        </span>
+                        <span className="text-xs text-gray-400 flex-shrink-0">{u.es_base_familia ? 'base' : `= ${u.factor_base_familia.toLocaleString('es-AR')} ${base?.simbolo ?? 'base'}`}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+        </div>
+          )}
+
+          {invSubTab === 'empaque' && (
+        <div className="space-y-4">
         <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
           <div className="flex items-center gap-2 mb-1">
             <Ruler size={18} className="text-accent-text" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Unidades de medida personalizadas</h2>
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Nombres de empaque personalizados</h2>
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">Definí unidades propias de tu negocio para usarlas en productos (además de las estándar).</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500">Nombres de bultos propios de tu negocio (además de Caja/Pallet) para armar las presentaciones de un producto. Distinto de las <em>unidades de medida</em> físicas (Peso/Volumen/…), que están en la pestaña Unidades.</p>
 
           {/* Agregar */}
           {canEdit && (
@@ -4126,6 +4646,7 @@ export default function ConfigPage() {
               ))}
             </div>
           )}
+        </div>
         </div>
           )}
 
@@ -4665,6 +5186,156 @@ export default function ConfigPage() {
               </button>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ═══════════ TAB: PEDIDOS (PED7) ═══════════ */}
+      {tab === 'pedidos' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <ListOrdered size={18} className="text-accent-text" /> Numeración
+            </h2>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="radio" checked={((tenant as any)?.pedido_numeracion ?? 'sucursal') === 'sucursal'}
+                  onChange={() => setPedidoNumeracion('sucursal')} disabled={!canEdit} />
+                Correlativo por sucursal
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                <input type="radio" checked={(tenant as any)?.pedido_numeracion === 'tenant'}
+                  onChange={() => setPedidoNumeracion('tenant')} disabled={!canEdit} />
+                Correlativo único (todo el negocio)
+              </label>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">Ambos números se calculan siempre — esto solo decide cuál se muestra como principal en la pantalla de Pedidos.</p>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Cierre del pedido</h2>
+            <label className="flex items-center gap-3 cursor-pointer py-1">
+              <Toggle checked={(tenant as any)?.pedido_cierre_automatico ?? true} onChange={togglePedidoCierreAutomatico} disabled={!canEdit} />
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Cierre automático al 100%</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">Si está habilitado, el pedido pasa solo a "Entregado" al completar todas sus líneas. Si lo desactivás, queda en "Entregado parcial" hasta que alguien lo cierre a mano.</p>
+              </div>
+            </label>
+          </div>
+
+          {/* E3 — pedido_transiciones_roles: quién puede hacer cada transición */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <UserCog size={18} className="text-accent-text" /> Quién puede hacer cada transición
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 mb-3">
+              Por default DUEÑO/SUPERVISOR/SUPER_USUARIO/DEPOSITO pueden todas las transiciones. Marcá o desmarcá roles por transición para ajustarlo — ADMIN (soporte) siempre puede, no se lista.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-400 dark:text-gray-500">
+                    <th className="font-medium pb-2 pr-3">Transición</th>
+                    {PEDIDO_ROLES_CONFIGURABLES.map(rol => (
+                      <th key={rol} className="font-medium pb-2 px-2 text-center whitespace-nowrap">{rol}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {PEDIDO_TRANSICIONES.map(({ key, label }) => (
+                    <tr key={key} className="border-t border-gray-100 dark:border-gray-700">
+                      <td className="py-2 pr-3 text-gray-700 dark:text-gray-300">{label}</td>
+                      {PEDIDO_ROLES_CONFIGURABLES.map(rol => (
+                        <td key={rol} className="text-center px-2">
+                          <input type="checkbox" disabled={!canEdit}
+                            checked={puedeTransicionPedido(rol, key, ((tenant as any)?.pedido_transiciones_roles ?? null) as PedidoTransicionesConfig)}
+                            onChange={() => togglePedidoTransicionRol(key, rol)}
+                            className="rounded disabled:opacity-50" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-1">
+              <Tag size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Tipos de pedido</h2>
+              <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{(tiposPedidoCfg as any[]).length} cargados</span>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">Cada tipo define si el cliente identificado es obligatorio y en qué momento se factura.</p>
+
+            {canEdit && (
+              <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <input type="text" placeholder="Nombre del tipo (ej: Mayorista)" value={newTipoPedidoNombre}
+                    onChange={e => setNewTipoPedidoNombre(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && addTipoPedido()}
+                    className="flex-1 min-w-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                  <button onClick={addTipoPedido} disabled={!newTipoPedidoNombre.trim()}
+                    className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
+                    <Plus size={15} /> Agregar
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-3 items-center">
+                  <select value={newTipoPedidoFactura} onChange={e => setNewTipoPedidoFactura(e.target.value as any)}
+                    className="px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm bg-white dark:bg-gray-800 text-primary">
+                    <option value="al_confirmar">Factura al confirmar</option>
+                    <option value="al_entregar">Factura al entregar</option>
+                  </select>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                    <input type="checkbox" checked={newTipoPedidoClienteOblig} onChange={e => setNewTipoPedidoClienteOblig(e.target.checked)} className="rounded" />
+                    Cliente obligatorio
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {loadingTiposPedido ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
+              <div className="space-y-2">
+                {(tiposPedidoCfg as any[]).map(t => (
+                  <div key={t.id} className={`flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5 ${!t.activo ? 'opacity-50' : ''}`}>
+                    {editTipoPedidoId === t.id ? (
+                      <div className="flex-1 flex flex-wrap gap-2 items-center">
+                        <input type="text" value={editTipoPedidoNombre} onChange={e => setEditTipoPedidoNombre(e.target.value)}
+                          className="flex-1 min-w-0 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text" />
+                        <select value={editTipoPedidoFactura} onChange={e => setEditTipoPedidoFactura(e.target.value as any)}
+                          className="px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs bg-white dark:bg-gray-800 text-primary">
+                          <option value="al_confirmar">Al confirmar</option>
+                          <option value="al_entregar">Al entregar</option>
+                        </select>
+                        <label className="flex items-center gap-1 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+                          <input type="checkbox" checked={editTipoPedidoClienteOblig} onChange={e => setEditTipoPedidoClienteOblig(e.target.checked)} className="rounded" />
+                          Cliente oblig.
+                        </label>
+                        <button onClick={() => saveTipoPedido(t.id)} className="text-green-600 dark:text-green-400 hover:text-green-700 p-1"><Check size={15} /></button>
+                        <button onClick={() => setEditTipoPedidoId(null)} className="text-gray-400 dark:text-gray-500 hover:text-gray-600 p-1"><X size={15} /></button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{t.nombre}</span>
+                          <span className="ml-2 text-xs text-gray-400">{t.factura_momento === 'al_confirmar' ? 'Factura al confirmar' : 'Factura al entregar'}</span>
+                          {t.cliente_obligatorio && <span className="ml-2 text-xs text-blue-500">Cliente obligatorio</span>}
+                        </div>
+                        {canEdit && (
+                          <>
+                            <button onClick={() => toggleActivoTipoPedido(t)} className="text-xs text-gray-400 hover:text-accent-text px-2">
+                              {t.activo ? 'Desactivar' : 'Activar'}
+                            </button>
+                            <button onClick={() => startEditTipoPedido(t)} className="text-gray-400 dark:text-gray-500 hover:text-accent-text p-1"><Pencil size={14} /></button>
+                          </>
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+                {(tiposPedidoCfg as any[]).length === 0 && <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay tipos de pedido cargados.</p>}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

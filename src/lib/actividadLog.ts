@@ -8,6 +8,7 @@ export type EntidadLog =
   | 'categoria'
   | 'proveedor'
   | 'ubicacion'
+  | 'zona'
   | 'estado'
   | 'motivo'
   | 'atributo_variante'
@@ -25,6 +26,8 @@ export type EntidadLog =
   | 'cheque'
   | 'traslado'
   | 'tenant'
+  | 'wms_tarea'
+  | 'pedido'
 
 export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar' | 'ingreso_stock' | 'rebaje_stock' | 'incobrable' | 'despacho_traslado' | 'recepcion_traslado' | 'faltante_traslado'
 

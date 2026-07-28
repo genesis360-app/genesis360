@@ -93,7 +93,9 @@ export function useAlertas() {
           .lte('fecha_vencimiento_pago', en3diasStr),
       ] as const
 
-      // ── Fuentes solo de modo avanzado (WMS) ────────────────────────────────
+      const hace24h = new Date(Date.now() - 24 * 3600 * 1000).toISOString()
+
+      // ── Fuentes solo de modo avanzado (WMS + Pedidos) ──────────────────────
       const avanzadoQueries = modoAvanzado
         ? [
             // Vencimiento de lote (WMS)
@@ -105,6 +107,21 @@ export function useAlertas() {
               .gt('cantidad', 0)
               .not('fecha_vencimiento', 'is', null)
               .lt('fecha_vencimiento', hoy),
+            // K2 — Pedidos con entrega vencida sin completar
+            supabase
+              .from('pedidos')
+              .select('id', { count: 'exact', head: true })
+              .eq('tenant_id', tenant!.id)
+              .not('fecha_entrega_solicitada', 'is', null)
+              .lt('fecha_entrega_solicitada', hoy)
+              .not('estado', 'in', '("entregado","cancelado")'),
+            // K2 — Pedidos lanzados sin avanzar hace más de 24hs
+            supabase
+              .from('pedidos')
+              .select('id', { count: 'exact', head: true })
+              .eq('tenant_id', tenant!.id)
+              .eq('estado', 'en_preparacion')
+              .lt('lanzado_at', hace24h),
           ]
         : []
 
@@ -119,6 +136,8 @@ export function useAlertas() {
       ] = await Promise.all([...baseQueries, ...avanzadoQueries])
 
       const countVencidos = (avanzadoRes[0] as any)?.count ?? 0
+      const countPedidosVencidos = (avanzadoRes[1] as any)?.count ?? 0
+      const countPedidosSinAvanzar = (avanzadoRes[2] as any)?.count ?? 0
       const countOcVencidas = countOcVencidasRaw ?? 0
       const countOcProximas = countOcProximasRaw ?? 0
 
@@ -132,7 +151,7 @@ export function useAlertas() {
       // H4 — efectivo en caja sobre el umbral de bóveda (ambos modos). Solo si el tenant lo configuró.
       const countBoveda = await contarCajasSobreUmbral(tenant!.id, (tenant as any)?.boveda_umbral_caja)
 
-      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size + countVencidos + countOcVencidas + countOcProximas + countBoveda
+      return (countAlertas ?? 0) + (countReservas ?? 0) + (countSinCategoria ?? 0) + clientesUnicos.size + countVencidos + countOcVencidas + countOcProximas + countBoveda + countPedidosVencidos + countPedidosSinAvanzar
     },
     enabled: !!tenant,
     refetchInterval: 30000,

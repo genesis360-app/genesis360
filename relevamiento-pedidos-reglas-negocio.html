@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Módulo Pedidos (nuevo) · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo Pedidos (nuevo)</h1>
+<div class="meta">
+  Genesis360 · v1.143.0 (EN DEV) · Fecha: 22 de julio de 2026 · Relevamiento con Gastón Otranto + socio
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Como <strong>Pedidos todavía no existe en el código</strong> — es
+  una decisión de arquitectura tomada en esta sesión, después de encontrar un bug real en el picking de WMS —
+  casi todas las preguntas están marcadas <span class="tag tag-nuevo">NUEVO</span> (definir la regla desde cero).
+  Las marcadas <span class="tag tag-cambio">CAMBIO</span> señalan puntos donde la regla que elijan
+  <strong>tensiona con un supuesto ya asumido en el código actual</strong> (ej. que un envío es 1:1 con una venta) y
+  puede requerir tocar Ventas/Envíos/WMS además de crear Pedidos. No hay preguntas
+  <span class="tag tag-existente">EXISTENTE</span> porque no hay nada de este módulo que confirmar — el "Hoy" de cada
+  pregunta describe el comportamiento del código real más cercano (Ventas, WMS, Traslados, Compras) que
+  Pedidos va a heredar, reemplazar o convivir con él. Cuando contesten, las cargo en wiki y armamos las fases.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual (no existe Pedidos):</strong> <code>VentasPage.tsx → registrarVenta(estado)</code> es HOY el
+  único flujo de cabecera+líneas para vender: <code>despachada</code> rebaja stock real de forma síncrona, crea el
+  <code>envío</code> y dispara la factura en el mismo insert (<code>estado === 'despachada' && factHabilitada</code>);
+  <code>reservada</code> solo incrementa <code>cantidad_reservada</code> (sin tocar stock real, sin facturar) y queda
+  así indefinidamente — nada la vence ni la conecta con el depósito salvo que alguien la despache a mano. El módulo
+  WMS nuevo (v1.143.0 EN DEV, migs 289-291) agrega <code>wms_tareas</code> (picking/replenishment/putaway/conteo),
+  generadas por la RPC <code>fn_generar_tareas_picking_envio(envio_id)</code> a partir de
+  <code>venta_item_despachos</code> (venta ya despachada — nunca encadena reabastecimiento, fix mig 291 tras el bug
+  del LPN fantasma) o de <code>venta_items.lpn_plan</code> (reserva pendiente — sí encadena reabastecimiento). Esa
+  RPC hoy <strong>no está conectada a ningún botón ni trigger automático del frontend</strong> — solo el
+  reabastecimiento por umbral tiene botón ("Revisar umbral" en <code>/picking</code>). <code>envios.venta_id</code>
+  es hoy 1:1 con una venta. GO decidió construir <strong>Pedidos como documento separado</strong> (cabecera+líneas,
+  mismo espíritu que Traslados <code>en_transito</code> u OC+Recepciones): se arma, se "lanza" (genera
+  picking/reabastecimiento) y recién al prepararse físicamente genera la venta real reusando el motor existente
+  de <code>registrarVenta</code> — sin tocar el rebaje/facturación de la venta de mostrador.
+</div>
+
+<!-- ============================ A. RELACIÓN CON VENTAS ============================ -->
+<h2>A. Relación con Ventas y el motor de rebaje</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    ¿Un Pedido crea una fila real en <code>ventas</code>? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: <code>registrarVenta()</code> es el único camino a <code>ventas</code>/rebaje/factura. La recomendación aceptada es reusarlo al preparar el Pedido, no reinventarlo.</div>
+  <ul class="opciones">
+    <li>(a) Sí — al preparar/entregar, se invoca el mismo <code>registrarVenta('despachada')</code> (o una variante) que crea la venta real, rebaja stock y factura si corresponde</li>
+    <li>(b) Sí, pero con una función propia que solo reusa la parte de rebaje/movimientos, sin pasar por el POS</li>
+    <li>(c) No — Pedidos es 100% independiente, nunca toca <code>ventas</code> ni factura (la venta se registra aparte, a mano)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    ¿Sigue existiendo "Venta directa" / "Reservar stock" del POS sin cambios? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: son los botones de <code>VentasPage.tsx</code> para mostrador (rebaje inmediato o reserva). GO fue explícito: esto es "más tipo kiosco" y Pedidos es otra cosa.</div>
+  <ul class="opciones">
+    <li>(a) Sí, quedan intactos — Pedidos es 100% aparte, para el caso logístico (mayorista/encargo/e-commerce)</li>
+    <li>(b) Sí quedan, pero se agrega un botón "Convertir a Pedido" desde una reserva existente</li>
+    <li>(c) "Reservar stock" se deprecia a favor de Pedidos (ver A3) — venta directa de mostrador queda igual</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Futuro del estado <code>reservada</code> de Ventas <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy: <code>reservada</code> es lo más parecido a un pedido, pero no genera <code>wms_tareas</code> por sí sola, no vence y no tiene cabecera con tipo/fechas de entrega. Si Pedidos cubre ese caso, hay una zona gris con qué botón usar cuándo.</div>
+  <ul class="opciones">
+    <li>(a) Coexisten sin reglas — el operador elige "Reservar" (mostrador, corto plazo) o "Pedido" (logística, mayor plazo) a criterio</li>
+    <li>(b) "Reservar stock" queda solo para seña sin fecha de entrega definida; todo lo que tenga fecha/tipo va a Pedidos</li>
+    <li>(c) Se saca "Reservar stock" del POS y ese caso se cubre 100% con Pedidos (ya no habría 2 caminos)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Trazabilidad Pedido → Venta <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy no existe <code>pedido_id</code> en ninguna tabla. Sin este link, no se puede saber desde una venta despachada si vino de un Pedido ni volver de un Pedido a "qué venta generó".</div>
+  <ul class="opciones">
+    <li>(a) <code>ventas.pedido_id</code> (FK) — 1 pedido genera 1 venta, visible desde ambos lados</li>
+    <li>(b) <code>venta_items.pedido_item_id</code> a nivel línea (necesario si un pedido puede generar más de una venta — ver sección G)</li>
+    <li>(c) Ambos (cabecera y línea)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    Devolución/anulación de un Pedido ya facturado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: las devoluciones viven en <code>VentasPage.tsx</code> sobre una venta despachada (ítem por ítem, medio de pago, reingreso a DEV).</div>
+  <ul class="opciones">
+    <li>(a) Si el Pedido ya generó una venta real, la devolución se hace 100% desde Ventas (mismo flujo, sin UI propia en Pedidos)</li>
+    <li>(b) Pedidos tiene su propio botón "Cancelar Pedido" que por debajo dispara la devolución de la venta asociada</li>
+    <li>(c) No se puede cancelar un Pedido ya entregado — solo se puede devolver desde Ventas</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. MOMENTO DE FACTURACIÓN ============================ -->
+<h2>B. Momento de facturación</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    ¿Se factura al confirmar/lanzar el Pedido o al entregarlo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy en Ventas: <code>estado === 'despachada' && factHabilitada</code> dispara el modal de factura en el momento exacto del despacho físico (rebaje + factura son atómicos). Un Pedido puede lanzarse hoy y entregarse recién en días.</div>
+  <ul class="opciones">
+    <li>(a) Solo al entregar/despachar físicamente (venta real recién ahí — igual criterio fiscal que hoy: factura = mercadería entregada)</li>
+    <li>(b) Al confirmar el Pedido, como "venta anticipada" (factura por la operación, aunque la entrega sea después)</li>
+    <li>(c) Configurable por tipo de pedido (ej. mayorista factura al confirmar, retiro en local factura al entregar)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Anticipo/seña al confirmar el Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy en "Reservar stock": la seña se cobra y se asienta en caja, pero no genera comprobante fiscal — es un ingreso interno.</div>
+  <ul class="opciones">
+    <li>(a) Igual que hoy — ingreso en caja sin comprobante fiscal por el anticipo</li>
+    <li>(b) Recibo interno (PDF, no AFIP) por el anticipo</li>
+    <li>(c) Factura A/B/C por el anticipo (requiere <code>Concepto</code> AFIP correcto — ver REGLA #0 fiscal)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Cancelación de un Pedido ya facturado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Requiere NC como cualquier venta facturada (ligado a la respuesta de A10 del relevamiento de Ventas — hoy NC interna, sin CAE electrónico todavía)</li>
+    <li>(b) Si es solo el anticipo (sin entrega), se puede anular con un simple egreso de caja, sin NC</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Condición de venta / tipo de comprobante según tipo de Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy en Ventas la condición IVA del emisor decide A/B/C automáticamente; el canal (POS/MELI/etc.) no cambia el tipo de comprobante.</div>
+  <ul class="opciones">
+    <li>(a) Igual regla que hoy — el tipo de comprobante lo decide solo la condición IVA del emisor/receptor, sin importar el tipo de Pedido</li>
+    <li>(b) El tipo de Pedido puede forzar factura A (ej. "Mayorista" siempre pide CUIT) aunque el resto de reglas permitirían B</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. CABECERA DEL PEDIDO ============================ -->
+<h2>C. Cabecera del Pedido</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Numeración <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedentes en el código: <code>ventas.numero</code> y <code>traslados.numero</code> son correlativos por tenant vía trigger (<code>set_venta_numero</code>/<code>set_traslado_numero</code>); <code>ordenes_compra</code> además tiene <code>numero_sucursal</code> configurable por <code>tenants.oc_numeracion</code>.</div>
+  <ul class="opciones">
+    <li>(a) Correlativo propio por tenant, mismo patrón simple que Traslados (<code>PED-0001</code>)</li>
+    <li>(b) Correlativo por sucursal (como ventas), configurable como en OC (<code>tenant</code>/<code>sucursal</code>)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Tipos de Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">GO mencionó "tipo de pedido" en la cabecera sin cerrar la lista. Hoy Ventas tiene un catálogo similar de <code>canalPOS</code> (POS/IG/FB/WA/MELI/TN/Otros) configurable por tenant en <code>canales_venta</code>.</div>
+  <ul class="opciones">
+    <li>(a) Lista fija hardcodeada (ej. Mayorista / E-commerce / Encargo telefónico / Retiro en local)</li>
+    <li>(b) Catálogo configurable por tenant, mismo patrón que <code>canales_venta</code></li>
+    <li>(c) El "tipo" es en realidad el canal existente de Ventas reusado (no se crea catálogo nuevo)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Cliente obligatorio en el Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy en Ventas (H5 del relevamiento de Ventas): cliente es opcional en venta directa, obligatorio solo en <code>pendiente</code>/<code>reservada</code>. GO pregunta explícitamente si Pedidos siempre requiere cliente identificado, a diferencia de mostrador.</div>
+  <ul class="opciones">
+    <li>(a) Sí, siempre obligatorio — un Pedido sin cliente identificado no tiene sentido (a diferencia del mostrador anónimo)</li>
+    <li>(b) Obligatorio salvo "pedido telefónico rápido" con solo nombre/teléfono sueltos (igual que hoy en venta directa)</li>
+    <li>(c) Depende del tipo de Pedido (mayorista sí, otros no)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    Fechas de la cabecera <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">GO mencionó "fechas de entrega" en plural. Hoy Ventas solo tiene <code>despachado_at</code>/<code>reservado_at</code> (un único timestamp de evento, no una fecha planificada a futuro).</div>
+  <ul class="opciones">
+    <li>(a) Solo fecha de entrega solicitada por el cliente</li>
+    <li>(b) Fecha solicitada + fecha comprometida por el negocio (pueden diferir)</li>
+    <li>(c) Fecha solicitada + comprometida + real de entrega (para medir cumplimiento)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C5</span><span class="pregunta-titulo">
+    Sucursal del Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy Ventas exige elegir <code>sucursal_id</code> cuando hay más de una (el stock se descuenta por sucursal). Traslados en cambio tiene origen Y destino distintos.</div>
+  <ul class="opciones">
+    <li>(a) Una sola sucursal (origen = despacho), igual que Ventas — sin traslado entre sucursales dentro del mismo Pedido</li>
+    <li>(b) Sucursal de origen (stock) + sucursal/domicilio de destino, como Traslados</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C6</span><span class="pregunta-titulo">
+    Canal de origen del Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Reusa el mismo catálogo de canales de Ventas (<code>canales_venta</code>)</li>
+    <li>(b) Catálogo propio de Pedidos, independiente del de Ventas</li>
+    <li>(c) No aplica — el "tipo de pedido" (C2) ya cumple ese rol</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. LÍNEAS DEL PEDIDO ============================ -->
+<h2>D. Líneas del Pedido</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Campos por línea <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">GO: "en las líneas los skus, cantidades, estado y atributos si es que especifica alguno". Precedente: <code>traslado_items</code> guarda producto/cantidad/lote/vencimiento/estado_id/series como snapshot completo.</div>
+  <ul class="opciones">
+    <li>(a) SKU + cantidad + precio + estado de línea, sin atributos finos (lote/talle/color se resuelven recién al preparar)</li>
+    <li>(b) SKU + cantidad + precio + atributos opcionales si el cliente los pide (talle/color/lote específico) — igual espíritu que <code>traslado_items</code></li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Series/lotes — ¿se especifican al armar el Pedido o recién al preparar? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy en Ventas las series se eligen en el carrito antes de despachar (<code>venta_series</code>). Para un Pedido armado hoy y preparado en días, el LPN/serie concreto puede no existir todavía al momento de armar la cabecera.</div>
+  <ul class="opciones">
+    <li>(a) Nunca en el Pedido — solo cantidad por SKU; el LPN/serie se decide en el picking (igual que <code>lpn_plan</code> hoy)</li>
+    <li>(b) Opcional — el cliente puede pedir una serie/lote específico, queda "reservado" mentalmente pero sin bloquear stock hasta lanzar</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    Kits/combos en el Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Se admiten igual que en Ventas (se abren en sus componentes al lanzar)</li>
+    <li>(b) No se admiten en la primera versión — solo productos simples</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D4</span><span class="pregunta-titulo">
+    Edición de líneas después de confirmado/lanzado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente: en Ventas, "Modificar reserva" cancela la reserva actual y recrea el carrito. En Traslados, una vez <code>en_transito</code> no se edita.</div>
+  <ul class="opciones">
+    <li>(a) Editable libremente mientras esté en borrador; una vez lanzado (tareas WMS generadas), no se edita — se cancela y se rehace</li>
+    <li>(b) Editable incluso lanzado, siempre que ninguna tarea asociada esté completada (cancela y regenera las tareas afectadas)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. ESTADOS DEL PEDIDO ============================ -->
+<h2>E. Estados del ciclo de vida</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Estados de cabecera <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedentes: <code>ventas.estado</code> (pendiente/reservada/despachada/cancelada/devuelta), <code>traslados.estado</code> (en_transito/recibido/recibido_parcial/cancelado), <code>wms_tareas.estado</code> (pendiente/en_curso/completada/cancelada).</div>
+  <ul class="opciones">
+    <li>(a) borrador → confirmado → en_preparacion → listo_para_entrega → entregado → cancelado</li>
+    <li>(b) borrador → lanzado → en_preparacion → entregado_parcial → entregado → cancelado (agrega el intermedio de cumplimiento parcial, ver sección G)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Estados de línea <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">GO lo pidió explícitamente en la cabecera de líneas ("estado"). Sin precedente exacto en el código — lo más cercano es <code>wms_tareas.estado</code> por tarea, no por línea de venta.</div>
+  <ul class="opciones">
+    <li>(a) pendiente / en_preparacion / preparado / faltante / cancelada</li>
+    <li>(b) Más simple: pendiente / cumplida / faltante</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Quién puede transicionar cada estado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cualquier rol con acceso a Pedidos hace todas las transiciones</li>
+    <li>(b) Crear/confirmar es de ventas (CAJERO+), "lanzar" requiere SUPERVISOR+ (como aprobación de OC con <code>oc_aprobacion_activa</code>)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Cancelar un Pedido ya lanzado (con tareas WMS generadas) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente directo: <code>fn_cancelar_tarea_wms</code> (mig 291) ya cancela en cascada un reabastecimiento y su picking dependiente. Falta la pieza "cancelar el Pedido completo" que dispare eso para todas sus tareas.</div>
+  <ul class="opciones">
+    <li>(a) Cancelar el Pedido cancela en cascada todas sus tareas WMS pendientes (reusa <code>fn_cancelar_tarea_wms</code> por cada una)</li>
+    <li>(b) No se puede cancelar si ya hay una tarea <code>en_curso</code> o <code>completada</code> — solo se puede cancelar lo que falta (parcial)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E5</span><span class="pregunta-titulo">
+    Pedidos en borrador sin confirmar (abandonados) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente: presupuestos (<code>ventas.estado = 'pendiente'</code>) tienen badge "Vencido" con plazo hardcoded (relevamiento Ventas, F1).</div>
+  <ul class="opciones">
+    <li>(a) Sin vencimiento — quedan en borrador indefinidamente hasta que alguien los confirme o borre</li>
+    <li>(b) Vencimiento configurable con alerta (mismo patrón que presupuestos)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. LANZAR EL PEDIDO ============================ -->
+<h2>F. "Lanzar" el Pedido → generación de tareas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    Qué dispara exactamente "lanzar" <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>fn_generar_tareas_picking_envio(envio_id)</code> ya existe (mig 290/291) pero exige un <code>envio_id</code> con <code>venta_id</code> asociado — Pedidos "lanza" ANTES de que exista una venta, así que necesita una función nueva o una variante que arranque desde el Pedido en vez de desde un envío/venta.</div>
+  <ul class="opciones">
+    <li>(a) Genera <code>wms_tareas</code> directo desde las líneas del Pedido (nueva función <code>fn_generar_tareas_picking_pedido</code>, análoga a la de envío pero sin depender de una venta previa)</li>
+    <li>(b) "Lanzar" primero crea la venta en estado <code>reservada</code> (reusa <code>registrarVenta</code>) y DESPUÉS genera las tareas igual que hoy con un envío existente</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    ¿Se crea un <code>envío</code> automáticamente al lanzar? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>envios.venta_id</code> es 1:1 con una venta y se crea recién dentro de <code>registrarVenta</code> (<code>estado !== 'pendiente' && modoAvanzado</code>). Si Pedidos lanza tareas ANTES de que exista la venta, hay que decidir si el envío se crea antes (vinculado al Pedido, no a una venta) o se sigue creando después.</div>
+  <ul class="opciones">
+    <li>(a) El envío se sigue creando solo cuando se genera la venta real (al preparar/entregar) — como hoy</li>
+    <li>(b) Se crea un envío al lanzar el Pedido, vinculado al Pedido (no a una venta) hasta que la venta exista — requiere agregar <code>envios.pedido_id</code></li>
+    <li>(c) No se usa el objeto <code>envíos</code> para Pedidos con retiro en local; solo para los que llevan destino/domicilio</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    Reabastecimiento automático al lanzar <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy los flags <code>tenants.wms_reabastecimiento_on_demand</code> y <code>wms_reabastecimiento_umbral</code> gobiernan esto para reservas de Ventas.</div>
+  <ul class="opciones">
+    <li>(a) Mismos flags/reglas que hoy — Pedidos no agrega comportamiento nuevo, solo otro origen de tareas</li>
+    <li>(b) Pedidos permite forzar reabastecimiento aunque el flag esté apagado (tiene más margen de tiempo que una venta reservada)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F4</span><span class="pregunta-titulo">
+    Prioridad de las tareas generadas por Pedido vs. por venta reservada directa <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ambos orígenes van a terminar alimentando la misma cola de <code>wms_tareas</code> (<code>PickingPage.tsx</code> ordena por <code>prioridad DESC, created_at</code>). Sin regla, un Pedido con entrega en 3 días puede competir por prioridad con una venta de mostrador que se está por retirar YA.</div>
+  <ul class="opciones">
+    <li>(a) Prioridad por fecha de entrega comprometida (más cerca = más prioridad), sin distinguir el origen</li>
+    <li>(b) Venta de mostrador siempre tiene prioridad por sobre Pedidos (el cliente está esperando en el local)</li>
+    <li>(c) Prioridad manual configurable por el DUEÑO/SUPERVISOR al lanzar</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F5</span><span class="pregunta-titulo">
+    Revertir un lanzamiento ("des-lanzar") <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente directo: <code>fn_cancelar_tarea_wms</code> ya soporta cancelar una tarea individual (y su cascada). Falta la variante "cancelar todas las tareas de este Pedido y volverlo a borrador".</div>
+  <ul class="opciones">
+    <li>(a) Se puede volver a borrador cancelando todas las tareas WMS generadas (mismo criterio de <code>fn_cancelar_tarea_wms</code>), solo si ninguna está <code>en_curso</code>/<code>completada</code></li>
+    <li>(b) No se puede — una vez lanzado, solo se puede cancelar el Pedido entero (no volver a editar)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. CUMPLIMIENTO PARCIAL ============================ -->
+<h2>G. Cumplimiento parcial / entregas en varias tandas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    ¿Se permite preparar/entregar un Pedido en varias tandas? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">GO lo preguntó directamente ("hoy la mitad, mañana el resto"). Precedente ya implementado: OC + Recepciones (<code>recepcion_items.cantidad_recibida</code> vs. cantidad pedida) admite recepción parcial sobre la misma OC, varias veces.</div>
+  <ul class="opciones">
+    <li>(a) Sí, mismo espíritu que Recepciones de OC — cada entrega registra cuánto se cumplió por línea, el Pedido queda "parcial" hasta completarse</li>
+    <li>(b) No en la primera versión — un Pedido se prepara/entrega todo junto o no</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Relación Pedido → Ventas/Envíos si hay parcialidad <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>envios.venta_id</code> es 1:1 y cada <code>venta</code> es un evento de rebaje único. Si G1 = sí, un Pedido puede terminar generando MÁS DE UNA venta (una por cada entrega parcial), lo que rompe el supuesto 1:1 actual.</div>
+  <ul class="opciones">
+    <li>(a) Cada entrega parcial genera su propia venta+envío independiente (N ventas por 1 Pedido) — <code>ventas.pedido_id</code> repetido agrupa todo</li>
+    <li>(b) Se genera una única venta al final, cuando el Pedido se completa 100% (las entregas parciales no facturan hasta el cierre)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span><span class="pregunta-titulo">
+    Estado de línea cuando se entrega parcialmente <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) La línea queda "parcial" con cantidad pendiente visible (cantidad_pedida − cantidad_entregada), como <code>recepcion_items</code></li>
+    <li>(b) Se abre una línea nueva "saldo pendiente" por la diferencia, la original queda cerrada</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G4</span><span class="pregunta-titulo">
+    Cierre del Pedido al completarse <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Automático — cuando la última línea llega a 100% entregado, el Pedido pasa a <code>entregado</code> solo</li>
+    <li>(b) Manual — alguien tiene que confirmar el cierre aunque todas las líneas estén completas</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. PRECIOS Y STOCK ============================ -->
+<h2>H. Precios y stock: al crear vs. al lanzar/entregar</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Precio: ¿snapshot al armar el Pedido o recalcula al lanzar/entregar? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente: Presupuestos (relevamiento Ventas, F2) hoy re-cotizan si están vencidos al momento de despachar.</div>
+  <ul class="opciones">
+    <li>(a) Precio fijo desde que se arma el Pedido (garantía al cliente), sin importar cuánto tarde en lanzarse/entregarse</li>
+    <li>(b) Precio se recalcula siempre al lanzar (igual que un carrito nuevo)</li>
+    <li>(c) Mismo criterio que Presupuestos — vigente mantiene, vencido re-cotiza</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Validación de stock: ¿al armar el Pedido o solo al lanzar? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy en Ventas (C5 del relevamiento) el sistema bloquea si no hay stock al despachar/reservar. Un Pedido puede armarse hoy y lanzarse en varios días, cuando el stock puede ser otro.</div>
+  <ul class="opciones">
+    <li>(a) Se puede armar y confirmar sin stock disponible (es una intención de compra) — el stock se valida/bloquea recién al lanzar</li>
+    <li>(b) Se valida en ambos momentos, con alerta (no bloqueo) al armar si ya no alcanza</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H3</span><span class="pregunta-titulo">
+    Vigencia del Pedido armado sin lanzar <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Relacionado con E5, pero enfocado en el impacto de precio/stock si pasa mucho tiempo entre armar y lanzar.</div>
+  <ul class="opciones">
+    <li>(a) Sin plazo — el Pedido queda válido hasta que se lo lance o cancele explícitamente</li>
+    <li>(b) Plazo configurable, con recotización obligatoria al vencer (igual que Presupuestos)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H4</span><span class="pregunta-titulo">
+    ¿"Lanzar" reserva stock real (<code>cantidad_reservada</code>)? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy "Reservar stock" en Ventas incrementa <code>inventario_lineas.cantidad_reservada</code> inmediatamente al confirmar. Si Pedidos genera tareas de reabastecimiento ANTES de reservar, dos Pedidos podrían competir por el mismo stock físico sin que el sistema lo sepa.</div>
+  <ul class="opciones">
+    <li>(a) Sí — lanzar reserva stock real igual que "Reservar stock" hoy, así ningún otro Pedido/venta puede tomarlo</li>
+    <li>(b) No reserva stock — solo genera tareas de picking/reabastecimiento; el stock se descuenta recién al preparar físicamente (riesgo de 2 pedidos peleando el mismo LPN, a asumir)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. CLIENTE Y CONDICIÓN DE VENTA ============================ -->
+<h2>I. Cliente y condición de venta</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    Cuenta corriente en Pedidos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy en Ventas, CC se habilita por cliente (<code>cuenta_corriente_habilitada</code>) sin enforcement automático de límite, y <code>cc_dias_vencimiento</code> calcula <code>fecha_vencimiento_cc</code> en el insert.</div>
+  <ul class="opciones">
+    <li>(a) Aplica exactamente igual que en Ventas — mismos campos, mismas reglas de vencimiento cuando se resuelvan (ver relevamiento Ventas D1/D2)</li>
+    <li>(b) Pedidos con CC requieren aprobación adicional del SUPERVISOR (por el mayor monto/plazo típico de un pedido vs. venta de mostrador)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    Pedido sin cliente identificado en el sistema (ej. telefónico nuevo) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Se crea el cliente en el momento (alta inline, como ya existe en el checkout de Ventas)</li>
+    <li>(b) Se admite nombre/teléfono suelto sin alta formal de cliente, igual que venta directa hoy</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I3</span><span class="pregunta-titulo">
+    Destino de entrega: domicilio del cliente vs. retiro en sucursal <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>envios.destino_id</code> referencia <code>cliente_domicilios</code> o <code>destino_descripcion</code> manual.</div>
+  <ul class="opciones">
+    <li>(a) Reusa <code>cliente_domicilios</code> igual que Envíos hoy, más la opción "Retiro en sucursal"</li>
+    <li>(b) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ J. PERMISOS Y ROLES ============================ -->
+<h2>J. Permisos y roles</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J1</span><span class="pregunta-titulo">
+    Quién puede crear Pedidos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente: <code>/picking</code> hoy es <code>supervisorOnly: true, depositoVisible: true, avanzadoOnly: true</code> (OWNER+ADMIN+SUPERVISOR+DEPOSITO). Ventas en cambio es accesible también a CAJERO.</div>
+  <ul class="opciones">
+    <li>(a) Mismos roles que Ventas (incluye CAJERO) — armar un Pedido es una operación comercial, no de depósito</li>
+    <li>(b) Solo SUPERVISOR+ (como Recepciones/Picking) — se trata como operación logística desde el vamos</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J2</span><span class="pregunta-titulo">
+    Quién puede "lanzar" un Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Mismo rol que lo crea, sin aprobación adicional</li>
+    <li>(b) Requiere SUPERVISOR+ aunque lo haya creado un CAJERO (mismo patrón que <code>oc_aprobacion_activa</code> de Compras)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J3</span><span class="pregunta-titulo">
+    Quién hace el picking/preparación del Pedido <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ya confirmado en el código: <code>/picking</code> es visible para DEPOSITO/SUPERVISOR/ADMIN/OWNER. Las tareas de Pedidos van a la misma cola de <code>wms_tareas</code> que hoy usa Ventas.</div>
+  <ul class="opciones">
+    <li>(a) Mismos roles que hoy en <code>/picking</code> — sin cambios, un depósito ve todas sus tareas juntas sin importar el origen</li>
+    <li>(b) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J4</span><span class="pregunta-titulo">
+    Quién puede cancelar/editar un Pedido ya lanzado <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Mismo rol que lo lanzó, sin restricción adicional</li>
+    <li>(b) Solo DUEÑO/SUPERVISOR/ADMIN, con audit log (mismo criterio que "anular venta despachada" del relevamiento de Ventas, J2)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ K. REPORTES Y ALERTAS ============================ -->
+<h2>K. Reportes y alertas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K1</span><span class="pregunta-titulo">
+    Reportes prioritarios de Pedidos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Pedidos pendientes de lanzar (borrador/confirmado, agrupados por fecha de entrega comprometida)</li>
+    <li>(b) Pedidos con entrega vencida (fecha comprometida ya pasó, sin completar)</li>
+    <li>(c) Cumplimiento por tipo de Pedido (% entregado a tiempo vs. tarde)</li>
+    <li>(d) Marcar todos los que apliquen (multi-select)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K2</span><span class="pregunta-titulo">
+    Alertas automáticas de Pedidos <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente de patrón: el Badge de Alertas ya es mode-aware (WMS/compras gateadas por <code>modoAvanzado</code>).</div>
+  <ul class="opciones">
+    <li>(a) Pedido lanzado con tareas WMS sin avanzar hace más de N horas (riesgo de no llegar a la fecha comprometida)</li>
+    <li>(b) Pedido con fecha de entrega comprometida vencida sin completar</li>
+    <li>(c) Marcar todos los que apliquen</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K3</span><span class="pregunta-titulo">
+    Exportaciones <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Excel + PDF + CSV, consistente con el resto de los módulos (Caja, Ventas)</li>
+    <li>(b) Solo Excel y PDF</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ L. TOP 3 / ABIERTOS ============================ -->
+<h2>L. Top 3 prioritario / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L1</span><span class="pregunta-titulo">
+    ¿Qué 3 decisiones de Pedidos hay que cerrar primero para poder empezar a codear? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto se puede resolver en fases posteriores sin bloquear el arranque.</div>
+  <ul class="opciones">
+    <li>(   ) A1/A3 — relación Pedido↔Venta y futuro de "Reservar stock"</li>
+    <li>(   ) B1 — momento de facturación (confirmar vs. entregar)</li>
+    <li>(   ) F1/F2 — qué dispara "lanzar" y si crea envío antes de la venta</li>
+    <li>(   ) G1/G2 — si se admite cumplimiento parcial (define si un Pedido puede generar N ventas)</li>
+    <li>(   ) H2/H4 — validación y reserva de stock (armar vs. lanzar)</li>
+    <li>(   ) C1/C2 — numeración y tipos de Pedido</li>
+    <li>(   ) E1/E2 — estados de cabecera y de línea</li>
+    <li>(   ) J1/J2 — quién crea y quién lanza (roles/aprobación)</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L2</span><span class="pregunta-titulo">
+    Comentarios libres / cualquier regla que se nos haya escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio Módulo Pedidos (nuevo) · 2026-07-22<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar las fases de implementación.
+</div>
+
+</body>
+</html>

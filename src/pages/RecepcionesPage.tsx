@@ -12,7 +12,7 @@ import { estadoOCdesdeRecibido, superaOverReceipt, tieneFaltante, esAjusteCantid
 import { cambioCostoPct, superaAlertaCosto } from '@/lib/comprasCostos'
 import { logActividad } from '@/lib/actividadLog'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
-import type { Recepcion, ProductoEstructura } from '@/lib/supabase'
+import type { Recepcion } from '@/lib/supabase'
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -58,7 +58,6 @@ type FormItem = {
   lpn: string
   series_txt: string
   precio_costo: string
-  estructura_id: string
   motivo_faltante: string  // CO2/B4 — motivo del faltante en under-receipt
   actualizar_costo: boolean // CO3/E1 — el operador decide actualizar el precio_costo del producto
   // Atributos de variante
@@ -104,7 +103,7 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
     unidad_medida: 'unidad', precio_costo_default: 0,
     oc_item_id: '', cantidad_esperada: 0, cantidad_recibida: '1',
     ubicacion_id: '', estado_id: '', nro_lote: '', fecha_vencimiento: '',
-    lpn: '', series_txt: '', precio_costo: '', estructura_id: '', motivo_faltante: '', actualizar_costo: false,
+    lpn: '', series_txt: '', precio_costo: '', motivo_faltante: '', actualizar_costo: false,
     pais_origen: '', talle: '', color: '', encaje: '', formato: '', sabor_aroma: '',
     expanded: false,
     ...overrides,
@@ -145,7 +144,6 @@ export default function RecepcionesPage() {
   const [prodFocused, setProdFocused] = useState(false)
   const [saving, setSaving] = useState(false)
   const [expandedRec, setExpandedRec] = useState<string | null>(null)
-  const [estructurasMap, setEstructurasMap] = useState<Record<string, ProductoEstructura[]>>({})
   const [resultadoModal, setResultadoModal] = useState<ResultadoRecepcion | null>(null)
 
   // ── Scan ticket ─────────────────────────────────────────────────────────────
@@ -260,9 +258,8 @@ export default function RecepcionesPage() {
       setOcPagada((oc as any).estado_pago === 'pagada')
       const ocItems = (oc as any).orden_compra_items ?? []
       if (ocItems.length > 0) {
-        const itemsConEstructura = await Promise.all(ocItems.map(async (it: any) => {
+        const itemsRecepcion = await Promise.all(ocItems.map(async (it: any) => {
           const p = it.productos
-          const estructura_id = await cargarEstructuras(p.id)
           // Resolver ubicación predeterminada por sucursal
           let ubicacionDefault = p.ubicacion_id ?? ''
           if (sucursalId) {
@@ -289,12 +286,11 @@ export default function RecepcionesPage() {
             oc_item_id: it.id,
             cantidad_esperada: it.cantidad,
             cantidad_recibida: String(it.cantidad),
-            estructura_id,
             ubicacion_id: ubicacionDefault,
             estado_id:    p.estado_id ?? '',
           })
         }))
-        setItems(itemsConEstructura)
+        setItems(itemsRecepcion)
       }
     }
     cargarOC()
@@ -302,29 +298,12 @@ export default function RecepcionesPage() {
 
   // ── Agregar producto a items ───────────────────────────────────────────────
 
-  const cargarEstructuras = async (productoId: string): Promise<string> => {
-    if (estructurasMap[productoId]) {
-      const def = estructurasMap[productoId].find(e => e.is_default) ?? estructurasMap[productoId][0]
-      return def?.id ?? ''
-    }
-    const { data } = await supabase
-      .from('producto_estructuras')
-      .select('id, nombre, is_default')
-      .eq('producto_id', productoId)
-      .order('is_default', { ascending: false })
-    const list = (data ?? []) as ProductoEstructura[]
-    setEstructurasMap(prev => ({ ...prev, [productoId]: list }))
-    const def = list.find(e => e.is_default) ?? list[0]
-    return def?.id ?? ''
-  }
-
   // ISS-127 F3: `extra` pre-carga lote/venc/cantidad desde un código compuesto GS1.
   const agregarProducto = async (p: any, extra?: { nro_lote?: string; fecha_vencimiento?: string; cantidad_recibida?: number }) => {
     if (items.find(it => it.producto_id === p.id)) {
       toast('Ese producto ya está en la lista')
       return
     }
-    const estructura_id = await cargarEstructuras(p.id)
     // Resolver ubicación predeterminada: sucursal activa primero, luego fallback del producto
     let ubicacionDefault = p.ubicacion_id ?? ''
     if (sucursalId) {
@@ -348,7 +327,6 @@ export default function RecepcionesPage() {
       unidad_medida: p.unidad_medida,
       precio_costo_default: p.precio_costo ?? 0,
       precio_costo: String(p.precio_costo ?? ''),
-      estructura_id,
       // Defaults del producto — el usuario puede modificarlos antes de confirmar
       ubicacion_id: ubicacionDefault,
       estado_id:    p.estado_id ?? '',
@@ -579,7 +557,6 @@ export default function RecepcionesPage() {
               fecha_vencimiento: it.fecha_vencimiento || null,
               precio_costo_snapshot: it.precio_costo ? Number(it.precio_costo) : (it.precio_costo_default || null),
               sucursal_id: fSucursalId || null,
-              estructura_id: it.estructura_id || null,
               ...(it.tiene_pais_origen ? { pais_origen: it.pais_origen || null } : {}),
               ...(it.tiene_talle ? { talle: it.talle || null } : {}),
               ...(it.tiene_color ? { color: it.color || null } : {}),
@@ -1354,18 +1331,6 @@ export default function RecepcionesPage() {
                 {it.expanded && (
                   <div className="border-t border-gray-100 dark:border-gray-700 px-4 py-3 bg-gray-50 dark:bg-gray-700/50">
                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-sm">
-                      {(estructurasMap[it.producto_id]?.length ?? 0) > 0 && (
-                        <div className="col-span-2 sm:col-span-3">
-                          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Estructura de embalaje</label>
-                          <select value={it.estructura_id} onChange={e => updItem(it._key, { estructura_id: e.target.value })}
-                            className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600">
-                            <option value="">Sin estructura</option>
-                            {estructurasMap[it.producto_id].map(e => (
-                              <option key={e.id} value={e.id}>{e.nombre}{e.is_default ? ' (default)' : ''}</option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
                       <div>
                         <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ubicación</label>
                         <select value={it.ubicacion_id} onChange={e => updItem(it._key, { ubicacion_id: e.target.value })}

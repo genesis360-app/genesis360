@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-07-22T04:21:19.512Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260721231312 · 141 tablas
+-- Generado 2026-07-28T03:41:36.137Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260728031041 · 151 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -788,7 +788,8 @@ CREATE TABLE public.envios (
   sucursal_destino_id uuid,
   recurso_id uuid,
   km_recorridos numeric,
-  gasto_combustible_id uuid
+  gasto_combustible_id uuid,
+  pedido_id uuid
 );
 
 CREATE TABLE public.estados_inventario (
@@ -989,7 +990,9 @@ CREATE TABLE public.inventario_lineas (
   color text,
   encaje text,
   formato text,
-  sabor_aroma text
+  sabor_aroma text,
+  unidad_medida_id uuid,
+  cantidad_uom numeric(12,3)
 );
 
 CREATE TABLE public.inventario_meli_map (
@@ -1154,7 +1157,9 @@ CREATE TABLE public.movimientos_stock (
   linea_id uuid,
   sucursal_id uuid,
   venta_id uuid,
-  gasto_id uuid
+  gasto_id uuid,
+  unidad_medida_id uuid,
+  cantidad_uom numeric(12,3)
 );
 
 CREATE TABLE public.mp_billing_alertas (
@@ -1227,6 +1232,58 @@ CREATE TABLE public.ordenes_compra (
   pago_schedule jsonb
 );
 
+CREATE TABLE public.pedido_items (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  pedido_id uuid NOT NULL,
+  producto_id uuid NOT NULL,
+  cantidad numeric(14,4) NOT NULL,
+  cantidad_entregada numeric(14,4) NOT NULL DEFAULT 0,
+  estado text NOT NULL DEFAULT 'pendiente'::text,
+  estado_id uuid,
+  talle text,
+  color text,
+  encaje text,
+  formato text,
+  sabor_aroma text,
+  notas text,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.pedido_lanzamientos (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  sucursal_id uuid,
+  ubicacion_staging_id uuid NOT NULL,
+  creado_por uuid,
+  notas text,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.pedidos (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  sucursal_id uuid,
+  numero integer NOT NULL,
+  numero_sucursal integer,
+  tipo_pedido_id uuid NOT NULL,
+  cliente_id uuid,
+  cliente_nombre text,
+  cliente_telefono text,
+  estado text NOT NULL DEFAULT 'borrador'::text,
+  fecha_entrega_solicitada date,
+  requiere_envio boolean NOT NULL DEFAULT false,
+  notas text,
+  creado_por uuid,
+  lanzado_por uuid,
+  confirmado_at timestamp with time zone,
+  lanzado_at timestamp with time zone,
+  entregado_at timestamp with time zone,
+  cancelado_at timestamp with time zone,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  referencia text
+);
+
 CREATE TABLE public.planes (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   nombre text NOT NULL,
@@ -1291,9 +1348,7 @@ CREATE TABLE public.producto_estructura_niveles (
   alto_cm numeric(10,2),
   ancho_cm numeric(10,2),
   largo_cm numeric(10,2),
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  precio_venta numeric(12,2),
-  precio_costo numeric(12,2)
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.producto_estructuras (
@@ -1341,7 +1396,27 @@ CREATE TABLE public.producto_precios_mayorista (
   cantidad_minima integer NOT NULL,
   precio numeric(12,2) NOT NULL,
   descripcion text,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  operador text NOT NULL DEFAULT '>='::text,
+  orden integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE public.producto_presentaciones (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  producto_id uuid NOT NULL,
+  nombre_empaque_id uuid,
+  etiqueta text NOT NULL,
+  factor_base bigint NOT NULL,
+  es_base boolean NOT NULL DEFAULT false,
+  orden integer NOT NULL,
+  activo boolean NOT NULL DEFAULT true,
+  peso_kg numeric(10,4),
+  alto_cm numeric(10,2),
+  ancho_cm numeric(10,2),
+  largo_cm numeric(10,2),
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  padre_linea_id uuid
 );
 
 CREATE TABLE public.producto_stock_minimo_sucursal (
@@ -1360,6 +1435,16 @@ CREATE TABLE public.producto_ubicacion_sucursal (
   sucursal_id uuid NOT NULL,
   ubicacion_id uuid,
   created_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE public.producto_ubicacion_umbrales (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  producto_id uuid NOT NULL,
+  ubicacion_id uuid NOT NULL,
+  stock_minimo integer NOT NULL,
+  stock_maximo integer,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.productos (
@@ -1422,8 +1507,10 @@ END,
   clase_abc_manual boolean NOT NULL DEFAULT false,
   ultimo_conteo_at timestamp with time zone,
   pendiente_revision boolean NOT NULL DEFAULT false,
-  nivel_precio_orden integer,
-  notas text
+  notas text,
+  unidad_medida_base_id uuid,
+  producto_padre_id uuid,
+  variante_diferenciador text
 );
 
 CREATE TABLE public.proveedor_cc_movimientos (
@@ -1577,6 +1664,14 @@ CREATE TABLE public.recursos (
   proximo_vencimiento date,
   km_acumulado numeric NOT NULL DEFAULT 0,
   consumo_litros_100km numeric
+);
+
+CREATE TABLE public.reglas_almacenaje (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  unidad_medida_id uuid NOT NULL,
+  zona_id uuid NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.repartidores (
@@ -2133,7 +2228,12 @@ CREATE TABLE public.tenants (
   manual_paid_until timestamp with time zone,
   manual_ultimo_recordatorio_tipo text,
   manual_ultimo_recordatorio_at timestamp with time zone,
-  cliente_campos_requeridos jsonb
+  cliente_campos_requeridos jsonb,
+  wms_reabastecimiento_on_demand boolean NOT NULL DEFAULT true,
+  wms_reabastecimiento_umbral boolean NOT NULL DEFAULT false,
+  pedido_numeracion text NOT NULL DEFAULT 'sucursal'::text,
+  pedido_transiciones_roles jsonb,
+  pedido_cierre_automatico boolean NOT NULL DEFAULT true
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2148,6 +2248,17 @@ CREATE TABLE public.tiendanube_credentials (
   conectado_at timestamp with time zone NOT NULL DEFAULT now(),
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE TABLE public.tipos_pedido (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  nombre text NOT NULL,
+  factura_momento text NOT NULL DEFAULT 'al_entregar'::text,
+  cliente_obligatorio boolean NOT NULL DEFAULT true,
+  activo boolean NOT NULL DEFAULT true,
+  orden integer,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.traslado_items (
@@ -2210,7 +2321,8 @@ CREATE TABLE public.ubicaciones (
   disponible_tn boolean NOT NULL DEFAULT true,
   disponible_meli boolean NOT NULL DEFAULT true,
   sucursal_id uuid,
-  secuencia integer
+  secuencia integer,
+  zona_id uuid
 );
 
 CREATE TABLE public.unidades_medida (
@@ -2221,6 +2333,21 @@ CREATE TABLE public.unidades_medida (
   activo boolean NOT NULL DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
   predefinida boolean NOT NULL DEFAULT false
+);
+
+CREATE TABLE public.unidades_medida_fisicas (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  familia text NOT NULL,
+  nombre text NOT NULL,
+  simbolo text,
+  factor_base_familia numeric NOT NULL,
+  es_base_familia boolean NOT NULL DEFAULT false,
+  permite_decimales boolean NOT NULL DEFAULT true,
+  predefinida boolean NOT NULL DEFAULT false,
+  activo boolean NOT NULL DEFAULT true,
+  orden integer,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE public.users (
@@ -2287,7 +2414,8 @@ CREATE TABLE public.venta_items (
   descuento_estado_pct numeric(5,2),
   descuento_estado_monto numeric(12,2),
   unidad_medida_id uuid,
-  cantidad_uom numeric(12,3)
+  cantidad_uom numeric(12,3),
+  pedido_item_id uuid
 );
 
 CREATE TABLE public.venta_series (
@@ -2344,7 +2472,9 @@ CREATE TABLE public.ventas (
   afip_provider_usado text,
   emisor_id uuid,
   promo_pago jsonb,
-  descuento_estado jsonb
+  descuento_estado jsonb,
+  pedido_id uuid,
+  pedido_entrega_key uuid
 );
 
 CREATE TABLE public.ventas_externas_logs (
@@ -2371,6 +2501,40 @@ CREATE TABLE public.ventas_recurrentes (
   notas text,
   ultima_generada_at timestamp with time zone,
   created_at timestamp with time zone DEFAULT now()
+);
+
+CREATE TABLE public.wms_tareas (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  sucursal_id uuid,
+  tipo text NOT NULL,
+  estado text NOT NULL DEFAULT 'pendiente'::text,
+  prioridad integer NOT NULL DEFAULT 0,
+  producto_id uuid,
+  cantidad integer NOT NULL,
+  ubicacion_origen_id uuid,
+  ubicacion_destino_id uuid,
+  lpn_origen text,
+  origen text NOT NULL,
+  envio_id uuid,
+  tarea_precedente_id uuid,
+  usuario_asignado_id uuid,
+  creado_por uuid,
+  notas text,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  completed_at timestamp with time zone,
+  pedido_id uuid,
+  lanzamiento_id uuid
+);
+
+CREATE TABLE public.zonas (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  tenant_id uuid NOT NULL,
+  sucursal_id uuid,
+  nombre text NOT NULL,
+  descripcion text,
+  activo boolean NOT NULL DEFAULT true,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 -- ============================================================
@@ -2496,6 +2660,7 @@ ALTER TABLE public.inventario_conteos ADD CONSTRAINT inventario_conteos_tipo_che
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_mayor_o_igual_reservada CHECK ((cantidad >= cantidad_reservada));
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_no_negativa CHECK ((cantidad >= 0));
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT chk_cantidad_reservada_no_negativa CHECK ((cantidad_reservada >= 0));
+ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_pkey PRIMARY KEY (id);
 ALTER TABLE public.inventario_meli_map ADD CONSTRAINT inventario_meli_map_pkey PRIMARY KEY (id);
 ALTER TABLE public.inventario_meli_map ADD CONSTRAINT inventario_meli_map_tenant_id_producto_id_meli_item_id_key UNIQUE (tenant_id, producto_id, meli_item_id);
@@ -2525,6 +2690,7 @@ ALTER TABLE public.modo_credentials ADD CONSTRAINT modo_credentials_tenant_id_ke
 ALTER TABLE public.motivos_movimiento ADD CONSTRAINT motivos_movimiento_pkey PRIMARY KEY (id);
 ALTER TABLE public.motivos_movimiento ADD CONSTRAINT motivos_movimiento_tipo_check CHECK ((tipo = ANY (ARRAY['ingreso'::text, 'rebaje'::text, 'ambos'::text, 'caja'::text])));
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_cantidad_check CHECK ((cantidad > (0)::numeric));
+ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_cantidad_uom_check CHECK (((cantidad_uom IS NULL) OR (cantidad_uom > (0)::numeric)));
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_pkey PRIMARY KEY (id);
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_tipo_check CHECK ((tipo = ANY (ARRAY['ingreso'::text, 'rebaje'::text, 'ajuste'::text, 'kitting'::text, 'des_kitting'::text, 'ajuste_ingreso'::text, 'ajuste_rebaje'::text, 'traslado'::text])));
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_pkey PRIMARY KEY (id);
@@ -2537,6 +2703,12 @@ ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_check CHE
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_estado_pago_check CHECK ((estado_pago = ANY (ARRAY['pendiente_pago'::text, 'pago_parcial'::text, 'pagada'::text, 'cuenta_corriente'::text])));
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_pkey PRIMARY KEY (id);
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_tenant_id_numero_key UNIQUE (tenant_id, numero);
+ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_cantidad_check CHECK ((cantidad > (0)::numeric));
+ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'en_preparacion'::text, 'preparado'::text, 'faltante'::text, 'cancelada'::text])));
+ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_pkey PRIMARY KEY (id);
+ALTER TABLE public.pedido_lanzamientos ADD CONSTRAINT pedido_lanzamientos_pkey PRIMARY KEY (id);
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_estado_check CHECK ((estado = ANY (ARRAY['borrador'::text, 'confirmado'::text, 'en_preparacion'::text, 'listo_para_entrega'::text, 'entregado'::text, 'entregado_parcial'::text, 'cancelado'::text])));
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_pkey PRIMARY KEY (id);
 ALTER TABLE public.planes ADD CONSTRAINT planes_pkey PRIMARY KEY (id);
 ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_afip_provider_check CHECK ((afip_provider = ANY (ARRAY['afipsdk'::text, 'propio'::text])));
 ALTER TABLE public.platform_billers ADD CONSTRAINT platform_billers_condicion_iva_emisor_check CHECK ((condicion_iva_emisor = ANY (ARRAY['Monotributista'::text, 'Exento'::text, 'RI'::text])));
@@ -2553,24 +2725,36 @@ ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructur
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_orden_check CHECK ((orden >= 1));
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_peso_kg_check CHECK (((peso_kg IS NULL) OR (peso_kg > (0)::numeric)));
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_pkey PRIMARY KEY (id);
-ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_precio_costo_check CHECK (((precio_costo IS NULL) OR (precio_costo >= (0)::numeric)));
-ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_precio_venta_check CHECK (((precio_venta IS NULL) OR (precio_venta >= (0)::numeric)));
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_unidades_base_check CHECK ((unidades_base >= 1));
 ALTER TABLE public.producto_estructuras ADD CONSTRAINT producto_estructuras_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_cantidad_minima_check CHECK ((cantidad_minima > 0));
+ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_operador_chk CHECK ((operador = ANY (ARRAY['>'::text, '<'::text, '='::text, '>='::text, '<='::text])));
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_precio_check CHECK ((precio >= (0)::numeric));
-ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_producto_id_cantidad_minima_key UNIQUE (producto_id, cantidad_minima);
+ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_regla_unica UNIQUE (producto_id, cantidad_minima, operador);
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_alto_cm_check CHECK (((alto_cm IS NULL) OR (alto_cm > (0)::numeric)));
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_ancho_cm_check CHECK (((ancho_cm IS NULL) OR (ancho_cm > (0)::numeric)));
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_factor_base_check CHECK ((factor_base >= 1));
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_largo_cm_check CHECK (((largo_cm IS NULL) OR (largo_cm > (0)::numeric)));
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_peso_kg_check CHECK (((peso_kg IS NULL) OR (peso_kg > (0)::numeric)));
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_pkey PRIMARY KEY (id);
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_producto_id_etiqueta_key UNIQUE (producto_id, etiqueta);
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_producto_id_nombre_empaque_id_key UNIQUE (producto_id, nombre_empaque_id);
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursa_tenant_id_producto_id_sucursa_key UNIQUE (tenant_id, producto_id, sucursal_id);
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursal_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursal_stock_minimo_check CHECK ((stock_minimo >= 0));
 ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion_sucursal_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion_sucursal_producto_id_sucursal_id_key UNIQUE (producto_id, sucursal_id);
+ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_check CHECK (((stock_maximo IS NULL) OR (stock_maximo >= stock_minimo)));
+ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_pkey PRIMARY KEY (id);
+ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_stock_minimo_check CHECK ((stock_minimo >= 0));
+ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_tenant_id_producto_id_ubicacion_key UNIQUE (tenant_id, producto_id, ubicacion_id);
 ALTER TABLE public.productos ADD CONSTRAINT chk_productos_grupo_sin_atributos_variante CHECK ((NOT ((grupo_id IS NOT NULL) AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_alicuota_iva_check CHECK ((alicuota_iva = ANY (ARRAY[(0)::numeric, 10.5, (21)::numeric, (27)::numeric])));
 ALTER TABLE public.productos ADD CONSTRAINT productos_clase_abc_check CHECK (((clase_abc IS NULL) OR (clase_abc = ANY (ARRAY['A'::text, 'B'::text, 'C'::text]))));
-ALTER TABLE public.productos ADD CONSTRAINT productos_nivel_precio_orden_check CHECK (((nivel_precio_orden IS NULL) OR (nivel_precio_orden >= 1)));
+ALTER TABLE public.productos ADD CONSTRAINT productos_hijo_tiene_diferenciador CHECK (((producto_padre_id IS NULL) OR (variante_diferenciador IS NOT NULL)));
+ALTER TABLE public.productos ADD CONSTRAINT productos_padre_no_self CHECK (((producto_padre_id IS NULL) OR (producto_padre_id <> id)));
 ALTER TABLE public.productos ADD CONSTRAINT productos_pkey PRIMARY KEY (id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_tenant_id_sku_key UNIQUE (tenant_id, sku);
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_pkey PRIMARY KEY (id);
@@ -2590,6 +2774,8 @@ ALTER TABLE public.recepciones ADD CONSTRAINT recepciones_pkey PRIMARY KEY (id);
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_estado_check CHECK ((estado = ANY (ARRAY['activo'::text, 'en_reparacion'::text, 'dado_de_baja'::text, 'pendiente_adquisicion'::text])));
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_frecuencia_unidad_check CHECK ((frecuencia_unidad = ANY (ARRAY['dia'::text, 'semana'::text, 'mes'::text, 'año'::text])));
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_pkey PRIMARY KEY (id);
+ALTER TABLE public.reglas_almacenaje ADD CONSTRAINT reglas_almacenaje_pkey PRIMARY KEY (id);
+ALTER TABLE public.reglas_almacenaje ADD CONSTRAINT reglas_almacenaje_tenant_id_unidad_medida_id_key UNIQUE (tenant_id, unidad_medida_id);
 ALTER TABLE public.repartidores ADD CONSTRAINT repartidores_pkey PRIMARY KEY (id);
 ALTER TABLE public.retenciones_sufridas ADD CONSTRAINT retenciones_sufridas_pkey PRIMARY KEY (id);
 ALTER TABLE public.roles_custom ADD CONSTRAINT roles_custom_pkey PRIMARY KEY (id);
@@ -2656,21 +2842,29 @@ ALTER TABLE public.tenants ADD CONSTRAINT tenants_gastos_dias_alerta_borrador_ch
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_modo_operacion_check CHECK ((modo_operacion = ANY (ARRAY['basico'::text, 'avanzado'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_moneda_check CHECK ((moneda = ANY (ARRAY['ARS'::text, 'USD'::text, 'CLP'::text, 'UYU'::text, 'PYG'::text, 'BOB'::text, 'BRL'::text, 'PEN'::text, 'MXN'::text, 'COP'::text, 'EUR'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_oc_numeracion_check CHECK ((oc_numeracion = ANY (ARRAY['tenant'::text, 'sucursal'::text, 'proveedor'::text])));
+ALTER TABLE public.tenants ADD CONSTRAINT tenants_pedido_numeracion_check CHECK ((pedido_numeracion = ANY (ARRAY['tenant'::text, 'sucursal'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_pkey PRIMARY KEY (id);
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_plan_tier_check CHECK ((plan_tier = ANY (ARRAY['free'::text, 'basico'::text, 'pro'::text, 'enterprise'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_precio_redondeo_check CHECK ((precio_redondeo = ANY (ARRAY['none'::text, '10'::text, '50'::text, '100'::text, '500'::text, '1000'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_subscription_status_check CHECK ((subscription_status = ANY (ARRAY['trial'::text, 'active'::text, 'inactive'::text, 'cancelled'::text])));
 ALTER TABLE public.tiendanube_credentials ADD CONSTRAINT tiendanube_credentials_pkey PRIMARY KEY (id);
 ALTER TABLE public.tiendanube_credentials ADD CONSTRAINT tiendanube_credentials_tenant_id_sucursal_id_key UNIQUE (tenant_id, sucursal_id);
+ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_factura_momento_check CHECK ((factura_momento = ANY (ARRAY['al_confirmar'::text, 'al_entregar'::text])));
+ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_pkey PRIMARY KEY (id);
+ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_cantidad_check CHECK ((cantidad > (0)::numeric));
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_pkey PRIMARY KEY (id);
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_check CHECK ((sucursal_origen_id <> sucursal_destino_id));
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_estado_check CHECK ((estado = ANY (ARRAY['en_transito'::text, 'recibido'::text, 'recibido_parcial'::text, 'cancelado'::text])));
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_pkey PRIMARY KEY (id);
 ALTER TABLE public.ubicaciones ADD CONSTRAINT ubicaciones_pkey PRIMARY KEY (id);
-ALTER TABLE public.ubicaciones ADD CONSTRAINT ubicaciones_tipo_ubicacion_check CHECK ((tipo_ubicacion = ANY (ARRAY['picking'::text, 'bulk'::text, 'estiba'::text, 'camara'::text, 'cross_dock'::text])));
+ALTER TABLE public.ubicaciones ADD CONSTRAINT ubicaciones_tipo_ubicacion_check CHECK ((tipo_ubicacion = ANY (ARRAY['picking'::text, 'bulk'::text, 'estiba'::text, 'camara'::text, 'cross_dock'::text, 'staging'::text])));
 ALTER TABLE public.unidades_medida ADD CONSTRAINT unidades_medida_pkey PRIMARY KEY (id);
 ALTER TABLE public.unidades_medida ADD CONSTRAINT unidades_medida_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
+ALTER TABLE public.unidades_medida_fisicas ADD CONSTRAINT unidades_medida_fisicas_factor_base_familia_check CHECK ((factor_base_familia > (0)::numeric));
+ALTER TABLE public.unidades_medida_fisicas ADD CONSTRAINT unidades_medida_fisicas_familia_check CHECK ((familia = ANY (ARRAY['peso'::text, 'volumen'::text, 'longitud'::text, 'conteo'::text, 'area'::text])));
+ALTER TABLE public.unidades_medida_fisicas ADD CONSTRAINT unidades_medida_fisicas_pkey PRIMARY KEY (id);
+ALTER TABLE public.unidades_medida_fisicas ADD CONSTRAINT unidades_medida_fisicas_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.users ADD CONSTRAINT users_pkey PRIMARY KEY (id);
 ALTER TABLE public.users ADD CONSTRAINT users_rol_check CHECK ((rol = ANY (ARRAY['DUEÑO'::text, 'SUPER_USUARIO'::text, 'SUPERVISOR'::text, 'CAJERO'::text, 'ADMIN'::text, 'RRHH'::text, 'DEPOSITO'::text, 'CONTADOR'::text, 'VIEWER'::text])));
 ALTER TABLE public.venta_auditoria ADD CONSTRAINT venta_auditoria_pkey PRIMARY KEY (id);
@@ -2685,6 +2879,13 @@ ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_pkey
 ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_tenant_id_integracion_webhook_external_key UNIQUE (tenant_id, integracion, webhook_external_id);
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_frecuencia_dias_check CHECK ((frecuencia_dias > 0));
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_pkey PRIMARY KEY (id);
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_cantidad_check CHECK ((cantidad > 0));
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_estado_check CHECK ((estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text, 'completada'::text, 'cancelada'::text])));
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_origen_check CHECK ((origen = ANY (ARRAY['envio'::text, 'manual'::text, 'umbral'::text, 'pedido'::text])));
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_pkey PRIMARY KEY (id);
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_tipo_check CHECK ((tipo = ANY (ARRAY['picking'::text, 'replenishment'::text, 'putaway'::text, 'conteo'::text])));
+ALTER TABLE public.zonas ADD CONSTRAINT zonas_pkey PRIMARY KEY (id);
+ALTER TABLE public.zonas ADD CONSTRAINT zonas_tenant_id_sucursal_id_nombre_key UNIQUE (tenant_id, sucursal_id, nombre);
 ALTER TABLE public.actividad_log ADD CONSTRAINT actividad_log_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.actividad_log ADD CONSTRAINT actividad_log_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.addon_batch_changes ADD CONSTRAINT addon_batch_changes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -2823,6 +3024,7 @@ ALTER TABLE public.envios ADD CONSTRAINT envios_created_by_fkey FOREIGN KEY (cre
 ALTER TABLE public.envios ADD CONSTRAINT envios_destino_id_fkey FOREIGN KEY (destino_id) REFERENCES cliente_domicilios(id) ON DELETE SET NULL;
 ALTER TABLE public.envios ADD CONSTRAINT envios_gasto_combustible_id_fkey FOREIGN KEY (gasto_combustible_id) REFERENCES gastos(id) ON DELETE SET NULL;
 ALTER TABLE public.envios ADD CONSTRAINT envios_gasto_id_fkey FOREIGN KEY (gasto_id) REFERENCES gastos(id) ON DELETE SET NULL;
+ALTER TABLE public.envios ADD CONSTRAINT envios_pedido_id_fkey FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE SET NULL;
 ALTER TABLE public.envios ADD CONSTRAINT envios_recurso_id_fkey FOREIGN KEY (recurso_id) REFERENCES recursos(id) ON DELETE SET NULL;
 ALTER TABLE public.envios ADD CONSTRAINT envios_repartidor_id_fkey FOREIGN KEY (repartidor_id) REFERENCES repartidores(id) ON DELETE SET NULL;
 ALTER TABLE public.envios ADD CONSTRAINT envios_sucursal_destino_id_fkey FOREIGN KEY (sucursal_destino_id) REFERENCES sucursales(id) ON DELETE SET NULL;
@@ -2872,6 +3074,7 @@ ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_proveedor_
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id);
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_ubicacion_id_fkey FOREIGN KEY (ubicacion_id) REFERENCES ubicaciones(id);
+ALTER TABLE public.inventario_lineas ADD CONSTRAINT inventario_lineas_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
 ALTER TABLE public.inventario_meli_map ADD CONSTRAINT inventario_meli_map_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.inventario_meli_map ADD CONSTRAINT inventario_meli_map_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.inventario_series ADD CONSTRAINT inventario_series_estado_id_fkey FOREIGN KEY (estado_id) REFERENCES estados_inventario(id);
@@ -2905,6 +3108,7 @@ ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_producto_i
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id);
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id);
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
 ALTER TABLE public.movimientos_stock ADD CONSTRAINT movimientos_stock_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE SET NULL;
 ALTER TABLE public.mp_billing_alertas ADD CONSTRAINT mp_billing_alertas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE SET NULL;
@@ -2918,6 +3122,20 @@ ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_oc_padre_id_fkey
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id);
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.ordenes_compra ADD CONSTRAINT ordenes_compra_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_estado_id_fkey FOREIGN KEY (estado_id) REFERENCES estados_inventario(id) ON DELETE SET NULL;
+ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_pedido_id_fkey FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE CASCADE;
+ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
+ALTER TABLE public.pedido_items ADD CONSTRAINT pedido_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.pedido_lanzamientos ADD CONSTRAINT pedido_lanzamientos_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE public.pedido_lanzamientos ADD CONSTRAINT pedido_lanzamientos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
+ALTER TABLE public.pedido_lanzamientos ADD CONSTRAINT pedido_lanzamientos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.pedido_lanzamientos ADD CONSTRAINT pedido_lanzamientos_ubicacion_staging_id_fkey FOREIGN KEY (ubicacion_staging_id) REFERENCES ubicaciones(id);
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_cliente_id_fkey FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE SET NULL;
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_lanzado_por_fkey FOREIGN KEY (lanzado_por) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_tipo_pedido_id_fkey FOREIGN KEY (tipo_pedido_id) REFERENCES tipos_pedido(id);
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_biller_id_fkey FOREIGN KEY (biller_id) REFERENCES platform_billers(id) ON DELETE RESTRICT;
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_tenant_origen_id_fkey FOREIGN KEY (tenant_origen_id) REFERENCES tenants(id) ON DELETE SET NULL;
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_fkey FOREIGN KEY (estructura_id) REFERENCES producto_estructuras(id) ON DELETE CASCADE;
@@ -2929,6 +3147,10 @@ ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_categoria_id_f
 ALTER TABLE public.producto_grupos ADD CONSTRAINT producto_grupos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_precios_mayorista ADD CONSTRAINT producto_precios_mayorista_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_nombre_empaque_id_fkey FOREIGN KEY (nombre_empaque_id) REFERENCES unidades_medida(id) ON DELETE RESTRICT;
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_padre_linea_id_fkey FOREIGN KEY (padre_linea_id) REFERENCES producto_presentaciones(id);
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
+ALTER TABLE public.producto_presentaciones ADD CONSTRAINT producto_presentaciones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursal_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursal_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_stock_minimo_sucursal ADD CONSTRAINT producto_stock_minimo_sucursal_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -2936,13 +3158,18 @@ ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion
 ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion_sucursal_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion_sucursal_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.producto_ubicacion_sucursal ADD CONSTRAINT producto_ubicacion_sucursal_ubicacion_id_fkey FOREIGN KEY (ubicacion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
+ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE;
+ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_ubicacion_id_fkey FOREIGN KEY (ubicacion_id) REFERENCES ubicaciones(id) ON DELETE CASCADE;
 ALTER TABLE public.productos ADD CONSTRAINT productos_aging_profile_id_fkey FOREIGN KEY (aging_profile_id) REFERENCES aging_profiles(id) ON DELETE SET NULL;
 ALTER TABLE public.productos ADD CONSTRAINT productos_categoria_id_fkey FOREIGN KEY (categoria_id) REFERENCES categorias(id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_estado_id_fkey FOREIGN KEY (estado_id) REFERENCES estados_inventario(id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_grupo_id_fkey FOREIGN KEY (grupo_id) REFERENCES producto_grupos(id) ON DELETE SET NULL;
+ALTER TABLE public.productos ADD CONSTRAINT productos_producto_padre_id_fkey FOREIGN KEY (producto_padre_id) REFERENCES productos(id) ON DELETE RESTRICT;
 ALTER TABLE public.productos ADD CONSTRAINT productos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.productos ADD CONSTRAINT productos_ubicacion_id_fkey FOREIGN KEY (ubicacion_id) REFERENCES ubicaciones(id);
+ALTER TABLE public.productos ADD CONSTRAINT productos_unidad_medida_base_id_fkey FOREIGN KEY (unidad_medida_base_id) REFERENCES unidades_medida_fisicas(id) ON DELETE SET NULL;
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_caja_sesion_id_fkey FOREIGN KEY (caja_sesion_id) REFERENCES caja_sesiones(id) ON DELETE SET NULL;
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE public.proveedor_cc_movimientos ADD CONSTRAINT proveedor_cc_movimientos_oc_id_fkey FOREIGN KEY (oc_id) REFERENCES ordenes_compra(id) ON DELETE SET NULL;
@@ -2975,6 +3202,9 @@ ALTER TABLE public.recursos ADD CONSTRAINT recursos_created_by_fkey FOREIGN KEY 
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL;
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.recursos ADD CONSTRAINT recursos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.reglas_almacenaje ADD CONSTRAINT reglas_almacenaje_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.reglas_almacenaje ADD CONSTRAINT reglas_almacenaje_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE CASCADE;
+ALTER TABLE public.reglas_almacenaje ADD CONSTRAINT reglas_almacenaje_zona_id_fkey FOREIGN KEY (zona_id) REFERENCES zonas(id) ON DELETE CASCADE;
 ALTER TABLE public.repartidores ADD CONSTRAINT repartidores_empleado_id_fkey FOREIGN KEY (empleado_id) REFERENCES empleados(id) ON DELETE SET NULL;
 ALTER TABLE public.repartidores ADD CONSTRAINT repartidores_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.retenciones_sufridas ADD CONSTRAINT retenciones_sufridas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
@@ -3045,6 +3275,7 @@ ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_tenant
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_plan_id_fkey FOREIGN KEY (plan_id) REFERENCES planes(id);
 ALTER TABLE public.tiendanube_credentials ADD CONSTRAINT tiendanube_credentials_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE CASCADE;
 ALTER TABLE public.tiendanube_credentials ADD CONSTRAINT tiendanube_credentials_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.tipos_pedido ADD CONSTRAINT tipos_pedido_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_estado_id_fkey FOREIGN KEY (estado_id) REFERENCES estados_inventario(id);
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_linea_destino_id_fkey FOREIGN KEY (linea_destino_id) REFERENCES inventario_lineas(id) ON DELETE SET NULL;
 ALTER TABLE public.traslado_items ADD CONSTRAINT traslado_items_linea_origen_id_fkey FOREIGN KEY (linea_origen_id) REFERENCES inventario_lineas(id) ON DELETE SET NULL;
@@ -3060,7 +3291,9 @@ ALTER TABLE public.traslados ADD CONSTRAINT traslados_sucursal_origen_id_fkey FO
 ALTER TABLE public.traslados ADD CONSTRAINT traslados_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.ubicaciones ADD CONSTRAINT ubicaciones_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.ubicaciones ADD CONSTRAINT ubicaciones_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.ubicaciones ADD CONSTRAINT ubicaciones_zona_id_fkey FOREIGN KEY (zona_id) REFERENCES zonas(id) ON DELETE SET NULL;
 ALTER TABLE public.unidades_medida ADD CONSTRAINT unidades_medida_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.unidades_medida_fisicas ADD CONSTRAINT unidades_medida_fisicas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.users ADD CONSTRAINT users_caja_preferida_id_fkey FOREIGN KEY (caja_preferida_id) REFERENCES cajas(id) ON DELETE SET NULL;
 ALTER TABLE public.users ADD CONSTRAINT users_id_fkey FOREIGN KEY (id) REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE public.users ADD CONSTRAINT users_rol_custom_id_fkey FOREIGN KEY (rol_custom_id) REFERENCES roles_custom(id) ON DELETE SET NULL;
@@ -3074,6 +3307,7 @@ ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_tena
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_venta_id_fkey FOREIGN KEY (venta_id) REFERENCES ventas(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_item_despachos ADD CONSTRAINT venta_item_despachos_venta_item_id_fkey FOREIGN KEY (venta_item_id) REFERENCES venta_items(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_linea_id_fkey FOREIGN KEY (linea_id) REFERENCES inventario_lineas(id);
+ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_pedido_item_id_fkey FOREIGN KEY (pedido_item_id) REFERENCES pedido_items(id) ON DELETE SET NULL;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id);
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.venta_items ADD CONSTRAINT venta_items_unidad_medida_id_fkey FOREIGN KEY (unidad_medida_id) REFERENCES unidades_medida(id) ON DELETE SET NULL;
@@ -3084,6 +3318,7 @@ ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_venta_id_fkey FOREIG
 ALTER TABLE public.venta_series ADD CONSTRAINT venta_series_venta_item_id_fkey FOREIGN KEY (venta_item_id) REFERENCES venta_items(id) ON DELETE CASCADE;
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_cliente_id_fkey FOREIGN KEY (cliente_id) REFERENCES clientes(id);
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_emisor_id_fkey FOREIGN KEY (emisor_id) REFERENCES emisores_fiscales(id) ON DELETE SET NULL;
+ALTER TABLE public.ventas ADD CONSTRAINT ventas_pedido_id_fkey FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE SET NULL;
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id);
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.ventas ADD CONSTRAINT ventas_usuario_id_fkey FOREIGN KEY (usuario_id) REFERENCES users(id);
@@ -3092,6 +3327,19 @@ ALTER TABLE public.ventas_externas_logs ADD CONSTRAINT ventas_externas_logs_vent
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_cliente_id_fkey FOREIGN KEY (cliente_id) REFERENCES clientes(id) ON DELETE SET NULL;
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.ventas_recurrentes ADD CONSTRAINT ventas_recurrentes_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_creado_por_fkey FOREIGN KEY (creado_por) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_envio_id_fkey FOREIGN KEY (envio_id) REFERENCES envios(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_lanzamiento_id_fkey FOREIGN KEY (lanzamiento_id) REFERENCES pedido_lanzamientos(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_pedido_id_fkey FOREIGN KEY (pedido_id) REFERENCES pedidos(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_producto_id_fkey FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_tarea_precedente_id_fkey FOREIGN KEY (tarea_precedente_id) REFERENCES wms_tareas(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_ubicacion_destino_id_fkey FOREIGN KEY (ubicacion_destino_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_ubicacion_origen_id_fkey FOREIGN KEY (ubicacion_origen_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
+ALTER TABLE public.wms_tareas ADD CONSTRAINT wms_tareas_usuario_asignado_id_fkey FOREIGN KEY (usuario_asignado_id) REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE public.zonas ADD CONSTRAINT zonas_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
+ALTER TABLE public.zonas ADD CONSTRAINT zonas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 
 -- ============================================================
 -- ÍNDICES
@@ -3256,6 +3504,7 @@ CREATE INDEX idx_envios_fecha ON public.envios USING btree (tenant_id, created_a
 CREATE INDEX idx_envios_gasto_combustible_id ON public.envios USING btree (gasto_combustible_id);
 CREATE INDEX idx_envios_gasto_id ON public.envios USING btree (gasto_id) WHERE (gasto_id IS NOT NULL);
 CREATE INDEX idx_envios_pago ON public.envios USING btree (tenant_id, costo_pagado) WHERE (costo_cotizado > (0)::numeric);
+CREATE INDEX idx_envios_pedido ON public.envios USING btree (pedido_id);
 CREATE INDEX idx_envios_recurso_id ON public.envios USING btree (recurso_id);
 CREATE INDEX idx_envios_repartidor_id ON public.envios USING btree (repartidor_id);
 CREATE INDEX idx_envios_sucursal_destino_id ON public.envios USING btree (sucursal_destino_id);
@@ -3362,11 +3611,25 @@ CREATE INDEX idx_ordenes_compra_tenant ON public.ordenes_compra USING btree (ten
 CREATE INDEX idx_pcc_oc ON public.proveedor_cc_movimientos USING btree (oc_id) WHERE (oc_id IS NOT NULL);
 CREATE INDEX idx_pcc_tenant_proveedor ON public.proveedor_cc_movimientos USING btree (tenant_id, proveedor_id);
 CREATE INDEX idx_pcc_vencimiento ON public.proveedor_cc_movimientos USING btree (tenant_id, fecha_vencimiento) WHERE (fecha_vencimiento IS NOT NULL);
+CREATE INDEX idx_pedido_items_estado ON public.pedido_items USING btree (estado);
+CREATE INDEX idx_pedido_items_pedido ON public.pedido_items USING btree (pedido_id);
+CREATE INDEX idx_pedido_items_producto ON public.pedido_items USING btree (producto_id);
+CREATE INDEX idx_pedido_lanzamientos_tenant ON public.pedido_lanzamientos USING btree (tenant_id);
+CREATE INDEX idx_pedidos_cliente ON public.pedidos USING btree (cliente_id);
+CREATE INDEX idx_pedidos_estado ON public.pedidos USING btree (estado);
+CREATE INDEX idx_pedidos_sucursal ON public.pedidos USING btree (sucursal_id);
+CREATE INDEX idx_pedidos_tenant ON public.pedidos USING btree (tenant_id);
+CREATE INDEX idx_pedidos_tipo ON public.pedidos USING btree (tipo_pedido_id);
 CREATE INDEX idx_pen_estructura ON public.producto_estructura_niveles USING btree (estructura_id);
 CREATE INDEX idx_pen_tenant ON public.producto_estructura_niveles USING btree (tenant_id);
 CREATE INDEX idx_pen_udm ON public.producto_estructura_niveles USING btree (unidad_medida_id);
 CREATE INDEX idx_platform_facturas_biller_fecha ON public.platform_facturas USING btree (biller_id, created_at DESC);
 CREATE INDEX idx_platform_facturas_tenant_origen_id ON public.platform_facturas USING btree (tenant_origen_id);
+CREATE INDEX idx_pp_padre ON public.producto_presentaciones USING btree (padre_linea_id);
+CREATE INDEX idx_pp_producto ON public.producto_presentaciones USING btree (producto_id);
+CREATE UNIQUE INDEX idx_pp_producto_orden ON public.producto_presentaciones USING btree (producto_id, orden);
+CREATE INDEX idx_pp_tenant ON public.producto_presentaciones USING btree (tenant_id);
+CREATE UNIQUE INDEX idx_pp_una_base ON public.producto_presentaciones USING btree (producto_id) WHERE es_base;
 CREATE INDEX idx_ppm_producto ON public.producto_precios_mayorista USING btree (producto_id);
 CREATE INDEX idx_presup_prov ON public.servicio_presupuestos USING btree (proveedor_id);
 CREATE INDEX idx_prod_ubic_suc_producto ON public.producto_ubicacion_sucursal USING btree (producto_id);
@@ -3386,11 +3649,14 @@ CREATE INDEX idx_productos_estado_id ON public.productos USING btree (estado_id)
 CREATE INDEX idx_productos_grupo ON public.productos USING btree (grupo_id);
 CREATE INDEX idx_productos_gtin ON public.productos USING btree (tenant_id, gtin);
 CREATE INDEX idx_productos_marketplace ON public.productos USING btree (tenant_id, publicado_marketplace) WHERE (publicado_marketplace = true);
+CREATE INDEX idx_productos_padre ON public.productos USING btree (producto_padre_id) WHERE (producto_padre_id IS NOT NULL);
 CREATE INDEX idx_productos_pendiente_revision ON public.productos USING btree (tenant_id) WHERE (pendiente_revision = true);
 CREATE INDEX idx_productos_proveedor_id ON public.productos USING btree (proveedor_id);
 CREATE INDEX idx_productos_sku ON public.productos USING btree (tenant_id, sku);
 CREATE INDEX idx_productos_tenant ON public.productos USING btree (tenant_id);
 CREATE INDEX idx_productos_ubicacion_id ON public.productos USING btree (ubicacion_id);
+CREATE INDEX idx_productos_unidad_medida_base ON public.productos USING btree (unidad_medida_base_id);
+CREATE UNIQUE INDEX idx_productos_variante_unica ON public.productos USING btree (producto_padre_id, variante_diferenciador) WHERE (producto_padre_id IS NOT NULL);
 CREATE INDEX idx_prov_cuentas_proveedor ON public.proveedor_cuentas_bancarias USING btree (proveedor_id);
 CREATE INDEX idx_prov_prod_proveedor ON public.proveedor_productos USING btree (proveedor_id);
 CREATE INDEX idx_prov_prod_tenant ON public.proveedor_productos USING btree (tenant_id);
@@ -3525,6 +3791,7 @@ CREATE INDEX idx_traspasos_tenant ON public.caja_traspasos USING btree (tenant_i
 CREATE INDEX idx_ubicaciones_prioridad ON public.ubicaciones USING btree (tenant_id, prioridad);
 CREATE INDEX idx_ubicaciones_sucursal ON public.ubicaciones USING btree (sucursal_id) WHERE (sucursal_id IS NOT NULL);
 CREATE INDEX idx_udm_tenant ON public.unidades_medida USING btree (tenant_id);
+CREATE INDEX idx_umf_tenant ON public.unidades_medida_fisicas USING btree (tenant_id) WHERE (activo = true);
 CREATE INDEX idx_users_caja_preferida_id ON public.users USING btree (caja_preferida_id);
 CREATE INDEX idx_users_rol_custom_id ON public.users USING btree (rol_custom_id);
 CREATE INDEX idx_users_sucursal ON public.users USING btree (tenant_id, sucursal_id);
@@ -3534,6 +3801,7 @@ CREATE INDEX idx_venta_auditoria_venta ON public.venta_auditoria USING btree (ve
 CREATE INDEX idx_venta_item_despachos_linea_id ON public.venta_item_despachos USING btree (linea_id);
 CREATE INDEX idx_venta_item_despachos_producto_id ON public.venta_item_despachos USING btree (producto_id);
 CREATE INDEX idx_venta_items_linea_id ON public.venta_items USING btree (linea_id);
+CREATE INDEX idx_venta_items_pedido_item ON public.venta_items USING btree (pedido_item_id);
 CREATE INDEX idx_venta_items_producto_id ON public.venta_items USING btree (producto_id);
 CREATE INDEX idx_venta_items_tenant_id ON public.venta_items USING btree (tenant_id);
 CREATE INDEX idx_venta_items_venta ON public.venta_items USING btree (venta_id);
@@ -3548,6 +3816,8 @@ CREATE INDEX idx_ventas_emisor_id ON public.ventas USING btree (emisor_id);
 CREATE INDEX idx_ventas_estado ON public.ventas USING btree (tenant_id, estado);
 CREATE INDEX idx_ventas_externas_logs_lookup ON public.ventas_externas_logs USING btree (tenant_id, integracion, webhook_external_id);
 CREATE INDEX idx_ventas_externas_logs_venta_id ON public.ventas_externas_logs USING btree (venta_id);
+CREATE INDEX idx_ventas_pedido ON public.ventas USING btree (pedido_id);
+CREATE UNIQUE INDEX idx_ventas_pedido_entrega_key ON public.ventas USING btree (pedido_id, pedido_entrega_key) WHERE (pedido_entrega_key IS NOT NULL);
 CREATE INDEX idx_ventas_rec_due ON public.ventas_recurrentes USING btree (tenant_id, activo, proximo_at);
 CREATE INDEX idx_ventas_rec_tenant ON public.ventas_recurrentes USING btree (tenant_id);
 CREATE INDEX idx_ventas_recurrentes_cliente_id ON public.ventas_recurrentes USING btree (cliente_id);
@@ -3559,6 +3829,13 @@ CREATE INDEX idx_ventas_usuario_id ON public.ventas USING btree (usuario_id);
 CREATE INDEX idx_vid_item ON public.venta_item_despachos USING btree (venta_item_id);
 CREATE INDEX idx_vid_tenant ON public.venta_item_despachos USING btree (tenant_id);
 CREATE INDEX idx_vid_venta ON public.venta_item_despachos USING btree (venta_id);
+CREATE INDEX idx_wms_tareas_envio ON public.wms_tareas USING btree (envio_id);
+CREATE INDEX idx_wms_tareas_estado ON public.wms_tareas USING btree (estado);
+CREATE INDEX idx_wms_tareas_lanzamiento ON public.wms_tareas USING btree (lanzamiento_id);
+CREATE INDEX idx_wms_tareas_pedido ON public.wms_tareas USING btree (pedido_id);
+CREATE INDEX idx_wms_tareas_producto ON public.wms_tareas USING btree (producto_id);
+CREATE INDEX idx_wms_tareas_sucursal ON public.wms_tareas USING btree (sucursal_id);
+CREATE INDEX idx_wms_tareas_tenant ON public.wms_tareas USING btree (tenant_id);
 CREATE UNIQUE INDEX uq_addon_batch_mp_payment ON public.addon_batch_changes USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_addon_batch_pendiente ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = 'pendiente_pago'::text);
 CREATE UNIQUE INDEX uq_addon_batch_programado ON public.addon_batch_changes USING btree (tenant_id) WHERE (estado = ANY (ARRAY['programado'::text, 'esperando_cobro'::text]));
@@ -4088,6 +4365,163 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_cancelar_pedido(p_pedido_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_pedido RECORD;
+BEGIN
+  SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+  IF v_pedido.estado IN ('cancelado', 'entregado') THEN
+    RAISE EXCEPTION 'El pedido ya está % — no se puede cancelar', v_pedido.estado;
+  END IF;
+
+  IF EXISTS (SELECT 1 FROM ventas WHERE pedido_id = p_pedido_id AND estado NOT IN ('cancelada', 'devuelta')) THEN
+    RAISE EXCEPTION 'Este pedido ya generó una venta real (entrega parcial o total) — para cancelarlo hay que devolver esa venta primero desde Ventas → Historial';
+  END IF;
+
+  PERFORM 1 FROM wms_tareas WHERE pedido_id = p_pedido_id FOR UPDATE;
+  IF EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = p_pedido_id AND estado = 'completada') THEN
+    RAISE EXCEPTION 'Hay una tarea de picking ya completada (o un reabastecimiento completado con un picking encadenado todavía pendiente) — completá o des-pickeá esa tarea antes de cancelar';
+  END IF;
+
+  PERFORM fn_pedido_liberar_tareas_pendientes(p_pedido_id);
+
+  UPDATE envios SET estado = 'cancelado'
+  WHERE pedido_id = p_pedido_id AND venta_id IS NULL AND estado NOT IN ('cancelado', 'entregado');
+
+  UPDATE pedidos SET estado = 'cancelado', cancelado_at = now() WHERE id = p_pedido_id;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cancelar_tarea_wms(p_tarea_id uuid, p_motivo text DEFAULT NULL::text)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tarea RECORD;
+BEGIN
+  SELECT * INTO v_tarea FROM wms_tareas WHERE id = p_tarea_id FOR UPDATE;
+  IF v_tarea IS NULL THEN RAISE EXCEPTION 'Tarea inexistente o sin permisos'; END IF;
+  IF v_tarea.estado = 'completada' THEN RAISE EXCEPTION 'No se puede cancelar una tarea ya completada'; END IF;
+  IF v_tarea.estado = 'cancelada' THEN RETURN; END IF;
+
+  UPDATE wms_tareas SET estado = 'cancelada',
+    notas = CASE WHEN p_motivo IS NOT NULL AND p_motivo <> ''
+                 THEN COALESCE(notas || ' — ', '') || 'Cancelada: ' || p_motivo
+                 ELSE notas END
+  WHERE id = p_tarea_id;
+
+  -- Si se cancela un reabastecimiento con un picking encadenado todavía pendiente, ese
+  -- picking quedó apuntando a una ubicación destino que ya no va a recibir stock —
+  -- cancelarlo también (no dejar tareas imposibles, mismo criterio que la generación).
+  IF v_tarea.tipo = 'replenishment' THEN
+    UPDATE wms_tareas SET estado = 'cancelada',
+      notas = COALESCE(notas || ' — ', '') || 'Cancelada: se canceló el reabastecimiento del que dependía'
+    WHERE tarea_precedente_id = p_tarea_id AND estado IN ('pendiente','en_curso');
+  END IF;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_completar_tarea_picking(p_tarea_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tarea RECORD;
+  v_prec  RECORD;
+BEGIN
+  SELECT * INTO v_tarea FROM wms_tareas WHERE id = p_tarea_id FOR UPDATE;
+  IF v_tarea IS NULL THEN RAISE EXCEPTION 'Tarea inexistente o sin permisos'; END IF;
+  IF v_tarea.tipo <> 'picking' THEN RAISE EXCEPTION 'Esta tarea no es de picking'; END IF;
+  IF v_tarea.estado = 'completada' THEN RETURN; END IF;
+  IF v_tarea.estado = 'cancelada' THEN RAISE EXCEPTION 'La tarea está cancelada'; END IF;
+
+  IF v_tarea.tarea_precedente_id IS NOT NULL THEN
+    SELECT * INTO v_prec FROM wms_tareas WHERE id = v_tarea.tarea_precedente_id;
+    IF v_prec.estado IS DISTINCT FROM 'completada' THEN
+      RAISE EXCEPTION 'Todavía falta completar el reabastecimiento previo de esta tarea';
+    END IF;
+  END IF;
+
+  UPDATE wms_tareas SET estado = 'completada', completed_at = now() WHERE id = p_tarea_id;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_completar_tarea_reabastecimiento(p_tarea_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tarea       RECORD;
+  v_restante    integer;
+  v_origen      RECORD;
+  v_tomar       integer;
+  v_transferir  integer;
+  v_nuevo_lpn   text;
+BEGIN
+  SELECT * INTO v_tarea FROM wms_tareas WHERE id = p_tarea_id FOR UPDATE;
+  IF v_tarea IS NULL THEN RAISE EXCEPTION 'Tarea inexistente o sin permisos'; END IF;
+  IF v_tarea.tipo <> 'replenishment' THEN RAISE EXCEPTION 'Esta tarea no es de reabastecimiento'; END IF;
+  IF v_tarea.estado = 'completada' THEN RETURN; END IF;
+  IF v_tarea.estado = 'cancelada' THEN RAISE EXCEPTION 'La tarea está cancelada'; END IF;
+  IF v_tarea.ubicacion_destino_id IS NULL THEN
+    RAISE EXCEPTION 'La tarea no tiene ubicación de picking destino configurada — asigná una zona de picking en Configuración → Zonas antes de completarla';
+  END IF;
+
+  v_restante := v_tarea.cantidad;
+
+  FOR v_origen IN
+    SELECT il.id, il.cantidad, COALESCE(il.cantidad_reservada,0) AS cantidad_reservada, il.estado_id, il.nro_lote,
+           il.fecha_vencimiento, il.pais_origen, il.proveedor_id, il.talle, il.color, il.encaje, il.formato, il.sabor_aroma
+    FROM inventario_lineas il
+    WHERE il.tenant_id = v_tarea.tenant_id
+      AND il.producto_id = v_tarea.producto_id
+      AND il.ubicacion_id = v_tarea.ubicacion_origen_id
+      AND il.activo = true
+      AND (il.cantidad - COALESCE(il.cantidad_reservada,0)) > 0
+    ORDER BY il.fecha_vencimiento NULLS LAST, il.created_at
+    FOR UPDATE OF il SKIP LOCKED
+  LOOP
+    EXIT WHEN v_restante <= 0;
+    v_tomar := LEAST(v_restante, v_origen.cantidad - v_origen.cantidad_reservada);
+    IF v_tomar <= 0 THEN CONTINUE; END IF;
+
+    v_transferir := LEAST(v_tomar, v_origen.cantidad_reservada);
+
+    UPDATE inventario_lineas
+      SET cantidad = cantidad - v_tomar, cantidad_reservada = cantidad_reservada - v_transferir
+      WHERE id = v_origen.id;
+
+    v_nuevo_lpn := 'LPN-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS');
+    INSERT INTO inventario_lineas
+      (tenant_id, producto_id, lpn, cantidad, cantidad_reservada, estado_id, ubicacion_id, sucursal_id, proveedor_id,
+       nro_lote, fecha_vencimiento, pais_origen, talle, color, encaje, formato, sabor_aroma)
+    VALUES
+      (v_tarea.tenant_id, v_tarea.producto_id, v_nuevo_lpn, v_tomar, v_transferir, v_origen.estado_id, v_tarea.ubicacion_destino_id, v_tarea.sucursal_id, v_origen.proveedor_id,
+       v_origen.nro_lote, v_origen.fecha_vencimiento, v_origen.pais_origen, v_origen.talle, v_origen.color, v_origen.encaje, v_origen.formato, v_origen.sabor_aroma);
+
+    v_restante := v_restante - v_tomar;
+  END LOOP;
+
+  IF v_restante > 0 THEN
+    RAISE EXCEPTION 'No hay stock suficiente en la ubicación de origen para reabastecer (faltan % unidades base)', v_restante;
+  END IF;
+
+  UPDATE wms_tareas SET estado = 'completada', completed_at = now() WHERE id = p_tarea_id;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_crear_caja_fuerte()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -4335,34 +4769,16 @@ BEGIN
 
     v_acumulado := v_acumulado * v_factor;
 
-    IF (v_nivel->>'precio_venta') IS NOT NULL AND (v_nivel->>'precio_venta')::numeric < 0 THEN
-      RAISE EXCEPTION 'El precio de venta del nivel % no puede ser negativo', v_orden;
-    END IF;
-    IF (v_nivel->>'precio_costo') IS NOT NULL AND (v_nivel->>'precio_costo')::numeric < 0 THEN
-      RAISE EXCEPTION 'El costo del nivel % no puede ser negativo', v_orden;
-    END IF;
-
     INSERT INTO producto_estructura_niveles
       (tenant_id, estructura_id, unidad_medida_id, orden, factor, unidades_base,
-       peso_kg, alto_cm, ancho_cm, largo_cm, precio_venta, precio_costo)
+       peso_kg, alto_cm, ancho_cm, largo_cm)
     VALUES
       (v_tenant_id, p_estructura_id, v_udm_id, v_orden, v_factor, v_acumulado,
        NULLIF(v_nivel->>'peso_kg',  '')::numeric,
        NULLIF(v_nivel->>'alto_cm',  '')::numeric,
        NULLIF(v_nivel->>'ancho_cm', '')::numeric,
-       NULLIF(v_nivel->>'largo_cm', '')::numeric,
-       NULLIF(v_nivel->>'precio_venta', '')::numeric,
-       NULLIF(v_nivel->>'precio_costo', '')::numeric);
+       NULLIF(v_nivel->>'largo_cm', '')::numeric);
   END LOOP;
-
-  UPDATE productos p
-  SET nivel_precio_orden = NULL
-  WHERE p.nivel_precio_orden IS NOT NULL
-    AND p.nivel_precio_orden > v_orden
-    AND EXISTS (
-      SELECT 1 FROM producto_estructuras pe
-      WHERE pe.id = p_estructura_id AND pe.producto_id = p.id AND pe.is_default = true
-    );
 END;
 $function$
 
@@ -4393,6 +4809,362 @@ BEGIN
   END IF;
 
   RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_generar_tareas_picking_envio(p_envio_id uuid)
+ RETURNS TABLE(tarea_id uuid, tipo text)
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_envio       RECORD;
+  v_item        RECORD;
+  v_despacho    RECORD;
+  v_plan_item   jsonb;
+  v_ubic_tipo   text;
+  v_destino_id  uuid;
+  v_reab_on     boolean;
+  v_reab_id     uuid;
+  v_pick_id     uuid;
+  v_tiene_filas boolean;
+BEGIN
+  SELECT * INTO v_envio FROM envios WHERE id = p_envio_id;
+  IF v_envio IS NULL THEN
+    RAISE EXCEPTION 'Envío inexistente o sin permisos';
+  END IF;
+  IF v_envio.venta_id IS NULL THEN
+    RAISE EXCEPTION 'El envío no tiene una venta asociada — no hay LPN que picking pueda seguir';
+  END IF;
+
+  SELECT wms_reabastecimiento_on_demand INTO v_reab_on FROM tenants WHERE id = v_envio.tenant_id;
+
+  -- Idempotencia: si ya se generaron tareas para este envío, no duplicar.
+  IF EXISTS (SELECT 1 FROM wms_tareas WHERE envio_id = p_envio_id) THEN
+    RETURN QUERY SELECT wt.id, wt.tipo FROM wms_tareas wt WHERE wt.envio_id = p_envio_id;
+    RETURN;
+  END IF;
+
+  FOR v_item IN
+    SELECT vi.id, vi.producto_id, vi.cantidad, vi.lpn_plan
+    FROM venta_items vi WHERE vi.venta_id = v_envio.venta_id
+  LOOP
+    v_tiene_filas := false;
+
+    -- Fuente 1: venta_item_despachos (venta ya despachada — consumo REAL ya ocurrió y quedó
+    -- fijado en el ledger). Siempre picking directo, NUNCA reabastecimiento — ver comentario
+    -- de cabecera de esta migración.
+    FOR v_despacho IN
+      SELECT vid.lpn, vid.ubicacion_id, vid.cantidad
+      FROM venta_item_despachos vid
+      WHERE vid.venta_item_id = v_item.id
+    LOOP
+      v_tiene_filas := true;
+      SELECT u.tipo_ubicacion INTO v_ubic_tipo FROM ubicaciones u WHERE u.id = v_despacho.ubicacion_id;
+
+      INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, lpn_origen, origen, envio_id, notas)
+      VALUES (v_envio.tenant_id, v_envio.sucursal_id, 'picking', v_item.producto_id, v_despacho.cantidad, v_despacho.ubicacion_id, v_despacho.lpn, 'envio', p_envio_id,
+              fn_wms_describir_cantidad(v_item.producto_id, v_despacho.cantidad::integer) ||
+              (CASE WHEN v_ubic_tipo IS DISTINCT FROM 'picking' THEN ' (fuera de zona de picking — retirar igual, ya está vendido)' ELSE '' END))
+      RETURNING id INTO v_pick_id;
+      RETURN QUERY SELECT v_pick_id, 'picking'::text;
+    END LOOP;
+
+    -- Fuente 2 (fallback): venta todavía no despachada — usa el plan (mig 156). Acá nada se
+    -- consumió todavía, así que encadenar reabastecimiento para preparar el stock en zona de
+    -- picking antes del retiro sigue siendo válido — sin cambios respecto a la mig 290.
+    IF NOT v_tiene_filas AND v_item.lpn_plan IS NOT NULL THEN
+      FOR v_plan_item IN SELECT * FROM jsonb_array_elements(v_item.lpn_plan)
+      LOOP
+        DECLARE
+          v_linea_id  uuid := NULLIF(v_plan_item->>'linea_id','')::uuid;
+          v_lpn_txt   text := v_plan_item->>'lpn';
+          v_cant_plan integer := ROUND((v_plan_item->>'cantidad')::numeric);
+          v_ubic_id   uuid;
+        BEGIN
+          IF v_linea_id IS NULL OR v_cant_plan IS NULL OR v_cant_plan <= 0 THEN CONTINUE; END IF;
+          SELECT il.ubicacion_id, u.tipo_ubicacion INTO v_ubic_id, v_ubic_tipo
+          FROM inventario_lineas il LEFT JOIN ubicaciones u ON u.id = il.ubicacion_id
+          WHERE il.id = v_linea_id;
+
+          IF v_ubic_id IS NOT NULL AND v_ubic_tipo = 'picking' THEN
+            INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, lpn_origen, origen, envio_id, notas)
+            VALUES (v_envio.tenant_id, v_envio.sucursal_id, 'picking', v_item.producto_id, v_cant_plan, v_ubic_id, v_lpn_txt, 'envio', p_envio_id,
+                    fn_wms_describir_cantidad(v_item.producto_id, v_cant_plan) || ' (reserva pendiente de despacho)')
+            RETURNING id INTO v_pick_id;
+            RETURN QUERY SELECT v_pick_id, 'picking'::text;
+
+          ELSIF v_reab_on THEN
+            v_destino_id := fn_wms_elegir_ubicacion_picking(v_envio.tenant_id, v_envio.sucursal_id, v_item.producto_id);
+            INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, ubicacion_destino_id, lpn_origen, origen, envio_id, notas)
+            VALUES (v_envio.tenant_id, v_envio.sucursal_id, 'replenishment', v_item.producto_id, v_cant_plan, v_ubic_id, v_destino_id, v_lpn_txt, 'envio', p_envio_id,
+                    'Reabastecer ' || fn_wms_describir_cantidad(v_item.producto_id, v_cant_plan) || ' a zona de picking (reserva pendiente)')
+            RETURNING id INTO v_reab_id;
+            RETURN QUERY SELECT v_reab_id, 'replenishment'::text;
+
+            INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, lpn_origen, origen, envio_id, tarea_precedente_id, notas)
+            VALUES (v_envio.tenant_id, v_envio.sucursal_id, 'picking', v_item.producto_id, v_cant_plan, COALESCE(v_destino_id, v_ubic_id), v_lpn_txt, 'envio', p_envio_id, v_reab_id,
+                    fn_wms_describir_cantidad(v_item.producto_id, v_cant_plan) || ' (reserva pendiente de despacho)')
+            RETURNING id INTO v_pick_id;
+            RETURN QUERY SELECT v_pick_id, 'picking'::text;
+          ELSE
+            INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, lpn_origen, origen, envio_id, notas)
+            VALUES (v_envio.tenant_id, v_envio.sucursal_id, 'picking', v_item.producto_id, v_cant_plan, v_ubic_id, v_lpn_txt, 'envio', p_envio_id,
+                    'Ubicación fuera de zona picking — reabastecimiento on-demand deshabilitado (reserva pendiente)')
+            RETURNING id INTO v_pick_id;
+            RETURN QUERY SELECT v_pick_id, 'picking'::text;
+          END IF;
+        END;
+      END LOOP;
+    END IF;
+  END LOOP;
+
+  RETURN;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_generar_tareas_picking_pedido(p_pedido_id uuid)
+ RETURNS TABLE(tarea_id uuid, tipo text)
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_pedido       RECORD;
+  v_item         RECORD;
+  v_producto     RECORD;
+  v_linea        RECORD;
+  v_pendiente    numeric;
+  v_disponible   numeric;
+  v_tomar        numeric;
+  v_reab_on      boolean;
+  v_ubic_tipo    text;
+  v_destino_id   uuid;
+  v_reab_id      uuid;
+  v_pick_id      uuid;
+  v_domicilio_id uuid;
+BEGIN
+  SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  IF v_pedido IS NULL THEN
+    RAISE EXCEPTION 'Pedido inexistente o sin permisos';
+  END IF;
+
+  -- Idempotencia: si ya se lanzó (hay tareas generadas), no duplicar — devolver lo existente.
+  IF EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = p_pedido_id) THEN
+    RETURN QUERY SELECT wt.id, wt.tipo FROM wms_tareas wt WHERE wt.pedido_id = p_pedido_id;
+    RETURN;
+  END IF;
+
+  IF v_pedido.estado = 'cancelado' THEN
+    RAISE EXCEPTION 'El pedido está cancelado';
+  END IF;
+  IF v_pedido.estado <> 'confirmado' THEN
+    RAISE EXCEPTION 'Confirmá el pedido antes de lanzarlo';
+  END IF;
+
+  SELECT wms_reabastecimiento_on_demand INTO v_reab_on FROM tenants WHERE id = v_pedido.tenant_id;
+
+  -- ── H2: validar TODO el pedido antes de reservar nada (si algo falta, se aborta entero) ──
+  FOR v_item IN
+    SELECT pi.id, pi.producto_id, pi.estado_id, (pi.cantidad - pi.cantidad_entregada) AS pendiente,
+           pi.talle, pi.color, pi.encaje, pi.formato, pi.sabor_aroma
+    FROM pedido_items pi
+    WHERE pi.pedido_id = p_pedido_id AND pi.estado <> 'cancelada'
+  LOOP
+    CONTINUE WHEN v_item.pendiente <= 0;
+
+    SELECT COALESCE(SUM(il.cantidad - COALESCE(il.cantidad_reservada,0)), 0) INTO v_disponible
+    FROM inventario_lineas il
+    WHERE il.tenant_id = v_pedido.tenant_id AND il.producto_id = v_item.producto_id
+      AND il.activo = true AND il.ubicacion_id IS NOT NULL
+      AND (v_pedido.sucursal_id IS NULL OR il.sucursal_id = v_pedido.sucursal_id)
+      AND (il.fecha_vencimiento IS NULL OR il.fecha_vencimiento >= CURRENT_DATE)
+      AND (v_item.estado_id IS NULL OR il.estado_id = v_item.estado_id)
+      AND (v_item.talle IS NULL OR il.talle = v_item.talle)
+      AND (v_item.color IS NULL OR il.color = v_item.color)
+      AND (v_item.encaje IS NULL OR il.encaje = v_item.encaje)
+      AND (v_item.formato IS NULL OR il.formato = v_item.formato)
+      AND (v_item.sabor_aroma IS NULL OR il.sabor_aroma = v_item.sabor_aroma)
+      AND EXISTS (SELECT 1 FROM ubicaciones u3 WHERE u3.id = il.ubicacion_id AND u3.disponible_surtido IS NOT FALSE)
+      AND (il.cantidad - COALESCE(il.cantidad_reservada,0)) > 0;
+
+    IF v_disponible < v_item.pendiente THEN
+      SELECT p.nombre, p.sku INTO v_producto FROM productos p WHERE p.id = v_item.producto_id;
+      RAISE EXCEPTION 'No hay stock para % (SKU %) — faltan % unidades',
+        v_producto.nombre, v_producto.sku, (v_item.pendiente - v_disponible);
+    END IF;
+  END LOOP;
+
+  -- ── H4: reservar (misma mecánica que "Reservar stock" de Ventas) + generar tareas ──────
+  FOR v_item IN
+    SELECT pi.id, pi.producto_id, pi.estado_id, (pi.cantidad - pi.cantidad_entregada) AS pendiente,
+           pi.talle, pi.color, pi.encaje, pi.formato, pi.sabor_aroma
+    FROM pedido_items pi
+    WHERE pi.pedido_id = p_pedido_id AND pi.estado <> 'cancelada'
+  LOOP
+    v_pendiente := v_item.pendiente;
+    CONTINUE WHEN v_pendiente <= 0;
+
+    FOR v_linea IN
+      SELECT il.id, il.cantidad, COALESCE(il.cantidad_reservada,0) AS cantidad_reservada, il.ubicacion_id, il.lpn
+      FROM inventario_lineas il
+      WHERE il.tenant_id = v_pedido.tenant_id AND il.producto_id = v_item.producto_id
+        AND il.activo = true AND il.ubicacion_id IS NOT NULL
+        AND (v_pedido.sucursal_id IS NULL OR il.sucursal_id = v_pedido.sucursal_id)
+        AND (il.fecha_vencimiento IS NULL OR il.fecha_vencimiento >= CURRENT_DATE)
+        AND (v_item.estado_id IS NULL OR il.estado_id = v_item.estado_id)
+        AND (v_item.talle IS NULL OR il.talle = v_item.talle)
+        AND (v_item.color IS NULL OR il.color = v_item.color)
+        AND (v_item.encaje IS NULL OR il.encaje = v_item.encaje)
+        AND (v_item.formato IS NULL OR il.formato = v_item.formato)
+        AND (v_item.sabor_aroma IS NULL OR il.sabor_aroma = v_item.sabor_aroma)
+        AND EXISTS (SELECT 1 FROM ubicaciones u3 WHERE u3.id = il.ubicacion_id AND u3.disponible_surtido IS NOT FALSE)
+        AND (il.cantidad - COALESCE(il.cantidad_reservada,0)) > 0
+      ORDER BY il.fecha_vencimiento NULLS LAST, il.created_at
+      FOR UPDATE OF il SKIP LOCKED
+    LOOP
+      EXIT WHEN v_pendiente <= 0;
+      v_tomar := LEAST(v_pendiente, v_linea.cantidad - v_linea.cantidad_reservada);
+      IF v_tomar <= 0 THEN CONTINUE; END IF;
+
+      UPDATE inventario_lineas SET cantidad_reservada = cantidad_reservada + v_tomar WHERE id = v_linea.id;
+
+      SELECT u.tipo_ubicacion INTO v_ubic_tipo FROM ubicaciones u WHERE u.id = v_linea.ubicacion_id;
+
+      IF v_linea.ubicacion_id IS NOT NULL AND v_ubic_tipo = 'picking' THEN
+        INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, lpn_origen, origen, pedido_id, notas)
+        VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'picking', v_item.producto_id, v_tomar, v_linea.ubicacion_id, v_linea.lpn, 'pedido', p_pedido_id,
+                fn_wms_describir_cantidad(v_item.producto_id, v_tomar::integer))
+        RETURNING id INTO v_pick_id;
+        RETURN QUERY SELECT v_pick_id, 'picking'::text;
+
+      ELSIF v_reab_on THEN
+        v_destino_id := fn_wms_elegir_ubicacion_picking(v_pedido.tenant_id, v_pedido.sucursal_id, v_item.producto_id);
+        INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, ubicacion_destino_id, lpn_origen, origen, pedido_id, notas)
+        VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'replenishment', v_item.producto_id, v_tomar, v_linea.ubicacion_id, v_destino_id, v_linea.lpn, 'pedido', p_pedido_id,
+                'Reabastecer ' || fn_wms_describir_cantidad(v_item.producto_id, v_tomar::integer) || ' a zona de picking')
+        RETURNING id INTO v_reab_id;
+        RETURN QUERY SELECT v_reab_id, 'replenishment'::text;
+
+        INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, lpn_origen, origen, pedido_id, tarea_precedente_id, notas)
+        VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'picking', v_item.producto_id, v_tomar, COALESCE(v_destino_id, v_linea.ubicacion_id), v_linea.lpn, 'pedido', p_pedido_id, v_reab_id,
+                fn_wms_describir_cantidad(v_item.producto_id, v_tomar::integer))
+        RETURNING id INTO v_pick_id;
+        RETURN QUERY SELECT v_pick_id, 'picking'::text;
+
+      ELSE
+        INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, lpn_origen, origen, pedido_id, notas)
+        VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'picking', v_item.producto_id, v_tomar, v_linea.ubicacion_id, v_linea.lpn, 'pedido', p_pedido_id,
+                'Ubicación fuera de zona picking — reabastecimiento on-demand deshabilitado')
+        RETURNING id INTO v_pick_id;
+        RETURN QUERY SELECT v_pick_id, 'picking'::text;
+      END IF;
+
+      v_pendiente := v_pendiente - v_tomar;
+    END LOOP;
+
+    IF v_pendiente > 0 THEN
+      -- No debería pasar (ya validamos arriba) salvo carrera concurrente entre la validación
+      -- y la reserva (otro proceso consumió el mismo stock en el medio) — abortar entero.
+      SELECT p.nombre, p.sku INTO v_producto FROM productos p WHERE p.id = v_item.producto_id;
+      RAISE EXCEPTION 'No hay stock para % (SKU %) — faltan % unidades (cambió mientras se lanzaba, reintentá)',
+        v_producto.nombre, v_producto.sku, v_pendiente;
+    END IF;
+  END LOOP;
+
+  -- ── F2: envío condicional ────────────────────────────────────────────────────────────
+  IF v_pedido.requiere_envio AND NOT EXISTS (SELECT 1 FROM envios WHERE pedido_id = p_pedido_id) THEN
+    v_domicilio_id := NULL;
+    IF v_pedido.cliente_id IS NOT NULL THEN
+      SELECT cd.id INTO v_domicilio_id FROM cliente_domicilios cd
+      WHERE cd.cliente_id = v_pedido.cliente_id
+      ORDER BY cd.es_principal DESC, cd.created_at
+      LIMIT 1;
+    END IF;
+    INSERT INTO envios (tenant_id, sucursal_id, pedido_id, destino_id, canal, estado, notas)
+    VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, p_pedido_id, v_domicilio_id, 'Pedidos', 'pendiente',
+            'Generado automáticamente al lanzar el Pedido #' || v_pedido.numero);
+  END IF;
+
+  UPDATE pedidos SET estado = 'en_preparacion', lanzado_at = now(), lanzado_por = auth.uid() WHERE id = p_pedido_id;
+
+  RETURN;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_generar_tareas_reabastecimiento_umbral(p_tenant_id uuid)
+ RETURNS TABLE(tarea_id uuid)
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_habilitado boolean;
+  v_umbral     RECORD;
+  v_stock      integer;
+  v_origen_id  uuid;
+  v_cantidad   integer;
+  v_disponible integer;
+  v_nueva_id   uuid;
+BEGIN
+  SELECT wms_reabastecimiento_umbral INTO v_habilitado FROM tenants WHERE id = p_tenant_id;
+  IF NOT COALESCE(v_habilitado, false) THEN RETURN; END IF;
+
+  FOR v_umbral IN
+    SELECT pu.producto_id, pu.ubicacion_id, pu.stock_minimo, pu.stock_maximo, u.sucursal_id
+    FROM producto_ubicacion_umbrales pu
+    JOIN ubicaciones u ON u.id = pu.ubicacion_id
+    WHERE pu.tenant_id = p_tenant_id
+  LOOP
+    SELECT COALESCE(SUM(il.cantidad), 0) INTO v_stock
+    FROM inventario_lineas il
+    WHERE il.producto_id = v_umbral.producto_id AND il.ubicacion_id = v_umbral.ubicacion_id AND il.activo = true;
+
+    CONTINUE WHEN v_stock >= v_umbral.stock_minimo;
+
+    -- Ya hay una tarea de reabastecimiento pendiente para esta combinación → no duplicar
+    CONTINUE WHEN EXISTS (
+      SELECT 1 FROM wms_tareas wt
+      WHERE wt.tenant_id = p_tenant_id AND wt.tipo = 'replenishment' AND wt.origen = 'umbral'
+        AND wt.producto_id = v_umbral.producto_id AND wt.ubicacion_destino_id = v_umbral.ubicacion_id
+        AND wt.estado IN ('pendiente','en_curso')
+    );
+
+    v_cantidad := COALESCE(v_umbral.stock_maximo, v_umbral.stock_minimo) - v_stock;
+    CONTINUE WHEN v_cantidad <= 0;
+
+    SELECT il.ubicacion_id INTO v_origen_id
+    FROM inventario_lineas il
+    JOIN ubicaciones u2 ON u2.id = il.ubicacion_id
+    WHERE il.tenant_id = p_tenant_id AND il.producto_id = v_umbral.producto_id AND il.activo = true
+      AND u2.tipo_ubicacion IN ('bulk','estiba','camara')
+      AND il.ubicacion_id <> v_umbral.ubicacion_id
+      AND (il.cantidad - COALESCE(il.cantidad_reservada,0)) > 0
+    ORDER BY il.fecha_vencimiento NULLS LAST, il.created_at
+    LIMIT 1;
+
+    CONTINUE WHEN v_origen_id IS NULL; -- no hay de dónde reponer, no se genera una tarea imposible
+
+    -- El máximo es un TECHO, no una obligación: si el origen elegido no tiene tanto
+    -- disponible, reponemos lo que haya y listo (no falla al completar la tarea).
+    SELECT COALESCE(SUM(il.cantidad - COALESCE(il.cantidad_reservada,0)), 0) INTO v_disponible
+    FROM inventario_lineas il
+    WHERE il.tenant_id = p_tenant_id AND il.producto_id = v_umbral.producto_id
+      AND il.ubicacion_id = v_origen_id AND il.activo = true;
+
+    v_cantidad := LEAST(v_cantidad, v_disponible);
+    CONTINUE WHEN v_cantidad <= 0;
+
+    INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, ubicacion_destino_id, origen, notas)
+    VALUES (p_tenant_id, v_umbral.sucursal_id, 'replenishment', v_umbral.producto_id, v_cantidad, v_origen_id, v_umbral.ubicacion_id, 'umbral',
+            'Por debajo del mínimo configurado (' || v_umbral.stock_minimo || ') — ' || fn_wms_describir_cantidad(v_umbral.producto_id, v_cantidad))
+    RETURNING id INTO v_nueva_id;
+
+    RETURN QUERY SELECT v_nueva_id;
+  END LOOP;
+
+  RETURN;
 END;
 $function$
 
@@ -4437,6 +5209,68 @@ BEGIN
   END IF;
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_lanzar_bolsa_pedidos(p_pedido_ids uuid[], p_ubicacion_staging_id uuid)
+ RETURNS TABLE(pedido_id uuid, tarea_id uuid, tipo text)
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_primer_pedido   RECORD;
+  v_ubicacion       RECORD;
+  v_lanzamiento_id  uuid;
+  v_pedido_id       uuid;
+  v_pedido_tid      uuid;
+  v_row             RECORD;
+BEGIN
+  IF p_pedido_ids IS NULL OR array_length(p_pedido_ids, 1) IS NULL THEN
+    RAISE EXCEPTION 'Elegí al menos un pedido para lanzar en bolsa';
+  END IF;
+  IF p_ubicacion_staging_id IS NULL THEN
+    RAISE EXCEPTION 'Elegí una ubicación de staging para la bolsa';
+  END IF;
+
+  SELECT * INTO v_primer_pedido FROM pedidos WHERE id = p_pedido_ids[1];
+  IF v_primer_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+
+  SELECT * INTO v_ubicacion FROM ubicaciones
+  WHERE id = p_ubicacion_staging_id AND tenant_id = v_primer_pedido.tenant_id;
+  IF v_ubicacion IS NULL THEN
+    RAISE EXCEPTION 'Ubicación de staging inexistente o de otro tenant';
+  END IF;
+  IF v_ubicacion.tipo_ubicacion <> 'staging' THEN
+    RAISE EXCEPTION 'La ubicación elegida no es de tipo staging';
+  END IF;
+  IF NOT COALESCE(v_ubicacion.activo, true) THEN
+    RAISE EXCEPTION 'La ubicación de staging elegida está desactivada';
+  END IF;
+
+  FOREACH v_pedido_id IN ARRAY p_pedido_ids LOOP
+    SELECT tenant_id INTO v_pedido_tid FROM pedidos WHERE id = v_pedido_id;
+    IF v_pedido_tid IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos: %', v_pedido_id; END IF;
+    IF v_pedido_tid IS DISTINCT FROM v_primer_pedido.tenant_id THEN
+      RAISE EXCEPTION 'Todos los pedidos de la bolsa tienen que ser del mismo tenant';
+    END IF;
+    IF EXISTS (SELECT 1 FROM wms_tareas WHERE wms_tareas.pedido_id = v_pedido_id) THEN
+      RAISE EXCEPTION 'El pedido % ya fue lanzado — no se puede incluir en una bolsa nueva', v_pedido_id;
+    END IF;
+  END LOOP;
+
+  INSERT INTO pedido_lanzamientos (tenant_id, sucursal_id, ubicacion_staging_id, creado_por)
+  VALUES (v_primer_pedido.tenant_id, v_primer_pedido.sucursal_id, p_ubicacion_staging_id, auth.uid())
+  RETURNING id INTO v_lanzamiento_id;
+
+  FOREACH v_pedido_id IN ARRAY p_pedido_ids LOOP
+    FOR v_row IN SELECT * FROM fn_generar_tareas_picking_pedido(v_pedido_id) LOOP
+      UPDATE wms_tareas SET lanzamiento_id = v_lanzamiento_id WHERE id = v_row.tarea_id;
+      RETURN QUERY SELECT v_pedido_id, v_row.tarea_id, v_row.tipo;
+    END LOOP;
+  END LOOP;
+
+  RETURN;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_notificar_cc_vencidas()
@@ -4526,6 +5360,354 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_pedido_cerrar(p_pedido_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_pedido    RECORD;
+  v_pendiente numeric;
+BEGIN
+  SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+  IF v_pedido.estado NOT IN ('entregado_parcial', 'listo_para_entrega') THEN
+    RAISE EXCEPTION 'El pedido no está en un estado que se pueda cerrar';
+  END IF;
+
+  SELECT COALESCE(SUM(cantidad - cantidad_entregada), 0) INTO v_pendiente
+  FROM pedido_items WHERE pedido_id = p_pedido_id AND estado <> 'cancelada';
+
+  IF v_pendiente > 0 THEN
+    RAISE EXCEPTION 'Todavía hay % unidades pendientes de entregar — no se puede cerrar', v_pendiente;
+  END IF;
+
+  UPDATE pedidos SET estado = 'entregado', entregado_at = now() WHERE id = p_pedido_id;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_pedido_deslanzar(p_pedido_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_pedido RECORD;
+BEGIN
+  SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+  IF v_pedido.estado <> 'en_preparacion' THEN
+    RAISE EXCEPTION 'Solo se puede deshacer el lanzamiento de un pedido en preparación';
+  END IF;
+
+  PERFORM 1 FROM wms_tareas WHERE pedido_id = p_pedido_id FOR UPDATE;
+  IF EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = p_pedido_id AND estado = 'completada') THEN
+    RAISE EXCEPTION 'Hay una tarea de picking ya completada (o un reabastecimiento completado con un picking encadenado todavía pendiente) — completá o des-pickeá esa tarea antes de deshacer el lanzamiento';
+  END IF;
+
+  PERFORM fn_pedido_liberar_tareas_pendientes(p_pedido_id);
+
+  UPDATE envios SET estado = 'cancelado'
+  WHERE pedido_id = p_pedido_id AND venta_id IS NULL AND estado NOT IN ('cancelado', 'entregado');
+
+  UPDATE pedidos SET estado = 'confirmado', lanzado_at = NULL, lanzado_por = NULL WHERE id = p_pedido_id;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_pedido_generar_venta(p_pedido_id uuid, p_sesion_caja_id uuid, p_medio_pago jsonb, p_entregas jsonb DEFAULT NULL::jsonb, p_idempotency_key uuid DEFAULT NULL::uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_pedido          RECORD;
+  v_sesion          RECORD;
+  v_venta_existente uuid;
+  v_item            RECORD;
+  v_cant_entregar    numeric;
+  v_cant_override    numeric;
+  v_venta_id         uuid;
+  v_subtotal         numeric := 0;
+  v_total            numeric := 0;
+  v_producto         RECORD;
+  v_precio           numeric;
+  v_iva_monto        numeric;
+  v_item_subtotal    numeric;
+  v_venta_item_id    uuid;
+  v_linea            RECORD;
+  v_restante         numeric;
+  v_tomar            numeric;
+  v_stock_antes      numeric;
+  v_stock_despues    numeric;
+  v_todo_entregado   boolean := true;
+  v_hubo_entrega     boolean := false;
+  v_cierre_auto      boolean;
+  v_monto_efectivo   numeric := 0;
+  v_monto_pagado     numeric := 0;
+  v_monto_cc         numeric := 0;
+  v_mp               jsonb;
+  v_tiene_cc         boolean := false;
+  v_traza_on         boolean;
+  v_deuda_total      numeric;
+  v_limite_credito   numeric;
+  v_enforcement_pol  text;
+BEGIN
+  SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+
+  -- Idempotencia: un reintento de red con la misma key devuelve la venta ya generada.
+  IF p_idempotency_key IS NOT NULL THEN
+    SELECT id INTO v_venta_existente FROM ventas
+    WHERE pedido_id = p_pedido_id AND pedido_entrega_key = p_idempotency_key;
+    IF v_venta_existente IS NOT NULL THEN RETURN v_venta_existente; END IF;
+  END IF;
+
+  IF v_pedido.estado NOT IN ('en_preparacion', 'listo_para_entrega', 'entregado_parcial') THEN
+    RAISE EXCEPTION 'El pedido tiene que estar lanzado (en preparación, listo para entrega, o entregado parcial) para generar la venta';
+  END IF;
+
+  -- FOR UPDATE: bloquea la sesión durante toda la función (evita que se cierre en el medio,
+  -- ventana TOCTOU) + valida que sea de la misma sucursal del pedido (o sin sucursal fija).
+  SELECT * INTO v_sesion FROM caja_sesiones WHERE id = p_sesion_caja_id FOR UPDATE;
+  IF v_sesion IS NULL OR v_sesion.tenant_id <> v_pedido.tenant_id OR v_sesion.estado <> 'abierta' THEN
+    RAISE EXCEPTION 'No hay una caja abierta válida para registrar el ingreso — abrí una caja antes de generar la venta';
+  END IF;
+  IF v_sesion.sucursal_id IS NOT NULL AND v_pedido.sucursal_id IS NOT NULL AND v_sesion.sucursal_id <> v_pedido.sucursal_id THEN
+    RAISE EXCEPTION 'La caja elegida es de otra sucursal — elegí una caja abierta de la sucursal del pedido';
+  END IF;
+
+  FOR v_mp IN SELECT * FROM jsonb_array_elements(COALESCE(p_medio_pago, '[]'::jsonb))
+  LOOP
+    IF (v_mp->>'tipo') = 'Cuenta Corriente' THEN v_tiene_cc := true; END IF;
+  END LOOP;
+  IF v_tiene_cc AND v_pedido.cliente_id IS NULL THEN
+    RAISE EXCEPTION 'Cuenta corriente requiere un cliente identificado en el pedido';
+  END IF;
+  -- B4 (morosidad) NO se duplica acá — ya la garantiza `trg_ventas_cc_guard`/`fn_ventas_cc_guard`
+  -- (mig 234, BEFORE INSERT ON ventas), que corre para el INSERT de más abajo sin depender de
+  -- auth.uid() (calcula la deuda inline por tenant_id). Ver comentario de cabecera.
+
+  SELECT trazabilidad_asignacion INTO v_traza_on FROM tenants WHERE id = v_pedido.tenant_id;
+
+  -- venta header: subtotal/total se completan al final (recién se conocen tras el loop). El
+  -- trigger de la mig 234 corre acá mismo (BEFORE INSERT) y valida morosidad — puede abortar.
+  INSERT INTO ventas (
+    tenant_id, cliente_id, cliente_nombre, cliente_telefono, consumidor_final, estado,
+    subtotal, total, medio_pago, monto_pagado, es_cuenta_corriente, usuario_id, sucursal_id,
+    origen, pedido_id, pedido_entrega_key, despachado_at
+  ) VALUES (
+    v_pedido.tenant_id, v_pedido.cliente_id,
+    CASE WHEN v_pedido.cliente_id IS NULL THEN v_pedido.cliente_nombre END,
+    CASE WHEN v_pedido.cliente_id IS NULL THEN v_pedido.cliente_telefono END,
+    (v_pedido.cliente_id IS NULL), 'despachada', 0, 0, COALESCE(p_medio_pago, '[]'::jsonb)::text, 0,
+    v_tiene_cc, auth.uid(), v_pedido.sucursal_id, 'Pedidos', p_pedido_id, p_idempotency_key, now()
+  ) RETURNING id INTO v_venta_id;
+
+  FOR v_item IN
+    SELECT pi.id, pi.producto_id, pi.estado_id, pi.cantidad, pi.cantidad_entregada,
+           (pi.cantidad - pi.cantidad_entregada) AS pendiente,
+           pi.talle, pi.color, pi.encaje, pi.formato, pi.sabor_aroma
+    FROM pedido_items pi
+    WHERE pi.pedido_id = p_pedido_id AND pi.estado <> 'cancelada'
+  LOOP
+    v_cant_entregar := v_item.pendiente;
+    IF p_entregas IS NOT NULL THEN
+      v_cant_override := NULL;
+      SELECT (e->>'cantidad')::numeric INTO v_cant_override
+      FROM jsonb_array_elements(p_entregas) e
+      WHERE (e->>'pedido_item_id')::uuid = v_item.id;
+      IF v_cant_override IS NOT NULL THEN
+        v_cant_entregar := LEAST(v_cant_override, v_item.pendiente);
+      ELSE
+        v_cant_entregar := 0; -- se pasó p_entregas explícito y esta línea no está incluida
+      END IF;
+    END IF;
+
+    IF v_cant_entregar IS NULL OR v_cant_entregar <= 0 THEN
+      IF v_item.pendiente > 0 THEN v_todo_entregado := false; END IF;
+      CONTINUE;
+    END IF;
+
+    SELECT nombre, sku, precio_venta, precio_costo, alicuota_iva INTO v_producto
+    FROM productos WHERE id = v_item.producto_id;
+    v_precio := COALESCE(v_producto.precio_venta, 0);
+    v_item_subtotal := ROUND(v_precio * v_cant_entregar, 2);
+    v_iva_monto := CASE WHEN COALESCE(v_producto.alicuota_iva, 0) > 0
+      THEN ROUND(v_item_subtotal - v_item_subtotal / (1 + v_producto.alicuota_iva / 100), 2)
+      ELSE 0 END;
+
+    INSERT INTO venta_items (
+      tenant_id, venta_id, producto_id, cantidad, precio_unitario, precio_costo_historico,
+      subtotal, alicuota_iva, iva_monto, pedido_item_id
+    ) VALUES (
+      v_pedido.tenant_id, v_venta_id, v_item.producto_id, v_cant_entregar, v_precio,
+      v_producto.precio_costo, v_item_subtotal, COALESCE(v_producto.alicuota_iva, 21), v_iva_monto, v_item.id
+    ) RETURNING id INTO v_venta_item_id;
+
+    v_subtotal := v_subtotal + v_item_subtotal;
+    v_total := v_total + v_item_subtotal; -- Pedidos no aplica descuentos (H1)
+
+    -- Rebaje real: consumir de líneas YA RESERVADAS (mismo mecanismo que "despachar una
+    -- reserva" de Ventas — FEFO sobre lo reservado, no sobre lo disponible en general).
+    v_restante := v_cant_entregar;
+    FOR v_linea IN
+      SELECT il.id, il.cantidad, il.cantidad_reservada, il.ubicacion_id, il.lpn
+      FROM inventario_lineas il
+      WHERE il.tenant_id = v_pedido.tenant_id AND il.producto_id = v_item.producto_id
+        AND il.activo = true AND COALESCE(il.cantidad_reservada, 0) > 0
+        AND (v_pedido.sucursal_id IS NULL OR il.sucursal_id = v_pedido.sucursal_id)
+        AND (v_item.estado_id IS NULL OR il.estado_id = v_item.estado_id)
+        AND (v_item.talle IS NULL OR il.talle = v_item.talle)
+        AND (v_item.color IS NULL OR il.color = v_item.color)
+        AND (v_item.encaje IS NULL OR il.encaje = v_item.encaje)
+        AND (v_item.formato IS NULL OR il.formato = v_item.formato)
+        AND (v_item.sabor_aroma IS NULL OR il.sabor_aroma = v_item.sabor_aroma)
+      ORDER BY il.fecha_vencimiento NULLS LAST, il.created_at
+      FOR UPDATE OF il SKIP LOCKED
+    LOOP
+      EXIT WHEN v_restante <= 0;
+      v_tomar := LEAST(v_restante, v_linea.cantidad_reservada);
+      IF v_tomar <= 0 THEN CONTINUE; END IF;
+
+      SELECT COALESCE(SUM(cantidad), 0) INTO v_stock_antes FROM inventario_lineas
+        WHERE tenant_id = v_pedido.tenant_id AND producto_id = v_item.producto_id AND activo = true
+          AND (v_pedido.sucursal_id IS NULL OR sucursal_id = v_pedido.sucursal_id);
+
+      UPDATE inventario_lineas
+        SET cantidad = cantidad - v_tomar, cantidad_reservada = cantidad_reservada - v_tomar,
+            activo = (cantidad - v_tomar) > 0
+        WHERE id = v_linea.id;
+
+      v_stock_despues := v_stock_antes - v_tomar;
+
+      INSERT INTO movimientos_stock (tenant_id, producto_id, tipo, cantidad, stock_antes, stock_despues, motivo, usuario_id, venta_id, sucursal_id, linea_id)
+      VALUES (v_pedido.tenant_id, v_item.producto_id, 'rebaje', v_tomar, v_stock_antes, v_stock_despues,
+              'Pedido #' || v_pedido.numero, auth.uid(), v_venta_id, v_pedido.sucursal_id, v_linea.id);
+
+      IF COALESCE(v_traza_on, true) THEN
+        INSERT INTO venta_item_despachos (tenant_id, venta_id, venta_item_id, producto_id, linea_id, lpn, ubicacion_id, cantidad, origen)
+        VALUES (v_pedido.tenant_id, v_venta_id, v_venta_item_id, v_item.producto_id, v_linea.id, v_linea.lpn, v_linea.ubicacion_id, v_tomar, 'auto');
+      END IF;
+
+      v_restante := v_restante - v_tomar;
+    END LOOP;
+
+    IF v_restante > 0 THEN
+      RAISE EXCEPTION 'No hay stock reservado suficiente para entregar % (SKU %) — faltan % unidades. ¿Se lanzó el pedido?',
+        v_producto.nombre, v_producto.sku, v_restante;
+    END IF;
+
+    UPDATE pedido_items SET
+      cantidad_entregada = cantidad_entregada + v_cant_entregar,
+      estado = CASE WHEN (cantidad_entregada + v_cant_entregar) >= cantidad THEN 'preparado' ELSE estado END
+    WHERE id = v_item.id;
+
+    v_hubo_entrega := true;
+    IF (v_item.cantidad_entregada + v_cant_entregar) < v_item.cantidad THEN v_todo_entregado := false; END IF;
+  END LOOP;
+
+  IF NOT v_hubo_entrega THEN
+    RAISE EXCEPTION 'No hay nada pendiente de entregar en este pedido';
+  END IF;
+
+  -- Monto pagado + efectivo a caja + monto CC (mismo criterio de auto-completar que
+  -- registrarVenta: un único medio sin monto especificado cobra el total). Cada entrada se
+  -- clampea a GREATEST(x, 0) — un monto negativo no debe poder "restar" del total ni neutralizar
+  -- el chequeo de límite de crédito de más abajo.
+  FOR v_mp IN SELECT * FROM jsonb_array_elements(COALESCE(p_medio_pago, '[]'::jsonb))
+  LOOP
+    IF (v_mp->>'tipo') IS DISTINCT FROM 'Cuenta Corriente' THEN
+      v_monto_pagado := v_monto_pagado + GREATEST(COALESCE((v_mp->>'monto')::numeric, v_total), 0);
+      IF (v_mp->>'tipo') = 'Efectivo' THEN
+        v_monto_efectivo := v_monto_efectivo + GREATEST(COALESCE((v_mp->>'monto')::numeric, v_total), 0);
+      END IF;
+    ELSE
+      v_monto_cc := v_monto_cc + GREATEST(COALESCE((v_mp->>'monto')::numeric, v_total), 0);
+    END IF;
+  END LOOP;
+  v_monto_pagado := LEAST(v_monto_pagado, v_total);
+  v_monto_cc := LEAST(v_monto_cc, v_total);
+
+  -- B1 — Límite de crédito: solo si esta venta suma de verdad a CC y el tenant exige bloquear
+  -- ('avisar' depende de un confirm() interactivo que acá no existe, ver cabecera). Deuda
+  -- calculada INLINE escopeada por tenant_id (mismo criterio que fn_ventas_cc_guard, mig 234 —
+  -- NO vía cliente_cc_estado, que depende de auth.uid()).
+  --
+  -- 🔴 Segundo fix del migration-reviewer sobre esta migración: el GATE de esta validación no
+  -- puede depender de `v_monto_cc` (un valor que el llamante controla vía `p_medio_pago` — una
+  -- sola entrada 'Cuenta Corriente' con `monto` 0 o negativo clampea a 0 y evade el chequeo
+  -- ENTERO, aunque `es_cuenta_corriente` quede en `true` y la venta genere igual la deuda real).
+  -- En cambio, se usa `v_total - v_monto_pagado` (el saldo real sin cubrir de ESTA venta): ambos
+  -- términos ya están defendidos (`v_total` sale de `productos.precio_venta` en DB, no del
+  -- llamante; `v_monto_pagado` está clampeado y capado con `LEAST(...,v_total)`) — no importa
+  -- qué diga el medio de pago, lo que no cubran los medios NO-CC se vuelve deuda CC real de
+  -- todos modos, y es ESO lo que hay que chequear contra el límite, no lo que el JSON afirme.
+  IF v_tiene_cc AND (v_total - v_monto_pagado) > 0.5 THEN
+    SELECT COALESCE(cc_enforcement_politica, 'avisar') INTO v_enforcement_pol FROM tenants WHERE id = v_pedido.tenant_id;
+    IF v_enforcement_pol = 'bloquear' THEN
+      SELECT COALESCE(SUM(GREATEST(v.total - v.monto_pagado, 0) + COALESCE(v.interes_cc, 0)), 0) INTO v_deuda_total
+      FROM ventas v
+      WHERE v.cliente_id = v_pedido.cliente_id AND v.tenant_id = v_pedido.tenant_id
+        AND v.es_cuenta_corriente = true AND v.estado <> 'cancelada'
+        AND (v.total - v.monto_pagado) > 0.5;
+
+      SELECT COALESCE(c.limite_credito, t.limite_cc_default) INTO v_limite_credito
+      FROM clientes c, tenants t WHERE c.id = v_pedido.cliente_id AND t.id = v_pedido.tenant_id;
+
+      IF v_limite_credito IS NOT NULL AND (v_deuda_total + (v_total - v_monto_pagado)) > v_limite_credito + 0.5 THEN
+        RAISE EXCEPTION 'Esta venta deja la cuenta corriente en $% — supera el límite de $%',
+          ROUND(v_deuda_total + (v_total - v_monto_pagado), 0), ROUND(v_limite_credito, 0);
+      END IF;
+    END IF;
+  END IF;
+
+  UPDATE ventas SET subtotal = v_subtotal, total = v_total, monto_pagado = v_monto_pagado WHERE id = v_venta_id;
+
+  IF v_monto_efectivo > 0.005 THEN
+    INSERT INTO caja_movimientos (tenant_id, sesion_id, tipo, concepto, monto, usuario_id)
+    VALUES (v_pedido.tenant_id, p_sesion_caja_id, 'ingreso', 'Pedido #' || v_pedido.numero, v_monto_efectivo, auth.uid());
+  END IF;
+
+  SELECT COALESCE(pedido_cierre_automatico, true) INTO v_cierre_auto FROM tenants WHERE id = v_pedido.tenant_id;
+  IF v_todo_entregado AND v_cierre_auto THEN
+    UPDATE pedidos SET estado = 'entregado', entregado_at = now() WHERE id = p_pedido_id;
+  ELSE
+    UPDATE pedidos SET estado = 'entregado_parcial' WHERE id = p_pedido_id;
+  END IF;
+
+  RETURN v_venta_id;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_pedido_liberar_tareas_pendientes(p_pedido_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tarea RECORD;
+BEGIN
+  PERFORM 1 FROM wms_tareas WHERE pedido_id = p_pedido_id FOR UPDATE;
+
+  FOR v_tarea IN
+    SELECT * FROM wms_tareas WHERE pedido_id = p_pedido_id AND estado IN ('pendiente', 'en_curso')
+  LOOP
+    IF v_tarea.lpn_origen IS NOT NULL THEN
+      UPDATE inventario_lineas SET cantidad_reservada = GREATEST(0, cantidad_reservada - v_tarea.cantidad)
+      WHERE tenant_id = v_tarea.tenant_id AND producto_id = v_tarea.producto_id
+        AND ubicacion_id = v_tarea.ubicacion_origen_id AND lpn = v_tarea.lpn_origen AND activo = true;
+    END IF;
+    UPDATE wms_tareas SET estado = 'cancelada',
+      notas = COALESCE(notas || ' — ', '') || 'Cancelada: se deshizo el lanzamiento del pedido'
+    WHERE id = v_tarea.id;
+  END LOOP;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_plan_base_limite(p_tier text, p_dim text)
  RETURNS integer
  LANGUAGE sql
@@ -4592,6 +5774,61 @@ BEGIN
     -- puede desincronizar stock/precio del lado de MercadoLibre/Tiendanube sin que nadie se entere.
     OR EXISTS (SELECT 1 FROM inventario_meli_map WHERE producto_id = p_producto_id)
     OR EXISTS (SELECT 1 FROM inventario_tn_map   WHERE producto_id = p_producto_id);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_rebuild_presentaciones(p_producto_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tenant_id  uuid;
+  v_estr_id    uuid;
+  v_min_orden  int;
+  v_udm_ficha  text;
+BEGIN
+  SELECT tenant_id, NULLIF(trim(unidad_medida), '')
+    INTO v_tenant_id, v_udm_ficha
+    FROM productos WHERE id = p_producto_id;
+  IF v_tenant_id IS NULL THEN RETURN; END IF;
+
+  SELECT id INTO v_estr_id FROM producto_estructuras
+    WHERE producto_id = p_producto_id AND is_default = true
+    ORDER BY created_at LIMIT 1;
+
+  DELETE FROM producto_presentaciones WHERE producto_id = p_producto_id;
+  IF v_estr_id IS NULL THEN RETURN; END IF;
+
+  SELECT min(orden) INTO v_min_orden FROM producto_estructura_niveles WHERE estructura_id = v_estr_id;
+  IF v_min_orden IS NULL THEN RETURN; END IF;
+
+  INSERT INTO producto_presentaciones
+    (tenant_id, producto_id, nombre_empaque_id, etiqueta, factor_base, es_base,
+     orden, activo, peso_kg, alto_cm, ancho_cm, largo_cm)
+  SELECT
+    v_tenant_id, p_producto_id, n.unidad_medida_id,
+    CASE WHEN n.orden = v_min_orden
+         THEN COALESCE(v_udm_ficha, um.nombre, 'Unidad')
+         ELSE COALESCE(um.nombre, 'Presentación ' || n.orden) END,
+    n.unidades_base,
+    (n.orden = v_min_orden),
+    n.orden, true, n.peso_kg, n.alto_cm, n.ancho_cm, n.largo_cm
+  FROM producto_estructura_niveles n
+  LEFT JOIN unidades_medida um ON um.id = n.unidad_medida_id
+  WHERE n.estructura_id = v_estr_id;
+
+  UPDATE producto_presentaciones child
+    SET padre_linea_id = parent.id
+  FROM producto_presentaciones parent
+  WHERE child.producto_id = p_producto_id
+    AND parent.producto_id = p_producto_id
+    AND parent.orden = (
+      SELECT max(x.orden) FROM producto_presentaciones x
+      WHERE x.producto_id = p_producto_id AND x.orden < child.orden
+    );
 END;
 $function$
 
@@ -4759,6 +5996,16 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_seed_tipos_pedido_new_tenant()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN PERFORM seed_tipos_pedido(NEW.id); RETURN NEW; END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_set_caja_sesion_numero()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -4854,6 +6101,105 @@ BEGIN
     headers := '{"Content-Type": "application/json"}'::jsonb,
     body    := '{}'::jsonb
   );
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_unpick_tarea_wms(p_tarea_id uuid, p_ubicacion_destino_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tarea      RECORD;
+  v_pedido     RECORD;
+  v_linea      RECORD;
+  v_nuevo_lpn  text;
+  v_restante   integer;
+  v_tomar      integer;
+BEGIN
+  SELECT * INTO v_tarea FROM wms_tareas WHERE id = p_tarea_id FOR UPDATE;
+  IF v_tarea IS NULL THEN RAISE EXCEPTION 'Tarea inexistente o sin permisos'; END IF;
+  IF v_tarea.tipo <> 'picking' THEN RAISE EXCEPTION 'Solo se puede deshacer (des-pickear) una tarea de picking'; END IF;
+  IF v_tarea.estado <> 'completada' THEN RAISE EXCEPTION 'Esta tarea no está completada'; END IF;
+  IF v_tarea.pedido_id IS NULL THEN RAISE EXCEPTION 'El des-pickeo solo está disponible para tareas originadas en un Pedido'; END IF;
+  IF p_ubicacion_destino_id IS NULL THEN RAISE EXCEPTION 'Elegí una ubicación destino para reubicar el LPN'; END IF;
+
+  SELECT * INTO v_pedido FROM pedidos WHERE id = v_tarea.pedido_id FOR UPDATE;
+  IF v_pedido.estado IN ('entregado', 'cancelado') THEN
+    RAISE EXCEPTION 'El pedido ya está % — no se puede deshacer el picking', v_pedido.estado;
+  END IF;
+
+  v_restante := v_tarea.cantidad;
+
+  FOR v_linea IN
+    SELECT il.id, il.cantidad, il.cantidad_reservada, il.estado_id, il.nro_lote, il.fecha_vencimiento,
+           il.pais_origen, il.proveedor_id, il.talle, il.color, il.encaje, il.formato, il.sabor_aroma
+    FROM inventario_lineas il
+    WHERE il.tenant_id = v_tarea.tenant_id AND il.producto_id = v_tarea.producto_id
+      AND il.ubicacion_id = v_tarea.ubicacion_origen_id AND il.lpn = v_tarea.lpn_origen
+      AND il.activo = true
+    FOR UPDATE
+  LOOP
+    EXIT WHEN v_restante <= 0;
+    v_tomar := LEAST(v_restante, v_linea.cantidad_reservada);
+    IF v_tomar <= 0 THEN CONTINUE; END IF;
+
+    UPDATE inventario_lineas SET cantidad = cantidad - v_tomar, cantidad_reservada = cantidad_reservada - v_tomar,
+      activo = (cantidad - v_tomar) > 0 WHERE id = v_linea.id;
+
+    v_nuevo_lpn := 'LPN-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS');
+    INSERT INTO inventario_lineas
+      (tenant_id, producto_id, lpn, cantidad, estado_id, ubicacion_id, sucursal_id, proveedor_id,
+       nro_lote, fecha_vencimiento, pais_origen, talle, color, encaje, formato, sabor_aroma)
+    VALUES
+      (v_tarea.tenant_id, v_tarea.producto_id, v_nuevo_lpn, v_tomar, v_linea.estado_id, p_ubicacion_destino_id, v_tarea.sucursal_id, v_linea.proveedor_id,
+       v_linea.nro_lote, v_linea.fecha_vencimiento, v_linea.pais_origen, v_linea.talle, v_linea.color, v_linea.encaje, v_linea.formato, v_linea.sabor_aroma);
+
+    v_restante := v_restante - v_tomar;
+  END LOOP;
+
+  IF v_restante > 0 AND v_tarea.tarea_precedente_id IS NOT NULL THEN
+    FOR v_linea IN
+      SELECT il.id, il.cantidad, il.cantidad_reservada, il.estado_id, il.nro_lote, il.fecha_vencimiento,
+             il.pais_origen, il.proveedor_id, il.talle, il.color, il.encaje, il.formato, il.sabor_aroma
+      FROM inventario_lineas il
+      WHERE il.tenant_id = v_tarea.tenant_id AND il.producto_id = v_tarea.producto_id
+        AND il.ubicacion_id = v_tarea.ubicacion_origen_id
+        AND il.activo = true AND COALESCE(il.cantidad_reservada, 0) > 0
+      ORDER BY il.fecha_vencimiento NULLS LAST, il.created_at
+      FOR UPDATE
+    LOOP
+      EXIT WHEN v_restante <= 0;
+      v_tomar := LEAST(v_restante, v_linea.cantidad_reservada);
+      IF v_tomar <= 0 THEN CONTINUE; END IF;
+
+      UPDATE inventario_lineas SET cantidad = cantidad - v_tomar, cantidad_reservada = cantidad_reservada - v_tomar,
+        activo = (cantidad - v_tomar) > 0 WHERE id = v_linea.id;
+
+      v_nuevo_lpn := 'LPN-' || to_char(clock_timestamp(), 'YYYYMMDDHH24MISSMS');
+      INSERT INTO inventario_lineas
+        (tenant_id, producto_id, lpn, cantidad, estado_id, ubicacion_id, sucursal_id, proveedor_id,
+         nro_lote, fecha_vencimiento, pais_origen, talle, color, encaje, formato, sabor_aroma)
+      VALUES
+        (v_tarea.tenant_id, v_tarea.producto_id, v_nuevo_lpn, v_tomar, v_linea.estado_id, p_ubicacion_destino_id, v_tarea.sucursal_id, v_linea.proveedor_id,
+         v_linea.nro_lote, v_linea.fecha_vencimiento, v_linea.pais_origen, v_linea.talle, v_linea.color, v_linea.encaje, v_linea.formato, v_linea.sabor_aroma);
+
+      v_restante := v_restante - v_tomar;
+    END LOOP;
+  END IF;
+
+  IF v_restante > 0 THEN
+    IF v_tarea.tarea_precedente_id IS NOT NULL THEN
+      RAISE EXCEPTION 'No se encontró stock reservado suficiente del producto en la ubicación de picking para des-pickear esta tarea — puede que ya se haya generado la venta';
+    ELSE
+      RAISE EXCEPTION 'No se encontró el LPN reservado (%) — puede que ya se haya generado la venta o se haya movido de otra forma', v_tarea.lpn_origen;
+    END IF;
+  END IF;
+
+  UPDATE wms_tareas SET estado = 'cancelada',
+    notas = COALESCE(notas || ' — ', '') || 'Des-pickeado: reubicado en otra ubicación'
+  WHERE id = p_tarea_id;
 END;
 $function$
 
@@ -5001,6 +6347,55 @@ BEGIN
 
   RETURN NEW;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_wms_describir_cantidad(p_producto_id uuid, p_cantidad_base integer)
+ RETURNS text
+ LANGUAGE plpgsql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_nivel RECORD;
+BEGIN
+  SELECT n.unidades_base, um.nombre INTO v_nivel
+  FROM producto_estructuras pe
+  JOIN producto_estructura_niveles n ON n.estructura_id = pe.id
+  JOIN unidades_medida um ON um.id = n.unidad_medida_id
+  WHERE pe.producto_id = p_producto_id AND pe.is_default = true
+    AND n.unidades_base > 1
+    AND p_cantidad_base % n.unidades_base = 0
+  ORDER BY n.unidades_base DESC
+  LIMIT 1;
+
+  IF v_nivel.unidades_base IS NOT NULL THEN
+    RETURN (p_cantidad_base / v_nivel.unidades_base) || ' ' || v_nivel.nombre || ' (' || p_cantidad_base || ' u. base)';
+  END IF;
+  RETURN p_cantidad_base || ' unidades base';
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_wms_elegir_ubicacion_picking(p_tenant_id uuid, p_sucursal_id uuid, p_producto_id uuid)
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT u.id FROM ubicaciones u
+  WHERE u.tenant_id = p_tenant_id
+    AND u.activo = true
+    AND u.tipo_ubicacion = 'picking'
+    AND (u.sucursal_id IS NULL OR u.sucursal_id = p_sucursal_id)
+  ORDER BY
+    (EXISTS (
+      SELECT 1 FROM inventario_lineas il
+      WHERE il.ubicacion_id = u.id AND il.producto_id = p_producto_id AND il.activo = true
+    )) DESC,
+    u.secuencia NULLS LAST,
+    u.prioridad
+  LIMIT 1
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.gen_venta_numero()
@@ -6370,6 +7765,65 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.seed_tipos_pedido(p_tenant_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  INSERT INTO tipos_pedido (tenant_id, nombre, factura_momento, cliente_obligatorio, orden) VALUES
+    (p_tenant_id, 'Mayorista',           'al_confirmar', true, 10),
+    (p_tenant_id, 'E-commerce',          'al_entregar',  true, 20),
+    (p_tenant_id, 'Encargo telefónico',  'al_entregar',  true, 30),
+    (p_tenant_id, 'Retiro en local',     'al_entregar',  true, 40)
+  ON CONFLICT (tenant_id, nombre) DO NOTHING;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.seed_unidades_medida_fisicas(p_tenant_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  INSERT INTO unidades_medida_fisicas
+    (tenant_id, familia, nombre, simbolo, factor_base_familia, es_base_familia, permite_decimales, predefinida, activo, orden)
+  VALUES
+    (p_tenant_id, 'conteo',   'Unidad',            'u',   1,             true,  false, true, true,  10),
+    (p_tenant_id, 'conteo',   'Docena',            'doc', 12,            false, false, true, false, 11),
+    (p_tenant_id, 'conteo',   'Millar',            'mil', 1000,          false, false, true, false, 12),
+    (p_tenant_id, 'peso',     'Miligramo',         'mg',  0.001,         false, true,  true, true,  20),
+    (p_tenant_id, 'peso',     'Gramo',             'g',   1,             true,  true,  true, true,  21),
+    (p_tenant_id, 'peso',     'Kilogramo',         'kg',  1000,          false, true,  true, true,  22),
+    (p_tenant_id, 'peso',     'Tonelada',          't',   1000000,       false, true,  true, true,  23),
+    (p_tenant_id, 'peso',     'Onza',              'oz',  28.349523125,  false, true,  true, false, 24),
+    (p_tenant_id, 'peso',     'Libra',             'lb',  453.59237,     false, true,  true, false, 25),
+    (p_tenant_id, 'volumen',  'Mililitro',         'ml',  1,             true,  true,  true, true,  30),
+    (p_tenant_id, 'volumen',  'Centilitro',        'cl',  10,            false, true,  true, false, 31),
+    (p_tenant_id, 'volumen',  'Litro',             'L',   1000,          false, true,  true, true,  32),
+    (p_tenant_id, 'volumen',  'Metro cúbico',      'm³',  1000000,       false, true,  true, false, 33),
+    (p_tenant_id, 'volumen',  'Onza líquida (US)', 'fl oz', 29.5735295625, false, true, true, false, 34),
+    (p_tenant_id, 'volumen',  'Galón (US)',        'gal', 3785.411784,   false, true,  true, false, 35),
+    (p_tenant_id, 'longitud', 'Milímetro',         'mm',  0.001,         false, true,  true, true,  40),
+    (p_tenant_id, 'longitud', 'Centímetro',        'cm',  0.01,          false, true,  true, true,  41),
+    (p_tenant_id, 'longitud', 'Metro',             'm',   1,             true,  true,  true, true,  42),
+    (p_tenant_id, 'longitud', 'Kilómetro',         'km',  1000,          false, true,  true, true,  43),
+    (p_tenant_id, 'longitud', 'Pulgada',           'in',  0.0254,        false, true,  true, false, 44),
+    (p_tenant_id, 'longitud', 'Pie',               'ft',  0.3048,        false, true,  true, false, 45),
+    (p_tenant_id, 'longitud', 'Yarda',             'yd',  0.9144,        false, true,  true, false, 46),
+    (p_tenant_id, 'longitud', 'Milla',             'mi',  1609.344,      false, true,  true, false, 47),
+    (p_tenant_id, 'area',     'Centímetro cuadrado','cm²', 0.0001,       false, true,  true, false, 50),
+    (p_tenant_id, 'area',     'Metro cuadrado',    'm²',  1,             true,  true,  true, true,  51),
+    (p_tenant_id, 'area',     'Hectárea',          'ha',  10000,         false, true,  true, false, 52),
+    (p_tenant_id, 'area',     'Kilómetro cuadrado','km²', 1000000,       false, true,  true, false, 53)
+  ON CONFLICT (tenant_id, nombre) DO NOTHING;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.set_cheque_numero()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6451,6 +7905,26 @@ BEGIN
   IF NEW.sucursal_id IS NOT NULL AND NEW.numero_sucursal IS NULL THEN
     SELECT COALESCE(MAX(numero_sucursal), 0) + 1 INTO NEW.numero_sucursal
       FROM ordenes_compra WHERE tenant_id = NEW.tenant_id AND sucursal_id = NEW.sucursal_id;
+  END IF;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.set_pedido_numero()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.numero IS NULL THEN
+    SELECT COALESCE(MAX(numero), 0) + 1 INTO NEW.numero
+      FROM pedidos WHERE tenant_id = NEW.tenant_id;
+  END IF;
+  IF NEW.sucursal_id IS NOT NULL AND NEW.numero_sucursal IS NULL THEN
+    SELECT COALESCE(MAX(numero_sucursal), 0) + 1 INTO NEW.numero_sucursal
+      FROM pedidos WHERE tenant_id = NEW.tenant_id AND sucursal_id = NEW.sucursal_id;
   END IF;
   RETURN NEW;
 END;
@@ -6631,6 +8105,134 @@ BEGIN
   END IF;
   RETURN CASE TG_OP WHEN 'DELETE' THEN OLD ELSE NEW END;
 END $function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_pp_no_ciclo()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_cursor    uuid := NEW.padre_linea_id;
+  v_hops      int  := 0;
+  v_padre_prd uuid;
+BEGIN
+  IF NEW.padre_linea_id IS NULL THEN RETURN NEW; END IF;
+  IF NEW.padre_linea_id = NEW.id THEN
+    RAISE EXCEPTION 'Una presentación no puede ser su propio padre';
+  END IF;
+  SELECT producto_id INTO v_padre_prd FROM producto_presentaciones WHERE id = NEW.padre_linea_id;
+  IF v_padre_prd IS NULL OR v_padre_prd <> NEW.producto_id THEN
+    RAISE EXCEPTION 'El padre de una presentación debe pertenecer al mismo producto';
+  END IF;
+  WHILE v_cursor IS NOT NULL LOOP
+    v_hops := v_hops + 1;
+    IF v_cursor = NEW.id THEN
+      RAISE EXCEPTION 'Ciclo en el árbol de presentaciones (padre_linea_id)';
+    END IF;
+    IF v_hops > 50 THEN
+      RAISE EXCEPTION 'Cadena de presentaciones demasiado profunda (posible ciclo)';
+    END IF;
+    SELECT padre_linea_id INTO v_cursor FROM producto_presentaciones WHERE id = v_cursor;
+  END LOOP;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_seed_umf_new_tenant()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  PERFORM seed_unidades_medida_fisicas(NEW.id);
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_sync_presentaciones_estructura()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  PERFORM fn_rebuild_presentaciones(COALESCE(NEW.producto_id, OLD.producto_id));
+  RETURN NULL;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_sync_presentaciones_niveles()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_producto_id uuid;
+BEGIN
+  SELECT producto_id INTO v_producto_id FROM producto_estructuras
+    WHERE id = COALESCE(NEW.estructura_id, OLD.estructura_id);
+  IF v_producto_id IS NOT NULL THEN
+    PERFORM fn_rebuild_presentaciones(v_producto_id);
+  END IF;
+  RETURN NULL;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_variante_compose_nombre()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_madre_nombre text;
+  v_madre_padre  uuid;
+  v_madre_tenant uuid;
+BEGIN
+  IF NEW.producto_padre_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT nombre, producto_padre_id, tenant_id INTO v_madre_nombre, v_madre_padre, v_madre_tenant
+  FROM productos WHERE id = NEW.producto_padre_id;
+  IF v_madre_nombre IS NULL THEN
+    RAISE EXCEPTION 'La madre % no existe', NEW.producto_padre_id;
+  END IF;
+  IF v_madre_tenant <> NEW.tenant_id THEN
+    RAISE EXCEPTION 'La madre pertenece a otro tenant';
+  END IF;
+  IF v_madre_padre IS NOT NULL THEN
+    RAISE EXCEPTION 'Una variante no puede colgar de otra variante (solo 2 niveles: madre → hijo)';
+  END IF;
+  IF EXISTS (SELECT 1 FROM productos WHERE producto_padre_id = NEW.id) THEN
+    RAISE EXCEPTION 'Este producto ya tiene variantes propias; no puede convertirse en hijo de otro';
+  END IF;
+
+  NEW.nombre := v_madre_nombre || ' — ' || NEW.variante_diferenciador;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_variante_propagar_nombre()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  IF NEW.producto_padre_id IS NULL AND NEW.nombre IS DISTINCT FROM OLD.nombre THEN
+    UPDATE productos
+      SET nombre = NEW.nombre || ' — ' || variante_diferenciador
+      WHERE producto_padre_id = NEW.id;
+  END IF;
+  RETURN NULL;
+END;
+$function$
 
 
 CREATE OR REPLACE FUNCTION public.trg_ventas_periodo_cerrado()
@@ -6881,11 +8483,17 @@ CREATE TRIGGER trg_metodos_pago_updated_at BEFORE UPDATE ON public.metodos_pago 
 CREATE TRIGGER trg_oc_cierre BEFORE DELETE OR UPDATE ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION trg_oc_periodo_cerrado();
 CREATE TRIGGER trg_set_oc_numero BEFORE INSERT ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION set_oc_numero();
 CREATE TRIGGER trg_updated_at_oc BEFORE UPDATE ON public.ordenes_compra FOR EACH ROW EXECUTE FUNCTION set_updated_at_oc();
+CREATE TRIGGER trg_set_pedido_numero BEFORE INSERT ON public.pedidos FOR EACH ROW EXECUTE FUNCTION set_pedido_numero();
+CREATE TRIGGER trg_pp_sync_niveles AFTER INSERT OR DELETE OR UPDATE ON public.producto_estructura_niveles FOR EACH ROW EXECUTE FUNCTION trg_sync_presentaciones_niveles();
 CREATE TRIGGER tr_producto_estructuras_updated_at BEFORE UPDATE ON public.producto_estructuras FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+CREATE TRIGGER trg_pp_sync_estructura AFTER INSERT OR DELETE OR UPDATE OF is_default ON public.producto_estructuras FOR EACH ROW EXECUTE FUNCTION trg_sync_presentaciones_estructura();
+CREATE TRIGGER trg_pp_no_ciclo BEFORE INSERT OR UPDATE OF padre_linea_id ON public.producto_presentaciones FOR EACH ROW EXECUTE FUNCTION trg_pp_no_ciclo();
 CREATE TRIGGER productos_stock_auto_resolver AFTER UPDATE OF stock_actual ON public.productos FOR EACH ROW EXECUTE FUNCTION auto_resolver_alerta_stock();
 CREATE TRIGGER productos_stock_check AFTER UPDATE OF stock_actual ON public.productos FOR EACH ROW EXECUTE FUNCTION check_stock_minimo();
 CREATE TRIGGER productos_updated_at BEFORE UPDATE ON public.productos FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_enforce_sku BEFORE INSERT OR UPDATE OF activo ON public.productos FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('sku');
+CREATE TRIGGER trg_productos_compose_nombre BEFORE INSERT OR UPDATE OF producto_padre_id, variante_diferenciador, nombre ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_compose_nombre();
+CREATE TRIGGER trg_productos_propagar_nombre AFTER UPDATE OF nombre ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_propagar_nombre();
 CREATE TRIGGER trg_set_recepcion_numero BEFORE INSERT ON public.recepciones FOR EACH ROW EXECUTE FUNCTION trg_fn_set_recepcion_numero();
 CREATE TRIGGER trg_updated_at_recepcion BEFORE UPDATE ON public.recepciones FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_recursos_updated_at BEFORE UPDATE ON public.recursos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -6904,6 +8512,8 @@ CREATE TRIGGER trg_guard_subscription_status_active BEFORE UPDATE ON public.tena
 CREATE TRIGGER trg_seed_canales_venta_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_canales_venta_new_tenant();
 CREATE TRIGGER trg_seed_categorias_gasto_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_categorias_gasto_new_tenant();
 CREATE TRIGGER trg_seed_tenant_defaults AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_tenant_defaults();
+CREATE TRIGGER trg_seed_tipos_pedido_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_tipos_pedido_new_tenant();
+CREATE TRIGGER trg_seed_umf AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION trg_seed_umf_new_tenant();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();
@@ -6996,6 +8606,9 @@ ALTER TABLE public.mp_billing_alertas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notificaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.orden_compra_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ordenes_compra ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pedido_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pedido_lanzamientos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pedidos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.planes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_billers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.platform_facturas ENABLE ROW LEVEL SECURITY;
@@ -7004,8 +8617,10 @@ ALTER TABLE public.producto_estructura_niveles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_estructuras ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_grupos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_precios_mayorista ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.producto_presentaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_stock_minimo_sucursal ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.producto_ubicacion_sucursal ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.producto_ubicacion_umbrales ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.productos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_cc_movimientos ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.proveedor_contactos ENABLE ROW LEVEL SECURITY;
@@ -7016,6 +8631,7 @@ ALTER TABLE public.puntos_venta_afip ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recepcion_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recepciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.recursos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reglas_almacenaje ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.repartidores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.retenciones_sufridas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.roles_custom ENABLE ROW LEVEL SECURITY;
@@ -7047,10 +8663,12 @@ ALTER TABLE public.tenant_addons ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenant_certificates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tenants ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.tiendanube_credentials ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tipos_pedido ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.traslado_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.traslados ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ubicaciones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.unidades_medida ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.unidades_medida_fisicas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.venta_auditoria ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.venta_item_despachos ENABLE ROW LEVEL SECURITY;
@@ -7059,6 +8677,8 @@ ALTER TABLE public.venta_series ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ventas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ventas_externas_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ventas_recurrentes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.wms_tareas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.zonas ENABLE ROW LEVEL SECURITY;
 
 -- ============================================================
 -- POLICIES (RLS)
@@ -7479,6 +9099,17 @@ CREATE POLICY oc_items_tenant ON public.orden_compra_items AS PERMISSIVE FOR ALL
 CREATE POLICY oc_tenant ON public.ordenes_compra AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY pedido_items_tenant ON public.pedido_items AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (EXISTS ( SELECT 1
+   FROM pedidos p
+  WHERE ((p.id = pedido_items.pedido_id) AND ((p.sucursal_id IS NULL) OR (p.sucursal_id = auth_user_sucursal()))))))))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY pedido_lanzamientos_tenant ON public.pedido_lanzamientos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY pedidos_tenant ON public.pedidos AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY planes_select_public ON public.planes AS PERMISSIVE FOR SELECT TO anon, authenticated
   USING (true);
 CREATE POLICY pen_tenant ON public.producto_estructura_niveles AS PERMISSIVE FOR ALL TO public
@@ -7515,6 +9146,9 @@ CREATE POLICY ppm_tenant ON public.producto_precios_mayorista AS PERMISSIVE FOR 
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY pp_tenant ON public.producto_presentaciones AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id = get_user_tenant_id()))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY psmss_tenant ON public.producto_stock_minimo_sucursal AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -7523,6 +9157,9 @@ CREATE POLICY tenant_isolation ON public.producto_ubicacion_sucursal AS PERMISSI
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY producto_ubicacion_umbrales_tenant ON public.producto_ubicacion_umbrales AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id = get_user_tenant_id()))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY productos_delete_tenant ON public.productos AS PERMISSIVE FOR DELETE TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -7580,6 +9217,9 @@ CREATE POLICY recepciones_tenant ON public.recepciones AS PERMISSIVE FOR ALL TO 
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY recursos_tenant ON public.recursos AS PERMISSIVE FOR ALL TO public
   USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY reglas_almacenaje_tenant ON public.reglas_almacenaje AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id = get_user_tenant_id()))
   WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY repartidores_tenant ON public.repartidores AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
@@ -7767,6 +9407,9 @@ CREATE POLICY tn_creds_tenant ON public.tiendanube_credentials AS PERMISSIVE FOR
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY tipos_pedido_tenant ON public.tipos_pedido AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id = get_user_tenant_id()))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY traslado_items_tenant ON public.traslado_items AS PERMISSIVE FOR ALL TO public
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
@@ -7791,6 +9434,9 @@ CREATE POLICY tenant_isolation ON public.unidades_medida AS PERMISSIVE FOR ALL T
   USING ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY umf_tenant ON public.unidades_medida_fisicas AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id = get_user_tenant_id()))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 CREATE POLICY users_delete_owner ON public.users AS PERMISSIVE FOR DELETE TO public
   USING (((tenant_id = get_user_tenant_id()) AND (get_user_role() = ANY (ARRAY['DUEÑO'::text, 'ADMIN'::text]))));
 CREATE POLICY users_delete_self ON public.users AS PERMISSIVE FOR DELETE TO public
@@ -7837,6 +9483,12 @@ CREATE POLICY ventas_rec_tenant ON public.ventas_recurrentes AS PERMISSIVE FOR A
   WITH CHECK ((tenant_id IN ( SELECT users.tenant_id
    FROM users
   WHERE (users.id = ( SELECT auth.uid() AS uid)))));
+CREATE POLICY wms_tareas_tenant ON public.wms_tareas AS PERMISSIVE FOR ALL TO public
+  USING (((tenant_id = get_user_tenant_id()) AND (auth_ve_todas_sucursales() OR (sucursal_id IS NULL) OR (sucursal_id = auth_user_sucursal()))))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
+CREATE POLICY zonas_tenant ON public.zonas AS PERMISSIVE FOR ALL TO public
+  USING ((tenant_id = get_user_tenant_id()))
+  WITH CHECK ((tenant_id = get_user_tenant_id()));
 
 -- ============================================================
 -- GRANTS (tablas)
@@ -8065,6 +9717,12 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.or
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ordenes_compra TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_items TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_items TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_lanzamientos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedido_lanzamientos TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedidos TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pedidos TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.planes TO service_role;
@@ -8082,12 +9740,16 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.pr
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_precios_mayorista TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_precios_mayorista TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_precios_mayorista TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_presentaciones TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_presentaciones TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_stock_minimo_sucursal TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_stock_minimo_sucursal TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_stock_minimo_sucursal TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_ubicacion_sucursal TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_ubicacion_sucursal TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_ubicacion_sucursal TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_ubicacion_umbrales TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.producto_ubicacion_umbrales TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.productos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.productos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.productos TO service_role;
@@ -8118,6 +9780,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.re
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recursos TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recursos TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.recursos TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.reglas_almacenaje TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.reglas_almacenaje TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.repartidores TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.repartidores TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.repartidores TO service_role;
@@ -8213,6 +9877,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.te
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tiendanube_credentials TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tipos_pedido TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.tipos_pedido TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.traslado_items TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.traslado_items TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.traslado_items TO service_role;
@@ -8225,6 +9891,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.ub
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.unidades_medida TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.unidades_medida TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.unidades_medida TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.unidades_medida_fisicas TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.unidades_medida_fisicas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.users TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.users TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.users TO service_role;
@@ -8264,6 +9932,10 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_egresos_consolidados TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_egresos_consolidados TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_egresos_consolidados TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.wms_tareas TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.wms_tareas TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.zonas TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.zonas TO service_role;
 
 -- ============================================================
 -- VISTAS

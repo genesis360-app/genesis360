@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Unidad de Medida vs. Nivel de Empaque · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt 0; font-size: 10pt; }
+  th, td { border: 1px solid #ccc; padding: 4pt 6pt; text-align: left; vertical-align: top; }
+  th { background: #f0f4f8; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+  .bug { background: #fdecea; border-left: 4px solid #c0392b; padding: 6pt 10pt; margin: 6pt 0 6pt 18pt; font-size: 9.5pt; border-radius: 0 4pt 4pt 0; }
+  .bug strong { color: #c0392b; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Unidad de Medida vs. Nivel de Empaque</h1>
+<div class="meta">
+  Genesis360 · Fecha: 23 de julio de 2026 · Relevamiento con Gastón Otranto + Federico Messina
+</div>
+
+<div class="intro">
+  <strong>Por qué existe este documento:</strong> GO notó que "Unidad de medida" (ficha de producto,
+  card "Stock e Inventario") y "Estos precios corresponden a" (card "Precios", el nivel de la
+  Estructura al que ancla el precio) conviven sin ninguna relación clara, y que en
+  <strong>Configuración → Inventario → Unidades</strong> aparecen mezcladas cosas como "Kilogramo"/
+  "Litro" (unidades físicas reales, con conversión universal fija) junto con "Caja"/"Pallet"
+  (niveles de empaque, cuyo tamaño es una decisión de cada producto, sin conversión universal).
+  Se auditó el código real (no solo la UI) y se confirma: son dos conceptos de negocio distintos,
+  mezclados en una sola tabla (<code>unidades_medida</code>) y en un solo selector legacy
+  (<code>productos.unidad_medida</code>, texto libre, hardcodeado en el formulario). Ya se decidió
+  en la conversación previa: <strong>(1) sí hace falta conversión real de unidad de medida</strong>
+  (ej. Jamón: se compra por Kilo, se vende por Gramo) y <strong>(2) deben separarse</strong> — este
+  documento busca cerrar el CÓMO exacto.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual auditado (código real, no la wiki):</strong> <code>productos.unidad_medida</code>
+  es texto libre alimentado por una lista hardcodeada en <code>ProductoFormPage.tsx</code>
+  (<code>unidad, kg, g, litro, ml, metro, cm, caja, pack, docena</code>) que <strong>no coincide</strong>
+  con la tabla real <code>unidades_medida</code> (seed: Unidad/Kilogramo/Gramo/Litro/Metro/Caja/Pallet,
+  con símbolos <code>u/kg/g/L/m/caja/pallet</code>) — "kg" y "g" del dropdown son en realidad el
+  <em>símbolo</em>, no el <em>nombre</em> real, así que nunca matchean. El campo "Estos precios
+  corresponden a" sí lee la tabla real, pero solo los niveles de la Estructura <em>default</em> del
+  producto (<code>producto_estructuras.is_default</code>), identificados por <strong>posición/orden</strong>,
+  no por identidad de unidad (<code>productos.nivel_precio_orden</code>, entero). El stock
+  (<code>inventario_lineas.cantidad</code>, <code>productos.stock_actual</code>) siempre se guarda en la
+  unidad BASE (nivel 1) de la Estructura; los niveles superiores son solo una conversión con factor
+  entero fijo <em>por producto</em> (<code>producto_estructura_niveles.unidades_base</code>).
+  <div class="bug"><strong>🐛 Bug real encontrado en la auditoría (no reportado por nadie, recién
+  detectado):</strong> si se reordenan los niveles de una Estructura (o se cambia cuál Estructura es
+  la default), el ancla de precio (<code>nivel_precio_orden</code>) <strong>no se revalida</strong> —
+  puede quedar apuntando en silencio a una unidad distinta de la que el usuario pensaba, y todos los
+  precios proporcionales de los demás niveles se recalculan mal en cascada. <strong>Cómo lo arreglamos
+  es la pregunta F3</strong> (por identidad vs. por posición + aviso/bloqueo); se menciona acá porque
+  además es evidencia de que "ubicar la unidad por posición" es una fuente real de errores, relevante
+  para las decisiones de abajo (ver H2).</div>
+</div>
+
+<!-- ============================ A. EL MODELO DE DOS EJES ============================ -->
+<h2>A. Confirmar el modelo: dos ejes de negocio distintos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    ¿Confirman la separación conceptual en dos ejes independientes? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ya charlado y acordado en la conversación previa — se deja como pregunta de
+  cierre formal, para que quede escrito y no se pierda en el camino.</div>
+  <ul class="opciones">
+    <li>(a) Sí — <strong>Unidad de Medida física</strong> (Kilogramo/Gramo/Litro/Mililitro/Metro...,
+      conversión universal fija, igual para cualquier negocio) y <strong>Nivel de Empaque</strong>
+      (Unidad/Caja/Docena/Pallet/Bulto..., el "tamaño" es una decisión de cada producto, sin
+      conversión universal) son conceptos distintos y así deben modelarse</li>
+    <li>(b) Otro enfoque: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    ¿Un mismo producto puede necesitar los DOS ejes al mismo tiempo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ejemplo que mencionó GO: Jamón — se compra por Kilo, se vende por Gramo
+  (eje de Unidad de Medida). Pero además podría recibirse embalado en "Bulto de 5kg" (eje de Nivel
+  de Empaque) antes de fraccionarlo. Es la pregunta más importante del documento — de la respuesta
+  depende toda la arquitectura de las secciones D/E/F.</div>
+  <ul class="opciones">
+    <li>(a) Sí, un producto puede tener AMBOS ejes activos a la vez (ej. Jamón: UdM=Gramo/Kilogramo
+      + Nivel de Empaque=Bulto por encima)</li>
+    <li>(b) No — cada producto usa UN SOLO eje: o es "medido" (kg/g/L/ml, sin niveles de empaque
+      encima) o es "contado" (Unidad/Caja/Pallet, sin conversión de unidad física)</li>
+    <li>(c) Depende del rubro del negocio — para la mayoría alcanza con uno solo, pero no lo
+      prohibimos técnicamente</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Cantidades fraccionarias/decimales <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el stock en Genesis360 es predominantemente entero (unidades). Un
+  producto "medido" (Jamón por gramo) necesariamente maneja decimales (0.250 kg) en formas de venta,
+  recepción y stock.</div>
+  <ul class="opciones">
+    <li>(a) Cualquier producto con Unidad de Medida física (peso/volumen/longitud) admite cantidades
+      decimales automáticamente en todo el sistema (venta, stock, recepción)</li>
+    <li>(b) Configurable por producto, independiente de la Unidad de Medida elegida</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. UNIDAD DE MEDIDA FÍSICA ============================ -->
+<h2>B. Unidad de Medida física (conversión universal)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    ¿Catálogo cerrado con conversión fija, o el tenant puede seguir creando unidades libres? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy en Config→Inventario→Unidades, cualquier tenant puede crear una
+  "Unidad de Medida" nueva con nombre y símbolo libres, sin ninguna relación de conversión con las
+  demás (ni siquiera con las predefinidas). Si el negocio real necesita que "1 Kilogramo = 1000
+  Gramos" SIEMPRE, ese dato no puede depender de que el tenant lo tipee bien.</div>
+  <ul class="opciones">
+    <li>(a) Catálogo de "familias de conversión" CERRADO y curado por Genesis360 (Peso:
+      mg/g/kg/tonelada · Volumen: ml/L · Longitud: mm/cm/m/km), con factores fijos hardcodeados,
+      NO editables por el tenant — el tenant solo elige cuáles usa, no inventa conversiones nuevas</li>
+    <li>(b) El tenant puede agregar unidades custom DENTRO de una familia existente (ej. "Onza"
+      dentro de Peso), definiendo su factor de conversión una sola vez (no por producto)</li>
+    <li>(c) 100% libre como hoy, sin familias ni conversión automática — cada tenant carga la
+      conversión a mano si la necesita</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    ¿Qué familias/unidades hacen falta para arrancar? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Peso: Miligramo, Gramo, Kilogramo, Tonelada</li>
+    <li>(b) Volumen: Mililitro, Litro</li>
+    <li>(c) Longitud: Milímetro, Centímetro, Metro, Kilómetro</li>
+    <li>(d) Superficie/Volumen de obra (m², m³) — rubros de construcción/textil</li>
+    <li>(e) Marcar todas las que apliquen / agregar otra: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    ¿Cómo elige un producto su Unidad de Medida? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) El producto elige una FAMILIA (ej. Peso) + una unidad de registro/compra dentro de ella
+      (ej. Kilogramo) — puede transaccionar en cualquier otra unidad de la misma familia (Gramo)</li>
+    <li>(b) El producto elige directamente UNA unidad final (ej. "Gramo"), sin concepto de familia
+      — si se necesita otra unidad de la misma familia más adelante, se resuelve manualmente</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. NIVEL DE EMPAQUE ============================ -->
+<h2>C. Nivel de Empaque (hoy llamado "Estructura")</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    ¿Se renombra "Estructura" a algo más claro? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">"Estructura" es el nombre técnico actual (tabla <code>producto_estructuras</code>,
+  pestaña homónima en Productos). Con la separación de conceptos, puede valer la pena un nombre que
+  se entienda sin explicación.</div>
+  <ul class="opciones">
+    <li>(a) Renombrar a "Presentaciones" (frontend, sin tocar nombres de tabla/columna en DB)</li>
+    <li>(b) Renombrar a "Niveles de Empaque" (frontend)</li>
+    <li>(c) Dejar "Estructura" — ya está instalado, no vale la pena el cambio de nombre</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    ¿El catálogo de nombres de Nivel de Empaque sigue siendo compartido (tabla), o pasa a texto libre por Estructura? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy los niveles de Estructura referencian <code>unidades_medida_id</code> (FK
+  a la misma tabla que se quiere separar). El factor SIEMPRE es específico de cada producto (una
+  Caja de huevos ≠ una Caja de tornillos) — a diferencia de la Unidad de Medida física, acá no hay
+  ninguna conversión universal que perder si se vuelve texto libre.</div>
+  <ul class="opciones">
+    <li>(a) Catálogo propio y separado por tenant ("Unidad", "Caja", "Docena", "Pallet", "Bulto",
+      editable en Config, igual mecánica que hoy pero en su propia tabla) — evita re-tipear el
+      mismo nombre en cada Estructura y mantiene un FK real para trazabilidad</li>
+    <li>(b) Texto libre por nivel dentro de cada Estructura, sin catálogo ni tabla compartida — más
+      simple, pero se pierde consistencia de nombres entre productos (¿"Caja" o "caja" o "CJ"?)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    ¿El nivel BASE de una Estructura tiene que ser siempre "Unidad" (conteo)? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Ligado directamente a A2/D1: si un producto medido (Jamón) tiene niveles de
+  empaque por encima de su Unidad de Medida (ej. "Bulto de 5kg"), el nivel base de esa Estructura
+  ya no sería "Unidad" sino "Kilogramo" o "Gramo".</div>
+  <ul class="opciones">
+    <li>(a) Sí, siempre "Unidad" — el eje de Empaque nunca arranca desde una Unidad de Medida física,
+      son dos cadenas totalmente separadas que no se tocan (más simple, pero ver D1/D2)</li>
+    <li>(b) No — el nivel base de una Estructura puede ser la Unidad de Medida física elegida para
+      ese producto (ej. Gramo), y los niveles de empaque se apilan por encima de ella con su factor
+      propio (esto habilita el caso Jamón completo)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C4</span><span class="pregunta-titulo">
+    📦 EJEMPLO TRABAJADO — mismo SKU (un solo código) que llega a veces en caja de 10 y a veces de 12 <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Caso real planteado por GO: un producto con <strong>un único código</strong> (no se
+  puede abrir en dos SKU — el cliente lo informa con el mismo código) que el proveedor manda a veces
+  en cajas de 10 y a veces de 12. <strong>Punto clave:</strong> si "caja" cambia de tamaño, entonces
+  NO es un factor fijo → no puede ser un nivel de la Estructura (un nivel de Estructura es siempre un
+  factor fijo, "1 caja = 12 unidades, siempre"). El stock real siempre se guarda en la unidad base
+  (unidades); "caja" pasa a ser una cantidad que se declara <strong>en el momento de la recepción</strong>,
+  no una propiedad del producto. Ej: entran 5 cajas de 12 → guarda 60 unidades; después 3 cajas de 10
+  → guarda 30 → total 90 unidades, un solo código, sin ambigüedad. La mig 293 ya guarda
+  <code>cantidad_uom</code>/<code>unidad_medida_id</code> en el movimiento ("cómo lo tecleó el
+  operador") sin tocar el stock canónico — el ajuste es permitir que la "cantidad por bulto" de esa
+  entrada sea un número LIBRE (10 o 12), no un factor congelado del producto.</div>
+  <div class="contexto"><strong>La pregunta que define cuánto construir:</strong> ¿hace falta RECORDAR,
+  después de recibido, cuánto entró como caja-de-10 vs caja-de-12?</div>
+  <ul class="opciones">
+    <li>(a) NO — una unidad es una unidad una vez en stock. La caja es solo un multiplicador de carga
+      en la recepción (campo libre "unidades por bulto" × "cantidad de bultos"), se traza en el
+      movimiento por si hay que auditarlo, y listo. Cubre la enorme mayoría de los negocios (lo
+      recomiendo para arrancar)</li>
+    <li>(b) SÍ, necesito saber que "este pallet/LPN vino en cajas de 10" (para devolver al proveedor
+      "una caja como vino", o si el picking se hace por caja física) → el pack se guarda en el LPN
+      (la línea de inventario), no en el producto — es lo que hace un WMS de packs mixtos, más pesado,
+      modo avanzado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C5</span><span class="pregunta-titulo">
+    ¿Cuántos niveles tiene una Estructura con este modelo nuevo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Aclaración importante que surge del ejemplo C4: la regla NO es "siempre un solo
+  nivel". La regla es <strong>máximo 1 Estructura por SKU, y cada nivel es un factor FIJO</strong>. La
+  Estructura tiene tantos niveles como escalones de empaque ESTABLES tenga el SKU. Un escalón cuyo
+  tamaño varía (la caja de 10/12) no es un nivel — se va a la recepción (C4).</div>
+  <ul class="opciones">
+    <li>(a) Depende del producto: puede ser 1 solo nivel (Unidad, ej. ropa vendida por unidad, o el
+      caso C4 donde arriba todo es variable) o varios niveles fijos (ej. Gaseosa: Unidad → Pack de 6
+      fijo → Pallet de 100 packs fijo) — la Estructura acompaña los escalones estables reales</li>
+    <li>(b) Siempre un solo nivel base (Unidad) — todo lo de arriba (caja/pallet) se declara siempre
+      en recepción, nunca se modela como nivel (más simple pero pierde el "vender por pack" con precio
+      derivado automático)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C6</span><span class="pregunta-titulo">
+    📦 EJEMPLO TRABAJADO — un SKU con DOS cajas (6 y 9) y DOS pallets (100 y 120) en la misma estructura: ¿cadena lineal o presentaciones paralelas? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Caso real dibujado por GO (EST 1): Unidad · Caja-6 · Caja-9 · Pallet-100 ·
+  Pallet-120, todo bajo el mismo código. <strong>Punto clave:</strong> Caja-6 y Caja-9 NO están en
+  cadena entre sí (una Caja-9 no está hecha de Cajas-6) — son <strong>hermanas</strong>, las dos
+  convierten directo a la unidad base (Caja-6 = 6 u, Caja-9 = 9 u). Igual los dos pallets. El modelo
+  ACTUAL es una <strong>cadena lineal</strong> (cada nivel = factor sobre el nivel anterior:
+  Unidad→Caja→Pallet, UNA de cada) — y por eso NO puede representar dos tamaños de caja en la misma
+  estructura. Para que el dibujo entre en UNA sola estructura hay que pasar el modelo a un
+  <strong>conjunto de presentaciones paralelas</strong>: cada presentación declara su propia
+  conversión a la base, y se permiten hermanas. No son productos separados (mismo código, stock
+  compartido) ni estructuras separadas (eso reintroduce la ambigüedad de "¿cuál caja?").
+  <strong>Ojo con los pallets:</strong> "Pallet-100" tiene que resolver a un número FIJO de unidades
+  base — hay que pinchar "100 de CUÁL caja" (100 × Caja-6 = 600 u, o 100 × Caja-9 = 900 u). Si un
+  mismo pallet puede armarse indistintamente con cualquier caja, entonces es variable → va a recepción
+  (C4), no es un nivel.</div>
+  <ul class="opciones">
+    <li>(a) Presentaciones paralelas: la Estructura es un conjunto de presentaciones, cada una con su
+      conversión directa a la base (Unidad=1, Caja-6=6, Caja-9=9, Pallet-A=600, Pallet-B=1080…),
+      permitiendo hermanas. Resuelve el dibujo en UNA estructura, sin ambigüedad (cada presentación
+      tiene identidad propia). Es un superconjunto de la cadena lineal (recomendado)</li>
+    <li>(b) Cadena lineal única (como hoy): un solo camino Unidad→Caja→Pallet; si hay dos tamaños de
+      caja NO entran en la misma estructura → habría que elegir uno, o sí abrir productos separados</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. COEXISTENCIA DE AMBOS EJES ============================ -->
+<h2>D. Si un producto usa ambos ejes a la vez (solo si A2 = sí/depende)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    Caso completo Jamón — ¿así se modela? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Jamón: se compra por Kilo, se vende por Gramo, y se recibe embalado en
+  "Bulto de 5kg" del proveedor.</div>
+  <ul class="opciones">
+    <li>(a) Una sola cadena: Gramo (base física, factor fijo 1) → Kilogramo (factor fijo 1000,
+      universal) → Bulto (factor 5000, ESPECÍFICO de este producto/proveedor) — mezcla ambos ejes en
+      una única lista ordenada, igual mecánica de hoy pero con 2 tipos de factor (fijo vs. libre)</li>
+    <li>(b) Dos cadenas separadas que nunca se mezclan: Unidad de Medida = Gramo↔Kilogramo (conversión
+      fija, para vender/pesar) + Nivel de Empaque = Bulto (factor propio, solo para
+      recepción/logística, "1 Bulto = 5 kg" declarado aparte, sin aparecer en la misma lista que
+      Gramo/Kilogramo)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Si son dos cadenas separadas (D1=b), ¿puede un Nivel de Empaque referirse a una cantidad de la Unidad de Medida física (no de "Unidades")? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Para que "1 Bulto = 5 kg" tenga sentido como Nivel de Empaque, el factor
+  tendría que poder expresarse en Kilogramos, no solo en "cantidad de Unidades" como hoy.</div>
+  <ul class="opciones">
+    <li>(a) Sí — un Nivel de Empaque declara contra QUÉ se define (Unidades, o la Unidad de Medida
+      física del producto si tiene una)</li>
+    <li>(b) No — si el producto usa Unidad de Medida física, no puede tener Niveles de Empaque
+      encima (vuelve a A2=no en la práctica, para simplificar)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. STOCK E INVENTARIO ============================ -->
+<h2>E. Impacto en Stock e Inventario</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Confirmar el comportamiento esperado: la Unidad de Medida decide en qué se ve/ingresa/despacha por default <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Palabras textuales de GO: <em>"si en unidad de medida le pones unidades, el
+  inventario lo ves todo en unidades, se recibe en unidades y se despacha en unidades; si lo cambias
+  a caja, lo mismo, se ve, se ingresa y se despacha en cajas"</em>. Hoy esto YA funciona así para los
+  Niveles de Empaque (selector "Cargar en:/Rebajar en:", Fase 2 mig 293) — la pregunta es si la
+  Unidad de Medida física debe tener el mismo comportamiento de punta a punta.</div>
+  <ul class="opciones">
+    <li>(a) Sí — la Unidad de Medida elegida es el default de visualización/ingreso/despacho, pero el
+      operador puede elegir otra unidad compatible al momento de la transacción puntual (igual
+      mecánica que ya existe para Niveles de Empaque)</li>
+    <li>(b) La Unidad de Medida elegida es FIJA para todo el sistema — no se puede transaccionar en
+      otra unidad de la misma familia sin cambiar la configuración del producto primero</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    ¿En qué unidad se guarda el stock "de verdad" en la base de datos? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>inventario_lineas.cantidad</code>/<code>productos.stock_actual</code>
+  siempre se guardan en la unidad BASE (nivel 1) de la Estructura. Con Unidad de Medida física, hay
+  que decidir si el stock se guarda siempre en la unidad MÁS CHICA de la familia (ej. siempre en
+  Gramos, nunca en Kilogramos) o en la que el producto declaró como base.</div>
+  <ul class="opciones">
+    <li>(a) Siempre en la unidad más chica/atómica de la familia elegida (ej. siempre Gramo, nunca
+      Kilogramo) — evita error de redondeo acumulado, la conversión hacia arriba es solo de
+      visualización</li>
+    <li>(b) En la unidad que el producto declaró como "de registro" (ej. si el producto se configuró
+      en Kilogramo, el stock se guarda en Kilogramo con decimales)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Cambiar la Unidad de Medida de un producto QUE YA TIENE STOCK <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">🛑 Pregunta de integridad de inventario (Regla de Oro #0) — no puede alterar
+  la cantidad REAL de stock existente ni en un centavo, sin importar qué se elija.</div>
+  <ul class="opciones">
+    <li>(a) Se reinterpreta automáticamente y de forma exacta (1 kg pasa a mostrarse como 1000 g,
+      matemáticamente sin pérdida, porque la conversión es fija) — sin acción manual</li>
+    <li>(b) Se bloquea el cambio de Unidad de Medida si el producto ya tiene stock ≠ 0 — hay que
+      llevarlo a 0 primero (mismo criterio que otros cambios estructurales sensibles del sistema)</li>
+    <li>(c) Se permite, pero pide confirmación explícita mostrando el antes/después exacto</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Trazabilidad en movimientos de stock <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy <code>inventario_lineas</code>/<code>movimientos_stock</code> ya tienen
+  <code>unidad_medida_id</code> + <code>cantidad_uom</code> (mig 293) para trazar en qué unidad
+  tecleó el operador cada ingreso/rebaje. Si se separan los ejes, hay que confirmar que esto siga
+  funcionando igual para Unidad de Medida física.</div>
+  <ul class="opciones">
+    <li>(a) Sí, mismo mecanismo — <code>unidad_medida_id</code> apunta ahora a la unidad física
+      elegida (Gramo/Kilogramo) en vez de (o además de) un nivel de empaque</li>
+    <li>(b) Se necesita un campo separado para no mezclar en la misma columna "en qué nivel de
+      empaque" con "en qué unidad física" se hizo el movimiento</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. PRECIOS ============================ -->
+<h2>F. Impacto en Precios ("Estos precios corresponden a")</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    ¿El ancla de precio elige entre los DOS ejes, o cada eje tiene su propio precio? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy "Estos precios corresponden a" solo lista niveles de Estructura
+  (Unidad/Caja/Pallet). Si separamos los ejes, un producto tipo Jamón podría necesitar precio "por
+  Kilo" Y precio "por Bulto" simultáneamente.</div>
+  <ul class="opciones">
+    <li>(a) Un único ancla que puede apuntar a CUALQUIER unidad de cualquiera de los dos ejes (ej.
+      "Kilogramo" o "Bulto" en la misma lista desplegable) — el resto de los precios (de ambos ejes)
+      se calculan proporcionales a esa única ancla</li>
+    <li>(b) Dos anclas independientes, una por eje — precio ancla de Unidad de Medida (ej. por Kilo)
+      y precio ancla de Nivel de Empaque (ej. por Bulto), sin relación matemática obligatoria entre
+      ambas (el negocio puede cargar cualquier margen en el Bulto sin que tenga que coincidir
+      exactamente con 5× el precio del Kilo)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Precio proporcional cruzando ejes (solo si F1 = a) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Se calcula igual que hoy (proporcional por <code>unidades_base</code> acumulado), sin
+      importar si el nivel es de un eje o del otro — matemáticamente da igual mientras la cadena de
+      factores sea correcta de punta a punta</li>
+    <li>(b) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    🐛 El ancla de precio se guarda por POSICIÓN, no por identidad de unidad — ¿cómo lo arreglamos? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Bug real confirmado en la auditoría (ver recuadro del resumen ejecutivo): hoy
+  <code>productos.nivel_precio_orden</code> guarda el ORDEN del nivel anclado (1, 2, 3…), no la unidad.
+  Si alguien reordena los niveles de la Estructura, o cambia cuál Estructura es la default, el ancla
+  sigue apuntando a "la posición N" — que ahora puede ser otra unidad distinta de la que el usuario
+  eligió — <strong>sin ningún aviso</strong>, y recalcula mal todos los precios proporcionales. Es una
+  decisión de negocio (no solo técnica) porque define cuánto "recuerda" el sistema tu intención.</div>
+  <ul class="opciones">
+    <li>(a) Anclar por IDENTIDAD de unidad (no por posición): el precio queda pegado a "Kilogramo"/
+      "Caja", pase lo que pase con el orden — reordenar niveles nunca cambia a qué corresponde el
+      precio (el fix más robusto, es el que recomiendo)</li>
+    <li>(b) Seguir anclando por posición, pero AVISAR/pedir confirmación al reordenar o cambiar la
+      default si eso movería el ancla ("ojo: el precio va a pasar a corresponder a Pallet en vez de
+      Caja, ¿seguís?")</li>
+    <li>(c) Bloquear el reordenamiento/cambio de default mientras haya un precio anclado, hasta que
+      el usuario re-elija explícitamente el ancla</li>
+    <li>(d) Es un bug menor, arreglarlo por separado (no forma parte de este rediseño) — se corrige
+      solo con un aviso mínimo y listo</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. MIGRACIÓN DE DATOS EXISTENTES ============================ -->
+<h2>G. Migración y compatibilidad con lo ya construido</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    La tabla <code>unidades_medida</code> HOY ya mezcla ambos conceptos y tiene Estructuras reales apuntándole <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Separar en 2 tablas reales exige backfill + reescribir FKs de
+  <code>producto_estructura_niveles</code>/<code>inventario_lineas</code>/<code>movimientos_stock</code>,
+  todas ya en uso (Regla #0 — riesgo de romper algo que ya funciona en DEV/PROD).</div>
+  <ul class="opciones">
+    <li>(a) Tabla nueva para Unidad de Medida física + backfill de las filas reales (Kilogramo,
+      Gramo, Litro, Metro) hacia ahí; <code>unidades_medida</code> queda solo para Niveles de Empaque
+      (Unidad, Caja, Pallet quedan donde están)</li>
+    <li>(b) Se agrega una sola columna <code>tipo</code> ('medida' | 'empaque') a la tabla actual,
+      sin mover filas ni romper ningún FK existente — más simple y rápido, separa por filtro en vez
+      de por tabla</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Productos que HOY tienen <code>unidad_medida</code> = texto libre sin Estructura real <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Quedan como están hasta que alguien los revise/migre a mano, sin urgencia</li>
+    <li>(b) Se corre un script de "mejor esfuerzo" que intenta mapear el texto libre a la unidad real
+      más parecida (ej. "kg" → Kilogramo), dejando un reporte de los que no matchearon para revisión
+      manual</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. UI DE CONFIGURACIÓN ============================ -->
+<h2>H. Configuración → Inventario → Unidades</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    ¿Se separa la pantalla en dos secciones/tabs? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Dos tabs separados: "Unidades de Medida" (kg/g/L/ml/m, con su factor de conversión fijo
+      visible) y "Niveles de Empaque" (Caja/Pallet/Docena, sin factor — el factor se carga por
+      producto en la pestaña Presentaciones/Estructura)</li>
+    <li>(b) Misma pantalla, pero con una columna/badge visual "Tipo" que distinga cada fila</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    El campo legacy "Unidad de medida" de la ficha de producto (Card "Stock e Inventario") <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy es un <code>&lt;select&gt;</code> de texto libre hardcodeado, sin
+  relación real con nada. Con el nuevo modelo, este campo pasaría a ser la Unidad de Medida física
+  real del producto (o queda vacío si el producto es "por Unidad"/contado).</div>
+  <ul class="opciones">
+    <li>(a) Se reemplaza por un selector real contra la nueva tabla/tipo "Unidad de Medida física"
+      (ya no hardcode, ya no texto libre)</li>
+    <li>(b) Se elimina directamente de la ficha — la Unidad de Medida física se define únicamente
+      desde la pestaña Presentaciones/Estructura, no hay campo suelto en "Stock e Inventario"</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. PRIORIDAD ============================ -->
+<h2>I. Top 3 / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    ¿Qué decisiones hay que cerrar primero para poder empezar a codear? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto se puede resolver en fases posteriores.</div>
+  <ul class="opciones">
+    <li>(   ) A2 — ¿un producto puede tener ambos ejes a la vez? (define toda la arquitectura)</li>
+    <li>(   ) B1 — catálogo cerrado con conversión fija vs. libre</li>
+    <li>(   ) C3/D1 — si el eje de Empaque puede arrancar desde una Unidad de Medida física</li>
+    <li>(   ) E2/E3 — en qué unidad se guarda el stock real + qué pasa al cambiarla con stock existente</li>
+    <li>(   ) F1 — ancla de precio única vs. una por eje</li>
+    <li>(   ) F3 — 🐛 cómo arreglar el ancla que se guarda por posición (por identidad / avisar / bloquear)</li>
+    <li>(   ) G1 — cómo migrar la tabla <code>unidades_medida</code> actual sin romper nada</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    Comentarios libres / casos de uso reales que se nos hayan escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio — Unidad de Medida vs. Nivel de Empaque · 2026-07-23<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar las fases de implementación.
+</div>
+
+</body>
+</html>

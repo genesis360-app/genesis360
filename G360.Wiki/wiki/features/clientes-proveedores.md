@@ -255,6 +255,7 @@ Botón CreditCard por proveedor → modal con:
 ## Links relacionados
 
 - [[wiki/features/ventas-pos]]
+- [[wiki/features/pedidos]] — módulo NUEVO (2026-07-22): admite cliente existente o "nombre suelto" sin alta formal, igual criterio que venta directa
 - [[wiki/features/facturacion-afip]]
 - [[wiki/features/envios]]
 - [[wiki/features/gastos]]

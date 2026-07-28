@@ -15,7 +15,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, sembrarPresentaciones } from './helpers/fixtures'
 
 test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => {
   test('combo "3×10% off" (UoM base) aplica suelto, se desactiva al vender por Caja', async ({ page, request }) => {
@@ -23,8 +23,9 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     const sufijo = Date.now()
     const nombreProducto = `E2E ComboUoM ${sufijo}`
     const PRECIO_UNIDAD = 100
-    const PRECIO_CAJA = 1080
     const FACTOR_CAJA = 12
+    // Empaque sin precio propio (mig 307): la Caja cobra precio_base × factor = 100×12 = 1200.
+    const PRECIO_CAJA = FACTOR_CAJA * PRECIO_UNIDAD
 
     await goto(page, '/dashboard')
     await waitForApp(page)
@@ -57,20 +58,9 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     const [udmUnidad] = (await udmUnidadRes.json()) as Array<{ id: string }>
     const udmCajaRes = await request.get(`${SUPABASE_URL}/rest/v1/unidades_medida?nombre=eq.Caja&select=id`, { headers })
     const [udmCaja] = (await udmCajaRes.json()) as Array<{ id: string }>
-    const estrId = crypto.randomUUID()
-    await request.post(`${SUPABASE_URL}/rest/v1/producto_estructuras`, {
-      headers, data: { id: estrId, tenant_id: prod.tenant_id, producto_id: prod.id, nombre: 'Combo UoM E2E', is_default: true },
-    })
-    await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_estructura_guardar_niveles`, {
-      headers,
-      data: {
-        p_estructura_id: estrId,
-        p_niveles: [
-          { unidad_medida_id: udmUnidad.id, factor: 1 },
-          { unidad_medida_id: udmCaja.id, factor: FACTOR_CAJA, precio_venta: PRECIO_CAJA, precio_costo: 650 },
-        ],
-      },
-    })
+    await sembrarPresentaciones(request, token, prod.id, 'unidad', [
+      { etiqueta: `Caja-${FACTOR_CAJA}`, factor_base: FACTOR_CAJA, nombre_empaque_id: udmCaja.id },
+    ])
 
     // 3) Combo "3×10% off" SOLO para la UoM base (unidad_medida_id NULL — el default de todos
     //    los combos existentes, este fix no les cambia el comportamiento)
@@ -196,6 +186,6 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     expect(item.unidad_medida_id, '[104] vendida por Caja').toBe(udmCaja.id)
     expect(item.cantidad, '[104] 1 Caja = 12 unidades base').toBe(12)
     expect(item.descuento, '[104] sin descuento de combo (el combo es solo de la UoM base)').toBe(0)
-    expect(Number(item.subtotal), '[104] subtotal = precio de Caja intacto, $1.080').toBeCloseTo(PRECIO_CAJA, 0)
+    expect(Number(item.subtotal), '[104] subtotal = precio de Caja (base × factor) = $1.200').toBeCloseTo(PRECIO_CAJA, 0)
   })
 })

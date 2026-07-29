@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-07-29T21:16:28.930Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260729180000 · 150 tablas
+-- Generado 2026-07-29T22:41:28.613Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260729214841 · 150 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -6737,12 +6737,11 @@ BEGIN
     (NEW.id, 'Disponible', '#22c55e', false, true,  true,  true),
     (NEW.id, 'Bloqueado',  '#ef4444', false, false, false, false);
 
+  -- 🧹 mig 327: solo nombres de EMPAQUE real (Unidad = base sin envase, Caja, Pallet). Kilogramo/
+  -- Gramo/Litro/Metro eran unidades FÍSICAS coladas acá antes del rediseño (mig 148) — hoy viven
+  -- en unidades_medida_fisicas (mig 303, seed paralelo trg_seed_umf_new_tenant).
   INSERT INTO unidades_medida (tenant_id, nombre, simbolo, activo, predefinida) VALUES
     (NEW.id, 'Unidad',     'u',      true, true),
-    (NEW.id, 'Kilogramo',  'kg',     true, true),
-    (NEW.id, 'Gramo',      'g',      true, true),
-    (NEW.id, 'Litro',      'L',      true, true),
-    (NEW.id, 'Metro',      'm',      true, true),
     (NEW.id, 'Caja',       'caja',   true, true),
     (NEW.id, 'Pallet',     'pallet', true, true)
   ON CONFLICT (tenant_id, nombre) DO NOTHING;

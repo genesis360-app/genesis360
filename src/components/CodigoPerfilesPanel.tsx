@@ -4,6 +4,7 @@ import { ScanBarcode, Plus, Trash2, Edit2, X, Save, Power } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { AIS_SOPORTADOS } from '@/lib/gs1'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 interface PerfilRow {
@@ -36,6 +37,7 @@ const FORM_VACIO: FormState = {
 export function CodigoPerfilesPanel() {
   const { tenant } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const [editId, setEditId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState<typeof FORM_VACIO>(FORM_VACIO)
@@ -235,7 +237,7 @@ export function CodigoPerfilesPanel() {
                 <Power size={15} />
               </button>
               <button onClick={() => startEdit(p)} className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-accent/10 rounded-lg"><Edit2 size={15} /></button>
-              <button onClick={() => { if (confirm('¿Eliminar este perfil?')) borrar.mutate(p.id) }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 size={15} /></button>
+              <button onClick={async () => { if (await confirmar('¿Eliminar este perfil?', { danger: true })) borrar.mutate(p.id) }} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"><Trash2 size={15} /></button>
             </div>
           ))}
         </div>

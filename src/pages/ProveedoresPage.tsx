@@ -32,6 +32,7 @@ import {
   Upload, Download, DollarSign, AlertCircle, TrendingDown, FileDown, RotateCcw,
   MessageCircle, Repeat, BarChart3,
 } from 'lucide-react'
+import { useConfirm } from '@/hooks/useConfirm'
 
 type Tab = 'proveedores' | 'servicios' | 'ordenes'
 type EstadoOC = 'borrador' | 'enviada' | 'confirmada' | 'cancelada'
@@ -129,6 +130,7 @@ export default function ProveedoresPage() {
   const { avanzado: modoAvanzado } = useModoOperacion()
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   // CO1 — gobierno de OC: capacidad de creación por rol + config de aprobación por umbral
   const capOC = capacidadCrearOC(user?.rol)
   const ocAprobacionCfg = { activa: (tenant as any)?.oc_aprobacion_activa, umbral: (tenant as any)?.oc_aprobacion_umbral }
@@ -1589,7 +1591,7 @@ export default function ProveedoresPage() {
                       <button onClick={() => openEditProv(p)} className="p-1.5 rounded text-muted hover:text-primary" title="Editar">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button onClick={() => { if (confirm('¿Eliminar este proveedor?')) deleteProveedor.mutate(p.id) }}
+                      <button onClick={async () => { if (await confirmar('¿Eliminar este proveedor?', { danger: true })) deleteProveedor.mutate(p.id) }}
                         className="p-1.5 rounded text-muted hover:text-red-500" title="Eliminar">
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -1676,7 +1678,7 @@ export default function ProveedoresPage() {
                               <div className="flex items-center gap-3 text-xs text-muted">
                                 {pp.precio_compra != null && <span className="text-green-600 dark:text-green-400 font-medium">${Number(pp.precio_compra).toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>}
                                 {pp.cantidad_minima > 1 && <span>Mín. {pp.cantidad_minima}</span>}
-                                <button onClick={() => { if (confirm('¿Desvincular?')) deleteProdProv.mutate(pp.id) }}
+                                <button onClick={async () => { if (await confirmar('¿Desvincular?', { danger: true })) deleteProdProv.mutate(pp.id) }}
                                   className="text-muted hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
                               </div>
                             </div>
@@ -1801,7 +1803,7 @@ export default function ProveedoresPage() {
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <button onClick={() => { setShowGenerales(true); setShowServItemForm(''); setEditServItemId(si.id); setServItemForm({ nombre: si.nombre ?? '', detalle: si.detalle ?? '', costo: si.costo != null ? String(si.costo) : '', forma_pago: si.forma_pago ?? '', hace_factura: !!si.hace_factura, notas: si.notas ?? '', recurrente: !!si.recurrente, frecuencia: si.frecuencia ?? 'mensual', proximo_vencimiento: si.proximo_vencimiento ?? '' }) }}
                           className="text-muted hover:text-accent-text"><Pencil className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => { if (confirm('¿Eliminar este servicio?')) deleteServItem.mutate(si.id) }}
+                        <button onClick={async () => { if (await confirmar('¿Eliminar este servicio?', { danger: true })) deleteServItem.mutate(si.id) }}
                           className="text-muted hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
@@ -1898,7 +1900,7 @@ export default function ProveedoresPage() {
                       <button onClick={() => openEditProv(s)} className="p-1.5 rounded text-muted hover:text-primary" title="Editar">
                         <Pencil className="w-4 h-4" />
                       </button>
-                      <button onClick={() => { if (confirm('¿Eliminar?')) deleteProveedor.mutate(s.id) }}
+                      <button onClick={async () => { if (await confirmar('¿Eliminar?', { danger: true })) deleteProveedor.mutate(s.id) }}
                         className="p-1.5 rounded text-muted hover:text-red-500"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
@@ -1996,7 +1998,7 @@ export default function ProveedoresPage() {
                                 <div className="flex items-center gap-1 ml-2 flex-shrink-0">
                                   <button onClick={() => { setShowServItemForm(s.id); setEditServItemId(si.id); setServItemForm({ nombre: si.nombre ?? '', detalle: si.detalle ?? '', costo: si.costo != null ? String(si.costo) : '', forma_pago: si.forma_pago ?? '', hace_factura: !!si.hace_factura, notas: si.notas ?? '', recurrente: !!si.recurrente, frecuencia: si.frecuencia ?? 'mensual', proximo_vencimiento: si.proximo_vencimiento ?? '' }) }}
                                     className="text-muted hover:text-accent-text"><Pencil className="w-3.5 h-3.5" /></button>
-                                  <button onClick={() => { if (confirm('¿Eliminar este servicio?')) deleteServItem.mutate(si.id) }}
+                                  <button onClick={async () => { if (await confirmar('¿Eliminar este servicio?', { danger: true })) deleteServItem.mutate(si.id) }}
                                     className="text-muted hover:text-red-500"><X className="w-3.5 h-3.5" /></button>
                                 </div>
                               </div>
@@ -2111,7 +2113,7 @@ export default function ProveedoresPage() {
                                         </button>
                                       )}
                                       {puedeAccionar && (
-                                        <button onClick={() => { if (confirm('¿Eliminar presupuesto?')) deletePresupuesto.mutate({ id: ps.id, archivo_url: ps.archivo_url }) }}
+                                        <button onClick={async () => { if (await confirmar('¿Eliminar presupuesto?', { danger: true })) deletePresupuesto.mutate({ id: ps.id, archivo_url: ps.archivo_url }) }}
                                           className="p-1 text-muted hover:text-red-500" title="Eliminar">
                                           <Trash2 className="w-3.5 h-3.5" />
                                         </button>
@@ -2122,13 +2124,13 @@ export default function ProveedoresPage() {
                                   {puedeAccionar && (
                                     <div className="flex gap-2 pt-1 border-t border-border-ds">
                                       <button
-                                        onClick={() => { if (confirm(`¿Aprobar y crear gasto de $${Number(ps.monto ?? 0).toLocaleString('es-AR')}?`)) aprobarPresupuesto.mutate(ps) }}
+                                        onClick={async () => { if (await confirmar(`¿Aprobar y crear gasto de $${Number(ps.monto ?? 0).toLocaleString('es-AR')}?`)) aprobarPresupuesto.mutate(ps) }}
                                         disabled={aprobarPresupuesto.isPending}
                                         className="flex-1 flex items-center justify-center gap-1 py-1.5 text-xs bg-green-500 hover:bg-green-600 text-white rounded-lg disabled:opacity-50 transition-colors">
                                         ✓ Aprobar → Crear gasto
                                       </button>
                                       <button
-                                        onClick={() => { if (confirm('¿Rechazar este presupuesto?')) rechazarPresupuesto.mutate(ps.id) }}
+                                        onClick={async () => { if (await confirmar('¿Rechazar este presupuesto?', { danger: true })) rechazarPresupuesto.mutate(ps.id) }}
                                         disabled={rechazarPresupuesto.isPending}
                                         className="flex items-center justify-center gap-1 px-3 py-1.5 text-xs border border-red-200 dark:border-red-800 text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors">
                                         ✗ Rechazar
@@ -2301,7 +2303,7 @@ export default function ProveedoresPage() {
                         )}
                         {(oc.estado === 'borrador' || oc.estado === 'enviada' || oc.estado === 'confirmada') && (
                           <button
-                            onClick={() => { if (confirm('¿Cancelar esta OC?')) cambiarEstadoOC.mutate({ id: oc.id, estado: 'cancelada' }) }}
+                            onClick={async () => { if (await confirmar('¿Cancelar esta OC?', { danger: true })) cambiarEstadoOC.mutate({ id: oc.id, estado: 'cancelada' }) }}
                             className="p-1.5 rounded text-muted hover:text-red-500"
                             title="Cancelar OC"
                           >
@@ -2312,7 +2314,7 @@ export default function ProveedoresPage() {
                         {/* Eliminar — solo borrador */}
                         {oc.estado === 'borrador' && (
                           <button
-                            onClick={() => { if (confirm('¿Eliminar esta OC?')) deleteOC.mutate(oc.id) }}
+                            onClick={async () => { if (await confirmar('¿Eliminar esta OC?', { danger: true })) deleteOC.mutate(oc.id) }}
                             className="p-1.5 rounded text-muted hover:text-red-500"
                             title="Eliminar"
                           >
@@ -3211,7 +3213,7 @@ export default function ProveedoresPage() {
                 })()}
                 {(showOcDetail.estado === 'borrador' || showOcDetail.estado === 'enviada' || showOcDetail.estado === 'confirmada') && (
                   <button
-                    onClick={() => { if (confirm('¿Cancelar esta OC?')) cambiarEstadoOC.mutate({ id: showOcDetail.id, estado: 'cancelada' }) }}
+                    onClick={async () => { if (await confirmar('¿Cancelar esta OC?', { danger: true })) cambiarEstadoOC.mutate({ id: showOcDetail.id, estado: 'cancelada' }) }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
                   >
                     <XCircle className="w-4 h-4" /> Cancelar OC

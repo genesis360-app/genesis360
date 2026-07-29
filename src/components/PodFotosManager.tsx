@@ -4,6 +4,7 @@ import { Camera, Trash2, Loader2, Image as ImageIcon } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useConfirm } from '@/hooks/useConfirm'
 
 interface Props {
   envioId: string
@@ -27,6 +28,7 @@ interface PodFoto {
 export default function PodFotosManager({ envioId, onPrincipalChange, readOnly = false, onCountChange }: Props) {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -95,7 +97,7 @@ export default function PodFotosManager({ envioId, onPrincipalChange, readOnly =
   }
 
   async function eliminarFoto(f: PodFoto) {
-    if (!confirm('¿Eliminar esta foto del POD?')) return
+    if (!(await confirmar('¿Eliminar esta foto del POD?', { danger: true }))) return
     setDeletingId(f.id)
     try {
       if (f.storage_path) {

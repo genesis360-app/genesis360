@@ -18,6 +18,7 @@ import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { logActividad } from '@/lib/actividadLog'
 import { esDecimal } from '@/lib/ventasValidation'
+import { useConfirm } from '@/hooks/useConfirm'
 import {
   puedeCrearTraslado, puedeConfirmarRecepcion, disponibleLinea,
   validarCantidadTraslado, validarRecepcion, estadoDesdeRecepcion, totalFaltante,
@@ -41,6 +42,7 @@ export default function TrasladosPanel() {
   const { tenant, user } = useAuthStore()
   const { sucursalId, sucursales, puedeVerTodas } = useSucursalFilter()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const rol = user?.rol as any
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
 
@@ -521,7 +523,7 @@ export default function TrasladosPanel() {
                 )}
                 {t.estado === 'en_transito' && puedeCrearTraslado(rol) && (
                   <button
-                    onClick={() => { if (confirm(`¿Cancelar el traslado #${t.numero}? El stock vuelve a ${sucursalNombre(t.sucursal_origen_id)}.`)) cancelar.mutate(t) }}
+                    onClick={async () => { if (await confirmar(`¿Cancelar el traslado #${t.numero}? El stock vuelve a ${sucursalNombre(t.sucursal_origen_id)}.`, { danger: true })) cancelar.mutate(t) }}
                     disabled={cancelar.isPending}
                     className="text-xs text-red-500 hover:text-red-600 px-2 py-1.5 disabled:opacity-50">
                     Cancelar

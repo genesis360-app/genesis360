@@ -48,6 +48,7 @@ import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
 import { filtrarPedidosMostrador, resumenPagoTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales' | 'pedidos'
@@ -222,6 +223,7 @@ function BadgeCantidadCarrito({ cantidad }: { cantidad: number }) {
 export default function VentasPage() {
   const { tenant, user, initialized: authInitialized } = useAuthStore()
   const { avanzado: modoAvanzado } = useModoOperacion()
+  const confirmar = useConfirm()
   // Modo básico no usa ubicaciones: el stock se surte/despacha aunque `ubicacion_id` sea NULL
   // (el ingreso de stock en básico no asigna ubicación). En avanzado (WMS) solo se surte stock
   // ubicado. Aplicar a TODAS las queries de inventario_lineas que buscan stock para vender/
@@ -2275,7 +2277,7 @@ export default function VentasPage() {
     qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
   }
   async function eliminarRecurrente(rec: any) {
-    if (!confirm(`¿Eliminar la plantilla "${rec.nombre}"?`)) return
+    if (!(await confirmar(`¿Eliminar la plantilla "${rec.nombre}"?`, { danger: true }))) return
     await supabase.from('ventas_recurrentes').delete().eq('id', rec.id)
     qc.invalidateQueries({ queryKey: ['ventas-recurrentes', tenant?.id] })
   }
@@ -2942,7 +2944,7 @@ export default function VentasPage() {
         if (enf.supera) {
           const msg = `Esta venta deja la cuenta corriente en ${fmtCC(est.deuda_total + montoCC)}, supera el límite de ${fmtCC(limite as number)}.`
           if (enf.accion === 'bloquear') { toast.error(msg + ' Operación bloqueada.'); return }
-          if (enf.accion === 'avisar' && !confirm(msg + ' ¿Continuar igual?')) return
+          if (enf.accion === 'avisar' && !(await confirmar(msg + ' ¿Continuar igual?'))) return
         }
       }
     }
@@ -3514,7 +3516,7 @@ export default function VentasPage() {
 
   const modificarReserva = async () => {
     if (!ventaDetalle) return
-    if (!confirm('¿Modificar esta reserva? Se cancelará la reserva actual y los productos volverán al carrito para que crees una nueva.')) return
+    if (!(await confirmar('¿Modificar esta reserva? Se cancelará la reserva actual y los productos volverán al carrito para que crees una nueva.'))) return
     // Cancelar la reserva actual (libera stock reservado) y registrar motivo
     await cambiarEstado.mutateAsync({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' }).catch(() => null)
     const notaAnterior = ventaDetalle.notas ? `${ventaDetalle.notas} | ` : ''
@@ -6577,7 +6579,7 @@ export default function VentasPage() {
                 </button>
               )}
               {['pendiente', 'reservada'].includes(ventaDetalle.estado) && (
-                <button onClick={() => {
+                <button onClick={async () => {
                   const montoCobrado = ventaDetalle.monto_pagado ?? 0
                   // E3 — toda cancelación de reserva pasa por el modal (motivo + obs).
                   // E2/E4 — con seña: requiere DUEÑO/SUPERVISOR/ADMIN + penalidad/destino.
@@ -6593,7 +6595,7 @@ export default function VentasPage() {
                     return
                   }
                   // Presupuesto (pendiente): cancelación simple
-                  if (!confirm('¿Cancelar este presupuesto?')) return
+                  if (!(await confirmar('¿Cancelar este presupuesto?', { danger: true }))) return
                   cambiarEstado.mutate({ ventaId: ventaDetalle.id, nuevoEstado: 'cancelada' })
                 }}
                   disabled={cambiarEstado.isPending}
@@ -6608,7 +6610,7 @@ export default function VentasPage() {
                   </div>
                 ) : (
                   <button onClick={async () => {
-                    if (!confirm('¿Eliminar definitivamente esta venta? Esta acción no se puede deshacer.')) return
+                    if (!(await confirmar('¿Eliminar definitivamente esta venta? Esta acción no se puede deshacer.', { danger: true }))) return
                     const { error } = await supabase.from('ventas').delete().eq('id', ventaDetalle.id)
                     if (error) {
                       const msg = (error.message ?? '').toLowerCase()

@@ -4,6 +4,7 @@ import { Plus, Pencil, Trash2, Check, X, Star, StarOff, Layers } from 'lucide-re
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { Toggle } from '@/components/Toggle'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 interface Estado { id: string; nombre: string; color: string }
@@ -20,6 +21,7 @@ interface Grupo {
 export default function GruposEstadosPage() {
   const { tenant } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const [editId, setEditId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ nombre: '', descripcion: '', es_default: false, estados: [] as string[] })
@@ -289,7 +291,7 @@ export default function GruposEstadosPage() {
                       className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                       <Pencil size={15} />
                     </button>
-                    <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteMutation.mutate(grupo.id) }}
+                    <button onClick={async () => { if (await confirmar('¿Eliminar este grupo?', { danger: true })) deleteMutation.mutate(grupo.id) }}
                       className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors">
                       <Trash2 size={15} />
                     </button>

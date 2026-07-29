@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom'
 import { Loader2, AlertTriangle, Clock, LogIn, LogOut, CheckCircle2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { BRAND } from '@/config/brand'
+import toast from 'react-hot-toast'
 
 // RH6 — Fichado por QR público (kiosco). El empleado abre /fichar/:token, toca su nombre
 // y queda registrada la entrada/salida (origen 'qr'). Sin auth: RPCs SECURITY DEFINER
@@ -40,7 +41,7 @@ export default function FicharPage() {
     const { data, error } = await supabase.rpc('fichar_qr', { p_token: token, p_empleado_id: emp.id })
     setFichando(null)
     const res = data as any
-    if (error || !res?.ok) { alert(res?.error ?? 'No se pudo registrar el fichaje'); return }
+    if (error || !res?.ok) { toast.error(res?.error ?? 'No se pudo registrar el fichaje'); return }
     setUltimo({
       nombre: [emp.nombre, emp.apellido].filter(Boolean).join(' '),
       tipo: res.tipo,

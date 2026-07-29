@@ -34,6 +34,7 @@ import {
 } from '@/lib/cajaArqueo'
 import CajaReportes from '@/components/CajaReportes'
 import CajaCobranzasCC from '@/components/CajaCobranzasCC'
+import { useConfirm } from '@/hooks/useConfirm'
 
 const MONEDAS_LISTA = MONEDAS_DISPONIBLES.map(m => m.code)
 
@@ -57,6 +58,7 @@ function getTipoDisplay(tipo: string, concepto: string): string {
 export default function CajaPage() {
   const navigate = useNavigate()
   const { tenant, user, sucursales, setUser } = useAuthStore()
+  const confirmar = useConfirm()
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
   const { avanzado: modoAvanzado } = useModoOperacion()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
@@ -2800,7 +2802,7 @@ export default function CajaPage() {
                         title={tieneSessionActiva ? 'No se puede eliminar una caja abierta' : 'Eliminar caja'}
                         disabled={tieneSessionActiva}
                         onClick={async () => {
-                          if (!confirm(`¿Eliminar la caja "${c.nombre}"? El historial de movimientos se conserva.`)) return
+                          if (!(await confirmar(`¿Eliminar la caja "${c.nombre}"? El historial de movimientos se conserva.`, { danger: true }))) return
                           const { error } = await supabase.from('cajas').update({ activo: false }).eq('id', c.id)
                           if (error) { toast.error(error.message); return }
                           toast.success('Caja eliminada')

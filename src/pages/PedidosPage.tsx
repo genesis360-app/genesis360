@@ -24,6 +24,7 @@ import { BRAND } from '@/config/brand'
 import { ActionMenu } from '@/components/ActionMenu'
 import { puedeTransicionPedido, type PedidoTransicion, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { esDecimal } from '@/lib/ventasValidation'
+import { useConfirm } from '@/hooks/useConfirm'
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   borrador:            { label: 'Borrador',            cls: 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400' },
@@ -47,6 +48,7 @@ export default function PedidosPage() {
   const { tenant, user } = useAuthStore()
   const { sucursalId, puedeVerTodas } = useSucursalFilter()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
 
   // E3 — gate client-side por transición (config Pedidos → tabla de roles), mismo criterio que
   // ajuste_autorizacion_roles (mig 228): filtra qué botón se muestra, no reemplaza los guards
@@ -742,7 +744,7 @@ export default function PedidosPage() {
                   </button>
                 )}
                 {p.estado === 'en_preparacion' && puedeYo('deslanzar') && (
-                  <button onClick={() => { if (confirm(`¿Deshacer el lanzamiento del pedido #${p.numero}? Se liberan las reservas de stock (solo si nada se pickeó todavía).`)) deslanzarPedido.mutate(p) }}
+                  <button onClick={async () => { if (await confirmar(`¿Deshacer el lanzamiento del pedido #${p.numero}? Se liberan las reservas de stock (solo si nada se pickeó todavía).`, { danger: true })) deslanzarPedido.mutate(p) }}
                     disabled={deslanzarPedido.isPending}
                     title="Vuelve a Confirmado y libera lo reservado — solo si ninguna tarea se completó todavía"
                     className="text-xs font-semibold text-amber-600 border border-amber-300 dark:border-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-900/20 transition-colors disabled:opacity-50">
@@ -754,7 +756,7 @@ export default function PedidosPage() {
                     el detalle expandido, abajo). Una vez devuelta/cancelada, esto sí cancela. */}
                 {p.estado !== 'cancelado' && puedeYo('cancelar') && (
                   <button
-                    onClick={() => { if (confirm(`¿Cancelar el pedido #${p.numero}?${p.lanzado_at ? ' Se liberan las reservas de stock (solo si nada se pickeó todavía).' : ''}`)) cancelarPedido.mutate(p) }}
+                    onClick={async () => { if (await confirmar(`¿Cancelar el pedido #${p.numero}?${p.lanzado_at ? ' Se liberan las reservas de stock (solo si nada se pickeó todavía).' : ''}`, { danger: true })) cancelarPedido.mutate(p) }}
                     disabled={cancelarPedido.isPending}
                     className="text-xs text-red-500 hover:text-red-600 px-2 py-1.5 disabled:opacity-50">
                     Cancelar

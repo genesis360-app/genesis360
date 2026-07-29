@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { logActividad } from '@/lib/actividadLog'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 interface TareaWMS {
@@ -37,6 +38,7 @@ export default function PickingPage() {
   const { tenant } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
 
   const [scannerOpen, setScannerOpen] = useState(false)
   const [busqueda, setBusqueda] = useState('')
@@ -128,7 +130,7 @@ export default function PickingPage() {
     const tieneDependiente = esReab && tareas.some(t => t.tarea_precedente_id === tarea.id)
     const msg = `¿Cancelar esta tarea de ${esReab ? 'reabastecimiento' : 'picking'}?` +
       (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
-    if (!window.confirm(msg)) return
+    if (!(await confirmar(msg, { danger: true }))) return
     setCompletando(tarea.id)
     const { error } = await supabase.rpc('fn_cancelar_tarea_wms', { p_tarea_id: tarea.id })
     setCompletando(null)

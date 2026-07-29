@@ -27,6 +27,7 @@ import RrhhReportesPanel from '@/components/RrhhReportesPanel'
 import toast from 'react-hot-toast'
 import { differenceInDays, format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useConfirm, usePrompt } from '@/hooks/useConfirm'
 
 type Tab = 'dashboard' | 'empleados' | 'puestos' | 'departamentos' | 'cumpleanos' | 'nomina' | 'vacaciones' | 'asistencia' | 'documentos' | 'capacitaciones' | 'equipo' | 'reportes'
 type FormMode = 'crear' | 'editar' | null
@@ -252,6 +253,8 @@ export default function RrhhPage() {
   const { limits } = usePlanLimits()
   const { tenant, user, setTenant } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
+  const preguntar = usePrompt()
   const [activeTab, setActiveTab] = useState<Tab>(() => user?.rol === 'SUPERVISOR' ? 'equipo' : 'empleados')
   const [formMode, setFormMode] = useState<FormMode>(null)
   const [selectedEmpleado, setSelectedEmpleado] = useState<Empleado | null>(null)
@@ -424,9 +427,9 @@ export default function RrhhPage() {
   })
 
   const agregarTipoContrato = async () => {
-    const nombre = window.prompt('Nombre del nuevo tipo de contrato:')?.trim()
+    const nombre = (await preguntar('Nombre del nuevo tipo de contrato:'))?.trim()
     if (!nombre) return
-    const relDep = window.confirm('¿Es "relación de dependencia"? (Aceptar = sí → aplica auto-aportes)')
+    const relDep = await confirmar('¿Es "relación de dependencia"? Aplica auto-aportes.', { confirmText: 'Sí, es en relación de dependencia', cancelText: 'No' })
     const { error } = await supabase.from('rrhh_tipos_contrato')
       .insert({ tenant_id: tenant!.id, nombre, es_relacion_dependencia: relDep })
     if (error) { toast.error(error.message); return }
@@ -1220,12 +1223,12 @@ export default function RrhhPage() {
         const aviso = (tenant as any)?.rrhh_vacaciones_aviso ?? { modo: 'alerta', dias: 30 }
         const ev = evaluarAviso(new Date().toISOString().split('T')[0], sol.desde, aviso)
         if (!ev.ok) throw new Error(`Plazo de aviso insuficiente (${ev.diasAnticipacion}d, se piden ${aviso.dias}d)`)
-        if (ev.aviso && !window.confirm(`Aviso: la solicitud se pidió con ${ev.diasAnticipacion} días (mín. recomendado ${aviso.dias}). ¿Aprobar igual?`)) {
+        if (ev.aviso && !(await confirmar(`Aviso: la solicitud se pidió con ${ev.diasAnticipacion} días (mín. recomendado ${aviso.dias}). ¿Aprobar igual?`))) {
           throw new Error('__cancelado__')
         }
         const otras = (vacSolicitudes as any[]).filter(s => s.id !== solicitudId && s.estado === 'aprobada')
         const solap = solapamientos({ desde: sol.desde, hasta: sol.hasta }, otras)
-        if (solap.length > 0 && !window.confirm(`Hay ${solap.length} empleado(s) ya aprobado(s) en ese período. ¿Aprobar igual?`)) {
+        if (solap.length > 0 && !(await confirmar(`Hay ${solap.length} empleado(s) ya aprobado(s) en ese período. ¿Aprobar igual?`))) {
           throw new Error('__cancelado__')
         }
       }
@@ -2657,8 +2660,8 @@ export default function RrhhPage() {
                       <Edit size={18} />
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm('¿Estás seguro?')) deletePuesto.mutate(p.id)
+                      onClick={async () => {
+                        if (await confirmar('¿Estás seguro?', { danger: true })) deletePuesto.mutate(p.id)
                       }}
                       className="text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400"
                     >
@@ -2759,8 +2762,8 @@ export default function RrhhPage() {
                       <Edit size={18} />
                     </button>
                     <button
-                      onClick={() => {
-                        if (confirm('¿Estás seguro?')) deleteDepartamento.mutate(d.id)
+                      onClick={async () => {
+                        if (await confirmar('¿Estás seguro?', { danger: true })) deleteDepartamento.mutate(d.id)
                       }}
                       className="text-red-600 dark:text-red-400 hover:text-red-800 dark:text-red-400"
                     >
@@ -3117,7 +3120,7 @@ export default function RrhhPage() {
                       </span>
                       <button onClick={() => { setEditingConcepto(c); setConceptoForm({ nombre: c.nombre, tipo: c.tipo, tipo_calculo: c.tipo_calculo ?? 'fijo', default_pct: c.default_pct != null ? String(c.default_pct) : '', default_monto: c.default_monto != null ? String(c.default_monto) : '', es_aporte: !!c.es_aporte }) }}
                         className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300"><Edit size={14}/></button>
-                      <button onClick={() => { if (confirm('¿Eliminar concepto?')) deleteConcepto.mutate(c.id) }}
+                      <button onClick={async () => { if (await confirmar('¿Eliminar concepto?', { danger: true })) deleteConcepto.mutate(c.id) }}
                         className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300"><Trash2 size={14}/></button>
                     </div>
                   ))}
@@ -3630,7 +3633,7 @@ export default function RrhhPage() {
                         </div>
                       )}
                       {sol.estado === 'pendiente' && (
-                        <button onClick={() => { if (confirm('¿Eliminar solicitud?')) deleteSolicitudVac.mutate(sol.id) }}
+                        <button onClick={async () => { if (await confirmar('¿Eliminar solicitud?', { danger: true })) deleteSolicitudVac.mutate(sol.id) }}
                           className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400 rounded">
                           <Trash2 size={14}/>
                         </button>
@@ -3830,7 +3833,7 @@ export default function RrhhPage() {
                     </button>
                   </div>
                   {esDuenoRrhh && (
-                    <button onClick={() => { if (confirm('¿Regenerar el QR? El QR actual dejará de funcionar.')) generarFichadoToken(true) }}
+                    <button onClick={async () => { if (await confirmar('¿Regenerar el QR? El QR actual dejará de funcionar.', { danger: true })) generarFichadoToken(true) }}
                       className="text-xs text-red-500 hover:text-red-600 hover:underline">
                       Regenerar QR (invalida el anterior)
                     </button>
@@ -4036,7 +4039,7 @@ export default function RrhhPage() {
                                 }} className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300">
                                   <Edit size={14}/>
                                 </button>
-                                <button onClick={() => { if (confirm('¿Eliminar registro?')) deleteAsistencia.mutate(a.id) }}
+                                <button onClick={async () => { if (await confirmar('¿Eliminar registro?', { danger: true })) deleteAsistencia.mutate(a.id) }}
                                   className="text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-300">
                                   <Trash2 size={14}/>
                                 </button>
@@ -4106,7 +4109,7 @@ export default function RrhhPage() {
               {esRrhhAdmin && (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => { if (confirm('¿Cargar los feriados nacionales de Argentina 2026? Solo se agregarán los que no existan.')) cargarFeriadosNacionales.mutate() }}
+                    onClick={async () => { if (await confirmar('¿Cargar los feriados nacionales de Argentina 2026? Solo se agregarán los que no existan.')) cargarFeriadosNacionales.mutate() }}
                     disabled={cargarFeriadosNacionales.isPending}
                     title="Carga automáticamente los 16 feriados nacionales de Argentina 2026"
                     className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm disabled:opacity-50">
@@ -4209,7 +4212,7 @@ export default function RrhhPage() {
                           <>
                             <button title="Editar" onClick={() => { setEditingFeriado(f); setFeriadoForm({ nombre: f.nombre, fecha: f.fecha, tipo: f.tipo, regla_pago: (f as any).regla_pago ?? 'doble' }); setShowFeriadoForm(true) }}
                               className="text-blue-600 dark:text-blue-400 hover:text-blue-800"><Edit size={14}/></button>
-                            <button title="Eliminar" onClick={() => { if (confirm('¿Eliminar feriado?')) deleteFeriado.mutate(f.id) }}
+                            <button title="Eliminar" onClick={async () => { if (await confirmar('¿Eliminar feriado?', { danger: true })) deleteFeriado.mutate(f.id) }}
                               className="text-red-500 hover:text-red-700"><Trash2 size={14}/></button>
                           </>
                         )}
@@ -4386,7 +4389,7 @@ export default function RrhhPage() {
                       Ver
                     </button>
                     <button
-                      onClick={() => { if (confirm('¿Eliminar este documento?')) deleteDocumento.mutate(doc) }}
+                      onClick={async () => { if (await confirmar('¿Eliminar este documento?', { danger: true })) deleteDocumento.mutate(doc) }}
                       className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                     >
                       <Trash2 size={15} />
@@ -4603,7 +4606,7 @@ export default function RrhhPage() {
                         <Edit size={15} />
                       </button>
                       <button
-                        onClick={() => { if (confirm('¿Eliminar esta capacitación?')) deleteCapacitacion.mutate(cap) }}
+                        onClick={async () => { if (await confirmar('¿Eliminar esta capacitación?', { danger: true })) deleteCapacitacion.mutate(cap) }}
                         className="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                       >
                         <Trash2 size={15} />

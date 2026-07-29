@@ -28,6 +28,7 @@ import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { canalesExcluidosValidos } from '@/lib/pedidoVenta'
+import { useConfirm, usePrompt } from '@/hooks/useConfirm'
 import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volumenUbicacionM3, capacidadUtilM3, estadoVolumenUbicacion, FACTOR_APROVECHAMIENTO_DEFAULT } from '@/lib/medidasLogistica'
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import toast from 'react-hot-toast'
@@ -475,6 +476,7 @@ function MarketplaceSection() {
 function ModoOperacionSection() {
   const { tenant, user, setTenant } = useAuthStore()
   const { limits } = usePlanLimits()
+  const confirmar = useConfirm()
   const canEdit = user?.rol === 'DUEÑO'
   const [saving, setSaving] = useState(false)
 
@@ -504,7 +506,7 @@ function ModoOperacionSection() {
       const detalle = productosConTracking > 0
         ? `\n\nTenés ${productosConTracking} producto(s) con trazabilidad activa (series/lotes/vencimiento): van a conservar su flujo al mover stock, pero no vas a poder activar trazabilidad en productos nuevos.`
         : ''
-      const ok = window.confirm(
+      const ok = await confirmar(
         `¿Pasar al modo Básico?\n\nSe ocultan Recepciones/OC, Envíos, Trazabilidad y las opciones WMS (LPN, ubicaciones, lotes, series, vencimientos). Ningún dato se borra: al volver al modo Avanzado todo reaparece intacto.${detalle}`
       )
       if (!ok) return
@@ -602,6 +604,8 @@ export default function ConfigPage() {
   const [conSubTab, setConSubTab] = useState<ConSubTab>('integraciones')
   const { tenant, user, setTenant, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
+  const preguntar = usePrompt()
   const canEdit = user?.rol === 'DUEÑO'
   const { avanzado: modoAvanzado } = useModoOperacion()
 
@@ -1348,7 +1352,7 @@ export default function ConfigPage() {
 
   const deleteCategoriaGasto = async (id: string, predefinida: boolean) => {
     if (predefinida) return toast.error('Las categorías predefinidas no se pueden eliminar, solo desactivar')
-    if (!confirm('¿Eliminar esta categoría? Los gastos existentes mantendrán el nombre como texto.')) return
+    if (!(await confirmar('¿Eliminar esta categoría? Los gastos existentes mantendrán el nombre como texto.', { danger: true }))) return
     const { error } = await supabase.from('categorias_gasto').delete().eq('id', id)
     if (error) return toast.error(error.message)
     toast.success('Categoría eliminada')
@@ -1401,7 +1405,7 @@ export default function ConfigPage() {
     if (error) toast.error(error.message); else { toast.success('Actualizada'); qc.invalidateQueries({ queryKey: ['categorias'] }); logActividad({ entidad: 'categoria', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
   }
   const deleteCategoria = async (id: string) => {
-    if (!confirm('¿Eliminar esta categoría?')) return
+    if (!(await confirmar('¿Eliminar esta categoría?', { danger: true }))) return
     const old = (categorias as Item[]).find(c => c.id === id)
     const { error } = await supabase.from('categorias').delete().eq('id', id)
     if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['categorias'] }); logActividad({ entidad: 'categoria', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
@@ -1566,7 +1570,7 @@ export default function ConfigPage() {
     const msg = totalRef > 0
       ? `Esta ubicación tiene ${totalRef} referencia(s) sin stock activo que se desvincularán. ¿Confirmar eliminación?`
       : '¿Eliminar esta ubicación?'
-    if (!confirm(msg)) return
+    if (!(await confirmar(msg, { danger: true }))) return
 
     // 3. Nullificar referencias antes de borrar
     if ((cntLineas ?? 0) > 0)
@@ -1650,7 +1654,7 @@ export default function ConfigPage() {
   }
   const deleteZona = async (id: string) => {
     const z = (zonas as any[]).find(x => x.id === id)
-    if (!confirm(`¿Eliminar la zona "${z?.nombre}"? Las ubicaciones que la usen quedarán sin zona.`)) return
+    if (!(await confirmar(`¿Eliminar la zona "${z?.nombre}"? Las ubicaciones que la usen quedarán sin zona.`, { danger: true }))) return
     const { error } = await supabase.from('zonas').delete().eq('id', id)
     if (error) { toast.error(error.message); return }
     qc.invalidateQueries({ queryKey: ['zonas'] })
@@ -1868,7 +1872,7 @@ export default function ConfigPage() {
     if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }); logActividad({ entidad: 'estado', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
   }
   const deleteEstado = async (id: string) => {
-    if (!confirm('¿Eliminar este estado?')) return
+    if (!(await confirmar('¿Eliminar este estado?', { danger: true }))) return
     const old = (estados as Item[]).find(e => e.id === id)
     const { error } = await supabase.from('estados_inventario').delete().eq('id', id)
     if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['estados_inventario'] }); logActividad({ entidad: 'estado', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
@@ -1933,7 +1937,7 @@ export default function ConfigPage() {
     if (error) toast.error(error.message); else { toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['motivos'] }); logActividad({ entidad: 'motivo', entidad_id: id, entidad_nombre: nombre, accion: 'editar', campo: 'nombre', valor_anterior: old?.nombre ?? null, valor_nuevo: nombre, pagina: '/configuracion' }) }
   }
   const deleteMotivo = async (id: string) => {
-    if (!confirm('¿Eliminar este motivo?')) return
+    if (!(await confirmar('¿Eliminar este motivo?', { danger: true }))) return
     const old = (motivos as any[]).find(m => m.id === id)
     const { error } = await supabase.from('motivos_movimiento').update({ activo: false }).eq('id', id)
     if (error) toast.error(error.message); else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['motivos'] }); logActividad({ entidad: 'motivo', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
@@ -1965,7 +1969,7 @@ export default function ConfigPage() {
   }
   const deleteAtributoValor = async (id: string) => {
     const old = (atributoValores as any[]).find(v => v.id === id)
-    if (!confirm(`¿Eliminar "${old?.valor}"? Los ingresos de inventario que ya usaron este valor no se modifican.`)) return
+    if (!(await confirmar(`¿Eliminar "${old?.valor}"? Los ingresos de inventario que ya usaron este valor no se modifican.`, { danger: true }))) return
     const { error } = await supabase.from('atributos_variante_valores').update({ activo: false }).eq('id', id)
     if (error) toast.error(error.message)
     else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['atributo-variante-valores'] }); logActividad({ entidad: 'atributo_variante', entidad_id: id, entidad_nombre: old?.valor, accion: 'eliminar', pagina: '/configuracion' }) }
@@ -1976,7 +1980,7 @@ export default function ConfigPage() {
   const [comboItems, setComboItems] = useState<{ producto_id: string; cantidad: string }[]>([{ producto_id: '', cantidad: '1' }])
   const [savingCombo, setSavingCombo] = useState(false)
 
-  const applyComboPreset = (preset: '3x2' | '2x1' | '2da') => {
+  const applyComboPreset = async (preset: '3x2' | '2x1' | '2da') => {
     if (preset === '3x2') {
       setComboForm(p => ({ ...p, nombre: p.nombre || '3x2', descuento_tipo: 'pct', descuento_valor: '33' }))
       setComboItems(prev => [{ ...prev[0], cantidad: '3' }, ...prev.slice(1)])
@@ -1984,7 +1988,7 @@ export default function ConfigPage() {
       setComboForm(p => ({ ...p, nombre: p.nombre || '2x1', descuento_tipo: 'pct', descuento_valor: '50' }))
       setComboItems(prev => [{ ...prev[0], cantidad: '2' }, ...prev.slice(1)])
     } else {
-      const pct = prompt('% de descuento en la 2da unidad (ej: 30):')
+      const pct = await preguntar('% de descuento en la 2da unidad (ej: 30):', { placeholder: '30' })
       if (!pct || isNaN(parseInt(pct))) return
       const efectivo = Math.round(parseInt(pct) / 2)
       setComboForm(p => ({ ...p, nombre: p.nombre || `2da unidad ${pct}%`, descuento_tipo: 'pct', descuento_valor: String(efectivo) }))
@@ -2055,7 +2059,7 @@ export default function ConfigPage() {
   }
 
   const deleteCombo = async (id: string) => {
-    if (!confirm('¿Eliminar este combo?')) return
+    if (!(await confirmar('¿Eliminar este combo?', { danger: true }))) return
     const old = (combos as any[]).find(c => c.id === id)
     const { error } = await supabase.from('combos').update({ activo: false }).eq('id', id)
     if (error) toast.error(error.message)
@@ -2152,7 +2156,7 @@ export default function ConfigPage() {
     toast.success('Actualizado'); qc.invalidateQueries({ queryKey: ['aging_profiles'] }); setEditAgingId(null)
   }
   const deleteAgingProfile = async (id: string) => {
-    if (!confirm('¿Eliminar este aging profile? También se eliminarán sus reglas.')) return
+    if (!(await confirmar('¿Eliminar este aging profile? También se eliminarán sus reglas.', { danger: true }))) return
     const { error } = await supabase.from('aging_profiles').delete().eq('id', id)
     if (error) { toast.error('No se puede eliminar, tiene productos asociados'); return }
     toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['aging_profiles'] }); qc.invalidateQueries({ queryKey: ['aging_profile_reglas'] })
@@ -2807,7 +2811,7 @@ export default function ConfigPage() {
   }
 
   const desconectarModo = async () => {
-    if (!confirm('¿Desconectar MODO?')) return
+    if (!(await confirmar('¿Desconectar MODO?', { danger: true }))) return
     await supabase.from('modo_credentials').update({ conectado: false }).eq('tenant_id', tenant!.id)
     toast.success('MODO desconectado')
     refetchModo()
@@ -2928,7 +2932,7 @@ export default function ConfigPage() {
   }
 
   const deleteUdm = async (id: string) => {
-    if (!confirm('¿Desactivar esta unidad de medida?')) return
+    if (!(await confirmar('¿Desactivar esta unidad de medida?', { danger: true }))) return
     const { error } = await supabase.from('unidades_medida').update({ activo: false }).eq('id', id)
     if (error) toast.error(error.message)
     else { toast.success('Unidad desactivada'); qc.invalidateQueries({ queryKey: ['unidades_medida'] }) }
@@ -3436,7 +3440,7 @@ export default function ConfigPage() {
                     {pv.nombre && <span className="ml-2 text-gray-500 dark:text-gray-400">{pv.nombre}</span>}
                   </div>
                   <button onClick={async () => {
-                    if (!confirm('¿Eliminar este punto de venta?')) return
+                    if (!(await confirmar('¿Eliminar este punto de venta?', { danger: true }))) return
                     await supabase.from('puntos_venta_afip').delete().eq('id', pv.id)
                     refetchPV()
                   }} className="text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
@@ -4545,7 +4549,7 @@ export default function ConfigPage() {
                               <button onClick={() => setGrupoDefault.mutate(grupo.id)} title="Marcar como default" className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-amber-500 hover:bg-amber-50 dark:bg-amber-900/20 rounded-lg transition-colors"><StarOff size={15} /></button>
                             )}
                             <button onClick={() => startEditGrupo(grupo)} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors"><Pencil size={15} /></button>
-                            <button onClick={() => { if (confirm('¿Eliminar este grupo?')) deleteGrupo.mutate(grupo.id) }} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={15} /></button>
+                            <button onClick={async () => { if (await confirmar('¿Eliminar este grupo?', { danger: true })) deleteGrupo.mutate(grupo.id) }} className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg transition-colors"><Trash2 size={15} /></button>
                           </div>
                         </div>
                       </div>
@@ -6100,7 +6104,7 @@ export default function ConfigPage() {
                         <Pencil size={14} />
                       </button>
                       {!m.es_sistema && (
-                        <button onClick={() => { if (confirm('¿Eliminar este método?')) deleteMetodoPago.mutate(m.id) }}
+                        <button onClick={async () => { if (await confirmar('¿Eliminar este método?', { danger: true })) deleteMetodoPago.mutate(m.id) }}
                           className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                           <Trash2 size={14} />
                         </button>
@@ -6664,7 +6668,7 @@ export default function ConfigPage() {
                               <CheckCircle2 size={13} /> Conectada
                             </span>
                             <button
-                              onClick={() => { if (confirm(`¿Desconectar TiendaNube de ${suc.nombre}?`)) desconectarTN.mutate(cred.id) }}
+                              onClick={async () => { if (await confirmar(`¿Desconectar TiendaNube de ${suc.nombre}?`, { danger: true })) desconectarTN.mutate(cred.id) }}
                               disabled={desconectarTN.isPending}
                               title="Desconectar"
                               className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
@@ -6848,7 +6852,7 @@ export default function ConfigPage() {
                             </a>
                           )}
                           <button
-                            onClick={() => { if (confirm(`¿Desconectar MercadoPago de ${suc.nombre}?`)) desconectarMP.mutate(cred.id) }}
+                            onClick={async () => { if (await confirmar(`¿Desconectar MercadoPago de ${suc.nombre}?`, { danger: true })) desconectarMP.mutate(cred.id) }}
                             disabled={desconectarMP.isPending}
                             title="Desconectar"
                             className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
@@ -6923,7 +6927,7 @@ export default function ConfigPage() {
                         <span className="flex items-center gap-1 text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 px-2 py-0.5 rounded-full font-medium">
                           <CheckCircle2 size={11} /> Conectada
                         </span>
-                        <button onClick={() => { if (confirm(`¿Desconectar MercadoLibre de ${suc.nombre}?`)) desconectarMELI.mutate(cred.id) }}
+                        <button onClick={async () => { if (await confirmar(`¿Desconectar MercadoLibre de ${suc.nombre}?`, { danger: true })) desconectarMELI.mutate(cred.id) }}
                           title="Desconectar"
                           className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                           <Unplug size={14} />
@@ -7034,7 +7038,7 @@ export default function ConfigPage() {
                           {m.sync_stock && <span className="text-green-600 dark:text-green-400" title="Sync stock">📦</span>}
                           {m.sync_precio && <span className="text-blue-500" title="Sync precio">💲</span>}
                         </div>
-                        <button onClick={() => { if (confirm('¿Eliminar mapeo?')) deleteMeliMap.mutate(m.id) }}
+                        <button onClick={async () => { if (await confirmar('¿Eliminar mapeo?', { danger: true })) deleteMeliMap.mutate(m.id) }}
                           className="p-1 text-gray-400 hover:text-red-500 rounded">
                           <Trash2 size={13} />
                         </button>
@@ -7396,7 +7400,7 @@ export default function ConfigPage() {
                               className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                               <Pencil size={14} />
                             </button>
-                            <button onClick={() => { if (confirm('¿Eliminar esta cuenta? Si tiene movimientos vinculados, mejor desactivarla.')) deleteCuentaOrigen.mutate(c.id) }}
+                            <button onClick={async () => { if (await confirmar('¿Eliminar esta cuenta? Si tiene movimientos vinculados, mejor desactivarla.', { danger: true })) deleteCuentaOrigen.mutate(c.id) }}
                               className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                               <Trash2 size={14} />
                             </button>

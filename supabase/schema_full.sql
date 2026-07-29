@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-07-28T16:09:23.492Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260728075828 · 150 tablas
+-- Generado 2026-07-29T21:16:28.930Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260729180000 · 150 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1281,7 +1281,8 @@ CREATE TABLE public.pedidos (
   entregado_at timestamp with time zone,
   cancelado_at timestamp with time zone,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
-  referencia text
+  referencia text,
+  venta_origen_id uuid
 );
 
 CREATE TABLE public.planes (
@@ -2217,7 +2218,11 @@ CREATE TABLE public.tenants (
   wms_reabastecimiento_umbral boolean NOT NULL DEFAULT false,
   pedido_numeracion text NOT NULL DEFAULT 'sucursal'::text,
   pedido_transiciones_roles jsonb,
-  pedido_cierre_automatico boolean NOT NULL DEFAULT true
+  pedido_cierre_automatico boolean NOT NULL DEFAULT true,
+  pedido_canales_excluidos jsonb NOT NULL DEFAULT '[]'::jsonb,
+  pedido_manual_habilitado boolean NOT NULL DEFAULT false,
+  cubicaje_habilitado boolean NOT NULL DEFAULT false,
+  cubicaje_factor_aprovechamiento numeric NOT NULL DEFAULT 0.70
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2732,6 +2737,7 @@ ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_pkey PRIMARY KEY (id);
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_stock_minimo_check CHECK ((stock_minimo >= 0));
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_tenant_id_producto_id_ubicacion_key UNIQUE (tenant_id, producto_id, ubicacion_id);
+ALTER TABLE public.productos ADD CONSTRAINT chk_productos_variante_sin_atributos CHECK ((NOT ((producto_padre_id IS NOT NULL) AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_alicuota_iva_check CHECK ((alicuota_iva = ANY (ARRAY[(0)::numeric, 10.5, (21)::numeric, (27)::numeric])));
 ALTER TABLE public.productos ADD CONSTRAINT productos_clase_abc_check CHECK (((clase_abc IS NULL) OR (clase_abc = ANY (ARRAY['A'::text, 'B'::text, 'C'::text]))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_hijo_tiene_diferenciador CHECK (((producto_padre_id IS NULL) OR (variante_diferenciador IS NOT NULL)));
@@ -2810,6 +2816,7 @@ ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_dimension_check CH
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_pkey PRIMARY KEY (id);
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_tipo_check CHECK ((tipo = ANY (ARRAY['fijo'::text, 'temporal'::text])));
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_pkey PRIMARY KEY (id);
+ALTER TABLE public.tenants ADD CONSTRAINT chk_tenants_cubicaje_factor CHECK (((cubicaje_factor_aprovechamiento > (0)::numeric) AND (cubicaje_factor_aprovechamiento <= (1)::numeric)));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_afip_provider_check CHECK ((afip_provider = ANY (ARRAY['afipsdk'::text, 'propio'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_billing_mode_check CHECK ((billing_mode = ANY (ARRAY['auto'::text, 'manual'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_cc_enforcement_chk CHECK ((cc_enforcement_politica = ANY (ARRAY['permitir'::text, 'avisar'::text, 'bloquear'::text])));
@@ -3117,6 +3124,7 @@ ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_lanzado_por_fkey FOREIGN KEY (
 ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_sucursal_id_fkey FOREIGN KEY (sucursal_id) REFERENCES sucursales(id) ON DELETE SET NULL;
 ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_tipo_pedido_id_fkey FOREIGN KEY (tipo_pedido_id) REFERENCES tipos_pedido(id);
+ALTER TABLE public.pedidos ADD CONSTRAINT pedidos_venta_origen_id_fkey FOREIGN KEY (venta_origen_id) REFERENCES ventas(id) ON DELETE SET NULL;
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_biller_id_fkey FOREIGN KEY (biller_id) REFERENCES platform_billers(id) ON DELETE RESTRICT;
 ALTER TABLE public.platform_facturas ADD CONSTRAINT platform_facturas_tenant_origen_id_fkey FOREIGN KEY (tenant_origen_id) REFERENCES tenants(id) ON DELETE SET NULL;
 ALTER TABLE public.producto_estructura_niveles ADD CONSTRAINT producto_estructura_niveles_estructura_id_fkey FOREIGN KEY (estructura_id) REFERENCES producto_estructuras(id) ON DELETE CASCADE;
@@ -3598,6 +3606,7 @@ CREATE INDEX idx_pedidos_estado ON public.pedidos USING btree (estado);
 CREATE INDEX idx_pedidos_sucursal ON public.pedidos USING btree (sucursal_id);
 CREATE INDEX idx_pedidos_tenant ON public.pedidos USING btree (tenant_id);
 CREATE INDEX idx_pedidos_tipo ON public.pedidos USING btree (tipo_pedido_id);
+CREATE UNIQUE INDEX idx_pedidos_venta_origen_unico ON public.pedidos USING btree (venta_origen_id) WHERE (venta_origen_id IS NOT NULL);
 CREATE INDEX idx_pen_estructura ON public.producto_estructura_niveles USING btree (estructura_id);
 CREATE INDEX idx_pen_tenant ON public.producto_estructura_niveles USING btree (tenant_id);
 CREATE INDEX idx_pen_udm ON public.producto_estructura_niveles USING btree (unidad_medida_id);
@@ -4340,6 +4349,26 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_canal_de_origen(p_tenant_id uuid, p_origen text)
+ RETURNS uuid
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  SELECT cv.id FROM canales_venta cv
+  WHERE cv.tenant_id = p_tenant_id
+    AND lower(cv.nombre) = lower(CASE lower(COALESCE(p_origen, ''))
+        WHEN 'pos' THEN 'Presencial'
+        WHEN 'mercadolibre' THEN 'MercadoLibre'
+        WHEN 'meli' THEN 'MercadoLibre'
+        WHEN 'tiendanube' THEN 'TiendaNube'
+        WHEN 'whatsapp' THEN 'WhatsApp'
+        WHEN 'mp' THEN 'MercadoPago'
+        ELSE COALESCE(p_origen, '') END)
+  LIMIT 1;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_cancelar_pedido(p_pedido_id uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -4409,9 +4438,7 @@ CREATE OR REPLACE FUNCTION public.fn_completar_tarea_picking(p_tarea_id uuid)
  LANGUAGE plpgsql
  SET search_path TO 'public'
 AS $function$
-DECLARE
-  v_tarea RECORD;
-  v_prec  RECORD;
+DECLARE v_tarea RECORD; v_prec RECORD;
 BEGIN
   SELECT * INTO v_tarea FROM wms_tareas WHERE id = p_tarea_id FOR UPDATE;
   IF v_tarea IS NULL THEN RAISE EXCEPTION 'Tarea inexistente o sin permisos'; END IF;
@@ -4427,8 +4454,17 @@ BEGIN
   END IF;
 
   UPDATE wms_tareas SET estado = 'completada', completed_at = now() WHERE id = p_tarea_id;
-END;
-$function$
+
+  -- (mig 316) Si con ésta se terminó de pickear todo el pedido, pasa a "listo para entrega".
+  IF v_tarea.pedido_id IS NOT NULL THEN
+    UPDATE pedidos p SET estado = 'listo_para_entrega'
+     WHERE p.id = v_tarea.pedido_id AND p.estado = 'en_preparacion'
+       AND NOT EXISTS (
+         SELECT 1 FROM wms_tareas w
+         WHERE w.pedido_id = v_tarea.pedido_id AND w.tipo = 'picking'
+           AND w.estado NOT IN ('completada', 'cancelada'));
+  END IF;
+END; $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_completar_tarea_reabastecimiento(p_tarea_id uuid)
@@ -4508,6 +4544,35 @@ BEGIN
   VALUES (NEW.id, 'Caja Fuerte / Bóveda', true, true);
   RETURN NEW;
 END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_cubicaje_cobertura(p_tenant_id uuid)
+ RETURNS TABLE(productos_total integer, productos_medidos integer, presentaciones_sin_medir integer)
+ LANGUAGE sql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+  WITH act AS (
+    SELECT pr.id
+    FROM productos pr
+    WHERE pr.tenant_id = p_tenant_id AND pr.activo = true
+      AND NOT EXISTS (SELECT 1 FROM productos h WHERE h.producto_padre_id = pr.id)  -- las madres no se guardan
+  )
+  SELECT
+    (SELECT count(*)::integer FROM act),
+    (SELECT count(*)::integer FROM act a
+      WHERE EXISTS (SELECT 1 FROM producto_presentaciones pp WHERE pp.producto_id = a.id AND pp.activo)
+        AND NOT EXISTS (
+          SELECT 1 FROM producto_presentaciones pp
+          WHERE pp.producto_id = a.id AND pp.activo
+            AND (COALESCE(pp.peso_kg,0) <= 0 OR COALESCE(pp.alto_cm,0) <= 0
+                 OR COALESCE(pp.ancho_cm,0) <= 0 OR COALESCE(pp.largo_cm,0) <= 0))),
+    (SELECT count(*)::integer FROM producto_presentaciones pp
+      JOIN act a ON a.id = pp.producto_id
+     WHERE pp.activo
+       AND (COALESCE(pp.peso_kg,0) <= 0 OR COALESCE(pp.alto_cm,0) <= 0
+            OR COALESCE(pp.ancho_cm,0) <= 0 OR COALESCE(pp.largo_cm,0) <= 0));
 $function$
 
 
@@ -4914,6 +4979,30 @@ CREATE OR REPLACE FUNCTION public.fn_generar_tareas_picking_pedido(p_pedido_id u
  LANGUAGE plpgsql
  SET search_path TO 'public'
 AS $function$
+DECLARE v_venta_origen uuid; v_existe boolean;
+BEGIN
+  SELECT (p.id IS NOT NULL), p.venta_origen_id INTO v_existe, v_venta_origen
+  FROM pedidos p WHERE p.id = p_pedido_id;
+  IF NOT COALESCE(v_existe, false) THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+
+  -- (mig 324) No se manda a nadie a buscar mercadería para una venta anulada, devuelta, o que
+  -- todavía es un presupuesto. No-op para los pedidos de logística puros.
+  PERFORM fn_pedido_venta_viva(p_pedido_id);
+
+  IF v_venta_origen IS NOT NULL THEN
+    RETURN QUERY SELECT * FROM fn_generar_tareas_picking_pedido_venta(p_pedido_id);
+  ELSE
+    RETURN QUERY SELECT * FROM fn_generar_tareas_picking_pedido_stock(p_pedido_id);
+  END IF;
+  RETURN;
+END; $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_generar_tareas_picking_pedido_stock(p_pedido_id uuid)
+ RETURNS TABLE(tarea_id uuid, tipo text)
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
 DECLARE
   v_pedido       RECORD;
   v_item         RECORD;
@@ -5076,6 +5165,132 @@ BEGIN
   RETURN;
 END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_generar_tareas_picking_pedido_venta(p_pedido_id uuid)
+ RETURNS TABLE(tarea_id uuid, tipo text)
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_pedido RECORD; v_item RECORD; v_fuente RECORD; v_pick_id uuid;
+  v_ubic_tipo text; v_domicilio_id uuid; v_pendiente numeric; v_hubo boolean;
+BEGIN
+  SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+  IF v_pedido.venta_origen_id IS NULL THEN
+    RAISE EXCEPTION 'Este pedido no nació de una venta — usá fn_generar_tareas_picking_pedido';
+  END IF;
+  IF EXISTS (SELECT 1 FROM wms_tareas WHERE pedido_id = p_pedido_id) THEN
+    RETURN QUERY SELECT wt.id, wt.tipo FROM wms_tareas wt WHERE wt.pedido_id = p_pedido_id;
+    RETURN;
+  END IF;
+  IF v_pedido.estado = 'cancelado' THEN RAISE EXCEPTION 'El pedido está cancelado'; END IF;
+  IF v_pedido.estado <> 'confirmado' THEN RAISE EXCEPTION 'Confirmá el pedido antes de lanzarlo'; END IF;
+
+  FOR v_item IN
+    SELECT pi.producto_id, (pi.cantidad - pi.cantidad_entregada) AS cantidad
+    FROM pedido_items pi
+    WHERE pi.pedido_id = p_pedido_id AND pi.estado <> 'cancelada'
+      AND (pi.cantidad - pi.cantidad_entregada) > 0
+  LOOP
+    v_pendiente := v_item.cantidad;
+    v_hubo := false;
+
+    FOR v_fuente IN
+      -- 1) Lo que la venta YA despachó (definitivo)
+      SELECT vid.lpn, vid.ubicacion_id, SUM(vid.cantidad) AS cantidad, 1 AS prio
+      FROM venta_item_despachos vid
+      WHERE vid.venta_id = v_pedido.venta_origen_id AND vid.producto_id = v_item.producto_id
+        AND vid.cantidad > 0
+      GROUP BY vid.lpn, vid.ubicacion_id
+      UNION ALL
+      -- 2) El plan de LPN de la RESERVA (mig 156) — el LPN que ya eligió el POS
+      SELECT il.lpn, il.ubicacion_id, SUM((p->>'cantidad')::numeric) AS cantidad, 2 AS prio
+      FROM venta_items vi
+      CROSS JOIN LATERAL jsonb_array_elements(COALESCE(vi.lpn_plan, '[]'::jsonb)) p
+      JOIN inventario_lineas il ON il.id = (p->>'linea_id')::uuid
+      WHERE vi.venta_id = v_pedido.venta_origen_id AND vi.producto_id = v_item.producto_id
+        AND NOT EXISTS (SELECT 1 FROM venta_item_despachos d
+                        WHERE d.venta_id = v_pedido.venta_origen_id AND d.producto_id = v_item.producto_id)
+        AND (p->>'cantidad')::numeric > 0
+      GROUP BY il.lpn, il.ubicacion_id
+      ORDER BY prio
+    LOOP
+      EXIT WHEN v_pendiente <= 0;
+      SELECT u.tipo_ubicacion INTO v_ubic_tipo FROM ubicaciones u WHERE u.id = v_fuente.ubicacion_id;
+      INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad,
+                              ubicacion_origen_id, lpn_origen, origen, pedido_id, notas)
+      VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'picking', v_item.producto_id,
+              LEAST(v_fuente.cantidad, v_pendiente), v_fuente.ubicacion_id, v_fuente.lpn, 'pedido', p_pedido_id,
+              fn_wms_describir_cantidad(v_item.producto_id, LEAST(v_fuente.cantidad, v_pendiente)::integer)
+                || CASE WHEN v_ubic_tipo IS DISTINCT FROM 'picking' THEN ' — fuera de zona de picking' ELSE '' END)
+      RETURNING id INTO v_pick_id;
+      RETURN QUERY SELECT v_pick_id, 'picking'::text;
+      v_pendiente := v_pendiente - LEAST(v_fuente.cantidad, v_pendiente);
+      v_hubo := true;
+    END LOOP;
+
+    -- 3/4) Sin despachos ni plan: se busca dónde está el stock, en orden FEFO y SOLO LECTURA —
+    -- primero lo que la venta tiene reservado, después cualquier línea con existencia.
+    IF v_pendiente > 0 THEN
+      FOR v_fuente IN
+        SELECT il.lpn, il.ubicacion_id, il.cantidad,
+               (CASE WHEN COALESCE(il.cantidad_reservada,0) > 0 THEN 3 ELSE 4 END) AS prio
+        FROM inventario_lineas il
+        WHERE il.tenant_id = v_pedido.tenant_id AND il.producto_id = v_item.producto_id
+          AND il.activo = true AND il.cantidad > 0
+          AND (v_pedido.sucursal_id IS NULL OR il.sucursal_id = v_pedido.sucursal_id)
+        ORDER BY prio, il.fecha_vencimiento NULLS LAST, il.created_at
+      LOOP
+        EXIT WHEN v_pendiente <= 0;
+        SELECT u.tipo_ubicacion INTO v_ubic_tipo FROM ubicaciones u WHERE u.id = v_fuente.ubicacion_id;
+        INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad,
+                                ubicacion_origen_id, lpn_origen, origen, pedido_id, notas)
+        VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'picking', v_item.producto_id,
+                LEAST(v_fuente.cantidad, v_pendiente), v_fuente.ubicacion_id, v_fuente.lpn, 'pedido', p_pedido_id,
+                fn_wms_describir_cantidad(v_item.producto_id, LEAST(v_fuente.cantidad, v_pendiente)::integer)
+                  || CASE WHEN v_fuente.prio = 3 THEN ' — LPN sugerido (la venta reservó acá)'
+                          ELSE ' — LPN sugerido por FEFO' END
+                  || CASE WHEN v_ubic_tipo IS DISTINCT FROM 'picking' THEN ', fuera de zona de picking' ELSE '' END)
+        RETURNING id INTO v_pick_id;
+        RETURN QUERY SELECT v_pick_id, 'picking'::text;
+        v_pendiente := v_pendiente - LEAST(v_fuente.cantidad, v_pendiente);
+        v_hubo := true;
+      END LOOP;
+    END IF;
+
+    -- Ni stock hay: se emite igual para que el pedido no quede sin tarea, diciendo por qué.
+    IF NOT v_hubo THEN
+      INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, origen, pedido_id, notas)
+      VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, 'picking', v_item.producto_id, v_item.cantidad,
+              'pedido', p_pedido_id,
+              fn_wms_describir_cantidad(v_item.producto_id, v_item.cantidad::integer)
+                || ' — ⚠ sin stock ubicado para este producto')
+      RETURNING id INTO v_pick_id;
+      RETURN QUERY SELECT v_pick_id, 'picking'::text;
+    END IF;
+  END LOOP;
+
+  IF v_pedido.requiere_envio
+     AND NOT EXISTS (SELECT 1 FROM envios WHERE pedido_id = p_pedido_id)
+     AND NOT EXISTS (SELECT 1 FROM envios WHERE venta_id = v_pedido.venta_origen_id) THEN
+    v_domicilio_id := NULL;
+    IF v_pedido.cliente_id IS NOT NULL THEN
+      SELECT cd.id INTO v_domicilio_id FROM cliente_domicilios cd
+      WHERE cd.cliente_id = v_pedido.cliente_id
+      ORDER BY cd.es_principal DESC, cd.created_at LIMIT 1;
+    END IF;
+    INSERT INTO envios (tenant_id, sucursal_id, pedido_id, venta_id, destino_id, canal, estado, notas)
+    VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, p_pedido_id, v_pedido.venta_origen_id,
+            v_domicilio_id, 'Pedidos', 'pendiente',
+            'Generado automáticamente al lanzar el Pedido #' || v_pedido.numero);
+  END IF;
+
+  UPDATE pedidos SET estado = 'en_preparacion', lanzado_at = now(), lanzado_por = auth.uid()
+  WHERE id = p_pedido_id;
+  RETURN;
+END; $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_generar_tareas_reabastecimiento_umbral(p_tenant_id uuid)
@@ -5371,6 +5586,47 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_pedido_crear_desde_venta(p_venta_id uuid, p_con_envio boolean DEFAULT false)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_venta RECORD; v_tipo_id uuid; v_pedido_id uuid;
+BEGIN
+  IF EXISTS (SELECT 1 FROM pedidos WHERE venta_origen_id = p_venta_id) THEN RETURN NULL; END IF;
+  IF NOT fn_venta_requiere_pedido(p_venta_id, p_con_envio) THEN RETURN NULL; END IF;
+
+  SELECT * INTO v_venta FROM ventas WHERE id = p_venta_id;
+
+  SELECT id INTO v_tipo_id FROM tipos_pedido
+  WHERE tenant_id = v_venta.tenant_id AND activo = true
+    AND lower(nombre) = CASE WHEN p_con_envio THEN 'e-commerce' ELSE 'retiro en local' END
+  LIMIT 1;
+  IF v_tipo_id IS NULL THEN
+    SELECT id INTO v_tipo_id FROM tipos_pedido
+    WHERE tenant_id = v_venta.tenant_id AND activo = true ORDER BY orden NULLS LAST, nombre LIMIT 1;
+  END IF;
+  IF v_tipo_id IS NULL THEN RETURN NULL; END IF;
+
+  INSERT INTO pedidos (
+    tenant_id, sucursal_id, tipo_pedido_id, cliente_id, cliente_nombre, cliente_telefono,
+    estado, requiere_envio, creado_por, confirmado_at, venta_origen_id, notas
+  ) VALUES (
+    v_venta.tenant_id, v_venta.sucursal_id, v_tipo_id, v_venta.cliente_id,
+    CASE WHEN v_venta.cliente_id IS NULL THEN v_venta.cliente_nombre END,
+    CASE WHEN v_venta.cliente_id IS NULL THEN v_venta.cliente_telefono END,
+    'confirmado', p_con_envio, v_venta.usuario_id, now(), p_venta_id,
+    'Generado automáticamente desde la venta #' || COALESCE(v_venta.numero::text, '?')
+  )
+  ON CONFLICT (venta_origen_id) WHERE venta_origen_id IS NOT NULL DO NOTHING
+  RETURNING id INTO v_pedido_id;
+
+  IF v_pedido_id IS NOT NULL THEN PERFORM fn_pedido_sync_items_desde_venta(v_pedido_id); END IF;
+  RETURN v_pedido_id;
+END; $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_pedido_deslanzar(p_pedido_id uuid)
  RETURNS void
  LANGUAGE plpgsql
@@ -5400,6 +5656,56 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_pedido_entregar_retiro(p_pedido_id uuid, p_receptor text DEFAULT NULL::text)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_pedido RECORD; v_venta RECORD; v_saldo numeric; v_envio_id uuid;
+BEGIN
+  SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
+  IF v_pedido.venta_origen_id IS NULL THEN
+    RAISE EXCEPTION 'Este pedido no nació de una venta — entregalo desde el módulo Pedidos, que además genera la venta';
+  END IF;
+  IF v_pedido.estado = 'entregado' THEN RETURN v_pedido.venta_origen_id; END IF;
+  IF v_pedido.estado <> 'listo_para_entrega' THEN
+    RAISE EXCEPTION 'El pedido todavía no está listo para entregar (estado actual: %)', v_pedido.estado;
+  END IF;
+
+  -- 💵 Gate de pago (mig 318). total NO incluye costo_envio pero monto_pagado SÍ (ISS-105).
+  SELECT * INTO v_venta FROM ventas WHERE id = v_pedido.venta_origen_id FOR UPDATE;
+  IF v_venta IS NULL THEN RAISE EXCEPTION 'No se encuentra la venta del pedido'; END IF;
+  v_saldo := COALESCE(v_venta.total, 0) + COALESCE(v_venta.costo_envio, 0) - COALESCE(v_venta.monto_pagado, 0);
+  IF v_saldo > 0.5 AND NOT COALESCE(v_venta.es_cuenta_corriente, false) THEN
+    RAISE EXCEPTION 'El pedido no está pagado: falta cobrar $%. Cobrá el saldo en el detalle de la venta y volvé a entregarlo.',
+      ROUND(v_saldo, 2);
+  END IF;
+
+  UPDATE pedido_items SET cantidad_entregada = cantidad, estado = 'preparado'
+  WHERE pedido_id = p_pedido_id AND estado <> 'cancelada';
+  UPDATE pedidos SET estado = 'entregado', entregado_at = now() WHERE id = p_pedido_id;
+
+  SELECT id INTO v_envio_id FROM envios WHERE pedido_id = p_pedido_id LIMIT 1;
+  IF v_envio_id IS NULL THEN
+    INSERT INTO envios (tenant_id, sucursal_id, pedido_id, venta_id, tipo, canal, estado,
+                        pod_receptor, pod_fecha, notas)
+    VALUES (v_pedido.tenant_id, v_pedido.sucursal_id, p_pedido_id, v_pedido.venta_origen_id,
+            'retiro_local', 'Retiro en local', 'entregado',
+            NULLIF(btrim(COALESCE(p_receptor, '')), ''), CURRENT_DATE,
+            'Retirado en el local — Pedido #' || v_pedido.numero)
+    RETURNING id INTO v_envio_id;
+  ELSE
+    UPDATE envios SET estado = 'entregado',
+           venta_id = COALESCE(venta_id, v_pedido.venta_origen_id),
+           pod_receptor = COALESCE(pod_receptor, NULLIF(btrim(COALESCE(p_receptor, '')), '')),
+           pod_fecha = COALESCE(pod_fecha, CURRENT_DATE)
+     WHERE id = v_envio_id;
+  END IF;
+  RETURN v_pedido.venta_origen_id;
+END; $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_pedido_generar_venta(p_pedido_id uuid, p_sesion_caja_id uuid, p_medio_pago jsonb, p_entregas jsonb DEFAULT NULL::jsonb, p_idempotency_key uuid DEFAULT NULL::uuid)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -5417,6 +5723,11 @@ DECLARE
   v_total            numeric := 0;
   v_producto         RECORD;
   v_precio           numeric;
+  v_cant_sku         numeric;   -- (mig 317) total pedido del SKU, para resolver el tier
+  v_desc_monto       numeric;   -- (mig 319) descuento por estado de inventario de esta línea
+  v_desc_pct         numeric;
+  v_desc_pcts        integer;
+  v_pct_linea        numeric;
   v_iva_monto        numeric;
   v_item_subtotal    numeric;
   v_venta_item_id    uuid;
@@ -5441,7 +5752,6 @@ BEGIN
   SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
   IF v_pedido IS NULL THEN RAISE EXCEPTION 'Pedido inexistente o sin permisos'; END IF;
 
-  -- Idempotencia: un reintento de red con la misma key devuelve la venta ya generada.
   IF p_idempotency_key IS NOT NULL THEN
     SELECT id INTO v_venta_existente FROM ventas
     WHERE pedido_id = p_pedido_id AND pedido_entrega_key = p_idempotency_key;
@@ -5452,8 +5762,6 @@ BEGIN
     RAISE EXCEPTION 'El pedido tiene que estar lanzado (en preparación, listo para entrega, o entregado parcial) para generar la venta';
   END IF;
 
-  -- FOR UPDATE: bloquea la sesión durante toda la función (evita que se cierre en el medio,
-  -- ventana TOCTOU) + valida que sea de la misma sucursal del pedido (o sin sucursal fija).
   SELECT * INTO v_sesion FROM caja_sesiones WHERE id = p_sesion_caja_id FOR UPDATE;
   IF v_sesion IS NULL OR v_sesion.tenant_id <> v_pedido.tenant_id OR v_sesion.estado <> 'abierta' THEN
     RAISE EXCEPTION 'No hay una caja abierta válida para registrar el ingreso — abrí una caja antes de generar la venta';
@@ -5469,14 +5777,9 @@ BEGIN
   IF v_tiene_cc AND v_pedido.cliente_id IS NULL THEN
     RAISE EXCEPTION 'Cuenta corriente requiere un cliente identificado en el pedido';
   END IF;
-  -- B4 (morosidad) NO se duplica acá — ya la garantiza `trg_ventas_cc_guard`/`fn_ventas_cc_guard`
-  -- (mig 234, BEFORE INSERT ON ventas), que corre para el INSERT de más abajo sin depender de
-  -- auth.uid() (calcula la deuda inline por tenant_id). Ver comentario de cabecera.
 
   SELECT trazabilidad_asignacion INTO v_traza_on FROM tenants WHERE id = v_pedido.tenant_id;
 
-  -- venta header: subtotal/total se completan al final (recién se conocen tras el loop). El
-  -- trigger de la mig 234 corre acá mismo (BEFORE INSERT) y valida morosidad — puede abortar.
   INSERT INTO ventas (
     tenant_id, cliente_id, cliente_nombre, cliente_telefono, consumidor_final, estado,
     subtotal, total, medio_pago, monto_pagado, es_cuenta_corriente, usuario_id, sucursal_id,
@@ -5505,7 +5808,7 @@ BEGIN
       IF v_cant_override IS NOT NULL THEN
         v_cant_entregar := LEAST(v_cant_override, v_item.pendiente);
       ELSE
-        v_cant_entregar := 0; -- se pasó p_entregas explícito y esta línea no está incluida
+        v_cant_entregar := 0;
       END IF;
     END IF;
 
@@ -5516,7 +5819,12 @@ BEGIN
 
     SELECT nombre, sku, precio_venta, precio_costo, alicuota_iva INTO v_producto
     FROM productos WHERE id = v_item.producto_id;
-    v_precio := COALESCE(v_producto.precio_venta, 0);
+    -- (mig 317) tier por volumen + redondeo, resuelto contra el TOTAL PEDIDO del SKU.
+    SELECT COALESCE(SUM(pi2.cantidad), v_cant_entregar) INTO v_cant_sku
+    FROM pedido_items pi2
+    WHERE pi2.pedido_id = p_pedido_id AND pi2.producto_id = v_item.producto_id
+      AND pi2.estado <> 'cancelada';
+    v_precio := fn_precio_venta_efectivo(v_pedido.tenant_id, v_item.producto_id, v_cant_sku);
     v_item_subtotal := ROUND(v_precio * v_cant_entregar, 2);
     v_iva_monto := CASE WHEN COALESCE(v_producto.alicuota_iva, 0) > 0
       THEN ROUND(v_item_subtotal - v_item_subtotal / (1 + v_producto.alicuota_iva / 100), 2)
@@ -5531,13 +5839,12 @@ BEGIN
     ) RETURNING id INTO v_venta_item_id;
 
     v_subtotal := v_subtotal + v_item_subtotal;
-    v_total := v_total + v_item_subtotal; -- Pedidos no aplica descuentos (H1)
+    v_total := v_total + v_item_subtotal;
 
-    -- Rebaje real: consumir de líneas YA RESERVADAS (mismo mecanismo que "despachar una
-    -- reserva" de Ventas — FEFO sobre lo reservado, no sobre lo disponible en general).
+    v_desc_monto := 0; v_desc_pct := NULL; v_desc_pcts := 0;
     v_restante := v_cant_entregar;
     FOR v_linea IN
-      SELECT il.id, il.cantidad, il.cantidad_reservada, il.ubicacion_id, il.lpn
+      SELECT il.id, il.cantidad, il.cantidad_reservada, il.ubicacion_id, il.lpn, il.estado_id
       FROM inventario_lineas il
       WHERE il.tenant_id = v_pedido.tenant_id AND il.producto_id = v_item.producto_id
         AND il.activo = true AND COALESCE(il.cantidad_reservada, 0) > 0
@@ -5554,6 +5861,19 @@ BEGIN
       EXIT WHEN v_restante <= 0;
       v_tomar := LEAST(v_restante, v_linea.cantidad_reservada);
       IF v_tomar <= 0 THEN CONTINUE; END IF;
+
+      -- 💵 (mig 319) Descuento por estado, prorrateado POR FUENTE: cada unidad descuenta según el
+      -- % del estado de SU línea concreta, nunca un promedio (igual que calcularDescuentoEstadoLinea).
+      SELECT ei.descuento_pct INTO v_pct_linea
+      FROM estados_inventario ei WHERE ei.id = v_linea.estado_id;
+      IF COALESCE(v_pct_linea, 0) > 0 THEN
+        v_desc_monto := v_desc_monto + ROUND(v_precio * v_tomar * v_pct_linea / 100, 2);
+        IF v_desc_pct IS NULL THEN
+          v_desc_pct := v_pct_linea; v_desc_pcts := 1;
+        ELSIF v_desc_pct <> v_pct_linea THEN
+          v_desc_pcts := v_desc_pcts + 1;
+        END IF;
+      END IF;
 
       SELECT COALESCE(SUM(cantidad), 0) INTO v_stock_antes FROM inventario_lineas
         WHERE tenant_id = v_pedido.tenant_id AND producto_id = v_item.producto_id AND activo = true
@@ -5583,6 +5903,23 @@ BEGIN
         v_producto.nombre, v_producto.sku, v_restante;
     END IF;
 
+    -- 💵 (mig 319) Recién acá se aplica: el precio y el venta_items se escriben ANTES de saber de
+    -- qué líneas sale el stock. Se corrige subtotal, IVA y los acumuladores de la venta.
+    IF v_desc_monto > 0 THEN
+      v_item_subtotal := GREATEST(v_item_subtotal - v_desc_monto, 0);
+      v_iva_monto := CASE WHEN COALESCE(v_producto.alicuota_iva, 0) > 0
+        THEN ROUND(v_item_subtotal - v_item_subtotal / (1 + v_producto.alicuota_iva / 100), 2)
+        ELSE 0 END;
+      UPDATE venta_items
+         SET subtotal = v_item_subtotal,
+             iva_monto = v_iva_monto,
+             descuento_estado_pct = CASE WHEN v_desc_pcts = 1 THEN v_desc_pct ELSE NULL END,
+             descuento_estado_monto = v_desc_monto
+       WHERE id = v_venta_item_id;
+      v_subtotal := v_subtotal - v_desc_monto;
+      v_total    := v_total    - v_desc_monto;
+    END IF;
+
     UPDATE pedido_items SET
       cantidad_entregada = cantidad_entregada + v_cant_entregar,
       estado = CASE WHEN (cantidad_entregada + v_cant_entregar) >= cantidad THEN 'preparado' ELSE estado END
@@ -5596,10 +5933,6 @@ BEGIN
     RAISE EXCEPTION 'No hay nada pendiente de entregar en este pedido';
   END IF;
 
-  -- Monto pagado + efectivo a caja + monto CC (mismo criterio de auto-completar que
-  -- registrarVenta: un único medio sin monto especificado cobra el total). Cada entrada se
-  -- clampea a GREATEST(x, 0) — un monto negativo no debe poder "restar" del total ni neutralizar
-  -- el chequeo de límite de crédito de más abajo.
   FOR v_mp IN SELECT * FROM jsonb_array_elements(COALESCE(p_medio_pago, '[]'::jsonb))
   LOOP
     IF (v_mp->>'tipo') IS DISTINCT FROM 'Cuenta Corriente' THEN
@@ -5614,20 +5947,6 @@ BEGIN
   v_monto_pagado := LEAST(v_monto_pagado, v_total);
   v_monto_cc := LEAST(v_monto_cc, v_total);
 
-  -- B1 — Límite de crédito: solo si esta venta suma de verdad a CC y el tenant exige bloquear
-  -- ('avisar' depende de un confirm() interactivo que acá no existe, ver cabecera). Deuda
-  -- calculada INLINE escopeada por tenant_id (mismo criterio que fn_ventas_cc_guard, mig 234 —
-  -- NO vía cliente_cc_estado, que depende de auth.uid()).
-  --
-  -- 🔴 Segundo fix del migration-reviewer sobre esta migración: el GATE de esta validación no
-  -- puede depender de `v_monto_cc` (un valor que el llamante controla vía `p_medio_pago` — una
-  -- sola entrada 'Cuenta Corriente' con `monto` 0 o negativo clampea a 0 y evade el chequeo
-  -- ENTERO, aunque `es_cuenta_corriente` quede en `true` y la venta genere igual la deuda real).
-  -- En cambio, se usa `v_total - v_monto_pagado` (el saldo real sin cubrir de ESTA venta): ambos
-  -- términos ya están defendidos (`v_total` sale de `productos.precio_venta` en DB, no del
-  -- llamante; `v_monto_pagado` está clampeado y capado con `LEAST(...,v_total)`) — no importa
-  -- qué diga el medio de pago, lo que no cubran los medios NO-CC se vuelve deuda CC real de
-  -- todos modos, y es ESO lo que hay que chequear contra el límite, no lo que el JSON afirme.
   IF v_tiene_cc AND (v_total - v_monto_pagado) > 0.5 THEN
     SELECT COALESCE(cc_enforcement_politica, 'avisar') INTO v_enforcement_pol FROM tenants WHERE id = v_pedido.tenant_id;
     IF v_enforcement_pol = 'bloquear' THEN
@@ -5692,6 +6011,51 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_pedido_sync_items_desde_venta(p_pedido_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_pedido RECORD;
+BEGIN
+  SELECT * INTO v_pedido FROM pedidos WHERE id = p_pedido_id FOR UPDATE;
+  IF v_pedido IS NULL OR v_pedido.venta_origen_id IS NULL THEN RETURN; END IF;
+  IF v_pedido.estado <> 'confirmado' THEN RETURN; END IF;
+
+  DELETE FROM pedido_items WHERE pedido_id = p_pedido_id;
+
+  INSERT INTO pedido_items (tenant_id, pedido_id, producto_id, cantidad, estado)
+  SELECT v_pedido.tenant_id, p_pedido_id, vi.producto_id, SUM(vi.cantidad), 'pendiente'
+  FROM venta_items vi
+  WHERE vi.venta_id = v_pedido.venta_origen_id AND vi.producto_id IS NOT NULL
+  GROUP BY vi.producto_id
+  HAVING SUM(vi.cantidad) > 0;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_pedido_venta_viva(p_pedido_id uuid)
+ RETURNS void
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_estado text; v_num integer;
+BEGIN
+  SELECT v.estado, v.numero INTO v_estado, v_num
+  FROM pedidos p JOIN ventas v ON v.id = p.venta_origen_id
+  WHERE p.id = p_pedido_id;
+  IF v_estado IS NULL THEN RETURN; END IF;   -- pedido de logística puro: no aplica
+  IF v_estado IN ('cancelada', 'devuelta') THEN
+    RAISE EXCEPTION 'La venta #% de este pedido está %: no se puede preparar mercadería para una venta que ya no existe.', v_num, v_estado;
+  END IF;
+  IF v_estado = 'pendiente' THEN
+    RAISE EXCEPTION 'La venta #% todavía es un PRESUPUESTO: confirmala (reserva o despacho) antes de mandar a preparar la mercadería.', v_num;
+  END IF;
+END; $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_plan_base_limite(p_tier text, p_dim text)
  RETURNS integer
  LANGUAGE sql
@@ -5709,6 +6073,42 @@ AS $function$
       WHEN 'sku' THEN 50 WHEN 'movimientos' THEN -1 WHEN 'comprobantes' THEN 200
       WHEN 'sucursales' THEN 1 WHEN 'usuarios' THEN 1 WHEN 'cuits' THEN 1 ELSE 0 END
   END
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_precio_venta_efectivo(p_tenant_id uuid, p_producto_id uuid, p_cantidad numeric)
+ RETURNS numeric
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_precio numeric; v_modo text; v_paso numeric; v_t RECORD;
+BEGIN
+  SELECT COALESCE(precio_venta, 0) INTO v_precio
+  FROM productos WHERE id = p_producto_id AND tenant_id = p_tenant_id;
+  IF v_precio IS NULL THEN RETURN 0; END IF;
+
+  FOR v_t IN
+    SELECT cantidad_minima, precio, operador FROM producto_precios_mayorista
+    WHERE tenant_id = p_tenant_id AND producto_id = p_producto_id ORDER BY orden
+  LOOP
+    CONTINUE WHEN v_t.precio IS NULL OR v_t.precio < 0 OR v_t.cantidad_minima IS NULL;
+    IF (CASE v_t.operador
+          WHEN '>'  THEN p_cantidad >  v_t.cantidad_minima
+          WHEN '<'  THEN p_cantidad <  v_t.cantidad_minima
+          WHEN '='  THEN p_cantidad =  v_t.cantidad_minima
+          WHEN '>=' THEN p_cantidad >= v_t.cantidad_minima
+          WHEN '<=' THEN p_cantidad <= v_t.cantidad_minima
+          ELSE false END)
+    THEN v_precio := v_t.precio; EXIT; END IF;
+  END LOOP;
+
+  SELECT precio_redondeo INTO v_modo FROM tenants WHERE id = p_tenant_id;
+  v_paso := CASE v_modo WHEN '10' THEN 10 WHEN '50' THEN 50 WHEN '100' THEN 100
+                        WHEN '500' THEN 500 WHEN '1000' THEN 1000 ELSE 0 END;
+  IF v_paso > 0 AND v_precio > 0 THEN v_precio := round(v_precio / v_paso) * v_paso; END IF;
+  RETURN v_precio;
+END;
 $function$
 
 
@@ -5898,13 +6298,16 @@ DECLARE
   v_hijo_desp     int;
   v_total_lineas  int := 0;
   v_total_unid    int := 0;
+  v_series        uuid[];
+  v_serializado   boolean;
+  v_dup           int;
 BEGIN
   SELECT tenant_id INTO v_caller_tenant FROM users WHERE id = auth.uid();
   IF v_caller_tenant IS NULL THEN
     RAISE EXCEPTION 'Usuario sin tenant';
   END IF;
 
-  SELECT id, tenant_id, nombre, tiene_series INTO v_madre
+  SELECT id, tenant_id, nombre, COALESCE(tiene_series, false) AS tiene_series INTO v_madre
   FROM productos WHERE id = p_madre_id;
   IF v_madre.id IS NULL THEN
     RAISE EXCEPTION 'El producto no existe';
@@ -5912,24 +6315,36 @@ BEGIN
   IF v_madre.tenant_id IS DISTINCT FROM v_caller_tenant THEN
     RAISE EXCEPTION 'No autorizado';
   END IF;
+  v_serializado := v_madre.tiene_series;
 
   IF NOT EXISTS (SELECT 1 FROM productos WHERE producto_padre_id = p_madre_id) THEN
-    RAISE EXCEPTION '"%" no tiene variantes: no hay a quién reasignarle el stock', v_madre.nombre;
-  END IF;
-
-  IF COALESCE(v_madre.tiene_series, false) THEN
-    RAISE EXCEPTION 'Los productos con número de serie todavía no se pueden reasignar automáticamente: hay que elegir qué serie va a cada variante';
+    RAISE EXCEPTION '"%" no tiene variantes: no hay a quien reasignarle el stock', v_madre.nombre;
   END IF;
 
   IF p_asignaciones IS NULL OR jsonb_typeof(p_asignaciones) <> 'array'
      OR jsonb_array_length(p_asignaciones) = 0 THEN
-    RAISE EXCEPTION 'No se recibió ninguna asignación';
+    RAISE EXCEPTION 'No se recibio ninguna asignacion';
+  END IF;
+
+  IF v_serializado THEN
+    SELECT count(*) INTO v_dup FROM (
+      SELECT s.value::text AS sid
+      FROM jsonb_array_elements(p_asignaciones) e,
+           jsonb_array_elements_text(COALESCE(e->'series','[]'::jsonb)) s
+      GROUP BY s.value::text HAVING count(*) > 1
+    ) d;
+    IF v_dup > 0 THEN
+      RAISE EXCEPTION 'Hay numeros de serie asignados a mas de una variante';
+    END IF;
   END IF;
 
   FOR v_chk IN
     SELECT a.linea_id, sum(a.cantidad)::int AS total
     FROM (
-      SELECT (e->>'linea_id')::uuid AS linea_id, (e->>'cantidad')::int AS cantidad
+      SELECT (e->>'linea_id')::uuid AS linea_id,
+             CASE WHEN v_serializado
+                  THEN jsonb_array_length(COALESCE(e->'series','[]'::jsonb))
+                  ELSE (e->>'cantidad')::int END AS cantidad
       FROM jsonb_array_elements(p_asignaciones) e
     ) a
     GROUP BY a.linea_id
@@ -5938,34 +6353,47 @@ BEGIN
     SELECT * INTO v_linea FROM inventario_lineas WHERE id = v_chk.linea_id FOR UPDATE;
 
     IF v_linea.id IS NULL THEN
-      RAISE EXCEPTION 'Una de las líneas de stock ya no existe (refrescá la pantalla)';
+      RAISE EXCEPTION 'Una de las lineas de stock ya no existe (refresca la pantalla)';
     END IF;
     IF v_linea.tenant_id IS DISTINCT FROM v_caller_tenant THEN
       RAISE EXCEPTION 'No autorizado';
     END IF;
     IF v_linea.producto_id IS DISTINCT FROM p_madre_id THEN
-      RAISE EXCEPTION 'La línea % no pertenece a "%"', v_linea.lpn, v_madre.nombre;
+      RAISE EXCEPTION 'La linea % no pertenece a "%"', v_linea.lpn, v_madre.nombre;
     END IF;
     IF NOT COALESCE(v_linea.activo, true) THEN
-      RAISE EXCEPTION 'La línea % está inactiva', v_linea.lpn;
-    END IF;
-    IF COALESCE(v_linea.cantidad_reservada, 0) > 0 THEN
-      RAISE EXCEPTION 'La línea % tiene % unidad(es) reservadas para un pedido: liberá la reserva antes de reasignar',
-        v_linea.lpn, v_linea.cantidad_reservada;
+      RAISE EXCEPTION 'La linea % esta inactiva', v_linea.lpn;
     END IF;
     IF EXISTS (
       SELECT 1 FROM inventario_lineas c
       WHERE c.tenant_id = v_linea.tenant_id AND c.parent_lpn_id = v_linea.lpn
         AND COALESCE(c.activo, true)
     ) THEN
-      RAISE EXCEPTION 'La línea % es un LPN contenedor (tiene LPN hijos): desarmalo antes de reasignar', v_linea.lpn;
+      RAISE EXCEPTION 'La linea % es un LPN contenedor (tiene LPN hijos): desarmalo antes de reasignar', v_linea.lpn;
     END IF;
     IF v_chk.total <= 0 THEN
       RAISE EXCEPTION 'Las cantidades a reasignar tienen que ser mayores a cero';
     END IF;
-    IF v_chk.total > v_linea.cantidad THEN
-      RAISE EXCEPTION 'La línea % tiene % unidades y se intentan reasignar %',
-        v_linea.lpn, v_linea.cantidad, v_chk.total;
+
+    IF v_serializado THEN
+      PERFORM 1 FROM inventario_series s
+        WHERE s.linea_id = v_linea.id AND COALESCE(s.activo, true)
+        FOR UPDATE;
+
+      IF v_chk.total > (SELECT count(*) FROM inventario_series s
+                        WHERE s.linea_id = v_linea.id AND COALESCE(s.activo, true)
+                          AND NOT COALESCE(s.reservado, false)) THEN
+        RAISE EXCEPTION 'La linea % no tiene esa cantidad de numeros de serie disponibles (alguno reservado o vendido?)', v_linea.lpn;
+      END IF;
+    ELSE
+      IF COALESCE(v_linea.cantidad_reservada, 0) > 0 THEN
+        RAISE EXCEPTION 'La linea % tiene % unidad(es) reservadas para un pedido: libera la reserva antes de reasignar',
+          v_linea.lpn, v_linea.cantidad_reservada;
+      END IF;
+      IF v_chk.total > v_linea.cantidad THEN
+        RAISE EXCEPTION 'La linea % tiene % unidades y se intentan reasignar %',
+          v_linea.lpn, v_linea.cantidad, v_chk.total;
+      END IF;
     END IF;
 
     v_total_lineas := v_total_lineas + 1;
@@ -5983,29 +6411,71 @@ BEGIN
     ) THEN
       RAISE EXCEPTION 'El destino elegido no es una variante de "%"', v_madre.nombre;
     END IF;
-    IF EXISTS (SELECT 1 FROM productos h WHERE h.id = v_hijo.hijo_id AND h.tiene_series) THEN
-      RAISE EXCEPTION 'La variante destino maneja números de serie: no se puede reasignar automáticamente';
+    IF EXISTS (SELECT 1 FROM productos h WHERE h.id = v_hijo.hijo_id
+               AND COALESCE(h.tiene_series,false) IS DISTINCT FROM v_serializado) THEN
+      RAISE EXCEPTION 'La variante destino no maneja numeros de serie igual que "%": no se puede mover stock entre los dos modos', v_madre.nombre;
     END IF;
   END LOOP;
 
   FOR v_asig IN
     SELECT (e->>'linea_id')::uuid AS linea_id,
            (e->>'hijo_id')::uuid  AS hijo_id,
-           (e->>'cantidad')::int  AS cantidad,
+           CASE WHEN v_serializado
+                THEN jsonb_array_length(COALESCE(e->'series','[]'::jsonb))
+                ELSE (e->>'cantidad')::int END AS cantidad,
+           CASE WHEN v_serializado THEN ARRAY(
+                  SELECT (x)::uuid FROM jsonb_array_elements_text(COALESCE(e->'series','[]'::jsonb)) x
+                ) ELSE ARRAY[]::uuid[] END AS series,
            (SELECT count(*) FROM jsonb_array_elements(p_asignaciones) e2
              WHERE (e2->>'linea_id')::uuid = (e->>'linea_id')::uuid) AS destinos_de_la_linea
     FROM jsonb_array_elements(p_asignaciones) e
   LOOP
     IF v_asig.cantidad <= 0 THEN
-      RAISE EXCEPTION 'Cantidad inválida';
+      RAISE EXCEPTION 'Cantidad invalida';
     END IF;
 
     SELECT * INTO v_linea FROM inventario_lineas WHERE id = v_asig.linea_id;
+    v_series := v_asig.series;
 
     SELECT stock_actual INTO v_madre_antes FROM productos WHERE id = p_madre_id;
     SELECT stock_actual INTO v_hijo_antes  FROM productos WHERE id = v_asig.hijo_id;
 
-    IF v_asig.destinos_de_la_linea = 1 AND v_asig.cantidad = v_linea.cantidad THEN
+    IF v_serializado THEN
+      IF EXISTS (
+        SELECT 1 FROM unnest(v_series) sid
+        WHERE NOT EXISTS (
+          SELECT 1 FROM inventario_series s
+          WHERE s.id = sid AND s.linea_id = v_asig.linea_id AND s.producto_id = p_madre_id
+            AND s.tenant_id = v_caller_tenant AND COALESCE(s.activo, true)
+            AND NOT COALESCE(s.reservado, false)
+        )
+      ) THEN
+        RAISE EXCEPTION 'Alguno de los numeros de serie elegidos no esta disponible en el LPN % (puede estar vendido, reservado o pertenecer a otro LPN)', v_linea.lpn;
+      END IF;
+
+      INSERT INTO inventario_lineas (
+        tenant_id, producto_id, lpn, cantidad, cantidad_reservada,
+        estado_id, ubicacion_id, proveedor_id, nro_lote, fecha_vencimiento,
+        precio_costo_snapshot, precio_venta_snapshot, activo, sucursal_id,
+        notas, pais_origen, parent_lpn_id, talle, color, encaje, formato, sabor_aroma
+      ) VALUES (
+        v_linea.tenant_id, v_asig.hijo_id, '', 0, 0,
+        v_linea.estado_id, v_linea.ubicacion_id, v_linea.proveedor_id, v_linea.nro_lote, v_linea.fecha_vencimiento,
+        v_linea.precio_costo_snapshot, v_linea.precio_venta_snapshot, true, v_linea.sucursal_id,
+        v_linea.notas, v_linea.pais_origen, v_linea.parent_lpn_id,
+        v_linea.talle, v_linea.color, v_linea.encaje, v_linea.formato, v_linea.sabor_aroma
+      ) RETURNING id INTO v_dest_linea;
+
+      UPDATE inventario_series
+        SET producto_id = v_asig.hijo_id, linea_id = v_dest_linea
+        WHERE id = ANY(v_series);
+
+      UPDATE inventario_lineas SET activo = false, updated_at = now()
+        WHERE id = v_asig.linea_id
+          AND NOT EXISTS (SELECT 1 FROM inventario_series s
+                          WHERE s.linea_id = v_asig.linea_id AND COALESCE(s.activo, true));
+
+    ELSIF v_asig.destinos_de_la_linea = 1 AND v_asig.cantidad = v_linea.cantidad THEN
       UPDATE inventario_lineas
         SET producto_id = v_asig.hijo_id, estructura_id = NULL, updated_at = now()
         WHERE id = v_asig.linea_id;
@@ -6039,9 +6509,13 @@ BEGIN
       motivo, sucursal_id, linea_id, usuario_id
     ) VALUES (
       v_caller_tenant, p_madre_id, 'reasignacion_variante', v_asig.cantidad, v_madre_antes, v_madre_desp,
-      'Reasignación de stock sin variante asignada → ' ||
+      'Reasignacion de stock sin variante asignada -> ' ||
         COALESCE((SELECT variante_diferenciador FROM productos WHERE id = v_asig.hijo_id), 'variante') ||
-        ' (LPN ' || v_linea.lpn || ')',
+        ' (LPN ' || v_linea.lpn || ')' ||
+        CASE WHEN v_serializado THEN ' - series: ' || COALESCE((
+          SELECT string_agg(s.nro_serie, ', ' ORDER BY s.nro_serie)
+          FROM inventario_series s WHERE s.id = ANY(v_series)
+        ), '') ELSE '' END,
       v_linea.sucursal_id, v_asig.linea_id, auth.uid()
     );
 
@@ -6050,7 +6524,11 @@ BEGIN
       motivo, sucursal_id, linea_id, usuario_id
     ) VALUES (
       v_caller_tenant, v_asig.hijo_id, 'reasignacion_variante', v_asig.cantidad, v_hijo_antes, v_hijo_desp,
-      'Stock recibido de "' || v_madre.nombre || '" (sin variante asignada, LPN ' || v_linea.lpn || ')',
+      'Stock recibido de "' || v_madre.nombre || '" (sin variante asignada, LPN ' || v_linea.lpn || ')' ||
+        CASE WHEN v_serializado THEN ' - series: ' || COALESCE((
+          SELECT string_agg(s.nro_serie, ', ' ORDER BY s.nro_serie)
+          FROM inventario_series s WHERE s.id = ANY(v_series)
+        ), '') ELSE '' END,
       v_linea.sucursal_id, v_dest_linea, auth.uid()
     );
 
@@ -6061,6 +6539,7 @@ BEGIN
     'ok', true,
     'unidades_reasignadas', v_total_unid,
     'lineas_afectadas', v_total_lineas,
+    'serializado', v_serializado,
     'stock_sin_asignar_restante', (SELECT stock_actual FROM productos WHERE id = p_madre_id)
   );
 END;
@@ -6553,6 +7032,35 @@ BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_venta_requiere_pedido(p_venta_id uuid, p_con_envio boolean DEFAULT false)
+ RETURNS boolean
+ LANGUAGE plpgsql
+ STABLE SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_venta RECORD; v_canal_id uuid; v_clasif text; v_excluidos jsonb;
+BEGIN
+  SELECT * INTO v_venta FROM ventas WHERE id = p_venta_id;
+  IF v_venta IS NULL THEN RETURN false; END IF;
+  IF v_venta.pedido_id IS NOT NULL THEN RETURN false; END IF;
+
+  -- 'pendiente' = PRESUPUESTO: no hay compromiso todavía, no se prepara nada.
+  -- Cuando se convierta (reservada/despachada) el trigger de UPDATE genera el pedido.
+  IF v_venta.estado NOT IN ('reservada', 'despachada', 'facturada') THEN RETURN false; END IF;
+
+  v_canal_id := fn_canal_de_origen(v_venta.tenant_id, v_venta.origen);
+  SELECT COALESCE(pedido_canales_excluidos, '[]'::jsonb) INTO v_excluidos
+  FROM tenants WHERE id = v_venta.tenant_id;
+  IF v_canal_id IS NOT NULL AND v_excluidos ? v_canal_id::text THEN RETURN false; END IF;
+
+  IF p_con_envio OR EXISTS (SELECT 1 FROM envios WHERE venta_id = p_venta_id) THEN RETURN true; END IF;
+  IF v_venta.estado = 'reservada' THEN RETURN true; END IF;
+
+  SELECT clasificacion INTO v_clasif FROM canales_venta WHERE id = v_canal_id;
+  RETURN COALESCE(v_clasif, 'presencial') = 'online';
+END; $function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_ventas_cc_guard()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -6704,18 +7212,43 @@ CREATE OR REPLACE FUNCTION public.fn_wms_elegir_ubicacion_picking(p_tenant_id uu
  STABLE
  SET search_path TO 'public'
 AS $function$
-  SELECT u.id FROM ubicaciones u
+  SELECT u.id
+  FROM ubicaciones u
+  -- LEFT JOIN y no CROSS/INNER: si por lo que sea no se resuelve la config del tenant o la
+  -- ocupación, la ubicación tiene que seguir siendo candidata (invariante 1).
+  LEFT JOIN tenants t
+    ON t.id = p_tenant_id
+  LEFT JOIN vw_ubicacion_ocupacion oc
+    ON oc.ubicacion_id = u.id AND oc.tenant_id = u.tenant_id
   WHERE u.tenant_id = p_tenant_id
     AND u.activo = true
     AND u.tipo_ubicacion = 'picking'
     AND (u.sucursal_id IS NULL OR u.sucursal_id = p_sucursal_id)
   ORDER BY
+    -- (1) La que ya tiene stock de este producto: evita partir el SKU en dos caras de picking.
     (EXISTS (
       SELECT 1 FROM inventario_lineas il
       WHERE il.ubicacion_id = u.id AND il.producto_id = p_producto_id AND il.activo = true
     )) DESC,
+    -- (2) La que tiene lugar. Espejo de `ubicacionSinLugar()` en src/lib/medidasLogistica.ts —
+    --     si cambia una, cambiar la otra.
+    (NOT (
+         (COALESCE(u.capacidad_pallets, 0) > 0 AND COALESCE(oc.lpn_activos, 0) >= u.capacidad_pallets)
+      OR (COALESCE(u.peso_max_kg, 0)     > 0 AND COALESCE(oc.peso_kg, 0)     >= u.peso_max_kg)
+      -- El volumen solo cuenta con el cubicaje ACTIVO y la ubicación medida: sin las dos cosas el
+      -- número no significa nada (una ubicación sin medir daría capacidad útil 0 = siempre llena).
+      OR (COALESCE(t.cubicaje_habilitado, false)
+          AND COALESCE(u.alto_cm, 0) > 0 AND COALESCE(u.ancho_cm, 0) > 0 AND COALESCE(u.largo_cm, 0) > 0
+          AND COALESCE(oc.volumen_m3, 0) >=
+              (u.alto_cm * u.ancho_cm * u.largo_cm / 1000000.0)
+              * GREATEST(LEAST(COALESCE(t.cubicaje_factor_aprovechamiento, 0.70), 1), 0.01))
+    )) DESC,
+    -- (3) Lo de siempre: recorrido del depósito y prioridad de rebaje.
     u.secuencia NULLS LAST,
-    u.prioridad
+    u.prioridad,
+    -- Desempate final estable: sin esto, dos posiciones equivalentes pueden alternar entre llamadas
+    -- y mandar el mismo SKU a caras distintas en dos reabastecimientos seguidos.
+    u.id
   LIMIT 1
 $function$
 
@@ -7370,67 +7903,6 @@ BEGIN
 END $function$
 
 
-CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
- RETURNS uuid
- LANGUAGE plpgsql
- SECURITY DEFINER
- SET search_path TO 'public'
-AS $function$
-DECLARE
-  v_sal rrhh_salarios;
-  v_emp empleados;
-  v_mov UUID;
-BEGIN
-  -- Obtener liquidación
-  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Liquidación no encontrada';
-  END IF;
-  IF v_sal.pagado THEN
-    RAISE EXCEPTION 'La liquidación ya fue pagada';
-  END IF;
-  IF v_sal.neto <= 0 THEN
-    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
-  END IF;
-
-  -- Obtener empleado
-  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
-
-  -- Validar sesión de caja abierta y del mismo tenant
-  IF NOT EXISTS (
-    SELECT 1 FROM caja_sesiones
-    WHERE id        = p_sesion_id
-      AND tenant_id = v_sal.tenant_id
-      AND estado    = 'abierta'
-  ) THEN
-    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
-  END IF;
-
-  -- Crear movimiento de egreso en caja
-  v_mov := gen_random_uuid();
-  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
-  VALUES (
-    v_mov,
-    v_sal.tenant_id,
-    p_sesion_id,
-    'egreso',
-    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
-    v_sal.neto
-  );
-
-  -- Marcar liquidación como pagada
-  UPDATE rrhh_salarios SET
-    pagado             = TRUE,
-    fecha_pago         = NOW(),
-    caja_movimiento_id = v_mov,
-    updated_at         = NOW()
-  WHERE id = p_salario_id;
-
-  RETURN v_mov;
-END;
-$function$
-
-
 CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid, p_medio_pago text DEFAULT 'efectivo'::text)
  RETURNS uuid
  LANGUAGE plpgsql
@@ -7505,6 +7977,67 @@ BEGIN
   UPDATE rrhh_salarios
   SET pagado = TRUE, fecha_pago = NOW(), caja_movimiento_id = v_mov,
       medio_pago = p_medio_pago, updated_at = NOW()
+  WHERE id = p_salario_id;
+
+  RETURN v_mov;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.pagar_nomina_empleado(p_salario_id uuid, p_sesion_id uuid)
+ RETURNS uuid
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_sal rrhh_salarios;
+  v_emp empleados;
+  v_mov UUID;
+BEGIN
+  -- Obtener liquidación
+  SELECT * INTO v_sal FROM rrhh_salarios WHERE id = p_salario_id;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Liquidación no encontrada';
+  END IF;
+  IF v_sal.pagado THEN
+    RAISE EXCEPTION 'La liquidación ya fue pagada';
+  END IF;
+  IF v_sal.neto <= 0 THEN
+    RAISE EXCEPTION 'El neto debe ser mayor a 0 para poder pagar';
+  END IF;
+
+  -- Obtener empleado
+  SELECT * INTO v_emp FROM empleados WHERE id = v_sal.empleado_id;
+
+  -- Validar sesión de caja abierta y del mismo tenant
+  IF NOT EXISTS (
+    SELECT 1 FROM caja_sesiones
+    WHERE id        = p_sesion_id
+      AND tenant_id = v_sal.tenant_id
+      AND estado    = 'abierta'
+  ) THEN
+    RAISE EXCEPTION 'La sesión de caja no está abierta o no pertenece al negocio';
+  END IF;
+
+  -- Crear movimiento de egreso en caja
+  v_mov := gen_random_uuid();
+  INSERT INTO caja_movimientos(id, tenant_id, sesion_id, tipo, concepto, monto)
+  VALUES (
+    v_mov,
+    v_sal.tenant_id,
+    p_sesion_id,
+    'egreso',
+    'Nómina ' || v_emp.dni_rut || ' - ' || TO_CHAR(v_sal.periodo, 'MM/YYYY'),
+    v_sal.neto
+  );
+
+  -- Marcar liquidación como pagada
+  UPDATE rrhh_salarios SET
+    pagado             = TRUE,
+    fecha_pago         = NOW(),
+    caja_movimiento_id = v_mov,
+    updated_at         = NOW()
   WHERE id = p_salario_id;
 
   RETURN v_mov;
@@ -8377,6 +8910,35 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.trg_envio_marca_pedido_con_envio()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_pedido_id uuid;
+BEGIN
+  IF NEW.venta_id IS NULL THEN RETURN NULL; END IF;
+  IF COALESCE(NEW.tipo, 'venta') = 'retiro_local' THEN RETURN NULL; END IF;
+
+  SELECT id INTO v_pedido_id FROM pedidos WHERE venta_origen_id = NEW.venta_id;
+  IF v_pedido_id IS NULL THEN
+    v_pedido_id := fn_pedido_crear_desde_venta(NEW.venta_id, true);
+  ELSE
+    UPDATE pedidos SET requiere_envio = true
+     WHERE id = v_pedido_id AND requiere_envio = false
+       AND estado NOT IN ('entregado', 'entregado_parcial', 'cancelado');
+  END IF;
+  IF v_pedido_id IS NOT NULL THEN
+    UPDATE envios SET pedido_id = v_pedido_id WHERE id = NEW.id AND pedido_id IS NULL;
+  END IF;
+  RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING '[trg_envio_marca_pedido_con_envio] envío % : %', NEW.id, SQLERRM;
+  RETURN NULL;
+END; $function$
+
+
 CREATE OR REPLACE FUNCTION public.trg_fn_set_recepcion_numero()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8457,6 +9019,29 @@ BEGIN
     END IF;
     SELECT padre_linea_id INTO v_cursor FROM producto_presentaciones WHERE id = v_cursor;
   END LOOP;
+  RETURN NEW;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_presentacion_exige_medidas()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_on boolean;
+BEGIN
+  SELECT COALESCE(cubicaje_habilitado, false) INTO v_on FROM tenants WHERE id = NEW.tenant_id;
+  IF NOT v_on THEN RETURN NEW; END IF;
+
+  IF COALESCE(NEW.peso_kg, 0) <= 0
+     OR COALESCE(NEW.alto_cm, 0) <= 0
+     OR COALESCE(NEW.ancho_cm, 0) <= 0
+     OR COALESCE(NEW.largo_cm, 0) <= 0 THEN
+    RAISE EXCEPTION 'El cubicaje está activado: "%" necesita peso y las tres medidas (alto, ancho, largo) mayores a 0. Cargalas en la estructura del producto o desactivá el cubicaje en Configuración → Inventario.',
+      COALESCE(NEW.etiqueta, 'la presentación');
+  END IF;
   RETURN NEW;
 END;
 $function$
@@ -8580,6 +9165,51 @@ END;
 $function$
 
 
+CREATE OR REPLACE FUNCTION public.trg_variante_atributos_incompatibles()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_madre_nombre text;
+  v_hijos        integer;
+BEGIN
+  IF NEW.producto_padre_id IS NOT NULL THEN
+    IF NEW.tiene_talle OR NEW.tiene_color OR NEW.tiene_encaje OR NEW.tiene_formato OR NEW.tiene_sabor_aroma THEN
+      RAISE EXCEPTION 'La variante "%" no puede tener Atributos de variante (talle/color/encaje/formato/sabor) activos: ya es un SKU separado con su propio stock. Los Atributos de variante son para UN SOLO SKU cuyo stock se banca junto.',
+        COALESCE(NEW.variante_diferenciador, NEW.nombre);
+    END IF;
+
+    SELECT nombre INTO v_madre_nombre
+      FROM productos
+     WHERE id = NEW.producto_padre_id
+       AND tenant_id = NEW.tenant_id
+       AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma);
+    IF FOUND THEN
+      RAISE EXCEPTION 'No se puede crear la variante: "%" tiene Atributos de variante (talle/color/encaje/formato/sabor) activos, y son dos modelos de stock incompatibles. Apagá los Atributos de variante en la ficha de "%" y después creale las variantes.',
+        v_madre_nombre, v_madre_nombre;
+    END IF;
+
+    RETURN NEW;
+  END IF;
+
+  IF NEW.tiene_talle OR NEW.tiene_color OR NEW.tiene_encaje OR NEW.tiene_formato OR NEW.tiene_sabor_aroma THEN
+    SELECT count(*) INTO v_hijos
+      FROM productos
+     WHERE producto_padre_id = NEW.id
+       AND tenant_id = NEW.tenant_id;
+    IF v_hijos > 0 THEN
+      RAISE EXCEPTION 'No se pueden activar los Atributos de variante en "%": ya es un agrupador con % variante(s), y cada variante es un SKU separado con su propio stock. Son dos modelos incompatibles.',
+        NEW.nombre, v_hijos;
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.trg_variante_compose_nombre()
  RETURNS trigger
  LANGUAGE plpgsql
@@ -8594,7 +9224,8 @@ BEGIN
     RETURN NEW;
   END IF;
 
-  SELECT nombre, producto_padre_id, tenant_id INTO v_madre_nombre, v_madre_padre, v_madre_tenant
+  SELECT nombre, producto_padre_id, tenant_id
+    INTO v_madre_nombre, v_madre_padre, v_madre_tenant
   FROM productos WHERE id = NEW.producto_padre_id;
   IF v_madre_nombre IS NULL THEN
     RAISE EXCEPTION 'La madre % no existe', NEW.producto_padre_id;
@@ -8629,6 +9260,102 @@ BEGIN
   RETURN NULL;
 END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_venta_anulada_cancela_pedido()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_pedido RECORD;
+BEGIN
+  IF NEW.estado NOT IN ('cancelada', 'devuelta') THEN RETURN NULL; END IF;
+  IF OLD.estado = NEW.estado THEN RETURN NULL; END IF;
+
+  SELECT * INTO v_pedido FROM pedidos WHERE venta_origen_id = NEW.id FOR UPDATE;
+  IF v_pedido IS NULL THEN RETURN NULL; END IF;
+
+  -- Un pedido ya ENTREGADO no se toca: la mercadería salió físicamente y eso es historia. Que la
+  -- venta se devuelva después es el flujo de Devolución, que reingresa el stock por su lado.
+  IF v_pedido.estado IN ('entregado', 'entregado_parcial', 'cancelado') THEN RETURN NULL; END IF;
+
+  -- Tareas de picking pendientes: se cancelan con UPDATE directo A PROPÓSITO.
+  -- `fn_cancelar_tarea_wms` libera `cantidad_reservada`, que es lo correcto para un pedido de
+  -- logística — pero en un venta-pedido el picking nunca reservó (mig 316): la reserva es de la
+  -- VENTA. Liberarla acá la liberaría DOS veces cuando la venta haga su propia anulación.
+  UPDATE wms_tareas SET estado = 'cancelada'
+   WHERE pedido_id = v_pedido.id AND estado IN ('pendiente', 'en_curso');
+
+  UPDATE pedidos
+     SET estado = 'cancelado', cancelado_at = now(),
+         notas = COALESCE(notas || ' · ', '') || 'Cancelado automáticamente: la venta #'
+                 || COALESCE(NEW.numero::text, '?') || ' se ' || NEW.estado
+   WHERE id = v_pedido.id;
+
+  RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+  -- Igual que el resto: una operación de VENTA no se cae por un documento de logística.
+  RAISE WARNING '[trg_venta_anulada_cancela_pedido] venta % : %', NEW.id, SQLERRM;
+  RETURN NULL;
+END; $function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_venta_auto_pedido()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+BEGIN
+  PERFORM fn_pedido_crear_desde_venta(NEW.id, false);
+  RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING '[trg_venta_auto_pedido] no se pudo crear el pedido de la venta % (tenant %): %',
+    NEW.id, NEW.tenant_id, SQLERRM;
+  RETURN NULL;
+END; $function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_venta_items_sync_pedido()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_pedido_id uuid;
+BEGIN
+  FOR v_pedido_id IN
+    SELECT p.id FROM pedidos p
+    WHERE p.venta_origen_id IN (SELECT DISTINCT venta_id FROM nuevas WHERE venta_id IS NOT NULL)
+      AND p.estado = 'confirmado'
+  LOOP
+    PERFORM fn_pedido_sync_items_desde_venta(v_pedido_id);
+  END LOOP;
+  RETURN NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING '[trg_venta_items_sync_pedido] no se pudieron sincronizar las líneas del pedido: %', SQLERRM;
+  RETURN NULL;
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.trg_venta_no_duplica_pedido_venta()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE v_venta_origen uuid; v_numero integer;
+BEGIN
+  IF NEW.pedido_id IS NULL THEN RETURN NEW; END IF;
+  SELECT p.venta_origen_id, p.numero INTO v_venta_origen, v_numero
+  FROM pedidos p WHERE p.id = NEW.pedido_id AND p.tenant_id = NEW.tenant_id;
+  IF v_venta_origen IS NOT NULL THEN
+    RAISE EXCEPTION 'El pedido #% nació de una venta que ya existe: no puede generar otra. Facturá o cobrá sobre la venta original — generar una segunda duplicaría el ingreso en caja y volvería a rebajar el stock.', v_numero;
+  END IF;
+  RETURN NEW;
+END; $function$
 
 
 CREATE OR REPLACE FUNCTION public.trg_ventas_periodo_cerrado()
@@ -8861,6 +9588,7 @@ CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default O
 CREATE TRIGGER trg_espejo_emisor_default_a_tenant AFTER INSERT OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_espejo_emisor_default_a_tenant();
 CREATE TRIGGER trg_guard_emisor_default BEFORE DELETE OR UPDATE ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_guard_emisor_default();
 CREATE TRIGGER empleados_update_timestamp BEFORE UPDATE ON public.empleados FOR EACH ROW EXECUTE FUNCTION update_empleados_timestamp();
+CREATE TRIGGER trg_envios_marca_pedido AFTER INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION trg_envio_marca_pedido_con_envio();
 CREATE TRIGGER trg_envios_updated_at BEFORE UPDATE ON public.envios FOR EACH ROW EXECUTE FUNCTION fn_envios_updated_at();
 CREATE TRIGGER trg_set_envio_numero BEFORE INSERT ON public.envios FOR EACH ROW EXECUTE FUNCTION set_envio_numero();
 CREATE TRIGGER trg_gastos_cierre BEFORE DELETE OR UPDATE ON public.gastos FOR EACH ROW EXECUTE FUNCTION trg_gastos_periodo_cerrado();
@@ -8882,6 +9610,7 @@ CREATE TRIGGER trg_updated_at_oc BEFORE UPDATE ON public.ordenes_compra FOR EACH
 CREATE TRIGGER trg_set_pedido_numero BEFORE INSERT ON public.pedidos FOR EACH ROW EXECUTE FUNCTION set_pedido_numero();
 CREATE TRIGGER tr_producto_estructuras_updated_at BEFORE UPDATE ON public.producto_estructuras FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 CREATE TRIGGER trg_pp_no_ciclo BEFORE INSERT OR UPDATE OF padre_linea_id ON public.producto_presentaciones FOR EACH ROW EXECUTE FUNCTION trg_pp_no_ciclo();
+CREATE TRIGGER trg_presentaciones_exige_medidas BEFORE INSERT OR UPDATE OF peso_kg, alto_cm, ancho_cm, largo_cm, etiqueta ON public.producto_presentaciones FOR EACH ROW EXECUTE FUNCTION trg_presentacion_exige_medidas();
 CREATE TRIGGER productos_stock_auto_resolver AFTER UPDATE OF stock_actual ON public.productos FOR EACH ROW EXECUTE FUNCTION auto_resolver_alerta_stock();
 CREATE TRIGGER productos_stock_check AFTER UPDATE OF stock_actual ON public.productos FOR EACH ROW EXECUTE FUNCTION check_stock_minimo();
 CREATE TRIGGER productos_updated_at BEFORE UPDATE ON public.productos FOR EACH ROW EXECUTE FUNCTION update_updated_at();
@@ -8890,6 +9619,7 @@ CREATE TRIGGER trg_productos_compose_nombre BEFORE INSERT OR UPDATE OF producto_
 CREATE TRIGGER trg_productos_presentacion_base AFTER INSERT OR UPDATE OF unidad_medida ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_sembrar_presentacion_base();
 CREATE TRIGGER trg_productos_propagar_nombre AFTER UPDATE OF nombre ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_propagar_nombre();
 CREATE TRIGGER trg_productos_udm_familia BEFORE UPDATE OF unidad_medida_base_id ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_udm_cambio_familia();
+CREATE TRIGGER trg_productos_variante_atributos BEFORE INSERT OR UPDATE OF producto_padre_id, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_atributos_incompatibles();
 CREATE TRIGGER trg_set_recepcion_numero BEFORE INSERT ON public.recepciones FOR EACH ROW EXECUTE FUNCTION trg_fn_set_recepcion_numero();
 CREATE TRIGGER trg_updated_at_recepcion BEFORE UPDATE ON public.recepciones FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_recursos_updated_at BEFORE UPDATE ON public.recursos FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -8915,9 +9645,13 @@ CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_creden
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();
 CREATE TRIGGER trg_enforce_usuarios BEFORE INSERT OR UPDATE OF activo ON public.users FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite('usuarios');
 CREATE TRIGGER trg_guard_rol_admin BEFORE INSERT OR UPDATE OF rol ON public.users FOR EACH ROW EXECUTE FUNCTION fn_guard_rol_admin();
+CREATE TRIGGER trg_venta_items_auto_pedido AFTER INSERT ON public.venta_items REFERENCING NEW TABLE AS nuevas FOR EACH STATEMENT EXECUTE FUNCTION trg_venta_items_sync_pedido();
 CREATE TRIGGER set_venta_numero BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION gen_venta_numero();
+CREATE TRIGGER trg_ventas_anulada_cancela_pedido AFTER UPDATE OF estado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_anulada_cancela_pedido();
+CREATE TRIGGER trg_ventas_auto_pedido AFTER INSERT OR UPDATE OF estado, monto_pagado ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_auto_pedido();
 CREATE TRIGGER trg_ventas_cc_guard BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_cc_guard();
 CREATE TRIGGER trg_ventas_cierre BEFORE DELETE OR UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_ventas_periodo_cerrado();
+CREATE TRIGGER trg_ventas_no_duplica_pedido_venta BEFORE INSERT ON public.ventas FOR EACH ROW EXECUTE FUNCTION trg_venta_no_duplica_pedido_venta();
 CREATE TRIGGER trg_ventas_writeoff_rol_guard BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION fn_ventas_writeoff_rol_guard();
 CREATE TRIGGER ventas_updated_at BEFORE UPDATE ON public.ventas FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
@@ -10320,6 +11054,8 @@ GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_egresos_consolidados TO anon;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_egresos_consolidados TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_egresos_consolidados TO service_role;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_ubicacion_ocupacion TO authenticated;
+GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.vw_ubicacion_ocupacion TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.wms_tareas TO authenticated;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.wms_tareas TO service_role;
 GRANT DELETE, INSERT, REFERENCES, SELECT, TRIGGER, TRUNCATE, UPDATE ON public.zonas TO authenticated;
@@ -10465,3 +11201,34 @@ UNION ALL
    FROM (rrhh_salarios s
      LEFT JOIN empleados e ON ((e.id = s.empleado_id)))
   WHERE (s.pagado = true);
+
+CREATE OR REPLACE VIEW public.vw_ubicacion_ocupacion AS
+ SELECT il.tenant_id,
+    il.ubicacion_id,
+    (count(*))::integer AS lpn_activos,
+    COALESCE(sum(
+        CASE
+            WHEN (COALESCE(pp.peso_kg, (0)::numeric) > (0)::numeric) THEN (((il.cantidad)::numeric / (NULLIF(pp.factor_base, 0))::numeric) * pp.peso_kg)
+            ELSE ((il.cantidad)::numeric * COALESCE(p.peso_kg, (0)::numeric))
+        END), (0)::numeric) AS peso_kg,
+    (count(*) FILTER (WHERE ((COALESCE(pp.peso_kg, (0)::numeric) > (0)::numeric) OR (COALESCE(p.peso_kg, (0)::numeric) > (0)::numeric))))::integer AS lineas_con_peso,
+    (count(*))::integer AS lineas_total,
+    COALESCE(sum(
+        CASE
+            WHEN ((COALESCE(pp.alto_cm, (0)::numeric) > (0)::numeric) AND (COALESCE(pp.ancho_cm, (0)::numeric) > (0)::numeric) AND (COALESCE(pp.largo_cm, (0)::numeric) > (0)::numeric)) THEN ((((pp.alto_cm * pp.ancho_cm) * pp.largo_cm) / 1000000.0) * ((il.cantidad)::numeric / (NULLIF(pp.factor_base, 0))::numeric))
+            ELSE (0)::numeric
+        END), (0)::numeric) AS volumen_m3,
+    (count(*) FILTER (WHERE ((COALESCE(pp.alto_cm, (0)::numeric) > (0)::numeric) AND (COALESCE(pp.ancho_cm, (0)::numeric) > (0)::numeric) AND (COALESCE(pp.largo_cm, (0)::numeric) > (0)::numeric))))::integer AS lineas_con_volumen
+   FROM ((inventario_lineas il
+     JOIN productos p ON ((p.id = il.producto_id)))
+     LEFT JOIN LATERAL ( SELECT pp2.factor_base,
+            pp2.peso_kg,
+            pp2.alto_cm,
+            pp2.ancho_cm,
+            pp2.largo_cm
+           FROM producto_presentaciones pp2
+          WHERE ((pp2.producto_id = il.producto_id) AND (pp2.tenant_id = il.tenant_id) AND (pp2.activo = true) AND ((pp2.nombre_empaque_id = il.unidad_medida_id) OR pp2.es_base))
+          ORDER BY ((pp2.nombre_empaque_id IS NOT NULL) AND (pp2.nombre_empaque_id = il.unidad_medida_id)) DESC, ((COALESCE(il.cantidad_uom, (0)::numeric) > (0)::numeric) AND ((pp2.factor_base)::numeric = round(((il.cantidad)::numeric / NULLIF(il.cantidad_uom, (0)::numeric))))) DESC, pp2.es_base DESC, pp2.orden
+         LIMIT 1) pp ON (true))
+  WHERE ((il.activo = true) AND (il.ubicacion_id IS NOT NULL))
+  GROUP BY il.tenant_id, il.ubicacion_id;

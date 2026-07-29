@@ -10,6 +10,7 @@ import {
   type TipoCheque, type EstadoCheque,
 } from '@/lib/comprasCheques'
 import { logActividad } from '@/lib/actividadLog'
+import { useConfirm } from '@/hooks/useConfirm'
 
 const ESTADO_CLS: Record<string, string> = {
   en_cartera: 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300',
@@ -40,6 +41,7 @@ const FORM_EMPTY: FormCheque = {
 
 export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any; user: any; sucursalId: string | null }) {
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const hoy = new Date().toISOString().split('T')[0]
   const alertaDias = (tenant as any)?.cheques_alerta_dias ?? 7
 
@@ -305,7 +307,7 @@ export default function ChequesPanel({ tenant, user, sucursalId }: { tenant: any
                       </button>
                     )}
                     <button onClick={() => openEdit(c)} className="text-gray-400 hover:text-accent-text p-1" title="Editar"><Pencil size={13} /></button>
-                    <button onClick={() => { if (confirm('¿Eliminar este cheque?')) eliminar.mutate(c.id) }} className="text-gray-400 hover:text-red-500 p-1" title="Eliminar"><Trash2 size={13} /></button>
+                    <button onClick={async () => { if (await confirmar('¿Eliminar este cheque?', { danger: true })) eliminar.mutate(c.id) }} className="text-gray-400 hover:text-red-500 p-1" title="Eliminar"><Trash2 size={13} /></button>
                   </div>
                 </div>
               </div>

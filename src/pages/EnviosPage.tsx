@@ -63,6 +63,7 @@ function formatFecha(d: string) {
   return new Date(d).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { useConfirm } from '@/hooks/useConfirm'
 // formatMoneda local: usa moneda del tenant (v1.8.44)
 
 interface FormEnvio {
@@ -100,6 +101,7 @@ export default function EnviosPage() {
   const { tenant, user } = useAuthStore()
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter, sucursales } = useSucursalFilter()
+  const confirmar = useConfirm()
 
   // Formatea el número de venta igual que VentasPage:
   // con prefijo (CODIGO-NNNN) si la sucursal tiene código configurado, sino #numero global
@@ -1429,7 +1431,7 @@ export default function EnviosPage() {
                                   className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
                                   <Pencil size={14} />
                                 </button>
-                                <button onClick={() => { if (confirm('¿Eliminar este envío?')) eliminarEnvio.mutate(e.id) }}
+                                <button onClick={async () => { if (await confirmar('¿Eliminar este envío?', { danger: true })) eliminarEnvio.mutate(e.id) }}
                                   className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                                   <Trash2 size={14} />
                                 </button>

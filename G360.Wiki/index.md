@@ -107,7 +107,7 @@ Catálogo completo de páginas. Actualizar en cada ingest, query guardado, o mod
 | Página | Descripción | Estado |
 |--------|-------------|--------|
 | [[wiki/development/workflow-git]] | Ramas main/dev, PRs, releases, checklist pre-deploy | ✅ |
-| [[wiki/development/convenciones-codigo]] | Naming, imports, patterns, reglas agente LLM | ✅ |
+| [[wiki/development/convenciones-codigo]] | Naming, imports, patterns, reglas agente LLM · **✅ PROD (v1.152.0, 2026-07-29): `useConfirm`/`usePrompt` reemplazan TODO `window.confirm`/`alert`/`prompt`** (86 sitios en 25 archivos, GO: "no quiero popups del sistema") | ✅ |
 | [[wiki/development/deploy]] | Vercel + Supabase, dominios, env vars, comandos | ✅ |
 | [[wiki/development/testing]] | **Unit tests** Vitest (`fileParallelism:false`) + **E2E** Playwright (roles owner/cajero/supervisor/rrhh) · suite e2e reparada v1.51.1 + gobernanza caja · +40 tests de auditoría v1.52-54 (cobranzaCaja/trasladoLogic/cheques) · pipeline QA con agentes · `tests/specs/` · **📱 barrido responsive mobile `88_mobile_responsive` (project `chromium-mobile`, 375/360px, helper de overflow dentro del `<main>`) — 2026-07-15** · guard crt↔clave `certMatch.test.ts` | ✅ |
 | [[wiki/development/agentes-claude-code]] | 9 subagentes de proyecto (.claude/agents/): relevamiento, spec-extractor, test-author, test-runner, migration-reviewer, code-reviewer, bug-fixer, deploy-runner, wiki-keeper | ✅ |

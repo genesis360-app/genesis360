@@ -8,8 +8,35 @@ updated: 2026-07-28
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.151.0 (2026-07-29) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
+**Versión en PROD:** v1.152.0 (2026-07-29) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
 **Última actualización:** 29 de Julio, 2026
+
+---
+
+## v1.152.0 — 🗑️ Sin popups nativos del navegador + 🧹 catálogo de Empaque limpio (mig 327) — ✅ **PROD** (2026-07-29)
+
+GO, mirando la app ya deployada: *"no quiero ningún popup o cartel que sea del sistema, deben ser
+diseños de la app"* — con captura de un `window.confirm` nativo real al duplicar un producto.
+
+**Barrido completo: 86 llamadas a `confirm()`/`alert()`/`prompt()` nativos, en 25 archivos.**
+Componente propio `src/hooks/useConfirm.tsx` (`ConfirmProvider` + `useConfirm()`/`usePrompt()`),
+con la MISMA firma que las funciones nativas (`Promise<boolean>` / `Promise<string | null>`) para
+que el reemplazo fuera mecánico en cada call site. Estilo de marca, dark mode, Escape/click-afuera
+cierran en cancelado, un segundo pedido nunca deja colgado al anterior. **9 tests de integración
+nuevos** (primer test de componente React del repo, no solo `renderHook`).
+
+**Probado en el navegador real, no solo tsc/build:** reprodujo el caso exacto de la captura de GO
+en claro y oscuro, más un flujo de `prompt` completo de punta a punta. 0 diálogos nativos, 0
+errores de consola.
+
+**🧹 De paso, otro hallazgo de GO: Config → Inventario → Empaque mostraba unidades físicas**
+(Kilogramo/Gramo/Litro/Metro) que no son empaque. Causa: siembra de la mig 148 (2026-05-28, previa
+al rediseño UoM/Empaque) que nadie podó. **Mig 327** las dropea (verificadas 0 usos en las 7 FK
+reales, DEV+PROD) dejando `Caja`/`Pallet`/`Unidad` — ésta última **a propósito no se toca**, tiene
+uso histórico real (`producto_estructura_niveles`, `movimientos_stock`) que se habría perdido en
+silencio.
+
+Verde: tsc · build · unit 1383 · smoke en browser real. Detalle completo en `log.md`.
 
 ---
 

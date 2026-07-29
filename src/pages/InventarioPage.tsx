@@ -43,6 +43,7 @@ import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
 import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
+import { useConfirm } from '@/hooks/useConfirm'
 import * as XLSX from 'xlsx'
 
 type Tab = 'inventario' | 'agregar' | 'quitar' | 'traslados' | 'kits' | 'conteo' | 'historial' | 'autorizaciones' | 'wms'
@@ -88,6 +89,7 @@ export default function InventarioPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { cotizacion: cotizacionNum } = useCotizacion()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const { grupos, grupoDefault, estadosDefault } = useGruposEstados()
   const { limits } = usePlanLimits()
   const { avanzado: modoAvanzado } = useModoOperacion()
@@ -786,7 +788,7 @@ export default function InventarioPage() {
     const tieneDependiente = esReab && (wmsTareas as any[]).some(x => x.tarea_precedente_id === t.id)
     const msg = `¿Cancelar esta tarea de ${esReab ? 'reabastecimiento' : 'picking'}?` +
       (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
-    if (!window.confirm(msg)) return
+    if (!(await confirmar(msg, { danger: true }))) return
     setCompletandoWms(t.id)
     const { error } = await supabase.rpc('fn_cancelar_tarea_wms', { p_tarea_id: t.id })
     setCompletandoWms(null)
@@ -1619,7 +1621,7 @@ export default function InventarioPage() {
     const iniciaBloqueante = conteoTipo === 'sucursal' && conteoWtwBloquea && !continuandoConteoId
     if (iniciaBloqueante) {
       if (!puedeGestionarConteo) { toast.error('Solo DUEÑO/SUPERVISOR puede iniciar un conteo wall-to-wall bloqueante'); return }
-      if (!window.confirm('Este conteo wall-to-wall BLOQUEARÁ ventas y movimientos de stock de la sucursal hasta que lo finalices o lo elimines. ¿Iniciar?')) return
+      if (!(await confirmar('Este conteo wall-to-wall BLOQUEARÁ ventas y movimientos de stock de la sucursal hasta que lo finalices o lo elimines. ¿Iniciar?', { danger: true }))) return
     }
     setConteoLoading(true)
     try {
@@ -5609,9 +5611,9 @@ export default function InventarioPage() {
                         Saltar con clave maestra
                       </button>
                     )}
-                    <button onClick={() => {
+                    <button onClick={async () => {
                         // B3: avisar si quedaron filas sin contar (no se ajustan)
-                        if (enBlanco > 0 && !window.confirm(`Quedan ${enBlanco} línea${enBlanco !== 1 ? 's' : ''} sin contar — esas NO se ajustarán (se asume que no se contaron). ¿Finalizar igual?`)) return
+                        if (enBlanco > 0 && !(await confirmar(`Quedan ${enBlanco} línea${enBlanco !== 1 ? 's' : ''} sin contar — esas NO se ajustarán (se asume que no se contaron). ¿Finalizar igual?`))) return
                         // C/F3b: doble conteo formal — exige recontar las filas sobre umbral (o saltar con clave)
                         intentarFinalizar()
                       }}
@@ -5797,7 +5799,7 @@ export default function InventarioPage() {
                               Continuar
                             </button>
                             <button
-                              onClick={e => { e.stopPropagation(); if (confirm('¿Eliminar este borrador?')) eliminarConteo.mutate(c.id) }}
+                              onClick={async e => { e.stopPropagation(); if (await confirmar('¿Eliminar este borrador?', { danger: true })) eliminarConteo.mutate(c.id) }}
                               disabled={eliminarConteo.isPending}
                               className="text-xs px-2 py-1 border border-red-200 dark:border-red-700 text-red-500 dark:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50">
                               Eliminar
@@ -5969,7 +5971,7 @@ export default function InventarioPage() {
 
                       {autEstado === 'pendiente' && (
                         <div className="flex flex-col gap-2 flex-shrink-0">
-                          <button onClick={() => { if (confirm(`¿Aprobar y ejecutar: ${tipoLabel} en ${linea?.lpn}?`)) aprobarAutorizacion.mutate(aut) }}
+                          <button onClick={async () => { if (await confirmar(`¿Aprobar y ejecutar: ${tipoLabel} en ${linea?.lpn}?`)) aprobarAutorizacion.mutate(aut) }}
                             disabled={aprobarAutorizacion.isPending}
                             className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
                             <CheckCircle2 size={13} /> Aprobar

@@ -27,6 +27,7 @@ import { AyudaModal } from '@/components/AyudaModal'
 import { RefreshButton } from '@/components/RefreshButton'
 import { AvatarDropdown } from '@/components/AvatarDropdown'
 import { ConfigButton } from '@/components/ConfigButton'
+import { useConfirm } from '@/hooks/useConfirm'
 
 // ─── Orden según DS Sprint 2 ──────────────────────────────────────────────────
 const navItems = [
@@ -91,6 +92,7 @@ export function AppLayout() {
   }
 
   const { user, tenant } = useAuthStore()
+  const confirmar = useConfirm()
   useInactivityTimeout(tenant?.session_timeout_minutes)
   const { count: alertCount } = useAlertas()
 
@@ -185,12 +187,12 @@ export function AppLayout() {
   })
 
   // L4 — Wrapper de setSucursal: bloquea cambio si hay caja propia abierta en otra sucursal
-  const handleCambiarSucursal = (newId: string | null) => {
+  const handleCambiarSucursal = async (newId: string | null) => {
     if (newId === sucursalId) return
     const cajaPropiaEnOtra = (misCajasAbiertasPorSuc as any[]).find((s: any) => s.sucursal_id && s.sucursal_id !== newId)
     if (cajaPropiaEnOtra) {
       const nombre = cajaPropiaEnOtra.cajas?.nombre ?? 'caja'
-      const ok = window.confirm(
+      const ok = await confirmar(
         `Tenés una caja abierta (${nombre}) en otra sucursal. Para mantener el control contable, debés cerrarla antes de cambiar de sucursal.\n\n¿Querés ir a cerrar esa caja primero?`
       )
       if (ok) {

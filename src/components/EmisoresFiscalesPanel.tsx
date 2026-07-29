@@ -21,6 +21,7 @@ import { useAuthStore } from '@/store/authStore'
 import { uploadCertificates, generarCsrEmisor, finalizarCertificadoDesdeCsr } from '@/lib/afip'
 import { pasoWizardCert } from '@/lib/csrCert'
 import { Toggle } from '@/components/Toggle'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 interface Emisor {
@@ -61,6 +62,7 @@ export interface EmisoresFiscalesPanelHandle {
 
 export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(function EmisoresFiscalesPanel(_props, ref) {
   const { tenant, setTenant } = useAuthStore()
+  const confirmar = useConfirm()
   const [collapsed, setCollapsed] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
@@ -218,7 +220,7 @@ export const EmisoresFiscalesPanel = forwardRef<EmisoresFiscalesPanelHandle>(fun
       toast.error(`Este emisor tiene ${count} comprobante(s) emitido(s) — desactivalo en vez de eliminarlo.`)
       return
     }
-    if (!confirm(`¿Eliminar el emisor "${e.nombre}" (${e.cuit})? También se quitan su certificado y puntos de venta.`)) return
+    if (!(await confirmar(`¿Eliminar el emisor "${e.nombre}" (${e.cuit})? También se quitan su certificado y puntos de venta.`, { danger: true }))) return
     await supabase.from('puntos_venta_afip').delete().eq('emisor_id', e.id)
     await supabase.from('tenant_certificates').delete().eq('emisor_id', e.id)
     const { error } = await supabase.from('emisores_fiscales').delete().eq('id', e.id)

@@ -38,6 +38,7 @@ interface FilaCliente {
 }
 
 import { formatMoneda as formatMonedaLib } from '@/lib/formato'
+import { useConfirm } from '@/hooks/useConfirm'
 // formatMoneda local: usa moneda del tenant (v1.8.44)
 function formatFecha(iso: string) {
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -111,6 +112,7 @@ export default function ClientesPage() {
   const formatMoneda = (v: number) => formatMonedaLib(v, (tenant as any)?.moneda ?? 'ARS')
   const { sucursalId, applyFilter } = useSucursalFilter()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [pageTab, setPageTab] = useState<'lista' | 'cc' | 'reportes'>('lista')
@@ -424,7 +426,7 @@ export default function ClientesPage() {
   }
 
   const deleteDomicilio = async (id: string) => {
-    if (!confirm('¿Eliminar este domicilio?')) return
+    if (!(await confirmar('¿Eliminar este domicilio?', { danger: true }))) return
     await supabase.from('cliente_domicilios').delete().eq('id', id)
     refetchDoms()
   }
@@ -487,7 +489,7 @@ export default function ClientesPage() {
         c.dni === form.dni.trim() ||
         c.nombre.trim().toLowerCase() === form.nombre.trim().toLowerCase() ||
         (tel && (c.telefono ?? '').replace(/\D/g, '') === tel))
-      if (match && !confirm(`Posible duplicado: ya existe "${match.nombre}"${match.dni ? ` (DNI ${match.dni})` : ''}. ¿Crear de todas formas?`)) return
+      if (match && !(await confirmar(`Posible duplicado: ya existe "${match.nombre}"${match.dni ? ` (DNI ${match.dni})` : ''}. ¿Crear de todas formas?`))) return
     }
     setSaving(true)
     try {
@@ -561,7 +563,7 @@ export default function ClientesPage() {
   // La venta sigue entregada (despachada); solo se salda la deuda como incobrable.
   // El tag 'Condonación CC' queda EXCLUIDO de los gráficos de medios de pago (no distorsiona la ganancia).
   const condonarDeudaCC = async (ventaId: string, ventaNumero: number) => {
-    if (!confirm(`¿Condonar la deuda de la Venta #${ventaNumero}? La deuda se da por PERDIDA (incobrable). No cuenta como ingreso ni como medio de pago. Podés revertirlo después.`)) return
+    if (!(await confirmar(`¿Condonar la deuda de la Venta #${ventaNumero}? La deuda se da por PERDIDA (incobrable). No cuenta como ingreso ni como medio de pago. Podés revertirlo después.`, { danger: true }))) return
     setCancelandoDeudaId(ventaId)
     try {
       const { data: venta } = await supabase.from('ventas').select('total, medio_pago').eq('id', ventaId).single()
@@ -584,7 +586,7 @@ export default function ClientesPage() {
   // ISS-151: REVERTIR a pendiente — deshace una condonación, restaura la deuda. Solo DUEÑO/SUPERVISOR/ADMIN.
   // La venta SIGUE entregada (no se toca estado ni stock); solo vuelve a "falta pagar" para re-cobrar o anular.
   const revertirDeudaCC = async (ventaId: string, ventaNumero: number) => {
-    if (!confirm(`¿Revertir la Venta #${ventaNumero} a "falta pagar"? Se restaura la deuda para cobrarla por otro medio o anular la venta. La mercadería sigue entregada (si necesitás devolverla, usá Devolución).`)) return
+    if (!(await confirmar(`¿Revertir la Venta #${ventaNumero} a "falta pagar"? Se restaura la deuda para cobrarla por otro medio o anular la venta. La mercadería sigue entregada (si necesitás devolverla, usá Devolución).`))) return
     setCancelandoDeudaId(ventaId)
     try {
       const { data: venta } = await supabase.from('ventas').select('total, medio_pago').eq('id', ventaId).single()

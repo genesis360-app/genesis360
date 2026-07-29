@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore'
 import { AuthGuard, SubscriptionGuard } from '@/components/AuthGuard'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { ErrorBoundary } from '@/components/ErrorBoundary'
+import { ConfirmProvider } from '@/hooks/useConfirm'
 
 // Lazy loading de módulos
 const LoginPage        = lazy(() => import('@/pages/LoginPage'))
@@ -106,6 +107,7 @@ function App() {
   return (
     <ErrorBoundary>
     <QueryClientProvider client={queryClient}>
+    <ConfirmProvider>
       {isDevEnv && (
         <div className="fixed top-0 inset-x-0 z-[9999] h-4 flex items-center justify-center bg-amber-400 text-amber-900 text-[10px] font-semibold pointer-events-none select-none">
           ⚠ Ambiente DEV — {window.location.hostname}
@@ -198,6 +200,7 @@ function App() {
         </Suspense>
       </BrowserRouter>
       <Toaster position="top-right" />
+    </ConfirmProvider>
     </QueryClientProvider>
     </ErrorBoundary>
   )

@@ -10,11 +10,13 @@ import { formatearVencimiento } from '@/lib/facturacionManual'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { es } from 'date-fns/locale'
+import { useConfirm } from '@/hooks/useConfirm'
 
 export default function MiCuentaPage() {
   const { user, tenant, signOut, loadUserData } = useAuthStore()
   const { limits } = usePlanLimits()
   const navigate = useNavigate()
+  const confirmar = useConfirm()
 
   const [provider, setProvider] = useState<string>('email')
   const [uploading, setUploading] = useState(false)
@@ -125,7 +127,7 @@ export default function MiCuentaPage() {
     const confirmMsg = nuevoModo === 'manual'
       ? '¿Pasar a pago manual? Vas a pagar a precio de lista (sin el -10% de débito automático), mes a mes, por transferencia/efectivo o con MP sin auto-débito.'
       : '¿Volver a suscripción automática? Vas a tener que suscribirte de nuevo desde la sección de planes (con el -10% de débito automático).'
-    if (!confirm(confirmMsg)) return
+    if (!(await confirmar(confirmMsg))) return
     if (nuevoModo === 'auto') { navigate('/suscripcion'); return }
     setCambiandoModo(true)
     try {

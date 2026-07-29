@@ -3,6 +3,7 @@ import { Building2, Plus, Pencil, Trash2, MapPin, Phone, Truck, Navigation, Chec
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 interface SucursalForm {
@@ -31,6 +32,7 @@ const COURIERS_DEFAULT = ['OCA', 'Correo Argentino', 'Andreani', 'DHL Express', 
 export default function SucursalesPage() {
   const { tenant, loadUserData } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const [modal, setModal] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [form, setForm] = useState<SucursalForm>(EMPTY)
@@ -219,7 +221,7 @@ export default function SucursalesPage() {
                     className="p-2 text-gray-400 hover:text-primary dark:hover:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors">
                     <Pencil size={15} />
                   </button>
-                  <button onClick={() => { if (confirm(`¿Eliminar "${s.nombre}"?`)) remove.mutate(s.id) }}
+                  <button onClick={async () => { if (await confirmar(`¿Eliminar "${s.nombre}"?`, { danger: true })) remove.mutate(s.id) }}
                     className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                     <Trash2 size={15} />
                   </button>

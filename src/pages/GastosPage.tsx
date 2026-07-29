@@ -33,6 +33,7 @@ import ChequesPanel from '@/components/ChequesPanel'
 import ComprasReportesPanel from '@/components/ComprasReportesPanel'
 import { chequeProximoACobrar, montoChequeDeMedios } from '@/lib/comprasCheques'
 import { useCierreContable, manejarErrorPeriodoCerrado } from '@/hooks/useCierreContable'
+import { useConfirm } from '@/hooks/useConfirm'
 
 // Fallback solo si la query a categorias_gasto falla. Se sobreescribe con la tabla.
 const CATEGORIAS_GASTO_FALLBACK = [
@@ -153,6 +154,7 @@ export default function GastosPage() {
   // (?? principal) — misma regla de resolución que las ventas. Con 1 emisor es un no-op.
   const { emisorDeSucursal } = useEmisoresFiscales()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const puedeAdministrarCaja = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
   const esCajero = user?.rol === 'CAJERO'
@@ -1277,7 +1279,7 @@ export default function GastosPage() {
     const confirmMsg = teniaPago
       ? '¿Eliminar este gasto? Se creará un movimiento de corrección en caja para revertir el egreso registrado.'
       : '¿Eliminar este gasto?'
-    if (!confirm(confirmMsg)) return
+    if (!(await confirmar(confirmMsg, { danger: true }))) return
     if (g?.comprobante_url) void supabase.storage.from('comprobantes-gastos').remove([g.comprobante_url])
     const { error } = await supabase.from('gastos').delete().eq('id', id)
     if (error) {
@@ -1423,7 +1425,7 @@ export default function GastosPage() {
   }
 
   const eliminarFijo = async (id: string) => {
-    if (!confirm('¿Eliminar este gasto fijo?')) return
+    if (!(await confirmar('¿Eliminar este gasto fijo?', { danger: true }))) return
     const { error } = await supabase.from('gastos_fijos').delete().eq('id', id)
     if (error) { toast.error('Error al eliminar'); return }
     qc.invalidateQueries({ queryKey: ['gastos-fijos'] })

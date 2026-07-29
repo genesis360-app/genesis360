@@ -6,29 +6,49 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-07-29) — v1.151.0 **DEPLOYADO A PROD**. Sin pendientes bloqueantes.
+> ### ✅ ARRANCÁ ACÁ (2026-07-29) — v1.152.0 **DEPLOYADO A PROD**. Sin pendientes bloqueantes.
 >
-> **PROD = DEV = v1.151.0.** Migs **314-326 (13)** aplicadas y verificadas en PROD contra datos
-> reales. PR #305 `dev→main` mergeado con **merge commit** (no squash, `74a8750f`) → los tags
-> `v1.150.0`/`v1.151.0` ya creados sobre `dev` quedaron como ancestros directos de `main`, no hizo
-> falta re-taggear. `schema_full.sql` regenerado (150 tablas · hasta la mig 326).
+> **PROD = DEV = v1.152.0.** Migs **314-327 (14)** aplicadas y verificadas en PROD contra datos
+> reales. `schema_full.sql` regenerado (150 tablas · hasta la mig 327).
 >
 > **🔴→✅ El bloqueante de la sesión (conector MCP de Supabase caído a mitad de trabajo) se resolvió
 > solo:** GO lo reconectó desde claude.ai → Connectors. Mientras estuvo caído se usó un runner de SQL
 > propio contra la Management API con un `SUPABASE_ACCESS_TOKEN` que GO pasó puntualmente (mismo
 > patrón que otras sesiones — no persistido, **GO lo rota al terminar**). Con el conector de vuelta,
-> las migraciones 323-326 se terminaron de aplicar por el camino oficial (`apply_migration`).
->
-> **Verificación post-deploy (Regla #0, contra datos reales de PROD, no contra "aplicó sin error"):**
-> hash de `productos.stock_actual` **idéntico** antes/después (`e3919f1a…`) · 62 movimientos sin
-> cambios · los 2 CAE existentes intactos · 0 pedidos afectados por la limpieza de la mig 323 ·
-> 0 violaciones del CHECK de la mig 314 · advisors de seguridad y performance de PROD: **0 hallazgos
-> nuevos** (los 14 no rutinarios que aparecen ya eran conocidos: `platform_*`/`support_*` de
-> genesis360-admin, `pg_net`, leaked-password — nada de 314-326).
+> las migraciones 323-327 se terminaron de aplicar por el camino oficial (`apply_migration`).
 >
 > ---
 >
-> #### ✅ LO QUE SE CERRÓ ESTA SESIÓN (v1.151.0, mig 326)
+> #### ✅ LO QUE SE CERRÓ ESTA SESIÓN — TANDA 2 (v1.152.0, mig 327)
+>
+> Cierre pedido por GO DESPUÉS de deployar v1.151.0, mirando la app ya en PROD:
+> *"no quiero ningún popup o cartel que sea del sistema, deben ser diseños de la app"* — con
+> captura de un `window.confirm` nativo real al duplicar un producto.
+>
+> **🗑️ Barrido completo: 86 llamadas a `confirm()`/`alert()`/`prompt()` nativos, en 25 archivos.**
+> Componente propio `src/hooks/useConfirm.tsx` (`ConfirmProvider` montado una vez en `App.tsx`) con
+> la MISMA firma que las funciones nativas — el reemplazo en cada call site fue mecánico: agregar
+> `await` + volver `async` la función contenedora. Ver detalle completo en
+> `wiki/development/convenciones-codigo.md` → "Confirmaciones y prompts". **9 tests de integración
+> nuevos** (primer test de componente React del repo — render + click real + verificación de que la
+> Promise resuelve). **Probado en el navegador real** (Playwright contra el dev server, sesión e2e
+> reusada): reprodujo el caso exacto de GO en claro y oscuro + un flujo de `prompt` completo.
+> **0 diálogos nativos, 0 errores de consola.**
+>
+> **🧹 De paso, otro hallazgo de GO en la misma pantalla: Config → Inventario → Empaque mostraba
+> "Kilogramo"/"Gramo"/"Litro"/"Metro" junto a "Caja"/"Pallet".** Causa: siembra de la mig 148
+> (2026-05-28, previa al rediseño UoM/Empaque) que nadie podó. **Mig 327**: verificadas las **7 FK**
+> reales hacia `unidades_medida(id)` (no solo las 2 obvias) en DEV y PROD, todos los tenants — 0 usos
+> de las 4 unidades físicas → se dropean. **"Unidad" se deja afuera a propósito**: tiene uso
+> histórico real (`producto_estructura_niveles` deprecada + `movimientos_stock`, ledger inmutable) —
+> tocarla habría borrado trazabilidad en silencio. `fn_seed_tenant_defaults` actualizada para que
+> los tenants nuevos no reciban más la siembra vieja.
+>
+> **Verde:** tsc · build · unit **1383** (88 archivos) · smoke manual en browser real.
+>
+> ---
+>
+> #### ✅ TANDA 1 (v1.151.0, mig 326)
 >
 > GO eligió 5 pendientes de la lista. **Dos ya estaban hechos y la lista estaba mintiendo** — lo
 > primero fue verificar contra el código, no contra las notas:
@@ -66,30 +86,17 @@ type: project
 >
 > ---
 >
-> #### 🟡 PENDIENTE DE DECISIÓN — catálogo de "Empaque" con basura vieja (encontrado por GO, 2026-07-29)
+> #### ✅ RESUELTO — catálogo de "Empaque" con basura vieja (mig 327, v1.152.0)
 >
-> GO notó en Config → Inventario → Empaque que la lista tiene unidades que no son empaque
-> (`Kilogramo`, `Gramo`, `Litro`, `Metro`, `Unidad` junto a `Caja`/`Pallet`, que sí lo son).
->
-> **Causa raíz:** `unidades_medida` (que hoy sirve SOLO como catálogo de nombres de empaque —
-> `producto_presentaciones.nombre_empaque_id`) tiene sembradas desde la **mig 148** (ISS-180,
-> *previa* al rediseño de UoM/Empaque de las migs 303-308) esas 5 unidades físicas, de cuando esta
-> tabla todavía hacía las dos cosas a la vez. Cuando se separó en `unidades_medida_fisicas` (la
-> correcta para lo físico, alimenta la pestaña "Unidades"), nadie podó la siembra vieja acá. Son
-> `predefinida = true` → **la UI no deja borrarlas** (el candado 🔒).
->
-> **Verificado con datos reales antes de proponer nada (DEV y PROD, todos los tenants):** 0 usos
-> reales de `Gramo`/`Kilogramo`/`Litro`/`Metro` como empaque en ningún producto; los 3
-> `producto_presentaciones` y 2 `inventario_lineas` que usan "Unidad" en DEV son fixtures de e2e
-> (`E2E Filtros 1785…`), no datos de cliente. Es seguro dropearlas.
->
-> **Propuesta (sin aplicar, esperando que GO confirme):** migración que borra
-> `Gramo/Kilogramo/Litro/Metro/Unidad` de `unidades_medida` en todos los tenants, dejando
-> `Caja`/`Pallet` (empaque real) y cualquier custom del tenant intacto (ej. `TongaUOM` en DEV).
+> Era la propuesta de esta misma sesión. GO confirmó y se aplicó — ver la tanda 2 más arriba.
+> **⚠ Un detalle cambió respecto a la propuesta original:** al re-verificar las 7 FK reales hacia
+> `unidades_medida(id)` (no solo las 2 obvias que se habían chequeado primero) apareció que
+> **"Unidad" tiene uso histórico real** (`producto_estructura_niveles` + `movimientos_stock`), a
+> diferencia de lo que decía la nota vieja ("son fixtures de e2e"). Se dejó afuera del DELETE.
 >
 > ---
 >
-> #### ✅ SESIÓN ANTERIOR (v1.150.0, mig 325 — **EN DEV**)
+> #### ✅ SESIÓN ANTERIOR (v1.150.0, mig 325 — ✅ PROD desde v1.151.0)
 >
 > **📦 El cubicaje volumétrico quedó COMPLETO: las tres fases.** La sesión anterior había dejado solo
 > los datos (mig 322) y ningún frontend.

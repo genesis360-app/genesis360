@@ -6,11 +6,30 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-29
 ---
 
-# Historial de Migraciones (001-326)
+# Historial de Migraciones (001-327)
 
-**Total al 2026-07-29:** 326 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-29:** 327 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-326 en DEV y PROD** (v1.151.0, deploy 2026-07-29). `schema_full.sql` regenerado al día.
+**001-327 en DEV y PROD** (v1.152.0, deploy 2026-07-29). `schema_full.sql` regenerado al día.
+
+**327 (🧹 limpieza del catálogo de Empaque — dropea unidades físicas coladas por la mig 148, ✅ PROD 2026-07-29)** —
+Config → Inventario → Empaque mostraba "Kilogramo"/"Gramo"/"Litro"/"Metro" junto a "Caja"/"Pallet"
+(hallazgo de GO). `unidades_medida` es hoy el catálogo de nombres de EMPAQUE
+(`producto_presentaciones.nombre_empaque_id`), pero la mig 148 (2026-05-28, previa al rediseño
+UoM/Empaque de las migs 303-308) sembró ahí 5 unidades FÍSICAS de cuando la tabla servía para las
+dos cosas a la vez. Verificado con datos reales ANTES del DELETE, en las **7 FK** que referencian
+`unidades_medida(id)` (no solo las 2 obvias): `producto_presentaciones.nombre_empaque_id` ·
+`inventario_lineas.unidad_medida_id` · `combos.unidad_medida_id` · `movimientos_stock.unidad_medida_id` ·
+`producto_estructura_niveles.unidad_medida_id` · `reglas_almacenaje.unidad_medida_id` ·
+`venta_items.unidad_medida_id`. `Gramo`/`Kilogramo`/`Litro`/`Metro`: 0 usos en las 7, en TODOS los
+tenants de DEV y PROD → se dropean, con guards `NOT EXISTS` (defensa en profundidad) por si algún
+tenant no relevado tuviera un uso real.
+🛑 **"Unidad" se deja afuera a propósito**: tiene uso histórico real en DEV (53+40 filas de
+`producto_estructura_niveles`, la tabla vieja marcada "no se dropea, es histórico" desde la mig 311;
+2 filas de `movimientos_stock`, ledger inmutable con `ON DELETE SET NULL`) — tocarla habría borrado
+trazabilidad real en silencio. Regla #0: no se reescribe histórico.
+Se actualiza también `fn_seed_tenant_defaults` para que los tenants nuevos no reciban más la
+siembra vieja. Revisado por `migration-reviewer`: apta sin correcciones.
 
 **326 (📦 el reabastecimiento elige una posición de picking QUE TENGA LUGAR, ✅ PROD 2026-07-29)** —
 Paso 4 del cubicaje. `fn_wms_elegir_ubicacion_picking` (mig 290) elegía el destino de una tarea

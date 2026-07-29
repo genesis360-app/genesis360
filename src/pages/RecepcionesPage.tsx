@@ -13,6 +13,7 @@ import { cambioCostoPct, superaAlertaCosto } from '@/lib/comprasCostos'
 import { logActividad } from '@/lib/actividadLog'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import type { Recepcion } from '@/lib/supabase'
+import { useConfirm } from '@/hooks/useConfirm'
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -115,6 +116,7 @@ function nuevoItem(overrides: Partial<FormItem> = {}): FormItem {
 export default function RecepcionesPage() {
   const { tenant, user, sucursales, sucursalId: sucursalCtx } = useAuthStore()
   const { applyFilter, sucursalId } = useSucursalFilter()
+  const confirmar = useConfirm()
   // CO2 — config + rol para over-receipt, motivo de faltante y remito
   const esSupervisorPlus = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO', 'ADMIN'].includes(user?.rol ?? '')
   const overReceiptCfg = { permite: !!(tenant as any)?.permite_over_receipt, pctMax: (tenant as any)?.over_receipt_pct_max }
@@ -891,7 +893,7 @@ export default function RecepcionesPage() {
   }
 
   const cancelarRecepcion = async (id: string) => {
-    if (!confirm('¿Cancelar esta recepción?')) return
+    if (!(await confirmar('¿Cancelar esta recepción?', { danger: true }))) return
     await supabase.from('recepciones').update({ estado: 'cancelada' }).eq('id', id)
     qc.invalidateQueries({ queryKey: ['recepciones', tenant?.id] })
   }

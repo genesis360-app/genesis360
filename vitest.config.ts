@@ -6,7 +6,7 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./tests/unit/setup.ts'],
-    include: ['tests/unit/**/*.test.ts'],
+    include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx'],
     // Sin paralelismo de archivos: correr los 43 archivos en paralelo levanta un
     // entorno jsdom por worker y agota la RAM, matando los workers con un error
     // genérico ("Cannot read properties of undefined (reading 'config')") — falla

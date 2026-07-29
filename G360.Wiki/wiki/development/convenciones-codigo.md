@@ -112,6 +112,41 @@ Evita cambios accidentales al hacer scroll.
 
 ---
 
+## Confirmaciones y prompts — NUNCA `window.confirm`/`alert`/`prompt` (v1.152.0)
+
+GO, 2026-07-29: *"no quiero ningún popup o cartel que sea del sistema, deben ser diseños de la
+app"*. Los diálogos nativos del navegador (`window.confirm`/`alert`/`prompt`) no se pueden
+estilizar — muestran el título fijo del navegador ("localhost:5173 dice") y rompen el look de la
+app. Barridos y reemplazados los 86 que había en el repo (25 archivos) por un componente propio.
+
+```tsx
+import { useConfirm, usePrompt } from '@/hooks/useConfirm'
+
+const confirmar = useConfirm()   // dentro del componente
+const preguntar = usePrompt()
+
+// Antes: if (!confirm('¿Eliminar?')) return
+if (!(await confirmar('¿Eliminar?', { danger: true }))) return   // danger = rojo, para eliminar
+
+// Antes: const nombre = prompt('Nombre:')
+const nombre = await preguntar('Nombre:', { placeholder: 'ej: Monotributo' })
+```
+
+- **Misma semántica que las funciones nativas** (`Promise<boolean>` / `Promise<string | null>`) a
+  propósito: la migración de un call site existente es mecánica — agregar `await` y `async` en la
+  función contenedora, sin reestructurar lógica.
+- `ConfirmProvider` está montado UNA VEZ en `App.tsx` (junto al `<Toaster>`), no por página.
+- Mensajes multilínea con `\n`/`\n\n` se renderizan bien (`whitespace-pre-line`).
+- Un `confirmar()`/`preguntar()` nuevo mientras el anterior seguía sin resolver **resuelve el
+  anterior en `false`/`null`** — nunca queda una Promise colgada para siempre.
+- Para un `alert()` de error simple, usar `toast.error(...)` (ya es el patrón del resto de la app),
+  no un modal nuevo.
+- Tests: `tests/unit/useConfirm.test.tsx` — primer test de INTEGRACIÓN de componente del repo
+  (render real + click de usuario + verificación de que la Promise resuelve), no solo
+  `renderHook`. Requirió sumar `tests/unit/**/*.test.tsx` al `include` de `vitest.config.ts`.
+
+---
+
 ## Commits
 
 ```

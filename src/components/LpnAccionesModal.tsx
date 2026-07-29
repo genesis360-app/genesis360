@@ -15,6 +15,7 @@ import { LpnQR } from '@/components/LpnQR'
 import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
 import { AvisoCapacidadUbicacion } from '@/components/AvisoCapacidadUbicacion'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar'
@@ -28,6 +29,7 @@ interface Props {
 export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   const { tenant, user, sucursales, sucursalId } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const tieneReservas = (linea.cantidad_reservada ?? 0) > 0
   const [tab, setTab] = useState<AccionTab>(tieneReservas ? 'mover' : 'editar')
   const tieneSeries = producto.tiene_series
@@ -893,7 +895,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                           <button onClick={() => { setEditSerieId(s.id); setEditSerieNro(s.nro_serie) }}
                             className="text-gray-400 dark:text-gray-500 hover:text-accent-text p-1"><Edit2 size={12} /></button>
                           {!s.reservado && (
-                            <button onClick={() => { if (confirm('¿Eliminar esta serie?')) eliminarSerie.mutate(s.id) }}
+                            <button onClick={async () => { if (await confirmar('¿Eliminar esta serie?', { danger: true })) eliminarSerie.mutate(s.id) }}
                               className="text-gray-400 dark:text-gray-500 hover:text-red-500 p-1"><Trash2 size={12} /></button>
                           )}
                         </>
@@ -933,11 +935,11 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 </div>
               )}
               <button
-                onClick={() => {
+                onClick={async () => {
                   const msg = requiereAprobacion
                     ? `¿Enviar solicitud de eliminación del LPN ${linea.lpn}?`
                     : `¿Eliminar definitivamente el LPN ${linea.lpn}?`
-                  if (confirm(msg)) eliminarLpn.mutate()
+                  if (await confirmar(msg, { danger: true })) eliminarLpn.mutate()
                 }}
                 disabled={eliminarLpn.isPending}
                 className={`w-full font-semibold py-3 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2 text-white

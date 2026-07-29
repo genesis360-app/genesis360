@@ -22,6 +22,7 @@ import { motivoBloqueoAtributosVariante, motivoBloqueoCrearVariante, tieneAtribu
 import { ProductoQR } from '@/components/ProductoQR'
 import { ReasignarStockVarianteModal } from '@/components/ReasignarStockVarianteModal'
 import { Toggle } from '@/components/Toggle'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
@@ -37,6 +38,7 @@ export default function ProductoFormPage() {
   const isEditing = !!id
   const navigate = useNavigate()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const { tenant, user, sucursales } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
   const { limits } = usePlanLimits()
@@ -590,7 +592,7 @@ export default function ProductoFormPage() {
   }
 
   const handleDelete = async () => {
-    if (!confirm(`¿Eliminar "${form.nombre}" definitivamente? Esta acción NO se puede deshacer — se borra el registro, no solo se desactiva. Si preferís conservarlo pero ocultarlo, usá el toggle "Activo / Inactivo" en su lugar.`)) return
+    if (!(await confirmar(`¿Eliminar "${form.nombre}" definitivamente? Esta acción NO se puede deshacer — se borra el registro, no solo se desactiva. Si preferís conservarlo pero ocultarlo, usá el toggle "Activo / Inactivo" en su lugar.`, { danger: true }))) return
 
     setDeleting(true)
     try {
@@ -657,7 +659,7 @@ export default function ProductoFormPage() {
 
     if (stockQuedaSinAsignar) {
       const stock = Number((productoData as any).stock_actual ?? 0)
-      if (!confirm(
+      if (!(await confirmar(
         `"${form.nombre}" tiene ${stock} unidad(es) de stock.\n\n` +
         `Al crear la primera variante este producto pasa a ser un AGRUPADOR: deja de venderse ` +
         `directamente y ese stock queda "sin variante asignada" — sigue contando en inventario, ` +
@@ -670,7 +672,7 @@ export default function ProductoFormPage() {
           : `.
 
 ¿Seguimos?`)
-      )) return
+      ))) return
     }
     setSaving(true)
     try {
@@ -709,7 +711,7 @@ export default function ProductoFormPage() {
   }
 
   const handleDuplicate = async () => {
-    if (!confirm(`¿Duplicar "${form.nombre}"? Se creará una copia con stock en 0.`)) return
+    if (!(await confirmar(`¿Duplicar "${form.nombre}"? Se creará una copia con stock en 0.`))) return
     setSaving(true)
     try {
       const payload = {

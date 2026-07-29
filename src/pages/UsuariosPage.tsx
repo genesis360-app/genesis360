@@ -11,6 +11,7 @@ import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 
 type UserRole = 'DUEÑO' | 'SUPER_USUARIO' | 'SUPERVISOR' | 'CAJERO' | 'RRHH' | 'CONTADOR' | 'DEPOSITO' | 'VIEWER'
@@ -72,6 +73,7 @@ const ROLES_GLOBAL_DEFAULT: string[] = ['SUPERVISOR', 'CONTADOR', 'VIEWER']
 export default function UsuariosPage() {
   const { tenant, user, sucursales } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
   const { limits } = usePlanLimits()
   // Roles personalizados = feature de modo avanzado (Pro+). En básico se ofrecen solo los roles fijos.
   const { avanzado: modoAvanzado } = useModoOperacion()
@@ -547,7 +549,7 @@ export default function UsuariosPage() {
                         <Sliders size={15} />
                       </button>
                       {!esMiUsuario && (
-                        <button onClick={() => { if (confirm(`¿Desactivar a ${u.nombre_display}?`)) desactivar.mutate(u.id) }}
+                        <button onClick={async () => { if (await confirmar(`¿Desactivar a ${u.nombre_display}?`, { danger: true })) desactivar.mutate(u.id) }}
                           className="p-1.5 text-gray-400 dark:text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                           <Trash2 size={15} />
                         </button>
@@ -629,7 +631,7 @@ export default function UsuariosPage() {
                         }} className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded">
                           <Edit size={13} />
                         </button>
-                        <button title="Eliminar" onClick={() => { if (confirm(`¿Eliminar el rol "${rol.nombre}"?`)) deleteRolCustom.mutate(rol.id) }}
+                        <button title="Eliminar" onClick={async () => { if (await confirmar(`¿Eliminar el rol "${rol.nombre}"?`, { danger: true })) deleteRolCustom.mutate(rol.id) }}
                           className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
                           <Trash2 size={13} />
                         </button>

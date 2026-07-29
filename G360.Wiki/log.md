@@ -6,6 +6,56 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-29] deploy | ✅ v1.152.0 EN PROD — 🗑️ ningún popup nativo del navegador queda en la app + 🧹 catálogo de Empaque limpio (mig 327)
+
+GO reportó un hallazgo puntual mientras se cerraba el deploy de v1.151.0: "no quiero ningún popup
+o cartel que sea del sistema, deben ser diseños de la app" — con captura de un `window.confirm`
+nativo (barra "localhost:5173 dice") al duplicar un producto. Pidió agrupar el arreglo con el
+siguiente deploy.
+
+**🗑️ Barrido completo: 86 llamadas a `confirm()`/`alert()`/`prompt()` nativos, en 25 archivos.**
+Componente propio nuevo — `src/hooks/useConfirm.tsx` (`ConfirmProvider` montado una vez en
+`App.tsx`, junto al `Toaster`) — expone `useConfirm()` y `usePrompt()` con la MISMA semántica que
+las funciones nativas (`Promise<boolean>` / `Promise<string | null>`), para que la migración fuera
+mecánica: `if (!confirm('¿Seguro?')) return` → `if (!(await confirmar('¿Seguro?'))) return`. Estilo
+de marca (rounded, acento violeta, `danger` en rojo para las de eliminar), soporta mensajes
+multilínea (`whitespace-pre-line`), Escape/click-afuera cierran en `false`/`null`, y un segundo
+`confirmar()` disparado mientras el primero seguía abierto resuelve el anterior en vez de dejarlo
+colgado para siempre.
+
+**9 tests nuevos** (`tests/unit/useConfirm.test.tsx`, primer test de INTEGRACIÓN de un componente
+en el repo — no solo `renderHook`): render real + click de usuario + verificación de que la
+Promise resuelve con el valor correcto, incluyendo el caso de "Confirmar" deshabilitado con el
+campo de `prompt` vacío. Requirió agregar `tests/unit/**/*.test.tsx` al `include` de
+`vitest.config.ts` (antes solo tomaba `.test.ts`).
+
+**Probado en el navegador real** (no solo tsc/build — regla del proyecto para cambios de UI):
+Playwright contra el dev server real, reusando la sesión ya autenticada de e2e. Reprodujo EXACTO
+el caso de la captura de GO ("¿Duplicar 'Bebida Coca Cola 2.5L'? Se creará una copia con stock en
+0.") en modo claro y oscuro, más el flujo de `prompt` completo (Config → Ventas → combo "2da
+unidad" → escribe "30" → Confirmar → el formulario autocompleta "2da unidad 30%" con 15% de
+descuento, igual que antes). **0 diálogos nativos disparados, 0 errores de consola.**
+⚠ El primer intento del smoke test mostró el nombre del producto vacío en el mensaje — no era un
+bug del código: el script clickeaba "Duplicar" antes de que React Query terminara de cargar el
+producto. Se corrigió esperando el valor real del input antes de interactuar.
+
+**🧹 De paso, otro hallazgo de GO revisando la pantalla: Config → Inventario → Empaque mostraba
+"Kilogramo"/"Gramo"/"Litro"/"Metro" junto a "Caja"/"Pallet".** Causa: la mig 148 (2026-05-28, previa
+al rediseño UoM/Empaque) sembró esas 5 unidades FÍSICAS en `unidades_medida` — la tabla que hoy es
+el catálogo de EMPAQUE, no de unidades físicas (eso vive en `unidades_medida_fisicas` desde la mig
+303). Nadie podó la siembra vieja. **Mig 327**, verificando antes las 7 FK reales hacia
+`unidades_medida(id)` (no solo las 2 obvias) en DEV y PROD, todos los tenants: `Gramo`/`Kilogramo`/
+`Litro`/`Metro` con 0 usos en cualquiera de las 7 → se dropean. `Unidad` se **deja afuera a
+propósito**: tiene uso histórico real (53+40 filas en `producto_estructura_niveles`, la tabla vieja
+marcada "no se dropea, es histórico" desde la mig 311; 2 filas en `movimientos_stock`, ledger
+inmutable) — tocarla habría borrado trazabilidad real en silencio (`ON DELETE SET NULL`). Se
+actualizó también `fn_seed_tenant_defaults` para que los tenants nuevos ya no reciban la siembra
+vieja.
+
+**Verde:** tsc · build · unit **1383** (88 archivos, incl. los 9 nuevos) · smoke manual en browser.
+**PROD verificado:** catálogo de Empaque en los 8 tenants reales queda solo `Caja`/`Pallet`/
+`Unidad`. Bundle confirmado por curl.
+
 ## [2026-07-29] deploy | ✅ v1.151.0 EN PROD — migs 314-326 (13) aplicadas, bundle verificado por curl
 
 Cierre de la tanda. Con el OK de GO se aplicó todo lo acumulado (v1.146.0 → v1.151.0) a PROD.

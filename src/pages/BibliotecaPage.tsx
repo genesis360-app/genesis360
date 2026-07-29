@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useConfirm } from '@/hooks/useConfirm'
 import toast from 'react-hot-toast'
 import { FolderOpen, Upload, FileText, Download, Trash2, Search } from 'lucide-react'
 
@@ -26,6 +27,7 @@ const TIPO_COLORS: Record<string, string> = {
 export default function BibliotecaPage() {
   const { tenant, user } = useAuthStore()
   const qc = useQueryClient()
+  const confirmar = useConfirm()
 
   const [search, setSearch] = useState('')
   const [filtroTipo, setFiltroTipo] = useState('')
@@ -93,7 +95,7 @@ export default function BibliotecaPage() {
   }
 
   const eliminar = async (id: string, path: string) => {
-    if (!confirm('¿Eliminar este archivo?')) return
+    if (!(await confirmar('¿Eliminar este archivo?', { danger: true }))) return
     await supabase.storage.from('archivos-biblioteca').remove([path])
     const { error } = await supabase.from('archivos_biblioteca').delete().eq('id', id)
     if (error) toast.error(error.message)

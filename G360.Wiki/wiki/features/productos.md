@@ -3,7 +3,7 @@ title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
 sources: [CLAUDE.md]
-updated: 2026-07-22
+updated: 2026-07-28
 ---
 
 # Productos
@@ -194,7 +194,7 @@ Los mismos atributos (pais_origen, talle, color, encaje, formato, sabor_aroma) s
 - `InventarioPage` modal ingreso
 - `RecepcionesPage` FormItem + insert en `inventario_lineas`
 
-> [!NOTE] **✅ PROD desde v1.134.0 (2026-07-18):** talle/color/encaje/formato/sabor_aroma pasan de texto libre a un **catálogo configurable** por tenant (Config → Inventario → Atributos, mig 273), obligatorios en todo movimiento de stock cuando están activos (mismo patrón que lote), y con selección real al vender (el picker "Elegir posición de rebaje" de VentasPage bloquea el cobro si hay ambigüedad sin resolver). Estos toggles son **incompatibles con "Grupo de variantes"** en el mismo producto (mig 274, guard UI+DB). Detalle completo en [[wiki/features/atributos-variante]].
+> [!NOTE] **✅ PROD desde v1.134.0 (2026-07-18):** talle/color/encaje/formato/sabor_aroma pasan de texto libre a un **catálogo configurable** por tenant (Config → Inventario → Atributos, mig 273), obligatorios en todo movimiento de stock cuando están activos (mismo patrón que lote), y con selección real al vender (el picker "Elegir posición de rebaje" de VentasPage bloquea el cobro si hay ambigüedad sin resolver). Estos toggles son **incompatibles con el otro modelo de variantes en el mismo producto**: originalmente contra "Grupo de variantes" (mig 274) y, desde **v1.146.0**, contra las **variantes madre/hijo** que lo reemplazaron (**mig 314**: CHECK para el hijo + trigger para la madre, además del bloqueo en la UI). Detalle completo en [[wiki/features/atributos-variante]].
 
 ### Card 6: Marketplace
 

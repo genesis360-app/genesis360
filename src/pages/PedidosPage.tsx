@@ -606,12 +606,17 @@ export default function PedidosPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-primary">Pedidos</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Logística — no es venta de mostrador. Se arma acá, se prepara y recién ahí genera la venta real.</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Preparación y despacho. Los pedidos los genera la venta; acá se pickean, se arman y se entregan.</p>
         </div>
-        <button onClick={() => setShowNuevo(true)}
-          className="flex items-center gap-1.5 bg-accent text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-accent/90 transition-colors flex-shrink-0">
-          <Plus size={15} /> Nuevo pedido
-        </button>
+        {/* Crear un pedido a mano es opt-in (mig 317): el pedido nace de una venta, que además le
+            calcula bien el precio. Se prende en Config → Pedidos para el caso que solo resuelve
+            este módulo: mayorista con entregas parciales. */}
+        {((tenant as any)?.pedido_manual_habilitado ?? false) && (
+          <button onClick={() => setShowNuevo(true)}
+            className="flex items-center gap-1.5 bg-accent text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-accent/90 transition-colors flex-shrink-0">
+            <Plus size={15} /> Nuevo pedido
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">
@@ -703,12 +708,31 @@ export default function PedidosPage() {
                     <Printer size={15} />
                   </button>
                 )}
-                {['en_preparacion', 'listo_para_entrega', 'entregado_parcial'].includes(p.estado) && puedeYo('entregar') && (
+                {/* "Entregar" acá GENERA la venta real. Un pedido nacido de una venta ya la tiene,
+                    así que ese camino está bloqueado server-side (mig 316) para no facturar ni
+                    rebajar dos veces: se entrega desde Ventas → Pedidos. Se oculta el botón en vez
+                    de dejar que el usuario choque contra el guard. */}
+                {['en_preparacion', 'listo_para_entrega', 'entregado_parcial'].includes(p.estado) && puedeYo('entregar') && !p.venta_origen_id && (
                   <button onClick={() => abrirEntrega(p)}
                     title="Genera la venta real: rebaja el stock reservado y asienta el cobro en caja"
                     className="flex items-center gap-1.5 text-xs font-semibold bg-green-600 text-white px-3 py-1.5 rounded-lg hover:bg-green-700 transition-colors">
                     <Truck size={13} /> Entregar
                   </button>
+                )}
+                {p.venta_origen_id && !['entregado', 'cancelado'].includes(p.estado) && (
+                  p.requiere_envio ? (
+                    <button onClick={() => navigate('/envios')}
+                      title="Este pedido sale por envío: se despacha desde el módulo Envíos"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-accent-text border border-accent-text/30 px-3 py-1.5 rounded-lg hover:bg-accent/10 transition-colors">
+                      <Truck size={13} /> Ver en Envíos
+                    </button>
+                  ) : (
+                    <button onClick={() => navigate('/ventas?tab=pedidos')}
+                      title="Este pedido ya tiene su venta: lo entrega el mostrador desde Ventas → Pedidos"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-accent-text border border-accent-text/30 px-3 py-1.5 rounded-lg hover:bg-accent/10 transition-colors">
+                      <Truck size={13} /> Entregar en mostrador
+                    </button>
+                  )
                 )}
                 {p.estado === 'entregado_parcial' && (
                   <button onClick={() => cerrarPedido.mutate(p)} disabled={cerrarPedido.isPending}

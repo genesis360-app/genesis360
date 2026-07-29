@@ -3,7 +3,7 @@ title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
 sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
-updated: 2026-07-23
+updated: 2026-07-28
 ---
 
 # Módulo Pedidos
@@ -562,6 +562,191 @@ stock).
   imprimibles (PED6) · lanzamiento en "bolsa de pedidos" con ubicaciones de **staging** (PED6, requiere
   agregar `'staging'` al CHECK de `ubicaciones.tipo_ubicacion`, hoy `picking/bulk/estiba/camara/
   cross_dock`, mig 032).
+
+---
+
+## 🧾 Pedido nacido de una VENTA (migs 315-319, v1.148.0, 🟡 EN DEV) — el sentido INVERSO de F4
+
+> 🛑 **Actualiza la "Decisión de arquitectura clave (F4)" de más arriba.** F4 sigue valiendo para el
+> sentido Pedido → venta. Lo que se agrega es el **inverso**: una venta genera automáticamente un
+> Pedido de preparación. Ya NO es cierto que "Pedidos es 100% separado de Ventas" — hay puente en las
+> dos direcciones, y por eso hacen falta los guards de abajo.
+
+### La regla (diagrama de flujo de GO, 2026-07-29)
+
+**Todas las ventas generan Pedido de preparación MENOS la entrega directa.**
+
+```
+PRESUPUESTO (estado pendiente)                                -> NO genera  (mig 323)
+entrega directa = canal PRESENCIAL + despachada + sin envío   -> NO genera
+con envío (propio o de tercero)                               -> genera
+reserva (la mercadería no salió y hay compromiso)             -> genera
+canal ONLINE sin envío (= retiro en local)                    -> genera
+```
+
+> 🐛 **Un PRESUPUESTO no genera pedido (mig 323).** Lo encontró GO: una venta recurrente generó un
+> presupuesto, el presupuesto generó un pedido, y al cancelarse quedó el pedido vivo para que el
+> depósito lo preparara. Fue un error de criterio de la mig 318 — `ventas.estado = 'pendiente'` **es
+> un presupuesto** (el ticket dice "★ PRESUPUESTO ★"): el cliente no aceptó, no pagó y puede no
+> convertirse nunca. El pedido nace cuando **se convierte** en venta.
+>
+> Y en el otro extremo: **anular o devolver la venta cancela su pedido** y sus tareas de picking.
+> ⚠ Al cancelar **NO se toca `cantidad_reservada`**: en un venta-pedido el picking nunca reservó
+> (mig 316), la reserva es de la VENTA — liberarla acá la liberaría dos veces. Por eso las tareas se
+> cancelan con UPDATE directo y no con `fn_cancelar_tarea_wms`, que sí libera. Un pedido ya
+> **entregado** no se toca: la mercadería salió y eso es historia.
+>
+> Tercera barrera: **no se puede lanzar** un pedido cuya venta esté anulada, devuelta o siga siendo
+> un presupuesto (mig 324).
+
+Deriva de `canales_venta.clasificacion` (mig 168): **no hay nada que configurar** y es correcto por
+default para todos los tenants. `tenants.pedido_canales_excluidos` es solo la excepción (canales que
+quedan afuera de la regla); vacío por default.
+
+Se hace con triggers **server-side**, no en el POS: así también entran las ventas de los webhooks de
+marketplace y del importador, que nunca pasan por `registrarVenta`.
+
+| Rama del diagrama | Pedido | Envío |
+|---|---|---|
+| online · retiro local · pago parcial | ✅ | — |
+| online · retiro local · pago completo | ✅ | — |
+| online · envío propio / de tercero | ✅ | ✅ vinculado |
+| mostrador · **entrega directa** | 🛑 **no** | — |
+| mostrador · reserva | ✅ | — |
+| mostrador · envío propio / de tercero | ✅ (lo crea el trigger de `envios`) | ✅ vinculado |
+
+### 🛑 Por qué un venta-pedido es un documento DISTINTO
+
+Un pedido con `venta_origen_id` **ya tiene su venta, su plata y su stock resueltos**:
+
+| Riesgo | Qué pasaría | Cómo se cierra |
+|---|---|---|
+| **Doble venta** | `fn_pedido_generar_venta` crearía una venta nueva, con segundo rebaje y segundo asiento de caja | Trigger `BEFORE INSERT ON ventas`. Por trigger y no editando la RPC: cubre **cualquier** camino de escritura |
+| **Doble reserva** | El algoritmo de logística reserva `cantidad_reservada`, pero la venta ya comprometió ese stock (o ya lo rebajó, y reservaría líneas ajenas) | Dispatcher → `fn_generar_tareas_picking_pedido_venta`, que arma el picking desde `venta_item_despachos` y **no toca `cantidad_reservada`** |
+| **Mercadería sin cobrar** | Una reserva con seña parcial se prepara igual; si se entregara así, sale sin saldar | 💵 Gate en `fn_pedido_entregar_retiro`: rechaza si queda saldo (cuenta corriente sí puede, la deuda es a propósito) |
+
+**Probado por mutación en DEV:** forzando el algoritmo viejo sobre un venta-pedido se reservan
+**4 unidades de más**; con el dispatcher queda en 0.
+
+### 🐛 De dónde saca el picking la mercadería (mig 320)
+
+Bug real que encontró GO probando el flujo (venta #448, una reserva): la tarea salía **sin LPN y sin
+ubicación**. La función leía solo `venta_item_despachos`, que se escribe al **despachar** — una venta
+**reservada** todavía no tiene filas ahí: su plan de LPN vive en `venta_items.lpn_plan` (mig 156).
+Como el pedido nace justamente de reservas, era el caso más común.
+
+Ahora es una **cascada**, de la fuente más precisa a la más genérica, y **ninguna reserva stock**
+(la venta ya lo comprometió):
+
+| Prioridad | Fuente | Cuándo aplica |
+|---|---|---|
+| 1 | `venta_item_despachos` | La venta ya despachó — registro definitivo de qué salió y de dónde |
+| 2 | `venta_items.lpn_plan` | La venta está **reservada** — el LPN que ya eligió el POS (incluida la elección manual del cajero) |
+| 3 | Líneas con `cantidad_reservada > 0`, FEFO | Hay reserva pero sin plan (venta vieja, o el plan quedó corto). Solo lectura |
+| 4 | Cualquier línea con stock, FEFO | Último recurso, para no dejar al operario sin una pista |
+
+Si nada matchea, la tarea se emite igual con la nota **"⚠ sin stock ubicado para este producto"** —
+el pedido nunca queda sin tarea, y el motivo queda escrito.
+
+### La tarea de picking dice a qué pedido y a qué venta pertenece
+
+Pedido de GO: sin eso, un LPN mal pickeado no se puede rastrear hasta el cliente que está esperando.
+`/picking` muestra **Pedido #N** y **Venta #N** como links. Se resuelve en una query aparte, no
+anidada: `ventas` y `pedidos` se referencian en las **dos** direcciones (`ventas.pedido_id` y
+`pedidos.venta_origen_id`), así que el embed anidado de PostgREST es ambiguo.
+
+### 💵 El ticket dice cuánto falta pagar
+
+El ticket mostraba el TOTAL y, en gris, lo pagado — nunca el **saldo**, que es el número por el que
+el cliente vuelve. Y desde la mig 318 el mostrador no entrega sin saldar, así que sin eso el cliente
+se enteraba recién al venir a buscar la mercadería. Se agregó (`resumenPagoTicket`, lógica pura):
+
+- Bloque **Pagado / SALDO A PAGAR** destacado. **El envío entra en la cuenta**: `total` no lo incluye
+  pero `monto_pagado` sí (ISS-105).
+- Un **presupuesto** no reclama saldo — todavía no es una venta.
+- Una **reserva** dejó de verse como una venta cerrada: badge **★ RESERVA ★**, encabezado
+  "Reserva N°…", leyenda "Tu pedido se entrega al abonar el saldo" y cierre "Guardá este comprobante
+  para retirar".
+
+### `listo_para_entrega` dejó de ser un estado muerto
+
+Estaba en el CHECK desde la mig 292, con badge en la UI y leído como precondición por tres RPCs —
+pero **ningún código lo seteaba nunca**. Desde la mig 316, completar la **última tarea de picking**
+del pedido lo promueve. Es la condición que define la pestaña del mostrador.
+
+### La pestaña Ventas → Pedidos
+
+Muestra **solo** `listo_para_entrega` + **retiro en local** + nacidos de una venta. Búsqueda por
+nombre (sin tildes), **DNI** (por dígitos y por **prefijo**, mínimo 3) y **N° de pedido** (exacto).
+El prefijo y el match exacto no son cosmética: con "contiene", tipear "5" para el pedido 5 devolvía
+además a todo cliente con un 5 en el documento.
+
+El botón **Entregado** llama a `fn_pedido_entregar_retiro`: valida el pago, **no toca plata ni
+stock**, deja el rastro en Envíos como `retiro_local`/`entregado` y devuelve el id de la venta para
+abrir su detalle y facturar. Facturar es un paso aparte — trabar la entrega esperando a AFIP dejaría
+al cliente parado en el mostrador.
+
+### 💵 Cómo factura un Pedido (migs 317/319)
+
+`fn_pedido_generar_venta` facturaba `productos.precio_venta` a secas. Hoy usa el mismo motor que el
+POS:
+
+- **Tier mayorista por volumen** (mig 306) vía `fn_precio_venta_efectivo`, resuelto contra el
+  **total pedido** del SKU — entregar en dos tandas no hace perder el precio por volumen.
+- **Redondeo del tenant** (H4).
+- **Descuento por estado de inventario** (migs 284-285), prorrateado **por fuente**: cada unidad
+  descuenta según el % del estado de SU línea concreta.
+
+Verificado en DEV: 12 unidades con base $1.000, tier `>=10 -> $700` y estado con 20% pasaron de
+facturar **$12.000** a **$6.720**.
+
+#### ⚠ Pendiente conocido, evaluado y DIFERIDO a propósito (2026-07-29)
+
+La **lista de precios por canal** (`reglaDe(canal).lista_precio`) y los **combos** siguen sin
+aplicarse. GO pidió evaluar si valía la pena hacerlo; se midió antes de decidir:
+
+- **`fn_pedido_generar_venta` nunca corrió: 0 ventas generadas por un Pedido** en PROD y en DEV.
+- PROD: **0 pedidos**, **0 combos activos**, **0 tenants** con `lista_precio` seteada (la clave
+  existe pero vale `null`, que es el default "resolver el tier por cantidad").
+- Y desde la mig 316 esa función corre **solo para pedidos creados a mano** — un pedido nacido de
+  una venta ya trae los precios del POS y su entrega (`fn_pedido_entregar_retiro`) no fija ninguno.
+  El botón de crear pedidos a mano quedó **apagado por default** (mig 317).
+
+Costo/beneficio de cada uno:
+
+| | Costo | Decisión |
+|---|---|---|
+| **Lista por canal** | Bajo (~10 líneas), pero exige decidir **qué lista le toca a un Pedido**, que no tiene canal. Lo defendible sería tratarlo como `online` — es una regla nueva | Diferido |
+| **Combos** | Alto: replicar server-side el motor de detección del POS (matchear definiciones contra las líneas, agrupar por producto+UoM, manejar cantidades), sobre código de plata | No se hace. Un combo es una decisión de mostrador, no de depósito |
+
+> ⚠ **La trampa a tener presente:** el único caso que justifica prender los pedidos manuales es el
+> **mayorista con entregas parciales** — y "mayorista" es justo el perfil que más probablemente
+> configure la lista mayorista por canal. El día que se prenda ese toggle para un mayorista es
+> cuando el hueco empieza a morder. Por eso el toggle muestra un **cartel** que dice exactamente con
+> qué reglas factura un pedido manual, para que la decisión se tome informada.
+
+### Crear un pedido a mano es opt-in (mig 317)
+
+`tenants.pedido_manual_habilitado`, default **false**. Para una PyME casi todos los casos tienen un
+camino mejor: el encargo sin cobrar es una venta `pendiente` (que ya genera el pedido), el armado sin
+cliente es un traslado, y el e-commerce cobrado entra por el flujo automático. El único caso que
+**solo** resuelve Pedidos es el mayorista con **entregas parciales** — por eso se esconde en vez de
+borrarse.
+
+### Detalles que costaron
+
+- **Las líneas de la venta llegan DESPUÉS que la cabecera** (llamadas HTTP separadas) → las completa
+  un trigger **statement-level** sobre `venta_items`, idempotente y solo mientras el pedido sigue en
+  `confirmado`.
+- **El envío también llega después** → el trigger de `envios` crea el pedido si no existía (caso
+  "mostrador + envío") o lo marca `requiere_envio` y lo vincula.
+- **💵 El costo de envío cuenta para el saldo**: `total` NO lo incluye pero `monto_pagado` SÍ (ISS-105).
+- **🛑 Una VENTA nunca se cae por un documento de logística**: los triggers van envueltos en
+  `EXCEPTION WHEN OTHERS` + `RAISE WARNING`.
+- **Anti-loop**: una venta nacida de un pedido nunca genera otro.
+
+**Cobertura:** 41 unit (`src/lib/pedidoVenta.ts`) · **e2e 113** (8 ramas + ciclo completo + picking de
+una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT **§47**.
 
 ---
 

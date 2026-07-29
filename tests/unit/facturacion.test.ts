@@ -8,6 +8,7 @@ import {
   determinarReceptor,
   buildQrAfipUrl,
   prorratearDescuentoGlobal,
+  precioUnitarioExhibible,
   UMBRAL_FACTURA_B_DEFAULT,
 } from '@/lib/facturacionLogic'
 
@@ -316,3 +317,67 @@ describe('prorratearDescuentoGlobal (G0.6 — descuento general en la factura/NC
 })
 
 function r(n: number): number { return Math.round(n * 100) / 100 }
+
+describe('precioUnitarioExhibible (🧾 el papel tiene que MULTIPLICAR)', () => {
+  /** Lo que hace el cliente con la calculadora: unitario impreso × cantidad impresa. */
+  const cierra = (subtotal: number, cant: number) => {
+    const { valor } = precioUnitarioExhibible(subtotal, cant)
+    return parseFloat((valor * cant).toFixed(2)) === parseFloat(subtotal.toFixed(2))
+  }
+
+  it('el caso normal no cambia: si con 2 decimales ya cierra, deja 2', () => {
+    const r = precioUnitarioExhibible(1000, 4)
+    expect(r).toEqual({ valor: 250, decimales: 2, exacto: true })
+  })
+
+  it('🛑 el caso que rompía la factura: $1.000 en 3 bultos daría 333,33 × 3 = 999,99', () => {
+    // A 2 decimales el papel NO cierra…
+    expect(parseFloat((333.33 * 3).toFixed(2))).toBe(999.99)
+    // …y con la precisión mínima necesaria, sí.
+    const r = precioUnitarioExhibible(1000, 3)
+    expect(r.exacto).toBe(true)
+    expect(r.decimales).toBeGreaterThan(2)
+    expect(cierra(1000, 3)).toBe(true)
+  })
+
+  it('cierra para cantidades y montos variados (barrido)', () => {
+    for (const cant of [1, 3, 6, 7, 9, 11, 12, 13, 24, 100, 365]) {
+      for (const sub of [1000, 999.99, 7971.3, 0.07, 123456.78, 2700]) {
+        expect(cierra(sub, cant), `subtotal ${sub} en ${cant}`).toBe(true)
+      }
+    }
+  })
+
+  it('sube la precisión de a UNO: usa la mínima que cierra, no el máximo', () => {
+    // 100 / 3 = 33,3333… → 33,33×3 = 99,99 ✗ · 33,333×3 = 99,999 → 100,00 ✓ con 3 decimales.
+    expect(precioUnitarioExhibible(100, 3).decimales).toBe(3)
+  })
+
+  it('nunca toca el importe: el unitario se acomoda al subtotal, no al revés', () => {
+    const { valor } = precioUnitarioExhibible(7971.3, 6)
+    expect(parseFloat((valor * 6).toFixed(2))).toBe(7971.3)
+  })
+
+  it('cantidad 0 o valores basura no explotan ni inventan un precio', () => {
+    expect(precioUnitarioExhibible(1000, 0)).toEqual({ valor: 0, decimales: 2, exacto: false })
+    expect(precioUnitarioExhibible(NaN, 3).exacto).toBe(false)
+    expect(precioUnitarioExhibible(1000, NaN).exacto).toBe(false)
+  })
+
+  it('subtotal 0 (bonificado al 100%) da 0, y cierra', () => {
+    expect(precioUnitarioExhibible(0, 3)).toEqual({ valor: 0, decimales: 2, exacto: true })
+  })
+
+  it('avisa cuando ni con el máximo cierra, en vez de imprimir un número que miente', () => {
+    // Con el tope en 2 decimales se fuerza el caso que no cierra.
+    const r = precioUnitarioExhibible(1000, 3, 2)
+    expect(r.exacto).toBe(false)
+    expect(r.decimales).toBe(2)
+  })
+
+  it('⚠ mostrar la línea en unidades BASE no era la solución: arrastra el mismo redondeo', () => {
+    // `venta_items.precio_unitario` se guarda como r2(subtotal / cantidad) — misma división.
+    const precioUnitarioGuardado = parseFloat((1000 / 3).toFixed(2))   // 333.33
+    expect(parseFloat((precioUnitarioGuardado * 3).toFixed(2))).not.toBe(1000)
+  })
+})

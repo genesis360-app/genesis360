@@ -183,8 +183,10 @@ export function NotificacionesButton({ className = '' }: NotificacionesButtonPro
         )}
       </button>
 
+      {/* Mismo caso que el panel del Asistente IA: en mobile un dropdown de ancho fijo anclado al
+          botón del header se sale por la izquierda. Abajo de `sm` se ancla al viewport. */}
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 bg-surface border border-border-ds rounded-xl shadow-lg z-50 overflow-hidden">
+        <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-80 bg-surface border border-border-ds rounded-xl shadow-lg z-50 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-border-ds">
             <h3 className="font-semibold text-sm text-primary dark:text-white">Notificaciones</h3>
             <div className="flex items-center gap-2">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -27,6 +27,8 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
+import { canalesExcluidosValidos } from '@/lib/pedidoVenta'
+import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volumenUbicacionM3, capacidadUtilM3, estadoVolumenUbicacion, FACTOR_APROVECHAMIENTO_DEFAULT } from '@/lib/medidasLogistica'
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import toast from 'react-hot-toast'
 
@@ -638,6 +640,11 @@ export default function ConfigPage() {
   const [bizOverReceipt, setBizOverReceipt] = useState(tenant?.permite_over_receipt ?? false)
   const [bizTrazaAsignacion, setBizTrazaAsignacion] = useState((tenant as any)?.trazabilidad_asignacion ?? true)
   const [bizConteoModo, setBizConteoModo] = useState<'rapido' | 'guiado' | 'elegir'>((tenant as any)?.conteo_modo ?? 'rapido')
+  // Cubicaje volumétrico opt-in (mig 322)
+  const [bizCubicaje, setBizCubicaje] = useState(!!tenant?.cubicaje_habilitado)
+  const [bizCubicajeFactor, setBizCubicajeFactor] = useState(
+    String(Math.round((Number(tenant?.cubicaje_factor_aprovechamiento ?? FACTOR_APROVECHAMIENTO_DEFAULT)) * 100))
+  )
   // F3 — gate de ajustes de conteo + umbrales de doble conteo
   const num = (v: any) => v != null ? String(v) : ''
   const [bizConteoGate, setBizConteoGate] = useState({
@@ -1147,6 +1154,14 @@ export default function ConfigPage() {
       nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla,
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       trazabilidad_asignacion: bizTrazaAsignacion,
+      // Cubicaje (mig 322). El factor se guarda como fracción; la UI lo muestra en %.
+      // Se acota a (0, 1] acá además del CHECK de la tabla: si el input queda vacío o en 0, un
+      // factor 0 dejaría la capacidad útil en 0 m³ y toda ubicación aparecería excedida.
+      cubicaje_habilitado: bizCubicaje,
+      cubicaje_factor_aprovechamiento: (() => {
+        const pct = Number(bizCubicajeFactor)
+        return Number.isFinite(pct) && pct > 0 && pct <= 100 ? pct / 100 : FACTOR_APROVECHAMIENTO_DEFAULT
+      })(),
       conteo_modo: bizConteoModo,
       ajuste_autorizacion_roles: Object.keys(bizAjusteRoles).length ? bizAjusteRoles : null,
       conteo_gate_activo: bizConteoGate.activo,
@@ -1393,6 +1408,32 @@ export default function ConfigPage() {
   }
 
   // Ubicaciones
+  // Ocupación real por ubicación (mig 321). Los campos de capacidad de `ubicaciones` existían desde
+  // la mig 032 y no los leía ningún cálculo: se cargaban y no servían para nada.
+  const { data: ocupacionUbic = {} } = useQuery({
+    queryKey: ['ubicacion-ocupacion', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('vw_ubicacion_ocupacion')
+        .select('ubicacion_id, lpn_activos, peso_kg, lineas_con_peso, lineas_total, volumen_m3, lineas_con_volumen')
+        .eq('tenant_id', tenant!.id)
+      return Object.fromEntries((data ?? []).map((r: any) => [r.ubicacion_id, r])) as Record<string, any>
+    },
+    enabled: !!tenant && tab === 'inventario',
+  })
+
+  // Cobertura de medición del catálogo (mig 322). Activar el cubicaje NO completa los SKU que ya
+  // existen: sin este número el volumen ocupado parecería completo cuando no lo está.
+  const { data: cubicajeCobertura } = useQuery({
+    queryKey: ['cubicaje-cobertura', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_cubicaje_cobertura', { p_tenant_id: tenant!.id })
+      if (error) throw error
+      return (Array.isArray(data) ? data[0] : data) as
+        { productos_total: number; productos_medidos: number; presentaciones_sin_medir: number } | null
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'reglas',
+  })
+
   const { data: ubicaciones = [], isLoading: loadingUbic } = useQuery({
     queryKey: ['ubicaciones', tenant?.id, sucursalId],
     queryFn: async () => {
@@ -1753,12 +1794,49 @@ export default function ConfigPage() {
     setTenant(data)
     toast.success('Numeración de pedidos actualizada')
   }
+  const togglePedidoManual = async () => {
+    const nuevo = !(tenant as any)?.pedido_manual_habilitado
+    const { data, error } = await supabase.from('tenants').update({ pedido_manual_habilitado: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Ya podés crear pedidos a mano' : 'Los pedidos se generan solo desde las ventas')
+  }
   const togglePedidoCierreAutomatico = async () => {
     const nuevo = !(tenant as any)?.pedido_cierre_automatico
     const { data, error } = await supabase.from('tenants').update({ pedido_cierre_automatico: nuevo }).eq('id', tenant!.id).select().single()
     if (error) { toast.error(error.message); return }
     setTenant(data)
     toast.success(nuevo ? 'Cierre automático habilitado' : 'Cierre automático deshabilitado — habrá que cerrar el pedido a mano al llegar al 100%')
+  }
+
+  // Canales que auto-generan pedido (mig 315). Se listan los canales de venta activos del tenant;
+  // la config guarda ids, así que renombrar un canal no rompe la selección.
+  const { data: canalesPedido = [] } = useQuery({
+    queryKey: ['canales_venta_cfg_pedidos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('canales_venta')
+        .select('id, nombre, activo').eq('tenant_id', tenant!.id).eq('activo', true)
+        .order('orden', { ascending: true, nullsFirst: false }).order('nombre')
+      return (data ?? []) as { id: string; nombre: string; activo: boolean }[]
+    },
+    enabled: !!tenant && tab === 'pedidos',
+  })
+  // Se sanea contra los canales vivos: un canal borrado/desactivado que quedó en la config no se
+  // pinta como seleccionado ni se vuelve a guardar.
+  const canalesAutoSel = canalesExcluidosValidos((tenant as any)?.pedido_canales_excluidos, canalesPedido)
+
+  const togglePedidoCanalAuto = async (canalId: string) => {
+    const nuevo = canalesAutoSel.includes(canalId)
+      ? canalesAutoSel.filter(id => id !== canalId)
+      : [...canalesAutoSel, canalId]
+    const { data, error } = await supabase.from('tenants')
+      .update({ pedido_canales_excluidos: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    const nombre = canalesPedido.find(c => c.id === canalId)?.nombre ?? 'El canal'
+    toast.success(nuevo.includes(canalId)
+      ? `Las ventas de ${nombre} ya NO van a generar pedido`
+      : `${nombre} vuelve a generar pedido`)
   }
 
   // E3 — pedido_transiciones_roles: quién puede ejecutar cada transición. Ausente en la config
@@ -3665,6 +3743,71 @@ export default function ConfigPage() {
                   })}
                 </div>
               </div>
+              {/* mig 322 — Cubicaje volumétrico opt-in */}
+              <div className="py-1 border-t border-gray-100 dark:border-gray-700 pt-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <Box size={14} /> Cubicaje volumétrico
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      Calcula cuánto <strong>espacio</strong> ocupa lo guardado en cada ubicación, no solo cuántos LPN.
+                      Al activarlo, el <strong>peso y las tres medidas pasan a ser obligatorios</strong> en cada nivel
+                      de la estructura de un producto (Productos → detalle → Empaque). Es la única forma de que el
+                      número no mienta: un nivel sin medir ocupa 0 m³ para el cálculo, y el error empuja hacia
+                      &quot;parece que hay lugar&quot; justo cuando la posición podría estar pasada.
+                    </p>
+                  </div>
+                  <div className="ml-3"><Toggle size="lg" disabled={!canEdit} checked={bizCubicaje}
+                    onChange={() => setBizCubicaje(p => !p)} aria-label="Cubicaje volumétrico" /></div>
+                </div>
+
+                {bizCubicaje && (
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        Aprovechamiento de la ubicación (%)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input type="number" min="1" max="100" step="1" disabled={!canEdit}
+                          onWheel={e => e.currentTarget.blur()}
+                          value={bizCubicajeFactor} onChange={e => setBizCubicajeFactor(e.target.value)}
+                          className="w-24 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          Ninguna posición real se llena al 100% geométrico (pasillos, forma irregular,
+                          mercadería que no apila). Con {Number(bizCubicajeFactor) || 70}%, un rack de 1 m³
+                          se considera lleno con {((Number(bizCubicajeFactor) || 70) / 100).toFixed(2)} m³.
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Cobertura del catálogo: prender el toggle NO completa lo que ya está cargado. */}
+                    {cubicajeCobertura && (() => {
+                      const { productos_total: total, productos_medidos: medidos, presentaciones_sin_medir: sinMedir } = cubicajeCobertura
+                      const completo = total > 0 && medidos >= total
+                      return (
+                        <div className={`rounded-xl p-3 text-xs border ${completo
+                          ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300'
+                          : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'}`}>
+                          <p className="font-semibold">
+                            {completo
+                              ? `✅ Catálogo medido: ${medidos} de ${total} productos.`
+                              : `⚠ ${medidos} de ${total} productos medidos · ${sinMedir} presentaciones sin medir.`}
+                          </p>
+                          {!completo && (
+                            <p className="mt-1">
+                              Activar el cubicaje <strong>no completa los productos que ya estaban cargados</strong>:
+                              exige las medidas de acá en adelante. Hasta que termines de medirlos, el espacio ocupado
+                              que se muestra en cada ubicación queda <strong>por debajo del real</strong> — por eso
+                              aparece con ⚠ y nunca como un verde limpio. Se cargan en Productos → detalle → Empaque.
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
               {canEdit && (
                 <div className="flex justify-end">
                   <button onClick={handleSaveBiz} disabled={savingBiz}
@@ -3867,11 +4010,70 @@ export default function ConfigPage() {
                           {u.tipo_ubicacion && (
                             <span className="ml-2 text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-mono">{u.tipo_ubicacion}</span>
                           )}
-                          {(u.alto_cm || u.ancho_cm || u.largo_cm) && (
-                            <span className="ml-1 text-xs text-gray-400 dark:text-gray-500" title="Dimensiones alto × ancho × largo">
-                              <Ruler size={10} className="inline mb-0.5" /> {[u.alto_cm, u.ancho_cm, u.largo_cm].filter(Boolean).join('×')} cm
-                            </span>
-                          )}
+                          {(u.alto_cm || u.ancho_cm || u.largo_cm) && (() => {
+                            const m3 = volumenUbicacionM3(u.largo_cm, u.ancho_cm, u.alto_cm)
+                            return (
+                              <span className="ml-1 text-xs text-gray-400 dark:text-gray-500"
+                                title={`Dimensiones alto × ancho × largo${m3 != null ? ` — ${m3} m³ geométricos` : ''}`}>
+                                <Ruler size={10} className="inline mb-0.5" /> {[u.alto_cm, u.ancho_cm, u.largo_cm].filter(Boolean).join('×')} cm
+                                {m3 != null && <span className="ml-1">· {m3} m³</span>}
+                              </span>
+                            )
+                          })()}
+                          {/* Ocupación real (mig 321): LPN contra `capacidad_pallets` y carga
+                              contra `peso_max_kg`. Aviso, nunca bloqueo. */}
+                          {(() => {
+                            const oc = (ocupacionUbic as any)[u.id]
+                            const cap = estadoCapacidadUbicacion(u.capacidad_pallets, oc?.lpn_activos ?? 0)
+                            const carga = estadoCargaUbicacion(u.peso_max_kg, oc?.peso_kg ?? 0, oc?.lineas_con_peso ?? 0, oc?.lineas_total ?? 0)
+                            const cls = (e: string) => e === 'excedido'
+                              ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                              : e === 'lleno'
+                                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                            return (
+                              <>
+                                {u.capacidad_pallets > 0 && (
+                                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${cls(cap.estado)}`}
+                                    title={cap.mensaje ?? 'LPN guardados en esta ubicación'}>
+                                    <Package size={9} className="inline mb-0.5 mr-0.5" />{etiquetaOcupacion(cap)} LPN
+                                  </span>
+                                )}
+                                {carga.pesoMaxKg != null && (
+                                  <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${cls(carga.estado)}`}
+                                    title={[carga.mensaje, carga.avisoCobertura].filter(Boolean).join(' ') || 'Carga sobre el máximo configurado'}>
+                                    {Math.round(carga.pesoKg)} de {carga.pesoMaxKg} kg
+                                    {carga.avisoCobertura && ' ⚠'}
+                                  </span>
+                                )}
+                                {/* Cubicaje (mig 322): espacio ocupado contra la capacidad ÚTIL
+                                    (geométrico × factor). Solo si el tenant lo activó Y la ubicación
+                                    está medida — sin las dos cosas el número no significa nada. */}
+                                {tenant?.cubicaje_habilitado && (() => {
+                                  const util = capacidadUtilM3(
+                                    volumenUbicacionM3(u.largo_cm, u.ancho_cm, u.alto_cm),
+                                    tenant?.cubicaje_factor_aprovechamiento,
+                                  )
+                                  if (util == null) return null
+                                  const vol = estadoVolumenUbicacion(
+                                    util, oc?.volumen_m3 ?? 0, oc?.lineas_con_volumen ?? 0, oc?.lineas_total ?? 0,
+                                  )
+                                  return (
+                                    <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${cls(vol.estado)}`}
+                                      title={[
+                                        vol.mensaje,
+                                        vol.avisoCobertura,
+                                        `Capacidad útil = ${util} m³ (volumen geométrico × ${Math.round((Number(tenant?.cubicaje_factor_aprovechamiento) || FACTOR_APROVECHAMIENTO_DEFAULT) * 100)}% de aprovechamiento).`,
+                                      ].filter(Boolean).join(' ')}>
+                                      <Box size={9} className="inline mb-0.5 mr-0.5" />
+                                      {vol.volumenM3} de {util} m³
+                                      {vol.avisoCobertura && ' ⚠'}
+                                    </span>
+                                  )
+                                })()}
+                              </>
+                            )
+                          })()}
                           {u.mono_sku && (
                             <span className="ml-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded" title="Mono-SKU: solo un producto">
                               <Tag size={9} className="inline mb-0.5 mr-0.5" />Mono-SKU
@@ -5209,6 +5411,68 @@ export default function ConfigPage() {
               </label>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500">Ambos números se calculan siempre — esto solo decide cuál se muestra como principal en la pantalla de Pedidos.</p>
+          </div>
+
+          {/* Canales que generan pedido automáticamente (mig 315) */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Layers size={18} className="text-accent-text" /> Canales que NO generan pedido
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Por default <strong>toda venta genera un Pedido de preparación</strong> para que el depósito la arme, salvo la{' '}
+              <strong>entrega directa</strong> (mostrador, cobrada y sin envío: el cliente se lleva la mercadería en el momento).
+              Marcá acá los canales que querés dejar <strong>afuera</strong> de esa regla. Normalmente no hace falta marcar ninguno.
+            </p>
+            {canalesPedido.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500">No hay canales de venta activos. Configuralos en Ventas → Canales.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {canalesPedido.map(c => {
+                  const activo = canalesAutoSel.includes(c.id)
+                  return (
+                    <button key={c.id} type="button" disabled={!canEdit}
+                      onClick={() => togglePedidoCanalAuto(c.id)}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                        ${activo
+                          ? 'bg-accent/10 border-accent-text text-accent-text font-medium'
+                          : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                      {activo && <Check size={13} className="inline mr-1 -mt-0.5" />}{c.nombre}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Los pedidos de retiro en local aparecen en <strong>Ventas → Pedidos</strong> una vez que el depósito
+              termina el picking, para entregarlos en el mostrador.
+            </p>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Crear pedidos a mano</h2>
+            <label className="flex items-start gap-3 cursor-pointer py-1">
+              <div className="mt-0.5"><Toggle checked={(tenant as any)?.pedido_manual_habilitado ?? false} onChange={togglePedidoManual} disabled={!canEdit} /></div>
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Botón "Nuevo pedido" en el módulo Pedidos</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Normalmente no hace falta: el pedido lo genera la venta. Prendelo solo si necesitás armar pedidos
+                  sin una venta detrás — el caso típico es el <strong>mayorista con entregas parciales</strong>,
+                  que el mostrador no sabe hacer.
+                </p>
+              </div>
+            </label>
+            {((tenant as any)?.pedido_manual_habilitado ?? false) && (
+              <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2">
+                <AlertCircle size={14} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  <strong>Cómo factura un pedido armado a mano:</strong> precio de lista del producto + descuentos
+                  por volumen (tiers mayoristas) + descuento por estado de inventario. <strong>No aplica combos
+                  ni la lista de precios por canal</strong> — esas son reglas del mostrador y un pedido no tiene
+                  canal de venta. Si tu negocio depende de alguna de las dos, cargá la venta por el POS y dejá que
+                  ella genere el pedido.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">

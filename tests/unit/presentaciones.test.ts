@@ -103,6 +103,31 @@ describe('validarPresentaciones', () => {
     const rows = [row({ key: 'u', etiqueta: 'Unidad', peso: '0' })]
     expect(validarPresentaciones(rows)).toMatch(/el peso tiene que ser mayor a 0/)
   })
+
+  // ── Cubicaje activo (mig 322): las medidas dejan de ser opcionales ─────────────────
+  it('sin cubicaje, las medidas vacías se aceptan (el que no lo usa no las carga)', () => {
+    expect(validarPresentaciones(arbolLeche())).toBeNull()
+  })
+
+  it('🛑 con cubicaje, una presentación sin medir hace que el volumen ocupado quede corto → se exige', () => {
+    expect(validarPresentaciones(arbolLeche(), true)).toMatch(/el cubicaje está activado/)
+  })
+
+  it('con cubicaje, nombra el campo que falta y dónde desactivarlo', () => {
+    const rows = [row({ key: 'u', etiqueta: 'Unidad', peso: '1', alto: '10', ancho: '10', largo: '' })]
+    const err = validarPresentaciones(rows, true)
+    expect(err).toMatch(/el largo/)
+    expect(err).toMatch(/Configuración → Inventario/)
+  })
+
+  it('con cubicaje y TODAS las medidas cargadas, valida igual que siempre', () => {
+    const medida = { peso: '1', alto: '10', ancho: '10', largo: '10' }
+    const rows = [
+      row({ key: 'u', etiqueta: 'Unidad', ...medida }),
+      row({ key: 'c', etiqueta: 'Caja', padre_key: 'u', cantidad_padre: '12', ...medida, alto: '30' }),
+    ]
+    expect(validarPresentaciones(rows, true)).toBeNull()
+  })
 })
 
 describe('construirPayload', () => {

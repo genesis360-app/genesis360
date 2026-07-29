@@ -197,6 +197,55 @@ export function prorratearDescuentoGlobal<T extends ItemFacturable>(items: T[], 
   })
 }
 
+/**
+ * Precio unitario que EXHIBE un comprobante, con la precisión MÍNIMA para que
+ * `precio × cantidad` reproduzca el importe impreso de la línea.
+ *
+ * 🛑 El problema (Regla #0, encontrado auditando la factura #475): el precio unitario de un
+ * comprobante **no es un dato guardado, es una división** — `subtotal / cantidad`. Con 2 decimales
+ * fijos esa división se redondea y el papel deja de multiplicar: un subtotal de $1.000 en 3 bultos
+ * imprime `$333,33 × 3 = $999,99 ≠ $1.000,00`. El importe que va a AFIP sale de `ventas.total` y es
+ * correcto, pero el cliente que verifica la factura con una calculadora encuentra que no cierra —
+ * y la factura es el documento que se lleva.
+ *
+ * ⚠ **Mostrar la línea en unidades base NO lo resuelve**, aunque a primera vista lo parezca:
+ * `venta_items.precio_unitario` también se guarda como `r2(subtotal / cantidad)`
+ * (ver `prorratearDescuentoGlobal`), así que arrastra exactamente el mismo redondeo. El problema no
+ * es la unidad de medida, es la división.
+ *
+ * La solución es la que usa cualquier comprobante serio: **subir la precisión del unitario lo justo**
+ * hasta que el producto cierre. Se empieza en 2 decimales (el caso normal, que no cambia) y se sube
+ * de a uno. Nunca se toca un importe: el que manda es `subtotal`, y el unitario se acomoda a él.
+ *
+ * `exacto: false` significa que ni con `maxDecimales` cierra — no debería pasar con cantidades
+ * razonables (para que falle con 6 decimales hace falta cantidad > 10.000), pero se devuelve para
+ * que el llamador pueda decidir en vez de imprimir un número que miente en silencio.
+ */
+export function precioUnitarioExhibible(
+  subtotal: number,
+  cantidad: number,
+  maxDecimales = 6,
+): { valor: number; decimales: number; exacto: boolean } {
+  const s = Number(subtotal)
+  const c = Number(cantidad)
+  if (!Number.isFinite(s) || !Number.isFinite(c) || c === 0) {
+    return { valor: 0, decimales: 2, exacto: false }
+  }
+  const objetivo = r2(s)
+  for (let d = 2; d <= maxDecimales; d++) {
+    const valor = redondearA(s / c, d)
+    // Los dos lados ya están redondeados a 2 decimales, así que su diferencia es 0 o ≥ 0,01:
+    // el < 0.005 es una comparación de igualdad a prueba de coma flotante, no una tolerancia.
+    if (Math.abs(r2(valor * c) - objetivo) < 0.005) return { valor, decimales: d, exacto: true }
+  }
+  return { valor: redondearA(s / c, maxDecimales), decimales: maxDecimales, exacto: false }
+}
+
+const redondearA = (n: number, decimales: number): number => {
+  const f = Math.pow(10, decimales)
+  return Math.round((n + Number.EPSILON) * f) / f
+}
+
 // ── Documento del receptor (DocTipo/DocNro) + condición IVA ──────────────────────
 
 export interface ClienteReceptor {

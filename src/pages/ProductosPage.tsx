@@ -739,7 +739,7 @@ export default function ProductosPage() {
           {estrProductoId ? (
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 space-y-4">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                Empaque de <span className="font-semibold text-gray-800 dark:text-gray-200">{estrProductoNombre}</span>
+                Estructura de <span className="font-semibold text-gray-800 dark:text-gray-200">{estrProductoNombre}</span>
               </p>
               <PresentacionesEditor
                 productoId={estrProductoId}
@@ -1360,12 +1360,14 @@ export default function ProductosPage() {
                             )}
                           </div>
 
-                          {/* Empaque del producto (árbol de presentaciones, Fase 5 mig 310) */}
+                          {/* Estructura del producto (árbol de presentaciones, Fase 5 mig 310).
+                              Se rotula "Estructura" para que coincida con la pestaña de arriba: es la
+                              MISMA cosa y tenerla con dos nombres confundía (pedido de GO). */}
                           {presentacionesDelExpandido.length > 1 && (
                             <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
                               <div className="flex items-center justify-between mb-2">
                                 <p className="text-xs text-gray-400 dark:text-gray-500 font-medium uppercase tracking-wide flex items-center gap-1">
-                                  <Layers size={12} /> Empaque
+                                  <Layers size={12} /> Estructura
                                 </p>
                                 <button
                                   onClick={e => { e.stopPropagation(); setTab('estructura'); setEstrProductoId(p.id); setEstrProductoNombre(p.nombre) }}

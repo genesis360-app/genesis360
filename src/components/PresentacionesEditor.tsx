@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Trash2, Save, Layers, CornerDownRight, Info } from 'lucide-react'
+import { Plus, Trash2, Save, Layers, CornerDownRight, Info, Box } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
@@ -8,6 +8,7 @@ import {
   filasAForm, validarPresentaciones, construirPayload, factorBaseDe, filaBase, resumenArbol,
   type PresentacionRow, type PresentacionFila,
 } from '@/lib/presentaciones'
+import { volumenUbicacionM3 } from '@/lib/medidasLogistica'
 import toast from 'react-hot-toast'
 
 interface Props {
@@ -54,8 +55,15 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
     setCargado(true)
   }, [filas, isLoading, cargado])
 
+  // Cubicaje activo (mig 322) → el peso y las tres medidas dejan de ser opcionales: un nivel sin
+  // medir aporta 0 m³ y hace que el volumen ocupado de la ubicación quede corto.
+  const cubicaje = !!tenant?.cubicaje_habilitado
+
   const base = filaBase(rows)
-  const error = useMemo(() => (rows.length ? validarPresentaciones(rows) : null), [rows])
+  const error = useMemo(
+    () => (rows.length ? validarPresentaciones(rows, cubicaje) : null),
+    [rows, cubicaje],
+  )
 
   const set = (key: string, campo: keyof PresentacionRow, valor: string) =>
     setRows(prev => prev.map(r => (r.key === key ? { ...r, [campo]: valor } : r)))
@@ -84,7 +92,7 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
 
   const guardar = useMutation({
     mutationFn: async () => {
-      const err = validarPresentaciones(rows)
+      const err = validarPresentaciones(rows, cubicaje)
       if (err) throw new Error(err)
       const payload = construirPayload(rows)
       if (!payload) throw new Error('El árbol de empaque no es válido.')
@@ -94,7 +102,7 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
       if (rpcErr) throw rpcErr
     },
     onSuccess: () => {
-      toast.success('Empaque guardado')
+      toast.success('Estructura guardada')
       logActividad({
         entidad: 'producto', entidad_id: productoId, entidad_nombre: productoNombre,
         accion: 'editar', pagina: '/productos', campo: 'presentaciones',
@@ -139,6 +147,18 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
           carga por unidad y los descuentos por volumen se hacen con los tramos de cantidad.
         </p>
       </div>
+
+      {cubicaje && (
+        <div className="flex gap-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
+          <Box size={16} className="text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800 dark:text-amber-300">
+            El <strong>cubicaje está activado</strong>: el peso y las tres medidas son obligatorios en
+            cada nivel. Cargalos del <strong>bulto cerrado</strong>, no de su contenido — una caja de 12
+            pesa más que 12 unidades sueltas y ocupa lo que ocupa la caja. Un nivel sin medir haría que
+            el espacio ocupado de las ubicaciones se calcule <strong>de menos</strong>.
+          </p>
+        </div>
+      )}
 
       <div className="space-y-2">
         {rows.map(row => {
@@ -211,6 +231,44 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
                     </button>
                   )}
                 </div>
+              </div>
+
+              {/* Medidas físicas POR NIVEL (mig 322). El peso NO se deriva del factor: una caja de
+                  12 pesa más que 12 unidades sueltas, porque incluye su embalaje. */}
+              <div className="flex flex-wrap items-end gap-2 mt-2 pt-2 border-t border-dashed border-gray-100 dark:border-gray-700">
+                {([
+                  ['peso', 'Peso (kg)', '0.75'],
+                  ['alto', 'Alto (cm)', '20'],
+                  ['ancho', 'Ancho (cm)', '30'],
+                  ['largo', 'Largo (cm)', '40'],
+                ] as const).map(([campo, label, ph]) => {
+                  const vacio = cubicaje && String(row[campo] ?? '').trim() === ''
+                  return (
+                    <div key={campo} className="w-24">
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        {label}{cubicaje && <span className="text-red-500"> *</span>}
+                      </label>
+                      <input type="number" min="0" step="0.01" inputMode="decimal"
+                        value={row[campo]} disabled={!canEdit}
+                        onWheel={e => e.currentTarget.blur()}
+                        onChange={e => set(row.key, campo, e.target.value)}
+                        placeholder={ph}
+                        className={`w-full border rounded-lg px-2 py-1.5 text-sm text-right bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text ${
+                          vacio ? 'border-red-300 dark:border-red-700' : 'border-gray-200 dark:border-gray-600'}`} />
+                    </div>
+                  )
+                })}
+                {(() => {
+                  const cm = (t: string) => Number(t) || null
+                  const m3 = volumenUbicacionM3(cm(row.largo), cm(row.ancho), cm(row.alto))
+                  return (
+                    <span className="ml-auto text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap pb-1.5"
+                      title="Volumen de esta presentación. Es lo que se usa para calcular cuánto ocupa en una ubicación.">
+                      <Box size={11} className="inline mb-0.5 mr-0.5" />
+                      {m3 != null ? `${m3} m³` : '— m³'}
+                    </span>
+                  )
+                })()}
               </div>
             </div>
           )

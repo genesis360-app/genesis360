@@ -3,7 +3,7 @@ title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking]
 sources: [CLAUDE.md, migrations 289, 290, 292, 299]
-updated: 2026-07-23
+updated: 2026-07-28
 ---
 
 # Módulo Configuración
@@ -12,6 +12,19 @@ updated: 2026-07-23
 **Acceso:** DUEÑO · ADMIN (lectura para otros roles según campo)
 
 ---
+
+## 🧾 Pedidos → "Canales que generan pedido" (v1.147.0, mig 315, 🟡 EN DEV)
+
+`Configuración → Pedidos`. Chips con los canales de venta **activos** del tenant; los marcados quedan
+en `tenants.pedido_canales_auto` (se guardan **ids**, así que renombrar un canal no rompe la
+selección, y se sanean contra los canales vivos para no dejar pintado uno borrado o desactivado).
+
+Una venta de un canal marcado genera automáticamente un **Pedido de preparación**. Si la venta es una
+**reserva**, el pedido se genera recién cuando queda **100% pagada**. **Sin ningún canal marcado la
+función está apagada** — que es el default, así que ningún tenant existente cambia de comportamiento.
+
+Reglas completas y guards: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
+
 
 ## Estructura de tabs (v1.8.33 — Fase 1)
 
@@ -104,6 +117,14 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 ### Sub-tab: Reglas de stock
 - **Regla de inventario** (`tenants.regla_inventario`): FIFO / FEFO / LIFO / LEFO / Manual
 - **Over-receipt** (`tenants.permite_over_receipt`): permite ingresar más cantidad que la OC
+- **📦 Cubicaje volumétrico** (`tenants.cubicaje_habilitado`, default `false` — 🟡 EN DEV desde
+  v1.149/150, migs 322/325): calcula cuánto **espacio** ocupa lo guardado en cada ubicación.
+  Al activarlo, el peso y las tres medidas pasan a ser **obligatorios por nivel** en el editor de
+  estructura del producto — ésa es la clave del diseño, porque con medidas a medias el número
+  miente. Incluye el **factor de aprovechamiento** (`cubicaje_factor_aprovechamiento`, default
+  **0.70**: ninguna posición real se llena al 100% geométrico) y un **panel de cobertura**
+  (`fn_cubicaje_cobertura`) que dice cuántos SKU están medidos — prenderlo NO completa el catálogo
+  que ya existe. Detalle en [[wiki/features/wms]] → "Cubicaje volumétrico opt-in".
 
 ### Sub-tabs heredados
 Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs de Inventario:

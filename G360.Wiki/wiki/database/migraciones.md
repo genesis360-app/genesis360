@@ -6,10 +6,210 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-313)
+# Historial de Migraciones (001-326)
 
-**Total al 2026-07-28:** 313 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-29:** 326 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**326 (📦 el reabastecimiento elige una posición de picking QUE TENGA LUGAR, EN DEV — PROD pendiente)** —
+Paso 4 del cubicaje. `fn_wms_elegir_ubicacion_picking` (mig 290) elegía el destino de una tarea
+bulk→picking mirando solo si la posición ya tenía stock de ese producto, y después secuencia y
+prioridad: **nunca miraba la ocupación**, así que podía mandar un pallet a una cara ya al tope y el
+operario llegaba y no entraba. Ahora, con `vw_ubicacion_ocupacion` calculando LPN, peso y volumen
+(migs 321/322/325), la ocupación entra como criterio.
+🛑 **La capacidad DESEMPATA, nunca EXCLUYE:** si están todas llenas, sigue devolviendo una. Filtrarlas
+dejaría la tarea **sin destino** y el stock nunca llegaría al picking — un dato de configuración
+cargado a mano frenando mercadería real. Mismo criterio que la UI: avisa, no bloquea.
+🛑 **Sin capacidad configurada no cambia nada:** "sin lugar" exige un tope CONFIGURADO y ALCANZADO;
+un campo vacío es "no sé", y no sé nunca degrada una posición (si no, todos los tenants que nunca
+cargaron capacidad verían su orden de picking reordenado en silencio por el deploy).
+Se agrega un desempate final por `u.id` (la 290 terminaba en secuencia/prioridad y Postgres no
+garantiza sort estable → el mismo SKU podía ir a dos caras distintas en reabastecimientos seguidos).
+Espejo JS: `ubicacionSinLugar()` en `src/lib/medidasLogistica.ts` (10 tests).
+⏳ **Pendiente de medir:** `EXPLAIN ANALYZE` contra un tenant con volumen real — la función se llama
+una vez por ítem y la vista es un agregado (acotado por RLS al propio tenant, pero sin medir).
+
+**325 (🐛 la vista de ocupación NUNCA encontraba la presentación de una línea — fix de la 322, EN DEV — PROD pendiente)** —
+Tres defectos en `vw_ubicacion_ocupacion`, encontrados al construir el frontend del cubicaje:
+**(1) el JOIN comparaba dos tipos de ID distintos.** La 322 unía `producto_presentaciones.id =
+inventario_lineas.unidad_medida_id`, pero esa columna referencia `unidades_medida(id)` — el catálogo
+de EMPAQUES ("Caja", "Pallet"), no una presentación (mig 293). Verificado en DEV: de las líneas
+activas con `unidad_medida_id`, **0 matcheaban por `pp.id` y todas por `unidades_medida.id`**. Como
+además la columna no es NULL en esas filas, tampoco entraba el fallback a la base → **aportaban 0 m³**.
+O sea: las líneas que entraron en BULTO, las que más volumen ocupan, quedaban en cero, y el error
+empuja hacia "parece que hay lugar" — exactamente lo que el cubicaje quería evitar.
+**(2) el arreglo obvio duplicaba filas.** Unir por `nombre_empaque_id` a secas multiplica la línea
+cuando hay **hermanas** con el mismo empaque ("Caja-12" y "Caja-10" cuelgan las dos del empaque
+"Caja"; en DEV hay 8 grupos así, uno con 3) → `lpn_activos` y `peso_kg` inflados ×2/×3: una ubicación
+con 3 LPN diría "6 de 4". Se resuelve con **`LEFT JOIN LATERAL … LIMIT 1`**, que estructuralmente no
+puede duplicar. Verificado post-fix: 348 LPN en la vista = 348 en el conteo crudo, 0 discrepancias en
+46 ubicaciones.
+**(3) `cantidad_uom` es un snapshot de INGRESO y se pone viejo.** La 322 lo usaba como primera fuente
+de la cantidad; `cantidad` cambia con cada venta/ajuste y él no (en DEV hay líneas con `cantidad = 48`
+y `cantidad_uom = 60`). Ahora la cantidad se **deriva del stock actual** (`cantidad / factor_base`) y
+`cantidad_uom` queda solo como desempate entre hermanas.
+⚠ **Gotcha de Postgres detectado en review:** `il.cantidad` es `integer` y `factor_base` `bigint` → sin
+`::numeric` la división **trunca**: 48 unidades en cajas de 10 daban 4 bultos en vez de 4,8 y el peso
+salía ~17% corto, justo en el dato que decide si un rack está sobrecargado (seguridad física).
+Se aprovechó para que el **peso** use el del NIVEL cuando está cargado (incluye el embalaje: una caja
+de 12 pesa más que 12 unidades sueltas) y caiga a `productos.peso_kg` si no.
+
+**324 (no se lanza un pedido cuya venta no está viva, EN DEV — PROD pendiente)** —
+Engancha el guard de la 323 al dispatcher de "Lanzar" (que es chico), y no dentro del algoritmo de
+picking: cubre los dos caminos con una línea sin volver a tocar el cuerpo que mueve stock.
+
+**323 (🐛 un PRESUPUESTO no genera pedido + anular la venta cancela su pedido, EN DEV — PROD pendiente)** —
+Dos huecos que encontró GO usando el flujo real: una **venta recurrente** generó un PRESUPUESTO, el
+presupuesto generó un PEDIDO, y al cancelarse el presupuesto quedó **un pedido vivo** que cualquiera
+podía lanzar, mandando al depósito a preparar mercadería de una venta que ya no existe.
+**(1)** Error de criterio de la mig 318: incluí `'pendiente'` entre los estados que generan pedido
+razonando "la mercadería no salió". Pero `ventas.estado = 'pendiente'` **ES UN PRESUPUESTO** — el
+ticket dice literalmente "★ PRESUPUESTO ★". No hay compromiso: el cliente no aceptó, no pagó y puede
+no convertirse nunca. El pedido nace cuando el presupuesto **se convierte** (el trigger ya escucha
+`UPDATE OF estado`). Se suma `'facturada'` a los estados vivos.
+**(2)** Trigger nuevo `trg_ventas_anulada_cancela_pedido`: cancelar o devolver la venta cancela su
+pedido y sus tareas de picking pendientes. ⚠ **NO toca `cantidad_reservada`**: en un venta-pedido el
+picking nunca reservó (mig 316) — la reserva es de la VENTA, y liberarla acá la liberaría DOS veces.
+Por eso las tareas se cancelan con UPDATE directo y no con `fn_cancelar_tarea_wms`, que sí libera.
+Incluye limpieza de los pedidos que ya habían quedado mal (1 en DEV), sin tocar los entregados.
+
+**322 (📦 CUBICAJE VOLUMÉTRICO opt-in — FASE A, EN DEV — PROD pendiente)** —
+`tenants.cubicaje_habilitado` (default **false**) + `cubicaje_factor_aprovechamiento` (default 0.70,
+CHECK 0 < f ≤ 1). Con el cubicaje activo, el trigger `trg_presentaciones_exige_medidas` **no acepta**
+una presentación sin peso ni las tres medidas — así la cobertura es 100% por construcción de ahí en
+adelante, que es lo que responde al reparo de siempre ("con medidas a medias el número miente").
+Server-side porque la UI se cachea y el importador/EFs escriben con service_role.
+`vw_ubicacion_ocupacion` se amplía con **`volumen_m3`** (calculado sobre la presentación en la que
+ENTRÓ cada línea: "3 cajas" ocupa 3 × el volumen de la caja) y `lineas_con_volumen`.
+`fn_cubicaje_cobertura(tenant)` devuelve cuántos productos tienen TODAS sus presentaciones medidas —
+prender el toggle NO completa el catálogo existente (en DEV: **6 de 296**).
+⚠ El cálculo de `volumen_m3` de esta migración **no funcionaba**: el JOIN a la presentación nunca
+matcheaba. Corregido en la **mig 325**. Frontend completo (Fases A/B/C) en **v1.150.0**.
+
+**321 (conecta la capacidad de `ubicaciones`, que nadie leía, EN DEV — PROD pendiente)** —
+Los campos `largo/ancho/alto_cm`, `peso_max_kg` y `capacidad_pallets` existían desde la **mig 032** y
+**ningún cálculo los usaba**: se cargaban en Config y no servían para nada. Vista nueva
+`vw_ubicacion_ocupacion` (`security_invoker`, respeta RLS) con LPN activos y peso total por
+ubicación, más `lineas_con_peso`/`lineas_total` para la **cobertura**. ⚠ Si faltan `productos.peso_kg`
+el total queda CORTO — el error empuja hacia "parece que hay lugar" justo cuando el rack podría estar
+pasado; por eso la UI muestra la cobertura con ⚠ y el aviso salta al 90% del límite, no al 100%.
+Avisa, nunca bloquea.
+
+**320 (🐛 el picking de un venta-pedido no sabía de dónde sacar la mercadería, EN DEV — PROD pendiente)** —
+Bug que encontró GO probando el flujo real (venta #448, una RESERVA): la tarea de picking salía
+**sin LPN y sin ubicación**. `fn_generar_tareas_picking_pedido_venta` leía SOLO
+`venta_item_despachos`, que se escribe al **despachar** (ISS-075) — una venta **reservada** todavía
+no tiene ninguna fila ahí: su plan de LPN vive en `venta_items.lpn_plan` (mig 156), que es donde el
+POS guarda el LPN elegido, incluida la elección MANUAL del cajero. Y como el pedido nace justamente
+de reservas, el caso más común caía SIEMPRE al fallback "sin desglose por LPN".
+Se reemplaza por una **cascada de fuentes**, de la más precisa a la más genérica y **sin reservar
+nada** (la venta ya comprometió el stock): (1) `venta_item_despachos` · (2) `venta_items.lpn_plan`
+resolviendo la ubicación desde la línea · (3) líneas con `cantidad_reservada > 0` en FEFO, solo
+lectura · (4) cualquier línea con stock. Si nada matchea, la tarea sale igual pero las notas dicen
+"⚠ sin stock ubicado para este producto" en vez de quedar en blanco.
+Verificado contra la venta #448: la tarea regenerada apunta a `LPN-20260619-24B551` en `RACK1`.
+
+**319 (💵 el Pedido factura el DESCUENTO POR ESTADO, EN DEV — PROD pendiente)** —
+Cierra el pendiente que la 317 dejó anotado. Un Pedido facturaba **sin** aplicar el descuento por
+estado de inventario (migs 284-285): la MISMA mercadería salía más cara entregada por Pedidos que
+vendida por mostrador, y `venta_items.descuento_estado_pct/_monto` quedaban vacíos (ni la factura ni
+el ticket mostraban el descuento que el cliente sí esperaba). No se pudo hacer en la 317 porque el
+precio y el `INSERT` del `venta_items` se escriben ANTES del loop que elige de qué líneas sale el
+stock, y el descuento depende del estado de ESAS líneas: se acumula dentro del loop y se aplica al
+final sobre subtotal, IVA y los acumuladores de la venta. Prorrateado **por fuente** (cada unidad
+según el % del estado de SU línea, nunca un promedio — mismo criterio que
+`calcularDescuentoEstadoLinea` del POS); con dos estados distintos el `pct` queda NULL pero el monto
+es la suma exacta, mismo contrato que graba el POS.
+
+**318 (regla del pedido por TIPO DE ENTREGA, EN DEV — PROD pendiente)** —
+Reescribe la regla de la 315 según el diagrama de flujo de GO: **todas las ventas generan pedido
+MENOS la entrega directa** (canal presencial + despachada + sin envío). Deriva de
+`canales_venta.clasificacion` (mig 168) — no hay nada que configurar y es correcto por default.
+🛑 Tres cambios de fondo: (a) **el gate de pago se mueve de la CREACIÓN a la ENTREGA** — la reserva
+y el retiro con pago parcial se preparan igual, y `fn_pedido_entregar_retiro` es el que no deja
+salir mercadería sin saldar (salvo cuenta corriente); (b) `pedido_canales_auto` se **renombra** a
+`pedido_canales_excluidos` e invierte su sentido (pasa a ser la excepción); (c) **faltaba el
+envío** — `fn_generar_tareas_picking_pedido_venta` no lo creaba, y ahora además el trigger de
+`envios` **crea el pedido** si no existía, que es el caso "mostrador + envío", imposible de detectar
+en el INSERT de la venta porque el envío se inserta en una llamada HTTP posterior.
+
+**317 (💵 el pedido manual facturaba a PRECIO DE LISTA + pedido manual opt-in, EN DEV — PROD pendiente)** —
+`fn_pedido_generar_venta` ponía `v_precio := COALESCE(productos.precio_venta, 0)` y nada más: sin
+tiers por volumen (mig 306), sin redondeo del tenant (H4). De los 4 tipos de pedido sembrados por
+default, **"Mayorista" era el que peor salía** — facturaba a precio minorista. Se extrae
+`fn_precio_venta_efectivo` (espejo SQL de `precioTierBase` + `redondearPrecio`) y el tier se resuelve
+contra el **total pedido** del SKU, no contra lo que se entrega en la tanda: entregar en dos veces no
+puede hacer perder el precio por volumen. Además `tenants.pedido_manual_habilitado` (default
+**false**): crear un pedido a mano pasa a ser opt-in — para una PyME casi todos los casos tienen hoy
+un camino mejor (encargo sin cobrar = venta `pendiente`, armado sin cliente = traslado), y el único
+que solo resuelve Pedidos es el mayorista con entregas parciales.
+⚠ El cuerpo de `fn_pedido_generar_venta` se copió del archivo de la mig 299 y se editó
+programáticamente: son ~270 líneas que mueven stock, plata y caja, y re-tipearlas para cambiar una
+es donde se cuela un error silencioso.
+
+**316 (🛑 REGLA #0 — guards del flujo Venta → Pedido + entrega en mostrador, EN DEV — PROD pendiente)** —
+Lo que hace SEGURO lo que abrió la 315. Un pedido con `venta_origen_id` ya tiene su venta, su plata y
+su stock resueltos, así que entrar al ciclo normal de Pedidos lo rompería de dos formas silenciosas:
+**(1) doble venta** — `fn_pedido_generar_venta` (mig 295) crea una venta nueva, vuelve a rebajar stock
+y vuelve a asentar caja; **(2) doble reserva** — `fn_generar_tareas_picking_pedido` (mig 294) reserva
+`cantidad_reservada`, pero si la venta era una RESERVA esas unidades ya están reservadas por ella (se
+reservaría el doble y el POS diría "sin stock" habiendo), y si era DESPACHADA el stock ya salió de
+`cantidad` (reservaría unidades de otras líneas). **Probado por mutación en DEV: por el camino viejo
+se habrían reservado 4 unidades de más.**
+Piezas: trigger `BEFORE INSERT ON ventas` que rechaza la segunda venta (se hace por trigger y no
+editando la RPC para cubrir CUALQUIER camino de escritura, no solo el que conocemos) ·
+`fn_generar_tareas_picking_pedido_venta` nueva, que arma el picking desde `venta_item_despachos` (el
+LPN REAL que ya eligió la venta, ISS-075) y **no toca `cantidad_reservada`** · la RPC original se
+**renombra** a `fn_generar_tareas_picking_pedido_stock` y queda un dispatcher chico con el nombre
+viejo (se renombra en vez de re-escribir el cuerpo: son ~150 líneas que mueven stock y volver a
+tipearlas para insertar cuatro es donde se cuela un error silencioso; los GRANT siguen a la función) ·
+`fn_pedido_entregar_retiro` para el mostrador (NO toca plata ni stock; deja el rastro en Envíos como
+`retiro_local`/`entregado` y devuelve la venta para facturarla).
+**Además cierra un hueco preexistente:** `listo_para_entrega` era un **estado MUERTO** — estaba en el
+CHECK desde la mig 292, la UI le tenía badge y 3 RPCs lo leían como precondición, pero **ningún código
+lo seteaba nunca**. Ahora completar la última tarea de picking del pedido lo promueve.
+Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
+
+**315 (Pedido automático desde una VENTA, EN DEV — PROD pendiente)** —
+Pedido de GO: las ventas de ciertos canales generan solo un Pedido de preparación; las **reservas**
+solo cuando están **100% pagadas**. 🛑 **Invierte el sentido del flujo original (F4)**: hasta acá el
+único puente era Pedido → venta. Config nueva `tenants.pedido_canales_auto` (array de
+`canales_venta.id`; `[]` = apagado, ningún tenant existente cambia de comportamiento) +
+`pedidos.venta_origen_id` (con UNIQUE parcial: una venta genera a lo sumo un pedido) +
+`fn_canal_de_origen` (espejo SQL de `ORIGEN_ALIAS` de `useCanalesVenta.ts` — mantener sincronizados).
+Se hace **server-side** y no en el POS a propósito: así también cubre las ventas que entran por
+webhook de marketplace o por el importador, que nunca pasan por `registrarVenta`.
+💵 La condición del 100% suma el costo de envío: `ventas.total` NO lo incluye pero `monto_pagado` SÍ
+(ISS-105) — compararlo contra `total` a secas habría generado el pedido cobrando de menos.
+⚠ Detalle que obligó a un segundo trigger: `registrarVenta` inserta la venta y sus `venta_items` en
+llamadas HTTP **separadas**, así que cuando corre el `AFTER INSERT` de `ventas` **no existe ni una
+línea**. Las líneas las completa un trigger **statement-level** sobre `venta_items`
+(`fn_pedido_sync_items_desde_venta`, idempotente y solo mientras el pedido sigue en `confirmado`).
+🛑 El trigger va envuelto en `EXCEPTION WHEN OTHERS` + `RAISE WARNING`: **una VENTA nunca se cae por
+un documento de logística** — un pedido que no se pudo crear se regenera, una venta perdida en el
+mostrador no. Guard anti-loop: una venta nacida de un pedido nunca genera otro pedido.
+
+**314 (🛑 guard de modelo de variante: madre/hijo vs. Atributos de variante, EN DEV — PROD pendiente)** —
+Reconstruye sobre el modelo madre/hijo el guard que la **mig 274** tenía sobre `grupo_id` y que
+**desapareció** al dropear esa columna en la **mig 311**: entre una y otra nada impedía que un mismo SKU
+fuera variante madre/hijo (`producto_padre_id`) **y** tuviera atributos de variante a nivel LPN
+(`tiene_talle`/`tiene_color`/…) encima — dos modelos de stock incompatibles. Decisión de GO: los dos
+sistemas coexisten en la app (Eje A) pero **no dentro del mismo producto**.
+Dos piezas, porque un CHECK no puede mirar otras filas: **CHECK `chk_productos_variante_sin_atributos`**
+(el hijo no puede tener atributos — table-local, garantía dura) + **trigger
+`trg_productos_variante_atributos`** (la madre: ni encender un atributo teniendo hijos, ni crearle la
+primera variante teniendo atributos). Apagando los atributos el camino se destraba, así que nunca queda
+un callejón sin salida; un standalone con atributos sigue siendo válido (el modelo NO se depreca).
+`SECURITY DEFINER` a propósito — un guard no puede fallar ABIERTO si la RLS le esconde la fila de la
+madre; los dos `SELECT` filtran por `NEW.tenant_id`, así que no hay fuga cross-tenant. El
+`BEFORE INSERT OR UPDATE OF <cols>` acota el disparo: `recalcular_stock` y la propagación de nombre no
+lo despiertan (verificado con 5 negativos en DEV).
+**Verificado ANTES de aplicar (datos REALES):** DEV 404 productos / 42 hijos / 17 madres / 65 con
+atributos → **0 en violación**; PROD 23 / 0 / 0 / 1 → **0 en violación**. Entró sin tocar un dato.
+⚠ **Nota de modelo:** la razón técnica de la mig 274 ("la UI de Grupo de variantes no pedía el talle") ya
+no aplica — un hijo es un producto normal. Hoy esto es una decisión de negocio: si se quisiera el híbrido
+"color = SKU separado, talle = atributo de LPN", alcanza con dropear el CHECK y el trigger.
+Ver [[wiki/features/atributos-variante]] "Guard de modelo de variante".
 
 **313 (reasignar stock de productos SERIALIZADOS + levanta el guard de la 312, EN DEV y PROD, 🛑 MUEVE STOCK)** —
 Cierra el último pendiente del rediseño UoM. `fn_reasignar_stock_variante` pasa a aceptar, por asignación,
@@ -346,7 +546,8 @@ prevención en `ImportarMasterPage.tsx` (sin falla activa confirmada ahí). Ver 
 → "Importador de productos con precio por nivel".
 **273, 274, 275 y 276 aplicadas en DEV y PROD** (PR #293, v1.134.0). 274 es el guard
 `chk_productos_grupo_sin_atributos_variante` (Grupo de variantes vs. Atributos de variante son
-incompatibles). 275 agrega las columnas de atributos de variante a `traslado_items` (se perdían al
+incompatibles) — ⚠ **ese CHECK ya no existe:** se fue con `grupo_id` en la mig 311 y se reconstruyó
+sobre el modelo madre/hijo en la **mig 314**. 275 agrega las columnas de atributos de variante a `traslado_items` (se perdían al
 trasladar stock entre sucursales). 276 agrega `traslado_items.ubicacion_sugerida_id` (precarga la
 ubicación al confirmar recepción cuando el traslado nació de un movimiento parcial de LPN).
 **277 (ronda 4 de atributos de variante) aplicada en DEV y PROD** (PR #294, v1.135.0) — agrega las

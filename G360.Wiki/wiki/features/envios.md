@@ -3,7 +3,7 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292]
-updated: 2026-07-22
+updated: 2026-07-28
 ---
 
 # Módulo Envíos
@@ -38,6 +38,23 @@ Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.
 **Acceso:** DUEÑO · SUPERVISOR · CAJERO
 
 ---
+
+## 🧾 Retiro en local (`tipo = 'retiro_local'`, v1.147.0, migs 315/316, 🟡 EN DEV)
+
+Decisión de GO (2026-07-28): **Envíos es la tabla única de trazabilidad de entregas**, se retiren o se
+despachen. Cuando el mostrador entrega un pedido de **retiro en local** desde `Ventas → Pedidos`, se
+crea (o se actualiza, si ya existía) un `envios` con `tipo = 'retiro_local'`, `estado = 'entregado'`,
+`canal = 'Retiro en local'`, `venta_id` de la venta original y `pod_receptor`/`pod_fecha` cargados.
+
+No hay courier, ni costo, ni tracking: es el registro de que la mercadería salió del local. Antes de
+esto un retiro en local no dejaba **ninguna** fila en Envíos (`requiere_envio = false` significaba
+literalmente "no tocar el módulo"), así que esas entregas no eran auditables desde acá.
+
+⚠ `envios.tipo` **no tiene CHECK** (conviven `venta`, `traslado_interno` y ahora `retiro_local`) — no
+se le agregó uno para no romper valores existentes en PROD.
+
+Ver [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
+
 
 ## Pestañas
 

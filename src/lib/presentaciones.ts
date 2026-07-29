@@ -77,8 +77,14 @@ export function factorBaseDe(row: PresentacionRow, rows: PresentacionRow[]): num
 /**
  * Valida el árbol completo. Devuelve el mensaje de error o null.
  * Espeja las validaciones de `fn_presentaciones_guardar` (la RPC igual revalida: la UI se cachea).
+ *
+ * `exigirMedidas` = el tenant tiene el **cubicaje** activo (`tenants.cubicaje_habilitado`, mig 322):
+ * ahí el peso y las tres medidas dejan de ser opcionales, porque un nivel sin medir aporta 0 m³ y
+ * hace que el volumen ocupado quede corto — el error empuja hacia "parece que hay lugar". El guard
+ * real es el trigger `trg_presentaciones_exige_medidas`; esto es para que el error se vea al tipear
+ * y no como una excepción de Postgres al guardar.
  */
-export function validarPresentaciones(rows: PresentacionRow[]): string | null {
+export function validarPresentaciones(rows: PresentacionRow[], exigirMedidas = false): string | null {
   if (rows.length === 0) return 'Tiene que haber al menos la presentación base.'
 
   const bases = rows.filter(r => r.padre_key === null)
@@ -107,6 +113,8 @@ export function validarPresentaciones(rows: PresentacionRow[]): string | null {
     ] as const) {
       if (campo.trim() !== '' && !(Number(campo) > 0))
         return `"${etiqueta}": el ${label} tiene que ser mayor a 0.`
+      if (exigirMedidas && campo.trim() === '')
+        return `"${etiqueta}": el cubicaje está activado, así que hace falta cargar el ${label}. Podés desactivarlo en Configuración → Inventario.`
     }
   }
 

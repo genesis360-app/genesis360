@@ -74,6 +74,11 @@ export interface Tenant {
   gastos_dias_alerta_anticipo_oc?: number
   // Moneda principal (v1.8.44)
   moneda?: string | null
+  // Cubicaje volumétrico opt-in (mig 322): al activarlo, el editor de estructura EXIGE peso y las
+  // tres medidas en cada nivel. El factor es la fracción del volumen geométrico de una ubicación
+  // que se considera usable (default 0.70) — ninguna posición real se llena al 100%.
+  cubicaje_habilitado?: boolean
+  cubicaje_factor_aprovechamiento?: number | null
   created_at: string
 }
 

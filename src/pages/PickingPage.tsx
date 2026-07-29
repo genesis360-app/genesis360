@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ScanBarcode, PackageCheck, PackageSearch, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle } from 'lucide-react'
+import { ArrowLeft, ScanBarcode, PackageCheck, PackageSearch, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle, ClipboardList, Receipt } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
@@ -26,6 +26,8 @@ interface TareaWMS {
   ubicacion_origen: { nombre: string } | null
   ubicacion_destino: { nombre: string } | null
   envios: { numero: number | null } | null
+  pedido_id: string | null
+  pedidos: { numero: number | null; venta_origen_id: string | null } | null
 }
 
 // El picking guía al depósito hacia LPNs que la venta ya decidió consumir — nunca toca el
@@ -45,7 +47,7 @@ export default function PickingPage() {
     queryKey: ['wms_tareas', tenant?.id, sucursalId],
     queryFn: async () => {
       let q = supabase.from('wms_tareas')
-        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero)')
+        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero), pedidos(numero, venta_origen_id)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['pendiente', 'en_curso'])
         .order('prioridad', { ascending: false })
@@ -56,6 +58,20 @@ export default function PickingPage() {
       return (data ?? []) as unknown as TareaWMS[]
     },
     enabled: !!tenant,
+  })
+
+  // El operario tiene que poder saber de qué pedido y de qué VENTA salió la tarea (pedido de GO):
+  // sin eso, un LPN mal pickeado no se puede rastrear hasta el cliente que lo está esperando.
+  // Va en query aparte y no anidada: `ventas` y `pedidos` se referencian en las DOS direcciones
+  // (`ventas.pedido_id` y `pedidos.venta_origen_id`), así que el embed anidado es ambiguo.
+  const ventaIds = [...new Set(tareas.map(t => t.pedidos?.venta_origen_id).filter(Boolean))] as string[]
+  const { data: ventasPorId = {} } = useQuery({
+    queryKey: ['wms-tareas-ventas', ventaIds.join(',')],
+    queryFn: async () => {
+      const { data } = await supabase.from('ventas').select('id, numero').in('id', ventaIds)
+      return Object.fromEntries((data ?? []).map((v: any) => [v.id, v.numero])) as Record<string, number>
+    },
+    enabled: ventaIds.length > 0,
   })
 
   const tareasPorId = new Map(tareas.map(t => [t.id, t]))
@@ -176,6 +192,21 @@ export default function PickingPage() {
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
                     {esReab ? 'Reabastecimiento' : 'Picking'}
                   </span>
+                  {t.pedidos?.numero != null && (
+                    <button type="button" onClick={() => navigate('/pedidos')}
+                      title="Ver el pedido que originó esta tarea"
+                      className="text-xs font-medium text-accent-text hover:underline flex items-center gap-1">
+                      <ClipboardList size={11} /> Pedido #{t.pedidos.numero}
+                    </button>
+                  )}
+                  {t.pedidos?.venta_origen_id && ventasPorId[t.pedidos.venta_origen_id] != null && (
+                    <button type="button"
+                      onClick={() => navigate(`/ventas?id=${t.pedidos!.venta_origen_id}`)}
+                      title="Ver la venta del cliente que está esperando esta mercadería"
+                      className="text-xs font-medium text-accent-text hover:underline flex items-center gap-1">
+                      <Receipt size={11} /> Venta #{ventasPorId[t.pedidos.venta_origen_id]}
+                    </button>
+                  )}
                   {t.envios?.numero && (
                     <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1"><Truck size={11} /> Envío #{t.envios.numero}</span>
                   )}

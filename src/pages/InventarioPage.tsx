@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, Fragment } from 'react'
+import { useState, useRef, useEffect, useMemo, Fragment } from 'react'
 import { logActividad } from '@/lib/actividadLog'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import {
@@ -37,6 +37,7 @@ import { getRebajeSort } from '@/lib/rebajeSort'
 import { atributosDeLinea } from '@/lib/atributosVariante'
 import { convertirUnidad, unidadesCompatibles } from '@/lib/unidades'
 import { convertirABase, nivelDefaultParaProducto, type NivelEstructuraDB } from '@/lib/estructuras'
+import { AvisoCapacidadUbicacion } from '@/components/AvisoCapacidadUbicacion'
 import { presentacionesComoNiveles, PRESENTACION_COLS } from '@/lib/presentaciones'
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
@@ -450,6 +451,19 @@ export default function InventarioPage() {
     const def = nivelDefaultParaProducto(nivelesIngreso, (selectedProduct as any)?.unidad_medida)
     setIngresoNivelOrden(def?.orden ?? null)
   }, [nivelesIngreso, selectedProduct])
+
+  // Nivel de empaque elegido para el ingreso y la cantidad ya convertida a unidades BASE.
+  // Se derivan acá (y no solo dentro de la mutación) para que el aviso de capacidad de la
+  // ubicación pueda estimar cuánto suma la operación antes de confirmarla.
+  const nivelIngresoSelPreview = useMemo(
+    () => (nivelesIngreso.length > 1 ? nivelesIngreso.find(n => n.orden === ingresoNivelOrden) ?? null : null),
+    [nivelesIngreso, ingresoNivelOrden],
+  )
+  const cantidadBaseIngreso = useMemo(() => {
+    const raw = parseFloat(form.cantidad)
+    if (!Number.isFinite(raw) || raw <= 0) return 0
+    return nivelIngresoSelPreview ? convertirABase(raw, nivelIngresoSelPreview) : raw
+  }, [form.cantidad, nivelIngresoSelPreview])
 
   const { data: lineasProducto = [] } = useQuery({
     queryKey: ['lineas-producto', selectedProduct?.id, sucursalId],
@@ -3519,6 +3533,15 @@ export default function InventarioPage() {
                             <option value="">Sin ubicación</option>
                             {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
                           </select>
+                          {/* Fase C del cubicaje (migs 321/322/325): avisa si la posición queda
+                              llena o pasada de peso/volumen. Nunca bloquea el ingreso. */}
+                          <AvisoCapacidadUbicacion
+                            className="mt-1.5"
+                            ubicacionId={form.ubicacionId}
+                            productoId={selectedProduct?.id}
+                            cantidadBase={cantidadBaseIngreso}
+                            unidadMedidaId={nivelIngresoSelPreview?.unidad_medida_id ?? null}
+                          />
                         </div>
                       )}
                     </div>

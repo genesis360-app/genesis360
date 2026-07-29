@@ -1148,7 +1148,7 @@ para forzar la selección de series) — nunca cae a "cualquiera" por FIFO ciego
 | 9 | Traslados entre sucursales — despacho (`TrasladosPanel`) | Snapshot del atributo de la línea origen en `traslado_items` (columnas nuevas, **mig 275**) | Insert incluye los 5 campos | ✅ Código + regresión e2e (`30_traslado_sucursal_mutante`, corrido aislado tras el cambio — sigue verde) |
 | 10 | Traslados — recepción en destino | La línea nueva en destino hereda el atributo del `traslado_items` (no se re-pregunta) | Insert copia los 5 campos de `it` | ✅ Código + regresión e2e (mismo spec 30) |
 | 11 | Traslados — cancelación/reingreso al origen | Igual que recepción, para la rama que crea línea nueva | Insert copia los 5 campos de `it` | ✅ Código (rama de reingreso sin línea previa) |
-| 12 | Conflicto "Grupo de variantes" vs "Atributos de variante" | Un producto NO puede tener `grupo_id` Y `tiene_X=true` a la vez (dos modelos de stock incompatibles) | `ProductoFormPage` bloquea en UI + **mig 274** CHECK constraint en DB (verificado que rechaza por SQL directo) | ✅ Código + verificación manual por SQL (violación real rechazada) |
+| 12 | Conflicto "Variantes" vs "Atributos de variante" | Un producto NO puede usar los dos modelos de variante a la vez (dos modelos de stock incompatibles). ⚠ **Actualizado 2026-07-28:** el CHECK original era sobre `grupo_id` (**mig 274**) y se perdió al dropear esa columna en la **mig 311**; se reconstruyó sobre el modelo madre/hijo en la **mig 314** | `ProductoFormPage` bloquea en UI (toggles deshabilitados + motivo) + **mig 314** en DB: CHECK `chk_productos_variante_sin_atributos` (el hijo) + trigger `trg_productos_variante_atributos` (la madre) | ✅ Código + **e2e 109** (5 aserciones nuevas por REST) + 12 unit |
 
 **Gaps de queries de producto encontrados y corregidos en esta ronda** (la causa real del bug que
 reportó GO: el buscador de "Ingreso manual" no traía `tiene_talle` etc. en el `SELECT`, así que la
@@ -1536,3 +1536,228 @@ multiplica las cantidades de stock.
 
 **Verde:** tsc · build · unit 1243 (23 nuevos en `presentaciones.test.ts`) · **e2e 99 reescrito** +
 100/102/103/104 migrados a sembrar por `fn_presentaciones_guardar`.
+
+---
+
+## 🔀 §46 — Un producto usa UN modelo de variante, no dos (mig 314) — 2026-07-28
+
+Reconstruye, sobre el modelo madre/hijo, el guard que la **mig 274** tenía sobre `grupo_id` y que se
+**perdió** al dropear esa columna en la **mig 311** (Fase 5 del rediseño UoM). Entre la 311 y esta
+migración nada impedía que un SKU fuera variante madre/hijo **y** tuviera atributos de variante a
+nivel LPN encima. Al detectarlo había **0 productos** en esa situación (DEV y PROD), así que no hubo
+nada que corregir: el guard entró sin tocar un dato.
+
+**Los dos modelos** (coexisten en la app — decisión Eje A de GO — pero no dentro del mismo producto):
+
+- **Atributos de variante** (`tiene_talle`/`tiene_color`/…): UN SOLO SKU, el stock se banca junto y
+  el talle/color va en cada `inventario_lineas`.
+- **Variantes madre/hijo** (`producto_padre_id`): cada variante es un SKU separado con su propio
+  `stock_actual`, precio y código.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 1 | **Un hijo no puede tener Atributos de variante** | Ya es un SKU separado con su propio stock | CHECK `chk_productos_variante_sin_atributos` — **e2e 109** (por REST) |
+| 2 | **Una madre agrupadora tampoco** | Ya delegó el stock en sus hijos | trigger `trg_productos_variante_atributos` — **e2e 109** |
+| 3 | **No se le crea la 1ra variante a un producto con atributos** | Lo convertiría en agrupador con los dos modelos encima | trigger (rama de la madre) — **e2e 109** |
+| 4 | **…pero apagando los atributos SÍ se puede** | Nunca queda un callejón sin salida: hay camino de migración | **e2e 109** (paso 9) |
+| 5 | **Un standalone con atributos sigue siendo válido** | El modelo de atributos NO se depreca | **e2e 109** (paso 7) + query DEV (65 productos con atributos, ninguno afectado) |
+| 6 | **El guard es server-side, no solo UI** | La UI se cachea y el importador/EFs escriben con `service_role` sin pasar por ella | los rechazos del e2e son **por REST**, sin tocar la UI |
+| 7 | **La UI explica el motivo, no tira un error crudo** | Toggles deshabilitados con cartel ámbar + "Crear variante" reemplazado por el motivo | `motivoBloqueoAtributosVariante` / `motivoBloqueoCrearVariante` (12 unit) |
+| 8 | **Guardar un producto normal no se rompe** | `UPDATE OF <cols>` acota el disparo: `recalcular_stock` y la propagación de nombre no despiertan el trigger | 5 negativos verificados en DEV con rollback |
+| 9 | **El guard no puede fallar ABIERTO** | `SECURITY DEFINER` para que la RLS no le esconda la fila de la madre; los dos `SELECT` filtran por `NEW.tenant_id` (sin fuga cross-tenant) | revisión de la migración |
+
+**⚠ Nota de modelo (para quien lo lea en el futuro):** la razón técnica que motivó la mig 274 —"el
+ingreso no pedía el talle porque la UI de Grupo de variantes no lo exige de esa forma"— **ya no
+aplica**: en el modelo madre/hijo un hijo es un producto normal (el POS solo excluye a las MADRES y
+el ingreso lee `tiene_talle` genéricamente). Hoy este guard es una decisión de **modelo de negocio**,
+no una limitación técnica. Si algún día se quiere el híbrido "color = SKU separado, talle = atributo
+de LPN" (caso real en indumentaria), alcanza con dropear el CHECK y el trigger.
+
+**Verde:** tsc · build · **unit 1263** (12 nuevos en `atributosVariante.test.ts`) · **e2e 109**
+extendido de 4 a 9 aserciones (2/2).
+
+---
+
+## 🧾 §47 — Pedido desde una VENTA, entrega en mostrador y envíos relacionados (migs 315-319) — 2026-07-28/29
+
+Regla del **diagrama de flujo de GO**: *todas las ventas generan Pedido de preparación MENOS la
+entrega directa* (mostrador + cobrada + sin envío — el cliente se lleva la mercadería ahí mismo).
+Sale de datos que ya existen (`canales_venta.clasificacion`, mig 168): no hay nada que configurar.
+
+**🛑 Esto invierte el sentido del flujo original (F4).** Hasta acá el único puente era Pedido →
+venta (PED4). Un pedido con `venta_origen_id` **ya tiene su venta, su plata y su stock resueltos**,
+así que las formas de romperlo son todas silenciosas y están cerradas server-side.
+
+### Las 8 ramas del diagrama
+
+| # | Rama | Genera pedido | Cubierto por |
+|---|---|---|---|
+| 1 | online · retiro local · **pago parcial** | ✅ (el pago ya no condiciona la creación) | **e2e 113** |
+| 2 | online · retiro local · pago completo | ✅ | **e2e 113** |
+| 3 | online · **envío propio** | ✅ + `envios` vinculado | **e2e 113** |
+| 4 | online · **envío de tercero** | ✅ + `envios` vinculado | **e2e 113** |
+| 5 | mostrador · **ENTREGA DIRECTA** | 🛑 **NO** — no hay nada que preparar | **e2e 113** |
+| 6 | mostrador · **reserva** | ✅ aunque tenga seña parcial | **e2e 113** |
+| 7 | mostrador · envío propio | ✅ — lo crea el trigger de `envios` | **e2e 113** |
+| 8 | mostrador · envío de tercero | ✅ — ídem | **e2e 113** |
+
+### Integridad
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 9 | **🛑 Lanzar NO vuelve a reservar stock** | La venta ya comprometió esas unidades; el picking sale de `venta_item_despachos` y no toca `cantidad_reservada` | **e2e 113** + **mutación en DEV: por el camino viejo reservaba 4 unidades de más** |
+| 10 | **🛑 No puede nacer una SEGUNDA venta** | Trigger `BEFORE INSERT ON ventas`; duplicaría facturación + rebaje + caja | **e2e 113** (rechazo por REST) |
+| 11 | **💵 Gate de pago en la ENTREGA** | La reserva se prepara con seña parcial, pero la mercadería NO sale sin saldar. Cuenta corriente sí puede salir (deuda aceptada) | **e2e 113** + DO block en DEV |
+| 12 | **💵 El costo de envío cuenta para el saldo** | `total` NO lo incluye pero `monto_pagado` SÍ (ISS-105) | unit dedicado |
+| 13 | **Entregar no mueve plata ni stock** | La venta ya cobró y rebajó | **e2e 113** |
+| 14 | **Envíos = trazabilidad única de entregas** | El retiro genera un `envios` tipo `retiro_local`/`entregado`; el envío real queda vinculado al pedido | **e2e 113** |
+| 15 | **`listo_para_entrega` dejó de ser un ESTADO MUERTO** | Estaba en el CHECK desde la mig 292 con badge en la UI y leído por 3 RPCs, pero **nadie lo seteaba nunca**. Ahora lo promueve la última tarea de picking | **e2e 113** |
+| 16 | **Las líneas se copian aunque lleguen después** | `registrarVenta` inserta venta y `venta_items` en llamadas HTTP separadas → trigger statement-level | **e2e 113** |
+| 17 | **🛑 La VENTA nunca se cae por el pedido** | Trigger envuelto en `EXCEPTION WHEN OTHERS` + `RAISE WARNING` | revisión de la migración |
+| 18 | **Anti-loop** | Una venta nacida de un pedido nunca genera otro | DO block en DEV |
+| 19 | **Excepción por canal** | `tenants.pedido_canales_excluidos`: canales que quedan afuera de la regla. `[]` por default | **e2e 113** |
+| 20 | **Búsqueda del mostrador** | Nombre sin tildes · DNI por **prefijo** (≥3 dígitos) · N° **exacto** | unit — atrapó que "5" traía todo DNI con un 5 |
+| 21 | **El flujo original de Pedidos sigue intacto** | Un pedido de logística puro se entrega por PED4, que le genera la venta | **regresión e2e 107 (5/5)** |
+
+### 💵 Facturación de un Pedido — dos errores de plata corregidos
+
+| # | Escenario | Antes | Ahora |
+|---|---|---|---|
+| 22 | **Tier mayorista por volumen** (mig 306) | Facturaba `productos.precio_venta` a secas. El tipo "Mayorista" —uno de los 4 sembrados por default— era el que **peor** salía | `fn_precio_venta_efectivo`: gana el primer tier que matchea, resuelto contra el **total pedido** del SKU (entregar en dos tandas no hace perder el precio por volumen) |
+| 23 | **Redondeo del tenant** (H4) | No se aplicaba | Aplicado, espejo de `redondearPrecio` |
+| 24 | **Descuento por estado de inventario** (migs 284-285) | No se aplicaba: la misma mercadería salía **más cara** por Pedidos que por mostrador, y `venta_items.descuento_estado_pct/_monto` quedaban vacíos | Prorrateado **por fuente** (cada unidad según el % del estado de SU línea), aplicado sobre subtotal, IVA y los totales de la venta |
+
+**Verificado en DEV con datos reales:** una entrega de 12 unidades con precio base $1.000, tier
+`>=10 → $700` y estado con 20% de descuento pasó de facturar **$12.000** a **$6.720**
+(`precio_unitario` 700 · `descuento_estado_monto` 1.680 · subtotal 6.720 · total de la venta 6.720).
+
+⚠ **Pendiente conocido:** la lista de precios por canal (`reglaDe(canal).lista_precio`) y los combos
+siguen sin aplicarse en Pedidos — un Pedido no tiene canal de venta, así que se comporta como una
+venta sin regla de canal.
+
+### Navegación coherente entre los dos módulos
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 25 | **Un venta-pedido NO muestra "Entregar" en /pedidos** | Ese botón GENERA la venta real; el pedido ya la tiene y el guard server-side lo rechazaría. Se oculta en vez de dejar que el usuario choque contra el error | revisión de código |
+| 26 | **En su lugar linkea a donde SÍ se entrega** | Retiro en local → `Ventas → Pedidos` (deep link `?tab=pedidos`); con envío → módulo Envíos | revisión de código |
+| 27 | **El cartel de Config dice con qué reglas factura un pedido manual** | Precio de lista + tiers por volumen + descuento por estado; **sin combos ni lista por canal**. Solo se muestra con el toggle prendido | revisión de código |
+
+### 🐛 Hallazgos de GO probando el flujo real (2026-07-29)
+
+| # | Escenario | Qué pasaba | Cubierto por |
+|---|---|---|---|
+| 28 | **El picking de una RESERVA sabe de qué LPN sacar** | La tarea salía **sin LPN y sin ubicación** — "no sabe de dónde ir a sacar el inventario" (venta #448). La función leía solo `venta_item_despachos`, que en una reserva **todavía no existe**: el LPN vive en `venta_items.lpn_plan` (mig 156). Como el pedido nace justamente de reservas, era el caso más común | **e2e 113** (5º test) |
+| 29 | **Cascada de fuentes, de precisa a genérica** | despachos → `lpn_plan` de la reserva → líneas con `cantidad_reservada > 0` (FEFO) → cualquier línea con stock. Ninguna reserva stock | mig 320 + **e2e 113** |
+| 30 | **Si de verdad no hay stock, la tarea lo dice** | Antes salía en blanco; ahora las notas dicen "⚠ sin stock ubicado para este producto" | mig 320 |
+| 31 | **La tarea de picking muestra a qué pedido y a qué venta pertenece** | No había forma de rastrear una tarea hasta el cliente que espera la mercadería. Ahora `Pedido #N` y `Venta #N` son links | revisión de código |
+| 32 | **💵 El ticket dice cuánto FALTA pagar** | Mostraba el total y, en gris, lo pagado — nunca el saldo. Y desde la mig 318 el mostrador no entrega sin saldar, así que el cliente se enteraba recién al venir a buscarlo | 7 unit (`resumenPagoTicket`) |
+| 33 | **💵 El envío entra en el saldo del ticket** | `total` NO lo incluye pero `monto_pagado` SÍ (ISS-105): compararlo contra `total` le diría al cliente que ya no debe nada | unit dedicado |
+| 34 | **Una reserva ya no parece una venta cerrada** | El ticket decía "Venta N°…" igual que una cobrada. Ahora lleva badge **★ RESERVA ★**, encabezado "Reserva N°…" y el cierre "Guardá este comprobante para retirar" | revisión de código |
+| 35 | **Un presupuesto no reclama saldo** | Todavía no es una venta: no se le muestra saldo pendiente aunque tenga 0 pagado | unit dedicado |
+
+### 🐛 Presupuestos y ventas anuladas (migs 323/324) — hallazgo de GO
+
+Una **venta recurrente** generó un PRESUPUESTO, el presupuesto generó un PEDIDO, y al cancelarse el
+presupuesto quedó **un pedido vivo** que cualquiera podía lanzar, mandando al depósito a preparar
+mercadería de una venta que ya no existe.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 36 | **🛑 Un PRESUPUESTO no genera pedido** | `ventas.estado = 'pendiente'` ES un presupuesto (el ticket dice "★ PRESUPUESTO ★"): no hay compromiso, el cliente no aceptó ni pagó. Error de criterio de la mig 318, corregido | **e2e 113** + unit |
+| 37 | **…pero al convertirse en venta sí** | El trigger escucha `UPDATE OF estado`: el pedido nace en el momento del compromiso | **e2e 113** |
+| 38 | **Una venta `facturada` sigue viva** | Puede necesitar preparación; la regla de entrega directa la deja afuera si corresponde | unit |
+| 39 | **🛑 Anular o devolver la venta cancela su pedido** | Y sus tareas de picking pendientes. Sin esto el depósito prepara algo que no existe | **e2e 113** + DO block |
+| 40 | **⚠ Cancelar NO libera `cantidad_reservada`** | En un venta-pedido el picking nunca reservó (mig 316): la reserva es de la VENTA. Liberarla acá la liberaría DOS veces cuando la venta haga su propia anulación. Por eso se cancelan las tareas con UPDATE directo y no con `fn_cancelar_tarea_wms` | revisión de la migración |
+| 41 | **Un pedido ya ENTREGADO no se toca** | La mercadería salió físicamente: eso es historia. La devolución la maneja su propio flujo | revisión de la migración |
+| 42 | **🛑 No se lanza un pedido cuya venta no está viva** | Segunda barrera por si algo quedara vivo: anulada, devuelta o todavía presupuesto | **e2e 113** |
+| 43 | **Limpieza de lo que ya quedó mal** | Los pedidos vivos de ventas anuladas/presupuestos se cancelaron (1 en DEV), sin tocar los entregados | verificado post-migración |
+
+### 📏 Medidas y capacidad (migs 321/322)
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 44 | **Las medidas del producto sirven para el envío** | Decían "opcional, para envío" y el form pedía el peso a mano: no las leía nadie | 19 unit (`medidasLogistica`) |
+| 45 | **El peso se SUMA, las dimensiones NO** | El peso es aditivo y exacto; las dimensiones se toman al **máximo por eje** (cota inferior honesta: apilar dos cajas de 30 cm no da una de 60 en los tres ejes) | unit dedicado |
+| 46 | **Avisa cuándo la sugerencia se queda corta** | "3 sin peso · 2 sin medidas": cotizar de menos lo termina cobrando el courier | unit |
+| 47 | **La capacidad de las ubicaciones se usa** | `capacidad_pallets` y `peso_max_kg` existían desde la mig **032** y no las leía ningún cálculo. Ahora "3 de 4 LPN" y "120 de 500 kg" | mig 321 + 10 unit |
+| 48 | **⚠ El peso incompleto subestima** | Si faltan `productos.peso_kg` el total queda CORTO — el error empuja hacia "parece que hay lugar" justo cuando el rack podría estar pasado. Se muestra la **cobertura** con ⚠ y el aviso salta al **90%**, no al 100% | unit dedicado |
+| 49 | **Avisa, nunca bloquea** | El dato de capacidad lo carga una persona y la mercadería ya está físicamente ahí | unit (el texto dice "Se puede guardar igual") |
+| 50 | **📦 Cubicaje opt-in exige las medidas** | Con `cubicaje_habilitado`, `producto_presentaciones` no acepta una fila sin peso ni las tres medidas — cobertura 100% por construcción | mig 322, probado en DEV (OFF guarda, ON rechaza) |
+| 51 | **Prender el cubicaje no completa el catálogo** | `fn_cubicaje_cobertura` da "N de M SKU medidos" (en DEV: 6 de 296) para no mostrar un número que parece completo | mig 322 |
+
+### 🧾 Auditoría de la factura #475 (pedido de GO) — los importes están BIEN, faltaba EXHIBIR el descuento
+
+GO reportó que la factura "indica cualquier cosa": el precio unitario decía **$2.700** para un
+producto que sale $600 y con mayorista $500, y el subtotal no le cuadraba. Se auditó número por
+número contra la base:
+
+| Línea | En la base | En la factura | ¿Multiplica? |
+|---|---|---|---|
+| Bebida Coca Cola 2.5L | 12 u × $450 = $5.400 | 2 Caja × $2.700 = $5.400 | ✅ |
+| Coca Cola 1.5L | 1 × $1.491,30 | 1 × $1.491,30 | ✅ |
+| Donuts Orange Bitter | 1 × $1.080 | 1 × $1.080 | ✅ |
+| **Total** | `ventas.total` = **$7.971,30** | **$7.971,30** | ✅ = lo autorizado con CAE `86300690978794` |
+
+**Veredicto: no hay error fiscal.** Cada línea multiplica, la suma da el total, y el total coincide
+con lo que autorizó AFIP. Los $2.700 son el precio de **una Caja** (6 u × $450) y los $450 salen de
+apilar **dos descuentos**: el tier mayorista (≥12 u → $500) y el descuento general del 10% → $450.
+
+**El problema real: la factura no decía nada de eso.** El descuento general se pliega en
+`precio_unitario` al registrar la venta —a propósito, para que ningún consumidor del comprobante lo
+reste dos veces (`venta_items.descuento` queda en 0)— pero así el comprobante nunca menciona la
+bonificación. El cliente ve un precio que no coincide con la lista, no puede verificar el descuento
+que le prometieron, y la factura es el documento que se lleva.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 52 | **La factura EXHIBE la bonificación general** | Leyenda bajo los ítems: "Los importes ya incluyen la bonificación general del N%…". **No toca un solo importe** — solo lo dice | revisión de código |
+| 53 | **El P. Unitario por bulto es reconciliable** | Debajo de "$2.700,00" se muestra su composición "**6 u × $450**", así el número deja de ser un valor que no está en ninguna tabla | revisión de código |
+| 54 | **Solo aparece cuando corresponde** | La composición solo si se vendió en una UoM distinta a la base y el bulto tiene más de 1 unidad; la leyenda solo si hubo descuento general | revisión de código |
+
+⚠ **Riesgo latente detectado acá → ✅ CORREGIDO en v1.151.0, ver §48.**
+
+**Verde:** tsc · build · **unit 1339** (47 en `pedidoVenta.test.ts` + 29 en `medidasLogistica.test.ts`) ·
+**e2e 113 (6/6)** · regresión **107 (5/5)**.
+
+**⚠ Pendiente conocido, DIFERIDO con evidencia (2026-07-29):** la lista de precios por canal y los
+combos no se aplican al facturar un pedido **manual**. Medido antes de decidir: `fn_pedido_generar_venta`
+**nunca corrió** (0 ventas generadas por un Pedido en PROD y DEV), PROD tiene 0 pedidos, 0 combos
+activos y 0 tenants con `lista_precio` seteada, y esa función corre solo para pedidos a mano — que
+quedaron apagados por default. Detalle y costo/beneficio en [[wiki/features/pedidos]].
+
+---
+
+## 🧾 §48 — La factura tiene que MULTIPLICAR (v1.151.0) — 2026-07-29
+
+Cierre del riesgo latente que quedó anotado en §47.
+
+**El problema.** El "P. Unitario" de un comprobante **no es un dato guardado: es una división**
+(`subtotal / cantidad`). Impreso con 2 decimales fijos, el papel deja de cerrar — un subtotal de
+$1.000 en 3 bultos imprime `$333,33 × 3 = $999,99 ≠ $1.000,00`. El importe que va a AFIP siempre
+estuvo bien (sale de `ventas.total`), pero el cliente que verifica la factura con una calculadora
+encuentra que no cierra, y la factura es el documento que se lleva.
+
+**⚠ El fix que estaba propuesto era incorrecto.** Decía: *"mostrar la línea en unidades BASE, que
+siempre multiplican porque `subtotal = precio_unitario × cantidad` por construcción"*. **No es
+cierto:** `venta_items.precio_unitario` se guarda como `r2(subtotal / cantidad)` (ver
+`prorratearDescuentoGlobal` en `facturacionLogic.ts`), o sea que arrastra exactamente el mismo
+redondeo. El problema nunca fue la unidad de medida — es la división. Está cubierto por un test
+que lo deja explícito, para que no se vuelva a proponer.
+
+**El fix real:** `precioUnitarioExhibible(subtotal, cantidad)` devuelve el unitario con la
+**precisión mínima** para que `precio × cantidad` reproduzca el importe impreso. Empieza en 2
+decimales y sube de a uno. **No toca ningún importe:** el que manda es `subtotal`, el unitario se
+acomoda a él.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 55 | **El caso normal no cambia** | Si con 2 decimales ya cierra, imprime 2 decimales — el 99% de las facturas sale idéntica a antes | `facturacion.test.ts` |
+| 56 | **$1.000 en 3 bultos cierra** | Sube la precisión hasta que `unitario × cantidad` = el importe impreso | `facturacion.test.ts` |
+| 57 | **Usa la precisión MÍNIMA, no el máximo** | $100 en 3 → 3 decimales, no 6: el número tiene que seguir siendo legible | `facturacion.test.ts` |
+| 58 | **Vale para las dos ramas del PDF** | Sin IVA discriminado (B/C) sobre el total, y con IVA (A) sobre el **neto**, que es contra lo que el cliente verifica ahí | revisión de código |
+| 59 | **Nunca se toca un importe** | `subtotal`, `neto`, `IVA` y `total` salen igual que siempre; lo único que cambia es la precisión de una columna derivada | `facturacion.test.ts` |
+| 60 | **Cantidad 0 / valores basura no explotan** | Devuelve `exacto: false` en vez de imprimir un número inventado | `facturacion.test.ts` |
+| 61 | **⚠ Unidades base NO eran la solución** | Test que prueba que `r2(1000/3) × 3 ≠ 1000`, para que el fix descartado quede documentado | `facturacion.test.ts` |
+
+**Verde:** tsc · build · **unit 1374**.

@@ -74,7 +74,61 @@ capacidad_pallets INT
 - Auto-abre si la ubicación ya tiene datos
 - Badge tipo violeta + indicador `📏 alto×ancho×largo cm`
 
-**Almacenaje dirigido (futuro):** Al ingresar stock, el sistema sugerirá ubicación óptima comparando dimensiones del producto vs disponibilidad. Prioridad: tipo adecuado → capacidad suficiente → menor prioridad ocupada.
+### Ocupación real (migs 321/322/325, v1.149-150) ✅
+
+> ⚠ Estos campos existían desde la mig 032 y **durante ~290 migraciones no los leyó ningún cálculo**:
+> se cargaban en Config y no servían para nada. La mig 321 los conectó.
+
+Vista `vw_ubicacion_ocupacion` (`security_invoker`, respeta RLS) → badges por ubicación:
+
+| Badge | Contra | Origen del dato |
+|---|---|---|
+| `3 de 4 LPN` | `capacidad_pallets` | `count(*)` de líneas activas |
+| `120 de 500 kg` | `peso_max_kg` | peso del **nivel** de empaque si está cargado (incluye embalaje), si no `productos.peso_kg` |
+| `0.8 de 1.01 m³` | dimensiones × factor de aprovechamiento | volumen de la presentación en la que está la mercadería |
+
+**🛑 Regla de los tres: avisan, NUNCA bloquean.** El tope lo carga una persona y puede estar mal o
+desactualizado; la mercadería ya está físicamente en la posición. Frenar un ingreso real por un
+número de configuración sería peor que el problema.
+
+**⚠ Sesgo del error, y por qué se muestra la cobertura.** A los tres les falta dato hacia el mismo
+lado: una línea sin peso o sin medidas suma **0**, así que el total queda **CORTO** — el error empuja
+hacia *"parece que hay lugar"* justo cuando la posición podría estar pasada. Por eso ninguna pantalla
+muestra un verde limpio: se exhibe `lineas_con_peso`/`lineas_con_volumen` sobre `lineas_total` con ⚠,
+y el aviso salta al **90%** del límite, no al 100% (con el total subestimado, esperar al 100% exacto
+puede no avisar nunca).
+
+### 📦 Cubicaje volumétrico opt-in (migs 322/325, v1.149-150) ✅
+
+Idea de GO que resuelve la objeción de fondo al cubicaje —*"con medidas a medias el número miente, y
+un número que miente es peor que no tener ninguno"*:
+
+- **`tenants.cubicaje_habilitado`** (default `false`). Al activarlo, el peso y las tres medidas pasan
+  a ser **obligatorios por nivel** en el editor de estructura → la cobertura es 100% **por
+  construcción** de ahí en adelante. El que no lo necesita no paga el costo de cargar esos datos.
+  Guard server-side: `trg_presentaciones_exige_medidas` (la UI se cachea y el importador/EFs escriben
+  con service_role).
+- **Peso obligatorio POR NIVEL, no derivado del factor** (decisión de GO): el peso real de un bulto
+  incluye su embalaje — una caja de 12 pesa más que 12 unidades sueltas.
+- **`tenants.cubicaje_factor_aprovechamiento`** (default **0.70**): ninguna posición real se llena al
+  100% geométrico (pasillos, forma irregular, mercadería que no apila). Sin él el sistema diría
+  "entra" cuando no entra.
+- **Prender el toggle NO completa el catálogo existente** → `fn_cubicaje_cobertura(tenant)` alimenta
+  un panel en Config → Inventario ("6 de 296 SKU medidos · 351 presentaciones sin medir").
+- **Aviso al ubicar** (`AvisoCapacidadUbicacion`): al ingresar stock y al mover un LPN, si la
+  ubicación elegida quedaría llena o excedida. Avisa, no bloquea.
+
+**Almacenaje dirigido — ✅ mig 326 (v1.151.0).** `fn_wms_elegir_ubicacion_picking` (destino de un
+reabastecimiento bulk→picking) ya no elige a ciegas: prefiere posiciones **con lugar** según estos
+mismos números. Orden final: (a) la que ya tiene ese producto y tiene lugar · (b) la que ya lo tiene
+aunque esté llena — mantiene el SKU consolidado en su cara de picking · (c) cualquiera con lugar ·
+(d) el resto; después secuencia y prioridad de siempre.
+
+🛑 **La capacidad DESEMPATA, nunca EXCLUYE.** Si todas están llenas devuelve una igual: filtrarlas
+dejaría la tarea de reabastecimiento **sin destino** y el stock nunca llegaría al picking — un dato de
+configuración cargado a mano frenando mercadería real. Y **sin capacidad configurada no cambia
+nada**: "sin lugar" exige un tope CONFIGURADO y ALCANZADO, porque un campo vacío es "no sé" y no sé
+no puede degradar una posición. Espejo JS: `ubicacionSinLugar()` en `src/lib/medidasLogistica.ts`.
 
 ---
 

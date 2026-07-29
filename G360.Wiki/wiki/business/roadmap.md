@@ -13,6 +13,151 @@ updated: 2026-07-28
 
 ---
 
+## v1.151.0 — 🧾 La factura ahora MULTIPLICA + 📦 el reabastecimiento elige una posición con lugar (mig 326) + 📱 el Asistente IA entra en la pantalla — 🟡 **EN DEV** (2026-07-29)
+
+Tanda de cierre de pendientes viejos antes del deploy.
+
+**🧾 El P. Unitario de la factura no multiplicaba.** El unitario de un comprobante no es un dato
+guardado, **es una división** (`subtotal / cantidad`), y a 2 decimales fijos el papel deja de cerrar:
+$1.000 en 3 bultos imprimía `$333,33 × 3 = $999,99`. El importe que va a AFIP siempre estuvo bien
+(sale de `ventas.total`); lo que no cerraba era el documento que se lleva el cliente.
+⚠ **El fix que estaba anotado era incorrecto** y se descartó al verificarlo: "mostrar la línea en
+unidades base, que siempre multiplican" — pero `venta_items.precio_unitario` **también** se guarda
+como `r2(subtotal / cantidad)` (ver `prorratearDescuentoGlobal`), así que arrastra el mismo redondeo.
+El problema no era la unidad de medida, era la división. `precioUnitarioExhibible` sube la precisión
+del unitario **lo justo** hasta que el producto reproduce el importe impreso, empezando en 2 decimales
+(el caso normal no cambia). **No toca ningún importe:** manda `subtotal`. Aplica a las dos ramas del
+PDF (con y sin IVA discriminado). +9 tests.
+
+**📦 Cubicaje, paso 4 (mig 326).** El reabastecimiento bulk→picking elegía destino sin mirar la
+ocupación: podía mandar un pallet a una cara ya al tope. Ahora prefiere las que tienen lugar — pero
+**la capacidad desempata, nunca excluye** (si están todas llenas devuelve una igual: dejar la tarea
+sin destino frenaría mercadería real por un dato de configuración) y **sin capacidad configurada no
+cambia nada**. Espejo JS `ubicacionSinLugar()` + 10 tests.
+
+**📱 El Asistente IA se veía a la mitad en mobile.** Su panel de 360px colgaba del botón con
+`right-0`, y el botón vive en el header con 3 íconos más a su derecha → arrancaba en x negativo y se
+salía por la izquierda. Abajo de `sm` ahora se ancla al viewport. **La campana de Notificaciones
+tenía exactamente el mismo bug** y se corrigió igual.
+
+**Dos pendientes de la lista que estaban CERRADOS hace rato** (notas stale, verificadas contra el
+código): el CHECK que impide los dos sistemas de variante en un mismo SKU lo reconstruyó la **mig
+314**, y el PDF lee el CUIT del **emisor** desde el cutover de identidad fiscal de **v1.133.0**
+(`src/lib/emisorPdf.ts`).
+
+Verde: tsc · build · unit **1374**.
+
+---
+
+## v1.150.0 — 📦 Cubicaje volumétrico COMPLETO (Fases A/B/C) + 🐛 fix de la vista de ocupación (mig 325) — 🟡 **EN DEV** (2026-07-29)
+
+Se termina el cubicaje que la v1.149.0 había dejado a mitad de camino (solo datos).
+
+**🐛 Antes de construir el frontend apareció que la mig 322 no calculaba nada.**
+`vw_ubicacion_ocupacion` unía `producto_presentaciones.id` con
+`inventario_lineas.unidad_medida_id`, que referencia `unidades_medida` — el catálogo de EMPAQUES, no
+una presentación. En DEV: **0 de las líneas con UoM matcheaban**, así que las que entraron en bulto
+—las que más volumen ocupan— aportaban **0 m³**. El arreglo directo habría **duplicado filas** por las
+presentaciones *hermanas* del mismo empaque (8 grupos en DEV, uno con 3) inflando LPN y peso, así que
+la **mig 325** lo resuelve con `LEFT JOIN LATERAL … LIMIT 1`, deriva la cantidad del **stock actual**
+en vez del snapshot de ingreso (que se pone viejo) y castea a `numeric` una división entera que
+truncaba el peso ~17%. Verificado: 348 LPN en la vista = 348 en el conteo crudo.
+
+**Fase A — cargar los datos:** inputs de **peso / alto / ancho / largo por nivel** en el editor de
+estructura (el pipe de datos existía completo desde la mig 310: faltaban literalmente los `<input>`,
+por eso las columnas estaban siempre vacías) · con el cubicaje activo pasan a ser **obligatorios** y
+el error se ve al tipear, no como una excepción de Postgres al guardar · **toggle + factor de
+aprovechamiento + panel de cobertura** en Config → Inventario → Reglas de stock.
+
+**Fase B — mostrar el espacio:** badge "0.8 de 1.01 m³" por ubicación, contra la capacidad **útil**
+(geométrico × factor), con ⚠ cuando el número se calculó sobre líneas sin medir.
+
+**Fase C — avisar al ubicar:** `AvisoCapacidadUbicacion` al **ingresar stock** y al **mover un LPN**,
+cuando la posición quedaría llena o excedida en LPN, peso o volumen. **Avisa, nunca bloquea** — el
+tope lo carga una persona y la mercadería ya está físicamente ahí.
+
+Verde: tsc · build · unit 1357.
+
+---
+
+## v1.149.0 — 🐛 Bugs del flujo real + 📦 cubicaje opt-in (Fase A) — 🟡 **EN DEV** (2026-07-29)
+
+Los tres bugs que encontró GO probando el flujo Venta→Pedido end-to-end:
+**(1)** el picking de una RESERVA salía **sin LPN ni ubicación** (mig 320) · **(2)** un
+**PRESUPUESTO generaba pedido**, y al cancelarse quedaba vivo para que el depósito lo preparara
+(migs 323/324) · **(3)** el **ticket no decía cuánto falta pagar**, y una reserva se veía igual que
+una venta cerrada.
+
+Además: las **medidas del producto** decían "para envío" y no las leía nadie → ahora se sugiere el
+bulto al cotizar. La **capacidad de las ubicaciones** (cargada desde la mig 032 y nunca usada) se
+conecta: "3 de 4 LPN" y "120 de 500 kg", con cobertura del dato. Y arranca el **cubicaje volumétrico
+opt-in** (mig 322, Fase A de datos): toggle por tenant que vuelve **obligatorias** las medidas por
+nivel de estructura — falta el frontend.
+
+Verde: tsc · build · unit 1339 · e2e 113 (6/6) · regresión 107 (5/5).
+
+---
+
+## v1.148.0 — 🧾 Flujo Venta → Pedido → Envío completo, según el diagrama de GO (migs 317-319) — 🟡 **EN DEV** (2026-07-29)
+
+Reescribe la regla de la v1.147.0 según el diagrama de flujo: **todas las ventas generan Pedido de
+preparación MENOS la entrega directa** (mostrador + cobrada + sin envío). Sale de
+`canales_venta.clasificacion`, así que no hay nada que configurar. Las 8 ramas del diagrama están
+cubiertas por e2e.
+
+Cambios de fondo: el **gate de pago se mueve a la ENTREGA** (la reserva se prepara con seña parcial y
+la mercadería no sale sin saldar) · los pedidos con envío **crean y vinculan el `envios`** en las dos
+direcciones · el pedido manual pasa a ser **opt-in** (default off).
+
+💵 **Dos errores de plata corregidos en la facturación de un Pedido**: no aplicaba los **tiers
+mayoristas** ni el redondeo (mig 317) ni el **descuento por estado de inventario** (mig 319). Una
+entrega real de 12 unidades pasó de facturar **$12.000** a **$6.720**.
+
+Verde: tsc · build · unit 1297 (34 nuevos) · e2e 113 (4/4) · regresión 107 (5/5).
+Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
+
+---
+
+## v1.147.0 — 🧾 Pedido automático desde una VENTA + entrega en mostrador (migs 315/316) — 🟡 **EN DEV** (2026-07-28)
+
+Las ventas de los canales que el tenant elija (**Config → Pedidos → "Canales que generan pedido"**)
+generan solas un **Pedido de preparación**; las **reservas**, solo cuando quedan **100% pagadas**.
+Cuando el depósito termina el picking, el pedido aparece en la pestaña nueva **Ventas → Pedidos**
+para que el mostrador lo entregue: búsqueda por nombre, DNI o N° de pedido, botón **Entregado**, y
+enseguida se abre el detalle de la venta para facturar.
+
+🛑 **Invierte el sentido del flujo original (F4)** — hasta acá el único puente era Pedido → venta. Un
+pedido nacido de una venta **ya tiene su venta, su plata y su stock resueltos**, así que la mig 316
+cierra server-side las dos formas silenciosas de romperlo: **doble venta** al entregarlo (duplicaría
+facturación, rebaje y caja) y **doble reserva** al lanzarlo. Probado por mutación en DEV: por el
+camino viejo se habrían reservado **4 unidades de más**. De paso `listo_para_entrega` deja de ser un
+**estado muerto** (existía desde la mig 292 pero nadie lo seteaba nunca).
+
+Verde: tsc · build · unit 1289 (26 nuevos) · e2e 113 nuevo (2/2) · regresión 107/109/112 (8/8).
+Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
+
+---
+
+## v1.146.0 — 🔀 Guard de modelo de variante: madre/hijo vs. Atributos de variante (mig 314) — 🟡 **EN DEV** (2026-07-28)
+
+Reconstruye sobre el modelo **madre/hijo** el guard que la mig 274 tenía sobre `grupo_id` y que
+**desapareció** al dropear esa columna en la mig 311: entre una y otra nada impedía que un mismo SKU
+usara los **dos modelos de variante a la vez** (variante hijo con `producto_padre_id` **y** atributos
+de variante a nivel LPN encima). Decisión de GO: los dos sistemas coexisten en la app pero **no dentro
+del mismo producto**.
+
+Dos piezas, porque un CHECK no puede mirar otras filas: **CHECK `chk_productos_variante_sin_atributos`**
+(el hijo) + **trigger `trg_productos_variante_atributos`** (la madre — ni encender un atributo teniendo
+hijos, ni crearle la primera variante teniendo atributos). Apagando los atributos el camino se destraba,
+así que nunca queda un callejón sin salida; un standalone con atributos sigue siendo válido. La UI
+explica el motivo en vez de tirar el error crudo de Postgres.
+
+Verificado contra datos reales antes de aplicar: **0 productos en violación** en DEV y en PROD — el
+guard entró sin tocar un dato. Verde: tsc · build · unit 1263 (12 nuevos) · e2e 109 (4 → 9 aserciones).
+Ver [[wiki/features/atributos-variante]] y `tests/specs/uat-modo-basico.md` §46.
+
+---
+
 ## v1.145.0 — 🔢 Reasignar stock de productos SERIALIZADOS (mig 313) — ✅ **PROD** (2026-07-28)
 
 Cierra el **último pendiente** del rediseño UoM/Empaque/Variantes. El reparto del stock "sin variante

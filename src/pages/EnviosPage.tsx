@@ -16,6 +16,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
+import { sugerirBultoEnvio, avisoBultoIncompleto, type BultoSugerido } from '@/lib/medidasLogistica'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { buildWhatsAppUrl, expandirPlantilla, PLANTILLA_DEFAULT } from '@/lib/whatsapp'
@@ -145,6 +146,8 @@ export default function EnviosPage() {
   const [ventaSeleccionada, setVentaSeleccionada] = useState<any | null>(null)
   // EN5/A5 — desglose de ítems que van en este envío (editable)
   const [ventaItemsForm, setVentaItemsForm] = useState<Array<{ producto_id: string | null; nombre: string; cantidad: number; lpn: string | null }>>([])
+  // Bulto sugerido a partir de las medidas de los productos de la venta (auditoría 2026-07-29).
+  const [bultoSugerido, setBultoSugerido] = useState<BultoSugerido | null>(null)
 
   // POD modal — registrar prueba de entrega desde la fila expandida
   const [podModalId, setPodModalId]   = useState<string | null>(null)
@@ -1187,17 +1190,40 @@ export default function EnviosPage() {
     }))
     // EN5/A5 — cargar ítems de la venta y restar lo ya despachado en envíos previos
     const [{ data: vi }, { data: yaEnv }] = await Promise.all([
-      supabase.from('venta_items').select('producto_id, cantidad, linea_id, productos(nombre), inventario_lineas(lpn)').eq('venta_id', v.id),
+      // Las medidas del producto se traen acá para sugerir el bulto: el campo de la ficha dice
+      // "opcional, para envío" pero hasta ahora nadie las leía y el peso se tipeaba a mano.
+      supabase.from('venta_items').select('producto_id, cantidad, linea_id, productos(nombre, peso_kg, largo_cm, ancho_cm, alto_cm), inventario_lineas(lpn)').eq('venta_id', v.id),
       supabase.from('envio_items').select('producto_id, cantidad, envios!inner(venta_id)').eq('envios.venta_id', v.id),
     ])
     const enviadoPorProd = new Map<string, number>()
     for (const e of (yaEnv ?? []) as any[]) {
       if (e.producto_id) enviadoPorProd.set(e.producto_id, (enviadoPorProd.get(e.producto_id) ?? 0) + Number(e.cantidad ?? 0))
     }
-    setVentaItemsForm((vi ?? []).map((it: any) => {
+    const filas = (vi ?? []).map((it: any) => {
       const yaEnviado = it.producto_id ? (enviadoPorProd.get(it.producto_id) ?? 0) : 0
       const restante = Math.max(0, Number(it.cantidad ?? 0) - yaEnviado)
       return { producto_id: it.producto_id ?? null, nombre: it.productos?.nombre ?? 'Ítem', cantidad: restante, lpn: (it.inventario_lineas as any)?.lpn ?? null }
+    })
+    setVentaItemsForm(filas)
+
+    // Sugerir el bulto a partir de los productos: el peso se SUMA (es aditivo) y las dimensiones
+    // se toman al máximo por eje (cota inferior — el bulto no puede ser más chico que su ítem más
+    // grande). Solo se completa lo que esté vacío: si el usuario ya escribió algo, manda lo suyo.
+    const bulto = sugerirBultoEnvio((vi ?? []).map((it: any) => {
+      const yaEnviado = it.producto_id ? (enviadoPorProd.get(it.producto_id) ?? 0) : 0
+      return {
+        cantidad: Math.max(0, Number(it.cantidad ?? 0) - yaEnviado),
+        peso_kg: it.productos?.peso_kg, largo_cm: it.productos?.largo_cm,
+        ancho_cm: it.productos?.ancho_cm, alto_cm: it.productos?.alto_cm,
+      }
+    }))
+    setBultoSugerido(bulto)
+    setForm(f => ({
+      ...f,
+      peso_kg:  f.peso_kg  || (bulto.peso_kg  != null ? String(bulto.peso_kg)  : ''),
+      largo_cm: f.largo_cm || (bulto.largo_cm != null ? String(bulto.largo_cm) : ''),
+      ancho_cm: f.ancho_cm || (bulto.ancho_cm != null ? String(bulto.ancho_cm) : ''),
+      alto_cm:  f.alto_cm  || (bulto.alto_cm  != null ? String(bulto.alto_cm)  : ''),
     }))
   }
 
@@ -2486,6 +2512,19 @@ export default function EnviosPage() {
                     </div>
                   ))}
                 </div>
+                {/* Las medidas salen de la ficha de los productos. Se avisa cuando la sugerencia
+                    está incompleta: cotizar de menos lo termina cobrando el courier. */}
+                {bultoSugerido && (() => {
+                  const aviso = avisoBultoIncompleto(bultoSugerido)
+                  if (!aviso) return (
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">
+                      Sugerido a partir de los productos de la venta — podés ajustarlo.
+                    </p>
+                  )
+                  return (
+                    <p className="text-xs text-amber-700 dark:text-amber-400 mt-1.5">{aviso}</p>
+                  )
+                })()}
               </div>
 
               {/* Notas */}

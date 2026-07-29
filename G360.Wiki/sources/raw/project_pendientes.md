@@ -6,7 +6,359 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD, sin pendientes funcionales** (v1.145.0, migs 289-313)
+> ### 🚀 ARRANCÁ ACÁ (2026-07-29) — v1.151.0. **Lo único pendiente es DEPLOYAR** (bloqueado por el conector de Supabase)
+>
+> #### ▶ LO ÚNICO QUE HAY QUE HACER: el deploy acumulado
+>
+> **`APP_VERSION` = v1.151.0 · PROD sigue en v1.145.0.** Sin deployar: **migs 314 a 326 (13)** y las
+> versiones **1.146 → 1.151**.
+> Al retomar: aplicar 314-326 en PROD → PR `dev→main` → tag + release → verificar bundle con
+> `curl -sL`. (El resto de los gotchas de deploy están más abajo en este archivo.)
+>
+> 🔴 **BLOQUEANTE OPERATIVO (2026-07-29):** el conector MCP de Supabase se **desconectó** a mitad de
+> sesión, así que **las migs 326 y 325 están escritas y commiteadas pero la 326 NO se aplicó en DEV**
+> (la 325 sí alcanzó a aplicarse y verificarse antes de la caída). Sin el conector no se puede
+> `apply_migration` ni `execute_sql`, y **tampoco hay camino alternativo**: no hay
+> `SUPABASE_ACCESS_TOKEN` ni service_role key en el entorno, y el pooler rechaza toda password
+> (bug conocido de Supavisor). Al retomar: reconectar el conector, **aplicar la 326 en DEV**,
+> correr el `EXPLAIN ANALYZE` que quedó pendiente, y recién ahí el deploy a PROD.
+>
+> ---
+>
+> #### ✅ LO QUE SE CERRÓ ESTA SESIÓN (v1.151.0, mig 326)
+>
+> GO eligió 5 pendientes de la lista. **Dos ya estaban hechos y la lista estaba mintiendo** — lo
+> primero fue verificar contra el código, no contra las notas:
+> - **El CHECK de los dos sistemas de variante:** lo reconstruyó la **mig 314** (2026-07-28), con la
+>   decisión de GO ya tomada — coexisten en la app, no dentro del mismo producto.
+> - **El PDF con el CUIT del TENANT en vez del EMISOR:** resuelto de raíz en **v1.133.0** con el
+>   cutover de identidad fiscal. `src/lib/emisorPdf.ts` es el único armador, la identidad sale de
+>   `ventas.emisor_id` y el punto de venta impreso es el del emisor. Verificado: los 5 call sites de
+>   PDF pasan por ahí. **La nota quedó stale un mes y medio en el índice de memoria** y por eso volvió
+>   a aparecer en la lista de pendientes. Corregida.
+>
+> **🧾 La factura no multiplicaba — CORREGIDO.** El "P. Unitario" no es un dato guardado, **es una
+> división** (`subtotal / cantidad`): a 2 decimales fijos, $1.000 en 3 bultos imprimía
+> `$333,33 × 3 = $999,99`. Lo que va a AFIP siempre estuvo bien.
+> ⚠ **El fix que estaba anotado era INCORRECTO** y se descartó al verificarlo: decía "mostrar en
+> unidades base, que siempre multiplican", pero `venta_items.precio_unitario` **también** se guarda
+> como `r2(subtotal / cantidad)` (`prorratearDescuentoGlobal`) → mismo redondeo. El problema nunca fue
+> la unidad de medida, es la división. Hay un test que lo deja explícito para que no se vuelva a
+> proponer. Fix real: `precioUnitarioExhibible` sube la precisión del unitario **lo justo** hasta que
+> el producto reproduce el importe impreso, empezando en 2 decimales (el caso normal no cambia).
+> **No toca ningún importe.** UAT §48.
+>
+> **📦 Cubicaje paso 4 (mig 326):** el reabastecimiento bulk→picking ahora prefiere posiciones con
+> lugar. **La capacidad DESEMPATA, nunca EXCLUYE** (si están todas llenas devuelve una igual: dejar la
+> tarea sin destino frenaría mercadería real por un dato de config) y **sin capacidad configurada no
+> cambia nada**. Espejo JS `ubicacionSinLugar()` + 10 tests.
+>
+> **📱 El Asistente IA se veía a la mitad en mobile:** panel de 360px colgando de un botón que vive en
+> el header con 3 íconos a su derecha → arrancaba en x negativo. Abajo de `sm` se ancla al viewport.
+> **La campana de Notificaciones tenía el mismo bug** y se corrigió igual. Es justo lo que el barrido
+> `88_mobile_responsive` no ve (solo mide la vista default, no abre dropdowns).
+>
+> **Verde:** tsc · build · **unit 1374** · **e2e 14/14** incluyendo **21 (Factura C con CAE real)** y
+> **42 (NC-C con CAE real)** de AFIP homologación, más 107/113/114.
+>
+> ---
+>
+> #### ✅ SESIÓN ANTERIOR (v1.150.0, mig 325 — **EN DEV**)
+>
+> **📦 El cubicaje volumétrico quedó COMPLETO: las tres fases.** La sesión anterior había dejado solo
+> los datos (mig 322) y ningún frontend.
+>
+> **🐛 Pero primero: la mig 322 no calculaba nada.** Al ir a construir el frontend apareció que
+> `vw_ubicacion_ocupacion` unía `producto_presentaciones.id` con `inventario_lineas.unidad_medida_id`,
+> que referencia **`unidades_medida`** — el catálogo de EMPAQUES ("Caja", "Pallet"), no una
+> presentación (mig 293). **Verificado en DEV: 0 de las líneas con UoM matcheaban.** Como esa columna
+> tampoco es NULL en esas filas, no entraba el fallback a la base → **aportaban 0 m³**: justo las
+> líneas que entraron EN BULTO, las que más volumen ocupan. El error empuja hacia *"parece que hay
+> lugar"*, que es exactamente lo que el diseño del cubicaje quería evitar.
+> **Mig 325** lo arregla, y de paso otras dos cosas que el arreglo destapó:
+> - El fix obvio (unir por `nombre_empaque_id`) **duplicaba filas** por las presentaciones
+>   **hermanas** del mismo empaque ("Caja-12" y "Caja-10" cuelgan las dos de "Caja"; en DEV hay 8
+>   grupos, uno con 3) → `lpn_activos` y `peso_kg` inflados ×2/×3: una posición con 3 LPN diría 6.
+>   Se resolvió con **`LEFT JOIN LATERAL … LIMIT 1`**, que estructuralmente no puede duplicar.
+>   Verificado post-fix: **348 LPN en la vista = 348 en el conteo crudo**, 0 discrepancias en 46
+>   ubicaciones.
+> - `cantidad_uom` es un **snapshot de INGRESO que se pone viejo** (`cantidad` cambia con cada
+>   venta/ajuste y él no: en DEV hay líneas con `cantidad = 48` y `cantidad_uom = 60`). Ahora la
+>   cantidad se deriva del **stock actual** y `cantidad_uom` queda solo como desempate entre hermanas.
+> - ⚠ **Gotcha de Postgres que encontró el `migration-reviewer`:** `il.cantidad` es `integer` y
+>   `factor_base` `bigint` → sin `::numeric` la división **trunca**. 48 unidades en cajas de 10 daban
+>   4 bultos en vez de 4,8 y el **peso salía ~17% corto**, en el dato que decide si un rack está
+>   sobrecargado (seguridad física, no un problema de datos).
+> - Se aprovechó para que el **peso** use el del NIVEL cuando está cargado (incluye el embalaje) y
+>   caiga a `productos.peso_kg` si no. Es coherente con la decisión de GO de pedir peso por nivel.
+>
+> **Fase A — cargar los datos:**
+> - `PresentacionesEditor`: inputs de **peso / alto / ancho / largo por nivel** + el volumen de cada
+>   presentación al lado. ⚠ El pipe de datos existía **completo** desde la mig 310 (la RPC los acepta,
+>   `presentaciones.ts` los lee y valida): faltaban literalmente los `<input>`. Por eso las columnas
+>   estaban vacías desde que existen.
+> - `validarPresentaciones(rows, exigirMedidas)` los **exige** con el cubicaje activo → el error se ve
+>   al tipear, no como una excepción de Postgres al guardar. El guard real sigue siendo el trigger.
+> - Config → Inventario → **Reglas de stock**: toggle + factor de aprovechamiento (en %) + **panel de
+>   cobertura** con `fn_cubicaje_cobertura`.
+>
+> **Fase B — mostrar el espacio:** badge `0.8 de 1.01 m³` por ubicación en Config → Ubicaciones, al
+> lado de los de LPN y kg, contra la capacidad **útil** (geométrico × factor) y con ⚠ si se calculó
+> sobre líneas sin medir.
+>
+> **Fase C — avisar al ubicar:** componente nuevo `src/components/AvisoCapacidadUbicacion.tsx`,
+> cableado en el **ingreso de stock** (`InventarioPage`) y en **mover un LPN** (`LpnAccionesModal`).
+> Solo aparece si la posición quedaría **llena o excedida**. **Avisa, NUNCA bloquea.**
+>
+> **🛡️ Guard nuevo: `tests/e2e/114_cubicaje_ocupacion_mutante.spec.ts`** — siembra su propia
+> precondición (producto con hermanas del mismo empaque + una línea cuya cantidad NO es múltiplo del
+> bulto) y asierta contra la DB los tres modos de falla: no encontrar la presentación, encontrar dos,
+> y truncar la división. **Es genuinamente mutante: falla contra la vista de la mig 322.**
+>
+> **Verde:** tsc · build · **unit 1357** · e2e **114 (2/2)** · regresión **107 + 113 (10/10)**.
+>
+> **🔨 Único pendiente OPCIONAL del cubicaje (no bloqueante, nadie lo pidió):** que
+> `fn_wms_elegir_ubicacion_picking` prefiera ubicaciones con lugar. Hoy no mira ocupación.
+>
+> ---
+>
+> #### ✅ SESIÓN ANTERIOR — migs 315-324, v1.146→v1.149 (**EN DEV**; ver el estado de deploy ARRIBA, no acá)
+>
+> **Flujo Venta → Pedido → Envío completo, según el diagrama de flujo de GO.**
+> Regla final: *todas las ventas generan Pedido de preparación MENOS la entrega directa* (canal
+> **presencial** + despachada + **sin envío**). Deriva de `canales_venta.clasificacion` → no hay nada
+> que configurar. `tenants.pedido_canales_excluidos` es solo la excepción.
+> Las 8 ramas del diagrama están cubiertas por **e2e 113 (6/6)**.
+>
+> | Mig | Qué |
+> |---|---|
+> | 315 | Config de canales + `pedidos.venta_origen_id` + triggers venta→pedido + sync de líneas |
+> | 316 | 🛑 Guards Regla #0: no doble venta · picking sin re-reservar · `listo_para_entrega` deja de ser un ESTADO MUERTO · RPC de entrega en mostrador |
+> | 317 | 💵 El pedido facturaba a PRECIO DE LISTA (sin tiers ni redondeo) + pedido manual opt-in |
+> | 318 | Regla por tipo de entrega + gate de pago movido a la ENTREGA + envío relacionado |
+> | 319 | 💵 Faltaba el descuento por estado de inventario al facturar |
+> | 320 | 🐛 El picking de una RESERVA salía sin LPN ni ubicación (leía solo `venta_item_despachos`; en una reserva el LPN vive en `venta_items.lpn_plan`). Cascada de 4 fuentes |
+> | 321 | Vista `vw_ubicacion_ocupacion`: conecta la capacidad de `ubicaciones` (mig 032) que nadie leía |
+> | 322 | 📦 Cubicaje opt-in — ⚠ su cálculo de `volumen_m3` **no funcionaba** (JOIN a la presentación roto): corregido en la **mig 325**, ver arriba |
+> | 323 | 🐛 Un PRESUPUESTO no genera pedido + anular la venta cancela su pedido |
+> | 324 | No se lanza un pedido cuya venta no está viva |
+>
+> **💵 Dos errores de plata corregidos** en cómo factura un Pedido: no aplicaba tiers mayoristas ni
+> redondeo (317) ni descuento por estado (319). Una entrega real de 12 unidades pasó de facturar
+> **$12.000 a $6.720**.
+>
+> **🐛 Los tres bugs que encontró GO probando el flujo real:**
+> 1. El picking de una reserva salía **sin LPN ni ubicación** → mig 320.
+> 2. Un **presupuesto generaba pedido**, y al cancelarse quedaba vivo para preparar → mig 323/324.
+>    Fue un error de criterio mío: `ventas.estado = 'pendiente'` ES un presupuesto.
+> 3. El **ticket no decía cuánto falta pagar** → `resumenPagoTicket` + badge ★ RESERVA ★.
+>
+> **⚠ Espejos JS↔SQL que hay que mantener sincronizados:**
+> `fn_canal_de_origen` ↔ `ORIGEN_ALIAS` (`useCanalesVenta.ts`) ·
+> `fn_precio_venta_efectivo` ↔ `precioTier`/`redondearPrecio` ·
+> `fn_venta_requiere_pedido` ↔ `ventaRequierePedido` · `fn_pedido_venta_viva` ↔ `motivoNoLanzarPedido`.
+>
+> **⚠ Pendiente conocido, evaluado y DIFERIDO con evidencia:** la **lista de precios por canal** y los
+> **combos** no se aplican al facturar un pedido **manual**. Medido: `fn_pedido_generar_venta` NUNCA
+> corrió (0 ventas generadas por un Pedido en PROD y DEV), PROD tiene 0 pedidos / 0 combos activos /
+> 0 tenants con `lista_precio` seteada, y esa función corre solo para pedidos a mano — que quedaron
+> apagados por default. 🪤 El perfil que justifica prenderlos (mayorista con entregas parciales) es
+> el mismo que más probablemente use la lista mayorista: si se prende ese toggle, revisar.
+>
+> **Verde al cerrar esa sesión:** tsc · build · unit 1339 · e2e 113 (6/6) · regresión 107 (5/5).
+> *(Números vigentes: ver el bloque de arriba.)*
+>
+> **⚠🧾 RIESGO LATENTE ANOTADO (factura, no corregido):** el "P. Unitario" de una línea vendida en
+> una UoM se calcula en el PDF como `subtotal / cantidad_uom`. Si la división no es exacta a 2
+> decimales (ej. subtotal 1.000 en 3 bultos → 333,333…), la factura muestra 333,33 × 3 = 999,99 ≠
+> 1.000,00: **no multiplica**. No cambia el importe que va a AFIP (sale de `ventas.total`), pero deja
+> un comprobante que no cierra si alguien lo verifica. Fix propuesto: si `round2(unit) × cant ≠
+> subtotal`, mostrar la línea en unidades BASE (que siempre multiplican, porque
+> `subtotal = precio_unitario × cantidad` por construcción). Ver UAT §47 "Auditoría de la factura #475".
+>
+> **Sigue abierto (y sigue vigente):** rotar el `SUPABASE_ACCESS_TOKEN` `sbp_60df…` ·
+> `schema_full.sql` refleja hasta la 311 (le faltan **312-325**).
+
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-29) — v1.148.0: flujo Venta→Pedido→Envío completo (migs 315-319). **EN DEV, PROD pendiente**
+>
+> GO mandó su **diagrama de flujo** del negocio y pidió revisar si el código lo reflejaba. **No lo
+> reflejaba.** La regla quedó reescrita.
+>
+> **LA REGLA (final):** *todas las ventas generan Pedido de preparación MENOS la entrega directa*
+> (canal **presencial** + despachada + **sin envío** = el cliente se lleva la mercadería del
+> mostrador). Deriva de `canales_venta.clasificacion` (mig 168) → **no hay nada que configurar**.
+> `tenants.pedido_canales_excluidos` es solo la excepción.
+>
+> **Las 8 ramas del diagrama están cubiertas por e2e 113.**
+>
+> **🛑 Tres cosas que estaban mal y se corrigieron:**
+> 1. **El gate de pago estaba en la CREACIÓN** (mig 315): una reserva con seña parcial no generaba
+>    pedido, así que el depósito no tenía nada que preparar hasta que entrara el saldo. Ahora se
+>    prepara igual y el pago se valida **al ENTREGAR** (`fn_pedido_entregar_retiro`). Cuenta
+>    corriente sí puede salir con deuda (es a propósito).
+> 2. **Faltaba crear el envío** en la rama de venta-pedidos, y el caso "mostrador + envío" no
+>    generaba pedido (en el INSERT de la venta todavía no se sabe que va a haber envío — VentasPage
+>    lo inserta después). Ahora **el trigger de `envios` crea el pedido** cuando aparece.
+> 3. **💵 DOS ERRORES DE PLATA en cómo factura un Pedido**, los dos corregidos:
+>    - **mig 317** — facturaba `productos.precio_venta` a secas, **sin tiers por volumen** (mig 306)
+>      ni redondeo. De los 4 tipos sembrados por default, **"Mayorista" era el que peor salía**.
+>    - **mig 319** — tampoco aplicaba el **descuento por estado de inventario** (migs 284-285): la
+>      misma mercadería salía más cara por Pedidos que por mostrador.
+>    - **Verificado en DEV: 12 unidades pasaron de facturar $12.000 a $6.720.**
+>
+> **Otros cambios:** crear un pedido a mano pasa a ser **opt-in** (`tenants.pedido_manual_habilitado`,
+> default false — para una PyME casi todos los casos tienen mejor camino; el único que solo resuelve
+> Pedidos es el mayorista con entregas parciales) · `listo_para_entrega` **dejó de ser un estado
+> muerto** (existía desde la mig 292 pero nadie lo seteaba nunca) · pestaña **Ventas → Pedidos** con
+> búsqueda por nombre/DNI/N° y botón Entregado que abre el detalle de la venta para facturar.
+>
+> **⚠ Espejos JS↔SQL que hay que mantener sincronizados:** `fn_canal_de_origen` ↔ `ORIGEN_ALIAS`
+> (`useCanalesVenta.ts`) · `fn_precio_venta_efectivo` ↔ `precioTier`/`redondearPrecio`.
+>
+> **⚠ Pendiente conocido — EVALUADO Y DIFERIDO (2026-07-29), no olvidado:** la **lista de precios
+> por canal** y los **combos** no se aplican al facturar un pedido **manual**. Se midió antes de
+> decidir: `fn_pedido_generar_venta` **nunca corrió** (0 ventas generadas por un Pedido en PROD y en
+> DEV), PROD tiene 0 pedidos / 0 combos activos / 0 tenants con `lista_precio` seteada, y desde la
+> mig 316 esa función corre **solo para pedidos a mano**, que quedaron apagados por default. Los
+> combos exigirían replicar el motor del POS server-side (caro, sobre código de plata); la lista por
+> canal es barata pero pide decidir qué lista le toca a un Pedido, que no tiene canal.
+> 🪤 **Trampa a recordar:** el perfil que justifica prender los pedidos manuales (mayorista con
+> entregas parciales) es el mismo que más probablemente use la lista mayorista por canal. Por eso el
+> toggle muestra un cartel con las reglas exactas de facturación.
+>
+> **🐛 Hallazgos de GO probando el flujo real (mig 320 + frontend):**
+> - La tarea de picking de una **reserva** salía **sin LPN y sin ubicación**: la función leía solo
+>   `venta_item_despachos`, que en una reserva no existe todavía — el LPN vive en
+>   `venta_items.lpn_plan` (mig 156). Como el pedido nace de reservas, era el caso más común.
+>   Ahora es una **cascada**: despachos → `lpn_plan` → líneas reservadas (FEFO) → cualquier línea
+>   con stock; y si no hay nada, la tarea lo dice ("⚠ sin stock ubicado").
+> - La tarea ahora muestra **Pedido #N** y **Venta #N** como links en `/picking`.
+> - 💵 El **ticket** ahora muestra **SALDO A PAGAR** (antes solo total y pagado), sumando el envío
+>   (ISS-105), y una **reserva** dejó de verse como una venta cerrada (badge ★ RESERVA ★).
+>
+> **Verde:** tsc · build · **unit 1304** (41 en `pedidoVenta.test.ts`) · **e2e 113 (5/5)** ·
+> regresión **107 (5/5)**.
+> Ver [[wiki/features/pedidos]] y UAT **§47**.
+>
+> **🟡 ESTADO DE DEPLOY: TODO EN DEV.** `APP_VERSION` = v1.148.0; **PROD sigue en v1.145.0**.
+> Sin deployar: **migs 314 a 319 (6) y las versiones 1.146, 1.147 y 1.148**. Al retomar: aplicar
+> 314-319 en PROD → PR `dev→main` → tag+release.
+>
+> **Sigue abierto:** rotar el `SUPABASE_ACCESS_TOKEN` `sbp_60df…` · `schema_full.sql` refleja hasta
+> la 311 (le faltan 312-319).
+
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-28) — v1.147.0: Pedido automático desde una VENTA + entrega en mostrador (migs 315/316). **EN DEV, PROD pendiente**
+>
+> Pedido de GO: que ciertos canales de venta generen pedido, que las reservas lo hagan solo si están
+> **100% pagadas**, una pestaña de Pedidos en Ventas para entregar los retiros en local, y búsqueda
+> por cliente / DNI / N° de pedido. Las cuatro cosas están hechas.
+>
+> **🛑 Lo primero fue avisarle a GO que esto INVIERTE el flujo F4.** Hasta acá el único puente era
+> Pedido → venta (PED4). Un pedido nacido de una venta **ya tiene su venta, su plata y su stock
+> resueltos**, así que meterlo en el ciclo normal de Pedidos lo rompe de dos formas **silenciosas**:
+> (1) entregarlo generaría una **SEGUNDA venta** con segundo rebaje y segundo asiento de caja;
+> (2) lanzarlo **reservaría el stock por segunda vez** —o, si la venta ya rebajó, reservaría unidades
+> de otras líneas—. Las dos están cerradas server-side en la **mig 316**.
+> **Probado por mutación en DEV: por el camino viejo se reservaban 4 unidades de más.**
+>
+> **Decisiones que tomó GO** (con las opciones sobre la mesa, no asumidas):
+> - Regla única: **canal configurado**; y si es reserva, **100% pagada**. Una reserva de un canal no
+>   configurado no genera nada.
+> - **Envíos = tabla única de trazabilidad de entregas**: el retiro genera igual un `envios` tipo
+>   `retiro_local` / `entregado`.
+> - La **entrega física** se confirma al apretar el botón; **facturar es un paso aparte** (si cierran
+>   el modal sin emitir, se factura después desde el Historial). Trabar la entrega esperando a AFIP
+>   dejaría al cliente parado en el mostrador.
+>
+> **Mig 315** — `tenants.pedido_canales_auto` (ids de canal, `[]` = apagado → ningún tenant existente
+> cambia) · `pedidos.venta_origen_id` (UNIQUE parcial) · `fn_canal_de_origen` (**espejo SQL de
+> `ORIGEN_ALIAS` de `useCanalesVenta.ts` — mantener sincronizados**) · triggers server-side (cubren
+> también los webhooks de marketplace y el importador, que no pasan por `registrarVenta`).
+> 💵 El "100% pagada" **suma el costo de envío**: `total` no lo incluye pero `monto_pagado` sí
+> (ISS-105). ⚠ `registrarVenta` inserta la venta y los `venta_items` en llamadas HTTP **separadas**,
+> así que el `AFTER INSERT` de `ventas` no ve ni una línea → las completa un trigger statement-level
+> sobre `venta_items`. 🛑 Todo envuelto en `EXCEPTION WHEN OTHERS`: **una venta nunca se cae por un
+> documento de logística**.
+>
+> **Mig 316** — trigger `BEFORE INSERT ON ventas` contra la segunda venta ·
+> `fn_generar_tareas_picking_pedido_venta` (picking desde `venta_item_despachos`, **sin tocar
+> `cantidad_reservada`**) · la RPC original **renombrada** a `..._stock` + dispatcher con el nombre
+> viejo (se renombró en vez de re-escribir 150 líneas que mueven stock) · `fn_pedido_entregar_retiro`.
+> **Hueco preexistente cerrado:** `listo_para_entrega` era un **ESTADO MUERTO** — en el CHECK desde la
+> mig 292, con badge en la UI y leído por 3 RPCs, pero **nadie lo seteaba nunca**. Ahora lo promueve
+> la última tarea de picking del pedido.
+>
+> **Frontend:** Config → Pedidos gana el selector de canales; Ventas gana la pestaña **Pedidos**.
+> Lógica pura en `src/lib/pedidoVenta.ts` — los unit atraparon que buscar "5" arrastraba todo DNI con
+> un 5, así que el DNI matchea por **prefijo** (≥3 dígitos) y el número **exacto**.
+>
+> **Verde:** tsc · build · **unit 1289** (26 nuevos) · **e2e 113 nuevo (2/2)** · regresión
+> **107/109/112 (8/8)** — el 107 confirma que el flujo original de Pedidos sigue intacto.
+> Ver [[wiki/features/pedidos]] → "Pedido nacido de una VENTA" y UAT **§47**.
+>
+> **🟡 ESTADO DE DEPLOY: EN DEV.** `APP_VERSION` = v1.147.0, migs 315 y 316 aplicadas **solo en DEV**.
+> PROD sigue en **v1.145.0**. Junto con la v1.146.0 (mig 314) hay **3 migraciones y 2 versiones sin
+> deployar**. Al retomar: aplicar 314+315+316 en PROD → PR `dev→main` → tag+release.
+>
+> **Sigue abierto (sin cambios):** rotar el `SUPABASE_ACCESS_TOKEN` `sbp_60df…` · `schema_full.sql`
+> refleja hasta la 311 (le faltan 312, 313, 314, 315 y 316).
+
+
+> ### 🔀 ESTADO ANTERIOR (2026-07-28) — v1.146.0: guard de modelo de variante (mig 314). **Rediseño UoM cerrado, sin decisiones abiertas**
+>
+> Se resolvió la **única cosa que quedaba abierta** del rediseño UoM: GO decidió **reconstruir el
+> guard** que impedía los dos sistemas de variante en el mismo SKU (se había perdido con la mig 311).
+>
+> **Mig 314** — dos piezas, porque un CHECK no puede mirar otras filas:
+> - **CHECK `chk_productos_variante_sin_atributos`**: un hijo (`producto_padre_id`) no puede tener
+>   atributos de variante (`tiene_talle`/…). Table-local = garantía dura, en todo camino de escritura.
+> - **Trigger `trg_productos_variante_atributos`**: el lado de la madre — ni encender un atributo
+>   teniendo hijos, ni crearle la primera variante teniendo atributos. `SECURITY DEFINER` a propósito
+>   (un guard no puede fallar ABIERTO si la RLS le esconde la fila de la madre); los dos `SELECT`
+>   filtran por `NEW.tenant_id`, sin fuga cross-tenant.
+>
+> **Apagando los atributos el camino se destraba** (nunca queda callejón sin salida) y **un standalone
+> con atributos sigue siendo válido** — el modelo de atributos NO se depreca. La UI explica el motivo
+> (toggles deshabilitados + cartel ámbar, "Crear variante" reemplazado por el motivo) en vez de dejar
+> salir el error crudo de Postgres; los guards del e2e se prueban **por REST**, sin tocar la UI.
+>
+> **Verificado ANTES de aplicar, contra datos REALES:** DEV 404 productos / 42 hijos / 17 madres / 65
+> con atributos → **0 en violación**; PROD 23 / 0 / 0 / 1 → **0 en violación**. El guard entró sin
+> tocar un dato. Probado en DEV con 3 rechazos + 5 negativos (rollback intencional), incluido que
+> `recalcular_stock` y la propagación de nombre **no** despiertan el trigger (`UPDATE OF <cols>`).
+>
+> **⚠ Hallazgo que hay que tener presente (dicho a GO al decidir):** la razón técnica de la mig 274
+> ("el ingreso no pedía el talle porque la UI de Grupo de variantes no lo exige de esa forma") **ya no
+> aplica** — en el modelo madre/hijo un hijo es un producto normal (el POS solo excluye a las MADRES,
+> y el ingreso lee `tiene_talle` genéricamente). Hoy el guard es una decisión de **modelo de negocio**,
+> no una limitación técnica. Si alguna vez se quiere el híbrido "color = SKU separado, talle =
+> atributo de LPN" (caso real en indumentaria), alcanza con dropear el CHECK y el trigger.
+>
+> **Verde:** tsc · build · **unit 1263** (12 nuevos) · **e2e 109** extendido de 4 a 9 aserciones (2/2).
+> Ver `tests/specs/uat-modo-basico.md` §46 y [[wiki/features/atributos-variante]].
+>
+> **🟡 ESTADO DE DEPLOY (decisión explícita de GO, 2026-07-28): TODO QUEDA EN DEV.** Commit
+> `f4d14c6c` en `dev` y pusheado. **`APP_VERSION` ya dice `v1.146.0` pero PROD sigue en v1.145.0.**
+> A pedido de GO **NO** se aplicó la mig 314 en PROD, **NO** se abrió el PR `dev→main` y **NO** se
+> creó tag ni release — la regla de "tag+release en cada sesión con código" se salteó a propósito,
+> no por olvido. GO lo va a probar primero en DEV. Al retomar: aplicar mig 314 en PROD → PR → tag
+> `v1.146.0` → release (el guard se verificó ya contra datos de PROD: 0 filas en violación).
+>
+> **▶ QUÉ QUEDA ABIERTO (nada del rediseño UoM):**
+> - 🔴 **Rotar el `SUPABASE_ACCESS_TOKEN`** `sbp_60df…` — figura como "rotado el 2026-07-09" pero
+>   **sigue funcionando** (verificado 2026-07-28). Tarea operativa de GO.
+> - ⚠ **`schema_full.sql` desactualizado**: refleja hasta la **311**; le faltan 312, 313 y 314.
+>   Regenerarlo necesita un access token (el modo PG falla por el bug de Supavisor) → hacerlo después
+>   de rotar.
+> - Retomar los pendientes NO-UoM del backlog general (ver más abajo): relevamiento Inventario/WMS
+>   sin responder, EN6 courier (bloqueado por cuentas B2B), crash de GastosPage sin stack trace,
+>   legal (abogado + razón social).
+> - **`app-reference.md` NO se tocó** → no hace falta `npm run ai:knowledge` ni redeploy de la EF
+>   `ai-assistant`.
+
+> ### 📐 ESTADO ANTERIOR (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD** (v1.145.0, migs 289-313)
 >
 > **El rediseño UoM terminó Y SE DEPLOYÓ.** Esta sesión cerró las dos fases que faltaban y además
 > subió a PROD TODO lo que estaba acumulado en `dev` desde v1.142.0: **WMS (289-291), Pedidos
@@ -50,29 +402,21 @@ type: project
 > como venta en UoM base y **se le aplicaban los combos de la unidad suelta**. Corregido con el flag
 > `es_base` (`vendiendoEnBase()`). Un ordinal no puede gobernar una decisión de plata.
 >
-> **▶ PRÓXIMA SESIÓN — no hay pendientes del rediseño ni de deploy.** Lo que queda abierto:
-> - ✅ **Serializados: RESUELTO (mig 313, v1.145.0)** — ya no queda ningún pendiente funcional.
-> - 🟡 **Decisión de GO (única cosa abierta):** ¿reconstruir el CHECK que impedía los dos sistemas de
->   variante en el mismo SKU? (se perdió con la mig 311). Ver el bloque de abajo.
-> - `schema_full.sql` **NO se pudo regenerar** esta sesión: `npm run schema:dump` necesita un
->   `SUPABASE_ACCESS_TOKEN` (el modo PG falla por el bug de Supavisor). Refleja hasta la 308 —
->   pedirle el token a GO y regenerarlo (DEV y PROD están idénticos en 311).
-> - **`app-reference.md` NO se tocó**, así que no hace falta `npm run ai:knowledge` ni redeploy de la
->   EF `ai-assistant`. Si en la próxima sesión se documenta el rediseño ahí, sí hay que hacerlo.
-> - Retomar los pendientes NO-UoM del backlog general (ver más abajo).
+> **▶ Estado al cierre de esa sesión:** sin pendientes del rediseño ni de deploy; quedaba una sola
+> decisión abierta de GO (los dos sistemas de variante en el mismo SKU) — **ya resuelta**, ver el
+> bloque de arriba (v1.146.0, mig 314).
 >
-> #### 🟡 DECISIÓN PENDIENTE DE GO — ¿los dos sistemas de variante en el MISMO SKU?
+> #### ✅ DECISIÓN TOMADA — los dos sistemas de variante NO van en el MISMO SKU (resuelto: mig 314)
 >
 > La mig 274 había creado un CHECK (`chk_productos_grupo_sin_atributos_variante`) que impedía que un
 > producto fuera "grupo de variantes" **y** tuviera atributos de variante a nivel LPN
 > (`tiene_talle`/`tiene_color`/…) al mismo tiempo — dos modelos de stock incompatibles en un SKU. Ese
-> CHECK **desapareció** en la mig 311, porque referenciaba la columna `grupo_id` que se dropeó.
+> CHECK **desapareció** en la mig 311, porque referenciaba la columna `grupo_id` que se dropeó, y entre
+> la 311 y la 314 nada impidió que un SKU fuera madre/hijo (`producto_padre_id`) Y tuviera atributos
+> encima. Nunca hubo productos en esa situación (0 en DEV y en PROD).
 >
-> Hoy **nada impide** que un SKU sea variante madre/hijo (`producto_padre_id`) Y tenga atributos de
-> variante encima. Al 2026-07-28 hay **0 productos** en esa situación, así que no hay nada roto — pero
-> es una decisión abierta: **¿se reconstruye el guard contra `producto_padre_id`, o la decisión "Eje A:
-> los dos sistemas coexisten" también habilita usarlos juntos en el mismo producto?** Si GO quiere el
-> guard, es un CHECK de una línea (nueva migración).
+> **GO decidió reconstruir el guard** (2026-07-28): los dos sistemas coexisten en la app (Eje A) pero
+> **no dentro del mismo producto**. Implementado en la **mig 314** — ver el bloque "ARRANCÁ ACÁ".
 >
 > #### ✅ 🔢 SERIALIZADOS — RESUELTO (mig 313, v1.145.0, 2026-07-28)
 >
@@ -1169,7 +1513,8 @@ type: project
 > mismo formulario) — redundante. No existía NINGÚN hard delete real, ni individual ni bulk.
 >
 > **Hallazgo 2 — el comportamiento es correcto por diseño, faltaba un detalle de UX.** Genesis360
-> tiene dos modelos de variante NO combinables (mig 274): "Atributos de variante" (un SKU, el talle
+> tiene dos modelos de variante NO combinables (mig 274 → hoy **mig 314** sobre madre/hijo, porque
+> "Grupo de variantes" se dropeó en la 311): "Atributos de variante" (un SKU, el talle
 > se pide por LPN al ingresar) y "Grupo de variantes" (cada talle es un SKU SEPARADO — por diseño el
 > ingreso no pregunta el talle porque el SKU elegido YA ES esa variante). Confirmado en DEV que
 > "Remera Básica" (SKU-00092) estaba correctamente vinculada al grupo con `variante_valores`
@@ -1380,6 +1725,8 @@ type: project
 >   Recepciones/Ingreso manual (patrón `tiene_lote`), bloqueo de venta ambigua (patrón `tiene_series`,
 >   función `atributoAmbiguoEnStock`), y **mig 274** (`chk_productos_grupo_sin_atributos_variante`,
 >   CHECK constraint verificado que rechaza incluso por SQL directo — REGLA #0, guard server-side).
+>   ⚠ **Ese CHECK ya no existe:** se fue con `grupo_id` en la mig 311 y se reconstruyó sobre el modelo
+>   madre/hijo en la **mig 314** (v1.146.0) — ver el bloque "ARRANCÁ ACÁ" al principio del archivo.
 > - **Ronda 3** (`90de330b`): GO probó de nuevo — el ingreso SIMPLE (Inventario→Agregar stock→Ingreso)
 >   seguía sin pedir el atributo pese al fix de ronda 2. Causa raíz real: el buscador de productos de
 >   "Ingreso manual" no traía `tiene_talle`/etc. en el `SELECT` → `selectedProduct.tiene_talle` quedaba
@@ -1568,7 +1915,7 @@ type: project
 > **Fix (`63132723`):** sacadas `telefono, email` de las 5 selects (verificado contra la API real: antes **400**, ahora **200**) + **`exigirCfgFiscal()`**, un guard que **LANZA** si los datos fiscales no se pueden leer en vez de dejar que los `?? ''` inventen. *Un comprobante que no sale es un problema; uno con la identidad fiscal inventada es peor.*
 > **Guard nuevo (`22de6a0e`): spec `87_datos_emisor_comprobante`** — corre las selects reales contra la DB y exige que no fallen y que cuit/razón social/condición vengan con contenido. **Verificado POR MUTACIÓN**: con la select rota original falla con el mensaje exacto.
 > **🛑 POR QUÉ NINGÚN TEST LO AGARRÓ (la lección de fondo):** la suite verificaba la **TRANSACCIÓN** fiscal (que AFIP devolviera CAE) y paraba ahí — el spec 21 emite con **CAE real** y sólo assertea el toast. Pero **el CAE siempre estuvo bien**: lo roto era el **DOCUMENTO**, que es lo único que ve el cliente. **Nadie mira el papel.** Y los unit tests no podían: `facturasPDF.ts` **recibe** `emisor_cuit` por parámetro → un unit test le pasa un CUIT válido y pasa; el bug vivía en el **llamador**, en una query que sólo falla contra la DB real. Una `.select()` con columna inexistente es un fallo de **runtime** que ni TS ni un unit test ven.
-> **▶ PENDIENTE:** (a) ~~deploy a PROD~~ ✅ **v1.131.0 EN PROD** (2026-07-16, PR #290); (b) **🛑 2º hallazgo, NO arreglado: el PDF lee el CUIT del TENANT, no del EMISOR** (`from('tenants')` en los 5 sitios). Con multi-CUIT, si emitís con un emisor adicional el **CAE sale con SU CUIT** pero el PDF imprimiría el del tenant → **un papel que no coincide con AFIP**. Hoy estaba enmascarado por el bloque vacío; **al arreglar lo anterior queda EXPUESTO**. Almacén Jorgito ya tiene 2 emisores con CUITs distintos (`23-32031506-9` default y `23-18383448-9` Otranto S.A.) → **reproducible ya**; (c) tests que miren el **contenido del PDF**, no sólo el toast (`facturasPDF.ts` no tiene NINGÚN unit test).
+> **▶ PENDIENTE:** (a) ~~deploy a PROD~~ ✅ **v1.131.0 EN PROD** (2026-07-16, PR #290); (b) ✅ **RESUELTO en v1.133.0** (cutover mig 271/272 → `src/lib/emisorPdf.ts` es el único armador de la identidad, por `ventas.emisor_id`; re-verificado el 2026-07-29). Texto original: **2º hallazgo: el PDF leía el CUIT del TENANT, no del EMISOR** (`from('tenants')` en los 5 sitios). Con multi-CUIT, si emitís con un emisor adicional el **CAE sale con SU CUIT** pero el PDF imprimiría el del tenant → **un papel que no coincide con AFIP**. Hoy estaba enmascarado por el bloque vacío; **al arreglar lo anterior queda EXPUESTO**. Almacén Jorgito ya tiene 2 emisores con CUITs distintos (`23-32031506-9` default y `23-18383448-9` Otranto S.A.) → **reproducible ya**; (c) tests que miren el **contenido del PDF**, no sólo el toast (`facturasPDF.ts` no tiene NINGÚN unit test).
 
 > ### 🎚️ (2026-07-16 · toggles con el knob fuera del track — **3 arreglados**, falta el componente estándar)
 > **Lo reportó GO con una captura**, no la suite. **Causa:** sin `left`, un `absolute` toma su **posición ESTÁTICA**, y el `<button>` trae `text-align: center` del user-agent (Tailwind resetea el `padding` pero **no** el `text-align`) → el knob arrancaba **centrado** (~12px) y con `translate-x-5` terminaba en 48px dentro de un track de 40px → **el círculo blanco quedaba FUERA del óvalo**.
@@ -3432,6 +3779,56 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 **Decisión de diseño** (GO preguntó cómo igualar/superar un WMS tier-1): se eligió `transaccion_id` write-time (ledger inmutable, auditable), **no** heurística read-time por minuto (frágil, no auditable para recall). Snapshots de LPN/lote/serie desde el día 1.
 
 **✅ Cerrado en v1.11.3 (2026-05-30)**: devoluciones ahora se loguean en `/historial` (`tipo_transaccion='devolucion'`, agrupadas por transacción, con producto_id + LPN); reserva→despacho y venta→devuelta clasificadas; filtro de recall por **producto** (nombre/SKU → producto_id) además de LPN/serie. Trazabilidad-extendida **completa**.
+
+### 📦 CUBICAJE VOLUMÉTRICO — ✅ **CERRADO (v1.149-150, migs 321/322/325)** — texto histórico abajo
+
+> **⚠ Esta sección quedó como registro del ANÁLISIS que originó el feature. Ya está construido
+> entero** (Fases A/B/C) — ver "ARRANCÁ ACÁ" arriba y `wiki/features/wms.md` → "Cubicaje
+> volumétrico opt-in". Los 4 pasos del plan de abajo están hechos salvo el 4 (sugerencia de
+> ubicación por capacidad en putaway/reabastecimiento), que **sigue abierto y es opcional**.
+> El riesgo que se marcaba ("con medidas a medias el número miente") se resolvió con el diseño
+> **opt-in** de GO + la **cobertura** visible en todas las pantallas.
+
+**Estado al momento del análisis (2026-07-29, ya superado): no existía ningún cálculo de capacidad.**
+Nada validaba ni sugería si la mercadería entra en una ubicación.
+`fn_wms_elegir_ubicacion_picking` elige por zona y prioridad, **sin mirar ocupación** — eso último
+sigue siendo cierto (es el paso 4, no hecho).
+
+**Auditoría de lo que YA está cargado y no se usa** (surgió de una pregunta de GO: *"¿cómo sabemos
+si cabe inventario de un producto en una ubicación al no tener las medidas de cada nivel de
+estructura?"*):
+
+| Dónde | Campos | Estado |
+|---|---|---|
+| `ubicaciones` (mig **032**) | `largo_cm` · `ancho_cm` · `alto_cm` · `peso_max_kg` · **`capacidad_pallets`** | Se cargan en Config → Inventario → Ubicaciones. **Ningún cálculo las leía.** Desde 2026-07-29 `capacidad_pallets` sí se usa para el aviso de ocupación por LPN |
+| `productos` | `peso_kg` · `largo/ancho/alto_cm` | Rotuladas "opcional, para envío" — y **el form de Envíos pedía el peso a mano**, no las leía. ✅ Conectadas 2026-07-29 (`sugerirBultoEnvio`) |
+| `producto_presentaciones` | `peso_kg` · `largo/ancho/alto_cm` **POR NIVEL** (por Caja, por Pallet) | Era el bloqueante: la columna existía y `presentaciones.ts` las leía/escribía, pero **`PresentacionesEditor` no tenía inputs** → estaban siempre vacías. ✅ **Resuelto en v1.150.0** (inputs por nivel + obligatorios con el cubicaje activo) |
+| `reglas_almacenaje` (WMS) | `unidad_medida_id` → `zona_id` | Criterio **cualitativo** ("los pallets van a Estiba"), no de capacidad |
+
+**Qué haría falta para el cubicaje, en orden:**
+
+1. **Inputs de medidas por nivel** en `PresentacionesEditor` (peso/largo/ancho/alto por presentación).
+   Sin esto no hay nada que calcular. Ojo con la herencia: la medida de la Caja no se deriva de la
+   unidad — hay que cargarla.
+2. **Volumen ocupado por ubicación**: Σ (volumen de la presentación × cantidad) sobre las
+   `inventario_lineas` de esa ubicación, contra el volumen de la ubicación
+   (`largo × ancho × alto`), con un **factor de aprovechamiento** configurable (nunca se llena al
+   100% real — pasillos, forma irregular; lo típico es 60-75%).
+3. **Peso**: contra `peso_max_kg`. Es más simple y más seguro que el volumen (el peso es aditivo y
+   exacto), así que conviene hacerlo primero.
+4. Recién ahí, **sugerencia de ubicación por capacidad** en el putaway/reabastecimiento.
+
+**🛑 El riesgo que se marcó antes de encararlo — y cómo se resolvió:** el cálculo vale lo que valen
+las medidas; con los volúmenes cargados a medias el número **miente**, y un número que miente es peor
+que no tener ninguno. **Solución de GO (v1.149-150):** el cubicaje es **opt-in por tenant** y al
+activarlo las medidas se vuelven **obligatorias** en el editor de estructura → la cobertura es 100%
+por construcción de ahí en adelante. Los SKU sin medir no se ocultan: **toda pantalla exhibe la
+cobertura** (`lineas_con_volumen`/`lineas_total`) con ⚠, porque el error de una línea sin medir
+siempre queda **corto** y empuja hacia "parece que hay lugar".
+
+**Alternativa barata implementada primero (2026-07-29, sigue vigente y no exige medir nada):** aviso
+de ocupación **por LPN** contra `ubicaciones.capacidad_pallets` ("3 de 4"). Ver
+`src/lib/medidasLogistica.ts`.
 
 ### Deuda técnica / pendientes abiertos
 

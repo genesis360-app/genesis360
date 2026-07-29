@@ -6,10 +6,32 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-313)
+# Historial de Migraciones (001-314)
 
-**Total al 2026-07-28:** 313 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-28:** 314 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**314 (🛑 guard de modelo de variante: madre/hijo vs. Atributos de variante, EN DEV — PROD pendiente)** —
+Reconstruye sobre el modelo madre/hijo el guard que la **mig 274** tenía sobre `grupo_id` y que
+**desapareció** al dropear esa columna en la **mig 311**: entre una y otra nada impedía que un mismo SKU
+fuera variante madre/hijo (`producto_padre_id`) **y** tuviera atributos de variante a nivel LPN
+(`tiene_talle`/`tiene_color`/…) encima — dos modelos de stock incompatibles. Decisión de GO: los dos
+sistemas coexisten en la app (Eje A) pero **no dentro del mismo producto**.
+Dos piezas, porque un CHECK no puede mirar otras filas: **CHECK `chk_productos_variante_sin_atributos`**
+(el hijo no puede tener atributos — table-local, garantía dura) + **trigger
+`trg_productos_variante_atributos`** (la madre: ni encender un atributo teniendo hijos, ni crearle la
+primera variante teniendo atributos). Apagando los atributos el camino se destraba, así que nunca queda
+un callejón sin salida; un standalone con atributos sigue siendo válido (el modelo NO se depreca).
+`SECURITY DEFINER` a propósito — un guard no puede fallar ABIERTO si la RLS le esconde la fila de la
+madre; los dos `SELECT` filtran por `NEW.tenant_id`, así que no hay fuga cross-tenant. El
+`BEFORE INSERT OR UPDATE OF <cols>` acota el disparo: `recalcular_stock` y la propagación de nombre no
+lo despiertan (verificado con 5 negativos en DEV).
+**Verificado ANTES de aplicar (datos REALES):** DEV 404 productos / 42 hijos / 17 madres / 65 con
+atributos → **0 en violación**; PROD 23 / 0 / 0 / 1 → **0 en violación**. Entró sin tocar un dato.
+⚠ **Nota de modelo:** la razón técnica de la mig 274 ("la UI de Grupo de variantes no pedía el talle") ya
+no aplica — un hijo es un producto normal. Hoy esto es una decisión de negocio: si se quisiera el híbrido
+"color = SKU separado, talle = atributo de LPN", alcanza con dropear el CHECK y el trigger.
+Ver [[wiki/features/atributos-variante]] "Guard de modelo de variante".
 
 **313 (reasignar stock de productos SERIALIZADOS + levanta el guard de la 312, EN DEV y PROD, 🛑 MUEVE STOCK)** —
 Cierra el último pendiente del rediseño UoM. `fn_reasignar_stock_variante` pasa a aceptar, por asignación,
@@ -346,7 +368,8 @@ prevención en `ImportarMasterPage.tsx` (sin falla activa confirmada ahí). Ver 
 → "Importador de productos con precio por nivel".
 **273, 274, 275 y 276 aplicadas en DEV y PROD** (PR #293, v1.134.0). 274 es el guard
 `chk_productos_grupo_sin_atributos_variante` (Grupo de variantes vs. Atributos de variante son
-incompatibles). 275 agrega las columnas de atributos de variante a `traslado_items` (se perdían al
+incompatibles) — ⚠ **ese CHECK ya no existe:** se fue con `grupo_id` en la mig 311 y se reconstruyó
+sobre el modelo madre/hijo en la **mig 314**. 275 agrega las columnas de atributos de variante a `traslado_items` (se perdían al
 trasladar stock entre sucursales). 276 agrega `traslado_items.ubicacion_sugerida_id` (precarga la
 ubicación al confirmar recepción cuando el traslado nació de un movimiento parcial de LPN).
 **277 (ronda 4 de atributos de variante) aplicada en DEV y PROD** (PR #294, v1.135.0) — agrega las

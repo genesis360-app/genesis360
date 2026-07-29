@@ -13,6 +13,26 @@ updated: 2026-07-28
 
 ---
 
+## v1.146.0 — 🔀 Guard de modelo de variante: madre/hijo vs. Atributos de variante (mig 314) — 🟡 **EN DEV** (2026-07-28)
+
+Reconstruye sobre el modelo **madre/hijo** el guard que la mig 274 tenía sobre `grupo_id` y que
+**desapareció** al dropear esa columna en la mig 311: entre una y otra nada impedía que un mismo SKU
+usara los **dos modelos de variante a la vez** (variante hijo con `producto_padre_id` **y** atributos
+de variante a nivel LPN encima). Decisión de GO: los dos sistemas coexisten en la app pero **no dentro
+del mismo producto**.
+
+Dos piezas, porque un CHECK no puede mirar otras filas: **CHECK `chk_productos_variante_sin_atributos`**
+(el hijo) + **trigger `trg_productos_variante_atributos`** (la madre — ni encender un atributo teniendo
+hijos, ni crearle la primera variante teniendo atributos). Apagando los atributos el camino se destraba,
+así que nunca queda un callejón sin salida; un standalone con atributos sigue siendo válido. La UI
+explica el motivo en vez de tirar el error crudo de Postgres.
+
+Verificado contra datos reales antes de aplicar: **0 productos en violación** en DEV y en PROD — el
+guard entró sin tocar un dato. Verde: tsc · build · unit 1263 (12 nuevos) · e2e 109 (4 → 9 aserciones).
+Ver [[wiki/features/atributos-variante]] y `tests/specs/uat-modo-basico.md` §46.
+
+---
+
 ## v1.145.0 — 🔢 Reasignar stock de productos SERIALIZADOS (mig 313) — ✅ **PROD** (2026-07-28)
 
 Cierra el **último pendiente** del rediseño UoM/Empaque/Variantes. El reparto del stock "sin variante

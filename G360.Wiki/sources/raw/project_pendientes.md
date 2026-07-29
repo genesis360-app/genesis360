@@ -6,7 +6,52 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📐 ARRANCÁ ACÁ (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD, sin pendientes funcionales** (v1.145.0, migs 289-313)
+> ### 🔀 ARRANCÁ ACÁ (2026-07-28) — v1.146.0: guard de modelo de variante (mig 314). **Rediseño UoM cerrado, sin decisiones abiertas**
+>
+> Se resolvió la **única cosa que quedaba abierta** del rediseño UoM: GO decidió **reconstruir el
+> guard** que impedía los dos sistemas de variante en el mismo SKU (se había perdido con la mig 311).
+>
+> **Mig 314** — dos piezas, porque un CHECK no puede mirar otras filas:
+> - **CHECK `chk_productos_variante_sin_atributos`**: un hijo (`producto_padre_id`) no puede tener
+>   atributos de variante (`tiene_talle`/…). Table-local = garantía dura, en todo camino de escritura.
+> - **Trigger `trg_productos_variante_atributos`**: el lado de la madre — ni encender un atributo
+>   teniendo hijos, ni crearle la primera variante teniendo atributos. `SECURITY DEFINER` a propósito
+>   (un guard no puede fallar ABIERTO si la RLS le esconde la fila de la madre); los dos `SELECT`
+>   filtran por `NEW.tenant_id`, sin fuga cross-tenant.
+>
+> **Apagando los atributos el camino se destraba** (nunca queda callejón sin salida) y **un standalone
+> con atributos sigue siendo válido** — el modelo de atributos NO se depreca. La UI explica el motivo
+> (toggles deshabilitados + cartel ámbar, "Crear variante" reemplazado por el motivo) en vez de dejar
+> salir el error crudo de Postgres; los guards del e2e se prueban **por REST**, sin tocar la UI.
+>
+> **Verificado ANTES de aplicar, contra datos REALES:** DEV 404 productos / 42 hijos / 17 madres / 65
+> con atributos → **0 en violación**; PROD 23 / 0 / 0 / 1 → **0 en violación**. El guard entró sin
+> tocar un dato. Probado en DEV con 3 rechazos + 5 negativos (rollback intencional), incluido que
+> `recalcular_stock` y la propagación de nombre **no** despiertan el trigger (`UPDATE OF <cols>`).
+>
+> **⚠ Hallazgo que hay que tener presente (dicho a GO al decidir):** la razón técnica de la mig 274
+> ("el ingreso no pedía el talle porque la UI de Grupo de variantes no lo exige de esa forma") **ya no
+> aplica** — en el modelo madre/hijo un hijo es un producto normal (el POS solo excluye a las MADRES,
+> y el ingreso lee `tiene_talle` genéricamente). Hoy el guard es una decisión de **modelo de negocio**,
+> no una limitación técnica. Si alguna vez se quiere el híbrido "color = SKU separado, talle =
+> atributo de LPN" (caso real en indumentaria), alcanza con dropear el CHECK y el trigger.
+>
+> **Verde:** tsc · build · **unit 1263** (12 nuevos) · **e2e 109** extendido de 4 a 9 aserciones (2/2).
+> Ver `tests/specs/uat-modo-basico.md` §46 y [[wiki/features/atributos-variante]].
+>
+> **▶ QUÉ QUEDA ABIERTO (nada del rediseño UoM):**
+> - 🔴 **Rotar el `SUPABASE_ACCESS_TOKEN`** `sbp_60df…` — figura como "rotado el 2026-07-09" pero
+>   **sigue funcionando** (verificado 2026-07-28). Tarea operativa de GO.
+> - ⚠ **`schema_full.sql` desactualizado**: refleja hasta la **311**; le faltan 312, 313 y 314.
+>   Regenerarlo necesita un access token (el modo PG falla por el bug de Supavisor) → hacerlo después
+>   de rotar.
+> - Retomar los pendientes NO-UoM del backlog general (ver más abajo): relevamiento Inventario/WMS
+>   sin responder, EN6 courier (bloqueado por cuentas B2B), crash de GastosPage sin stack trace,
+>   legal (abogado + razón social).
+> - **`app-reference.md` NO se tocó** → no hace falta `npm run ai:knowledge` ni redeploy de la EF
+>   `ai-assistant`.
+
+> ### 📐 ESTADO ANTERIOR (2026-07-28) — Rediseño UoM/Empaque/Variantes: **✅ COMPLETO y EN PROD** (v1.145.0, migs 289-313)
 >
 > **El rediseño UoM terminó Y SE DEPLOYÓ.** Esta sesión cerró las dos fases que faltaban y además
 > subió a PROD TODO lo que estaba acumulado en `dev` desde v1.142.0: **WMS (289-291), Pedidos
@@ -50,29 +95,21 @@ type: project
 > como venta en UoM base y **se le aplicaban los combos de la unidad suelta**. Corregido con el flag
 > `es_base` (`vendiendoEnBase()`). Un ordinal no puede gobernar una decisión de plata.
 >
-> **▶ PRÓXIMA SESIÓN — no hay pendientes del rediseño ni de deploy.** Lo que queda abierto:
-> - ✅ **Serializados: RESUELTO (mig 313, v1.145.0)** — ya no queda ningún pendiente funcional.
-> - 🟡 **Decisión de GO (única cosa abierta):** ¿reconstruir el CHECK que impedía los dos sistemas de
->   variante en el mismo SKU? (se perdió con la mig 311). Ver el bloque de abajo.
-> - `schema_full.sql` **NO se pudo regenerar** esta sesión: `npm run schema:dump` necesita un
->   `SUPABASE_ACCESS_TOKEN` (el modo PG falla por el bug de Supavisor). Refleja hasta la 308 —
->   pedirle el token a GO y regenerarlo (DEV y PROD están idénticos en 311).
-> - **`app-reference.md` NO se tocó**, así que no hace falta `npm run ai:knowledge` ni redeploy de la
->   EF `ai-assistant`. Si en la próxima sesión se documenta el rediseño ahí, sí hay que hacerlo.
-> - Retomar los pendientes NO-UoM del backlog general (ver más abajo).
+> **▶ Estado al cierre de esa sesión:** sin pendientes del rediseño ni de deploy; quedaba una sola
+> decisión abierta de GO (los dos sistemas de variante en el mismo SKU) — **ya resuelta**, ver el
+> bloque de arriba (v1.146.0, mig 314).
 >
-> #### 🟡 DECISIÓN PENDIENTE DE GO — ¿los dos sistemas de variante en el MISMO SKU?
+> #### ✅ DECISIÓN TOMADA — los dos sistemas de variante NO van en el MISMO SKU (resuelto: mig 314)
 >
 > La mig 274 había creado un CHECK (`chk_productos_grupo_sin_atributos_variante`) que impedía que un
 > producto fuera "grupo de variantes" **y** tuviera atributos de variante a nivel LPN
 > (`tiene_talle`/`tiene_color`/…) al mismo tiempo — dos modelos de stock incompatibles en un SKU. Ese
-> CHECK **desapareció** en la mig 311, porque referenciaba la columna `grupo_id` que se dropeó.
+> CHECK **desapareció** en la mig 311, porque referenciaba la columna `grupo_id` que se dropeó, y entre
+> la 311 y la 314 nada impidió que un SKU fuera madre/hijo (`producto_padre_id`) Y tuviera atributos
+> encima. Nunca hubo productos en esa situación (0 en DEV y en PROD).
 >
-> Hoy **nada impide** que un SKU sea variante madre/hijo (`producto_padre_id`) Y tenga atributos de
-> variante encima. Al 2026-07-28 hay **0 productos** en esa situación, así que no hay nada roto — pero
-> es una decisión abierta: **¿se reconstruye el guard contra `producto_padre_id`, o la decisión "Eje A:
-> los dos sistemas coexisten" también habilita usarlos juntos en el mismo producto?** Si GO quiere el
-> guard, es un CHECK de una línea (nueva migración).
+> **GO decidió reconstruir el guard** (2026-07-28): los dos sistemas coexisten en la app (Eje A) pero
+> **no dentro del mismo producto**. Implementado en la **mig 314** — ver el bloque "ARRANCÁ ACÁ".
 >
 > #### ✅ 🔢 SERIALIZADOS — RESUELTO (mig 313, v1.145.0, 2026-07-28)
 >
@@ -1169,7 +1206,8 @@ type: project
 > mismo formulario) — redundante. No existía NINGÚN hard delete real, ni individual ni bulk.
 >
 > **Hallazgo 2 — el comportamiento es correcto por diseño, faltaba un detalle de UX.** Genesis360
-> tiene dos modelos de variante NO combinables (mig 274): "Atributos de variante" (un SKU, el talle
+> tiene dos modelos de variante NO combinables (mig 274 → hoy **mig 314** sobre madre/hijo, porque
+> "Grupo de variantes" se dropeó en la 311): "Atributos de variante" (un SKU, el talle
 > se pide por LPN al ingresar) y "Grupo de variantes" (cada talle es un SKU SEPARADO — por diseño el
 > ingreso no pregunta el talle porque el SKU elegido YA ES esa variante). Confirmado en DEV que
 > "Remera Básica" (SKU-00092) estaba correctamente vinculada al grupo con `variante_valores`
@@ -1380,6 +1418,8 @@ type: project
 >   Recepciones/Ingreso manual (patrón `tiene_lote`), bloqueo de venta ambigua (patrón `tiene_series`,
 >   función `atributoAmbiguoEnStock`), y **mig 274** (`chk_productos_grupo_sin_atributos_variante`,
 >   CHECK constraint verificado que rechaza incluso por SQL directo — REGLA #0, guard server-side).
+>   ⚠ **Ese CHECK ya no existe:** se fue con `grupo_id` en la mig 311 y se reconstruyó sobre el modelo
+>   madre/hijo en la **mig 314** (v1.146.0) — ver el bloque "ARRANCÁ ACÁ" al principio del archivo.
 > - **Ronda 3** (`90de330b`): GO probó de nuevo — el ingreso SIMPLE (Inventario→Agregar stock→Ingreso)
 >   seguía sin pedir el atributo pese al fix de ronda 2. Causa raíz real: el buscador de productos de
 >   "Ingreso manual" no traía `tiene_talle`/etc. en el `SELECT` → `selectedProduct.tiene_talle` quedaba

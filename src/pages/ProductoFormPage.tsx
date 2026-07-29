@@ -18,6 +18,7 @@ import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import { OPERADORES_TIER, type TierOperador } from '@/lib/tiers'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
+import { motivoBloqueoAtributosVariante, motivoBloqueoCrearVariante, tieneAtributosVariante, type CampoAtributoVariante } from '@/lib/atributosVariante'
 import { ProductoQR } from '@/components/ProductoQR'
 import { ReasignarStockVarianteModal } from '@/components/ReasignarStockVarianteModal'
 import { Toggle } from '@/components/Toggle'
@@ -98,13 +99,6 @@ export default function ProductoFormPage() {
   const [nuevaVarianteDif, setNuevaVarianteDif] = useState('')
   // Modal de reparto del stock "sin variante asignada" (Fase 4, mig 309)
   const [reasignarAbierto, setReasignarAbierto] = useState(false)
-
-  // "Atributos de variante" (tiene_talle/color/etc.) COEXISTE con madre/hijo (decisión Eje A de
-  // GO): son dos formas de manejar variantes y cada tenant/producto elige. Ya no se bloquean.
-  const ATRIBUTOS_VARIANTE_CAMPOS = ['tiene_talle', 'tiene_color', 'tiene_encaje', 'tiene_formato', 'tiene_sabor_aroma'] as const
-  const toggleAtributoVariante = (campo: typeof ATRIBUTOS_VARIANTE_CAMPOS[number], checked: boolean) => {
-    setForm(p => ({ ...p, [campo]: checked }))
-  }
 
   const { data: categorias = [] } = useQuery({
     queryKey: ['categorias', tenant?.id],
@@ -262,6 +256,18 @@ export default function ProductoFormPage() {
 
   const esHijo = !!productoPadreId
   const esMadre = hijos.length > 0
+
+  // Los dos modelos de variante COEXISTEN en la app (decisión Eje A de GO) pero NO dentro del
+  // mismo producto: un hijo ya es un SKU separado y una madre ya delegó el stock en sus hijos.
+  // Espejo del CHECK + trigger de la mig 314 — la DB igual revalida (la UI se cachea).
+  const bloqueoAtributos = motivoBloqueoAtributosVariante({ esHijo, esMadre, cantidadHijos: hijos.length })
+  const toggleAtributoVariante = (campo: CampoAtributoVariante, checked: boolean) => {
+    if (bloqueoAtributos) { toast.error(bloqueoAtributos); return }
+    setForm(p => ({ ...p, [campo]: checked }))
+  }
+  // El botón "Crear variante" se bloquea con lo que el usuario VE (el form, aunque no lo haya
+  // guardado); `handleCrearVariante` revalida contra lo que está GUARDADO, que es lo que ve la DB.
+  const bloqueoCrearVariante = motivoBloqueoCrearVariante(form)
 
   // Stock "sin variante asignada" (Fase 4, mig 309): el que quedó colgando de la MADRE cuando se
   // le crearon variantes. Contable pero NO vendible → hay que repartirlo entre los hijos.
@@ -628,6 +634,20 @@ export default function ProductoFormPage() {
     const dif = nuevaVarianteDif.trim()
     if (!dif) { toast.error('Poné un diferenciador para la variante (ej. "Rojo / M")'); return }
     if (!isEditing || !id || !tenant || !productoData) return
+    // Un producto con Atributos de variante activos no puede convertirse en agrupador: serían los
+    // dos modelos de variante en el mismo SKU (mig 314). Se avisa acá con el motivo; el trigger
+    // de la DB lo rechaza igual si se intenta por API/importador.
+    const bloqueoModelo = motivoBloqueoCrearVariante(productoData as any)
+    if (bloqueoModelo) {
+      // Si ya los apagó en pantalla pero no guardó, el motivo real es otro — decirlo así.
+      toast.error(
+        tieneAtributosVariante(form)
+          ? bloqueoModelo
+          : 'Apagaste los Atributos de variante pero todavía no guardaste el producto. Guardalo y después creá la variante.',
+        { duration: 8000 },
+      )
+      return
+    }
     const madreId = productoPadreId ?? id
     // Convertir un standalone CON stock en madre deja ese stock "sin variante asignada": sigue
     // contando en inventario pero NO se puede vender (el POS excluye a las madres agrupadoras).
@@ -1566,9 +1586,17 @@ export default function ProductoFormPage() {
                       </p>
                     </div>
 
+                    {/* Un producto usa UN modelo de variante, no dos (mig 314) */}
+                    {bloqueoAtributos && (
+                      <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2">
+                        <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <p className="text-xs text-amber-800 dark:text-amber-300">{bloqueoAtributos}</p>
+                      </div>
+                    )}
+
                     {/* tiene_talle */}
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <div className="mt-0.5"><Toggle checked={form.tiene_talle} onChange={v => toggleAtributoVariante('tiene_talle', v)} aria-label="tiene_talle" /></div>
+                    <label className={`flex items-start gap-3 ${bloqueoAtributos ? 'opacity-60' : 'cursor-pointer'}`}>
+                      <div className="mt-0.5"><Toggle disabled={!!bloqueoAtributos} title={bloqueoAtributos ?? undefined} checked={form.tiene_talle} onChange={v => toggleAtributoVariante('tiene_talle', v)} aria-label="tiene_talle" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Talle / Talla</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Registra el talle de cada unidad (ropa, calzado)</p>
@@ -1576,8 +1604,8 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_color */}
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <div className="mt-0.5"><Toggle checked={form.tiene_color} onChange={v => toggleAtributoVariante('tiene_color', v)} aria-label="tiene_color" /></div>
+                    <label className={`flex items-start gap-3 ${bloqueoAtributos ? 'opacity-60' : 'cursor-pointer'}`}>
+                      <div className="mt-0.5"><Toggle disabled={!!bloqueoAtributos} title={bloqueoAtributos ?? undefined} checked={form.tiene_color} onChange={v => toggleAtributoVariante('tiene_color', v)} aria-label="tiene_color" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Color</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Identifica el color de cada unidad</p>
@@ -1585,8 +1613,8 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_encaje */}
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <div className="mt-0.5"><Toggle checked={form.tiene_encaje} onChange={v => toggleAtributoVariante('tiene_encaje', v)} aria-label="tiene_encaje" /></div>
+                    <label className={`flex items-start gap-3 ${bloqueoAtributos ? 'opacity-60' : 'cursor-pointer'}`}>
+                      <div className="mt-0.5"><Toggle disabled={!!bloqueoAtributos} title={bloqueoAtributos ?? undefined} checked={form.tiene_encaje} onChange={v => toggleAtributoVariante('tiene_encaje', v)} aria-label="tiene_encaje" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Encaje</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Variante de encaje o ajuste</p>
@@ -1594,8 +1622,8 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_formato */}
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <div className="mt-0.5"><Toggle checked={form.tiene_formato} onChange={v => toggleAtributoVariante('tiene_formato', v)} aria-label="tiene_formato" /></div>
+                    <label className={`flex items-start gap-3 ${bloqueoAtributos ? 'opacity-60' : 'cursor-pointer'}`}>
+                      <div className="mt-0.5"><Toggle disabled={!!bloqueoAtributos} title={bloqueoAtributos ?? undefined} checked={form.tiene_formato} onChange={v => toggleAtributoVariante('tiene_formato', v)} aria-label="tiene_formato" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Formato</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Formato o presentación del producto</p>
@@ -1603,8 +1631,8 @@ export default function ProductoFormPage() {
                     </label>
 
                     {/* tiene_sabor_aroma */}
-                    <label className="flex items-start gap-3 cursor-pointer">
-                      <div className="mt-0.5"><Toggle checked={form.tiene_sabor_aroma} onChange={v => toggleAtributoVariante('tiene_sabor_aroma', v)} aria-label="tiene_sabor_aroma" /></div>
+                    <label className={`flex items-start gap-3 ${bloqueoAtributos ? 'opacity-60' : 'cursor-pointer'}`}>
+                      <div className="mt-0.5"><Toggle disabled={!!bloqueoAtributos} title={bloqueoAtributos ?? undefined} checked={form.tiene_sabor_aroma} onChange={v => toggleAtributoVariante('tiene_sabor_aroma', v)} aria-label="tiene_sabor_aroma" /></div>
                       <div>
                         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Sabor / Aroma</p>
                         <p className="text-xs text-gray-400 dark:text-gray-500">Sabor o aroma de cada unidad</p>
@@ -1711,7 +1739,13 @@ export default function ProductoFormPage() {
 
                   {/* Crear variante — disponible para madre o standalone (agrega un hijo) */}
                   {!esHijo && (
-                    crearVarianteAbierto ? (
+                    bloqueoCrearVariante ? (
+                      /* Los dos modelos de variante no conviven en el mismo SKU (mig 314) */
+                      <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2">
+                        <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                        <p className="text-xs text-amber-800 dark:text-amber-300">{bloqueoCrearVariante}</p>
+                      </div>
+                    ) : crearVarianteAbierto ? (
                       <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-700">
                         <input type="text" value={nuevaVarianteDif}
                           onChange={e => setNuevaVarianteDif(e.target.value)}

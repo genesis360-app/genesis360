@@ -1148,7 +1148,7 @@ para forzar la selección de series) — nunca cae a "cualquiera" por FIFO ciego
 | 9 | Traslados entre sucursales — despacho (`TrasladosPanel`) | Snapshot del atributo de la línea origen en `traslado_items` (columnas nuevas, **mig 275**) | Insert incluye los 5 campos | ✅ Código + regresión e2e (`30_traslado_sucursal_mutante`, corrido aislado tras el cambio — sigue verde) |
 | 10 | Traslados — recepción en destino | La línea nueva en destino hereda el atributo del `traslado_items` (no se re-pregunta) | Insert copia los 5 campos de `it` | ✅ Código + regresión e2e (mismo spec 30) |
 | 11 | Traslados — cancelación/reingreso al origen | Igual que recepción, para la rama que crea línea nueva | Insert copia los 5 campos de `it` | ✅ Código (rama de reingreso sin línea previa) |
-| 12 | Conflicto "Grupo de variantes" vs "Atributos de variante" | Un producto NO puede tener `grupo_id` Y `tiene_X=true` a la vez (dos modelos de stock incompatibles) | `ProductoFormPage` bloquea en UI + **mig 274** CHECK constraint en DB (verificado que rechaza por SQL directo) | ✅ Código + verificación manual por SQL (violación real rechazada) |
+| 12 | Conflicto "Variantes" vs "Atributos de variante" | Un producto NO puede usar los dos modelos de variante a la vez (dos modelos de stock incompatibles). ⚠ **Actualizado 2026-07-28:** el CHECK original era sobre `grupo_id` (**mig 274**) y se perdió al dropear esa columna en la **mig 311**; se reconstruyó sobre el modelo madre/hijo en la **mig 314** | `ProductoFormPage` bloquea en UI (toggles deshabilitados + motivo) + **mig 314** en DB: CHECK `chk_productos_variante_sin_atributos` (el hijo) + trigger `trg_productos_variante_atributos` (la madre) | ✅ Código + **e2e 109** (5 aserciones nuevas por REST) + 12 unit |
 
 **Gaps de queries de producto encontrados y corregidos en esta ronda** (la causa real del bug que
 reportó GO: el buscador de "Ingreso manual" no traía `tiene_talle` etc. en el `SELECT`, así que la
@@ -1536,3 +1536,42 @@ multiplica las cantidades de stock.
 
 **Verde:** tsc · build · unit 1243 (23 nuevos en `presentaciones.test.ts`) · **e2e 99 reescrito** +
 100/102/103/104 migrados a sembrar por `fn_presentaciones_guardar`.
+
+---
+
+## 🔀 §46 — Un producto usa UN modelo de variante, no dos (mig 314) — 2026-07-28
+
+Reconstruye, sobre el modelo madre/hijo, el guard que la **mig 274** tenía sobre `grupo_id` y que se
+**perdió** al dropear esa columna en la **mig 311** (Fase 5 del rediseño UoM). Entre la 311 y esta
+migración nada impedía que un SKU fuera variante madre/hijo **y** tuviera atributos de variante a
+nivel LPN encima. Al detectarlo había **0 productos** en esa situación (DEV y PROD), así que no hubo
+nada que corregir: el guard entró sin tocar un dato.
+
+**Los dos modelos** (coexisten en la app — decisión Eje A de GO — pero no dentro del mismo producto):
+
+- **Atributos de variante** (`tiene_talle`/`tiene_color`/…): UN SOLO SKU, el stock se banca junto y
+  el talle/color va en cada `inventario_lineas`.
+- **Variantes madre/hijo** (`producto_padre_id`): cada variante es un SKU separado con su propio
+  `stock_actual`, precio y código.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 1 | **Un hijo no puede tener Atributos de variante** | Ya es un SKU separado con su propio stock | CHECK `chk_productos_variante_sin_atributos` — **e2e 109** (por REST) |
+| 2 | **Una madre agrupadora tampoco** | Ya delegó el stock en sus hijos | trigger `trg_productos_variante_atributos` — **e2e 109** |
+| 3 | **No se le crea la 1ra variante a un producto con atributos** | Lo convertiría en agrupador con los dos modelos encima | trigger (rama de la madre) — **e2e 109** |
+| 4 | **…pero apagando los atributos SÍ se puede** | Nunca queda un callejón sin salida: hay camino de migración | **e2e 109** (paso 9) |
+| 5 | **Un standalone con atributos sigue siendo válido** | El modelo de atributos NO se depreca | **e2e 109** (paso 7) + query DEV (65 productos con atributos, ninguno afectado) |
+| 6 | **El guard es server-side, no solo UI** | La UI se cachea y el importador/EFs escriben con `service_role` sin pasar por ella | los rechazos del e2e son **por REST**, sin tocar la UI |
+| 7 | **La UI explica el motivo, no tira un error crudo** | Toggles deshabilitados con cartel ámbar + "Crear variante" reemplazado por el motivo | `motivoBloqueoAtributosVariante` / `motivoBloqueoCrearVariante` (12 unit) |
+| 8 | **Guardar un producto normal no se rompe** | `UPDATE OF <cols>` acota el disparo: `recalcular_stock` y la propagación de nombre no despiertan el trigger | 5 negativos verificados en DEV con rollback |
+| 9 | **El guard no puede fallar ABIERTO** | `SECURITY DEFINER` para que la RLS no le esconda la fila de la madre; los dos `SELECT` filtran por `NEW.tenant_id` (sin fuga cross-tenant) | revisión de la migración |
+
+**⚠ Nota de modelo (para quien lo lea en el futuro):** la razón técnica que motivó la mig 274 —"el
+ingreso no pedía el talle porque la UI de Grupo de variantes no lo exige de esa forma"— **ya no
+aplica**: en el modelo madre/hijo un hijo es un producto normal (el POS solo excluye a las MADRES y
+el ingreso lee `tiene_talle` genéricamente). Hoy este guard es una decisión de **modelo de negocio**,
+no una limitación técnica. Si algún día se quiere el híbrido "color = SKU separado, talle = atributo
+de LPN" (caso real en indumentaria), alcanza con dropear el CHECK y el trigger.
+
+**Verde:** tsc · build · **unit 1263** (12 nuevos en `atributosVariante.test.ts`) · **e2e 109**
+extendido de 4 a 9 aserciones (2/2).

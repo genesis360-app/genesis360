@@ -6,6 +6,55 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-28] update | 🔀 v1.146.0 — guard de modelo de variante: madre/hijo vs. Atributos de variante (mig 314)
+
+GO eligió **reconstruir el guard** que se había perdido con la mig 311 — la única decisión que
+quedaba abierta del rediseño UoM. Los dos sistemas de variante **coexisten en la app** (Eje A) pero
+**no dentro del mismo producto**.
+
+**Antes de escribir nada se verificó contra datos REALES:** DEV 404 productos / 42 hijos / 17 madres
+/ 65 con atributos → **0 en violación**; PROD 23 / 0 / 0 / 1 → **0 en violación**. El guard entró sin
+corregir un solo dato (a diferencia de la mig 274, que había necesitado arreglar una fila a mano).
+
+**Mig 314, dos piezas** porque un CHECK es table-local y no puede preguntar "¿tengo hijos?":
+- **CHECK `chk_productos_variante_sin_atributos`** — el hijo (`producto_padre_id`) no puede tener
+  `tiene_talle`/`tiene_color`/…: ya es un SKU separado con su propio stock. Garantía dura, en todo
+  camino de escritura, y no se puede desactivar como un trigger.
+- **Trigger `trg_productos_variante_atributos`** — el lado de la madre: ni encender un atributo
+  teniendo hijos, ni crearle la primera variante teniendo atributos. **`SECURITY DEFINER` a
+  propósito:** un guard no puede fallar ABIERTO si la RLS le esconde la fila de la madre; los dos
+  `SELECT` filtran por `NEW.tenant_id`, así que saltear la RLS no expone datos de otro tenant.
+  `BEFORE INSERT OR UPDATE OF <cols>` acota el disparo — `recalcular_stock` y la propagación de
+  nombre a los hijos **no** lo despiertan (verificado).
+
+**Apagando los atributos el camino se destraba** (nunca queda un callejón sin salida, la lección de
+la mig 312) y un **standalone con atributos sigue siendo válido**: el modelo de atributos NO se
+depreca. La UI explica el motivo — toggles deshabilitados con cartel ámbar y "Crear variante"
+reemplazado por el motivo — en vez de dejar salir el `violates check constraint` crudo; los rechazos
+del e2e se prueban **por REST**, sin tocar la UI, porque lo que importa es que frene el SERVIDOR.
+
+**⚠ Hallazgo dicho a GO antes de implementar (no invalida la decisión, la reencuadra):** la razón
+técnica que motivó la mig 274 —"el ingreso no pedía el talle porque la UI de Grupo de variantes no lo
+exige de esa forma"— **ya no aplica**. En el modelo madre/hijo un hijo es un producto normal: el POS
+solo excluye a las MADRES (`VentasPage.tsx:1099`) y el ingreso lee `tiene_talle` genéricamente
+(`InventarioPage.tsx:2242`). O sea que hoy el híbrido "color = SKU separado, talle = atributo de LPN"
+(caso real en indumentaria) **funcionaría**. El guard sigue siendo defendible como decisión de
+**modelo de negocio** — un producto usa un modelo, no dos — pero si algún día se quiere el híbrido,
+alcanza con dropear el CHECK y el trigger. GO decidió con eso sobre la mesa.
+
+**El `migration-reviewer` no se invocó** (esta sesión no usa subagentes); la revisión se hizo con el
+mismo checklist: idempotencia, `SET search_path`, tenant scoping, DDL no destructivo, y — lo que más
+importaba acá — barrido de **todos** los caminos que escriben esas columnas (solo `ProductoFormPage`;
+ni el importador ni las Edge Functions las tocan) para descartar regresiones.
+
+Probado en DEV con datos reales y **rollback intencional**: 3 rechazos correctos (hijo con atributo ·
+1ra variante de un producto con atributos · atributo en madre con hijos) + **5 negativos** que siguen
+pasando (save de hijo, save de madre, atributos en standalone, variante de madre limpia, y el UPDATE
+que no menciona esas columnas). Verificado después que no quedó basura: 404 productos, 0 violaciones.
+
+Verde: tsc · build · **unit 1263** (12 nuevos) · **e2e 109** extendido de 4 a 9 aserciones (2/2).
+Ver `tests/specs/uat-modo-basico.md` **§46** y [[wiki/features/atributos-variante]].
+
 ## [2026-07-28] update | 🔢 v1.145.0 — reasignar stock de productos SERIALIZADOS (mig 313): cierra el rediseño UoM
 
 GO pidió avanzar con el último pendiente. En un producto con número de serie **cada unidad ES una

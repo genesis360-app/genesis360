@@ -3,7 +3,7 @@ title: Atributos de variante (talle / color / encaje / formato / sabor·aroma)
 category: features
 tags: [productos, inventario, variantes, talle, color, ventas, atributos]
 sources: [CLAUDE.md, log.md]
-updated: 2026-07-19
+updated: 2026-07-28
 ---
 
 # Atributos de variante (talle / color / encaje / formato / sabor·aroma)
@@ -32,7 +32,9 @@ talles válidos, y el dato no hacía nada con el inventario (ni en la venta ni e
 
 ## Dos sistemas de variantes distintos (no confundir)
 
-Genesis360 tiene **dos** mecanismos de variante que conviven, con propósitos distintos:
+Genesis360 tiene **dos** mecanismos de variante que conviven, con propósitos distintos. Conviven en
+la app, pero **no dentro del mismo producto**: desde la **mig 314** (v1.146.0) un SKU usa uno u otro,
+no los dos — ver "Guard de modelo de variante" al final de esta página.
 
 | Sistema | Página / tabla | Qué es | Estado |
 |---|---|---|---|
@@ -160,13 +162,10 @@ no se adivinó nada:
      con copy explicando cuándo usar cada sistema.
    - **Mig 274** (`chk_productos_grupo_sin_atributos_variante`): CHECK constraint que bloqueaba la
      combinación **incluso por API/SQL directo**.
-     > ⚠ **Ese CHECK YA NO EXISTE (mig 311, v1.144.0):** se fue junto con la columna `grupo_id` que
-     > referenciaba. Hoy **nada impide** que un mismo SKU sea variante madre/hijo (`producto_padre_id`)
-     > **y** tenga atributos de variante a nivel LPN (`tiene_talle`/`tiene_color`/…) al mismo tiempo —
-     > que es justo la combinación que había causado el incidente original. Al 2026-07-28 hay **0
-     > productos** en esa situación. **🟡 DECISIÓN PENDIENTE DE GO:** ¿se reconstruye el guard contra
-     > `producto_padre_id`, o la decisión "Eje A: los dos sistemas coexisten" también habilita usarlos
-     > juntos en el MISMO SKU? Ver `project_pendientes.md`.
+     > ⚠ **Ese CHECK dejó de existir con la mig 311 (v1.144.0):** se fue junto con la columna
+     > `grupo_id` que referenciaba, dejando abierta justo la combinación que había causado el
+     > incidente. **✅ RECONSTRUIDO sobre el modelo madre/hijo en la mig 314 (v1.146.0) — ver
+     > "Guard de modelo de variante" más abajo.**
    - Dato de prueba corregido en DEV: "Variante1" (Almacén Jorgito) → `tiene_talle=false` (queda solo
      como miembro del grupo, que es el modelo correcto para "cada talle es un SKU separado").
 
@@ -315,6 +314,47 @@ contención ambiental, confirmado no-regresión al aislarlos).
 5. **Pendiente real (no resuelto todavía):** la ronda 4 no está en PROD — falta bump de
    `APP_VERSION`, PR `dev → main`, y aplicar la mig 277 en PROD en el próximo release.
 
+## Guard de modelo de variante (mig 314, v1.146.0, 🟡 EN DEV) — un producto usa UNO, no dos
+
+Reconstruye sobre el modelo **madre/hijo** el guard que la mig 274 tenía sobre `grupo_id` y que se
+perdió al dropear esa columna en la mig 311. Al detectarlo había **0 productos** en violación (DEV y
+PROD verificados por query), así que el guard entró sin corregir un solo dato.
+
+**La regla:** los dos sistemas **coexisten en la app** (decisión Eje A de GO) pero **no dentro del
+mismo producto**.
+
+| Camino de escritura | Qué lo frena |
+|---|---|
+| Un **hijo** (`producto_padre_id`) con `tiene_talle`/etc. | CHECK `chk_productos_variante_sin_atributos` — table-local, la garantía dura |
+| Encender un atributo en una **madre** que ya tiene hijos | trigger `trg_productos_variante_atributos` (un CHECK no puede preguntar "¿tengo hijos?") |
+| Crearle la **primera variante** a un producto con atributos activos | el mismo trigger, rama de la madre |
+| Apagar los atributos y **después** crear la variante | ✅ permitido — nunca queda un callejón sin salida |
+| Un **standalone** con atributos | ✅ permitido — el modelo de atributos NO se depreca |
+
+Detalles de implementación que importan:
+
+- **`SECURITY DEFINER` a propósito:** un guard nunca puede fallar ABIERTO. Con `SECURITY INVOKER`, si
+  la RLS le escondiera la fila de la madre, el `SELECT` no encontraría nada y el guard pasaría de
+  largo. Los dos `SELECT` filtran por `NEW.tenant_id`, así que saltear la RLS no expone ni deja tocar
+  datos de otro tenant.
+- **`BEFORE INSERT OR UPDATE OF <cols>`** acota el disparo a los saves que tocan esas 6 columnas:
+  `recalcular_stock` y la propagación de nombre a los hijos no lo despiertan.
+- **La UI explica el motivo** en vez de dejar salir el error crudo de Postgres: los 5 toggles se
+  deshabilitan con un cartel ámbar y el botón "Crear variante" se reemplaza por el motivo
+  (`motivoBloqueoAtributosVariante` / `motivoBloqueoCrearVariante` en `src/lib/atributosVariante.ts`).
+  Los guards del e2e se prueban **por REST**, sin tocar la UI: es el servidor lo que tiene que frenar.
+
+> ⚠ **Nota de modelo, para quien lo lea en el futuro.** La razón técnica que motivó la mig 274 —"el
+> ingreso no pedía el talle porque la UI de Grupo de variantes no lo exige de esa forma"— **ya no
+> aplica**: en el modelo madre/hijo un hijo es un producto normal (el POS solo excluye a las MADRES y
+> el ingreso lee `tiene_talle` genéricamente del producto). Hoy este guard es una decisión de
+> **modelo de negocio**, no una limitación técnica. Si algún día se quiere el híbrido "color = SKU
+> separado, talle = atributo de LPN" (caso real en indumentaria), alcanza con dropear el CHECK y el
+> trigger de la mig 314 — no hay nada más atado a ellos.
+
+**Cobertura:** 12 unit (`atributosVariante.test.ts`) + **e2e 109** extendido de 4 a 9 aserciones ·
+`tests/specs/uat-modo-basico.md` **§46**.
+
 ## Links
 
 - [[wiki/features/grupos-variantes]] — el otro sistema de variantes (SKU separado), no confundir
@@ -323,6 +363,6 @@ contención ambiental, confirmado no-regresión al aislarlos).
 - [[wiki/features/ventas-pos]] — picker "Elegir posición de rebaje" que gobierna el descuento real,
   "ISS-075" (`venta_item_despachos`)
 - [[wiki/features/configuracion]] — sub-pestaña Atributos
-- [[wiki/database/migraciones]] — migs 273, 274, 275, 277
+- [[wiki/database/migraciones]] — migs 273, 274, 275, 277, **314**
 - `tests/specs/uat-modo-basico.md` §33 — tabla de cobertura completa (12/12 filas con e2e real tras
   la ronda 4: specs 89, 95, 96, 97)

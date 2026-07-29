@@ -51,3 +51,60 @@ export function filtrarLineasPorAtributo<T extends LineaConAtributos>(
   if (claves.length === 0) return lineas
   return lineas.filter(l => claves.every(([k, v]) => l[k] === v))
 }
+
+// ── Un producto usa UN modelo de variante, no dos (mig 314) ──────────────────────────────
+// Los dos modelos coexisten en la app (decisión Eje A de GO) pero NO dentro del mismo producto:
+//   · Atributos de variante (`tiene_talle`/…): UN SOLO SKU, el stock se banca junto y el talle/
+//     color va en cada `inventario_lineas`.
+//   · Variantes madre/hijo (`producto_padre_id`): cada variante es un SKU separado con su propio
+//     stock, precio y código.
+// Esto es el espejo (más amable) del CHECK `chk_productos_variante_sin_atributos` y del trigger
+// `trg_productos_variante_atributos`. La DB igual revalida: la UI se cachea y el importador y las
+// Edge Functions escriben con service_role sin pasar por acá.
+
+export const CAMPOS_ATRIBUTO_VARIANTE = [
+  'tiene_talle', 'tiene_color', 'tiene_encaje', 'tiene_formato', 'tiene_sabor_aroma',
+] as const
+export type CampoAtributoVariante = typeof CAMPOS_ATRIBUTO_VARIANTE[number]
+
+export type ProductoConAtributos = Partial<Record<CampoAtributoVariante, boolean | null | undefined>>
+
+/** ¿El producto tiene algún Atributo de variante activo? */
+export function tieneAtributosVariante(p: ProductoConAtributos | null | undefined): boolean {
+  if (!p) return false
+  return CAMPOS_ATRIBUTO_VARIANTE.some(campo => !!p[campo])
+}
+
+/**
+ * Por qué NO se pueden tocar los Atributos de variante de este producto (o null si sí se pueden).
+ * Un hijo ya es un SKU separado; una madre agrupadora ya delegó el stock en sus hijos.
+ */
+export function motivoBloqueoAtributosVariante(
+  ctx: { esHijo: boolean; esMadre: boolean; cantidadHijos?: number },
+): string | null {
+  if (ctx.esHijo) {
+    return 'Esta variante ya es un SKU separado con su propio stock, así que no usa Atributos de variante. ' +
+      'Los atributos son para UN SOLO SKU cuyo stock se banca junto y se distingue por talle/color en el depósito.'
+  }
+  if (ctx.esMadre) {
+    const n = ctx.cantidadHijos ?? 0
+    return `Este producto es un agrupador${n > 0 ? ` de ${n} variante${n === 1 ? '' : 's'}` : ''} y cada variante es un SKU separado con su propio stock. ` +
+      'Son dos modelos incompatibles: si querés manejar talle/color dentro de un solo SKU, borrá primero las variantes.'
+  }
+  return null
+}
+
+/**
+ * Por qué NO se le puede crear una variante a este producto (o null si sí se puede).
+ * Convertirlo en agrupador teniendo Atributos de variante activos dejaría los dos modelos
+ * conviviendo en el mismo SKU.
+ */
+export function motivoBloqueoCrearVariante(
+  producto: (ProductoConAtributos & { nombre?: string | null }) | null | undefined,
+): string | null {
+  if (!tieneAtributosVariante(producto)) return null
+  const nombre = producto?.nombre?.trim() || 'Este producto'
+  return `"${nombre}" tiene Atributos de variante activos (talle/color/etc.), que manejan las variantes ` +
+    'dentro de UN SOLO SKU. Las variantes madre/hijo son SKUs separados: son dos modelos incompatibles. ' +
+    'Apagá los Atributos de variante más arriba y después creá las variantes.'
+}

@@ -577,11 +577,27 @@ stock).
 **Todas las ventas generan Pedido de preparación MENOS la entrega directa.**
 
 ```
+PRESUPUESTO (estado pendiente)                                -> NO genera  (mig 323)
 entrega directa = canal PRESENCIAL + despachada + sin envío   -> NO genera
 con envío (propio o de tercero)                               -> genera
-reserva o pendiente (la mercadería no salió)                  -> genera
+reserva (la mercadería no salió y hay compromiso)             -> genera
 canal ONLINE sin envío (= retiro en local)                    -> genera
 ```
+
+> 🐛 **Un PRESUPUESTO no genera pedido (mig 323).** Lo encontró GO: una venta recurrente generó un
+> presupuesto, el presupuesto generó un pedido, y al cancelarse quedó el pedido vivo para que el
+> depósito lo preparara. Fue un error de criterio de la mig 318 — `ventas.estado = 'pendiente'` **es
+> un presupuesto** (el ticket dice "★ PRESUPUESTO ★"): el cliente no aceptó, no pagó y puede no
+> convertirse nunca. El pedido nace cuando **se convierte** en venta.
+>
+> Y en el otro extremo: **anular o devolver la venta cancela su pedido** y sus tareas de picking.
+> ⚠ Al cancelar **NO se toca `cantidad_reservada`**: en un venta-pedido el picking nunca reservó
+> (mig 316), la reserva es de la VENTA — liberarla acá la liberaría dos veces. Por eso las tareas se
+> cancelan con UPDATE directo y no con `fn_cancelar_tarea_wms`, que sí libera. Un pedido ya
+> **entregado** no se toca: la mercadería salió y eso es historia.
+>
+> Tercera barrera: **no se puede lanzar** un pedido cuya venta esté anulada, devuelta o siga siendo
+> un presupuesto (mig 324).
 
 Deriva de `canales_venta.clasificacion` (mig 168): **no hay nada que configurar** y es correcto por
 default para todos los tenants. `tenants.pedido_canales_excluidos` es solo la excepción (canales que

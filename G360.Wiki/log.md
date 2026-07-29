@@ -6,6 +6,89 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-29] update | 🧾 Auditoría de la factura #475: los importes estaban bien, faltaba EXHIBIR el descuento
+
+GO reportó que la factura de la venta #475 "indica cualquier cosa": precio unitario de $2.700 para
+un producto que sale $600 (y $500 con mayorista), y el subtotal no le cuadraba.
+
+**Auditado número por número contra la base: no hay error fiscal.** Cada línea multiplica, la suma
+da el total y el total coincide con lo autorizado por AFIP (CAE `86300690978794`, $7.971,30).
+Los $2.700 son el precio de **una Caja** = 6 u × $450, y los $450 salen de **dos descuentos
+apilados**: el tier mayorista (≥12 u → $500) y el descuento general del 10% → $450.
+
+**El problema real lo dijo el propio GO:** *"quizás no aclara que tiene el descuento y por eso no lo
+leo bien"*. El descuento general se pliega en `precio_unitario` al registrar la venta —a propósito,
+para que ningún consumidor del comprobante lo reste dos veces (`venta_items.descuento` = 0)— pero
+así **la factura nunca menciona la bonificación**. El cliente ve un precio que no coincide con la
+lista, no puede verificar el descuento que le prometieron, y la factura es el documento que se lleva.
+
+**Fix, sin tocar un solo importe:**
+- Leyenda bajo los ítems: *"Los importes ya incluyen la bonificación general del N% aplicada a esta
+  operación, y el precio por volumen donde corresponde."*
+- Debajo del P. Unitario del bulto, su **composición**: "6 u × $450" — así ese número deja de ser un
+  valor que no existe en ninguna tabla.
+
+**⚠ Riesgo latente detectado y anotado (no corregido):** el P. Unitario por bulto se calcula como
+`subtotal / cantidad_uom`; si la división no es exacta a 2 decimales la factura no multiplica
+(333,33 × 3 = 999,99 ≠ 1.000). No afecta lo que va a AFIP, pero deja un comprobante que no cierra.
+Fix propuesto en `project_pendientes.md`.
+
+Verde: tsc · build · unit 1339 · e2e 113 (6/6).
+
+## [2026-07-29] update | 🐛 v1.149.0 — presupuesto que generaba pedido + capacidad de ubicaciones + 📦 cubicaje opt-in (Fase A)
+
+Cierre de una sesión larga de ida y vuelta con GO probando el flujo nuevo.
+
+**🐛 El bug más importante: un PRESUPUESTO generaba un PEDIDO.** GO lo encontró con una venta
+recurrente: se generó un presupuesto, el presupuesto generó un pedido, y después el presupuesto se
+canceló — dejando un pedido vivo que cualquiera podía lanzar para preparar mercadería de una venta
+que ya no existe. **Fue un error de criterio mío en la mig 318**: incluí `'pendiente'` entre los
+estados que generan pedido razonando "la mercadería no salió, hay que prepararla", cuando en esta
+app `ventas.estado = 'pendiente'` **ES un presupuesto** (el ticket dice "★ PRESUPUESTO ★"). Un
+presupuesto no es un compromiso.
+**Migs 323/324:** el presupuesto no genera pedido (nace cuando se convierte en venta) · anular o
+devolver la venta **cancela su pedido y sus tareas** · y no se puede lanzar un pedido cuya venta no
+está viva. ⚠ Al cancelar NO se toca `cantidad_reservada`: en un venta-pedido el picking nunca
+reservó (mig 316), la reserva es de la venta — liberarla acá la liberaría dos veces. Por eso las
+tareas se cancelan con UPDATE directo y no con `fn_cancelar_tarea_wms`, que sí libera.
+Limpieza incluida: 1 pedido en DEV que ya había quedado mal.
+
+**📏 Auditoría de medidas, a pedido de GO** (*"¿cómo sabemos si cabe inventario en una ubicación?"*).
+Había **tres** juegos de medidas cargados y **ninguno conectado a nada**:
+- `productos.peso_kg/largo/ancho/alto` decía "opcional, **para envío**"… y el form de Envíos pedía
+  el peso **a mano**. Cargarlas no servía para nada. ✅ Conectado: se sugiere el bulto (el peso se
+  SUMA porque es aditivo; las dimensiones se toman al **máximo por eje**, que es la cota honesta —
+  apilar dos cajas de 30 cm no da una de 60 en los tres ejes) y se avisa si la sugerencia se queda
+  corta, porque cotizar de menos lo termina cobrando el courier.
+- `ubicaciones.capacidad_pallets/peso_max_kg/dimensiones` (**mig 032**, hace ~290 migraciones) no las
+  leía ningún cálculo. ✅ Conectadas (mig 321): "3 de 4 LPN" y "120 de 500 kg" en Config.
+  ⚠ El peso tiene un **sesgo peligroso**: si faltan pesos el total queda CORTO, o sea que el error
+  empuja hacia "parece que hay lugar" justo cuando el rack podría estar pasado. Por eso se muestra
+  la **cobertura** con ⚠ y el aviso salta al **90%**, no al 100%.
+- `producto_presentaciones` tiene medidas **por nivel**, la lib las lee y escribe… pero **el editor
+  no tiene inputs**, así que están siempre vacías. Ése es el bloqueante del cubicaje.
+
+**📦 Cubicaje volumétrico — arrancado (mig 322, Fase A).** GO propuso el diseño que resuelve la
+objeción de fondo: **opt-in por tenant**, y al activarlo las medidas se vuelven **obligatorias** en
+el editor → la cobertura es 100% por construcción de ahí en adelante. Decisiones suyas: peso
+**obligatorio por nivel** (el bulto incluye su embalaje) y **factor de aprovechamiento** configurable
+(0.70 default — ninguna ubicación real se llena al 100% geométrico).
+Hecho: config + trigger que exige las medidas + `volumen_m3` en la vista + `fn_cubicaje_cobertura`
+(en DEV: **6 de 296 productos medidos**). **Falta todo el frontend** — plan detallado en
+`project_pendientes.md`.
+
+**Otros arreglos de la misma tanda:** el detalle del SKU decía "Empaque" y la pestaña "Estructura"
+(misma cosa, dos nombres) → unificado · la tarjeta del pedido en Ventas ahora **abre el detalle de
+la venta encima de la pestaña** (al cerrar seguís en tu lista) · en `/pedidos` un venta-pedido ya no
+muestra "Entregar" (que genera la venta real) sino un link a donde SÍ se entrega.
+
+**Evaluado y DIFERIDO con evidencia:** lista de precios por canal y combos en pedidos manuales.
+Medido antes de decidir: `fn_pedido_generar_venta` **nunca corrió** (0 ventas generadas por un Pedido
+en PROD y DEV), PROD tiene 0 pedidos / 0 combos activos / 0 tenants con `lista_precio` seteada.
+
+Verde: tsc · build · **unit 1339** · **e2e 113 (6/6)** · regresión **107 (5/5)**.
+**TODO EN DEV** — PROD sigue en v1.145.0 con 11 migraciones (314-324) sin deployar.
+
 ## [2026-07-29] update | 🐛 GO probó el flujo real: el picking no sabía de dónde sacar la mercadería (mig 320) + el ticket ahora dice cuánto falta pagar
 
 Tres cosas que salieron de GO usando el flujo end-to-end recién construido.

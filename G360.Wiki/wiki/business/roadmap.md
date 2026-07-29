@@ -13,6 +13,24 @@ updated: 2026-07-28
 
 ---
 
+## v1.149.0 — 🐛 Bugs del flujo real + 📦 cubicaje opt-in (Fase A) — 🟡 **EN DEV** (2026-07-29)
+
+Los tres bugs que encontró GO probando el flujo Venta→Pedido end-to-end:
+**(1)** el picking de una RESERVA salía **sin LPN ni ubicación** (mig 320) · **(2)** un
+**PRESUPUESTO generaba pedido**, y al cancelarse quedaba vivo para que el depósito lo preparara
+(migs 323/324) · **(3)** el **ticket no decía cuánto falta pagar**, y una reserva se veía igual que
+una venta cerrada.
+
+Además: las **medidas del producto** decían "para envío" y no las leía nadie → ahora se sugiere el
+bulto al cotizar. La **capacidad de las ubicaciones** (cargada desde la mig 032 y nunca usada) se
+conecta: "3 de 4 LPN" y "120 de 500 kg", con cobertura del dato. Y arranca el **cubicaje volumétrico
+opt-in** (mig 322, Fase A de datos): toggle por tenant que vuelve **obligatorias** las medidas por
+nivel de estructura — falta el frontend.
+
+Verde: tsc · build · unit 1339 · e2e 113 (6/6) · regresión 107 (5/5).
+
+---
+
 ## v1.148.0 — 🧾 Flujo Venta → Pedido → Envío completo, según el diagrama de GO (migs 317-319) — 🟡 **EN DEV** (2026-07-29)
 
 Reescribe la regla de la v1.147.0 según el diagrama de flujo: **todas las ventas generan Pedido de

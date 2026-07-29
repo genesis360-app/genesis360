@@ -1656,8 +1656,73 @@ venta sin regla de canal.
 | 34 | **Una reserva ya no parece una venta cerrada** | El ticket decía "Venta N°…" igual que una cobrada. Ahora lleva badge **★ RESERVA ★**, encabezado "Reserva N°…" y el cierre "Guardá este comprobante para retirar" | revisión de código |
 | 35 | **Un presupuesto no reclama saldo** | Todavía no es una venta: no se le muestra saldo pendiente aunque tenga 0 pagado | unit dedicado |
 
-**Verde:** tsc · build · **unit 1304** (41 en `pedidoVenta.test.ts`) · **e2e 113 (5/5)** ·
-regresión **107 (5/5)**.
+### 🐛 Presupuestos y ventas anuladas (migs 323/324) — hallazgo de GO
+
+Una **venta recurrente** generó un PRESUPUESTO, el presupuesto generó un PEDIDO, y al cancelarse el
+presupuesto quedó **un pedido vivo** que cualquiera podía lanzar, mandando al depósito a preparar
+mercadería de una venta que ya no existe.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 36 | **🛑 Un PRESUPUESTO no genera pedido** | `ventas.estado = 'pendiente'` ES un presupuesto (el ticket dice "★ PRESUPUESTO ★"): no hay compromiso, el cliente no aceptó ni pagó. Error de criterio de la mig 318, corregido | **e2e 113** + unit |
+| 37 | **…pero al convertirse en venta sí** | El trigger escucha `UPDATE OF estado`: el pedido nace en el momento del compromiso | **e2e 113** |
+| 38 | **Una venta `facturada` sigue viva** | Puede necesitar preparación; la regla de entrega directa la deja afuera si corresponde | unit |
+| 39 | **🛑 Anular o devolver la venta cancela su pedido** | Y sus tareas de picking pendientes. Sin esto el depósito prepara algo que no existe | **e2e 113** + DO block |
+| 40 | **⚠ Cancelar NO libera `cantidad_reservada`** | En un venta-pedido el picking nunca reservó (mig 316): la reserva es de la VENTA. Liberarla acá la liberaría DOS veces cuando la venta haga su propia anulación. Por eso se cancelan las tareas con UPDATE directo y no con `fn_cancelar_tarea_wms` | revisión de la migración |
+| 41 | **Un pedido ya ENTREGADO no se toca** | La mercadería salió físicamente: eso es historia. La devolución la maneja su propio flujo | revisión de la migración |
+| 42 | **🛑 No se lanza un pedido cuya venta no está viva** | Segunda barrera por si algo quedara vivo: anulada, devuelta o todavía presupuesto | **e2e 113** |
+| 43 | **Limpieza de lo que ya quedó mal** | Los pedidos vivos de ventas anuladas/presupuestos se cancelaron (1 en DEV), sin tocar los entregados | verificado post-migración |
+
+### 📏 Medidas y capacidad (migs 321/322)
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 44 | **Las medidas del producto sirven para el envío** | Decían "opcional, para envío" y el form pedía el peso a mano: no las leía nadie | 19 unit (`medidasLogistica`) |
+| 45 | **El peso se SUMA, las dimensiones NO** | El peso es aditivo y exacto; las dimensiones se toman al **máximo por eje** (cota inferior honesta: apilar dos cajas de 30 cm no da una de 60 en los tres ejes) | unit dedicado |
+| 46 | **Avisa cuándo la sugerencia se queda corta** | "3 sin peso · 2 sin medidas": cotizar de menos lo termina cobrando el courier | unit |
+| 47 | **La capacidad de las ubicaciones se usa** | `capacidad_pallets` y `peso_max_kg` existían desde la mig **032** y no las leía ningún cálculo. Ahora "3 de 4 LPN" y "120 de 500 kg" | mig 321 + 10 unit |
+| 48 | **⚠ El peso incompleto subestima** | Si faltan `productos.peso_kg` el total queda CORTO — el error empuja hacia "parece que hay lugar" justo cuando el rack podría estar pasado. Se muestra la **cobertura** con ⚠ y el aviso salta al **90%**, no al 100% | unit dedicado |
+| 49 | **Avisa, nunca bloquea** | El dato de capacidad lo carga una persona y la mercadería ya está físicamente ahí | unit (el texto dice "Se puede guardar igual") |
+| 50 | **📦 Cubicaje opt-in exige las medidas** | Con `cubicaje_habilitado`, `producto_presentaciones` no acepta una fila sin peso ni las tres medidas — cobertura 100% por construcción | mig 322, probado en DEV (OFF guarda, ON rechaza) |
+| 51 | **Prender el cubicaje no completa el catálogo** | `fn_cubicaje_cobertura` da "N de M SKU medidos" (en DEV: 6 de 296) para no mostrar un número que parece completo | mig 322 |
+
+### 🧾 Auditoría de la factura #475 (pedido de GO) — los importes están BIEN, faltaba EXHIBIR el descuento
+
+GO reportó que la factura "indica cualquier cosa": el precio unitario decía **$2.700** para un
+producto que sale $600 y con mayorista $500, y el subtotal no le cuadraba. Se auditó número por
+número contra la base:
+
+| Línea | En la base | En la factura | ¿Multiplica? |
+|---|---|---|---|
+| Bebida Coca Cola 2.5L | 12 u × $450 = $5.400 | 2 Caja × $2.700 = $5.400 | ✅ |
+| Coca Cola 1.5L | 1 × $1.491,30 | 1 × $1.491,30 | ✅ |
+| Donuts Orange Bitter | 1 × $1.080 | 1 × $1.080 | ✅ |
+| **Total** | `ventas.total` = **$7.971,30** | **$7.971,30** | ✅ = lo autorizado con CAE `86300690978794` |
+
+**Veredicto: no hay error fiscal.** Cada línea multiplica, la suma da el total, y el total coincide
+con lo que autorizó AFIP. Los $2.700 son el precio de **una Caja** (6 u × $450) y los $450 salen de
+apilar **dos descuentos**: el tier mayorista (≥12 u → $500) y el descuento general del 10% → $450.
+
+**El problema real: la factura no decía nada de eso.** El descuento general se pliega en
+`precio_unitario` al registrar la venta —a propósito, para que ningún consumidor del comprobante lo
+reste dos veces (`venta_items.descuento` queda en 0)— pero así el comprobante nunca menciona la
+bonificación. El cliente ve un precio que no coincide con la lista, no puede verificar el descuento
+que le prometieron, y la factura es el documento que se lleva.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 52 | **La factura EXHIBE la bonificación general** | Leyenda bajo los ítems: "Los importes ya incluyen la bonificación general del N%…". **No toca un solo importe** — solo lo dice | revisión de código |
+| 53 | **El P. Unitario por bulto es reconciliable** | Debajo de "$2.700,00" se muestra su composición "**6 u × $450**", así el número deja de ser un valor que no está en ninguna tabla | revisión de código |
+| 54 | **Solo aparece cuando corresponde** | La composición solo si se vendió en una UoM distinta a la base y el bulto tiene más de 1 unidad; la leyenda solo si hubo descuento general | revisión de código |
+
+⚠ **Riesgo latente detectado, no corregido:** el P. Unitario por bulto se calcula como
+`subtotal / cantidad_uom`. Si esa división no es exacta a 2 decimales (ej. subtotal 1.000 en 3
+bultos → 333,333…), la factura muestra 333,33 × 3 = 999,99 ≠ 1.000,00 y **no multiplica**. No cambia
+el importe que va a AFIP (que sale de `ventas.total`), pero deja un comprobante que no cierra si
+alguien lo verifica. Anotado en `project_pendientes.md`.
+
+**Verde:** tsc · build · **unit 1339** (47 en `pedidoVenta.test.ts` + 29 en `medidasLogistica.test.ts`) ·
+**e2e 113 (6/6)** · regresión **107 (5/5)**.
 
 **⚠ Pendiente conocido, DIFERIDO con evidencia (2026-07-29):** la lista de precios por canal y los
 combos no se aplican al facturar un pedido **manual**. Medido antes de decidir: `fn_pedido_generar_venta`

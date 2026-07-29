@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   esPedidoParaMostrador, filtrarPedidosMostrador, canalesExcluidosValidos,
-  ventaRequierePedido, saldoParaEntregar, resumenPagoTicket, type PedidoMostrador,
+  ventaRequierePedido, saldoParaEntregar, resumenPagoTicket, motivoNoLanzarPedido,
+  type PedidoMostrador,
 } from '../../src/lib/pedidoVenta'
 
 const base: PedidoMostrador = {
@@ -137,8 +138,23 @@ describe('ventaRequierePedido — las 8 ramas del diagrama', () => {
   })
 
   // ── Bordes ──
-  it('venta pendiente de mostrador → genera (la mercadería no salió)', () => {
-    expect(ventaRequierePedido({ ...pres, estado: 'pendiente' })).toBe(true)
+  it('🛑 un PRESUPUESTO no genera pedido, ni siquiera con envío', () => {
+    // Lo encontró GO: una venta recurrente generó un presupuesto, el presupuesto generó un pedido,
+    // y al cancelarse quedó el pedido vivo para que el depósito preparara mercadería inexistente.
+    expect(ventaRequierePedido({ ...pres, estado: 'pendiente' })).toBe(false)
+    expect(ventaRequierePedido({ ...online, estado: 'pendiente' })).toBe(false)
+    expect(ventaRequierePedido({ ...online, estado: 'pendiente', con_envio: true })).toBe(false)
+  })
+
+  it('…pero al convertirse en venta real sí (el trigger escucha el cambio de estado)', () => {
+    expect(ventaRequierePedido({ ...pres, estado: 'reservada' })).toBe(true)
+    expect(ventaRequierePedido({ ...online, estado: 'despachada' })).toBe(true)
+  })
+
+  it('una venta facturada sigue viva y puede necesitar preparación', () => {
+    expect(ventaRequierePedido({ ...online, estado: 'facturada' })).toBe(true)
+    // salvo que sea entrega directa
+    expect(ventaRequierePedido({ ...pres, estado: 'facturada' })).toBe(false)
   })
   it('venta anulada o devuelta → nunca genera', () => {
     expect(ventaRequierePedido({ ...online, estado: 'cancelada' })).toBe(false)
@@ -217,5 +233,28 @@ describe('resumenPagoTicket', () => {
     const r = resumenPagoTicket({ estado: 'reservada', total: 800 })
     expect(r.saldo).toBe(800)
     expect(r.mostrarSaldo).toBe(true)
+  })
+})
+
+// 🐛 Hallazgo de GO: el pedido de una venta anulada quedaba vivo y se podía lanzar.
+describe('motivoNoLanzarPedido', () => {
+  it('venta viva → se puede lanzar', () => {
+    expect(motivoNoLanzarPedido('reservada')).toBeNull()
+    expect(motivoNoLanzarPedido('despachada')).toBeNull()
+    expect(motivoNoLanzarPedido('facturada')).toBeNull()
+  })
+
+  it('🛑 venta cancelada o devuelta → no se prepara mercadería para algo que ya no existe', () => {
+    expect(motivoNoLanzarPedido('cancelada')).toContain('ya no existe')
+    expect(motivoNoLanzarPedido('devuelta')).toContain('ya no existe')
+  })
+
+  it('🛑 la venta sigue siendo un presupuesto → primero se confirma', () => {
+    expect(motivoNoLanzarPedido('pendiente')).toContain('PRESUPUESTO')
+  })
+
+  it('pedido de logística puro (sin venta) → no aplica', () => {
+    expect(motivoNoLanzarPedido(null)).toBeNull()
+    expect(motivoNoLanzarPedido(undefined)).toBeNull()
   })
 })

@@ -6,7 +6,132 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🧾 ARRANCÁ ACÁ (2026-07-29) — v1.148.0: flujo Venta→Pedido→Envío completo (migs 315-319). **EN DEV, PROD pendiente**
+> ### 📦 ARRANCÁ ACÁ (2026-07-29) — CUBICAJE VOLUMÉTRICO: Fase A **a medio hacer**. Todo lo demás cerrado. **TODO EN DEV**
+>
+> #### ▶ LO QUE HAY QUE TERMINAR (es lo único abierto)
+>
+> GO aprobó construir el **cubicaje volumétrico opt-in, las 3 fases**, con **peso obligatorio por
+> nivel** (no derivado). La **mig 322 ya está aplicada y probada en DEV**; falta TODO el frontend.
+>
+> **Decisiones ya tomadas por GO — no volver a preguntar:**
+> - Es **opt-in por tenant** (`tenants.cubicaje_habilitado`, default `false`). Ésa es la clave del
+>   diseño: el reparo contra el cubicaje era *"con medidas a medias el número miente, y un número
+>   que miente es peor que no tener ninguno"*. Al activarlo, las medidas pasan a ser
+>   **obligatorias** en el editor de estructura → cobertura 100% por construcción de ahí en adelante.
+> - **Peso obligatorio POR NIVEL**, no derivado del factor de conversión: el peso real de un bulto
+>   incluye su embalaje (una caja de 12 pesa más que 12 unidades sueltas).
+> - **Factor de aprovechamiento** configurable (`tenants.cubicaje_factor_aprovechamiento`, default
+>   **0.70**): ninguna ubicación real se llena al 100% geométrico (pasillos, forma irregular,
+>   mercadería que no apila). Sin él el sistema diría "entra" cuando no entra.
+> - **Prender el toggle NO completa el catálogo existente** → hay que mostrar SIEMPRE la cobertura.
+>
+> **✅ YA HECHO (mig 322, aplicada y verificada en DEV):**
+> - `tenants.cubicaje_habilitado` + `cubicaje_factor_aprovechamiento` (CHECK 0 < f ≤ 1).
+> - Trigger `trg_presentaciones_exige_medidas`: con el cubicaje activo, `producto_presentaciones`
+>   **no acepta** una fila sin peso ni las tres medidas. Server-side porque la UI se cachea y el
+>   importador/EFs escriben con service_role. Probado: OFF guarda sin medidas, ON rechaza.
+> - `vw_ubicacion_ocupacion` **ampliada con `volumen_m3` y `lineas_con_volumen`**. El volumen sale de
+>   la presentación en la que ENTRÓ la línea (`inventario_lineas.unidad_medida_id`/`cantidad_uom`,
+>   mig 293): "3 cajas" ocupa 3 × el volumen de la caja, no 36 × el de la unidad suelta.
+> - `fn_cubicaje_cobertura(tenant)` → `(productos_total, productos_medidos, presentaciones_sin_medir)`.
+>   Medido en DEV al aplicarla: **6 de 296 productos medidos · 351 presentaciones sin medir.**
+> - Lógica pura ya disponible en `src/lib/medidasLogistica.ts`: `volumenUbicacionM3`,
+>   `estadoCapacidadUbicacion`, `estadoCargaUbicacion` (29 unit tests).
+>
+> **🔨 LO QUE FALTA (en este orden):**
+>
+> **Fase A — que se puedan cargar los datos**
+> 1. `src/components/PresentacionesEditor.tsx`: inputs de **peso / alto / ancho / largo por nivel**.
+>    ⚠ El pipe de datos YA EXISTE completo — `fn_presentaciones_guardar` acepta esos campos,
+>    `presentaciones.ts` los lee (`PresentacionRow.peso/alto/ancho/largo`) y `validarPresentaciones`
+>    ya valida que sean > 0 si vienen. **Lo ÚNICO que falta son los `<input>`.** Por eso las columnas
+>    están siempre vacías desde que existen.
+> 2. `validarPresentaciones` tiene que **exigirlos** cuando el cubicaje está activo (hoy solo valida
+>    "si vienen, que sean > 0"). Pasarle el flag.
+> 3. Config → Inventario: toggle del cubicaje + input del factor + **panel de cobertura**
+>    ("6 de 296 SKU medidos · 351 presentaciones sin medir") usando `fn_cubicaje_cobertura`.
+>
+> **Fase B — mostrar el volumen ocupado**
+> 4. En Config → Ubicaciones, al lado de "3 de 4 LPN" y "120 de 500 kg" que YA están: agregar
+>    "1.2 de 1.44 m³" usando `volumen_m3` de la vista contra `volumenUbicacionM3(l,a,h) × factor`.
+> 5. Mostrar la **cobertura del cálculo** (`lineas_con_volumen` / `lineas_total`): si faltan medidas
+>    el volumen queda CORTO, o sea que el error empuja hacia "parece que hay lugar". Mismo criterio
+>    que ya se aplicó con el peso (⚠ + tooltip), no un verde limpio.
+>
+> **Fase C — validar al ubicar**
+> 6. Aviso al ingresar stock (`InventarioPage`) y al mover un LPN (`LpnAccionesModal`) cuando la
+>    ubicación elegida quedaría excedida en volumen o peso. **AVISO, NUNCA BLOQUEO** — el dato de
+>    capacidad lo carga una persona y la mercadería ya está físicamente ahí.
+> 7. Opcional: que `fn_wms_elegir_ubicacion_picking` prefiera ubicaciones con lugar.
+>
+> **🛑 Riesgo a no perder de vista:** el cálculo vale lo que valen las medidas. Hay que decidir y
+> dejar explícito qué pasa con los SKU sin medir (¿se excluyen y se avisa "cobertura 60%"? ¿se
+> bloquea el cálculo?), no dejarlo implícito.
+>
+> ---
+>
+> #### ✅ LO QUE SE CERRÓ ESTA SESIÓN (migs 315-324, v1.148.0 → **todo EN DEV**)
+>
+> **Flujo Venta → Pedido → Envío completo, según el diagrama de flujo de GO.**
+> Regla final: *todas las ventas generan Pedido de preparación MENOS la entrega directa* (canal
+> **presencial** + despachada + **sin envío**). Deriva de `canales_venta.clasificacion` → no hay nada
+> que configurar. `tenants.pedido_canales_excluidos` es solo la excepción.
+> Las 8 ramas del diagrama están cubiertas por **e2e 113 (6/6)**.
+>
+> | Mig | Qué |
+> |---|---|
+> | 315 | Config de canales + `pedidos.venta_origen_id` + triggers venta→pedido + sync de líneas |
+> | 316 | 🛑 Guards Regla #0: no doble venta · picking sin re-reservar · `listo_para_entrega` deja de ser un ESTADO MUERTO · RPC de entrega en mostrador |
+> | 317 | 💵 El pedido facturaba a PRECIO DE LISTA (sin tiers ni redondeo) + pedido manual opt-in |
+> | 318 | Regla por tipo de entrega + gate de pago movido a la ENTREGA + envío relacionado |
+> | 319 | 💵 Faltaba el descuento por estado de inventario al facturar |
+> | 320 | 🐛 El picking de una RESERVA salía sin LPN ni ubicación (leía solo `venta_item_despachos`; en una reserva el LPN vive en `venta_items.lpn_plan`). Cascada de 4 fuentes |
+> | 321 | Vista `vw_ubicacion_ocupacion`: conecta la capacidad de `ubicaciones` (mig 032) que nadie leía |
+> | 322 | 📦 Cubicaje opt-in (ver arriba) |
+> | 323 | 🐛 Un PRESUPUESTO no genera pedido + anular la venta cancela su pedido |
+> | 324 | No se lanza un pedido cuya venta no está viva |
+>
+> **💵 Dos errores de plata corregidos** en cómo factura un Pedido: no aplicaba tiers mayoristas ni
+> redondeo (317) ni descuento por estado (319). Una entrega real de 12 unidades pasó de facturar
+> **$12.000 a $6.720**.
+>
+> **🐛 Los tres bugs que encontró GO probando el flujo real:**
+> 1. El picking de una reserva salía **sin LPN ni ubicación** → mig 320.
+> 2. Un **presupuesto generaba pedido**, y al cancelarse quedaba vivo para preparar → mig 323/324.
+>    Fue un error de criterio mío: `ventas.estado = 'pendiente'` ES un presupuesto.
+> 3. El **ticket no decía cuánto falta pagar** → `resumenPagoTicket` + badge ★ RESERVA ★.
+>
+> **⚠ Espejos JS↔SQL que hay que mantener sincronizados:**
+> `fn_canal_de_origen` ↔ `ORIGEN_ALIAS` (`useCanalesVenta.ts`) ·
+> `fn_precio_venta_efectivo` ↔ `precioTier`/`redondearPrecio` ·
+> `fn_venta_requiere_pedido` ↔ `ventaRequierePedido` · `fn_pedido_venta_viva` ↔ `motivoNoLanzarPedido`.
+>
+> **⚠ Pendiente conocido, evaluado y DIFERIDO con evidencia:** la **lista de precios por canal** y los
+> **combos** no se aplican al facturar un pedido **manual**. Medido: `fn_pedido_generar_venta` NUNCA
+> corrió (0 ventas generadas por un Pedido en PROD y DEV), PROD tiene 0 pedidos / 0 combos activos /
+> 0 tenants con `lista_precio` seteada, y esa función corre solo para pedidos a mano — que quedaron
+> apagados por default. 🪤 El perfil que justifica prenderlos (mayorista con entregas parciales) es
+> el mismo que más probablemente use la lista mayorista: si se prende ese toggle, revisar.
+>
+> **Verde:** tsc · build · **unit 1339** · **e2e 113 (6/6)** · regresión **107 (5/5)**.
+>
+> **🟡 ESTADO DE DEPLOY: TODO EN DEV.** `APP_VERSION` = **v1.149.0**; **PROD sigue en v1.145.0**.
+> Sin deployar: **migs 314 a 324 (11)** y las versiones **1.146 → 1.149**.
+> Al retomar: aplicar 314-324 en PROD → PR `dev→main` → tag+release.
+>
+> **⚠🧾 RIESGO LATENTE ANOTADO (factura, no corregido):** el "P. Unitario" de una línea vendida en
+> una UoM se calcula en el PDF como `subtotal / cantidad_uom`. Si la división no es exacta a 2
+> decimales (ej. subtotal 1.000 en 3 bultos → 333,333…), la factura muestra 333,33 × 3 = 999,99 ≠
+> 1.000,00: **no multiplica**. No cambia el importe que va a AFIP (sale de `ventas.total`), pero deja
+> un comprobante que no cierra si alguien lo verifica. Fix propuesto: si `round2(unit) × cant ≠
+> subtotal`, mostrar la línea en unidades BASE (que siempre multiplican, porque
+> `subtotal = precio_unitario × cantidad` por construcción). Ver UAT §47 "Auditoría de la factura #475".
+>
+> **Sigue abierto:** rotar el `SUPABASE_ACCESS_TOKEN` `sbp_60df…` · `schema_full.sql` refleja hasta
+> la 311 (le faltan 312-324).
+
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-29) — v1.148.0: flujo Venta→Pedido→Envío completo (migs 315-319). **EN DEV, PROD pendiente**
 >
 > GO mandó su **diagrama de flujo** del negocio y pidió revisar si el código lo reflejaba. **No lo
 > reflejaba.** La regla quedó reescrita.

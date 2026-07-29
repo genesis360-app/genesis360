@@ -54,6 +54,14 @@ export interface FacturaPDFData {
   }[]
 
   // Totales
+  /**
+   * % de descuento GENERAL de la venta, si hubo (`ventas.descuento_total`). No se resta de nuevo:
+   * ya viene plegado en `precio_unitario`/`subtotal` de cada ítem (así ningún consumidor del
+   * comprobante lo aplica dos veces). Se recibe SOLO para poder EXHIBIRLO: una bonificación que se
+   * aplicó y no figura en la factura es imposible de verificar para el cliente, que es justamente
+   * el documento que se lleva.
+   */
+  descuento_general_pct?: number | null
   total: number
   moneda?: string                 // 'PES' por defecto
   forma_pago?: string | null      // "Efectivo", "Cuenta Corriente", etc.
@@ -220,6 +228,21 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   const precioUnitarioEfectivo = (item: FacturaPDFData['items'][number]) =>
     item.cantidad_uom && item.unidad_medida ? item.subtotal / item.cantidad_uom : item.subtotal / item.cantidad
 
+  /**
+   * Cuando la línea se vendió en una UoM (ej. "2 Caja"), el P. Unitario que se muestra es el de la
+   * CAJA — un número que no está en ninguna tabla y que el cliente no puede reconciliar contra la
+   * lista de precios. GO: *"la factura dice que el precio unitario es 2700"* cuando el producto
+   * sale $600 y con mayorista $500. Se agrega debajo su composición ("6 u × $450") para que el
+   * número sea verificable de un vistazo.
+   */
+  const composicionUnitaria = (item: FacturaPDFData['items'][number]): string | null => {
+    if (!item.cantidad_uom || !item.unidad_medida || !(item.cantidad_uom > 0)) return null
+    const uPorBulto = item.cantidad / item.cantidad_uom
+    if (!Number.isFinite(uPorBulto) || uPorBulto <= 1) return null
+    const uTxt = uPorBulto % 1 === 0 ? String(uPorBulto) : uPorBulto.toFixed(2)
+    return `${uTxt} u × ${fmtPesos(item.precio_unitario)}`
+  }
+
   // Dibuja "nombre" en negrita y, si hay, "descripcion_extra" debajo en gris chico —
   // jspdf-autotable no soporta 2 estilos en una misma celda de forma nativa, así que se
   // suprime el texto default (willDrawCell) y se redibuja a mano (didDrawCell).
@@ -256,7 +279,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       ...codCell(item),
       descripcionCelda(item),
       cantidadCelda(item),
-      fmtPesos(precioUnitarioEfectivo(item)),
+      [fmtPesos(precioUnitarioEfectivo(item)), composicionUnitaria(item)].filter(Boolean).join('\n'),
       fmtPesos(item.subtotal),
     ])
     const { willDrawCell, didDrawCell } = descripcionHooks(off)
@@ -320,6 +343,26 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   const afterTable = (doc as any).lastAutoTable.finalY + 6
   let ty = afterTable
   const totalsX = W - 14
+
+  // ── Bonificaciones ya aplicadas ───────────────────────────────────────────────
+  // Los importes de arriba ya vienen NETOS de descuento (el general se pliega en
+  // `precio_unitario` al registrar la venta, para que ningún consumidor del comprobante lo
+  // reste dos veces). El problema es que así la factura no dice en ningún lado que hubo un
+  // descuento: el cliente ve un precio que no coincide con la lista y no puede verificar la
+  // bonificación que le prometieron — y la factura es el documento que se lleva.
+  // Por eso se EXHIBE sin tocar un solo importe. GO, sobre la venta #475: "quizás no aclara
+  // que tiene el descuento y por eso no lo leo bien".
+  const pctGeneral = Number(data.descuento_general_pct ?? 0)
+  if (pctGeneral > 0) {
+    doc.setFontSize(7.5).setFont('helvetica', 'italic').setTextColor(110)
+    doc.text(
+      `Los importes ya incluyen la bonificación general del ${pctGeneral}% aplicada a esta operación` +
+      (data.items.some(i => i.cantidad_uom && i.unidad_medida) ? ', y el precio por volumen donde corresponde.' : '.'),
+      14, ty)
+    doc.setFont('helvetica', 'normal')
+    ty += 6
+  }
+
   doc.setFontSize(9).setTextColor(60)
 
   if (!sinIVA) {

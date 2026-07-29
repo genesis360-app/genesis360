@@ -1995,7 +1995,7 @@ export default function VentasPage() {
   // Sirve al detalle de venta Y al modal post-emisión del POS (sin ir al historial).
   async function buildFacturaPDFDataPorId(ventaId: string): Promise<{ data: FacturaPDFData; email: string | null } | null> {
     const { data: venta, error: vErr } = await supabase.from('ventas')
-      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
+      .select('numero, numero_comprobante, tipo_comprobante, cae, vencimiento_cae, total, costo_envio, monto_pagado, descuento_total, created_at, medio_pago, emisor_id, clientes(nombre, email, dni, cuit_receptor, condicion_iva_receptor, cliente_domicilios(calle, numero, piso_depto, ciudad, provincia, es_principal)), venta_items(cantidad, precio_unitario, subtotal, alicuota_iva, cantidad_uom, productos(nombre, sku, descripcion), unidades_medida(nombre))')
       .eq('id', ventaId).single()
     if (vErr) throw new Error(vErr.message)
     if (!venta?.cae) return null
@@ -2050,6 +2050,10 @@ export default function VentasPage() {
         }] : []),
       ],
       total: totalConEnvioPdf,
+      // Solo para EXHIBIRLO: el descuento ya está plegado en los precios de cada línea (así nadie
+      // lo resta dos veces), pero si la factura no lo dice el cliente no puede verificar la
+      // bonificación que le hicieron — y la factura es el documento que se lleva.
+      descuento_general_pct: Number((venta as any).descuento_total ?? 0) || null,
       forma_pago: formaPago,
       pago_mp_qr: pagoMpQr,
       pago_mp_monto: pagoMpQr ? saldo : null,

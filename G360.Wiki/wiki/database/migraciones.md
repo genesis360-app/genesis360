@@ -6,10 +6,50 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-320)
+# Historial de Migraciones (001-324)
 
-**Total al 2026-07-29:** 320 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-29:** 324 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**324 (no se lanza un pedido cuya venta no está viva, EN DEV — PROD pendiente)** —
+Engancha el guard de la 323 al dispatcher de "Lanzar" (que es chico), y no dentro del algoritmo de
+picking: cubre los dos caminos con una línea sin volver a tocar el cuerpo que mueve stock.
+
+**323 (🐛 un PRESUPUESTO no genera pedido + anular la venta cancela su pedido, EN DEV — PROD pendiente)** —
+Dos huecos que encontró GO usando el flujo real: una **venta recurrente** generó un PRESUPUESTO, el
+presupuesto generó un PEDIDO, y al cancelarse el presupuesto quedó **un pedido vivo** que cualquiera
+podía lanzar, mandando al depósito a preparar mercadería de una venta que ya no existe.
+**(1)** Error de criterio de la mig 318: incluí `'pendiente'` entre los estados que generan pedido
+razonando "la mercadería no salió". Pero `ventas.estado = 'pendiente'` **ES UN PRESUPUESTO** — el
+ticket dice literalmente "★ PRESUPUESTO ★". No hay compromiso: el cliente no aceptó, no pagó y puede
+no convertirse nunca. El pedido nace cuando el presupuesto **se convierte** (el trigger ya escucha
+`UPDATE OF estado`). Se suma `'facturada'` a los estados vivos.
+**(2)** Trigger nuevo `trg_ventas_anulada_cancela_pedido`: cancelar o devolver la venta cancela su
+pedido y sus tareas de picking pendientes. ⚠ **NO toca `cantidad_reservada`**: en un venta-pedido el
+picking nunca reservó (mig 316) — la reserva es de la VENTA, y liberarla acá la liberaría DOS veces.
+Por eso las tareas se cancelan con UPDATE directo y no con `fn_cancelar_tarea_wms`, que sí libera.
+Incluye limpieza de los pedidos que ya habían quedado mal (1 en DEV), sin tocar los entregados.
+
+**322 (📦 CUBICAJE VOLUMÉTRICO opt-in — FASE A, EN DEV — PROD pendiente)** —
+`tenants.cubicaje_habilitado` (default **false**) + `cubicaje_factor_aprovechamiento` (default 0.70,
+CHECK 0 < f ≤ 1). Con el cubicaje activo, el trigger `trg_presentaciones_exige_medidas` **no acepta**
+una presentación sin peso ni las tres medidas — así la cobertura es 100% por construcción de ahí en
+adelante, que es lo que responde al reparo de siempre ("con medidas a medias el número miente").
+Server-side porque la UI se cachea y el importador/EFs escriben con service_role.
+`vw_ubicacion_ocupacion` se amplía con **`volumen_m3`** (calculado sobre la presentación en la que
+ENTRÓ cada línea: "3 cajas" ocupa 3 × el volumen de la caja) y `lineas_con_volumen`.
+`fn_cubicaje_cobertura(tenant)` devuelve cuántos productos tienen TODAS sus presentaciones medidas —
+prender el toggle NO completa el catálogo existente (en DEV: **6 de 296**). **Falta todo el
+frontend**: ver el plan en `project_pendientes.md`.
+
+**321 (conecta la capacidad de `ubicaciones`, que nadie leía, EN DEV — PROD pendiente)** —
+Los campos `largo/ancho/alto_cm`, `peso_max_kg` y `capacidad_pallets` existían desde la **mig 032** y
+**ningún cálculo los usaba**: se cargaban en Config y no servían para nada. Vista nueva
+`vw_ubicacion_ocupacion` (`security_invoker`, respeta RLS) con LPN activos y peso total por
+ubicación, más `lineas_con_peso`/`lineas_total` para la **cobertura**. ⚠ Si faltan `productos.peso_kg`
+el total queda CORTO — el error empuja hacia "parece que hay lugar" justo cuando el rack podría estar
+pasado; por eso la UI muestra la cobertura con ⚠ y el aviso salta al 90% del límite, no al 100%.
+Avisa, nunca bloquea.
 
 **320 (🐛 el picking de un venta-pedido no sabía de dónde sacar la mercadería, EN DEV — PROD pendiente)** —
 Bug que encontró GO probando el flujo real (venta #448, una RESERVA): la tarea de picking salía

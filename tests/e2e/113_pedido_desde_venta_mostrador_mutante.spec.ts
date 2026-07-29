@@ -293,6 +293,50 @@ test.describe('Pedido desde venta + entrega en mostrador (mutante)', () => {
     expect(tareas[0].pedido_id, '[113] la tarea se vincula al pedido').toBe(pedido.id)
   })
 
+  // ── Presupuestos y ventas anuladas ──────────────────────────────────────────────────
+  // Bug real que encontró GO: una venta recurrente generó un PRESUPUESTO, el presupuesto generó un
+  // PEDIDO, y al cancelarse el presupuesto quedó el pedido vivo — cualquiera podía lanzarlo y
+  // mandar al depósito a preparar mercadería de una venta que ya no existe.
+  test('un presupuesto no genera pedido, y anular la venta cancela el suyo', async ({ page, request }) => {
+    test.setTimeout(120000)
+    const c = await ctx(page, request)
+    const online = await canal(c, request, 'online')
+
+    // 1) PRESUPUESTO (estado pendiente) → no genera nada
+    const presu = await crearVenta(c, request, {
+      subtotal: 1000, total: 1000, monto_pagado: 0, estado: 'pendiente', origen: online,
+    })
+    expect(await pedidoDe(c, request, presu.id),
+      '🛑 [113] un PRESUPUESTO no es un compromiso: no se prepara mercadería').toHaveLength(0)
+
+    // 2) …pero al convertirse en venta real, sí
+    await request.patch(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${presu.id}`, {
+      headers: c.headers, data: { estado: 'despachada', monto_pagado: 1000 },
+    })
+    const [pedido] = await pedidoDe(c, request, presu.id)
+    expect(pedido, '[113] al confirmarse el presupuesto recién ahí nace el pedido').toBeTruthy()
+    expect(pedido.estado).toBe('confirmado')
+
+    // 3) Anular la venta cancela el pedido solo
+    await request.patch(`${SUPABASE_URL}/rest/v1/ventas?id=eq.${presu.id}`, {
+      headers: c.headers, data: { estado: 'cancelada' },
+    })
+    const [pedCancelado] = await (await request.get(
+      `${SUPABASE_URL}/rest/v1/pedidos?id=eq.${pedido.id}&select=estado`, { headers: c.headers })).json() as any[]
+    expect(pedCancelado.estado,
+      '🛑 [113] anular la venta tiene que cancelar su pedido: si no, el depósito prepara algo que no existe').toBe('cancelado')
+
+    // 4) Y aunque quedara vivo, no se puede lanzar
+    await request.patch(`${SUPABASE_URL}/rest/v1/pedidos?id=eq.${pedido.id}`, {
+      headers: c.headers, data: { estado: 'confirmado' },   // se fuerza, simulando el hueco viejo
+    })
+    const lanzar = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_generar_tareas_picking_pedido`, {
+      headers: c.headers, data: { p_pedido_id: pedido.id },
+    })
+    expect(lanzar.ok(),
+      '🛑 [113] no se manda a nadie a buscar mercadería para una venta anulada').toBe(false)
+  })
+
   // ── La excepción por canal ──────────────────────────────────────────────────────────
   test('un canal excluido en Config no genera pedido aunque le correspondiera', async ({ page, request }) => {
     test.setTimeout(60000)

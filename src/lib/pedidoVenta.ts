@@ -96,9 +96,10 @@ export function canalesExcluidosValidos(
  * La regla, según el diagrama de flujo de GO: **todas las ventas generan pedido MENOS la entrega
  * directa**, que es la única en la que el cliente se lleva la mercadería en el momento:
  *
+ *   PRESUPUESTO (estado pendiente)                                → NO genera (mig 323)
  *   entrega directa = canal PRESENCIAL + despachada + sin envío   → NO genera
  *   con envío (propio o de tercero)                               → genera
- *   reserva o pendiente (la mercadería no salió)                  → genera
+ *   reserva (la mercadería no salió y hay compromiso)             → genera
  *   canal ONLINE sin envío (= retiro en local)                    → genera
  *
  * 🛑 Ojo con el orden: el gate de PAGO ya no vive acá. Una reserva con seña parcial genera el
@@ -112,14 +113,37 @@ export function ventaRequierePedido(venta: {
   canal_clasificacion?: 'online' | 'presencial' | null
   canal_id?: string | null
 }, canalesExcluidos: string[] = []): boolean {
-  if (!['pendiente', 'reservada', 'despachada'].includes(venta.estado)) return false
+  // 🛑 'pendiente' es un PRESUPUESTO (el ticket dice "★ PRESUPUESTO ★"), no un compromiso: el
+  // cliente no aceptó, no pagó y puede no convertirse nunca. Comprometer trabajo de depósito con
+  // eso está mal — lo detectó GO cuando una venta recurrente generó un presupuesto, el presupuesto
+  // generó un pedido, y al cancelarse quedó el pedido vivo para preparar. El pedido nace cuando el
+  // presupuesto SE CONVIERTE en venta (mig 323).
+  if (!['reservada', 'despachada', 'facturada'].includes(venta.estado)) return false
   if (venta.canal_id && canalesExcluidos.includes(venta.canal_id)) return false
 
   if (venta.con_envio) return true
-  if (venta.estado === 'reservada' || venta.estado === 'pendiente') return true
+  if (venta.estado === 'reservada') return true
 
   // Sin canal resuelto se asume presencial: el caso conservador, no inventa trabajo de depósito.
   return (venta.canal_clasificacion ?? 'presencial') === 'online'
+}
+
+/** Estados en los que una venta sigue VIVA: si no, su pedido no tiene razón de existir. */
+export const ESTADOS_VENTA_VIVA = ['pendiente', 'reservada', 'despachada', 'facturada'] as const
+
+/**
+ * Por qué NO se puede lanzar el pedido de esta venta (o null si se puede). Espejo de
+ * `fn_pedido_venta_viva` (mig 323) — el servidor lo revalida.
+ */
+export function motivoNoLanzarPedido(estadoVenta: string | null | undefined): string | null {
+  if (!estadoVenta) return null   // pedido de logística puro: no aplica
+  if (estadoVenta === 'cancelada' || estadoVenta === 'devuelta') {
+    return `La venta está ${estadoVenta}: no se puede preparar mercadería para una venta que ya no existe.`
+  }
+  if (estadoVenta === 'pendiente') {
+    return 'La venta todavía es un PRESUPUESTO: confirmala antes de mandar a preparar la mercadería.'
+  }
+  return null
 }
 
 /**

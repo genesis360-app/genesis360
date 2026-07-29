@@ -1,0 +1,160 @@
+// Medidas físicas: del producto al bulto del envío, y capacidad de una ubicación.
+//
+// Contexto (auditoría 2026-07-29, a pedido de GO): la app tenía TRES juegos de medidas cargados y
+// ninguno conectado a nada.
+//   · `productos.peso_kg/largo/ancho/alto_cm` — el campo dice "opcional, para envío"… y el form de
+//     Envíos pedía el peso A MANO. Cargarlas no servía para nada: una promesa incumplida.
+//   · `producto_presentaciones.*` — medidas POR NIVEL (por Caja, por Pallet). La columna existe y la
+//     lib las lee/escribe, pero el editor no tiene inputs, así que están siempre vacías.
+//   · `ubicaciones.capacidad_pallets/peso_max_kg/…` (mig 032) — se cargan en Config y no las lee
+//     ningún cálculo.
+//
+// Este archivo conecta las dos primeras cosas que rinden, sin meterse con cubicaje volumétrico
+// (que exige medidas confiables de CADA nivel de CADA SKU: si faltan algunas el número miente, y un
+// número que miente es peor que no tenerlo).
+
+// ── 1) Bulto del envío a partir de los productos ────────────────────────────────────────
+
+export interface ItemConMedidas {
+  cantidad: number
+  peso_kg?: number | null
+  largo_cm?: number | null
+  ancho_cm?: number | null
+  alto_cm?: number | null
+}
+
+export interface BultoSugerido {
+  peso_kg: number | null
+  largo_cm: number | null
+  ancho_cm: number | null
+  alto_cm: number | null
+  /** Ítems que no tienen peso cargado: el peso sugerido se queda corto por su culpa. */
+  sinPeso: number
+  /** Ítems que no tienen ninguna medida: las dimensiones sugeridas ignoran su volumen. */
+  sinMedidas: number
+}
+
+/**
+ * Sugiere el bulto de un envío a partir de los productos que lleva.
+ *
+ * 🛑 Las dos magnitudes NO se combinan igual, y confundirlas es cobrar mal:
+ *  · **El peso SE SUMA** — es aditivo y exacto: 3 unidades de 2 kg pesan 6 kg.
+ *  · **Las dimensiones NO se suman.** Apilar dos cajas de 30 cm no da una de 60 en los tres ejes.
+ *    Se toma el **máximo por eje**, que es el "mínimo garantizado": el bulto no puede ser MÁS CHICO
+ *    que su ítem más grande. Es una cota inferior honesta, no una estimación de volumen — por eso
+ *    la UI lo ofrece como sugerencia editable y no lo impone.
+ *
+ * Se devuelven además los conteos de ítems sin datos, para poder avisar que la sugerencia se queda
+ * corta en vez de dar un número que parece completo y no lo está (cotizar de menos lo termina
+ * cobrando el courier después).
+ */
+export function sugerirBultoEnvio(items: ItemConMedidas[]): BultoSugerido {
+  let peso = 0
+  let largo = 0, ancho = 0, alto = 0
+  let sinPeso = 0, sinMedidas = 0
+  let huboPeso = false, huboMedida = false
+
+  for (const it of items) {
+    const cant = Number(it.cantidad ?? 0)
+    if (!(cant > 0)) continue
+
+    const p = num(it.peso_kg)
+    if (p != null && p > 0) { peso += p * cant; huboPeso = true } else { sinPeso += 1 }
+
+    const l = num(it.largo_cm), a = num(it.ancho_cm), h = num(it.alto_cm)
+    if ((l ?? 0) > 0 || (a ?? 0) > 0 || (h ?? 0) > 0) {
+      largo = Math.max(largo, l ?? 0)
+      ancho = Math.max(ancho, a ?? 0)
+      alto  = Math.max(alto,  h ?? 0)
+      huboMedida = true
+    } else {
+      sinMedidas += 1
+    }
+  }
+
+  return {
+    peso_kg: huboPeso ? redondear3(peso) : null,
+    largo_cm: huboMedida && largo > 0 ? largo : null,
+    ancho_cm: huboMedida && ancho > 0 ? ancho : null,
+    alto_cm:  huboMedida && alto  > 0 ? alto  : null,
+    sinPeso, sinMedidas,
+  }
+}
+
+/** Aviso para el usuario cuando la sugerencia está incompleta, o null si está completa. */
+export function avisoBultoIncompleto(b: BultoSugerido): string | null {
+  if (b.sinPeso === 0 && b.sinMedidas === 0) return null
+  if (b.peso_kg == null && b.largo_cm == null) {
+    return 'Ninguno de los productos tiene peso ni medidas cargadas — completalos a mano, o cargalos en la ficha del producto para la próxima.'
+  }
+  const partes: string[] = []
+  if (b.sinPeso > 0) partes.push(`${b.sinPeso} sin peso`)
+  if (b.sinMedidas > 0) partes.push(`${b.sinMedidas} sin medidas`)
+  return `Sugerido a partir de los productos (${partes.join(' · ')}): el bulto real puede ser mayor. Revisalo antes de cotizar.`
+}
+
+// ── 2) Capacidad de una ubicación ───────────────────────────────────────────────────────
+
+export type EstadoCapacidad = 'sin_limite' | 'ok' | 'lleno' | 'excedido'
+
+export interface CapacidadUbicacion {
+  estado: EstadoCapacidad
+  ocupados: number
+  capacidad: number | null
+  restantes: number | null
+  mensaje: string | null
+}
+
+/**
+ * Estado de ocupación de una ubicación, contando **LPN** (cada LPN es un bulto/pallet en la
+ * posición). Se usa `ubicaciones.capacidad_pallets`, que ya existía desde la mig 032 y no leía
+ * nadie.
+ *
+ * 🛑 Es un AVISO, nunca un bloqueo: el dato de capacidad lo carga una persona y puede estar mal o
+ * desactualizado. Frenar un ingreso de mercadería real por un número de configuración sería peor
+ * que el problema — la mercadería ya está físicamente ahí.
+ *
+ * Deliberadamente NO calcula volumen: eso exige medidas confiables de cada nivel de cada SKU, y con
+ * medidas incompletas el resultado miente.
+ */
+export function estadoCapacidadUbicacion(
+  capacidad: number | null | undefined,
+  ocupados: number,
+  aAgregar = 0,
+): CapacidadUbicacion {
+  const cap = num(capacidad)
+  const ocup = Math.max(0, Number(ocupados ?? 0))
+  if (cap == null || cap <= 0) {
+    return { estado: 'sin_limite', ocupados: ocup, capacidad: null, restantes: null, mensaje: null }
+  }
+  const total = ocup + Math.max(0, aAgregar)
+  const restantes = cap - total
+  if (restantes < 0) {
+    return {
+      estado: 'excedido', ocupados: ocup, capacidad: cap, restantes,
+      mensaje: `Esta ubicación admite ${cap} y quedaría con ${total}. Se puede guardar igual, pero revisá el espacio.`,
+    }
+  }
+  if (restantes === 0) {
+    return {
+      estado: 'lleno', ocupados: ocup, capacidad: cap, restantes: 0,
+      mensaje: `Con esto la ubicación queda llena (${total} de ${cap}).`,
+    }
+  }
+  return { estado: 'ok', ocupados: ocup, capacidad: cap, restantes, mensaje: null }
+}
+
+/** Texto corto para mostrar al lado del nombre de la ubicación: "3 de 4" / "3" si no hay tope. */
+export function etiquetaOcupacion(c: CapacidadUbicacion): string {
+  return c.capacidad == null ? String(c.ocupados) : `${c.ocupados} de ${c.capacidad}`
+}
+
+function num(v: unknown): number | null {
+  // `numeric` de Postgres llega como string ("2.50") — normalizar antes de comparar.
+  const n = typeof v === 'string' ? parseFloat(v) : typeof v === 'number' ? v : NaN
+  return Number.isFinite(n) ? n : null
+}
+
+function redondear3(n: number): number {
+  return Math.round((n + Number.EPSILON) * 1000) / 1000
+}

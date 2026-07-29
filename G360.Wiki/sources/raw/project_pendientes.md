@@ -3606,6 +3606,46 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 
 **✅ Cerrado en v1.11.3 (2026-05-30)**: devoluciones ahora se loguean en `/historial` (`tipo_transaccion='devolucion'`, agrupadas por transacción, con producto_id + LPN); reserva→despacho y venta→devuelta clasificadas; filtro de recall por **producto** (nombre/SKU → producto_id) además de LPN/serie. Trazabilidad-extendida **completa**.
 
+### 📦 CUBICAJE VOLUMÉTRICO — backlog, pedido por GO (2026-07-29)
+
+**Estado hoy: no existe ningún cálculo de capacidad.** Nada valida ni sugiere si la mercadería
+entra en una ubicación. `fn_wms_elegir_ubicacion_picking` elige por zona y prioridad, sin mirar
+ocupación.
+
+**Auditoría de lo que YA está cargado y no se usa** (surgió de una pregunta de GO: *"¿cómo sabemos
+si cabe inventario de un producto en una ubicación al no tener las medidas de cada nivel de
+estructura?"*):
+
+| Dónde | Campos | Estado |
+|---|---|---|
+| `ubicaciones` (mig **032**) | `largo_cm` · `ancho_cm` · `alto_cm` · `peso_max_kg` · **`capacidad_pallets`** | Se cargan en Config → Inventario → Ubicaciones. **Ningún cálculo las leía.** Desde 2026-07-29 `capacidad_pallets` sí se usa para el aviso de ocupación por LPN |
+| `productos` | `peso_kg` · `largo/ancho/alto_cm` | Rotuladas "opcional, para envío" — y **el form de Envíos pedía el peso a mano**, no las leía. ✅ Conectadas 2026-07-29 (`sugerirBultoEnvio`) |
+| `producto_presentaciones` | `peso_kg` · `largo/ancho/alto_cm` **POR NIVEL** (por Caja, por Pallet) | La columna existe y `presentaciones.ts` las lee/escribe, pero **`PresentacionesEditor` no tiene inputs** → están siempre vacías. **Éste es el bloqueante del cubicaje.** |
+| `reglas_almacenaje` (WMS) | `unidad_medida_id` → `zona_id` | Criterio **cualitativo** ("los pallets van a Estiba"), no de capacidad |
+
+**Qué haría falta para el cubicaje, en orden:**
+
+1. **Inputs de medidas por nivel** en `PresentacionesEditor` (peso/largo/ancho/alto por presentación).
+   Sin esto no hay nada que calcular. Ojo con la herencia: la medida de la Caja no se deriva de la
+   unidad — hay que cargarla.
+2. **Volumen ocupado por ubicación**: Σ (volumen de la presentación × cantidad) sobre las
+   `inventario_lineas` de esa ubicación, contra el volumen de la ubicación
+   (`largo × ancho × alto`), con un **factor de aprovechamiento** configurable (nunca se llena al
+   100% real — pasillos, forma irregular; lo típico es 60-75%).
+3. **Peso**: contra `peso_max_kg`. Es más simple y más seguro que el volumen (el peso es aditivo y
+   exacto), así que conviene hacerlo primero.
+4. Recién ahí, **sugerencia de ubicación por capacidad** en el putaway/reabastecimiento.
+
+**🛑 El riesgo que hay que tener presente antes de encararlo:** el cálculo vale lo que valen las
+medidas. Con los volúmenes cargados a medias el número **miente**, y un número que miente es peor
+que no tener ninguno — la gente deja de confiar y termina ignorando el módulo entero. Si se hace,
+hay que resolver primero qué pasa con los SKU sin medidas (¿se excluyen del cálculo y se avisa
+"cobertura 60%"? ¿se bloquea el cálculo?), no dejarlo implícito.
+
+**Alternativa barata ya implementada (2026-07-29):** aviso de ocupación **por LPN** contra
+`ubicaciones.capacidad_pallets` ("3 de 4"), que no necesita medir un solo SKU y da la señal útil del
+día a día. Ver `src/lib/medidasLogistica.ts`.
+
 ### Deuda técnica / pendientes abiertos
 
 | Área | Descripción |

@@ -1368,6 +1368,20 @@ export default function VentasPage() {
    * emitir la factura — facturar se puede hacer luego desde el Historial. Trabar la entrega
    * esperando a AFIP dejaría al cliente parado en el mostrador si el servicio se cae.
    */
+  /**
+   * Abre el modal de detalle de una venta SIN sacar al usuario de donde está. El modal se renderiza
+   * fuera del bloque de la pestaña, así que se puede mostrar encima de Pedidos: al cerrarlo el de
+   * mostrador vuelve a su lista, en vez de quedar tirado en el Historial buscando dónde estaba.
+   * Mismo `select` que la query del Historial — el modal espera esa forma completa.
+   */
+  const abrirDetalleVenta = async (ventaId: string) => {
+    const { data, error } = await supabase.from('ventas')
+      .select('*, venta_items(id, producto_id, cantidad, precio_unitario, descuento, subtotal, alicuota_iva, iva_monto, linea_id, productos(nombre,sku,precio_costo,tiene_series,tiene_vencimiento,regla_inventario,categoria_id), inventario_lineas(lpn), venta_series(serie_id, inventario_series(nro_serie)))')
+      .eq('id', ventaId).single()
+    if (error || !data) { toast.error('No se pudo abrir la venta'); return }
+    setVentaDetalle(data)
+  }
+
   const entregarPedidoMostrador = async (pedidoId: string, numero: number) => {
     setEntregandoPedido(pedidoId)
     try {
@@ -1383,9 +1397,9 @@ export default function VentasPage() {
       qc.invalidateQueries({ queryKey: ['pedidos-mostrador'] })
       qc.invalidateQueries({ queryKey: ['pedidos'] })
       qc.invalidateQueries({ queryKey: ['envios'] })
-      // Se abre el detalle de la venta para emitir la factura, reusando el mismo camino que ya usa
-      // el resto de la app (?id= + el efecto de abajo) en vez de armar el objeto de la venta a mano.
-      if (ventaId) { setTab('historial'); setSearchParams({ id: String(ventaId) }) }
+      // Se abre el detalle de la venta para emitir la factura, encima de la propia pestaña: al
+      // cerrarlo el de mostrador sigue en su lista, con el pedido ya fuera de ella.
+      if (ventaId) await abrirDetalleVenta(String(ventaId))
     } catch (e: any) {
       toast.error(e.message || 'No se pudo entregar el pedido')
     } finally {
@@ -7468,20 +7482,28 @@ export default function VentasPage() {
             <div className="space-y-2">
               {pedidosFiltrados.map(p => (
                 <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-3">
-                  <div className="min-w-0 flex-1">
+                  {/* La tarjeta entera abre el detalle de la venta (encima de esta pestaña): el de
+                      mostrador necesita ver qué lleva, cobrar un saldo o facturar SIN tener que ir
+                      a buscar la venta a mano al Historial. */}
+                  <button type="button" onClick={() => p.venta_origen_id && abrirDetalleVenta(p.venta_origen_id)}
+                    title="Ver el detalle de la venta (cobrar saldo, facturar, ver los productos)"
+                    className="min-w-0 flex-1 text-left group">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300 group-hover:text-accent-text transition-colors">
                         Pedido #{(tenant as any)?.pedido_numeracion === 'tenant' ? p.numero : (p.numero_sucursal ?? p.numero)}
                       </span>
                       <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
                         Listo para entrega
+                      </span>
+                      <span className="text-xs text-accent-text opacity-0 group-hover:opacity-100 transition-opacity">
+                        Ver venta →
                       </span>
                     </div>
                     <p className="text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">
                       {p.cliente_nombre || 'Consumidor final'}
                       {p.cliente_dni && <span className="text-gray-400 dark:text-gray-500"> · DNI {p.cliente_dni}</span>}
                     </p>
-                  </div>
+                  </button>
                   <button
                     type="button"
                     onClick={() => entregarPedidoMostrador(p.id, p.numero)}

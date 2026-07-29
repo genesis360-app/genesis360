@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -28,7 +28,7 @@ import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { canalesExcluidosValidos } from '@/lib/pedidoVenta'
-import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volumenUbicacionM3 } from '@/lib/medidasLogistica'
+import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volumenUbicacionM3, capacidadUtilM3, estadoVolumenUbicacion, FACTOR_APROVECHAMIENTO_DEFAULT } from '@/lib/medidasLogistica'
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import toast from 'react-hot-toast'
 
@@ -640,6 +640,11 @@ export default function ConfigPage() {
   const [bizOverReceipt, setBizOverReceipt] = useState(tenant?.permite_over_receipt ?? false)
   const [bizTrazaAsignacion, setBizTrazaAsignacion] = useState((tenant as any)?.trazabilidad_asignacion ?? true)
   const [bizConteoModo, setBizConteoModo] = useState<'rapido' | 'guiado' | 'elegir'>((tenant as any)?.conteo_modo ?? 'rapido')
+  // Cubicaje volumétrico opt-in (mig 322)
+  const [bizCubicaje, setBizCubicaje] = useState(!!tenant?.cubicaje_habilitado)
+  const [bizCubicajeFactor, setBizCubicajeFactor] = useState(
+    String(Math.round((Number(tenant?.cubicaje_factor_aprovechamiento ?? FACTOR_APROVECHAMIENTO_DEFAULT)) * 100))
+  )
   // F3 — gate de ajustes de conteo + umbrales de doble conteo
   const num = (v: any) => v != null ? String(v) : ''
   const [bizConteoGate, setBizConteoGate] = useState({
@@ -1149,6 +1154,14 @@ export default function ConfigPage() {
       nombre: bizForm.nombre, tipo_comercio: tipoFinal, regla_inventario: bizRegla,
       session_timeout_minutes: sessionTimeoutMinutes, permite_over_receipt: bizOverReceipt,
       trazabilidad_asignacion: bizTrazaAsignacion,
+      // Cubicaje (mig 322). El factor se guarda como fracción; la UI lo muestra en %.
+      // Se acota a (0, 1] acá además del CHECK de la tabla: si el input queda vacío o en 0, un
+      // factor 0 dejaría la capacidad útil en 0 m³ y toda ubicación aparecería excedida.
+      cubicaje_habilitado: bizCubicaje,
+      cubicaje_factor_aprovechamiento: (() => {
+        const pct = Number(bizCubicajeFactor)
+        return Number.isFinite(pct) && pct > 0 && pct <= 100 ? pct / 100 : FACTOR_APROVECHAMIENTO_DEFAULT
+      })(),
       conteo_modo: bizConteoModo,
       ajuste_autorizacion_roles: Object.keys(bizAjusteRoles).length ? bizAjusteRoles : null,
       conteo_gate_activo: bizConteoGate.activo,
@@ -1401,11 +1414,24 @@ export default function ConfigPage() {
     queryKey: ['ubicacion-ocupacion', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('vw_ubicacion_ocupacion')
-        .select('ubicacion_id, lpn_activos, peso_kg, lineas_con_peso, lineas_total')
+        .select('ubicacion_id, lpn_activos, peso_kg, lineas_con_peso, lineas_total, volumen_m3, lineas_con_volumen')
         .eq('tenant_id', tenant!.id)
       return Object.fromEntries((data ?? []).map((r: any) => [r.ubicacion_id, r])) as Record<string, any>
     },
     enabled: !!tenant && tab === 'inventario',
+  })
+
+  // Cobertura de medición del catálogo (mig 322). Activar el cubicaje NO completa los SKU que ya
+  // existen: sin este número el volumen ocupado parecería completo cuando no lo está.
+  const { data: cubicajeCobertura } = useQuery({
+    queryKey: ['cubicaje-cobertura', tenant?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_cubicaje_cobertura', { p_tenant_id: tenant!.id })
+      if (error) throw error
+      return (Array.isArray(data) ? data[0] : data) as
+        { productos_total: number; productos_medidos: number; presentaciones_sin_medir: number } | null
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'reglas',
   })
 
   const { data: ubicaciones = [], isLoading: loadingUbic } = useQuery({
@@ -3717,6 +3743,71 @@ export default function ConfigPage() {
                   })}
                 </div>
               </div>
+              {/* mig 322 — Cubicaje volumétrico opt-in */}
+              <div className="py-1 border-t border-gray-100 dark:border-gray-700 pt-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <Box size={14} /> Cubicaje volumétrico
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      Calcula cuánto <strong>espacio</strong> ocupa lo guardado en cada ubicación, no solo cuántos LPN.
+                      Al activarlo, el <strong>peso y las tres medidas pasan a ser obligatorios</strong> en cada nivel
+                      de la estructura de un producto (Productos → detalle → Empaque). Es la única forma de que el
+                      número no mienta: un nivel sin medir ocupa 0 m³ para el cálculo, y el error empuja hacia
+                      &quot;parece que hay lugar&quot; justo cuando la posición podría estar pasada.
+                    </p>
+                  </div>
+                  <div className="ml-3"><Toggle size="lg" disabled={!canEdit} checked={bizCubicaje}
+                    onChange={() => setBizCubicaje(p => !p)} aria-label="Cubicaje volumétrico" /></div>
+                </div>
+
+                {bizCubicaje && (
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        Aprovechamiento de la ubicación (%)
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <input type="number" min="1" max="100" step="1" disabled={!canEdit}
+                          onWheel={e => e.currentTarget.blur()}
+                          value={bizCubicajeFactor} onChange={e => setBizCubicajeFactor(e.target.value)}
+                          className="w-24 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm" />
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          Ninguna posición real se llena al 100% geométrico (pasillos, forma irregular,
+                          mercadería que no apila). Con {Number(bizCubicajeFactor) || 70}%, un rack de 1 m³
+                          se considera lleno con {((Number(bizCubicajeFactor) || 70) / 100).toFixed(2)} m³.
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Cobertura del catálogo: prender el toggle NO completa lo que ya está cargado. */}
+                    {cubicajeCobertura && (() => {
+                      const { productos_total: total, productos_medidos: medidos, presentaciones_sin_medir: sinMedir } = cubicajeCobertura
+                      const completo = total > 0 && medidos >= total
+                      return (
+                        <div className={`rounded-xl p-3 text-xs border ${completo
+                          ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-800 dark:text-green-300'
+                          : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'}`}>
+                          <p className="font-semibold">
+                            {completo
+                              ? `✅ Catálogo medido: ${medidos} de ${total} productos.`
+                              : `⚠ ${medidos} de ${total} productos medidos · ${sinMedir} presentaciones sin medir.`}
+                          </p>
+                          {!completo && (
+                            <p className="mt-1">
+                              Activar el cubicaje <strong>no completa los productos que ya estaban cargados</strong>:
+                              exige las medidas de acá en adelante. Hasta que termines de medirlos, el espacio ocupado
+                              que se muestra en cada ubicación queda <strong>por debajo del real</strong> — por eso
+                              aparece con ⚠ y nunca como un verde limpio. Se cargan en Productos → detalle → Empaque.
+                            </p>
+                          )}
+                        </div>
+                      )
+                    })()}
+                  </div>
+                )}
+              </div>
               {canEdit && (
                 <div className="flex justify-end">
                   <button onClick={handleSaveBiz} disabled={savingBiz}
@@ -3923,7 +4014,7 @@ export default function ConfigPage() {
                             const m3 = volumenUbicacionM3(u.largo_cm, u.ancho_cm, u.alto_cm)
                             return (
                               <span className="ml-1 text-xs text-gray-400 dark:text-gray-500"
-                                title={`Dimensiones alto × ancho × largo${m3 != null ? ` — ${m3} m³. Referencia: el volumen ocupado todavía no se calcula (ver backlog de cubicaje).` : ''}`}>
+                                title={`Dimensiones alto × ancho × largo${m3 != null ? ` — ${m3} m³ geométricos` : ''}`}>
                                 <Ruler size={10} className="inline mb-0.5" /> {[u.alto_cm, u.ancho_cm, u.largo_cm].filter(Boolean).join('×')} cm
                                 {m3 != null && <span className="ml-1">· {m3} m³</span>}
                               </span>
@@ -3955,6 +4046,31 @@ export default function ConfigPage() {
                                     {carga.avisoCobertura && ' ⚠'}
                                   </span>
                                 )}
+                                {/* Cubicaje (mig 322): espacio ocupado contra la capacidad ÚTIL
+                                    (geométrico × factor). Solo si el tenant lo activó Y la ubicación
+                                    está medida — sin las dos cosas el número no significa nada. */}
+                                {tenant?.cubicaje_habilitado && (() => {
+                                  const util = capacidadUtilM3(
+                                    volumenUbicacionM3(u.largo_cm, u.ancho_cm, u.alto_cm),
+                                    tenant?.cubicaje_factor_aprovechamiento,
+                                  )
+                                  if (util == null) return null
+                                  const vol = estadoVolumenUbicacion(
+                                    util, oc?.volumen_m3 ?? 0, oc?.lineas_con_volumen ?? 0, oc?.lineas_total ?? 0,
+                                  )
+                                  return (
+                                    <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${cls(vol.estado)}`}
+                                      title={[
+                                        vol.mensaje,
+                                        vol.avisoCobertura,
+                                        `Capacidad útil = ${util} m³ (volumen geométrico × ${Math.round((Number(tenant?.cubicaje_factor_aprovechamiento) || FACTOR_APROVECHAMIENTO_DEFAULT) * 100)}% de aprovechamiento).`,
+                                      ].filter(Boolean).join(' ')}>
+                                      <Box size={9} className="inline mb-0.5 mr-0.5" />
+                                      {vol.volumenM3} de {util} m³
+                                      {vol.avisoCobertura && ' ⚠'}
+                                    </span>
+                                  )
+                                })()}
                               </>
                             )
                           })()}

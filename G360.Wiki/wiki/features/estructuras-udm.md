@@ -273,6 +273,17 @@ empaque hijo; 3 cajas y media no existe).
 modal de LPN y el Importador leen las presentaciones vía el adaptador `presentacionesComoNiveles`,
 que mapea `factor_base → unidades_base` sin tocar la aritmética ya probada.
 
+**📐 Medidas por nivel (v1.150.0, 🟡 EN DEV).** Cada línea del árbol tiene además **peso / alto /
+ancho / largo**, y el editor muestra el volumen que sale de ellas. ⚠ Esas columnas existen desde la
+mig 310 y el pipe de datos estaba **completo** (la RPC `fn_presentaciones_guardar` las acepta,
+`presentaciones.ts` las lee y las valida) — pero **el editor no tenía los `<input>`**, así que
+estuvieron siempre vacías. Se cargan del **bulto cerrado**, no de su contenido: una caja de 12 pesa
+más que 12 unidades sueltas porque incluye su embalaje, y ocupa lo que ocupa la caja. Con el
+**cubicaje** activo (`tenants.cubicaje_habilitado`) dejan de ser opcionales:
+`validarPresentaciones(rows, exigirMedidas)` las exige en la UI y el trigger
+`trg_presentaciones_exige_medidas` las exige en la DB. Ver [[wiki/features/wms]] → "Cubicaje
+volumétrico opt-in".
+
 **Limpieza (mig 311):**
 
 - Se **dropean** `producto_grupos`, `productos.grupo_id` y `productos.variante_valores` (modelo viejo

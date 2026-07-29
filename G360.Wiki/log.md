@@ -6,6 +6,61 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-29] update | 📦 v1.150.0 — el cubicaje completo (A/B/C) + 🐛 la vista de ocupación no calculaba nada (mig 325)
+
+Se terminó el cubicaje volumétrico que había quedado a mitad de camino: la sesión anterior dejó los
+datos (mig 322) y ningún frontend.
+
+**🐛 Pero la mig 322 no calculaba nada, y no se veía.** Antes de escribir el primer input fui a leer
+cómo la vista identificaba la presentación de una línea, y `vw_ubicacion_ocupacion` unía
+`producto_presentaciones.id` con `inventario_lineas.unidad_medida_id` — una columna que referencia
+**`unidades_medida`**, el catálogo de EMPAQUES ("Caja", "Pallet"), no una presentación (mig 293).
+**Verificado en DEV: 0 de las líneas con UoM matcheaban.** Y como esa columna no es NULL en esas
+filas, tampoco entraba el fallback a la base: **aportaban 0 m³**. O sea, justo las líneas que entraron
+EN BULTO —las que más volumen ocupan— quedaban en cero. El error empuja hacia *"parece que hay
+lugar"*, que es exactamente lo que este diseño quería evitar.
+
+**Mig 325**, y el arreglo destapó otras dos:
+- El fix obvio (unir por `nombre_empaque_id`) **duplicaba filas** por las presentaciones **hermanas**
+  del mismo empaque — "Caja-12" y "Caja-10" cuelgan las dos de "Caja", y en DEV hay 8 grupos así, uno
+  con 3. Una posición con 3 LPN habría dicho 6, y el peso ×3. Se resolvió con
+  `LEFT JOIN LATERAL … LIMIT 1`, que estructuralmente no puede duplicar. Verificado: **348 LPN en la
+  vista = 348 en el conteo crudo**, 0 discrepancias en 46 ubicaciones.
+- `cantidad_uom` es un **snapshot de INGRESO que se pone viejo**: `cantidad` cambia con cada venta o
+  ajuste y él no (en DEV hay líneas con `cantidad = 48` y `cantidad_uom = 60`). La 322 lo usaba como
+  primera fuente de la cantidad. Ahora la cantidad sale del **stock actual** y `cantidad_uom` queda
+  solo como desempate entre hermanas.
+- ⚠ Y una que encontró el `migration-reviewer` y yo había pasado por alto: `il.cantidad` es `integer`
+  y `factor_base` `bigint`, así que sin `::numeric` Postgres hace **división entera**. 48 unidades en
+  cajas de 10 daban 4 bultos en vez de 4,8 → el **peso salía ~17% corto**, en el número que decide si
+  un rack está sobrecargado. Eso no es un problema de datos, es seguridad física.
+
+De paso el **peso** pasó a usar el del NIVEL cuando está cargado (incluye el embalaje: una caja de 12
+pesa más que 12 unidades sueltas) y cae a `productos.peso_kg` si no — coherente con la decisión de GO
+de pedir el peso por nivel y no derivarlo del factor.
+
+**Fase A — cargar los datos.** Inputs de peso/alto/ancho/largo **por nivel** en el editor de
+estructura, con el volumen de cada presentación al lado. ⚠ El pipe de datos existía **completo** desde
+la mig 310 —la RPC los acepta, la lib los lee y los valida—: faltaban literalmente los `<input>`. Por
+eso esas columnas estuvieron siempre vacías. Con el cubicaje activo `validarPresentaciones` los
+**exige**, así el error se ve al tipear en vez de llegar como una excepción de Postgres al guardar (el
+guard real sigue siendo el trigger). Y en Config → Inventario, el toggle + el factor de aprovechamiento
++ el panel de cobertura.
+
+**Fase B — mostrar el espacio.** Badge `0.8 de 1.01 m³` por ubicación, contra la capacidad **útil**
+(geométrico × factor), con ⚠ cuando se calculó sobre líneas sin medir.
+
+**Fase C — avisar al ubicar.** `AvisoCapacidadUbicacion` en el ingreso de stock y en mover un LPN,
+solo cuando la posición quedaría llena o excedida. **Avisa, nunca bloquea**: el tope lo carga una
+persona y la mercadería ya está físicamente ahí.
+
+**Guard nuevo `114_cubicaje_ocupacion_mutante.spec.ts`**: siembra su propia precondición (producto con
+hermanas del mismo empaque + una línea cuya cantidad no es múltiplo del bulto) y asierta contra la DB
+los tres modos de falla. Falla contra la vista de la 322, así que es genuinamente mutante.
+
+Verde: tsc · build · unit **1357** · e2e 114 (2/2) · regresión 107 + 113 (10/10).
+**TODO EN DEV** — PROD sigue en v1.145.0, con 12 migraciones (314-325) sin deployar.
+
 ## [2026-07-29] update | 🧾 Auditoría de la factura #475: los importes estaban bien, faltaba EXHIBIR el descuento
 
 GO reportó que la factura de la venta #475 "indica cualquier cosa": precio unitario de $2.700 para

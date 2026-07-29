@@ -13,6 +13,37 @@ updated: 2026-07-28
 
 ---
 
+## v1.150.0 — 📦 Cubicaje volumétrico COMPLETO (Fases A/B/C) + 🐛 fix de la vista de ocupación (mig 325) — 🟡 **EN DEV** (2026-07-29)
+
+Se termina el cubicaje que la v1.149.0 había dejado a mitad de camino (solo datos).
+
+**🐛 Antes de construir el frontend apareció que la mig 322 no calculaba nada.**
+`vw_ubicacion_ocupacion` unía `producto_presentaciones.id` con
+`inventario_lineas.unidad_medida_id`, que referencia `unidades_medida` — el catálogo de EMPAQUES, no
+una presentación. En DEV: **0 de las líneas con UoM matcheaban**, así que las que entraron en bulto
+—las que más volumen ocupan— aportaban **0 m³**. El arreglo directo habría **duplicado filas** por las
+presentaciones *hermanas* del mismo empaque (8 grupos en DEV, uno con 3) inflando LPN y peso, así que
+la **mig 325** lo resuelve con `LEFT JOIN LATERAL … LIMIT 1`, deriva la cantidad del **stock actual**
+en vez del snapshot de ingreso (que se pone viejo) y castea a `numeric` una división entera que
+truncaba el peso ~17%. Verificado: 348 LPN en la vista = 348 en el conteo crudo.
+
+**Fase A — cargar los datos:** inputs de **peso / alto / ancho / largo por nivel** en el editor de
+estructura (el pipe de datos existía completo desde la mig 310: faltaban literalmente los `<input>`,
+por eso las columnas estaban siempre vacías) · con el cubicaje activo pasan a ser **obligatorios** y
+el error se ve al tipear, no como una excepción de Postgres al guardar · **toggle + factor de
+aprovechamiento + panel de cobertura** en Config → Inventario → Reglas de stock.
+
+**Fase B — mostrar el espacio:** badge "0.8 de 1.01 m³" por ubicación, contra la capacidad **útil**
+(geométrico × factor), con ⚠ cuando el número se calculó sobre líneas sin medir.
+
+**Fase C — avisar al ubicar:** `AvisoCapacidadUbicacion` al **ingresar stock** y al **mover un LPN**,
+cuando la posición quedaría llena o excedida en LPN, peso o volumen. **Avisa, nunca bloquea** — el
+tope lo carga una persona y la mercadería ya está físicamente ahí.
+
+Verde: tsc · build · unit 1357.
+
+---
+
 ## v1.149.0 — 🐛 Bugs del flujo real + 📦 cubicaje opt-in (Fase A) — 🟡 **EN DEV** (2026-07-29)
 
 Los tres bugs que encontró GO probando el flujo Venta→Pedido end-to-end:

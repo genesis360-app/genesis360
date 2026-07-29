@@ -117,6 +117,14 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 ### Sub-tab: Reglas de stock
 - **Regla de inventario** (`tenants.regla_inventario`): FIFO / FEFO / LIFO / LEFO / Manual
 - **Over-receipt** (`tenants.permite_over_receipt`): permite ingresar más cantidad que la OC
+- **📦 Cubicaje volumétrico** (`tenants.cubicaje_habilitado`, default `false` — 🟡 EN DEV desde
+  v1.149/150, migs 322/325): calcula cuánto **espacio** ocupa lo guardado en cada ubicación.
+  Al activarlo, el peso y las tres medidas pasan a ser **obligatorios por nivel** en el editor de
+  estructura del producto — ésa es la clave del diseño, porque con medidas a medias el número
+  miente. Incluye el **factor de aprovechamiento** (`cubicaje_factor_aprovechamiento`, default
+  **0.70**: ninguna posición real se llena al 100% geométrico) y un **panel de cobertura**
+  (`fn_cubicaje_cobertura`) que dice cuántos SKU están medidos — prenderlo NO completa el catálogo
+  que ya existe. Detalle en [[wiki/features/wms]] → "Cubicaje volumétrico opt-in".
 
 ### Sub-tabs heredados
 Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs de Inventario:

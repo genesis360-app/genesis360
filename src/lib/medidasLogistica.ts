@@ -9,9 +9,12 @@
 //   · `ubicaciones.capacidad_pallets/peso_max_kg/…` (mig 032) — se cargan en Config y no las lee
 //     ningún cálculo.
 //
-// Este archivo conecta las dos primeras cosas que rinden, sin meterse con cubicaje volumétrico
-// (que exige medidas confiables de CADA nivel de CADA SKU: si faltan algunas el número miente, y un
-// número que miente es peor que no tenerlo).
+// Este archivo conecta las tres. El cubicaje volumétrico (§3, mig 322) se agregó después con el
+// diseño de GO que resuelve la objeción de fondo — "con medidas a medias el número miente, y un
+// número que miente es peor que no tener ninguno": es **opt-in por tenant** y al activarlo las
+// medidas por nivel se vuelven obligatorias en el editor de estructura, así la cobertura es 100%
+// por construcción de ahí en adelante. Prenderlo no completa el catálogo viejo → toda función de
+// acá devuelve además la COBERTURA, y ninguna pantalla muestra un verde limpio sin ella.
 
 // ── 1) Bulto del envío a partir de los productos ────────────────────────────────────────
 
@@ -203,11 +206,9 @@ export function estadoCargaUbicacion(
 }
 
 /**
- * Volumen de una ubicación en m³ a partir de sus dimensiones en cm, o null si falta alguna.
- * Es **solo referencia** para el usuario: hoy no hay con qué compararlo, porque el volumen del
- * contenido necesita las medidas por nivel de `producto_presentaciones`, que no se pueden cargar.
- * Se conserva el dato porque el día que se haga el cubicaje es la mitad del cálculo, y volver a
- * medir un depósito entero después sería carísimo.
+ * Volumen GEOMÉTRICO de una ubicación en m³ a partir de sus dimensiones en cm, o null si falta
+ * alguna. Es el volumen "de la caja vacía": lo que realmente entra es menos (ver
+ * `capacidadUtilM3`).
  */
 export function volumenUbicacionM3(
   largoCm: number | null | undefined,
@@ -217,6 +218,110 @@ export function volumenUbicacionM3(
   const l = num(largoCm), a = num(anchoCm), h = num(altoCm)
   if (!l || !a || !h || l <= 0 || a <= 0 || h <= 0) return null
   return Math.round(((l * a * h) / 1_000_000) * 1000) / 1000
+}
+
+// ── 3) Cubicaje volumétrico (mig 322) ───────────────────────────────────────────────────
+
+/** Fracción del volumen geométrico que se considera usable si el tenant no configuró otra. */
+export const FACTOR_APROVECHAMIENTO_DEFAULT = 0.7
+
+/**
+ * Capacidad ÚTIL en m³ de una ubicación: el volumen geométrico por el factor de aprovechamiento.
+ *
+ * 🛑 Ninguna posición real se llena al 100% geométrico — pasillos, forma irregular, mercadería que
+ * no apila. Sin este factor el sistema diría "entra" cuando no entra, que es exactamente el error
+ * que hace inútil a un cubicaje. 0.70 es el default típico de la industria (60-75%).
+ */
+export function capacidadUtilM3(
+  volumenGeometricoM3: number | null | undefined,
+  factorAprovechamiento?: number | null,
+): number | null {
+  const v = num(volumenGeometricoM3)
+  if (v == null || v <= 0) return null
+  const f = num(factorAprovechamiento)
+  const factor = f != null && f > 0 && f <= 1 ? f : FACTOR_APROVECHAMIENTO_DEFAULT
+  return Math.round(v * factor * 1000) / 1000
+}
+
+export interface VolumenUbicacion {
+  estado: EstadoCapacidad
+  /** m³ ocupados por lo que hay guardado (según `vw_ubicacion_ocupacion`). */
+  volumenM3: number
+  /** m³ útiles = geométrico × factor. null si la ubicación no tiene las tres medidas. */
+  capacidadM3: number | null
+  /** % de las líneas cuya presentación TIENE las tres medidas (0-100). */
+  cobertura: number
+  mensaje: string | null
+  /** Aviso separado: el número está calculado sobre datos incompletos. */
+  avisoCobertura: string | null
+}
+
+/**
+ * Ocupación volumétrica de una ubicación (cubicaje, mig 322).
+ *
+ * ⚠ Tiene el **mismo sesgo peligroso que el peso, y peor**: si a alguna presentación le faltan las
+ * medidas, esa línea aporta 0 m³ y el total queda **corto** — o sea que el error empuja hacia
+ * "parece que hay lugar" justo cuando la posición podría estar pasada. Por eso nunca se muestra un
+ * verde limpio sin decir sobre qué porcentaje de las líneas se calculó.
+ *
+ * Ése es todo el sentido de que el cubicaje sea **opt-in** (`tenants.cubicaje_habilitado`): al
+ * activarlo las medidas pasan a ser obligatorias en el editor de estructura, así la cobertura es
+ * 100% por construcción para todo lo que se cargue de ahí en adelante. Prenderlo NO completa el
+ * catálogo que ya existe — de ahí la cobertura.
+ *
+ * Igual que la capacidad por LPN y la carga por peso: **avisa, no bloquea**.
+ */
+export function estadoVolumenUbicacion(
+  capacidadUtil: number | null | undefined,
+  volumenOcupadoM3: number | null | undefined,
+  lineasConVolumen = 0,
+  lineasTotal = 0,
+  aAgregarM3 = 0,
+): VolumenUbicacion {
+  const cap = num(capacidadUtil)
+  const ocupado = (num(volumenOcupadoM3) ?? 0) + Math.max(0, num(aAgregarM3) ?? 0)
+  const vol = redondear3(ocupado)
+  const cobertura = lineasTotal > 0 ? Math.round((lineasConVolumen / lineasTotal) * 100) : 100
+  const avisoCobertura = lineasTotal > 0 && lineasConVolumen < lineasTotal
+    ? `Calculado sobre ${lineasConVolumen} de ${lineasTotal} líneas: a las demás les faltan las medidas de la presentación, así que el volumen real es mayor.`
+    : null
+
+  if (cap == null || cap <= 0) {
+    return { estado: 'sin_limite', volumenM3: vol, capacidadM3: null, cobertura, mensaje: null, avisoCobertura }
+  }
+  if (vol > cap) {
+    return {
+      estado: 'excedido', volumenM3: vol, capacidadM3: cap, cobertura, avisoCobertura,
+      mensaje: `En esta ubicación entran ${cap} m³ útiles y hay ${vol} m³. Revisá el espacio.`,
+    }
+  }
+  // 90%, igual que el peso: esperar al 100% exacto con un volumen subestimado por datos faltantes
+  // equivale a no avisar nunca.
+  if (vol >= cap * 0.9) {
+    return {
+      estado: 'lleno', volumenM3: vol, capacidadM3: cap, cobertura, avisoCobertura,
+      mensaje: `Cerca del límite de espacio (${vol} de ${cap} m³ útiles).`,
+    }
+  }
+  return { estado: 'ok', volumenM3: vol, capacidadM3: cap, cobertura, mensaje: null, avisoCobertura }
+}
+
+/**
+ * Volumen en m³ que ocupa una cantidad expresada en una presentación concreta.
+ * Espeja el cálculo de `vw_ubicacion_ocupacion` (mig 322): "3 cajas" ocupa 3 × el volumen de la
+ * caja, **no** 36 × el de la unidad suelta. Devuelve null si la presentación no está medida —
+ * null significa "no sé", que es distinto de 0.
+ */
+export function volumenDeCantidadM3(
+  cantidad: number,
+  altoCm: number | null | undefined,
+  anchoCm: number | null | undefined,
+  largoCm: number | null | undefined,
+): number | null {
+  const unitario = volumenUbicacionM3(largoCm, anchoCm, altoCm)
+  const cant = num(cantidad) ?? 0
+  if (unitario == null || !(cant > 0)) return null
+  return redondear3(unitario * cant)
 }
 
 /** Texto corto para mostrar al lado del nombre de la ubicación: "3 de 4" / "3" si no hay tope. */

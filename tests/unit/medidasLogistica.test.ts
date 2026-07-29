@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
   sugerirBultoEnvio, avisoBultoIncompleto, estadoCapacidadUbicacion, etiquetaOcupacion,
-  estadoCargaUbicacion, volumenUbicacionM3,
+  estadoCargaUbicacion, volumenUbicacionM3, capacidadUtilM3, estadoVolumenUbicacion,
+  volumenDeCantidadM3, FACTOR_APROVECHAMIENTO_DEFAULT,
 } from '../../src/lib/medidasLogistica'
 
 describe('sugerirBultoEnvio', () => {
@@ -177,5 +178,84 @@ describe('volumenUbicacionM3', () => {
     expect(volumenUbicacionM3(120, 80, null)).toBeNull()
     expect(volumenUbicacionM3(120, 0, 150)).toBeNull()
     expect(volumenUbicacionM3(null, null, null)).toBeNull()
+  })
+})
+
+// ── Cubicaje volumétrico (mig 322 + fix 325) ────────────────────────────────────────────
+
+describe('capacidadUtilM3', () => {
+  it('aplica el factor de aprovechamiento: ninguna posición real se llena al 100% geométrico', () => {
+    expect(capacidadUtilM3(1.44, 0.7)).toBe(1.008)
+  })
+
+  it('sin factor configurado usa el default 0.70', () => {
+    expect(capacidadUtilM3(1, null)).toBe(FACTOR_APROVECHAMIENTO_DEFAULT)
+    expect(capacidadUtilM3(1, undefined)).toBe(0.7)
+  })
+
+  it('🛑 un factor inválido cae al default, no a 0: con 0 toda ubicación diría "excedido"', () => {
+    expect(capacidadUtilM3(1, 0)).toBe(0.7)
+    expect(capacidadUtilM3(1, -0.5)).toBe(0.7)
+    expect(capacidadUtilM3(1, 1.5)).toBe(0.7)
+  })
+
+  it('el `numeric` string de Postgres se normaliza', () => {
+    expect(capacidadUtilM3('2.00' as any, '0.50' as any)).toBe(1)
+  })
+
+  it('sin dimensiones de la ubicación no hay capacidad que comparar', () => {
+    expect(capacidadUtilM3(null, 0.7)).toBeNull()
+    expect(capacidadUtilM3(0, 0.7)).toBeNull()
+  })
+})
+
+describe('estadoVolumenUbicacion', () => {
+  it('sin capacidad medida no opina', () => {
+    const v = estadoVolumenUbicacion(null, 5, 3, 3)
+    expect(v.estado).toBe('sin_limite')
+    expect(v.mensaje).toBeNull()
+  })
+
+  it('marca excedido cuando lo guardado pasa la capacidad útil', () => {
+    const v = estadoVolumenUbicacion(1, 1.2, 4, 4)
+    expect(v.estado).toBe('excedido')
+    expect(v.mensaje).toContain('1.2')
+  })
+
+  it('avisa al 90%, igual que el peso: con el volumen subestimado el 100% puede no llegar nunca', () => {
+    expect(estadoVolumenUbicacion(1, 0.9, 4, 4).estado).toBe('lleno')
+    expect(estadoVolumenUbicacion(1, 0.89, 4, 4).estado).toBe('ok')
+  })
+
+  it('⚠ con presentaciones sin medir el volumen queda CORTO → cobertura + aviso', () => {
+    const v = estadoVolumenUbicacion(1, 0.4, 2, 5)
+    expect(v.cobertura).toBe(40)
+    expect(v.avisoCobertura).toContain('2 de 5')
+    expect(v.avisoCobertura).toContain('el volumen real es mayor')
+  })
+
+  it('con todo medido no hay aviso de cobertura', () => {
+    expect(estadoVolumenUbicacion(1, 0.4, 5, 5).avisoCobertura).toBeNull()
+  })
+
+  it('suma lo que está por entrar antes de decidir (aviso previo al ingreso)', () => {
+    expect(estadoVolumenUbicacion(1, 0.5, 2, 2).estado).toBe('ok')
+    expect(estadoVolumenUbicacion(1, 0.5, 2, 2, 0.6).estado).toBe('excedido')
+  })
+
+  it('el `numeric` string de Postgres se normaliza', () => {
+    expect(estadoVolumenUbicacion('1.00' as any, '1.50' as any, 1, 1).estado).toBe('excedido')
+  })
+})
+
+describe('volumenDeCantidadM3', () => {
+  it('3 cajas ocupan 3 × el volumen de la CAJA, no 36 × el de la unidad suelta', () => {
+    // Caja de 40×30×20 cm = 0.024 m³
+    expect(volumenDeCantidadM3(3, 20, 30, 40)).toBe(0.072)
+  })
+
+  it('sin medidas devuelve null (= "no sé"), que no es lo mismo que 0', () => {
+    expect(volumenDeCantidadM3(3, null, 30, 40)).toBeNull()
+    expect(volumenDeCantidadM3(0, 20, 30, 40)).toBeNull()
   })
 })

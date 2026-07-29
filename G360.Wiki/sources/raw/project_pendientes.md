@@ -6,71 +6,77 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 📦 ARRANCÁ ACÁ (2026-07-29) — CUBICAJE VOLUMÉTRICO: Fase A **a medio hacer**. Todo lo demás cerrado. **TODO EN DEV**
+> ### 🚀 ARRANCÁ ACÁ (2026-07-29) — **CUBICAJE COMPLETO (A/B/C)**. No queda nada abierto de features: lo único pendiente es **DEPLOYAR**
 >
-> #### ▶ LO QUE HAY QUE TERMINAR (es lo único abierto)
+> #### ▶ LO ÚNICO QUE HAY QUE HACER: el deploy acumulado
 >
-> GO aprobó construir el **cubicaje volumétrico opt-in, las 3 fases**, con **peso obligatorio por
-> nivel** (no derivado). La **mig 322 ya está aplicada y probada en DEV**; falta TODO el frontend.
->
-> **Decisiones ya tomadas por GO — no volver a preguntar:**
-> - Es **opt-in por tenant** (`tenants.cubicaje_habilitado`, default `false`). Ésa es la clave del
->   diseño: el reparo contra el cubicaje era *"con medidas a medias el número miente, y un número
->   que miente es peor que no tener ninguno"*. Al activarlo, las medidas pasan a ser
->   **obligatorias** en el editor de estructura → cobertura 100% por construcción de ahí en adelante.
-> - **Peso obligatorio POR NIVEL**, no derivado del factor de conversión: el peso real de un bulto
->   incluye su embalaje (una caja de 12 pesa más que 12 unidades sueltas).
-> - **Factor de aprovechamiento** configurable (`tenants.cubicaje_factor_aprovechamiento`, default
->   **0.70**): ninguna ubicación real se llena al 100% geométrico (pasillos, forma irregular,
->   mercadería que no apila). Sin él el sistema diría "entra" cuando no entra.
-> - **Prender el toggle NO completa el catálogo existente** → hay que mostrar SIEMPRE la cobertura.
->
-> **✅ YA HECHO (mig 322, aplicada y verificada en DEV):**
-> - `tenants.cubicaje_habilitado` + `cubicaje_factor_aprovechamiento` (CHECK 0 < f ≤ 1).
-> - Trigger `trg_presentaciones_exige_medidas`: con el cubicaje activo, `producto_presentaciones`
->   **no acepta** una fila sin peso ni las tres medidas. Server-side porque la UI se cachea y el
->   importador/EFs escriben con service_role. Probado: OFF guarda sin medidas, ON rechaza.
-> - `vw_ubicacion_ocupacion` **ampliada con `volumen_m3` y `lineas_con_volumen`**. El volumen sale de
->   la presentación en la que ENTRÓ la línea (`inventario_lineas.unidad_medida_id`/`cantidad_uom`,
->   mig 293): "3 cajas" ocupa 3 × el volumen de la caja, no 36 × el de la unidad suelta.
-> - `fn_cubicaje_cobertura(tenant)` → `(productos_total, productos_medidos, presentaciones_sin_medir)`.
->   Medido en DEV al aplicarla: **6 de 296 productos medidos · 351 presentaciones sin medir.**
-> - Lógica pura ya disponible en `src/lib/medidasLogistica.ts`: `volumenUbicacionM3`,
->   `estadoCapacidadUbicacion`, `estadoCargaUbicacion` (29 unit tests).
->
-> **🔨 LO QUE FALTA (en este orden):**
->
-> **Fase A — que se puedan cargar los datos**
-> 1. `src/components/PresentacionesEditor.tsx`: inputs de **peso / alto / ancho / largo por nivel**.
->    ⚠ El pipe de datos YA EXISTE completo — `fn_presentaciones_guardar` acepta esos campos,
->    `presentaciones.ts` los lee (`PresentacionRow.peso/alto/ancho/largo`) y `validarPresentaciones`
->    ya valida que sean > 0 si vienen. **Lo ÚNICO que falta son los `<input>`.** Por eso las columnas
->    están siempre vacías desde que existen.
-> 2. `validarPresentaciones` tiene que **exigirlos** cuando el cubicaje está activo (hoy solo valida
->    "si vienen, que sean > 0"). Pasarle el flag.
-> 3. Config → Inventario: toggle del cubicaje + input del factor + **panel de cobertura**
->    ("6 de 296 SKU medidos · 351 presentaciones sin medir") usando `fn_cubicaje_cobertura`.
->
-> **Fase B — mostrar el volumen ocupado**
-> 4. En Config → Ubicaciones, al lado de "3 de 4 LPN" y "120 de 500 kg" que YA están: agregar
->    "1.2 de 1.44 m³" usando `volumen_m3` de la vista contra `volumenUbicacionM3(l,a,h) × factor`.
-> 5. Mostrar la **cobertura del cálculo** (`lineas_con_volumen` / `lineas_total`): si faltan medidas
->    el volumen queda CORTO, o sea que el error empuja hacia "parece que hay lugar". Mismo criterio
->    que ya se aplicó con el peso (⚠ + tooltip), no un verde limpio.
->
-> **Fase C — validar al ubicar**
-> 6. Aviso al ingresar stock (`InventarioPage`) y al mover un LPN (`LpnAccionesModal`) cuando la
->    ubicación elegida quedaría excedida en volumen o peso. **AVISO, NUNCA BLOQUEO** — el dato de
->    capacidad lo carga una persona y la mercadería ya está físicamente ahí.
-> 7. Opcional: que `fn_wms_elegir_ubicacion_picking` prefiera ubicaciones con lugar.
->
-> **🛑 Riesgo a no perder de vista:** el cálculo vale lo que valen las medidas. Hay que decidir y
-> dejar explícito qué pasa con los SKU sin medir (¿se excluyen y se avisa "cobertura 60%"? ¿se
-> bloquea el cálculo?), no dejarlo implícito.
+> **`APP_VERSION` = v1.150.0 · PROD sigue en v1.145.0.** Sin deployar: **migs 314 a 325 (12)** y las
+> versiones **1.146 → 1.150**.
+> Al retomar: aplicar 314-325 en PROD → PR `dev→main` → tag + release → verificar bundle con
+> `curl -sL`. (El resto de los gotchas de deploy están más abajo en este archivo.)
 >
 > ---
 >
-> #### ✅ LO QUE SE CERRÓ ESTA SESIÓN (migs 315-324, v1.148.0 → **todo EN DEV**)
+> #### ✅ LO QUE SE CERRÓ ESTA SESIÓN (v1.150.0, mig 325 — **EN DEV**)
+>
+> **📦 El cubicaje volumétrico quedó COMPLETO: las tres fases.** La sesión anterior había dejado solo
+> los datos (mig 322) y ningún frontend.
+>
+> **🐛 Pero primero: la mig 322 no calculaba nada.** Al ir a construir el frontend apareció que
+> `vw_ubicacion_ocupacion` unía `producto_presentaciones.id` con `inventario_lineas.unidad_medida_id`,
+> que referencia **`unidades_medida`** — el catálogo de EMPAQUES ("Caja", "Pallet"), no una
+> presentación (mig 293). **Verificado en DEV: 0 de las líneas con UoM matcheaban.** Como esa columna
+> tampoco es NULL en esas filas, no entraba el fallback a la base → **aportaban 0 m³**: justo las
+> líneas que entraron EN BULTO, las que más volumen ocupan. El error empuja hacia *"parece que hay
+> lugar"*, que es exactamente lo que el diseño del cubicaje quería evitar.
+> **Mig 325** lo arregla, y de paso otras dos cosas que el arreglo destapó:
+> - El fix obvio (unir por `nombre_empaque_id`) **duplicaba filas** por las presentaciones
+>   **hermanas** del mismo empaque ("Caja-12" y "Caja-10" cuelgan las dos de "Caja"; en DEV hay 8
+>   grupos, uno con 3) → `lpn_activos` y `peso_kg` inflados ×2/×3: una posición con 3 LPN diría 6.
+>   Se resolvió con **`LEFT JOIN LATERAL … LIMIT 1`**, que estructuralmente no puede duplicar.
+>   Verificado post-fix: **348 LPN en la vista = 348 en el conteo crudo**, 0 discrepancias en 46
+>   ubicaciones.
+> - `cantidad_uom` es un **snapshot de INGRESO que se pone viejo** (`cantidad` cambia con cada
+>   venta/ajuste y él no: en DEV hay líneas con `cantidad = 48` y `cantidad_uom = 60`). Ahora la
+>   cantidad se deriva del **stock actual** y `cantidad_uom` queda solo como desempate entre hermanas.
+> - ⚠ **Gotcha de Postgres que encontró el `migration-reviewer`:** `il.cantidad` es `integer` y
+>   `factor_base` `bigint` → sin `::numeric` la división **trunca**. 48 unidades en cajas de 10 daban
+>   4 bultos en vez de 4,8 y el **peso salía ~17% corto**, en el dato que decide si un rack está
+>   sobrecargado (seguridad física, no un problema de datos).
+> - Se aprovechó para que el **peso** use el del NIVEL cuando está cargado (incluye el embalaje) y
+>   caiga a `productos.peso_kg` si no. Es coherente con la decisión de GO de pedir peso por nivel.
+>
+> **Fase A — cargar los datos:**
+> - `PresentacionesEditor`: inputs de **peso / alto / ancho / largo por nivel** + el volumen de cada
+>   presentación al lado. ⚠ El pipe de datos existía **completo** desde la mig 310 (la RPC los acepta,
+>   `presentaciones.ts` los lee y valida): faltaban literalmente los `<input>`. Por eso las columnas
+>   estaban vacías desde que existen.
+> - `validarPresentaciones(rows, exigirMedidas)` los **exige** con el cubicaje activo → el error se ve
+>   al tipear, no como una excepción de Postgres al guardar. El guard real sigue siendo el trigger.
+> - Config → Inventario → **Reglas de stock**: toggle + factor de aprovechamiento (en %) + **panel de
+>   cobertura** con `fn_cubicaje_cobertura`.
+>
+> **Fase B — mostrar el espacio:** badge `0.8 de 1.01 m³` por ubicación en Config → Ubicaciones, al
+> lado de los de LPN y kg, contra la capacidad **útil** (geométrico × factor) y con ⚠ si se calculó
+> sobre líneas sin medir.
+>
+> **Fase C — avisar al ubicar:** componente nuevo `src/components/AvisoCapacidadUbicacion.tsx`,
+> cableado en el **ingreso de stock** (`InventarioPage`) y en **mover un LPN** (`LpnAccionesModal`).
+> Solo aparece si la posición quedaría **llena o excedida**. **Avisa, NUNCA bloquea.**
+>
+> **🛡️ Guard nuevo: `tests/e2e/114_cubicaje_ocupacion_mutante.spec.ts`** — siembra su propia
+> precondición (producto con hermanas del mismo empaque + una línea cuya cantidad NO es múltiplo del
+> bulto) y asierta contra la DB los tres modos de falla: no encontrar la presentación, encontrar dos,
+> y truncar la división. **Es genuinamente mutante: falla contra la vista de la mig 322.**
+>
+> **Verde:** tsc · build · **unit 1357** · e2e **114 (2/2)** · regresión **107 + 113 (10/10)**.
+>
+> **🔨 Único pendiente OPCIONAL del cubicaje (no bloqueante, nadie lo pidió):** que
+> `fn_wms_elegir_ubicacion_picking` prefiera ubicaciones con lugar. Hoy no mira ocupación.
+>
+> ---
+>
+> #### ✅ SESIÓN ANTERIOR — migs 315-324, v1.146→v1.149 (**EN DEV**; ver el estado de deploy ARRIBA, no acá)
 >
 > **Flujo Venta → Pedido → Envío completo, según el diagrama de flujo de GO.**
 > Regla final: *todas las ventas generan Pedido de preparación MENOS la entrega directa* (canal
@@ -87,7 +93,7 @@ type: project
 > | 319 | 💵 Faltaba el descuento por estado de inventario al facturar |
 > | 320 | 🐛 El picking de una RESERVA salía sin LPN ni ubicación (leía solo `venta_item_despachos`; en una reserva el LPN vive en `venta_items.lpn_plan`). Cascada de 4 fuentes |
 > | 321 | Vista `vw_ubicacion_ocupacion`: conecta la capacidad de `ubicaciones` (mig 032) que nadie leía |
-> | 322 | 📦 Cubicaje opt-in (ver arriba) |
+> | 322 | 📦 Cubicaje opt-in — ⚠ su cálculo de `volumen_m3` **no funcionaba** (JOIN a la presentación roto): corregido en la **mig 325**, ver arriba |
 > | 323 | 🐛 Un PRESUPUESTO no genera pedido + anular la venta cancela su pedido |
 > | 324 | No se lanza un pedido cuya venta no está viva |
 >
@@ -113,11 +119,8 @@ type: project
 > apagados por default. 🪤 El perfil que justifica prenderlos (mayorista con entregas parciales) es
 > el mismo que más probablemente use la lista mayorista: si se prende ese toggle, revisar.
 >
-> **Verde:** tsc · build · **unit 1339** · **e2e 113 (6/6)** · regresión **107 (5/5)**.
->
-> **🟡 ESTADO DE DEPLOY: TODO EN DEV.** `APP_VERSION` = **v1.149.0**; **PROD sigue en v1.145.0**.
-> Sin deployar: **migs 314 a 324 (11)** y las versiones **1.146 → 1.149**.
-> Al retomar: aplicar 314-324 en PROD → PR `dev→main` → tag+release.
+> **Verde al cerrar esa sesión:** tsc · build · unit 1339 · e2e 113 (6/6) · regresión 107 (5/5).
+> *(Números vigentes: ver el bloque de arriba.)*
 >
 > **⚠🧾 RIESGO LATENTE ANOTADO (factura, no corregido):** el "P. Unitario" de una línea vendida en
 > una UoM se calcula en el PDF como `subtotal / cantidad_uom`. Si la división no es exacta a 2
@@ -127,8 +130,8 @@ type: project
 > subtotal`, mostrar la línea en unidades BASE (que siempre multiplican, porque
 > `subtotal = precio_unitario × cantidad` por construcción). Ver UAT §47 "Auditoría de la factura #475".
 >
-> **Sigue abierto:** rotar el `SUPABASE_ACCESS_TOKEN` `sbp_60df…` · `schema_full.sql` refleja hasta
-> la 311 (le faltan 312-324).
+> **Sigue abierto (y sigue vigente):** rotar el `SUPABASE_ACCESS_TOKEN` `sbp_60df…` ·
+> `schema_full.sql` refleja hasta la 311 (le faltan **312-325**).
 
 
 > ### 🧾 ESTADO ANTERIOR (2026-07-29) — v1.148.0: flujo Venta→Pedido→Envío completo (migs 315-319). **EN DEV, PROD pendiente**

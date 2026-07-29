@@ -6,10 +6,35 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-324)
+# Historial de Migraciones (001-325)
 
-**Total al 2026-07-29:** 324 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-29:** 325 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**325 (🐛 la vista de ocupación NUNCA encontraba la presentación de una línea — fix de la 322, EN DEV — PROD pendiente)** —
+Tres defectos en `vw_ubicacion_ocupacion`, encontrados al construir el frontend del cubicaje:
+**(1) el JOIN comparaba dos tipos de ID distintos.** La 322 unía `producto_presentaciones.id =
+inventario_lineas.unidad_medida_id`, pero esa columna referencia `unidades_medida(id)` — el catálogo
+de EMPAQUES ("Caja", "Pallet"), no una presentación (mig 293). Verificado en DEV: de las líneas
+activas con `unidad_medida_id`, **0 matcheaban por `pp.id` y todas por `unidades_medida.id`**. Como
+además la columna no es NULL en esas filas, tampoco entraba el fallback a la base → **aportaban 0 m³**.
+O sea: las líneas que entraron en BULTO, las que más volumen ocupan, quedaban en cero, y el error
+empuja hacia "parece que hay lugar" — exactamente lo que el cubicaje quería evitar.
+**(2) el arreglo obvio duplicaba filas.** Unir por `nombre_empaque_id` a secas multiplica la línea
+cuando hay **hermanas** con el mismo empaque ("Caja-12" y "Caja-10" cuelgan las dos del empaque
+"Caja"; en DEV hay 8 grupos así, uno con 3) → `lpn_activos` y `peso_kg` inflados ×2/×3: una ubicación
+con 3 LPN diría "6 de 4". Se resuelve con **`LEFT JOIN LATERAL … LIMIT 1`**, que estructuralmente no
+puede duplicar. Verificado post-fix: 348 LPN en la vista = 348 en el conteo crudo, 0 discrepancias en
+46 ubicaciones.
+**(3) `cantidad_uom` es un snapshot de INGRESO y se pone viejo.** La 322 lo usaba como primera fuente
+de la cantidad; `cantidad` cambia con cada venta/ajuste y él no (en DEV hay líneas con `cantidad = 48`
+y `cantidad_uom = 60`). Ahora la cantidad se **deriva del stock actual** (`cantidad / factor_base`) y
+`cantidad_uom` queda solo como desempate entre hermanas.
+⚠ **Gotcha de Postgres detectado en review:** `il.cantidad` es `integer` y `factor_base` `bigint` → sin
+`::numeric` la división **trunca**: 48 unidades en cajas de 10 daban 4 bultos en vez de 4,8 y el peso
+salía ~17% corto, justo en el dato que decide si un rack está sobrecargado (seguridad física).
+Se aprovechó para que el **peso** use el del NIVEL cuando está cargado (incluye el embalaje: una caja
+de 12 pesa más que 12 unidades sueltas) y caiga a `productos.peso_kg` si no.
 
 **324 (no se lanza un pedido cuya venta no está viva, EN DEV — PROD pendiente)** —
 Engancha el guard de la 323 al dispatcher de "Lanzar" (que es chico), y no dentro del algoritmo de
@@ -39,8 +64,9 @@ Server-side porque la UI se cachea y el importador/EFs escriben con service_role
 `vw_ubicacion_ocupacion` se amplía con **`volumen_m3`** (calculado sobre la presentación en la que
 ENTRÓ cada línea: "3 cajas" ocupa 3 × el volumen de la caja) y `lineas_con_volumen`.
 `fn_cubicaje_cobertura(tenant)` devuelve cuántos productos tienen TODAS sus presentaciones medidas —
-prender el toggle NO completa el catálogo existente (en DEV: **6 de 296**). **Falta todo el
-frontend**: ver el plan en `project_pendientes.md`.
+prender el toggle NO completa el catálogo existente (en DEV: **6 de 296**).
+⚠ El cálculo de `volumen_m3` de esta migración **no funcionaba**: el JOIN a la presentación nunca
+matcheaba. Corregido en la **mig 325**. Frontend completo (Fases A/B/C) en **v1.150.0**.
 
 **321 (conecta la capacidad de `ubicaciones`, que nadie leía, EN DEV — PROD pendiente)** —
 Los campos `largo/ancho/alto_cm`, `peso_max_kg` y `capacidad_pallets` existían desde la **mig 032** y

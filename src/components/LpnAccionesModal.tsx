@@ -14,6 +14,7 @@ import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { LpnQR } from '@/components/LpnQR'
 import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
+import { AvisoCapacidadUbicacion } from '@/components/AvisoCapacidadUbicacion'
 import toast from 'react-hot-toast'
 
 type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar'
@@ -820,6 +821,18 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     </select>
                     {(ubicacionesDestinoMover as any[]).length === 0 && (
                       <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Esa sucursal no tiene ubicaciones cargadas.</p>
+                    )}
+                    {/* Fase C del cubicaje (migs 321/322/325). En un traslado cross-sucursal la
+                        ubicación final la elige el destino al confirmar, así que no hay nada que
+                        avisar todavía. */}
+                    {!esCrossSucursal && (
+                      <AvisoCapacidadUbicacion
+                        className="mt-1.5"
+                        ubicacionId={ubicDestino}
+                        productoId={producto.id}
+                        cantidadBase={parseInt(cantMover) || 0}
+                        unidadMedidaId={linea.unidad_medida_id ?? null}
+                      />
                     )}
                   </div>
                   {cantMover && ubicDestino && (

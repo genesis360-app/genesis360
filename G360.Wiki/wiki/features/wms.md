@@ -327,7 +327,7 @@ F4) — ver [[wiki/features/pedidos]] y la nota de vigencia al principio de "Fas
     ronda"):** pedía siempre `stock_maximo − stock_actual` sin chequear el disponible real en el
     origen elegido → fallaba al completar si no alcanzaba. Ahora clampea al disponible real.
   - **🔴 Bug real encontrado por el `migration-reviewer` al construir Pedidos PED4 (2026-07-23,
-    `297_wms_reabastecimiento_transferir_reserva.sql`, EN DEV):** al mover stock de origen a destino,
+    `297_wms_reabastecimiento_transferir_reserva.sql`, ✅ PROD desde v1.144.0):** al mover stock de origen a destino,
     la función decrementaba `cantidad` en el origen pero **nunca transfería `cantidad_reservada`** al
     LPN nuevo del destino (nacía con reserva 0 por default). Esto es transversal a WMS — no
     específico de Pedidos: cualquier reserva (Ventas "Reservar stock" o Pedidos "Lanzar") que

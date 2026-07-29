@@ -6,22 +6,25 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-07-29) — v1.151.0. **Lo único pendiente es DEPLOYAR** (bloqueado por el conector de Supabase)
+> ### ✅ ARRANCÁ ACÁ (2026-07-29) — v1.151.0 **DEPLOYADO A PROD**. Sin pendientes bloqueantes.
 >
-> #### ▶ LO ÚNICO QUE HAY QUE HACER: el deploy acumulado
+> **PROD = DEV = v1.151.0.** Migs **314-326 (13)** aplicadas y verificadas en PROD contra datos
+> reales. PR #305 `dev→main` mergeado con **merge commit** (no squash, `74a8750f`) → los tags
+> `v1.150.0`/`v1.151.0` ya creados sobre `dev` quedaron como ancestros directos de `main`, no hizo
+> falta re-taggear. `schema_full.sql` regenerado (150 tablas · hasta la mig 326).
 >
-> **`APP_VERSION` = v1.151.0 · PROD sigue en v1.145.0.** Sin deployar: **migs 314 a 326 (13)** y las
-> versiones **1.146 → 1.151**.
-> Al retomar: aplicar 314-326 en PROD → PR `dev→main` → tag + release → verificar bundle con
-> `curl -sL`. (El resto de los gotchas de deploy están más abajo en este archivo.)
+> **🔴→✅ El bloqueante de la sesión (conector MCP de Supabase caído a mitad de trabajo) se resolvió
+> solo:** GO lo reconectó desde claude.ai → Connectors. Mientras estuvo caído se usó un runner de SQL
+> propio contra la Management API con un `SUPABASE_ACCESS_TOKEN` que GO pasó puntualmente (mismo
+> patrón que otras sesiones — no persistido, **GO lo rota al terminar**). Con el conector de vuelta,
+> las migraciones 323-326 se terminaron de aplicar por el camino oficial (`apply_migration`).
 >
-> 🔴 **BLOQUEANTE OPERATIVO (2026-07-29):** el conector MCP de Supabase se **desconectó** a mitad de
-> sesión, así que **las migs 326 y 325 están escritas y commiteadas pero la 326 NO se aplicó en DEV**
-> (la 325 sí alcanzó a aplicarse y verificarse antes de la caída). Sin el conector no se puede
-> `apply_migration` ni `execute_sql`, y **tampoco hay camino alternativo**: no hay
-> `SUPABASE_ACCESS_TOKEN` ni service_role key en el entorno, y el pooler rechaza toda password
-> (bug conocido de Supavisor). Al retomar: reconectar el conector, **aplicar la 326 en DEV**,
-> correr el `EXPLAIN ANALYZE` que quedó pendiente, y recién ahí el deploy a PROD.
+> **Verificación post-deploy (Regla #0, contra datos reales de PROD, no contra "aplicó sin error"):**
+> hash de `productos.stock_actual` **idéntico** antes/después (`e3919f1a…`) · 62 movimientos sin
+> cambios · los 2 CAE existentes intactos · 0 pedidos afectados por la limpieza de la mig 323 ·
+> 0 violaciones del CHECK de la mig 314 · advisors de seguridad y performance de PROD: **0 hallazgos
+> nuevos** (los 14 no rutinarios que aparecen ya eran conocidos: `platform_*`/`support_*` de
+> genesis360-admin, `pg_net`, leaked-password — nada de 314-326).
 >
 > ---
 >
@@ -60,6 +63,29 @@ type: project
 >
 > **Verde:** tsc · build · **unit 1374** · **e2e 14/14** incluyendo **21 (Factura C con CAE real)** y
 > **42 (NC-C con CAE real)** de AFIP homologación, más 107/113/114.
+>
+> ---
+>
+> #### 🟡 PENDIENTE DE DECISIÓN — catálogo de "Empaque" con basura vieja (encontrado por GO, 2026-07-29)
+>
+> GO notó en Config → Inventario → Empaque que la lista tiene unidades que no son empaque
+> (`Kilogramo`, `Gramo`, `Litro`, `Metro`, `Unidad` junto a `Caja`/`Pallet`, que sí lo son).
+>
+> **Causa raíz:** `unidades_medida` (que hoy sirve SOLO como catálogo de nombres de empaque —
+> `producto_presentaciones.nombre_empaque_id`) tiene sembradas desde la **mig 148** (ISS-180,
+> *previa* al rediseño de UoM/Empaque de las migs 303-308) esas 5 unidades físicas, de cuando esta
+> tabla todavía hacía las dos cosas a la vez. Cuando se separó en `unidades_medida_fisicas` (la
+> correcta para lo físico, alimenta la pestaña "Unidades"), nadie podó la siembra vieja acá. Son
+> `predefinida = true` → **la UI no deja borrarlas** (el candado 🔒).
+>
+> **Verificado con datos reales antes de proponer nada (DEV y PROD, todos los tenants):** 0 usos
+> reales de `Gramo`/`Kilogramo`/`Litro`/`Metro` como empaque en ningún producto; los 3
+> `producto_presentaciones` y 2 `inventario_lineas` que usan "Unidad" en DEV son fixtures de e2e
+> (`E2E Filtros 1785…`), no datos de cliente. Es seguro dropearlas.
+>
+> **Propuesta (sin aplicar, esperando que GO confirme):** migración que borra
+> `Gramo/Kilogramo/Litro/Metro/Unidad` de `unidades_medida` en todos los tenants, dejando
+> `Caja`/`Pallet` (empaque real) y cualquier custom del tenant intacto (ej. `TongaUOM` en DEV).
 >
 > ---
 >

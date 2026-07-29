@@ -6,6 +6,50 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-29] deploy | ✅ v1.151.0 EN PROD — migs 314-326 (13) aplicadas, bundle verificado por curl
+
+Cierre de la tanda. Con el OK de GO se aplicó todo lo acumulado (v1.146.0 → v1.151.0) a PROD.
+
+**Bloqueante de la sesión, resuelto:** el conector MCP de Supabase se había desconectado a mitad de
+trabajo, dejando la mig 326 escrita pero sin aplicar en ningún lado. GO lo reconectó desde
+claude.ai → Connectors. Mientras estuvo caído se avanzó con un runner de SQL propio contra la
+Management API (token puntual de GO, no persistido, a rotar); con el conector de vuelta las
+migraciones 323-326 se terminaron de aplicar por el camino oficial (`apply_migration`).
+
+**Pre-checks contra datos reales de PROD antes de tocar nada:** 0 violaciones del CHECK de la
+mig 314, 0 pedidos (la limpieza de la mig 323 no tenía nada que limpiar), 0 ubicaciones de picking.
+Las 13 migraciones entraron sin una sola fila que convertir.
+
+**Post-check, contra el efecto real y no contra "aplicó sin error":** hash de
+`productos.stock_actual` **idéntico** antes/después (`e3919f1a…`) · 62 movimientos sin cambios ·
+los 2 CAE existentes intactos · advisors de seguridad y performance de PROD re-corridos: **0
+hallazgos nuevos** de las 314-326 (los 14 no rutinarios que aparecen ya eran conocidos, de
+`genesis360-admin`/`pg_net`/leaked-password).
+
+**`schema_full.sql` regenerado** (estaba atrasado desde la 311): 150 tablas · 155 funcs · 76
+triggers · 168 policies · 7 vistas.
+
+**PR #305 `dev→main`**, reconciliado primero con `git merge origin/main` (mismo patrón de siempre:
+`main` tenía 6 commits — releases previas squasheadas — que `dev` no tenía; merge limpio, sin
+conflictos). Mergeado con **merge commit real** (no squash) → los tags `v1.150.0`/`v1.151.0`
+creados antes sobre `dev` quedaron como ancestros directos de `main`, sin necesidad de re-taggear.
+
+**Bundle verificado por curl** (no la narrativa del PR): `app.genesis360.pro` pasó de
+`index-CFJykF_f.js` (v1.145.0) a `index-Db6tMPYX.js`, confirmado **v1.151.0** adentro.
+
+**🟡 Nuevo hallazgo de GO, pendiente de decisión — no bloqueante:** en Config → Inventario →
+Empaque hay unidades que no son empaque (`Kilogramo`, `Gramo`, `Litro`, `Metro`, `Unidad` junto a
+`Caja`/`Pallet`). Causa: la mig 148 (ISS-180, previa al rediseño UoM/Empaque) sembró esas 5 como
+"unidades predefinidas" cuando `unidades_medida` todavía servía para las dos cosas a la vez; al
+separarse en `unidades_medida_fisicas` (mig 303/308) nadie podó la siembra vieja acá, y son
+`predefinida=true` → la UI no deja borrarlas. Verificado con datos reales (DEV y PROD, todos los
+tenants): 0 usos reales como empaque; los pocos casos en DEV son fixtures de e2e. Propuesta
+(sin aplicar): migración que las dropea, dejando `Caja`/`Pallet` y cualquier custom del tenant.
+Detalle en `project_pendientes.md`.
+
+**Sigue pendiente:** rotar el `SUPABASE_ACCESS_TOKEN` usado durante la caída del conector (GO dijo
+que lo hace al cerrar la sesión).
+
 ## [2026-07-29] update | 🧾 v1.151.0 — la factura ahora multiplica · el reabastecimiento mira el lugar (mig 326) · el Asistente IA entra en la pantalla
 
 GO eligió cinco pendientes de la lista para cerrar antes del deploy. **Dos de los cinco ya estaban

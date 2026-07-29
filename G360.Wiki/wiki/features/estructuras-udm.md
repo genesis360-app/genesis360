@@ -273,7 +273,7 @@ empaque hijo; 3 cajas y media no existe).
 modal de LPN y el Importador leen las presentaciones vía el adaptador `presentacionesComoNiveles`,
 que mapea `factor_base → unidades_base` sin tocar la aritmética ya probada.
 
-**📐 Medidas por nivel (v1.150.0, 🟡 EN DEV).** Cada línea del árbol tiene además **peso / alto /
+**📐 Medidas por nivel (v1.150.0, ✅ PROD desde 2026-07-29).** Cada línea del árbol tiene además **peso / alto /
 ancho / largo**, y el editor muestra el volumen que sale de ellas. ⚠ Esas columnas existen desde la
 mig 310 y el pipe de datos estaba **completo** (la RPC `fn_presentaciones_guardar` las acepta,
 `presentaciones.ts` las lee y las valida) — pero **el editor no tenía los `<input>`**, así que
@@ -608,8 +608,8 @@ solo en DEV, **sin commitear al cierre de la sesión.**
 | **4** | Tareas WMS (`wms_tareas`) + **picking por UdM** (listas que respetan FIFO/FEFO de `rebajeSort` y sugieren "2 cajas" en vez de "24 unidades") | ✅ v1.143.0 (migs 289-290) |
 | **5** | **Reabastecimiento** reserva → posición de surtido/picking (mín/máx por producto+ubicación con UdM de reposición; generación on-demand + al confirmar picking — sin pg_cron) | ✅ v1.143.0 (migs 289-290) |
 
-**Las 5 fases del roadmap quedan ✅ completas a nivel código, TODAS EN DEV desde v1.143.0 (migs
-289-290, 293), SIN deploy a PROD** — deploy pendiente de que GO lo pida. Detalle completo del
+**Las 5 fases del roadmap quedan ✅ completas a nivel código y ✅ EN PROD desde v1.144.0** (migs
+289-290, 293). Detalle completo del
 schema/RPCs/UI implementado de Fases 3-4 (bastante fiel al sketch original de `wms_tareas`, con 2
 columnas agregadas para el encadenamiento real — `envio_id` y `tarea_precedente_id`, que no estaban
 en el sketch): [[wiki/features/wms]] → "Fase 3" y "Fase 4". Detalle de Fase 2: ver arriba.
@@ -626,8 +626,7 @@ Fases 3-5 — el schema (`zonas`/`wms_tareas`/RPCs de completar tarea) sigue sie
 va a usar, solo cambia **quién genera las tareas**.
 
 **🐛 2026-07-22 (mismo día): GO probó el picking/reabastecimiento a mano y encontró 3 bugs reales +
-2 gaps de UX**, corregidos vía mig **291** (sigue EN DEV, sin deploy a PROD, sin commitear al cierre
-de la sesión) — detalle completo en [[wiki/features/wms]] → "Fixes de la primera ronda de pruebas
+2 gaps de UX**, corregidos vía mig **291** (✅ PROD desde v1.144.0) — detalle completo en [[wiki/features/wms]] → "Fixes de la primera ronda de pruebas
 manuales de GO". Eso disparó la discusión de arquitectura sobre si el picking debería depender de una
 venta ya despachada o de un futuro módulo "Pedidos" separado — **✅ resuelta la misma sesión, más
 tarde ese mismo día**: nace el módulo Pedidos y el pivote F4 (ver arriba, "Pivote de arquitectura").

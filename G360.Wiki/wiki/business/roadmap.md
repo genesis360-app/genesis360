@@ -8,12 +8,12 @@ updated: 2026-07-28
 
 # Roadmap y Versiones
 
-**Versión en PROD:** ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 28 de Julio, 2026
+**Versión en PROD:** v1.151.0 (2026-07-29) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
+**Última actualización:** 29 de Julio, 2026
 
 ---
 
-## v1.151.0 — 🧾 La factura ahora MULTIPLICA + 📦 el reabastecimiento elige una posición con lugar (mig 326) + 📱 el Asistente IA entra en la pantalla — 🟡 **EN DEV** (2026-07-29)
+## v1.151.0 — 🧾 La factura ahora MULTIPLICA + 📦 el reabastecimiento elige una posición con lugar (mig 326) + 📱 el Asistente IA entra en la pantalla — ✅ **PROD** (2026-07-29)
 
 Tanda de cierre de pendientes viejos antes del deploy.
 
@@ -49,7 +49,7 @@ Verde: tsc · build · unit **1374**.
 
 ---
 
-## v1.150.0 — 📦 Cubicaje volumétrico COMPLETO (Fases A/B/C) + 🐛 fix de la vista de ocupación (mig 325) — 🟡 **EN DEV** (2026-07-29)
+## v1.150.0 — 📦 Cubicaje volumétrico COMPLETO (Fases A/B/C) + 🐛 fix de la vista de ocupación (mig 325) — ✅ **PROD** (2026-07-29)
 
 Se termina el cubicaje que la v1.149.0 había dejado a mitad de camino (solo datos).
 
@@ -80,7 +80,7 @@ Verde: tsc · build · unit 1357.
 
 ---
 
-## v1.149.0 — 🐛 Bugs del flujo real + 📦 cubicaje opt-in (Fase A) — 🟡 **EN DEV** (2026-07-29)
+## v1.149.0 — 🐛 Bugs del flujo real + 📦 cubicaje opt-in (Fase A) — ✅ **PROD** (2026-07-29)
 
 Los tres bugs que encontró GO probando el flujo Venta→Pedido end-to-end:
 **(1)** el picking de una RESERVA salía **sin LPN ni ubicación** (mig 320) · **(2)** un
@@ -98,7 +98,7 @@ Verde: tsc · build · unit 1339 · e2e 113 (6/6) · regresión 107 (5/5).
 
 ---
 
-## v1.148.0 — 🧾 Flujo Venta → Pedido → Envío completo, según el diagrama de GO (migs 317-319) — 🟡 **EN DEV** (2026-07-29)
+## v1.148.0 — 🧾 Flujo Venta → Pedido → Envío completo, según el diagrama de GO (migs 317-319) — ✅ **PROD** (2026-07-29)
 
 Reescribe la regla de la v1.147.0 según el diagrama de flujo: **todas las ventas generan Pedido de
 preparación MENOS la entrega directa** (mostrador + cobrada + sin envío). Sale de
@@ -118,7 +118,7 @@ Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
 
 ---
 
-## v1.147.0 — 🧾 Pedido automático desde una VENTA + entrega en mostrador (migs 315/316) — 🟡 **EN DEV** (2026-07-28)
+## v1.147.0 — 🧾 Pedido automático desde una VENTA + entrega en mostrador (migs 315/316) — ✅ **PROD** (2026-07-28)
 
 Las ventas de los canales que el tenant elija (**Config → Pedidos → "Canales que generan pedido"**)
 generan solas un **Pedido de preparación**; las **reservas**, solo cuando quedan **100% pagadas**.
@@ -138,7 +138,7 @@ Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
 
 ---
 
-## v1.146.0 — 🔀 Guard de modelo de variante: madre/hijo vs. Atributos de variante (mig 314) — 🟡 **EN DEV** (2026-07-28)
+## v1.146.0 — 🔀 Guard de modelo de variante: madre/hijo vs. Atributos de variante (mig 314) — ✅ **PROD** (2026-07-28)
 
 Reconstruye sobre el modelo **madre/hijo** el guard que la mig 274 tenía sobre `grupo_id` y que
 **desapareció** al dropear esa columna en la mig 311: entre una y otra nada impedía que un mismo SKU

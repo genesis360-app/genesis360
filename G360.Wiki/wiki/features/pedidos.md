@@ -276,7 +276,7 @@ Genera un `crypto.randomUUID()` como `p_idempotency_key` al abrir el modal.
 
 ---
 
-## PED5 — Cancelación y des-pickeo (mig 296, EN DEV, NO en PROD)
+## PED5 — Cancelación y des-pickeo (mig 296, ✅ PROD desde v1.144.0)
 
 `supabase/migrations/296_pedidos_ped5_cancelacion_unpick.sql` — 3 RPCs + 1 helper interno:
 
@@ -324,7 +324,7 @@ elegir la ubicación destino. Ambos botones, además, respetan el editor de role
 
 ---
 
-## PED7 — Config (`src/pages/ConfigPage.tsx`, sin migración nueva, EN DEV)
+## PED7 — Config (`src/pages/ConfigPage.tsx`, sin migración nueva, ✅ PROD desde v1.144.0)
 
 Tab nuevo **"Pedidos"** gateado por modo avanzado (mismo criterio que "Envíos"), con:
 
@@ -373,7 +373,7 @@ Clientes/Caja.
 
 ---
 
-## PED6 — Bolsa de pedidos + staging + listas imprimibles (mig 298, EN DEV, NO en PROD)
+## PED6 — Bolsa de pedidos + staging + listas imprimibles (mig 298, ✅ PROD desde v1.144.0)
 
 `supabase/migrations/298_pedidos_ped6_bolsa_staging.sql` — construida en una sesión posterior a
 PED3-PED5/PED7/PED8 (GO pidió explícitamente no dejarla diferida). Alcance elegido, más seguro que
@@ -565,7 +565,7 @@ stock).
 
 ---
 
-## 🧾 Pedido nacido de una VENTA (migs 315-319, v1.148.0, 🟡 EN DEV) — el sentido INVERSO de F4
+## 🧾 Pedido nacido de una VENTA (migs 315-319, v1.148.0, ✅ PROD desde 2026-07-29) — el sentido INVERSO de F4
 
 > 🛑 **Actualiza la "Decisión de arquitectura clave (F4)" de más arriba.** F4 sigue valiendo para el
 > sentido Pedido → venta. Lo que se agrega es el **inverso**: una venta genera automáticamente un

@@ -27,6 +27,7 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
+import { canalesAutoValidos } from '@/lib/pedidoVenta'
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import toast from 'react-hot-toast'
 
@@ -1759,6 +1760,36 @@ export default function ConfigPage() {
     if (error) { toast.error(error.message); return }
     setTenant(data)
     toast.success(nuevo ? 'Cierre automático habilitado' : 'Cierre automático deshabilitado — habrá que cerrar el pedido a mano al llegar al 100%')
+  }
+
+  // Canales que auto-generan pedido (mig 315). Se listan los canales de venta activos del tenant;
+  // la config guarda ids, así que renombrar un canal no rompe la selección.
+  const { data: canalesPedido = [] } = useQuery({
+    queryKey: ['canales_venta_cfg_pedidos', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('canales_venta')
+        .select('id, nombre, activo').eq('tenant_id', tenant!.id).eq('activo', true)
+        .order('orden', { ascending: true, nullsFirst: false }).order('nombre')
+      return (data ?? []) as { id: string; nombre: string; activo: boolean }[]
+    },
+    enabled: !!tenant && tab === 'pedidos',
+  })
+  // Se sanea contra los canales vivos: un canal borrado/desactivado que quedó en la config no se
+  // pinta como seleccionado ni se vuelve a guardar.
+  const canalesAutoSel = canalesAutoValidos((tenant as any)?.pedido_canales_auto, canalesPedido)
+
+  const togglePedidoCanalAuto = async (canalId: string) => {
+    const nuevo = canalesAutoSel.includes(canalId)
+      ? canalesAutoSel.filter(id => id !== canalId)
+      : [...canalesAutoSel, canalId]
+    const { data, error } = await supabase.from('tenants')
+      .update({ pedido_canales_auto: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    const nombre = canalesPedido.find(c => c.id === canalId)?.nombre ?? 'El canal'
+    toast.success(nuevo.includes(canalId)
+      ? `Las ventas de ${nombre} van a generar un pedido`
+      : `${nombre} ya no genera pedidos`)
   }
 
   // E3 — pedido_transiciones_roles: quién puede ejecutar cada transición. Ausente en la config
@@ -5209,6 +5240,41 @@ export default function ConfigPage() {
               </label>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500">Ambos números se calculan siempre — esto solo decide cuál se muestra como principal en la pantalla de Pedidos.</p>
+          </div>
+
+          {/* Canales que generan pedido automáticamente (mig 315) */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Layers size={18} className="text-accent-text" /> Canales que generan pedido
+            </h2>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Cuando se registre una venta de alguno de estos canales, se crea solo un <strong>Pedido de preparación</strong>
+              {' '}para que el depósito lo arme. Si la venta es una <strong>reserva</strong>, el pedido se genera recién cuando
+              queda <strong>100% pagada</strong>. Sin ningún canal marcado la función está apagada.
+            </p>
+            {canalesPedido.length === 0 ? (
+              <p className="text-sm text-gray-400 dark:text-gray-500">No hay canales de venta activos. Configuralos en Ventas → Canales.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {canalesPedido.map(c => {
+                  const activo = canalesAutoSel.includes(c.id)
+                  return (
+                    <button key={c.id} type="button" disabled={!canEdit}
+                      onClick={() => togglePedidoCanalAuto(c.id)}
+                      className={`px-3 py-1.5 rounded-full text-sm border transition-colors disabled:opacity-50 disabled:cursor-not-allowed
+                        ${activo
+                          ? 'bg-accent/10 border-accent-text text-accent-text font-medium'
+                          : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
+                      {activo && <Check size={13} className="inline mr-1 -mt-0.5" />}{c.nombre}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Los pedidos de retiro en local aparecen en <strong>Ventas → Pedidos</strong> una vez que el depósito
+              termina el picking, para entregarlos en el mostrador.
+            </p>
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">

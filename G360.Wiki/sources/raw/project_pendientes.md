@@ -6,7 +6,64 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🔀 ARRANCÁ ACÁ (2026-07-28) — v1.146.0: guard de modelo de variante (mig 314). **Rediseño UoM cerrado, sin decisiones abiertas**
+> ### 🧾 ARRANCÁ ACÁ (2026-07-28) — v1.147.0: Pedido automático desde una VENTA + entrega en mostrador (migs 315/316). **EN DEV, PROD pendiente**
+>
+> Pedido de GO: que ciertos canales de venta generen pedido, que las reservas lo hagan solo si están
+> **100% pagadas**, una pestaña de Pedidos en Ventas para entregar los retiros en local, y búsqueda
+> por cliente / DNI / N° de pedido. Las cuatro cosas están hechas.
+>
+> **🛑 Lo primero fue avisarle a GO que esto INVIERTE el flujo F4.** Hasta acá el único puente era
+> Pedido → venta (PED4). Un pedido nacido de una venta **ya tiene su venta, su plata y su stock
+> resueltos**, así que meterlo en el ciclo normal de Pedidos lo rompe de dos formas **silenciosas**:
+> (1) entregarlo generaría una **SEGUNDA venta** con segundo rebaje y segundo asiento de caja;
+> (2) lanzarlo **reservaría el stock por segunda vez** —o, si la venta ya rebajó, reservaría unidades
+> de otras líneas—. Las dos están cerradas server-side en la **mig 316**.
+> **Probado por mutación en DEV: por el camino viejo se reservaban 4 unidades de más.**
+>
+> **Decisiones que tomó GO** (con las opciones sobre la mesa, no asumidas):
+> - Regla única: **canal configurado**; y si es reserva, **100% pagada**. Una reserva de un canal no
+>   configurado no genera nada.
+> - **Envíos = tabla única de trazabilidad de entregas**: el retiro genera igual un `envios` tipo
+>   `retiro_local` / `entregado`.
+> - La **entrega física** se confirma al apretar el botón; **facturar es un paso aparte** (si cierran
+>   el modal sin emitir, se factura después desde el Historial). Trabar la entrega esperando a AFIP
+>   dejaría al cliente parado en el mostrador.
+>
+> **Mig 315** — `tenants.pedido_canales_auto` (ids de canal, `[]` = apagado → ningún tenant existente
+> cambia) · `pedidos.venta_origen_id` (UNIQUE parcial) · `fn_canal_de_origen` (**espejo SQL de
+> `ORIGEN_ALIAS` de `useCanalesVenta.ts` — mantener sincronizados**) · triggers server-side (cubren
+> también los webhooks de marketplace y el importador, que no pasan por `registrarVenta`).
+> 💵 El "100% pagada" **suma el costo de envío**: `total` no lo incluye pero `monto_pagado` sí
+> (ISS-105). ⚠ `registrarVenta` inserta la venta y los `venta_items` en llamadas HTTP **separadas**,
+> así que el `AFTER INSERT` de `ventas` no ve ni una línea → las completa un trigger statement-level
+> sobre `venta_items`. 🛑 Todo envuelto en `EXCEPTION WHEN OTHERS`: **una venta nunca se cae por un
+> documento de logística**.
+>
+> **Mig 316** — trigger `BEFORE INSERT ON ventas` contra la segunda venta ·
+> `fn_generar_tareas_picking_pedido_venta` (picking desde `venta_item_despachos`, **sin tocar
+> `cantidad_reservada`**) · la RPC original **renombrada** a `..._stock` + dispatcher con el nombre
+> viejo (se renombró en vez de re-escribir 150 líneas que mueven stock) · `fn_pedido_entregar_retiro`.
+> **Hueco preexistente cerrado:** `listo_para_entrega` era un **ESTADO MUERTO** — en el CHECK desde la
+> mig 292, con badge en la UI y leído por 3 RPCs, pero **nadie lo seteaba nunca**. Ahora lo promueve
+> la última tarea de picking del pedido.
+>
+> **Frontend:** Config → Pedidos gana el selector de canales; Ventas gana la pestaña **Pedidos**.
+> Lógica pura en `src/lib/pedidoVenta.ts` — los unit atraparon que buscar "5" arrastraba todo DNI con
+> un 5, así que el DNI matchea por **prefijo** (≥3 dígitos) y el número **exacto**.
+>
+> **Verde:** tsc · build · **unit 1289** (26 nuevos) · **e2e 113 nuevo (2/2)** · regresión
+> **107/109/112 (8/8)** — el 107 confirma que el flujo original de Pedidos sigue intacto.
+> Ver [[wiki/features/pedidos]] → "Pedido nacido de una VENTA" y UAT **§47**.
+>
+> **🟡 ESTADO DE DEPLOY: EN DEV.** `APP_VERSION` = v1.147.0, migs 315 y 316 aplicadas **solo en DEV**.
+> PROD sigue en **v1.145.0**. Junto con la v1.146.0 (mig 314) hay **3 migraciones y 2 versiones sin
+> deployar**. Al retomar: aplicar 314+315+316 en PROD → PR `dev→main` → tag+release.
+>
+> **Sigue abierto (sin cambios):** rotar el `SUPABASE_ACCESS_TOKEN` `sbp_60df…` · `schema_full.sql`
+> refleja hasta la 311 (le faltan 312, 313, 314, 315 y 316).
+
+
+> ### 🔀 ESTADO ANTERIOR (2026-07-28) — v1.146.0: guard de modelo de variante (mig 314). **Rediseño UoM cerrado, sin decisiones abiertas**
 >
 > Se resolvió la **única cosa que quedaba abierta** del rediseño UoM: GO decidió **reconstruir el
 > guard** que impedía los dos sistemas de variante en el mismo SKU (se había perdido con la mig 311).

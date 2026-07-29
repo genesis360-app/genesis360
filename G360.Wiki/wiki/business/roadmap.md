@@ -13,6 +13,26 @@ updated: 2026-07-28
 
 ---
 
+## v1.147.0 — 🧾 Pedido automático desde una VENTA + entrega en mostrador (migs 315/316) — 🟡 **EN DEV** (2026-07-28)
+
+Las ventas de los canales que el tenant elija (**Config → Pedidos → "Canales que generan pedido"**)
+generan solas un **Pedido de preparación**; las **reservas**, solo cuando quedan **100% pagadas**.
+Cuando el depósito termina el picking, el pedido aparece en la pestaña nueva **Ventas → Pedidos**
+para que el mostrador lo entregue: búsqueda por nombre, DNI o N° de pedido, botón **Entregado**, y
+enseguida se abre el detalle de la venta para facturar.
+
+🛑 **Invierte el sentido del flujo original (F4)** — hasta acá el único puente era Pedido → venta. Un
+pedido nacido de una venta **ya tiene su venta, su plata y su stock resueltos**, así que la mig 316
+cierra server-side las dos formas silenciosas de romperlo: **doble venta** al entregarlo (duplicaría
+facturación, rebaje y caja) y **doble reserva** al lanzarlo. Probado por mutación en DEV: por el
+camino viejo se habrían reservado **4 unidades de más**. De paso `listo_para_entrega` deja de ser un
+**estado muerto** (existía desde la mig 292 pero nadie lo seteaba nunca).
+
+Verde: tsc · build · unit 1289 (26 nuevos) · e2e 113 nuevo (2/2) · regresión 107/109/112 (8/8).
+Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
+
+---
+
 ## v1.146.0 — 🔀 Guard de modelo de variante: madre/hijo vs. Atributos de variante (mig 314) — 🟡 **EN DEV** (2026-07-28)
 
 Reconstruye sobre el modelo **madre/hijo** el guard que la mig 274 tenía sobre `grupo_id` y que

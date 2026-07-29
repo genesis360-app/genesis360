@@ -6,10 +6,52 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-314)
+# Historial de Migraciones (001-316)
 
-**Total al 2026-07-28:** 314 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-28:** 316 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**316 (🛑 REGLA #0 — guards del flujo Venta → Pedido + entrega en mostrador, EN DEV — PROD pendiente)** —
+Lo que hace SEGURO lo que abrió la 315. Un pedido con `venta_origen_id` ya tiene su venta, su plata y
+su stock resueltos, así que entrar al ciclo normal de Pedidos lo rompería de dos formas silenciosas:
+**(1) doble venta** — `fn_pedido_generar_venta` (mig 295) crea una venta nueva, vuelve a rebajar stock
+y vuelve a asentar caja; **(2) doble reserva** — `fn_generar_tareas_picking_pedido` (mig 294) reserva
+`cantidad_reservada`, pero si la venta era una RESERVA esas unidades ya están reservadas por ella (se
+reservaría el doble y el POS diría "sin stock" habiendo), y si era DESPACHADA el stock ya salió de
+`cantidad` (reservaría unidades de otras líneas). **Probado por mutación en DEV: por el camino viejo
+se habrían reservado 4 unidades de más.**
+Piezas: trigger `BEFORE INSERT ON ventas` que rechaza la segunda venta (se hace por trigger y no
+editando la RPC para cubrir CUALQUIER camino de escritura, no solo el que conocemos) ·
+`fn_generar_tareas_picking_pedido_venta` nueva, que arma el picking desde `venta_item_despachos` (el
+LPN REAL que ya eligió la venta, ISS-075) y **no toca `cantidad_reservada`** · la RPC original se
+**renombra** a `fn_generar_tareas_picking_pedido_stock` y queda un dispatcher chico con el nombre
+viejo (se renombra en vez de re-escribir el cuerpo: son ~150 líneas que mueven stock y volver a
+tipearlas para insertar cuatro es donde se cuela un error silencioso; los GRANT siguen a la función) ·
+`fn_pedido_entregar_retiro` para el mostrador (NO toca plata ni stock; deja el rastro en Envíos como
+`retiro_local`/`entregado` y devuelve la venta para facturarla).
+**Además cierra un hueco preexistente:** `listo_para_entrega` era un **estado MUERTO** — estaba en el
+CHECK desde la mig 292, la UI le tenía badge y 3 RPCs lo leían como precondición, pero **ningún código
+lo seteaba nunca**. Ahora completar la última tarea de picking del pedido lo promueve.
+Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
+
+**315 (Pedido automático desde una VENTA, EN DEV — PROD pendiente)** —
+Pedido de GO: las ventas de ciertos canales generan solo un Pedido de preparación; las **reservas**
+solo cuando están **100% pagadas**. 🛑 **Invierte el sentido del flujo original (F4)**: hasta acá el
+único puente era Pedido → venta. Config nueva `tenants.pedido_canales_auto` (array de
+`canales_venta.id`; `[]` = apagado, ningún tenant existente cambia de comportamiento) +
+`pedidos.venta_origen_id` (con UNIQUE parcial: una venta genera a lo sumo un pedido) +
+`fn_canal_de_origen` (espejo SQL de `ORIGEN_ALIAS` de `useCanalesVenta.ts` — mantener sincronizados).
+Se hace **server-side** y no en el POS a propósito: así también cubre las ventas que entran por
+webhook de marketplace o por el importador, que nunca pasan por `registrarVenta`.
+💵 La condición del 100% suma el costo de envío: `ventas.total` NO lo incluye pero `monto_pagado` SÍ
+(ISS-105) — compararlo contra `total` a secas habría generado el pedido cobrando de menos.
+⚠ Detalle que obligó a un segundo trigger: `registrarVenta` inserta la venta y sus `venta_items` en
+llamadas HTTP **separadas**, así que cuando corre el `AFTER INSERT` de `ventas` **no existe ni una
+línea**. Las líneas las completa un trigger **statement-level** sobre `venta_items`
+(`fn_pedido_sync_items_desde_venta`, idempotente y solo mientras el pedido sigue en `confirmado`).
+🛑 El trigger va envuelto en `EXCEPTION WHEN OTHERS` + `RAISE WARNING`: **una VENTA nunca se cae por
+un documento de logística** — un pedido que no se pudo crear se regenera, una venta perdida en el
+mostrador no. Guard anti-loop: una venta nacida de un pedido nunca genera otro pedido.
 
 **314 (🛑 guard de modelo de variante: madre/hijo vs. Atributos de variante, EN DEV — PROD pendiente)** —
 Reconstruye sobre el modelo madre/hijo el guard que la **mig 274** tenía sobre `grupo_id` y que

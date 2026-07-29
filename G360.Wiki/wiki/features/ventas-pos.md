@@ -3,7 +3,7 @@ title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286]
-updated: 2026-07-22
+updated: 2026-07-28
 ---
 
 # Ventas / POS
@@ -226,6 +226,29 @@ Caja"/"por Pallet"/etc. en vez de siempre la unidad base — usa el precio propi
   paso se encontró y arregló un bug crítico no relacionado (el importador de productos NUNCA
   funcionó por una columna `notas` inexistente, mig 288). Detalle completo en
   [[wiki/features/estructuras-udm]] → "Importador de productos con precio por nivel".
+
+---
+
+## 🧾 Pestaña "Pedidos" — entrega en mostrador (v1.147.0, migs 315/316, 🟡 EN DEV)
+
+Pestaña nueva de `/ventas`, al lado de Historial. Lista los **pedidos ya preparados que el cliente
+pasa a retirar por el local**, para que el de mostrador los entregue sin salir de Ventas.
+
+Qué muestra (y qué NO): **solo** pedidos en `listo_para_entrega`, de **retiro en local**
+(`requiere_envio = false`) y **nacidos de una venta**. Un pedido a medio armar o uno que sale por
+envío no aparece — el que atiende tiene al cliente enfrente y todo lo demás es ruido. El contador de
+la pestaña muestra cuántos hay esperando.
+
+- **Búsqueda** por nombre de cliente, **DNI** o **N° de pedido**.
+- **Botón "Entregado"** → marca la entrega y **abre el detalle de la venta para facturar**. La entrega
+  física queda confirmada aunque se cierre el modal sin emitir: la factura se puede hacer después
+  desde el Historial.
+- La entrega **no toca plata ni stock** (la venta ya cobró y ya rebajó) y deja el registro en
+  **Envíos** como `retiro_local` / `entregado`.
+
+Estos pedidos los genera automáticamente la propia venta, para los canales elegidos en
+**Config → Pedidos**. Reglas completas, guards de Regla #0 y por qué un venta-pedido es un documento
+distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 ---
 

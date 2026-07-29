@@ -3,7 +3,7 @@ title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
 sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
-updated: 2026-07-23
+updated: 2026-07-28
 ---
 
 # Módulo Pedidos
@@ -562,6 +562,91 @@ stock).
   imprimibles (PED6) · lanzamiento en "bolsa de pedidos" con ubicaciones de **staging** (PED6, requiere
   agregar `'staging'` al CHECK de `ubicaciones.tipo_ubicacion`, hoy `picking/bulk/estiba/camara/
   cross_dock`, mig 032).
+
+---
+
+## 🧾 Pedido nacido de una VENTA (migs 315/316, v1.147.0, 🟡 EN DEV) — el sentido INVERSO de F4
+
+> 🛑 **Esto contradice parcialmente la "Decisión de arquitectura clave (F4)" de más arriba y la
+> actualiza.** F4 sigue valiendo para el sentido Pedido → venta: Pedidos nunca pasa por el POS ni
+> rebaja stock directo. Lo que se agrega es el sentido **inverso**, pedido de GO (2026-07-28): una
+> **venta** de ciertos canales genera automáticamente un **Pedido de preparación**. Lo que ya NO es
+> cierto es que "Pedidos es 100% separado de Ventas" — hoy hay puente en las dos direcciones, y por
+> eso hacen falta los guards de abajo.
+
+**Regla de creación** (decidida por GO): la venta genera pedido si su **canal está en
+`tenants.pedido_canales_auto`** (Config → Pedidos → "Canales que generan pedido"); y si la venta es
+una **reserva**, además tiene que estar **100% pagada**. Una reserva de un canal no configurado no
+genera nada. Sin canales marcados la función está apagada — ningún tenant existente cambia de
+comportamiento.
+
+Se hace con triggers **server-side** y no en el POS a propósito: así también entran las ventas de los
+webhooks de marketplace y del importador, que nunca pasan por `registrarVenta`.
+
+### 🛑 Por qué un venta-pedido es un documento DISTINTO
+
+Un pedido con `venta_origen_id` **ya tiene su venta, su plata y su stock resueltos**. Si entrara al
+ciclo normal de Pedidos se rompería de dos formas, las dos **silenciosas**:
+
+| Riesgo | Qué pasaría | Cómo se cierra |
+|---|---|---|
+| **Doble venta** | `fn_pedido_generar_venta` (PED4) crea una venta nueva, rebaja stock otra vez y asienta caja otra vez | Trigger `BEFORE INSERT ON ventas` que rechaza si el `pedido_id` apunta a un pedido con `venta_origen_id`. Por trigger y no editando la RPC: cubre **cualquier** camino de escritura |
+| **Doble reserva** | `fn_generar_tareas_picking_pedido` reserva `cantidad_reservada`. Si la venta era una RESERVA, esas unidades ya están reservadas → se reserva el doble y el POS dice "sin stock" habiendo. Si era DESPACHADA, el stock ya salió de `cantidad` → reserva unidades de **otras** líneas | Dispatcher: los venta-pedidos van a `fn_generar_tareas_picking_pedido_venta`, que arma el picking leyendo `venta_item_despachos` (el LPN **real** que ya eligió la venta, ISS-075) y **no toca `cantidad_reservada`** |
+
+**Probado por mutación en DEV:** forzando el algoritmo viejo sobre un venta-pedido se reservan **4
+unidades de más**; con el dispatcher queda en 0.
+
+La RPC original se **renombró** a `fn_generar_tareas_picking_pedido_stock` y el nombre viejo quedó
+como dispatcher. Se renombró en vez de re-escribir su cuerpo porque son ~150 líneas que mueven stock:
+volver a tipearlas para insertar cuatro es justo donde se cuela un error silencioso. Los GRANT siguen
+a la función.
+
+### `listo_para_entrega` dejó de ser un estado muerto
+
+Estaba en el CHECK de `pedidos.estado` desde la mig 292, la UI le tenía badge y tres RPCs lo leían
+como precondición — pero **ningún código lo seteaba nunca**, así que ningún pedido podía llegar ahí.
+Desde la mig 316, completar la **última tarea de picking** del pedido lo promueve solo. Es la
+condición que define la pestaña del mostrador.
+
+### La pestaña Ventas → Pedidos (entrega en mostrador)
+
+Muestra **solo** los pedidos `listo_para_entrega` + **retiro en local** (`requiere_envio = false`) +
+nacidos de una venta. Nada a medio armar ni lo que sale por envío: el que atiende tiene al cliente
+enfrente y todo lo demás es ruido.
+
+- **Búsqueda** por nombre de cliente (sin tildes ni mayúsculas), **DNI** (por dígitos y por
+  **prefijo**, mínimo 3) y **N° de pedido** (**exacto**, tenant o sucursal). El prefijo y el match
+  exacto no son cosmética: con "contiene" en el DNI, tipear "5" para buscar el pedido 5 devolvía
+  además a todo cliente con un 5 en el documento.
+- **Botón "Entregado"** → `fn_pedido_entregar_retiro`: **no toca plata ni stock** (la venta ya cobró y
+  ya rebajó), marca el pedido entregado y deja el rastro en **Envíos** como `retiro_local` /
+  `entregado`. Devuelve el id de la venta y la UI abre su detalle para facturar.
+- **Facturar es un paso aparte** (decisión de GO): la entrega física queda confirmada aunque cierren
+  el modal sin emitir — se factura después desde el Historial. Trabar la entrega esperando a AFIP
+  dejaría al cliente parado en el mostrador.
+
+### Detalles que costaron
+
+- **Las líneas de la venta llegan DESPUÉS que la cabecera.** `registrarVenta` inserta la venta y sus
+  `venta_items` en llamadas HTTP **separadas**, así que en el `AFTER INSERT` de `ventas` no hay ni una
+  línea. Las completa un trigger **statement-level** sobre `venta_items`
+  (`fn_pedido_sync_items_desde_venta`, idempotente y solo mientras el pedido sigue en `confirmado`;
+  una vez lanzado hay tareas WMS colgando de esas líneas y reescribirlas por debajo rompería el
+  inventario).
+- **💵 El costo de envío cuenta para el "100% pagada".** `ventas.total` NO lo incluye pero
+  `monto_pagado` SÍ (ISS-105): comparar contra `total` a secas habría generado el pedido cobrando de
+  menos.
+- **🛑 Una VENTA nunca se cae por un documento de logística.** El trigger de creación va envuelto en
+  `EXCEPTION WHEN OTHERS` + `RAISE WARNING`: un pedido que no se pudo crear se regenera; una venta
+  perdida en el mostrador, no.
+- **Anti-loop:** una venta nacida de un pedido (`ventas.pedido_id`) nunca genera otro pedido.
+- **`requiere_envio` nace en `false`** y lo corrige un trigger sobre `envios`: el envío, cuando
+  existe, lo crea VentasPage *después* del INSERT de la venta, así que al crear el pedido todavía no
+  se puede saber.
+
+**Cobertura:** 26 unit (`src/lib/pedidoVenta.ts`) · **e2e 113** (`113_pedido_desde_venta_mostrador_mutante`,
+2/2, todo por REST porque los guards tienen que vivir en el servidor) · regresión **107** verde (el
+flujo original de Pedidos sigue generando su venta) · `tests/specs/uat-modo-basico.md` **§47**.
 
 ---
 

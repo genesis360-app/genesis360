@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useSearchParams, useNavigate, Link } from 'react-router-dom'
-import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2 } from 'lucide-react'
+import { Plus, Search, ShoppingCart, Package, Truck, X, Hash, Percent, CreditCard, User, FileText, Zap, DollarSign, Printer, Layers, Camera, Scissors, Gift, LayoutGrid, List, RotateCcw, ChevronDown, ChevronUp, AlertTriangle, QrCode, Copy, ExternalLink, Check, RefreshCw, Wallet, FileDown, Receipt, CheckCircle2, Lock, Tag, Send, Trash2, PackageCheck } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '@/lib/supabase'
 import { reproducirSonidoCobro } from '@/lib/sonidoCobro'
@@ -47,9 +47,10 @@ import { redondearPrecio } from '@/lib/precioRedondeo'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
+import { filtrarPedidosMostrador, type PedidoMostrador } from '@/lib/pedidoVenta'
 import toast from 'react-hot-toast'
 
-type Tab = 'nueva' | 'historial' | 'canales'
+type Tab = 'nueva' | 'historial' | 'canales' | 'pedidos'
 type DescTipo = 'pct' | 'monto'
 
 const ESTADOS: Record<EstadoVenta, { label: string; color: string; bg: string }> = {
@@ -1324,6 +1325,67 @@ export default function VentasPage() {
     },
     enabled: !!tenant && tab === 'historial',
   })
+
+  // ── Pestaña Pedidos (migs 315/316) — retiro en local listo para entregar en el mostrador ──
+  // Solo pedidos LISTOS (picking terminado) y de RETIRO EN LOCAL: el que atiende tiene al cliente
+  // enfrente, no le sirve ver pedidos a medio armar ni los que salen por envío.
+  // Sin filtro de sucursal explícito: la RLS de `pedidos` ya es por sucursal (mig 292).
+  const [pedidoBusqueda, setPedidoBusqueda] = useState('')
+  const [entregandoPedido, setEntregandoPedido] = useState<string | null>(null)
+  const { data: pedidosMostrador = [], isLoading: loadingPedidos } = useQuery({
+    queryKey: ['pedidos-mostrador', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('pedidos')
+        .select('id, numero, numero_sucursal, estado, requiere_envio, venta_origen_id, cliente_nombre, cliente_telefono, created_at, clientes(nombre, dni)')
+        .eq('tenant_id', tenant!.id)
+        .eq('estado', 'listo_para_entrega')
+        .eq('requiere_envio', false)
+        .not('venta_origen_id', 'is', null)
+        .order('created_at', { ascending: true })
+      if (error) throw error
+      return (data ?? []).map((p: any) => ({
+        ...p,
+        cliente_nombre: p.clientes?.nombre ?? p.cliente_nombre ?? null,
+        cliente_dni: p.clientes?.dni ?? null,
+      })) as (PedidoMostrador & { cliente_telefono?: string | null })[]
+    },
+    enabled: !!tenant && !esContador,
+  })
+  const pedidosFiltrados = filtrarPedidosMostrador(pedidosMostrador, pedidoBusqueda)
+
+  /**
+   * Entregar en el mostrador. La RPC NO toca plata ni stock (la venta ya cobró y ya rebajó): solo
+   * registra que la mercadería salió y deja el rastro en Envíos. Devuelve el id de la venta, que
+   * se abre a continuación para que el de mostrador pueda facturar.
+   *
+   * Decisión de GO: la entrega FÍSICA queda confirmada acá aunque después cierren el modal sin
+   * emitir la factura — facturar se puede hacer luego desde el Historial. Trabar la entrega
+   * esperando a AFIP dejaría al cliente parado en el mostrador si el servicio se cae.
+   */
+  const entregarPedidoMostrador = async (pedidoId: string, numero: number) => {
+    setEntregandoPedido(pedidoId)
+    try {
+      const { data: ventaId, error } = await supabase.rpc('fn_pedido_entregar_retiro', {
+        p_pedido_id: pedidoId,
+        p_receptor: null,
+      })
+      if (error) throw error
+      logActividad({ entidad: 'pedido', entidad_id: pedidoId, entidad_nombre: `Pedido #${numero}`,
+        accion: 'cambio_estado', campo: 'estado', valor_anterior: 'listo_para_entrega',
+        valor_nuevo: 'entregado', pagina: '/ventas' })
+      toast.success(`Pedido #${numero} entregado`)
+      qc.invalidateQueries({ queryKey: ['pedidos-mostrador'] })
+      qc.invalidateQueries({ queryKey: ['pedidos'] })
+      qc.invalidateQueries({ queryKey: ['envios'] })
+      // Se abre el detalle de la venta para emitir la factura, reusando el mismo camino que ya usa
+      // el resto de la app (?id= + el efecto de abajo) en vez de armar el objeto de la venta a mano.
+      if (ventaId) { setTab('historial'); setSearchParams({ id: String(ventaId) }) }
+    } catch (e: any) {
+      toast.error(e.message || 'No se pudo entregar el pedido')
+    } finally {
+      setEntregandoPedido(null)
+    }
+  }
 
   // Abrir modal de venta directamente si viene con ?id= en la URL.
   // Con ?devolver=1 (CTA desde Envíos cuando un envío vuelve en estado "devolución")
@@ -4682,7 +4744,9 @@ export default function VentasPage() {
       <PageTabs
         tabs={esContador
           ? [{ id: 'historial', label: 'Historial', icon: FileText }]
-          : [{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText }, { id: 'canales', label: 'Canales', icon: Layers }]}
+          : [{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText },
+             { id: 'pedidos', label: pedidosMostrador.length > 0 ? `Pedidos (${pedidosMostrador.length})` : 'Pedidos', icon: PackageCheck },
+             { id: 'canales', label: 'Canales', icon: Layers }]}
         active={tab}
         onChange={(id) => setTab(id as Tab)}
         className="-mb-2"
@@ -7320,6 +7384,74 @@ export default function VentasPage() {
         )
       })()}
       {/* ── CANALES DE VENTAS ── */}
+      {/* ── PEDIDOS (retiro en local listo para entregar, migs 315/316) ── */}
+      {tab === 'pedidos' && (
+        <div className="space-y-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
+            <div className="flex items-center gap-2 mb-1">
+              <PackageCheck size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Pedidos listos para retirar</h2>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+              Pedidos ya preparados que el cliente pasa a buscar por el local. Buscá por nombre, DNI o número de pedido.
+            </p>
+            <div className="relative">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text" value={pedidoBusqueda} onChange={e => setPedidoBusqueda(e.target.value)}
+                placeholder="Nombre del cliente, DNI o N° de pedido"
+                className="w-full pl-9 pr-3 py-2.5 border border-gray-200 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text"
+              />
+            </div>
+          </div>
+
+          {loadingPedidos ? (
+            <div className="text-center py-10 text-sm text-gray-400 dark:text-gray-500">Cargando pedidos…</div>
+          ) : pedidosFiltrados.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-10 shadow-sm border border-gray-100 dark:border-gray-700 text-center">
+              <PackageCheck size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {pedidoBusqueda ? 'Ningún pedido coincide con la búsqueda' : 'No hay pedidos listos para retirar'}
+              </p>
+              {!pedidoBusqueda && (
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  Acá aparecen los pedidos de retiro en local cuando el depósito termina de prepararlos.
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {pedidosFiltrados.map(p => (
+                <div key={p.id} className="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                        Pedido #{(tenant as any)?.pedido_numeracion === 'tenant' ? p.numero : (p.numero_sucursal ?? p.numero)}
+                      </span>
+                      <span className="px-2 py-0.5 text-xs font-medium rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400">
+                        Listo para entrega
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate mt-0.5">
+                      {p.cliente_nombre || 'Consumidor final'}
+                      {p.cliente_dni && <span className="text-gray-400 dark:text-gray-500"> · DNI {p.cliente_dni}</span>}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => entregarPedidoMostrador(p.id, p.numero)}
+                    disabled={entregandoPedido === p.id}
+                    className="flex items-center gap-2 bg-accent hover:bg-accent/90 text-white px-4 py-2 rounded-xl text-sm font-semibold transition-all disabled:opacity-60">
+                    <Check size={15} />
+                    {entregandoPedido === p.id ? 'Entregando…' : 'Entregado'}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {tab === 'canales' && (
         <div className="space-y-5">
           {/* KPIs por canal */}

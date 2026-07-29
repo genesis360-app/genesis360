@@ -6,6 +6,61 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-28] update | 🧾 v1.147.0 — Pedido automático desde una VENTA + entrega en mostrador (migs 315/316)
+
+GO pidió cuatro cosas: que ciertos canales de venta generen pedido, que las reservas lo hagan solo si
+están 100% pagadas, una pestaña de Pedidos en Ventas para entregar los retiros en local, y búsqueda
+por cliente/DNI/número.
+
+**🛑 Lo primero fue avisarle que esto invierte el flujo F4 y por qué eso es peligroso.** Hasta hoy el
+único puente era Pedido → venta (`fn_pedido_generar_venta`, PED4). Un pedido nacido de una venta ya
+tiene su venta, su plata y su stock resueltos, así que meterlo en el ciclo normal de Pedidos lo rompe
+de dos formas **silenciosas**: (1) entregarlo generaría una SEGUNDA venta con segundo rebaje y segundo
+asiento de caja; (2) lanzarlo reservaría el stock por SEGUNDA vez —o, si la venta ya rebajó,
+reservaría unidades de otras líneas—. Se le explicó antes de escribir código y se diseñó alrededor de
+eso.
+
+**Decisiones que tomó GO** (por AskUserQuestion, con las opciones sobre la mesa): regla única de canal
+configurado + reserva 100% pagada · Envíos como tabla única de trazabilidad de entregas (el retiro
+genera igual un `envios` tipo `retiro_local`) · la entrega física se confirma al apretar el botón y
+facturar queda como paso aparte (trabar la entrega esperando a AFIP dejaría al cliente parado en el
+mostrador).
+
+**Mig 315** — `tenants.pedido_canales_auto` (ids de canal; `[]` = apagado) + `pedidos.venta_origen_id`
+(UNIQUE parcial) + `fn_canal_de_origen` (espejo SQL de `ORIGEN_ALIAS`). Server-side y no en el POS a
+propósito: así cubre también las ventas que entran por webhook de marketplace o importador.
+💵 La condición del 100% **suma el costo de envío**: `total` no lo incluye pero `monto_pagado` sí
+(ISS-105) — compararlo contra `total` a secas habría generado el pedido cobrando de menos.
+⚠ Hallazgo que obligó a un segundo trigger: `registrarVenta` inserta la venta y los `venta_items` en
+llamadas HTTP **separadas**, así que en el `AFTER INSERT` de `ventas` **no hay ni una línea**. Las
+completa un trigger statement-level sobre `venta_items`. Y todo el trigger va envuelto en
+`EXCEPTION WHEN OTHERS`: **una venta nunca se cae por un documento de logística**.
+
+**Mig 316** — los guards. Trigger `BEFORE INSERT ON ventas` contra la segunda venta (por trigger y no
+editando la RPC, para cubrir cualquier camino de escritura) · `fn_generar_tareas_picking_pedido_venta`
+nueva que arma el picking desde `venta_item_despachos` (el LPN REAL que ya eligió la venta) **sin
+tocar `cantidad_reservada`** · la RPC original se **renombra** a `..._stock` y queda un dispatcher con
+el nombre viejo — se renombró en vez de re-escribir el cuerpo porque son ~150 líneas que mueven stock
+y volver a tipearlas para insertar cuatro es justo donde se cuela un error silencioso ·
+`fn_pedido_entregar_retiro` para el mostrador.
+
+**Hueco preexistente encontrado y cerrado:** `listo_para_entrega` era un **estado MUERTO**. Estaba en
+el CHECK desde la mig 292, la UI le tenía badge y 3 RPCs lo leían como precondición, pero **ningún
+código lo seteaba nunca** — ningún pedido podía llegar ahí. Es justo el estado que define la pestaña
+del mostrador, así que ahora completar la última tarea de picking del pedido lo promueve.
+
+**Frontend:** Config → Pedidos gana el selector de canales (chips, saneados contra los canales vivos);
+Ventas gana la pestaña **Pedidos** con búsqueda por nombre/DNI/N° y botón Entregado que abre el
+detalle de la venta reusando el camino `?id=` que ya existía. La búsqueda vive en `src/lib/pedidoVenta.ts`
+(lógica pura) — los unit atraparon que buscar "5" arrastraba todo DNI que contuviera un 5, así que el
+DNI matchea por **prefijo** (≥3 dígitos) y el número **exacto**.
+
+**Verificación:** 18 escenarios en DEV con rollback intencional + **mutación probada**: forzando el
+algoritmo viejo sobre un venta-pedido se reservan **4 unidades de más**, con el dispatcher queda en 0.
+Verde: tsc · build · **unit 1289** (26 nuevos) · **e2e 113 nuevo (2/2)** · regresión **107/109/112 (8/8)**
+— el 107 confirma que el flujo original de Pedidos sigue generando su venta sin cambios.
+**EN DEV; PROD pendiente de autorización.** Ver [[wiki/features/pedidos]] y UAT §47.
+
 ## [2026-07-28] update | 🔀 v1.146.0 — guard de modelo de variante: madre/hijo vs. Atributos de variante (mig 314)
 
 GO eligió **reconstruir el guard** que se había perdido con la mig 311 — la única decisión que

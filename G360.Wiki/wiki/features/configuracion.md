@@ -3,7 +3,7 @@ title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking]
 sources: [CLAUDE.md, migrations 289, 290, 292, 299]
-updated: 2026-07-23
+updated: 2026-07-28
 ---
 
 # Módulo Configuración
@@ -12,6 +12,19 @@ updated: 2026-07-23
 **Acceso:** DUEÑO · ADMIN (lectura para otros roles según campo)
 
 ---
+
+## 🧾 Pedidos → "Canales que generan pedido" (v1.147.0, mig 315, 🟡 EN DEV)
+
+`Configuración → Pedidos`. Chips con los canales de venta **activos** del tenant; los marcados quedan
+en `tenants.pedido_canales_auto` (se guardan **ids**, así que renombrar un canal no rompe la
+selección, y se sanean contra los canales vivos para no dejar pintado uno borrado o desactivado).
+
+Una venta de un canal marcado genera automáticamente un **Pedido de preparación**. Si la venta es una
+**reserva**, el pedido se genera recién cuando queda **100% pagada**. **Sin ningún canal marcado la
+función está apagada** — que es el default, así que ningún tenant existente cambia de comportamiento.
+
+Reglas completas y guards: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
+
 
 ## Estructura de tabs (v1.8.33 — Fase 1)
 

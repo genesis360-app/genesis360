@@ -363,7 +363,13 @@ export default function VentasPage() {
   const { cotizacion: cotizacionUSD } = useCotizacion()
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [tab, setTab] = useState<Tab>(() => searchParams.get('id') ? 'historial' : 'nueva')
+  // `?tab=pedidos` es el deep link desde /pedidos ("Entregar en mostrador"): ese pedido ya tiene su
+  // venta, así que se entrega acá y no allá. `?id=` sigue abriendo el detalle en Historial.
+  const [tab, setTab] = useState<Tab>(() => {
+    const t = searchParams.get('tab')
+    if (t && ['nueva', 'historial', 'pedidos', 'canales'].includes(t)) return t as Tab
+    return searchParams.get('id') ? 'historial' : 'nueva'
+  })
   // J3: CONTADOR es read-only → siempre en el historial, sin acceso al POS
   useEffect(() => { if (esContador && tab !== 'historial') setTab('historial') }, [esContador, tab])
   const [ventaGrupoId, setVentaGrupoId] = useState<string | null>(null)

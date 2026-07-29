@@ -1635,5 +1635,19 @@ así que las formas de romperlo son todas silenciosas y están cerradas server-s
 siguen sin aplicarse en Pedidos — un Pedido no tiene canal de venta, así que se comporta como una
 venta sin regla de canal.
 
+### Navegación coherente entre los dos módulos
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 25 | **Un venta-pedido NO muestra "Entregar" en /pedidos** | Ese botón GENERA la venta real; el pedido ya la tiene y el guard server-side lo rechazaría. Se oculta en vez de dejar que el usuario choque contra el error | revisión de código |
+| 26 | **En su lugar linkea a donde SÍ se entrega** | Retiro en local → `Ventas → Pedidos` (deep link `?tab=pedidos`); con envío → módulo Envíos | revisión de código |
+| 27 | **El cartel de Config dice con qué reglas factura un pedido manual** | Precio de lista + tiers por volumen + descuento por estado; **sin combos ni lista por canal**. Solo se muestra con el toggle prendido | revisión de código |
+
 **Verde:** tsc · build · **unit 1297** (34 en `pedidoVenta.test.ts`) · **e2e 113 (4/4)** ·
 regresión **107 (5/5)**.
+
+**⚠ Pendiente conocido, DIFERIDO con evidencia (2026-07-29):** la lista de precios por canal y los
+combos no se aplican al facturar un pedido **manual**. Medido antes de decidir: `fn_pedido_generar_venta`
+**nunca corrió** (0 ventas generadas por un Pedido en PROD y DEV), PROD tiene 0 pedidos, 0 combos
+activos y 0 tenants con `lista_precio` seteada, y esa función corre solo para pedidos a mano — que
+quedaron apagados por default. Detalle y costo/beneficio en [[wiki/features/pedidos]].

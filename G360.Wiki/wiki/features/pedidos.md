@@ -644,8 +644,30 @@ POS:
 Verificado en DEV: 12 unidades con base $1.000, tier `>=10 -> $700` y estado con 20% pasaron de
 facturar **$12.000** a **$6.720**.
 
-⚠ **Pendiente conocido:** la lista de precios por canal (`reglaDe(canal).lista_precio`) y los combos
-siguen sin aplicarse — un Pedido no tiene canal de venta.
+#### ⚠ Pendiente conocido, evaluado y DIFERIDO a propósito (2026-07-29)
+
+La **lista de precios por canal** (`reglaDe(canal).lista_precio`) y los **combos** siguen sin
+aplicarse. GO pidió evaluar si valía la pena hacerlo; se midió antes de decidir:
+
+- **`fn_pedido_generar_venta` nunca corrió: 0 ventas generadas por un Pedido** en PROD y en DEV.
+- PROD: **0 pedidos**, **0 combos activos**, **0 tenants** con `lista_precio` seteada (la clave
+  existe pero vale `null`, que es el default "resolver el tier por cantidad").
+- Y desde la mig 316 esa función corre **solo para pedidos creados a mano** — un pedido nacido de
+  una venta ya trae los precios del POS y su entrega (`fn_pedido_entregar_retiro`) no fija ninguno.
+  El botón de crear pedidos a mano quedó **apagado por default** (mig 317).
+
+Costo/beneficio de cada uno:
+
+| | Costo | Decisión |
+|---|---|---|
+| **Lista por canal** | Bajo (~10 líneas), pero exige decidir **qué lista le toca a un Pedido**, que no tiene canal. Lo defendible sería tratarlo como `online` — es una regla nueva | Diferido |
+| **Combos** | Alto: replicar server-side el motor de detección del POS (matchear definiciones contra las líneas, agrupar por producto+UoM, manejar cantidades), sobre código de plata | No se hace. Un combo es una decisión de mostrador, no de depósito |
+
+> ⚠ **La trampa a tener presente:** el único caso que justifica prender los pedidos manuales es el
+> **mayorista con entregas parciales** — y "mayorista" es justo el perfil que más probablemente
+> configure la lista mayorista por canal. El día que se prenda ese toggle para un mayorista es
+> cuando el hueco empieza a morder. Por eso el toggle muestra un **cartel** que dice exactamente con
+> qué reglas factura un pedido manual, para que la decisión se tome informada.
 
 ### Crear un pedido a mano es opt-in (mig 317)
 

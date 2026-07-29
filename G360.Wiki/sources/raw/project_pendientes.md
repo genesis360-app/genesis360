@@ -42,9 +42,16 @@ type: project
 > **⚠ Espejos JS↔SQL que hay que mantener sincronizados:** `fn_canal_de_origen` ↔ `ORIGEN_ALIAS`
 > (`useCanalesVenta.ts`) · `fn_precio_venta_efectivo` ↔ `precioTier`/`redondearPrecio`.
 >
-> **⚠ Pendiente conocido (documentado, no olvidado):** la **lista de precios por canal**
-> (`reglaDe(canal).lista_precio`) y los **combos** siguen sin aplicarse en la facturación de un
-> Pedido — un Pedido no tiene canal de venta.
+> **⚠ Pendiente conocido — EVALUADO Y DIFERIDO (2026-07-29), no olvidado:** la **lista de precios
+> por canal** y los **combos** no se aplican al facturar un pedido **manual**. Se midió antes de
+> decidir: `fn_pedido_generar_venta` **nunca corrió** (0 ventas generadas por un Pedido en PROD y en
+> DEV), PROD tiene 0 pedidos / 0 combos activos / 0 tenants con `lista_precio` seteada, y desde la
+> mig 316 esa función corre **solo para pedidos a mano**, que quedaron apagados por default. Los
+> combos exigirían replicar el motor del POS server-side (caro, sobre código de plata); la lista por
+> canal es barata pero pide decidir qué lista le toca a un Pedido, que no tiene canal.
+> 🪤 **Trampa a recordar:** el perfil que justifica prender los pedidos manuales (mayorista con
+> entregas parciales) es el mismo que más probablemente use la lista mayorista por canal. Por eso el
+> toggle muestra un cartel con las reglas exactas de facturación.
 >
 > **Verde:** tsc · build · **unit 1297** (34 nuevos) · **e2e 113 (4/4)** · regresión **107 (5/5)**.
 > Ver [[wiki/features/pedidos]] y UAT **§47**.

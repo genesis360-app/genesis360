@@ -5291,12 +5291,24 @@ export default function ConfigPage() {
               <div>
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Botón "Nuevo pedido" en el módulo Pedidos</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Normalmente no hace falta: el pedido lo genera la venta, que además le calcula bien el precio
-                  (listas mayoristas, descuentos). Prendelo solo si necesitás armar pedidos sin una venta detrás —
-                  el caso típico es el <strong>mayorista con entregas parciales</strong>, que el mostrador no sabe hacer.
+                  Normalmente no hace falta: el pedido lo genera la venta. Prendelo solo si necesitás armar pedidos
+                  sin una venta detrás — el caso típico es el <strong>mayorista con entregas parciales</strong>,
+                  que el mostrador no sabe hacer.
                 </p>
               </div>
             </label>
+            {((tenant as any)?.pedido_manual_habilitado ?? false) && (
+              <div className="flex items-start gap-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/50 px-3 py-2">
+                <AlertCircle size={14} className="mt-0.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <p className="text-xs text-amber-800 dark:text-amber-300">
+                  <strong>Cómo factura un pedido armado a mano:</strong> precio de lista del producto + descuentos
+                  por volumen (tiers mayoristas) + descuento por estado de inventario. <strong>No aplica combos
+                  ni la lista de precios por canal</strong> — esas son reglas del mostrador y un pedido no tiene
+                  canal de venta. Si tu negocio depende de alguna de las dos, cargá la venta por el POS y dejá que
+                  ella genere el pedido.
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">

@@ -3,15 +3,16 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-07-28
+updated: 2026-07-29
 ---
 
 # Historial de Migraciones (001-326)
 
 **Total al 2026-07-29:** 326 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+**001-326 en DEV y PROD** (v1.151.0, deploy 2026-07-29). `schema_full.sql` regenerado al día.
 
-**326 (📦 el reabastecimiento elige una posición de picking QUE TENGA LUGAR, EN DEV — PROD pendiente)** —
+**326 (📦 el reabastecimiento elige una posición de picking QUE TENGA LUGAR, ✅ PROD 2026-07-29)** —
 Paso 4 del cubicaje. `fn_wms_elegir_ubicacion_picking` (mig 290) elegía el destino de una tarea
 bulk→picking mirando solo si la posición ya tenía stock de ese producto, y después secuencia y
 prioridad: **nunca miraba la ocupación**, así que podía mandar un pallet a una cara ya al tope y el
@@ -29,7 +30,7 @@ Espejo JS: `ubicacionSinLugar()` en `src/lib/medidasLogistica.ts` (10 tests).
 ⏳ **Pendiente de medir:** `EXPLAIN ANALYZE` contra un tenant con volumen real — la función se llama
 una vez por ítem y la vista es un agregado (acotado por RLS al propio tenant, pero sin medir).
 
-**325 (🐛 la vista de ocupación NUNCA encontraba la presentación de una línea — fix de la 322, EN DEV — PROD pendiente)** —
+**325 (🐛 la vista de ocupación NUNCA encontraba la presentación de una línea — fix de la 322, ✅ PROD 2026-07-29)** —
 Tres defectos en `vw_ubicacion_ocupacion`, encontrados al construir el frontend del cubicaje:
 **(1) el JOIN comparaba dos tipos de ID distintos.** La 322 unía `producto_presentaciones.id =
 inventario_lineas.unidad_medida_id`, pero esa columna referencia `unidades_medida(id)` — el catálogo
@@ -54,11 +55,11 @@ salía ~17% corto, justo en el dato que decide si un rack está sobrecargado (se
 Se aprovechó para que el **peso** use el del NIVEL cuando está cargado (incluye el embalaje: una caja
 de 12 pesa más que 12 unidades sueltas) y caiga a `productos.peso_kg` si no.
 
-**324 (no se lanza un pedido cuya venta no está viva, EN DEV — PROD pendiente)** —
+**324 (no se lanza un pedido cuya venta no está viva, ✅ PROD 2026-07-29)** —
 Engancha el guard de la 323 al dispatcher de "Lanzar" (que es chico), y no dentro del algoritmo de
 picking: cubre los dos caminos con una línea sin volver a tocar el cuerpo que mueve stock.
 
-**323 (🐛 un PRESUPUESTO no genera pedido + anular la venta cancela su pedido, EN DEV — PROD pendiente)** —
+**323 (🐛 un PRESUPUESTO no genera pedido + anular la venta cancela su pedido, ✅ PROD 2026-07-29)** —
 Dos huecos que encontró GO usando el flujo real: una **venta recurrente** generó un PRESUPUESTO, el
 presupuesto generó un PEDIDO, y al cancelarse el presupuesto quedó **un pedido vivo** que cualquiera
 podía lanzar, mandando al depósito a preparar mercadería de una venta que ya no existe.
@@ -73,7 +74,7 @@ picking nunca reservó (mig 316) — la reserva es de la VENTA, y liberarla acá
 Por eso las tareas se cancelan con UPDATE directo y no con `fn_cancelar_tarea_wms`, que sí libera.
 Incluye limpieza de los pedidos que ya habían quedado mal (1 en DEV), sin tocar los entregados.
 
-**322 (📦 CUBICAJE VOLUMÉTRICO opt-in — FASE A, EN DEV — PROD pendiente)** —
+**322 (📦 CUBICAJE VOLUMÉTRICO opt-in — FASE A, ✅ PROD 2026-07-29)** —
 `tenants.cubicaje_habilitado` (default **false**) + `cubicaje_factor_aprovechamiento` (default 0.70,
 CHECK 0 < f ≤ 1). Con el cubicaje activo, el trigger `trg_presentaciones_exige_medidas` **no acepta**
 una presentación sin peso ni las tres medidas — así la cobertura es 100% por construcción de ahí en
@@ -86,7 +87,7 @@ prender el toggle NO completa el catálogo existente (en DEV: **6 de 296**).
 ⚠ El cálculo de `volumen_m3` de esta migración **no funcionaba**: el JOIN a la presentación nunca
 matcheaba. Corregido en la **mig 325**. Frontend completo (Fases A/B/C) en **v1.150.0**.
 
-**321 (conecta la capacidad de `ubicaciones`, que nadie leía, EN DEV — PROD pendiente)** —
+**321 (conecta la capacidad de `ubicaciones`, que nadie leía, ✅ PROD 2026-07-29)** —
 Los campos `largo/ancho/alto_cm`, `peso_max_kg` y `capacidad_pallets` existían desde la **mig 032** y
 **ningún cálculo los usaba**: se cargaban en Config y no servían para nada. Vista nueva
 `vw_ubicacion_ocupacion` (`security_invoker`, respeta RLS) con LPN activos y peso total por
@@ -95,7 +96,7 @@ el total queda CORTO — el error empuja hacia "parece que hay lugar" justo cuan
 pasado; por eso la UI muestra la cobertura con ⚠ y el aviso salta al 90% del límite, no al 100%.
 Avisa, nunca bloquea.
 
-**320 (🐛 el picking de un venta-pedido no sabía de dónde sacar la mercadería, EN DEV — PROD pendiente)** —
+**320 (🐛 el picking de un venta-pedido no sabía de dónde sacar la mercadería, ✅ PROD 2026-07-29)** —
 Bug que encontró GO probando el flujo real (venta #448, una RESERVA): la tarea de picking salía
 **sin LPN y sin ubicación**. `fn_generar_tareas_picking_pedido_venta` leía SOLO
 `venta_item_despachos`, que se escribe al **despachar** (ISS-075) — una venta **reservada** todavía
@@ -109,7 +110,7 @@ lectura · (4) cualquier línea con stock. Si nada matchea, la tarea sale igual 
 "⚠ sin stock ubicado para este producto" en vez de quedar en blanco.
 Verificado contra la venta #448: la tarea regenerada apunta a `LPN-20260619-24B551` en `RACK1`.
 
-**319 (💵 el Pedido factura el DESCUENTO POR ESTADO, EN DEV — PROD pendiente)** —
+**319 (💵 el Pedido factura el DESCUENTO POR ESTADO, ✅ PROD 2026-07-29)** —
 Cierra el pendiente que la 317 dejó anotado. Un Pedido facturaba **sin** aplicar el descuento por
 estado de inventario (migs 284-285): la MISMA mercadería salía más cara entregada por Pedidos que
 vendida por mostrador, y `venta_items.descuento_estado_pct/_monto` quedaban vacíos (ni la factura ni
@@ -121,7 +122,7 @@ según el % del estado de SU línea, nunca un promedio — mismo criterio que
 `calcularDescuentoEstadoLinea` del POS); con dos estados distintos el `pct` queda NULL pero el monto
 es la suma exacta, mismo contrato que graba el POS.
 
-**318 (regla del pedido por TIPO DE ENTREGA, EN DEV — PROD pendiente)** —
+**318 (regla del pedido por TIPO DE ENTREGA, ✅ PROD 2026-07-29)** —
 Reescribe la regla de la 315 según el diagrama de flujo de GO: **todas las ventas generan pedido
 MENOS la entrega directa** (canal presencial + despachada + sin envío). Deriva de
 `canales_venta.clasificacion` (mig 168) — no hay nada que configurar y es correcto por default.
@@ -133,7 +134,7 @@ envío** — `fn_generar_tareas_picking_pedido_venta` no lo creaba, y ahora adem
 `envios` **crea el pedido** si no existía, que es el caso "mostrador + envío", imposible de detectar
 en el INSERT de la venta porque el envío se inserta en una llamada HTTP posterior.
 
-**317 (💵 el pedido manual facturaba a PRECIO DE LISTA + pedido manual opt-in, EN DEV — PROD pendiente)** —
+**317 (💵 el pedido manual facturaba a PRECIO DE LISTA + pedido manual opt-in, ✅ PROD 2026-07-29)** —
 `fn_pedido_generar_venta` ponía `v_precio := COALESCE(productos.precio_venta, 0)` y nada más: sin
 tiers por volumen (mig 306), sin redondeo del tenant (H4). De los 4 tipos de pedido sembrados por
 default, **"Mayorista" era el que peor salía** — facturaba a precio minorista. Se extrae
@@ -147,7 +148,7 @@ que solo resuelve Pedidos es el mayorista con entregas parciales.
 programáticamente: son ~270 líneas que mueven stock, plata y caja, y re-tipearlas para cambiar una
 es donde se cuela un error silencioso.
 
-**316 (🛑 REGLA #0 — guards del flujo Venta → Pedido + entrega en mostrador, EN DEV — PROD pendiente)** —
+**316 (🛑 REGLA #0 — guards del flujo Venta → Pedido + entrega en mostrador, ✅ PROD 2026-07-29)** —
 Lo que hace SEGURO lo que abrió la 315. Un pedido con `venta_origen_id` ya tiene su venta, su plata y
 su stock resueltos, así que entrar al ciclo normal de Pedidos lo rompería de dos formas silenciosas:
 **(1) doble venta** — `fn_pedido_generar_venta` (mig 295) crea una venta nueva, vuelve a rebajar stock
@@ -170,7 +171,7 @@ CHECK desde la mig 292, la UI le tenía badge y 3 RPCs lo leían como precondici
 lo seteaba nunca**. Ahora completar la última tarea de picking del pedido lo promueve.
 Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
 
-**315 (Pedido automático desde una VENTA, EN DEV — PROD pendiente)** —
+**315 (Pedido automático desde una VENTA, ✅ PROD 2026-07-29)** —
 Pedido de GO: las ventas de ciertos canales generan solo un Pedido de preparación; las **reservas**
 solo cuando están **100% pagadas**. 🛑 **Invierte el sentido del flujo original (F4)**: hasta acá el
 único puente era Pedido → venta. Config nueva `tenants.pedido_canales_auto` (array de
@@ -189,7 +190,7 @@ línea**. Las líneas las completa un trigger **statement-level** sobre `venta_i
 un documento de logística** — un pedido que no se pudo crear se regenera, una venta perdida en el
 mostrador no. Guard anti-loop: una venta nacida de un pedido nunca genera otro pedido.
 
-**314 (🛑 guard de modelo de variante: madre/hijo vs. Atributos de variante, EN DEV — PROD pendiente)** —
+**314 (🛑 guard de modelo de variante: madre/hijo vs. Atributos de variante, ✅ PROD 2026-07-29)** —
 Reconstruye sobre el modelo madre/hijo el guard que la **mig 274** tenía sobre `grupo_id` y que
 **desapareció** al dropear esa columna en la **mig 311**: entre una y otra nada impedía que un mismo SKU
 fuera variante madre/hijo (`producto_padre_id`) **y** tuviera atributos de variante a nivel LPN

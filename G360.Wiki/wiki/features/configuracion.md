@@ -13,7 +13,7 @@ updated: 2026-07-28
 
 ---
 
-## 🧾 Pedidos → "Canales que generan pedido" (v1.147.0, mig 315, 🟡 EN DEV)
+## 🧾 Pedidos → "Canales que generan pedido" (v1.147.0, mig 315, ✅ PROD desde 2026-07-29)
 
 `Configuración → Pedidos`. Chips con los canales de venta **activos** del tenant; los marcados quedan
 en `tenants.pedido_canales_auto` (se guardan **ids**, así que renombrar un canal no rompe la
@@ -40,7 +40,7 @@ La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con se
 | **Ventas** | Sub-tabs: Métodos de pago · Descuentos y combos · Operativa |
 | **Caja** | Contraseña maestra, umbral bóveda |
 | **Clientes** | Placeholder — próximamente |
-| **Inventario** | Sub-tabs: Reglas de stock · Categorías · Ubicaciones · Estados · Motivos · Unidades · Atributos (✅ PROD v1.134.0) · **Zonas y picking** (🟡 EN DEV, v1.143.0) |
+| **Inventario** | Sub-tabs: Reglas de stock · Categorías · Ubicaciones · Estados · Motivos · Unidades · Atributos (✅ PROD v1.134.0) · **Zonas y picking** (✅ PROD desde v1.144.0) |
 | **Envíos** | Costo por km, plantilla WhatsApp |
 | **Facturación** | CUIT, condición IVA, razón social, domicilio fiscal, umbral factura B, token AFIP, certificados, puntos de venta |
 | **RRHH** | Asistencia/tardanzas, Nómina, Documentos (v1.81.x, H4) |
@@ -117,8 +117,8 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 ### Sub-tab: Reglas de stock
 - **Regla de inventario** (`tenants.regla_inventario`): FIFO / FEFO / LIFO / LEFO / Manual
 - **Over-receipt** (`tenants.permite_over_receipt`): permite ingresar más cantidad que la OC
-- **📦 Cubicaje volumétrico** (`tenants.cubicaje_habilitado`, default `false` — 🟡 EN DEV desde
-  v1.149/150, migs 322/325): calcula cuánto **espacio** ocupa lo guardado en cada ubicación.
+- **📦 Cubicaje volumétrico** (`tenants.cubicaje_habilitado`, default `false` — ✅ PROD desde
+  v1.151.0, migs 322/325/326): calcula cuánto **espacio** ocupa lo guardado en cada ubicación.
   Al activarlo, el peso y las tres medidas pasan a ser **obligatorios por nivel** en el editor de
   estructura del producto — ésa es la clave del diseño, porque con medidas a medias el número
   miente. Incluye el **factor de aprovechamiento** (`cubicaje_factor_aprovechamiento`, default
@@ -143,7 +143,7 @@ Catálogo configurable de valores para talle/color/encaje/formato/sabor·aroma (
 Alimenta `AtributoValorSelect` en Recepciones/Ingreso manual y el picker de rebaje en VentasPage.
 Detalle: [[wiki/features/atributos-variante]].
 
-### Sub-tab: Zonas y picking (🟡 EN DEV desde v1.143.0, migs 289-290 — sin deploy a PROD)
+### Sub-tab: Zonas y picking (✅ PROD desde v1.144.0, migs 289-290)
 
 Cierra las Fases 3-5 del roadmap de [[wiki/features/estructuras-udm]]:
 

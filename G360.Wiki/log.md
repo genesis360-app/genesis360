@@ -6,6 +6,47 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-29] update | 🐛 GO probó el flujo real: el picking no sabía de dónde sacar la mercadería (mig 320) + el ticket ahora dice cuánto falta pagar
+
+Tres cosas que salieron de GO usando el flujo end-to-end recién construido.
+
+**🐛 1. La tarea de picking salía SIN LPN y SIN UBICACIÓN.** GO hizo una venta con reserva (#448),
+lanzó el picking y la tarea decía "1 unidades base — la venta no dejó desglose por LPN · sin
+ubicación". Textual: *"no sabe de dónde ir a sacar el inventario"*.
+Causa: `fn_generar_tareas_picking_pedido_venta` (migs 316/318) leía **solo**
+`venta_item_despachos`, que se escribe al **DESPACHAR** (ISS-075). Una venta **reservada** todavía
+no tiene ninguna fila ahí — su plan de LPN vive en `venta_items.lpn_plan` (mig 156), que es donde el
+POS guarda el LPN elegido, incluida la elección manual del cajero. Y como el pedido nace justamente
+de reservas, **el caso más común caía siempre al fallback**. Verificado en los datos de la #448:
+`despachos = 0`, `lpn_plan = [{"lpn":"LPN-20260619-24B551","linea_id":"64f76de8-…","cantidad":1}]`.
+**Mig 320** lo reemplaza por una cascada de fuentes, sin reservar nada (la venta ya comprometió el
+stock): despachos → `lpn_plan` de la reserva → líneas con `cantidad_reservada > 0` en FEFO (solo
+lectura) → cualquier línea con stock. Si nada matchea, la tarea sale igual pero diciendo
+"⚠ sin stock ubicado", en vez de quedar en blanco. Regenerada la tarea de la #448: apunta a
+`LPN-20260619-24B551` en `RACK1`.
+
+**2. La tarea no decía a qué pedido ni a qué venta pertenecía** (pedido de GO). Sin eso, un LPN mal
+pickeado no se puede rastrear hasta el cliente que está esperando. `/picking` ahora muestra
+**Pedido #N** y **Venta #N** como links. Van en query aparte y no anidada a propósito: `ventas` y
+`pedidos` se referencian en las DOS direcciones (`ventas.pedido_id` y `pedidos.venta_origen_id`), así
+que el embed anidado de PostgREST es ambiguo.
+
+**💵 3. El ticket no decía cuánto falta pagar.** GO: *"muestra el total (2500) y lo pagado abajo en
+gris (2000), pero en ningún lado dice que le faltan 500"*. Es justamente el número por el que el
+cliente vuelve al local — y desde la mig 318 el mostrador **no entrega hasta que esté saldado**, así
+que sin eso el cliente se entera recién cuando viene a buscar la mercadería. Se agregó:
+- Bloque **Pagado / SALDO A PAGAR** destacado, con el saldo real. **El envío entra en la cuenta**:
+  `total` no lo incluye pero `monto_pagado` sí (ISS-105) — compararlo contra `total` a secas le
+  diría al cliente que ya no debe nada.
+- Un **presupuesto** no reclama saldo (todavía no es una venta).
+- Y de paso: una **reserva se veía igual que una venta cerrada** ("Venta N°…"). Ahora lleva badge
+  **★ RESERVA ★**, encabezado "Reserva N°…", la leyenda "Tu pedido se entrega al abonar el saldo" y
+  el cierre "Guardá este comprobante para retirar" en vez de "¡Gracias por su compra!".
+
+Verde: tsc · build · **unit 1304** (41 en `pedidoVenta.test.ts`, 7 nuevos de `resumenPagoTicket`) ·
+**e2e 113 (5/5)** con un test nuevo que asserta que la tarea de una reserva apunta al LPN
+planificado. **EN DEV; PROD pendiente.** Ver [[wiki/features/pedidos]] y UAT §47.
+
 ## [2026-07-29] update | 🧾 v1.148.0 — el flujo Venta→Pedido→Envío según el diagrama de GO (migs 317-319)
 
 GO mandó el diagrama de flujo del negocio y pidió revisar si el código lo refleja. **No lo

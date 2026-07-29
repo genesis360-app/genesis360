@@ -53,7 +53,18 @@ type: project
 > entregas parciales) es el mismo que más probablemente use la lista mayorista por canal. Por eso el
 > toggle muestra un cartel con las reglas exactas de facturación.
 >
-> **Verde:** tsc · build · **unit 1297** (34 nuevos) · **e2e 113 (4/4)** · regresión **107 (5/5)**.
+> **🐛 Hallazgos de GO probando el flujo real (mig 320 + frontend):**
+> - La tarea de picking de una **reserva** salía **sin LPN y sin ubicación**: la función leía solo
+>   `venta_item_despachos`, que en una reserva no existe todavía — el LPN vive en
+>   `venta_items.lpn_plan` (mig 156). Como el pedido nace de reservas, era el caso más común.
+>   Ahora es una **cascada**: despachos → `lpn_plan` → líneas reservadas (FEFO) → cualquier línea
+>   con stock; y si no hay nada, la tarea lo dice ("⚠ sin stock ubicado").
+> - La tarea ahora muestra **Pedido #N** y **Venta #N** como links en `/picking`.
+> - 💵 El **ticket** ahora muestra **SALDO A PAGAR** (antes solo total y pagado), sumando el envío
+>   (ISS-105), y una **reserva** dejó de verse como una venta cerrada (badge ★ RESERVA ★).
+>
+> **Verde:** tsc · build · **unit 1304** (41 en `pedidoVenta.test.ts`) · **e2e 113 (5/5)** ·
+> regresión **107 (5/5)**.
 > Ver [[wiki/features/pedidos]] y UAT **§47**.
 >
 > **🟡 ESTADO DE DEPLOY: TODO EN DEV.** `APP_VERSION` = v1.148.0; **PROD sigue en v1.145.0**.

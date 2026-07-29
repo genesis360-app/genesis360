@@ -6,10 +6,24 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-319)
+# Historial de Migraciones (001-320)
 
-**Total al 2026-07-29:** 319 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-29:** 320 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**320 (🐛 el picking de un venta-pedido no sabía de dónde sacar la mercadería, EN DEV — PROD pendiente)** —
+Bug que encontró GO probando el flujo real (venta #448, una RESERVA): la tarea de picking salía
+**sin LPN y sin ubicación**. `fn_generar_tareas_picking_pedido_venta` leía SOLO
+`venta_item_despachos`, que se escribe al **despachar** (ISS-075) — una venta **reservada** todavía
+no tiene ninguna fila ahí: su plan de LPN vive en `venta_items.lpn_plan` (mig 156), que es donde el
+POS guarda el LPN elegido, incluida la elección MANUAL del cajero. Y como el pedido nace justamente
+de reservas, el caso más común caía SIEMPRE al fallback "sin desglose por LPN".
+Se reemplaza por una **cascada de fuentes**, de la más precisa a la más genérica y **sin reservar
+nada** (la venta ya comprometió el stock): (1) `venta_item_despachos` · (2) `venta_items.lpn_plan`
+resolviendo la ubicación desde la línea · (3) líneas con `cantidad_reservada > 0` en FEFO, solo
+lectura · (4) cualquier línea con stock. Si nada matchea, la tarea sale igual pero las notas dicen
+"⚠ sin stock ubicado para este producto" en vez de quedar en blanco.
+Verificado contra la venta #448: la tarea regenerada apunta a `LPN-20260619-24B551` en `RACK1`.
 
 **319 (💵 el Pedido factura el DESCUENTO POR ESTADO, EN DEV — PROD pendiente)** —
 Cierra el pendiente que la 317 dejó anotado. Un Pedido facturaba **sin** aplicar el descuento por

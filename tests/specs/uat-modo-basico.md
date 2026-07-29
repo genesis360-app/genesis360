@@ -1643,7 +1643,20 @@ venta sin regla de canal.
 | 26 | **En su lugar linkea a donde SÍ se entrega** | Retiro en local → `Ventas → Pedidos` (deep link `?tab=pedidos`); con envío → módulo Envíos | revisión de código |
 | 27 | **El cartel de Config dice con qué reglas factura un pedido manual** | Precio de lista + tiers por volumen + descuento por estado; **sin combos ni lista por canal**. Solo se muestra con el toggle prendido | revisión de código |
 
-**Verde:** tsc · build · **unit 1297** (34 en `pedidoVenta.test.ts`) · **e2e 113 (4/4)** ·
+### 🐛 Hallazgos de GO probando el flujo real (2026-07-29)
+
+| # | Escenario | Qué pasaba | Cubierto por |
+|---|---|---|---|
+| 28 | **El picking de una RESERVA sabe de qué LPN sacar** | La tarea salía **sin LPN y sin ubicación** — "no sabe de dónde ir a sacar el inventario" (venta #448). La función leía solo `venta_item_despachos`, que en una reserva **todavía no existe**: el LPN vive en `venta_items.lpn_plan` (mig 156). Como el pedido nace justamente de reservas, era el caso más común | **e2e 113** (5º test) |
+| 29 | **Cascada de fuentes, de precisa a genérica** | despachos → `lpn_plan` de la reserva → líneas con `cantidad_reservada > 0` (FEFO) → cualquier línea con stock. Ninguna reserva stock | mig 320 + **e2e 113** |
+| 30 | **Si de verdad no hay stock, la tarea lo dice** | Antes salía en blanco; ahora las notas dicen "⚠ sin stock ubicado para este producto" | mig 320 |
+| 31 | **La tarea de picking muestra a qué pedido y a qué venta pertenece** | No había forma de rastrear una tarea hasta el cliente que espera la mercadería. Ahora `Pedido #N` y `Venta #N` son links | revisión de código |
+| 32 | **💵 El ticket dice cuánto FALTA pagar** | Mostraba el total y, en gris, lo pagado — nunca el saldo. Y desde la mig 318 el mostrador no entrega sin saldar, así que el cliente se enteraba recién al venir a buscarlo | 7 unit (`resumenPagoTicket`) |
+| 33 | **💵 El envío entra en el saldo del ticket** | `total` NO lo incluye pero `monto_pagado` SÍ (ISS-105): compararlo contra `total` le diría al cliente que ya no debe nada | unit dedicado |
+| 34 | **Una reserva ya no parece una venta cerrada** | El ticket decía "Venta N°…" igual que una cobrada. Ahora lleva badge **★ RESERVA ★**, encabezado "Reserva N°…" y el cierre "Guardá este comprobante para retirar" | revisión de código |
+| 35 | **Un presupuesto no reclama saldo** | Todavía no es una venta: no se le muestra saldo pendiente aunque tenga 0 pagado | unit dedicado |
+
+**Verde:** tsc · build · **unit 1304** (41 en `pedidoVenta.test.ts`) · **e2e 113 (5/5)** ·
 regresión **107 (5/5)**.
 
 **⚠ Pendiente conocido, DIFERIDO con evidencia (2026-07-29):** la lista de precios por canal y los

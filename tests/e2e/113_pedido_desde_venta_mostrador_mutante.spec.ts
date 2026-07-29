@@ -242,6 +242,57 @@ test.describe('Pedido desde venta + entrega en mostrador (mutante)', () => {
       '[113] el pedido entregado desaparece de la pestaña').toHaveLength(0)
   })
 
+  // ── El picking tiene que saber DE DÓNDE sacar la mercadería ─────────────────────────
+  // Bug real que encontró GO (venta #448): la tarea salía sin LPN y sin ubicación. La función
+  // leía solo `venta_item_despachos`, que en una RESERVA todavía no existe — el LPN vive en
+  // `venta_items.lpn_plan` (mig 156). Sin esto, el operario recibe una orden que no dice adónde ir.
+  test('el picking de una RESERVA apunta al LPN que el POS ya había planificado', async ({ page, request }) => {
+    test.setTimeout(120000)
+    const c = await ctx(page, request)
+    const pres = await canal(c, request, 'presencial')
+
+    const lineas = await (await request.get(
+      `${SUPABASE_URL}/rest/v1/inventario_lineas?select=id,producto_id,lpn,cantidad,ubicacion_id,sucursal_id&activo=eq.true&cantidad=gte.3&ubicacion_id=not.is.null&limit=1`,
+      { headers: c.headers })).json() as any[]
+    expect(lineas.length, '[113] hace falta una línea con stock y ubicación').toBeGreaterThan(0)
+    const linea = lineas[0]
+
+    const venta = await crearVenta(c, request, {
+      sucursal_id: linea.sucursal_id, estado: 'reservada',
+      subtotal: 1000, total: 1000, monto_pagado: 300, origen: pres,
+    })
+    // Reserva: NO hay `venta_item_despachos`, solo el plan de LPN del carrito.
+    await request.post(`${SUPABASE_URL}/rest/v1/venta_items`, {
+      headers: c.J,
+      data: {
+        tenant_id: c.tenantId, venta_id: venta.id, producto_id: linea.producto_id,
+        cantidad: 2, precio_unitario: 500, subtotal: 1000,
+        lpn_plan: [{ linea_id: linea.id, lpn: linea.lpn, cantidad: 2, manual: false }],
+      },
+    })
+
+    const [pedido] = await pedidoDe(c, request, venta.id)
+    expect(pedido, '[113] la reserva genera el pedido').toBeTruthy()
+
+    const lanzar = await request.post(`${SUPABASE_URL}/rest/v1/rpc/fn_generar_tareas_picking_pedido`, {
+      headers: c.headers, data: { p_pedido_id: pedido.id },
+    })
+    expect(lanzar.ok(), `[113] no se pudo lanzar: ${await lanzar.text()}`).toBe(true)
+
+    const tareas = await (await request.get(
+      `${SUPABASE_URL}/rest/v1/wms_tareas?pedido_id=eq.${pedido.id}&select=lpn_origen,ubicacion_origen_id,cantidad,pedido_id`,
+      { headers: c.headers })).json() as any[]
+    expect(tareas.length, '[113] tiene que generar picking').toBeGreaterThan(0)
+
+    // Sin despachos, el LPN sale del plan de la reserva
+    expect(tareas[0].lpn_origen,
+      '🐛 [113] la tarea tiene que decir DE QUÉ LPN sacar la mercadería, no salir vacía').toBe(linea.lpn)
+    expect(tareas[0].ubicacion_origen_id,
+      '🐛 [113] y de qué ubicación — "sin ubicación" deja al operario sin saber adónde ir').toBe(linea.ubicacion_id)
+    // Y la tarea queda ligada al pedido, para poder rastrearla hasta la venta del cliente
+    expect(tareas[0].pedido_id, '[113] la tarea se vincula al pedido').toBe(pedido.id)
+  })
+
   // ── La excepción por canal ──────────────────────────────────────────────────────────
   test('un canal excluido en Config no genera pedido aunque le correspondiera', async ({ page, request }) => {
     test.setTimeout(60000)

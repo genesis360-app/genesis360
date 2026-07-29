@@ -612,6 +612,46 @@ Un pedido con `venta_origen_id` **ya tiene su venta, su plata y su stock resuelt
 **Probado por mutación en DEV:** forzando el algoritmo viejo sobre un venta-pedido se reservan
 **4 unidades de más**; con el dispatcher queda en 0.
 
+### 🐛 De dónde saca el picking la mercadería (mig 320)
+
+Bug real que encontró GO probando el flujo (venta #448, una reserva): la tarea salía **sin LPN y sin
+ubicación**. La función leía solo `venta_item_despachos`, que se escribe al **despachar** — una venta
+**reservada** todavía no tiene filas ahí: su plan de LPN vive en `venta_items.lpn_plan` (mig 156).
+Como el pedido nace justamente de reservas, era el caso más común.
+
+Ahora es una **cascada**, de la fuente más precisa a la más genérica, y **ninguna reserva stock**
+(la venta ya lo comprometió):
+
+| Prioridad | Fuente | Cuándo aplica |
+|---|---|---|
+| 1 | `venta_item_despachos` | La venta ya despachó — registro definitivo de qué salió y de dónde |
+| 2 | `venta_items.lpn_plan` | La venta está **reservada** — el LPN que ya eligió el POS (incluida la elección manual del cajero) |
+| 3 | Líneas con `cantidad_reservada > 0`, FEFO | Hay reserva pero sin plan (venta vieja, o el plan quedó corto). Solo lectura |
+| 4 | Cualquier línea con stock, FEFO | Último recurso, para no dejar al operario sin una pista |
+
+Si nada matchea, la tarea se emite igual con la nota **"⚠ sin stock ubicado para este producto"** —
+el pedido nunca queda sin tarea, y el motivo queda escrito.
+
+### La tarea de picking dice a qué pedido y a qué venta pertenece
+
+Pedido de GO: sin eso, un LPN mal pickeado no se puede rastrear hasta el cliente que está esperando.
+`/picking` muestra **Pedido #N** y **Venta #N** como links. Se resuelve en una query aparte, no
+anidada: `ventas` y `pedidos` se referencian en las **dos** direcciones (`ventas.pedido_id` y
+`pedidos.venta_origen_id`), así que el embed anidado de PostgREST es ambiguo.
+
+### 💵 El ticket dice cuánto falta pagar
+
+El ticket mostraba el TOTAL y, en gris, lo pagado — nunca el **saldo**, que es el número por el que
+el cliente vuelve. Y desde la mig 318 el mostrador no entrega sin saldar, así que sin eso el cliente
+se enteraba recién al venir a buscar la mercadería. Se agregó (`resumenPagoTicket`, lógica pura):
+
+- Bloque **Pagado / SALDO A PAGAR** destacado. **El envío entra en la cuenta**: `total` no lo incluye
+  pero `monto_pagado` sí (ISS-105).
+- Un **presupuesto** no reclama saldo — todavía no es una venta.
+- Una **reserva** dejó de verse como una venta cerrada: badge **★ RESERVA ★**, encabezado
+  "Reserva N°…", leyenda "Tu pedido se entrega al abonar el saldo" y cierre "Guardá este comprobante
+  para retirar".
+
 ### `listo_para_entrega` dejó de ser un estado muerto
 
 Estaba en el CHECK desde la mig 292, con badge en la UI y leído como precondición por tres RPCs —
@@ -689,8 +729,8 @@ borrarse.
   `EXCEPTION WHEN OTHERS` + `RAISE WARNING`.
 - **Anti-loop**: una venta nacida de un pedido nunca genera otro.
 
-**Cobertura:** 34 unit (`src/lib/pedidoVenta.ts`) · **e2e 113** (8 ramas + ciclo completo + excepción,
-4/4, todo por REST) · regresión **107** verde · UAT **§47**.
+**Cobertura:** 41 unit (`src/lib/pedidoVenta.ts`) · **e2e 113** (8 ramas + ciclo completo + picking de
+una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT **§47**.
 
 ---
 

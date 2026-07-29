@@ -123,6 +123,33 @@ export function ventaRequierePedido(venta: {
 }
 
 /**
+ * 💵 Lo que el TICKET tiene que decirle al cliente sobre su pago.
+ *
+ * El ticket mostraba el TOTAL y, en gris, lo pagado — pero en ningún lado cuánto FALTA, que es
+ * justamente el número por el que el cliente vuelve al local. Y desde la mig 318 el mostrador NO
+ * entrega hasta que la venta esté saldada, así que si el ticket no lo dice, el cliente se entera
+ * recién cuando viene a buscar la mercadería.
+ *
+ * Se suma el envío: `total` NO lo incluye pero `monto_pagado` SÍ (ISS-105) — mostrar el saldo
+ * contra `total` a secas le diría al cliente que debe menos de lo que debe.
+ */
+export function resumenPagoTicket(venta: {
+  estado?: string | null
+  total?: number | null
+  costo_envio?: number | null
+  costo_envio_logistica?: number | null
+  monto_pagado?: number | null
+}): { totalConTodo: number; pagado: number; saldo: number; mostrarSaldo: boolean } {
+  const totalConTodo = Number(venta.total ?? 0) + Number(venta.costo_envio ?? 0) + Number(venta.costo_envio_logistica ?? 0)
+  const pagado = Number(venta.monto_pagado ?? 0)
+  const bruto = totalConTodo - pagado
+  // Medio peso de tolerancia, igual criterio que el resto de los chequeos de saldo del sistema.
+  const saldo = bruto > 0.5 ? bruto : 0
+  // Un PRESUPUESTO no tiene saldo que reclamar: todavía no es una venta.
+  return { totalConTodo, pagado, saldo, mostrarSaldo: saldo > 0 && venta.estado !== 'pendiente' }
+}
+
+/**
  * 💵 Saldo que falta cobrar para poder entregar (caja "Debe validar pago total" del diagrama).
  * `total` NO incluye el costo de envío pero `monto_pagado` SÍ (ISS-105), así que hay que sumarlo:
  * compararlo contra `total` a secas dejaría salir mercadería con el envío sin cobrar.

@@ -47,7 +47,7 @@ import { redondearPrecio } from '@/lib/precioRedondeo'
 import { puntoVentaDelEmisor } from '@/lib/emisorFiscal'
 import { camposEmisorPDF } from '@/lib/emisorPdf'
 import { Toggle } from '@/components/Toggle'
-import { filtrarPedidosMostrador, type PedidoMostrador } from '@/lib/pedidoVenta'
+import { filtrarPedidosMostrador, resumenPagoTicket, type PedidoMostrador } from '@/lib/pedidoVenta'
 import toast from 'react-hot-toast'
 
 type Tab = 'nueva' | 'historial' | 'canales' | 'pedidos'
@@ -6941,6 +6941,13 @@ export default function VentasPage() {
                   <p className="text-sm font-bold text-amber-800 dark:text-amber-400 tracking-wider">★ PRESUPUESTO ★</p>
                 </div>
               )}
+              {/* Una reserva se veía igual que una venta cerrada: mismo encabezado "Venta N°…".
+                  El cliente se llevaba un papel que parecía pagado y no lo estaba. */}
+              {ticketVenta.estado === 'reservada' && (
+                <div className="bg-blue-100 dark:bg-blue-900/30 border border-blue-300 dark:border-blue-800/60 rounded-lg px-3 py-1.5 mb-3 inline-block">
+                  <p className="text-sm font-bold text-blue-800 dark:text-blue-400 tracking-wider">★ RESERVA ★</p>
+                </div>
+              )}
               <p className="text-lg font-bold text-primary">{tenant?.nombre ?? 'Genesis360'}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                 {new Date(ticketVenta.created_at ?? Date.now()).toLocaleString('es-AR', {
@@ -6948,7 +6955,9 @@ export default function VentasPage() {
                 })}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {ticketVenta.estado === 'pendiente' ? `Presupuesto ${formatTicket(ticketVenta)}` : `Venta ${formatTicket(ticketVenta)}`}
+                {ticketVenta.estado === 'pendiente' ? `Presupuesto ${formatTicket(ticketVenta)}`
+                  : ticketVenta.estado === 'reservada' ? `Reserva ${formatTicket(ticketVenta)}`
+                  : `Venta ${formatTicket(ticketVenta)}`}
               </p>
               {ticketVenta.estado === 'pendiente' && (tenant as any)?.presupuesto_validez_dias && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 font-medium">
@@ -7094,12 +7103,42 @@ export default function VentasPage() {
                       </div>
                     )
                   })()}
+
+                  {/* 💵 Saldo pendiente. El ticket mostraba el TOTAL y, en gris, lo pagado — pero en
+                      ningún lado decía cuánto falta, que es justamente el número por el que el
+                      cliente vuelve. Y desde la mig 318 el mostrador NO entrega hasta que esté
+                      saldado, así que el ticket tiene que decirlo o el cliente se entera recién
+                      cuando viene a buscarlo. Se suma el envío: `total` no lo incluye pero
+                      `monto_pagado` sí (ISS-105). */}
+                  {(() => {
+                    const { pagado, saldo, mostrarSaldo } = resumenPagoTicket(ticketVenta)
+                    if (!mostrarSaldo) return null
+                    return (
+                      <div className="border-t border-dashed border-gray-300 dark:border-gray-600 pt-2 mt-2 space-y-1">
+                        <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                          <span>Pagado</span>
+                          <span>${pagado.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                        </div>
+                        <div className="flex justify-between items-center bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-800/60 rounded-lg px-2.5 py-2">
+                          <span className="text-sm font-bold text-amber-800 dark:text-amber-300">SALDO A PAGAR</span>
+                          <span className="text-base font-bold text-amber-800 dark:text-amber-300">
+                            ${saldo.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                          </span>
+                        </div>
+                        {ticketVenta.estado === 'reservada' && (
+                          <p className="text-xs text-amber-700 dark:text-amber-400 text-center">
+                            Tu pedido se entrega al abonar el saldo.
+                          </p>
+                        )}
+                      </div>
+                    )
+                  })()}
                 </div>
               )
             })()}
 
             <p className="text-center text-xs text-gray-300 mt-4 border-t border-dashed border-gray-200 dark:border-gray-700 pt-3">
-              ¡Gracias por su compra!
+              {ticketVenta.estado === 'reservada' ? '¡Gracias! Guardá este comprobante para retirar.' : '¡Gracias por su compra!'}
             </p>
             </div>{/* end scroll area */}
 

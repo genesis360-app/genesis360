@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   esPedidoParaMostrador, filtrarPedidosMostrador, canalesExcluidosValidos,
-  ventaRequierePedido, saldoParaEntregar, type PedidoMostrador,
+  ventaRequierePedido, saldoParaEntregar, resumenPagoTicket, type PedidoMostrador,
 } from '../../src/lib/pedidoVenta'
 
 const base: PedidoMostrador = {
@@ -171,5 +171,51 @@ describe('saldoParaEntregar', () => {
   })
   it('medio peso de redondeo no traba una entrega', () => {
     expect(saldoParaEntregar({ total: 1000, monto_pagado: 999.7 })).toBe(0)
+  })
+})
+
+// 💵 Lo que el ticket le dice al cliente sobre su pago. GO: "muestra el total y lo pagado,
+// pero en ningún lado dice cuánto falta" — y desde la mig 318 sin saldar no se entrega.
+describe('resumenPagoTicket', () => {
+  it('venta cobrada entera → no muestra saldo', () => {
+    const r = resumenPagoTicket({ estado: 'despachada', total: 2500, monto_pagado: 2500 })
+    expect(r.saldo).toBe(0)
+    expect(r.mostrarSaldo).toBe(false)
+  })
+
+  it('reserva con seña parcial → el saldo es lo que falta (el caso de GO: 2500 − 2000)', () => {
+    const r = resumenPagoTicket({ estado: 'reservada', total: 2500, monto_pagado: 2000 })
+    expect(r.pagado).toBe(2000)
+    expect(r.saldo).toBe(500)
+    expect(r.mostrarSaldo).toBe(true)
+  })
+
+  it('💵 el envío entra en el saldo: total NO lo incluye pero monto_pagado SÍ (ISS-105)', () => {
+    // Si se comparara contra `total` a secas, le diría al cliente que ya no debe nada.
+    const r = resumenPagoTicket({ estado: 'reservada', total: 2500, costo_envio: 300, monto_pagado: 2500 })
+    expect(r.totalConTodo).toBe(2800)
+    expect(r.saldo).toBe(300)
+  })
+
+  it('suma también el envío de logística', () => {
+    const r = resumenPagoTicket({ estado: 'reservada', total: 1000, costo_envio: 200, costo_envio_logistica: 150, monto_pagado: 1000 })
+    expect(r.totalConTodo).toBe(1350)
+    expect(r.saldo).toBe(350)
+  })
+
+  it('un PRESUPUESTO no reclama saldo — todavía no es una venta', () => {
+    const r = resumenPagoTicket({ estado: 'pendiente', total: 2500, monto_pagado: 0 })
+    expect(r.saldo).toBe(2500)
+    expect(r.mostrarSaldo).toBe(false)
+  })
+
+  it('medio peso de redondeo no imprime un saldo fantasma', () => {
+    expect(resumenPagoTicket({ estado: 'despachada', total: 1000, monto_pagado: 999.7 }).mostrarSaldo).toBe(false)
+  })
+
+  it('venta sin monto_pagado cargado → el saldo es el total, no rompe', () => {
+    const r = resumenPagoTicket({ estado: 'reservada', total: 800 })
+    expect(r.saldo).toBe(800)
+    expect(r.mostrarSaldo).toBe(true)
   })
 })

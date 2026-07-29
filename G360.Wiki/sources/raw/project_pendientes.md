@@ -3734,11 +3734,19 @@ Visión (pedido GO 2026-05-30): `/historial` (HistorialPage) como **hub único d
 
 **✅ Cerrado en v1.11.3 (2026-05-30)**: devoluciones ahora se loguean en `/historial` (`tipo_transaccion='devolucion'`, agrupadas por transacción, con producto_id + LPN); reserva→despacho y venta→devuelta clasificadas; filtro de recall por **producto** (nombre/SKU → producto_id) además de LPN/serie. Trazabilidad-extendida **completa**.
 
-### 📦 CUBICAJE VOLUMÉTRICO — backlog, pedido por GO (2026-07-29)
+### 📦 CUBICAJE VOLUMÉTRICO — ✅ **CERRADO (v1.149-150, migs 321/322/325)** — texto histórico abajo
 
-**Estado hoy: no existe ningún cálculo de capacidad.** Nada valida ni sugiere si la mercadería
-entra en una ubicación. `fn_wms_elegir_ubicacion_picking` elige por zona y prioridad, sin mirar
-ocupación.
+> **⚠ Esta sección quedó como registro del ANÁLISIS que originó el feature. Ya está construido
+> entero** (Fases A/B/C) — ver "ARRANCÁ ACÁ" arriba y `wiki/features/wms.md` → "Cubicaje
+> volumétrico opt-in". Los 4 pasos del plan de abajo están hechos salvo el 4 (sugerencia de
+> ubicación por capacidad en putaway/reabastecimiento), que **sigue abierto y es opcional**.
+> El riesgo que se marcaba ("con medidas a medias el número miente") se resolvió con el diseño
+> **opt-in** de GO + la **cobertura** visible en todas las pantallas.
+
+**Estado al momento del análisis (2026-07-29, ya superado): no existía ningún cálculo de capacidad.**
+Nada validaba ni sugería si la mercadería entra en una ubicación.
+`fn_wms_elegir_ubicacion_picking` elige por zona y prioridad, **sin mirar ocupación** — eso último
+sigue siendo cierto (es el paso 4, no hecho).
 
 **Auditoría de lo que YA está cargado y no se usa** (surgió de una pregunta de GO: *"¿cómo sabemos
 si cabe inventario de un producto en una ubicación al no tener las medidas de cada nivel de
@@ -3748,7 +3756,7 @@ estructura?"*):
 |---|---|---|
 | `ubicaciones` (mig **032**) | `largo_cm` · `ancho_cm` · `alto_cm` · `peso_max_kg` · **`capacidad_pallets`** | Se cargan en Config → Inventario → Ubicaciones. **Ningún cálculo las leía.** Desde 2026-07-29 `capacidad_pallets` sí se usa para el aviso de ocupación por LPN |
 | `productos` | `peso_kg` · `largo/ancho/alto_cm` | Rotuladas "opcional, para envío" — y **el form de Envíos pedía el peso a mano**, no las leía. ✅ Conectadas 2026-07-29 (`sugerirBultoEnvio`) |
-| `producto_presentaciones` | `peso_kg` · `largo/ancho/alto_cm` **POR NIVEL** (por Caja, por Pallet) | La columna existe y `presentaciones.ts` las lee/escribe, pero **`PresentacionesEditor` no tiene inputs** → están siempre vacías. **Éste es el bloqueante del cubicaje.** |
+| `producto_presentaciones` | `peso_kg` · `largo/ancho/alto_cm` **POR NIVEL** (por Caja, por Pallet) | Era el bloqueante: la columna existía y `presentaciones.ts` las leía/escribía, pero **`PresentacionesEditor` no tenía inputs** → estaban siempre vacías. ✅ **Resuelto en v1.150.0** (inputs por nivel + obligatorios con el cubicaje activo) |
 | `reglas_almacenaje` (WMS) | `unidad_medida_id` → `zona_id` | Criterio **cualitativo** ("los pallets van a Estiba"), no de capacidad |
 
 **Qué haría falta para el cubicaje, en orden:**
@@ -3764,15 +3772,17 @@ estructura?"*):
    exacto), así que conviene hacerlo primero.
 4. Recién ahí, **sugerencia de ubicación por capacidad** en el putaway/reabastecimiento.
 
-**🛑 El riesgo que hay que tener presente antes de encararlo:** el cálculo vale lo que valen las
-medidas. Con los volúmenes cargados a medias el número **miente**, y un número que miente es peor
-que no tener ninguno — la gente deja de confiar y termina ignorando el módulo entero. Si se hace,
-hay que resolver primero qué pasa con los SKU sin medidas (¿se excluyen del cálculo y se avisa
-"cobertura 60%"? ¿se bloquea el cálculo?), no dejarlo implícito.
+**🛑 El riesgo que se marcó antes de encararlo — y cómo se resolvió:** el cálculo vale lo que valen
+las medidas; con los volúmenes cargados a medias el número **miente**, y un número que miente es peor
+que no tener ninguno. **Solución de GO (v1.149-150):** el cubicaje es **opt-in por tenant** y al
+activarlo las medidas se vuelven **obligatorias** en el editor de estructura → la cobertura es 100%
+por construcción de ahí en adelante. Los SKU sin medir no se ocultan: **toda pantalla exhibe la
+cobertura** (`lineas_con_volumen`/`lineas_total`) con ⚠, porque el error de una línea sin medir
+siempre queda **corto** y empuja hacia "parece que hay lugar".
 
-**Alternativa barata ya implementada (2026-07-29):** aviso de ocupación **por LPN** contra
-`ubicaciones.capacidad_pallets` ("3 de 4"), que no necesita medir un solo SKU y da la señal útil del
-día a día. Ver `src/lib/medidasLogistica.ts`.
+**Alternativa barata implementada primero (2026-07-29, sigue vigente y no exige medir nada):** aviso
+de ocupación **por LPN** contra `ubicaciones.capacidad_pallets` ("3 de 4"). Ver
+`src/lib/medidasLogistica.ts`.
 
 ### Deuda técnica / pendientes abiertos
 

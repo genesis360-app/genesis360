@@ -6,10 +6,48 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-316)
+# Historial de Migraciones (001-319)
 
-**Total al 2026-07-28:** 316 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-29:** 319 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**319 (💵 el Pedido factura el DESCUENTO POR ESTADO, EN DEV — PROD pendiente)** —
+Cierra el pendiente que la 317 dejó anotado. Un Pedido facturaba **sin** aplicar el descuento por
+estado de inventario (migs 284-285): la MISMA mercadería salía más cara entregada por Pedidos que
+vendida por mostrador, y `venta_items.descuento_estado_pct/_monto` quedaban vacíos (ni la factura ni
+el ticket mostraban el descuento que el cliente sí esperaba). No se pudo hacer en la 317 porque el
+precio y el `INSERT` del `venta_items` se escriben ANTES del loop que elige de qué líneas sale el
+stock, y el descuento depende del estado de ESAS líneas: se acumula dentro del loop y se aplica al
+final sobre subtotal, IVA y los acumuladores de la venta. Prorrateado **por fuente** (cada unidad
+según el % del estado de SU línea, nunca un promedio — mismo criterio que
+`calcularDescuentoEstadoLinea` del POS); con dos estados distintos el `pct` queda NULL pero el monto
+es la suma exacta, mismo contrato que graba el POS.
+
+**318 (regla del pedido por TIPO DE ENTREGA, EN DEV — PROD pendiente)** —
+Reescribe la regla de la 315 según el diagrama de flujo de GO: **todas las ventas generan pedido
+MENOS la entrega directa** (canal presencial + despachada + sin envío). Deriva de
+`canales_venta.clasificacion` (mig 168) — no hay nada que configurar y es correcto por default.
+🛑 Tres cambios de fondo: (a) **el gate de pago se mueve de la CREACIÓN a la ENTREGA** — la reserva
+y el retiro con pago parcial se preparan igual, y `fn_pedido_entregar_retiro` es el que no deja
+salir mercadería sin saldar (salvo cuenta corriente); (b) `pedido_canales_auto` se **renombra** a
+`pedido_canales_excluidos` e invierte su sentido (pasa a ser la excepción); (c) **faltaba el
+envío** — `fn_generar_tareas_picking_pedido_venta` no lo creaba, y ahora además el trigger de
+`envios` **crea el pedido** si no existía, que es el caso "mostrador + envío", imposible de detectar
+en el INSERT de la venta porque el envío se inserta en una llamada HTTP posterior.
+
+**317 (💵 el pedido manual facturaba a PRECIO DE LISTA + pedido manual opt-in, EN DEV — PROD pendiente)** —
+`fn_pedido_generar_venta` ponía `v_precio := COALESCE(productos.precio_venta, 0)` y nada más: sin
+tiers por volumen (mig 306), sin redondeo del tenant (H4). De los 4 tipos de pedido sembrados por
+default, **"Mayorista" era el que peor salía** — facturaba a precio minorista. Se extrae
+`fn_precio_venta_efectivo` (espejo SQL de `precioTierBase` + `redondearPrecio`) y el tier se resuelve
+contra el **total pedido** del SKU, no contra lo que se entrega en la tanda: entregar en dos veces no
+puede hacer perder el precio por volumen. Además `tenants.pedido_manual_habilitado` (default
+**false**): crear un pedido a mano pasa a ser opt-in — para una PyME casi todos los casos tienen hoy
+un camino mejor (encargo sin cobrar = venta `pendiente`, armado sin cliente = traslado), y el único
+que solo resuelve Pedidos es el mayorista con entregas parciales.
+⚠ El cuerpo de `fn_pedido_generar_venta` se copió del archivo de la mig 299 y se editó
+programáticamente: son ~270 líneas que mueven stock, plata y caja, y re-tipearlas para cambiar una
+es donde se cuela un error silencioso.
 
 **316 (🛑 REGLA #0 — guards del flujo Venta → Pedido + entrega en mostrador, EN DEV — PROD pendiente)** —
 Lo que hace SEGURO lo que abrió la 315. Un pedido con `venta_origen_id` ya tiene su venta, su plata y

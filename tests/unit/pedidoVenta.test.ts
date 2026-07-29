@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  esPedidoParaMostrador, filtrarPedidosMostrador, canalesAutoValidos, ventaGeneraPedido,
-  type PedidoMostrador,
+  esPedidoParaMostrador, filtrarPedidosMostrador, canalesExcluidosValidos,
+  ventaRequierePedido, saldoParaEntregar, type PedidoMostrador,
 } from '../../src/lib/pedidoVenta'
 
 const base: PedidoMostrador = {
@@ -79,70 +79,97 @@ describe('filtrarPedidosMostrador', () => {
   })
 })
 
-describe('canalesAutoValidos', () => {
+describe('canalesExcluidosValidos', () => {
   const canales = [{ id: 'a', activo: true }, { id: 'b', activo: true }, { id: 'c', activo: false }]
 
   it('conserva solo los canales vivos', () => {
-    expect(canalesAutoValidos(['a', 'b'], canales)).toEqual(['a', 'b'])
+    expect(canalesExcluidosValidos(['a', 'b'], canales)).toEqual(['a', 'b'])
   })
 
   it('descarta un canal desactivado que quedó guardado', () => {
-    expect(canalesAutoValidos(['a', 'c'], canales)).toEqual(['a'])
+    expect(canalesExcluidosValidos(['a', 'c'], canales)).toEqual(['a'])
   })
 
   it('descarta un canal borrado que quedó guardado', () => {
-    expect(canalesAutoValidos(['a', 'zzz'], canales)).toEqual(['a'])
+    expect(canalesExcluidosValidos(['a', 'zzz'], canales)).toEqual(['a'])
   })
 
   it('config ausente o corrupta → vacío, no rompe', () => {
-    expect(canalesAutoValidos(null, canales)).toEqual([])
-    expect(canalesAutoValidos(undefined, canales)).toEqual([])
-    expect(canalesAutoValidos('no-es-array', canales)).toEqual([])
-    expect(canalesAutoValidos([1, 2], canales)).toEqual([])
+    expect(canalesExcluidosValidos(null, canales)).toEqual([])
+    expect(canalesExcluidosValidos(undefined, canales)).toEqual([])
+    expect(canalesExcluidosValidos('no-es-array', canales)).toEqual([])
+    expect(canalesExcluidosValidos([1, 2], canales)).toEqual([])
   })
 })
 
-// 💵 Espejo informativo del trigger `trg_venta_auto_pedido` (mig 315). La decisión REAL la toma el
-// servidor; esto solo alimenta avisos en el POS.
-describe('ventaGeneraPedido', () => {
-  const canales = ['wsp']
+// Las 8 ramas del diagrama de flujo de GO. Espejo informativo de `fn_venta_requiere_pedido`
+// (mig 318) — la decisión REAL la toma el servidor.
+describe('ventaRequierePedido — las 8 ramas del diagrama', () => {
+  const online = { canal_clasificacion: 'online' as const }
+  const pres   = { canal_clasificacion: 'presencial' as const }
 
-  it('venta despachada de un canal configurado → genera', () => {
-    expect(ventaGeneraPedido({ estado: 'despachada', canal_id: 'wsp', total: 100 }, canales)).toBe(true)
+  // ── VENTA ONLINE: las 4 ramas generan pedido ──
+  it('1· online · retiro local con pago PARCIAL → genera (el pago ya no condiciona)', () => {
+    expect(ventaRequierePedido({ ...online, estado: 'despachada' })).toBe(true)
+  })
+  it('2· online · retiro local con pago COMPLETO → genera', () => {
+    expect(ventaRequierePedido({ ...online, estado: 'despachada' })).toBe(true)
+  })
+  it('3· online · envío propio → genera', () => {
+    expect(ventaRequierePedido({ ...online, estado: 'despachada', con_envio: true })).toBe(true)
+  })
+  it('4· online · envío de tercero → genera', () => {
+    expect(ventaRequierePedido({ ...online, estado: 'despachada', con_envio: true })).toBe(true)
   })
 
-  it('canal NO configurado → no genera', () => {
-    expect(ventaGeneraPedido({ estado: 'despachada', canal_id: 'otro', total: 100 }, canales)).toBe(false)
+  // ── COMPRAS LOCAL: solo la entrega directa queda afuera ──
+  it('5· 🛑 mostrador · ENTREGA DIRECTA → NO genera (el cliente se lo llevó)', () => {
+    expect(ventaRequierePedido({ ...pres, estado: 'despachada' })).toBe(false)
+  })
+  it('6· mostrador · reserva → genera aunque tenga seña parcial', () => {
+    expect(ventaRequierePedido({ ...pres, estado: 'reservada' })).toBe(true)
+  })
+  it('7· mostrador · envío propio → genera', () => {
+    expect(ventaRequierePedido({ ...pres, estado: 'despachada', con_envio: true })).toBe(true)
+  })
+  it('8· mostrador · envío de tercero → genera', () => {
+    expect(ventaRequierePedido({ ...pres, estado: 'despachada', con_envio: true })).toBe(true)
   })
 
-  it('sin canal resuelto → no genera', () => {
-    expect(ventaGeneraPedido({ estado: 'despachada', canal_id: null, total: 100 }, canales)).toBe(false)
+  // ── Bordes ──
+  it('venta pendiente de mostrador → genera (la mercadería no salió)', () => {
+    expect(ventaRequierePedido({ ...pres, estado: 'pendiente' })).toBe(true)
   })
-
-  it('venta anulada/devuelta → no genera', () => {
-    expect(ventaGeneraPedido({ estado: 'devuelta', canal_id: 'wsp', total: 100 }, canales)).toBe(false)
-    expect(ventaGeneraPedido({ estado: 'cancelada', canal_id: 'wsp', total: 100 }, canales)).toBe(false)
+  it('venta anulada o devuelta → nunca genera', () => {
+    expect(ventaRequierePedido({ ...online, estado: 'cancelada' })).toBe(false)
+    expect(ventaRequierePedido({ ...online, estado: 'devuelta', con_envio: true })).toBe(false)
   })
-
-  it('reserva con seña parcial → NO genera todavía', () => {
-    expect(ventaGeneraPedido({ estado: 'reservada', canal_id: 'wsp', total: 1000, monto_pagado: 400 }, canales)).toBe(false)
+  it('sin canal resuelto se asume presencial — no inventa trabajo de depósito', () => {
+    expect(ventaRequierePedido({ estado: 'despachada' })).toBe(false)
+    expect(ventaRequierePedido({ estado: 'despachada', canal_clasificacion: null })).toBe(false)
   })
-
-  it('reserva 100% pagada → genera', () => {
-    expect(ventaGeneraPedido({ estado: 'reservada', canal_id: 'wsp', total: 1000, monto_pagado: 1000 }, canales)).toBe(true)
+  it('un canal excluido en Config queda afuera aunque le correspondiera', () => {
+    expect(ventaRequierePedido({ ...online, estado: 'reservada', canal_id: 'x' }, ['x'])).toBe(false)
+    expect(ventaRequierePedido({ ...online, estado: 'reservada', canal_id: 'x' }, ['otro'])).toBe(true)
   })
+})
 
-  it('💵 el costo de envío cuenta para el 100%: total NO lo incluye pero monto_pagado SÍ (ISS-105)', () => {
-    // 1000 de mercadería + 200 de envío = 1200 a cobrar. Pagar 1000 NO es el 100%.
-    expect(ventaGeneraPedido({ estado: 'reservada', canal_id: 'wsp', total: 1000, costo_envio: 200, monto_pagado: 1000 }, canales)).toBe(false)
-    expect(ventaGeneraPedido({ estado: 'reservada', canal_id: 'wsp', total: 1000, costo_envio: 200, monto_pagado: 1200 }, canales)).toBe(true)
+// 💵 Caja "Debe validar pago total" del diagrama.
+describe('saldoParaEntregar', () => {
+  it('venta saldada → 0', () => {
+    expect(saldoParaEntregar({ total: 1000, monto_pagado: 1000 })).toBe(0)
   })
-
-  it('una seña de más (redondeo) no deja el pedido sin generar', () => {
-    expect(ventaGeneraPedido({ estado: 'reservada', canal_id: 'wsp', total: 1000, monto_pagado: 1000.5 }, canales)).toBe(true)
+  it('reserva con seña parcial → devuelve lo que falta', () => {
+    expect(saldoParaEntregar({ total: 1000, monto_pagado: 400 })).toBe(600)
   })
-
-  it('reserva de total 0 no genera (no hay nada cobrado que valide la entrega)', () => {
-    expect(ventaGeneraPedido({ estado: 'reservada', canal_id: 'wsp', total: 0, monto_pagado: 0 }, canales)).toBe(false)
+  it('💵 el costo de envío cuenta: total NO lo incluye pero monto_pagado SÍ (ISS-105)', () => {
+    expect(saldoParaEntregar({ total: 1000, costo_envio: 200, monto_pagado: 1000 })).toBe(200)
+    expect(saldoParaEntregar({ total: 1000, costo_envio: 200, monto_pagado: 1200 })).toBe(0)
+  })
+  it('cuenta corriente → 0: la deuda es a propósito, no traba la entrega', () => {
+    expect(saldoParaEntregar({ total: 1000, monto_pagado: 0, es_cuenta_corriente: true })).toBe(0)
+  })
+  it('medio peso de redondeo no traba una entrega', () => {
+    expect(saldoParaEntregar({ total: 1000, monto_pagado: 999.7 })).toBe(0)
   })
 })

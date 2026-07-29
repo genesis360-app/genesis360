@@ -13,6 +13,26 @@ updated: 2026-07-28
 
 ---
 
+## v1.148.0 — 🧾 Flujo Venta → Pedido → Envío completo, según el diagrama de GO (migs 317-319) — 🟡 **EN DEV** (2026-07-29)
+
+Reescribe la regla de la v1.147.0 según el diagrama de flujo: **todas las ventas generan Pedido de
+preparación MENOS la entrega directa** (mostrador + cobrada + sin envío). Sale de
+`canales_venta.clasificacion`, así que no hay nada que configurar. Las 8 ramas del diagrama están
+cubiertas por e2e.
+
+Cambios de fondo: el **gate de pago se mueve a la ENTREGA** (la reserva se prepara con seña parcial y
+la mercadería no sale sin saldar) · los pedidos con envío **crean y vinculan el `envios`** en las dos
+direcciones · el pedido manual pasa a ser **opt-in** (default off).
+
+💵 **Dos errores de plata corregidos en la facturación de un Pedido**: no aplicaba los **tiers
+mayoristas** ni el redondeo (mig 317) ni el **descuento por estado de inventario** (mig 319). Una
+entrega real de 12 unidades pasó de facturar **$12.000** a **$6.720**.
+
+Verde: tsc · build · unit 1297 (34 nuevos) · e2e 113 (4/4) · regresión 107 (5/5).
+Ver [[wiki/features/pedidos]] y `tests/specs/uat-modo-basico.md` §47.
+
+---
+
 ## v1.147.0 — 🧾 Pedido automático desde una VENTA + entrega en mostrador (migs 315/316) — 🟡 **EN DEV** (2026-07-28)
 
 Las ventas de los canales que el tenant elija (**Config → Pedidos → "Canales que generan pedido"**)

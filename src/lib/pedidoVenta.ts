@@ -79,7 +79,7 @@ function soloDigitos(s: string): string {
  * activos. Un canal borrado o desactivado que quedó en la config no debe pintarse como
  * seleccionado ni volver a guardarse.
  */
-export function canalesAutoValidos(
+export function canalesExcluidosValidos(
   configurados: unknown,
   canales: { id: string; activo: boolean }[],
 ): string[] {
@@ -89,28 +89,52 @@ export function canalesAutoValidos(
 }
 
 /**
- * ¿Esta venta va a generar un pedido? Espejo (informativo) de la condición del trigger
- * `trg_venta_auto_pedido` de la mig 315 — se usa solo para avisarle al usuario en el POS, nunca
- * para decidir: la decisión REAL la toma el servidor, que es el único que la ve toda.
+ * ¿Esta venta necesita que el depósito le prepare un pedido? Espejo (informativo) de
+ * `fn_venta_requiere_pedido` (mig 318) — se usa para avisarle al usuario en el POS, nunca para
+ * decidir: la decisión REAL la toma el servidor, que es el único que la ve toda.
  *
- * 💵 `total` NO incluye el costo de envío pero `monto_pagado` SÍ (ISS-105), así que la
- * comparación de "reserva 100% pagada" tiene que sumarlo. Se usa `>=` y no `=` para que una seña
- * de más por redondeo no deje el pedido sin generar.
+ * La regla, según el diagrama de flujo de GO: **todas las ventas generan pedido MENOS la entrega
+ * directa**, que es la única en la que el cliente se lleva la mercadería en el momento:
+ *
+ *   entrega directa = canal PRESENCIAL + despachada + sin envío   → NO genera
+ *   con envío (propio o de tercero)                               → genera
+ *   reserva o pendiente (la mercadería no salió)                  → genera
+ *   canal ONLINE sin envío (= retiro en local)                    → genera
+ *
+ * 🛑 Ojo con el orden: el gate de PAGO ya no vive acá. Una reserva con seña parcial genera el
+ * pedido igual y se prepara; que esté saldada se valida recién al ENTREGAR
+ * (`fn_pedido_entregar_retiro`). Si el pago volviera a condicionar la creación, el depósito se
+ * quedaría sin trabajo hasta que entre el saldo — que es justo lo que este rediseño corrigió.
  */
-export function ventaGeneraPedido(venta: {
+export function ventaRequierePedido(venta: {
   estado: string
-  origen?: string | null
+  con_envio?: boolean | null
+  canal_clasificacion?: 'online' | 'presencial' | null
+  canal_id?: string | null
+}, canalesExcluidos: string[] = []): boolean {
+  if (!['pendiente', 'reservada', 'despachada'].includes(venta.estado)) return false
+  if (venta.canal_id && canalesExcluidos.includes(venta.canal_id)) return false
+
+  if (venta.con_envio) return true
+  if (venta.estado === 'reservada' || venta.estado === 'pendiente') return true
+
+  // Sin canal resuelto se asume presencial: el caso conservador, no inventa trabajo de depósito.
+  return (venta.canal_clasificacion ?? 'presencial') === 'online'
+}
+
+/**
+ * 💵 Saldo que falta cobrar para poder entregar (caja "Debe validar pago total" del diagrama).
+ * `total` NO incluye el costo de envío pero `monto_pagado` SÍ (ISS-105), así que hay que sumarlo:
+ * compararlo contra `total` a secas dejaría salir mercadería con el envío sin cobrar.
+ * Devuelve 0 si está saldada o si es cuenta corriente (ahí la deuda es a propósito).
+ */
+export function saldoParaEntregar(venta: {
   total?: number | null
   costo_envio?: number | null
   monto_pagado?: number | null
-  canal_id?: string | null
-}, canalesAuto: string[]): boolean {
-  if (!['pendiente', 'reservada', 'despachada'].includes(venta.estado)) return false
-  if (!venta.canal_id || !canalesAuto.includes(venta.canal_id)) return false
-  if (venta.estado === 'reservada') {
-    const total = Number(venta.total ?? 0) + Number(venta.costo_envio ?? 0)
-    const pagado = Number(venta.monto_pagado ?? 0)
-    if (!(total > 0) || pagado < total) return false
-  }
-  return true
+  es_cuenta_corriente?: boolean | null
+}): number {
+  if (venta.es_cuenta_corriente) return 0
+  const saldo = Number(venta.total ?? 0) + Number(venta.costo_envio ?? 0) - Number(venta.monto_pagado ?? 0)
+  return saldo > 0.5 ? saldo : 0
 }

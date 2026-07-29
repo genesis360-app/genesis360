@@ -1578,38 +1578,62 @@ extendido de 4 a 9 aserciones (2/2).
 
 ---
 
-## 🧾 §47 — Pedido nacido de una VENTA + entrega en mostrador (migs 315/316) — 2026-07-28
+## 🧾 §47 — Pedido desde una VENTA, entrega en mostrador y envíos relacionados (migs 315-319) — 2026-07-28/29
 
-Pedido de GO: las ventas de ciertos canales tienen que generar solo un **Pedido de preparación**;
-las **reservas** solo cuando están **100% pagadas**; y el de mostrador tiene que poder buscar el
-pedido y marcarlo entregado cuando el cliente pasa a retirarlo.
+Regla del **diagrama de flujo de GO**: *todas las ventas generan Pedido de preparación MENOS la
+entrega directa* (mostrador + cobrada + sin envío — el cliente se lleva la mercadería ahí mismo).
+Sale de datos que ya existen (`canales_venta.clasificacion`, mig 168): no hay nada que configurar.
 
 **🛑 Esto invierte el sentido del flujo original (F4).** Hasta acá el único puente era Pedido →
-venta (`fn_pedido_generar_venta`, PED4). Ahora existe Venta → Pedido, y los dos no pueden convivir
-sobre el mismo documento: **un pedido con `venta_origen_id` ya tiene su venta, su plata y su stock
-resueltos.** Las dos formas de romperlo son silenciosas y las dos están cerradas server-side.
+venta (PED4). Un pedido con `venta_origen_id` **ya tiene su venta, su plata y su stock resueltos**,
+así que las formas de romperlo son todas silenciosas y están cerradas server-side.
+
+### Las 8 ramas del diagrama
+
+| # | Rama | Genera pedido | Cubierto por |
+|---|---|---|---|
+| 1 | online · retiro local · **pago parcial** | ✅ (el pago ya no condiciona la creación) | **e2e 113** |
+| 2 | online · retiro local · pago completo | ✅ | **e2e 113** |
+| 3 | online · **envío propio** | ✅ + `envios` vinculado | **e2e 113** |
+| 4 | online · **envío de tercero** | ✅ + `envios` vinculado | **e2e 113** |
+| 5 | mostrador · **ENTREGA DIRECTA** | 🛑 **NO** — no hay nada que preparar | **e2e 113** |
+| 6 | mostrador · **reserva** | ✅ aunque tenga seña parcial | **e2e 113** |
+| 7 | mostrador · envío propio | ✅ — lo crea el trigger de `envios` | **e2e 113** |
+| 8 | mostrador · envío de tercero | ✅ — ídem | **e2e 113** |
+
+### Integridad
 
 | # | Escenario | Regla | Cubierto por |
 |---|---|---|---|
-| 1 | **Canal configurado → pedido automático** | `tenants.pedido_canales_auto` (ids de `canales_venta`); `[]` = apagado, ningún tenant existente cambia de comportamiento | **e2e 113** + DO block en DEV |
-| 2 | **Canal NO configurado → no pasa nada** | La función es opt-in por canal | **e2e 113 (2º test)** |
-| 3 | **Reserva con seña parcial → NO genera** | GO: la reserva se vuelve pedido solo al 100% | **e2e 113** + 26 unit |
-| 4 | **Reserva que se termina de pagar → genera** | El trigger escucha `UPDATE OF estado, monto_pagado` | **e2e 113** |
-| 5 | **💵 El costo de envío cuenta para el 100%** | `total` NO lo incluye pero `monto_pagado` SÍ (ISS-105) — comparar contra `total` solo habría generado el pedido cobrando de menos | unit dedicado |
-| 6 | **Las líneas se copian aunque lleguen después** | `registrarVenta` inserta venta y `venta_items` en llamadas HTTP SEPARADAS: al correr el `AFTER INSERT` de `ventas` no hay ni una línea. Trigger statement-level sobre `venta_items` que sincroniza | **e2e 113** (asserta 4 u en el pedido) |
-| 7 | **🛑 Lanzar NO vuelve a reservar stock** | La venta ya comprometió esas unidades. El dispatcher manda los venta-pedidos a `fn_generar_tareas_picking_pedido_venta`, que lee `venta_item_despachos` y **no toca `cantidad_reservada`** | **e2e 113** (`cantidad_reservada` antes = después) + **mutación probada en DEV: por el camino viejo habría reservado 4 unidades de más** |
-| 8 | **El picking apunta al LPN REAL de la venta** | No a "uno equivalente": `venta_item_despachos` es el registro definitivo de de qué línea salió cada unidad (ISS-075) | **e2e 113** |
-| 9 | **🛑 No puede nacer una SEGUNDA venta** | Trigger `BEFORE INSERT ON ventas`: rechaza si el `pedido_id` apunta a un pedido con `venta_origen_id`. Duplicaría facturación + rebaje + asiento de caja | **e2e 113** (rechazo por REST) |
-| 10 | **Anti-loop** | Una venta nacida de un pedido (`ventas.pedido_id`) nunca genera otro pedido | DO block en DEV |
-| 11 | **`listo_para_entrega` deja de ser un estado MUERTO** | Estaba en el CHECK desde la mig 292, la UI le tenía badge y 3 RPCs lo leían como precondición, pero **nadie lo seteaba nunca**. Ahora completar la última tarea de picking del pedido lo promueve | **e2e 113** |
-| 12 | **La pestaña muestra SOLO lo entregable** | `listo_para_entrega` + retiro en local + nacido de una venta. Nada a medio armar ni lo que sale por envío | 26 unit (`esPedidoParaMostrador`) |
-| 13 | **Búsqueda por nombre / DNI / N° de pedido** | Nombre sin tildes ni mayúsculas; DNI por dígitos y **por prefijo**; número **exacto** | unit — atrapó que buscar "5" traía todo DNI con un 5 |
-| 14 | **Entregar NO mueve plata ni stock** | La venta ya cobró y ya rebajó; la entrega solo registra que la mercadería salió | **e2e 113** (cantidad y reservada intactas, 0 ventas nuevas) |
-| 15 | **Envíos = trazabilidad única de entregas** | Decisión de GO: el retiro genera igual un `envios` tipo `retiro_local` en estado `entregado` | **e2e 113** |
-| 16 | **El pedido entregado sale de la lista** | Deja de cumplir `estado = listo_para_entrega` | **e2e 113** |
-| 17 | **Facturar es un paso aparte** | Decisión de GO: la entrega física se confirma al apretar el botón; si cierran el modal sin emitir, se factura después desde el Historial. Trabar la entrega esperando a AFIP dejaría al cliente parado en el mostrador | revisión de código |
-| 18 | **🛑 La VENTA nunca se cae por el pedido** | El trigger de creación va envuelto en `EXCEPTION WHEN OTHERS` + `RAISE WARNING`: un pedido que no se pudo crear se regenera; una venta perdida en el mostrador, no | revisión de la migración |
-| 19 | **El flujo original de Pedidos sigue intacto** | Un pedido de logística puro se sigue entregando por PED4, que le genera la venta | **regresión e2e 107 (4/4)** |
+| 9 | **🛑 Lanzar NO vuelve a reservar stock** | La venta ya comprometió esas unidades; el picking sale de `venta_item_despachos` y no toca `cantidad_reservada` | **e2e 113** + **mutación en DEV: por el camino viejo reservaba 4 unidades de más** |
+| 10 | **🛑 No puede nacer una SEGUNDA venta** | Trigger `BEFORE INSERT ON ventas`; duplicaría facturación + rebaje + caja | **e2e 113** (rechazo por REST) |
+| 11 | **💵 Gate de pago en la ENTREGA** | La reserva se prepara con seña parcial, pero la mercadería NO sale sin saldar. Cuenta corriente sí puede salir (deuda aceptada) | **e2e 113** + DO block en DEV |
+| 12 | **💵 El costo de envío cuenta para el saldo** | `total` NO lo incluye pero `monto_pagado` SÍ (ISS-105) | unit dedicado |
+| 13 | **Entregar no mueve plata ni stock** | La venta ya cobró y rebajó | **e2e 113** |
+| 14 | **Envíos = trazabilidad única de entregas** | El retiro genera un `envios` tipo `retiro_local`/`entregado`; el envío real queda vinculado al pedido | **e2e 113** |
+| 15 | **`listo_para_entrega` dejó de ser un ESTADO MUERTO** | Estaba en el CHECK desde la mig 292 con badge en la UI y leído por 3 RPCs, pero **nadie lo seteaba nunca**. Ahora lo promueve la última tarea de picking | **e2e 113** |
+| 16 | **Las líneas se copian aunque lleguen después** | `registrarVenta` inserta venta y `venta_items` en llamadas HTTP separadas → trigger statement-level | **e2e 113** |
+| 17 | **🛑 La VENTA nunca se cae por el pedido** | Trigger envuelto en `EXCEPTION WHEN OTHERS` + `RAISE WARNING` | revisión de la migración |
+| 18 | **Anti-loop** | Una venta nacida de un pedido nunca genera otro | DO block en DEV |
+| 19 | **Excepción por canal** | `tenants.pedido_canales_excluidos`: canales que quedan afuera de la regla. `[]` por default | **e2e 113** |
+| 20 | **Búsqueda del mostrador** | Nombre sin tildes · DNI por **prefijo** (≥3 dígitos) · N° **exacto** | unit — atrapó que "5" traía todo DNI con un 5 |
+| 21 | **El flujo original de Pedidos sigue intacto** | Un pedido de logística puro se entrega por PED4, que le genera la venta | **regresión e2e 107 (5/5)** |
 
-**Verde:** tsc · build · **unit 1289** (26 nuevos en `pedidoVenta.test.ts`) · **e2e 113 nuevo (2/2)** ·
-regresión **107 / 109 / 112 (8/8)**.
+### 💵 Facturación de un Pedido — dos errores de plata corregidos
+
+| # | Escenario | Antes | Ahora |
+|---|---|---|---|
+| 22 | **Tier mayorista por volumen** (mig 306) | Facturaba `productos.precio_venta` a secas. El tipo "Mayorista" —uno de los 4 sembrados por default— era el que **peor** salía | `fn_precio_venta_efectivo`: gana el primer tier que matchea, resuelto contra el **total pedido** del SKU (entregar en dos tandas no hace perder el precio por volumen) |
+| 23 | **Redondeo del tenant** (H4) | No se aplicaba | Aplicado, espejo de `redondearPrecio` |
+| 24 | **Descuento por estado de inventario** (migs 284-285) | No se aplicaba: la misma mercadería salía **más cara** por Pedidos que por mostrador, y `venta_items.descuento_estado_pct/_monto` quedaban vacíos | Prorrateado **por fuente** (cada unidad según el % del estado de SU línea), aplicado sobre subtotal, IVA y los totales de la venta |
+
+**Verificado en DEV con datos reales:** una entrega de 12 unidades con precio base $1.000, tier
+`>=10 → $700` y estado con 20% de descuento pasó de facturar **$12.000** a **$6.720**
+(`precio_unitario` 700 · `descuento_estado_monto` 1.680 · subtotal 6.720 · total de la venta 6.720).
+
+⚠ **Pendiente conocido:** la lista de precios por canal (`reglaDe(canal).lista_precio`) y los combos
+siguen sin aplicarse en Pedidos — un Pedido no tiene canal de venta, así que se comporta como una
+venta sin regla de canal.
+
+**Verde:** tsc · build · **unit 1297** (34 en `pedidoVenta.test.ts`) · **e2e 113 (4/4)** ·
+regresión **107 (5/5)**.

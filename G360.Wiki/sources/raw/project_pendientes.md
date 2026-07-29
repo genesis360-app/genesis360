@@ -6,7 +6,58 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🧾 ARRANCÁ ACÁ (2026-07-28) — v1.147.0: Pedido automático desde una VENTA + entrega en mostrador (migs 315/316). **EN DEV, PROD pendiente**
+> ### 🧾 ARRANCÁ ACÁ (2026-07-29) — v1.148.0: flujo Venta→Pedido→Envío completo (migs 315-319). **EN DEV, PROD pendiente**
+>
+> GO mandó su **diagrama de flujo** del negocio y pidió revisar si el código lo reflejaba. **No lo
+> reflejaba.** La regla quedó reescrita.
+>
+> **LA REGLA (final):** *todas las ventas generan Pedido de preparación MENOS la entrega directa*
+> (canal **presencial** + despachada + **sin envío** = el cliente se lleva la mercadería del
+> mostrador). Deriva de `canales_venta.clasificacion` (mig 168) → **no hay nada que configurar**.
+> `tenants.pedido_canales_excluidos` es solo la excepción.
+>
+> **Las 8 ramas del diagrama están cubiertas por e2e 113.**
+>
+> **🛑 Tres cosas que estaban mal y se corrigieron:**
+> 1. **El gate de pago estaba en la CREACIÓN** (mig 315): una reserva con seña parcial no generaba
+>    pedido, así que el depósito no tenía nada que preparar hasta que entrara el saldo. Ahora se
+>    prepara igual y el pago se valida **al ENTREGAR** (`fn_pedido_entregar_retiro`). Cuenta
+>    corriente sí puede salir con deuda (es a propósito).
+> 2. **Faltaba crear el envío** en la rama de venta-pedidos, y el caso "mostrador + envío" no
+>    generaba pedido (en el INSERT de la venta todavía no se sabe que va a haber envío — VentasPage
+>    lo inserta después). Ahora **el trigger de `envios` crea el pedido** cuando aparece.
+> 3. **💵 DOS ERRORES DE PLATA en cómo factura un Pedido**, los dos corregidos:
+>    - **mig 317** — facturaba `productos.precio_venta` a secas, **sin tiers por volumen** (mig 306)
+>      ni redondeo. De los 4 tipos sembrados por default, **"Mayorista" era el que peor salía**.
+>    - **mig 319** — tampoco aplicaba el **descuento por estado de inventario** (migs 284-285): la
+>      misma mercadería salía más cara por Pedidos que por mostrador.
+>    - **Verificado en DEV: 12 unidades pasaron de facturar $12.000 a $6.720.**
+>
+> **Otros cambios:** crear un pedido a mano pasa a ser **opt-in** (`tenants.pedido_manual_habilitado`,
+> default false — para una PyME casi todos los casos tienen mejor camino; el único que solo resuelve
+> Pedidos es el mayorista con entregas parciales) · `listo_para_entrega` **dejó de ser un estado
+> muerto** (existía desde la mig 292 pero nadie lo seteaba nunca) · pestaña **Ventas → Pedidos** con
+> búsqueda por nombre/DNI/N° y botón Entregado que abre el detalle de la venta para facturar.
+>
+> **⚠ Espejos JS↔SQL que hay que mantener sincronizados:** `fn_canal_de_origen` ↔ `ORIGEN_ALIAS`
+> (`useCanalesVenta.ts`) · `fn_precio_venta_efectivo` ↔ `precioTier`/`redondearPrecio`.
+>
+> **⚠ Pendiente conocido (documentado, no olvidado):** la **lista de precios por canal**
+> (`reglaDe(canal).lista_precio`) y los **combos** siguen sin aplicarse en la facturación de un
+> Pedido — un Pedido no tiene canal de venta.
+>
+> **Verde:** tsc · build · **unit 1297** (34 nuevos) · **e2e 113 (4/4)** · regresión **107 (5/5)**.
+> Ver [[wiki/features/pedidos]] y UAT **§47**.
+>
+> **🟡 ESTADO DE DEPLOY: TODO EN DEV.** `APP_VERSION` = v1.148.0; **PROD sigue en v1.145.0**.
+> Sin deployar: **migs 314 a 319 (6) y las versiones 1.146, 1.147 y 1.148**. Al retomar: aplicar
+> 314-319 en PROD → PR `dev→main` → tag+release.
+>
+> **Sigue abierto:** rotar el `SUPABASE_ACCESS_TOKEN` `sbp_60df…` · `schema_full.sql` refleja hasta
+> la 311 (le faltan 312-319).
+
+
+> ### 🧾 ESTADO ANTERIOR (2026-07-28) — v1.147.0: Pedido automático desde una VENTA + entrega en mostrador (migs 315/316). **EN DEV, PROD pendiente**
 >
 > Pedido de GO: que ciertos canales de venta generen pedido, que las reservas lo hagan solo si están
 > **100% pagadas**, una pestaña de Pedidos en Ventas para entregar los retiros en local, y búsqueda

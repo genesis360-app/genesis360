@@ -6,6 +6,58 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-29] update | 🧾 v1.148.0 — el flujo Venta→Pedido→Envío según el diagrama de GO (migs 317-319)
+
+GO mandó el diagrama de flujo del negocio y pidió revisar si el código lo refleja. **No lo
+reflejaba**, y el desvío no era menor: yo había implementado "genera pedido el canal que esté marcado
+en Config", y el diagrama dice **"todas las ventas menos la entrega directa"**. Además el gate de
+pago estaba en el lugar equivocado y faltaba el envío.
+
+**Los 4 desvíos que encontré y le reporté antes de tocar nada:**
+1. La regla es por **tipo de entrega**, no por canal.
+2. El **gate de pago estaba en la CREACIÓN**: una reserva con seña parcial no generaba pedido, así
+   que el depósito no tenía nada que preparar hasta que entrara el saldo. En el diagrama se prepara
+   igual y el pago se valida **al entregar**. La versión de GO es la correcta.
+3. **Faltaba crear el envío**: `fn_generar_tareas_picking_pedido_venta` (mig 316) no lo creaba, y el
+   trigger que lo vinculaba dependía de que lo insertara VentasPage — con lo cual la rama "envío
+   propio / tercero" del diagrama quedaba sin registro en Envíos.
+4. **No existía "retiro local"** como concepto separado de "entrega directa": las dos son
+   `despachada` + sin envío en la base.
+
+**Decisiones de GO** (AskUserQuestion): la regla se deriva sola de `canales_venta.clasificacion`
+(online = retiro/envío, presencial = entrega directa) · `pedido_canales_auto` se invierte y pasa a
+ser `pedido_canales_excluidos` (excepción) · el "retiro local" se deriva del canal, sin tocar el POS.
+
+**Mig 318** implementa las 8 ramas. El caso "mostrador + envío" es el más sutil: en el INSERT de la
+venta todavía no se puede saber que va a haber envío (VentasPage lo inserta después), así que la
+venta se ve como entrega directa; ahora **el trigger de `envios` crea el pedido** cuando aparece.
+
+**💵 Y aparecieron DOS errores de plata en la facturación de un Pedido**, los dos corregidos:
+- **Mig 317** — facturaba `productos.precio_venta` a secas: **sin tiers por volumen** (mig 306) y sin
+  redondeo del tenant. De los 4 tipos sembrados por default, **"Mayorista" era el que peor salía**:
+  facturaba a precio minorista. El tier se resuelve contra el **total pedido** del SKU, no contra la
+  tanda entregada — entregar en dos veces no puede hacer perder el precio por volumen.
+- **Mig 319** — tampoco aplicaba el **descuento por estado de inventario** (migs 284-285): la misma
+  mercadería salía más cara por Pedidos que por mostrador, y `descuento_estado_pct/_monto` quedaban
+  vacíos. Se acumula dentro del loop de rebaje (que es donde se sabe de qué estado sale cada unidad)
+  y se aplica al final sobre subtotal, IVA y los totales.
+  **Verificado en DEV:** 12 unidades con base $1.000, tier `>=10 → $700` y estado con 20% pasaron de
+  facturar **$12.000** a **$6.720**.
+
+**Metodología en las dos:** el cuerpo de `fn_pedido_generar_venta` (~270 líneas que mueven stock,
+plata y caja) NO se re-tipeó — se copió del archivo de la mig 299 y se editó programáticamente, con
+asserts de que cada anclaje matcheara exactamente una vez.
+
+Aparte, GO preguntó si crear pedidos a mano tiene sentido para una PyME. Revisado caso por caso: el
+encargo sin cobrar se resuelve mejor como venta `pendiente`, el armado sin cliente es un traslado, y
+el único caso que SOLO resuelve Pedidos es el mayorista con entregas parciales. Decisión: el botón
+pasa a ser **opt-in** (`tenants.pedido_manual_habilitado`, default false) en vez de borrarse.
+
+Verde: tsc · build · **unit 1297** (34 en `pedidoVenta.test.ts`) · **e2e 113 reescrito (4/4)**, con
+las 8 ramas del diagrama · regresión **107 (5/5)**. 14 escenarios más verificados en DEV con rollback
+intencional, incluida la **mutación** que prueba que el camino viejo reservaba 4 unidades de más.
+**EN DEV; PROD pendiente.** Ver [[wiki/features/pedidos]] y UAT §47.
+
 ## [2026-07-28] update | 🧾 v1.147.0 — Pedido automático desde una VENTA + entrega en mostrador (migs 315/316)
 
 GO pidió cuatro cosas: que ciertos canales de venta generen pedido, que las reservas lo hagan solo si

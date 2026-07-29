@@ -1754,6 +1754,13 @@ export default function ConfigPage() {
     setTenant(data)
     toast.success('Numeración de pedidos actualizada')
   }
+  const togglePedidoManual = async () => {
+    const nuevo = !(tenant as any)?.pedido_manual_habilitado
+    const { data, error } = await supabase.from('tenants').update({ pedido_manual_habilitado: nuevo }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(nuevo ? 'Ya podés crear pedidos a mano' : 'Los pedidos se generan solo desde las ventas')
+  }
   const togglePedidoCierreAutomatico = async () => {
     const nuevo = !(tenant as any)?.pedido_cierre_automatico
     const { data, error } = await supabase.from('tenants').update({ pedido_cierre_automatico: nuevo }).eq('id', tenant!.id).select().single()
@@ -5275,6 +5282,21 @@ export default function ConfigPage() {
               Los pedidos de retiro en local aparecen en <strong>Ventas → Pedidos</strong> una vez que el depósito
               termina el picking, para entregarlos en el mostrador.
             </p>
+          </div>
+
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Crear pedidos a mano</h2>
+            <label className="flex items-start gap-3 cursor-pointer py-1">
+              <div className="mt-0.5"><Toggle checked={(tenant as any)?.pedido_manual_habilitado ?? false} onChange={togglePedidoManual} disabled={!canEdit} /></div>
+              <div>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Botón "Nuevo pedido" en el módulo Pedidos</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Normalmente no hace falta: el pedido lo genera la venta, que además le calcula bien el precio
+                  (listas mayoristas, descuentos). Prendelo solo si necesitás armar pedidos sin una venta detrás —
+                  el caso típico es el <strong>mayorista con entregas parciales</strong>, que el mostrador no sabe hacer.
+                </p>
+              </div>
+            </label>
           </div>
 
           <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">

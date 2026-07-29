@@ -606,12 +606,17 @@ export default function PedidosPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-primary">Pedidos</h1>
-          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Logística — no es venta de mostrador. Se arma acá, se prepara y recién ahí genera la venta real.</p>
+          <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">Preparación y despacho. Los pedidos los genera la venta; acá se pickean, se arman y se entregan.</p>
         </div>
-        <button onClick={() => setShowNuevo(true)}
-          className="flex items-center gap-1.5 bg-accent text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-accent/90 transition-colors flex-shrink-0">
-          <Plus size={15} /> Nuevo pedido
-        </button>
+        {/* Crear un pedido a mano es opt-in (mig 317): el pedido nace de una venta, que además le
+            calcula bien el precio. Se prende en Config → Pedidos para el caso que solo resuelve
+            este módulo: mayorista con entregas parciales. */}
+        {((tenant as any)?.pedido_manual_habilitado ?? false) && (
+          <button onClick={() => setShowNuevo(true)}
+            className="flex items-center gap-1.5 bg-accent text-white text-sm font-semibold px-4 py-2 rounded-xl hover:bg-accent/90 transition-colors flex-shrink-0">
+            <Plus size={15} /> Nuevo pedido
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-2 flex-wrap">

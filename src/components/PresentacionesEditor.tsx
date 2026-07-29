@@ -94,7 +94,7 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
       if (rpcErr) throw rpcErr
     },
     onSuccess: () => {
-      toast.success('Empaque guardado')
+      toast.success('Estructura guardada')
       logActividad({
         entidad: 'producto', entidad_id: productoId, entidad_nombre: productoNombre,
         accion: 'editar', pagina: '/productos', campo: 'presentaciones',

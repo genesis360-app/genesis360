@@ -6,6 +6,56 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-29] update | 🧾 v1.151.0 — la factura ahora multiplica · el reabastecimiento mira el lugar (mig 326) · el Asistente IA entra en la pantalla
+
+GO eligió cinco pendientes de la lista para cerrar antes del deploy. **Dos de los cinco ya estaban
+hechos** y la lista estaba mintiendo — lo primero fue verificarlo contra el código, no contra las
+notas:
+
+- **El CHECK de los dos sistemas de variante** lo reconstruyó la **mig 314** el 2026-07-28, con la
+  decisión de GO ya tomada ("coexisten en la app pero no dentro del mismo producto").
+- **El PDF que leía el CUIT del TENANT y no del EMISOR** se resolvió de raíz en **v1.133.0** con el
+  cutover de identidad fiscal (`src/lib/emisorPdf.ts` es hoy el único armador; la identidad sale de
+  `ventas.emisor_id` y el punto de venta impreso es el del emisor). Verificado: los 5 call sites de
+  PDF pasan por ahí y ninguno lee identidad fiscal del tenant. La nota quedó stale **un mes y medio**
+  en el índice de memoria y por eso volvió a aparecer. Corregida.
+
+**🧾 La factura no multiplicaba — corregido.** El "P. Unitario" no es un dato guardado, **es una
+división** (`subtotal / cantidad`), y a 2 decimales fijos el papel deja de cerrar: $1.000 en 3 bultos
+imprimía `$333,33 × 3 = $999,99`. Lo que va a AFIP siempre estuvo bien (sale de `ventas.total`); lo
+que no cerraba era el documento que se lleva el cliente.
+⚠ **El fix que yo mismo había anotado era incorrecto.** Decía "mostrar la línea en unidades base, que
+siempre multiplican". No es cierto: `venta_items.precio_unitario` **también** se guarda como
+`r2(subtotal / cantidad)` (`prorratearDescuentoGlobal`), así que arrastra el mismo redondeo. El
+problema nunca fue la unidad de medida, es la división. Quedó un test que lo deja explícito para que
+no se vuelva a proponer. El fix real, `precioUnitarioExhibible`, sube la precisión del unitario **lo
+justo** hasta que el producto reproduce el importe impreso — empezando en 2 decimales, así el 99% de
+las facturas sale idéntica. **No toca ningún importe:** manda `subtotal`. Las dos ramas del PDF (con
+y sin IVA discriminado; en Factura A la cuenta se verifica sobre el **neto**). UAT §48.
+
+**📦 Cubicaje, paso 4 (mig 326).** `fn_wms_elegir_ubicacion_picking` elegía el destino de un
+reabastecimiento bulk→picking sin mirar la ocupación: podía mandar un pallet a una cara ya al tope y
+el operario llegaba y no entraba. Ahora la ocupación entra como criterio, con dos invariantes que el
+`migration-reviewer` verificó uno por uno: **la capacidad desempata, nunca excluye** (si están todas
+llenas devuelve una igual — filtrarlas dejaría la tarea sin destino y el stock no llegaría nunca al
+picking, o sea un dato de configuración frenando mercadería real) y **sin capacidad configurada no
+cambia nada** (un tope vacío es "no sé", y no sé no puede degradar una posición; si no, todo tenant
+que nunca cargó capacidad vería su picking reordenado en silencio por el deploy). Se agregó además un
+desempate final por `id`: la 290 terminaba en secuencia/prioridad y Postgres no garantiza sort
+estable, así que el mismo SKU podía ir a dos caras distintas en reabastecimientos seguidos.
+⏳ Queda medir con `EXPLAIN ANALYZE` — la función se llama una vez por ítem y ahora joinea una vista
+agregada (acotada por RLS al propio tenant, pero sin medir).
+
+**📱 El Asistente IA se veía a la mitad en mobile.** Su panel de 360px colgaba del botón con
+`right-0`, y ese botón vive en el header con 3 íconos más a su derecha → el panel arrancaba en x
+negativo y se salía por la izquierda. Abajo de `sm` ahora se ancla al viewport. **La campana de
+Notificaciones tenía exactamente el mismo bug** (dropdown de ancho fijo anclado al botón) y se
+corrigió igual. Es justo la clase de bug que el barrido `88_mobile_responsive` no ve, porque solo
+mide la vista default y no abre dropdowns.
+
+Verde: tsc · build · **unit 1374**.
+**TODO EN DEV** — PROD sigue en v1.145.0, con 13 migraciones (314-326) sin deployar.
+
 ## [2026-07-29] update | 📦 v1.150.0 — el cubicaje completo (A/B/C) + 🐛 la vista de ocupación no calculaba nada (mig 325)
 
 Se terminó el cubicaje volumétrico que había quedado a mitad de camino: la sesión anterior dejó los

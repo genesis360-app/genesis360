@@ -13,6 +13,42 @@ updated: 2026-07-28
 
 ---
 
+## v1.151.0 — 🧾 La factura ahora MULTIPLICA + 📦 el reabastecimiento elige una posición con lugar (mig 326) + 📱 el Asistente IA entra en la pantalla — 🟡 **EN DEV** (2026-07-29)
+
+Tanda de cierre de pendientes viejos antes del deploy.
+
+**🧾 El P. Unitario de la factura no multiplicaba.** El unitario de un comprobante no es un dato
+guardado, **es una división** (`subtotal / cantidad`), y a 2 decimales fijos el papel deja de cerrar:
+$1.000 en 3 bultos imprimía `$333,33 × 3 = $999,99`. El importe que va a AFIP siempre estuvo bien
+(sale de `ventas.total`); lo que no cerraba era el documento que se lleva el cliente.
+⚠ **El fix que estaba anotado era incorrecto** y se descartó al verificarlo: "mostrar la línea en
+unidades base, que siempre multiplican" — pero `venta_items.precio_unitario` **también** se guarda
+como `r2(subtotal / cantidad)` (ver `prorratearDescuentoGlobal`), así que arrastra el mismo redondeo.
+El problema no era la unidad de medida, era la división. `precioUnitarioExhibible` sube la precisión
+del unitario **lo justo** hasta que el producto reproduce el importe impreso, empezando en 2 decimales
+(el caso normal no cambia). **No toca ningún importe:** manda `subtotal`. Aplica a las dos ramas del
+PDF (con y sin IVA discriminado). +9 tests.
+
+**📦 Cubicaje, paso 4 (mig 326).** El reabastecimiento bulk→picking elegía destino sin mirar la
+ocupación: podía mandar un pallet a una cara ya al tope. Ahora prefiere las que tienen lugar — pero
+**la capacidad desempata, nunca excluye** (si están todas llenas devuelve una igual: dejar la tarea
+sin destino frenaría mercadería real por un dato de configuración) y **sin capacidad configurada no
+cambia nada**. Espejo JS `ubicacionSinLugar()` + 10 tests.
+
+**📱 El Asistente IA se veía a la mitad en mobile.** Su panel de 360px colgaba del botón con
+`right-0`, y el botón vive en el header con 3 íconos más a su derecha → arrancaba en x negativo y se
+salía por la izquierda. Abajo de `sm` ahora se ancla al viewport. **La campana de Notificaciones
+tenía exactamente el mismo bug** y se corrigió igual.
+
+**Dos pendientes de la lista que estaban CERRADOS hace rato** (notas stale, verificadas contra el
+código): el CHECK que impide los dos sistemas de variante en un mismo SKU lo reconstruyó la **mig
+314**, y el PDF lee el CUIT del **emisor** desde el cutover de identidad fiscal de **v1.133.0**
+(`src/lib/emisorPdf.ts`).
+
+Verde: tsc · build · unit **1374**.
+
+---
+
 ## v1.150.0 — 📦 Cubicaje volumétrico COMPLETO (Fases A/B/C) + 🐛 fix de la vista de ocupación (mig 325) — 🟡 **EN DEV** (2026-07-29)
 
 Se termina el cubicaje que la v1.149.0 había dejado a mitad de camino (solo datos).

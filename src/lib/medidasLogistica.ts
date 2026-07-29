@@ -306,6 +306,62 @@ export function estadoVolumenUbicacion(
   return { estado: 'ok', volumenM3: vol, capacidadM3: cap, cobertura, mensaje: null, avisoCobertura }
 }
 
+export interface UbicacionTopes {
+  capacidad_pallets?: number | null
+  peso_max_kg?: number | null
+  alto_cm?: number | null
+  ancho_cm?: number | null
+  largo_cm?: number | null
+}
+
+export interface UbicacionOcupada {
+  lpn_activos?: number | null
+  peso_kg?: number | null
+  volumen_m3?: number | null
+}
+
+/**
+ * ¿Esta ubicación está SIN LUGAR? Espejo JS de la cláusula de `fn_wms_elegir_ubicacion_picking`
+ * (mig 326), que la usa para preferir posiciones con espacio al reabastecer. Si cambia una,
+ * cambiar la otra.
+ *
+ * 🛑 Dos reglas que definen el criterio, y que son lo que lo hace seguro:
+ *  · **Un tope vacío significa "no sé", y no sé nunca es "lleno".** Sin capacidad configurada
+ *    devuelve `false`. Si no, todos los tenants que nunca cargaron capacidad —la enorme mayoría—
+ *    verían todas sus posiciones marcadas como llenas de un día para el otro.
+ *  · **El volumen solo cuenta con el cubicaje ACTIVO y la ubicación medida.** Sin las dos cosas la
+ *    capacidad útil sería 0 m³ y cualquier ubicación daría "llena".
+ *
+ * Quien la use para decidir algo tiene que tratarla como AVISO: el tope lo carga una persona y la
+ * mercadería ya está físicamente ahí.
+ *
+ * ⚠ Detalle fino de la equivalencia con la SQL: con un factor de aprovechamiento fuera de (0,1] la
+ * versión SQL lo *clampea* y ésta cae al default 0.70. Hoy nunca divergen porque el
+ * `CHECK (cubicaje_factor_aprovechamiento > 0 AND <= 1)` de la mig 322 lo impide — si algún día se
+ * dropea ese CHECK, hay que unificar las dos.
+ */
+export function ubicacionSinLugar(
+  topes: UbicacionTopes | null | undefined,
+  ocupacion: UbicacionOcupada | null | undefined,
+  cubicaje?: { habilitado?: boolean | null; factor?: number | null } | null,
+): boolean {
+  if (!topes) return false
+  const capLpn = num(topes.capacidad_pallets)
+  if (capLpn != null && capLpn > 0 && (num(ocupacion?.lpn_activos) ?? 0) >= capLpn) return true
+
+  const capPeso = num(topes.peso_max_kg)
+  if (capPeso != null && capPeso > 0 && (num(ocupacion?.peso_kg) ?? 0) >= capPeso) return true
+
+  if (cubicaje?.habilitado) {
+    const util = capacidadUtilM3(
+      volumenUbicacionM3(topes.largo_cm, topes.ancho_cm, topes.alto_cm),
+      cubicaje.factor,
+    )
+    if (util != null && util > 0 && (num(ocupacion?.volumen_m3) ?? 0) >= util) return true
+  }
+  return false
+}
+
 /**
  * Volumen en m³ que ocupa una cantidad expresada en una presentación concreta.
  * Espeja el cálculo de `vw_ubicacion_ocupacion` (mig 322): "3 cajas" ocupa 3 × el volumen de la

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   sugerirBultoEnvio, avisoBultoIncompleto, estadoCapacidadUbicacion, etiquetaOcupacion,
   estadoCargaUbicacion, volumenUbicacionM3, capacidadUtilM3, estadoVolumenUbicacion,
-  volumenDeCantidadM3, FACTOR_APROVECHAMIENTO_DEFAULT,
+  volumenDeCantidadM3, FACTOR_APROVECHAMIENTO_DEFAULT, ubicacionSinLugar,
 } from '../../src/lib/medidasLogistica'
 
 describe('sugerirBultoEnvio', () => {
@@ -257,5 +257,56 @@ describe('volumenDeCantidadM3', () => {
   it('sin medidas devuelve null (= "no sé"), que no es lo mismo que 0', () => {
     expect(volumenDeCantidadM3(3, null, 30, 40)).toBeNull()
     expect(volumenDeCantidadM3(0, 20, 30, 40)).toBeNull()
+  })
+})
+
+describe('ubicacionSinLugar (espejo de fn_wms_elegir_ubicacion_picking, mig 326)', () => {
+  const topes = { capacidad_pallets: 4, peso_max_kg: 500, alto_cm: 100, ancho_cm: 100, largo_cm: 100 }
+
+  it('🛑 sin capacidad configurada NO está llena: un tope vacío es "no sé", no "lleno"', () => {
+    expect(ubicacionSinLugar({}, { lpn_activos: 999, peso_kg: 9999, volumen_m3: 999 })).toBe(false)
+    expect(ubicacionSinLugar(null, { lpn_activos: 999 })).toBe(false)
+    expect(ubicacionSinLugar({ capacidad_pallets: 0, peso_max_kg: 0 }, { lpn_activos: 50 })).toBe(false)
+  })
+
+  it('llena por LPN al ALCANZAR el tope, no al pasarlo', () => {
+    expect(ubicacionSinLugar(topes, { lpn_activos: 3 })).toBe(false)
+    expect(ubicacionSinLugar(topes, { lpn_activos: 4 })).toBe(true)
+    expect(ubicacionSinLugar(topes, { lpn_activos: 5 })).toBe(true)
+  })
+
+  it('llena por peso', () => {
+    expect(ubicacionSinLugar(topes, { lpn_activos: 1, peso_kg: 499 })).toBe(false)
+    expect(ubicacionSinLugar(topes, { lpn_activos: 1, peso_kg: 500 })).toBe(true)
+  })
+
+  it('🛑 el volumen NO cuenta si el cubicaje está apagado', () => {
+    const lleno = { lpn_activos: 1, peso_kg: 1, volumen_m3: 999 }
+    expect(ubicacionSinLugar(topes, lleno)).toBe(false)
+    expect(ubicacionSinLugar(topes, lleno, { habilitado: false, factor: 0.7 })).toBe(false)
+    expect(ubicacionSinLugar(topes, lleno, { habilitado: true, factor: 0.7 })).toBe(true)
+  })
+
+  it('🛑 con el cubicaje activo pero la ubicación SIN MEDIR tampoco está llena (capacidad útil desconocida ≠ 0)', () => {
+    const sinMedidas = { capacidad_pallets: 4, peso_max_kg: 500 }
+    expect(ubicacionSinLugar(sinMedidas, { volumen_m3: 999 }, { habilitado: true, factor: 0.7 })).toBe(false)
+  })
+
+  it('el volumen se compara contra la capacidad ÚTIL (geométrico × factor), no la geométrica', () => {
+    // 1 m³ geométrico × 0.7 = 0.7 m³ útiles
+    const cub = { habilitado: true, factor: 0.7 }
+    expect(ubicacionSinLugar(topes, { volumen_m3: 0.69 }, cub)).toBe(false)
+    expect(ubicacionSinLugar(topes, { volumen_m3: 0.70 }, cub)).toBe(true)
+    // Con un factor más generoso, lo mismo entra.
+    expect(ubicacionSinLugar(topes, { volumen_m3: 0.70 }, { habilitado: true, factor: 0.95 })).toBe(false)
+  })
+
+  it('una ubicación vacía nunca está llena', () => {
+    expect(ubicacionSinLugar(topes, null, { habilitado: true, factor: 0.7 })).toBe(false)
+    expect(ubicacionSinLugar(topes, { lpn_activos: 0, peso_kg: 0, volumen_m3: 0 })).toBe(false)
+  })
+
+  it('el `numeric` string de Postgres se normaliza', () => {
+    expect(ubicacionSinLugar({ peso_max_kg: '500' as any }, { peso_kg: '512.5' as any })).toBe(true)
   })
 })

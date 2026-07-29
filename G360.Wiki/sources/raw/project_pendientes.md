@@ -6,18 +6,64 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-07-29) — **CUBICAJE COMPLETO (A/B/C)**. No queda nada abierto de features: lo único pendiente es **DEPLOYAR**
+> ### 🚀 ARRANCÁ ACÁ (2026-07-29) — v1.151.0. **Lo único pendiente es DEPLOYAR** (bloqueado por el conector de Supabase)
 >
 > #### ▶ LO ÚNICO QUE HAY QUE HACER: el deploy acumulado
 >
-> **`APP_VERSION` = v1.150.0 · PROD sigue en v1.145.0.** Sin deployar: **migs 314 a 325 (12)** y las
-> versiones **1.146 → 1.150**.
-> Al retomar: aplicar 314-325 en PROD → PR `dev→main` → tag + release → verificar bundle con
+> **`APP_VERSION` = v1.151.0 · PROD sigue en v1.145.0.** Sin deployar: **migs 314 a 326 (13)** y las
+> versiones **1.146 → 1.151**.
+> Al retomar: aplicar 314-326 en PROD → PR `dev→main` → tag + release → verificar bundle con
 > `curl -sL`. (El resto de los gotchas de deploy están más abajo en este archivo.)
+>
+> 🔴 **BLOQUEANTE OPERATIVO (2026-07-29):** el conector MCP de Supabase se **desconectó** a mitad de
+> sesión, así que **las migs 326 y 325 están escritas y commiteadas pero la 326 NO se aplicó en DEV**
+> (la 325 sí alcanzó a aplicarse y verificarse antes de la caída). Sin el conector no se puede
+> `apply_migration` ni `execute_sql`, y **tampoco hay camino alternativo**: no hay
+> `SUPABASE_ACCESS_TOKEN` ni service_role key en el entorno, y el pooler rechaza toda password
+> (bug conocido de Supavisor). Al retomar: reconectar el conector, **aplicar la 326 en DEV**,
+> correr el `EXPLAIN ANALYZE` que quedó pendiente, y recién ahí el deploy a PROD.
 >
 > ---
 >
-> #### ✅ LO QUE SE CERRÓ ESTA SESIÓN (v1.150.0, mig 325 — **EN DEV**)
+> #### ✅ LO QUE SE CERRÓ ESTA SESIÓN (v1.151.0, mig 326)
+>
+> GO eligió 5 pendientes de la lista. **Dos ya estaban hechos y la lista estaba mintiendo** — lo
+> primero fue verificar contra el código, no contra las notas:
+> - **El CHECK de los dos sistemas de variante:** lo reconstruyó la **mig 314** (2026-07-28), con la
+>   decisión de GO ya tomada — coexisten en la app, no dentro del mismo producto.
+> - **El PDF con el CUIT del TENANT en vez del EMISOR:** resuelto de raíz en **v1.133.0** con el
+>   cutover de identidad fiscal. `src/lib/emisorPdf.ts` es el único armador, la identidad sale de
+>   `ventas.emisor_id` y el punto de venta impreso es el del emisor. Verificado: los 5 call sites de
+>   PDF pasan por ahí. **La nota quedó stale un mes y medio en el índice de memoria** y por eso volvió
+>   a aparecer en la lista de pendientes. Corregida.
+>
+> **🧾 La factura no multiplicaba — CORREGIDO.** El "P. Unitario" no es un dato guardado, **es una
+> división** (`subtotal / cantidad`): a 2 decimales fijos, $1.000 en 3 bultos imprimía
+> `$333,33 × 3 = $999,99`. Lo que va a AFIP siempre estuvo bien.
+> ⚠ **El fix que estaba anotado era INCORRECTO** y se descartó al verificarlo: decía "mostrar en
+> unidades base, que siempre multiplican", pero `venta_items.precio_unitario` **también** se guarda
+> como `r2(subtotal / cantidad)` (`prorratearDescuentoGlobal`) → mismo redondeo. El problema nunca fue
+> la unidad de medida, es la división. Hay un test que lo deja explícito para que no se vuelva a
+> proponer. Fix real: `precioUnitarioExhibible` sube la precisión del unitario **lo justo** hasta que
+> el producto reproduce el importe impreso, empezando en 2 decimales (el caso normal no cambia).
+> **No toca ningún importe.** UAT §48.
+>
+> **📦 Cubicaje paso 4 (mig 326):** el reabastecimiento bulk→picking ahora prefiere posiciones con
+> lugar. **La capacidad DESEMPATA, nunca EXCLUYE** (si están todas llenas devuelve una igual: dejar la
+> tarea sin destino frenaría mercadería real por un dato de config) y **sin capacidad configurada no
+> cambia nada**. Espejo JS `ubicacionSinLugar()` + 10 tests.
+>
+> **📱 El Asistente IA se veía a la mitad en mobile:** panel de 360px colgando de un botón que vive en
+> el header con 3 íconos a su derecha → arrancaba en x negativo. Abajo de `sm` se ancla al viewport.
+> **La campana de Notificaciones tenía el mismo bug** y se corrigió igual. Es justo lo que el barrido
+> `88_mobile_responsive` no ve (solo mide la vista default, no abre dropdowns).
+>
+> **Verde:** tsc · build · **unit 1374** · **e2e 14/14** incluyendo **21 (Factura C con CAE real)** y
+> **42 (NC-C con CAE real)** de AFIP homologación, más 107/113/114.
+>
+> ---
+>
+> #### ✅ SESIÓN ANTERIOR (v1.150.0, mig 325 — **EN DEV**)
 >
 > **📦 El cubicaje volumétrico quedó COMPLETO: las tres fases.** La sesión anterior había dejado solo
 > los datos (mig 322) y ningún frontend.
@@ -1869,7 +1915,7 @@ type: project
 > **Fix (`63132723`):** sacadas `telefono, email` de las 5 selects (verificado contra la API real: antes **400**, ahora **200**) + **`exigirCfgFiscal()`**, un guard que **LANZA** si los datos fiscales no se pueden leer en vez de dejar que los `?? ''` inventen. *Un comprobante que no sale es un problema; uno con la identidad fiscal inventada es peor.*
 > **Guard nuevo (`22de6a0e`): spec `87_datos_emisor_comprobante`** — corre las selects reales contra la DB y exige que no fallen y que cuit/razón social/condición vengan con contenido. **Verificado POR MUTACIÓN**: con la select rota original falla con el mensaje exacto.
 > **🛑 POR QUÉ NINGÚN TEST LO AGARRÓ (la lección de fondo):** la suite verificaba la **TRANSACCIÓN** fiscal (que AFIP devolviera CAE) y paraba ahí — el spec 21 emite con **CAE real** y sólo assertea el toast. Pero **el CAE siempre estuvo bien**: lo roto era el **DOCUMENTO**, que es lo único que ve el cliente. **Nadie mira el papel.** Y los unit tests no podían: `facturasPDF.ts` **recibe** `emisor_cuit` por parámetro → un unit test le pasa un CUIT válido y pasa; el bug vivía en el **llamador**, en una query que sólo falla contra la DB real. Una `.select()` con columna inexistente es un fallo de **runtime** que ni TS ni un unit test ven.
-> **▶ PENDIENTE:** (a) ~~deploy a PROD~~ ✅ **v1.131.0 EN PROD** (2026-07-16, PR #290); (b) **🛑 2º hallazgo, NO arreglado: el PDF lee el CUIT del TENANT, no del EMISOR** (`from('tenants')` en los 5 sitios). Con multi-CUIT, si emitís con un emisor adicional el **CAE sale con SU CUIT** pero el PDF imprimiría el del tenant → **un papel que no coincide con AFIP**. Hoy estaba enmascarado por el bloque vacío; **al arreglar lo anterior queda EXPUESTO**. Almacén Jorgito ya tiene 2 emisores con CUITs distintos (`23-32031506-9` default y `23-18383448-9` Otranto S.A.) → **reproducible ya**; (c) tests que miren el **contenido del PDF**, no sólo el toast (`facturasPDF.ts` no tiene NINGÚN unit test).
+> **▶ PENDIENTE:** (a) ~~deploy a PROD~~ ✅ **v1.131.0 EN PROD** (2026-07-16, PR #290); (b) ✅ **RESUELTO en v1.133.0** (cutover mig 271/272 → `src/lib/emisorPdf.ts` es el único armador de la identidad, por `ventas.emisor_id`; re-verificado el 2026-07-29). Texto original: **2º hallazgo: el PDF leía el CUIT del TENANT, no del EMISOR** (`from('tenants')` en los 5 sitios). Con multi-CUIT, si emitís con un emisor adicional el **CAE sale con SU CUIT** pero el PDF imprimiría el del tenant → **un papel que no coincide con AFIP**. Hoy estaba enmascarado por el bloque vacío; **al arreglar lo anterior queda EXPUESTO**. Almacén Jorgito ya tiene 2 emisores con CUITs distintos (`23-32031506-9` default y `23-18383448-9` Otranto S.A.) → **reproducible ya**; (c) tests que miren el **contenido del PDF**, no sólo el toast (`facturasPDF.ts` no tiene NINGÚN unit test).
 
 > ### 🎚️ (2026-07-16 · toggles con el knob fuera del track — **3 arreglados**, falta el componente estándar)
 > **Lo reportó GO con una captura**, no la suite. **Causa:** sin `left`, un `absolute` toma su **posición ESTÁTICA**, y el `<button>` trae `text-align: center` del user-agent (Tailwind resetea el `padding` pero **no** el `text-align`) → el knob arrancaba **centrado** (~12px) y con `translate-x-5` terminaba en 48px dentro de un track de 40px → **el círculo blanco quedaba FUERA del óvalo**.

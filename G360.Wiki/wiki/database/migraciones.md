@@ -6,10 +6,28 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-07-28
 ---
 
-# Historial de Migraciones (001-325)
+# Historial de Migraciones (001-326)
 
-**Total al 2026-07-29:** 325 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-29:** 326 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**326 (📦 el reabastecimiento elige una posición de picking QUE TENGA LUGAR, EN DEV — PROD pendiente)** —
+Paso 4 del cubicaje. `fn_wms_elegir_ubicacion_picking` (mig 290) elegía el destino de una tarea
+bulk→picking mirando solo si la posición ya tenía stock de ese producto, y después secuencia y
+prioridad: **nunca miraba la ocupación**, así que podía mandar un pallet a una cara ya al tope y el
+operario llegaba y no entraba. Ahora, con `vw_ubicacion_ocupacion` calculando LPN, peso y volumen
+(migs 321/322/325), la ocupación entra como criterio.
+🛑 **La capacidad DESEMPATA, nunca EXCLUYE:** si están todas llenas, sigue devolviendo una. Filtrarlas
+dejaría la tarea **sin destino** y el stock nunca llegaría al picking — un dato de configuración
+cargado a mano frenando mercadería real. Mismo criterio que la UI: avisa, no bloquea.
+🛑 **Sin capacidad configurada no cambia nada:** "sin lugar" exige un tope CONFIGURADO y ALCANZADO;
+un campo vacío es "no sé", y no sé nunca degrada una posición (si no, todos los tenants que nunca
+cargaron capacidad verían su orden de picking reordenado en silencio por el deploy).
+Se agrega un desempate final por `u.id` (la 290 terminaba en secuencia/prioridad y Postgres no
+garantiza sort estable → el mismo SKU podía ir a dos caras distintas en reabastecimientos seguidos).
+Espejo JS: `ubicacionSinLugar()` en `src/lib/medidasLogistica.ts` (10 tests).
+⏳ **Pendiente de medir:** `EXPLAIN ANALYZE` contra un tenant con volumen real — la función se llama
+una vez por ítem y la vista es un agregado (acotado por RLS al propio tenant, pero sin medir).
 
 **325 (🐛 la vista de ocupación NUNCA encontraba la presentación de una línea — fix de la 322, EN DEV — PROD pendiente)** —
 Tres defectos en `vw_ubicacion_ocupacion`, encontrados al construir el frontend del cubicaje:

@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import QRCode from 'qrcode'
-import { buildQrAfipUrl, esComprobanteSinIVA, TIPO_CBTE } from '@/lib/facturacionLogic'
+import { buildQrAfipUrl, esComprobanteSinIVA, precioUnitarioExhibible, TIPO_CBTE } from '@/lib/facturacionLogic'
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
@@ -225,8 +225,23 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
     const nTxt = n % 1 === 0 ? String(n) : n.toFixed(3)
     return item.cantidad_uom && item.unidad_medida ? `${nTxt} ${item.unidad_medida}` : nTxt
   }
-  const precioUnitarioEfectivo = (item: FacturaPDFData['items'][number]) =>
-    item.cantidad_uom && item.unidad_medida ? item.subtotal / item.cantidad_uom : item.subtotal / item.cantidad
+  /**
+   * P. Unitario de la línea, ya FORMATEADO.
+   *
+   * 🛑 No se formatea con `fmtPesos` (2 decimales fijos) porque el unitario es una DIVISIÓN
+   * (`subtotal / cantidad`) y a 2 decimales el papel deja de multiplicar: $1.000 en 3 bultos
+   * imprimiría "$333,33 × 3 = $999,99". `precioUnitarioExhibible` sube la precisión lo justo hasta
+   * que el producto reproduce el importe impreso. No toca ningún importe: manda `subtotal`.
+   *
+   * `divisor` permite pasar el neto (Factura A muestra "P. Unit. Neto" contra "Subtotal Neto", así
+   * que la cuenta que el cliente verifica es sobre los netos, no sobre el total con IVA).
+   */
+  const precioUnitarioCelda = (item: FacturaPDFData['items'][number], divisor = 1) => {
+    const enUom = !!(item.cantidad_uom && item.unidad_medida)
+    const cant = enUom ? item.cantidad_uom! : item.cantidad
+    const { valor, decimales } = precioUnitarioExhibible(item.subtotal / divisor, cant)
+    return fmtPesos(valor, decimales)
+  }
 
   /**
    * Cuando la línea se vendió en una UoM (ej. "2 Caja"), el P. Unitario que se muestra es el de la
@@ -279,7 +294,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
       ...codCell(item),
       descripcionCelda(item),
       cantidadCelda(item),
-      [fmtPesos(precioUnitarioEfectivo(item)), composicionUnitaria(item)].filter(Boolean).join('\n'),
+      [precioUnitarioCelda(item), composicionUnitaria(item)].filter(Boolean).join('\n'),
       fmtPesos(item.subtotal),
     ])
     const { willDrawCell, didDrawCell } = descripcionHooks(off)
@@ -309,7 +324,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
         ...codCell(item),
         descripcionCelda(item),
         cantidadCelda(item),
-        fmtPesos(precioUnitarioEfectivo(item) / (1 + item.alicuota_iva / 100)),
+        precioUnitarioCelda(item, 1 + item.alicuota_iva / 100),
         `${item.alicuota_iva}%`,
         fmtPesos(neto),
         fmtPesos(ivaM),
@@ -530,8 +545,9 @@ export async function cargarLogo(url: string): Promise<{ dataUrl: string; w: num
   }
 }
 
-function fmtPesos(v: number): string {
-  return `$${v.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+/** `decimales` > 2 solo para el P. Unitario, que es una división y necesita cerrar (ver mig/UAT §48). */
+function fmtPesos(v: number, decimales = 2): string {
+  return `$${v.toLocaleString('es-AR', { minimumFractionDigits: decimales, maximumFractionDigits: decimales })}`
 }
 
 function formatCuit(cuit: string): string {

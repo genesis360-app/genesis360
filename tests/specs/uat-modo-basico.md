@@ -1715,11 +1715,7 @@ que le prometieron, y la factura es el documento que se lleva.
 | 53 | **El P. Unitario por bulto es reconciliable** | Debajo de "$2.700,00" se muestra su composición "**6 u × $450**", así el número deja de ser un valor que no está en ninguna tabla | revisión de código |
 | 54 | **Solo aparece cuando corresponde** | La composición solo si se vendió en una UoM distinta a la base y el bulto tiene más de 1 unidad; la leyenda solo si hubo descuento general | revisión de código |
 
-⚠ **Riesgo latente detectado, no corregido:** el P. Unitario por bulto se calcula como
-`subtotal / cantidad_uom`. Si esa división no es exacta a 2 decimales (ej. subtotal 1.000 en 3
-bultos → 333,333…), la factura muestra 333,33 × 3 = 999,99 ≠ 1.000,00 y **no multiplica**. No cambia
-el importe que va a AFIP (que sale de `ventas.total`), pero deja un comprobante que no cierra si
-alguien lo verifica. Anotado en `project_pendientes.md`.
+⚠ **Riesgo latente detectado acá → ✅ CORREGIDO en v1.151.0, ver §48.**
 
 **Verde:** tsc · build · **unit 1339** (47 en `pedidoVenta.test.ts` + 29 en `medidasLogistica.test.ts`) ·
 **e2e 113 (6/6)** · regresión **107 (5/5)**.
@@ -1729,3 +1725,39 @@ combos no se aplican al facturar un pedido **manual**. Medido antes de decidir: 
 **nunca corrió** (0 ventas generadas por un Pedido en PROD y DEV), PROD tiene 0 pedidos, 0 combos
 activos y 0 tenants con `lista_precio` seteada, y esa función corre solo para pedidos a mano — que
 quedaron apagados por default. Detalle y costo/beneficio en [[wiki/features/pedidos]].
+
+---
+
+## 🧾 §48 — La factura tiene que MULTIPLICAR (v1.151.0) — 2026-07-29
+
+Cierre del riesgo latente que quedó anotado en §47.
+
+**El problema.** El "P. Unitario" de un comprobante **no es un dato guardado: es una división**
+(`subtotal / cantidad`). Impreso con 2 decimales fijos, el papel deja de cerrar — un subtotal de
+$1.000 en 3 bultos imprime `$333,33 × 3 = $999,99 ≠ $1.000,00`. El importe que va a AFIP siempre
+estuvo bien (sale de `ventas.total`), pero el cliente que verifica la factura con una calculadora
+encuentra que no cierra, y la factura es el documento que se lleva.
+
+**⚠ El fix que estaba propuesto era incorrecto.** Decía: *"mostrar la línea en unidades BASE, que
+siempre multiplican porque `subtotal = precio_unitario × cantidad` por construcción"*. **No es
+cierto:** `venta_items.precio_unitario` se guarda como `r2(subtotal / cantidad)` (ver
+`prorratearDescuentoGlobal` en `facturacionLogic.ts`), o sea que arrastra exactamente el mismo
+redondeo. El problema nunca fue la unidad de medida — es la división. Está cubierto por un test
+que lo deja explícito, para que no se vuelva a proponer.
+
+**El fix real:** `precioUnitarioExhibible(subtotal, cantidad)` devuelve el unitario con la
+**precisión mínima** para que `precio × cantidad` reproduzca el importe impreso. Empieza en 2
+decimales y sube de a uno. **No toca ningún importe:** el que manda es `subtotal`, el unitario se
+acomoda a él.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 55 | **El caso normal no cambia** | Si con 2 decimales ya cierra, imprime 2 decimales — el 99% de las facturas sale idéntica a antes | `facturacion.test.ts` |
+| 56 | **$1.000 en 3 bultos cierra** | Sube la precisión hasta que `unitario × cantidad` = el importe impreso | `facturacion.test.ts` |
+| 57 | **Usa la precisión MÍNIMA, no el máximo** | $100 en 3 → 3 decimales, no 6: el número tiene que seguir siendo legible | `facturacion.test.ts` |
+| 58 | **Vale para las dos ramas del PDF** | Sin IVA discriminado (B/C) sobre el total, y con IVA (A) sobre el **neto**, que es contra lo que el cliente verifica ahí | revisión de código |
+| 59 | **Nunca se toca un importe** | `subtotal`, `neto`, `IVA` y `total` salen igual que siempre; lo único que cambia es la precisión de una columna derivada | `facturacion.test.ts` |
+| 60 | **Cantidad 0 / valores basura no explotan** | Devuelve `exacto: false` en vez de imprimir un número inventado | `facturacion.test.ts` |
+| 61 | **⚠ Unidades base NO eran la solución** | Test que prueba que `r2(1000/3) × 3 ≠ 1000`, para que el fix descartado quede documentado | `facturacion.test.ts` |
+
+**Verde:** tsc · build · **unit 1374**.

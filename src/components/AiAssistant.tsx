@@ -153,10 +153,17 @@ export function AiAssistant({ className = '', contexto }: { className?: string; 
         <Bot size={18} />
       </button>
 
-      {/* Panel */}
+      {/* Panel.
+          📱 En mobile NO puede colgar del botón: el botón vive en el header con 3 íconos más a su
+          derecha, así que su borde derecho cae cerca del MEDIO de la pantalla — un panel de 360px
+          anclado con `right-0` arrancaba en x negativo y se salía por la izquierda (se veía a la
+          mitad). Abajo de `sm` se ancla al VIEWPORT (`fixed inset-x-3`), que es lo único que
+          garantiza que entre sin importar dónde esté el botón; de `sm` para arriba sigue siendo el
+          dropdown de siempre.
+          `dvh` y no `vh`: en mobile `100vh` cuenta la barra de direcciones y el panel se corta abajo. */}
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-[360px] sm:w-[400px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 flex flex-col overflow-hidden z-50"
-          style={{ maxHeight: 'calc(100vh - 80px)', height: '520px' }}>
+        <div className="fixed inset-x-3 top-16 sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[400px] bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-100 dark:border-gray-700 flex flex-col overflow-hidden z-50"
+          style={{ maxHeight: 'calc(100dvh - 88px)', height: '520px' }}>
 
           {/* Header del panel */}
           <div className="flex items-center gap-2.5 px-4 py-3 bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-700 shrink-0">

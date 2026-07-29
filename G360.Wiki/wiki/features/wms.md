@@ -118,8 +118,17 @@ un número que miente es peor que no tener ninguno"*:
 - **Aviso al ubicar** (`AvisoCapacidadUbicacion`): al ingresar stock y al mover un LPN, si la
   ubicación elegida quedaría llena o excedida. Avisa, no bloquea.
 
-**Almacenaje dirigido (futuro):** que `fn_wms_elegir_ubicacion_picking` prefiera posiciones con lugar
-según estos números. Pendiente.
+**Almacenaje dirigido — ✅ mig 326 (v1.151.0).** `fn_wms_elegir_ubicacion_picking` (destino de un
+reabastecimiento bulk→picking) ya no elige a ciegas: prefiere posiciones **con lugar** según estos
+mismos números. Orden final: (a) la que ya tiene ese producto y tiene lugar · (b) la que ya lo tiene
+aunque esté llena — mantiene el SKU consolidado en su cara de picking · (c) cualquiera con lugar ·
+(d) el resto; después secuencia y prioridad de siempre.
+
+🛑 **La capacidad DESEMPATA, nunca EXCLUYE.** Si todas están llenas devuelve una igual: filtrarlas
+dejaría la tarea de reabastecimiento **sin destino** y el stock nunca llegaría al picking — un dato de
+configuración cargado a mano frenando mercadería real. Y **sin capacidad configurada no cambia
+nada**: "sin lugar" exige un tope CONFIGURADO y ALCANZADO, porque un campo vacío es "no sé" y no sé
+no puede degradar una posición. Espejo JS: `ubicacionSinLugar()` en `src/lib/medidasLogistica.ts`.
 
 ---
 

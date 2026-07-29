@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   sugerirBultoEnvio, avisoBultoIncompleto, estadoCapacidadUbicacion, etiquetaOcupacion,
+  estadoCargaUbicacion, volumenUbicacionM3,
 } from '../../src/lib/medidasLogistica'
 
 describe('sugerirBultoEnvio', () => {
@@ -120,5 +121,61 @@ describe('etiquetaOcupacion', () => {
   })
   it('sin tope muestra solo el ocupado', () => {
     expect(etiquetaOcupacion(estadoCapacidadUbicacion(null, 3))).toBe('3')
+  })
+})
+
+describe('estadoCargaUbicacion', () => {
+  it('sin peso máximo configurado → no opina', () => {
+    expect(estadoCargaUbicacion(null, 300).estado).toBe('sin_limite')
+  })
+
+  it('con margen → ok y sin mensaje', () => {
+    const c = estadoCargaUbicacion(500, 200, 4, 4)
+    expect(c.estado).toBe('ok')
+    expect(c.mensaje).toBeNull()
+  })
+
+  it('🛑 pasado del límite → avisa: sobrecargar un rack es seguridad física', () => {
+    const c = estadoCargaUbicacion(500, 620, 4, 4)
+    expect(c.estado).toBe('excedido')
+    expect(c.mensaje).toContain('soporta 500 kg')
+  })
+
+  it('avisa ANTES del 100% (90%): con el peso subestimado, esperar al tope exacto puede no avisar nunca', () => {
+    expect(estadoCargaUbicacion(500, 450, 4, 4).estado).toBe('lleno')
+    expect(estadoCargaUbicacion(500, 449, 4, 4).estado).toBe('ok')
+  })
+
+  it('⚠ con pesos faltantes el total queda CORTO → devuelve cobertura y aviso', () => {
+    const c = estadoCargaUbicacion(500, 200, 2, 5)
+    expect(c.cobertura).toBe(40)
+    expect(c.avisoCobertura).toContain('2 de 5')
+    expect(c.avisoCobertura).toContain('el total real es mayor')
+  })
+
+  it('con todos los pesos cargados no hay aviso de cobertura', () => {
+    expect(estadoCargaUbicacion(500, 200, 5, 5).avisoCobertura).toBeNull()
+    expect(estadoCargaUbicacion(500, 200, 5, 5).cobertura).toBe(100)
+  })
+
+  it('ubicación vacía → cobertura 100, no 0 (no hay nada que le falte peso)', () => {
+    expect(estadoCargaUbicacion(500, 0, 0, 0).cobertura).toBe(100)
+  })
+
+  it('el `numeric` string de Postgres se normaliza', () => {
+    expect(estadoCargaUbicacion('500' as any, '620.5' as any, 1, 1).estado).toBe('excedido')
+  })
+})
+
+describe('volumenUbicacionM3', () => {
+  it('convierte cm³ a m³', () => {
+    expect(volumenUbicacionM3(100, 100, 100)).toBe(1)
+    expect(volumenUbicacionM3(120, 80, 150)).toBe(1.44)
+  })
+
+  it('si falta una dimensión no inventa un volumen', () => {
+    expect(volumenUbicacionM3(120, 80, null)).toBeNull()
+    expect(volumenUbicacionM3(120, 0, 150)).toBeNull()
+    expect(volumenUbicacionM3(null, null, null)).toBeNull()
   })
 })

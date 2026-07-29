@@ -28,6 +28,7 @@ import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { canalesExcluidosValidos } from '@/lib/pedidoVenta'
+import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volumenUbicacionM3 } from '@/lib/medidasLogistica'
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 import toast from 'react-hot-toast'
 
@@ -1394,6 +1395,19 @@ export default function ConfigPage() {
   }
 
   // Ubicaciones
+  // Ocupación real por ubicación (mig 321). Los campos de capacidad de `ubicaciones` existían desde
+  // la mig 032 y no los leía ningún cálculo: se cargaban y no servían para nada.
+  const { data: ocupacionUbic = {} } = useQuery({
+    queryKey: ['ubicacion-ocupacion', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('vw_ubicacion_ocupacion')
+        .select('ubicacion_id, lpn_activos, peso_kg, lineas_con_peso, lineas_total')
+        .eq('tenant_id', tenant!.id)
+      return Object.fromEntries((data ?? []).map((r: any) => [r.ubicacion_id, r])) as Record<string, any>
+    },
+    enabled: !!tenant && tab === 'inventario',
+  })
+
   const { data: ubicaciones = [], isLoading: loadingUbic } = useQuery({
     queryKey: ['ubicaciones', tenant?.id, sucursalId],
     queryFn: async () => {
@@ -3905,11 +3919,45 @@ export default function ConfigPage() {
                           {u.tipo_ubicacion && (
                             <span className="ml-2 text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-mono">{u.tipo_ubicacion}</span>
                           )}
-                          {(u.alto_cm || u.ancho_cm || u.largo_cm) && (
-                            <span className="ml-1 text-xs text-gray-400 dark:text-gray-500" title="Dimensiones alto × ancho × largo">
-                              <Ruler size={10} className="inline mb-0.5" /> {[u.alto_cm, u.ancho_cm, u.largo_cm].filter(Boolean).join('×')} cm
-                            </span>
-                          )}
+                          {(u.alto_cm || u.ancho_cm || u.largo_cm) && (() => {
+                            const m3 = volumenUbicacionM3(u.largo_cm, u.ancho_cm, u.alto_cm)
+                            return (
+                              <span className="ml-1 text-xs text-gray-400 dark:text-gray-500"
+                                title={`Dimensiones alto × ancho × largo${m3 != null ? ` — ${m3} m³. Referencia: el volumen ocupado todavía no se calcula (ver backlog de cubicaje).` : ''}`}>
+                                <Ruler size={10} className="inline mb-0.5" /> {[u.alto_cm, u.ancho_cm, u.largo_cm].filter(Boolean).join('×')} cm
+                                {m3 != null && <span className="ml-1">· {m3} m³</span>}
+                              </span>
+                            )
+                          })()}
+                          {/* Ocupación real (mig 321): LPN contra `capacidad_pallets` y carga
+                              contra `peso_max_kg`. Aviso, nunca bloqueo. */}
+                          {(() => {
+                            const oc = (ocupacionUbic as any)[u.id]
+                            const cap = estadoCapacidadUbicacion(u.capacidad_pallets, oc?.lpn_activos ?? 0)
+                            const carga = estadoCargaUbicacion(u.peso_max_kg, oc?.peso_kg ?? 0, oc?.lineas_con_peso ?? 0, oc?.lineas_total ?? 0)
+                            const cls = (e: string) => e === 'excedido'
+                              ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400'
+                              : e === 'lleno'
+                                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                            return (
+                              <>
+                                {u.capacidad_pallets > 0 && (
+                                  <span className={`ml-2 text-xs px-1.5 py-0.5 rounded ${cls(cap.estado)}`}
+                                    title={cap.mensaje ?? 'LPN guardados en esta ubicación'}>
+                                    <Package size={9} className="inline mb-0.5 mr-0.5" />{etiquetaOcupacion(cap)} LPN
+                                  </span>
+                                )}
+                                {carga.pesoMaxKg != null && (
+                                  <span className={`ml-1 text-xs px-1.5 py-0.5 rounded ${cls(carga.estado)}`}
+                                    title={[carga.mensaje, carga.avisoCobertura].filter(Boolean).join(' ') || 'Carga sobre el máximo configurado'}>
+                                    {Math.round(carga.pesoKg)} de {carga.pesoMaxKg} kg
+                                    {carga.avisoCobertura && ' ⚠'}
+                                  </span>
+                                )}
+                              </>
+                            )
+                          })()}
                           {u.mono_sku && (
                             <span className="ml-2 text-xs bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded" title="Mono-SKU: solo un producto">
                               <Tag size={9} className="inline mb-0.5 mr-0.5" />Mono-SKU

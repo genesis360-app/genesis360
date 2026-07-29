@@ -144,6 +144,81 @@ export function estadoCapacidadUbicacion(
   return { estado: 'ok', ocupados: ocup, capacidad: cap, restantes, mensaje: null }
 }
 
+export interface CargaUbicacion {
+  estado: EstadoCapacidad
+  pesoKg: number
+  pesoMaxKg: number | null
+  /** % de las líneas de la ubicación cuyo producto TIENE peso cargado (0-100). */
+  cobertura: number
+  mensaje: string | null
+  /** Aviso separado: el número está calculado sobre datos incompletos. */
+  avisoCobertura: string | null
+}
+
+/**
+ * Carga de una ubicación contra `ubicaciones.peso_max_kg`.
+ *
+ * 🛑 Es el más importante de los tres campos de capacidad: sobrecargar un rack no es un problema de
+ * datos, es de **seguridad física**. Y es el más confiable de calcular — el peso es **aditivo y
+ * exacto**, a diferencia del volumen.
+ *
+ * ⚠ Pero tiene un sesgo peligroso: si a algunos productos les falta el `peso_kg`, el total queda
+ * **corto**, o sea que el error empuja hacia "parece que hay lugar" justo cuando el rack podría
+ * estar pasado. Por eso se devuelve la **cobertura** y un aviso aparte: nunca hay que mostrar un
+ * verde limpio calculado sobre datos incompletos.
+ *
+ * Igual que la capacidad por LPN: avisa, no bloquea.
+ */
+export function estadoCargaUbicacion(
+  pesoMaxKg: number | null | undefined,
+  pesoKg: number | null | undefined,
+  lineasConPeso = 0,
+  lineasTotal = 0,
+): CargaUbicacion {
+  const max = num(pesoMaxKg)
+  const peso = num(pesoKg) ?? 0
+  const cobertura = lineasTotal > 0 ? Math.round((lineasConPeso / lineasTotal) * 100) : 100
+  const avisoCobertura = lineasTotal > 0 && lineasConPeso < lineasTotal
+    ? `Calculado sobre ${lineasConPeso} de ${lineasTotal} líneas: a las demás les falta el peso en la ficha del producto, así que el total real es mayor.`
+    : null
+
+  if (max == null || max <= 0) {
+    return { estado: 'sin_limite', pesoKg: peso, pesoMaxKg: null, cobertura, mensaje: null, avisoCobertura }
+  }
+  if (peso > max) {
+    return {
+      estado: 'excedido', pesoKg: peso, pesoMaxKg: max, cobertura, avisoCobertura,
+      mensaje: `Esta ubicación soporta ${max} kg y tiene ${redondear3(peso)} kg. Revisá la carga.`,
+    }
+  }
+  // 90% es el umbral para avisar antes de llegar al límite: si esperás al 100% exacto, con el
+  // peso subestimado por datos faltantes el aviso puede no llegar nunca.
+  if (peso >= max * 0.9) {
+    return {
+      estado: 'lleno', pesoKg: peso, pesoMaxKg: max, cobertura, avisoCobertura,
+      mensaje: `Cerca del límite de carga (${redondear3(peso)} de ${max} kg).`,
+    }
+  }
+  return { estado: 'ok', pesoKg: peso, pesoMaxKg: max, cobertura, mensaje: null, avisoCobertura }
+}
+
+/**
+ * Volumen de una ubicación en m³ a partir de sus dimensiones en cm, o null si falta alguna.
+ * Es **solo referencia** para el usuario: hoy no hay con qué compararlo, porque el volumen del
+ * contenido necesita las medidas por nivel de `producto_presentaciones`, que no se pueden cargar.
+ * Se conserva el dato porque el día que se haga el cubicaje es la mitad del cálculo, y volver a
+ * medir un depósito entero después sería carísimo.
+ */
+export function volumenUbicacionM3(
+  largoCm: number | null | undefined,
+  anchoCm: number | null | undefined,
+  altoCm: number | null | undefined,
+): number | null {
+  const l = num(largoCm), a = num(anchoCm), h = num(altoCm)
+  if (!l || !a || !h || l <= 0 || a <= 0 || h <= 0) return null
+  return Math.round(((l * a * h) / 1_000_000) * 1000) / 1000
+}
+
 /** Texto corto para mostrar al lado del nombre de la ubicación: "3 de 4" / "3" si no hay tope. */
 export function etiquetaOcupacion(c: CapacidadUbicacion): string {
   return c.capacidad == null ? String(c.ocupados) : `${c.ocupados} de ${c.capacidad}`

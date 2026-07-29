@@ -39,6 +39,13 @@ type: project
 > **Verde:** tsc · build · **unit 1263** (12 nuevos) · **e2e 109** extendido de 4 a 9 aserciones (2/2).
 > Ver `tests/specs/uat-modo-basico.md` §46 y [[wiki/features/atributos-variante]].
 >
+> **🟡 ESTADO DE DEPLOY (decisión explícita de GO, 2026-07-28): TODO QUEDA EN DEV.** Commit
+> `f4d14c6c` en `dev` y pusheado. **`APP_VERSION` ya dice `v1.146.0` pero PROD sigue en v1.145.0.**
+> A pedido de GO **NO** se aplicó la mig 314 en PROD, **NO** se abrió el PR `dev→main` y **NO** se
+> creó tag ni release — la regla de "tag+release en cada sesión con código" se salteó a propósito,
+> no por olvido. GO lo va a probar primero en DEV. Al retomar: aplicar mig 314 en PROD → PR → tag
+> `v1.146.0` → release (el guard se verificó ya contra datos de PROD: 0 filas en violación).
+>
 > **▶ QUÉ QUEDA ABIERTO (nada del rediseño UoM):**
 > - 🔴 **Rotar el `SUPABASE_ACCESS_TOKEN`** `sbp_60df…` — figura como "rotado el 2026-07-09" pero
 >   **sigue funcionando** (verificado 2026-07-28). Tarea operativa de GO.

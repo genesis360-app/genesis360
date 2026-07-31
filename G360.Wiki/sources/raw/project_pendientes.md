@@ -242,8 +242,15 @@ type: project
 > **▶ Pendiente inmediato:** GO responde `relevamiento-repositores-reglas-negocio.html` offline con
 > Fede → volcar las respuestas a `G360.Wiki/sources/raw/relevamiento_repositores_respuestas.md`
 > (mismo patrón que Clientes/Ventas/Compras/etc.) → recién ahí diseñar e implementar Fase E. No
-> inventar alcance sin esas respuestas. Sigue pendiente también decidir si GO/Fede prueban F+A+B+C+D
-> en el dev server antes del deploy conjunto de toda la iniciativa.
+> inventar alcance sin esas respuestas.
+>
+> **🛑 Decisión explícita de GO (2026-07-30): PAUSAR el deploy a PROD de F/A/B/C/D.** Se le avisó
+> ANTES de deployar (obligación de la Regla de Oro #0) que A (tiers), B (aprobación con foto) y C
+> (cupones) tocan plata/stock real y solo están verificadas con tsc+build+unit de funciones puras —
+> **0 e2e, 0 prueba manual en navegador, sin registrar en `tests/specs/uat-modo-basico.md`**. Se le
+> dieron 3 opciones (smoke test rápido / deployar igual asumiendo el riesgo / pausar del todo) y
+> eligió **pausar del todo** — esperar a que GO/Fede prueben con calma en el dev server antes de
+> decidir el deploy. **No deployar a PROD sin retomar esta conversación primero.**
 >
 > ---
 >

@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md]
-updated: 2026-07-28
+sources: [CLAUDE.md, migrations 329, 330]
+updated: 2026-07-30
 ---
 
 # Productos
@@ -158,7 +158,7 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | Precio venta USD | number | Opcional |
 | IVA | select | Alícuota aplicable |
 | Margen objetivo | number | % — activa insightMargen en Dashboard |
-| Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092) |
+| Precios mayoristas | accordion | Tabla de tiers por cantidad (migration 092), con operador (mig 306). **🆕 EN DEV (migs 329/330, backlog Fede 25/7):** selector $/% por tier + enlace opcional a una línea de empaque ("desde 2 pallets") — ver [[wiki/features/precios-tiers-empaque]] |
 | ~~Estos precios corresponden a~~ | ⛔ **ELIMINADO (mig 304, v1.144.0)** | Era el "ancla de precio" (`productos.nivel_precio_orden`), un bug por POSICIÓN: no se revalidaba al reordenar niveles. Hoy `precio_venta`/`precio_costo` son **SIEMPRE por unidad base** y el precio de una presentación se deriva (`base × factor_base`); el precio por volumen se carga como **tier de cantidad**. Ver [[wiki/features/estructuras-udm]] → Fase 2 y Fase 2-bis. |
 
 ### Card 4: Stock e inventario

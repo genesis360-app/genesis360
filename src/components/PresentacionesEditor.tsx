@@ -6,7 +6,7 @@ import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import {
   filasAForm, validarPresentaciones, construirPayload, factorBaseDe, filaBase, resumenArbol,
-  type PresentacionRow, type PresentacionFila,
+  agruparPorNivel, type PresentacionRow, type PresentacionFila,
 } from '@/lib/presentaciones'
 import { volumenUbicacionM3 } from '@/lib/medidasLogistica'
 import toast from 'react-hot-toast'
@@ -160,8 +160,13 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
         </div>
       )}
 
-      <div className="space-y-2">
-        {rows.map(row => {
+      <div className="space-y-3">
+        {agruparPorNivel(rows).map(grupo => (
+          <div key={grupo.nivel} className="rounded-xl border-2 border-violet-200 dark:border-violet-800/60 bg-violet-50/40 dark:bg-violet-950/10 p-2.5 space-y-2">
+            <p className="text-xs font-bold text-violet-700 dark:text-violet-400 uppercase tracking-wide px-1">
+              {grupo.nivel === 0 ? 'NB · Nivel Base' : `Nivel ${grupo.nivel}`}
+            </p>
+            {grupo.filas.map(row => {
           const esBase = row.padre_key === null
           const factor = factorBaseDe(row, rows)
           return (
@@ -188,9 +193,19 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
                       <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo de empaque</label>
                       <select value={row.nombre_empaque_id} disabled={!canEdit}
                         onChange={e => {
-                          const em = empaques.find(x => x.id === e.target.value)
+                          const nuevoTipo = e.target.value
+                          const em = empaques.find(x => x.id === nuevoTipo)
+                          // Si ya hay otra fila del MISMO tipo de empaque (ej. ya existe "Caja-10" y esto
+                          // es "Caja-15"), la ubicamos como hermana de esa fila (mismo padre) en vez de
+                          // dejarla colgando de donde `agregar()` la puso por default (Fede 25/7, punto 4).
+                          const hermana = rows.find(r => r.key !== row.key && r.nombre_empaque_id === nuevoTipo)
                           setRows(prev => prev.map(r => r.key === row.key
-                            ? { ...r, nombre_empaque_id: e.target.value, etiqueta: r.etiqueta.trim() || (em?.nombre ?? '') }
+                            ? {
+                                ...r,
+                                nombre_empaque_id: nuevoTipo,
+                                etiqueta: r.etiqueta.trim() || (em?.nombre ?? ''),
+                                padre_key: hermana ? hermana.padre_key : r.padre_key,
+                              }
                             : r))
                         }}
                         className="w-full border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm bg-white dark:bg-gray-700 focus:outline-none focus:border-accent-text">
@@ -271,8 +286,10 @@ export function PresentacionesEditor({ productoId, productoNombre, empaques, can
                 })()}
               </div>
             </div>
-          )
-        })}
+              )
+            })}
+          </div>
+        ))}
       </div>
 
       {canEdit && (

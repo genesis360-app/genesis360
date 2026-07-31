@@ -38,6 +38,7 @@ interface RolCustom {
 
 const MODULOS: { key: string; label: string }[] = [
   { key: 'ventas',        label: 'Ventas' },
+  { key: 'comercial',     label: 'Comercial' },
   { key: 'caja',          label: 'Caja' },
   { key: 'gastos',        label: 'Gastos' },
   { key: 'clientes',      label: 'Clientes' },

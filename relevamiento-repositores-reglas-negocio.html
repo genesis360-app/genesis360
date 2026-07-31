@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Módulo Repositores (nuevo) · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Módulo Repositores (nuevo)</h1>
+<div class="meta">
+  Genesis360 · v1.152.0 (EN DEV) · Fecha: 30 de julio de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Este es el punto 6 (Fase E) de la iniciativa de Fede del 25/7 —
+  las otras 5 fases (F/A/B/C/D: quick wins de precio/empaque, motor de tiers, aprobación de cambio de estado
+  con foto, cupones y el módulo Comercial) ya están construidas y verificadas. Del módulo <strong>Repositores</strong>
+  Fede solo dejó una línea muy resumida ("módulo Repositores, nuevo") — no hay más detalle escrito en ningún
+  lado, así que este relevamiento arranca de cero, igual que se hizo con Pedidos. Casi todas las preguntas están
+  marcadas <span class="tag tag-nuevo">NUEVO</span> (definir la regla desde cero). Las marcadas
+  <span class="tag tag-cambio">CAMBIO</span> señalan puntos donde la respuesta que elijan
+  <strong>reinterpreta o tensiona con un campo/comportamiento que el código ya usa hoy con otro propósito</strong>
+  (el caso más importante: la automatización de impresión, que Fede probablemente da por sentada y que hoy
+  <strong>no es técnicamente viable</strong> tal como está armada la app — ver sección H). No hay preguntas
+  <span class="tag tag-existente">EXISTENTE</span> porque no hay nada de este módulo que confirmar — el "Hoy"
+  de cada pregunta describe el comportamiento real del código más cercano (WMS/Picking, Config → Ubicaciones,
+  Comercial, generadores de etiquetas) que Repositores va a heredar, reinterpretar o convivir con él.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual (no existe Repositores):</strong> no hay tabla, página ni ruta "Repositores" en el código —
+  0% construido. El precedente más cercano es WMS <code>wms_tareas</code> (mig 289): tipos
+  <code>picking/replenishment/putaway/conteo</code>, estados <code>pendiente/en_curso/completada/cancelada</code>,
+  columna <code>usuario_asignado_id</code> (FK a <code>users</code>) que <strong>existe en el schema pero el
+  frontend nunca la usa</strong> — <code>PickingPage.tsx</code> muestra la cola completa a cualquier usuario con
+  acceso a <code>/picking</code>, sin asignar tareas a una persona puntual, y siempre filtra
+  <code>estado IN ('pendiente','en_curso')</code>: no existe ninguna pantalla de tareas completadas en todo WMS.
+  <code>ubicaciones.disponible_surtido</code> (boolean, mig 012) hoy se usa <strong>exclusivamente como filtro
+  negativo</strong> — "esta ubicación queda afuera del pool de picking/venta" (<code>VentasPage.tsx</code>,
+  <code>MasivoModal.tsx</code>, RPC de Pedidos mig 294) — nunca se consulta <code>= true</code> para elegir un
+  destino positivo de reposición; es distinto de <code>ubicaciones.tipo_ubicacion</code>
+  (<code>picking/bulk/estiba/camara/cross_dock/staging</code>, mig 032) que sí clasifica el tipo físico de la
+  ubicación. Ya existen 2 generadores de etiquetas imprimibles: <code>etiquetasEnvioPDF.ts</code> (PDF real vía
+  jsPDF, grilla configurable 4/6/12 por hoja A4, para envíos) y <code>CodigoMasivoModal.tsx</code> (ventana nueva
+  del navegador con HTML/CSS + <code>window.print()</code>, sin conteo fijo por hoja, para códigos GS1) — ninguno
+  imprime solo: ambos requieren que un humano confirme "Imprimir" en el diálogo del navegador/SO, y en todo el
+  repo no existe ninguna integración con impresoras físicas (agente local, cola de impresión, driver). El patrón
+  de acceso delegable de Fase D (Comercial) — rol base + <code>roles_custom</code> con el módulo agregado a la
+  lista <code>MODULOS</code> de <code>UsuariosPage.tsx</code> (hoy 16 módulos, sin <code>repositores</code>) — es
+  el candidato más directo para resolver quién ve Repositores sin tocar el enum de roles. Los dos disparadores de
+  cambio de precio/estado que ya existen (<code>estados_inventario.descuento_pct</code>, mig 284, y
+  <code>estados_inventario.requiere_aprobacion</code> + foto, mig 331) hoy no generan ninguna tarea ni notifican a
+  nadie para actualizar una etiqueta física en el estante — la tabla <code>notificaciones</code> (con
+  <code>user_id</code>/<code>titulo</code>/<code>mensaje</code>/<code>action_url</code>) existe y la usan Ventas,
+  Caja, Inventario y el modal de LPN, pero nunca WMS/Picking.
+</div>
+
+<!-- ============================ A. QUÉ ES UN "REPOSITOR" ============================ -->
+<h2>A. Qué es un "Repositor" en el modelo de roles y accesos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    ¿Rol de negocio nuevo o acceso acotado vía rol custom? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el enum de roles (<code>UsuariosPage.tsx</code>) es DUEÑO/SUPER_USUARIO/SUPERVISOR/CAJERO/RRHH/CONTADOR/DEPOSITO/VIEWER — no incluye "Repositor". El patrón de Fase D (Comercial) evitó tocar el enum: agregó <code>'comercial'</code> a <code>MODULOS</code> y usa <code>roles_custom</code> para dar acceso delegado a un empleado puntual sobre un rol base existente.</div>
+  <ul class="opciones">
+    <li>(a) Mismo patrón que Comercial: agregar <code>'repositores'</code> a <code>MODULOS</code> + rol custom sobre base DEPOSITO/SUPERVISOR (sin tocar el enum)</li>
+    <li>(b) Nuevo rol de negocio en el enum (ej. REPOSITOR), con permisos fijos no configurables</li>
+    <li>(c) Reusar el rol DEPOSITO tal cual, sin distinción — cualquier DEPOSITO ve Repositores igual que hoy ve Picking</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    ¿El repositor necesita ver algo más que sus tareas? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy DEPOSITO tiene acceso amplio (<code>DEPOSITO_ALLOWED</code> en <code>AppLayout.tsx</code>): Inventario, Productos, Alertas, Recepciones, Envíos, Picking, Pedidos — no un acceso acotado a una sola pantalla.</div>
+  <ul class="opciones">
+    <li>(a) Repositor ve SOLO su lista de tareas + historial (nada de Inventario/Productos/Picking completo)</li>
+    <li>(b) Repositor tiene el mismo acceso amplio que DEPOSITO hoy, y Repositores es una pantalla más dentro de ese conjunto</li>
+    <li>(c) Configurable por tenant vía <code>roles_custom</code>, como el resto de los módulos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    ¿Un repositor puede estar en más de una sucursal? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy la RLS por sucursal fija a cada usuario a una única sucursal (<code>auth_user_sucursal()</code>) salvo que tenga <code>puede_ver_todas_sucursales=true</code>.</div>
+  <ul class="opciones">
+    <li>(a) El repositor queda fijo a su sucursal, mismo criterio que Cajero/Depósito hoy</li>
+    <li>(b) Un repositor puede tener asignadas varias sucursales puntuales, sin ser "ve todas" global</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. QUÉ DISPARA UNA TAREA ============================ -->
+<h2>B. Qué dispara una tarea de repositor</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    Origen de la tarea: ¿qué la genera? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy no existe ningún evento (cambio de <code>productos.precio_venta</code>, entrada a un estado con <code>descuento_pct</code>, aprobación de cambio de estado con foto vía mig 331) que cree una tarea o notifique a alguien para actualizar una etiqueta física.</div>
+  <ul class="opciones">
+    <li>(a) Cambio manual de precio de lista de un producto (<code>productos.precio_venta</code>)</li>
+    <li>(b) Un lote/línea entra a un estado con <code>descuento_pct</code> configurado (mig 284) — ej. "Próximo a vencer"</li>
+    <li>(c) Ambos (a) y (b), cada uno genera su propia tarea</li>
+    <li>(d) 100% manual — el DUEÑO/SUPERVISOR crea la tarea a mano, sin trigger automático</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    ¿También dispara tarea el cambio de estado con foto (Fase B, mig 331)? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: cuando un lote entra a un estado <code>requiere_aprobacion=true</code>, el cambio queda pendiente en <code>autorizaciones_inventario</code> (tipo <code>cambio_estado</code>) hasta que un supervisor lo aprueba — es un flujo de auditoría antifraude, hoy no dispara ninguna tarea operativa.</div>
+  <ul class="opciones">
+    <li>(a) Sí — al APROBARSE el cambio de estado, se genera automáticamente una tarea de repositor si ese estado tiene descuento/etiqueta asociada</li>
+    <li>(b) No — son flujos independientes; el cambio de estado con foto queda tal como está, sin tocarlo</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    ¿La reposición física de estante entra en Repositores o sigue siendo WMS? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>wms_tareas.tipo</code> solo acepta <code>picking/replenishment/putaway/conteo</code> (CHECK de la mig 289) — no hay un tipo "reposición de estante" o "cambio de etiqueta". El "reabastecimiento" (replenishment) ya existe pero mueve stock hacia una ubicación <code>tipo_ubicacion='picking'</code> para que otra venta lo consuma, no para reponer una góndola visible al público.</div>
+  <ul class="opciones">
+    <li>(a) Repositores reusa <code>wms_tareas</code>, agregando un tipo nuevo al CHECK (ej. <code>'reposicion_gondola'</code>, <code>'cambio_etiqueta'</code>)</li>
+    <li>(b) Repositores es una tabla 100% independiente de <code>wms_tareas</code>, sin relación con el modelo de picking</li>
+    <li>(c) Repositores solo cubre las etiquetas de precio (no mueve stock físico) — mover stock sigue siendo tarea de Picking/Reabastecimiento tal cual hoy</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Vencimiento sin estado configurado — ¿también dispara tarea? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No — solo lo cubierto en B1/B2</li>
+    <li>(b) Sí, alerta separada "Retirar vencido de góndola" ligada al mismo mecanismo de Alertas centrales</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. CONTENIDO DE LA TAREA ============================ -->
+<h2>C. Contenido de la tarea (qué ve el repositor)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    Campos mínimos de una tarea <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">No existe modelo hoy — precedente más cercano: <code>wms_tareas</code> (producto_id, cantidad, ubicacion_origen_id/destino_id, sucursal_id, prioridad, notas).</div>
+  <ul class="opciones">
+    <li>(a) Producto + sucursal + ubicación destino + motivo (precio nuevo / entra a estado con descuento) — sin cantidad, es una etiqueta, no un movimiento de stock</li>
+    <li>(b) Igual que (a) + precio anterior y precio nuevo explícitos (para que el repositor verifique que puso la etiqueta correcta)</li>
+    <li>(c) Igual que (a) + cantidad de etiquetas a imprimir (si el producto tiene varias unidades visibles en el estante)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    Ubicación exacta en el estante vs. genérica de sucursal <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy no hay ningún campo que diga "este producto se exhibe en la Góndola 3" — <code>disponible_surtido</code> es un booleano por ubicación, no apunta a un punto de exhibición concreto. Depende de cómo se responda D1.</div>
+  <ul class="opciones">
+    <li>(a) Hace falta un campo nuevo (ej. <code>producto_ubicacion_exhibicion</code>) — ningún campo existente alcanza para saber DÓNDE reponer</li>
+    <li>(b) Alcanza con mostrar todas las ubicaciones marcadas como exhibición (ver D1) de la sucursal donde ese producto tiene stock, sin un lugar único fijo</li>
+    <li>(c) Alcanza con texto libre por producto ("ubicación en el local"), cargado a mano una vez</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Prioridad / urgencia de la tarea <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>wms_tareas.prioridad</code> es un entero simple, ordenado DESC en <code>PickingPage.tsx</code>.</div>
+  <ul class="opciones">
+    <li>(a) Mismo criterio simple — entero de prioridad, sin urgencia especial</li>
+    <li>(b) Urgencia automática por proximidad de vencimiento o por "ya se vendió con precio viejo" (riesgo de reclamo)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. UBICACIÓN FÍSICA DE DESTINO ============================ -->
+<h2>D. Ubicación física de destino (<code>disponible_surtido</code>)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    ¿<code>disponible_surtido</code> pasa a usarse como destino POSITIVO de la tarea? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy SIEMPRE se consulta como exclusión: <code>disponible_surtido !== false</code> en <code>VentasPage.tsx</code>/<code>MasivoModal.tsx</code>, <code>disponible_surtido IS NOT FALSE</code> en la RPC de Pedidos (mig 294) — nunca se lee <code>= true</code> para elegir "estas son las ubicaciones donde reponer". Reusarlo así es una reinterpretación del campo, no un uso ya validado en ningún lado del código.</div>
+  <ul class="opciones">
+    <li>(a) Sí — reinterpretar <code>disponible_surtido = true</code> como "ubicación de exhibición/venta al público" y filtrar por eso para elegir el destino de la tarea</li>
+    <li>(b) No — el campo está pensado para excluir del picking automático, no para modelar exhibición; hace falta un concepto nuevo (ver C2-a)</li>
+    <li>(c) Usar <code>tipo_ubicacion = 'picking'</code> en cambio (ya clasifica el tipo físico de la ubicación) en vez de <code>disponible_surtido</code></li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Si hay varias ubicaciones candidatas, ¿cómo elige el sistema cuál mostrar? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Se muestran todas, el repositor elige a criterio</li>
+    <li>(b) Se ordena por <code>prioridad</code> (mismo campo que ya usa Picking)</li>
+    <li>(c) Es obligatorio definir una única ubicación de exhibición por producto (ver C2-a)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    ¿"Ubicación de picking" y "estante visible al público" son lo mismo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el reabastecimiento (<code>wms_tareas.tipo='replenishment'</code>) ya mueve stock hacia <code>tipo_ubicacion='picking'</code> — un concepto pensado para que el motor de venta encuentre el LPN rápido, no necesariamente para que el cliente lo vea físicamente en la góndola.</div>
+  <ul class="opciones">
+    <li>(a) Repositores asume que "picking" y "estante visible" son la misma ubicación (no se distingue)</li>
+    <li>(b) Son conceptos distintos — puede haber una ubicación de picking (para el motor de venta) y otra de exhibición física (para el cliente/repositor), no siempre coinciden</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. CICLO DE VIDA DE LA TAREA ============================ -->
+<h2>E. Ciclo de vida de la tarea</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    Estados de la tarea <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente: <code>wms_tareas.estado</code> (pendiente/en_curso/completada/cancelada).</div>
+  <ul class="opciones">
+    <li>(a) Mismo set — pendiente / en_curso / completada / cancelada</li>
+    <li>(b) Más simple — pendiente / hecha (sin estado intermedio "en curso")</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Asignación a un repositor puntual <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy no existe en ningún lado de WMS: <code>wms_tareas.usuario_asignado_id</code> EXISTE en el schema (FK a <code>users</code>, mig 289) pero el frontend nunca lo lee ni lo escribe — <code>PickingPage.tsx</code> muestra la cola completa a cualquier usuario con acceso a <code>/picking</code>, sin filtrar ni asignar por persona.</div>
+  <ul class="opciones">
+    <li>(a) Asignación explícita: el DUEÑO/SUPERVISOR asigna cada tarea a un repositor puntual, que solo ve las suyas</li>
+    <li>(b) Sin asignación — cola compartida por sucursal, como Picking hoy (cualquier repositor con acceso toma cualquier tarea)</li>
+    <li>(c) Mixto — se puede asignar, pero una tarea sin asignar es visible para todos los repositores de la sucursal</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E3</span><span class="pregunta-titulo">
+    Cómo se marca "completada" <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Un botón simple "Hecho", sin evidencia</li>
+    <li>(b) Requiere foto de la etiqueta ya puesta (mismo patrón de storage que <code>autorizaciones-fotos</code>, mig 331)</li>
+    <li>(c) Requiere escanear el código de barras del producto en el estante (reusa <code>BarcodeScanner</code>, ya usado en Picking) para confirmar que se paró frente al producto correcto</li>
+    <li>(d) Configurable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    ¿Se puede cancelar/reasignar una tarea ya en curso? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Sí, cualquier SUPERVISOR+ puede cancelar/reasignar en cualquier momento</li>
+    <li>(b) No se puede cancelar una vez tomada — solo completarla</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. VISTA INFORMATIVA + HISTORIAL ============================ -->
+<h2>F. Vista informativa + historial</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    ¿Qué es la "vista informativa" que mencionó Fede? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El pedido original de Fede solo dice "vista informativa" sin más detalle — no hay nada escrito para fundamentar el "Hoy" de esta pregunta.</div>
+  <ul class="opciones">
+    <li>(a) Un dashboard simple: cuántas tareas pendientes tiene, cuántas hizo hoy/esta semana</li>
+    <li>(b) Un "cómo hacer la tarea" — instructivo/tutorial estático de cómo reponer o cambiar una etiqueta (contenido fijo, no datos)</li>
+    <li>(c) Ambos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Historial de tareas hechas — ¿alcance? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy no existe ninguna vista de tareas completadas en todo WMS — <code>PickingPage.tsx</code> filtra siempre <code>estado IN ('pendiente','en_curso')</code>; una tarea completada desaparece de la UI y solo queda en <code>wms_tareas</code> con <code>estado='completada'</code> + <code>completed_at</code>, sin pantalla que la muestre.</div>
+  <ul class="opciones">
+    <li>(a) Repositores agrega la primera pantalla de "completadas" de todo WMS — lista simple con fecha, producto, quién la hizo</li>
+    <li>(b) Igual que (a) + filtro por rango de fechas / repositor / sucursal</li>
+    <li>(c) Igual que (b) + exportable (Excel/PDF)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F3</span><span class="pregunta-titulo">
+    ¿El historial es visible solo para el propio repositor o también para su supervisor? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cada repositor ve solo su propio historial</li>
+    <li>(b) SUPERVISOR/DUEÑO ve el historial de todos los repositores de su sucursal</li>
+    <li>(c) Ambos niveles, según rol</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. ETIQUETAS DE CAMBIO DE PRECIO ============================ -->
+<h2>G. Etiquetas de cambio de precio — contenido y formato</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    Contenido de la etiqueta <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Precedente más cercano: <code>CodigoMasivoModal.tsx</code> genera etiquetas GS1 con nombre + código de barras (GTIN/lote/vencimiento/precio vía AIs configurables) — pensada como etiqueta del LPN/producto, no como cartel de precio para el estante.</div>
+  <ul class="opciones">
+    <li>(a) Nombre del producto + precio nuevo, grande y simple (cartel de góndola, sin código de barras)</li>
+    <li>(b) Igual que (a) + código de barras/QR para escaneo del cliente</li>
+    <li>(c) Igual que (a) + precio anterior tachado (oferta visible)</li>
+    <li>(d) Configurable — plantilla editable por tenant</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Cuántas etiquetas por hoja / tamaño <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy hay 2 precedentes con enfoques distintos: <code>etiquetasEnvioPDF.ts</code> genera un PDF (jsPDF) con grilla FIJA configurable (4/6/12 por hoja A4); <code>CodigoMasivoModal.tsx</code> en cambio abre una ventana con HTML/CSS flex-wrap sin cantidad fija — el navegador decide cuántas entran por hoja al imprimir.</div>
+  <ul class="opciones">
+    <li>(a) Mismo patrón que <code>etiquetasEnvioPDF.ts</code> — PDF descargable con grilla fija (elegir cuántas por hoja)</li>
+    <li>(b) Mismo patrón que <code>CodigoMasivoModal.tsx</code> — ventana de impresión del navegador, sin PDF descargable</li>
+    <li>(c) Ambos — según el tamaño de etiqueta el repositor elige</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span><span class="pregunta-titulo">
+    ¿1 etiqueta por producto o varias (una por unidad en exhibición)? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Siempre 1 por producto/tarea, sin importar cuántas unidades hay en el estante</li>
+    <li>(b) Configurable — el repositor indica cuántas necesita al imprimir</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. IMPRESIÓN — RESTRICCIÓN TÉCNICA REAL ============================ -->
+<h2>H. Impresión — restricción técnica real (clave para el alcance de v1)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    Automatización de impresión (horario/impresora programada, sin humano) <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy NO existe ninguna integración con impresoras físicas en todo el repo (ni agente local, ni cola de impresión, ni driver). Los 2 generadores de etiquetas existentes (<code>etiquetasEnvioPDF.ts</code> y <code>CodigoMasivoModal.tsx</code>) SIEMPRE requieren que un humano haga clic en "Imprimir" y confirme el diálogo nativo del navegador/SO — Genesis360 es una SPA que corre en el navegador del usuario, sin backend con acceso a hardware local del negocio. Imprimir SOLO en un horario programado, sin que nadie apriete el botón, requiere un agente/servicio corriendo en la PC del local — eso está fuera del alcance de una SPA web, es un proyecto técnico aparte. Si el pedido de Fede da esto por sentado, hay que exponerle la limitación antes de prometer el alcance.</div>
+  <ul class="opciones">
+    <li>(a) Alcanza con v1 = "genera el PDF/etiquetas, un humano las imprime" (mismo patrón que hoy) — sin automatización de horario</li>
+    <li>(b) Se banca el proyecto aparte de un agente local (app de escritorio/servicio) que sí permita imprimir sin humano, en una fase POSTERIOR a Repositores — no bloquea el lanzamiento de v1</li>
+    <li>(c) No se promete automatización de impresión en absoluto — se saca del alcance del pedido de Fede y se lo avisa explícitamente</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Sin agente local, ¿cómo se entera el repositor de que hay etiquetas para imprimir? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">La tabla <code>notificaciones</code> (<code>user_id</code>/<code>titulo</code>/<code>mensaje</code>/<code>action_url</code>) ya existe y la usan Ventas/Caja/Inventario/LpnAccionesModal — hoy nunca la usa WMS/Picking.</div>
+  <ul class="opciones">
+    <li>(a) Ve la tarea en su lista (Repositores) y desde ahí dispara la impresión manualmente, sin notificación aparte</li>
+    <li>(b) Notificación in-app (<code>notificaciones</code>) cuando se le asigna una tarea nueva</li>
+    <li>(c) Ambos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H3</span><span class="pregunta-titulo">
+    ¿Se imprime tarea por tarea o se junta un lote de etiquetas pendientes? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Tarea por tarea, desde el detalle de cada una</li>
+    <li>(b) Selección múltiple — "imprimir todas las pendientes" en un solo PDF/ventana (como ya permite <code>CodigoMasivoModal</code> con varios LPN a la vez)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ I. INTEGRACIÓN CON WMS/PICKING ============================ -->
+<h2>I. Integración con WMS / Picking existente</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I1</span><span class="pregunta-titulo">
+    ¿Repositores vive dentro de <code>/picking</code> o es una pantalla nueva? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>/picking</code> es <code>supervisorOnly + depositoVisible + avanzadoOnly</code> (OWNER/ADMIN/SUPERVISOR/DEPOSITO, solo en Modo Avanzado) y muestra únicamente picking/reabastecimiento por venta/pedido.</div>
+  <ul class="opciones">
+    <li>(a) Pantalla 100% nueva <code>/repositores</code>, con su propio ítem de menú</li>
+    <li>(b) Un tab más dentro de <code>/picking</code> (reusa la misma pantalla que Picking/Reabastecimiento)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I2</span><span class="pregunta-titulo">
+    ¿Repositores queda gateado por Modo Avanzado como el resto de WMS? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy Picking/Recepciones/Pedidos tienen <code>avanzadoOnly: true</code> — invisibles en Modo Básico.</div>
+  <ul class="opciones">
+    <li>(a) Sí, mismo criterio — solo visible en Modo Avanzado</li>
+    <li>(b) No — Repositores es útil incluso en Modo Básico (negocios chicos también cambian precios y reponen estantes)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">I3</span><span class="pregunta-titulo">
+    Relación con el "reabastecimiento" que ya existe <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>wms_tareas.tipo='replenishment'</code> ya mueve stock bulk→picking cuando falta stock para una venta/pedido — un concepto de logística de VENTA, no de exhibición al público.</div>
+  <ul class="opciones">
+    <li>(a) Son cosas distintas y no se tocan entre sí — Repositores no interfiere con el reabastecimiento de venta</li>
+    <li>(b) Una tarea de Repositores puede DISPARAR un reabastecimiento si el estante quedó sin stock (usa el mismo mecanismo)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ J. NOTIFICACIONES Y ALERTAS ============================ -->
+<h2>J. Notificaciones y alertas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J1</span><span class="pregunta-titulo">
+    Canal de notificación al asignar una tarea <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Solo in-app (<code>notificaciones</code>)</li>
+    <li>(b) In-app + WhatsApp/email (mismo patrón que otros módulos que mandan recordatorios)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">J2</span><span class="pregunta-titulo">
+    Alerta si una tarea queda pendiente demasiado tiempo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Riesgo real: mientras la tarea no se complete, el cliente sigue viendo el precio viejo (o un producto vencido) en el estante. Precedente de patrón: el Badge de Alertas ya es mode-aware.</div>
+  <ul class="opciones">
+    <li>(a) Sí, alerta al SUPERVISOR/DUEÑO si una tarea sigue pendiente más de N horas</li>
+    <li>(b) No hace falta, se confía en el repositor</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ K. REPORTES Y EXPORTACIÓN ============================ -->
+<h2>K. Reportes y exportación</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K1</span><span class="pregunta-titulo">
+    Reportes prioritarios <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Cantidad de tareas completadas por repositor (productividad)</li>
+    <li>(b) Tiempo promedio entre "se disparó la tarea" y "se completó" (riesgo de precio desactualizado en el local)</li>
+    <li>(c) Ambos</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">K2</span><span class="pregunta-titulo">
+    Exportación <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Excel + PDF + CSV, consistente con el resto de los módulos</li>
+    <li>(b) No hace falta exportar, alcanza con la vista en pantalla</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ L. TOP 3 / ABIERTOS ============================ -->
+<h2>L. Top 3 prioritario / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L1</span><span class="pregunta-titulo">
+    ¿Qué 3 decisiones de Repositores hay que cerrar primero para poder empezar a codear? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto se puede resolver en fases posteriores sin bloquear el arranque.</div>
+  <ul class="opciones">
+    <li>(   ) A1 — repositor: rol de negocio nuevo o rol custom sobre uno existente</li>
+    <li>(   ) B1/B3 — qué dispara la tarea y si integra con <code>wms_tareas</code> o es tabla aparte</li>
+    <li>(   ) D1 — reinterpretar <code>disponible_surtido</code> o crear un concepto nuevo de "ubicación de exhibición"</li>
+    <li>(   ) E2 — asignación de tareas por persona (hoy no existe en ningún lado de WMS)</li>
+    <li>(   ) H1 — alcance real de "impresión automática" (v1 con humano vs. proyecto de agente local aparte)</li>
+    <li>(   ) G1/G2 — contenido y formato de la etiqueta de precio</li>
+    <li>(   ) I1/I2 — dónde vive el módulo (independiente vs. tab de Picking) y si es Modo Básico o solo Avanzado</li>
+    <li>(   ) F1 — qué es exactamente la "vista informativa" que pidió Fede</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">L2</span><span class="pregunta-titulo">
+    Comentarios libres / cualquier regla que se nos haya escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio Módulo Repositores (nuevo) · 2026-07-30<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar las fases de implementación (Fase E, backlog Comercial de Fede).
+</div>
+
+</body>
+</html>

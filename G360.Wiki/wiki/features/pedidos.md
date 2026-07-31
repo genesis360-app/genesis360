@@ -2,8 +2,8 @@
 title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
-sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
-updated: 2026-07-28
+sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
+updated: 2026-07-30
 ---
 
 # Módulo Pedidos
@@ -693,6 +693,10 @@ POS:
 
 - **Tier mayorista por volumen** (mig 306) vía `fn_precio_venta_efectivo`, resuelto contra el
   **total pedido** del SKU — entregar en dos tandas no hace perder el precio por volumen.
+  🆕 **Extendido en la mig 330 (EN DEV, sin deploy):** la función ahora replica el mismo algoritmo
+  de bloques de `src/lib/tiers.ts` (tier % + enlace a empaque, backlog Fede 25/7) — un Pedido
+  factura EXACTO igual que la misma venta cargada por el POS. Ver
+  [[wiki/features/precios-tiers-empaque]].
 - **Redondeo del tenant** (H4).
 - **Descuento por estado de inventario** (migs 284-285), prorrateado **por fuente**: cada unidad
   descuenta según el % del estado de SU línea concreta.

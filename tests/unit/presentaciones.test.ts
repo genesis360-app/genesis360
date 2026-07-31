@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   factorBaseDe, filaBase, validarPresentaciones, construirPayload, filasAForm,
-  resumenArbol, presentacionesComoNiveles,
+  resumenArbol, presentacionesComoNiveles, profundidadDe, agruparPorNivel,
   type PresentacionRow, type PresentacionFila,
 } from '@/lib/presentaciones'
 
@@ -51,6 +51,45 @@ describe('factorBaseDe', () => {
       row({ key: 'b', padre_key: 'a', cantidad_padre: '3' }),
     ]
     expect(factorBaseDe(rows[0], rows)).toBeNull()
+  })
+})
+
+// Agrupación visual por nivel del editor (Fede 25/7, punto 4: burbujas violeta + "NB").
+// Puramente de presentación — no cambia el árbol ni el payload que se guarda.
+describe('profundidadDe', () => {
+  it('la base es profundidad 0 (NB)', () => {
+    const rows = arbolLeche()
+    expect(profundidadDe(rows[0], rows)).toBe(0)
+  })
+
+  it('sube un nivel por cada salto de padre, aunque sea por una rama hermana distinta', () => {
+    const rows = arbolLeche()
+    expect(profundidadDe(rows.find(r => r.key === 'c12')!, rows)).toBe(1)
+    expect(profundidadDe(rows.find(r => r.key === 'c10')!, rows)).toBe(1)
+    expect(profundidadDe(rows.find(r => r.key === 'p216')!, rows)).toBe(2)
+    expect(profundidadDe(rows.find(r => r.key === 'p360')!, rows)).toBe(2)
+  })
+})
+
+describe('agruparPorNivel', () => {
+  it('agrupa por profundidad y ordena hermanas de MENOR a MAYOR cantidad de unidades base', () => {
+    const grupos = agruparPorNivel(arbolLeche())
+    expect(grupos.map(g => g.nivel)).toEqual([0, 1, 2])
+    expect(grupos[0].filas.map(r => r.etiqueta)).toEqual(['unidad'])
+    // Caja-10 (factor 10) antes que Caja-12 (factor 12), aunque se cargó después en el array.
+    expect(grupos[1].filas.map(r => r.etiqueta)).toEqual(['Caja-10', 'Caja-12'])
+    expect(grupos[2].filas.map(r => r.etiqueta)).toEqual(['Pallet-216', 'Pallet-360'])
+  })
+
+  it('una línea nueva del mismo tipo de empaque que una ya cargada cae en la misma burbuja', () => {
+    // Simula agregar "Caja-15" ya con Caja-10 en el nivel 1 (mismo padre_key que le asignaría
+    // el auto-match por nombre_empaque_id en el componente).
+    const rows = [
+      ...arbolLeche(),
+      row({ key: 'c15', etiqueta: 'Caja-15', padre_key: 'u', cantidad_padre: '15' }),
+    ]
+    const grupos = agruparPorNivel(rows)
+    expect(grupos[1].filas.map(r => r.etiqueta)).toEqual(['Caja-10', 'Caja-12', 'Caja-15'])
   })
 })
 

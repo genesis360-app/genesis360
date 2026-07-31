@@ -16,7 +16,7 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
 import { agruparPorFamilia, mapearLegacyAFisica, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, type UnidadFisica } from '@/lib/unidadMedidaFisica'
-import { OPERADORES_TIER, type TierOperador } from '@/lib/tiers'
+import { OPERADORES_TIER, type TierOperador, type TierTipoValor } from '@/lib/tiers'
 import { calcularSiguienteSKU } from '@/lib/skuAuto'
 import { motivoBloqueoAtributosVariante, motivoBloqueoCrearVariante, tieneAtributosVariante, type CampoAtributoVariante } from '@/lib/atributosVariante'
 import { ProductoQR } from '@/components/ProductoQR'
@@ -71,7 +71,10 @@ export default function ProductoFormPage() {
   })
   const [showMarketplace, setShowMarketplace] = useState(false)
   const [showMayorista, setShowMayorista] = useState(false)
-  type TierForm = { _key: string; cantidad_minima: string; precio: string; descripcion: string; operador: TierOperador }
+  type TierForm = {
+    _key: string; cantidad_minima: string; precio: string; descripcion: string; operador: TierOperador
+    tipo_valor: TierTipoValor; presentacion_id: string
+  }
   const [tiersForm, setTiersForm] = useState<TierForm[]>([])
   // Stock mínimo por sucursal (solo cuando editando)
   const [stockMinimosSucursal, setStockMinimosSucursal] = useState<Record<string, string>>({})
@@ -197,17 +200,21 @@ export default function ProductoFormPage() {
 
   // Rediseño UoM Fase 2 (mig 304) — precio canónico por unidad BASE. Cargamos la presentación
   // base para etiquetar los campos de precio ("por Unidad"). Ya NO hay ancla por posición.
+  // `id` se usa para el enlace tier↔empaque (Fede 25/7, punto 1, mig 329).
   const { data: presentaciones = [] } = useQuery({
     queryKey: ['producto-presentaciones', id],
     queryFn: async () => {
       const { data } = await supabase.from('producto_presentaciones')
-        .select('orden, etiqueta, factor_base, es_base')
+        .select('id, orden, etiqueta, factor_base, es_base')
         .eq('producto_id', id!).order('orden')
       return (data ?? []) as any[]
     },
     enabled: isEditing && !!tenant,
   })
   const presentacionBase = presentaciones.find((p: any) => p.es_base) ?? null
+  // Solo las NO base tienen sentido para "enlazar a empaque": la base es factor 1, cualquier
+  // cantidad la matchea siempre → no es un multiplicador de nada.
+  const presentacionesEmpaque = presentaciones.filter((p: any) => !p.es_base)
 
   const { data: stockMinimosSucursalData = [] } = useQuery({
     queryKey: ['producto-stock-minimo-sucursal', id],
@@ -307,6 +314,8 @@ export default function ProductoFormPage() {
         precio: String(t.precio),
         descripcion: t.descripcion ?? '',
         operador: (t.operador ?? '>=') as TierOperador,
+        tipo_valor: (t.tipo_valor ?? 'precio_fijo') as TierTipoValor,
+        presentacion_id: t.presentacion_id ?? '',
       })))
       setShowMayorista(true)
     }
@@ -566,6 +575,8 @@ export default function ProductoFormPage() {
                 descripcion: t.descripcion.trim() || null,
                 operador: t.operador,
                 orden: i,
+                tipo_valor: t.tipo_valor,
+                presentacion_id: t.presentacion_id || null,
               }))
             )
             if (tiersErr) throw tiersErr
@@ -1249,47 +1260,70 @@ export default function ProductoFormPage() {
                         <p className="text-xs text-gray-400 dark:text-gray-500 italic">Sin tiers aún. Agregá uno abajo.</p>
                       )}
                       {tiersForm.map((tier, idx) => (
-                        <div key={tier._key} className="flex items-center gap-2">
-                          <select value={tier.operador}
-                            onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, operador: e.target.value as TierOperador } : t))}
-                            className="w-16 px-1 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700"
-                            title="Operador de la regla — se evalúan de arriba hacia abajo, gana la primera que coincide">
-                            {OPERADORES_TIER.map(o => <option key={o.valor} value={o.valor}>{o.valor}</option>)}
-                          </select>
-                          <div className="w-20">
-                            <input type="number" min="1" step="1" onWheel={e => e.currentTarget.blur()}
-                              placeholder="Cant."
-                              value={tier.cantidad_minima}
-                              onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, cantidad_minima: e.target.value } : t))}
-                              className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
+                        <div key={tier._key} className="border border-gray-100 dark:border-gray-700 rounded-lg p-2 space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <select value={tier.operador}
+                              onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, operador: e.target.value as TierOperador } : t))}
+                              className="w-16 px-1 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700"
+                              title="Operador de la regla — se evalúan de arriba hacia abajo, gana la primera que coincide">
+                              {OPERADORES_TIER.map(o => <option key={o.valor} value={o.valor}>{o.valor}</option>)}
+                            </select>
+                            <div className="w-24">
+                              <input type="number" min="1" step="1" onWheel={e => e.currentTarget.blur()}
+                                placeholder={tier.presentacion_id ? 'Múltiplos' : 'Cant.'}
+                                title={tier.presentacion_id ? 'Cantidad de esa presentación (ej: 2 = desde 2 pallets), no de unidades sueltas' : 'Cantidad de unidades base'}
+                                value={tier.cantidad_minima}
+                                onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, cantidad_minima: e.target.value } : t))}
+                                className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
+                            </div>
+                            <select value={tier.tipo_valor}
+                              onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, tipo_valor: e.target.value as TierTipoValor } : t))}
+                              className="w-14 px-1 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700"
+                              title="Precio fijo por unidad, o % de descuento sobre el precio de lista">
+                              <option value="precio_fijo">$</option>
+                              <option value="pct">%</option>
+                            </select>
+                            <div className="relative flex-1">
+                              <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">{tier.tipo_valor === 'pct' ? '%' : '$'}</span>
+                              <input type="number" min="0" max={tier.tipo_valor === 'pct' ? 100 : undefined} step="0.01" onWheel={e => e.currentTarget.blur()}
+                                placeholder={tier.tipo_valor === 'pct' ? 'Desc. %' : 'Precio'}
+                                value={tier.precio}
+                                onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, precio: e.target.value } : t))}
+                                className="w-full pl-6 pr-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
+                            </div>
+                            <button type="button" onClick={() => setTiersForm(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-red-400 hover:text-red-600 flex-shrink-0 transition-colors">
+                              <Trash2 size={15} />
+                            </button>
                           </div>
-                          <div className="relative flex-1">
-                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
-                            <input type="number" min="0" step="0.01" onWheel={e => e.currentTarget.blur()}
-                              placeholder="Precio"
-                              value={tier.precio}
-                              onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, precio: e.target.value } : t))}
-                              className="w-full pl-6 pr-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
+                          <div className="flex items-center gap-2">
+                            <div className="flex-1">
+                              <input type="text" placeholder="Etiqueta (ej: Docena)"
+                                value={tier.descripcion}
+                                onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, descripcion: e.target.value } : t))}
+                                className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
+                            </div>
+                            {presentacionesEmpaque.length > 0 && (
+                              <div className="flex-1">
+                                <select value={tier.presentacion_id}
+                                  onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, presentacion_id: e.target.value } : t))}
+                                  title="Enlazar a un empaque: el descuento se multiplica automático para cualquier múltiplo exacto (1, 2, 3…), sin cargar un tier por cada uno"
+                                  className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700">
+                                  <option value="">Sin enlazar a empaque</option>
+                                  {presentacionesEmpaque.map((p: any) => <option key={p.id} value={p.id}>{p.etiqueta}</option>)}
+                                </select>
+                              </div>
+                            )}
                           </div>
-                          <div className="flex-1">
-                            <input type="text" placeholder="Etiqueta (ej: Docena)"
-                              value={tier.descripcion}
-                              onChange={e => setTiersForm(prev => prev.map((t, i) => i === idx ? { ...t, descripcion: e.target.value } : t))}
-                              className="w-full px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700" />
-                          </div>
-                          <button type="button" onClick={() => setTiersForm(prev => prev.filter((_, i) => i !== idx))}
-                            className="text-red-400 hover:text-red-600 flex-shrink-0 transition-colors">
-                            <Trash2 size={15} />
-                          </button>
                         </div>
                       ))}
                       <button type="button"
-                        onClick={() => setTiersForm(prev => [...prev, { _key: crypto.randomUUID(), cantidad_minima: '', precio: '', descripcion: '', operador: '>=' }])}
+                        onClick={() => setTiersForm(prev => [...prev, { _key: crypto.randomUUID(), cantidad_minima: '', precio: '', descripcion: '', operador: '>=', tipo_valor: 'precio_fijo', presentacion_id: '' }])}
                         className="flex items-center gap-1.5 text-xs text-accent-text hover:underline transition-colors">
                         <Plus size={13} /> Agregar tier
                       </button>
                       <p className="text-xs text-gray-400 dark:text-gray-500">
-                        Se evalúan de arriba hacia abajo (gana el primero que coincide con la cantidad total del producto en la venta). Poné los umbrales más grandes arriba. Usá <strong>=</strong> para un precio exacto (ej. un pallet completo).
+                        Se evalúan de arriba hacia abajo (gana el primero que coincide con la cantidad total del producto en la venta). Poné los umbrales más grandes arriba. Usá <strong>=</strong> para un precio exacto (ej. un pallet completo). El <strong>%</strong> siempre se calcula sobre el precio de lista, nunca sobre uno ya rebajado. Enlazar a un empaque hace que el tier compita contra los demás descuentos y se multiplique solo para múltiplos completos (1, 2, 3 pallets…) — no hace falta cargar un tier por cada uno.
                       </p>
                       {tiersForm.length > 0 && parseFloat(form.precio_venta) > 0 && (
                         <p className="text-xs text-gray-400 dark:text-gray-500">

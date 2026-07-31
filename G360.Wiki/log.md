@@ -6,6 +6,253 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-30] update | 🟡 EN CURSO — backlog Fede 25/7: relevamiento de Fase E (Repositores) generado
+
+**Continuación de la MISMA sesión** que cerró las Fases F, A, B, C y D (entradas siguientes, más
+abajo). Sigue sin bump de `APP_VERSION`, sin deploy a PROD. PROD sigue en v1.152.0.
+
+**Fase E (módulo Repositores) no se implementa todavía** — el pedido original de Fede era un único
+punto sin detalle ("Módulo Repositores (nuevo)"), así que en vez de inventar alcance se generó el
+relevamiento: **`relevamiento-repositores-reglas-negocio.html`** (raíz del repo, mismo patrón que
+Clientes/Ventas/Compras/Envíos/RRHH/Caja/Conteos/Pedidos/Inventario/Unidades de medida), 35
+preguntas en 12 secciones (A-L), 33 `NUEVO` + 2 `CAMBIO`.
+
+- **Fundamentado en código real, no en supuestos**: se inspeccionó `wms_tareas` (mig 289 — existe
+  `usuario_asignado_id` en el schema pero ningún frontend lo usa; `PickingPage.tsx` filtra siempre
+  `estado IN (pendiente, en_curso)`, no existe una vista de tareas completadas en todo WMS),
+  `disponible_surtido` (grep completo del repo — hoy es EXCLUSIVAMENTE un filtro de exclusión en
+  ventas/picking, nunca un destino positivo de una tarea; distinto de `tipo_ubicacion`), los dos
+  generadores de etiquetas imprimibles que ya existen (`etiquetasEnvioPDF.ts` con jsPDF/grilla fija,
+  `CodigoMasivoModal.tsx` con `window.print()`), y el patrón `roles_custom`/`MODULOS` que usó la
+  Fase D para acceso delegable sin tocar el enum de roles.
+- **🛑 Restricción técnica expuesta explícitamente, no resuelta unilateralmente (pregunta H1)**: la
+  automatización de impresión (horario/impresora programada, sin que un humano apriete "imprimir")
+  **no es viable desde una SPA de navegador** sin un agente/servicio local — hoy no hay ninguna
+  integración con impresoras físicas en el código (`grep "impresora"` sin resultados en `src/`). Se
+  dan 3 alcances posibles para que GO/Fede elijan (incluido "genera el PDF, imprime un humano" como
+  opción de v1), en vez de descartar el punto 3 del pedido original por cuenta propia.
+
+**Nada implementado todavía de Fase E** — el documento queda en blanco para que GO lo responda
+offline con Fede. Sin build/tests nuevos (no se tocó código de la app).
+
+**Estado git:** todo en `dev`, nada commiteado. `relevamiento-repositores-reglas-negocio.html` sin
+trackear (no forma parte de `G360.Wiki/`, mismo criterio que el resto de los relevamientos en la raíz
+del repo). Ver [[wiki/features/precios-tiers-empaque]] → Fase E.
+
+## [2026-07-30] update | 🟡 EN CURSO — backlog Fede 25/7: Fase D (módulo Comercial) completa, EN DEV sin deploy
+
+**Continuación de la MISMA sesión** que ya cerró las Fases F, A, B y C (entradas siguientes, más
+abajo). Sigue sin bump de `APP_VERSION`, sin deploy a PROD. PROD sigue en v1.152.0. Sin migración
+nueva — Fase D es 100% frontend.
+
+**✅ Fase D — módulo Comercial: consolida Combos + Cupones en una superficie DELEGABLE** (a
+diferencia de Configuración, exclusiva del DUEÑO), y suma una vista de "qué está en descuento y
+hasta cuándo":
+
+- **`src/pages/ComercialPage.tsx`** (nuevo, ruta `/comercial`): 3 tabs — Combos, Cupones,
+  Descuentos vigentes. Combos y Cupones se **MUEVEN** desde Config → Ventas → Descuentos y combos
+  (mismo modelo de datos y queries — relocalización de UI, no rediseño). "Descuentos vigentes" es
+  nueva: lista el inventario que HOY está en un estado con `descuento_pct` configurado
+  (Config → Inventario → Estados, esa config no se movió) y hasta cuándo (vencimiento del lote).
+- **Acceso**: nav item nuevo `supervisorOnly` (DUEÑO/SUPERVISOR/SUPER_USUARIO por default). Para
+  delegar a un empleado puntual sin darle el resto de los módulos de supervisor, el DUEÑO le asigna
+  el rol base SUPERVISOR y crea un rol custom "Comercial" (Usuarios → Roles, se agregó `'comercial'`
+  a la lista de módulos configurables) que oculta todo lo demás. **A propósito NO se le dio acceso a
+  ADMIN**: en Genesis360 `rol='ADMIN'` es STAFF interno de la plataforma (acceso cross-tenant, mig
+  254), no un rol de negocio del tenant — el "Admin" que menciona el pedido de Fede se cubre con
+  DUEÑO/SUPERVISOR.
+- **🛑 Bug real encontrado y corregido al portar el código**: el `addCombo` original mandaba
+  `sucursal_id: sucursalId || null` para scopear el combo nuevo a la sucursal activa — se perdió en
+  el primer port a `ComercialPage.tsx`. Cazado comparando campo por campo contra el `ConfigPage.tsx`
+  original antes de dar la fase por cerrada (no fue una reescritura a ciegas).
+- **`ConfigPage.tsx`**: se borraron las cards de Combos y Cupones (código muerto ahí); queda un link
+  "Combos y Cupones se movieron al módulo Comercial →" en la sub-tab Descuentos, y se conserva
+  "Límites de descuento por rol" (eso sí sigue siendo exclusivo del DUEÑO).
+
+**Verde:** tsc · build · suite unit completa (89 archivos, 1416 tests). Sin migración — no aplica
+`migration-reviewer`. **Queda pendiente de la misma iniciativa: Fase E (módulo Repositores)**, la
+última.
+
+**Estado git:** todo en `dev`, nada commiteado. Ver [[wiki/features/comercial]] (nuevo),
+[[wiki/features/precios-tiers-empaque]].
+
+## [2026-07-30] update | 🟡 EN CURSO — backlog Fede 25/7: Fase C (cupones, mig 332) completa, EN DEV sin deploy
+
+**Continuación de la MISMA sesión** que ya cerró las Fases F, A y B (entrada siguiente, más abajo).
+Sigue sin bump de `APP_VERSION`, sin deploy a PROD. PROD sigue en v1.152.0.
+
+**✅ Fase C — cupones: descuento FIJO en $ (nunca %) sobre el TOTAL de la venta, independiente de
+cualquier descuento de producto ya aplicado en el carrito (punto 2 del pedido de Fede, módulo
+Comercial):** se crean con código único alfanumérico, hasta ~100 por campaña, vigencia desde/hasta,
+nombre + motivo, e historial de cuántos se usaron y cuánto $ generaron.
+
+- **Mig 332**: tablas nuevas `cupones` (campaña — nombre, motivo, `monto` fijo CHECK > 0, vigencia
+  NOT NULL, `activo`, `created_by`) y `cupones_codigos` (código único **por tenant**,
+  `UNIQUE(tenant_id, codigo)` — no global, porque dos negocios distintos pueden reusar el mismo texto
+  de código sin problema, RLS los aísla —, `usado_en_venta_id` FK a `ventas` `ON DELETE SET NULL`,
+  `usado_at`). `ventas` gana `cupon_codigo_id` (con **`UNIQUE`**, sugerencia del `migration-reviewer`
+  para blindar a nivel de constraint que un mismo código no quede aplicado a dos ventas) +
+  `cupon_monto` (snapshot del $ descontado, preserva lo que se cobró aunque el cupón cambie después,
+  Regla #0). RLS tenant-scoped en ambas tablas + `REVOKE ALL FROM PUBLIC, anon` (patrón de la
+  mig 298).
+- **🔒 Decisión de diseño consultada con el `migration-reviewer` ANTES de escribir código, no un
+  gap:** no se construyó una RPC dedicada de canje — el
+  `UPDATE cupones_codigos SET usado_en_venta_id = X WHERE id = Y AND usado_en_venta_id IS NULL` es
+  atómico por sí solo a nivel de fila (Postgres serializa el UPDATE), alcanza con chequear que afectó
+  1 fila. Se acepta el trade-off de una ventana TOCTOU sub-segundo sobre `activo`/vigencia
+  (irrelevante en un POS de un cajero por terminal, no un e-commerce de alta concurrencia).
+- **`src/lib/cupones.ts`** (11 tests nuevos, `tests/unit/cupones.test.ts`): `cuponVigente` (mismo
+  criterio que `comboVigente`), `montoDescuentoCupon` (nunca descuenta más que el total),
+  `generarCodigosCupon`/`generarCodigoCupon` (alfabeto de 32 símbolos sin ambiguos — sin O/0, sin
+  I/1 —, `crypto.getRandomValues`, clamp a `CUPON_CODIGOS_MAXIMO = 100`).
+- **UI admin en `ConfigPage.tsx`** (Config → Ventas → Descuentos y combos): card "Cupones" debajo de
+  Combos — vive ahí **temporalmente** (mismo criterio que Combos hoy) hasta que exista el módulo
+  Comercial dedicado (Fase D). Alta genera N códigos de una; lista de campañas con códigos usados/
+  total, $ generado, activar/desactivar, copiar todos los códigos, panel expandible por código.
+- **Canje en el POS (`VentasPage.tsx`)**: input en Descuento general del carrito → valida (existe,
+  no usado, cupón activo+vigente) → línea propia en el resumen ("🎟 Cupón X"). Se resta **ANTES** del
+  descuento por método de pago — así el % de un medio de pago se calcula sobre lo que el cliente
+  REALMENTE va a pagar después del cupón. Al confirmar: re-valida en fresco ANTES de crear la venta
+  (por si pasó tiempo o alguien más lo usó) → si ya no es válido, corta antes de cobrar; el UPDATE
+  atómico post-venta que marca el código usado, si afecta 0 filas por una carrera perdida, avisa con
+  un toast en vez de deshacer una venta ya asentada en caja.
+- **🛑 Prorrateo fiscal (Regla #0)**: `hayDescGlobal` (dispara `prorratearDescuentoGlobal`, que
+  reparte el descuento global sobre `venta_items` para que factura/NC/Libro IVA sumen EXACTO lo que
+  el cliente pagó) ahora incluye el monto del cupón — sin esto, una venta con SOLO cupón se hubiera
+  facturado sin ese descuento, mismo bug que ese código ya previene para los demás descuentos
+  globales.
+- **Alcance**: solo el POS — no se tocó Pedidos (su config ya aclara que no aplica combos ni lista de
+  precios por canal; cupones tampoco se extendió ahí, coherente con esa limitación documentada).
+
+**Verde:** tsc · build · suite unit completa. Migración revisada por `migration-reviewer` antes de
+aplicarse en DEV. **Quedan pendientes de la misma iniciativa:** Fase D (módulo Comercial), Fase E
+(módulo Repositores).
+
+**Estado git:** todo en `dev`, nada commiteado. Migraciones 328-332 aplicadas SOLO en DEV. Ver
+[[wiki/features/precios-tiers-empaque]] → Fase C, [[wiki/database/migraciones]].
+
+## [2026-07-30] update | 🟡 EN CURSO — backlog Fede 25/7: Fase B (aprobación de cambio de estado con foto, mig 331) completa, EN DEV sin deploy
+
+**Continuación de la MISMA sesión** que ya cerró las Fases F y A (entrada siguiente, más abajo).
+Sigue sin bump de `APP_VERSION`, sin deploy a PROD. PROD sigue en v1.152.0.
+
+**✅ Fase B — aprobación de cambio de estado con foto, control anti-fraude interno (punto 2 del
+pedido de Fede, 🛑 INVENTARIO):** cuando un empleado cambia un producto/lote a un estado con
+**impacto económico** (Dañado, Vencido, Eliminado...), el cambio ya no se aplica directo — queda
+**pendiente** hasta que un supervisor lo aprueba, con una **foto tomada en el momento** (no de
+galería) como evidencia.
+
+- **Mig 331**: `estados_inventario.requiere_aprobacion` (boolean, default false), **independiente**
+  de `descuento_pct` (mig 284) — un estado puede requerir aprobación sin tener descuento asociado
+  (ej. "Eliminado" da de baja stock pero no rebaja precio). `'cambio_estado'` nuevo en el CHECK de
+  `autorizaciones_inventario.tipo` (mismo patrón que la mig 103 con `bulk_edit`). Bucket de Storage
+  privado nuevo `autorizaciones-fotos` — a diferencia de `etiquetas-envios` (sin scoping), SÍ se
+  scopea por tenant vía `storage.foldername(name)[1]` (mismo criterio que `certificados-afip`) por
+  ser fotos de fraude interno, más sensibles — hallazgo y sugerencia del propio `migration-reviewer`
+  antes de aplicar en DEV.
+- **Config → Inventario → Estados:** toggle nuevo (ícono de escudo) en "Permisos por estado",
+  independiente del de "% de descuento automático" ya existente.
+- **`LpnAccionesModal.tsx`** (cambio de UN LPN): si el estado elegido requiere aprobación, pide la
+  foto (cámara directa, `capture="environment"`, no permite galería), el botón pasa a "Enviar a
+  aprobación", y un diálogo explícito avisa antes de confirmar que se va a notificar al supervisor.
+  Al guardar: sube la foto, crea la autorización `cambio_estado` (`estado_anterior_id`/
+  `estado_nuevo_id`/`foto_path`), notifica a DUEÑO/SUPERVISOR/SUPER_USUARIO, y el `estado_id` NO
+  cambia hasta la aprobación. Convive sin conflicto con el gate de CANTIDAD ya existente (mig 228).
+- **🛑 Hallazgo de seguridad de la misma sesión, corregido:** el cambio de estado **masivo**
+  (`bulkCambiarEstado` en `InventarioPage.tsx`) escribía `estado_id` directo sin pasar por NINGÚN
+  gate — un bypass real del control, tanto del nuevo como del de cantidad. Cerrado con el mismo
+  patrón (una foto para todo el lote, una autorización con `datos_cambio.linea_ids`). Verificado con
+  grep en todo `src/` que no queda otro punto de escritura directa a `inventario_lineas.estado_id`
+  sin gate (había un tercer mutation, `cambiarEstadoLinea`, pero está muerto, sin call sites).
+- **Tab Autorizaciones:** tipo `cambio_estado`, color violeta, "Estado: X → Y" (o "N LPN(s) → Y"
+  para el caso masivo) + botón "Ver foto" (URL firmada, 5 min). Aprobar aplica el `estado_id` real;
+  rechazar no aplica nada.
+- **Alcance:** solo Inventario — NO se tocó Ventas/POS ni Pedidos.
+
+**Verde:** tsc · build · suite unit completa. Migración revisada por `migration-reviewer` antes de
+aplicarse en DEV. **Quedan pendientes de la misma iniciativa:** Fase C (cupones), Fase D (módulo
+Comercial), Fase E (módulo Repositores).
+
+**Estado git:** todo en `dev`, nada commiteado. Migraciones 328-331 aplicadas SOLO en DEV. Ver
+[[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto",
+[[wiki/features/precios-tiers-empaque]], [[wiki/database/migraciones]].
+
+## [2026-07-30] update | 🟡 EN CURSO — backlog Fede 25/7 (descuentos empaque/pallet + Comercial + Repositores), Fases F y A completas, EN DEV sin deploy
+
+**No es cierre de sesión ni de feature — hay más fases por delante de la MISMA iniciativa.**
+PROD sigue en v1.152.0 sin cambios, sin bump de `APP_VERSION`, nada commiteado (`git status`:
+7 archivos modificados + migraciones 328/329/330 nuevas, sin trackear).
+
+Fede (socio, cofundador) mandó el 25/7 un documento con **6 decisiones de negocio** + **1 regla
+transversal** de prioridad de descuentos. Plan de fases acordado: **F** (quick wins) → **A** (motor
+de precio de tiers) → **B** (aprobación con foto) → **C** (cupones) → **D** (módulo Comercial) →
+**E** (módulo Repositores). Esta sesión cerró **F y A**; **B/C/D/E siguen enteramente pendientes**.
+Página nueva [[wiki/features/precios-tiers-empaque]] con el detalle completo.
+
+**✅ Fase F — 3 quick wins (sin Regla #0, puro UI/informativo), puntos 4/5/6 del pedido:**
+- Color cian para las unidades de medida BASE en Config → Inventario → Unidades (se leían como
+  deshabilitadas siendo en realidad fijas/protegidas). `ConfigPage.tsx`.
+- **Mig 328**: `unidades_medida.tipo_empaque` (texto libre, SIN CHECK a propósito — lista abierta,
+  mismo criterio que `combos.descuento_tipo`) + backfill de Caja/Pallet/Unidad. Selector nuevo en
+  Config → Inventario → Empaque. **Puramente informativo, sin función técnica** — no se cruza con
+  el enlace tier↔empaque de la Fase A (esa usa `producto_presentaciones.id`, tabla distinta).
+- `PresentacionesEditor.tsx` agrupa las líneas de Estructura en burbujas visuales por **NIVEL**
+  (profundidad respecto de la base: "NB · Nivel Base" / "Nivel 1" / "Nivel 2"...), hermanas
+  ordenadas de menor a mayor cantidad de unidades base; una línea nueva con el mismo tipo de
+  empaque que otra ya cargada se ubica automático como hermana en vez de colgar del default viejo.
+  Lógica pura nueva `profundidadDe`/`agruparPorNivel` en `src/lib/presentaciones.ts` + tests en
+  `tests/unit/presentaciones.test.ts`. 100% visual, sin cambio de modelo de datos.
+
+**✅ Fase A — motor de precio de tiers (INCREMENTAL, decisión explícita de GO), punto 1 del pedido
+("el caso del pallet") — 🛑 PLATA:** un tier mayorista se enlaza a una línea de empaque y el
+descuento se multiplica automático para cualquier múltiplo exacto (1, 2, 3 pallets...), sin cargar
+un tier por cada uno. **Mantiene el modelo de capas actual del POS** (tier fija el precio,
+combo/descuento por estado siguen restando encima — eso NO se tocó).
+- **Mig 329** (`producto_precios_mayorista`): `tipo_valor` ('precio_fijo' default | 'pct' — % sobre
+  el precio de LISTA, nunca sobre uno ya rebajado) + `presentacion_id` (FK nullable a
+  `producto_presentaciones`, `ON DELETE SET NULL`). **Trigger nuevo
+  `trg_ppm_presentacion_mismo_producto`** (hallazgo del `migration-reviewer`): el FK solo no impide
+  enlazar la presentación de OTRO producto/tenant, porque los checks de FK no pasan por RLS.
+- **Mig 330**: reescribe `fn_precio_venta_efectivo` (la usa Pedidos) con el mismo algoritmo —
+  verificado con datos REALES de DEV que da resultado IDÉNTICO al de antes para todos los tiers
+  existentes hoy (ninguno tiene `presentacion_id` todavía).
+- Lógica pura nueva en `src/lib/tiers.ts`: `precioUnitarioDeTier`, `resolverBloquesTier` (separa el
+  carrito en bloque-de-empaque + resto suelto, compitiendo contra el mejor tier normal) y
+  `precioBlendedTier` (promedio ponderado que preserva la plata TOTAL exacta sin importar en
+  cuántas líneas del carrito esté repartida la cantidad del SKU). **28 tests nuevos**
+  (`tests/unit/tiers.test.ts`), incluido el caso exacto de Fede: 1 pallet de 2000u + 500 sueltas =
+  $230.000 total, blended $92/u.
+- `ProductoFormPage.tsx`: selector $/% + "enlazar a empaque" (solo si el producto tiene
+  presentaciones más allá de la base). `VentasPage.tsx`: `tiersMayoristaMap` trae `tipo_valor` +
+  `factor_base` de la presentación enlazada (embed de PostgREST verificado con curl real contra
+  DEV); `precioTierBase` usa `precioBlendedTier` — para CUALQUIER tier de hoy (sin enlace) da
+  EXACTO el mismo resultado que antes.
+- **Verificado antes de tocar nada:** 0 productos hoy con combo activo + estado-con-descuento
+  simultáneos; en PROD solo 1 producto tiene tiers cargados (3 tiers) — el "cambio de modelo" no
+  altera ningún comportamiento real hoy.
+
+**🟡 Diferido a propósito (decisión de GO, paso aparte):** la regla transversal completa de Fede
+("tier/empaque/combo/estado compiten, gana el mejor precio, nunca se acumulan") pide que los 4 se
+calculen cada uno independiente desde el precio de lista y compita el mejor — hoy el POS los apila
+en capas (tier fija un precio, combo/estado restan ENCIMA de ese precio ya ajustado). Es un cambio
+de arquitectura grande (toca el auto-combo del `useEffect` que reescribe el carrito, el margen de
+`RentabilidadPage`, el prorrateo fiscal, y Pedidos) — se aborda aparte con verificación e2e en
+navegador antes de tocar el modelo completo de composición de precio.
+
+**🔴 Siguen enteramente pendientes, sin construir (misma iniciativa, NO cerrar el tema):** Fase B
+(aprobación con foto para el descuento por estado), Fase C (cupones), Fase D (módulo Comercial,
+consolida B+C), Fase E (módulo Repositores, nuevo, sin relevar en detalle todavía).
+
+**Verde:** tsc · build · suite unit completa (incluye los tests nuevos de `tiers.ts` y
+`presentaciones.ts`). Cada migración pasó por el subagente `migration-reviewer` ANTES de aplicarse
+en DEV (`gcmhzdedrkmmzfzfveig`).
+
+**Estado git:** todo en `dev`, nada commiteado (no se pidió). Migraciones 328-330 aplicadas SOLO en
+DEV. PROD sigue v1.152.0 sin tocar. Ver [[wiki/features/precios-tiers-empaque]],
+[[wiki/features/estructuras-udm]], [[wiki/database/migraciones]].
+
+---
+
 ## [2026-07-29] deploy | ✅ v1.152.0 EN PROD — 🗑️ ningún popup nativo del navegador queda en la app + 🧹 catálogo de Empaque limpio (mig 327)
 
 GO reportó un hallazgo puntual mientras se cerraba el deploy de v1.151.0: "no quiero ningún popup

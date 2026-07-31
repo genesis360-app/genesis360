@@ -1,9 +1,9 @@
 ---
 title: Inventario y Stock
 category: features
-tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293]
-updated: 2026-07-22
+tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude]
+sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331]
+updated: 2026-07-30
 ---
 
 # Inventario y Stock
@@ -35,7 +35,7 @@ Toda unidad de stock es una `inventario_lineas` identificada por:
 5. **Kits** — CRUD recetas, ejecutar kitting/des-kitting
 6. **Conteos** — conteo por ubicación o producto con ajuste automático
 7. **Historial** — movimientos con filtros fecha/cat/tipo/motivo (badge "Traslado" ámbar para tipo `traslado`)
-8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO
+8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO + cambios de estado con foto (🟡 EN DEV, mig 331, ver más abajo)
 9. **Tareas WMS** (✅ EN PROD desde v1.144.0, migs 289-291) — vista de escritorio para el DUEÑO de las tareas de picking/reabastecimiento generadas; link directo a la ruta mobile `/picking`. Ver [[wiki/features/wms]] → "Fase 3"
 
 ---
@@ -120,6 +120,89 @@ DEPOSITO no puede ejecutar cambios directamente — quedan pendientes de aprobac
 - Cards con tipo, producto/SKU, LPN, datos del cambio, solicitante, fecha
 - **Aprobar** → ejecuta acción + inserta movimiento + marca aprobada
 - **Rechazar** → motivo inline
+
+---
+
+## Aprobación de cambio de estado con foto — control anti-fraude (🟡 EN DEV, mig 331 — Fase B backlog Fede 25/7)
+
+> 🟡 **Fase B** de la iniciativa de Fede del 25/7/2026 (punto 2 de su pedido) — panorama completo de
+> las 6 fases en [[wiki/features/precios-tiers-empaque]]. **Solo Inventario** — no toca Ventas/POS
+> ni Pedidos. Sin deploy a PROD, sin bump de `APP_VERSION`.
+
+Cuando un empleado cambia un producto/lote a un **estado con impacto económico** (ej. Dañado,
+Vencido, Eliminado), el cambio ya no se aplica directo: queda **pendiente** hasta que un supervisor
+lo aprueba, y el empleado tiene que adjuntar una **foto tomada en el momento** (no de galería) como
+evidencia.
+
+### Modelo de datos (mig 331)
+
+- **`estados_inventario.requiere_aprobacion`** (boolean, default `false`) — **independiente** de
+  `descuento_pct` (mig 284, ver [[wiki/features/ventas-pos]] → "Descuento automático por estado de
+  inventario"): un estado puede requerir aprobación sin tener descuento asociado (ej. "Eliminado" da
+  de baja stock pero no rebaja precio), y viceversa.
+- **`'cambio_estado'`** nuevo en el CHECK de `autorizaciones_inventario.tipo` — mismo patrón que la
+  mig 103 agregando `bulk_edit`.
+- Bucket de Storage privado nuevo **`autorizaciones-fotos`**. A diferencia de `etiquetas-envios`
+  (sin scoping por tenant), este SÍ se scopea vía `storage.foldername(name)[1]` — mismo criterio que
+  `certificados-afip` — porque son fotos de evidencia de fraude interno, más sensibles. Hallazgo y
+  sugerencia del propio subagente `migration-reviewer`, aplicado antes de tocar DEV. Solo imágenes,
+  5MB máx.
+
+### Config → Inventario → Estados → sub-tab "Estados"
+
+Columna/toggle nueva en la grilla **"Permisos por estado"** (ícono de escudo `ShieldCheck`, rojo
+cuando está activo) para marcar qué estados requieren aprobación + foto — **independiente** del
+toggle de "% de descuento automático" que ya existía ahí (mig 284).
+
+### Cambio de UN LPN (`LpnAccionesModal.tsx`, tab Editar)
+
+Si el estado elegido tiene `requiere_aprobacion=true` y es distinto del actual:
+- Aviso rojo pidiendo la foto — `<input type="file" accept="image/*" capture="environment">`,
+  cámara directa, no permite elegir de galería.
+- El botón pasa a decir **"Enviar a aprobación"**.
+- Antes de confirmar, un diálogo explícito (`useConfirm`) avisa que se va a notificar al supervisor.
+- Al guardar: la foto se sube al bucket con path `${tenant_id}/${linea_id}-timestamp.ext`, se crea
+  una fila en `autorizaciones_inventario` (tipo `cambio_estado`, con `estado_anterior_id` /
+  `estado_nuevo_id` / `foto_path` en `datos_cambio`), se notifica por `notificaciones` a
+  DUEÑO/SUPERVISOR/SUPER_USUARIO, y **`estado_id` de la línea NO cambia** hasta que se aprueba.
+- Convive sin conflicto con el gate de aprobación de **CANTIDAD** que ya existía (mig 228,
+  `tenants.ajuste_autorizacion_roles`) — pueden pedir aprobación los dos a la vez, cada uno con su
+  propia fila de `autorizaciones_inventario`.
+- ⚠ **A diferencia del gate de cantidad** (que solo aplica a los roles configurados en
+  `ajuste_autorizacion_roles`), este gate **no depende del rol de quien pide el cambio** — el
+  control vive en el ESTADO destino, no en quién lo pide: cualquier usuario, incluido el DUEÑO, que
+  cambie a un estado marcado `requiere_aprobacion` genera la misma solicitud pendiente.
+
+### 🛑 Hallazgo de seguridad de la misma sesión: el cambio MASIVO era un bypass total
+
+El cambio de estado **masivo** (selección múltiple de LPNs en la tabla de Inventario → botón
+"Cambiar estado", mutation `bulkCambiarEstado` en `InventarioPage.tsx`) escribía `estado_id`
+directo sin pasar por NINGÚN gate — ni el nuevo (Fase B) ni el viejo (cantidad, mig 228). Un
+empleado podía saltarse todo el control con solo elegir el LPN desde la tabla en vez de abrir el
+modal de acciones.
+
+Cerrado con el mismo patrón: si el estado destino requiere aprobación, se sube **una** foto para
+todo el lote, se crea **una** autorización `cambio_estado` con
+`datos_cambio: {linea_ids: [...], estado_nuevo_id, foto_path}` (mismo shape que ya usa `bulk_edit`
+para lotes de LPNs, mig 103) y ningún LPN cambia hasta la aprobación. Al aprobar, la lógica
+distingue el caso single (`aut.linea_id`) del caso batch (`aut.datos_cambio.linea_ids`) para aplicar
+el `estado_id` real a una línea o a varias.
+
+**Verificado con grep en todo `src/`** que no queda ningún otro punto de escritura directa a
+`inventario_lineas.estado_id` sin gate — había un tercer mutation, `cambiarEstadoLinea`, pero está
+**muerto** (sin ningún call site); no se tocó.
+
+### Tab Autorizaciones (Inventario)
+
+Tipo nuevo `cambio_estado`, color **violeta** (distinto de `ajuste_*` naranja, `bulk_edit` azul,
+`eliminar_*` rojo). Muestra "Estado: `X` → `Y`" (o "`N` LPN(s) → `Y`" para el caso masivo) + botón
+**"Ver foto"** (URL firmada del bucket `autorizaciones-fotos`, 5 min de validez). Al **aprobar**,
+recién ahí se aplica `estado_id` real (a una línea o a varias, según el shape). Al **rechazar**, no
+se aplica nada — mismo comportamiento que los demás tipos ya existentes.
+
+**Alcance de esta fase:** solo Inventario (cambio de estado de un LPN/lote). No se tocó Ventas/POS
+ni Pedidos. **Verde:** tsc · build · suite unit completa. Migración revisada por `migration-reviewer`
+antes de aplicarse en DEV.
 
 ---
 
@@ -518,7 +601,10 @@ variantes" (SKU separado). Detalle completo: [[wiki/features/atributos-variante]
 
 ## Links relacionados
 
-- [[wiki/features/ventas-pos]]
+- [[wiki/features/ventas-pos]] — "Descuento automático por estado de inventario" (mig 284/285, la
+  otra cara de `estados_inventario` — descuento en vez de aprobación)
+- [[wiki/features/precios-tiers-empaque]] — panorama completo de las 6 fases del backlog Fede 25/7
+  (esta página documenta la Fase B; F/A/pricing viven allá)
 - [[wiki/features/pedidos]] — módulo NUEVO, único origen de tareas WMS desde el pivote F4 (2026-07-22)
 - [[wiki/features/alertas]]
 - [[wiki/features/wms]] — "Fase 3"/"Fase 4" (Tareas WMS/picking/reabastecimiento, v1.143.0)
@@ -529,5 +615,5 @@ variantes" (SKU separado). Detalle completo: [[wiki/features/atributos-variante]
 - [[wiki/features/productos]]
 - [[wiki/features/atributos-variante]]
 - [[wiki/database/triggers]]
-- [[wiki/database/migraciones]] — migs 289, 290
+- [[wiki/database/migraciones]] — migs 289, 290, 331
 - [[wiki/database/schema-overview]]

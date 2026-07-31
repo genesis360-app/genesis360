@@ -331,6 +331,9 @@ export default function InventarioPage() {
   const [showBulkEstado, setShowBulkEstado] = useState(false)
   const [showBulkUbicacion, setShowBulkUbicacion] = useState(false)
   const [bulkEstadoId, setBulkEstadoId] = useState('')
+  // Fede 25/7, punto 2: el cambio de estado masivo pasa por el MISMO gate de aprobación + foto
+  // que el de un solo LPN (LpnAccionesModal) — si no, era un bypass directo del control anti-fraude.
+  const [fotoAprobacionBulkEstado, setFotoAprobacionBulkEstado] = useState<File | null>(null)
   const [bulkUbicacionId, setBulkUbicacionId] = useState('')
   const [showBulkEditar, setShowBulkEditar] = useState(false)
   const [showMasivoEtiquetas, setShowMasivoEtiquetas] = useState(false)  // ISS-127 F3e
@@ -896,6 +899,16 @@ export default function InventarioPage() {
           const { error } = await supabase.from('inventario_lineas').update(campos).in('id', linea_ids)
           if (error) throw error
         }
+      } else if (aut.tipo === 'cambio_estado') {
+        // Fede 25/7, punto 2: recién ACÁ se aplica el estado_id real — hasta este momento la(s)
+        // línea(s) siguieron con el estado de siempre (cualquier descuento/baja asociado al
+        // estado nuevo empieza a regir desde la aprobación, no desde que se pidió).
+        // Dos formas: `linea_id` (un solo LPN, desde LpnAccionesModal) o `datos_cambio.linea_ids`
+        // (cambio masivo, desde la selección de la tabla de Inventario).
+        const { estado_nuevo_id, linea_ids } = aut.datos_cambio as { estado_nuevo_id: string | null; linea_ids?: string[] }
+        const query = supabase.from('inventario_lineas').update({ estado_id: estado_nuevo_id ?? null })
+        const { error } = linea_ids?.length ? await query.in('id', linea_ids) : await query.eq('id', aut.linea_id)
+        if (error) throw error
       } else if (aut.tipo === 'ajuste_conteo') {
         // F3 — al aprobar, aplicar la diferencia de conteo con reconciliación por delta (G1)
         const { esperada_snapshot, contada, producto_id, lpn, sucursal_id: sucId } = aut.datos_cambio
@@ -921,6 +934,7 @@ export default function InventarioPage() {
         : aut.tipo === 'eliminar_serie' ? 'Eliminación de serie'
         : aut.tipo === 'eliminar_lpn' ? 'Eliminación de LPN'
         : aut.tipo === 'ajuste_conteo' ? 'Diferencia de conteo'
+        : aut.tipo === 'cambio_estado' ? 'Cambio de estado'
         : 'Edición masiva de atributos'
       logActividad({
         entidad: 'inventario_linea',
@@ -928,11 +942,15 @@ export default function InventarioPage() {
         entidad_nombre: aut.tipo === 'bulk_edit'
           ? `Bulk edit — ${(aut.datos_cambio?.linea_ids?.length ?? 0)} LPN(s)`
           : (linea?.productos?.nombre ?? linea?.lpn ?? aut.linea_id),
-        accion: 'editar',
+        accion: aut.tipo === 'cambio_estado' ? 'cambio_estado' : 'editar',
         campo: aut.tipo,
-        valor_anterior: String(aut.datos_cambio?.cantidad_anterior ?? ''),
+        valor_anterior: aut.tipo === 'cambio_estado'
+          ? ((estados as any[]).find((e: any) => e.id === aut.datos_cambio?.estado_anterior_id)?.nombre ?? '')
+          : String(aut.datos_cambio?.cantidad_anterior ?? ''),
         valor_nuevo: aut.tipo === 'bulk_edit'
           ? JSON.stringify(aut.datos_cambio?.campos ?? {})
+          : aut.tipo === 'cambio_estado'
+          ? ((estados as any[]).find((e: any) => e.id === aut.datos_cambio?.estado_nuevo_id)?.nombre ?? '')
           : String(aut.datos_cambio?.cantidad_nueva ?? aut.datos_cambio?.cantidad ?? ''),
         pagina: '/inventario',
       })
@@ -964,19 +982,64 @@ export default function InventarioPage() {
   })
 
   // ── Bulk actions en LPNs ─────────────────────────────────────────────────
+  const bulkEstadoDestino = (estados as any[]).find((e: any) => e.id === bulkEstadoId)
+  // El estado tiene que estar marcado "requiere aprobación" Y el rol del usuario actual tiene
+  // que estar sujeto a autorización (mismo criterio que ajuste_cantidad, mig 228) — el DUEÑO
+  // (modo 'directo' por default) no se autoaprueba a sí mismo un cambio que él mismo configuró.
+  const bulkEstadoRequiereAprobacion = !!bulkEstadoDestino?.requiere_aprobacion && requiereAuthAjuste(user?.rol, ajusteAuthConfig, false)
   const bulkCambiarEstado = useMutation({
     mutationFn: async (estadoId: string) => {
+      // Fede 25/7, punto 2: mismo gate que el cambio de estado de UN LPN — si el estado destino
+      // requiere aprobación, ninguno de los LPN seleccionados cambia todavía: queda una solicitud
+      // pendiente (una sola, para todo el lote) con foto de evidencia.
+      if (bulkEstadoRequiereAprobacion) {
+        if (!fotoAprobacionBulkEstado) throw new Error('Este estado requiere una foto tomada en el momento — sacala antes de confirmar')
+        const ext = (fotoAprobacionBulkEstado.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')
+        const path = `${tenant!.id}/bulk-${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('autorizaciones-fotos').upload(path, fotoAprobacionBulkEstado)
+        if (upErr) throw upErr
+        const { error } = await supabase.from('autorizaciones_inventario').insert({
+          tenant_id: tenant!.id,
+          tipo: 'cambio_estado',
+          linea_id: null,
+          datos_cambio: { linea_ids: selectedLineas, estado_nuevo_id: estadoId, foto_path: path },
+          estado: 'pendiente',
+          solicitado_por: user?.id,
+          notas: `Cambio masivo a "${bulkEstadoDestino?.nombre}" — ${selectedLineas.length} LPN(s)`,
+        })
+        if (error) throw error
+        try {
+          const { data: destinatarios } = await supabase.from('users').select('id')
+            .eq('tenant_id', tenant!.id).in('rol', ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'])
+          if (destinatarios?.length) {
+            await supabase.from('notificaciones').insert(
+              destinatarios.filter((d: any) => d.id !== user?.id).map((d: any) => ({
+                tenant_id: tenant!.id, user_id: d.id, tipo: 'cambio_estado_pendiente',
+                titulo: 'Cambio de estado masivo pendiente de aprobar',
+                mensaje: `${user?.nombre_display ?? 'Un usuario'} pidió cambiar ${selectedLineas.length} LPN(s) a "${bulkEstadoDestino?.nombre}" — requiere tu aprobación.`,
+                action_url: '/inventario?tab=autorizaciones',
+              }))
+            )
+          }
+        } catch { /* la notificación no bloquea el flujo */ }
+        return { esAutorizacion: true }
+      }
       const { error } = await supabase
         .from('inventario_lineas')
         .update({ estado_id: estadoId })
         .in('id', selectedLineas)
       if (error) throw error
     },
-    onSuccess: () => {
-      toast.success(`Estado actualizado en ${selectedLineas.length} LPN(s)`)
+    onSuccess: (result: any) => {
+      if (result?.esAutorizacion) {
+        toast.success(`Solicitud enviada — ${selectedLineas.length} LPN(s) pendientes de aprobación`)
+        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+      } else {
+        toast.success(`Estado actualizado en ${selectedLineas.length} LPN(s)`)
+        qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      }
       setSelectedLineas([]); setSelectedLineasInfo([])
-      setShowBulkEstado(false); setBulkEstadoId('')
-      qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
+      setShowBulkEstado(false); setBulkEstadoId(''); setFotoAprobacionBulkEstado(null)
     },
     onError: (e: Error) => toast.error(e.message),
   })
@@ -4617,22 +4680,38 @@ export default function InventarioPage() {
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
               <div className="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm space-y-4">
                 <h3 className="font-semibold text-primary">Cambiar estado — {selectedLineas.length} LPN{selectedLineas.length !== 1 ? 's' : ''}</h3>
-                <select value={bulkEstadoId} onChange={e => setBulkEstadoId(e.target.value)}
+                <select value={bulkEstadoId} onChange={e => { setBulkEstadoId(e.target.value); setFotoAprobacionBulkEstado(null) }}
                   className="w-full border border-gray-200 dark:border-gray-700 dark:bg-gray-700 dark:text-white rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:border-accent-text">
                   <option value="">Seleccioná un estado</option>
                   {(estados as any[]).map((e: any) => (
                     <option key={e.id} value={e.id}>{e.nombre}</option>
                   ))}
                 </select>
+                {bulkEstadoRequiereAprobacion && (
+                  <div className="border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2">
+                    <p className="flex items-start gap-1.5 text-xs text-red-800 dark:text-red-300">
+                      <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                      Cambiar a <strong>"{bulkEstadoDestino?.nombre}"</strong> requiere aprobación del supervisor. Sacá
+                      una foto en el momento como evidencia — no se puede subir desde la galería.
+                    </p>
+                    <input type="file" accept="image/*" capture="environment"
+                      onChange={e => setFotoAprobacionBulkEstado(e.target.files?.[0] ?? null)}
+                      className="w-full text-xs text-red-800 dark:text-red-300 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-red-600 file:text-white file:text-xs file:font-medium" />
+                    {fotoAprobacionBulkEstado && <p className="text-xs text-red-700 dark:text-red-400">✓ {fotoAprobacionBulkEstado.name}</p>}
+                  </div>
+                )}
                 <div className="flex gap-2">
-                  <button onClick={() => setShowBulkEstado(false)}
+                  <button onClick={() => { setShowBulkEstado(false); setFotoAprobacionBulkEstado(null) }}
                     className="flex-1 border border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 py-2.5 rounded-xl text-sm font-medium">
                     Cancelar
                   </button>
-                  <button onClick={() => bulkCambiarEstado.mutate(bulkEstadoId)}
-                    disabled={!bulkEstadoId || bulkCambiarEstado.isPending}
+                  <button onClick={async () => {
+                      if (bulkEstadoRequiereAprobacion && !(await confirmar(`Cambiar a "${bulkEstadoDestino?.nombre}" no se aplica directo: se va a enviar una notificación al supervisor para que la apruebe. ¿Confirmás?`))) return
+                      bulkCambiarEstado.mutate(bulkEstadoId)
+                    }}
+                    disabled={!bulkEstadoId || bulkCambiarEstado.isPending || (bulkEstadoRequiereAprobacion && !fotoAprobacionBulkEstado)}
                     className="flex-1 bg-accent text-white py-2.5 rounded-xl text-sm font-semibold disabled:opacity-50">
-                    {bulkCambiarEstado.isPending ? 'Actualizando...' : 'Confirmar'}
+                    {bulkCambiarEstado.isPending ? 'Actualizando...' : bulkEstadoRequiereAprobacion ? 'Enviar a aprobación' : 'Confirmar'}
                   </button>
                 </div>
               </div>
@@ -5916,13 +5995,22 @@ export default function InventarioPage() {
                   : aut.tipo === 'ajuste_conteo' ? 'Diferencia de conteo'
                   : aut.tipo === 'bulk_edit' ? 'Edición masiva'
                   : aut.tipo === 'eliminar_serie' ? 'Eliminar serie'
+                  : aut.tipo === 'cambio_estado' ? 'Cambio de estado'
                   : 'Eliminar LPN'
-                // ajuste_* = orange (suma/resta stock), bulk_edit = blue (atributos), eliminar_* = red
+                // ajuste_* = orange (suma/resta stock), bulk_edit = blue (atributos), cambio_estado = purple, eliminar_* = red
                 const tipoColor = (aut.tipo === 'ajuste_cantidad' || aut.tipo === 'ajuste_conteo')
                   ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
                   : aut.tipo === 'bulk_edit'
                   ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                  : aut.tipo === 'cambio_estado'
+                  ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
                   : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                const resolveEstadoNombre = (estId: string | null) => (estados as any[]).find((e: any) => e.id === estId)?.nombre ?? '—'
+                const verFotoAprobacion = async (path: string) => {
+                  const { data, error } = await supabase.storage.from('autorizaciones-fotos').createSignedUrl(path, 300)
+                  if (error || !data?.signedUrl) { toast.error('No se pudo abrir la foto'); return }
+                  window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+                }
                 return (
                   <div key={aut.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4">
                     <div className="flex items-start justify-between gap-3">
@@ -5962,6 +6050,22 @@ export default function InventarioPage() {
                             <p>
                               {(aut.datos_cambio.linea_ids?.length ?? 0)} LPN(s) · campos: {Object.keys(aut.datos_cambio.campos ?? {}).join(', ') || '—'}
                             </p>
+                          )}
+                          {aut.tipo === 'cambio_estado' && (
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <p>
+                                {aut.datos_cambio.linea_ids?.length
+                                  ? <>{aut.datos_cambio.linea_ids.length} LPN(s) → </>
+                                  : <>Estado: <span className="line-through">{resolveEstadoNombre(aut.datos_cambio.estado_anterior_id)}</span>{' → '}</>}
+                                <span className="font-semibold text-purple-600 dark:text-purple-400">{resolveEstadoNombre(aut.datos_cambio.estado_nuevo_id)}</span>
+                              </p>
+                              {aut.datos_cambio.foto_path && (
+                                <button onClick={() => verFotoAprobacion(aut.datos_cambio.foto_path)}
+                                  className="flex items-center gap-1 text-purple-600 dark:text-purple-400 hover:underline">
+                                  <Camera size={12} /> Ver foto
+                                </button>
+                              )}
+                            </div>
                           )}
                           <p>Solicitado por: {aut.users?.nombre_display ?? '—'} · {new Date(aut.created_at).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' })}</p>
                           {aut.notas && <p>Notas: {aut.notas}</p>}

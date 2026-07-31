@@ -37,9 +37,10 @@ import { cotizarEnvio, type CotizacionOpcion } from '@/lib/couriers/api'
 import { calcularDistanciaKm } from '@/hooks/useGoogleMaps'
 import { validarMediosPago, calcularSaldoPendiente, validarDespacho, validarSaldoMediosPago, acumularMediosPago, calcularVuelto, calcularEfectivoCaja, calcularComboRows, calcularDescuentoComboMulti, restaurarMediosPago, calcularLpnFuentes, atributoAmbiguoEnStock, esDecimal, parseCantidad, validarDescuentosPorRol, comboVigente, hoyLocalISO, type EstadoVenta, type MedioPagoItem, type LineaDisponible, type LpnFuente } from '@/lib/ventasValidation'
 import { descuentoDeConfig, descuentoVigente, calcularPromosPago, etiquetaPromo } from '@/lib/promosPago'
+import { cuponVigente, montoDescuentoCupon } from '@/lib/cupones'
 import { calcularDescuentoEstadoLinea, combinarDetalleDescuentoEstado, type DescuentoEstadoDetalle } from '@/lib/descuentoEstado'
 import { convertirABase } from '@/lib/estructuras'
-import { precioTier, mejorPrecioMayorista, type TierMayorista } from '@/lib/tiers'
+import { mejorPrecioMayorista, precioBlendedTier, type TierMayorista } from '@/lib/tiers'
 import { normalizarReglasGratis, envioGratisAplica, describirReglaGratis } from '@/lib/enviosTarifas'
 import { camposRequeridosCliente, validarClienteInline } from '@/lib/clienteCampos'
 import { montoSugeridoCredito } from '@/lib/saldoFavor'
@@ -403,6 +404,11 @@ export default function VentasPage() {
   const [mediosPago, setMediosPago] = useState<MedioPagoItem[]>([{ tipo: '', monto: '' }])
   const [descuentoTotal, setDescuentoTotal] = useState('')
   const [descuentoTotalTipo, setDescuentoTotalTipo] = useState<DescTipo>('pct')
+  // Cupones (Fede 25/7, módulo Comercial): $ fijos sobre el TOTAL, independiente de cualquier
+  // descuento de producto ya aplicado. Se acumula con el descuento por método de pago.
+  const [cuponCodigoInput, setCuponCodigoInput] = useState('')
+  const [buscandoCupon, setBuscandoCupon] = useState(false)
+  const [cuponAplicado, setCuponAplicado] = useState<{ id: string; cupon_id: string; codigo: string; nombre: string; monto: number } | null>(null)
   const [notas, setNotas] = useState('')
   // ISS-082: monto comprometido en medios de pago (actualiza sólo en blur/enter)
   const [committedAsignado, setCommittedAsignado] = useState(0)
@@ -2485,16 +2491,21 @@ export default function VentasPage() {
   })
 
   // G1/G2 — precios mayoristas por cantidad (producto_precios_mayorista). Mapa por producto.
+  // Fede 25/7, punto 1: %+enlace a empaque (mig 329) — `presentacion_factor` sale de un embed a
+  // `producto_presentaciones` por el FK `presentacion_id` (no un 2do roundtrip).
   const { data: tiersMayoristaMap = {} } = useQuery({
     queryKey: ['precios-mayorista', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('producto_precios_mayorista')
-        .select('producto_id, cantidad_minima, precio, operador, orden').eq('tenant_id', tenant!.id)
+        .select('producto_id, cantidad_minima, precio, operador, orden, tipo_valor, producto_presentaciones(factor_base)')
+        .eq('tenant_id', tenant!.id)
       const map: Record<string, TierMayorista[]> = {}
       for (const r of (data ?? []) as any[]) {
         (map[r.producto_id] ??= []).push({
           cantidad_minima: r.cantidad_minima, precio: Number(r.precio),
           operador: (r.operador ?? '>=') as TierMayorista['operador'], orden: r.orden ?? 0,
+          tipo_valor: (r.tipo_valor ?? 'precio_fijo') as TierMayorista['tipo_valor'],
+          presentacion_factor: r.producto_presentaciones?.factor_base ?? null,
         })
       }
       // Ordenados por `orden` (gana el primer match, mig 306). precioTier igual reordena por las dudas.
@@ -2508,20 +2519,30 @@ export default function VentasPage() {
   // que la cantidad satisfaga; si ninguno aplica, precio minorista (precio_unitario base).
   // SIN redondeo (lo aplica precioTierEfectivo) — se usa para detectar si un tier mayorista
   // bajó el precio respecto del minorista (display), independiente del redondeo configurado.
+  //
+  // Fede 25/7, punto 1: usa `precioBlendedTier` (promedio ponderado de los BLOQUES que arma
+  // `resolverBloquesTier`) en vez de un único `precioTier`. Para cualquier tier de HOY (sin
+  // `presentacion_factor`) da EXACTO el mismo resultado que antes — `resolverBloquesTier` devuelve
+  // un solo bloque cuando no hay enlace a empaque, así que esto es 100% compatible con lo que ya
+  // hay cargado. Lo nuevo es que un tier enlazado a una presentación (pallet/caja) multiplica su
+  // descuento para cualquier múltiplo exacto, y el resto suelto sigue evaluándose por su cuenta —
+  // el promedio ponderado preserva la plata total exacta sin importar en cuántas líneas del
+  // carrito esté repartida la cantidad de ese SKU.
   const precioTierBase = (item: CartItem): number => {
     const tiers = item.tiers
     if (!tiers || tiers.length === 0) return item.precio_unitario
     // VF2/I2: la lista de precios por canal puede forzar minorista o mayorista
     const lista = reglaDe(canalPOS).lista_precio
     if (lista === 'minorista') return item.precio_unitario
-    if (lista === 'mayorista') return mejorPrecioMayorista(tiers) ?? item.precio_unitario
+    if (lista === 'mayorista') return mejorPrecioMayorista(tiers, item.precio_unitario) ?? item.precio_unitario
     // Agregación por SKU (mig 306, decisión Fede): el tier se resuelve contra la cantidad TOTAL de
     // este producto en el carrito (todas las líneas del mismo SKU sumadas), no por línea — el precio
     // mayorista es por volumen. `cart` acá es el estado committeado (render-time correcto).
     const cantTotalSku = cart
       .filter(i => i.producto_id === item.producto_id)
       .reduce((s, i) => s + (i.tiene_series ? i.series_seleccionadas.length : i.cantidad), 0)
-    return precioTier(tiers, cantTotalSku) ?? item.precio_unitario
+    if (!(cantTotalSku > 0)) return item.precio_unitario
+    return precioBlendedTier(tiers, cantTotalSku, item.precio_unitario)
   }
 
   // H4 — Precio unitario EFECTIVO (canónico): precio de lista/tier redondeado según
@@ -2685,6 +2706,28 @@ export default function VentasPage() {
     }
   }, [cart, combosDisp, cotizacionUSD])
 
+  // Cupones (Fede 25/7): validación en el momento de aplicar. Se re-valida de nuevo antes de
+  // registrar la venta (abajo) porque entre aplicar y cobrar puede pasar tiempo — un código no
+  // se "reserva" al aplicarlo, recién se marca usado cuando la venta se concreta de verdad.
+  const aplicarCupon = async () => {
+    const codigo = cuponCodigoInput.trim().toUpperCase()
+    if (!codigo) return
+    setBuscandoCupon(true)
+    const { data, error } = await supabase.from('cupones_codigos')
+      .select('id, cupon_id, codigo, usado_en_venta_id, cupones(nombre, monto, activo, vigencia_desde, vigencia_hasta)')
+      .eq('tenant_id', tenant!.id).eq('codigo', codigo).maybeSingle()
+    setBuscandoCupon(false)
+    if (error || !data) { toast.error('Código de cupón inválido'); return }
+    if (data.usado_en_venta_id) { toast.error('Este cupón ya fue usado'); return }
+    const cup = (data as any).cupones
+    if (!cup) { toast.error('Código de cupón inválido'); return }
+    if (!cuponVigente(cup, hoyLocalISO())) { toast.error('Este cupón no está vigente'); return }
+    setCuponAplicado({ id: data.id, cupon_id: data.cupon_id, codigo: data.codigo, nombre: cup.nombre, monto: Number(cup.monto) })
+    setCuponCodigoInput('')
+    toast.success(`Cupón "${cup.nombre}" aplicado: -$${Number(cup.monto).toLocaleString('es-AR')}`)
+  }
+  const quitarCupon = () => setCuponAplicado(null)
+
   const splitItem = (idx: number) => {
     setCart(prev => {
       const item = prev[idx]
@@ -2715,14 +2758,19 @@ export default function VentasPage() {
   const descCombosMulti = combosActivosMulti.reduce((s, c) => s + c.monto, 0)
   // Redondear a 2 decimales para evitar discrepancias de display vs validación
   const totalPrePromoPago = Math.round(Math.max(0, subtotal - descTotalMonto - descCombosMulti) * 100) / 100
+  // Fede 25/7 — cupón: $ fijos sobre el total, independiente de los descuentos de producto de
+  // arriba. Se resta ANTES del descuento por método de pago: lo que se paga con cada medio (y su
+  // % de promo) es lo que queda DESPUÉS del cupón, no el total original de la mercadería.
+  const montoCupon = cuponAplicado ? montoDescuentoCupon(cuponAplicado, totalPrePromoPago) : 0
+  const totalPostCupon = Math.round(Math.max(0, totalPrePromoPago - montoCupon) * 100) / 100
   // Punto 1 Fede/GO — descuento por método de pago (Config→Ventas→Métodos de pago→Promo).
   // Con un solo medio aplica sobre el total; con pago mixto, sobre lo abonado con cada método.
   // El total FINAL ya lo tiene restado → el prorrateo fiscal (G0.6) lo pliega en venta_items.
   const { aplicadas: promosPagoAplicadas, totalDescuento: descPromoPago } = useMemo(
-    () => calcularPromosPago(mediosPago, metodosConDescuento, totalPrePromoPago, hoyLocalISO(), new Date().getDay()),
-    [mediosPago, metodosConDescuento, totalPrePromoPago],
+    () => calcularPromosPago(mediosPago, metodosConDescuento, totalPostCupon, hoyLocalISO(), new Date().getDay()),
+    [mediosPago, metodosConDescuento, totalPostCupon],
   )
-  const total = Math.round(Math.max(0, totalPrePromoPago - descPromoPago) * 100) / 100
+  const total = Math.round(Math.max(0, totalPostCupon - descPromoPago) * 100) / 100
 
   // Punto 3 Fede/GO — descuento automático por estado de inventario (ver descuentoEstado.ts).
   // Ya está restado en `subtotal` (vía getItemSubtotal) — este detalle combinado es solo para
@@ -3008,6 +3056,19 @@ export default function VentasPage() {
     const stockAlertas: Array<{ nombre: string; sku: string; stock_actual: number; stock_minimo: number }> = []
     let ventaIdCreada: string | null = null
     try {
+      // Fede 25/7 — re-validar el cupón recién ACÁ (no alcanza con la validación de cuando se
+      // aplicó al carrito: pudo pasar tiempo, otra venta pudo haberlo usado mientras tanto). Si ya
+      // no está disponible, se corta ANTES de crear la venta — nunca se cobra un descuento que no
+      // se puede honrar.
+      if (cuponAplicado) {
+        const { data: cuponFresco } = await supabase.from('cupones_codigos')
+          .select('usado_en_venta_id, cupones(activo, vigencia_desde, vigencia_hasta)')
+          .eq('id', cuponAplicado.id).maybeSingle()
+        const cupFresco = (cuponFresco as any)?.cupones
+        if (!cuponFresco || cuponFresco.usado_en_venta_id || !cupFresco || !cuponVigente(cupFresco, hoyLocalISO())) {
+          throw new Error(`El cupón "${cuponAplicado.nombre}" ya no está disponible — quitalo del carrito y volvé a cobrar`)
+        }
+      }
       // Crear venta — si hay preVentaId (QR MP ya generado) se usa ese UUID
       const { data: venta, error: ventaError } = await supabase.from('ventas').insert({
         ...(preVentaId ? { id: preVentaId } : {}),
@@ -3051,11 +3112,30 @@ export default function VentasPage() {
         ...(promosPagoAplicadas.length > 0 ? { promo_pago: promosPagoAplicadas } : {}),
         // Mig 285 — trazabilidad del descuento automático por estado (el total ya lo tiene restado)
         ...(descuentoEstadoAplicado.length > 0 ? { descuento_estado: descuentoEstadoAplicado } : {}),
+        // Mig 332 — cupón: snapshot del monto (el cupón pudo cambiar/desactivarse después)
+        ...(cuponAplicado ? { cupon_monto: montoCupon } : {}),
         ...(estado === 'despachada' ? { despachado_at: new Date().toISOString() } : {}),
         ...(estado === 'reservada' ? { reservado_at: new Date().toISOString() } : {}),
       }).select().single()
       if (ventaError) throw ventaError
       ventaIdCreada = venta.id
+
+      // Fede 25/7 — canjear el cupón: UPDATE condicional (`usado_en_venta_id IS NULL`) atómico a
+      // nivel de fila, así dos ventas simultáneas nunca queman el mismo código dos veces. Si por
+      // una carrera perdida afecta 0 filas, la venta YA se cobró con el descuento — se deja
+      // igual asentado `cupon_monto` (es lo que el cliente realmente pagó) y se avisa para
+      // revisar a mano, en vez de deshacer una venta que ya está en caja.
+      if (cuponAplicado) {
+        const { data: claimed, error: claimErr } = await supabase.from('cupones_codigos')
+          .update({ usado_en_venta_id: venta.id, usado_at: new Date().toISOString() })
+          .eq('id', cuponAplicado.id).is('usado_en_venta_id', null)
+          .select('id')
+        if (claimErr || !claimed?.length) {
+          toast.error(`⚠ El cupón "${cuponAplicado.nombre}" se usó en otra venta al mismo tiempo — revisar manualmente (venta #${venta.numero ?? venta.id}).`, { duration: 8000 })
+        } else {
+          await supabase.from('ventas').update({ cupon_codigo_id: cuponAplicado.id }).eq('id', venta.id)
+        }
+      }
 
       // CL4/C1 — notificar al cliente el alta de deuda en cuenta corriente (event-driven, fire-and-forget)
       if (modoCC && montoCC > 0.5 && clienteId) {
@@ -3104,9 +3184,10 @@ export default function VentasPage() {
       // salían por el monto SIN descuento (sobre-facturaban). Acá se prorratea el descuento global sobre
       // las líneas para que sumen EXACTO `total` (= lo que paga el cliente), dejando `precio_unitario` y
       // `subtotal` como el precio EFECTIVO → factura, NC, caja y Libro IVA consistentes sobre un número.
-      // El descuento por método de pago (descPromoPago) también reduce `total` → entra al mismo
-      // prorrateo para que venta_items sume EXACTO lo cobrado (factura/NC/Libro IVA consistentes).
-      const hayDescGlobal = (descTotalMonto + descCombosMulti + descPromoPago) > 0.005
+      // El descuento por método de pago (descPromoPago) y el cupón (montoCupon) también reducen
+      // `total` → entran al mismo prorrateo para que venta_items sume EXACTO lo cobrado
+      // (factura/NC/Libro IVA consistentes) — Fede 25/7: el cupón no puede sobre-facturar.
+      const hayDescGlobal = (descTotalMonto + descCombosMulti + descPromoPago + montoCupon) > 0.005
       const subtotalesEfectivos = hayDescGlobal
         ? prorratearDescuentoGlobal(
             cart.map(item => ({
@@ -3469,6 +3550,7 @@ export default function VentasPage() {
       setCart([]); setClienteId(null); setClienteSearch(''); setClienteNombre(''); setClienteTelefono('')
       setClienteCCEnabled(false); setEsConsumidorFinal(true); setOverrideDescuento(false)
       setMediosPago([{ tipo: '', monto: '' }]); setCommittedAsignado(0); setCuotasSeleccion({}); setDescuentoTotal(''); setNotas(''); setModoVenta('despachada'); setCanalPOS('POS')
+      setCuponAplicado(null); setCuponCodigoInput('')
       setRequiereEnvio(false)
       setEnvioTransporte('propio'); setEnvioCourier(''); setEnvioServicio('')
       setCostoEnvioVenta(''); setEnvioTipoVenta('monto'); setEnvioKmVenta('')
@@ -5398,6 +5480,35 @@ export default function VentasPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Cupón (Fede 25/7): $ fijos sobre el total, independiente de descuentos de producto */}
+                <div>
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Cupón</label>
+                  {cuponAplicado ? (
+                    <div className="flex items-center justify-between gap-2 bg-violet-50 dark:bg-violet-900/20 border border-violet-200 dark:border-violet-800 rounded-xl px-3 py-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-violet-700 dark:text-violet-400 truncate">{cuponAplicado.nombre} ({cuponAplicado.codigo})</p>
+                        <p className="text-xs text-violet-600 dark:text-violet-500">-${cuponAplicado.monto.toLocaleString('es-AR')}</p>
+                      </div>
+                      <button onClick={quitarCupon} className="text-violet-500 hover:text-red-500 flex-shrink-0" title="Quitar cupón">
+                        <X size={16} />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
+                      <input type="text" value={cuponCodigoInput}
+                        onChange={e => setCuponCodigoInput(e.target.value.toUpperCase())}
+                        onKeyDown={e => e.key === 'Enter' && aplicarCupon()}
+                        placeholder="Código de cupón"
+                        className="flex-1 px-3 py-2.5 text-sm font-mono uppercase focus:outline-none bg-transparent" />
+                      <button onClick={aplicarCupon} disabled={!cuponCodigoInput.trim() || buscandoCupon}
+                        className="px-3 py-2.5 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-600 dark:text-gray-400 text-xs font-semibold border-l border-gray-200 dark:border-gray-700 transition-colors disabled:opacity-50">
+                        {buscandoCupon ? '...' : 'Aplicar'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 <textarea value={notas} onChange={e => setNotas(e.target.value)} rows={2}
                   placeholder="Notas (opcional)"
                   className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text resize-none" />
@@ -5725,6 +5836,12 @@ export default function VentasPage() {
                     <span>−${c.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
                   </div>
                 ))}
+                {montoCupon > 0 && cuponAplicado && (
+                  <div className="flex justify-between text-sm text-violet-600 dark:text-violet-400">
+                    <span>🎟 Cupón {cuponAplicado.nombre}</span>
+                    <span>−${montoCupon.toLocaleString('es-AR', { maximumFractionDigits: 0 })}</span>
+                  </div>
+                )}
                 {promosPagoAplicadas.map(p => (
                   <div key={p.metodo} className="flex justify-between text-sm text-success">
                     <span>🏷 Promo {p.metodo} ({p.pct}%)</span>

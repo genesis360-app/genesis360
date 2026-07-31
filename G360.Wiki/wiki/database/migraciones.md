@@ -3,14 +3,110 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-07-29
+updated: 2026-07-30
 ---
 
-# Historial de Migraciones (001-327)
+# Historial de Migraciones (001-332)
 
-**Total al 2026-07-29:** 327 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-07-30:** 332 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-327 en DEV y PROD** (v1.152.0, deploy 2026-07-29). `schema_full.sql` regenerado al día.
+**001-327 en DEV y PROD** (v1.152.0, deploy 2026-07-29). **328-332 SOLO EN DEV** (backlog Fede 25/7,
+Fases F+A+B+C de [[wiki/features/precios-tiers-empaque]], sin bump de `APP_VERSION`, sin deploy a PROD).
+`schema_full.sql` sigue regenerado solo hasta la mig 327.
+
+**332 (🎟️ cupones — descuento FIJO en $ sobre el TOTAL de la venta, EN DEV)** —
+Fede 25/7, punto 2 (dentro del módulo Comercial). Tablas nuevas: `cupones` (campaña — nombre, motivo,
+`monto` fijo en $, CHECK > 0 — **nunca %** —, `vigencia_desde`/`vigencia_hasta` NOT NULL, `activo`,
+`created_by`) y `cupones_codigos` (código alfanumérico único **por tenant** —
+`UNIQUE(tenant_id, codigo)`, no global, porque dos negocios distintos pueden reusar el mismo texto de
+código sin problema, RLS los aísla —, `usado_en_venta_id` nullable FK a `ventas`
+`ON DELETE SET NULL`, `usado_at`).
+`ventas` gana **`cupon_codigo_id`** (con **`UNIQUE`**, sugerencia del `migration-reviewer` para
+blindar a nivel de CONSTRAINT que un mismo código no quede aplicado a dos ventas) + **`cupon_monto`**
+(snapshot del $ descontado — el cupón puede cambiar de monto o desactivarse después y la venta ya
+facturada tiene que preservar lo que realmente se cobró, Regla #0). RLS tenant-scoped en ambas tablas
++ `REVOKE ALL FROM PUBLIC, anon` (mismo patrón que la mig 298).
+🔒 **Decisión de diseño sobre la condición de carrera, consultada con el `migration-reviewer` ANTES
+de escribir código, no un gap descubierto después:** no se construyó una RPC dedicada de canje — el
+`UPDATE cupones_codigos SET usado_en_venta_id = X WHERE id = Y AND usado_en_venta_id IS NULL` es
+**atómico por sí solo a nivel de FILA** (Postgres serializa el `UPDATE`), así que alcanza con
+chequear que el `UPDATE` afectó exactamente 1 fila. Se acepta el trade-off de una ventana TOCTOU
+sub-segundo sobre `activo`/vigencia (irrelevante en un POS de un cajero por terminal, no un
+e-commerce de alta concurrencia) en vez de sumar una función nueva.
+Lógica pura en `src/lib/cupones.ts` (11 tests nuevos, `tests/unit/cupones.test.ts`): `cuponVigente`
+(mismo criterio que `comboVigente`), `montoDescuentoCupon` (nunca descuenta más que el total),
+`generarCodigosCupon`/`generarCodigoCupon` (alfabeto de 32 símbolos sin caracteres ambiguos — sin
+O/0, sin I/1 —, `crypto.getRandomValues`, clampeado a `CUPON_CODIGOS_MAXIMO = 100`).
+UI de alta/gestión en Config → Ventas → Descuentos y combos (card "Cupones", **temporal** ahí hasta
+que exista el módulo Comercial dedicado — mismo criterio que Combos hoy). Canje en el POS
+(`VentasPage.tsx`): input en la sección de Descuento general del carrito → se resta del total
+**ANTES** del descuento por método de pago (Config → Ventas → Métodos de pago → Promo) — así el % que
+descuenta un medio de pago se calcula sobre lo que el cliente REALMENTE va a pagar después del
+cupón, no sobre el total original de la mercadería. Al confirmar la venta se re-valida el cupón en
+fresco (por si pasó tiempo o alguien más lo usó) ANTES de crearla — si ya no es válido, corta antes de
+cobrar; después de crear la venta se hace el `UPDATE` condicional atómico que marca el código usado,
+y si por una carrera perdida afecta 0 filas, avisa con un toast en vez de deshacer una venta que ya
+quedó asentada en caja.
+🛑 **Prorrateo fiscal (Regla #0):** `hayDescGlobal` (dispara `prorratearDescuentoGlobal`, que reparte
+el descuento global sobre `venta_items` para que factura/NC/Libro IVA sumen EXACTO lo que el cliente
+pagó) ahora incluye el monto del cupón — sin este cambio, una venta con SOLO cupón (sin descuento
+general/combo/promo) se hubiera facturado por el monto SIN el descuento del cupón, mismo bug que ese
+código ya previene para los demás descuentos globales.
+Alcance: solo el POS — no se tocó Pedidos (su config ya aclara que no aplica combos ni lista de
+precios por canal; cupones tampoco se extendió ahí, coherente con esa limitación ya documentada). Ver
+[[wiki/features/precios-tiers-empaque]] → Fase C.
+
+**331 (🛑 aprobación de cambio de estado con foto — control anti-fraude, EN DEV)** —
+Fede 25/7, punto 2. `estados_inventario.requiere_aprobacion` (boolean, default false), **independiente**
+de `descuento_pct` (mig 284) — un estado puede requerir aprobación sin tener descuento asociado (ej.
+"Eliminado" da de baja stock pero no rebaja precio), y viceversa. Se agrega `'cambio_estado'` al CHECK
+de `autorizaciones_inventario.tipo` (mismo patrón que la mig 103 con `bulk_edit`). Bucket de Storage
+privado nuevo **`autorizaciones-fotos`** — a diferencia de `etiquetas-envios` (mig 075, sin scoping),
+este SÍ se scopea por tenant vía `storage.foldername(name)[1]` (mismo criterio que `certificados-afip`,
+mig 043), porque son fotos de evidencia de fraude interno, más sensibles — hallazgo y sugerencia del
+propio `migration-reviewer` antes de aplicar en DEV. Solo imágenes, 5MB máx.
+Wireado en `LpnAccionesModal.tsx` (cambio de UN LPN) y `InventarioPage.tsx` (cambio masivo — cerró de
+paso un bypass real: el cambio masivo escribía `estado_id` directo sin pasar por NINGÚN gate, ni este
+ni el de cantidad, mig 228). Detalle completo:
+[[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto".
+
+**330 (💵 `fn_precio_venta_efectivo` replica el motor de tiers % + enlace a empaque, EN DEV, 🛑 PLATA)** —
+Fede 25/7, punto 1. La función que usa Pedidos (`fn_pedido_generar_venta`, migs 317/319) para facturar
+por fuera del POS reescribe con el MISMO algoritmo que `src/lib/tiers.ts`
+(`resolverBloquesTier`/`precioBlendedTier`): los tiers ENLAZADOS a una presentación
+(`presentacion_id`, mig 329) se evalúan contra múltiplos completos de esa línea, compiten entre sí y
+ese bloque compite contra el mejor tier NORMAL para esa misma cantidad; el resto se evalúa aparte y el
+precio final es el promedio ponderado que preserva la plata total exacta. Sin ningún tier enlazado que
+matchee, el comportamiento es IDÉNTICO al de siempre (gana el primer tier normal en `orden` asc) —
+**verificado con datos REALES de DEV: resultado matemáticamente idéntico al de antes de esta migración
+para todos los tiers hoy cargados** (ninguno tiene `presentacion_id`). Sin este cambio un Pedido
+armado a mano facturaría distinto que la misma venta cargada por el POS (Regla #0, fuente única de
+precio).
+
+**329 (💵 tiers mayoristas: % de descuento + enlace opcional a empaque, EN DEV, 🛑 PLATA)** —
+Fede 25/7, punto 1 ("el caso del pallet"): un tier mayorista puede enlazarse a una línea puntual del
+árbol de empaque y el descuento se multiplica automático para cualquier múltiplo exacto (1, 2, 3
+pallets...) sin cargar un tier por cada uno. `producto_precios_mayorista` gana **`tipo_valor`**
+('precio_fijo' default/legacy | 'pct' — % sobre el precio de LISTA, `productos.precio_venta`, NUNCA
+sobre uno ya rebajado por otra capa, CHECK 0-100) + **`presentacion_id`** (FK nullable →
+`producto_presentaciones(id)`, `ON DELETE SET NULL`; si está seteado, `cantidad_minima` se compara
+contra MÚLTIPLOS COMPLETOS de esa presentación, no unidades sueltas).
+🛑 **Guard nuevo, hallazgo del `migration-reviewer` antes de aplicar:** trigger
+`trg_ppm_presentacion_mismo_producto` — el FK por sí solo no impide enlazar la presentación de OTRO
+producto (o, ya que los checks de FK no pasan por RLS, hasta de otro tenant); sin el guard un tier de
+"Producto A" podría apuntar a la presentación de "Producto B" y el multiplicador de cantidad quedaría
+calculado contra el `factor_base` equivocado.
+Sigue alineado con la mig 307 (el empaque no tiene precio propio): esto no le agrega precio a
+`producto_presentaciones`, solo la referencia desde el tier — la línea de empaque sigue siendo 100%
+logística. Ver [[wiki/features/precios-tiers-empaque]].
+
+**328 (🏷️ tipo de empaque — categoría informativa, EN DEV, sin Regla #0)** —
+Fede 25/7, punto 6. `unidades_medida.tipo_empaque` (texto libre, **sin CHECK a propósito** — mismo
+criterio que `combos.descuento_tipo`: lista abierta que puede crecer sin migración, la UI valida
+contra una constante fija) + backfill de las predefinidas que sobrevivieron a la limpieza de la mig
+327 (Caja/Pallet/Unidad). **Puramente informativo/reportes, sin función técnica** — no se cruza con
+el enlace tier↔empaque de la mig 329, que usa `producto_presentaciones.id` (identidad de línea), no
+esta columna. Ver [[wiki/features/precios-tiers-empaque]].
 
 **327 (🧹 limpieza del catálogo de Empaque — dropea unidades físicas coladas por la mig 148, ✅ PROD 2026-07-29)** —
 Config → Inventario → Empaque mostraba "Kilogramo"/"Gramo"/"Litro"/"Metro" junto a "Caja"/"Pallet"

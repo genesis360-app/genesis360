@@ -247,6 +247,24 @@ type: project
 >
 > ---
 >
+> #### 🔒 Dependabot — 6/8 alertas resueltas (`npm audit fix`, EN DEV, commit `f040ce99`)
+>
+> `dompurify`/`postcss`/`fast-uri`/`brace-expansion` (×4 rutas) parcheados sin tocar `package.json`
+> (solo resolución transitiva). tsc · build · unit 1416 verdes. **Sin mergear a `main`** — el aviso de
+> Dependabot en GitHub sigue mostrando 8 porque mide el branch default.
+>
+> **2 riesgos dejados sin tocar A PROPÓSITO (no re-analizar de cero, ya se investigó explotabilidad
+> real):**
+> - **`react-router`/`react-router-dom`**: `6.30.4` es la última de la rama 6.x, sin parche menor — el
+>   fix real es la v7 (major, migración de rutas grande). Verificado que HOY no es explotable acá: sin
+>   router de datos/SSR, y todo `navigate()`/`<Link to>` del repo usa prefijo literal o
+>   `action_url` hardcodeado (nunca dato de usuario). Migrar a v7 es tarea aparte, deliberada.
+> - **1 instancia de `brace-expansion`** en la cadena de `eslint` (GHSA-mh99) — requiere
+>   `eslint@10.8.0` (major, rompe la config de lint). Herramienta de build/lint, nunca procesa input
+>   externo.
+>
+> ---
+>
 > ### ✅ ESTADO ANTERIOR (2026-07-29) — v1.152.0 **DEPLOYADO A PROD**. Sin pendientes bloqueantes.
 >
 > **PROD = DEV = v1.152.0.** Migs **314-327 (14)** aplicadas y verificadas en PROD contra datos

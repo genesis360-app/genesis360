@@ -6,6 +6,39 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-07-30] update | 🔒 6 de 8 alertas de Dependabot resueltas (npm audit fix, sin majors)
+
+GitHub reportó 8 vulnerabilidades (4 high, 3 moderate, 1 low) en el branch default. Revisadas una por
+una contra el uso real en el código (no solo la severidad de la alerta) antes de tocar nada.
+
+**Resueltas (`npm audit fix`, sin `--force`, `package.json` sin cambios, solo resolución transitiva
+en `package-lock.json`)**: `dompurify` 3.4.11→3.4.12 (dependencia interna de jsPDF, sin uso directo en
+`src/`), `postcss` 8.5.16→8.5.25, `fast-uri` 3.1.2→3.1.4 (workbox-build/PWA), `brace-expansion`
+1.1.14/2.1.0/5.0.6→1.1.18/2.1.4/5.0.9 (4 rutas, cadena de eslint/typescript-eslint) — los últimos 3
+son devDependencies de build/lint, nunca corren en el navegador del usuario. **Verde: tsc · build
+(genera el service worker del PWA sin problemas) · unit 1416 (89 archivos)**.
+
+**🟡 2 alertas dejadas SIN TOCAR, a propósito (riesgo aceptado y trackeado, no una vulnerabilidad
+ignorada por descuido):**
+- **`react-router`/`react-router-dom` (4 CVE)**: `6.30.4` ya es la última versión de la rama 6.x — no
+  hay parche menor. El fix real es la v7 (major, requiere migrar el enrutado de toda la app). Se
+  verificó explotabilidad real en este código antes de decidir no migrar de urgencia: sin router de
+  datos/SSR (`<BrowserRouter>`/`<Routes>` plano, así que el CVE de hydration SSR no aplica) y **grep
+  completo de todos los `navigate()`/`<Link to>`** del repo — siempre tienen un prefijo de ruta literal
+  (`/ventas?id=${...}`) salvo un caso (`navigate(n.action_url)` en `NotificacionesButton.tsx`), y se
+  rastrearon los 8 puntos donde se escribe `action_url` (`CajaPage.tsx`, `InventarioPage.tsx`,
+  `VentasPage.tsx`, `LpnAccionesModal.tsx`, migraciones 084/091) — siempre un string hardcodeado, nunca
+  dato de usuario. No hay sink de open-redirect explotable hoy. La migración a v7 queda como pieza de
+  trabajo aparte, deliberada, con regresión completa de navegación — no algo para apurar en una pasada
+  de seguridad.
+- **1 instancia residual de `brace-expansion`** en la cadena de `eslint` (GHSA-mh99-v99m-4gvg, distinta
+  de las 4 ya resueltas) — requiere `eslint@10.8.0` (major, rompe la config de lint actual). Es
+  herramienta de build/lint que solo procesa los archivos propios del repo, nunca input externo.
+
+**Estado git:** commiteado y pusheado a `origin/dev` (`f040ce99`), no mergeado a `main` — el aviso de
+GitHub sobre "8 vulnerabilities" en el push refleja el branch default (`main`), que todavía no tiene
+este fix.
+
 ## [2026-07-30] update | 🟡 EN CURSO — backlog Fede 25/7: relevamiento de Fase E (Repositores) generado
 
 **Continuación de la MISMA sesión** que cerró las Fases F, A, B, C y D (entradas siguientes, más

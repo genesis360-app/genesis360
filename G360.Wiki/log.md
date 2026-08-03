@@ -6,6 +6,30 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-03] update | 🗺️ Contexto de "Almacén 360" recibido — actualizado el relevamiento de Ubicaciones antes de que salga a Fede
+
+Fede mandó el contexto real de "Almacén 360" (proyecto pospuesto): un plano visual navegable del
+negocio completo (no solo depósito — salón, mostrador, caja), armado sobre una grilla con medidas
+reales, navegable con drill-down (negocio → zona → línea de góndolas → góndola individual con % de
+ocupación por espacio). A futuro (no ahora): sugerencias de distribución basadas en rotación. Sigue
+pospuesto a propósito — demasiado grande para esta etapa, no aporta al objetivo de conseguir el
+primer cliente. Lo único accionable YA: que el modelo de Ubicaciones quede listo para no rehacerse
+cuando se retome.
+
+**`relevamiento-ubicaciones-reglas-negocio.html` actualizado** (todavía no había salido a Fede, se
+corrigió antes de mandarlo):
+- Nota de contexto reescrita con la descripción completa de Almacén 360.
+- **Separación explícita de dos conceptos que Fede mencionaba juntos, pero son datos distintos**:
+  el CÓDIGO de ubicación (B1-B3, identificador — "bien estructurado", requisito de Fede) vs. la
+  POSICIÓN real en el plano (coordenadas de grilla + orientación — lo que un plano navegable
+  necesita de verdad, y que ningún código de texto reemplaza). B1 se reescribió para que ninguna
+  opción sea "texto libre sin validar" (contradice el requisito), y se agregó **B4 nueva**: si
+  reservar ahora 2-3 columnas nullable de coordenadas (costo casi cero) o esperar a Almacén 360 y
+  migrar retroactivamente todas las ubicaciones que existan en ese momento (costo mucho mayor).
+
+**Estado git:** commiteado y pusheado a `dev` junto con el resto de la sesión. Ver
+[[wiki/features/precios-tiers-empaque]] → Fase E, `relevamiento_repositores_respuestas.md`.
+
 ## [2026-08-03] update | 🗺️ Relevamientos 2 y 3 de la secuencia de Fase E generados (Supervisor tab + Motor de Rotación) — los 3 primeros de 4 listos
 
 Continúa la secuencia acordada con Fede/GO (ver entrada anterior). Con Ubicaciones (punto 1) ya

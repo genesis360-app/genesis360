@@ -88,12 +88,28 @@
 </div>
 
 <div class="nota">
-  <strong>Nota de contexto (no es parte de este relevamiento):</strong> Fede mencionó una idea más grande,
-  "Almacén 360" — todavía sin definir del todo ("te ampliamos mejor esa idea porque seguro hay más cosas por
-  detrás"). La primera pieza conocida es una vista visual/dinámica de la bodega, para ver dónde están los SKU
-  por familia o por atributos. Eso se releva aparte cuando Fede lo termine de definir. La única pieza de
-  Almacén 360 que sí toca este relevamiento es el <strong>código alfanumérico de ubicación</strong> (sección B):
-  si se define ahora, es la base sobre la que se construiría esa vista visual más adelante.
+  <strong>Nota de contexto — "Almacén 360" (proyecto pospuesto, NO se construye ahora):</strong> es un
+  plano visual navegable del negocio completo — no solo el depósito, también salón de ventas, mostrador,
+  caja. El dueño arma su local sobre una grilla (paredes, accesos, góndolas, pasillos, con medidas reales),
+  y desde ahí se navega con clicks, cada vez con más detalle: primero el negocio entero, después una zona
+  puntual, después una línea de góndolas, hasta una vista de corte de una góndola individual mostrando cada
+  espacio con su % de ocupación y, al tocarlo, los datos reales de lo que hay ahí. Más adelante (no ahora)
+  la idea es que el sistema aprenda y sugiera mejoras de distribución (qué tan lejos está el producto de
+  mayor rotación de la salida, si conviene mover los productos en descuento cerca de la caja, etc.).
+  Está pospuesto a propósito — es demasiado grande para esta etapa y no aporta al objetivo actual de
+  conseguir el primer cliente.
+  <br><br>
+  <strong>Lo único que sí toca este relevamiento:</strong> que el modelo de datos de Ubicaciones quede en
+  condiciones de usarse el día que se retome Almacén 360, sin tener que rehacerlo. Esto son DOS cosas
+  distintas, no una sola — separadas a propósito en la sección B:
+  <br>
+  1) El <strong>código de ubicación</strong> (B1-B3) tiene que quedar bien estructurado desde el día uno
+  (no texto libre suelto) — es un identificador.
+  <br>
+  2) La <strong>posición real en el plano</strong> (B4, coordenadas de grilla + orientación) es un dato
+  distinto que un plano navegable va a necesitar y que un código de texto, por más estructurado que sea, no
+  reemplaza — conviene reservar el campo ahora aunque quede sin usar, porque agregarlo después sobre miles
+  de ubicaciones ya cargadas es mucho más caro que reservarlo desde el arranque.
   <br><br>
   <strong>Conexión con el próximo relevamiento (Rotación):</strong> los lotes en descuento (vencimiento
   próximo, etc.) van a poder tener una <strong>ubicación de excepción a nivel de LOTE</strong>, que no
@@ -196,14 +212,41 @@
     ¿Lo carga el usuario a mano o lo autogenera el sistema? <span class="tag tag-nuevo">NUEVO</span>
   </span>
   <div class="contexto">Hoy no existe ningún código alfanumérico en <code>ubicaciones</code> — el único
-  identificador es <code>nombre</code> (texto libre, sin formato validado, ej. "Góndola 3", "Depósito A").</div>
+  identificador es <code>nombre</code> (texto libre, sin formato validado, ej. "Góndola 3", "Depósito A").
+  <strong>Requisito de Fede (2026-08-03), pensando en Almacén 360:</strong> este código tiene que quedar
+  BIEN ESTRUCTURADO desde el día uno, no texto libre suelto — es la base sobre la que se construiría la
+  vista visual navegable el día que se retome ese proyecto. Un texto libre sin formato (opción (a) pura)
+  no cumple ese requisito aunque el usuario sea prolijo, porque nada garantiza que dos usuarios distintos
+  usen la misma convención.</div>
   <ul class="opciones">
-    <li>(a) Lo carga el usuario a mano (ej. "A-03-02" pasillo-estante-nivel), texto libre validado solo
-    por unicidad</li>
+    <li>(a) Lo carga el usuario a mano, pero con un FORMATO validado por el sistema (ej. regex tipo
+    "A-03-02", no cualquier texto) — estructurado aunque no sea automático</li>
     <li>(b) Lo autogenera el sistema según la jerarquía del árbol (ej. concatenando el código de la
-    contenedora + el orden del nivel)</li>
-    <li>(c) Autogenerado por default, pero editable a mano si el usuario quiere su propia convención</li>
+    contenedora + el orden del nivel) — estructurado por construcción, cero margen de inconsistencia</li>
+    <li>(c) Autogenerado por default, pero editable a mano si el usuario quiere su propia convención
+    (mantiene la validación de formato del punto (a) aunque lo edite)</li>
     <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Posición real en el plano (coordenadas de grilla) — ¿se reserva el campo ahora aunque no se use?
+    <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Distinto del código alfanumérico (B1-B3, un IDENTIFICADOR) — esto es la posición
+  FÍSICA en el plano que Almacén 360 va a dibujar: coordenadas de grilla (fila/columna o x/y) + orientación,
+  para que el plano navegable sepa dónde pintar cada ubicación/nivel sin que un humano la posicione a mano
+  de nuevo. Hoy <code>ubicaciones</code> no tiene ningún campo de posición espacial — ni falta hoy, pero
+  agregarlo recién cuando se retome Almacén 360 significa cargar la posición de TODAS las ubicaciones que
+  existan en ese momento a mano, una por una.</div>
+  <ul class="opciones">
+    <li>(a) Reservar ahora 2-3 columnas nullable (ej. <code>grid_fila</code>/<code>grid_columna</code>,
+    o <code>pos_x</code>/<code>pos_y</code>) sin ninguna UI ni validación todavía — quedan en NULL hasta que
+    Almacén 360 las use, pero ya existen en el modelo</li>
+    <li>(b) No reservar nada ahora — cuando se retome Almacén 360 se agrega el campo y se migra/carga la
+    posición de lo que exista en ese momento, aceptando el costo de esa carga retroactiva</li>
+    <li>(c) Otro: ____</li>
   </ul>
 </div>
 
@@ -378,6 +421,7 @@
     <li>(   ) A2 — qué pasa con las 4 ubicaciones ya cargadas en la cuenta de GO</li>
     <li>(   ) B1/B2/B3 — código alfanumérico: cómo se carga, para quién es obligatorio, reemplaza o coexiste
     con <code>nombre</code></li>
+    <li>(   ) B4 — reservar coordenadas de grilla para Almacén 360 ahora, aunque no se usen todavía</li>
     <li>(   ) A3 — relación entre <code>tipo_ubicacion</code> (WMS) y el nuevo tipo de exhibición</li>
     <li>(   ) Otro: ____</li>
   </ul>

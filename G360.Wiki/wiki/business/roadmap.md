@@ -9,8 +9,36 @@ updated: 2026-07-28
 # Roadmap y Versiones
 
 **Versión en PROD:** v1.152.0 (2026-07-29) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.153.0 (2026-08-03, sin deploy a PROD)  
+**Versión en DEV:** v1.154.0 (2026-08-03, sin deploy a PROD)  
 **Última actualización:** 3 de Agosto, 2026
+
+---
+
+## v1.154.0 — 🔍 Buscador de Picking reescrito como píldoras de filtro (Campo:valor, Y/O) — 🟡 **EN DEV** (2026-08-03)
+
+**Sin cambios a PROD** (sigue v1.152.0). GO probó el buscador de texto plano de la v1.153.0 (horas
+antes, misma sesión) y encontró el problema real: escribir un número de pedido lo tomaba ambiguo
+contra LPN/SKU/pedido/venta/envío a la vez, sin poder precisar el campo.
+
+**Reescrito como buscador estructurado tipo Linear/GitHub**: cada criterio es una **píldora**
+`(Campo):valor` (LPN/SKU/Producto/Pedido/Venta/Envío) con operador propio — `:`/`=` (contiene),
+`!=`/`<>` (no contiene) para todos los campos, y `>`/`<`/`>=`/`<=` (comparación numérica real, no
+substring) para los 3 campos numéricos. Varias píldoras se combinan con un **combinador global
+Y/O** — ej. `(Pedido):20 Y (SKU):43`. Cambiar el campo de una píldora ya creada conserva el
+operador y el valor tipeados.
+
+**Decisión a propósito**: texto SIN prefijo de campo (tipear "20" a secas) ya NO matchea Pedido/
+Venta/Envío — solo LPN/SKU/Producto. Es la corrección directa del bug: para buscar por comprobante
+hace falta la píldora explícita. "Ver en Picking" (Pedidos) manda `?busqueda=Pedido:<número>` y
+aterriza con la píldora ya armada.
+
+`src/lib/pickingFiltro.ts` (lógica pura, 24 tests nuevos) + `src/components/BuscadorPildoras.tsx`
+(input tipo chips). Verificado con e2e real contra datos de DEV (8 aserciones, test descartable ya
+borrado): deep-link con píldora pre-armada, número suelto ya no matchea venta, cambiar de campo
+conserva valor, Y exige ambas píldoras, O alcanza con una, cero movimiento de stock al confirmar
+(mismo invariante de siempre).
+
+Verde: tsc · build · unit 1440 (+24) · e2e ad-hoc. Detalle completo en `log.md`.
 
 ---
 

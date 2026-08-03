@@ -44,6 +44,22 @@ expresiones anidado, no se pidió eso.
 **Estado git:** commiteado y pusheado a `dev` junto con el resto de la sesión. Ver
 [[wiki/features/wms]] → "Fase 3 — Tareas WMS y Listas de Picking".
 
+## [2026-08-03] deploy | 🏷️ Cierre de sesión (real) — v1.154.0 (release de DEV, sin deploy a PROD)
+
+**Segundo cierre de la misma sesión** — después del de v1.153.0 (entrada de abajo) GO pidió además
+rehacer el buscador de Picking como píldoras (ver entrada "Buscador de /picking reescrito..." más
+abajo). Bump a v1.154.0 + tag + release para no dejar ese trabajo sin su propio registro.
+
+**Sin cambios a PROD** (sigue v1.152.0). Nada nuevo que agregar al resumen de la sesión ya escrito
+en la entrada de v1.153.0 más el propio buscador de píldoras — este cierre es solo para dejar el
+tag al día.
+
+**▶ Para la próxima sesión**, además de lo ya anotado en `project_pendientes.md` → "ARRANCÁ ACÁ"
+(llevarle a Fede los 3 relevamientos derivados, decidir cuándo probar F/A/B/C/D en el dev server):
+**el buscador de píldoras de `/picking` (v1.154.0) todavía no se probó a mano en el navegador**,
+solo con e2e contra datos reales — si GO lo usa y algo no se siente bien (tamaño de los selects
+dentro del chip, el combinador Y/O, etc.) es la primera cosa para revisar.
+
 ## [2026-08-03] deploy | 🏷️ Cierre de sesión — v1.153.0 (release de DEV, sin deploy a PROD)
 
 Bump de `APP_VERSION` a v1.153.0 + tag + GitHub release, para dejar registro de la sesión (regla del

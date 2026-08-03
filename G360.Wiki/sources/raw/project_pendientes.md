@@ -9,7 +9,9 @@ type: project
 > ### 🟡 ARRANCÁ ACÁ (2026-07-30) — backlog Fede 25/7 EN CURSO (Fases F+A+B+C+D completas, EN DEV, SIN deploy). Solo E pendiente.
 >
 > **No es un feature cerrado — es el arranque de una iniciativa de 6 fases.** PROD sigue en
-> **v1.152.0** (sin cambios, sin bump de `APP_VERSION`). Todo lo de acá vive en `dev`, **NADA
+> **v1.152.0** (sin cambios). `APP_VERSION` se bumpeó a **v1.153.0** (2026-08-03, release de DEV,
+> ver `wiki/business/roadmap.md`) para dejar tag/registro de esta sesión — NO implica deploy, F/A/B/C/D
+> siguen pausadas hasta que GO/Fede prueben en el dev server. Todo lo de acá vive en `dev`, **NADA
 > commiteado** (`git status`: `ConfigPage.tsx`/`ProductoFormPage.tsx`/`VentasPage.tsx`/
 > `PresentacionesEditor.tsx`/`InventarioPage.tsx`/`LpnAccionesModal.tsx`/`App.tsx`/`AppLayout.tsx`/
 > `UsuariosPage.tsx`/`src/lib/presentaciones.ts`/`src/lib/tiers.ts`/`src/lib/cupones.ts`/

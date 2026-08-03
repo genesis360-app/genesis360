@@ -233,6 +233,14 @@ wms_tareas
 - Ruta nueva **`/picking`** (`src/pages/PickingPage.tsx`) — mobile-first, con escaneo de código de
   barras (reusa el componente `BarcodeScanner` ya existente) para completar tareas parado en el
   depósito.
+- **Buscador (agregado v1.153.0, 2026-08-03)**: además de LPN/SKU/producto (match parcial), matchea
+  por **número de pedido, venta o envío** (exacto, no parcial — un número de comprobante no admite
+  substring). Mismo cuadro para tipeo manual o escaneo. La venta de una tarea se resuelve por DOS
+  caminos — `pedidos.venta_origen_id` (viene de Pedidos) o `envios.venta_id` (envío armado directo
+  desde una venta, sin pasar por Pedidos, el caso más común) — el segundo camino no existía antes de
+  esta fecha: ni el buscador ni el badge "Venta #" de la card funcionaban para una tarea sin pedido
+  de por medio. El botón "Ver en Picking" de `PedidosPage.tsx` pasa `?busqueda=<número>` para
+  aterrizar ya filtrado (antes navegaba sin filtro, inutilizable con la cola larga).
 - Tab **"Tareas WMS"** nuevo en `InventarioPage` — vista de escritorio para el DUEÑO, con link
   directo a `/picking`.
 - Gating: `modoAvanzado` + rol **DEPOSITO** (nav en `AppLayout.tsx` + redirect guard + ruta en

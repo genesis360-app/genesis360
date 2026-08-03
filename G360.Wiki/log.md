@@ -6,6 +6,37 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-03] deploy | 🏷️ Cierre de sesión — v1.153.0 (release de DEV, sin deploy a PROD)
+
+Bump de `APP_VERSION` a v1.153.0 + tag + GitHub release, para dejar registro de la sesión (regla del
+proyecto: tag en cada sesión que produzca código, no solo al deployar). **Sin cambios a PROD** —
+sigue v1.152.0, F/A/B/C/D del backlog Comercial de Fede siguen pausadas (decisión explícita de GO,
+ver entrada anterior "registra decisión de GO").
+
+**Resumen de la sesión completa** (para retomar en limpio tras el `/clear`):
+1. Commit + push del backlog Comercial de Fede F/A/B/C/D + relevamiento de Repositores (migs 328-332
+   solo en DEV).
+2. Resueltas 6/8 alertas de Dependabot (`npm audit fix`, sin majors) — 2 riesgos aceptados y
+   documentados (react-router v7, brace-expansion/eslint v10).
+3. **Decisión de GO: pausar el deploy** — A/B/C tocan plata/stock real sin e2e ni prueba manual ni
+   registro en UAT, se avisó antes de deployar (Regla de Oro #0) y GO eligió pausar del todo.
+4. **`/picking` gana buscador por LPN/SKU/producto/pedido/venta/envío** (no existía filtro por
+   comprobante) + fix de un bug real: la venta de una tarea solo se resolvía vía
+   `pedidos.venta_origen_id`, un envío armado directo desde una venta (sin pedido, el caso más común)
+   no se podía buscar. Verificado con e2e real contra DEV (spec 106 + verificación ad-hoc, borrada).
+5. **Fede respondió el relevamiento de Repositores** (35 preguntas) → reveló que el alcance real son
+   **4 proyectos con dependencias**, no una fase. Documentado en
+   `relevamiento_repositores_respuestas.md`.
+6. **3 relevamientos derivados generados**: Ubicaciones (14 preguntas, actualizado después con el
+   contexto real de "Almacén 360" — separa código de ubicación de coordenadas de grilla), Pestaña de
+   supervisor reusable (16 preguntas), Motor de Rotación de productos con descuento (25 preguntas).
+7. Fix de "Ver en Picking" en Pedidos: ahora filtra directo por el número del pedido.
+
+**▶ Para la próxima sesión**: leer `project_pendientes.md` → "ARRANCÁ ACÁ" primero. Pendiente
+inmediato: GO lleva los 3 relevamientos derivados a Fede → volcar respuestas a `sources/raw/` →
+armar el relevamiento final de Repositores (punto 4) → recién ahí diseñar/implementar. Aparte, sigue
+pendiente decidir cuándo/cómo probar F/A/B/C/D en el dev server antes de destrabar el deploy.
+
 ## [2026-08-03] update | 🗺️ Contexto de "Almacén 360" recibido — actualizado el relevamiento de Ubicaciones antes de que salga a Fede
 
 Fede mandó el contexto real de "Almacén 360" (proyecto pospuesto): un plano visual navegable del

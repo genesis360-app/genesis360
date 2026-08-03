@@ -239,10 +239,31 @@ type: project
 > **Verde:** tsc · build · suite unit completa. Cada migración pasó por `migration-reviewer` ANTES
 > de aplicarse en DEV (`gcmhzdedrkmmzfzfveig`).
 >
-> **▶ Pendiente inmediato:** GO responde `relevamiento-repositores-reglas-negocio.html` offline con
-> Fede → volcar las respuestas a `G360.Wiki/sources/raw/relevamiento_repositores_respuestas.md`
-> (mismo patrón que Clientes/Ventas/Compras/etc.) → recién ahí diseñar e implementar Fase E. No
-> inventar alcance sin esas respuestas.
+> **🗺️ Fede respondió el relevamiento de Repositores (2026-07-30) — y de esas respuestas salió que
+> "Fase E" son en realidad 4 proyectos con dependencias reales, no una sola fase.** Orden acordado
+> con GO+Fede: **0) confirmar cierre UoM/Empaque (✅ verificado contra PROD, cerrado) → 1) Rediseño
+> de Ubicaciones (🟡 relevamiento generado, ver abajo) → 2) Pestaña de supervisor reusable (paralelo
+> con 1) → 3) Motor de Rotación de productos con descuento (paralelo con 2) → 4) Repositores (al
+> final, consumiendo 1-3)**. Detalle completo de las respuestas de Fede + la revisión punto por
+> punto: `G360.Wiki/log.md` (entrada "orden de trabajo") + [[wiki/features/precios-tiers-empaque]].
+>
+> **✅ Los 3 primeros relevamientos de la secuencia están generados** (raíz del repo):
+> `relevamiento-ubicaciones-reglas-negocio.html` (14 preguntas), `relevamiento-supervisor-tab-
+> reglas-negocio.html` (16 preguntas), `relevamiento-rotacion-descuento-reglas-negocio.html` (25
+> preguntas). Cada uno inspeccionó código real antes de escribir las preguntas — varios hallazgos
+> reales quedaron documentados como preguntas `CAMBIO` en vez de asumidos (detalle completo en
+> `log.md`, entrada 2026-08-03): en Ubicaciones, `producto_ubicacion_sucursal` (mig 121) ya modela
+> casi lo mismo que se pedía como nuevo, y la capacidad/peso recién conectada (migs 321-326) tensiona
+> con mover esos datos a "nivel interno"; en Supervisor-tab, dos criterios de acceso hoy no
+> unificados (Autorizaciones de Inventario hardcodeado vs. `roles_custom` de Comercial); en Rotación,
+> el FEFO existente no distingue canal de venta, y `iniciar_armado_kit` no filtra por `estado_id`
+> (podría consumir stock fresco antes que el lote en descuento).
+>
+> **▶ Pendiente inmediato**: GO responde los 3 offline con Fede → volcar respuestas a
+> `G360.Wiki/sources/raw/` (`relevamiento_ubicaciones_respuestas.md`,
+> `relevamiento_supervisor_tab_respuestas.md`, `relevamiento_rotacion_descuento_respuestas.md`) →
+> recién con los 3 respondidos se arma el relevamiento final de Repositores (punto 4). No inventar
+> alcance de ninguno sin sus respuestas.
 >
 > **🛑 Decisión explícita de GO (2026-07-30): PAUSAR el deploy a PROD de F/A/B/C/D.** Se le avisó
 > ANTES de deployar (obligación de la Regla de Oro #0) que A (tiers), B (aprobación con foto) y C

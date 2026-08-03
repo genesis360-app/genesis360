@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Patrón "Pestaña de Supervisor" reusable · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Patrón "Pestaña de Supervisor" reusable</h1>
+<div class="meta">
+  Genesis360 · v1.152.0 (EN DEV) · Fecha: 3 de agosto de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas <span class="tag tag-existente">EXISTENTE</span>
+  piden confirmar una regla ya implementada; <span class="tag tag-nuevo">NUEVO</span> piden definir una pieza que
+  hoy no existe en ningún módulo; <span class="tag tag-cambio">CAMBIO</span> señalan un punto donde la respuesta
+  que elijan <strong>reinterpreta, generaliza o rompe intencionalmente</strong> un mecanismo que el código ya usa
+  hoy con un alcance más chico. Este es el <strong>segundo de 4 relevamientos</strong> acordados con Fede para
+  desbloquear el módulo <strong>Repositores</strong> (pausado): Ubicaciones → <strong>Pestaña de supervisor
+  reusable</strong> → Motor de Rotación de productos con descuento → Repositores. Es <strong>independiente de
+  Ubicaciones</strong> — se puede relevar en paralelo. El pedido no nace de Repositores en sí, sino de una nota
+  transversal que dejó Fede en su relevamiento anterior: quiere una pestaña exclusiva de supervisor/dueño dentro
+  de <strong>cada módulo</strong> del sistema (no solo Repositores) con aprobar/rechazar, reasignar tareas y ver
+  trazabilidad completa de cada empleado — construida <strong>una sola vez como patrón</strong>, para no repetirla
+  módulo por módulo. A diferencia de Ubicaciones (tabla plana sin jerarquía, 0% de lo pedido), acá <strong>no se
+  arranca de cero</strong>: hay 3 precedentes reales ya construidos y en producción (tab Autorizaciones de
+  Inventario, <code>actividadLog</code>/Historial, <code>roles_custom</code>/<code>MODULOS</code>) que resuelven
+  fragmentos del pedido con alcances y criterios de acceso <strong>distintos entre sí</strong> — el trabajo de
+  este relevamiento es decidir cómo generalizarlos en un solo patrón, no diseñar desde cero.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual — 3 precedentes reales, cada uno con su propio criterio de acceso:</strong>
+  (1) <strong>Tab "Autorizaciones" de <code>InventarioPage.tsx</code></strong> — aprueba/rechaza 6 tipos de
+  cambio pendiente en <code>autorizaciones_inventario</code> (mig 056: <code>ajuste_cantidad</code>,
+  <code>eliminar_serie</code>, <code>eliminar_lpn</code>; mig 103: <code>bulk_edit</code>; F3:
+  <code>ajuste_conteo</code>; mig 331: <code>cambio_estado</code> + foto), con ~150 líneas de lógica de aplicación
+  específica por tipo (<code>aprobarAutorizacion</code>) y una constraint CHECK cerrada a esos 6 valores —
+  exclusiva de Inventario, no hay tabla equivalente en ningún otro módulo. La visibilidad de la tab
+  (<code>puedeVerAutorizaciones</code>) está <strong>hardcodeada</strong> a
+  <code>['DUEÑO','SUPERVISOR','SUPER_USUARIO'].includes(user?.rol)</code>, sin leer <code>roles_custom</code>.
+  (2) <strong><code>logActividad()</code> (<code>src/lib/actividadLog.ts</code>) + <code>HistorialPage.tsx</code></strong>
+  — ya es trazabilidad completa de cada empleado (entidad, acción, campo, valor anterior/nuevo, usuario, página,
+  LPN/serie/lote), pero es <strong>una sola pantalla global</strong> en <code>/historial</code> para todo el
+  tenant, con el <strong>mismo gate hardcodeado</strong> (<code>DUEÑO/SUPERVISOR/SUPER_USUARIO</code>) repetido de
+  forma independiente dentro del propio componente — no hay ningún filtro que la scopee "solo lo de este módulo"
+  desde dentro del módulo mismo, aunque cada fila ya trae <code>pagina</code> (ej. <code>/inventario</code>) y
+  <code>entidad</code> para poder filtrar.
+  (3) <strong><code>roles_custom</code> + <code>MODULOS</code> (<code>UsuariosPage.tsx</code>)</strong> — patrón
+  de acceso delegado ya usado en Comercial (Fase D): 16 módulos configurables (incluye <code>'historial'</code> y
+  <code>'comercial'</code>, no incluye ningún concepto de "supervisor"), mapeados a <code>no_ver/ver/editar</code>
+  por rol custom. <strong>Ojo con un límite real:</strong> <code>roles_custom</code> solo puede OCULTAR o volver
+  de solo-lectura un módulo que el <strong>rol base</strong> ya puede ver (<code>navItemVisible</code> en
+  <code>navVisibility.ts</code> evalúa <code>supervisorOnly</code> ANTES que <code>permisosCustom</code>) — nunca
+  amplía acceso más allá del rol base. Por eso Comercial delega dándole al empleado el rol base
+  <strong>SUPERVISOR</strong> + un rol custom que oculta todo lo demás, no dándole acceso puntual desde un rol
+  operativo (CAJERO/DEPOSITO). Además, <code>'historial'</code> YA está en <code>MODULOS</code> pero el gate
+  hardcodeado interno de <code>HistorialPage.tsx</code> lo vuelve irrelevante para un rol no-supervisor: es
+  exactamente la inconsistencia que este relevamiento busca resolver de raíz.
+  <strong>Piezas que aún no existen en ningún lado:</strong> reasignación — <code>wms_tareas.usuario_asignado_id</code>
+  (FK a <code>users</code>, mig 289) existe en el schema pero <strong>ningún frontend lo lee ni lo escribe</strong>
+  (<code>PickingPage.tsx</code> muestra la cola completa sin asignar por persona); no hay botón "reasignar" en
+  todo el repo. Notificación directa al supervisor — la tabla <code>notificaciones</code>
+  (<code>user_id/titulo/mensaje/action_url/tipo/metadata</code>) existe y la usan Ventas/Caja/Inventario/
+  <code>LpnAccionesModal</code>, pero <strong>nunca WMS/Picking</strong>, y no hay ningún botón genérico
+  "Avisar al supervisor" en la app hoy. <strong>Patrón de UI dominante:</strong> <code>PageTabs</code> dentro de
+  la propia página del módulo (12 páginas lo usan: Ventas, Comercial, Caja, Envíos, Gastos, Clientes, Proveedores,
+  RRHH, Productos, Facturación, Config, Inventario) — Autorizaciones es exactamente un tab más de
+  <code>InventarioPage.tsx</code>, no existe en el repo el patrón de una ruta compartida tipo
+  <code>/supervisor?modulo=</code>.
+</div>
+
+<!-- ============================ A. HERRAMIENTAS GENÉRICAS POR MÓDULO ============================ -->
+<h2>A. Qué herramientas van adentro, genéricas por módulo</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Aprobar/rechazar — ¿se generaliza la tabla <code>autorizaciones_inventario</code> o queda exclusiva de Inventario? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>autorizaciones_inventario</code> (mig 056) tiene un <code>tipo</code> con CHECK cerrado a 6 valores, todos específicos de Inventario (<code>ajuste_cantidad</code>, <code>eliminar_serie</code>, <code>eliminar_lpn</code>, <code>bulk_edit</code>, <code>ajuste_conteo</code>, <code>cambio_estado</code>), sin columna <code>modulo</code>, y con la lógica de "cómo aplicar cada tipo" embebida en <code>InventarioPage.tsx</code> (~150 líneas). No existe una tabla equivalente para ningún otro módulo — Repositores necesitaría inventar la suya desde cero si esto no se generaliza.</div>
+  <ul class="opciones">
+    <li>(a) Generalizar: tabla nueva <code>autorizaciones</code> con columna <code>modulo</code> + <code>tipo</code> (texto libre, sin CHECK cerrado) + <code>entidad_id</code> + <code>datos_cambio</code> jsonb — <code>autorizaciones_inventario</code> se migra a esta o queda como alias/vista</li>
+    <li>(b) <code>autorizaciones_inventario</code> queda tal cual (solo Inventario); cada módulo nuevo (Repositores incluido) crea su propia tabla de autorizaciones cuando la necesite</li>
+    <li>(c) No se toca ninguna tabla — se agrega <code>modulo</code> como columna nueva a <code>autorizaciones_inventario</code> y se renombra conceptualmente, sin migrar datos ni tocar el CHECK existente de <code>tipo</code></li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Reasignar tarea/registro a otro usuario — pieza que hoy NO existe en ningún módulo <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>wms_tareas.usuario_asignado_id</code> (FK a <code>users</code>, mig 289) existe en el schema pero ningún frontend lo lee ni lo escribe — <code>PickingPage.tsx</code> muestra la cola completa a cualquier usuario con acceso a <code>/picking</code>, sin asignar ni reasignar por persona. No hay ningún botón "reasignar" en todo el repo, en ningún módulo.</div>
+  <ul class="opciones">
+    <li>(a) Reasignación genérica desde el día 1: la pestaña de supervisor de cualquier módulo (WMS/futuro Repositores/lo que venga) usa el mismo componente/RPC para reasignar</li>
+    <li>(b) Se arranca activando <code>wms_tareas.usuario_asignado_id</code> (que ya existe) como primer caso real, y se generaliza a otros módulos recién cuando tengan su propio campo de asignación</li>
+    <li>(c) No es parte del patrón base — queda fuera de este relevamiento, se resuelve módulo por módulo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Ver trazabilidad del módulo — ¿filtro de <code>actividad_log</code> o tabla nueva? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>logActividad()</code>+<code>HistorialPage.tsx</code> ya registran todo (entidad, acción, campo, valores, usuario, LPN/serie/lote) con <code>pagina</code> (ej. <code>/inventario</code>) y <code>entidad</code> en cada fila — pero es una sola pantalla global en <code>/historial</code>, sin ningún filtro que la scopee "solo lo de este módulo" desde dentro del módulo mismo.</div>
+  <ul class="opciones">
+    <li>(a) Filtro: la pestaña de supervisor de cada módulo consulta <code>actividad_log</code> filtrado por <code>pagina</code>/<code>entidad</code> de ESE módulo, reusando la tabla y el componente visual de <code>HistorialPage.tsx</code> — sin tabla nueva</li>
+    <li>(b) Tabla de trazabilidad nueva, separada de <code>actividad_log</code>, específica de cada módulo</li>
+    <li>(c) Ambos — <code>actividad_log</code> filtrado para el detalle fila por fila, más un resumen agregado propio por módulo (ej. "3 aprobaciones, 1 reasignación esta semana")</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    ¿Falta alguna herramienta genérica más, además de aprobar/reasignar/trazabilidad? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) No, esas 3 cubren lo que pidió Fede</li>
+    <li>(b) Sumar un mini-dashboard de KPIs del equipo (tareas pendientes/completadas por persona) como 4ta pieza genérica del patrón</li>
+    <li>(c) Sumar un "override"/clave maestra del DUEÑO como 4ta pieza (mismo criterio ya usado en Cancelar deuda CC de Clientes y en autorización de gastos)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. ARQUITECTURA DE REUSO ============================ -->
+<h2>B. Arquitectura de reuso real</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    ¿Componente genérico dentro de cada página, o ruta/página única separada? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el patrón dominante en Genesis360 es <code>PageTabs</code> dentro de la propia página del módulo (12 páginas lo usan). Autorizaciones de Inventario es literalmente un tab más de <code>InventarioPage.tsx</code> (<code>tab === 'autorizaciones'</code>), no una ruta aparte. No existe en el repo ningún patrón de página compartida con query param tipo <code>?modulo=</code>.</div>
+  <ul class="opciones">
+    <li>(a) Componente React genérico (ej. <code>&lt;PestanaSupervisor modulo="..." aprobaciones={} reasignables={} /&gt;</code>) que cada página importa y agrega como un tab más de su propio <code>PageTabs</code> — mismo patrón que ya usa Autorizaciones hoy, generalizado a un componente compartido</li>
+    <li>(b) Ruta/página única <code>/supervisor?modulo=inventario</code>, fuera de cada módulo, con su propio ítem de menú — rompe el patrón de navegación actual</li>
+    <li>(c) Híbrido: el componente genérico vive dentro de cada módulo (como en (a)) Y además hay una vista cross-módulo standalone ("todas mis aprobaciones pendientes de todos los módulos en un solo lugar")</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    ¿Un tab "Supervisor" único con sub-secciones, o cada herramienta sigue siendo su propio tab? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy Inventario ya tiene tabs separados por herramienta: "Autorizaciones" y "Tareas WMS" son dos tabs de primer nivel distintos dentro del mismo <code>PageTabs</code>, no están agrupados bajo un tab padre común.</div>
+  <ul class="opciones">
+    <li>(a) Un solo tab "Supervisor" por módulo, con sub-tabs internos (Aprobaciones / Reasignar / Trazabilidad)</li>
+    <li>(b) Mantener el criterio actual — cada herramienta sigue siendo su propio tab de primer nivel (ej. "Autorizaciones" separado de "Tareas WMS", como hoy)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. GATEO DE ACCESO ============================ -->
+<h2>C. Gateo de acceso — quién ve/usa la pestaña</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    ¿Rol base fijo (<code>supervisorOnly</code>) o configurable vía <code>roles_custom</code> como Comercial? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy hay DOS criterios distintos y no unificados en el propio código: Autorizaciones de Inventario usa <code>puedeVerAutorizaciones = ['DUEÑO','SUPERVISOR','SUPER_USUARIO'].includes(user?.rol)</code> — hardcodeado dentro del componente, sin leer <code>roles_custom</code> en absoluto. Comercial (Fase D) en cambio usa <code>supervisorOnly</code> en el nav (mismo rol base) PERO permite delegar a un empleado puntual dándole rol base SUPERVISOR + un rol custom que oculta todo lo demás — <code>roles_custom</code> solo puede RESTRINGIR un módulo que el rol base ya ve, nunca ampliar el acceso de un rol operativo (CAJERO/DEPOSITO) a la pestaña de supervisor.</div>
+  <ul class="opciones">
+    <li>(a) Mismo patrón que Comercial para TODOS los módulos: rol base <code>supervisorOnly</code> + delegable vía <code>roles_custom</code> (agregar el módulo/pestaña a la lista <code>MODULOS</code>) — incluida una futura migración de Inventario</li>
+    <li>(b) Mantener hardcodeado a DUEÑO/SUPERVISOR/SUPER_USUARIO como hoy Autorizaciones, sin pasar por <code>roles_custom</code> en ningún módulo</li>
+    <li>(c) Se resuelve caso por caso: algunos módulos quedan fijos, otros delegables — no hay un criterio único para toda la app</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    ¿"Quién aprueba" es el mismo criterio para TODOS los módulos, o cada uno tiene su propia config? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto"><strong>Ojo con una idea equivocada del estado actual:</strong> <code>tenants.ajuste_autorizacion_roles</code> (mig 228) NO define quién aprueba — define, por rol, si LOS PROPIOS AJUSTES de ese rol requieren autorización (<code>'directo'/'umbral'/'siempre'</code>; ej. "el SUPERVISOR ajusta directo, igual que el DUEÑO"). Quién VE la pestaña y aprueba (<code>puedeVerAutorizaciones</code>) sigue siendo la allowlist hardcodeada de 3 roles, sin relación con esa columna. Si el patrón nuevo da por sentado que "ya existe una config de quién aprueba por tenant", parte de una base incorrecta — hoy solo existe "a quién se le exige aprobación", no "quién la otorga".</div>
+  <ul class="opciones">
+    <li>(a) Se agrega, como parte de este patrón, un config nuevo POR MÓDULO de "qué rol aprueba" (tabla o columna jsonb en <code>tenants</code>) — separado y sin tocar el ya existente <code>ajuste_autorizacion_roles</code>, que sigue significando "a quién se le exige aprobación"</li>
+    <li>(b) Se mantiene fijo en código quién aprueba (DUEÑO/SUPERVISOR/SUPER_USUARIO) para todos los módulos, sin configuración por tenant — se resuelve exclusivamente con C1</li>
+    <li>(c) "Quién aprueba" = quién tiene <code>'editar'</code> en ese módulo vía <code>roles_custom</code> (ver C1), sin agregar ningún campo nuevo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. ALCANCE DE LA MIGRACIÓN ============================ -->
+<h2>D. Alcance de la migración — retrofit de Inventario o solo módulos nuevos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    ¿Se retrofitea la tab Autorizaciones de Inventario al patrón nuevo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">La tab actual de Inventario tiene: 1 query (<code>autorizaciones_inventario</code> filtrada por <code>tenant_id</code>+<code>estado</code>), 2 mutaciones (<code>aprobarAutorizacion</code>/<code>rechazarAutorizacion</code>, ~150 líneas con lógica específica por cada uno de los 6 tipos), UI de tarjetas con aprobar/rechazar + modal de motivo. Migrar esto al patrón genérico implica que el componente compartido sepa ejecutar 6 "aplicar el cambio" distintos — no es un recorte trivial a un componente 100% genérico sin callback específico por módulo.</div>
+  <ul class="opciones">
+    <li>(a) Se construye el patrón genérico y DESPUÉS se retrofitea Inventario (migrar <code>autorizaciones_inventario</code> al modelo nuevo) — dos pasos, pero sin duplicar UI/lógica hacia adelante</li>
+    <li>(b) Inventario queda EXACTAMENTE como está (no se toca <code>autorizaciones_inventario</code> ni su tab) — el patrón nuevo se construye pensando solo en Repositores y los módulos que vengan después</li>
+    <li>(c) Se construye el patrón genérico de forma que Inventario lo consuma vía un adaptador/callback (visualmente ya usa el componente compartido) sin migrar datos ni tocar <code>autorizaciones_inventario</code></li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    ¿En qué orden se construye esto respecto de Repositores? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Este relevamiento es el punto 2 de la secuencia de 4 acordada (Ubicaciones → Pestaña de supervisor → Motor de Rotación → Repositores) — la intención original de GO/Fede es tenerlo listo ANTES de diseñar Repositores.</div>
+  <ul class="opciones">
+    <li>(a) Se completa 100% este patrón (incluida la decisión de D1) antes de arrancar el diseño de Repositores, como estaba previsto</li>
+    <li>(b) Se define el diseño acá, pero la implementación real se hace EN PARALELO con Repositores (Repositores es el primer consumidor real, valida el patrón en la práctica)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. REASIGNACIÓN ============================ -->
+<h2>E. Reasignación — pieza que hoy no existe en ningún lado</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿A qué tipos de "cosas asignadas" aplica? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>wms_tareas.usuario_asignado_id</code> (mig 289) es el ÚNICO campo de asignación por persona en todo el schema, y ningún frontend lo usa. No hay campo equivalente en <code>autorizaciones_inventario</code>, <code>pedidos</code>, ni en ningún otro lado — no existe "asignado a" fuera de WMS.</div>
+  <ul class="opciones">
+    <li>(a) Reasignación arranca activando <code>wms_tareas.usuario_asignado_id</code> (el campo que ya existe) como primer caso real, y se generaliza a otros módulos a medida que sumen su propio campo de asignación</li>
+    <li>(b) Se agrega un campo <code>asignado_a</code> genérico a la tabla de autorizaciones (la actual o la nueva de A1) para poder reasignar SOLICITUDES pendientes de aprobación, no solo tareas WMS</li>
+    <li>(c) Ambos — reasignar tareas (WMS/futuro Repositores) y reasignar solicitudes de aprobación son necesidades distintas, las dos cubiertas por el patrón desde el arranque</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    ¿Reasignar deja rastro en <code>logActividad</code>? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy TODAS las mutaciones de Autorizaciones y de tareas WMS (<code>aprobarAutorizacion</code>, <code>completarTareaWms</code>, <code>cancelarTareaWms</code>) llaman <code>logActividad()</code> sin excepción — es la convención establecida. El enum <code>AccionLog</code> de <code>actividadLog.ts</code> hoy tiene <code>crear/editar/eliminar/cambio_estado/cerrar/pagar/solicitar/aprobar/rechazar/ingreso_stock/rebaje_stock/incobrable/despacho_traslado/recepcion_traslado/faltante_traslado</code> — sin <code>'reasignar'</code>.</div>
+  <ul class="opciones">
+    <li>(a) Sí — se agrega <code>'reasignar'</code> como <code>accion</code> nueva al enum <code>AccionLog</code>, con <code>valor_anterior</code>/<code>valor_nuevo</code> = usuario anterior/nuevo, mismo criterio que el resto</li>
+    <li>(b) No hace falta loguearlo en <code>actividad_log</code> — alcanza con que quede el dato en la propia tabla (<code>usuario_asignado_id</code> actual)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. NOTIFICACIÓN AL SUPERVISOR ============================ -->
+<h2>F. Notificación al supervisor ("avisar al supervisor")</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    ¿Es parte de este patrón genérico o queda específico de Repositores? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">El relevamiento de Repositores ya pidió un botón "avisar al supervisor" con notificación directa. Hoy la tabla <code>notificaciones</code> (<code>user_id/titulo/mensaje/action_url/tipo/metadata</code>) existe y la usan Ventas/Caja/Inventario/<code>LpnAccionesModal</code>, pero NUNCA WMS/Picking — y no existe ningún botón genérico "Avisar al supervisor" en ningún módulo hoy.</div>
+  <ul class="opciones">
+    <li>(a) Se construye como pieza del patrón genérico: cualquier módulo puede tener un botón "Avisar al supervisor" que inserta en <code>notificaciones</code> para los usuarios con acceso de aprobación de ESE módulo (usa el mismo criterio de gateo definido en C1/C2)</li>
+    <li>(b) Se construye específico de Repositores primero, tal como estaba planteado en su relevamiento, y se generaliza recién cuando otro módulo lo pida</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    ¿A quién notifica exactamente el botón? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Depende de lo que se responda en C1/C2 (rol fijo vs. <code>roles_custom</code> vs. config nueva por módulo).</div>
+  <ul class="opciones">
+    <li>(a) A todos los usuarios con rol DUEÑO/SUPERVISOR/SUPER_USUARIO del tenant (misma allowlist que hoy ve Autorizaciones/Historial)</li>
+    <li>(b) Solo al/los supervisor(es) de la sucursal del usuario que avisa (si tiene sucursal fija asignada)</li>
+    <li>(c) Configurable por módulo — usa el mismo config nuevo de "quién aprueba" si se aprueba la opción C2-a</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. TOP 3 / ABIERTOS ============================ -->
+<h2>G. Top 3 prioritario / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    ¿Qué 3 decisiones hay que cerrar primero para poder empezar a codear el patrón? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto se puede resolver en fases posteriores sin bloquear el arranque. Importa cerrar esto ANTES de que Repositores lo empiece a consumir, para no construirlo apurado adentro de Repositores.</div>
+  <ul class="opciones">
+    <li>(   ) A1 — generalizar <code>autorizaciones_inventario</code> o dejarla exclusiva de Inventario</li>
+    <li>(   ) B1 — componente genérico dentro de cada página vs. ruta/página separada</li>
+    <li>(   ) C1/C2 — gateo de acceso: rol fijo vs. <code>roles_custom</code>, y si "quién aprueba" es configurable por módulo</li>
+    <li>(   ) D1 — alcance real: ¿se retrofitea Inventario o queda como está?</li>
+    <li>(   ) E1 — a qué "cosas asignadas" aplica la reasignación (WMS primero, autorizaciones, o ambos)</li>
+    <li>(   ) F1 — notificación al supervisor: genérica desde el día 1 o específica de Repositores primero</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    Comentarios libres / cualquier regla que se nos haya escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio — Patrón "Pestaña de Supervisor" reusable · 2026-08-03<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y diseñar el Motor de Rotación (punto 3) y Repositores (punto 4, Fase E del backlog Comercial de Fede).
+</div>
+
+</body>
+</html>

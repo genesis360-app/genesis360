@@ -6,6 +6,83 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-03] update | 🗺️ Relevamientos 2 y 3 de la secuencia de Fase E generados (Supervisor tab + Motor de Rotación) — los 3 primeros de 4 listos
+
+Continúa la secuencia acordada con Fede/GO (ver entrada anterior). Con Ubicaciones (punto 1) ya
+generado, se sumaron los otros dos que pueden relevarse en paralelo:
+
+**Punto 2 — `relevamiento-supervisor-tab-reglas-negocio.html`** (16 preguntas, 7 secciones): patrón
+"pestaña de supervisor reusable" que pidió Fede en la nota transversal del relevamiento de
+Repositores. Inspeccionado contra los 3 precedentes reales: Tab Autorizaciones de
+`InventarioPage.tsx`, `actividadLog.ts`/`HistorialPage.tsx`, y `roles_custom`/`MODULOS` de
+`UsuariosPage.tsx`. **Hallazgo real (pregunta C1/C2, CAMBIO):** hoy hay DOS criterios de acceso NO
+unificados — Autorizaciones de Inventario tiene el gate hardcodeado (`['DUEÑO','SUPERVISOR',
+'SUPER_USUARIO'].includes(...)`, sin leer `roles_custom`), mientras que Comercial (Fase D) sí permite
+delegar vía `roles_custom` — y ese mecanismo solo puede RESTRINGIR un módulo que el rol base ya ve,
+nunca ampliar el acceso de un rol operativo. Además, `tenants.ajuste_autorizacion_roles` (mig 228)
+NO configura "quién aprueba" como se podría asumir — configura "a qué rol se le exige aprobación en
+sus propios ajustes", son cosas distintas. `wms_tareas.usuario_asignado_id` existe en el schema pero
+ningún frontend lo usa (dato real para la pregunta de "reasignación", pieza que hoy no existe en
+ningún módulo).
+
+**Punto 3 — `relevamiento-rotacion-descuento-reglas-negocio.html`** (25 preguntas, 8 secciones): el
+motor de las 3 reglas de Fede (agotar antes de reponer / priorizar envíos-reservas / armar kits) para
+productos con descuento por vencimiento. La pregunta "excluyentes o combinables" (que Fede dejó
+explícitamente abierta) quedó destacada visualmente con el análisis de las 5 combinaciones concretas
+que tendrían sentido o no. **Dos gaps técnicos reales encontrados (CAMBIO):**
+- El motor FEFO ya existente (`getRebajeSort`) ordena por vencimiento DENTRO de una venta, pero
+  **nunca distingue canal** — los Pedidos con envío reusan literalmente el LPN que ya eligió la
+  venta (mig 318: "NO re-reserva stock"), así que la opción 2 de Fede ("próximo a vencer priorizado
+  para envíos/reservas") puede ser un concepto nuevo, no algo ya cubierto por el FEFO existente.
+- `iniciar_armado_kit` (mig 040/244) reserva componentes por `created_at` (FIFO fijo) **sin filtrar
+  por `estado_id`** — si se implementa la opción 3 (armar kits con descuento) tal cual está la RPC
+  hoy, un armado de kit podría consumir stock FRESCO antes que el lote en descuento que se quiere
+  liquidar, exactamente lo contrario de la intención de Fede.
+
+**Los 3 primeros relevamientos de la secuencia (Ubicaciones, Supervisor tab, Rotación) están
+generados y listos para que GO los responda offline con Fede.** Falta solo el punto 4 (relevamiento
+final de Repositores), que se arma DESPUÉS de tener las respuestas de estos 3.
+
+**Estado git:** nada commiteado de este bloque todavía. Ver [[wiki/features/precios-tiers-empaque]]
+→ Fase E, `project_pendientes.md`.
+
+## [2026-07-30] update | 🗺️ Orden de trabajo para Fase E acordado con Fede: 4 relevamientos en secuencia, arrancó el de Ubicaciones + fix de filtro Pedidos→Picking
+
+Tras revisar las respuestas de Fede al relevamiento de Repositores (ver entrada siguiente), quedó
+claro que "Fase E" son en realidad **4 proyectos con dependencias reales** entre sí, no una sola
+fase — decisión de GO+Fede: relevarlos en orden **0) confirmar cierre de UoM/Empaque → 1) Rediseño
+de Ubicaciones → 2) Pestaña de supervisor reusable (paralelo con 1) → 3) Motor de Rotación de
+productos con descuento (paralelo con 2) → 4) Repositores (al final, consumiendo 1-3)**.
+
+**Punto 0 — verificado contra PROD, no contra memoria:** el rediseño UoM/Empaque/Variantes está
+100% cerrado y estable (`producto_presentaciones_precio_base`, `variantes_madre_hijo`,
+`tiers_mayorista_operador`, `presentaciones_arbol_sin_override`, `presentaciones_fuente_de_verdad`,
+`guard_variante_serializado_con_stock`, `guard_variante_atributos_incompatibles` — todas aplicadas
+en `jjffnbrdjchquexdfgwq`). Seguro reusar su patrón de árbol genealógico para Ubicaciones.
+
+**Punto 1 — relevamiento de Ubicaciones generado**: `relevamiento-ubicaciones-reglas-negocio.html`
+(raíz del repo), 14 preguntas en 5 secciones (A-E) + Top 3. Fundamentado con grep real, no
+estimado: `ubicacion_id`/`ubicacion_origen_id`/`ubicacion_destino_id` aparecen en **48 archivos,
+274 ocurrencias** (17 en `src/`, 31 en migraciones) — la pregunta de mayor impacto (E1/E2: ¿WMS/
+Picking pasan a operar sobre niveles internos o la ubicación contenedora sigue siendo la unidad de
+movimiento real?) quedó armada con esos números, no una suposición. Hallazgo del propio subagente:
+**`producto_ubicacion_sucursal` (mig 121) ya tiene `UNIQUE(producto_id, sucursal_id)`** — casi el
+mismo modelo que se pedía como NUEVO para "ubicación única de exhibición por SKU", reframeado como
+pregunta CAMBIO (reusar/extender vs. crear de cero). Segunda tensión real detectada: las migraciones
+más recientes de todo WMS (321/322/325/326) acaban de conectar capacidad/peso a un cálculo
+funcional (`vw_ubicacion_ocupacion`, `fn_wms_elegir_ubicacion_picking`) **a nivel de la ubicación
+completa** — mover esos datos a "nivel interno" tensiona directo con ese trabajo reciente.
+
+**Fix aparte, pedido directo de GO probando la app**: en Pedidos, el botón "Ver en Picking"
+navegaba a `/picking` sin filtro — con la cola larga, no se distinguía cuál tarea era la del pedido.
+Ahora pasa `?busqueda=<número de pedido>` (mismo patrón `useSearchParams` que `InventarioPage.tsx`
+→ `?search=`) y `PickingPage.tsx` lo pre-carga en el buscador que ya soporta pedido/venta/envío
+(agregado esta misma sesión, ver entrada de más abajo). `src/pages/PedidosPage.tsx` +
+`src/pages/PickingPage.tsx`. Verde: tsc.
+
+**Estado git:** nada commiteado de este bloque todavía. Ver [[wiki/features/precios-tiers-empaque]]
+→ Fase E, `project_pendientes.md`.
+
 ## [2026-07-30] update | 🔒 6 de 8 alertas de Dependabot resueltas (npm audit fix, sin majors)
 
 GitHub reportó 8 vulnerabilidades (4 high, 3 moderate, 1 low) en el branch default. Revisadas una por

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Rediseño de Ubicaciones · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .nota { background: #f0f7f0; border-left: 4px solid #2e7d32; padding: 8pt 12pt; margin: 10pt 0 14pt 0; border-radius: 0 4pt 4pt 0; font-size: 10pt; }
+  .nota strong { color: #1b5e20; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Rediseño de Ubicaciones</h1>
+<div class="meta">
+  Genesis360 · v1.152.0 (EN DEV) · Fecha: 2 de agosto de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas <span class="tag tag-existente">EXISTENTE</span>
+  piden confirmar una regla ya implementada; <span class="tag tag-nuevo">NUEVO</span> piden definir una regla
+  pendiente; <span class="tag tag-cambio">CAMBIO</span> señalan un punto donde la respuesta que elijan
+  <strong>reinterpreta, reemplaza o rompe intencionalmente</strong> un campo/mecanismo que el código ya usa hoy
+  con otro propósito. Este es el <strong>primero de 4 relevamientos</strong> acordados con Fede para desbloquear
+  el módulo <strong>Repositores</strong> (pausado): Ubicaciones → Pestaña de supervisor reusable → Motor de
+  Rotación de productos con descuento → Repositores. <strong>Este es el que más bloquea a los otros dos</strong>:
+  Repositores necesita la ubicación de exhibición por SKU, y Rotación necesita la ubicación de excepción de
+  lotes en descuento. GO confirmó que <strong>romper comportamiento existente es aceptable acá</strong> —
+  de los 8 tenants de PROD, solo 1 está activo con datos reales (la propia cuenta de GO: 4 ubicaciones, 31
+  líneas de stock, 22 ventas), los otros 5 en trial están vacíos. Es el momento de hacer este cambio agresivo,
+  antes de tener clientes comerciales reales.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual — <code>ubicaciones</code> hoy es una tabla PLANA, sin jerarquía:</strong>
+  <code>id, tenant_id, nombre, descripcion, activo, created_at</code> (mig 001) +
+  <code>sucursal_id</code> (mig 101, NULL = global / visible en todas las sucursales) +
+  <code>disponible_surtido</code> (mig 012) + <code>es_devolucion</code> (mig 030) +
+  <code>tipo_ubicacion</code> CHECK <code>picking/bulk/estiba/camara/cross_dock/staging</code> (migs 032+298) +
+  <code>alto_cm/ancho_cm/largo_cm/peso_max_kg/capacidad_pallets</code> (mig 032) +
+  <code>mono_sku</code> (mig 052) + <code>disponible_tn/disponible_meli</code> (mig 066) +
+  <code>zona_id</code> (mig 289) + <code>secuencia</code> (mig 178) + <code>prioridad</code> (mig 010).
+  <strong>No existe ningún concepto de "nivel dentro de una ubicación"</strong> — cada fila es un único hueco
+  plano, y no hay ningún código alfanumérico: el único identificador de hoy es <code>nombre</code> (texto libre).
+  El precedente de árbol genealógico YA construido y probado para otro dominio es
+  <code>producto_presentaciones.padre_linea_id</code> (mig 307): self-FK + trigger anti-ciclo
+  <code>trg_pp_no_ciclo</code> (~40 líneas, defiende contra self-parent, padre de otro producto y ciclos con
+  hasta 50 saltos) + <code>fn_rebuild_presentaciones</code> — es la plantilla técnica más cercana a lo que
+  Ubicaciones necesitaría para sus niveles. <strong>Capacidad/peso YA están conectados a algo funcional, y muy
+  reciente</strong> (migs 321/322/325/326): la vista <code>vw_ubicacion_ocupacion</code> calcula
+  <code>lpn_activos/peso_kg/volumen_m3</code> agregando <code>inventario_lineas</code> por
+  <code>ubicacion_id</code>, la usa <code>AvisoCapacidadUbicacion.tsx</code> (avisa, nunca bloquea) en Config/
+  Inventario/Recepciones, y <code>fn_wms_elegir_ubicacion_picking</code> la usa para desempatar destinos de
+  reabastecimiento — <strong>todo esto opera hoy a nivel de la ubicación COMPLETA</strong>, no de un nivel
+  interno. También existe ya una tabla que modela casi exactamente "una ubicación por producto por sucursal":
+  <code>producto_ubicacion_sucursal</code> (mig 121, <code>UNIQUE(producto_id, sucursal_id)</code>) — hoy es
+  solo un <strong>default/sugerencia</strong> que precarga el selector en <code>ProductoFormPage.tsx</code>,
+  <code>InventarioPage.tsx</code> y <code>RecepcionesPage.tsx</code>; nunca es obligatoria, nunca está ligada a
+  "exhibición"/Góndola, y nunca se consulta para decidir dónde reponer. <code>venta_item_despachos.ubicacion_id</code>
+  (mig 153) ya registra de qué ubicación salió cada unidad vendida, lo que confirma que la reposición
+  inteligente por ubicación de exhibición es viable hoy sin nada nuevo del lado de Ventas. <strong>Impacto real
+  medido por grep:</strong> <code>ubicacion_id</code>/<code>ubicacion_origen_id</code>/<code>ubicacion_destino_id</code>
+  aparecen en <strong>17 archivos de <code>src/</code> (106 ocurrencias)</strong> y
+  <strong>31 migraciones de <code>supabase/migrations/</code> (168 ocurrencias)</strong> — 48 archivos,
+  274 ocurrencias en total (detalle en la sección E).
+</div>
+
+<div class="nota">
+  <strong>Nota de contexto (no es parte de este relevamiento):</strong> Fede mencionó una idea más grande,
+  "Almacén 360" — todavía sin definir del todo ("te ampliamos mejor esa idea porque seguro hay más cosas por
+  detrás"). La primera pieza conocida es una vista visual/dinámica de la bodega, para ver dónde están los SKU
+  por familia o por atributos. Eso se releva aparte cuando Fede lo termine de definir. La única pieza de
+  Almacén 360 que sí toca este relevamiento es el <strong>código alfanumérico de ubicación</strong> (sección B):
+  si se define ahora, es la base sobre la que se construiría esa vista visual más adelante.
+  <br><br>
+  <strong>Conexión con el próximo relevamiento (Rotación):</strong> los lotes en descuento (vencimiento
+  próximo, etc.) van a poder tener una <strong>ubicación de excepción a nivel de LOTE</strong>, que no
+  contradice la regla de unicidad general del SKU de la sección C — es una excepción puntual que se termina de
+  definir en el relevamiento de "Rotación de productos con descuento". Acá alcanza con dejar la conexión
+  mencionada, sin profundizar.
+</div>
+
+<!-- ============================ A. MODELO DE ÁRBOL ============================ -->
+<h2>A. Modelo de árbol: ubicación contenedora + niveles internos</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    Profundidad del árbol <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy Ubicaciones no tiene ningún nivel (tabla plana). El precedente de Empaque
+  (<code>producto_presentaciones.padre_linea_id</code>, mig 307) permite cadenas de CUALQUIER profundidad
+  (Caja→Pallet→...), con trigger anti-ciclo para sostenerlo. Construir ese árbol la primera vez llevó una
+  migración dedicada con self-FK + guard de ciclos + función de reconstrucción — no es trivial, aunque ya está
+  probado en producción.</div>
+  <ul class="opciones">
+    <li>(a) Mismo patrón que Empaque — profundidad libre, niveles dentro de niveles sin límite (reusa el
+    mismo diseño técnico probado: self-FK + <code>trg</code> anti-ciclo)</li>
+    <li>(b) Alcanza con 2 niveles fijos — ubicación contenedora → nivel, sin sub-niveles de un nivel (más
+    simple de construir y de operar)</li>
+    <li>(c) 2 niveles fijos ahora, pero el modelo de datos queda preparado para profundidad libre después
+    (self-FK desde el arranque, aunque la UI solo permita 1 hijo por ahora)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Migración de las ubicaciones ya cargadas <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy hay ubicaciones reales operando en PROD: 4 en la cuenta de GO (más las que
+  tenga cualquier otro tenant, aunque el resto está vacío). Todo el WMS (picking, reabastecimiento,
+  recepciones, traslados, ventas) apunta hoy a <code>ubicaciones.id</code> directo.</div>
+  <ul class="opciones">
+    <li>(a) Pasan automático a "contenedora sin niveles todavía" — siguen funcionando exactamente igual
+    que hoy hasta que alguien les defina niveles, sin ninguna acción manual</li>
+    <li>(b) Hace falta una migración activa antes de poder operar — alguien tiene que revisar y definir
+    niveles antes de seguir usando esas 4 ubicaciones</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Relación entre <code>tipo_ubicacion</code> (WMS) y el nuevo "tipo de exhibición" (Góndola/Mostrador)
+    <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>tipo_ubicacion</code> (<code>picking/bulk/estiba/camara/cross_dock/staging</code>,
+  migs 032+298) está hardcodeado en la lógica de WMS: <code>fn_wms_elegir_ubicacion_picking</code> busca
+  <code>u.tipo_ubicacion = 'picking'</code> para elegir destino de reabastecimiento, y el origen del reabastecimiento
+  filtra <code>u2.tipo_ubicacion IN ('bulk','estiba','camara')</code> (migs 290/291). Es un eje de clasificación
+  LOGÍSTICA, no de cara al cliente. El "tipo de exhibición" (Góndola = autoservicio, necesita cartel de precio;
+  Mostrador/Depósito = lo busca un empleado) es un concepto nuevo, de cara al cliente.</div>
+  <ul class="opciones">
+    <li>(a) Son dos ejes independientes que coexisten en la misma ubicación/nivel — una ubicación puede ser
+    <code>tipo_ubicacion='picking'</code> Y tipo de exhibición "Góndola" a la vez, sin relación entre sí</li>
+    <li>(b) El tipo de exhibición reemplaza/absorbe a <code>tipo_ubicacion</code> — hay que migrar toda la
+    lógica de WMS que hoy depende de <code>picking/bulk/estiba/camara/cross_dock/staging</code></li>
+    <li>(c) El tipo de exhibición es un caso particular — "Góndola" implica <code>tipo_ubicacion='picking'</code>
+    automáticamente, pero <code>tipo_ubicacion</code> sigue siendo el campo que usa la lógica de WMS</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    Capacidad/peso: ¿por NIVEL, por CONTENEDORA, o ambos con validación de suma? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>alto_cm/ancho_cm/largo_cm/peso_max_kg/capacidad_pallets</code> son campos
+  de la ubicación COMPLETA (mig 032), y hasta hace muy poco no los usaba ningún cálculo — quedaban cargados en
+  Config sin conectar a nada. Las migs 321/322/325/326 (las más recientes de todo el módulo WMS, recién
+  construidas) los conectaron: <code>vw_ubicacion_ocupacion</code> suma <code>lpn_activos/peso_kg/volumen_m3</code>
+  agregando <code>inventario_lineas</code> por <code>ubicacion_id</code> y los compara contra esos topes;
+  <code>AvisoCapacidadUbicacion.tsx</code> avisa (nunca bloquea) al mandar mercadería a una ubicación llena; y
+  <code>fn_wms_elegir_ubicacion_picking</code> (mig 326) usa esa ocupación para desempatar el destino de un
+  reabastecimiento ("preferir la posición que tiene lugar"). Todo esto está calculado a nivel de la ubicación
+  ENTERA, recién terminado de cablear — mover la capacidad al nivel interno obliga a rehacer esa vista y esa
+  función.</div>
+  <ul class="opciones">
+    <li>(a) La capacidad se carga SOLO por NIVEL — hay que rehacer <code>vw_ubicacion_ocupacion</code> y
+    <code>fn_wms_elegir_ubicacion_picking</code> para que sumen/comparen por nivel</li>
+    <li>(b) La capacidad se mantiene SOLO en la CONTENEDORA como hoy (techo agregado) — los niveles son
+    puramente organizativos/de exhibición, sin capacidad propia; nada de lo recién construido se toca</li>
+    <li>(c) Ambos — capacidad por nivel Y techo agregado en la contenedora, validando que la suma de los
+    niveles no supere el techo (más completo, pero más trabajo de UI + backend)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. CÓDIGO ALFANUMÉRICO ============================ -->
+<h2>B. Código alfanumérico de ubicación</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    ¿Lo carga el usuario a mano o lo autogenera el sistema? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy no existe ningún código alfanumérico en <code>ubicaciones</code> — el único
+  identificador es <code>nombre</code> (texto libre, sin formato validado, ej. "Góndola 3", "Depósito A").</div>
+  <ul class="opciones">
+    <li>(a) Lo carga el usuario a mano (ej. "A-03-02" pasillo-estante-nivel), texto libre validado solo
+    por unicidad</li>
+    <li>(b) Lo autogenera el sistema según la jerarquía del árbol (ej. concatenando el código de la
+    contenedora + el orden del nivel)</li>
+    <li>(c) Autogenerado por default, pero editable a mano si el usuario quiere su propia convención</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    ¿Obligatorio para toda ubicación/nivel, o solo para los de tipo picking/góndola? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Obligatorio siempre, para cualquier ubicación o nivel que se cree</li>
+    <li>(b) Solo obligatorio para ubicaciones/niveles tipo picking o tipo exhibición (Góndola) — depósito/
+    bulk puede quedar sin código</li>
+    <li>(c) Opcional en todos los casos, sin ninguna obligatoriedad</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    ¿Reemplaza a <code>nombre</code> o coexiste como identificador adicional? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>nombre</code> es el único campo que identifica una ubicación en toda la
+  UI (selects de Recepciones/Traslados/Picking/Config, etc.) — 17 archivos de <code>src/</code> lo consumen
+  indirectamente vía joins a <code>ubicaciones</code>.</div>
+  <ul class="opciones">
+    <li>(a) El código reemplaza a <code>nombre</code> como identificador principal en toda la UI (habría
+    que revisar los 17 archivos que hoy muestran el nombre)</li>
+    <li>(b) Coexisten — <code>nombre</code> sigue siendo la etiqueta legible (ej. "Góndola 3"), el código es
+    un identificador técnico adicional (ej. para el código de barras del estante)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. UBICACIÓN ÚNICA DE EXHIBICIÓN ============================ -->
+<h2>C. Ubicación única y obligatoria de exhibición por SKU (por sucursal)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    ¿Se reusa/extiende <code>producto_ubicacion_sucursal</code> o se modela desde cero? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Ya existe una tabla que modela casi exactamente lo pedido: <code>producto_ubicacion_sucursal</code>
+  (mig 121) tiene <code>UNIQUE(producto_id, sucursal_id)</code> — una fila por producto y sucursal, apuntando a
+  una <code>ubicacion_id</code>. Hoy es solo un DEFAULT/sugerencia: <code>ProductoFormPage.tsx</code> la hace
+  <code>upsert</code> al guardar el producto, <code>InventarioPage.tsx</code> (<code>resolverUbicacionDefault</code>)
+  y <code>RecepcionesPage.tsx</code> la consultan para precargar el selector de ubicación al ingresar stock —
+  nunca es obligatoria, nunca valida que la ubicación sea tipo Góndola, y nunca se consulta para decidir dónde
+  reponer.</div>
+  <ul class="opciones">
+    <li>(a) Se reinterpreta/extiende <code>producto_ubicacion_sucursal</code>: se le agrega la obligatoriedad
+    (solo cuando la ubicación es tipo Góndola) y se empieza a leer para reposición — no se crea tabla nueva</li>
+    <li>(b) Tabla nueva dedicada (ej. <code>producto_exhibicion_sucursal</code>), separada de la que ya
+    existe como default de stock — son conceptos distintos aunque se parezcan en la forma</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    ¿A qué nivel de la jerarquía apunta la ubicación de exhibición? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Depende de cómo se responda A1 (profundidad del árbol). Apuntar al NIVEL específico
+  da más granularidad para la tarea del repositor ("Estante 2 de Góndola 3") pero exige que todo SKU tenga un
+  nivel cargado, no solo una contenedora.</div>
+  <ul class="opciones">
+    <li>(a) Al NIVEL específico (ej. "Estante 2 de Góndola 3") — la granularidad más útil para la tarea del
+    repositor</li>
+    <li>(b) Alcanza con la CONTENEDORA (ej. "Góndola 3" a secas), sin exigir bajar al nivel</li>
+    <li>(c) Configurable — puede apuntar a la contenedora o a un nivel específico, según qué tan preciso
+    quiera ser el usuario en cada caso</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. MULTI-SUCURSAL ============================ -->
+<h2>D. Multi-sucursal</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    ¿Cada sucursal sigue teniendo filas de ubicación completamente independientes? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy <code>ubicaciones.sucursal_id</code> (mig 101) es NULL = global (visible en
+  todas las sucursales) o apunta a una sucursal puntual; dos sucursales que ambas tengan una "Góndola 3" son
+  hoy dos filas completamente independientes de la tabla, sin ninguna relación entre sí. <code>zonas</code>
+  (mig 289) sigue el mismo criterio. La RLS de <code>ubicaciones</code> es tenant-only (no sucursal-scoped,
+  a propósito — mismo comentario en migs 217/289), así que cualquier usuario con acceso ve las ubicaciones de
+  todas las sucursales del tenant, aunque operativamente cada una se filtre por <code>sucursal_id</code>.</div>
+  <ul class="opciones">
+    <li>(a) Confirmar — siguen siendo filas independientes por sucursal, sin cambios en ese punto (ni
+    plantilla compartida ni ninguna relación entre la "Góndola 3" de una sucursal y la de otra)</li>
+    <li>(b) El árbol introduce algo tipo plantilla compartida entre sucursales (ej. definir la estructura
+    de niveles una vez y aplicarla a varias sucursales)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. IMPACTO EN WMS/PICKING ============================ -->
+<h2>E. Impacto en WMS / Picking / Recepciones / Traslados / Ventas (mayor impacto técnico)</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿El movimiento de stock real sigue operando sobre la ubicación CONTENEDORA, o pasa a operar sobre el
+    NIVEL? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Medido por grep en todo el repo: <code>ubicacion_id</code> /
+  <code>ubicacion_origen_id</code> / <code>ubicacion_destino_id</code> aparecen en
+  <strong>17 archivos de <code>src/</code> (106 ocurrencias)</strong> — los de mayor uso:
+  <code>InventarioPage.tsx</code> (28), <code>VentasPage.tsx</code> (15), <code>RecepcionesPage.tsx</code> (13),
+  <code>ConfigPage.tsx</code> (9), <code>ProductoFormPage.tsx</code> (9), <code>LpnAccionesModal.tsx</code> (8),
+  <code>MasivoModal.tsx</code> (7), más <code>PickingPage.tsx</code>, <code>PedidosPage.tsx</code>,
+  <code>TrasladosPanel.tsx</code>, <code>AlertasPage.tsx</code>, <code>AvisoCapacidadUbicacion.tsx</code>,
+  <code>DashInventarioArea.tsx</code>, <code>MetricasPage.tsx</code>, <code>ImportarInventarioPage.tsx</code>,
+  <code>scanCompuesto.ts</code> y los tipos de <code>lib/supabase.ts</code> — y en
+  <strong>31 migraciones de <code>supabase/migrations/</code> (168 ocurrencias)</strong>, concentradas en
+  <code>290_wms_rpcs.sql</code> (31 — donde viven <code>fn_wms_elegir_ubicacion_picking</code> y
+  <code>fn_completar_tarea_reabastecimiento</code>), <code>291_wms_fixes_picking_reabastecimiento.sql</code> (20),
+  <code>294_pedidos_ped3_lanzar.sql</code> (18), <code>320_picking_pedido_venta_fuentes_en_cascada.sql</code> (11),
+  <code>300_pedidos_unpick_encadenado.sql</code> (9) y <code>296_pedidos_ped5_cancelacion_unpick.sql</code> (8).
+  <code>wms_tareas.ubicacion_origen_id</code>/<code>ubicacion_destino_id</code> (mig 289) son FK directas a
+  <code>ubicaciones.id</code>, y el frontend las consume con joins explícitos a los nombres de esas FK
+  (<code>ubicaciones!wms_tareas_ubicacion_origen_id_fkey</code>) en <code>InventarioPage.tsx</code>,
+  <code>PickingPage.tsx</code> y <code>PedidosPage.tsx</code>. En total: <strong>48 archivos, 274 ocurrencias</strong>.</div>
+  <ul class="opciones">
+    <li>(a) Los niveles son puramente informativos/de exhibición — todo el movimiento de stock real
+    (WMS/Picking/Recepciones/Traslados/Ventas) sigue operando sobre la ubicación contenedora exactamente
+    como hoy, sin tocar ninguno de los 48 archivos identificados</li>
+    <li>(b) WMS/Picking/Recepciones/Traslados empiezan a operar sobre NIVELES en vez de sobre la ubicación
+    completa — implica revisar <code>wms_tareas.ubicacion_origen_id/destino_id</code>,
+    <code>fn_wms_elegir_ubicacion_picking</code>, <code>fn_completar_tarea_reabastecimiento</code> y las
+    RPCs de Pedidos que hoy resuelven <code>tipo_ubicacion</code> contra <code>ubicaciones.id</code> directo</li>
+    <li>(c) Mixto — el movimiento de stock (picking/reabastecimiento/traslados) sigue sobre la contenedora,
+    pero se agrega un nivel opcional de "sugerencia visual" (qué estante puntual) que no participa de ninguna
+    RPC ni de la RLS, solo se muestra en pantalla</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    Tablas que hoy apuntan directo a <code>ubicaciones.id</code> — ¿todas migran junto con E1, o quedan
+    algunas ancladas a la contenedora a propósito? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Además de <code>wms_tareas</code>, hoy tienen FK directa a <code>ubicaciones.id</code>:
+  <code>producto_ubicacion_umbrales</code> (mig 289, mín/máx para reabastecimiento por umbral),
+  <code>producto_ubicacion_sucursal</code> (mig 121, ver C1), <code>inventario_lineas.ubicacion_id</code> (línea
+  de stock real) y <code>venta_item_despachos.ubicacion_id</code> (snapshot histórico, mig 153 — este último
+  además es <em>huérfano a propósito</em>: el comentario original dice "puede quedar huérfana" porque es un
+  snapshot de trazabilidad, no debería reapuntar a un nivel nuevo).</div>
+  <ul class="opciones">
+    <li>(a) Todas migran a apuntar al nivel más específico disponible, de forma pareja</li>
+    <li>(b) Solo <code>inventario_lineas</code> y <code>wms_tareas</code> (las operativas) migran a nivel;
+    <code>producto_ubicacion_umbrales</code>/<code>producto_ubicacion_sucursal</code> (config) y
+    <code>venta_item_despachos</code> (histórico/snapshot) quedan apuntando a la contenedora, como hoy</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. TOP 3 / COMENTARIOS ============================ -->
+<h2>F. Top 3 prioritario / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    ¿Qué 3 decisiones de Ubicaciones hay que cerrar primero para poder empezar a codear? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto se puede resolver en fases posteriores sin bloquear el
+  arranque. Esta decisión también condiciona cuándo pueden arrancar Repositores y Rotación.</div>
+  <ul class="opciones">
+    <li>(   ) A1 — profundidad del árbol (libre como Empaque, o 2 niveles fijos)</li>
+    <li>(   ) A4 — capacidad/peso por nivel vs. contenedora (rehace o no lo recién construido en migs 321-326)</li>
+    <li>(   ) C1 — reusar <code>producto_ubicacion_sucursal</code> o modelar la exhibición desde cero</li>
+    <li>(   ) C2 — la ubicación de exhibición apunta al nivel o a la contenedora</li>
+    <li>(   ) E1 — el movimiento de stock real (WMS/Picking/Recepciones/Traslados) opera sobre niveles o
+    sigue sobre la contenedora (el de mayor impacto técnico — 48 archivos identificados)</li>
+    <li>(   ) A2 — qué pasa con las 4 ubicaciones ya cargadas en la cuenta de GO</li>
+    <li>(   ) B1/B2/B3 — código alfanumérico: cómo se carga, para quién es obligatorio, reemplaza o coexiste
+    con <code>nombre</code></li>
+    <li>(   ) A3 — relación entre <code>tipo_ubicacion</code> (WMS) y el nuevo tipo de exhibición</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    Comentarios libres / cualquier regla que se nos haya escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio — Rediseño de Ubicaciones (1/4 de la secuencia hacia Repositores) · 2026-08-02<br>
+  Una vez completado, devolver a Claude/GO para diseñar la migración y planificar el relevamiento #2 (Pestaña de supervisor reusable).
+</div>
+
+</body>
+</html>

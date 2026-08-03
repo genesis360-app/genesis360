@@ -147,6 +147,7 @@ Documentos HTML paso a paso por vertical. Actualizar cuando haya nuevas features
 | `reglas_negocio.md` | MD | Reglas relevadas con GO: caja, ventas, inventario, clientes |
 | `relevamiento_ventas_respuestas.md` | MD | Respuestas relevamiento Ventas A-K (COMPLETO) — origen del backlog Ventas |
 | `relevamiento_clientes_respuestas.md` | MD | Respuestas relevamiento Clientes A-H (COMPLETO 2026-06-01) — plan por fases CL1-CL6, GO pidió implementar todo |
+| `relevamiento_repositores_respuestas.md` | MD | Respuestas relevamiento Repositores (Fase E backlog Comercial) — reveló 4 proyectos con dependencias; bloqueado por 3 relevamientos derivados (Ubicaciones/Supervisor-tab/Rotación) |
 | `uat.md` | MD | Casos UAT con precondiciones, pasos y resultados esperados |
 | `genesis360_overview.html` | HTML | Documento de producto / preview del sistema — todas las funcionalidades y features (actualizado a v1.100.0, 2026-07-01) |
 | `soporte_tiendanube.html` | HTML | Guía de soporte para conectar TiendaNube |

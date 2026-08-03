@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, ScanBarcode, PackageCheck, PackageSearch, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle, ClipboardList, Receipt } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
@@ -26,10 +26,16 @@ interface TareaWMS {
   productos: { nombre: string; sku: string } | null
   ubicacion_origen: { nombre: string } | null
   ubicacion_destino: { nombre: string } | null
-  envios: { numero: number | null } | null
+  envios: { numero: number | null; venta_id: string | null } | null
   pedido_id: string | null
   pedidos: { numero: number | null; venta_origen_id: string | null } | null
 }
+
+// La venta de una tarea se resuelve por DOS caminos: pedidos.venta_origen_id (viene de Pedidos)
+// o envios.venta_id (envío armado directo desde una venta, sin pasar por Pedidos — el caso más
+// común, ver test "Fuente 1" del spec 106). Sin esto, buscar/mostrar la venta fallaba en silencio
+// para toda tarea que no vino de un pedido.
+const ventaIdDe = (t: TareaWMS) => t.pedidos?.venta_origen_id ?? t.envios?.venta_id ?? null
 
 // El picking guía al depósito hacia LPNs que la venta ya decidió consumir — nunca toca el
 // motor de ventas/rebaje. Ver comentario de cabecera de la mig 289.
@@ -40,8 +46,11 @@ export default function PickingPage() {
   const qc = useQueryClient()
   const confirmar = useConfirm()
 
+  const [searchParams] = useSearchParams()
   const [scannerOpen, setScannerOpen] = useState(false)
-  const [busqueda, setBusqueda] = useState('')
+  // Llegar desde "Ver en Picking" (Pedidos) o cualquier otro link con ?busqueda= pre-filtra
+  // de una — con muchas tareas en cola, aterrizar sin filtro obliga a buscar a mano cuál es la propia.
+  const [busqueda, setBusqueda] = useState(() => searchParams.get('busqueda') ?? '')
   const [refrescandoUmbral, setRefrescandoUmbral] = useState(false)
   const [completando, setCompletando] = useState<string | null>(null)
 
@@ -49,7 +58,7 @@ export default function PickingPage() {
     queryKey: ['wms_tareas', tenant?.id, sucursalId],
     queryFn: async () => {
       let q = supabase.from('wms_tareas')
-        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero), pedidos(numero, venta_origen_id)')
+        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero, venta_id), pedidos(numero, venta_origen_id)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['pendiente', 'en_curso'])
         .order('prioridad', { ascending: false })
@@ -66,7 +75,7 @@ export default function PickingPage() {
   // sin eso, un LPN mal pickeado no se puede rastrear hasta el cliente que lo está esperando.
   // Va en query aparte y no anidada: `ventas` y `pedidos` se referencian en las DOS direcciones
   // (`ventas.pedido_id` y `pedidos.venta_origen_id`), así que el embed anidado es ambiguo.
-  const ventaIds = [...new Set(tareas.map(t => t.pedidos?.venta_origen_id).filter(Boolean))] as string[]
+  const ventaIds = [...new Set(tareas.map(ventaIdDe).filter(Boolean))] as string[]
   const { data: ventasPorId = {} } = useQuery({
     queryKey: ['wms-tareas-ventas', ventaIds.join(',')],
     queryFn: async () => {
@@ -77,17 +86,30 @@ export default function PickingPage() {
   })
 
   const tareasPorId = new Map(tareas.map(t => [t.id, t]))
-  const filtradas = busqueda.trim()
-    ? tareas.filter(t =>
-        t.lpn_origen?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        t.productos?.sku?.toLowerCase().includes(busqueda.toLowerCase()) ||
-        t.productos?.nombre?.toLowerCase().includes(busqueda.toLowerCase()))
-    : tareas
+
+  // Pedido/venta/envío son identificadores exactos (un LPN/SKU admite match parcial,
+  // un número de comprobante no: buscar "1" no puede traer los pedidos #1, #10, #100...).
+  const coincideBusqueda = (t: TareaWMS, q: string) => {
+    const texto = q.trim().toLowerCase()
+    if (!texto) return true
+    const ventaId = ventaIdDe(t)
+    const ventaNumero = ventaId ? ventasPorId[ventaId] : undefined
+    return !!(
+      t.lpn_origen?.toLowerCase().includes(texto) ||
+      t.productos?.sku?.toLowerCase().includes(texto) ||
+      t.productos?.nombre?.toLowerCase().includes(texto) ||
+      (t.pedidos?.numero != null && String(t.pedidos.numero) === texto) ||
+      (ventaNumero != null && String(ventaNumero) === texto) ||
+      (t.envios?.numero != null && String(t.envios.numero) === texto)
+    )
+  }
+
+  const filtradas = busqueda.trim() ? tareas.filter(t => coincideBusqueda(t, busqueda)) : tareas
 
   const handleScan = (code: string) => {
     setBusqueda(code)
     setScannerOpen(false)
-    const match = tareas.some(t => t.lpn_origen === code || t.productos?.sku === code)
+    const match = tareas.some(t => coincideBusqueda(t, code))
     if (!match) toast.error(`No se encontró ninguna tarea pendiente para "${code}"`)
   }
 
@@ -165,7 +187,7 @@ export default function PickingPage() {
       <div className="flex gap-2">
         <div className="relative flex-1">
           <PackageSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Buscar por LPN, SKU o producto..." value={busqueda}
+          <input type="text" placeholder="Buscar por LPN, SKU, producto, pedido, venta o envío..." value={busqueda}
             onChange={e => setBusqueda(e.target.value)}
             className="w-full pl-9 pr-3 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
         </div>
@@ -201,12 +223,12 @@ export default function PickingPage() {
                       <ClipboardList size={11} /> Pedido #{t.pedidos.numero}
                     </button>
                   )}
-                  {t.pedidos?.venta_origen_id && ventasPorId[t.pedidos.venta_origen_id] != null && (
+                  {ventaIdDe(t) != null && ventasPorId[ventaIdDe(t)!] != null && (
                     <button type="button"
-                      onClick={() => navigate(`/ventas?id=${t.pedidos!.venta_origen_id}`)}
+                      onClick={() => navigate(`/ventas?id=${ventaIdDe(t)}`)}
                       title="Ver la venta del cliente que está esperando esta mercadería"
                       className="text-xs font-medium text-accent-text hover:underline flex items-center gap-1">
-                      <Receipt size={11} /> Venta #{ventasPorId[t.pedidos.venta_origen_id]}
+                      <Receipt size={11} /> Venta #{ventasPorId[ventaIdDe(t)!]}
                     </button>
                   )}
                   {t.envios?.numero && (
@@ -248,7 +270,7 @@ export default function PickingPage() {
         <BarcodeScanner
           persistent
           persistentCloseLabel="Terminar de escanear"
-          title="Escanear LPN o código de producto"
+          title="Escanear LPN, código de producto, pedido, venta o envío"
           onDetected={handleScan}
           onClose={() => setScannerOpen(false)}
         />

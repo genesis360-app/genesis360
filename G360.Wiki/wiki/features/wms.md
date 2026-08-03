@@ -233,14 +233,32 @@ wms_tareas
 - Ruta nueva **`/picking`** (`src/pages/PickingPage.tsx`) — mobile-first, con escaneo de código de
   barras (reusa el componente `BarcodeScanner` ya existente) para completar tareas parado en el
   depósito.
-- **Buscador (agregado v1.153.0, 2026-08-03)**: además de LPN/SKU/producto (match parcial), matchea
-  por **número de pedido, venta o envío** (exacto, no parcial — un número de comprobante no admite
-  substring). Mismo cuadro para tipeo manual o escaneo. La venta de una tarea se resuelve por DOS
-  caminos — `pedidos.venta_origen_id` (viene de Pedidos) o `envios.venta_id` (envío armado directo
-  desde una venta, sin pasar por Pedidos, el caso más común) — el segundo camino no existía antes de
-  esta fecha: ni el buscador ni el badge "Venta #" de la card funcionaban para una tarea sin pedido
-  de por medio. El botón "Ver en Picking" de `PedidosPage.tsx` pasa `?busqueda=<número>` para
-  aterrizar ya filtrado (antes navegaba sin filtro, inutilizable con la cola larga).
+- **Buscador de "píldoras" (agregado v1.153.0, 2026-08-03)**: GO probó el primer buscador de texto
+  plano de esta misma sesión (LPN/SKU/pedido/venta/envío todos en un cuadro) y escribir un número de
+  pedido lo tomaba ambiguo contra varios campos a la vez. Se reescribió como un buscador de criterios
+  estructurados — `src/lib/pickingFiltro.ts` (lógica pura, 24 tests) + `src/components/
+  BuscadorPildoras.tsx` (input tipo "chips"):
+  - Cada criterio es una píldora `(Campo):valor` — campos LPN/SKU/Producto/Pedido/Venta/Envío.
+    Operadores: `:`/`=` (contiene), `!=`/`<>` (no contiene) para todos los campos; además
+    `>`/`</>=`/`<=` (comparación numérica real, no substring) para Pedido/Venta/Envío.
+  - **Escribir texto SIN prefijo de campo (ej. tipear "20" a secas) ya NO matchea Pedido/Venta/
+    Envío** — solo LPN/SKU/Producto (mismo comportamiento que existía antes de agregar esos 3
+    campos). Para buscar por comprobante hace falta la píldora explícita `(Pedido):20` — es
+    justamente lo que corrige la ambigüedad que encontró GO.
+  - Varias píldoras se combinan con un **combinador global Y/O** (no árbol de expresiones anidado —
+    no se pidió). Cambiar el campo de una píldora ya creada (selector dentro del chip) conserva el
+    operador y el valor tipeado.
+  - El botón "Ver en Picking" de `PedidosPage.tsx` pasa `?busqueda=Pedido:<número>` (antes pasaba el
+    número pelado) — `PickingPage.tsx` lo parsea al montar: si matchea el patrón "Campo:valor" nace
+    como píldora ya armada; si no, cae como texto libre.
+  - La venta de una tarea se resuelve por DOS caminos — `pedidos.venta_origen_id` (viene de Pedidos)
+    o `envios.venta_id` (envío armado directo desde una venta, sin pasar por Pedidos, el caso más
+    común) — el segundo camino no existía antes de esta fecha: ni el buscador ni el badge "Venta #"
+    de la card funcionaban para una tarea sin pedido de por medio.
+  - **Verificado con e2e real contra datos de DEV** (8 aserciones: deep-link con píldora pre-armada,
+    número suelto ya no matchea venta, cambiar de campo conserva valor, combinador Y exige las dos
+    píldoras, combinador O alcanza con una, y el invariante de siempre — confirmar la tarea sigue
+    dando cero movimiento de stock).
 - Tab **"Tareas WMS"** nuevo en `InventarioPage` — vista de escritorio para el DUEÑO, con link
   directo a `/picking`.
 - Gating: `modoAvanzado` + rol **DEPOSITO** (nav en `AppLayout.tsx` + redirect guard + ruta en

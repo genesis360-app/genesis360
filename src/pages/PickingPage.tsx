@@ -1,13 +1,18 @@
 import { useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, ScanBarcode, PackageCheck, PackageSearch, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle, ClipboardList, Receipt } from 'lucide-react'
+import { ArrowLeft, ScanBarcode, PackageCheck, RefreshCw, CheckCircle2, AlertTriangle, MapPin, ArrowRight, Truck, XCircle, ClipboardList, Receipt } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
+import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
 import { logActividad } from '@/lib/actividadLog'
 import { useConfirm } from '@/hooks/useConfirm'
+import {
+  parsearPildora, evaluarPildora, evaluarPildoras,
+  type Pildora, type CampoFiltro, type OperadorFiltro, type Combinador,
+} from '@/lib/pickingFiltro'
 import toast from 'react-hot-toast'
 
 interface TareaWMS {
@@ -48,9 +53,21 @@ export default function PickingPage() {
 
   const [searchParams] = useSearchParams()
   const [scannerOpen, setScannerOpen] = useState(false)
-  // Llegar desde "Ver en Picking" (Pedidos) o cualquier otro link con ?busqueda= pre-filtra
-  // de una — con muchas tareas en cola, aterrizar sin filtro obliga a buscar a mano cuál es la propia.
-  const [busqueda, setBusqueda] = useState(() => searchParams.get('busqueda') ?? '')
+  // Llegar desde "Ver en Picking" (Pedidos) o cualquier otro link con ?busqueda=(Campo):valor
+  // pre-filtra de una — con muchas tareas en cola, aterrizar sin filtro obliga a buscar a mano.
+  // Un `?busqueda=` que no matchea ningún campo conocido (ej. un LPN suelto) cae en `entrada`.
+  const [pildoras, setPildoras] = useState<Pildora[]>(() => {
+    const raw = searchParams.get('busqueda')
+    if (!raw) return []
+    const parsed = parsearPildora(raw)
+    return parsed ? [parsed] : []
+  })
+  const [entrada, setEntrada] = useState(() => {
+    const raw = searchParams.get('busqueda')
+    if (!raw) return ''
+    return parsearPildora(raw) ? '' : raw
+  })
+  const [combinador, setCombinador] = useState<Combinador>('Y')
   const [refrescandoUmbral, setRefrescandoUmbral] = useState(false)
   const [completando, setCompletando] = useState<string | null>(null)
 
@@ -86,30 +103,40 @@ export default function PickingPage() {
   })
 
   const tareasPorId = new Map(tareas.map(t => [t.id, t]))
-
-  // Pedido/venta/envío son identificadores exactos (un LPN/SKU admite match parcial,
-  // un número de comprobante no: buscar "1" no puede traer los pedidos #1, #10, #100...).
-  const coincideBusqueda = (t: TareaWMS, q: string) => {
-    const texto = q.trim().toLowerCase()
-    if (!texto) return true
+  const ventaNumeroDe = (t: TareaWMS): number | null => {
     const ventaId = ventaIdDe(t)
-    const ventaNumero = ventaId ? ventasPorId[ventaId] : undefined
-    return !!(
-      t.lpn_origen?.toLowerCase().includes(texto) ||
-      t.productos?.sku?.toLowerCase().includes(texto) ||
-      t.productos?.nombre?.toLowerCase().includes(texto) ||
-      (t.pedidos?.numero != null && String(t.pedidos.numero) === texto) ||
-      (ventaNumero != null && String(ventaNumero) === texto) ||
-      (t.envios?.numero != null && String(t.envios.numero) === texto)
-    )
+    return ventaId ? ventasPorId[ventaId] ?? null : null
   }
 
-  const filtradas = busqueda.trim() ? tareas.filter(t => coincideBusqueda(t, busqueda)) : tareas
+  // Lo que todavía se está tipeando (`entrada`) filtra en vivo igual que las píldoras ya
+  // confirmadas — así no hace falta apretar Enter para el caso más común (un solo término suelto,
+  // igual que antes). Si `entrada` matchea "Campo:valor" se evalúa como esa píldora estructurada
+  // (exacto, no ambiguo); si no, como libre (LPN/SKU/producto). Enter la vuelve una píldora fija.
+  const entradaTrim = entrada.trim()
+  const pildoraDeEntrada: Pildora | null = entradaTrim
+    ? (parsearPildora(entradaTrim) ?? { id: '__entrada__', campo: 'libre', operador: 'contiene', valor: entradaTrim })
+    : null
+  const pildorasEfectivas = pildoraDeEntrada ? [...pildoras, pildoraDeEntrada] : pildoras
 
+  const filtradas = pildorasEfectivas.length === 0
+    ? tareas
+    : tareas.filter(t => evaluarPildoras(t, pildorasEfectivas, combinador, ventaNumeroDe(t)))
+
+  const commitEntrada = () => {
+    if (!entradaTrim) return
+    const nueva = parsearPildora(entradaTrim) ?? { id: crypto.randomUUID(), campo: 'libre' as const, operador: 'contiene' as const, valor: entradaTrim }
+    setPildoras(ps => [...ps, nueva])
+    setEntrada('')
+  }
+
+  // Un scan es una acción puntual y completa — REEMPLAZA el filtro entero (mismo criterio que
+  // ya tenía `setBusqueda(code)`), no lo acumula: escanear un segundo código es una búsqueda nueva.
   const handleScan = (code: string) => {
-    setBusqueda(code)
+    const nueva = parsearPildora(code) ?? { id: crypto.randomUUID(), campo: 'libre' as const, operador: 'contiene' as const, valor: code }
+    setPildoras([nueva])
+    setEntrada('')
     setScannerOpen(false)
-    const match = tareas.some(t => coincideBusqueda(t, code))
+    const match = tareas.some(t => evaluarPildora(t, nueva, ventaNumeroDe(t)))
     if (!match) toast.error(`No se encontró ninguna tarea pendiente para "${code}"`)
   }
 
@@ -183,13 +210,25 @@ export default function PickingPage() {
         </button>
       </div>
 
-      {/* Buscador / escaneo — mobile-first */}
-      <div className="flex gap-2">
-        <div className="relative flex-1">
-          <PackageSearch size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input type="text" placeholder="Buscar por LPN, SKU, producto, pedido, venta o envío..." value={busqueda}
-            onChange={e => setBusqueda(e.target.value)}
-            className="w-full pl-9 pr-3 py-3 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+      {/* Buscador / escaneo — mobile-first. LPN/SKU/producto/etc. sueltos filtran en vivo; escribir
+          "Pedido:20" (o elegirlo del desplegable de una píldora ya creada) lo deja exacto a ese
+          campo — ver `src/lib/pickingFiltro.ts`. */}
+      <div className="flex gap-2 items-start">
+        <div className="flex-1">
+          <BuscadorPildoras
+            pildoras={pildoras}
+            entrada={entrada}
+            combinador={combinador}
+            placeholder="Buscar LPN, SKU, producto... o (Pedido):20"
+            onEntradaChange={setEntrada}
+            onCommitEntrada={commitEntrada}
+            onCampoChange={(id, campo) => setPildoras(ps => ps.map(p => p.id === id ? pildoraConCampoNuevo(p, campo) : p))}
+            onOperadorChange={(id, operador) => setPildoras(ps => ps.map(p => p.id === id ? { ...p, operador } : p))}
+            onValorChange={(id, valor) => setPildoras(ps => ps.map(p => p.id === id ? { ...p, valor } : p))}
+            onRemove={id => setPildoras(ps => ps.filter(p => p.id !== id))}
+            onRemoveLast={() => setPildoras(ps => ps.slice(0, -1))}
+            onCombinadorChange={setCombinador}
+          />
         </div>
         <button onClick={() => setScannerOpen(true)}
           className="flex-shrink-0 px-4 py-3 bg-accent hover:bg-accent/90 text-white rounded-xl flex items-center gap-2 text-sm font-medium">

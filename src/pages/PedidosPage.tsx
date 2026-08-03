@@ -698,7 +698,7 @@ export default function PedidosPage() {
                   </button>
                 )}
                 {['en_preparacion', 'listo_para_entrega'].includes(p.estado) && (
-                  <button onClick={() => navigate(`/picking?busqueda=${p.numero}`)}
+                  <button onClick={() => navigate(`/picking?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`)}
                     className="text-xs font-semibold text-accent-text border border-accent-text/30 px-3 py-1.5 rounded-lg hover:bg-accent/10 transition-colors">
                     Ver en Picking
                   </button>

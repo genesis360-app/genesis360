@@ -6,6 +6,44 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-03] update | 🔍 Buscador de /picking reescrito como píldoras de filtro (Campo:valor, Y/O)
+
+GO probó el buscador de texto plano que se había agregado horas antes en esta misma sesión y
+encontró el problema real: escribir un número de pedido lo tomaba ambiguo contra LPN/SKU/pedido/
+venta/envío a la vez, sin forma de precisar a qué campo apuntaba.
+
+**Reescrito como un mini buscador estructurado**, tipo los filtros de Linear/GitHub: cada criterio
+es una **píldora** `(Campo):valor` (LPN/SKU/Producto/Pedido/Venta/Envío), con operadores `:`/`=`
+(contiene), `!=`/`<>` (no contiene) y, para los 3 campos numéricos, `>`/`<`/`>=`/`<=` (comparación
+real, no substring). Varias píldoras se combinan con un **combinador global Y/O** — no un árbol de
+expresiones anidado, no se pidió eso.
+
+- **`src/lib/pickingFiltro.ts`** (lógica pura, 24 tests nuevos en `tests/unit/pickingFiltro.test.ts`):
+  `parsearPildora` reconoce "Campo:valor"/"Campo=valor"/etc. tipeado a mano (con alias: código→sku,
+  prod/nombre→producto, ped→pedido), `operadoresValidosParaCampo` restringe `>`/`<`/etc. a los
+  campos numéricos (no tienen sentido en texto), `evaluarPildora`/`evaluarPildoras` evalúan contra
+  una tarea y combinan.
+- **`src/components/BuscadorPildoras.tsx`**: input tipo "chips" — cada píldora tiene su propio
+  selector de campo y de operador (cambiar el campo CONSERVA el valor y el operador tipeados, salvo
+  que el operador deje de tener sentido para el campo nuevo, ahí clampa a "contiene"). El texto que
+  se está tipeando filtra en vivo igual que antes (no hace falta Enter para el caso de un solo
+  término), Enter lo "gradúa" a píldora fija para poder sumar un segundo criterio.
+- **🛑 Decisión de diseño, a propósito**: texto SIN prefijo de campo (ej. tipear "20" a secas) YA NO
+  matchea Pedido/Venta/Envío — solo LPN/SKU/Producto, igual que antes de que existieran esos 3
+  campos. Para buscar por comprobante hace falta la píldora explícita. Es la corrección directa del
+  bug que reportó GO, a costa de que ya no alcance con tipear un número pelado.
+- **"Ver en Picking" (Pedidos)** ahora manda `?busqueda=Pedido:<número>` en vez del número pelado —
+  aterriza con la píldora ya armada, no como texto libre.
+- **Verificado con e2e real contra DEV** (creación de datos real vía REST, 8 aserciones: deep-link
+  con píldora pre-armada, número suelto ya NO matchea venta —prueba directa del fix—, cambiar de
+  campo conserva el valor, Y exige ambas píldoras, O alcanza con una, y el invariante de siempre:
+  confirmar la tarea sigue dando cero movimiento de stock). Test descartable, ya borrado.
+
+**Verde:** tsc · build · unit 1440 (90 archivos, +24 nuevos) · e2e ad-hoc contra DEV real.
+
+**Estado git:** commiteado y pusheado a `dev` junto con el resto de la sesión. Ver
+[[wiki/features/wms]] → "Fase 3 — Tareas WMS y Listas de Picking".
+
 ## [2026-08-03] deploy | 🏷️ Cierre de sesión — v1.153.0 (release de DEV, sin deploy a PROD)
 
 Bump de `APP_VERSION` a v1.153.0 + tag + GitHub release, para dejar registro de la sesión (regla del

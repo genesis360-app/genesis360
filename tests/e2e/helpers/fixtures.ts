@@ -151,6 +151,74 @@ export async function garantizarCajaAbierta(
   await expect(sesionAbierta).toBeVisible({ timeout: 10000 })
 }
 
+// ─── Inventario / Ingreso real ──────────────────────────────────────────────────────────
+
+/**
+ * Ingreso REAL de stock por UI (Inventario → Agregar stock → Ingreso) para un producto que
+ * YA existe (creado por REST antes de llamar esto, con precio conocido). Extraído del patrón
+ * probado en el spec 101 — no hace un INSERT directo a `inventario_lineas`: respeta el flujo
+ * real (ubicación, estado, sucursal, trigger de `stock_actual`) para que el producto quede
+ * visible/vendible en el POS igual que si lo cargara un operador real (backlog Fede Fase A/C,
+ * specs 115/116 — necesitan un producto NUEVO con precio/empaque a medida, no uno del catálogo
+ * real como hacía el spec 54).
+ *
+ * `estadoNombre`, si se pasa, selecciona ESE estado por label exacto — necesario cuando el test
+ * depende de que sea `es_disponible_venta=true` para que el producto aparezca en el POS (sin
+ * esto, el combo deja el default de la primera opción, que puede no ser vendible).
+ */
+export async function ingresoRealPorUI(
+  page: Page,
+  opts: { nombreProducto: string; cantidad: number; estadoNombre?: string },
+): Promise<void> {
+  const { nombreProducto, cantidad, estadoNombre } = opts
+  await goto(page, '/inventario')
+  await waitForApp(page)
+  await page.getByRole('button', { name: 'Agregar stock' }).first().click()
+  await page.waitForTimeout(400)
+  const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
+  await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
+  expect(
+    await ingresoBtn.isEnabled(),
+    '[fixtures] "Ingreso" deshabilitado (límite de plan alcanzado) — no se puede sembrar stock para este spec',
+  ).toBe(true)
+  await ingresoBtn.click()
+  await page.waitForTimeout(400)
+
+  const buscadorIngreso = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
+  await expect(buscadorIngreso).toBeVisible({ timeout: 6000 })
+  await buscadorIngreso.fill(nombreProducto)
+  await page.waitForTimeout(900)
+  const modalIngreso = page.locator('div.fixed.inset-0').filter({ has: buscadorIngreso }).first()
+  await modalIngreso.getByText(nombreProducto).first().click()
+  await page.waitForTimeout(500)
+
+  const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
+  if (await sucSelect.isVisible().catch(() => false)) {
+    const vals = await sucSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
+    if (vals.length > 0) await sucSelect.selectOption(vals[0])
+  }
+
+  const estadoSelect = page.locator('xpath=//label[contains(.,"Estado")]/following::select[1]')
+  if (await estadoSelect.isVisible().catch(() => false)) {
+    if (estadoNombre) {
+      await estadoSelect.selectOption({ label: estadoNombre })
+    } else {
+      const vals = await estadoSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
+      if (vals.length > 0) await estadoSelect.selectOption(vals[0])
+    }
+  }
+
+  const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
+  if (await ubicSelect.isVisible().catch(() => false)) {
+    const vals = await ubicSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
+    if (vals.length > 0) await ubicSelect.selectOption(vals[0])
+  }
+
+  await page.locator('input[type="number"][placeholder="0"]').first().fill(String(cantidad))
+  await page.getByRole('button', { name: /Confirmar ingreso/ }).first().click()
+  await expect(page.getByText(/Ingreso registrado/i)).toBeVisible({ timeout: 12000 })
+}
+
 // ─── POS / productos ────────────────────────────────────────────────────────────────────
 
 /**

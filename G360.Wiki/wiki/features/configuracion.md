@@ -87,6 +87,11 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 ### Sub-tab: Descuentos y combos
 
 - **Combos de productos**: CRUD, 3 tipos de descuento (%, $ARS, USD), presets 3×2/2×1/2da unidad
+- **Cupones** (backlog Fede Fase C, mig 332, EN DEV): card debajo de Combos — **temporal** ahí hasta
+  que exista el módulo Comercial dedicado (Fase D), mismo criterio que Combos hoy. Descuento fijo en
+  $ (nunca %) sobre el TOTAL de la venta, código único alfanumérico por campaña (hasta 100), vigencia
+  desde/hasta, nombre + motivo. Lista de campañas con códigos usados/total y $ generado. Detalle
+  técnico completo en [[wiki/features/precios-tiers-empaque]] → Fase C.
 - **Descuento máximo por rol**:
   - **CAJERO** (y demás roles operativos): **100% bloqueado** de descuentos (regla C3/G3). El campo `descuento_max_cajero_pct` se **quitó** del frontend en H4 (2026-06-22) — era un tope ilusorio; la columna DB queda inerte.
   - `tenants.descuento_max_supervisor_pct`: límite para SUPERVISOR (vacío = sin límite). Se valida el **% efectivo** (los descuentos en $ se convierten a % → no esquivan el tope, lib `validarDescuentosPorRol`).

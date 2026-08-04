@@ -37,6 +37,9 @@ type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' 
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
 type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'empaque' | 'atributos' | 'codigos' | 'zonas'
 type AtributoVariante = 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'
+// Fede 25/7, punto 6: categoría informativa del empaque (solo reportes — sin función técnica).
+// Lista abierta a propósito (sin CHECK en DB, ver mig 328): agregar un valor acá alcanza, no hace falta migración.
+const TIPOS_EMPAQUE = ['Unidad', 'Caja', 'Pallet', 'Bolsa', 'Bulto']
 type ConSubTab = 'integraciones' | 'api'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
@@ -1920,6 +1923,15 @@ export default function ConfigPage() {
       qc.invalidateQueries({ queryKey: ['estados_inventario'] })
     }
   }
+  // Fede 25/7, punto 2: estados con "impacto económico" (Dañado, Vencido, Eliminado…) — cambiar
+  // un lote a este estado va a requerir aprobación del supervisor + foto tomada en el momento.
+  // Independiente de `descuento_pct`: un estado puede requerir aprobación sin tener descuento
+  // (ej. "Eliminado" da de baja stock pero no tiene % de descuento asociado).
+  const toggleRequiereAprobacion = async (estadoId: string, value: boolean) => {
+    const { error } = await supabase.from('estados_inventario').update({ requiere_aprobacion: value }).eq('id', estadoId)
+    if (error) toast.error(error.message)
+    else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+  }
 
   // Motivos
   const { data: motivos = [], isLoading: loadingMotivos } = useQuery({
@@ -1973,97 +1985,6 @@ export default function ConfigPage() {
     const { error } = await supabase.from('atributos_variante_valores').update({ activo: false }).eq('id', id)
     if (error) toast.error(error.message)
     else { toast.success('Eliminado'); qc.invalidateQueries({ queryKey: ['atributo-variante-valores'] }); logActividad({ entidad: 'atributo_variante', entidad_id: id, entidad_nombre: old?.valor, accion: 'eliminar', pagina: '/configuracion' }) }
-  }
-
-  // Combos
-  const [comboForm, setComboForm] = useState({ nombre: '', descuento_tipo: 'pct', descuento_valor: '0', vigencia_desde: '', vigencia_hasta: '' })
-  const [comboItems, setComboItems] = useState<{ producto_id: string; cantidad: string }[]>([{ producto_id: '', cantidad: '1' }])
-  const [savingCombo, setSavingCombo] = useState(false)
-
-  const applyComboPreset = async (preset: '3x2' | '2x1' | '2da') => {
-    if (preset === '3x2') {
-      setComboForm(p => ({ ...p, nombre: p.nombre || '3x2', descuento_tipo: 'pct', descuento_valor: '33' }))
-      setComboItems(prev => [{ ...prev[0], cantidad: '3' }, ...prev.slice(1)])
-    } else if (preset === '2x1') {
-      setComboForm(p => ({ ...p, nombre: p.nombre || '2x1', descuento_tipo: 'pct', descuento_valor: '50' }))
-      setComboItems(prev => [{ ...prev[0], cantidad: '2' }, ...prev.slice(1)])
-    } else {
-      const pct = await preguntar('% de descuento en la 2da unidad (ej: 30):', { placeholder: '30' })
-      if (!pct || isNaN(parseInt(pct))) return
-      const efectivo = Math.round(parseInt(pct) / 2)
-      setComboForm(p => ({ ...p, nombre: p.nombre || `2da unidad ${pct}%`, descuento_tipo: 'pct', descuento_valor: String(efectivo) }))
-      setComboItems(prev => [{ ...prev[0], cantidad: '2' }, ...prev.slice(1)])
-    }
-  }
-
-  const { data: productosAll = [] } = useQuery({
-    queryKey: ['productos-all', tenant?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('productos').select('id, nombre, sku')
-        .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
-      return data ?? []
-    },
-    enabled: !!tenant && tab === 'ventas',
-  })
-
-  const { data: combos = [], isLoading: loadingCombos } = useQuery({
-    queryKey: ['combos', tenant?.id, sucursalId],
-    queryFn: async () => {
-      let q = supabase.from('combos')
-        .select('*, combo_items(producto_id, cantidad, productos(nombre, sku))')
-        .eq('tenant_id', tenant!.id).eq('activo', true)
-        .order('created_at', { ascending: false })
-      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
-      const { data } = await q
-      return data ?? []
-    },
-    enabled: !!tenant && tab === 'ventas',
-  })
-
-  const addCombo = async () => {
-    if (!comboForm.nombre.trim()) { toast.error('Ingresá un nombre'); return }
-    if (comboItems.some(i => !i.producto_id)) { toast.error('Seleccioná un producto para cada ítem'); return }
-    if (comboItems.some(i => parseInt(i.cantidad) < 1)) { toast.error('La cantidad mínima es 1'); return }
-    const valor = parseFloat(comboForm.descuento_valor)
-    if (isNaN(valor) || valor < 0) { toast.error('Valor de descuento inválido'); return }
-    if (comboForm.descuento_tipo === 'pct' && valor > 100) { toast.error('El porcentaje no puede superar 100'); return }
-    const descuento_pct = comboForm.descuento_tipo === 'pct' ? valor : 0
-    const descuento_monto = comboForm.descuento_tipo !== 'pct' ? valor : 0
-    if (comboForm.vigencia_desde && comboForm.vigencia_hasta && comboForm.vigencia_desde > comboForm.vigencia_hasta) {
-      toast.error('La fecha "desde" no puede ser posterior a "hasta"'); return
-    }
-    setSavingCombo(true)
-    try {
-      const { data: combo, error: eC } = await supabase.from('combos').insert({
-        tenant_id: tenant!.id,
-        nombre: comboForm.nombre.trim(),
-        descuento_pct,
-        descuento_tipo: comboForm.descuento_tipo,
-        descuento_monto,
-        sucursal_id: sucursalId || null,
-        vigencia_desde: comboForm.vigencia_desde || null,
-        vigencia_hasta: comboForm.vigencia_hasta || null,
-      }).select('id').single()
-      if (eC) throw eC
-      const { error: eI } = await supabase.from('combo_items').insert(
-        comboItems.map(i => ({ tenant_id: tenant!.id, combo_id: combo.id, producto_id: i.producto_id, cantidad: parseInt(i.cantidad) || 1 }))
-      )
-      if (eI) throw eI
-      toast.success('Combo creado')
-      logActividad({ entidad: 'combo', entidad_nombre: comboForm.nombre.trim(), accion: 'crear', pagina: '/configuracion' })
-      setComboForm({ nombre: '', descuento_tipo: 'pct', descuento_valor: '0', vigencia_desde: '', vigencia_hasta: '' })
-      setComboItems([{ producto_id: '', cantidad: '1' }])
-      qc.invalidateQueries({ queryKey: ['combos'] })
-    } catch (err: any) { toast.error(err.message ?? 'Error al crear combo') }
-    setSavingCombo(false)
-  }
-
-  const deleteCombo = async (id: string) => {
-    if (!(await confirmar('¿Eliminar este combo?', { danger: true }))) return
-    const old = (combos as any[]).find(c => c.id === id)
-    const { error } = await supabase.from('combos').update({ activo: false }).eq('id', id)
-    if (error) toast.error(error.message)
-    else { toast.success('Combo eliminado'); qc.invalidateQueries({ queryKey: ['combos'] }); logActividad({ entidad: 'combo', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
   }
 
   // Grupos de estados
@@ -2861,9 +2782,11 @@ export default function ConfigPage() {
   // ── Unidades de medida ────────────────────────────────────────────────────────
   const [udmNombre, setUdmNombre] = useState('')
   const [udmSimbolo, setUdmSimbolo] = useState('')
+  const [udmTipoEmpaque, setUdmTipoEmpaque] = useState('')
   const [udmEditId, setUdmEditId] = useState<string | null>(null)
   const [udmEditNombre, setUdmEditNombre] = useState('')
   const [udmEditSimbolo, setUdmEditSimbolo] = useState('')
+  const [udmEditTipoEmpaque, setUdmEditTipoEmpaque] = useState('')
   const [udmSaving, setUdmSaving] = useState(false)
 
   const { data: unidadesMedida = [], isLoading: loadingUdm } = useQuery({
@@ -2916,16 +2839,16 @@ export default function ConfigPage() {
       toast.error('Ya existe una unidad con ese nombre'); return
     }
     setUdmSaving(true)
-    const { error } = await supabase.from('unidades_medida').insert({ tenant_id: tenant!.id, nombre: udmNombre.trim(), simbolo: udmSimbolo.trim() || null, activo: true })
+    const { error } = await supabase.from('unidades_medida').insert({ tenant_id: tenant!.id, nombre: udmNombre.trim(), simbolo: udmSimbolo.trim() || null, tipo_empaque: udmTipoEmpaque || null, activo: true })
     if (error) toast.error(error.message)
-    else { toast.success('Unidad agregada'); setUdmNombre(''); setUdmSimbolo(''); qc.invalidateQueries({ queryKey: ['unidades_medida'] }) }
+    else { toast.success('Unidad agregada'); setUdmNombre(''); setUdmSimbolo(''); setUdmTipoEmpaque(''); qc.invalidateQueries({ queryKey: ['unidades_medida'] }) }
     setUdmSaving(false)
   }
 
   const updateUdm = async (id: string) => {
     if (!udmEditNombre.trim()) return
     setUdmSaving(true)
-    const { error } = await supabase.from('unidades_medida').update({ nombre: udmEditNombre.trim(), simbolo: udmEditSimbolo.trim() || null }).eq('id', id)
+    const { error } = await supabase.from('unidades_medida').update({ nombre: udmEditNombre.trim(), simbolo: udmEditSimbolo.trim() || null, tipo_empaque: udmEditTipoEmpaque || null }).eq('id', id)
     if (error) toast.error(error.message)
     else { toast.success('Unidad actualizada'); setUdmEditId(null); qc.invalidateQueries({ queryKey: ['unidades_medida'] }) }
     setUdmSaving(false)
@@ -4353,24 +4276,25 @@ export default function ConfigPage() {
                   <div>
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-0.5">Permisos por estado</p>
                     <p className="text-xs text-gray-400 dark:text-gray-500">
-                      <ShoppingCart size={11} className="inline mr-0.5" /> = vendible · <Store size={11} className="inline mr-0.5" /> = TiendaNube · <span className="text-xs font-bold text-yellow-500">ML</span> = MercadoLibre · <RotateCcw size={11} className="inline mr-0.5 text-orange-500" /> = devoluciones · <Percent size={11} className="inline mr-0.5 text-emerald-500" /> = descuento automático en venta
+                      <ShoppingCart size={11} className="inline mr-0.5" /> = vendible · <Store size={11} className="inline mr-0.5" /> = TiendaNube · <span className="text-xs font-bold text-yellow-500">ML</span> = MercadoLibre · <RotateCcw size={11} className="inline mr-0.5 text-orange-500" /> = devoluciones · <Percent size={11} className="inline mr-0.5 text-emerald-500" /> = descuento automático en venta · <ShieldCheck size={11} className="inline mr-0.5 text-red-500" /> = requiere aprobación + foto al cambiar a este estado
                     </p>
                   </div>
 
                   <div className="rounded-xl border border-gray-100 dark:border-gray-700 overflow-hidden">
                     {/* Header */}
-                    <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400">
+                    <div className="grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto] gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-700 text-xs font-medium text-gray-500 dark:text-gray-400">
                       <span>Estado</span>
                       <span className="w-8 text-center" title="Disponible para venta"><ShoppingCart size={13} /></span>
                       <span className="w-8 text-center" title="Sincroniza a TiendaNube"><Store size={13} /></span>
                       <span className="w-8 text-center text-yellow-500 font-bold" title="Sincroniza a MercadoLibre">ML</span>
                       <span className="w-8 text-center" title="Estado para devoluciones"><RotateCcw size={13} className="text-orange-500" /></span>
                       <span className="w-20 text-center" title="Descuento automático en venta"><Percent size={13} className="inline text-emerald-500" /></span>
+                      <span className="w-8 text-center" title="Requiere aprobación + foto al cambiar a este estado"><ShieldCheck size={13} className="text-red-500" /></span>
                     </div>
 
                     {(estados as any[]).map((e: any, i: number) => (
                       <div key={e.id}
-                        className={`grid grid-cols-[1fr_auto_auto_auto_auto_auto] gap-2 px-3 py-2.5 items-center ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-gray-700/30'}`}>
+                        className={`grid grid-cols-[1fr_auto_auto_auto_auto_auto_auto] gap-2 px-3 py-2.5 items-center ${i % 2 === 0 ? '' : 'bg-gray-50/50 dark:bg-gray-700/30'}`}>
                         {/* Nombre con color */}
                         <div className="flex items-center gap-2 min-w-0">
                           <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: e.color }} />
@@ -4431,6 +4355,16 @@ export default function ConfigPage() {
                             className={`w-14 px-1.5 py-1 text-xs text-center border rounded-lg focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800
                               ${e.descuento_pct ? 'border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-400 font-medium' : 'border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400'}`} />
                         </div>
+
+                        {/* Toggle requiere aprobación + foto (Fede 25/7, punto 2 — fraude interno) */}
+                        <button
+                          onClick={() => toggleRequiereAprobacion(e.id, !e.requiere_aprobacion)}
+                          title={e.requiere_aprobacion ? 'Cambiar a este estado requiere aprobación del supervisor + foto — click para quitar' : 'Marcar: cambiar a este estado va a requerir aprobación del supervisor + foto tomada en el momento'}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${e.requiere_aprobacion
+                            ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
+                          <ShieldCheck size={14} />
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -4753,12 +4687,12 @@ export default function ConfigPage() {
                           <input type="checkbox" checked={u.activo !== false}
                             disabled={!canEdit || u.es_base_familia}
                             onChange={e => toggleUnidadFisica(u, e.target.checked)}
-                            className="accent-accent-text disabled:opacity-40 flex-shrink-0" />
-                          <span className={`truncate ${u.activo !== false ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
-                            {u.nombre} {u.simbolo && <span className="text-gray-400">({u.simbolo})</span>}
+                            className={u.es_base_familia ? 'accent-cyan-600 dark:accent-cyan-400 flex-shrink-0' : 'accent-accent-text disabled:opacity-40 flex-shrink-0'} />
+                          <span className={`truncate ${u.es_base_familia ? 'text-cyan-700 dark:text-cyan-400 font-medium' : u.activo !== false ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'}`}>
+                            {u.nombre} {u.simbolo && <span className={u.es_base_familia ? 'text-cyan-600/70 dark:text-cyan-400/70' : 'text-gray-400'}>({u.simbolo})</span>}
                           </span>
                         </span>
-                        <span className="text-xs text-gray-400 flex-shrink-0">{u.es_base_familia ? 'base' : `= ${u.factor_base_familia.toLocaleString('es-AR')} ${base?.simbolo ?? 'base'}`}</span>
+                        <span className={`text-xs flex-shrink-0 ${u.es_base_familia ? 'text-cyan-600 dark:text-cyan-400 font-medium' : 'text-gray-400'}`}>{u.es_base_familia ? 'base' : `= ${u.factor_base_familia.toLocaleString('es-AR')} ${base?.simbolo ?? 'base'}`}</span>
                       </label>
                     ))}
                   </div>
@@ -4789,6 +4723,12 @@ export default function ConfigPage() {
                 <input type="text" placeholder="Símbolo (ej: pz)" value={udmSimbolo} onChange={e => setUdmSimbolo(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && addUdm()}
                   className="w-28 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+                <select value={udmTipoEmpaque} onChange={e => setUdmTipoEmpaque(e.target.value)}
+                  title="Tipo de empaque (informativo, para reportes)"
+                  className="w-36 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
+                  <option value="">Tipo (opcional)</option>
+                  {TIPOS_EMPAQUE.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
                 <button onClick={addUdm} disabled={!udmNombre.trim() || udmSaving}
                   className="flex-shrink-0 px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-lg text-sm font-medium disabled:opacity-40 flex items-center gap-1">
                   <Plus size={15} /> Agregar
@@ -4815,6 +4755,11 @@ export default function ConfigPage() {
                         <input type="text" value={udmEditSimbolo} onChange={e => setUdmEditSimbolo(e.target.value)}
                           placeholder="Símbolo"
                           className="w-28 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none" />
+                        <select value={udmEditTipoEmpaque} onChange={e => setUdmEditTipoEmpaque(e.target.value)}
+                          className="w-36 px-3 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none">
+                          <option value="">Tipo (opcional)</option>
+                          {TIPOS_EMPAQUE.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
                       </div>
                       <button onClick={() => updateUdm(u.id)} disabled={udmSaving}
                         className="p-1.5 text-green-600 dark:text-green-400 hover:bg-green-50 dark:bg-green-900/20 rounded-lg transition-colors">
@@ -4829,13 +4774,19 @@ export default function ConfigPage() {
                     <>
                       <div className="flex-1">
                         <p className="text-sm font-medium text-gray-800 dark:text-gray-100">{u.nombre}</p>
-                        {u.simbolo && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Símbolo: {u.simbolo}</p>}
+                        {(u.simbolo || u.tipo_empaque) && (
+                          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                            {u.simbolo && <>Símbolo: {u.simbolo}</>}
+                            {u.simbolo && u.tipo_empaque && ' · '}
+                            {u.tipo_empaque && <>Tipo: {u.tipo_empaque}</>}
+                          </p>
+                        )}
                       </div>
                       {u.predefinida
                         ? <span className="flex items-center gap-1 text-xs text-gray-400 dark:text-gray-500 px-2 py-0.5 bg-gray-100 dark:bg-gray-700 rounded" title="Unidad predefinida del sistema — no eliminable"><Lock size={11} />Predefinida</span>
                         : canEdit && (
                           <>
-                            <button onClick={() => { setUdmEditId(u.id); setUdmEditNombre(u.nombre); setUdmEditSimbolo(u.simbolo ?? '') }}
+                            <button onClick={() => { setUdmEditId(u.id); setUdmEditNombre(u.nombre); setUdmEditSimbolo(u.simbolo ?? ''); setUdmEditTipoEmpaque(u.tipo_empaque ?? '') }}
                               className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
                               <Pencil size={15} />
                             </button>
@@ -5851,699 +5802,13 @@ export default function ConfigPage() {
         </div>
       )}
 
-          {/* Descuentos y combos */}
-          {tab === 'ventas' && ventasSubTab === 'descuentos' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-5">
-          <div className="flex items-center gap-2">
-            <Gift size={18} className="text-accent-text" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Combos de productos</h2>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{combos.length} activos</span>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
-            Definí reglas de precio por volumen. Cuando se alcanza la cantidad en el carrito, aparece una sugerencia para aplicar el descuento.
-          </p>
-
-          {/* Formulario nuevo combo */}
-          <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Nuevo combo</p>
-              <div className="flex gap-1">
-                {(['3x2','2x1','2da'] as const).map(p => (
-                  <button key={p} onClick={() => applyComboPreset(p)} title={p === '2da' ? '2da unidad X% off' : p}
-                    className="px-2 py-0.5 text-xs rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 hover:bg-amber-200 dark:hover:bg-amber-900/50">
-                    {p === '2da' ? '2da ud.' : p}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="col-span-2">
-                <input type="text" value={comboForm.nombre} onChange={e => setComboForm(p => ({ ...p, nombre: e.target.value }))}
-                  placeholder="Nombre del combo (ej: 3x Coca-Cola 10% off)"
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
-              </div>
-
-              {/* Productos del combo */}
-              <div className="col-span-2 space-y-2">
-                <p className="text-xs text-gray-500 dark:text-gray-400">Productos del combo</p>
-                {comboItems.map((ci, idx) => (
-                  <div key={idx} className="flex gap-2 items-center">
-                    <select value={ci.producto_id} onChange={e => setComboItems(prev => prev.map((x,i) => i===idx ? {...x, producto_id: e.target.value} : x))}
-                      className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
-                      <option value="">Seleccionar producto...</option>
-                  {(productosAll as any[]).map((p: any) => (
-                    <option key={p.id} value={p.id}>{p.nombre} ({p.sku})</option>
-                  ))}
-                </select>
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="1" value={ci.cantidad}
-                  onChange={e => setComboItems(prev => prev.map((x,i) => i===idx ? {...x, cantidad: e.target.value} : x))}
-                  placeholder="Cant." className="w-16 px-2 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text text-center" />
-                {comboItems.length > 1 && (
-                  <button onClick={() => setComboItems(prev => prev.filter((_,i) => i!==idx))}
-                    className="p-1.5 text-gray-400 hover:text-red-500 rounded-lg" title="Quitar">
-                    <X size={13} />
-                  </button>
-                )}
-              </div>
-              ))}
-              <button onClick={() => setComboItems(prev => [...prev, { producto_id: '', cantidad: '1' }])}
-                className="text-xs text-accent-text hover:underline flex items-center gap-1">
-                <Plus size={12} /> Agregar producto al combo
-              </button>
-            </div>
-
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo de descuento</label>
-                <select value={comboForm.descuento_tipo} onChange={e => setComboForm(p => ({ ...p, descuento_tipo: e.target.value, descuento_valor: '0' }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
-                  <option value="pct">Porcentaje (%)</option>
-                  <option value="monto_ars">Monto fijo ($)</option>
-                  <option value="monto_usd">Monto fijo (USD)</option>
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  {comboForm.descuento_tipo === 'pct' ? 'Descuento (%)' : comboForm.descuento_tipo === 'monto_usd' ? 'Descuento (USD)' : 'Descuento ($)'}
-                </label>
-                <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max={comboForm.descuento_tipo === 'pct' ? '100' : undefined} step={comboForm.descuento_tipo === 'pct' ? '0.5' : '1'}
-                  value={comboForm.descuento_valor}
-                  onChange={e => setComboForm(p => ({ ...p, descuento_valor: e.target.value }))}
-                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text" />
-              </div>
-              {/* Vigencia por fecha (mig 279) */}
-              <div className="col-span-2">
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Vigencia (opcional) <InfoTip text="El combo se aplica solo entre estas fechas (ambas inclusive). Dejá los campos vacíos para que aplique siempre. Un combo vencido deja de ofrecerse solo en el POS — no hace falta apagarlo a mano." />
-                </label>
-                <div className="flex items-center gap-2">
-                  <input type="date" value={comboForm.vigencia_desde}
-                    onChange={e => setComboForm(p => ({ ...p, vigencia_desde: e.target.value }))}
-                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700" />
-                  <span className="text-xs text-gray-400">a</span>
-                  <input type="date" value={comboForm.vigencia_hasta}
-                    onChange={e => setComboForm(p => ({ ...p, vigencia_hasta: e.target.value }))}
-                    className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700" />
-                </div>
-              </div>
-            </div>
-            <button onClick={addCombo} disabled={savingCombo}
-              className="w-full flex items-center justify-center gap-2 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm transition-all disabled:opacity-50">
-              <Plus size={15} /> {savingCombo ? 'Creando...' : 'Crear combo'}
-            </button>
-          </div>
-
-          {/* Lista de combos */}
-          {loadingCombos ? (
-            <div className="flex justify-center py-6"><div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary" /></div>
-          ) : combos.length === 0 ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">No hay combos definidos</p>
-          ) : (
-            <div className="space-y-2">
-              {(combos as any[]).map((c: any) => (
-                <div key={c.id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700 rounded-xl">
-                  <div className="w-8 h-8 bg-amber-100 dark:bg-amber-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-                    <Gift size={15} className="text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100 flex items-center gap-2">
-                      {c.nombre}
-                      {(() => {
-                        if (!c.vigencia_desde && !c.vigencia_hasta) return null
-                        const estado = estadoVigenciaCombo(c, hoyLocalISO())
-                        const cls = estado === 'vigente' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                          : estado === 'programado' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
-                          : 'bg-gray-200 dark:bg-gray-600 text-gray-500 dark:text-gray-300'
-                        return <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${cls}`}>{estado}</span>
-                      })()}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 truncate">
-                      {(c.combo_items ?? []).map((ci: any, i: number) => (
-                        <span key={i}>{i > 0 ? ' + ' : ''}{ci.productos?.nombre ?? '?'} ×{ci.cantidad}</span>
-                      ))} ·{' '}
-                      {(c.descuento_tipo ?? 'pct') === 'pct'
-                        ? `${c.descuento_pct}% off`
-                        : (c.descuento_tipo === 'monto_usd' ? `USD ${c.descuento_monto} off` : `$${c.descuento_monto} off`)}
-                      {(c.vigencia_desde || c.vigencia_hasta) && (
-                        <> · {c.vigencia_desde ?? '…'} → {c.vigencia_hasta ?? '…'}</>
-                      )}
-                    </p>
-                  </div>
-                  <button onClick={() => deleteCombo(c.id)}
-                    className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:bg-red-900/20 rounded-lg flex-shrink-0">
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {tab === 'ventas' && ventasSubTab === 'metodos' && (
-        <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-4">
-          <div className="flex items-center gap-2 mb-1">
-            <CreditCard size={18} className="text-accent-text" />
-            <h2 className="font-semibold text-gray-700 dark:text-gray-300">Métodos de pago</h2>
-            <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{metodosPago.length} método{metodosPago.length !== 1 ? 's' : ''}</span>
-          </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500">
-            Personalizá los métodos de cobro disponibles en ventas y caja. El color se usa en gráficos del dashboard.
-          </p>
-
-          {loadingMetodos ? (
-            <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p>
-          ) : (
-            <div className="space-y-2">
-              {(metodosPago as any[]).map((m: any) => (
-                <div key={m.id} className="border border-gray-100 dark:border-gray-700 rounded-xl">
-                <div className="flex items-center gap-3 px-4 py-3">
-                  {editMetodoId === m.id ? (
-                    <>
-                      <input type="color" value={editMetodoData.color}
-                        onChange={e => setEditMetodoData(p => ({ ...p, color: e.target.value }))}
-                        className="w-8 h-8 rounded cursor-pointer border-0 p-0 flex-shrink-0" />
-                      <input type="text" value={editMetodoData.nombre}
-                        onChange={e => setEditMetodoData(p => ({ ...p, nombre: e.target.value }))}
-                        className="flex-1 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-                      <div className="flex items-center gap-1 shrink-0">
-                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="50" step="0.1"
-                          value={editMetodoData.comision_pct}
-                          onChange={e => setEditMetodoData(p => ({ ...p, comision_pct: e.target.value }))}
-                          placeholder="0"
-                          className="w-16 px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-center focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-                        <span className="text-xs text-gray-400 dark:text-gray-500">%</span>
-                      </div>
-                      <select
-                        value={editMetodoData.cuenta_origen_id || ''}
-                        onChange={e => setEditMetodoData(p => ({ ...p, cuenta_origen_id: e.target.value || null }))}
-                        title="Cuenta donde se acredita este método"
-                        className="px-2 py-1 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white shrink-0">
-                        <option value="">— sin cuenta —</option>
-                        {(cuentasOrigen as any[]).filter(c => c.activo).map(c => (
-                          <option key={c.id} value={c.id}>{c.nombre}</option>
-                        ))}
-                      </select>
-                      <button onClick={() => updateMetodoPago.mutate(m.id)} disabled={updateMetodoPago.isPending}
-                        className="p-1.5 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors">
-                        <Check size={15} />
-                      </button>
-                      <button onClick={() => setEditMetodoId(null)}
-                        className="p-1.5 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
-                        <X size={15} />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-4 h-4 rounded-full flex-shrink-0 border border-gray-200 dark:border-gray-600" style={{ backgroundColor: m.color }} />
-                      <span className="flex-1 text-sm font-medium text-gray-800 dark:text-gray-100">{m.nombre}</span>
-                      {(m.comision_pct > 0) && (
-                        <span className="text-xs px-1.5 py-0.5 bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 rounded font-mono" title="Comisión que te cobra la plataforma (costo tuyo, no descuento al cliente)">
-                          {m.comision_pct}%
-                        </span>
-                      )}
-                      {(() => {
-                        const d = descuentoDeConfig(m.config)
-                        return d ? (
-                          <span className="text-xs px-1.5 py-0.5 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded font-medium" title="Descuento al cliente por pagar con este método">
-                            🏷 {etiquetaPromo(d)}
-                          </span>
-                        ) : null
-                      })()}
-                      {m.cuenta_origen_id && (() => {
-                        const co = (cuentasOrigen as any[]).find(c => c.id === m.cuenta_origen_id)
-                        return co ? (
-                          <span className="text-xs px-1.5 py-0.5 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 rounded" title={`Acredita en: ${co.nombre}`}>
-                            → {co.nombre}
-                          </span>
-                        ) : null
-                      })()}
-                      {m.es_sistema && <span className="text-xs text-gray-400 dark:text-gray-500 px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 rounded">sistema</span>}
-                      <button onClick={() => toggleMetodoPago.mutate({ id: m.id, activo: !m.activo })}
-                        title={m.activo ? 'Deshabilitar' : 'Habilitar'}
-                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${m.activo ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
-                        {m.activo ? 'Activo' : 'Inactivo'}
-                      </button>
-                      <button onClick={() => canEdit && toggleMetodoPagoFlag.mutate({ id: m.id, field: 'habilitado_ventas', value: !(m.habilitado_ventas ?? true) })}
-                        title={(m.habilitado_ventas ?? true) ? 'Quitar del POS' : 'Habilitar en POS'}
-                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${(m.habilitado_ventas ?? true) ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 hover:bg-blue-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                        POS
-                      </button>
-                      <button onClick={() => canEdit && toggleMetodoPagoFlag.mutate({ id: m.id, field: 'habilitado_gastos', value: !(m.habilitado_gastos ?? true) })}
-                        title={(m.habilitado_gastos ?? true) ? 'Quitar de Gastos' : 'Habilitar en Gastos'}
-                        className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${(m.habilitado_gastos ?? true) ? 'bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 hover:bg-purple-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'} ${!canEdit ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}>
-                        Gastos
-                      </button>
-                      {canEdit && (
-                        <button onClick={() => promoMetodoId === m.id ? setPromoMetodoId(null) : abrirPromoMetodo(m)}
-                          title="Descuento al cliente por pagar con este método"
-                          className={`text-xs px-2 py-1 rounded-lg font-medium transition-colors ${descuentoDeConfig(m.config) ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100' : 'bg-gray-100 dark:bg-gray-700 text-gray-400 hover:bg-gray-200'}`}>
-                          Promo
-                        </button>
-                      )}
-                      <button onClick={() => { setEditMetodoId(m.id); setEditMetodoData({ nombre: m.nombre, color: m.color, comision_pct: m.comision_pct ? String(m.comision_pct) : '', cuenta_origen_id: m.cuenta_origen_id ?? '' }) }}
-                        className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-accent-text hover:bg-accent/10 rounded-lg transition-colors">
-                        <Pencil size={14} />
-                      </button>
-                      {!m.es_sistema && (
-                        <button onClick={async () => { if (await confirmar('¿Eliminar este método?', { danger: true })) deleteMetodoPago.mutate(m.id) }}
-                          className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-
-                {/* Panel de promo por método (punto 1 Fede/GO): % + tope + días + vigencia */}
-                {promoMetodoId === m.id && (
-                  <div className="px-4 pb-3 pt-1 border-t border-gray-100 dark:border-gray-700 space-y-3">
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      Descuento que se le hace <strong>al cliente</strong> por pagar con {m.nombre}.
-                      {' '}<InfoTip text="Distinto de la comisión (naranja), que es lo que la plataforma te cobra a vos. El descuento se aplica solo en el POS al cobrar con este método, respetando días y vigencia. Con pago mixto, descuenta sobre lo abonado con este método. Dejá el % vacío para quitar la promo." />
-                    </p>
-                    <div className="flex flex-wrap items-end gap-3">
-                      <div>
-                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Descuento (%)</label>
-                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5" value={promoForm.pct}
-                          onChange={e => setPromoForm(p => ({ ...p, pct: e.target.value }))} placeholder="0"
-                          className="w-20 px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm text-center focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tope ($, opcional)</label>
-                        <input type="number" onWheel={e => e.currentTarget.blur()} min="0" value={promoForm.tope}
-                          onChange={e => setPromoForm(p => ({ ...p, tope: e.target.value }))} placeholder="Sin tope"
-                          className="w-28 px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-                      </div>
-                      <div>
-                        <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Vigencia (opcional)</label>
-                        <div className="flex items-center gap-1.5">
-                          <input type="date" value={promoForm.desde} onChange={e => setPromoForm(p => ({ ...p, desde: e.target.value }))}
-                            className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-                          <span className="text-xs text-gray-400">a</span>
-                          <input type="date" value={promoForm.hasta} onChange={e => setPromoForm(p => ({ ...p, hasta: e.target.value }))}
-                            className="px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Días de la semana (ninguno marcado = todos)</label>
-                      <div className="flex gap-1.5 flex-wrap">
-                        {DIAS_SEMANA_CORTOS.map((dia, i) => (
-                          <button key={dia} type="button"
-                            onClick={() => setPromoForm(p => ({ ...p, dias: p.dias.includes(i) ? p.dias.filter(x => x !== i) : [...p.dias, i].sort() }))}
-                            className={`px-2.5 py-1 text-xs rounded-full border transition-colors
-                              ${promoForm.dias.includes(i)
-                                ? 'border-accent-text bg-accent/10 text-accent-text font-medium'
-                                : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
-                            {dia}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-2 justify-end">
-                      <button onClick={() => setPromoMetodoId(null)}
-                        className="px-3 py-1.5 border border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400 rounded-lg text-xs hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
-                        Cancelar
-                      </button>
-                      <button onClick={() => savePromoMetodo.mutate(m)} disabled={savePromoMetodo.isPending}
-                        className="px-3 py-1.5 bg-accent hover:bg-accent/90 text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-60">
-                        {savePromoMetodo.isPending ? 'Guardando…' : 'Guardar promo'}
-                      </button>
-                    </div>
-                  </div>
-                )}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Agregar método personalizado */}
-          <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Agregar método personalizado</p>
-            <div className="flex gap-2">
-              <input type="color" value={nuevoMetodo.color}
-                onChange={e => setNuevoMetodo(p => ({ ...p, color: e.target.value }))}
-                className="w-10 h-10 rounded-lg cursor-pointer border border-gray-200 dark:border-gray-600 p-0.5 flex-shrink-0" />
-              <input type="text" value={nuevoMetodo.nombre}
-                onChange={e => setNuevoMetodo(p => ({ ...p, nombre: e.target.value }))}
-                placeholder="Ej: Cripto, Cheque..."
-                onKeyDown={e => e.key === 'Enter' && addMetodoPago.mutate()}
-                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-              <button onClick={() => addMetodoPago.mutate()}
-                disabled={!nuevoMetodo.nombre.trim() || addMetodoPago.isPending}
-                className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium disabled:opacity-40 flex items-center gap-1.5">
-                <Plus size={14} /> Agregar
-              </button>
-            </div>
-          </div>
-
-          {/* ISS-086: Cuotas por banco — Tarjeta de crédito */}
-          <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
-            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Cuotas por banco (Tarjeta de crédito)</p>
-            <p className="text-xs text-gray-400 dark:text-gray-500">Configurá los planes de cuotas que ofrecés con cada banco. Las cuotas sin interés se muestran en verde al cobrar con tarjeta.</p>
-
-            {cuotasBancos.map((banco) => (
-              <div key={banco.id} className="border border-gray-100 dark:border-gray-700 rounded-xl overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2.5 bg-gray-50 dark:bg-gray-700/50">
-                  <span className="font-medium text-sm text-gray-800 dark:text-gray-100 flex-1">{banco.nombre}</span>
-                  <button onClick={() => setEditBancoId(editBancoId === banco.id ? null : banco.id)}
-                    className="text-xs text-accent-text hover:underline">
-                    {editBancoId === banco.id ? 'Cerrar' : 'Editar cuotas'}
-                  </button>
-                  <button onClick={() => saveCuotasBancos(cuotasBancos.filter(b => b.id !== banco.id))}
-                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={13} /></button>
-                </div>
-
-                {/* Cuotas del banco */}
-                <div className="px-4 py-2 flex flex-wrap gap-2">
-                  {banco.cuotas.map((c, ci) => (
-                    <span key={ci} className={`text-xs font-medium px-2 py-0.5 rounded-full flex items-center gap-1 ${c.sin_interes ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
-                      {c.cant}x {c.sin_interes ? 'sin interés' : `+${c.interes}%`}
-                      {editBancoId === banco.id && (
-                        <button onClick={() => saveCuotasBancos(cuotasBancos.map(b => b.id === banco.id ? { ...b, cuotas: b.cuotas.filter((_, i) => i !== ci) } : b))}
-                          className="ml-0.5 text-gray-400 hover:text-red-500"><X size={10} /></button>
-                      )}
-                    </span>
-                  ))}
-                </div>
-
-                {/* Agregar cuota */}
-                {editBancoId === banco.id && (
-                  <div className="px-4 pb-3 flex items-center gap-2 flex-wrap">
-                    <input type="number" min="1" value={nuevaCuota.cant} onChange={e => setNuevaCuota(p => ({ ...p, cant: e.target.value }))}
-                      placeholder="Cuotas" className="w-20 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-                    <input type="number" min="0" step="0.1" value={nuevaCuota.interes} onChange={e => setNuevaCuota(p => ({ ...p, interes: e.target.value }))}
-                      placeholder="Interés %" className="w-24 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-                    <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
-                      <input type="checkbox" checked={nuevaCuota.sin_interes} onChange={e => setNuevaCuota(p => ({ ...p, sin_interes: e.target.checked, interes: e.target.checked ? '0' : p.interes }))}
-                        className="accent-green-500" /> Sin interés
-                    </label>
-                    <button onClick={() => {
-                      const cant = parseInt(nuevaCuota.cant)
-                      if (!cant || cant < 1) { toast.error('Ingresá la cantidad de cuotas'); return }
-                      const interes = parseFloat(nuevaCuota.interes) || 0
-                      const updated = cuotasBancos.map(b => b.id === banco.id
-                        ? { ...b, cuotas: [...b.cuotas, { cant, sin_interes: nuevaCuota.sin_interes, interes }].sort((a, b) => a.cant - b.cant) }
-                        : b)
-                      saveCuotasBancos(updated)
-                      setNuevaCuota({ cant: '', interes: '', sin_interes: false })
-                    }} className="px-3 py-1.5 bg-accent hover:bg-accent/90 text-white rounded-lg text-xs font-medium flex items-center gap-1">
-                      <Plus size={12} /> Agregar cuota
-                    </button>
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Agregar banco */}
-            <div className="flex gap-2">
-              <input type="text" value={nuevoBancoNombre} onChange={e => setNuevoBancoNombre(e.target.value)}
-                placeholder="Ej: Banco Galicia, Santander..."
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && nuevoBancoNombre.trim()) {
-                    saveCuotasBancos([...cuotasBancos, { id: crypto.randomUUID(), nombre: nuevoBancoNombre.trim(), cuotas: [] }])
-                    setNuevoBancoNombre('')
-                  }
-                }}
-                className="flex-1 px-3 py-2 border border-gray-200 dark:border-gray-600 rounded-xl text-sm focus:outline-none focus:border-accent-text dark:bg-gray-700 dark:text-white" />
-              <button onClick={() => {
-                if (!nuevoBancoNombre.trim()) return
-                saveCuotasBancos([...cuotasBancos, { id: crypto.randomUUID(), nombre: nuevoBancoNombre.trim(), cuotas: [] }])
-                setNuevoBancoNombre('')
-              }} className="px-4 py-2 bg-accent hover:bg-accent/90 text-white rounded-xl text-sm font-medium flex items-center gap-1.5">
-                <Plus size={14} /> Agregar banco
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-          {/* Operativa sub-tab */}
-          {tab === 'ventas' && ventasSubTab === 'operativa' && (
-            <div className="space-y-4">
-              {/* VF2 — Canales de venta + reglas online/presencial */}
-              <CanalesVentaPanel />
-              {/* VF4/K2 — Alertas automáticas de ventas */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2"><Bell size={18} className="text-accent-text" /> Alertas de ventas</h2>
-                <p className="text-xs text-gray-400 dark:text-gray-500 -mt-1">Notifican a DUEÑO/SUPERVISOR/ADMIN automáticamente.</p>
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Margen negativo</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Avisar cuando una venta se cierra con costo mayor al total.</p>
-                  </div>
-                  <Toggle size="lg" disabled={!canEdit} checked={bizAlertaMargenNeg}
-                    onChange={setBizAlertaMargenNeg}
-                    aria-label="Alertar margen negativo" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Alertar por devoluciones repetidas
-                      {' '}<InfoTip text="Cuenta OPERACIONES de devolución (no unidades ni plata): si un mismo cliente o un mismo producto acumula más devoluciones que este número dentro de la ventana de días, se genera la alerta. Ej: con 3, la 4ta devolución del mismo producto dispara el aviso." />
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">más de</span>
-                      <input type="number" min="1" onWheel={e => e.currentTarget.blur()} value={bizAlertaDevN} disabled={!canEdit}
-                        onChange={e => setBizAlertaDevN(e.target.value)} placeholder="—"
-                        className="w-20 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm text-center focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                      <span className="text-sm text-gray-500 dark:text-gray-400">devoluciones del mismo cliente o producto</span>
-                    </div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = alerta desactivada.</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Ventana de tiempo (días)
-                      {' '}<InfoTip text="Las devoluciones se cuentan dentro de este período hacia atrás desde hoy. Default: 30 días." />
-                    </label>
-                    <input type="number" min="1" max="365" onWheel={e => e.currentTarget.blur()} value={bizAlertaDevDias} disabled={!canEdit}
-                      onChange={e => setBizAlertaDevDias(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                  </div>
-                </div>
-              </div>
-              {/* Presupuesto */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Documentos</h2>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Validez de presupuesto (días)</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365" value={bizPresupuestoValidez} disabled={!canEdit}
-                    onChange={e => setBizPresupuestoValidez(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Un presupuesto creado hoy expirará en esta cantidad de días. Se muestra en el ticket de presupuesto.</p>
-                </div>
-              </div>
-
-              {/* Reservas (E1/E2/E6) */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reservas</h2>
-
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" checked={bizReservaSenaObligatoria} disabled={!canEdit}
-                    onChange={e => setBizReservaSenaObligatoria(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 accent-accent" />
-                  <div>
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Exigir seña para reservar</span>
-                    <p className="text-xs text-gray-400 dark:text-gray-500">Si está activo, no se puede crear una reserva sin cobrar una seña.</p>
-                  </div>
-                </label>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Seña mínima (% del total)</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
-                    value={bizReservaSenaMinimaPct} disabled={!canEdit || !bizReservaSenaObligatoria}
-                    onChange={e => setBizReservaSenaMinimaPct(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">0 = cualquier seña mayor a cero. Ej: 30 exige al menos el 30% del total al reservar.</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vencimiento de reserva (días)</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365"
-                    value={bizReservaVencimientoDias} disabled={!canEdit} placeholder="Sin vencimiento"
-                    onChange={e => setBizReservaVencimientoDias(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin vencimiento. Pasados estos días sin despachar, <span className="font-medium">el inventario reservado se libera automáticamente</span> y la reserva se cancela.</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Penalidad al cancelar (% de la seña)</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.5"
-                    value={bizReservaPenalidadPct} disabled={!canEdit}
-                    onChange={e => setBizReservaPenalidadPct(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">0 = sin penalidad (se devuelve la seña completa). Ej: 10 retiene el 10% de la seña al cancelar.</p>
-                </div>
-
-              </div>
-
-              {/* Cuenta corriente de clientes (CL2 · B1/B3/B4) */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Cuenta corriente de clientes</h2>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Al superar el límite de crédito</label>
-                  <select value={bizCCEnforcement} disabled={!canEdit}
-                    onChange={e => setBizCCEnforcement(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
-                    <option value="permitir">Permitir (no controlar el límite)</option>
-                    <option value="avisar">Avisar y dejar continuar (recomendado)</option>
-                    <option value="bloquear">Bloquear la venta a cuenta corriente</option>
-                  </select>
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">El límite por cliente se carga en su ficha. Si un cliente no tiene límite propio, se usa el límite general de abajo.</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Límite general de crédito ($)</label>
-                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0"
-                    value={bizCCLimiteDefault} disabled={!canEdit} placeholder="Sin límite"
-                    onChange={e => setBizCCLimiteDefault(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Vacío = sin límite general. Aplica a clientes que no tengan un límite propio cargado.</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cliente con deuda vencida</label>
-                  <select value={bizCCMorosidad} disabled={!canEdit}
-                    onChange={e => setBizCCMorosidad(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
-                    <option value="permitir">Sin restricción</option>
-                    <option value="bloqueo_cc">No puede sumar a cuenta corriente, sí pagar por otro medio (recomendado)</option>
-                    <option value="bloqueo_total">No puede comprar hasta saldar</option>
-                  </select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vencimiento de la deuda (días)</label>
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="365"
-                      value={bizCCDiasVenc} disabled={!canEdit} placeholder="Sin vencimiento"
-                      onChange={e => setBizCCDiasVenc(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Interés por mora (% mensual)</label>
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" max="100" step="0.1"
-                      value={bizCCInteresMensual} disabled={!canEdit}
-                      onChange={e => setBizCCInteresMensual(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                  </div>
-                </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500">Vacío en vencimiento = la deuda no vence. El interés se aplica sobre el saldo vencido y se recalcula al abrir Clientes o Caja.</p>
-
-                {/* Notificaciones (CL4) */}
-                <div className="border-t border-gray-100 dark:border-gray-700 pt-4 space-y-3">
-                  <p className="text-sm font-semibold text-gray-600 dark:text-gray-300">Notificaciones al cliente</p>
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1.5">Canales</label>
-                    <div className="flex gap-4">
-                      {[['email', 'Email'], ['whatsapp', 'WhatsApp']].map(([val, lbl]) => (
-                        <label key={val} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                          <input type="checkbox" disabled={!canEdit} className="w-4 h-4 accent-accent"
-                            checked={bizCCNotifCanales.includes(val)}
-                            onChange={e => setBizCCNotifCanales(prev => e.target.checked ? [...new Set([...prev, val])] : prev.filter(c => c !== val))} />
-                          {lbl}
-                        </label>
-                      ))}
-                    </div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">El email se envía automáticamente. WhatsApp se envía manualmente desde el botón en el tab Cuenta Corriente (no hay envío automático de WA).</p>
-                  </div>
-                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" disabled={!canEdit} checked={bizCCNotifRegistroDeuda} onChange={e => setBizCCNotifRegistroDeuda(e.target.checked)} className="w-4 h-4 accent-accent" />
-                    Avisar por email al registrar una venta a cuenta corriente
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" disabled={!canEdit} checked={bizCCNotifPago} onChange={e => setBizCCNotifPago(e.target.checked)} className="w-4 h-4 accent-accent" />
-                    Enviar comprobante por email al registrar un pago
-                  </label>
-                  <div>
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Resaltar próximas a vencer (días antes)</label>
-                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" max="60"
-                      value={bizCCPreVencDias} disabled={!canEdit} placeholder="Sin recordatorio"
-                      onChange={e => setBizCCPreVencDias(e.target.value)}
-                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Las deudas que vencen dentro de estos días se marcan en el tab Cuenta Corriente para recordarle al cliente (WhatsApp/email manual).</p>
-                  </div>
-                  <p className="text-sm font-semibold text-gray-600 dark:text-gray-300 pt-1">Cumpleaños</p>
-                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" disabled={!canEdit} checked={bizCumpleDuenio} onChange={e => setBizCumpleDuenio(e.target.checked)} className="w-4 h-4 accent-accent" />
-                    Mostrarme la lista de cumpleañeros del día en Clientes
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                    <input type="checkbox" disabled={!canEdit} checked={bizCumpleCliente} onChange={e => setBizCumpleCliente(e.target.checked)} className="w-4 h-4 accent-accent" />
-                    Habilitar saludo de cumpleaños al cliente (botón de envío en la lista)
-                  </label>
-                </div>
-
-              </div>
-
-              {/* Cliente en POS */}
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
-                <h2 className="font-semibold text-gray-700 dark:text-gray-300">Cliente en el punto de venta</h2>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">¿Cuándo se requiere seleccionar cliente?</label>
-                  <select value={bizClienteObligatorio} disabled={!canEdit}
-                    onChange={e => setBizClienteObligatorio(e.target.value)}
-                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
-                    <option value="nunca">Nunca (siempre opcional)</option>
-                    <option value="reservas">Solo en reservas</option>
-                    <option value="siempre">Siempre obligatorio</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Datos requeridos al crear un cliente
-                    {' '}<InfoTip text="Aplica al alta rápida de cliente desde el POS. El nombre es siempre obligatorio; marcá qué otros datos no pueden faltar." />
-                  </label>
-                  <div className="flex flex-wrap gap-x-5 gap-y-2 pt-1">
-                    <label className="flex items-center gap-2 text-sm text-gray-400 dark:text-gray-500">
-                      <input type="checkbox" checked disabled className="w-4 h-4 accent-accent opacity-60" />
-                      Nombre (siempre)
-                    </label>
-                    {([['dni', 'DNI'], ['telefono', 'Teléfono'], ['email', 'Email']] as const).map(([key, label]) => (
-                      <label key={key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                        <input type="checkbox" disabled={!canEdit} checked={bizClienteCampos[key]}
-                          onChange={e => setBizClienteCampos(p => ({ ...p, [key]: e.target.checked }))}
-                          className="w-4 h-4 accent-accent" />
-                        {label}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir "Consumidor Final"</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Habilita vender sin identificar al cliente (genérico).</p>
-                  </div>
-                  <Toggle size="lg" disabled={!canEdit} checked={bizClienteConsumidorFinal}
-                    onChange={setBizClienteConsumidorFinal}
-                    aria-label='Permitir "Consumidor Final"' />
-                </div>
-                <div className="flex items-center justify-between py-1">
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Crear cliente inline desde el POS</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Permite agregar un cliente nuevo directamente desde la pantalla de venta.</p>
-                  </div>
-                  <Toggle size="lg" disabled={!canEdit} checked={bizClienteCreacionInline}
-                    onChange={setBizClienteCreacionInline}
-                    aria-label="Crear cliente inline desde el POS" />
-                </div>
-              </div>
-
-              {/* Un solo botón guarda toda la configuración operativa de Ventas */}
-              {canEdit && (
-                <div className="flex justify-end pt-1">
-                  <button onClick={handleSaveBiz} disabled={savingBiz}
-                    className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
-                    {savingBiz ? 'Guardando...' : 'Guardar configuración de Ventas'}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Descuentos sub-tab — descuento máx cajero/supervisor */}
           {tab === 'ventas' && ventasSubTab === 'descuentos' && (
             <div className="space-y-4">
+              <Link to="/comercial"
+                className="flex items-center gap-2 bg-accent/5 hover:bg-accent/10 border border-accent-text/20 rounded-xl px-4 py-3 text-sm text-accent-text font-medium transition-colors">
+                <Gift size={16} /> Combos y Cupones se movieron al módulo Comercial →
+              </Link>
               <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
                 <h2 className="font-semibold text-gray-700 dark:text-gray-300">Límites de descuento por rol</h2>
                 <p className="text-xs text-gray-400 dark:text-gray-500">

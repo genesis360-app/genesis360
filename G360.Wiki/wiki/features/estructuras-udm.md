@@ -2,8 +2,8 @@
 title: Estructuras de producto + Unidades de Medida (footprints)
 category: features
 tags: [estructuras, unidades-medida, footprint, wms, picking, almacenaje, zonas, reabastecimiento, udm, precio-por-uom, importador, ingreso-rebaje-uom]
-sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, 291, 293, 303, 304, 305, 306, 307, 308, 309, 310, 311, src/lib/estructuras.ts, src/lib/presentaciones.ts, src/lib/reasignacionVariante.ts, src/lib/unidadMedidaFisica.ts, src/components/PresentacionesEditor.tsx, src/components/ReasignarStockVarianteModal.tsx, src/pages/ImportarProductosPage.tsx, src/pages/InventarioPage.tsx, src/components/MasivoModal.tsx]
-updated: 2026-07-28
+sources: [migrations 031, 119, 148, 282, 283, 286, 287, 288, 289, 290, 291, 293, 303, 304, 305, 306, 307, 308, 309, 310, 311, 328, 329, 330, src/lib/estructuras.ts, src/lib/presentaciones.ts, src/lib/reasignacionVariante.ts, src/lib/unidadMedidaFisica.ts, src/components/PresentacionesEditor.tsx, src/components/ReasignarStockVarianteModal.tsx, src/pages/ImportarProductosPage.tsx, src/pages/InventarioPage.tsx, src/components/MasivoModal.tsx]
+updated: 2026-07-30
 ---
 
 > **🏗️ Rediseño en curso (2026-07-23) — UoM / Empaque / Variantes.** Tras una auditoría, GO decidió
@@ -18,6 +18,15 @@ updated: 2026-07-28
 > precio propio** (el precio por volumen es un TIER, mig 306). Desde la **Fase 5** (mig 310)
 > `producto_presentaciones` es la **fuente de verdad** del empaque y admite **hermanas**;
 > `producto_estructuras`/`_niveles` quedaron deprecadas (solo lectura histórica).
+>
+> **🆕 Sobre este rediseño (ya completo) se construye una iniciativa NUEVA y DISTINTA, EN CURSO:**
+> el backlog de 6 puntos que mandó Fede el 25/7/2026 (descuentos por empaque/pallet, módulo
+> Comercial con cupones y aprobación por foto, módulo Repositores, agrupación visual de Estructura,
+> color de unidades base, tipo de empaque). Las Fases F (quick wins), A (motor de precio de tiers
+> enlazado a `producto_presentaciones`, migs 328-330) y B (aprobación de cambio de estado con foto,
+> mig 331) ya están construidas, **EN DEV sin deploy**; C/D/E siguen pendientes. Ver
+> [[wiki/features/precios-tiers-empaque]] — no confundir con las fases del rediseño de arriba, que
+> sí están cerradas.
 
 ## 🆕 Rediseño UoM — Fase 1: Unidad de Medida física (mig 303, EN PROD)
 
@@ -120,6 +129,11 @@ logística pura), y para "vender un pallet" se usa un tier de cantidad, no un pr
   venta_items + ticket — Regla #0). Ficha: dropdown de operador + persiste `orden`=índice.
 - **Verificado:** `migration-reviewer` (fix del backfill DESC) · tsc · build · 10 unit · e2e `110`
   (persistencia de operador+orden desde la ficha, DB real).
+
+> **🆕 Extendido en migs 329/330 (EN DEV, sin deploy):** `producto_precios_mayorista` gana
+> `tipo_valor` ('precio_fijo'|'pct') + enlace opcional `presentacion_id` a una línea del árbol de
+> empaque, para el "caso del pallet" del backlog de Fede 25/7 — ver
+> [[wiki/features/precios-tiers-empaque]].
 
 ---
 
@@ -305,6 +319,16 @@ combos configurados solo para la unidad suelta**. Se reemplazó por el flag `es_
 - **Lógica pura:** `src/lib/presentaciones.ts` (23 unit). **e2e `99`** (reescrito): hermanas
   conviven, el árbol resuelve factores, y **5 negativos server-side** (hijo más chico que el padre,
   no-múltiplo, dos bases, etiquetas repetidas, base con factor ≠ 1) dejan el árbol intacto.
+
+**🆕 Agrupación visual por nivel + tipo de empaque (migs 328, EN DEV, sin deploy — backlog Fede
+25/7, puntos 4 y 6, puro UI/informativo, sin Regla #0).** `PresentacionesEditor` agrupa las líneas en
+burbujas por **profundidad** respecto de la base ("NB · Nivel Base" / "Nivel 1" / "Nivel 2"...),
+hermanas ordenadas de menor a mayor cantidad de unidades base; una línea nueva con el mismo tipo de
+empaque que otra ya cargada se ubica automático como hermana. `unidades_medida.tipo_empaque`
+(texto libre, sin CHECK) es una categoría puramente informativa/reportes que **no** se cruza con el
+enlace tier↔empaque (ese usa `producto_presentaciones.id`). Detalle completo, y el resto de la
+iniciativa (Fases A y B ya construidas, C/D/E pendientes) en
+[[wiki/features/precios-tiers-empaque]].
 
 ---
 
@@ -651,4 +675,7 @@ si aparece un caso real de fracción).
 - [[wiki/features/configuracion]] — ABM Unidades de medida
 - [[wiki/features/ventas-pos]] — Fase 2 de precio por UoM (✅ v1.141.0) conecta el precio por nivel con
   la venta real
+- [[wiki/features/precios-tiers-empaque]] — iniciativa NUEVA (backlog Fede 25/7, EN CURSO) que
+  enlaza los tiers mayoristas a `producto_presentaciones` ("el caso del pallet") y agrupa
+  visualmente el editor por nivel
 - [[wiki/database/migraciones]] — migs 282, 283, 286, 287, 288, 289, 290, 291, 292, 293

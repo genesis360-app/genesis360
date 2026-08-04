@@ -2,8 +2,8 @@
 title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286]
-updated: 2026-07-28
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, src/lib/tiers.ts]
+updated: 2026-07-30
 ---
 
 # Ventas / POS
@@ -151,6 +151,10 @@ Disponibles (configurables en ConfigPage → Métodos de pago, migration 045):
   **vende** stock que YA está en un estado con descuento configurado, sea porque un Aging Profile
   lo movió ahí, porque se cargó manual al ingresar, o por cualquier otro motivo — son dos features
   relacionadas pero independientes entre sí.
+- **Distinto de la aprobación de cambio de estado con foto** (🟡 EN DEV, mig 331 — Fase B backlog
+  Fede 25/7, ver [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto"):
+  `descuento_pct` y `requiere_aprobacion` son dos columnas **independientes** de
+  `estados_inventario` — un mismo estado puede tener las dos, una sola o ninguna.
 
 ### 👤 Campos requeridos del cliente en el alta rápida (v1.136.0, mig 280 — backlog Fede punto 4)
 - Config→Ventas→Operativa: checkboxes **DNI / Teléfono / Email** (el nombre es siempre obligatorio)
@@ -303,14 +307,44 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 ## Precios mayoristas por cantidad (G1/G2)
 
-- Cada producto puede tener **tiers** en `producto_precios_mayorista` (`cantidad_minima` + `precio` + etiqueta), editables en el form de producto (accordion "Precios mayoristas", solo `canEdit`).
-- El POS los aplica **automáticamente por la cantidad de cada línea**: `precioTierEfectivo(item)` toma el tier de mayor `cantidad_minima` que la cantidad satisfaga; si ninguno aplica, usa el precio minorista. **No** es por cliente ni por monto total — es por unidades del producto (confirmado GO 2026-05-31).
+- Cada producto puede tener **tiers** en `producto_precios_mayorista`, editables en el form de
+  producto (accordion "Precios mayoristas", solo `canEdit`). **No** es por cliente ni por monto
+  total — es por unidades del producto (confirmado GO 2026-05-31).
+- **⚠ Actualizado (mig 306, EN PROD desde v1.144.0):** cada tier tiene `operador`
+  ('>','<','=','>=','<=') + `orden`; se evalúan en `orden` asc y gana el **primer match** contra la
+  cantidad **TOTAL del SKU en todo el carrito** (agregación por SKU, no por línea — el precio
+  mayorista es por volumen). Si ninguno aplica, precio minorista. Reemplaza la descripción vieja
+  ("tier de mayor `cantidad_minima`", por línea) — ver `src/lib/tiers.ts`.
+- **🆕 Extendido (migs 329/330, EN DEV, sin deploy — backlog Fede 25/7, "el caso del pallet"):** un
+  tier puede ser **$/unidad** (`tipo_valor='precio_fijo'`, default) o **% de descuento sobre el
+  precio de LISTA** (`tipo_valor='pct'`), y puede **enlazarse** a una línea del árbol de empaque
+  (`presentacion_id`) — en ese caso se evalúa contra **múltiplos completos** de esa presentación
+  (1, 2, 3 pallets...), no unidades sueltas, y ese bloque compite contra el mejor tier normal.
+  `precioTierBase` usa `precioBlendedTier` (promedio ponderado que preserva la plata total exacta);
+  para cualquier tier de hoy sin enlace da el mismo resultado que antes. Detalle completo del
+  algoritmo en [[wiki/features/precios-tiers-empaque]].
 - El precio efectivo entra en `getItemSubtotal` y se persiste en `venta_items.precio_unitario`. En el carrito se muestra el indicador "🏷 Precio mayorista: $X/u" con el minorista tachado.
 
 ## Motivo de cancelación de reserva (E3)
 
 - Toda cancelación de reserva pasa por el modal con un **catálogo cerrado** de motivos (`Cliente arrepentido` / `Producto roto` / `Stock perdido` / `Otro`) + **observación libre opcional**. El motivo es obligatorio para confirmar.
 - Se registra en `ventas.notas` como `[Cancelación: {motivo} — {obs}]`.
+
+## Cupones (descuento fijo en $, backlog Fede Fase C, mig 332)
+
+- Descuento **FIJO en $ (nunca %)** sobre el **TOTAL** de la venta, independiente de cualquier
+  descuento de producto ya aplicado (combo, descuento por estado, tier). Input de código en la
+  sección de Descuento general del carrito; se aplica como línea propia ("🎟 Cupón X") y se resta
+  **ANTES** del descuento por método de pago (Promo), para que el % de un medio de pago se calcule
+  sobre lo que el cliente REALMENTE paga después del cupón.
+- Al confirmar la venta se re-valida el cupón en fresco (existe, no usado, activo+vigente) antes de
+  crearla; después del alta hace un `UPDATE` condicional atómico (`WHERE usado_en_venta_id IS NULL`)
+  que marca el código usado — si pierde la carrera, avisa por toast sin deshacer la venta ya asentada.
+- **Regla #0**: el prorrateo fiscal (`hayDescGlobal`/`prorratearDescuentoGlobal`) incluye el monto del
+  cupón para que factura/NC/Libro IVA sumen exacto lo que el cliente pagó.
+- Alta y gestión de campañas en Config → Ventas → Descuentos y combos → card "Cupones". Detalle
+  técnico completo (modelo de datos, decisión de canje sin RPC dedicada, lógica de
+  `src/lib/cupones.ts`) en [[wiki/features/precios-tiers-empaque]] → Fase C.
 
 ## Descuentos por rol (G3)
 

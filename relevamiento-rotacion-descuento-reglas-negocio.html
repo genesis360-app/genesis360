@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Motor de Rotación de Productos con Descuento · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .nota { background: #f0f7f0; border-left: 4px solid #2e7d32; padding: 8pt 12pt; margin: 10pt 0 14pt 0; border-radius: 0 4pt 4pt 0; font-size: 10pt; }
+  .nota strong { color: #1b5e20; }
+  .clave { background: #fdf0f4; border-left: 4px solid #c2185b; padding: 8pt 12pt; margin: 10pt 0 14pt 0; border-radius: 0 4pt 4pt 0; font-size: 10pt; }
+  .clave strong { color: #9c1250; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .pregunta-codigo.clave { background: #c2185b; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Motor de Rotación de Productos con Descuento</h1>
+<div class="meta">
+  Genesis360 · v1.152.0 (EN DEV) · Fecha: 3 de agosto de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas <span class="tag tag-existente">EXISTENTE</span>
+  piden confirmar una regla ya implementada; <span class="tag tag-nuevo">NUEVO</span> piden definir una regla
+  pendiente; <span class="tag tag-cambio">CAMBIO</span> señalan un punto donde la respuesta que elijan
+  <strong>reinterpreta, extiende o tensiona</strong> un campo/mecanismo que el código ya usa hoy con otro
+  propósito. Este es el <strong>punto 3 de 4</strong> de la secuencia acordada con Fede para desbloquear el
+  módulo <strong>Repositores</strong> (pausado): Ubicaciones → Pestaña de supervisor reusable → Motor de
+  Rotación de productos con descuento → Repositores. Se puede relevar <strong>en paralelo</strong> con el
+  punto 2 (Pestaña de supervisor). Depende de Ubicaciones (punto 1, ya relevado) <strong>solo parcialmente</strong>:
+  únicamente la sección F de este documento (ubicación de excepción física para un lote en descuento) necesita
+  que se resuelva el modelo de árbol/exhibición de Ubicaciones — el resto de las reglas de negocio de este
+  documento (secciones A-E, G) son independientes y se pueden cerrar ya, sin esperar nada de los otros 3
+  relevamientos.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual — lo que YA existe y sobre lo que se construye Rotación:</strong>
+  <code>estados_inventario.descuento_pct</code> (mig 284, <code>numeric(5,2)</code>, 0&lt;pct≤100) — un estado
+  (ej. "Próximo a Vencer") puede tener un % de descuento propio; una venta cuyo stock consumido esté en ese
+  estado lo aplica <strong>automático, sin clave de supervisor, y se apila con cualquier otro descuento</strong>
+  de la venta (<code>src/lib/descuentoEstado.ts</code>, <code>calcularDescuentoEstadoLinea</code> — prorratea por
+  fuente/LPN, nunca promedia ni "contamina" otros productos de la venta). Independiente de eso,
+  <code>estados_inventario.requiere_aprobacion</code> (mig 331, esta misma sesión) dispara un flujo de
+  aprobación con foto (<code>autorizaciones_inventario</code>, tipo <code>cambio_estado</code>) antes de que el
+  cambio de estado se aplique — un estado puede tener descuento sin aprobación, aprobación sin descuento, o
+  ambos a la vez. <code>src/lib/rebajeSort.ts</code> (<code>getRebajeSort</code>) ya resuelve FIFO/FEFO/LEFO/
+  LIFO/Manual con jerarquía SKU &gt; tenant &gt; FIFO (fallback) — FEFO ya ordena por
+  <code>fecha_vencimiento ASC</code> dentro de <strong>cualquier venta, sin distinguir canal</strong>: hoy es
+  opt-in (hay que activarlo por producto o por tenant) y aplica igual en mostrador que en un pedido con envío.
+  Los <strong>aging profiles</strong> (migs 013/106, <code>aging_profiles</code>/<code>aging_profile_reglas</code>)
+  son el mecanismo que hoy decide <em>cuándo</em> un lote cambia de estado según días restantes a vencer — pero
+  son <strong>por PRODUCTO</strong> (<code>productos.aging_profile_id</code>), no por categoría, y se procesan
+  <strong>manualmente</strong> con un botón "Procesar" en Config → Inventario (<code>process_aging_profiles</code>/
+  <code>process_aging_profile_single</code>) — no hay ningún cron (pg_cron no está habilitado en el proyecto).
+  <code>kit_recetas</code> + <code>kitting_log</code> (mig 040) con las RPC atómicas
+  <code>iniciar_armado_kit</code>/<code>confirmar_armado_kit</code>/<code>cancelar_armado_kit</code> (mig 244) ya
+  resuelven la dirección "N componentes → 1 producto KIT" (botón "Armar" en <code>InventarioPage.tsx</code>) y
+  también la inversa ("Desarmar") — pero el producto KIT (nombre, SKU, código de barras, precio,
+  <code>es_kit=true</code>) se crea <strong>100% a mano</strong> en <code>ProductoFormPage.tsx</code> antes de
+  cargarle la receta; nada en el código genera dinámicamente un "Producto X — KIT x3" a partir de un lote en
+  descuento. <code>productos.categoria_id</code> + <code>categorias</code> (mig 001) existen desde el
+  inicio del proyecto, pero <strong>ninguna tabla hoy aplica una regla de negocio configurable POR
+  categoría</strong> — el único precedente de "alcance por categoría" es el filtro JSON de conteos cíclicos
+  (<code>conteos_scope</code>, mig 177), que decide QUÉ contar, no una regla operativa. Config → Inventario ya
+  tiene sub-pestañas (<code>ConfigPage.tsx</code>, <code>InvSubTab</code>:
+  <code>reglas/categorias/estados/ubicaciones/motivos/unidades/empaque/atributos/codigos/zonas</code>) — es el
+  candidato natural para alojar la config nueva. Por último, <code>canales_venta.clasificacion</code>
+  (online/presencial, mig 168) y <code>tenants.reglas_canal</code> ya clasifican canales con reglas propias
+  (devolución, descuento máximo, lista de precio) — pero <strong>nunca tocan qué LPN se elige</strong>: los
+  Pedidos con envío reusan literalmente "el LPN que ya eligió la venta" (<code>fn_generar_tareas_picking_pedido_venta</code>,
+  mig 318 — comentario textual: "NO re-reserva stock"). Y <code>recalcular_stock()</code> (la función que
+  mantiene <code>productos.stock_actual</code>) suma <strong>TODA</strong> <code>inventario_lineas.activo=true</code>
+  sin filtrar por <code>estado_id</code> — un producto con 5 unidades en "Próximo a Vencer" muestra el mismo
+  <code>stock_actual</code> que si esas 5 unidades estuvieran en "Disponible", así que ni las alertas de stock
+  bajo mínimo ni la "OC sugerida" semi-automática (<code>ocSugerida.ts</code>, botón manual en Alertas, con bugs
+  ya documentados de consolidación/proveedor) distinguen hoy si el stock remanente de un producto está en
+  descuento.
+</div>
+
+<div class="nota">
+  <strong>Conexión con Repositores (relevamiento ya generado, pausado):</strong> su punto B4 dejó marcado como
+  gap confirmado por Fede agregar a Estados una regla para productos <em>vencidos que no tengan un estado con
+  descuento ya configurado</em> — se menciona acá solo como contexto conectado, no se vuelve a preguntar en este
+  documento. Su punto B2 también define que aprobar un cambio de estado (mig 331) puede disparar una tarea de
+  "cambio de cartel" — la sección B de este documento pregunta la relación análoga con el motor de Rotación.
+</div>
+
+<!-- ============================ A. LA PREGUNTA MADRE ============================ -->
+<h2>A. La pregunta madre: ¿las 3 opciones son excluyentes o combinables?</h2>
+
+<div class="clave">
+  <strong>Esta es la pregunta más importante de todo el documento — la dejó explícitamente abierta Fede y
+  condiciona el diseño de toda la tabla de configuración.</strong> Las 3 opciones que propuso (en reemplazo de
+  "código GS1 por lote", descartado por carísimo/inviable para una pyme sin re-etiquetar todo el stock) son:
+  <br><br>
+  <strong>(1) Terminar stock para reponer</strong> — no generar la orden de reposición de un producto con
+  descuento hasta agotar ese lote (vendido, retirado a empleados, o eliminado por vencido). Evita que convivan
+  2 precios del mismo código de barras en la góndola.<br>
+  <strong>(2) Próximo a vencer va a envíos y reservas</strong> — ese stock pasa a ser la PRIORIDAD para armar
+  envíos/pedidos reservados, se toma primero que cualquier otro LPN. Evita que el cliente elija en persona
+  entre el de vencimiento próximo y el de fecha más lejana.<br>
+  <strong>(3) Armar kits con descuento</strong> — el producto se re-empaqueta en kits de 2/3/4 unidades (mismos
+  datos del SKU + "KIT" en el nombre), con código y precio propios, distinto del individual.
+  <br><br>
+  GO ya confirmó que la regla es <strong>combinable por categoría</strong> (<code>productos.categoria_id</code>
+  ya existe, un fruver puede necesitar "agotar antes" para perecederos y una ferretería con overstock otra
+  regla) — lo que sigue sin resolver es si, <strong>dentro de la misma categoría, se puede tener más de una de
+  las 3 opciones activa al mismo tiempo</strong>. Combinaciones concretas a evaluar:
+  <br><br>
+  <strong>(1)+(2) "Agotar antes" + "Priorizar envíos":</strong> parecen sinérgicas — mientras el lote no se
+  agotó, ese stock se despacha primero por el canal envío/reserva, lo que ACELERA que se agote y se desbloquee
+  antes la reposición. No hay tensión evidente.<br>
+  <strong>(1)+(3) "Agotar antes" + "Armar kits":</strong> tensión real — armar un kit consume las unidades
+  individuales del lote descontado (las "agota" desde la perspectiva del SKU original), pero genera un producto
+  NUEVO (el KIT) con su propio código de barras y su propio stock. La razón de ser de (1) es evitar que
+  convivan 2 precios del MISMO código de barras — un kit es técnicamente otro código, pero el cliente en la
+  góndola sigue viendo 2 versiones del mismo producto (suelto vs. kit) al mismo tiempo. ¿Eso viola el espíritu
+  de (1) o no, porque son SKUs distintos?<br>
+  <strong>(2)+(3) "Priorizar envíos" + "Armar kits":</strong> tensión de orden de aplicación — si un lote está
+  marcado para las dos reglas a la vez, ¿se arma el kit primero y ESE kit queda disponible para picking normal
+  (perdiendo la prioridad de canal), o se resuelve primero la prioridad de envío/reserva (consumiendo el stock
+  suelto en pedidos) y recién lo que sobra se convierte en kits?<br>
+  <strong>(1)+(2)+(3) las 3 juntas:</strong> ¿tiene sentido operativo pedirle a un repositor que, para el mismo
+  lote, banquee la reposición, priorice envíos, Y arme kits — o en la práctica una categoría real nunca
+  necesitaría las 3 a la vez?
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo clave">A1</span><span class="pregunta-titulo">
+    ¿Las 3 opciones son mutuamente excluyentes o combinables (y con qué límites)? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ver el análisis completo de combinaciones arriba. No hay nada en el código hoy que
+  resuelva esto — es una decisión de negocio 100% nueva.</div>
+  <ul class="opciones">
+    <li>(a) Mutuamente excluyentes — el negocio/categoría elige UNA sola de las 3, nunca combina 2 o 3 a la vez</li>
+    <li>(b) Combinables libremente — cualquier subconjunto (1, 2, 3, 1+2, 1+3, 2+3, 1+2+3) puede estar activo a
+    la vez para la misma categoría, sin ninguna restricción del sistema</li>
+    <li>(c) Combinables PERO con una matriz de compatibilidad fija que el sistema hace cumplir (ej. permite
+    1+2 y 2+3, pero bloquea 1+3 por la tensión de códigos de barras distintos)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Si son combinables, ¿hay un ORDEN de aplicación entre ellas? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Aplica solo si A1 = (b) o (c). Ejemplo concreto del conflicto: un lote con (2)+(3)
+  activas a la vez — ¿se resuelve primero el armado de kits (y el kit resultante entra al pool normal, sin
+  prioridad de canal) o primero la prioridad de envío/reserva (y solo el remanente se ofrece para armar kits)?</div>
+  <ul class="opciones">
+    <li>(a) Orden fijo definido por el sistema, igual para todos los tenants (a definir cuál va primero)</li>
+    <li>(b) Configurable — el negocio define el orden de prioridad entre las reglas activas, por categoría</li>
+    <li>(c) No hace falta orden — en la práctica nunca coinciden 2 reglas sobre el mismo lote al mismo tiempo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Alcance de la configuración: ¿solo por categoría, o también por producto/tenant? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">GO ya confirmó "combinable por categoría". Hoy existen 2 precedentes de jerarquía de
+  override para reglas parecidas: <code>regla_inventario</code> (producto sobrescribe tenant, ver
+  <code>getRebajeSort</code>) y <code>aging_profile_id</code> (100% por producto, sin nivel categoría/tenant).
+  Ninguno de los dos tiene hoy un nivel intermedio por categoría.</div>
+  <ul class="opciones">
+    <li>(a) Solo por categoría — no hay override a nivel de producto individual ni default separado a nivel
+    tenant (todo producto sin categoría queda sin regla de Rotación)</li>
+    <li>(b) Jerarquía de 3 niveles, mismo patrón que <code>regla_inventario</code>: producto (override puntual)
+    &gt; categoría &gt; tenant (default general)</li>
+    <li>(c) Categoría + un default a nivel tenant (para productos sin categoría asignada), pero sin override
+    por producto individual</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ B. QUÉ DISPARA EL MOTOR ============================ -->
+<h2>B. Qué activa el motor de Rotación</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    ¿El descuento en la venta sigue funcionando exactamente igual para las 3 opciones? <span class="tag tag-existente">EXISTENTE</span>
+  </span>
+  <div class="contexto">Hoy <code>descuento_pct</code> se aplica automático, sin clave de supervisor, y se
+  apila con cualquier otro descuento de la venta (<code>calcularDescuentoEstadoLinea</code>). Rotación no debería
+  tocar esa mecánica — salvo la opción (3), donde el producto que se vende ya no es el mismo SKU (es el KIT).</div>
+  <ul class="opciones">
+    <li>(a) Confirmar — el descuento automático en venta sigue igual para (1) y (2); solo (3) cambia porque
+    el KIT es un producto nuevo con su propio precio (ver sección E)</li>
+    <li>(b) Alguna de las 3 opciones sí necesita cambiar esa mecánica más allá de lo esperado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    ¿Cualquier estado con <code>descuento_pct</code> configurado dispara el motor de Rotación? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">Hoy <code>descuento_pct</code> tiene un único propósito: bajar el precio en la venta.
+  Usarlo TAMBIÉN como disparador de las 3 reglas de Rotación (bloquear reposición / priorizar envío / habilitar
+  armado de kits) reinterpreta el campo para un propósito nuevo — un tenant podría querer un estado con
+  descuento SOLO para bajar precio, sin activar ninguna regla de Rotación.</div>
+  <ul class="opciones">
+    <li>(a) Sí — cualquier estado con <code>descuento_pct &gt; 0</code> es candidato a las reglas de Rotación
+    de su categoría, sin flag adicional</li>
+    <li>(b) No — hace falta separar "estado con descuento simple" (solo baja precio) de "estado que además
+    dispara Rotación", con un flag nuevo en <code>estados_inventario</code></li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Relación con los <em>aging profiles</em> (cambio de estado por días a vencer) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>aging_profiles</code>/<code>aging_profile_reglas</code> (migs 013/106) es
+  el único mecanismo que mueve automáticamente un lote a un estado según <code>fecha_vencimiento</code> — pero
+  es por PRODUCTO (no por categoría) y se procesa a mano con un botón "Procesar" en Config (sin cron). Un lote
+  también puede entrar a un estado con descuento manualmente, sin pasar por aging (un empleado lo cambia desde
+  Inventario/<code>LpnAccionesModal</code>).</div>
+  <ul class="opciones">
+    <li>(a) El motor de Rotación actúa igual sin importar CÓMO el lote llegó al estado con descuento (aging
+    automático o cambio manual) — reacciona al estado, no al origen del cambio</li>
+    <li>(b) El motor de Rotación depende de que el cambio haya venido de un aging profile — un cambio manual
+    de estado no dispara las reglas de Rotación</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    Relación con el flujo de aprobación con foto (<code>requiere_aprobacion</code>, mig 331) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Si el estado con descuento TAMBIÉN requiere aprobación, el cambio queda pendiente en
+  <code>autorizaciones_inventario</code> hasta que un supervisor lo aprueba — mismo patrón que B2 de
+  Repositores (aprobar el cambio de estado dispara la tarea de cambio de cartel).</div>
+  <ul class="opciones">
+    <li>(a) El motor de Rotación actúa recién cuando el cambio de estado queda APROBADO — antes de aprobarse
+    no bloquea reposición, no prioriza envío ni habilita armar kits</li>
+    <li>(b) El motor de Rotación actúa apenas se SOLICITA el cambio, sin esperar la aprobación (la aprobación
+    solo audita/revierte si corresponde)</li>
+    <li>(c) Depende de la regla — algunas reaccionan al pedido, otras a la aprobación</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ C. OPCIÓN 1 ============================ -->
+<h2>C. Opción 1 — Terminar stock para reponer</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    ¿Qué bloquea exactamente "no generar la orden automática de reposición"? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy no existe ningún generador 100% automático de reposición en todo el repo. Lo más
+  cercano es la "OC sugerida" de Alertas (<code>ocSugerida.ts</code>) — semi-automática, requiere un click,
+  compara <code>productos.stock_actual</code> contra <code>stock_minimo</code>. <code>stock_actual</code> lo
+  mantiene <code>recalcular_stock()</code> sumando TODA <code>inventario_lineas.activo=true</code> sin filtrar
+  por <code>estado_id</code> — hoy nada distingue si el stock remanente está en un estado con descuento.</div>
+  <ul class="opciones">
+    <li>(a) Bloquea solo la "OC sugerida" semi-automática — el producto no aparece en esa lista mientras tenga
+    stock en un estado con descuento de esa categoría</li>
+    <li>(b) Bloquea también la alerta de stock bajo mínimo en sí — no se genera NINGUNA alerta mientras haya
+    stock en descuento, aunque el total esté debajo del mínimo</li>
+    <li>(c) No toca alertas/OC sugerida — es una restricción al REGISTRAR una recepción manual (avisa/bloquea
+    si se intenta ingresar más stock de ese producto mientras queda stock en un estado con descuento)</li>
+    <li>(d) Combinación de (a) y (b) — bloquea alerta Y OC sugerida por igual</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C2</span><span class="pregunta-titulo">
+    ¿"Agotado" es el lote específico en descuento, o el producto completo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Si conviven unidades del mismo producto en estado "Disponible" y en estado "Próximo a
+  Vencer" (descuento) al mismo tiempo — caso habitual con reposición parcial —, ¿ya hay stock "sano" para
+  vender y por lo tanto no hace falta bloquear nada, o el bloqueo exige que se agoten TAMBIÉN las unidades
+  descontadas?</div>
+  <ul class="opciones">
+    <li>(a) Se mide por LOTE/estado — mientras exista cualquier cantidad &gt; 0 en el estado con descuento de
+    ESE producto, se bloquea, sin importar cuánto stock sano conviva</li>
+    <li>(b) Se mide por el PRODUCTO completo — alcanza con que haya stock sano (en cualquier otro estado) para
+    no bloquear, aunque siga habiendo unidades en descuento sin vender</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C3</span><span class="pregunta-titulo">
+    Un mismo producto con lotes en MÁS de un estado con descuento a la vez <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ej. 3 unidades en "Próximo a Vencer" (10% off) y 2 unidades en "Dañado" (50% off) del
+  mismo producto, simultáneamente.</div>
+  <ul class="opciones">
+    <li>(a) Hay que agotar TODOS los estados con descuento antes de reponer</li>
+    <li>(b) Alcanza con que se agote cualquiera de ellos, según cuál disparó la regla en esa categoría</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ D. OPCIÓN 2 ============================ -->
+<h2>D. Opción 2 — Próximo a vencer va a envíos y reservas</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo clave">D1</span><span class="pregunta-titulo">
+    ¿Es lo mismo que FEFO (ya existe) o una regla NUEVA de prioridad por CANAL de venta? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto"><code>getRebajeSort</code> ya resuelve FEFO: ordena por <code>fecha_vencimiento ASC</code>
+  para decidir qué LPN se consume primero DENTRO de cualquier venta — pero es opt-in (hay que activarlo por
+  producto o tenant) y aplica IGUAL en mostrador que en un pedido con envío, sin distinguir canal.
+  <code>canales_venta.clasificacion</code> (online/presencial, mig 168) y <code>tenants.reglas_canal</code> sí
+  existen, pero solo gobiernan devolución/descuento máximo/lista de precio — nunca la selección de LPN. Los
+  Pedidos con envío (mig 318) directamente reusan "el LPN que ya eligió la venta" (<code>fn_generar_tareas_picking_pedido_venta</code>,
+  comentario textual "NO re-reserva stock") — no hay ningún punto del código hoy donde el canal influya en qué
+  LPN se elige.</div>
+  <ul class="opciones">
+    <li>(a) Es 100% lo que ya existe — con <code>regla_inventario='FEFO'</code> activado en el producto o el
+    tenant alcanza: ya se vende siempre lo más próximo a vencer primero, en cualquier canal, sin nada nuevo</li>
+    <li>(b) Es una regla NUEVA — el canal SÍ importa: el lote en descuento se reserva efectivamente para
+    pedidos/envíos (los toma primero, incluso reordenando lo que FEFO elegiría) y el mostrador NO lo prioriza
+    igual, para dejar que el cliente presencial elija a la vista</li>
+    <li>(c) Es una regla nueva pero más simple: el lote en descuento gana SIEMPRE en cualquier canal — el canal
+    es indistinto, lo que cambia es que ahora "gana siempre" en vez de ser opt-in como FEFO hoy</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Si D1 = (b) [regla nueva por canal], ¿qué identifica "envío o reserva" a nivel de datos? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Candidatos existentes: <code>canales_venta.clasificacion = 'online'</code> (pero un
+  retiro en local también es "online" sin llevar envío), <code>ventas.estado IN ('reservada','pendiente')</code>,
+  la existencia de un registro en <code>envios</code>, o alguna combinación.</div>
+  <ul class="opciones">
+    <li>(a) <code>canales_venta.clasificacion = 'online'</code> alcanza</li>
+    <li>(b) Solo cuando hay un <code>envios</code> real asociado (envío propio o de tercero) — retiro en
+    local sin envío NO cuenta como prioritario</li>
+    <li>(c) Reserva/pendiente (<code>estado IN ('reservada','pendiente')</code>) O con envío — cualquiera de
+    los dos activa la prioridad</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D3</span><span class="pregunta-titulo">
+    ¿El mostrador queda excluido de ese lote, o solo sin prioridad? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) El mostrador NO tiene prioridad sobre ese lote, pero puede venderlo igual si el cliente lo pide o
+    si es lo único que queda</li>
+    <li>(b) El mostrador queda totalmente excluido de ofrecer ese lote mientras haya stock normal disponible
+    en otro lado</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ E. OPCIÓN 3 ============================ -->
+<h2>E. Opción 3 — Armar kits con descuento</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E1</span><span class="pregunta-titulo">
+    ¿Quién arma el kit físicamente — genera su propia tarea de Repositor? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Armar un kit es trabajo manual: alguien tiene que re-empaquetar N unidades sueltas en
+  un paquete nuevo. Esto quedó señalado como duda pendiente en la revisión anterior, sin resolver.</div>
+  <ul class="opciones">
+    <li>(a) Genera una tarea propia de Repositor ("armar kit"), con su propio tipo dentro de ese futuro módulo</li>
+    <li>(b) Se asume que el kit ya está armado físicamente antes de que el sistema lo ofrezca a la venta — el
+    sistema solo refleja el resultado (el kit como producto vendible), no orquesta quién lo arma</li>
+    <li>(c) Reusa el flujo de kitting que ya existe hoy en Inventario (<code>iniciar_armado_kit</code>/
+    <code>confirmar_armado_kit</code>, botón "Armar" en <code>InventarioPage.tsx</code>) — no hace falta una
+    tarea nueva, ya hay una pantalla donde ejecutarlo</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E2</span><span class="pregunta-titulo">
+    ¿El producto KIT se crea automáticamente, o sigue siendo 100% manual como hoy? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy un KIT es un <code>producto</code> normal (<code>es_kit=true</code>) que se crea a
+  mano en <code>ProductoFormPage.tsx</code> — nombre, SKU, precio y código de barras los tipea el usuario, y
+  recién después se le carga la <code>kit_receta</code>. Nada en el código genera un "Nombre — KIT x3" de forma
+  dinámica a partir de un producto base.</div>
+  <ul class="opciones">
+    <li>(a) Se autogenera: nombre = <code>{nombre base} KIT x{N}</code>, precio derivado (ver E4), y el SKU/
+    código de barras se autogeneran igual que hoy autogenera SKU un producto nuevo sin cargar uno manual</li>
+    <li>(b) Sigue siendo 100% manual — el negocio tiene que crear de antemano el producto KIT para cada
+    combinación de N unidades que quiera ofrecer, como hoy</li>
+    <li>(c) Mixto — el sistema PROPONE nombre/precio autogenerados pero el usuario confirma/edita antes de
+    crear el producto</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo clave">E3</span><span class="pregunta-titulo">
+    Gap técnico real: el armado hoy consume FIFO ciego, sin distinguir el lote en descuento <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto"><code>iniciar_armado_kit</code> (mig 244) reserva componentes ordenando
+  <code>inventario_lineas</code> por <code>created_at</code> (FIFO fijo, ignora <code>regla_inventario</code> y
+  <code>ubicaciones.prioridad</code>) y <strong>no filtra por <code>estado_id</code> en absoluto</strong>. Si un
+  producto tiene unidades en estado "Disponible" (creadas antes) Y unidades en "Próximo a Vencer" (creadas
+  después, con descuento) al mismo tiempo, hoy el armado de kit consumiría primero el stock FRESCO por orden de
+  creación — exactamente lo contrario de lo que necesita la opción 3 (liquidar el lote descontado). Esto
+  requiere un cambio real en la RPC si se implementa esta opción, no es solo configuración.</div>
+  <ul class="opciones">
+    <li>(a) Confirmar el gap — hay que modificar <code>iniciar_armado_kit</code> para que, cuando el armado
+    nace de una regla de Rotación, consuma PRIMERO (o EXCLUSIVAMENTE) del lote en el estado con descuento</li>
+    <li>(b) No hace falta tocar la RPC — el armado de kits con descuento se hace siempre manualmente, eligiendo
+    a mano qué lote consumir (no reusa el flujo automático de <code>iniciar_armado_kit</code> tal cual)</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E4</span><span class="pregunta-titulo">
+    Precio del kit: ¿derivado matemáticamente del descuento, o fijo a mano? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Derivado: precio del kit = precio normal × N unidades × (1 − <code>descuento_pct</code>/100), sin
+    intervención manual</li>
+    <li>(b) El negocio define el precio del kit a mano, sin relación matemática automática con
+    <code>descuento_pct</code> del estado</li>
+    <li>(c) Se propone el precio derivado como default, editable antes de confirmar</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">E5</span><span class="pregunta-titulo">
+    ¿Un kit armado con descuento se puede desarmar, y qué pasa con el estado al volver? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ya existe "Desarmar KIT" genérico (<code>desarmarKit</code>, devuelve componentes al
+  stock). No distingue de qué estado salieron originalmente los componentes.</div>
+  <ul class="opciones">
+    <li>(a) Se puede desarmar igual que cualquier kit — los componentes vuelven al estado "Disponible" normal
+    (se pierde la trazabilidad de que venían de un lote en descuento)</li>
+    <li>(b) Se puede desarmar, pero los componentes vuelven al MISMO estado con descuento del que salieron</li>
+    <li>(c) No se puede desarmar un kit que nació de una regla de Rotación (una vez armado, es definitivo)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ F. UBICACIÓN DE EXCEPCIÓN ============================ -->
+<h2>F. Ubicación de excepción para lotes en descuento</h2>
+
+<div class="nota">
+  <strong>Dependencia parcial de Ubicaciones (punto 1, ya relevado):</strong> esta sección es la ÚNICA parte
+  de Rotación que depende de otro relevamiento. El documento de Ubicaciones (sección C) va a definir el modelo
+  técnico de "ubicación de exhibición" y dejó anotado que los lotes en descuento van a poder tener una
+  "ubicación de excepción a nivel de LOTE", que no contradice la regla de unicidad general del SKU. Acá solo se
+  pregunta la INTENCIÓN de negocio (para qué se usaría, si es obligatoria), no el modelo de datos — eso se
+  termina de resolver cuando cierre Ubicaciones.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F1</span><span class="pregunta-titulo">
+    ¿Mover el lote a una ubicación de excepción es obligatorio, o una configuración más? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Obligatorio siempre que un lote entra a un estado con descuento — se mueve automáticamente a una
+    ubicación de excepción configurada (ej. "Mesa de ofertas")</li>
+    <li>(b) Opcional, configurable por categoría igual que las 3 reglas de la sección A — algunas categorías
+    la usan, otras dejan el lote donde está</li>
+    <li>(c) No hace falta ubicación física de excepción — alcanza con el cartel/precio distinto en el mismo
+    lugar de siempre</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">F2</span><span class="pregunta-titulo">
+    ¿Aplica a las 3 opciones por igual, o solo tiene sentido para alguna? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">La opción (3) armar kits ya cambia de producto/código — el kit podría exhibirse en
+  su propia ubicación de venta sin necesitar una "ubicación de excepción" separada del original.</div>
+  <ul class="opciones">
+    <li>(a) Aplica igual a (1) y (2) — mover el lote suelto a una zona de liquidación visible; (3) no la
+    necesita porque el kit ya es un producto/lugar distinto</li>
+    <li>(b) Aplica a las 3 por igual, sin distinción</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ G. CONFIGURACIÓN Y UI ============================ -->
+<h2>G. Configuración: dónde vive, quién la define</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G1</span><span class="pregunta-titulo">
+    ¿Dónde vive esta configuración dentro de Config → Inventario? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>ConfigPage.tsx</code> ya tiene <code>InvSubTab</code>:
+  <code>reglas/categorias/estados/ubicaciones/motivos/unidades/empaque/atributos/codigos/zonas</code>. Las
+  reglas de stock genéricas (FIFO/FEFO, over-receipt, trazabilidad) viven hoy en la sub-pestaña "Reglas"; los
+  estados con <code>descuento_pct</code>/<code>requiere_aprobacion</code> viven en "Estados"; las categorías
+  tienen su propia sub-pestaña "Categorías".</div>
+  <ul class="opciones">
+    <li>(a) Sub-pestaña nueva dedicada ("Rotación"), separada de las demás</li>
+    <li>(b) Dentro de la sub-pestaña "Categorías" existente — cada categoría se edita con sus reglas de
+    Rotación ahí mismo</li>
+    <li>(c) Dentro de la sub-pestaña "Reglas" existente, junto a FIFO/FEFO/over-receipt</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G2</span><span class="pregunta-titulo">
+    ¿Quién puede configurar esta regla? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy Estados de Inventario y Reglas de stock se editan con el gate genérico
+  <code>canEdit</code> de Config (sin un rol específico documentado más allá de DUEÑO/ADMIN habitual).</div>
+  <ul class="opciones">
+    <li>(a) Mismo criterio que el resto de Config → Inventario — DUEÑO/ADMIN</li>
+    <li>(b) También SUPERVISOR, dado que es una decisión más operativa que estratégica</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">G3</span><span class="pregunta-titulo">
+    Productos sin categoría asignada (<code>categoria_id IS NULL</code>) <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>categoria_id</code> es opcional en <code>productos</code> — hoy hay productos
+  sin categoría en cualquier tenant.</div>
+  <ul class="opciones">
+    <li>(a) Quedan sin ninguna regla de Rotación (ninguna de las 3 opciones se les aplica) hasta que se les
+    asigne categoría</li>
+    <li>(b) Usan un default de tenant (ver A3-c/A3-b) si existe, o ninguna regla si no se configuró default</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ H. TOP 3 / COMENTARIOS ============================ -->
+<h2>H. Top 3 prioritario / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H1</span><span class="pregunta-titulo">
+    ¿Qué 3 decisiones de Rotación hay que cerrar primero para poder empezar a codear? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 — el resto se puede resolver en fases posteriores sin bloquear el arranque.</div>
+  <ul class="opciones">
+    <li>(   ) A1 — excluyentes vs. combinables (la pregunta madre, condiciona el diseño de toda la tabla)</li>
+    <li>(   ) D1 — opción 2: ¿es FEFO ya existente, o una regla nueva de prioridad por canal de venta?</li>
+    <li>(   ) B2 — si cualquier estado con <code>descuento_pct</code> dispara Rotación, o hace falta un flag
+    aparte</li>
+    <li>(   ) E3 — gap técnico real en <code>iniciar_armado_kit</code> (FIFO ciego al estado del lote)</li>
+    <li>(   ) C1 — qué bloquea exactamente la opción 1 (OC sugerida, alerta, recepción manual, o combinación)</li>
+    <li>(   ) A3 — jerarquía de la config (solo categoría, o también producto/tenant)</li>
+    <li>(   ) G1 — dónde vive la configuración dentro de Config → Inventario</li>
+    <li>(   ) F1 — si la ubicación de excepción es obligatoria (y su dependencia de Ubicaciones)</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">H2</span><span class="pregunta-titulo">
+    Comentarios libres / cualquier regla que se nos haya escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio — Motor de Rotación de Productos con Descuento (3/4 de la secuencia hacia Repositores) · 2026-08-03<br>
+  Una vez completado, devolver a Claude/GO para diseñar la migración y retomar el relevamiento #4 (Repositores).
+</div>
+
+</body>
+</html>

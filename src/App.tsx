@@ -32,6 +32,7 @@ const AlertasPage      = lazy(() => import('@/pages/AlertasPage'))
 const ReportesPage     = lazy(() => import('@/pages/ReportesPage'))
 const UsuariosPage     = lazy(() => import('@/pages/UsuariosPage'))
 const ConfigPage       = lazy(() => import('@/pages/ConfigPage'))
+const ComercialPage    = lazy(() => import('@/pages/ComercialPage'))
 const SuscripcionPage  = lazy(() => import('@/pages/SuscripcionPage'))
 const AdminPage        = lazy(() => import('@/pages/AdminPage'))
 const ClientesPage        = lazy(() => import('@/pages/ClientesPage'))
@@ -167,6 +168,7 @@ function App() {
                   <Route path="/ayuda" element={<AyudaPage />} />
                   <Route path="/sucursales" element={<SucursalesPage />} />
                   <Route path="/configuracion" element={<ConfigPage />} />
+                  <Route path="/comercial" element={<ComercialPage />} />
                   <Route path="/grupos-estados" element={<Navigate to="/configuracion" replace />} />
                   <Route path="/caja" element={<CajaPage />} />
                   <Route path="/metricas" element={<MetricasPage />} />

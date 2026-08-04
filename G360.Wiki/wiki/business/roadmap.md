@@ -9,7 +9,68 @@ updated: 2026-07-28
 # Roadmap y Versiones
 
 **Versión en PROD:** v1.152.0 (2026-07-29) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Última actualización:** 29 de Julio, 2026
+**Versión en DEV:** v1.154.0 (2026-08-03, sin deploy a PROD)  
+**Última actualización:** 3 de Agosto, 2026
+
+---
+
+## v1.154.0 — 🔍 Buscador de Picking reescrito como píldoras de filtro (Campo:valor, Y/O) — 🟡 **EN DEV** (2026-08-03)
+
+**Sin cambios a PROD** (sigue v1.152.0). GO probó el buscador de texto plano de la v1.153.0 (horas
+antes, misma sesión) y encontró el problema real: escribir un número de pedido lo tomaba ambiguo
+contra LPN/SKU/pedido/venta/envío a la vez, sin poder precisar el campo.
+
+**Reescrito como buscador estructurado tipo Linear/GitHub**: cada criterio es una **píldora**
+`(Campo):valor` (LPN/SKU/Producto/Pedido/Venta/Envío) con operador propio — `:`/`=` (contiene),
+`!=`/`<>` (no contiene) para todos los campos, y `>`/`<`/`>=`/`<=` (comparación numérica real, no
+substring) para los 3 campos numéricos. Varias píldoras se combinan con un **combinador global
+Y/O** — ej. `(Pedido):20 Y (SKU):43`. Cambiar el campo de una píldora ya creada conserva el
+operador y el valor tipeados.
+
+**Decisión a propósito**: texto SIN prefijo de campo (tipear "20" a secas) ya NO matchea Pedido/
+Venta/Envío — solo LPN/SKU/Producto. Es la corrección directa del bug: para buscar por comprobante
+hace falta la píldora explícita. "Ver en Picking" (Pedidos) manda `?busqueda=Pedido:<número>` y
+aterriza con la píldora ya armada.
+
+`src/lib/pickingFiltro.ts` (lógica pura, 24 tests nuevos) + `src/components/BuscadorPildoras.tsx`
+(input tipo chips). Verificado con e2e real contra datos de DEV (8 aserciones, test descartable ya
+borrado): deep-link con píldora pre-armada, número suelto ya no matchea venta, cambiar de campo
+conserva valor, Y exige ambas píldoras, O alcanza con una, cero movimiento de stock al confirmar
+(mismo invariante de siempre).
+
+Verde: tsc · build · unit 1440 (+24) · e2e ad-hoc. Detalle completo en `log.md`.
+
+---
+
+## v1.153.0 — 🔍 Filtro de Picking por pedido/venta/envío + relevamiento de Repositores respondido (4 relevamientos derivados) — 🟡 **EN DEV** (2026-08-03)
+
+**Sin cambios funcionales a PROD** (v1.152.0 sigue siendo lo que corre) — release de DEV para dejar
+tag/registro de esta sesión, como pide la convención del proyecto.
+
+**Código real (chico, ya en `dev`):** el buscador de `/picking` (agregado esta sesión) ahora también
+matchea por número de **pedido**, **venta** o **envío** — exacto, no parcial — además de LPN/SKU/
+producto que ya tenía. De paso se corrigió un bug real: la venta de una tarea solo se resolvía vía
+`pedidos.venta_origen_id`, así que un envío armado DIRECTO desde una venta (sin pasar por Pedidos —
+el caso más común) no se podía buscar ni se mostraba el badge "Venta #". Se agregó el camino
+`envios.venta_id` como fallback. El botón "Ver en Picking" de Pedidos ahora pasa `?busqueda=<número>`
+para aterrizar ya filtrado.
+
+**Trabajo de relevamiento (el grueso de la sesión)**: Fede respondió las 35 preguntas del
+relevamiento de Repositores (Fase E del backlog Comercial 25/7). Al revisarlas contra el código real
+se detectó que el alcance son **4 proyectos con dependencias entre sí**, no una sola fase — se
+generaron los 3 relevamientos derivados que bloquean a Repositores: **Rediseño de Ubicaciones**
+(árbol contenedora+niveles, tipo de exhibición, código de ubicación estructurado + coordenadas de
+grilla para el futuro "Almacén 360"), **Pestaña de supervisor reusable** (aprobar/reasignar/
+trazabilidad, patrón común a todos los módulos) y **Motor de Rotación de productos con descuento**
+(las 3 reglas de Fede, combinables por categoría). Detalle completo en
+`relevamiento_repositores_respuestas.md` y `log.md`.
+
+**🔒 De paso, 6 de 8 alertas de Dependabot resueltas** (`npm audit fix`, sin majors) — react-router
+(v7, major) y una instancia de brace-expansion en eslint (v10, major) quedan como riesgo aceptado y
+documentado, no arreglado a las apuradas.
+
+Verde: tsc. Nada nuevo en PROD — decisión explícita de GO de pausar el deploy de las Fases F/A/B/C/D
+del backlog Comercial hasta probarlas en el dev server (ver `project_pendientes.md`).
 
 ---
 

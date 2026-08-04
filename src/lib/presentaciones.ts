@@ -131,6 +131,44 @@ export function validarPresentaciones(rows: PresentacionRow[], exigirMedidas = f
 }
 
 /**
+ * Profundidad de una fila respecto de la base (0 = la base misma, "NB"). Sube la cadena de
+ * padres contando saltos. Es la agrupación VISUAL por nivel del editor (Fede 25/7, punto 4) — no
+ * cambia el modelo de datos, solo cómo se agrupan las filas en pantalla.
+ */
+export function profundidadDe(row: PresentacionRow, rows: PresentacionRow[]): number {
+  let actual: PresentacionRow | undefined = row
+  let profundidad = 0
+  const vistas = new Set<string>()
+  while (actual && actual.padre_key !== null) {
+    if (vistas.has(actual.key)) return profundidad // ciclo (defensivo, no debería pasar con datos válidos)
+    vistas.add(actual.key)
+    profundidad++
+    actual = rows.find(r => r.key === actual!.padre_key)
+  }
+  return profundidad
+}
+
+/**
+ * Agrupa las filas por nivel (profundidad) para la "burbuja" visual de cada nivel: 0 = NB, 1, 2…
+ * Dentro de cada nivel, hermanas ordenadas de MENOR a MAYOR cantidad de unidades base (pedido de
+ * Fede) — no por el orden de creación crudo.
+ */
+export function agruparPorNivel(rows: PresentacionRow[]): { nivel: number; filas: PresentacionRow[] }[] {
+  const porNivel = new Map<number, PresentacionRow[]>()
+  for (const r of rows) {
+    const n = profundidadDe(r, rows)
+    if (!porNivel.has(n)) porNivel.set(n, [])
+    porNivel.get(n)!.push(r)
+  }
+  return [...porNivel.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([nivel, filas]) => ({
+      nivel,
+      filas: filas.slice().sort((a, b) => (factorBaseDe(a, rows) ?? 0) - (factorBaseDe(b, rows) ?? 0)),
+    }))
+}
+
+/**
  * Ordena las filas para que un padre SIEMPRE aparezca antes que sus hijos (recorrido en anchura
  * desde la base) y las convierte al payload de `fn_presentaciones_guardar`, donde el padre se
  * referencia por su ÍNDICE anterior en el array — así el árbol no puede tener ciclos.

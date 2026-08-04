@@ -15,6 +15,7 @@ export type EntidadLog =
   | 'usuario'
   | 'gasto'
   | 'combo'
+  | 'cupon'
   | 'caja'
   | 'empleado'
   | 'nomina'

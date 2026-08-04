@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/authStore'
 import type { Sucursal } from '@/lib/supabase'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { requiereAuthAjuste } from '@/lib/ajusteAutorizacion'
+import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
 import { puedeCrearTraslado, esMovimientoCrossSucursal } from '@/lib/trasladoLogic'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { LpnQR } from '@/components/LpnQR'
@@ -57,6 +58,10 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     sabor_aroma: linea.sabor_aroma ?? '',
   })
 
+  // Fede 25/7, punto 2: foto de evidencia para el cambio de estado con aprobación (se define acá,
+  // el cálculo de si hace falta vive después de cargar `estados`, más abajo).
+  const [fotoAprobacionEstado, setFotoAprobacionEstado] = useState<File | null>(null)
+
   // Mover stock parcial — default 1 si hay al menos 2 unidades disponibles
   const cantDisponible = linea.cantidad - (linea.cantidad_reservada ?? 0)
   const [cantMover, setCantMover] = useState(cantDisponible >= 2 ? '1' : '')
@@ -90,6 +95,16 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     queryFn: async () => { const { data } = await supabase.from('estados_inventario').select('*').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre'); return data ?? [] },
     enabled: !!tenant,
   })
+  // Fede 25/7, punto 2: cambiar a un estado marcado `requiere_aprobacion` (Config→Inventario→
+  // Estados) no se aplica directo — queda pendiente hasta que un supervisor lo aprueba, con una
+  // foto tomada en el momento como evidencia (anti-fraude interno).
+  const estadoCambio = editForm.estado_id !== (linea.estado_id ?? '')
+  const estadoDestino = (estados as any[]).find((e: any) => e.id === editForm.estado_id)
+  // El estado tiene que estar marcado "requiere aprobación" Y el rol del usuario actual tiene que
+  // estar sujeto a autorización (mismo gate que ya usa ajuste_cantidad, mig 228) — el DUEÑO (modo
+  // 'directo' por default) no se autoaprueba a sí mismo un cambio que él mismo configuró.
+  const estadoRequiereAprobacion = estadoCambio
+    && estadoCambioRequiereAprobacion(estadoDestino, user?.rol, (tenant as any)?.ajuste_autorizacion_roles ?? null)
   const { data: ubicaciones = [] } = useQuery({
     queryKey: ['ubicaciones', tenant?.id, sucursalId],
     queryFn: async () => {
@@ -155,6 +170,35 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     if (error) throw error
   }
 
+  // Sube la foto de evidencia (cámara, no galería — capture="environment" en el input) al bucket
+  // privado, path scopeado por tenant (RLS de la mig 331). Devuelve el path guardado en
+  // `datos_cambio.foto_path` de la autorización — la pestaña Autorizaciones arma la URL firmada.
+  const subirFotoAprobacionEstado = async (foto: File): Promise<string> => {
+    const ext = (foto.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')
+    const path = `${tenant!.id}/${linea.id}-${Date.now()}.${ext}`
+    const { error } = await supabase.storage.from('autorizaciones-fotos').upload(path, foto)
+    if (error) throw error
+    return path
+  }
+
+  // Notifica a quienes pueden aprobar (mismo criterio que la pestaña Autorizaciones de Inventario:
+  // DUEÑO/SUPERVISOR/SUPER_USUARIO) — no bloquea el flujo si falla, es un aviso, no la fuente de verdad.
+  const notificarSupervisoresCambioEstado = async (estadoNombre: string) => {
+    try {
+      const { data: destinatarios } = await supabase.from('users').select('id')
+        .eq('tenant_id', tenant!.id).in('rol', ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'])
+      if (!destinatarios?.length) return
+      await supabase.from('notificaciones').insert(
+        destinatarios.filter((d: any) => d.id !== user?.id).map((d: any) => ({
+          tenant_id: tenant!.id, user_id: d.id, tipo: 'cambio_estado_pendiente',
+          titulo: `Cambio de estado pendiente de aprobar`,
+          mensaje: `${user?.nombre_display ?? 'Un usuario'} pidió cambiar ${producto.nombre} (LPN ${linea.lpn}) a "${estadoNombre}" — requiere tu aprobación.`,
+          action_url: '/inventario?tab=autorizaciones',
+        }))
+      )
+    } catch { /* la notificación no bloquea el flujo */ }
+  }
+
   // ── Guardar edición ──────────────────────────────────────────────────────────
   const guardarEdicion = useMutation({
     mutationFn: async () => {
@@ -180,6 +224,22 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         throw new Error('Este producto requiere formato')
       if (producto.tiene_sabor_aroma && !editForm.sabor_aroma.trim())
         throw new Error('Este producto requiere sabor/aroma')
+      if (estadoRequiereAprobacion && !fotoAprobacionEstado)
+        throw new Error('Este estado requiere una foto tomada en el momento — sacala antes de guardar')
+
+      // Fede 25/7, punto 2: si el estado destino requiere aprobación, el cambio queda PENDIENTE —
+      // se sube la foto de evidencia + se crea la solicitud, pero `estado_id` NO se toca todavía
+      // (sigue siendo el de la línea hasta que un supervisor lo aprueba desde Autorizaciones).
+      if (estadoRequiereAprobacion) {
+        const fotoPath = await subirFotoAprobacionEstado(fotoAprobacionEstado!)
+        await crearAutorizacion('cambio_estado', {
+          estado_anterior_id: linea.estado_id ?? null,
+          estado_nuevo_id: editForm.estado_id || null,
+          foto_path: fotoPath,
+        }, `Cambio a "${estadoDestino?.nombre}"`)
+        await notificarSupervisoresCambioEstado(estadoDestino?.nombre ?? '')
+      }
+      const estadoIdAGuardar = estadoRequiereAprobacion ? (linea.estado_id ?? null) : (editForm.estado_id || null)
 
       // DEPOSITO: si cambia cantidad → crear solicitud de autorización en vez de ejecutar
       if (requiereAprobacion && cantCambio) {
@@ -187,10 +247,10 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           cantidad_anterior: cantVieja,
           cantidad_nueva: cantNueva,
         })
-        // Guardar igual todos los otros campos (no la cantidad)
+        // Guardar igual todos los otros campos (no la cantidad; el estado respeta el gate de arriba)
         await supabase.from('inventario_lineas').update({
           lpn: editForm.lpn || linea.lpn,
-          estado_id: editForm.estado_id || null,
+          estado_id: estadoIdAGuardar,
           ubicacion_id: editForm.ubicacion_id || null,
           sucursal_id: editForm.sucursal_id || null,
           proveedor_id: editForm.proveedor_id || null,
@@ -211,7 +271,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
 
       const { error } = await supabase.from('inventario_lineas').update({
         lpn: editForm.lpn || linea.lpn,
-        estado_id: editForm.estado_id || null,
+        estado_id: estadoIdAGuardar,
         ubicacion_id: editForm.ubicacion_id || null,
         sucursal_id: editForm.sucursal_id || null,
         proveedor_id: editForm.proveedor_id || null,
@@ -256,8 +316,11 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         logActividad({ ...ledger, accion: 'editar', campo: 'lpn', valor_anterior: oldLpn, valor_nuevo: newLpn })
       if (!tieneSeries && cantNueva !== cantVieja)
         logActividad({ ...ledger, accion: 'editar', campo: 'cantidad', valor_anterior: String(cantVieja), valor_nuevo: String(cantNueva) })
-      if ((editForm.estado_id || '') !== (linea.estado_id || ''))
-        logActividad({ ...ledger, accion: 'cambio_estado', campo: 'estado', valor_anterior: linea.estado_id ? resolveNombre(estados, linea.estado_id) : null, valor_nuevo: editForm.estado_id ? resolveNombre(estados, editForm.estado_id) : null })
+      // Compara contra `estadoIdAGuardar` (no `editForm.estado_id`): si quedó pendiente de
+      // aprobación, el estado real de la línea no cambió todavía — no hay que loguearlo como si
+      // ya hubiera pasado (eso lo audita la aprobación en sí, cuando y si se aprueba).
+      if ((estadoIdAGuardar || '') !== (linea.estado_id || ''))
+        logActividad({ ...ledger, accion: 'cambio_estado', campo: 'estado', valor_anterior: linea.estado_id ? resolveNombre(estados, linea.estado_id) : null, valor_nuevo: estadoIdAGuardar ? resolveNombre(estados, estadoIdAGuardar) : null })
       if ((editForm.ubicacion_id || '') !== (linea.ubicacion_id || ''))
         logActividad({ ...ledger, accion: 'editar', campo: 'ubicacion', valor_anterior: linea.ubicacion_id ? resolveNombre(ubicaciones, linea.ubicacion_id) : null, valor_nuevo: editForm.ubicacion_id ? resolveNombre(ubicaciones, editForm.ubicacion_id) : null })
       if ((editForm.sucursal_id || '') !== (linea.sucursal_id || ''))
@@ -267,10 +330,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
       const oldVenc = linea.fecha_vencimiento ? String(linea.fecha_vencimiento).slice(0, 10) : ''
       if ((editForm.fecha_vencimiento || '') !== oldVenc)
         logActividad({ ...ledger, accion: 'editar', campo: 'fecha_vencimiento', valor_anterior: oldVenc || null, valor_nuevo: editForm.fecha_vencimiento || null })
+
+      return { esAutorizacion: estadoRequiereAprobacion }
     },
     onSuccess: (result: any) => {
       if (result?.esAutorizacion) {
-        toast.success('Solicitud de ajuste enviada — pendiente de aprobación')
+        toast.success('Solicitud enviada — pendiente de aprobación del supervisor')
         invalidar()
         onClose()
       } else {
@@ -281,6 +346,19 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  // Fede 25/7, punto 2: "el sistema le avisa antes de confirmar que se va a enviar una
+  // notificación de validación al supervisor" — el aviso previo vive acá, afuera de la mutation.
+  const intentarGuardarEdicion = async () => {
+    if (guardarEdicion.isPending) return
+    if (estadoRequiereAprobacion) {
+      const ok = await confirmar(
+        `Cambiar a "${estadoDestino?.nombre}" no se aplica directo: se va a enviar una notificación al supervisor para que la apruebe. ¿Confirmás?`
+      )
+      if (!ok) return
+    }
+    guardarEdicion.mutate()
+  }
 
   // ── Mover stock parcial ──────────────────────────────────────────────────────
   const moverStock = useMutation({
@@ -541,7 +619,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
         const target = e.target as HTMLElement
         if (['TEXTAREA', 'BUTTON'].includes(target.tagName)) return
         e.preventDefault()
-        if (tab === 'editar' && !guardarEdicion.isPending) guardarEdicion.mutate()
+        if (tab === 'editar' && !guardarEdicion.isPending) intentarGuardarEdicion()
         if (tab === 'mover' && cantMover && ubicDestino && !moverStock.isPending) moverStock.mutate()
       }
     }
@@ -767,9 +845,26 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                 </div>
               )}
 
-              <button onClick={() => guardarEdicion.mutate()} disabled={guardarEdicion.isPending}
+              {estadoRequiereAprobacion && (
+                <div className="border border-red-200 dark:border-red-800/50 bg-red-50 dark:bg-red-900/20 rounded-xl p-3 space-y-2">
+                  <p className="flex items-start gap-1.5 text-xs text-red-800 dark:text-red-300">
+                    <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+                    Cambiar a <strong>"{estadoDestino?.nombre}"</strong> requiere aprobación del supervisor. Sacá
+                    una foto en el momento como evidencia — no se puede subir desde la galería.
+                  </p>
+                  <input type="file" accept="image/*" capture="environment"
+                    onChange={e => setFotoAprobacionEstado(e.target.files?.[0] ?? null)}
+                    className="w-full text-xs text-red-800 dark:text-red-300 file:mr-2 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-red-600 file:text-white file:text-xs file:font-medium" />
+                  {fotoAprobacionEstado && (
+                    <p className="text-xs text-red-700 dark:text-red-400">✓ {fotoAprobacionEstado.name}</p>
+                  )}
+                </div>
+              )}
+
+              <button onClick={intentarGuardarEdicion}
+                disabled={guardarEdicion.isPending || (estadoRequiereAprobacion && !fotoAprobacionEstado)}
                 className="w-full bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                <Save size={15} /> {guardarEdicion.isPending ? 'Guardando...' : 'Guardar cambios'}
+                <Save size={15} /> {guardarEdicion.isPending ? 'Guardando...' : estadoRequiereAprobacion ? 'Enviar a aprobación' : 'Guardar cambios'}
               </button>
             </div>
           )}

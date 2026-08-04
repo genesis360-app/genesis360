@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2, ScanBarcode, ListOrdered,
+  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2, ScanBarcode, ListOrdered, Tag,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
@@ -45,6 +45,7 @@ const navItems = [
   { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
   { to: '/picking',       icon: ScanBarcode,     label: 'Picking',       modulo: 'picking',        supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
   { to: '/pedidos',       icon: ListOrdered,     label: 'Pedidos',       modulo: 'pedidos',        supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
+  { to: '/comercial',     icon: Tag,             label: 'Comercial',     modulo: 'comercial',      supervisorOnly: true },
   { to: '/biblioteca',    icon: FolderOpen,      label: 'Biblioteca',     modulo: 'biblioteca',    ownerOnly: true, avanzadoOnly: true },
   { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true,           depositoVisible: true },
   { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',           modulo: 'rrhh',          ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },

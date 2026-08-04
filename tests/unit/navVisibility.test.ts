@@ -17,6 +17,7 @@ const NAV: NavItemFlags[] = [
   { modulo: 'proveedores',   ownerOnly: true },
   { modulo: 'recursos',      ownerOnly: true, avanzadoOnly: true },
   { modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
+  { modulo: 'comercial',     supervisorOnly: true },                                    // Fase D backlog Fede 25/7
   { modulo: 'biblioteca',    ownerOnly: true, avanzadoOnly: true },
   { modulo: 'alertas',       depositoVisible: true },
   { modulo: 'rrhh',          ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
@@ -89,7 +90,7 @@ describe('nav básico mínimo del DUEÑO (kiosco: 1 sucursal, sin facturación)'
   it('queda el set operativo + admin (12 usables + rrhh/reportes que pueden estar bloqueados)', () => {
     const v = visibles(base({ modoAvanzado: false, facturacionHabilitada: false, sucursalesCount: 1 }))
     expect(v.sort()).toEqual([
-      'alertas', 'caja', 'clientes', 'configuracion', 'dashboard', 'gastos',
+      'alertas', 'caja', 'clientes', 'comercial', 'configuracion', 'dashboard', 'gastos',
       'inventario', 'movimientos', 'proveedores', 'reportes', 'rrhh', 'usuarios', 'ventas',
     ].sort())
   })
@@ -132,6 +133,16 @@ describe('cada rol conserva su trabajo core', () => {
     expect(v).toEqual(expect.arrayContaining(['recepciones', 'historial']))
     expect(v).not.toContain('configuracion')
     expect(v).not.toContain('usuarios')
+  })
+  it('Comercial (Fase D): visible para DUEÑO/SUPERVISOR/SUPER_USUARIO, oculto para CAJERO/DEPOSITO/CONTADOR/RRHH, en ambos modos', () => {
+    for (const modoAvanzado of [true, false]) {
+      for (const rol of ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'] as const) {
+        expect(visibles(base({ rol, modoAvanzado })), `${rol} debería ver comercial (avanzado=${modoAvanzado})`).toContain('comercial')
+      }
+      for (const rol of ['CAJERO', 'DEPOSITO', 'CONTADOR', 'RRHH'] as const) {
+        expect(visibles(base({ rol, modoAvanzado })), `${rol} NO debería ver comercial (avanzado=${modoAvanzado})`).not.toContain('comercial')
+      }
+    }
   })
 })
 

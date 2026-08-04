@@ -8,11 +8,51 @@ updated: 2026-07-28
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.152.0 (2026-07-29) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.154.0 (2026-08-03, sin deploy a PROD)  
-**Última actualización:** 3 de Agosto, 2026
+**Versión en PROD:** v1.155.0 (2026-08-04) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
+**Versión en DEV:** v1.155.0 (igual a PROD)  
+**Última actualización:** 4 de Agosto, 2026
 
 ---
+
+## v1.155.0 — 🔒 Backlog Comercial de Fede completo (Fases F/A/B/C/D) + guard server-side de aprobación — ✅ **PROD** (2026-08-04)
+
+Deploy completo del backlog Comercial de Fede (25/7/2026), pausado desde el 2026-07-30 porque las
+Fases A/B/C tocaban plata/stock reales sin e2e, sin prueba manual y sin registro en el UAT. Esta
+sesión escribió 14 specs e2e nuevos + 8 unit tests, registró los 39 escenarios en
+`tests/specs/uat-modo-basico.md` §49, y GO autorizó explícitamente el deploy completo a dev y PROD.
+
+**Fase F** — quick wins: color cian unidades BASE, `tipo_empaque` informativo, agrupación visual de
+Estructura por nivel.
+
+**Fase A — motor de tiers enlazados a empaque (migs 329/330) 🛑 PLATA**: un tier mayorista enlazado
+a una línea de empaque se multiplica automático para cualquier múltiplo exacto de pallets/cajas.
+`fn_precio_venta_efectivo` (Pedidos) reescrita con el mismo algoritmo que el POS.
+
+**Fase B — aprobación de cambio de estado con foto (mig 331) 🛑 ANTI-FRAUDE**: cambiar un LPN a un
+estado con impacto económico queda pendiente hasta que un supervisor lo aprueba con foto. Cierra un
+bypass real del cambio masivo.
+
+**Fase C — cupones (mig 332) 🛑 PLATA + FISCAL**: descuento fijo en $ sobre el total de la venta,
+prorrateo fiscal correcto.
+
+**Fase D — módulo Comercial**: Combos + Cupones + Descuentos vigentes, delegable por rol custom.
+
+**🔒 Mig 333 (hallazgo de esta sesión, H1 Regla de Oro #0)**: el gate de Fase B vivía 100% en el
+cliente — un PATCH directo por REST se saltaba el control. Agregado trigger server-side
+(`fn_inventario_estado_aprobacion_guard`) + RPC sancionado (`aprobar_cambio_estado_inventario`),
+revisados por `migration-reviewer` (corrigió 2 bloqueantes: mirror del modo `'umbral'` y colisión
+con "Procesar Aging"). El DUEÑO queda exento por diseño (confirmado con GO — H2).
+
+Migraciones **328-333** aplicadas en PROD, verificadas contra datos reales (3 tiers legacy sin
+tocar, guard/RPC presentes). PR #309, merge `50fd025c`, tag `v1.155.0`.
+
+**⚠ Pendiente conocido, no bloqueante**: nadie probó Fases A/B/C a mano en el navegador de PROD
+todavía — el deploy se autorizó con el gap de e2e/UAT ya cerrado, pero sin ese paso manual
+adicional que la pausa original también pedía. `schema_full.sql` no se pudo regenerar en esta
+sesión (falta `SUPABASE_ACCESS_TOKEN` en el entorno) — sigue reflejando hasta la mig 327, pendiente
+de una próxima sesión con el token disponible.
+
+**Verde:** tsc · build · unit 1449 · e2e 115-128 (14 specs nuevos).
 
 ## v1.154.0 — 🔍 Buscador de Picking reescrito como píldoras de filtro (Campo:valor, Y/O) — 🟡 **EN DEV** (2026-08-03)
 

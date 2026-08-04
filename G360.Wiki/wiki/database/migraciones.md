@@ -3,16 +3,33 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-07-30
+updated: 2026-08-04
 ---
 
-# Historial de Migraciones (001-332)
+# Historial de Migraciones (001-333)
 
-**Total al 2026-07-30:** 332 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-04:** 333 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-327 en DEV y PROD** (v1.152.0, deploy 2026-07-29). **328-332 SOLO EN DEV** (backlog Fede 25/7,
-Fases F+A+B+C de [[wiki/features/precios-tiers-empaque]], sin bump de `APP_VERSION`, sin deploy a PROD).
+**001-327 en DEV y PROD** (v1.152.0, deploy 2026-07-29). **328-333 SOLO EN DEV** (backlog Fede 25/7,
+Fases F+A+B+C+D de [[wiki/features/precios-tiers-empaque]], sin bump de `APP_VERSION`, sin deploy a PROD).
 `schema_full.sql` sigue regenerado solo hasta la mig 327.
+
+**333 (🔒 guard server-side de la aprobación de cambio de estado, EN DEV, cierra hallazgo H1)** —
+Sesión 2026-08-04, al escribir el e2e de la mig 331: el gate de "cambio de estado con foto" vivía
+100% en el cliente — un `PATCH` directo por REST a `inventario_lineas.estado_id` se saltaba
+foto+autorización+notificación. Trigger `fn_inventario_estado_aprobacion_guard` (BEFORE UPDATE,
+mirror server-side de `requiereAuthAjuste`/`ajuste_autorizacion_roles`, mig 228 — bloquea solo el
+modo `'siempre'`, deja pasar `'directo'`/`'umbral'`) + RPC `aprobar_cambio_estado_inventario`
+(SECURITY DEFINER, única vía sancionada para aplicar un cambio ya aprobado — valida rol
+DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN + tenant, atómico, single vía `linea_id` o batch vía
+`datos_cambio.linea_ids`). Exención vía GUC transaction-local
+(`genesis360.aprobando_estado_inventario`, no alcanzable por un cliente REST) para el RPC Y para
+`process_aging_profile_single`/`process_aging_profiles` (hallazgo del `migration-reviewer`: sin la
+exención, "Procesar Aging" se rompía en cuanto un tenant mapeara una regla hacia un estado con
+aprobación). El DUEÑO queda exento por default (bypass intencional, confirmado con GO — hallazgo
+H2, ver [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto"). Frontend
+(`InventarioPage.tsx`) rewireado para llamar al RPC. Cubierto por e2e 117/118/120/121/126
+(`tests/specs/uat-modo-basico.md` §49).
 
 **332 (🎟️ cupones — descuento FIJO en $ sobre el TOTAL de la venta, EN DEV)** —
 Fede 25/7, punto 2 (dentro del módulo Comercial). Tablas nuevas: `cupones` (campaña — nombre, motivo,

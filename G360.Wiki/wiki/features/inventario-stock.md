@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331]
-updated: 2026-07-30
+updated: 2026-08-04
 ---
 
 # Inventario y Stock
@@ -125,9 +125,10 @@ DEPOSITO no puede ejecutar cambios directamente — quedan pendientes de aprobac
 
 ## Aprobación de cambio de estado con foto — control anti-fraude (🟡 EN DEV, mig 331 — Fase B backlog Fede 25/7)
 
-> 🟡 **Fase B** de la iniciativa de Fede del 25/7/2026 (punto 2 de su pedido) — panorama completo de
+> 🟢 **Fase B** de la iniciativa de Fede del 25/7/2026 (punto 2 de su pedido) — panorama completo de
 > las 6 fases en [[wiki/features/precios-tiers-empaque]]. **Solo Inventario** — no toca Ventas/POS
 > ni Pedidos. Sin deploy a PROD, sin bump de `APP_VERSION`.
+> **🔒 Guard server-side agregado (mig 333, 2026-08-04)** — ver bloque debajo "🛑 Hallazgo H1".
 
 Cuando un empleado cambia un producto/lote a un **estado con impacto económico** (ej. Dañado,
 Vencido, Eliminado), el cambio ya no se aplica directo: queda **pendiente** hasta que un supervisor
@@ -203,6 +204,46 @@ se aplica nada — mismo comportamiento que los demás tipos ya existentes.
 **Alcance de esta fase:** solo Inventario (cambio de estado de un LPN/lote). No se tocó Ventas/POS
 ni Pedidos. **Verde:** tsc · build · suite unit completa. Migración revisada por `migration-reviewer`
 antes de aplicarse en DEV.
+
+### 🛑 Hallazgo H1 (2026-08-04) — el gate vivía 100% en el cliente, un PATCH directo lo saltaba
+
+Al escribir el e2e de esta fase (sesión 2026-08-04) apareció que el control de arriba no tenía
+NINGÚN guard server-side: un `PATCH` directo por REST a `inventario_lineas.estado_id` (sin pasar
+por `LpnAccionesModal`/`InventarioPage.tsx`) se saltaba foto, autorización y notificación — la
+MISMA clase de bypass que esta fase ya había cerrado para el cambio masivo, pero ahora a nivel API.
+Avisado a GO de inmediato (Regla de Oro #0), que pidió agregarlo YA.
+
+**Mig 333**: trigger `fn_inventario_estado_aprobacion_guard` (BEFORE UPDATE ON `inventario_lineas`)
+— mirror server-side de `requiereAuthAjuste`/`tenants.ajuste_autorizacion_roles` (mig 228): bloquea
+la transición hacia un estado `requiere_aprobacion=true` solo si el modo resuelto para el rol del
+actor es `'siempre'` (deja pasar `'directo'` y `'umbral'` — el `migration-reviewer` encontró que la
+primera versión bloqueaba de más el modo `'umbral'`, corregido antes de aplicar). Exención por GUC
+transaction-local (`genesis360.aprobando_estado_inventario`, no alcanzable por un cliente REST) para
+dos vías sancionadas:
+- **RPC `aprobar_cambio_estado_inventario`** (SECURITY DEFINER): única vía server-side para aplicar
+  un cambio ya aprobado — valida rol DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN + tenant, atómico (single
+  vía `linea_id` o batch vía `datos_cambio.linea_ids`), marca la autorización `aprobada`. Reemplaza
+  el update directo de 2 pasos que hacía `aprobarAutorizacion` en `InventarioPage.tsx`.
+- **`process_aging_profile_single`/`process_aging_profiles`** (Aging automático) — el
+  `migration-reviewer` encontró que sin esta exención, "Procesar Aging" se rompía por completo (loop
+  sin manejo de excepción, aborta TODA la corrida) en cuanto un tenant mapeara una regla de
+  vencimiento hacia un estado con `requiere_aprobacion=true`. Vencimiento por fecha es determinístico
+  — no es el vector de fraude manual que esta fase busca cerrar.
+
+**⚠ Aclaración H2 (no es un bug):** con la config default del tenant, el **DUEÑO queda exento** de
+este gate (modo `'directo'` por default) — no se autoaprueba un control que él mismo configuró,
+mismo criterio que el gate de CANTIDAD (mig 228). Confirmado con GO como comportamiento intencional.
+Lógica única (antes duplicada en `LpnAccionesModal.tsx` e `InventarioPage.tsx`) extraída a
+`src/lib/aprobacionEstado.ts::estadoCambioRequiereAprobacion`, 8 tests unitarios
+(`tests/unit/aprobacionEstado.test.ts`).
+
+**⚠ Nota sistémica (no nueva de esta fase):** el resto de `autorizaciones_inventario`
+(`ajuste_cantidad`/`eliminar_serie`/`eliminar_lpn`/`ajuste_conteo`, mig 228/056) sigue sin guard
+server-side propio — mismo patrón 100% client-side, verificado al auditar esta fase. Queda fuera de
+alcance de la mig 333 (que solo cubre `cambio_estado`); anotado como deuda conocida, no resuelto acá.
+
+Cubierto por e2e **117/118/120/121/126** (`tests/specs/uat-modo-basico.md` §49, escenarios 74-82) +
+plan completo en `tests/specs/comercial-fede-abcd.plan.md`.
 
 ---
 

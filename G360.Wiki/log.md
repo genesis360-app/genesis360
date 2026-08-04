@@ -6,6 +6,71 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-04] update | 🧪 e2e/UAT del backlog Comercial de Fede (Fases A/B/C) + guard server-side nuevo (mig 333) — destraba el gap que pausaba el deploy
+
+GO había pausado el deploy a PROD de las Fases A (tiers+empaque)/B (aprobación con foto)/C (cupones)
+del backlog Comercial de Fede porque tocan plata/stock reales sin e2e, sin prueba manual y sin
+registro en el UAT (Regla de Oro #0, ver entrada `2026-08-03 | registra decisión de GO`). Esta
+sesión cierra ese gap.
+
+**Plan de escenarios** (`tests/specs/comercial-fede-abcd.plan.md`, generado por el subagente
+`spec-extractor`): 39 escenarios (TIER-01..12, APROB-01..09, CUPON-01..10, COM-01..08) contra el
+código real (no había `relevamiento_respuestas.md` para este backlog — nació de un documento de
+decisiones de Fede, así que la wiki técnica + el código fueron la fuente).
+
+**🛑 2 hallazgos reales de Regla de Oro #0 encontrados al escribir el plan, avisados a GO de
+inmediato y resueltos ANTES de escribir los e2e:**
+
+- **H1 — Fase B (mig 331) no tenía guard server-side.** El control anti-fraude de "cambio de estado
+  con foto" vivía 100% en el cliente (`LpnAccionesModal.tsx`/`InventarioPage.tsx`) — un `PATCH`
+  directo por REST a `inventario_lineas.estado_id` se saltaba foto+autorización+notificación, la
+  MISMA clase de bypass que la fase ya había cerrado para el cambio masivo, pero a nivel API en vez
+  de nivel botón. GO pidió agregar el guard YA (no diferirlo). **Mig 333**: trigger
+  `fn_inventario_estado_aprobacion_guard` (mirror server-side de `requiereAuthAjuste`/
+  `ajuste_autorizacion_roles`, exención vía GUC transaction-local para el RPC sancionado) + RPC
+  `aprobar_cambio_estado_inventario` (única vía server-side para aplicar un cambio ya aprobado,
+  valida rol DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN + tenant, atómico). Revisada por
+  `migration-reviewer` ANTES de aplicar: encontró y corrigió **2 bloqueantes reales** — el mirror
+  bloqueaba de más el modo `'umbral'` (debía dejarlo pasar, igual que `'directo'`, porque el
+  frontend siempre llama `requiereAuthAjuste(..., umbralRequiere=false)` para cambio de estado), y
+  el guard rompía **"Procesar Aging"** en cuanto un tenant mapee una regla de vencimiento hacia un
+  estado con `requiere_aprobacion=true` (corregido exentando `process_aging_profile_single`/
+  `process_aging_profiles` con el mismo GUC — vencimiento por fecha es determinístico, no un vector
+  de fraude manual). Aplicada en DEV. Frontend rewireado: `InventarioPage.tsx` (mutation
+  `aprobarAutorizacion`, rama `cambio_estado`) llama al RPC en vez del update directo de 2 pasos.
+- **H2 — el DUEÑO queda exento del gate por default.** El código (`requiereAuthAjuste` reusando el
+  gate de cantidad, mig 228) hace que un DUEÑO con la config default aplique un cambio de estado con
+  foto requerida DIRECTO, sin foto ni autorización — contradecía el resumen que se había pasado al
+  subagente. GO confirmó que es **intencional** (el DUEÑO no se autoaprueba un control que él mismo
+  configuró, mismo criterio que el gate de cantidad). Extraída la fórmula duplicada (antes copiada a
+  mano en `LpnAccionesModal.tsx` y `InventarioPage.tsx`) a
+  `src/lib/aprobacionEstado.ts::estadoCambioRequiereAprobacion`, única fuente de verdad para single
+  y bulk, 8 tests unitarios nuevos (`tests/unit/aprobacionEstado.test.ts`).
+
+**14 specs e2e nuevos (115-128), todos verdes**, escritos en 3 lotes por el subagente `test-author`
+(el 3er lote se cortó por el límite de gasto mensual de la cuenta a mitad de verificación —
+retomado sin más subagentes, corriendo la suite directo y corrigiendo 2 fallas reales encontradas:
+un locator de "cart vacío" que coincidía con el heading equivocado — flake de infra bajo carga,
+confirmado transitorio al reintentar — y un `getByText` de reporting de campaña sin scopear a la
+card específica, que matcheaba campañas viejas de otros specs con el mismo monto de prueba $500).
+Cubren: el pedido insignia de Fede (pallet 2000u+500 sueltas → blended $92/u, $230.000 total, en el
+carrito real Y contra el RPC `fn_precio_venta_efectivo`), el prorrateo fiscal de cupones (venta solo
+con cupón no se sobre-factura), el ciclo completo de aprobación de estado (bloqueo, pendiente,
+aprobar, rechazar, bypass masivo cerrado, convivencia con el gate de cantidad), doble uso/condición
+de carrera de cupones, y permisos/delegación del módulo Comercial (scoping por sucursal, rol custom
+que solo restringe nunca amplía, acceso directo por URL).
+
+**Registrado en UAT**: `tests/specs/uat-modo-basico.md` §49 (escenarios 62-100, 39 filas).
+
+**Verde:** tsc · build · unit suite completa (91+ archivos) · e2e 115-128 (14 specs, corrida
+conjunta + individual, 2 flakes de infraestructura confirmados transitorios).
+
+**Estado git:** las Fases F/A/B/C/D en sí (código de producto) ya estaban commiteadas en `dev` de la
+sesión anterior. Lo nuevo de esta sesión (14 specs, mig 333, rewire, `aprobacionEstado.ts`, tests)
+**sigue sin commitear** — pendiente de autorización explícita del usuario. **Sigue sin deploy a PROD**
+(v1.152.0) — la decisión de destrabarlo queda en manos de GO, esta sesión solo cierra el gap técnico
+que lo pausaba. Ver `project_pendientes.md` → "ARRANCÁ ACÁ".
+
 ## [2026-08-03] update | 🔍 Buscador de /picking reescrito como píldoras de filtro (Campo:valor, Y/O)
 
 GO probó el buscador de texto plano que se había agregado horas antes en esta misma sesión y

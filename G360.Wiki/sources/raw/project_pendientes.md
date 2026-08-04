@@ -6,17 +6,52 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟡 ARRANCÁ ACÁ (2026-07-30) — backlog Fede 25/7 EN CURSO (Fases F+A+B+C+D completas, EN DEV, SIN deploy). Solo E pendiente.
+> ### 🟢 ARRANCÁ ACÁ (2026-08-04) — backlog Fede 25/7: Fases F+A+B+C+D completas CON e2e/UAT, listo para que GO decida el deploy. Solo E pendiente (relevamiento con Fede).
+>
+> **El gap que pausaba el deploy ya se cerró.** GO había pausado A/B/C explícitamente porque tocaban
+> plata/stock reales sin e2e, sin prueba manual y sin registro en el UAT (Regla de Oro #0) — ver
+> entrada de abajo (2026-07-30). Sesión 2026-08-03/04: plan de 39 escenarios
+> (`tests/specs/comercial-fede-abcd.plan.md`), **14 specs e2e nuevos nacientes (115-128), todos
+> verdes**, registrados en `tests/specs/uat-modo-basico.md` §49. **Sigue sin deploy a PROD (v1.152.0)
+> — la decisión de destrabarlo queda en manos de GO**, esto solo saca el bloqueo técnico.
+>
+> **🛑 2 hallazgos reales de Regla de Oro #0 encontrados al escribir los tests, avisados a GO y
+> resueltos ANTES de seguir** (no silenciados):
+> - **H1 — Fase B no tenía guard server-side**: un `PATCH` directo por REST a
+>   `inventario_lineas.estado_id` se saltaba foto+autorización+notificación (misma clase de bypass
+>   que la fase ya había cerrado para el cambio masivo, pero a nivel API). GO pidió agregarlo YA →
+>   **mig 333** (trigger `fn_inventario_estado_aprobacion_guard` + RPC
+>   `aprobar_cambio_estado_inventario`, revisada por `migration-reviewer`: encontró y corrigió 2
+>   bloqueantes reales — el guard bloqueaba de más el modo `'umbral'`, y rompía "Procesar Aging" en
+>   cuanto un tenant mapee una regla hacia un estado con aprobación — ambos corregidos antes de
+>   aplicar en DEV). Frontend (`InventarioPage.tsx`) rewireado para usar el RPC en vez del update
+>   directo de 2 pasos.
+> - **H2 — el DUEÑO queda exento del gate por default**: confirmado con GO que es intencional (no se
+>   autoaprueba un control que él mismo configuró, mismo criterio que el gate de cantidad mig 228).
+>   Extraída la fórmula duplicada a `src/lib/aprobacionEstado.ts::estadoCambioRequiereAprobacion`
+>   (única fuente de verdad para single y bulk, 8 tests unitarios nuevos).
+>
+> **🛑 Estado git real (verificar con `git status` antes de asumir):** las Fases F/A/B/C/D en sí
+> (código de producto, migs 328-332) YA están commiteadas en `dev` desde la sesión anterior. **Lo
+> nuevo de ESTA sesión (14 specs e2e, mig 333, el rewire de `InventarioPage.tsx`/`LpnAccionesModal.tsx`,
+> `src/lib/aprobacionEstado.ts`, tests unitarios, `playwright.config.ts`) sigue SIN COMMITEAR** —
+> pendiente de que el usuario lo autorice explícitamente antes de commitear (regla del proyecto: no
+> commitear sin pedido explícito).
+>
+> Detalle técnico de qué prueba cada spec: `tests/specs/comercial-fede-abcd.plan.md` (plan completo,
+> con las correcciones/hallazgos de proceso de cada lote) y `tests/specs/uat-modo-basico.md` §49
+> (escenarios 62-100).
+>
+> ---
+>
+> ### 🟡 (histórico 2026-07-30) — backlog Fede 25/7 EN CURSO (Fases F+A+B+C+D completas, EN DEV, SIN deploy). Solo E pendiente.
 >
 > **No es un feature cerrado — es el arranque de una iniciativa de 6 fases.** PROD sigue en
 > **v1.152.0** (sin cambios). `APP_VERSION` se bumpeó a **v1.154.0** (2026-08-03, release de DEV,
 > ver `wiki/business/roadmap.md`) para dejar tag/registro de esta sesión — NO implica deploy, F/A/B/C/D
-> siguen pausadas hasta que GO/Fede prueben en el dev server. Todo lo de acá vive en `dev`, **NADA
-> commiteado** (`git status`: `ConfigPage.tsx`/`ProductoFormPage.tsx`/`VentasPage.tsx`/
-> `PresentacionesEditor.tsx`/`InventarioPage.tsx`/`LpnAccionesModal.tsx`/`App.tsx`/`AppLayout.tsx`/
-> `UsuariosPage.tsx`/`src/lib/presentaciones.ts`/`src/lib/tiers.ts`/`src/lib/cupones.ts`/
-> `src/pages/ComercialPage.tsx` (nuevo)/`tests/unit/cupones.test.ts`/varios archivos de test
-> modificados + migraciones **328/329/330/331/332** sin trackear).
+> siguen pausadas hasta que GO/Fede prueben en el dev server. **⚠ Nota de la sesión siguiente
+> (2026-08-04): esto ya NO aplica — F/A/B/C/D se commitearon esa misma sesión, ver el bloque de
+> arriba.**
 >
 > Fede (socio, cofundador) mandó el **25/7/2026** un documento con **6 decisiones de negocio** + **1
 > regla transversal** de prioridad de descuentos. Plan de fases: **F** (quick wins) → **A** (motor de

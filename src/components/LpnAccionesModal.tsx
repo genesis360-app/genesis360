@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/authStore'
 import type { Sucursal } from '@/lib/supabase'
 import { logActividad, nuevaTransaccion } from '@/lib/actividadLog'
 import { requiereAuthAjuste } from '@/lib/ajusteAutorizacion'
+import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
 import { puedeCrearTraslado, esMovimientoCrossSucursal } from '@/lib/trasladoLogic'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
 import { LpnQR } from '@/components/LpnQR'
@@ -100,9 +101,10 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   const estadoCambio = editForm.estado_id !== (linea.estado_id ?? '')
   const estadoDestino = (estados as any[]).find((e: any) => e.id === editForm.estado_id)
   // El estado tiene que estar marcado "requiere aprobación" Y el rol del usuario actual tiene que
-  // estar sujeto a autorización (mismo `requiereAprobacion` que ya gatea ajuste_cantidad, mig 228)
-  // — el DUEÑO (modo 'directo' por default) no se autoaprueba a sí mismo un cambio que él mismo configuró.
-  const estadoRequiereAprobacion = estadoCambio && !!estadoDestino?.requiere_aprobacion && requiereAprobacion
+  // estar sujeto a autorización (mismo gate que ya usa ajuste_cantidad, mig 228) — el DUEÑO (modo
+  // 'directo' por default) no se autoaprueba a sí mismo un cambio que él mismo configuró.
+  const estadoRequiereAprobacion = estadoCambio
+    && estadoCambioRequiereAprobacion(estadoDestino, user?.rol, (tenant as any)?.ajuste_autorizacion_roles ?? null)
   const { data: ubicaciones = [] } = useQuery({
     queryKey: ['ubicaciones', tenant?.id, sucursalId],
     queryFn: async () => {

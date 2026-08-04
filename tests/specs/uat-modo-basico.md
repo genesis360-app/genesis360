@@ -1761,3 +1761,91 @@ acomoda a él.
 | 61 | **⚠ Unidades base NO eran la solución** | Test que prueba que `r2(1000/3) × 3 ≠ 1000`, para que el fix descartado quede documentado | `facturacion.test.ts` |
 
 **Verde:** tsc · build · **unit 1374**.
+
+---
+
+## 🛍️ §49 — Backlog Comercial de Fede, Fases A/B/C/D — motor de tiers+empaque, aprobación de
+estado con foto, cupones y módulo Comercial (migs 328-333) — 2026-08-03/04
+
+> Puente e2e/UAT que faltaba para destrabar el deploy a PROD de las Fases A/B/C — GO había pausado
+> el deploy explícitamente porque tocan plata/stock reales sin e2e, sin prueba manual y sin registro
+> acá (Regla de Oro #0). Plan completo de escenarios: `tests/specs/comercial-fede-abcd.plan.md`.
+> Durante la verificación aparecieron 2 hallazgos reales de Regla de Oro #0, avisados a GO y resueltos
+> ANTES de escribir los e2e — ver **H1** y **H2** debajo de la tabla.
+
+### Fase A — motor de tiers enlazados a empaque (`src/lib/tiers.ts`, migs 306/329/330) 🛑 PLATA
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 62 | **Los 5 operadores de tier** | `>`,`<`,`=`,`>=`,`<=` contra la cantidad total del SKU | `tiers.test.ts` |
+| 63 | **Gana el primer match por orden** | Incl. regresión del bug "mayor umbral primero" (mig 306) | `tiers.test.ts` |
+| 64 | **`%` siempre sobre precio de LISTA** | Nunca sobre un precio ya rebajado por otra capa; clamp 0-100 | `tiers.test.ts` |
+| 65 | **Bloque de empaque vs. resto suelto** | Caso Fede exacto: 1 pallet (2000u) + 500 sueltas → 2 bloques | `tiers.test.ts` |
+| 66 | **🛑 Compiten, gana el mejor** | El tier NORMAL le gana al de empaque para el mismo bloque — nunca se acumulan | `tiers.test.ts` |
+| 67 | **Precio blended preserva la plata TOTAL** | Caso Fede: $230.000 total, $92/u, sin importar en cuántas líneas se reparta | `tiers.test.ts` |
+| 68 | **🛑 El pedido insignia de Fede, en el carrito real** | 2.500u (1 pallet + 500 sueltas), lista $100 → indicador $92/u, total $230.000 exacto en el carrito | **e2e 116** |
+| 69 | **Mismo resultado por el RPC que usa Pedidos** | `fn_precio_venta_efectivo` (mig 330) da el mismo blended $92/u que el frontend para el mismo fixture | **e2e 116** |
+| 70 | **Tier `pct` sin empaque, sobre precio de lista** | 10% off de $1.000 → $900/u, reflejado en `venta_items` | **e2e 123** |
+| 71 | **"Compiten, gana el mejor" en el wiring real** | Tier normal con mejor precio le gana al de empaque en el carrito de `VentasPage`, no solo en la función pura | **e2e 123** |
+| 72 | **🛑 Guard cross-producto/tenant** | `trg_ppm_presentacion_mismo_producto` rechaza enlazar en un tier la presentación de OTRO producto | **e2e 120** |
+| 73 | *(diferido, spec 129 opcional)* Parity Pedidos↔POS por UI completa | TIER-10 ya cubre la plata a nivel RPC; la vuelta completa por wizard de Pedidos queda diferida | — |
+
+### Fase B — aprobación de cambio de estado con foto (`estados_inventario.requiere_aprobacion`, migs 331/333) 🛑 ANTI-FRAUDE
+
+> 🛑 **H1 (hallazgo real, resuelto antes de estos tests)**: el gate vivía 100% en el cliente — un
+> `PATCH` directo por REST a `inventario_lineas.estado_id` se saltaba foto+autorización+notificación,
+> la MISMA clase de bypass que esta fase cerró para el cambio masivo, pero a nivel API. Avisado a GO,
+> que pidió el guard YA → **mig 333** (`fn_inventario_estado_aprobacion_guard` + RPC
+> `aprobar_cambio_estado_inventario`, revisada por `migration-reviewer`: encontró y corrigió que el
+> guard bloqueaba de más el modo `'umbral'` y que rompía "Procesar Aging" — ambos corregidos antes de
+> aplicar). Frontend rewireado para usar el RPC.
+>
+> ⚠ **H2 (aclaración, no bug)**: el DUEÑO queda EXENTO de este gate por default (no se autoaprueba un
+> control que él mismo configuró, mismo criterio que el gate de cantidad mig 228) — confirmado con GO
+> como comportamiento intencional. Fórmula única en `src/lib/aprobacionEstado.ts`.
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 74 | **Sin foto, bloquea** | Rol sujeto al gate + estado con `requiere_aprobacion` + sin foto → error, `estado_id` no cambia | **e2e 117** |
+| 75 | **🛑 Con foto, queda PENDIENTE** | Sube al bucket `autorizaciones-fotos`, crea `autorizaciones_inventario` pendiente, notifica supervisores, `estado_id` NO cambia hasta aprobar (verificado en DB) | **e2e 117** |
+| 76 | **DUEÑO aplica DIRECTO (H2, intencional)** | Config default → sin foto ni autorización, documentado como correcto | **e2e 118** + `aprobacionEstado.test.ts` |
+| 77 | **🛑 Bypass masivo cerrado** | El cambio de estado MASIVO (antes: bug de seguridad, escribía directo sin gate) ahora exige el mismo control — UNA foto, UNA autorización, NINGÚN LPN cambia hasta aprobar | **e2e 117** |
+| 78 | **Aprobar single: recién ahí cambia `estado_id`** | + botón "Ver foto" resuelve URL firmada real (5 min) | **e2e 121** |
+| 79 | **Aprobar batch: TODOS los `linea_ids`** | No solo el primero — verificado contra la cantidad real de filas actualizadas | **e2e 121** |
+| 80 | **Rechazar: nada cambia** | Motivo obligatorio, autorización queda `rechazada` | **e2e 121** |
+| 81 | **Convive con el gate de CANTIDAD (mig 228)** | Cambiar cantidad Y estado a la vez genera DOS autorizaciones independientes; ubicación/lote/proveedor se guardan directo sin pisarse | **e2e 126** |
+| 82 | **🛑 H1 resuelto: guard server-side real** | Un `PATCH` directo por REST de un rol NO exento es rechazado por la DB (`insufficient_privilege`); el mismo PATCH para el DUEÑO (exento) sí pasa | **e2e 120** |
+
+### Fase C — cupones, descuento fijo en $ sobre el TOTAL (`src/lib/cupones.ts`, mig 332) 🛑 PLATA + FISCAL
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 83 | **Vigencia inclusive en ambos extremos** | Fuera de rango o inactivo → nunca vigente | `cupones.test.ts` |
+| 84 | **Nunca descuenta más que el total** | `montoDescuentoCupon` no da negativo | `cupones.test.ts` |
+| 85 | **Códigos sin ambiguos, únicos, clamp a 100** | Alfabeto sin O/0 ni I/1; `CUPON_CODIGOS_MAXIMO=100` | `cupones.test.ts` |
+| 86 | **Canje real: cupón ANTES que la promo de medio de pago** | `(subtotal − desc.general − combos − cupón) × (1 − promo%)`, no al revés | **e2e 122** |
+| 87 | **4 formas de rechazo** | Inexistente / ya usado / inactivo / vencido — ninguno queda aplicado | **e2e 122** |
+| 88 | **🛑 Prorrateo fiscal (el hallazgo más importante de la fase)** | Venta SOLO con cupón (sin otro descuento) factura el monto YA restado — `hayDescGlobal` ahora incluye `montoCupon`; sin el fix se sobre-facturaba | **e2e 115** |
+| 89 | **Re-validación en fresco antes de cobrar** | Código usado por otra vía entre aplicar y confirmar → corta ANTES de crear la venta | **e2e 119** |
+| 90 | **🛑 Claim atómico + blindaje de constraint** | Solo una venta gana el `UPDATE ... WHERE usado_en_venta_id IS NULL`; `UNIQUE(cupon_codigo_id)` en `ventas` bloquea un duplicado directo | **e2e 119** |
+| 91 | **🛑 Snapshot histórico (nunca reescribir fiscal)** | Venta ya confirmada preserva su `cupon_monto` aunque la campaña cambie de monto o se desactive después | **e2e 128** |
+| 92 | **Reporting "usados/generado"** | Campaña nueva (10 códigos, $500) → tras 1 canje real muestra "1/10 usados · $500 generado" | **e2e 128** |
+
+### Fase D — módulo Comercial, permisos y delegación (`ComercialPage.tsx`, sin migración)
+
+| # | Escenario | Regla | Cubierto por |
+|---|---|---|---|
+| 93 | **Solo-lectura/oculto genérico** | `moduloSoloLectura`/`moduloOculto` ya cubren `'comercial'` sin cambios (funciones genéricas por nombre de módulo) | `permisosModulo.test.ts` |
+| 94 | **Rol custom solo restringe, nunca amplía** | `supervisorOnly` se evalúa antes que `permisos_custom`; agregado `'comercial'` al mirror `NAV` que faltaba | `navVisibility.test.ts` |
+| 95 | **Acceso directo por URL según rol** | DUEÑO/SUPERVISOR/SUPER_USUARIO entran; CAJERO/CONTADOR/DEPOSITO/RRHH son redirigidos por el blocklist | **e2e 127** |
+| 96 | **⚠ Gap documentado (no nuevo, sistémico): VIEWER/ADMIN sin redirect** | `ComercialPage` se renderiza igual para ellos — no es leak cross-tenant (RLS sigue tenant-scoped), sí es fuga de visibilidad dentro del propio tenant. Evaluado y aceptado con GO, no bloqueante | **e2e 127** |
+| 97 | **Delegación real: SUPERVISOR + rol custom "Comercial"** | `no_ver` en todo salvo `comercial` → el nav SOLO muestra Comercial — el caso de uso que justifica la fase | **e2e 125** |
+| 98 | **El rol custom no amplía el acceso** | CAJERO con `comercial:'editar'` en su rol custom SIGUE sin ver `/comercial` (el rol base manda primero) | **e2e 125** |
+| 99 | **🛑 Regresión cerrada: scoping por sucursal** | Combo creado desde Comercial con sucursal activa → `sucursal_id` = esa sucursal, no global (bug real del port desde ConfigPage) | **e2e 124** |
+| 100 | *(diferido, spec 130 opcional, no bloqueante)* RLS de escritura en solo-lectura | Límite SISTÉMICO conocido de `roles_custom` (no nuevo de esta fase): `'ver'` bloquea botones en la UI pero no a nivel RLS | — |
+
+**Verde:** tsc · build · **unit 1449** (91 archivos, incl. `aprobacionEstado.test.ts` nuevo +
+`navVisibility.test.ts` extendido) · **e2e 115-128, 14 specs nuevos, verdes** (2 flakes de
+infraestructura bajo carga, ambos confirmados transitorios al reintentar en aislamiento — no
+relacionados a lógica de producto). Migración nueva: **333** (guard server-side de Fase B, revisada
+por `migration-reviewer`, aplicada en DEV). Diferidos a propósito, no bloqueantes: specs 129/130.

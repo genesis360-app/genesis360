@@ -3,17 +3,20 @@ title: Módulo Comercial (Combos, Cupones, Descuentos vigentes)
 category: features
 tags: [comercial, combos, cupones, descuentos, roles-custom, delegable]
 sources: [src/pages/ComercialPage.tsx, src/pages/ConfigPage.tsx, src/App.tsx, src/components/layout/AppLayout.tsx, src/pages/UsuariosPage.tsx, src/lib/cupones.ts]
-updated: 2026-07-30
+updated: 2026-08-04
 ---
 
 # Módulo Comercial
 
-> **🟡 Fase D del backlog de Fede (25/7/2026) — ✅ construida, EN DEV, SIN deploy a PROD.**
+> **🟢 Fase D del backlog de Fede (25/7/2026) — ✅ construida, EN DEV, SIN deploy a PROD.**
 > Consolida Combos y Cupones (que vivían en Config → Ventas → Descuentos y combos) en un módulo
 > propio, **delegable** a un rol que no sea el DUEÑO — a diferencia de Configuración, que sigue
 > siendo exclusiva del dueño por diseño (datos sensibles/reglas estructurales del negocio). Ver
 > [[wiki/features/precios-tiers-empaque]] para el resto de la iniciativa (Fases F/A/B/C) y
 > [[wiki/features/inventario-stock]] para la Fase B (aprobación de cambio de estado con foto).
+> **e2e (2026-08-04):** permisos/delegación cubiertos por specs 124/125/127
+> (`tests/specs/uat-modo-basico.md` §49, escenarios 93-99) — scoping por sucursal de combos,
+> delegación por rol custom (solo restringe, nunca amplía), acceso directo por URL según rol.
 
 ## Por qué un módulo nuevo
 

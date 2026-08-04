@@ -3,20 +3,26 @@ title: Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 category: features
 tags: [precios, tiers, mayorista, empaque, descuentos, comercial, repositores, cupones, aprobacion-foto, anti-fraude]
 sources: [migrations 328, 329, 330, 331, 332, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx]
-updated: 2026-07-30
+updated: 2026-08-04
 ---
 
 # Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 
-> 🟡 **INICIATIVA EN CURSO, EN DEV, SIN deploy a PROD.** No es un feature cerrado: esta página
-> documenta las **Fases F y A** (pricing/empaque) y **C** (cupones), ya construidas y verificadas; la
-> **Fase B** (aprobación con foto) también se completó, pero su detalle técnico vive en
-> [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto" por ser un feature
-> 100% de Inventario, sin relación con precios. **Fase D** (módulo Comercial) también se completó —
-> detalle en [[wiki/features/comercial]]. **Solo Fase E (módulo Repositores) sigue por delante**,
-> con el relevamiento ya generado (ver más abajo), pendiente de que GO/Fede lo respondan.
-> Nada de lo de acá está commiteado — sigue en la rama `dev` local (verificar `git status` antes de
-> asumir que llegó a algún lado).
+> 🟢 **INICIATIVA EN CURSO, EN DEV, SIN deploy a PROD — el gap de e2e/UAT que pausaba el deploy YA SE
+> CERRÓ (2026-08-04).** Esta página documenta las **Fases F y A** (pricing/empaque) y **C** (cupones),
+> ya construidas y verificadas; la **Fase B** (aprobación con foto) también se completó, pero su
+> detalle técnico vive en [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con
+> foto" por ser un feature 100% de Inventario, sin relación con precios. **Fase D** (módulo Comercial)
+> también se completó — detalle en [[wiki/features/comercial]]. **Solo Fase E (módulo Repositores)
+> sigue por delante**, con el relevamiento ya generado (ver más abajo), pendiente de que GO/Fede lo
+> respondan.
+> **e2e/UAT (sesión 2026-08-04):** 14 specs nuevos (`tests/e2e/115..128*.spec.ts`), todos verdes,
+> registrados en `tests/specs/uat-modo-basico.md` §49 — plan completo en
+> `tests/specs/comercial-fede-abcd.plan.md`. Encontró y cerró un hallazgo real de Regla de Oro #0
+> (mig 333, guard server-side de Fase B) — ver [[wiki/database/migraciones]] mig 333.
+> **Estado git:** el código de F/A/B/C/D está commiteado en `dev` (sesión 2026-07-30/08-03). Los
+> tests + mig 333 + el rewire que cierra el hallazgo (sesión 2026-08-04) siguen SIN COMMITEAR —
+> pendiente de autorización explícita del usuario (verificar `git status` antes de asumir).
 
 ## El pedido de Fede (25/7/2026)
 

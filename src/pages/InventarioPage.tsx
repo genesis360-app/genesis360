@@ -42,6 +42,7 @@ import { presentacionesComoNiveles, PRESENTACION_COLS } from '@/lib/presentacion
 import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
 import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
+import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
 import { useConfirm } from '@/hooks/useConfirm'
 import * as XLSX from 'xlsx'
@@ -903,11 +904,10 @@ export default function InventarioPage() {
         // Fede 25/7, punto 2: recién ACÁ se aplica el estado_id real — hasta este momento la(s)
         // línea(s) siguieron con el estado de siempre (cualquier descuento/baja asociado al
         // estado nuevo empieza a regir desde la aprobación, no desde que se pidió).
-        // Dos formas: `linea_id` (un solo LPN, desde LpnAccionesModal) o `datos_cambio.linea_ids`
-        // (cambio masivo, desde la selección de la tabla de Inventario).
-        const { estado_nuevo_id, linea_ids } = aut.datos_cambio as { estado_nuevo_id: string | null; linea_ids?: string[] }
-        const query = supabase.from('inventario_lineas').update({ estado_id: estado_nuevo_id ?? null })
-        const { error } = linea_ids?.length ? await query.in('id', linea_ids) : await query.eq('id', aut.linea_id)
+        // mig 333 (H1): única vía sancionada — el RPC valida rol+tenant server-side y aplica
+        // single (linea_id) o batch (datos_cambio.linea_ids) atómico; ya marca la autorización
+        // aprobada, el update genérico de más abajo la vuelve a marcar con el mismo valor (no-op).
+        const { error } = await supabase.rpc('aprobar_cambio_estado_inventario', { p_autorizacion_id: aut.id })
         if (error) throw error
       } else if (aut.tipo === 'ajuste_conteo') {
         // F3 — al aprobar, aplicar la diferencia de conteo con reconciliación por delta (G1)
@@ -986,7 +986,7 @@ export default function InventarioPage() {
   // El estado tiene que estar marcado "requiere aprobación" Y el rol del usuario actual tiene
   // que estar sujeto a autorización (mismo criterio que ajuste_cantidad, mig 228) — el DUEÑO
   // (modo 'directo' por default) no se autoaprueba a sí mismo un cambio que él mismo configuró.
-  const bulkEstadoRequiereAprobacion = !!bulkEstadoDestino?.requiere_aprobacion && requiereAuthAjuste(user?.rol, ajusteAuthConfig, false)
+  const bulkEstadoRequiereAprobacion = estadoCambioRequiereAprobacion(bulkEstadoDestino, user?.rol, ajusteAuthConfig)
   const bulkCambiarEstado = useMutation({
     mutationFn: async (estadoId: string) => {
       // Fede 25/7, punto 2: mismo gate que el cambio de estado de UN LPN — si el estado destino

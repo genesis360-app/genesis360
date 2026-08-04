@@ -71,7 +71,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/session.json'),
       },
       dependencies: ['setup-owner'],
-      testIgnore: /1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante|88_mobile_responsive/,
+      testIgnore: /1[3-8]_rol_.*|45_descuento_supervisor_tope_mutante|47_conteo_autorizacion_rol_mutante|4[89]_.*_mutante|88_mobile_responsive|117_aprobacion_estado_bypass_masivo_mutante|126_aprobacion_estado_convive_cantidad_mutante/,
     },
 
     // ─── Barrido responsive/mobile (owner) — viewport de celular, mismo storageState.
@@ -97,7 +97,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/cajero_session.json'),
       },
       dependencies: ['setup-cajero'],
-      testMatch: /13_rol_cajero\.spec\.ts/,
+      testMatch: /13_rol_cajero\.spec\.ts|127_comercial_acceso_directo_url\.spec\.ts/,
     }] : []),
 
     // ─── Tests SUPERVISOR — solo si hay credenciales
@@ -108,7 +108,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/supervisor_session.json'),
       },
       dependencies: ['setup-supervisor'],
-      testMatch: /15_rol_supervisor\.spec\.ts|45_descuento_supervisor_tope_mutante\.spec\.ts|47_conteo_autorizacion_rol_mutante\.spec\.ts/,
+      testMatch: /15_rol_supervisor\.spec\.ts|45_descuento_supervisor_tope_mutante\.spec\.ts|47_conteo_autorizacion_rol_mutante\.spec\.ts|127_comercial_acceso_directo_url\.spec\.ts/,
     }] : []),
 
     // ─── Tests RRHH — solo si hay credenciales
@@ -119,7 +119,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/rrhh_session.json'),
       },
       dependencies: ['setup-rrhh'],
-      testMatch: /16_rol_rrhh\.spec\.ts/,
+      testMatch: /16_rol_rrhh\.spec\.ts|127_comercial_acceso_directo_url\.spec\.ts/,
     }] : []),
 
     // ─── Tests DEPOSITO — solo si hay credenciales
@@ -130,7 +130,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/deposito_session.json'),
       },
       dependencies: ['setup-deposito'],
-      testMatch: /17_rol_deposito\.spec\.ts/,
+      testMatch: /17_rol_deposito\.spec\.ts|117_aprobacion_estado_bypass_masivo_mutante\.spec\.ts|126_aprobacion_estado_convive_cantidad_mutante\.spec\.ts|127_comercial_acceso_directo_url\.spec\.ts/,
     }] : []),
 
     // ─── Tests CONTADOR — solo si hay credenciales
@@ -141,7 +141,7 @@ export default defineConfig({
         storageState: path.join(__dirname, 'tests/e2e/.auth/contador_session.json'),
       },
       dependencies: ['setup-contador'],
-      testMatch: /18_rol_contador\.spec\.ts/,
+      testMatch: /18_rol_contador\.spec\.ts|127_comercial_acceso_directo_url\.spec\.ts/,
     }] : []),
 
     // ─── Tests del tenant SIN clave (Familia Otranto) — solo si hay credenciales

@@ -132,6 +132,24 @@ npm run test:unit:coverage # coverage report
 
 > **⚙️ Env de e2e:** `tests/e2e/.env.test.local` incluye `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (la anon key es **pública**, ya viaja en el bundle del frontend). Sin ellas, los specs de API (**42** auto-siembra, **56** guards fiscales, **63** multi-CUIT) se **SKIPEAN en silencio** en `npm run test:e2e` — pasó hasta el 2026-07-15. ⚠ **Un `#` en un password rompe el parseo del `.env`** (lo toma como comentario y trunca el valor) → passwords de test sin `#`.
 
+> **🕐 Deuda de `waitForTimeout` fijos — EN CURSO, no cerrada (2026-08-04).** La causa raíz documentada
+> arriba (nota del 2026-07-15, "el mismo test pasa o falla según cuán ocupada esté la máquina") sigue
+> presente en gran parte de la suite: sleeps fijos en vez de esperar el resultado real. Estado
+> medido el 2026-08-04: arrancó en **331 ocurrencias / 89 archivos**, bajó a **312 / 79** tras esta
+> sesión. Lo resuelto:
+> - **`tests/e2e/helpers/fixtures.ts`** (el de mayor apalancamiento — lo usan decenas de specs):
+>   `garantizarCajaAbierta` e `ingresoRealPorUI` quedaron sin sleeps fijos, usando el helper
+>   `visible(locator, timeout)` (top del archivo) para campos OPCIONALES o el `expect(...)
+>   .toBeVisible()` que ya auto-espera para los obligatorios.
+> - Los **14 specs 115-128** (backlog Comercial de Fede) quedaron en cero `waitForTimeout` propios.
+> **Patrón encontrado, útil para seguir el resto:** casi todos los sleeps eran REDUNDANTES —
+> seguidos de un `expect(...).toBeVisible()`/`.toBeEnabled()` que YA auto-espera, así que alcanzaba
+> con borrar la línea. El resto (buscador con debounce antes de un `.click()`) se resuelve con un
+> `expect(locator).toBeVisible({timeout})` explícito antes del click, mismo criterio que ya usa
+> `agregarPrimerProductoAlCarrito`. **Quedan 312 ocurrencias en 79 specs pre-existentes, sin tocar**
+> — alcance grande, mejor una sesión dedicada que un barrido a ciegas (cada archivo necesita
+> correrse real contra DEV para confirmar que el patrón de arriba aplica antes de borrar el sleep).
+
 ### Configuración Playwright
 
 ```typescript

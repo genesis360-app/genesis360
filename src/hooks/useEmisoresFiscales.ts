@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/authStore'
 export interface EmisorFiscalLite {
   id: string
   nombre: string
+  razon_social_fiscal: string | null
   cuit: string
   condicion_iva_emisor: string | null
   umbral_factura_b: number | string | null
@@ -23,7 +24,7 @@ export function useEmisoresFiscales() {
     queryFn: async () => {
       const [{ data: emisores }, { data: sucursales }] = await Promise.all([
         supabase.from('emisores_fiscales')
-          .select('id, nombre, cuit, condicion_iva_emisor, umbral_factura_b, es_default')
+          .select('id, nombre, razon_social_fiscal, cuit, condicion_iva_emisor, umbral_factura_b, es_default')
           .eq('tenant_id', tenant!.id).eq('activo', true)
           .order('es_default', { ascending: false }).order('nombre'),
         supabase.from('sucursales')

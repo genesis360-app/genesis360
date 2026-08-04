@@ -6,6 +6,60 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-04] update | 🧹 Backlog técnico post-deploy: facturasPDF.ts testeado, waitForTimeout saneado (fixtures.ts), F4 avanzado
+
+Con el deploy de v1.155.0 ya cerrado, GO pidió avanzar con la deuda técnica que no depende de
+respuestas de terceros (Fede/GO). Se recorrió, en orden, la lista completa que había quedado
+anotada al cierre de la sesión anterior:
+
+1. **`facturasPDF.ts` — cero tests → 31 tests nuevos.** El archivo es 90% dibujo con jsPDF (poco
+   valor testear pixel a pixel); se extrajeron a nivel de módulo y se exportaron las funciones
+   PURAS que deciden QUÉ texto termina impreso (`cantidadCelda`, `precioUnitarioCelda`,
+   `composicionUnitaria`, `formatCuit`, `formatFecha`, `fmtPesos`, `nombreFacturaPDF`,
+   `sanitizarNombreArchivo` — antes closures privadas dentro de `construirFacturaPDFDoc`), mismo
+   patrón que el resto del repo ("lógica pura a `src/lib` + vitest"). Cubre el campo del incidente
+   del CUIT vacío (`formatCuit`) y el caso real reportado por GO (`composicionUnitaria`, "la
+   factura dice 2700 y no sé por qué" → UAT §52-54).
+2. **`waitForTimeout` — 331/89 → 312/79.** Arreglado el archivo de mayor apalancamiento
+   (`tests/e2e/helpers/fixtures.ts`, lo usan decenas de specs): `garantizarCajaAbierta` e
+   `ingresoRealPorUI` quedaron sin sleeps fijos (helper `visible()` nuevo para campos opcionales).
+   Los 14 specs 115-128 del backlog Comercial de Fede quedaron en cero `waitForTimeout` propios —
+   la mayoría eran REDUNDANTES (seguidos de un `expect().toBeVisible()`/`.toBeEnabled()` que ya
+   auto-espera). Verificado con corridas reales contra DEV (individual + conjunta). Quedan 312
+   ocurrencias en 79 specs pre-existentes sin tocar — alcance grande, documentado en
+   `wiki/development/testing.md` para una sesión dedicada.
+3. **Bug `/ventas` → Dashboard en corridas masivas — investigado, sin repro en vivo.** Descartada
+   con evidencia real de DB la hipótesis de un `rol_custom_id` colgado en el usuario e2e
+   compartido (los 3 usuarios e2e de DEV dan `null` ahora mismo). Documentado en
+   `tests/e2e/helpers/fixtures.ts` un hallazgo de código sin confirmar (el `useEffect` de
+   restricciones por rol en `AppLayout.tsx` no espera a que `tenant` cargue, a diferencia de su
+   hermano de arriba) para la próxima vez que se reproduzca.
+4. **Hard delete de tenant + gracia — auditoría de FKs hecha, NO se construyó el flujo.** De ~130
+   tablas con FK a `tenants.id`, **solo `autorizaciones_inventario.tenant_id` no tiene
+   `ON DELETE CASCADE`** (tiene `NO ACTION`, bloquearía el borrado). Es una acción destructiva real
+   sobre datos de negocio — se frenó antes de escribir la migración/flujo, consistente con la nota
+   de memoria ("diseñar el flujo cuando el usuario lo pida").
+5. **~20 toggles a mano — ya estaba resuelto.** Verificado (`grep translate-x` fuera de
+   `Toggle.tsx` = 0, `role="switch"` fuera de `Toggle.tsx` = 0): la migración se cerró en v1.132.0
+   (2026-07-16). El ítem estaba en la lista por una nota vieja, no por un problema real.
+6. **F4 (DROP columnas fiscales de `tenants`) — avanzado, sigue sin poder ejecutarse.** Auditoría
+   de drift (`tenants.*` vs `emisores_fiscales.es_default`) da **0 filas en DEV y PROD** — ese
+   criterio está cumplido. El grep de lectores legacy **no da 0**: se encontraron usos reales en
+   `ConfigPage.tsx` (el editor en sí — es literalmente el pendiente ya conocido **F3b**, gateado a
+   que GO revise la UX antes de tocarlo), `GastosPage.tsx`, `DashFacturacionArea.tsx`,
+   `MiPortalPage.tsx`, `RrhhPage.tsx` (estos últimos con el patrón correcto `emisor?.X ?? tenant.X`,
+   no lectura primaria). Migrado el único lector aislado y de solo-lectura que no dependía de F3b:
+   `FacturacionPage.tsx` ahora lee `emisorPrincipal` (`useEmisoresFiscales`, ya lo importaba) en
+   vez del espejo — se extendió `EmisorFiscalLite`/`useEmisoresFiscales.ts` con
+   `razon_social_fiscal` (faltaba en el hook). **No se dropeó ninguna columna** — sigue bloqueado
+   por F3b.
+
+**Verde:** tsc · build · **unit 1480** · e2e (117/118/123/126, 21/86 Facturación, todos re-verificados
+contra DEV real tras cada cambio).
+
+**Estado git:** commit pendiente al cierre de esta entrada (ver bump de versión abajo). Sin cambios
+de DB esta ronda (ninguna migración nueva) — todo lo hecho es código de app + tests.
+
 ## [2026-08-04] deploy | 🚀 v1.155.0 a PROD — backlog Comercial de Fede completo (Fases F/A/B/C/D) + guard server-side
 
 GO autorizó explícitamente ("pasa todo a dev y prod, que no quede nada pendiente") destrabar el

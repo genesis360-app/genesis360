@@ -49,7 +49,6 @@ async function venderConCupon(page: any, opts: { codigo: string; montoAPagar: nu
   const montoInput = page.getByPlaceholder(/^Monto$/i).first()
   await montoInput.fill(String(Math.ceil(opts.montoAPagar) + 1000))
   await montoInput.blur()
-  await page.waitForTimeout(300)
 
   const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
   await expect(finalizar).toBeEnabled({ timeout: 5000 })

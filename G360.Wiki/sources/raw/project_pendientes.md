@@ -6,7 +6,42 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-04) — backlog Fede 25/7 DEPLOYADO A PROD (v1.155.0). Solo E pendiente (relevamiento con Fede).
+> ### ✅ ARRANCÁ ACÁ (2026-08-04, cierre v1.156.0) — deuda técnica post-deploy recorrida, PROD sigue en v1.155.0
+>
+> Tras deployar v1.155.0 (backlog Comercial de Fede, bloque de abajo), GO pidió avanzar con la
+> deuda técnica que no depende de respuestas de terceros. Se recorrió la lista completa en orden:
+>
+> 1. **`facturasPDF.ts`** — 31 tests unitarios nuevos (extraídas a funciones puras exportadas).
+> 2. **`waitForTimeout`** — 331/89 → **312/79** (arreglado `fixtures.ts` + los 14 specs 115-128).
+>    Detalle y patrón para seguir en `wiki/development/testing.md`.
+> 3. **Bug `/ventas`→Dashboard** — investigado, SIN repro en vivo. Hipótesis descartada con
+>    evidencia real (rol_custom_id null en los 3 usuarios e2e). Hallazgo de código sin confirmar
+>    documentado en `tests/e2e/helpers/fixtures.ts` (comentario de `irAlPOS`).
+> 4. **Hard delete de tenant + gracia** — auditoría de FKs hecha (1 gap real:
+>    `autorizaciones_inventario` sin `CASCADE`, tiene `NO ACTION`). **NO se construyó el flujo** —
+>    es destructivo sobre datos de negocio, queda pendiente de que el usuario lo pida explícito.
+> 5. **~20 toggles a mano** — ya estaba resuelto desde v1.132.0 (nota vieja, no había nada real).
+> 6. **F4 (DROP columnas fiscales de `tenants`)** — drift = 0 en DEV y PROD (criterio cumplido).
+>    Grep de lectores **NO da 0 todavía**: quedan `ConfigPage.tsx` (= **F3b**, gateado a que GO vea
+>    la UX), `GastosPage.tsx`, `DashFacturacionArea.tsx`, `MiPortalPage.tsx`, `RrhhPage.tsx`.
+>    Migrado el único lector aislado que no dependía de F3b: `FacturacionPage.tsx` ahora lee
+>    `emisorPrincipal` (extendido `useEmisoresFiscales.ts` con `razon_social_fiscal`). **El DROP
+>    sigue sin poder ejecutarse** — F3b es el bloqueante real y necesita revisión de UX de GO.
+>
+> **Verde:** tsc · build · unit 1480 · e2e re-verificados (117/118/123/126, 21/86 Facturación).
+> Sin migraciones nuevas esta ronda — todo código de app + tests.
+>
+> **▶ Próxima sesión, si no hay nada más urgente**: seguir bajando `waitForTimeout` (quedan 312/79,
+> ver plan en `wiki/development/testing.md`) es lo más grande y de mayor valor que sigue abierto.
+> F3b (ARCA readonly + panel de Emisores) es el bloqueante real de F4 — necesita que GO vea la UX
+> propuesta antes de codear.
+>
+> **Estado git:** ver commit al pie de esta sesión (`git log` en `dev`) — `main`/PROD siguen en
+> v1.155.0, esta ronda fue 100% técnica sin cambios de comportamiento visible.
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-04) — backlog Fede 25/7 DEPLOYADO A PROD (v1.155.0). Solo E pendiente (relevamiento con Fede).
 >
 > **Deployado.** GO había pausado A/B/C explícitamente porque tocaban plata/stock reales sin e2e,
 > sin prueba manual y sin registro en el UAT (Regla de Oro #0) — ver entrada de abajo (2026-07-30).
@@ -2152,6 +2187,17 @@ type: project
 >    migrar los lectores no-PDF que hoy van vía espejo (GastosPage, DashFacturacionArea,
 >    CierresContablesPanel, `useAuthStore.tenant.*` fiscal) → grep lectores = 0 → drift 0 sostenido
 >    (correr la auditoría del final de mig 271 periódicamente) → soak → mig de DROP.
+>    **Verificado 2026-08-04**: drift = 0 filas en DEV y PROD (auditoría corrida real). El grep de
+>    lectores **NO da 0 todavía** — quedan usos reales en `ConfigPage.tsx` (el editor en sí, es
+>    literalmente el pendiente **F3b** de este mismo bloque, gateado a que GO vea la UX antes de
+>    tocarlo), `GastosPage.tsx`, `DashFacturacionArea.tsx`, `MiPortalPage.tsx`, `RrhhPage.tsx` y
+>    `VentasPage.tsx` (estos últimos ya con el patrón correcto `emisor?.X ?? tenant.X`, fallback no
+>    lectura primaria). **Cerrado en esta sesión**: `FacturacionPage.tsx` migrado a leer
+>    `emisorPrincipal` (`useEmisoresFiscales`, ya lo importaba) en vez del espejo — extendido
+>    `EmisorFiscalLite`/`useEmisoresFiscales.ts` con `razon_social_fiscal` (faltaba en el hook).
+>    tsc/build verdes + e2e 21/86 (Facturación). **F4 sigue SIN poder ejecutarse** — no dropear
+>    columnas hasta migrar el resto de los lectores (F3b primero, es el más grande y necesita el OK
+>    de UX de GO).
 > 3. **Mejora EF `emitir-factura`**: auto-invalidar el **cache de TA WSAA (mig 264)** cuando WSFE
 >    devuelve fault/basura — un TA obtenido durante la caída de AFIP quedó envenenado y hubo que
 >    borrarlo A MANO (`delete from afip_wsaa_ta where cuit=...`). Hoy no se auto-cura.

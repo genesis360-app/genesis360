@@ -83,8 +83,9 @@ async function buscarYExpandir(page: any, nombreProducto: string) {
   const buscador = page.getByPlaceholder(/Buscar por nombre, SKU, código, ubicación o LPN/i)
   await expect(buscador).toBeVisible({ timeout: 8000 })
   await buscador.fill(nombreProducto)
-  await page.waitForTimeout(700)
-  await page.getByText(nombreProducto, { exact: true }).first().click()
+  const fila = page.getByText(nombreProducto, { exact: true }).first()
+  await expect(fila, `[117] "${nombreProducto}" no apareció en el buscador de Inventario`).toBeVisible({ timeout: 8000 })
+  await fila.click()
 }
 
 test.describe('Aprobación de cambio de estado — bypass masivo cerrado (mutante, rol DEPOSITO)', () => {

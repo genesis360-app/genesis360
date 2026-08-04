@@ -9,8 +9,24 @@ updated: 2026-07-28
 # Roadmap y Versiones
 
 **Versión en PROD:** v1.155.0 (2026-08-04) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.155.0 (igual a PROD)  
+**Versión en DEV:** v1.156.0 (2026-08-04, sin deploy a PROD — ronda 100% técnica, sin cambios de comportamiento)  
 **Última actualización:** 4 de Agosto, 2026
+
+---
+
+## v1.156.0 — 🧹 Deuda técnica post-deploy: tests de facturasPDF.ts, waitForTimeout saneado, F4 avanzado — 🟡 **EN DEV** (2026-08-04)
+
+**Sin cambios a PROD** (sigue v1.155.0) — ronda 100% técnica sin comportamiento nuevo. Recorrida la
+lista de deuda técnica no bloqueada por terceros que había quedado anotada al cierre de v1.155.0:
+31 tests nuevos de `facturasPDF.ts` (lógica pura extraída y exportada); `waitForTimeout` bajado de
+331/89 a 312/79 (`tests/e2e/helpers/fixtures.ts` + los 14 specs 115-128); investigado sin repro en
+vivo el bug de `/ventas`→Dashboard; auditoría de FKs de hard-delete de tenant (1 gap real,
+`autorizaciones_inventario` sin CASCADE — flujo NO construido, es destructivo); confirmado que los
+toggles ya estaban 100% migrados desde v1.132.0; avanzado F4 (drift=0 en DEV/PROD, migrado
+`FacturacionPage.tsx` al lector correcto) — el DROP de columnas sigue bloqueado por F3b (necesita
+que GO revise la UX). Detalle completo en `log.md`.
+
+**Verde:** tsc · build · unit 1480 · e2e re-verificados contra DEV real.
 
 ---
 

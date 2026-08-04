@@ -89,6 +89,55 @@ export function normalizarCondIVA(v?: string | null): string {
 // El QR fiscal (RG 4291) se construye con buildQrAfipUrl de '@/lib/facturacionLogic'
 // (lógica pura testeable).
 
+// ─── Contenido de la tabla de ítems (lógica pura, testeable) ────────────────────
+// Extraído de construirFacturaPDFDoc — son las funciones que deciden QUÉ texto termina
+// impreso en el papel (incidente 2026-07: "nadie mira el papel", CUIT vacío sin test que lo
+// detectara). No dependen de `doc`/jsPDF, solo del item.
+
+/**
+ * Cantidad a mostrar en la fila. Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — si la
+ * línea se vendió en una UoM distinta a la base (ej. "3 Cajas"), se muestra esa cantidad, no las
+ * unidades base internas (36 u.) que confundirían al cliente que pidió "3 cajas".
+ */
+export function cantidadCelda(item: FacturaPDFData['items'][number]): string {
+  const n = item.cantidad_uom && item.unidad_medida ? item.cantidad_uom : item.cantidad
+  const nTxt = n % 1 === 0 ? String(n) : n.toFixed(3)
+  return item.cantidad_uom && item.unidad_medida ? `${nTxt} ${item.unidad_medida}` : nTxt
+}
+
+/**
+ * P. Unitario de la línea, ya FORMATEADO.
+ *
+ * 🛑 No se formatea con `fmtPesos` (2 decimales fijos) porque el unitario es una DIVISIÓN
+ * (`subtotal / cantidad`) y a 2 decimales el papel deja de multiplicar: $1.000 en 3 bultos
+ * imprimiría "$333,33 × 3 = $999,99". `precioUnitarioExhibible` sube la precisión lo justo hasta
+ * que el producto reproduce el importe impreso. No toca ningún importe: manda `subtotal`.
+ *
+ * `divisor` permite pasar el neto (Factura A muestra "P. Unit. Neto" contra "Subtotal Neto", así
+ * que la cuenta que el cliente verifica es sobre los netos, no sobre el total con IVA).
+ */
+export function precioUnitarioCelda(item: FacturaPDFData['items'][number], divisor = 1): string {
+  const enUom = !!(item.cantidad_uom && item.unidad_medida)
+  const cant = enUom ? item.cantidad_uom! : item.cantidad
+  const { valor, decimales } = precioUnitarioExhibible(item.subtotal / divisor, cant)
+  return fmtPesos(valor, decimales)
+}
+
+/**
+ * Cuando la línea se vendió en una UoM (ej. "2 Caja"), el P. Unitario que se muestra es el de la
+ * CAJA — un número que no está en ninguna tabla y que el cliente no puede reconciliar contra la
+ * lista de precios. GO: *"la factura dice que el precio unitario es 2700"* cuando el producto
+ * sale $600 y con mayorista $500. Se agrega debajo su composición ("6 u × $450") para que el
+ * número sea verificable de un vistazo.
+ */
+export function composicionUnitaria(item: FacturaPDFData['items'][number]): string | null {
+  if (!item.cantidad_uom || !item.unidad_medida || !(item.cantidad_uom > 0)) return null
+  const uPorBulto = item.cantidad / item.cantidad_uom
+  if (!Number.isFinite(uPorBulto) || uPorBulto <= 1) return null
+  const uTxt = uPorBulto % 1 === 0 ? String(uPorBulto) : uPorBulto.toFixed(2)
+  return `${uTxt} u × ${fmtPesos(item.precio_unitario)}`
+}
+
 // ─── Generador principal ──────────────────────────────────────────────────────
 
 async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
@@ -216,47 +265,6 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   // suprimen el texto default de esa celda y lo redibujan a mano con 2 estilos.
   const descripcionCelda = (item: FacturaPDFData['items'][number]) =>
     item.descripcion_extra ? `${item.descripcion}\n${item.descripcion_extra}` : item.descripcion
-
-  // Venta por Unidad de Medida (backlog Fede 4/6/7, Fase 2) — si la línea se vendió en una UoM
-  // distinta a la base (ej. "3 Cajas"), se muestra esa cantidad/precio, no las unidades base
-  // internas (36 u. a $90) que confundirían al cliente que pidió "3 cajas a $1.080".
-  const cantidadCelda = (item: FacturaPDFData['items'][number]) => {
-    const n = item.cantidad_uom && item.unidad_medida ? item.cantidad_uom : item.cantidad
-    const nTxt = n % 1 === 0 ? String(n) : n.toFixed(3)
-    return item.cantidad_uom && item.unidad_medida ? `${nTxt} ${item.unidad_medida}` : nTxt
-  }
-  /**
-   * P. Unitario de la línea, ya FORMATEADO.
-   *
-   * 🛑 No se formatea con `fmtPesos` (2 decimales fijos) porque el unitario es una DIVISIÓN
-   * (`subtotal / cantidad`) y a 2 decimales el papel deja de multiplicar: $1.000 en 3 bultos
-   * imprimiría "$333,33 × 3 = $999,99". `precioUnitarioExhibible` sube la precisión lo justo hasta
-   * que el producto reproduce el importe impreso. No toca ningún importe: manda `subtotal`.
-   *
-   * `divisor` permite pasar el neto (Factura A muestra "P. Unit. Neto" contra "Subtotal Neto", así
-   * que la cuenta que el cliente verifica es sobre los netos, no sobre el total con IVA).
-   */
-  const precioUnitarioCelda = (item: FacturaPDFData['items'][number], divisor = 1) => {
-    const enUom = !!(item.cantidad_uom && item.unidad_medida)
-    const cant = enUom ? item.cantidad_uom! : item.cantidad
-    const { valor, decimales } = precioUnitarioExhibible(item.subtotal / divisor, cant)
-    return fmtPesos(valor, decimales)
-  }
-
-  /**
-   * Cuando la línea se vendió en una UoM (ej. "2 Caja"), el P. Unitario que se muestra es el de la
-   * CAJA — un número que no está en ninguna tabla y que el cliente no puede reconciliar contra la
-   * lista de precios. GO: *"la factura dice que el precio unitario es 2700"* cuando el producto
-   * sale $600 y con mayorista $500. Se agrega debajo su composición ("6 u × $450") para que el
-   * número sea verificable de un vistazo.
-   */
-  const composicionUnitaria = (item: FacturaPDFData['items'][number]): string | null => {
-    if (!item.cantidad_uom || !item.unidad_medida || !(item.cantidad_uom > 0)) return null
-    const uPorBulto = item.cantidad / item.cantidad_uom
-    if (!Number.isFinite(uPorBulto) || uPorBulto <= 1) return null
-    const uTxt = uPorBulto % 1 === 0 ? String(uPorBulto) : uPorBulto.toFixed(2)
-    return `${uTxt} u × ${fmtPesos(item.precio_unitario)}`
-  }
 
   // Dibuja "nombre" en negrita y, si hay, "descripcion_extra" debajo en gris chico —
   // jspdf-autotable no soporta 2 estilos en una misma celda de forma nativa, así que se
@@ -460,7 +468,7 @@ async function construirFacturaPDFDoc(data: FacturaPDFData): Promise<jsPDF> {
   return doc
 }
 
-function nombreFacturaPDF(data: FacturaPDFData): string {
+export function nombreFacturaPDF(data: FacturaPDFData): string {
   const pvPad = String(data.punto_venta).padStart(4, '0')
   const ncPad = String(data.numero_comprobante).padStart(8, '0')
   const cli = sanitizarNombreArchivo(data.receptor_nombre)
@@ -470,7 +478,7 @@ function nombreFacturaPDF(data: FacturaPDFData): string {
 }
 
 /** Saca tildes/símbolos y limita el largo para usar el nombre del cliente en el filename. */
-function sanitizarNombreArchivo(s?: string): string {
+export function sanitizarNombreArchivo(s?: string): string {
   if (!s) return ''
   return s.normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/[^a-zA-Z0-9 ]/g, '').trim().replace(/\s+/g, '_').slice(0, 40)
@@ -546,17 +554,17 @@ export async function cargarLogo(url: string): Promise<{ dataUrl: string; w: num
 }
 
 /** `decimales` > 2 solo para el P. Unitario, que es una división y necesita cerrar (ver mig/UAT §48). */
-function fmtPesos(v: number, decimales = 2): string {
+export function fmtPesos(v: number, decimales = 2): string {
   return `$${v.toLocaleString('es-AR', { minimumFractionDigits: decimales, maximumFractionDigits: decimales })}`
 }
 
-function formatCuit(cuit: string): string {
+export function formatCuit(cuit: string): string {
   const d = cuit.replace(/\D/g, '')
   if (d.length === 11) return `${d.slice(0, 2)}-${d.slice(2, 10)}-${d.slice(10)}`
   return cuit
 }
 
-function formatFecha(iso: string): string {
+export function formatFecha(iso: string): string {
   if (!iso) return ''
   const d = new Date(iso + (iso.length === 10 ? 'T00:00:00' : ''))
   return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })

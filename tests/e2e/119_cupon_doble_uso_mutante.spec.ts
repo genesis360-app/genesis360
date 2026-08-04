@@ -111,7 +111,6 @@ test.describe('Cupón — doble uso / condición de carrera (mutante)', () => {
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill('2000')
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
     await expect(finalizar).toBeEnabled({ timeout: 5000 })

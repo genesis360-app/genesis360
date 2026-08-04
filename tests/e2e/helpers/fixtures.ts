@@ -21,11 +21,22 @@
  * opcional del ENTORNO (flags `E2E_KIT_DESARMAR`/`E2E_CAJA_AJENA`/`E2E_CAJA_CIERRE_DIF`,
  * credenciales de rol ausentes), nunca para "el estado de DEV no es el que yo esperaba".
  */
-import { Page, APIRequestContext, expect } from '@playwright/test'
+import { Page, APIRequestContext, Locator, expect } from '@playwright/test'
 import { goto, waitForApp } from './navigation'
 
 export const SUPABASE_URL = process.env.VITE_SUPABASE_URL
 export const ANON = process.env.VITE_SUPABASE_ANON_KEY
+
+/**
+ * ¿Aparece `locator` dentro de `timeout`? A diferencia de `locator.isVisible()` (NO
+ * auto-espera: lee el estado INMEDIATO e ignora el timeout — la trampa documentada en
+ * `garantizarCajaAbierta`), esto SÍ espera el resultado real. Usar para campos OPCIONALES
+ * donde "no está" es un resultado legítimo (no un error) — para campos obligatorios, usar
+ * `expect(locator).toBeVisible()` directo, que además falla con un mensaje claro si no aparece.
+ */
+async function visible(l: Locator, timeout: number): Promise<boolean> {
+  return l.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false)
+}
 
 // ─── Auth / REST ────────────────────────────────────────────────────────────────────────
 
@@ -127,10 +138,7 @@ export async function garantizarCajaAbierta(
 
   // ⚠ `locator.isVisible()` NO auto-espera: devuelve el estado INMEDIATO e ignora `timeout`.
   // Usarlo acá preguntaba por el modal a los ~0ms del click (todavía sin renderizar) y contestaba
-  // `false` siempre. Hay que usar `waitFor`, que sí espera.
-  const visible = (l: ReturnType<Page['locator']>, timeout: number) =>
-    l.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false)
-
+  // `false` siempre. Hay que usar `waitFor` (helper `visible()` del tope del archivo), que sí espera.
   const montoInput = page.locator('xpath=//label[contains(.,"Monto inicial")]/following::input[1]')
   if (!(await visible(montoInput, 5000))) {
     // El botón era STALE (caché viejo de React Query): la caja ya estaba abierta de verdad.
@@ -143,9 +151,10 @@ export async function garantizarCajaAbierta(
 
   await montoInput.fill(String(montoInicial))
   await page.getByRole('button', { name: /Confirmar apertura|Sí, abrir con diferencia/ }).first().click()
-  await page.waitForTimeout(500)
+  // El diálogo de "abrir con diferencia" es OPCIONAL (solo aparece si el monto no matchea el
+  // arqueo anterior) — esperar su resultado real en vez de una apuesta de tiempo fijo.
   const dif = page.getByRole('button', { name: /Sí, abrir con diferencia/ })
-  if (await dif.isVisible().catch(() => false)) await dif.click()
+  if (await visible(dif, 2000)) await dif.click()
 
   // POSITIVO: la caja quedó realmente abierta (no asumir que el click alcanzó)
   await expect(sesionAbierta).toBeVisible({ timeout: 10000 })
@@ -174,7 +183,8 @@ export async function ingresoRealPorUI(
   await goto(page, '/inventario')
   await waitForApp(page)
   await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-  await page.waitForTimeout(400)
+  // Los `expect(...).toBeVisible()` de abajo YA auto-esperan al resultado real — no hace falta
+  // un sleep fijo antes (quedaba un `waitForTimeout` colgado sin ningún efecto real).
   const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
   await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
   expect(
@@ -182,24 +192,28 @@ export async function ingresoRealPorUI(
     '[fixtures] "Ingreso" deshabilitado (límite de plan alcanzado) — no se puede sembrar stock para este spec',
   ).toBe(true)
   await ingresoBtn.click()
-  await page.waitForTimeout(400)
 
   const buscadorIngreso = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
   await expect(buscadorIngreso).toBeVisible({ timeout: 6000 })
   await buscadorIngreso.fill(nombreProducto)
-  await page.waitForTimeout(900)
   const modalIngreso = page.locator('div.fixed.inset-0').filter({ has: buscadorIngreso }).first()
-  await modalIngreso.getByText(nombreProducto).first().click()
-  await page.waitForTimeout(500)
+  const filaProducto = modalIngreso.getByText(nombreProducto).first()
+  // El buscador debouncea antes de refetchear — esperar la fila real (nombre único con
+  // timestamp, no puede matchear una fila vieja) en vez de una apuesta de tiempo fijo.
+  await expect(
+    filaProducto,
+    `[fixtures] "${nombreProducto}" no apareció en el buscador de Ingreso tras escribirlo`,
+  ).toBeVisible({ timeout: 8000 })
+  await filaProducto.click()
 
   const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-  if (await sucSelect.isVisible().catch(() => false)) {
+  if (await visible(sucSelect, 3000)) {
     const vals = await sucSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
     if (vals.length > 0) await sucSelect.selectOption(vals[0])
   }
 
   const estadoSelect = page.locator('xpath=//label[contains(.,"Estado")]/following::select[1]')
-  if (await estadoSelect.isVisible().catch(() => false)) {
+  if (await visible(estadoSelect, 3000)) {
     if (estadoNombre) {
       await estadoSelect.selectOption({ label: estadoNombre })
     } else {
@@ -209,7 +223,7 @@ export async function ingresoRealPorUI(
   }
 
   const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
-  if (await ubicSelect.isVisible().catch(() => false)) {
+  if (await visible(ubicSelect, 3000)) {
     const vals = await ubicSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
     if (vals.length > 0) await ubicSelect.selectOption(vals[0])
   }
@@ -232,6 +246,21 @@ export async function ingresoRealPorUI(
  * a `/ventas` renderizar el DASHBOARD (spec 55), y el síntoma era un críptico "element not
  * found" del buscador. Un mensaje que dice qué se esperaba y qué se renderizó ahorra la hora
  * de diagnóstico que costó encontrarlo.
+ *
+ * 🔎 Investigado 2026-08-04, sin repro en vivo (no se forzó otra corrida masiva completa —
+ * ya le exigió bastante carga a DEV esta sesión). El redirect a Dashboard más plausible del
+ * código (`AppLayout.tsx`, useEffect "Restricciones de rutas por rol") es el branch
+ * `user.permisos_custom['ventas'] === 'no_ver'` → navega a `firstAllowed?.to ?? '/dashboard'`.
+ * **Descartado**: los 3 usuarios e2e de DEV (`e2e@genesis360.test`, `.sup@`, `-multicuit@`)
+ * tienen `rol_custom_id = null` ahora mismo — no hay un rol custom restrictivo colgado de una
+ * corrida anterior. Dato real, no descartado por sospecha: consultado contra la DB.
+ * Hallazgo de código sin confirmar como causa (candidato para la próxima vez que se reproduzca):
+ * ese mismo useEffect depende de `[pathname, user?.rol, user?.permisos_custom]` y solo hace
+ * `if (!user) return` — a diferencia del useEffect hermano de arriba (rutas de modo avanzado),
+ * que además espera `tenant` (`if (!tenant || modoAvanzado) return`). Si `user` queda seteado
+ * antes de que `tenant`/`permisos_custom` terminen de resolverse, es la única ventana del código
+ * donde el efecto podría evaluar con datos a medio cargar. Sin reproducción real no se puede
+ * confirmar ni arreglar a ciegas.
  */
 export async function irAlPOS(page: Page): Promise<void> {
   await goto(page, '/ventas')

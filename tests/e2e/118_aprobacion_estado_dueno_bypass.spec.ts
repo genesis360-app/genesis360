@@ -69,8 +69,9 @@ test.describe('Aprobación de cambio de estado — bypass del DUEÑO (H2, compor
     const buscador = page.getByPlaceholder(/Buscar por nombre, SKU, código, ubicación o LPN/i)
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill(nombreProducto)
-    await page.waitForTimeout(700)
-    await page.getByText(nombreProducto, { exact: true }).first().click()
+    const filaProducto = page.getByText(nombreProducto, { exact: true }).first()
+    await expect(filaProducto, `[118] "${nombreProducto}" no apareció en el buscador de Inventario`).toBeVisible({ timeout: 8000 })
+    await filaProducto.click()
 
     const lpnSpan = page.getByText(lpn, { exact: true })
     await expect(lpnSpan).toBeVisible({ timeout: 8000 })

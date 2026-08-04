@@ -8,7 +8,7 @@ updated: 2026-08-04
 
 # Módulo Comercial
 
-> **🟢 Fase D del backlog de Fede (25/7/2026) — ✅ construida, EN DEV, SIN deploy a PROD.**
+> **✅ Fase D del backlog de Fede (25/7/2026) — EN PROD desde v1.155.0 (2026-08-04).**
 > Consolida Combos y Cupones (que vivían en Config → Ventas → Descuentos y combos) en un módulo
 > propio, **delegable** a un rol que no sea el DUEÑO — a diferencia de Configuración, que sigue
 > siendo exclusiva del dueño por diseño (datos sensibles/reglas estructurales del negocio). Ver

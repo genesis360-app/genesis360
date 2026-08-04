@@ -125,9 +125,9 @@ DEPOSITO no puede ejecutar cambios directamente — quedan pendientes de aprobac
 
 ## Aprobación de cambio de estado con foto — control anti-fraude (🟡 EN DEV, mig 331 — Fase B backlog Fede 25/7)
 
-> 🟢 **Fase B** de la iniciativa de Fede del 25/7/2026 (punto 2 de su pedido) — panorama completo de
-> las 6 fases en [[wiki/features/precios-tiers-empaque]]. **Solo Inventario** — no toca Ventas/POS
-> ni Pedidos. Sin deploy a PROD, sin bump de `APP_VERSION`.
+> ✅ **Fase B** de la iniciativa de Fede del 25/7/2026 (punto 2 de su pedido) — **EN PROD desde
+> v1.155.0 (2026-08-04)**. Panorama completo de las 6 fases en
+> [[wiki/features/precios-tiers-empaque]]. **Solo Inventario** — no toca Ventas/POS ni Pedidos.
 > **🔒 Guard server-side agregado (mig 333, 2026-08-04)** — ver bloque debajo "🛑 Hallazgo H1".
 
 Cuando un empleado cambia un producto/lote a un **estado con impacto económico** (ej. Dañado,

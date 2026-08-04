@@ -10,11 +10,11 @@ updated: 2026-08-04
 
 **Total al 2026-08-04:** 333 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-327 en DEV y PROD** (v1.152.0, deploy 2026-07-29). **328-333 SOLO EN DEV** (backlog Fede 25/7,
-Fases F+A+B+C+D de [[wiki/features/precios-tiers-empaque]], sin bump de `APP_VERSION`, sin deploy a PROD).
-`schema_full.sql` sigue regenerado solo hasta la mig 327.
+**001-333 en DEV y PROD** (v1.155.0, deploy 2026-08-04 — backlog Fede 25/7, Fases F+A+B+C+D de
+[[wiki/features/precios-tiers-empaque]]). ⚠ `schema_full.sql` sigue regenerado solo hasta la mig 327
+— faltó `SUPABASE_ACCESS_TOKEN` en el entorno de la sesión del deploy, pendiente de regenerar.
 
-**333 (🔒 guard server-side de la aprobación de cambio de estado, EN DEV, cierra hallazgo H1)** —
+**333 (🔒 guard server-side de la aprobación de cambio de estado, EN DEV y PROD, cierra hallazgo H1)** —
 Sesión 2026-08-04, al escribir el e2e de la mig 331: el gate de "cambio de estado con foto" vivía
 100% en el cliente — un `PATCH` directo por REST a `inventario_lineas.estado_id` se saltaba
 foto+autorización+notificación. Trigger `fn_inventario_estado_aprobacion_guard` (BEFORE UPDATE,
@@ -31,7 +31,7 @@ H2, ver [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado 
 (`InventarioPage.tsx`) rewireado para llamar al RPC. Cubierto por e2e 117/118/120/121/126
 (`tests/specs/uat-modo-basico.md` §49).
 
-**332 (🎟️ cupones — descuento FIJO en $ sobre el TOTAL de la venta, EN DEV)** —
+**332 (🎟️ cupones — descuento FIJO en $ sobre el TOTAL de la venta, EN DEV y PROD)** —
 Fede 25/7, punto 2 (dentro del módulo Comercial). Tablas nuevas: `cupones` (campaña — nombre, motivo,
 `monto` fijo en $, CHECK > 0 — **nunca %** —, `vigencia_desde`/`vigencia_hasta` NOT NULL, `activo`,
 `created_by`) y `cupones_codigos` (código alfanumérico único **por tenant** —
@@ -73,7 +73,7 @@ Alcance: solo el POS — no se tocó Pedidos (su config ya aclara que no aplica 
 precios por canal; cupones tampoco se extendió ahí, coherente con esa limitación ya documentada). Ver
 [[wiki/features/precios-tiers-empaque]] → Fase C.
 
-**331 (🛑 aprobación de cambio de estado con foto — control anti-fraude, EN DEV)** —
+**331 (🛑 aprobación de cambio de estado con foto — control anti-fraude, EN DEV y PROD)** —
 Fede 25/7, punto 2. `estados_inventario.requiere_aprobacion` (boolean, default false), **independiente**
 de `descuento_pct` (mig 284) — un estado puede requerir aprobación sin tener descuento asociado (ej.
 "Eliminado" da de baja stock pero no rebaja precio), y viceversa. Se agrega `'cambio_estado'` al CHECK
@@ -87,7 +87,7 @@ paso un bypass real: el cambio masivo escribía `estado_id` directo sin pasar po
 ni el de cantidad, mig 228). Detalle completo:
 [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto".
 
-**330 (💵 `fn_precio_venta_efectivo` replica el motor de tiers % + enlace a empaque, EN DEV, 🛑 PLATA)** —
+**330 (💵 `fn_precio_venta_efectivo` replica el motor de tiers % + enlace a empaque, EN DEV y PROD, 🛑 PLATA)** —
 Fede 25/7, punto 1. La función que usa Pedidos (`fn_pedido_generar_venta`, migs 317/319) para facturar
 por fuera del POS reescribe con el MISMO algoritmo que `src/lib/tiers.ts`
 (`resolverBloquesTier`/`precioBlendedTier`): los tiers ENLAZADOS a una presentación
@@ -100,7 +100,7 @@ para todos los tiers hoy cargados** (ninguno tiene `presentacion_id`). Sin este 
 armado a mano facturaría distinto que la misma venta cargada por el POS (Regla #0, fuente única de
 precio).
 
-**329 (💵 tiers mayoristas: % de descuento + enlace opcional a empaque, EN DEV, 🛑 PLATA)** —
+**329 (💵 tiers mayoristas: % de descuento + enlace opcional a empaque, EN DEV y PROD, 🛑 PLATA)** —
 Fede 25/7, punto 1 ("el caso del pallet"): un tier mayorista puede enlazarse a una línea puntual del
 árbol de empaque y el descuento se multiplica automático para cualquier múltiplo exacto (1, 2, 3
 pallets...) sin cargar un tier por cada uno. `producto_precios_mayorista` gana **`tipo_valor`**
@@ -117,7 +117,7 @@ Sigue alineado con la mig 307 (el empaque no tiene precio propio): esto no le ag
 `producto_presentaciones`, solo la referencia desde el tier — la línea de empaque sigue siendo 100%
 logística. Ver [[wiki/features/precios-tiers-empaque]].
 
-**328 (🏷️ tipo de empaque — categoría informativa, EN DEV, sin Regla #0)** —
+**328 (🏷️ tipo de empaque — categoría informativa, EN DEV y PROD, sin Regla #0)** —
 Fede 25/7, punto 6. `unidades_medida.tipo_empaque` (texto libre, **sin CHECK a propósito** — mismo
 criterio que `combos.descuento_tipo`: lista abierta que puede crecer sin migración, la UI valida
 contra una constante fija) + backfill de las predefinidas que sobrevivieron a la limpieza de la mig

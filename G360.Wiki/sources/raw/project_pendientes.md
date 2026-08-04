@@ -6,14 +6,25 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🟢 ARRANCÁ ACÁ (2026-08-04) — backlog Fede 25/7: Fases F+A+B+C+D completas CON e2e/UAT, listo para que GO decida el deploy. Solo E pendiente (relevamiento con Fede).
+> ### ✅ ARRANCÁ ACÁ (2026-08-04) — backlog Fede 25/7 DEPLOYADO A PROD (v1.155.0). Solo E pendiente (relevamiento con Fede).
 >
-> **El gap que pausaba el deploy ya se cerró.** GO había pausado A/B/C explícitamente porque tocaban
-> plata/stock reales sin e2e, sin prueba manual y sin registro en el UAT (Regla de Oro #0) — ver
-> entrada de abajo (2026-07-30). Sesión 2026-08-03/04: plan de 39 escenarios
-> (`tests/specs/comercial-fede-abcd.plan.md`), **14 specs e2e nuevos nacientes (115-128), todos
-> verdes**, registrados en `tests/specs/uat-modo-basico.md` §49. **Sigue sin deploy a PROD (v1.152.0)
-> — la decisión de destrabarlo queda en manos de GO**, esto solo saca el bloqueo técnico.
+> **Deployado.** GO había pausado A/B/C explícitamente porque tocaban plata/stock reales sin e2e,
+> sin prueba manual y sin registro en el UAT (Regla de Oro #0) — ver entrada de abajo (2026-07-30).
+> Sesión 2026-08-03/04: plan de 39 escenarios (`tests/specs/comercial-fede-abcd.plan.md`), **14
+> specs e2e nuevos (115-128), todos verdes**, registrados en `tests/specs/uat-modo-basico.md` §49.
+> **GO autorizó explícitamente el deploy completo a `dev` y PROD** ("pasa todo a dev y prod, que no
+> quede nada pendiente") — migraciones **328-333 aplicadas en PROD** (verificadas contra datos
+> reales: 3 tiers legacy sin tocar, guard/RPC nuevos presentes), PR #309 mergeado (`50fd025c`), tag
+> **v1.155.0**. PROD = DEV = v1.155.0.
+>
+> **⚠ Pendiente conocido, no bloqueante (avisado a GO antes de deployar):** de las 3 cosas que
+> motivaron la pausa original (e2e, prueba manual, registro UAT), se cerraron e2e y UAT — **la
+> prueba manual de Fases A/B/C en el navegador de PROD todavía no la hizo nadie**. GO decidió
+> deployar igual con esa aclaración hecha. Primera cosa para verificar en la próxima sesión si hay
+> feedback de uso real.
+> **`schema_full.sql` sin regenerar** — faltó `SUPABASE_ACCESS_TOKEN` en el entorno de esta sesión,
+> sigue reflejando hasta la mig 327. Regenerar (`npm run schema:dump`, ver
+> `reference_schema_dump_metodo` en memoria) en cuanto se tenga el token.
 >
 > **🛑 2 hallazgos reales de Regla de Oro #0 encontrados al escribir los tests, avisados a GO y
 > resueltos ANTES de seguir** (no silenciados):
@@ -31,12 +42,8 @@ type: project
 >   Extraída la fórmula duplicada a `src/lib/aprobacionEstado.ts::estadoCambioRequiereAprobacion`
 >   (única fuente de verdad para single y bulk, 8 tests unitarios nuevos).
 >
-> **🛑 Estado git real (verificar con `git status` antes de asumir):** las Fases F/A/B/C/D en sí
-> (código de producto, migs 328-332) YA están commiteadas en `dev` desde la sesión anterior. **Lo
-> nuevo de ESTA sesión (14 specs e2e, mig 333, el rewire de `InventarioPage.tsx`/`LpnAccionesModal.tsx`,
-> `src/lib/aprobacionEstado.ts`, tests unitarios, `playwright.config.ts`) sigue SIN COMMITEAR** —
-> pendiente de que el usuario lo autorice explícitamente antes de commitear (regla del proyecto: no
-> commitear sin pedido explícito).
+> **Estado git:** todo commiteado y deployado — commit `f720921c` en `dev`, mergeado a `main` en
+> `50fd025c` (PR #309), tag `v1.155.0`. `dev` y `main` están sincronizados.
 >
 > Detalle técnico de qué prueba cada spec: `tests/specs/comercial-fede-abcd.plan.md` (plan completo,
 > con las correcciones/hallazgos de proceso de cada lote) y `tests/specs/uat-modo-basico.md` §49

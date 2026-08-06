@@ -16,6 +16,58 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 const TN_API_BASE = 'https://api.tiendanube.com/v1'
 const TN_USER_AGENT = 'Genesis360 (gaston.otranto@gmail.com)'
 
+// Crea el envío + domicilio automáticamente a partir de una orden pagada — best-effort,
+// nunca lanza (el llamador decide si loguear). Campos de order.shipping_address
+// confirmados contra la doc oficial de TiendaNube (tiendanube.github.io/api-documentation/
+// resources/order): address, number, floor, locality, city, province, zipcode, country, phone.
+async function crearEnvioAutomaticoTN(
+  supabase: ReturnType<typeof createClient>,
+  order: any,
+  ctx: { tenant_id: string; sucursal_id: string | null; venta_id: string; cliente_id: string },
+): Promise<void> {
+  const sa = order.shipping_address
+  if (!sa?.address) {
+    console.warn(`Pedido TN #${order.number} sin shipping_address.address — no se creó envío automático`)
+    return
+  }
+
+  const { data: domicilio, error: domErr } = await supabase
+    .from('cliente_domicilios')
+    .insert({
+      tenant_id:     ctx.tenant_id,
+      cliente_id:    ctx.cliente_id,
+      nombre:        order.contact_name ?? order.customer?.name ?? null,
+      calle:         sa.address,
+      numero:        sa.number ?? null,
+      piso_depto:    sa.floor ?? null,
+      ciudad:        sa.city ?? null,
+      provincia:     sa.province ?? null,
+      codigo_postal: sa.zipcode ?? null,
+      referencias:   sa.locality && sa.locality !== sa.city ? `Localidad: ${sa.locality}` : null,
+      es_principal:  false,
+    })
+    .select('id')
+    .single()
+
+  if (domErr) throw domErr
+
+  const destinoDescripcion = [sa.address, sa.number, sa.floor].filter(Boolean).join(' ')
+    + ([sa.city, sa.province, sa.zipcode].some(Boolean) ? `, ${[sa.city, sa.province, sa.zipcode].filter(Boolean).join(' ')}` : '')
+
+  const { error: envioErr } = await supabase.from('envios').insert({
+    tenant_id:            ctx.tenant_id,
+    sucursal_id:          ctx.sucursal_id,
+    venta_id:             ctx.venta_id,
+    canal:                'TiendaNube',
+    destino_id:           (domicilio as any).id,
+    destino_descripcion:  destinoDescripcion.trim(),
+    estado:               'pendiente',
+  })
+  if (envioErr) throw envioErr
+
+  console.log(`Envío creado automáticamente para venta ${ctx.venta_id} (pedido TN #${order.number})`)
+}
+
 serve(async (req) => {
   if (req.method !== 'POST') {
     return new Response('Method not allowed', { status: 405 })
@@ -135,7 +187,7 @@ serve(async (req) => {
   const trackingId = String(order.number)
   const { data: ventaExistente } = await supabase
     .from('ventas')
-    .select('id, estado')
+    .select('id, estado, cliente_id')
     .eq('tenant_id', tenant_id)
     .eq('origen', 'TiendaNube')
     .eq('tracking_id', trackingId)
@@ -151,6 +203,17 @@ serve(async (req) => {
         medio_pago: JSON.stringify([{ tipo: 'TiendaNube', monto: total }]),
       }).eq('id', ventaExistente.id)
       console.log(`Venta ${ventaExistente.id} actualizada pendiente → reservada (pedido TN #${order.number})`)
+
+      // Envío automático — best-effort, nunca bloquea la actualización de la venta.
+      if ((ventaExistente as any).cliente_id) {
+        try {
+          await crearEnvioAutomaticoTN(supabase, order, {
+            tenant_id, sucursal_id, venta_id: ventaExistente.id, cliente_id: (ventaExistente as any).cliente_id,
+          })
+        } catch (envioCatchErr: any) {
+          console.error('Error creando envío automático (no bloqueante):', envioCatchErr?.message ?? envioCatchErr)
+        }
+      }
     }
     // Registrar log de idempotencia y terminar
     await supabase.from('ventas_externas_logs').insert({
@@ -383,6 +446,15 @@ serve(async (req) => {
           .update({ linea_id: primaryLineaId })
           .eq('venta_id', venta.id).eq('producto_id', productoId)
       }
+    }
+  }
+
+  // 7bis. Crear envío automático — best-effort, nunca bloquea la venta si falla.
+  if (estadoFinal === 'reservada' && clienteId) {
+    try {
+      await crearEnvioAutomaticoTN(supabase, order, { tenant_id, sucursal_id, venta_id: venta.id, cliente_id: clienteId })
+    } catch (envioCatchErr: any) {
+      console.error('Error creando envío automático (no bloqueante):', envioCatchErr?.message ?? envioCatchErr)
     }
   }
 

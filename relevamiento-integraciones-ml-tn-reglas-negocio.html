@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<title>Relevamiento Reglas de Negocio — Integraciones ML/TN (Combos + Repricing) · Genesis360</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; color: #1a1a1a; font-size: 11pt; line-height: 1.45; }
+  h1 { font-size: 22pt; color: #0a4d8c; margin: 0 0 4pt 0; }
+  h2 { font-size: 14pt; color: #0a4d8c; border-bottom: 2px solid #0a4d8c; padding-bottom: 3pt; margin-top: 22pt; page-break-after: avoid; }
+  h3 { font-size: 12pt; color: #2c5f8d; margin-top: 14pt; margin-bottom: 6pt; page-break-after: avoid; }
+  .meta { color: #666; font-size: 10pt; margin-bottom: 18pt; }
+  .intro { background: #f4f8fc; border-left: 4px solid #0a4d8c; padding: 10pt 12pt; margin: 10pt 0 18pt 0; border-radius: 0 4pt 4pt 0; }
+  .nota { background: #f0f7f0; border-left: 4px solid #2e7d32; padding: 8pt 12pt; margin: 10pt 0 14pt 0; border-radius: 0 4pt 4pt 0; font-size: 10pt; }
+  .nota strong { color: #1b5e20; }
+  .pregunta { margin: 10pt 0 4pt 0; page-break-inside: avoid; }
+  .pregunta-titulo { font-weight: 600; color: #1a1a1a; }
+  .pregunta-codigo { display: inline-block; background: #0a4d8c; color: white; font-size: 9pt; padding: 1pt 6pt; border-radius: 3pt; margin-right: 6pt; font-weight: bold; }
+  .contexto { font-size: 9.5pt; color: #555; font-style: italic; margin: 3pt 0 6pt 18pt; }
+  ul.opciones { margin: 4pt 0 8pt 18pt; padding-left: 18pt; }
+  ul.opciones li { margin: 2pt 0; }
+  .respuesta-libre { margin: 6pt 0 10pt 18pt; padding: 6pt 10pt; border: 1px dashed #aaa; min-height: 32pt; font-size: 9.5pt; color: #777; font-style: italic; border-radius: 3pt; }
+  .seccion-resumen { background: #fffbe6; border-left: 4px solid #f5a623; padding: 8pt 12pt; margin: 12pt 0; font-size: 10pt; border-radius: 0 4pt 4pt 0; }
+  .seccion-resumen strong { color: #b07000; }
+  .footer { margin-top: 30pt; padding-top: 8pt; border-top: 1px solid #ccc; font-size: 9pt; color: #888; text-align: center; }
+  .tag { display: inline-block; font-size: 8.5pt; padding: 1pt 5pt; border-radius: 3pt; margin-left: 4pt; vertical-align: middle; }
+  .tag-existente { background: #d4edda; color: #155724; }
+  .tag-nuevo { background: #ffeaa7; color: #6e5500; }
+  .tag-cambio { background: #f8d7da; color: #721c24; }
+  .tag-dato { background: #e2e3e5; color: #383d41; }
+</style>
+</head>
+<body>
+
+<h1>Relevamiento Reglas de Negocio — Integraciones ML/TN</h1>
+<div class="meta">
+  Genesis360 · v1.158.0 (EN DEV) · Fecha: 6 de agosto de 2026 · Relevamiento con Gastón Otranto + socio (Fede)
+</div>
+
+<div class="intro">
+  <strong>Cómo usar este documento:</strong> repasen las preguntas con tu socio y elijan una opción por cada una
+  (o marquen "Otro" y escriban texto libre). Las preguntas marcadas <span class="tag tag-existente">EXISTENTE</span>
+  piden confirmar una regla ya implementada; <span class="tag tag-nuevo">NUEVO</span> piden definir una regla
+  pendiente; <span class="tag tag-cambio">CAMBIO</span> señalan un punto donde la respuesta que elijan
+  <strong>reinterpreta o corrige</strong> un supuesto sobre lo que hay hoy en el código; <span class="tag tag-dato">DATO A CONFIRMAR</span>
+  no es una decisión de diseño — es un dato operativo que necesitamos para saber si una fase futura es viable.
+  <br><br>
+  Este documento junta <strong>dos features del roadmap</strong> (<code>G360.Wiki/wiki/integrations/roadmap-apis.md</code>,
+  Fase 1 — Quick wins, ítems 1.2 y 1.5) que quedaron bloqueadas por falta de definición de negocio, más una nota
+  operativa corta sobre MercadoLibre. Son <strong>tres bloques independientes</strong>, se pueden responder y
+  priorizar por separado.
+</div>
+
+<div class="seccion-resumen">
+  <strong>Estado actual de las integraciones (verificado en código):</strong> TiendaNube sincroniza pedidos
+  (<code>tn-webhook</code>, evento <code>order/paid</code>) y stock (<code>tn-stock-worker</code>, job
+  <code>sync_stock</code>, cron cada 5 min). MercadoLibre sincroniza pedidos (<code>meli-webhook</code>) y stock +
+  precio (<code>meli-stock-worker</code>, jobs <code>sync_stock</code>/<code>sync_precio</code>). Ninguno de los
+  dos webhooks (<code>tn-webhook</code>/<code>meli-webhook</code>) tiene hoy ninguna lógica para productos
+  <code>es_kit=true</code> — ambos tratan cualquier producto, kit o no, igual. El campo
+  <code>productos.margen_objetivo</code> (migración 015) <strong>ya existe</strong> y hoy es 100% pasivo — solo
+  alimenta un insight visual en <code>MetricasPage.tsx</code> (margen actual vs. objetivo), sin disparar ninguna
+  acción ni estar conectado a MELI. La comisión real de MELI (<code>sale_fee</code>) se guarda por venta en
+  <code>venta_items.comision_marketplace</code> (llenado por <code>meli-webhook</code>), pero hoy nada la vuelve
+  a leer para estimar una comisión futura.
+</div>
+
+<!-- ============================ BLOQUE 1 — D2 ============================ -->
+<h2>D2 — Combos/kits automáticos al vender por TiendaNube</h2>
+
+<div class="nota">
+  <strong>Estado actual del sistema (verificado en código):</strong> un producto "kit" tiene
+  <code>productos.es_kit = true</code> y su receta vive en <code>kit_recetas</code>
+  (<code>kit_producto_id</code>, <code>comp_producto_id</code>, <code>cantidad</code> — migración 040). El
+  <strong>único modelo que existe hoy en toda la app</strong> es "armar primero, vender después": las funciones
+  <code>iniciar_armado_kit</code> y <code>confirmar_armado_kit</code> (<code>supabase/schema_full.sql</code>)
+  consumen componentes de <code>inventario_lineas</code> (FIFO por <code>created_at</code>, reserva primero y
+  rebaja recién al confirmar) y generan una línea de inventario nueva para el kit YA ARMADO. Recién ahí el kit se
+  vende como cualquier producto normal desde <code>src/pages/VentasPage.tsx</code>. Ambas funciones dependen de
+  <code>auth.uid()</code> para resolver el tenant — por eso <strong>no se pueden invocar tal cual desde un
+  webhook server-side</strong> (<code>supabase/functions/tn-webhook/index.ts</code>, que corre con service role
+  y sin usuario autenticado). Hoy, si <code>tn-webhook</code> recibe un pedido pagado de un producto kit, encola
+  un rebaje de stock del <strong>kit mismo</strong> (mismo <code>producto_id</code> que el kit, sin tocar
+  <code>kit_recetas</code>) — lo trata como si fuera una unidad simple, sin explotar componentes. El flujo manual
+  inverso existe: <code>desarmarKit</code> en <code>src/pages/InventarioPage.tsx</code> (deshace un kit ya
+  armado — no es lo mismo que este caso).
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A1</span><span class="pregunta-titulo">
+    ¿El sistema arma el kit solo cuando llega el pedido, o siempre queda para armar a mano? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy: siempre a mano, desde Inventario, con un usuario logueado eligiendo ubicación destino.</div>
+  <ul class="opciones">
+    <li>(a) Armado automático en el momento, si hay componentes suficientes para la cantidad pedida (arma y
+    descuenta sin que nadie intervenga)</li>
+    <li>(b) Nunca armar solo — el pedido queda señalado ("Pendiente de armado") para que alguien de depósito lo
+    arme a mano antes de poder despacharlo</li>
+    <li>(c) Automático solo para kits marcados explícitamente como "armado automático habilitado" en su ficha;
+    el resto de los kits sigue el flujo manual de hoy</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A2</span><span class="pregunta-titulo">
+    Si se arma automático: ¿qué pasa si NO hay componentes suficientes para armar la cantidad pedida? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy <code>iniciar_armado_kit</code> ya es todo-o-nada en el armado manual: recorre
+  TODOS los componentes de la receta primero, y si a cualquiera le falta stock, lanza una excepción ("Stock
+  insuficiente del componente...") sin reservar nada — recién si todos alcanzan, reserva y arma. Un armado
+  disparado por webhook necesita esta misma decisión pero sin un humano mirando la pantalla.</div>
+  <ul class="opciones">
+    <li>(a) No armar nada y bloquear/avisar — mismo criterio todo-o-nada que ya usa el armado manual hoy</li>
+    <li>(b) Armar la mayor cantidad posible con el stock disponible y avisar del faltante (armado parcial)</li>
+    <li>(c) Permitir que el armado deje el stock del kit en negativo con tal de no frenar el pedido (rompe la
+    regla de "stock nunca negativo en silencio" — ver Regla de Oro #0 del proyecto)</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A3</span><span class="pregunta-titulo">
+    Si se arma automático, ¿a qué ubicación de depósito va el kit recién armado? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy el armado manual pide <code>p_ubicacion_id</code> como parámetro obligatorio — el
+  usuario elige la ubicación destino a mano en el modal. Acá no hay un usuario eligiendo.</div>
+  <ul class="opciones">
+    <li>(a) Usar la ubicación default del producto si existe una cargada
+    (<code>producto_ubicacion_sucursal</code>, migración 121 — hoy es solo un default/sugerencia para
+    Recepciones/Inventario, se reusaría con otro propósito)</li>
+    <li>(b) Ubicación fija configurable por tenant (ej. "Ubicación de armado automático" en Config → Integraciones)</li>
+    <li>(c) Ubicación fija por kit — campo nuevo en la ficha del producto kit</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A4</span><span class="pregunta-titulo">
+    ¿Quién tiene que enterarse cuando el sistema arma un kit solo, o cuando no pudo armarlo? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <ul class="opciones">
+    <li>(a) Nadie — queda registrado solo en el historial (<code>kitting_log</code>/<code>movimientos_stock</code>)</li>
+    <li>(b) Alerta in-app (<code>AlertasPage</code>) visible para DUEÑO/depósito, solo cuando NO se pudo armar</li>
+    <li>(c) Alerta in-app en ambos casos (armado OK y armado fallido)</li>
+    <li>(d) Alerta in-app + notificación (email/WhatsApp) al DUEÑO cuando NO se pudo armar</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">A5</span><span class="pregunta-titulo">
+    ¿Esto aplica solo a pedidos de TiendaNube, o también a MercadoLibre a futuro? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>meli-webhook</code> tiene exactamente la misma laguna que <code>tn-webhook</code>:
+  tampoco chequea <code>es_kit</code> ni toca <code>kit_recetas</code> en ningún punto. Hoy esta fase está
+  acotada a TiendaNube (roadmap 1.2), pero vale confirmar el alcance antes de diseñar la solución.</div>
+  <ul class="opciones">
+    <li>(a) Solo TiendaNube por ahora — MercadoLibre queda fuera de esta fase, se evalúa después</li>
+    <li>(b) Diseñar la solución pensando en ambos canales desde el vamos (misma función/lógica reusable),
+    aunque el desarrollo arranque solo con TN</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ BLOQUE 2 — D3 ============================ -->
+<h2>D3 — Repricing automático por margen en MercadoLibre</h2>
+
+<div class="nota">
+  <strong>Estado actual del sistema (verificado en código):</strong>
+  <code>supabase/functions/meli-stock-worker/index.ts</code> ya tiene un job <code>sync_precio</code> que empuja
+  <code>productos.precio_venta</code> tal cual a MELI vía <code>PUT /items/{id}</code> (o
+  <code>/items/{id}/variations/{id}</code>) — no hay ninguna lógica de margen todavía. La comisión real de MELI
+  (<code>sale_fee</code>) recién se conoce DESPUÉS de que se concreta una venta (llega en
+  <code>order_items[].sale_fee</code> de una orden ya pagada, y hoy se guarda en
+  <code>venta_items.comision_marketplace</code>) — no hay ninguna llamada hoy que estime la comisión ANTES de
+  fijar un precio. <strong>Corrección sobre el supuesto inicial:</strong> el campo de "margen objetivo" no hay
+  que crearlo desde cero — <strong><code>productos.margen_objetivo DECIMAL(5,2)</code> ya existe</strong>
+  (migración 015, <code>ALTER TABLE productos ADD COLUMN...</code>), se carga hoy desde
+  <code>ProductoFormPage.tsx</code> ("% margen objetivo, alerta en Métricas si el margen cae debajo") y hoy es
+  puramente informativo: <code>MetricasPage.tsx</code> lo usa solo para un insight visual (margen actual vs.
+  objetivo, ordenado por peor diferencia) — no dispara ninguna acción ni está conectado a MELI. Es por producto,
+  no hay ningún default a nivel tenant para los productos que no lo tengan cargado.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B1</span><span class="pregunta-titulo">
+    El "margen objetivo" que dispara el ajuste: ¿se reusa el campo que ya existe por producto? <span class="tag tag-cambio">CAMBIO</span>
+  </span>
+  <div class="contexto">A diferencia de lo que se asumió al plantear esta fase, <strong>no hace falta crear el
+  campo</strong> — <code>productos.margen_objetivo</code> ya está en el schema desde la migración 015, aunque
+  hoy solo alimenta un insight pasivo en Métricas. Falta decidir si ese mismo campo pasa a ser también el que
+  dispara una acción real, y qué hacer con los productos que no lo tienen cargado.</div>
+  <ul class="opciones">
+    <li>(a) Reusar <code>productos.margen_objetivo</code> tal cual — el repricing solo actúa sobre productos que
+    ya lo tengan cargado; el resto queda afuera del mecanismo hasta que alguien lo complete</li>
+    <li>(b) Igual que (a) + agregar un default a nivel tenant (ej. <code>tenants.margen_objetivo_default</code>)
+    que se aplica a los productos sin el campo propio cargado</li>
+    <li>(c) Reemplazar el campo por producto por uno único a nivel tenant (un solo % para todo el catálogo) —
+    más simple, pero pierde la granularidad que ya existe hoy</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B2</span><span class="pregunta-titulo">
+    Cuando el margen cae debajo del objetivo, ¿el sistema sube el precio solo o pide aprobación? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Ejemplo: subió el costo del producto y el margen actual quedó por debajo del objetivo.
+  Hoy <code>sync_precio</code> nunca decide nada — solo replica el precio que ya está cargado en G360.</div>
+  <ul class="opciones">
+    <li>(a) Subir el precio en MELI automáticamente, sin pedir nada, apenas se detecta la caída de margen</li>
+    <li>(b) Generar una alerta/sugerencia (<code>AlertasPage</code>) para que el DUEÑO la apruebe con un clic —
+    el sistema nunca toca el precio solo</li>
+    <li>(c) Automático si la caída de margen es chica (debajo de un umbral configurable); alerta para aprobar si
+    la caída es grande</li>
+    <li>(d) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B3</span><span class="pregunta-titulo">
+    Si el precio en MELI se ajusta automático, ¿también cambia <code>productos.precio_venta</code> en G360? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Hoy hay un único precio (<code>productos.precio_venta</code>) para todos los canales — el
+  mismo que ve el POS/local y el que <code>sync_precio</code> empuja a MELI.</div>
+  <ul class="opciones">
+    <li>(a) El ajuste toca ÚNICAMENTE el precio publicado en MELI vía la API — <code>precio_venta</code> queda
+    intacto (implica separar "precio MELI" del "precio base" en el modelo de datos, algo que no existe hoy)</li>
+    <li>(b) El ajuste actualiza <code>precio_venta</code> directo — el precio sube en MELI Y en el local/POS/
+    otros canales a la vez, igual que cualquier cambio de precio manual hoy</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B4</span><span class="pregunta-titulo">
+    ¿Cómo se estima la comisión de MELI, si recién se conoce con certeza después de vender? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto"><code>venta_items.comision_marketplace</code> ya guarda el <code>sale_fee</code> real de
+  cada venta MELI concretada — pero hoy nada lo vuelve a leer para estimar una comisión futura.</div>
+  <ul class="opciones">
+    <li>(a) Estimar con la última <code>comision_marketplace</code> real registrada de ese producto en MELI, si
+    existe alguna venta previa</li>
+    <li>(b) Hace falta algo más preciso — llamar a la API de tarifas de MELI antes de fijar el precio, en vez de
+    reusar una venta pasada</li>
+    <li>(c) Si el producto nunca se vendió en MELI: no ajustar el precio hasta tener un dato real (queda fuera
+    del mecanismo hasta la primera venta)</li>
+    <li>(d) Si el producto nunca se vendió en MELI: usar un % de comisión estimado a mano (config por categoría
+    o global) como fallback, en vez de (c)</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B5</span><span class="pregunta-titulo">
+    ¿Tope máximo de suba por ajuste, o umbral de "avisar pero no tocar" si el salto es grande? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Para evitar saltos de precio grandes que espanten al comprador en una sola actualización.</div>
+  <ul class="opciones">
+    <li>(a) Sin tope — el ajuste sube lo que haga falta para volver al margen objetivo, de una sola vez</li>
+    <li>(b) Tope de suba por ajuste (ej. no subir más de X% del precio actual en un solo evento); lo que falta se
+    corrige en ajustes sucesivos</li>
+    <li>(c) Umbral de "avisar pero no tocar" — si el ajuste necesario supera cierto % se genera alerta para que
+    decida el DUEÑO, en vez de aplicarlo solo</li>
+    <li>(d) Tope de suba (b) + umbral de aviso (c) combinados</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">B6</span><span class="pregunta-titulo">
+    ¿Se puede pausar el repricing automático por producto? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Mismo patrón que el "Auto-pausado por margen negativo" de MELI Ads planeado para la Fase
+  4 del roadmap (toggle por publicación con umbral configurable) — vale confirmar si acá también hace falta esa
+  granularidad, o si alcanza con un interruptor único por tenant.</div>
+  <ul class="opciones">
+    <li>(a) Sí — toggle "Repricing automático" por publicación/producto (algunas sí, otras no)</li>
+    <li>(b) Global por tenant únicamente — todo o nada, sin pausa selectiva por producto</li>
+    <li>(c) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ BLOQUE 3 — NOTA OPERATIVA ============================ -->
+<h2>Nota operativa — MercadoLibre: Mercado Envíos vs. envío propio</h2>
+
+<div class="nota">
+  <strong>Contexto:</strong> esto no es una decisión de diseño, es un dato que necesitamos para saber si una fase
+  futura es viable. Para que Genesis360 le avise a MercadoLibre cuando un pedido se despachó o se entregó
+  (separado de esta fase D — es la <strong>Fase C, diferida</strong>), hace falta saber si el envío es
+  <strong>"Mercado Envíos"</strong> (logística de MELI de punta a punta — ahí el vendedor NO puede tocar el
+  estado del envío por API) o <strong>"a acordar"/gestión propia del vendedor</strong> (ahí sí se puede
+  actualizar el estado). Verificado en código: hoy <code>meli-webhook</code>/<code>meli-stock-worker</code> no
+  tienen ningún campo ni llamada relacionada con <code>logistic_type</code> o estado de envío — este dato es
+  nuevo, no hay nada construido todavía sobre el tema.
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">C1</span><span class="pregunta-titulo">
+    ¿Los pedidos de MercadoLibre (tuyos o de los clientes de Genesis360) usan mayoritariamente Mercado Envíos,
+    envío propio, o una mezcla? <span class="tag tag-dato">DATO A CONFIRMAR</span>
+  </span>
+  <div class="contexto">No hace falta tomar ninguna decisión de diseño acá — solo el dato, para saber si la Fase
+  C (avisar a MELI del despacho/entrega) es viable antes de invertir tiempo en diseñarla.</div>
+  <ul class="opciones">
+    <li>(a) Mercado Envíos — la logística la maneja MELI de punta a punta</li>
+    <li>(b) Envío propio / "a acordar" — el vendedor gestiona el envío</li>
+    <li>(c) Mezcla — depende del producto/categoría o de la configuración de cada vendedor</li>
+    <li>(d) No lo sé todavía — hay que relevarlo con clientes reales antes de decidir si la Fase C es viable</li>
+    <li>(e) Otro: ____</li>
+  </ul>
+</div>
+
+<!-- ============================ CIERRE ============================ -->
+<h2>Top 3 prioritario / comentarios</h2>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D1</span><span class="pregunta-titulo">
+    ¿Qué 3 decisiones hay que cerrar primero para poder empezar a codear? <span class="tag tag-nuevo">NUEVO</span>
+  </span>
+  <div class="contexto">Marcar 1/2/3 entre las opciones — el resto queda para resolver en fases posteriores sin
+  bloquear el arranque.</div>
+  <ul class="opciones">
+    <li>(   ) A1 — armado automático de kits vs. siempre manual (TiendaNube)</li>
+    <li>(   ) A2 — qué hacer si faltan componentes para armar automático</li>
+    <li>(   ) A3 — ubicación destino del kit armado automáticamente</li>
+    <li>(   ) B1 — de dónde sale el margen objetivo (reusar el campo por producto vs. agregar default por tenant)</li>
+    <li>(   ) B2 — ajuste de precio automático en MELI vs. alerta para aprobar</li>
+    <li>(   ) B3 — el ajuste toca solo el precio en MELI, o también <code>precio_venta</code> en G360</li>
+    <li>(   ) B4 — cómo estimar la comisión de MELI antes de tener una venta real de ese producto</li>
+    <li>(   ) B5 — tope de suba de precio por ajuste / umbral de aviso</li>
+    <li>(   ) C1 — dato de Mercado Envíos vs. envío propio (para saber si la Fase C es viable)</li>
+    <li>(   ) Otro: ____</li>
+  </ul>
+</div>
+
+<div class="pregunta">
+  <span class="pregunta-codigo">D2</span><span class="pregunta-titulo">
+    Comentarios libres / cualquier regla que se nos haya escapado
+  </span>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+  <div class="respuesta-libre">_</div>
+</div>
+
+<div class="footer">
+  Genesis360 · Relevamiento Reglas de Negocio — Integraciones ML/TN (Combos automáticos + Repricing + Nota
+  operativa MELI) · 2026-08-06<br>
+  Una vez completado, devolver a Claude/GO para volcar al wiki y planificar la implementación.
+</div>
+
+</body>
+</html>

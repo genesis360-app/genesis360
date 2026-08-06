@@ -29,24 +29,19 @@ test.describe('Conteo de inventario (mutante)', () => {
 
     // Tab Conteos
     await page.getByRole('button', { name: /^Conteos$/ }).first().click()
-    await page.waitForTimeout(500)
 
     // Nuevo conteo
     await page.getByRole('button', { name: /Nuevo conteo/i }).first().click()
-    await page.waitForTimeout(400)
 
     // Alcance: Por producto
     await page.getByRole('button', { name: /Por producto/i }).click()
-    await page.waitForTimeout(300)
 
     // Elegir el producto (select con opción "Seleccioná un producto")
     const prodSel = page.locator('select').filter({ has: page.locator('option', { hasText: /Seleccioná un producto/i }) }).first()
     await prodSel.selectOption({ label: PRODUCTO_OPT })
-    await page.waitForTimeout(300)
 
     // Cargar stock
     await page.getByRole('button', { name: /Cargar stock/i }).click()
-    await page.waitForTimeout(1200)
 
     // La tabla de conteo aparece; el "Contado" de la 1ª fila viene pre-cargado (rápido) → +1
     const primerContado = page.locator('table input[type="number"]').first()
@@ -54,7 +49,6 @@ test.describe('Conteo de inventario (mutante)', () => {
     const actual = await primerContado.inputValue()
     const nuevo = (parseFloat(actual.replace(',', '.')) || 0) + 1
     await primerContado.fill(String(nuevo))
-    await page.waitForTimeout(300)
 
     // Finalizar y aplicar
     await page.getByRole('button', { name: /Finalizar y aplicar ajustes/i }).click()

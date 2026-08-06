@@ -6,6 +6,171 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-06] deploy | 🚀 v1.158.0 a PROD — waitForTimeout CERRADO + fix Regla #0 MasivoModal + píldoras de filtro + Ubicaciones en árbol (U1-U4)
+
+Continuación directa de la entrada `update` de más abajo (mismo día). GO pidió explícitamente:
+"sigamos con más de wait for timeout hasta finalizarlo y luego pasas todo a DEV y PROD" — deploy
+completo autorizado.
+
+**Se bumpeó `APP_VERSION` a `v1.158.0`** en `src/config/brand.ts`. Esta versión agrupa TODO lo
+acumulado en el working tree de `dev` desde que se cortó la v1.157.0 (que había quedado solo en
+DEV, sin commitear): el rediseño de Ubicaciones en árbol (Fases U1-U4, migs 334/335), el fix de
+Regla de Oro #0 en `MasivoModal.tsx` (rebaje masivo confirmaba por FIFO ciego sin pedir la variante
+si el fetch de líneas todavía estaba en vuelo), las píldoras de filtro combinables en
+Productos/Inventario, los 4 gaps de breadcrumb corregidos en selectores operativos, y el cierre
+completo de la deuda de `waitForTimeout` (ver entrada `update` de abajo). **Sin migraciones nuevas
+en esta última ronda** — 334/335 ya estaban escritas desde la sesión del 2026-08-05, solo faltaba
+que el deploy las llevara a PROD junto con el resto.
+
+**Estado resultante: PROD = DEV = v1.158.0.** Migraciones 001-335 aplicadas en DEV Y PROD (334-335
+recién ahora en PROD). Verde antes de deployar: `tsc --noEmit` (0 errores) · `npm run build` · suite
+unitaria completa (1525 tests, 96 archivos) · suite e2e re-verificada por tandas contra DEV real.
+
+**Pendientes que NO son de esta ronda** (quedan para más adelante, sin cambios): relevamientos #2/#3/#4
+de la secuencia hacia el módulo Repositores (Pestaña de supervisor reusable → Motor de Rotación de
+productos con descuento → Repositores) sin arrancar; Fase U5 de limpieza (`DROP
+ubicaciones.tipo_ubicacion`, hoy con 0 lectores reales salvo el tipo TS deprecated); el flake
+preexistente y no causado por esta sesión en `39_cc_condonacion_mutante.spec.ts` (fixture compartido
+no auto-sembrado + race de timing con el `confirm()` nativo del browser) queda anotado como deuda
+técnica conocida en [[wiki/development/testing]], no como bug cerrado.
+
+Ver [[wiki/business/roadmap]] (v1.158.0), [[wiki/development/testing]] (deuda de `waitForTimeout`
+cerrada), [[wiki/features/ubicaciones]], [[wiki/features/filtro-pildoras]],
+[[wiki/features/inventario-stock]] (fix `MasivoModal.tsx`), `sources/raw/project_pendientes.md`
+(bloque "ARRANCÁ ACÁ" actualizado).
+
+## [2026-08-06] update | 🧹 Cierre COMPLETO de la deuda de `waitForTimeout` (315/80 → 8/6) — 71 archivos en 7 tandas
+
+Continuación directa de la entrada anterior del mismo día (waitForTimeout parcial + fix MasivoModal
++ píldoras + gaps de breadcrumb, ver abajo). GO pidió explícitamente: "sigamos con más de wait for
+timeout hasta finalizarlo y luego pasas todo a DEV y PROD" — se cerró de punta a punta, sin dejar
+resto para otra sesión.
+
+**Resultado: 315 ocurrencias (80 archivos) → 8 ocurrencias (6 archivos).** Las 8 restantes quedaron
+a propósito, documentadas inline en cada una porque no tienen una señal DOM mejor para esperar:
+`14_coherencia_numeros.spec.ts` y `15_rol_supervisor.spec.ts` (dejar correr el JS de la página para
+recolectar errores async de consola durante una ventana de tiempo — no hay otra señal posible),
+`88_mobile_responsive.spec.ts` (dejar el rendering async de KPIs/gráficos antes de medir overflow
+horizontal), `98_config_ventas_envios_mutante.spec.ts` (dejar asentar geocoding/autocálculo de
+envío antes de un chequeo NEGATIVO — que NO se pisó un valor en $0 — sin señal positiva disponible),
+y 3 menciones en comentarios de `tests/e2e/helpers/fixtures.ts` que explican la metodología (no son
+código real).
+
+**71 archivos de test tocados en 7 tandas** (por cantidad de ocurrencias, de 8 sleeps por archivo
+bajando hasta 1), cada tanda corrida contra DEV real antes de pasar a la siguiente. **6 patrones
+aplicados sistemáticamente:**
+1. Sleep fijo antes de una acción cuyo próximo paso ya tiene un `expect(...).toBeVisible()` → se
+   borra (redundante, el auto-wait de Playwright ya cubre la espera).
+2. Sleep fijo antes de un `.click()`/`.selectOption()` → se borra (esos métodos auto-esperan la
+   actionability del elemento).
+3. Sleep fijo antes de un `elemento.isVisible()` sin bound (usado para decidir un `test.skip`) → se
+   reemplaza por el helper `visible(locator, timeout)` de `fixtures.ts` (espera acotada real en vez
+   de "dormir y mirar el instante").
+4. Sleep fijo antes de LEER un valor no re-intentable (ej. total del carrito tras cambiar de UdM) →
+   se envuelve en `expect.poll(...)` en vez de confiar en que el sleep alcance.
+5. Sleep fijo tras seleccionar un cliente en el POS (dispara un fetch async de saldo/crédito a favor
+   — ISS E2) → se reemplaza por `page.waitForLoadState('networkidle', {timeout})`, o se elimina
+   directamente si el siguiente `expect().toBeVisible()` YA exige que exista la opción que depende
+   de ese fetch (ej. el select de "Crédito a favor" solo matchea si la opción ya está en el DOM).
+6. Sleep fijo como ÚLTIMO paso del test sin ninguna aserción después (dejar asentar una mutación
+   antes de que el test termine y cierre la página) → se reemplaza por `waitForLoadState('networkidle')`
+   acotado.
+
+**Simplificaciones de paso, de paso:** `44_presupuesto_convertir_mutante.spec.ts` y
+`38_envio_combustible_gasto_mutante.spec.ts` ahora reusan el helper `agregarPrimerProductoAlCarrito`
+de `fixtures.ts` en vez de duplicar el patrón de búsqueda+click. `27_gasto_efectivo_mutante.spec.ts`
+y `32_caja_fuerte_deposito_mutante.spec.ts` ahora reusan `garantizarCajaAbierta` en vez de un bloque
+manual de apertura de caja. **`15_rol_supervisor.spec.ts` tenía un bug real de estructura:** el
+listener de `pageerror` se enganchaba DESPUÉS de un sleep de 1.5s, perdiéndose errores del load
+inicial — corregido el orden.
+
+**Verificación exhaustiva contra DEV real:** las 7 tandas se corrieron contra DEV real (no solo
+localmente) tras cada cambio, incluyendo specs gateados por env flags (`E2E_MEDIOS_PAGO`,
+`E2E_DESC_GENERAL`, `E2E_WALL_TO_WALL`, `E2E_DEVOL_REPOSICION`, `E2E_DEVOL_EFECTIVO`, etc.) para
+ejercitar el código real, no solo confirmar que skipean. **2 flakes encontrados y descartados como
+no-regresión:** (a) `83_todos_medios_pago_mutante.spec.ts` con "Wallet USD" — 3/3 verde en corridas
+aisladas posteriores, era carga de la corrida masiva, no una regresión; (b)
+`39_cc_condonacion_mutante.spec.ts` — falló una vez con "Deuda Venta #N condonada" no encontrado;
+confirmado que el código editado en ese archivo (el paso ANTERIOR al click de "Condonar") no toca
+el punto que falló — es un flake preexistente de timing con el `confirm()` nativo del browser sobre
+un fixture compartido no autogenerado (cliente real "Gaston Otranto"), no causado por esta sesión.
+Queda documentado como deuda técnica conocida, no como bug cerrado.
+
+**Estado final verde:** `tsc --noEmit` (0 errores) · `npm run build` (verde) · suite unitaria
+completa: **1525 tests, 96 archivos, todos verdes** (sin cambios respecto al número de la entrada
+anterior — esta ronda fue 100% sobre specs e2e, cero tests unitarios nuevos).
+
+Ver [[wiki/development/testing]] (conteo actualizado + los 6 patrones documentados como referencia
+para specs futuros), `log.md` (entrada `deploy` de arriba, mismo día).
+
+## [2026-08-06] update | 🧹 waitForTimeout (3 specs) + 🛑 bug REAL de Regla #0 en MasivoModal + 🆕 filtro de píldoras en Productos/Inventario + e2e de Ubicaciones (halló 4 gaps de breadcrumb) — TODO EN DEV, sin commitear
+
+Continuación directa del bloque "ARRANCÁ ACÁ" del 2026-08-05 (rediseño de Ubicaciones v1.157.0).
+Sesión 100% en el working tree local de `dev`, **sin ningún commit** (no pedido explícitamente) y
+**sin migraciones nuevas** — todo código de app + tests. `APP_VERSION` sigue en `v1.157.0`.
+
+**1. `waitForTimeout` — 3 specs saneados, 28 sleeps fijos eliminados.** `26_primer_uso_smoke.spec.ts`
+(10→0, ahora reusa el helper `agregarPrimerProductoAlCarrito` de `fixtures.ts` en vez de duplicar el
+patrón buggy), `95_rebaje_masivo_atributo_ambiguo_mutante.spec.ts` (9→0) y
+`96_venta_bloqueada_atributo_ambiguo_mutante.spec.ts` (9→0). Se exportó el helper `visible(locator,
+timeout)` de `fixtures.ts` (antes privado) para checks de campos opcionales sin sleeps fijos. Conteo
+global de la suite: **~315/80 → ~287/77** (quedan specs sin tocar, alcance grande para otra sesión).
+
+**2. 🛑 BUG REAL DE REGLA #0 encontrado y corregido — `MasivoModal.tsx` (rebaje masivo).** Al arreglar
+el spec 95 apareció un flake real (2 de 3 corridas fallaban) que resultó ser un bug de PRODUCCIÓN, no
+del test: `cargarLineasParaRebaje()` se llama SIN `await` desde `addProduct()` (fire-and-forget). La
+validación de ambigüedad de talle/color en `validate()` hacía `if (lineas) {...}` — si el fetch async
+todavía no había resuelto cuando el usuario clickeaba "Confirmar rebaje", `lineasCache[productoId]`
+era `undefined`, el `if` se saltaba ENTERO, y el rebaje masivo se confirmaba por FIFO ciego SIN pedir
+el color — exactamente lo que la Regla de Oro #0 prohíbe (nunca "cualquiera" por FIFO cuando hay
+ambigüedad de variante en stock). Confirmado con un archivo de debug temporal que capturó el toast
+real ("todavía está cargando el stock disponible"): el guard SÍ corría, pero llegaba tarde. **Fix
+falla CERRADO en vez de ABIERTO**: si `lineasCache[productoId] === undefined` (fetch en vuelo),
+`validate()` ahora bloquea con un mensaje claro pidiendo reintentar, en vez de saltear el chequeo de
+ambigüedad. Spec 95 ajustado para esperar el preview de líneas ANTES de probar el camino negativo —
+ahora determinístico (4/4 en corridas repetidas). **Es un bug que estaba en PROD** (`MasivoModal.tsx`
+no cambió de lógica en el rediseño de Ubicaciones, viene de antes): cualquier usuario que confirmara
+MUY rápido o con conexión lenta a Supabase podía rebajar la variante equivocada sin que el sistema se
+lo impidiera. Con el fix, en el peor caso el usuario ve un mensaje pidiendo reintentar — nunca deja
+pasar el rebaje ambiguo. Detalle completo: [[wiki/development/testing]] y
+[[wiki/features/inventario-stock]].
+
+**3. Feature nueva: filtro por "píldoras" combinables (Y/O) en Productos e Inventario.** Se llevó el
+mecanismo de búsqueda de `/picking` (chips "Campo:valor", combinables con un Y/O global) a
+`/productos` y a `/inventario` (tab Inventario). Núcleo genérico nuevo `src/lib/pildorasFiltro.ts`
+(parsing, alias, operadores, `evaluarPildoras`) — **`pickingFiltro.ts` NO se tocó** (cero riesgo sobre
+WMS ya en producción). `productosFiltro.ts` (nombre/sku/código) e `inventarioFiltro.ts`
+(producto/sku/código/LPN/ubicación, unidad atómica = LÍNEA/LPN) nuevos sobre ese núcleo.
+`BuscadorPildoras.tsx` genericizado (`camposFiltro` por prop). `ProductosPage.tsx` e
+`InventarioPage.tsx` (ambas vistas del tab Inventario) pasan de filtro server-side/ad-hoc a filtrado
+100% client-side unificado; los 3 scanners de código de barras y el deep-link `/inventario?search=`
+migrados a crear una píldora "libre". **33 tests unitarios nuevos** + spec e2e nuevo
+`129_pildoras_filtro_productos_inventario_mutante.spec.ts` (2/2 verde, corrido 2 veces). Detalle:
+[[wiki/features/filtro-pildoras]] (página nueva).
+
+**4. Prueba manual (vía Playwright) del rediseño de Ubicaciones — `130_ubicaciones_arbol_mutante.spec.ts`
+nuevo (2/2 verde).** Cubre crear hijo con código autogenerado jerárquico, guard que rechaza asignar
+`tipo_logico` a un padre con hijos, mismo `tipo_logico` en la hoja, guard que rechaza borrar un padre
+con niveles adentro, y el breadcrumb padre→hijo en un selector operativo real (Inventario → Agregar
+stock → Ingreso). **Al escribir ese último punto aparecieron 4 gaps reales** que contradecían lo que
+el wiki tenía registrado como cerrado (Fase U4, "InventarioPage.tsx 3 selects" migrados — en realidad
+había 5 y solo 3 estaban migrados): `InventarioPage.tsx` (modal de Ingreso individual línea ~3623 +
+filtro de Ubicación del panel Filtros línea ~4220), `ConfigPage.tsx` (select de picking en Zonas y
+picking, línea ~4334), `PedidosPage.tsx` (select de Ubicación de staging, línea ~1107 — necesitó
+además ampliar la query `ubicaciones-staging` para traer el árbol completo con `padre_ubicacion_id`,
+antes solo `id, nombre` filtrado a `subtipo_almacenamiento='staging'`). Los 4 corregidos (swap a
+`breadcrumbUbicacion`), verificado con tsc + build + specs 95/96/106/129/130 todos re-verificados
+verdes. **Impacto real:** en un árbol con niveles de igual nombre bajo padres distintos, esos 4
+selectores mostraban solo el nombre del nivel sin indicar de qué padre — gap de UX (no de integridad
+de datos), corregido. Detalle: [[wiki/features/ubicaciones]].
+
+**Verde:** `tsc --noEmit` (0 errores) · `npm run build` · suite unitaria completa (1525 tests, 96
+archivos) · e2e re-verificados: 26, 95 (4 corridas), 96, 106, 129 (2 corridas), 130 (2 corridas).
+
+**Estado git:** **sin commitear** — todo en el working tree de `dev` local. Sin migraciones nuevas.
+`APP_VERSION` sigue en `v1.157.0` (sin bump, no hay checkpoint todavía). Ver bloque "ARRANCÁ ACÁ" en
+`project_pendientes.md` para la lista de pendientes de la próxima sesión.
+
 ## [2026-08-05] update | 🏗️ Rediseño de Ubicaciones (Fases U1-U4) — árbol + tipo lógico, 1º de 4 relevamientos hacia Repositores (migs 334/335, EN DEV)
 
 GO/Fede respondieron `relevamiento-ubicaciones-reglas-negocio.html` (generado 2026-08-02) el

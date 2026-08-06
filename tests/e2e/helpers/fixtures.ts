@@ -34,7 +34,7 @@ export const ANON = process.env.VITE_SUPABASE_ANON_KEY
  * donde "no está" es un resultado legítimo (no un error) — para campos obligatorios, usar
  * `expect(locator).toBeVisible()` directo, que además falla con un mensaje claro si no aparece.
  */
-async function visible(l: Locator, timeout: number): Promise<boolean> {
+export async function visible(l: Locator, timeout: number): Promise<boolean> {
   return l.waitFor({ state: 'visible', timeout }).then(() => true).catch(() => false)
 }
 

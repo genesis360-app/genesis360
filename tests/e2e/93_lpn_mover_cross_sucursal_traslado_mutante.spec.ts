@@ -23,7 +23,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 const SUR = 'b33a9829-e14d-4962-b55b-3995f614dd87'
@@ -55,22 +55,18 @@ test.describe('LpnAccionesModal → Mover a OTRA sucursal genera traslado (mutan
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-    await page.waitForTimeout(400)
     const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
     await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
     test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
     await ingresoBtn.click()
-    await page.waitForTimeout(400)
 
     const buscador = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
     await expect(buscador).toBeVisible({ timeout: 6000 })
     await buscador.fill(nombreProducto)
-    await page.waitForTimeout(900)
     const modalIngreso = page.locator('div.fixed.inset-0').filter({ has: buscador }).first()
     await modalIngreso.getByText(nombreProducto).first().click()
-    await page.waitForTimeout(500)
     const sucSelectIngreso = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-    if (await sucSelectIngreso.isVisible().catch(() => false)) await sucSelectIngreso.selectOption(NORTE)
+    if (await visible(sucSelectIngreso, 2000)) await sucSelectIngreso.selectOption(NORTE)
     const cantidadIngreso = page.locator('input[type="number"][placeholder="0"]').first()
     await expect(cantidadIngreso).toBeVisible({ timeout: 5000 })
     await cantidadIngreso.fill('5')
@@ -83,9 +79,7 @@ test.describe('LpnAccionesModal → Mover a OTRA sucursal genera traslado (mutan
     const buscadorInv = page.getByPlaceholder(/Buscar por nombre, SKU, código, ubicación o LPN/i).first()
     await expect(buscadorInv).toBeVisible({ timeout: 8000 })
     await buscadorInv.fill(nombreProducto)
-    await page.waitForTimeout(700)
     await page.getByText(nombreProducto, { exact: true }).first().click()
-    await page.waitForTimeout(400)
     await page.getByTitle('Acciones sobre este LPN').first().click()
     await page.getByRole('button', { name: /^Mover$/ }).click()
 
@@ -180,7 +174,6 @@ test.describe('LpnAccionesModal → Mover a OTRA sucursal genera traslado (mutan
     await waitForApp(pageSur)
 
     await pageSur.getByRole('button', { name: /^Traslados$/ }).first().click()
-    await pageSur.waitForTimeout(800)
     await expect(pageSur.getByText(new RegExp(`Traslado.*en tránsito hacia tu sucursal`, 'i'))).toBeVisible({ timeout: 10000 })
 
     const confirmarLista = pageSur.getByRole('button', { name: /Confirmar recepción/i }).first()

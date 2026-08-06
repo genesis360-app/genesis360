@@ -18,6 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Presupuesto en el POS (alcanzabilidad + guard de cliente)', () => {
   test('modo presupuesto: CTA reachable y guard de cliente obligatorio', async ({ page }) => {
@@ -29,12 +30,10 @@ test.describe('Presupuesto en el POS (alcanzabilidad + guard de cliente)', () =>
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    const hayProducto = await primerProducto.isVisible().catch(() => false)
+    const hayProducto = await visible(primerProducto, 5000)
     test.skip(!hayProducto, 'No hay productos vendibles en el tenant de prueba')
     await primerProducto.click()
-    await page.waitForTimeout(600)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // 2) Cambiar el modo de venta a "Presupuesto" (toggle del POS, ya visible con carrito)

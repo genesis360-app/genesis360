@@ -26,17 +26,12 @@ test.describe('Conteo por rol ≠ DUEÑO → autorización (mutante)', () => {
     await waitForApp(page)
 
     await page.getByRole('button', { name: /^Conteos$/ }).first().click()
-    await page.waitForTimeout(500)
     await page.getByRole('button', { name: /Nuevo conteo/i }).first().click()
-    await page.waitForTimeout(400)
     await page.getByRole('button', { name: /Por producto/i }).click()
-    await page.waitForTimeout(300)
 
     const prodSel = page.locator('select').filter({ has: page.locator('option', { hasText: /Seleccioná un producto/i }) }).first()
     await prodSel.selectOption({ label: PRODUCTO_OPT })
-    await page.waitForTimeout(300)
     await page.getByRole('button', { name: /Cargar stock/i }).click()
-    await page.waitForTimeout(1200)
 
     // "Contado" de la 1ª fila (pre-cargado en rápido) → +1 → diferencia
     const primerContado = page.locator('table input[type="number"]').first()
@@ -44,7 +39,6 @@ test.describe('Conteo por rol ≠ DUEÑO → autorización (mutante)', () => {
     const actual = await primerContado.inputValue()
     const nuevo = (parseFloat(actual.replace(',', '.')) || 0) + 1
     await primerContado.fill(String(nuevo))
-    await page.waitForTimeout(300)
 
     await page.getByRole('button', { name: /Finalizar y aplicar ajustes/i }).click()
 

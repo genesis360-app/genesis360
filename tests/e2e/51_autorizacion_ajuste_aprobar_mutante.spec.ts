@@ -23,6 +23,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Aprobación de ajuste de inventario — 2 actores (mutante)', () => {
   test('DUEÑO aprueba una diferencia de conteo pendiente → muta el stock', async ({ page }) => {
@@ -36,11 +37,10 @@ test.describe('Aprobación de ajuste de inventario — 2 actores (mutante)', () 
     const tabAut = page.getByRole('button', { name: 'Autorizaciones' })
     await expect(tabAut).toBeVisible({ timeout: 20000 })
     await tabAut.click()
-    await page.waitForTimeout(800)
 
     // La fila del fixture (Coca Cola) debe estar pendiente. Si no, el fixture no fue sembrado.
     const fila = page.locator('div.rounded-xl.shadow-sm').filter({ hasText: 'Coca Cola 1.5L Original' }).first()
-    if (!(await fila.isVisible().catch(() => false))) {
+    if (!(await visible(fila, 5000))) {
       test.skip(true, 'Fixture de autorización pendiente no sembrado (re-correr el SQL de fixture).')
     }
     await expect(fila).toBeVisible({ timeout: 10000 })

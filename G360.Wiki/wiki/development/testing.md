@@ -123,6 +123,8 @@ npm run test:unit:coverage # coverage report
 | `16_rol_rrhh.spec.ts` | Rol RRHH | ✅ |
 | `63_multicuit_emisor_guards.spec.ts` | **Multi-CUIT — el EMISOR (no el tenant) gobierna la letra.** Corre contra "Kiosco Buildi" (DEV), único tenant con 2 identidades fiscales conviviendo (RI default + Monotributista adicional, ambas con cert). Cubre la rama **"RI rechaza C"** que el 56 no podía (exigía flipear la condición del tenant) + Mono rechaza A/B + combos válidos pasan (aserción positiva) + emisor cross-tenant → 403. **No muta** (venta dummy: los guards corren antes de buscar la venta) → repetible. Requiere `E2E_MULTICUIT_*` (usuario `e2e-multicuit@genesis360.test`, solo DEV). ⚠ El `#` en un password rompe el parseo del `.env` | ✅ |
 | `88_mobile_responsive.spec.ts` | **Barrido responsive mobile** — 10 pantallas × 2 viewports (375/360px), assertea sin overflow horizontal en el **contenido (`<main>`) Y el `<header>`**. Project `chromium-mobile` (`isMobile`+`hasTouch`, sesión owner). Helper `detectarOverflowHorizontal(page, { selector })` mide dentro del contenedor (el root `AppLayout` clippea con `overflow-hidden`) tanto rect como overflow de texto, ignorando scroll intencional | ✅ |
+| `129_pildoras_filtro_productos_inventario_mutante.spec.ts` | **Filtro de píldoras en Productos e Inventario (2026-08-06, ✅ PROD desde v1.158.0)** — siembra su propio producto único, prueba texto libre / campo explícito / combinador Y exige ambos / combinador O alcanza con uno, en las dos páginas. 2/2 verde, corrido dos veces. Ver [[wiki/features/filtro-pildoras]] | ✅ |
+| `130_ubicaciones_arbol_mutante.spec.ts` | **Rediseño de Ubicaciones en árbol (2026-08-06, ✅ PROD desde v1.158.0)** — crear hijo con código autogenerado jerárquico, guard tipo_logico con hijos, guard borrado con niveles adentro, breadcrumb en selector operativo real (encontró y sirvió para corregir 4 gaps reales, ver [[wiki/features/ubicaciones]]). 2/2 verde | ✅ |
 
 > **Barrido responsive (2026-07-15):** primera cobertura mobile en e2e. Detecta el patrón "se sale del marco" (contenido más ancho que el `<main>`). Corre en su propio project `chromium-mobile`; el project desktop lo excluye por `testIgnore`. Guard contra regresiones de overflow. Ver log 2026-07-15.
 
@@ -132,23 +134,74 @@ npm run test:unit:coverage # coverage report
 
 > **⚙️ Env de e2e:** `tests/e2e/.env.test.local` incluye `VITE_SUPABASE_URL` + `VITE_SUPABASE_ANON_KEY` (la anon key es **pública**, ya viaja en el bundle del frontend). Sin ellas, los specs de API (**42** auto-siembra, **56** guards fiscales, **63** multi-CUIT) se **SKIPEAN en silencio** en `npm run test:e2e` — pasó hasta el 2026-07-15. ⚠ **Un `#` en un password rompe el parseo del `.env`** (lo toma como comentario y trunca el valor) → passwords de test sin `#`.
 
-> **🕐 Deuda de `waitForTimeout` fijos — EN CURSO, no cerrada (2026-08-04).** La causa raíz documentada
-> arriba (nota del 2026-07-15, "el mismo test pasa o falla según cuán ocupada esté la máquina") sigue
-> presente en gran parte de la suite: sleeps fijos en vez de esperar el resultado real. Estado
-> medido el 2026-08-04: arrancó en **331 ocurrencias / 89 archivos**, bajó a **312 / 79** tras esta
-> sesión. Lo resuelto:
-> - **`tests/e2e/helpers/fixtures.ts`** (el de mayor apalancamiento — lo usan decenas de specs):
->   `garantizarCajaAbierta` e `ingresoRealPorUI` quedaron sin sleeps fijos, usando el helper
->   `visible(locator, timeout)` (top del archivo) para campos OPCIONALES o el `expect(...)
->   .toBeVisible()` que ya auto-espera para los obligatorios.
-> - Los **14 specs 115-128** (backlog Comercial de Fede) quedaron en cero `waitForTimeout` propios.
-> **Patrón encontrado, útil para seguir el resto:** casi todos los sleeps eran REDUNDANTES —
-> seguidos de un `expect(...).toBeVisible()`/`.toBeEnabled()` que YA auto-espera, así que alcanzaba
-> con borrar la línea. El resto (buscador con debounce antes de un `.click()`) se resuelve con un
-> `expect(locator).toBeVisible({timeout})` explícito antes del click, mismo criterio que ya usa
-> `agregarPrimerProductoAlCarrito`. **Quedan 312 ocurrencias en 79 specs pre-existentes, sin tocar**
-> — alcance grande, mejor una sesión dedicada que un barrido a ciegas (cada archivo necesita
-> correrse real contra DEV para confirmar que el patrón de arriba aplica antes de borrar el sleep).
+> **🕐 Deuda de `waitForTimeout` fijos — ✅ CERRADA (2026-08-06, ✅ PROD desde v1.158.0).** La causa raíz
+> documentada arriba (nota del 2026-07-15, "el mismo test pasa o falla según cuán ocupada esté la
+> máquina") ya no es un problema de fondo: la suite pasó de sleeps fijos por todos lados a esperar
+> señales DOM reales. Estado medido: **331/89 (2026-08-04) → 312/79 → 287/77 → 315/80 recontado →
+> 8 ocurrencias en 6 archivos (2026-08-06, cierre final, deploy v1.158.0)**. GO pidió explícitamente
+> "sigamos con más de wait for timeout hasta finalizarlo" — se cerró de punta a punta en la misma
+> sesión, sin dejar resto pendiente.
+>
+> **Las 8 ocurrencias que quedan son intencionales**, documentadas inline en cada una porque no
+> tienen una señal DOM mejor para esperar:
+> - `14_coherencia_numeros.spec.ts` y `15_rol_supervisor.spec.ts` — dejar correr el JS de la página
+>   para recolectar errores async de consola durante una ventana de tiempo (no hay otra señal
+>   posible para "no pasó nada raro en X ms").
+> - `88_mobile_responsive.spec.ts` — dejar el rendering async de KPIs/gráficos asentarse antes de
+>   medir overflow horizontal.
+> - `98_config_ventas_envios_mutante.spec.ts` — dejar asentar geocoding/autocálculo de envío antes
+>   de un chequeo NEGATIVO (que NO se pisó un valor en $0) — sin señal positiva disponible para un
+>   "no pasó esto".
+> - `tests/e2e/helpers/fixtures.ts` (3 menciones) — son comentarios que explican la metodología, no
+>   código real.
+>
+> **71 archivos tocados en 7 tandas** (por cantidad de ocurrencias, de 8 sleeps/archivo bajando hasta
+> 1), cada tanda corrida contra DEV real antes de pasar a la siguiente. **6 patrones de reemplazo
+> aplicados sistemáticamente — referencia para specs futuros:**
+> 1. **Sleep antes de una acción con `expect().toBeVisible()` ya presente en el siguiente paso** →
+>    se borra (redundante, el auto-wait de Playwright ya cubre la espera).
+> 2. **Sleep antes de `.click()`/`.selectOption()`** → se borra (esos métodos auto-esperan la
+>    actionability del elemento, no hace falta dormir antes).
+> 3. **Sleep antes de `elemento.isVisible()` sin bound** (usado para decidir un `test.skip`) → se
+>    reemplaza por el helper `visible(locator, timeout)` de `fixtures.ts` (espera acotada real en
+>    vez de "dormir y mirar el instante").
+> 4. **Sleep antes de LEER un valor no re-intentable** (ej. total del carrito tras cambiar de UdM) →
+>    se envuelve en `expect.poll(...)` en vez de confiar en que el sleep alcance.
+> 5. **Sleep tras un fetch async disparado por una acción** (ej. seleccionar cliente en el POS
+>    dispara saldo/crédito a favor, ISS E2) → se reemplaza por
+>    `page.waitForLoadState('networkidle', {timeout})`, o se elimina directamente si el siguiente
+>    `expect().toBeVisible()` YA exige que exista la opción que depende de ese fetch.
+> 6. **Sleep como ÚLTIMO paso del test sin ninguna aserción después** (dejar asentar una mutación
+>    antes de cerrar la página) → se reemplaza por `waitForLoadState('networkidle')` acotado.
+>
+> **Simplificaciones de paso:** `44_presupuesto_convertir_mutante.spec.ts` y
+> `38_envio_combustible_gasto_mutante.spec.ts` reusan `agregarPrimerProductoAlCarrito` de
+> `fixtures.ts` en vez de duplicar el patrón de búsqueda+click; `27_gasto_efectivo_mutante.spec.ts` y
+> `32_caja_fuerte_deposito_mutante.spec.ts` reusan `garantizarCajaAbierta` en vez de un bloque manual
+> de apertura de caja. `15_rol_supervisor.spec.ts` tenía un bug real de estructura corregido de paso:
+> el listener de `pageerror` se enganchaba DESPUÉS de un sleep de 1.5s, perdiéndose errores del load
+> inicial.
+>
+> **🛑 Un flake real puede ser un bug real — caso `MasivoModal.tsx` (2026-08-06, ✅ PROD desde
+> v1.158.0).** Al arreglar el spec 95, se encontró que 2 de 3 corridas fallaban de forma
+> intermitente. La tentación fácil hubiera sido "meter un sleep más largo y que pase" — en cambio se
+> investigó la causa y resultó ser un **bug de PRODUCCIÓN real** (no del test): `cargarLineasParaRebaje()`
+> se llama sin `await` desde `addProduct()`, y la validación de ambigüedad de talle/color se saltaba
+> ENTERA si el usuario confirmaba antes de que el fetch resolviera — el rebaje masivo se confirmaba
+> por FIFO ciego sin pedir la variante, violando la Regla de Oro #0. Ver detalle completo en
+> [[wiki/features/inventario-stock]] → "Rebaje masivo" y `log.md` (2026-08-06). **Lección aplicada al
+> resto del barrido:** cuando un spec falla intermitente incluso con esperas "razonables", no asumir
+> que es solo timing del test — puede estar exponiendo una carrera real en el código de la app.
+>
+> **⚠ Deuda técnica separada, NO cerrada por esta ronda — flake conocido en
+> `39_cc_condonacion_mutante.spec.ts`.** Durante la verificación final falló una vez con "Deuda Venta
+> #N condonada" no encontrado. Confirmado que el código tocado en ese archivo en esta sesión (el paso
+> ANTERIOR al click de "Condonar") no toca el punto que falló — es un **race de timing preexistente**
+> con el `confirm()` nativo del browser sobre un **fixture compartido no autogenerado** (cliente real
+> "Gaston Otranto", en vez de sembrar su propia precondición como manda la regla de specs mutantes,
+> ver nota de 2026-07-15 más arriba). No es un bug de la app ni fue causado por esta ronda de
+> `waitForTimeout` — queda documentado como deuda técnica para una sesión futura que reescriba ese
+> spec para autosembrarse.
 
 ### Configuración Playwright
 

@@ -11,7 +11,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, sembrarPresentaciones } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, sembrarPresentaciones, visible } from './helpers/fixtures'
 
 test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
   test('vender 3 Cajas usa el precio de Caja y convierte a 36 unidades base', async ({ page, request }) => {
@@ -65,23 +65,19 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-    await page.waitForTimeout(400)
     const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
     await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
     test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
     await ingresoBtn.click()
-    await page.waitForTimeout(400)
 
     const buscadorIngreso = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
     await expect(buscadorIngreso).toBeVisible({ timeout: 6000 })
     await buscadorIngreso.fill(nombreProducto)
-    await page.waitForTimeout(900)
     const modalIngreso = page.locator('div.fixed.inset-0').filter({ has: buscadorIngreso }).first()
     await modalIngreso.getByText(nombreProducto).first().click()
-    await page.waitForTimeout(500)
 
     const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-    if (await sucSelect.isVisible().catch(() => false)) {
+    if (await visible(sucSelect, 2000)) {
       const vals = await sucSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
       if (vals.length > 0) await sucSelect.selectOption(vals[0])
     }
@@ -90,7 +86,7 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
     // matchea un IN) — sin elegir un estado vendible acá, la venta de más abajo falla con
     // "sin stock" pese a haber ingresado 50 unidades.
     const estadoSelect = page.locator('xpath=//label[contains(.,"Estado")]/following::select[1]')
-    if (await estadoSelect.isVisible().catch(() => false)) {
+    if (await visible(estadoSelect, 2000)) {
       const opcionDisponible = estadoSelect.locator('option', { hasText: 'Disponible' })
       if (await opcionDisponible.count() > 0) {
         await estadoSelect.selectOption({ value: (await opcionDisponible.first().getAttribute('value'))! })
@@ -100,7 +96,7 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
       }
     }
     const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
-    if (await ubicSelect.isVisible().catch(() => false)) {
+    if (await visible(ubicSelect, 2000)) {
       const vals = await ubicSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
       if (vals.length > 0) await ubicSelect.selectOption(vals[0])
     }
@@ -117,7 +113,6 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
     const buscadorPOS = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscadorPOS).toBeVisible({ timeout: 8000 })
     await buscadorPOS.fill(nombreProducto)
-    await page.waitForTimeout(700)
     const prodBtn = page.locator('div.absolute.top-full button, div.grid > button').filter({ hasText: nombreProducto }).first()
     await expect(prodBtn).toBeVisible({ timeout: 10000 })
     await prodBtn.click()
@@ -129,13 +124,11 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
     const opcionCaja = selectorUom.locator('option', { hasText: 'Caja' })
     const valorCaja = await opcionCaja.getAttribute('value')
     await selectorUom.selectOption(valorCaja!)
-    await page.waitForTimeout(400)
 
     // Subir la cantidad EN CAJAS a 3 (arranca en 1) — botón "+" de los controles de UoM
     const btnMas = page.getByTitle('Aumentar cantidad').first()
     for (let i = 1; i < CAJAS_A_VENDER; i++) {
       await btnMas.click()
-      await page.waitForTimeout(300)
     }
 
     // "= 36 unidad" confirma la conversión visible antes de cobrar (la etiqueta base deriva de
@@ -157,7 +150,6 @@ test.describe('Venta por Unidad de Medida en el POS (mutante)', () => {
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill(String(totalEsperado + 1000))
     await montoInput.blur()
-    await page.waitForTimeout(300)
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
     await expect(finalizar).toBeEnabled({ timeout: 5000 })
     await finalizar.click()

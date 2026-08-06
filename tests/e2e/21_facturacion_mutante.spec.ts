@@ -14,6 +14,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Facturación electrónica (mutante)', () => {
   test('venta → emite Factura C → CAE de AFIP homologación', async ({ page }) => {
@@ -24,13 +25,11 @@ test.describe('Facturación electrónica (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
 
     const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    const hayProducto = await primerProducto.isVisible().catch(() => false)
+    const hayProducto = await visible(primerProducto, 5000)
     test.skip(!hayProducto, 'No hay productos vendibles en el tenant de prueba')
     await primerProducto.click()
-    await page.waitForTimeout(600)
 
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
@@ -50,7 +49,6 @@ test.describe('Facturación electrónica (mutante)', () => {
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill('100000')
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     // 4) Finalizar venta directa (despachada)
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()

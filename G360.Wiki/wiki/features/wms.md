@@ -270,6 +270,11 @@ wms_tareas
     número suelto ya no matchea venta, cambiar de campo conserva valor, combinador Y exige las dos
     píldoras, combinador O alcanza con una, y el invariante de siempre — confirmar la tarea sigue
     dando cero movimiento de stock).
+  - **🆕 Generalizado a Productos e Inventario (2026-08-06, ✅ PROD desde v1.158.0):** `pickingFiltro.ts`
+    y este comportamiento de Picking **no se tocaron** — se escribió un núcleo genérico nuevo
+    (`src/lib/pildorasFiltro.ts`) del que nacen `productosFiltro.ts`/`inventarioFiltro.ts`, y
+    `BuscadorPildoras.tsx` pasó a recibir los campos por prop en vez de importarlos hardcodeados de
+    Picking. Detalle completo: [[wiki/features/filtro-pildoras]].
 - Tab **"Tareas WMS"** nuevo en `InventarioPage` — vista de escritorio para el DUEÑO, con link
   directo a `/picking`.
 - Gating: `modoAvanzado` + rol **DEPOSITO** (nav en `AppLayout.tsx` + redirect guard + ruta en

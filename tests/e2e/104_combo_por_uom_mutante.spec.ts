@@ -15,7 +15,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, sembrarPresentaciones } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, sembrarPresentaciones, visible } from './helpers/fixtures'
 
 test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => {
   test('combo "3×10% off" (UoM base) aplica suelto, se desactiva al vender por Caja', async ({ page, request }) => {
@@ -82,26 +82,22 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-    await page.waitForTimeout(400)
     const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
     await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
     test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
     await ingresoBtn.click()
-    await page.waitForTimeout(400)
     const buscadorIngreso = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
     await expect(buscadorIngreso).toBeVisible({ timeout: 6000 })
     await buscadorIngreso.fill(nombreProducto)
-    await page.waitForTimeout(900)
     const modalIngreso = page.locator('div.fixed.inset-0').filter({ has: buscadorIngreso }).first()
     await modalIngreso.getByText(nombreProducto).first().click()
-    await page.waitForTimeout(500)
     const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-    if (await sucSelect.isVisible().catch(() => false)) {
+    if (await visible(sucSelect, 2000)) {
       const vals = await sucSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
       if (vals.length > 0) await sucSelect.selectOption(vals[0])
     }
     const estadoSelect = page.locator('xpath=//label[contains(.,"Estado")]/following::select[1]')
-    if (await estadoSelect.isVisible().catch(() => false)) {
+    if (await visible(estadoSelect, 2000)) {
       const opcionDisponible = estadoSelect.locator('option', { hasText: 'Disponible' })
       if (await opcionDisponible.count() > 0) {
         await estadoSelect.selectOption({ value: (await opcionDisponible.first().getAttribute('value'))! })
@@ -111,7 +107,7 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
       }
     }
     const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
-    if (await ubicSelect.isVisible().catch(() => false)) {
+    if (await visible(ubicSelect, 2000)) {
       const vals = await ubicSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
       if (vals.length > 0) await ubicSelect.selectOption(vals[0])
     }
@@ -128,7 +124,6 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     const buscadorPOS = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscadorPOS).toBeVisible({ timeout: 8000 })
     await buscadorPOS.fill(nombreProducto)
-    await page.waitForTimeout(700)
     const prodBtn = page.locator('div.absolute.top-full button, div.grid > button').filter({ hasText: nombreProducto }).first()
     await expect(prodBtn).toBeVisible({ timeout: 10000 })
     await prodBtn.click()
@@ -136,7 +131,6 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
 
     const btnMas = page.getByTitle('Aumentar cantidad').first()
     await btnMas.click()
-    await page.waitForTimeout(300)
     await btnMas.click()
     await expect(page.getByText(/Combo aplicado/i)).toBeVisible({ timeout: 6000 })
 
@@ -151,11 +145,14 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     const opcionCaja = selectorUom.locator('option', { hasText: 'Caja' })
     const valorCaja = await opcionCaja.getAttribute('value')
     await selectorUom.selectOption(valorCaja!)
-    await page.waitForTimeout(600)
 
-    const totalSinCombo = await totalDelCarrito(page)
-    // 1 Caja (reinicia a cantidad_uom=1 al cambiar de UoM) a $1.080, SIN descuento de combo
-    expect(totalSinCombo, '[104] al vender por Caja el combo de UoM base no debe aplicar').toBeCloseTo(PRECIO_CAJA, 0)
+    // 1 Caja (reinicia a cantidad_uom=1 al cambiar de UoM) a $1.080, SIN descuento de combo.
+    // `expect.poll` en vez de sleep fijo + lectura única: el total tarda un tick en re-renderizar
+    // tras el cambio de UoM.
+    await expect.poll(() => totalDelCarrito(page), {
+      timeout: 5000,
+      message: '[104] al vender por Caja el combo de UoM base no debe aplicar',
+    }).toBeCloseTo(PRECIO_CAJA, 0)
 
     // 7) Cobrar y finalizar
     const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
@@ -168,7 +165,6 @@ test.describe('Combo con UoM propia — solo aplica en su UoM (mutante)', () => 
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill(String(PRECIO_CAJA + 1000))
     await montoInput.blur()
-    await page.waitForTimeout(300)
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
     await expect(finalizar).toBeEnabled({ timeout: 5000 })
     await finalizar.click()

@@ -13,6 +13,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 const PRODUCTO = 'Coca Cola 1.5'
@@ -26,33 +27,29 @@ test.describe('Rebaje de stock no negativo (mutante)', () => {
 
     // Tab "Quitar stock" → botón "Rebaje" abre el modal
     await page.getByRole('button', { name: /Quitar stock/i }).first().click()
-    await page.waitForTimeout(500)
     await page.getByRole('button', { name: /^Rebaje$/ }).click()
-    await page.waitForTimeout(400)
 
     // Buscar y elegir el producto (DENTRO del modal de rebaje, no el buscador de la tab)
     const modal = page.locator('.fixed.inset-0').filter({ has: page.getByRole('heading', { name: /Rebaje de stock/i }) })
     const search = modal.getByPlaceholder(/Buscar por nombre, SKU o código/i)
     await expect(search).toBeVisible({ timeout: 6000 })
     await search.fill(PRODUCTO)
-    await page.waitForTimeout(800)
     const prodBtn = modal.locator('button').filter({ hasText: new RegExp(PRODUCTO, 'i') }).first()
-    if (!(await prodBtn.isVisible().catch(() => false))) {
+    if (!(await visible(prodBtn, 5000))) {
       test.skip(true, `Producto "${PRODUCTO}" no encontrado para rebajar`)
     }
     await prodBtn.click()
-    await page.waitForTimeout(700)
 
     // Elegir la primera línea con stock (habilita "Confirmar rebaje")
     const linea = modal.locator('div.space-y-2 > button').first()
-    if (!(await linea.isVisible().catch(() => false))) {
+    if (!(await visible(linea, 5000))) {
       test.skip(true, 'No hay líneas con stock para el producto')
     }
     await linea.click()
-    await page.waitForTimeout(400)
 
     // Cantidad enorme → supera lo disponible
     const cantInput = page.locator('input[type="number"]').last()
+    await cantInput.waitFor({ state: 'attached', timeout: 5000 })
     await cantInput.evaluate((el, v) => {
       const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!
       setter.call(el, v)

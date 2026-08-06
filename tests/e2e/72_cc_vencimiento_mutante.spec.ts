@@ -16,6 +16,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 const CLIENTE = 'ZZZ Venc CC Test'
@@ -33,22 +34,18 @@ test.describe('Vencimiento de venta CC (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('Coca Cola 1.5')
-    await page.waitForTimeout(1000)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await prod.isVisible().catch(() => false)), 'Coca Cola no encontrada')
+    test.skip(!(await visible(prod, 5000)), 'Coca Cola no encontrada')
     await prod.click()
-    await page.waitForTimeout(600)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // Cliente registrado con CC
     await page.getByRole('button', { name: /Cliente registrado/i }).click()
     const cliSearch = page.getByPlaceholder(/Buscar por nombre o DNI/i).first()
     await cliSearch.fill(CLIENTE)
-    await page.waitForTimeout(800)
     const cliBtn = page.getByRole('button', { name: new RegExp(CLIENTE, 'i') }).first()
     test.skip(!(await cliBtn.isVisible({ timeout: 4000 }).catch(() => false)), `Cliente "${CLIENTE}" no sembrado`)
     await cliBtn.click()
-    await page.waitForTimeout(400)
 
     // Cuenta Corriente por el total ($1.657)
     const medioSelect = page.locator('select').filter({ has: page.locator('option[value="Cuenta Corriente"]') }).first()
@@ -57,16 +54,14 @@ test.describe('Vencimiento de venta CC (mutante)', () => {
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill('1657')
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     // Elegir caja (Jorgito tiene 2+ cajas abiertas → el despacho exige una caja elegida)
     const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
-    if (await cajaSelect.isVisible().catch(() => false)) {
+    if (await visible(cajaSelect, 2000)) {
       const values = await cajaSelect.locator('option').evaluateAll(
         opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
       )
       if (values.length > 0) await cajaSelect.selectOption(values[0])
-      await page.waitForTimeout(300)
     }
 
     // Despachar a CC

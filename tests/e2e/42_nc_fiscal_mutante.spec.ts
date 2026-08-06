@@ -91,9 +91,7 @@ test.describe('Nota de Crédito electrónica (mutante)', () => {
 
     // 1) Tab Historial + buscar la venta facturada por número
     await page.getByRole('button', { name: /^Historial$/ }).first().click()
-    await page.waitForTimeout(500)
     await page.getByPlaceholder(/Buscar por N° o cliente/i).fill(VENTA_NUMERO)
-    await page.waitForTimeout(600)
 
     // 2) Abrir el detalle de la venta (primera fila filtrada). El query de historial puede
     //    tardar en cargar → esperar a que la fila exista antes de clickear.
@@ -108,14 +106,13 @@ test.describe('Nota de Crédito electrónica (mutante)', () => {
       `No se encontró la venta #${VENTA_NUMERO} en el historial — es fixture permanente del tenant e2e; revisar, no skipear.`,
     ).toBeTruthy()
     await fila.click()
-    await page.waitForTimeout(1500) // el detalle dispara la query de devoluciones (async)
 
-    // 3) El detalle muestra el colapsable "Devoluciones (N)" → expandir
+    // 3) El detalle muestra el colapsable "Devoluciones (N)" → expandir. El detalle dispara la
+    // query de devoluciones (async) — el `toBeVisible` de abajo ya cubre esa espera.
     const devolucionesToggle = page.getByRole('button', { name: /Devoluciones \(\d+\)/ }).first()
     await expect(devolucionesToggle, 'la venta fixture no muestra devoluciones (¿falló la siembra?)')
       .toBeVisible({ timeout: 8000 })
     await devolucionesToggle.click()
-    await page.waitForTimeout(400)
 
     // 4) Botón "Emitir NC" (aparece con origen=facturada + venta con CAE + sin nc_cae).
     //    Ya no es un skip: la precondición la sembramos nosotros, así que si no está, es un bug.

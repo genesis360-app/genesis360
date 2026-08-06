@@ -20,6 +20,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Descuento sobre tope SIN clave maestra (mutante)', () => {
   test('descuento 30% > tope 10% sin clave → bloquea sin override (no hay modal de clave)', async ({ page }) => {
@@ -32,12 +33,10 @@ test.describe('Descuento sobre tope SIN clave maestra (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('Mantecol')
-    await page.waitForTimeout(1200)
     const primerProducto = page.locator('div.absolute.top-full button, div.grid > button')
       .filter({ hasText: /Mantecol/i }).first()
-    test.skip(!(await primerProducto.isVisible().catch(() => false)), 'Fixture ausente: producto vendible "Mantecol Clasico 111g" (precio>0) en Familia Otranto')
+    test.skip(!(await visible(primerProducto, 5000)), 'Fixture ausente: producto vendible "Mantecol Clasico 111g" (precio>0) en Familia Otranto')
     await primerProducto.click()
-    await page.waitForTimeout(600)
     const cartLoaded = await page.getByText(/\d+\s+producto/).first().isVisible({ timeout: 5000 }).catch(() => false)
     test.skip(!cartLoaded, 'No se pudo agregar el producto al carrito en Familia Otranto (revisar disponibilidad)')
 

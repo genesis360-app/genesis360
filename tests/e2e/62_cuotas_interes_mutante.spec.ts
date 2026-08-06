@@ -21,6 +21,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Cuotas con interés — total financiado', () => {
   test('Banco Galicia 3x (+0.5%) sobre $10.000 → "3 cuotas de $3.350 = $10.050 total"', async ({ page }) => {
@@ -31,11 +32,9 @@ test.describe('Cuotas con interés — total financiado', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await prod.isVisible().catch(() => false)), 'No hay productos vendibles en el tenant de prueba')
+    test.skip(!(await visible(prod, 5000)), 'No hay productos vendibles en el tenant de prueba')
     await prod.click()
-    await page.waitForTimeout(600)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // 2) Medio de pago = Tarjeta de crédito (nombre canónico del método; el picker de cuotas lo
@@ -51,7 +50,6 @@ test.describe('Cuotas con interés — total financiado', () => {
       setter.call(el, v)
       el.dispatchEvent(new Event('input', { bubbles: true }))
     }, '10000')
-    await page.waitForTimeout(400)
 
     // 4) Picker de cuotas: elegir Banco Galicia (skip si no está configurado)
     const bancoSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /Banco\.\.\./ }) }).first()

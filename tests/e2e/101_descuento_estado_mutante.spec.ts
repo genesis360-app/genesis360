@@ -12,7 +12,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, garantizarCajaAbierta, totalDelCarrito, visible } from './helpers/fixtures'
 
 test.describe('Descuento automático por estado de inventario (mutante)', () => {
   test('estado con 15% de descuento aplica solo, sin clave, y queda trazado en la venta', async ({ page, request }) => {
@@ -71,23 +71,19 @@ test.describe('Descuento automático por estado de inventario (mutante)', () => 
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-    await page.waitForTimeout(400)
     const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
     await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
     test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
     await ingresoBtn.click()
-    await page.waitForTimeout(400)
 
     const buscadorIngreso = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
     await expect(buscadorIngreso).toBeVisible({ timeout: 6000 })
     await buscadorIngreso.fill(nombreProducto)
-    await page.waitForTimeout(900)
     const modalIngreso = page.locator('div.fixed.inset-0').filter({ has: buscadorIngreso }).first()
     await modalIngreso.getByText(nombreProducto).first().click()
-    await page.waitForTimeout(500)
 
     const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-    if (await sucSelect.isVisible().catch(() => false)) {
+    if (await visible(sucSelect, 2000)) {
       const vals = await sucSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
       if (vals.length > 0) await sucSelect.selectOption(vals[0])
     }
@@ -117,7 +113,6 @@ test.describe('Descuento automático por estado de inventario (mutante)', () => 
     const buscadorPOS = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscadorPOS).toBeVisible({ timeout: 8000 })
     await buscadorPOS.fill(nombreProducto)
-    await page.waitForTimeout(700)
     const prodBtn = page.locator('div.absolute.top-full button, div.grid > button').filter({ hasText: nombreProducto }).first()
     await expect(prodBtn).toBeVisible({ timeout: 10000 })
     await prodBtn.click()
@@ -155,7 +150,6 @@ test.describe('Descuento automático por estado de inventario (mutante)', () => 
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill(String(Math.ceil(totalEsperado) + 1000))
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
     await expect(finalizar).toBeEnabled({ timeout: 5000 })

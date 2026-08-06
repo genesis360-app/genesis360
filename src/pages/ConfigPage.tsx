@@ -4331,7 +4331,7 @@ export default function ConfigPage() {
                     <select value={umbralUbicId} onChange={e => setUmbralUbicId(e.target.value)}
                       className="flex-1 min-w-[10rem] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
                       <option value="">Ubicación de picking...</option>
-                      {ubicacionesPicking.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      {ubicacionesPicking.map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                     </select>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Mínimo" value={umbralMin}
                       onChange={e => setUmbralMin(e.target.value)}

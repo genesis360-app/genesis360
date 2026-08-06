@@ -16,6 +16,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const CLIENTE = 'Gaston Otranto'
 
@@ -28,12 +29,11 @@ test.describe('Condonación de deuda CC (mutante)', () => {
 
     // Tab Cuenta Corriente
     await page.getByRole('button', { name: /Cuenta Corriente/i }).first().click()
-    await page.waitForTimeout(800)
 
     // Card del cliente con su lista de ventas CC + botón "Condonar"
     const card = page.locator('div').filter({ hasText: new RegExp(CLIENTE) })
       .filter({ has: page.getByRole('button', { name: /^Condonar$/ }) }).last()
-    test.skip(!(await card.isVisible().catch(() => false)), `${CLIENTE} no tiene deuda CC condonable`)
+    test.skip(!(await visible(card, 5000)), `${CLIENTE} no tiene deuda CC condonable`)
     await card.getByRole('button', { name: /^Condonar$/ }).first().click()
 
     // POSITIVO: toast de condonación (el confirm se acepta vía el handler de dialog)

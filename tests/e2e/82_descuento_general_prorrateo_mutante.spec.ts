@@ -14,6 +14,7 @@
 import { test, expect } from '@playwright/test'
 import type { Locator } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 async function setReactNumber(input: Locator, value: string) {
   await input.evaluate((el, v) => {
@@ -34,11 +35,9 @@ test.describe('Descuento general prorrateado en venta_items (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await primerProducto.isVisible().catch(() => false)), 'No hay productos vendibles')
+    test.skip(!(await visible(primerProducto, 5000)), 'No hay productos vendibles')
     await primerProducto.click()
-    await page.waitForTimeout(600)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // 2) Caja (si hay más de una abierta)
@@ -59,7 +58,6 @@ test.describe('Descuento general prorrateado en venta_items (mutante)', () => {
     await tipoSelect.selectOption('Efectivo')
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill('100000'); await montoInput.blur()
-    await page.waitForTimeout(300)
 
     // 5) Finalizar
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()

@@ -14,6 +14,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 const KIT = 'Elite Pañuelos Super Pack x3'
@@ -29,11 +30,10 @@ test.describe('Desarmar KIT devuelve componentes (mutante)', () => {
 
     // Tab Kits
     await page.getByRole('button', { name: /^Kits$/ }).first().click()
-    await page.waitForTimeout(700)
 
     // Fila del KIT → botón "Desarmar"
     const row = page.locator('div').filter({ hasText: new RegExp(KIT) }).filter({ has: page.getByRole('button', { name: /^Desarmar$/ }) }).last()
-    if (!(await row.isVisible().catch(() => false))) {
+    if (!(await visible(row, 5000))) {
       test.skip(true, `KIT "${KIT}" no visible en la tab Kits`)
     }
     await row.getByRole('button', { name: /^Desarmar$/ }).click()

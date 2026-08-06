@@ -14,6 +14,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 
@@ -26,18 +27,15 @@ test.describe('Presupuesto vencido bloquea convertir', () => {
 
     // Historial → filtrar presupuestos (pendiente)
     await page.getByRole('button', { name: /^Historial$/ }).first().click()
-    await page.waitForTimeout(600)
     await page.locator('select').filter({ has: page.locator('option', { hasText: /Todos los estados/ }) }).first()
       .selectOption('pendiente')
-    await page.waitForTimeout(700)
 
     // Abrir el presupuesto fixture (total distintivo $7.777)
     const fila = page.locator('div.divide-y > div').filter({ hasText: /7\.777/ }).first()
-    if (!(await fila.isVisible().catch(() => false))) {
+    if (!(await visible(fila, 5000))) {
       test.skip(true, 'Presupuesto fixture $7.777 no encontrado (re-sembrar el SQL).')
     }
     await fila.click()
-    await page.waitForTimeout(800)
 
     // POSITIVO: banner de vencido visible
     await expect(page.getByText(/Presupuesto vencido/i).first()).toBeVisible({ timeout: 6000 })

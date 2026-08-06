@@ -24,14 +24,12 @@ test.describe('Set clave maestra hasheada (mutante)', () => {
 
     // Nav de Config → Caja (botón del nav, no el link del sidebar)
     await page.getByRole('button', { name: /^Caja$/ }).first().click()
-    await page.waitForTimeout(600)
 
     // Campo "Contraseña maestra" + confirmación
     const claveInput = page.locator('xpath=//label[contains(.,"Contraseña maestra")]/following::input[1]')
     await expect(claveInput).toBeVisible({ timeout: 8000 })
     await claveInput.fill(CLAVE)
     await page.getByPlaceholder(/Repetí la clave maestra/i).fill(CLAVE)
-    await page.waitForTimeout(200)
 
     // Guardar (el botón de esta sección, después del campo)
     await page.locator('xpath=//label[contains(.,"Contraseña maestra")]/following::button[normalize-space(.)="Guardar"][1]').click()

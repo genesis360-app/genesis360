@@ -18,7 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
 
 test.describe('Venta bloqueada por atributo de variante ambiguo (mutante)', () => {
   test('exige elegir el color antes de cobrar y despacha solo la línea elegida', async ({ page, request }) => {
@@ -51,23 +51,19 @@ test.describe('Venta bloqueada por atributo de variante ambiguo (mutante)', () =
       await goto(page, '/inventario')
       await waitForApp(page)
       await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-      await page.waitForTimeout(400)
       const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
       await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
       test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
       await ingresoBtn.click()
-      await page.waitForTimeout(400)
 
       const buscador = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
       await expect(buscador).toBeVisible({ timeout: 6000 })
       await buscador.fill(nombreProducto)
-      await page.waitForTimeout(900)
       const modal = page.locator('div.fixed.inset-0').filter({ has: buscador }).first()
       await modal.getByText(nombreProducto).first().click()
-      await page.waitForTimeout(500)
 
       const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-      if (await sucSelect.isVisible().catch(() => false)) {
+      if (await visible(sucSelect, 2000)) {
         const vals = await sucSelect.locator('option').evaluateAll(
           opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
         )
@@ -75,7 +71,7 @@ test.describe('Venta bloqueada por atributo de variante ambiguo (mutante)', () =
       }
 
       const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
-      if (await ubicSelect.isVisible().catch(() => false)) {
+      if (await visible(ubicSelect, 2000)) {
         const vals = await ubicSelect.locator('option').evaluateAll(
           opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
         )
@@ -86,7 +82,7 @@ test.describe('Venta bloqueada por atributo de variante ambiguo (mutante)', () =
       // hace `.in('estado_id', estadosDisponiblesParaVenta)` incluso con el grupo "Todos" — un
       // estado_id NULL nunca matchea `IN(...)`, así que la línea queda invisible en el POS.
       const estadoSelect = page.locator('xpath=//label[contains(.,"Estado")]/following::select[1]')
-      if (await estadoSelect.isVisible().catch(() => false)) {
+      if (await visible(estadoSelect, 2000)) {
         await estadoSelect.selectOption({ label: 'Disponible' }).catch(() => {})
       }
 
@@ -120,11 +116,9 @@ test.describe('Venta bloqueada por atributo de variante ambiguo (mutante)', () =
     const buscadorPos = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscadorPos).toBeVisible({ timeout: 8000 })
     await buscadorPos.fill(nombreProducto)
-    await page.waitForTimeout(900)
     const prodBtn = page.locator('div.absolute.top-full button, div.grid > button').filter({ hasText: nombreProducto }).first()
     await expect(prodBtn).toBeVisible({ timeout: 6000 })
     await prodBtn.click()
-    await page.waitForTimeout(600)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // Caja, si hay varias abiertas
@@ -142,7 +136,6 @@ test.describe('Venta bloqueada por atributo de variante ambiguo (mutante)', () =
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill('10000')
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
     await expect(finalizar).toBeEnabled({ timeout: 5000 })
@@ -154,9 +147,7 @@ test.describe('Venta bloqueada por atributo de variante ambiguo (mutante)', () =
 
     // 4) Abrir el picker (badge ámbar "⚠ Elegí color") y elegir la línea "Rojo-E2E"
     await page.getByText(/⚠ Elegí color/i).first().click()
-    await page.waitForTimeout(400)
     await page.getByRole('button', { name: /Rojo-E2E/i }).first().click()
-    await page.waitForTimeout(400)
 
     // 5) POSITIVO — cobrar de nuevo debe completar la venta (el carrito se limpia)
     await finalizar.click()

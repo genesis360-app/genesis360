@@ -1,21 +1,39 @@
 import { X } from 'lucide-react'
-import {
-  CAMPOS_FILTRO, operadoresValidosParaCampo, operadorAjustado,
-  type Pildora, type CampoFiltro, type OperadorFiltro, type Combinador,
-} from '@/lib/pickingFiltro'
+import { operadoresValidosParaCampo, operadorAjustado, type OperadorFiltro, type Combinador } from '@/lib/pildorasFiltro'
 
 // Buscador tipo "chips": cada criterio queda como una píldora (Campo):operador+valor, editable
 // sin perder el valor/operador al cambiar el campo. Varias píldoras se combinan con UN solo
-// combinador Y/O global (no árbol de expresiones anidado — no lo pidieron). Construido para
-// /picking, donde escribir un número a secas se tomaba como LPN/SKU/pedido/venta/envío a la vez.
+// combinador Y/O global (no árbol de expresiones anidado — no lo pidieron). Nació en /picking
+// (escribir un número a secas se tomaba como LPN/SKU/pedido/venta/envío a la vez) y se generalizó
+// para reusarse en /productos y /inventario: cada página pasa su propio `camposFiltro` (ver
+// `pildorasFiltro.ts` + `productosFiltro.ts`/`inventarioFiltro.ts`/`pickingFiltro.ts`).
+//
+// El campo queda tipado como `string` a propósito (no genérico sobre la unión de cada página):
+// simplifica la inferencia en los 3 call sites a cambio de que cada página haga un `as CampoX`
+// puntual en su callback — el valor siempre sale de la lista `camposFiltro` que ELLA misma pasó,
+// así que el cast es seguro en runtime.
+export interface CampoFiltroDef {
+  campo: string
+  label: string
+  numerico?: boolean
+}
+
+export interface PildoraGenerica {
+  id: string
+  campo: string // 'libre' o uno de los `campo` de `camposFiltro`
+  operador: OperadorFiltro
+  valor: string
+}
+
 interface Props {
-  pildoras: Pildora[]
+  camposFiltro: ReadonlyArray<CampoFiltroDef>
+  pildoras: PildoraGenerica[]
   entrada: string
   combinador: Combinador
   placeholder?: string
   onEntradaChange: (v: string) => void
   onCommitEntrada: () => void
-  onCampoChange: (id: string, campo: CampoFiltro) => void
+  onCampoChange: (id: string, campo: string) => void
   onOperadorChange: (id: string, operador: OperadorFiltro) => void
   onValorChange: (id: string, valor: string) => void
   onRemove: (id: string) => void
@@ -24,7 +42,7 @@ interface Props {
 }
 
 export function BuscadorPildoras({
-  pildoras, entrada, combinador, placeholder, onEntradaChange, onCommitEntrada,
+  camposFiltro, pildoras, entrada, combinador, placeholder, onEntradaChange, onCommitEntrada,
   onCampoChange, onOperadorChange, onValorChange, onRemove, onRemoveLast, onCombinadorChange,
 }: Props) {
   return (
@@ -37,15 +55,15 @@ export function BuscadorPildoras({
               <span className="px-0.5">{p.valor}</span>
             ) : (
               <>
-                <select value={p.campo} onChange={e => onCampoChange(p.id, e.target.value as CampoFiltro)}
+                <select value={p.campo} onChange={e => onCampoChange(p.id, e.target.value)}
                   data-testid="pildora-campo"
                   className="bg-transparent font-semibold outline-none cursor-pointer appearance-none pr-0.5">
-                  {CAMPOS_FILTRO.map(c => <option key={c.campo} value={c.campo}>{c.label}</option>)}
+                  {camposFiltro.map(c => <option key={c.campo} value={c.campo}>{c.label}</option>)}
                 </select>
                 <select value={p.operador} onChange={e => onOperadorChange(p.id, e.target.value as OperadorFiltro)}
                   data-testid="pildora-operador"
                   className="bg-transparent outline-none cursor-pointer appearance-none font-bold px-0.5">
-                  {operadoresValidosParaCampo(p.campo).map(o => <option key={o.operador} value={o.operador}>{o.simbolo}</option>)}
+                  {operadoresValidosParaCampo(p.campo, camposFiltro).map(o => <option key={o.operador} value={o.operador}>{o.simbolo}</option>)}
                 </select>
                 <input type="text" value={p.valor} onChange={e => onValorChange(p.id, e.target.value)}
                   data-testid="pildora-valor"
@@ -84,6 +102,8 @@ export function BuscadorPildoras({
 
 /** Al cambiar el campo de una píldora existente, conserva operador/valor — ajusta el operador
  * SOLO si deja de ser válido para el campo nuevo (ej. "mayor" sobre un campo de texto). */
-export function pildoraConCampoNuevo(p: Pildora, campo: CampoFiltro): Pildora {
-  return { ...p, campo, operador: operadorAjustado(p.operador, campo) }
+export function pildoraConCampoNuevo<P extends { operador: OperadorFiltro }>(
+  p: P, campo: string, camposFiltro: ReadonlyArray<CampoFiltroDef>,
+): P & { campo: string } {
+  return { ...p, campo, operador: operadorAjustado(p.operador, campo, camposFiltro) }
 }

@@ -22,6 +22,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Precio mayorista por tier (cantidad mínima)', () => {
   test('cantidad ≥ mínima aplica el precio del tier mayorista', async ({ page }) => {
@@ -32,13 +33,11 @@ test.describe('Precio mayorista por tier (cantidad mínima)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('Donuts Orange')
-    await page.waitForTimeout(1000)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').filter({ hasText: /Donuts Orange/i }).first()
-    if (!(await prod.isVisible().catch(() => false))) {
+    if (!(await visible(prod, 5000))) {
       test.skip(true, 'Producto con tier "Donuts Orange Bitter" no disponible en el tenant.')
     }
     await prod.click()
-    await page.waitForTimeout(500)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // Baseline: con cantidad 1 NO debe verse el indicador mayorista
@@ -49,11 +48,10 @@ test.describe('Precio mayorista por tier (cantidad mínima)', () => {
     const qtyInput = page.locator('input[inputmode="numeric"], input[inputmode="decimal"]').first()
     await qtyInput.fill('10')
     await qtyInput.blur()
-    await page.waitForTimeout(700)
 
     // Si el tier no aplicó con qty=10, el fixture (umbral ≤10) no está → skip (no es falso-rojo).
     const mayorista = page.getByText(/Precio mayorista/i)
-    if (!(await mayorista.isVisible().catch(() => false))) {
+    if (!(await visible(mayorista, 3000))) {
       test.skip(true, 'Tier no alcanzable con qty=10 — aplicar el fixture (producto_precios_mayorista.cantidad_minima ≤ 10).')
     }
     // POSITIVO: aplica el tier mayorista ($900/u, con el de lista $1.200 tachado)

@@ -21,6 +21,7 @@
 import { test, expect } from '@playwright/test'
 import type { Locator } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 const CAJA_LIBRE = 'Caja2'
@@ -48,15 +49,13 @@ test.describe('Cierre de caja con diferencia (mutante)', () => {
       test.skip(true, `Caja "${CAJA_LIBRE}" no visible en el selector (¿sucursal/estado?).`)
     }
     await pill.click()
-    await page.waitForTimeout(600)
 
     // Debe estar cerrada → botón "Abrir caja"
     const btnAbrir = page.getByRole('button', { name: /^Abrir caja$/ })
-    if (!(await btnAbrir.isVisible().catch(() => false))) {
+    if (!(await visible(btnAbrir, 3000))) {
       test.skip(true, `"${CAJA_LIBRE}" no está cerrada/disponible para abrir (re-correr cuando esté libre).`)
     }
     await btnAbrir.click()
-    await page.waitForTimeout(400)
 
     // 2) Apertura con $1.000 (sobrescribe el sugerido si lo hubiera)
     const aperturaInput = page.locator('input[type="number"][placeholder="0"]').first()

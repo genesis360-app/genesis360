@@ -11,6 +11,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Flujo de venta (mutante)', () => {
   test('venta directa en efectivo: completa el cobro y limpia el carrito', async ({ page }) => {
@@ -21,15 +22,13 @@ test.describe('Flujo de venta (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
 
     // Modo lista (default): el dropdown de resultados es div.absolute.top-full con <button>s.
     // Modo galería: cards en un grid. Cubrimos ambos.
     const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    const hayProducto = await primerProducto.isVisible().catch(() => false)
+    const hayProducto = await visible(primerProducto, 5000)
     test.skip(!hayProducto, 'No hay productos vendibles en el tenant de prueba')
     await primerProducto.click()
-    await page.waitForTimeout(600)
 
     // El carrito tiene 1 producto (el contador "N producto" — con dígito — distingue
     // del heading persistente "Agregar productos").
@@ -52,7 +51,6 @@ test.describe('Flujo de venta (mutante)', () => {
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill('100000')
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     // 4) Finalizar (modoVenta default = 'despachada' → botón "Venta directa" full-width)
     //    .last() para no chocar con el toggle de modo (mismo texto)

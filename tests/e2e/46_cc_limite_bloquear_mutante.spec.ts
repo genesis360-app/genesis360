@@ -18,6 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const CLIENTE = 'ZZZ CC Limite Test'
 
@@ -30,11 +31,9 @@ test.describe('Límite de CC con política bloquear (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await primerProducto.isVisible().catch(() => false)), 'No hay productos vendibles en el tenant de prueba')
+    test.skip(!(await visible(primerProducto, 5000)), 'No hay productos vendibles en el tenant de prueba')
     await primerProducto.click()
-    await page.waitForTimeout(600)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // 2) Elegir el cliente registrado con CC (habilita el medio "Cuenta Corriente")
@@ -42,14 +41,12 @@ test.describe('Límite de CC con política bloquear (mutante)', () => {
     const clienteSearch = page.getByPlaceholder(/Buscar por nombre o DNI/i).first()
     await expect(clienteSearch).toBeVisible({ timeout: 5000 })
     await clienteSearch.fill('ZZZ CC Limite')
-    await page.waitForTimeout(800)
     const clienteBtn = page.getByRole('button', { name: new RegExp(CLIENTE, 'i') }).first()
     // Auto-omitir si la fixture no está sembrada (patrón specs 35/42): el cliente CC con límite=1
     // y cc_enforcement_politica='bloquear' se siembran por SQL antes de correr.
     test.skip(!(await clienteBtn.isVisible({ timeout: 4000 }).catch(() => false)),
       'Fixture ausente: cliente "ZZZ CC Limite Test" (CC, límite=1) + tenant cc_enforcement_politica=bloquear')
     await clienteBtn.click()
-    await page.waitForTimeout(400)
 
     // 3) Medio de pago: Cuenta Corriente cubriendo el total (monto > límite=1 → supera)
     const medioSelect = page.locator('select').filter({ has: page.locator('option[value="Cuenta Corriente"]') }).first()
@@ -58,7 +55,6 @@ test.describe('Límite de CC con política bloquear (mutante)', () => {
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill('5000')
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     // 4) Submit → con la venta 100% a CC el CTA pasa a "Despachar (cuenta corriente)" (línea 5327).
     //    El guard de límite de CC corre antes de tocar caja/stock.

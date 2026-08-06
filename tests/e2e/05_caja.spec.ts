@@ -12,6 +12,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Caja', () => {
   test.beforeEach(async ({ page }) => {
@@ -76,10 +77,9 @@ test.describe('Caja', () => {
     const btnAbrir = page.getByRole('button', { name: /abrir caja|nueva sesión/i }).first()
     if (!await btnAbrir.isVisible().catch(() => false)) return // no hay caja cerrada
     await btnAbrir.click()
-    await page.waitForTimeout(400)
     // El selector A2 aparece para DUEÑO si el tenant tiene >1 cajero
     const selectorAjena = page.getByText(/abrir caja para/i).first()
-    if (await selectorAjena.isVisible().catch(() => false)) {
+    if (await visible(selectorAjena, 3000)) {
       await expect(selectorAjena).toBeVisible()
     }
     await page.keyboard.press('Escape')

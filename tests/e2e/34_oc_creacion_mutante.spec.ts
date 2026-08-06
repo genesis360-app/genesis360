@@ -22,7 +22,6 @@ test.describe('Creación de OC (mutante)', () => {
 
     // Tab Órdenes de compra
     await page.getByRole('button', { name: /Órdenes de compra/i }).first().click()
-    await page.waitForTimeout(500)
 
     // Nueva OC
     await page.getByRole('button', { name: /Nueva OC/i }).click()
@@ -31,17 +30,14 @@ test.describe('Creación de OC (mutante)', () => {
     // Proveedor
     const provSel = page.locator('select').filter({ has: page.locator('option', { hasText: /Seleccioná un proveedor/i }) }).first()
     await provSel.selectOption({ label: PROVEEDOR })
-    await page.waitForTimeout(300)
 
     // El form ya arranca con una línea de producto vacía (openNewOC) → NO agregar otra.
     // Producto (select de la línea, identificado por su opción "Seleccioná producto…")
     const prodSel = page.locator('select').filter({ has: page.locator('option', { hasText: /Seleccioná producto/i }) }).first()
     await prodSel.selectOption({ label: PRODUCTO_OPT })
-    await page.waitForTimeout(300)
 
     // Cantidad = 5 (el precio unitario se autocompleta con el costo)
     await page.getByPlaceholder(/^Cant\./).first().fill('5')
-    await page.waitForTimeout(200)
 
     // Guardar
     await page.getByRole('button', { name: /Guardar OC/i }).click()

@@ -43,6 +43,12 @@ import { esDecimal } from '@/lib/ventasValidation'
 import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralConfig } from '@/lib/conteoAjuste'
 import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
 import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
+import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
+import {
+  parsearPildora as parsearPildoraInv, evaluarPildorasLinea, productoMatcheaPildoras,
+  CAMPOS_FILTRO_INVENTARIO, type PildoraInventario,
+} from '@/lib/inventarioFiltro'
+import { type Combinador } from '@/lib/pildorasFiltro'
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -134,7 +140,10 @@ export default function InventarioPage() {
   const [ingresoSucursalId, setIngresoSucursalId] = useState<string | null>(null)
 
   // ── Inventario tab state ───────────────────────────────────────────────────
-  const [invSearch, setInvSearch] = useState('')
+  // Buscador por píldoras (mismo mecanismo que /picking y /productos, ver `inventarioFiltro.ts`).
+  const [pildorasInv, setPildorasInv] = useState<PildoraInventario[]>([])
+  const [entradaInv, setEntradaInv] = useState('')
+  const [combinadorInv, setCombinadorInv] = useState<Combinador>('Y')
   const [filterAlerta, setFilterAlerta] = useState(false)
   const [filterCat, setFilterCat] = useState('')
   const [filterUbic, setFilterUbic] = useState('')
@@ -147,12 +156,14 @@ export default function InventarioPage() {
   const [lpnAcciones, setLpnAcciones] = useState<{ linea: any; producto: any } | null>(null)
   const [seriesModal, setSeriesModal] = useState<{ lpn: string; series: any[] } | null>(null)
 
-  // Pre-fill search from ?search= URL param (e.g. link desde AlertasPage)
+  // Pre-fill search from ?search= URL param (e.g. link desde AlertasPage) — el valor de ese link
+  // es siempre un LPN suelto, así que entra como píldora libre (matchea producto/sku/código/LPN/
+  // ubicación, igual que el buscador de texto plano que reemplaza).
   useEffect(() => {
     const s = searchParams.get('search')
     if (s) {
       setTab('inventario')
-      setInvSearch(s)
+      setPildorasInv([{ id: crypto.randomUUID(), campo: 'libre', operador: 'contiene', valor: s }])
       setSearchParams({}, { replace: true })
     }
   }, [])
@@ -2592,18 +2603,29 @@ export default function InventarioPage() {
       acc + Math.max(0, (l.cantidad || 0) - (l.cantidad_reservada || 0)), 0)
   }
 
+  // Lo que todavía se está tipeando (`entradaInv`) filtra en vivo igual que las píldoras ya
+  // confirmadas — Enter la vuelve una píldora fija. Mismo mecanismo que /picking y /productos.
+  const entradaInvTrim = entradaInv.trim()
+  const pildoraDeEntradaInv: PildoraInventario | null = entradaInvTrim
+    ? (parsearPildoraInv(entradaInvTrim) ?? { id: '__entrada__', campo: 'libre', operador: 'contiene', valor: entradaInvTrim })
+    : null
+  const pildorasEfectivasInv = pildoraDeEntradaInv ? [...pildorasInv, pildoraDeEntradaInv] : pildorasInv
+
+  const commitEntradaInv = () => {
+    if (!entradaInvTrim) return
+    const nueva = parsearPildoraInv(entradaInvTrim) ?? { id: crypto.randomUUID(), campo: 'libre' as const, operador: 'contiene' as const, valor: entradaInvTrim }
+    setPildorasInv(ps => [...ps, nueva])
+    setEntradaInv('')
+  }
+
   const filteredInv = productos.filter(p => {
-    // Búsqueda por texto: nombre, SKU, código de barras, ubicación o LPN
-    if (invSearch) {
-      const s = invSearch.toLowerCase()
-      const lineas = lineasMap[(p as any).id] ?? []
-      const matchProd = p.nombre.toLowerCase().includes(s)
-        || ((p as any).sku ?? '').toLowerCase().includes(s)
-        || ((p as any).codigo_barras ?? '') === invSearch
-      const matchLpn = lineas.some((l: any) => (l.lpn ?? '').toLowerCase().includes(s))
-      const matchUbic = lineas.some((l: any) => (l.ubicaciones?.nombre ?? '').toLowerCase().includes(s))
-      if (!matchProd && !matchLpn && !matchUbic) return false
-    }
+    const lineasParaFiltro = (lineasMap[(p as any).id] ?? []).map((l: any) => ({
+      lpn: l.lpn ?? null, ubicacionNombre: l.ubicaciones?.nombre ?? null,
+    }))
+    if (!productoMatcheaPildoras(
+      { nombre: p.nombre, sku: (p as any).sku ?? null, codigoBarras: (p as any).codigo_barras ?? null },
+      lineasParaFiltro, pildorasEfectivasInv, combinadorInv,
+    )) return false
     const stock = getStockTotal(p)
     if (filterAlerta && stock > (p as any).stock_minimo) return false
     // Filtro por categoría
@@ -3598,7 +3620,7 @@ export default function InventarioPage() {
                           <select value={form.ubicacionId} onChange={e => setForm(p => ({ ...p, ubicacionId: e.target.value }))}
                             className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text">
                             <option value="">Sin ubicación</option>
-                            {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                            {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                           </select>
                           {/* Fase C del cubicaje (migs 321/322/325): avisa si la posición queda
                               llena o pasada de peso/volumen. Nunca bloquea el ingreso. */}
@@ -4124,12 +4146,23 @@ export default function InventarioPage() {
             </div>
           )}
 
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-              <input type="text" value={invSearch} onChange={e => setInvSearch(e.target.value)}
-                placeholder="Buscar por nombre, SKU, código, ubicación o LPN..."
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+          <div className="flex gap-2 items-start">
+            <div className="flex-1">
+              <BuscadorPildoras
+                camposFiltro={CAMPOS_FILTRO_INVENTARIO}
+                pildoras={pildorasInv}
+                entrada={entradaInv}
+                combinador={combinadorInv}
+                placeholder="Buscar por nombre, SKU, código, ubicación o LPN... o (Ubicación):Depósito"
+                onEntradaChange={setEntradaInv}
+                onCommitEntrada={commitEntradaInv}
+                onCampoChange={(id, campo) => setPildorasInv(ps => ps.map(p => p.id === id ? pildoraConCampoNuevo(p, campo, CAMPOS_FILTRO_INVENTARIO) as PildoraInventario : p))}
+                onOperadorChange={(id, operador) => setPildorasInv(ps => ps.map(p => p.id === id ? { ...p, operador } : p))}
+                onValorChange={(id, valor) => setPildorasInv(ps => ps.map(p => p.id === id ? { ...p, valor } : p))}
+                onRemove={id => setPildorasInv(ps => ps.filter(p => p.id !== id))}
+                onRemoveLast={() => setPildorasInv(ps => ps.slice(0, -1))}
+                onCombinadorChange={setCombinadorInv}
+              />
             </div>
             <button onClick={() => setInvScannerOpen(true)}
               className="px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl hover:bg-gray-50 dark:hover:bg-gray-700/50 text-gray-500 dark:text-gray-400 hover:text-accent-text transition-colors bg-white dark:bg-gray-800"
@@ -4184,7 +4217,7 @@ export default function InventarioPage() {
                           className="w-full text-sm border border-gray-200 dark:border-gray-700 rounded-xl px-3 py-2 focus:outline-none focus:border-accent-text bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                           <option value="">Todas</option>
                           <option value="__sin__">Sin ubicación</option>
-                          {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                          {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                         </select>
                       </div>
 
@@ -4235,19 +4268,17 @@ export default function InventarioPage() {
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
               </div>
             ) : invVista === 'ubicacion' ? (() => {
-              const search = invSearch.toLowerCase()
               const ubicKeys = Object.keys(ubicacionLineasMap)
               .filter(key => {
                 const lineas = ubicacionLineasMap[key]
                 const ubicNombre = key === '__sin_ubicacion__' ? 'Sin ubicación' : (lineas[0]?.ubicaciones?.nombre ?? '')
-                if (!search) return true
-                if (ubicNombre.toLowerCase().includes(search)) return true
+                if (pildorasEfectivasInv.length === 0) return true
                 return lineas.some((l: any) => {
                   const prod = l.productos as any
-                  return prod?.nombre?.toLowerCase().includes(search)
-                    || prod?.sku?.toLowerCase().includes(search)
-                    || (l.lpn ?? '').toLowerCase().includes(search)
-                    || ((l as any).codigo_barras ?? '') === invSearch
+                  return evaluarPildorasLinea({
+                    productoNombre: prod?.nombre ?? '', sku: prod?.sku ?? null,
+                    codigoBarras: (l as any).codigo_barras ?? null, lpn: l.lpn ?? null, ubicacionNombre: ubicNombre,
+                  }, pildorasEfectivasInv, combinadorInv)
                 })
               })
               .sort((a, b) => {
@@ -4260,7 +4291,7 @@ export default function InventarioPage() {
               if (ubicKeys.length === 0) return (
                 <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
                   <Building size={40} className="mb-3 opacity-50" />
-                  <p className="font-medium">{search ? 'No se encontraron ubicaciones' : 'Sin datos de inventario'}</p>
+                  <p className="font-medium">{pildorasEfectivasInv.length > 0 ? 'No se encontraron ubicaciones' : 'Sin datos de inventario'}</p>
                 </div>
               )
               return (
@@ -4339,7 +4370,7 @@ export default function InventarioPage() {
             })() : filteredInv.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
                 <Package size={40} className="mb-3 opacity-50" />
-                <p className="font-medium">{invSearch ? 'No se encontraron productos' : 'No hay productos aún'}</p>
+                <p className="font-medium">{pildorasEfectivasInv.length > 0 ? 'No se encontraron productos' : 'No hay productos aún'}</p>
               </div>
             ) : (
               <div className="divide-y divide-gray-50 dark:divide-gray-700">
@@ -4618,7 +4649,13 @@ export default function InventarioPage() {
           {invScannerOpen && (
             <BarcodeScanner
               title="Buscar producto"
-              onDetected={code => { setInvSearch(code); setInvScannerOpen(false) }}
+              onDetected={code => {
+                // Un scan es una acción puntual y completa — REEMPLAZA el filtro entero, no lo acumula.
+                const nueva = parsearPildoraInv(code) ?? { id: crypto.randomUUID(), campo: 'libre' as const, operador: 'contiene' as const, valor: code }
+                setPildorasInv([nueva])
+                setEntradaInv('')
+                setInvScannerOpen(false)
+              }}
               onClose={() => setInvScannerOpen(false)}
             />
           )}

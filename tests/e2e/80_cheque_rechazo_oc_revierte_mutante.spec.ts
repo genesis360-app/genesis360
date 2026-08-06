@@ -23,6 +23,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NRO_CHEQUE = 'E2E-OC-REV'
 
@@ -35,11 +36,10 @@ test.describe('Rechazo de cheque que pagó una OC (mutante)', () => {
 
     // Tab Cheques
     await page.getByRole('button', { name: /Cheques/i }).first().click()
-    await page.waitForTimeout(800)
 
     // Fila del cheque fixture
     const fila = page.locator('div,tr').filter({ hasText: NRO_CHEQUE }).first()
-    if (!(await fila.isVisible().catch(() => false))) {
+    if (!(await visible(fila, 5000))) {
       test.skip(true, `Cheque fixture "${NRO_CHEQUE}" no sembrado (re-correr el SQL de fixture).`)
     }
     await expect(fila).toBeVisible({ timeout: 8000 })

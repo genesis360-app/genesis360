@@ -40,7 +40,6 @@ test.describe('Notificaciones (campana)', () => {
     // 4) Si hay no leídas, "Marcar todas leídas" baja el contador (NOT-03)
     if (hayItems) {
       await marcarTodas.click()
-      await page.waitForTimeout(800)
       await expect(page.getByRole('button', { name: /Marcar todas leídas/ })).not.toBeVisible({ timeout: 5000 })
     }
 

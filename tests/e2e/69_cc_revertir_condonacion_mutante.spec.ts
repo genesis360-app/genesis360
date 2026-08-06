@@ -18,6 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Revertir condonación CC (mutante)', () => {
   test.skip(process.env.E2E_CC_REVERTIR !== '1', 'Fixture cliente+ventas CC no sembrado (E2E_CC_REVERTIR!=1).')
@@ -29,11 +30,10 @@ test.describe('Revertir condonación CC (mutante)', () => {
 
     // Tab "Cuenta Corriente"
     await page.getByRole('button', { name: /Cuenta Corriente/i }).first().click()
-    await page.waitForTimeout(900)
 
     // Fila de la venta condonada #247 → botón "Revertir"
     const row247 = page.locator('div').filter({ hasText: /Venta #247 ·/ }).filter({ has: page.getByRole('button', { name: /^Revertir$/ }) }).last()
-    if (!(await row247.isVisible().catch(() => false))) {
+    if (!(await visible(row247, 5000))) {
       test.skip(true, 'Fila de la venta condonada #247 no visible (re-sembrar fixture).')
     }
     await row247.getByRole('button', { name: /^Revertir$/ }).click()

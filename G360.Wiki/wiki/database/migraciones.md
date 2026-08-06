@@ -3,20 +3,23 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
 
 # Historial de Migraciones (001-335)
 
-**Total al 2026-08-05:** 335 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-06:** 335 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-333 en DEV y PROD** (v1.155.0, deploy 2026-08-04 — backlog Fede 25/7, Fases F+A+B+C+D de
-[[wiki/features/precios-tiers-empaque]]). **334-335 SOLO EN DEV** (2026-08-05, `APP_VERSION` v1.157.0,
-rediseño de `ubicaciones` en árbol + tipo lógico, 1º de 4 relevamientos hacia la Fase E
-(Repositores) — ver [[wiki/features/ubicaciones]]). ⚠ `schema_full.sql` regenerado en esta sesión
-hasta la mig 335 (token de acceso temporal, ya descartado) — antes había quedado hasta la 327.
+**001-335 en DEV y PROD** (v1.158.0, deploy 2026-08-06 — agrupa el rediseño de `ubicaciones` en árbol
++ tipo lógico (334-335, 1º de 4 relevamientos hacia la Fase E/Repositores, ver
+[[wiki/features/ubicaciones]]) junto con el resto de lo acumulado en DEV desde v1.157.0: fix Regla
+#0 en `MasivoModal.tsx`, filtro de píldoras en Productos/Inventario, gaps de breadcrumb, cierre de
+la deuda de `waitForTimeout` — sin migraciones nuevas en esta última ronda). Antes: 001-333 en DEV y
+PROD desde v1.155.0 (deploy 2026-08-04 — backlog Fede 25/7, Fases F+A+B+C+D de
+[[wiki/features/precios-tiers-empaque]]). ⚠ `schema_full.sql` regenerado hasta la mig 335 el
+2026-08-05 (token de acceso temporal, ya descartado) — antes había quedado hasta la 327.
 
-**335 (🎯 `producto_ubicacion_sucursal.ubicacion_exhibicion_id` — prepara Repositores, SOLO EN DEV)** —
+**335 (🎯 `producto_ubicacion_sucursal.ubicacion_exhibicion_id` — prepara Repositores, ✅ DEV y PROD desde v1.158.0)** —
 Fede/GO, 1º de 4 relevamientos hacia Fase E (ver [[wiki/features/precios-tiers-empaque]] → "Fase
 E"). Columna **nueva** (no se reinterpretó la `ubicacion_id` existente, que sigue siendo el default
 de PUTAWAY al recibir stock): la ubicación de **EXHIBICIÓN** de cara al cliente, que el futuro
@@ -24,7 +27,7 @@ módulo Repositores va a necesitar para saber "qué va dónde en el piso de vent
 a nivel DB todavía — es una regla condicional de negocio, para una fase de UI futura. Ver
 [[wiki/features/ubicaciones]].
 
-**334 (🏗️ `ubicaciones` pasa de tabla PLANA a ÁRBOL + `tipo_logico`/`subtipo_almacenamiento`, SOLO EN DEV, 🛑 toca inventario real — Regla #0)** —
+**334 (🏗️ `ubicaciones` pasa de tabla PLANA a ÁRBOL + `tipo_logico`/`subtipo_almacenamiento`, ✅ DEV y PROD desde v1.158.0, 🛑 toca inventario real — Regla #0)** —
 Fede/GO, 1º de 4 relevamientos hacia la Fase E (módulo Repositores) del backlog Comercial de Fede —
 ver [[wiki/features/precios-tiers-empaque]] → "Fase E". Respondido el 2026-08-05 sobre
 `relevamiento-ubicaciones-reglas-negocio.html` (generado 2026-08-02), con GO autorizando

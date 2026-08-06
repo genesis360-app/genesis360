@@ -91,7 +91,6 @@ test.describe('Productos (maestro)', () => {
     const buscador = page.getByPlaceholder(/buscar/i).first()
     if (await buscador.isVisible().catch(() => false)) {
       await buscador.fill(nombre)
-      await page.waitForTimeout(800)
     }
     await expect(page.getByText(nombre).first()).toBeVisible({ timeout: 10000 })
 
@@ -105,7 +104,8 @@ test.describe('Productos (maestro)', () => {
       if (await confirm.isVisible({ timeout: 2000 }).catch(() => false)) {
         await confirm.click().catch(() => {})
       }
-      await page.waitForTimeout(800)
+      // Dejar asentar la eliminación antes de que termine el test y cierre la página.
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
     }
   })
 })

@@ -19,6 +19,7 @@
 import { test, expect } from '@playwright/test'
 import type { Locator } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 const CLAVE_OK = '12345678'
@@ -47,11 +48,10 @@ test.describe('Cerrar caja ajena exige clave maestra (mutante)', () => {
       test.skip(true, 'Caja2 no visible en el selector (re-sembrar fixture / revisar sucursal).')
     }
     await pill.click()
-    await page.waitForTimeout(700)
 
     // Abrir el modal de cierre
     const btnCerrar = page.getByRole('button', { name: /Cerrar caja/i }).first()
-    if (!(await btnCerrar.isVisible().catch(() => false))) {
+    if (!(await visible(btnCerrar, 4000))) {
       test.skip(true, 'Botón "Cerrar caja" no visible (la sesión ajena no cargó — re-sembrar fixture).')
     }
     await btnCerrar.click()

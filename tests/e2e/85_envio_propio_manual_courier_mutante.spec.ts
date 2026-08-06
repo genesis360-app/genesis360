@@ -34,6 +34,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const SUPABASE_URL = process.env.VITE_SUPABASE_URL
 const ANON = process.env.VITE_SUPABASE_ANON_KEY
@@ -47,7 +48,7 @@ test.describe('Envío propio desde el modal manual "Nuevo envío" (mutante)', ()
     await goto(page, '/envios')
     await waitForApp(page)
     const tabEnvios = page.getByRole('button', { name: /^Env[ií]os$/ }).first()
-    if (await tabEnvios.isVisible().catch(() => false)) { await tabEnvios.click(); await page.waitForTimeout(300) }
+    if (await tabEnvios.isVisible().catch(() => false)) { await tabEnvios.click() }
 
     // 1) Abrir el modal MANUAL "Nuevo envío" — el camino exacto que tenía el bug (no desde una venta)
     await page.getByRole('button', { name: /Nuevo envío/i }).click()
@@ -66,12 +67,11 @@ test.describe('Envío propio desde el modal manual "Nuevo envío" (mutante)', ()
 
     // 3) Tipo de envío = "Envío propio" — la rama exacta donde vivía el bug
     await page.getByRole('button', { name: /Envío propio/i }).click()
-    await page.waitForTimeout(300)
 
     // 4) Vehículo asignado (recurso_id) — condición del gate de "Registrar combustible"
     const vehiculoSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /Moto Reparto Test/i }) }).first()
     expect(
-      await vehiculoSelect.isVisible().catch(() => false),
+      await visible(vehiculoSelect, 3000),
       'No hay vehículo "Moto Reparto Test" activo en el tenant de prueba — precondición faltante. ' +
         'Antes esto se skipeaba en silencio: el guard de REGLA #0 que verifica que un envío propio ' +
         'nace saldado (costo_pagado=true) dejaba de correr y la suite igual daba verde.',
@@ -107,7 +107,6 @@ test.describe('Envío propio desde el modal manual "Nuevo envío" (mutante)', ()
 
     // 7) POSITIVO: el botón "Registrar combustible" aparece (antes, con courier=null, nunca se mostraba)
     await fila.locator('button').first().click() // expandir la fila
-    await page.waitForTimeout(400)
     await expect(page.getByRole('button', { name: /Registrar combustible/i })).toBeVisible({ timeout: 5000 })
 
     // 8) DB real — REST directo (PostgREST) con el bearer de la sesión OWNER ya autenticada en el browser

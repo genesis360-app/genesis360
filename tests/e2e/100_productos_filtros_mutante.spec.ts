@@ -63,7 +63,6 @@ test.describe('ProductosPage → botón Filtros (mutante)', () => {
     const buscador = page.getByPlaceholder(/Buscar por nombre, SKU o código/i)
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill(nombreProducto)
-    await page.waitForTimeout(700)
     await expect(page.getByText(nombreProducto).first()).toBeVisible({ timeout: 8000 })
 
     await page.getByRole('button', { name: /Filtros/i }).first().click()
@@ -109,7 +108,6 @@ test.describe('ProductosPage → botón Filtros (mutante)', () => {
     await goto(page, '/productos')
     await waitForApp(page)
     await page.getByPlaceholder(/Buscar por nombre, SKU o código/i).fill(nombreProducto)
-    await page.waitForTimeout(700)
     // default = Activos → el inactivo no aparece
     await expect(page.getByText(nombreProducto)).not.toBeVisible({ timeout: 5000 })
     await page.getByRole('button', { name: /Filtros/i }).first().click()

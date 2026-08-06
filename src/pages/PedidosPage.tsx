@@ -401,15 +401,20 @@ export default function PedidosPage() {
     })
   }
 
-  const { data: ubicacionesStaging = [] } = useQuery({
+  // Se trae el árbol COMPLETO (no solo las de staging) para que `breadcrumbUbicacion` pueda
+  // resolver los ancestros — filtrar solo en el SELECT hubiera dejado sin padre a cualquier
+  // staging que cuelgue de un nivel no-staging, mostrando el breadcrumb incompleto.
+  const { data: ubicacionesStagingRaw = [] } = useQuery({
     queryKey: ['ubicaciones-staging', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('ubicaciones')
-        .select('id, nombre').eq('tenant_id', tenant!.id).eq('subtipo_almacenamiento', 'staging').eq('activo', true).order('nombre')
+        .select('id, nombre, padre_ubicacion_id, subtipo_almacenamiento').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
     enabled: !!tenant && bolsaModalOpen,
   })
+  const ubicacionesStagingPorId = useMemo(() => new Map((ubicacionesStagingRaw as any[]).map(u => [u.id, u])), [ubicacionesStagingRaw])
+  const ubicacionesStaging = useMemo(() => (ubicacionesStagingRaw as any[]).filter(u => u.subtipo_almacenamiento === 'staging'), [ubicacionesStagingRaw])
 
   const lanzarBolsa = useMutation({
     mutationFn: async () => {
@@ -1104,7 +1109,7 @@ export default function PedidosPage() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ubicación de staging</label>
                 <select value={bolsaUbicacionId} onChange={e => setBolsaUbicacionId(e.target.value)} className={inputCls}>
                   <option value="">Elegir ubicación…</option>
-                  {(ubicacionesStaging as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  {ubicacionesStaging.map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesStagingPorId)}</option>)}
                 </select>
                 {(ubicacionesStaging as any[]).length === 0 && (
                   <p className="text-xs text-amber-600 mt-1">No hay ninguna ubicación tipo "staging" configurada — creá una en Inventario → Ubicaciones.</p>

@@ -3,16 +3,88 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-04
+updated: 2026-08-06
 ---
 
-# Historial de Migraciones (001-333)
+# Historial de Migraciones (001-335)
 
-**Total al 2026-08-04:** 333 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-06:** 335 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-333 en DEV y PROD** (v1.155.0, deploy 2026-08-04 — backlog Fede 25/7, Fases F+A+B+C+D de
-[[wiki/features/precios-tiers-empaque]]). ⚠ `schema_full.sql` sigue regenerado solo hasta la mig 327
-— faltó `SUPABASE_ACCESS_TOKEN` en el entorno de la sesión del deploy, pendiente de regenerar.
+**001-335 en DEV y PROD** (v1.158.0, deploy 2026-08-06 — agrupa el rediseño de `ubicaciones` en árbol
++ tipo lógico (334-335, 1º de 4 relevamientos hacia la Fase E/Repositores, ver
+[[wiki/features/ubicaciones]]) junto con el resto de lo acumulado en DEV desde v1.157.0: fix Regla
+#0 en `MasivoModal.tsx`, filtro de píldoras en Productos/Inventario, gaps de breadcrumb, cierre de
+la deuda de `waitForTimeout` — sin migraciones nuevas en esta última ronda). Antes: 001-333 en DEV y
+PROD desde v1.155.0 (deploy 2026-08-04 — backlog Fede 25/7, Fases F+A+B+C+D de
+[[wiki/features/precios-tiers-empaque]]). ⚠ `schema_full.sql` regenerado hasta la mig 335 el
+2026-08-05 (token de acceso temporal, ya descartado) — antes había quedado hasta la 327.
+
+**335 (🎯 `producto_ubicacion_sucursal.ubicacion_exhibicion_id` — prepara Repositores, ✅ DEV y PROD desde v1.158.0)** —
+Fede/GO, 1º de 4 relevamientos hacia Fase E (ver [[wiki/features/precios-tiers-empaque]] → "Fase
+E"). Columna **nueva** (no se reinterpretó la `ubicacion_id` existente, que sigue siendo el default
+de PUTAWAY al recibir stock): la ubicación de **EXHIBICIÓN** de cara al cliente, que el futuro
+módulo Repositores va a necesitar para saber "qué va dónde en el piso de venta". Sin obligatoriedad
+a nivel DB todavía — es una regla condicional de negocio, para una fase de UI futura. Ver
+[[wiki/features/ubicaciones]].
+
+**334 (🏗️ `ubicaciones` pasa de tabla PLANA a ÁRBOL + `tipo_logico`/`subtipo_almacenamiento`, ✅ DEV y PROD desde v1.158.0, 🛑 toca inventario real — Regla #0)** —
+Fede/GO, 1º de 4 relevamientos hacia la Fase E (módulo Repositores) del backlog Comercial de Fede —
+ver [[wiki/features/precios-tiers-empaque]] → "Fase E". Respondido el 2026-08-05 sobre
+`relevamiento-ubicaciones-reglas-negocio.html` (generado 2026-08-02), con GO autorizando
+explícitamente romper/tocar datos existentes ("no hay clientes reales, son todas pruebas — si hay
+que modificar lo que ya está para que funcione con lo nuevo, que se haga").
+Self-FK **`padre_ubicacion_id`** — mismo patrón que `producto_presentaciones.padre_linea_id` (mig
+307), **NO** una tabla nueva de "niveles". Como `inventario_lineas.ubicacion_id`,
+`wms_tareas.ubicacion_origen_id`/`ubicacion_destino_id`, `producto_ubicacion_umbrales.ubicacion_id`,
+`producto_ubicacion_sucursal.ubicacion_id` y `venta_item_despachos.ubicacion_id` YA apuntan a
+`ubicaciones.id`, y un nivel nuevo es también una fila de esa misma tabla, **ninguna de esas FK
+necesitó re-apuntar a nada** — cero migración de datos en esas cinco tablas.
+Columnas nuevas: **`tipo_logico`** (enum de negocio: `exhibicion`/`mostrador`/`picking`/
+`almacenamiento`) + **`subtipo_almacenamiento`** (técnico WMS, solo válido con
+`tipo_logico='almacenamiento'`: `bulk`/`estiba`/`camara`/`cross_dock`/`staging` — reemplaza al viejo
+`tipo_ubicacion`) + **`codigo`** (identificador técnico autogenerado NOT NULL UNIQUE por tenant,
+formato `^[A-Z0-9]+(-[A-Z0-9]+)*$`, editable) + `pos_x`/`pos_y`/`orientacion_deg` (reservados para
+el proyecto pospuesto "Almacén 360", sin UI todavía).
+🛑 **Regla de diseño (responde la pregunta del propio relevamiento sobre el "nivel implícito"):**
+`tipo_logico` solo se puede asignar a un nodo **SIN HIJOS** — una ubicación plana de hoy YA es una
+hoja, así que recibe su tipo directo en el backfill, sin crear nodos sintéticos.
+**4 triggers nuevos:** anti-ciclo (`trg_ubic_no_ciclo`), guard de consistencia tipo_logico/subtipo
+(`trg_ubic_tipo_logico_guard`), autogeneración de código jerárquico (`trg_ubic_autogenerar_codigo`
+— raíz `U01`, `U02`... / hijo `<código del padre>-1`, `-2`...), y un **guard DURO
+`trg_ubic_guard_padre_operativo`** (`SECURITY DEFINER`) que bloquea agregar un nivel bajo un padre
+que tenga `tipo_logico` asignado, stock activo, umbrales de reabastecimiento configurados, o tareas
+WMS pendientes — es inventario real (Regla de Oro #0), no un aviso-y-dejar-pasar.
+🔒 **2 hallazgos del `migration-reviewer` antes de aplicar, corregidos:**
+1. Sin `SECURITY DEFINER`, un usuario fijado a una sola sucursal podía bypassear el guard duro,
+   porque `inventario_lineas`/`wms_tareas` tienen RLS por sucursal (migs 216-218) y `ubicaciones` no
+   — el guard, corriendo con los privilegios de ese usuario, no veía el stock/tareas de otra
+   sucursal.
+2. El backfill de `codigo` hubiera arrancado en "U22" en vez de "U01" — contaba filas que todavía no
+   tenían código asignado al calcular el próximo correlativo.
+Backfill de las 19 filas de DEV (4 en PROD, sin tocar en esta sesión, verificado con queries reales
+antes de escribir la migración): mapeo `tipo_ubicacion` viejo → `tipo_logico`/`subtipo_almacenamiento`
+nuevo (`picking`→`picking`; `bulk`/`estiba`/`camara`/`cross_dock`/`staging`→`almacenamiento`+subtipo;
+`NULL`→`almacenamiento` sin subtipo, valor neutro no bloqueante).
+**6 funciones SQL reescritas** (el relevamiento solo esperaba 2 — un grep exhaustivo de
+`schema_full.sql` encontró 4 más): `fn_wms_elegir_ubicacion_picking`,
+`fn_generar_tareas_reabastecimiento_umbral`, `fn_generar_tareas_picking_envio`,
+`fn_generar_tareas_picking_pedido_stock`, `fn_generar_tareas_picking_pedido_venta`,
+`fn_lanzar_bolsa_pedidos` — todas ahora leen `tipo_logico`/`subtipo_almacenamiento`. De paso se
+corrigió un bug latente preexistente en `fn_lanzar_bolsa_pedidos` (`<>` no rechazaba NULL, cambiado
+a `IS DISTINCT FROM`).
+✅ **Confirmado que NO hizo falta tocar** `vw_ubicacion_ocupacion` (migs 321/322/325) ni la
+comparación de `producto_ubicacion_umbrales`: ambas ya hacían match exacto por `ubicacion_id` (nunca
+agregaban por descendientes), así que ya miden "por nivel" sin cambios.
+⏳ La columna vieja **`tipo_ubicacion` NO se dropeó** — 0 lectores en `src/` salvo el tipo TS marcado
+`deprecated` en `src/lib/supabase.ts`; el DROP queda para una **Fase U5** de limpieza futura, mismo
+patrón que F3b/F4 con las columnas fiscales de `tenants`.
+Revisada por el `migration-reviewer` (2 hallazgos arriba, corregidos antes de aplicar) y verificada
+con queries reales contra DEV después de aplicar (códigos únicos U01-U19 en orden histórico
+correcto, `tipo_logico` seteado en las 19 filas, `fn_wms_elegir_ubicacion_picking` sigue devolviendo
+exactamente lo mismo que antes — NULL, ningún tenant real tiene todavía una ubicación tipo picking)
++ pruebas del guard duro (rechazo por tipo_logico y por stock activo) y del caso positivo (código
+jerárquico `U06-1`/`U06-2`), todo en transacciones con ROLLBACK.
+Frontend (Fases U3/U4) y detalle completo: [[wiki/features/ubicaciones]].
 
 **333 (🔒 guard server-side de la aprobación de cambio de estado, EN DEV y PROD, cierra hallazgo H1)** —
 Sesión 2026-08-04, al escribir el e2e de la mig 331: el gate de "cambio de estado con foto" vivía

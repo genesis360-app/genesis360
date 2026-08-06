@@ -18,6 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Pagar nómina por transferencia → egreso_informativo (mutante)', () => {
   test.skip(process.env.E2E_NOMINA_NO_EFECTIVO !== '1', 'Fixture nómina impaga no sembrado (E2E_NOMINA_NO_EFECTIVO!=1).')
@@ -29,10 +30,9 @@ test.describe('Pagar nómina por transferencia → egreso_informativo (mutante)'
     const tabNomina = page.getByRole('button', { name: /Nómina/i }).first()
     await expect(tabNomina).toBeVisible({ timeout: 20000 })
     await tabNomina.click()
-    await page.waitForTimeout(800)
 
     const fila = page.locator('div.rounded-lg.border').filter({ hasText: 'ZZZ Nomina Test' }).first()
-    if (!(await fila.isVisible().catch(() => false))) {
+    if (!(await visible(fila, 5000))) {
       test.skip(true, 'Fixture "ZZZ Nomina Test" no sembrado para el período actual (re-correr el SQL de fixture).')
     }
     await expect(fila).toBeVisible({ timeout: 10000 })

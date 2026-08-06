@@ -19,6 +19,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { agregarPrimerProductoAlCarrito, visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e' // sucursal con stock de Coca Cola
 const PRODUCTO = 'Coca Cola 1.5'
@@ -32,15 +33,7 @@ test.describe('Presupuesto crear → convertir (mutante)', () => {
     await waitForApp(page)
 
     // 1) Agregar el producto pineado al carrito
-    const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
-    await expect(buscador).toBeVisible({ timeout: 8000 })
-    await buscador.fill(PRODUCTO)
-    await page.waitForTimeout(1000)
-    const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await primerProducto.isVisible().catch(() => false)), 'No se encontró el producto pineado en el POS')
-    await primerProducto.click()
-    await page.waitForTimeout(600)
-    await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
+    await agregarPrimerProductoAlCarrito(page, PRODUCTO)
 
     // 1b) Elegir caja (el tenant tiene 2 cajas abiertas → el despacho posterior exige una
     //     caja elegida; `cajaSeleccionadaId` se setea acá y persiste al convertir). El selector
@@ -59,11 +52,9 @@ test.describe('Presupuesto crear → convertir (mutante)', () => {
     // 3) Seleccionar un cliente registrado (cliente obligatorio para presupuesto)
     const clienteInput = page.getByPlaceholder(/Buscar por nombre o DNI/i).first()
     await clienteInput.fill('a')
-    await page.waitForTimeout(800)
     const primerCliente = page.locator('div.absolute.z-20 button').first()
-    test.skip(!(await primerCliente.isVisible().catch(() => false)), 'No hay clientes registrados para seleccionar')
+    test.skip(!(await visible(primerCliente, 5000)), 'No hay clientes registrados para seleccionar')
     await primerCliente.click()
-    await page.waitForTimeout(300)
 
     // 4) Guardar presupuesto → POSITIVO
     await page.getByRole('button', { name: /^Guardar presupuesto$/ }).last().click()
@@ -71,14 +62,11 @@ test.describe('Presupuesto crear → convertir (mutante)', () => {
 
     // 5) Historial → filtrar presupuestos y abrir el más reciente (el recién creado)
     await page.getByRole('button', { name: /^Historial$/ }).first().click()
-    await page.waitForTimeout(500)
     await page.locator('select').filter({ has: page.locator('option', { hasText: /Todos los estados/ }) }).first()
       .selectOption('pendiente')
-    await page.waitForTimeout(700)
     const fila = page.locator('div.divide-y > div').filter({ hasText: /\$/ }).first()
     await expect(fila).toBeVisible({ timeout: 8000 })
     await fila.click()
-    await page.waitForTimeout(800)
 
     // 6) "Finalizar (rebaja stock)" → abre el modal de saldo
     await page.getByRole('button', { name: /Finalizar \(rebaja stock\)/ }).click()
@@ -88,7 +76,6 @@ test.describe('Presupuesto crear → convertir (mutante)', () => {
     //    viene precargado con el saldo completo; solo elegimos el tipo.
     const medioSel = page.locator('select').filter({ has: page.locator('option', { hasText: /Medio de pago/ }) }).first()
     await medioSel.selectOption({ label: 'Transferencia' })
-    await page.waitForTimeout(300)
 
     // 8) Finalizar venta → POSITIVO. El convert desde el historial usa `cambiarEstado`,
     //    cuyo toast de éxito es "Estado actualizado" (no "Venta finalizada", que es el del

@@ -8,6 +8,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Ventas', () => {
   test.beforeEach(async ({ page }) => {
@@ -43,15 +44,13 @@ test.describe('Ventas', () => {
     // Agregar un producto al carrito buscando cualquiera disponible
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await buscador.fill('a')
-    await page.waitForTimeout(800)
 
     // Click en el primer producto disponible del dropdown
     const primerProducto = page.locator('[data-testid="producto-resultado"], .cursor-pointer').first()
-    const hayProducto = await primerProducto.isVisible().catch(() => false)
+    const hayProducto = await visible(primerProducto, 3000)
     if (!hayProducto) return // skip si no hay productos en DEV
 
     await primerProducto.click()
-    await page.waitForTimeout(300)
 
     // El widget de estado de caja debe ser SIEMPRE visible cuando hay items en el carrito
     // (independientemente del medio de pago elegido)
@@ -64,10 +63,9 @@ test.describe('Ventas', () => {
     const toggleGaleria = page.getByRole('button', { name: /vista galería|vista lista/i }).first()
     if (await toggleGaleria.isVisible()) {
       await toggleGaleria.click()
-      await page.waitForTimeout(300)
       // Volver a lista
       const toggleLista = page.getByRole('button', { name: /vista galería|vista lista/i }).first()
-      if (await toggleLista.isVisible()) await toggleLista.click()
+      if (await visible(toggleLista, 3000)) await toggleLista.click()
     }
   })
 
@@ -104,7 +102,7 @@ test.describe('Ventas', () => {
   test('B1: buscador de productos muestra resultados (sucursal filter OR NULL)', async ({ page }) => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await buscador.fill('a')
-    await page.waitForTimeout(800)
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {})
     // Si hay productos, debe haber al menos uno en el dropdown (no "sin resultados")
     const tieneResultados = await page.getByText(/sin resultados|no encontramos/i).isVisible().catch(() => false)
     // No esperamos falla si no hay productos en DEV; solo verificamos que no rompe
@@ -116,24 +114,21 @@ test.describe('Ventas', () => {
     const tabHistorial = page.getByRole('button', { name: /historial/i }).first()
     if (!await tabHistorial.isVisible().catch(() => false)) return
     await tabHistorial.click()
-    await page.waitForTimeout(1200)
 
     // Buscar la primera fila/card con badge "reservada"
     const filaReservada = page.locator('text=reservada').first()
-    if (!await filaReservada.isVisible().catch(() => false)) return // sin datos, skip
+    if (!await visible(filaReservada, 5000)) return // sin datos, skip
     await filaReservada.click()
-    await page.waitForTimeout(800)
 
     // Si el modal detalle no abre, skip
     const modalDetalle = page.locator('[role="dialog"], .modal, [data-modal]').first()
-    const modalAbierto = await modalDetalle.isVisible().catch(() => false)
+    const modalAbierto = await visible(modalDetalle, 3000)
     if (!modalAbierto) return
 
     // Buscar botón "Modificar productos"
     const btnModificar = page.getByRole('button', { name: /modificar productos/i })
     if (!await btnModificar.isVisible().catch(() => false)) return // venta sin serializado o sin botón, skip
     await btnModificar.click()
-    await page.waitForTimeout(1500)
 
     // El carrito debe tener al menos un ítem (no estar vacío)
     await expect(page.getByText(/carrito vacío|sin productos/i)).not.toBeVisible({ timeout: 5000 })
@@ -142,7 +137,6 @@ test.describe('Ventas', () => {
     const chipSeries = page.locator('button, span').filter({ hasText: /elegir series|n\/s|serie/i }).first()
     if (await chipSeries.isVisible().catch(() => false)) {
       await chipSeries.click()
-      await page.waitForTimeout(500)
       // No debe mostrar "sin series disponibles" ni mensaje de error de stock
       await expect(page.getByText(/sin series disponibles|no hay series|sin stock/i)).not.toBeVisible()
     }

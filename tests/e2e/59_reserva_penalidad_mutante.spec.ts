@@ -34,16 +34,13 @@ test.describe('Cancelar reserva con penalidad (mutante)', () => {
 
     // Historial → filtrar reservadas
     await page.getByRole('button', { name: /^Historial$/ }).first().click()
-    await page.waitForTimeout(600)
     await page.locator('select').filter({ has: page.locator('option', { hasText: /Todos los estados/ }) }).first()
       .selectOption('reservada')
-    await page.waitForTimeout(700)
 
     // Abrir la reserva fixture (total distintivo $5.678)
     const fila = page.locator('div.divide-y > div').filter({ hasText: /5\.678/ }).first()
     await expect(fila).toBeVisible({ timeout: 8000 })
     await fila.click()
-    await page.waitForTimeout(800)
 
     // "Cancelar venta" → abre el modal de cancelación de reserva (con seña)
     await page.getByRole('button', { name: /^Cancelar venta$/ }).click()

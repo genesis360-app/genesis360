@@ -17,6 +17,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 const CLIENTE = 'ZZZ Credito Pos Test'
@@ -33,40 +34,36 @@ test.describe('Crédito a favor positivo (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('Coca Cola 1.5')
-    await page.waitForTimeout(1000)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await prod.isVisible().catch(() => false)), 'Coca Cola no encontrada')
+    test.skip(!(await visible(prod, 5000)), 'Coca Cola no encontrada')
     await prod.click()
-    await page.waitForTimeout(600)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // Cliente registrado con crédito a favor
     await page.getByRole('button', { name: /Cliente registrado/i }).click()
     const cliSearch = page.getByPlaceholder(/Buscar por nombre o DNI/i).first()
     await cliSearch.fill(CLIENTE)
-    await page.waitForTimeout(800)
     const cliBtn = page.getByRole('button', { name: new RegExp(CLIENTE, 'i') }).first()
     test.skip(!(await cliBtn.isVisible({ timeout: 4000 }).catch(() => false)), `Cliente "${CLIENTE}" no sembrado`)
     await cliBtn.click()
-    await page.waitForTimeout(900)   // cargar clienteCredito → habilita la opción "Crédito a favor"
 
-    // Medio "Crédito a favor" por el total ($1.657)
+    // Medio "Crédito a favor" por el total ($1.657) — el locator abajo YA exige que exista la
+    // opción "Crédito a favor" en el select, así que su propio `toBeVisible` espera a que
+    // `clienteCredito` termine de cargar (la habilita); no hace falta un sleep aparte.
     const medioSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /Crédito a favor/ }) }).first()
     await expect(medioSelect).toBeVisible({ timeout: 5000 })
     await medioSelect.selectOption('Crédito a favor')
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill('1657')
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     // Elegir caja (2+ cajas abiertas)
     const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
-    if (await cajaSelect.isVisible().catch(() => false)) {
+    if (await visible(cajaSelect, 2000)) {
       const values = await cajaSelect.locator('option').evaluateAll(
         opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
       )
       if (values.length > 0) await cajaSelect.selectOption(values[0])
-      await page.waitForTimeout(300)
     }
 
     // Venta directa (el crédito cubre el total)

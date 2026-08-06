@@ -18,7 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
 
 test.describe('Inventario — ingreso de stock (mutante)', () => {
   test('ingresa stock de un producto y registra el movimiento', async ({ page, request }) => {
@@ -50,31 +50,27 @@ test.describe('Inventario — ingreso de stock (mutante)', () => {
 
     // 1) Ir a la tab "Agregar stock"
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-    await page.waitForTimeout(400)
 
     // 2) Abrir el modal de Ingreso
     const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
     await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
     test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
     await ingresoBtn.click()
-    await page.waitForTimeout(400)
 
     // 3) Buscar y elegir el producto QUE SEMBRÓ ESTE SPEC (no uno cualquiera del tenant)
     const buscador = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
     await expect(buscador).toBeVisible({ timeout: 6000 })
     await buscador.fill(nombreProducto)
-    await page.waitForTimeout(900)
     // El resultado es un <button> full-width con el nombre del producto, DENTRO del modal de
     // Ingreso (evitamos un fallback page-wide que agarraba un botón detrás del backdrop).
     const modal = page.locator('div.fixed.inset-0').filter({ has: buscador }).first()
     const resultado = modal.locator('button.w-full.text-left').filter({ hasText: nombreProducto }).first()
     await expect(resultado, '[23] no apareció el producto sembrado por el propio spec').toBeVisible({ timeout: 8000 })
     await resultado.click()
-    await page.waitForTimeout(500)
 
     // 4) Si hay selector de sucursal destino (vista "Todas"), elegir la primera
     const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-    if (await sucSelect.isVisible().catch(() => false)) {
+    if (await visible(sucSelect, 2000)) {
       const vals = await sucSelect.locator('option').evaluateAll(
         opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
       )

@@ -21,6 +21,7 @@ import {
   irAlPOS,
   agregarPrimerProductoAlCarrito,
   totalDelCarrito,
+  visible,
 } from './helpers/fixtures'
 import { goto, waitForApp } from './helpers/navigation'
 
@@ -41,15 +42,13 @@ test.describe('Cobranza CC efectivo (mutante)', () => {
     const cliInput = page.getByPlaceholder(/Buscar por nombre o DNI/i)
     await expect(cliInput).toBeVisible({ timeout: 5000 })
     await cliInput.fill(CLIENTE)
-    await page.waitForTimeout(900)
     const cliOpt = page.getByRole('button', { name: new RegExp(CLIENTE) }).first()
     expect(
-      await cliOpt.isVisible().catch(() => false),
+      await visible(cliOpt, 5000),
       `Cliente "${CLIENTE}" no encontrado en el tenant de prueba — precondición faltante ` +
         `(antes esto se skipeaba en silencio y la suite daba verde).`,
     ).toBeTruthy()
     await cliOpt.click()
-    await page.waitForTimeout(400)
 
     // Monto a Cuenta Corriente = total exacto del carrito (evita dejar una deuda inconsistente
     // con el total de la venta — REGLA #0 contable; nada de montos "overshoot" arbitrarios).
@@ -61,11 +60,10 @@ test.describe('Cobranza CC efectivo (mutante)', () => {
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill(String(totalNum))
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     // Si hay varias cajas abiertas (actividad e2e concurrente), el POS exige elegir una (H4/VF1)
     const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
-    if (await cajaSelect.isVisible().catch(() => false)) {
+    if (await visible(cajaSelect, 2000)) {
       const vals = await cajaSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
       if (vals.length) await cajaSelect.selectOption(vals[0])
     }
@@ -82,7 +80,6 @@ test.describe('Cobranza CC efectivo (mutante)', () => {
     await goto(page, '/clientes')
     await waitForApp(page)
     await page.getByRole('button', { name: /Cuenta Corriente/i }).first().click()
-    await page.waitForTimeout(800)
 
     // 4) Card del cliente con la deuda recién creada → "Registrar pago" (abre el panel inline)
     const card = page.locator('div').filter({ hasText: new RegExp(CLIENTE) })
@@ -97,7 +94,6 @@ test.describe('Cobranza CC efectivo (mutante)', () => {
     const parcial = Math.max(1, Math.floor(totalNum / 2))
     const montoPagoInput = page.locator('xpath=//label[contains(.,"Monto")]/following::input[1]')
     await montoPagoInput.fill(String(parcial))
-    await page.waitForTimeout(200)
     await page.getByRole('button', { name: /Confirmar pago/i }).click()
 
     // 6) POSITIVO: toast "Pago de $… registrado" + NO error de caja exigida

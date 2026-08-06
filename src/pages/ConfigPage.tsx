@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box } from 'lucide-react'
@@ -16,7 +16,7 @@ import { Toggle } from '@/components/Toggle'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
 import { uploadCertificates } from '@/lib/afip'
-import type { TenantCertificate } from '@/lib/supabase'
+import type { TenantCertificate, UbicacionTipoLogico, UbicacionSubtipoAlmacenamiento } from '@/lib/supabase'
 import { CodigoPerfilesPanel } from '@/components/CodigoPerfilesPanel'
 import { CourierCredencialesPanel } from '@/components/CourierCredencialesPanel'
 import RepartidoresPanel from '@/components/RepartidoresPanel'
@@ -31,6 +31,7 @@ import { canalesExcluidosValidos } from '@/lib/pedidoVenta'
 import { useConfirm, usePrompt } from '@/hooks/useConfirm'
 import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volumenUbicacionM3, capacidadUtilM3, estadoVolumenUbicacion, FACTOR_APROVECHAMIENTO_DEFAULT } from '@/lib/medidasLogistica'
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
+import { breadcrumbUbicacion, descendientesDeUbicacion, ordenarArbolUbicaciones } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
@@ -40,6 +41,31 @@ type AtributoVariante = 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'
 // Fede 25/7, punto 6: categoría informativa del empaque (solo reportes — sin función técnica).
 // Lista abierta a propósito (sin CHECK en DB, ver mig 328): agregar un valor acá alcanza, no hace falta migración.
 const TIPOS_EMPAQUE = ['Unidad', 'Caja', 'Pallet', 'Bolsa', 'Bulto']
+
+// Árbol de Ubicaciones (mig 334, relevamiento 2026-08-02) — contenedora/nivel self-FK.
+const CODIGO_UBICACION_REGEX = /^[A-Z0-9]+(-[A-Z0-9]+)*$/
+const TIPO_LOGICO_OPCIONES: { value: UbicacionTipoLogico; label: string }[] = [
+  { value: 'exhibicion', label: 'Exhibición (góndola — autoservicio)' },
+  { value: 'mostrador', label: 'Mostrador (lo busca un empleado)' },
+  { value: 'picking', label: 'Picking' },
+  { value: 'almacenamiento', label: 'Almacenamiento' },
+]
+const TIPO_LOGICO_LABELS: Record<UbicacionTipoLogico, string> = {
+  exhibicion: 'Exhibición', mostrador: 'Mostrador', picking: 'Picking', almacenamiento: 'Almacenamiento',
+}
+const SUBTIPO_ALMACENAMIENTO_OPCIONES: { value: UbicacionSubtipoAlmacenamiento; label: string }[] = [
+  { value: 'bulk', label: 'Bulk / Reserva' },
+  { value: 'estiba', label: 'Estiba / Pallet rack' },
+  { value: 'camara', label: 'Cámara frigorífica' },
+  { value: 'cross_dock', label: 'Cross-dock' },
+  { value: 'staging', label: 'Staging (convergencia de bolsas de Pedidos)' },
+]
+const SUBTIPO_ALMACENAMIENTO_LABELS: Record<UbicacionSubtipoAlmacenamiento, string> = {
+  bulk: 'Bulk', estiba: 'Estiba', camara: 'Cámara', cross_dock: 'Cross-dock', staging: 'Staging',
+}
+const TIPO_LOGICO_TOOLTIP =
+  'Fase venta directa — Exhibición: góndola de autoservicio, el cliente la ve y se sirve solo (necesita cartel de precio). Mostrador: la busca un empleado. ' +
+  'Fase reabastecimiento — Picking: posición desde la que se pickea para reponer o despachar. Almacenamiento: stock guardado de difícil alcance (bulk, estiba, cámara, cross-dock, staging).'
 type ConSubTab = 'integraciones' | 'api'
 type EstadosSubTab = 'estados' | 'grupos' | 'progresion'
 interface Item { id: string; nombre: string; descripcion?: string; contacto?: string; color?: string; activo: boolean }
@@ -1459,7 +1485,10 @@ export default function ConfigPage() {
   const [newUbicSucursalId, setNewUbicSucursalId] = useState<string>('')
   const [newUbicMonoSku, setNewUbicMonoSku] = useState(false)
   const [newUbicWmsOpen, setNewUbicWmsOpen] = useState(false)
-  const [newUbicTipo, setNewUbicTipo] = useState('')
+  const [newUbicPadreId, setNewUbicPadreId] = useState('')
+  const [newUbicCodigo, setNewUbicCodigo] = useState('')
+  const [newUbicTipoLogico, setNewUbicTipoLogico] = useState<UbicacionTipoLogico | ''>('')
+  const [newUbicSubtipo, setNewUbicSubtipo] = useState<UbicacionSubtipoAlmacenamiento | ''>('')
   const [newUbicAlto, setNewUbicAlto] = useState('')
   const [newUbicAncho, setNewUbicAncho] = useState('')
   const [newUbicLargo, setNewUbicLargo] = useState('')
@@ -1471,7 +1500,10 @@ export default function ConfigPage() {
   const [editUbicDesc, setEditUbicDesc] = useState('')
   const [editUbicPrioridad, setEditUbicPrioridad] = useState('0')
   const [editUbicSecuencia, setEditUbicSecuencia] = useState('')
-  const [editUbicTipo, setEditUbicTipo] = useState('')
+  const [editUbicPadreId, setEditUbicPadreId] = useState('')
+  const [editUbicCodigo, setEditUbicCodigo] = useState('')
+  const [editUbicTipoLogico, setEditUbicTipoLogico] = useState<UbicacionTipoLogico | ''>('')
+  const [editUbicSubtipo, setEditUbicSubtipo] = useState<UbicacionSubtipoAlmacenamiento | ''>('')
   const [editUbicAlto, setEditUbicAlto] = useState('')
   const [editUbicAncho, setEditUbicAncho] = useState('')
   const [editUbicLargo, setEditUbicLargo] = useState('')
@@ -1483,8 +1515,26 @@ export default function ConfigPage() {
   const [editUbicZonaId, setEditUbicZonaId] = useState('')
   const [ubicSearch, setUbicSearch] = useState('')
 
+  const ubicacionesPorId = useMemo(() => new Map((ubicaciones as any[]).map(u => [u.id, u])), [ubicaciones])
+  const ubicacionesOrdenadas = useMemo(() => ordenarArbolUbicaciones(ubicaciones as any[]), [ubicaciones])
+  const opcionesPadreNuevo = useMemo(() =>
+    (ubicaciones as any[])
+      .map(u => ({ id: u.id, label: breadcrumbUbicacion(u.id, ubicacionesPorId) }))
+      .sort((a, b) => a.label.localeCompare(b.label)),
+    [ubicaciones, ubicacionesPorId])
+  const opcionesPadreEdit = useMemo(() => {
+    if (!editUbicId) return opcionesPadreNuevo
+    const excluir = new Set([editUbicId, ...descendientesDeUbicacion(editUbicId, ubicaciones as any[])])
+    return opcionesPadreNuevo.filter(o => !excluir.has(o.id))
+  }, [opcionesPadreNuevo, editUbicId, ubicaciones])
+
   const addUbicacion = async () => {
     if (!newUbicNombre.trim()) return
+    const codigoLimpio = newUbicCodigo.trim().toUpperCase()
+    if (codigoLimpio && !CODIGO_UBICACION_REGEX.test(codigoLimpio)) {
+      toast.error('Código inválido — usá letras/números en mayúscula separados por guiones (ej. A-03-02), o dejalo vacío para autogenerarlo')
+      return
+    }
     const sucId = newUbicSucursalId || sucursalId || null
     const { error } = await supabase.from('ubicaciones').insert({
       tenant_id: tenant!.id,
@@ -1494,7 +1544,10 @@ export default function ConfigPage() {
       secuencia: newUbicSecuencia !== '' ? parseInt(newUbicSecuencia) : null,
       sucursal_id: sucId,
       mono_sku: newUbicMonoSku,
-      tipo_ubicacion: newUbicTipo || null,
+      padre_ubicacion_id: newUbicPadreId || null,
+      codigo: codigoLimpio || undefined,
+      tipo_logico: newUbicTipoLogico || null,
+      subtipo_almacenamiento: newUbicTipoLogico === 'almacenamiento' ? (newUbicSubtipo || null) : null,
       alto_cm: newUbicAlto ? parseFloat(newUbicAlto) : null,
       ancho_cm: newUbicAncho ? parseFloat(newUbicAncho) : null,
       largo_cm: newUbicLargo ? parseFloat(newUbicLargo) : null,
@@ -1508,7 +1561,8 @@ export default function ConfigPage() {
     logActividad({ entidad: 'ubicacion', entidad_nombre: newUbicNombre.trim(), accion: 'crear', pagina: '/configuracion' })
     setNewUbicNombre(''); setNewUbicDesc(''); setNewUbicPrioridad('0'); setNewUbicSecuencia('')
     setNewUbicSucursalId(''); setNewUbicMonoSku(false); setNewUbicWmsOpen(false)
-    setNewUbicTipo(''); setNewUbicAlto(''); setNewUbicAncho(''); setNewUbicLargo(''); setNewUbicPeso(''); setNewUbicPallets(''); setNewUbicZonaId('')
+    setNewUbicPadreId(''); setNewUbicCodigo(''); setNewUbicTipoLogico(''); setNewUbicSubtipo('')
+    setNewUbicAlto(''); setNewUbicAncho(''); setNewUbicLargo(''); setNewUbicPeso(''); setNewUbicPallets(''); setNewUbicZonaId('')
   }
   const startEditUbic = (u: any) => {
     setEditUbicId(u.id)
@@ -1516,25 +1570,37 @@ export default function ConfigPage() {
     setEditUbicDesc(u.descripcion ?? '')
     setEditUbicPrioridad(String(u.prioridad ?? 0))
     setEditUbicSecuencia(u.secuencia != null ? String(u.secuencia) : '')
-    setEditUbicTipo(u.tipo_ubicacion ?? '')
+    setEditUbicPadreId(u.padre_ubicacion_id ?? '')
+    setEditUbicCodigo(u.codigo ?? '')
+    setEditUbicTipoLogico(u.tipo_logico ?? '')
+    setEditUbicSubtipo(u.subtipo_almacenamiento ?? '')
     setEditUbicAlto(u.alto_cm != null ? String(u.alto_cm) : '')
     setEditUbicAncho(u.ancho_cm != null ? String(u.ancho_cm) : '')
     setEditUbicLargo(u.largo_cm != null ? String(u.largo_cm) : '')
     setEditUbicPeso(u.peso_max_kg != null ? String(u.peso_max_kg) : '')
     setEditUbicPallets(u.capacidad_pallets != null ? String(u.capacidad_pallets) : '')
-    setEditUbicWmsOpen(!!(u.tipo_ubicacion || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
+    setEditUbicWmsOpen(!!(u.tipo_logico || u.alto_cm || u.ancho_cm || u.largo_cm || u.peso_max_kg || u.capacidad_pallets))
     setEditUbicMonoSku(u.mono_sku ?? false)
     setEditUbicSucursalId(u.sucursal_id ?? '')
     setEditUbicZonaId(u.zona_id ?? '')
   }
   const saveUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
+    const codigoLimpio = editUbicCodigo.trim().toUpperCase()
+    if (!codigoLimpio) { toast.error('El código no puede quedar vacío'); return }
+    if (!CODIGO_UBICACION_REGEX.test(codigoLimpio)) {
+      toast.error('Código inválido — usá letras/números en mayúscula separados por guiones (ej. A-03-02)')
+      return
+    }
     const { error } = await supabase.from('ubicaciones').update({
       nombre: editUbicNombre.trim(),
       descripcion: editUbicDesc || null,
       prioridad: parseInt(editUbicPrioridad) || 0,
       secuencia: editUbicSecuencia !== '' ? parseInt(editUbicSecuencia) : null,
-      tipo_ubicacion: editUbicTipo || null,
+      padre_ubicacion_id: editUbicPadreId || null,
+      codigo: codigoLimpio,
+      tipo_logico: editUbicTipoLogico || null,
+      subtipo_almacenamiento: editUbicTipoLogico === 'almacenamiento' ? (editUbicSubtipo || null) : null,
       alto_cm: editUbicAlto ? parseFloat(editUbicAlto) : null,
       ancho_cm: editUbicAncho ? parseFloat(editUbicAncho) : null,
       largo_cm: editUbicLargo ? parseFloat(editUbicLargo) : null,
@@ -1552,6 +1618,13 @@ export default function ConfigPage() {
   }
   const deleteUbicacion = async (id: string) => {
     const old = (ubicaciones as any[]).find(u => u.id === id)
+
+    // 0. Bloquear si tiene niveles hijos (padre_ubicacion_id es RESTRICT, mig 334) — mensaje
+    // claro en vez del error genérico de FK que tiraría Postgres.
+    if ((ubicaciones as any[]).some(u => u.padre_ubicacion_id === id)) {
+      toast.error('No se puede eliminar: tiene niveles adentro. Eliminá o reasigná sus niveles primero.')
+      return
+    }
 
     // 1. Bloquear si tiene inventario activo con stock
     const { count: cntStock } = await supabase.from('inventario_lineas')
@@ -1709,7 +1782,7 @@ export default function ConfigPage() {
     },
     enabled: !!tenant && tab === 'inventario' && invSubTab === 'zonas',
   })
-  const ubicacionesPicking = (ubicaciones as any[]).filter(u => u.tipo_ubicacion === 'picking')
+  const ubicacionesPicking = (ubicaciones as any[]).filter(u => u.tipo_logico === 'picking')
   const [umbralProdBusqueda, setUmbralProdBusqueda] = useState('')
   const { data: umbralProdResultados = [] } = useQuery({
     queryKey: ['productos-busqueda-umbral', tenant?.id, umbralProdBusqueda],
@@ -3764,7 +3837,7 @@ export default function ConfigPage() {
             <h2 className="font-semibold text-gray-700 dark:text-gray-300">Ubicaciones</h2>
             <span className="ml-auto text-xs text-gray-400 dark:text-gray-500">{ubicaciones.length} cargadas</span>
           </div>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. <ShoppingCart size={11} className="inline" /> = surtido POS · <span className="text-xs font-bold text-green-600">TN</span> = TiendaNube · <span className="text-xs font-bold text-yellow-500">ML</span> = MercadoLibre · <RotateCcw size={11} className="inline text-orange-500" /> = devoluciones. Cada ubicación puede tener dimensiones y tipo WMS opcionales (editando con <Pencil size={11} className="inline" />).</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-4">La prioridad define el orden de rebaje: menor número = se descuenta primero. <ShoppingCart size={11} className="inline" /> = surtido POS · <span className="text-xs font-bold text-green-600">TN</span> = TiendaNube · <span className="text-xs font-bold text-yellow-500">ML</span> = MercadoLibre · <RotateCcw size={11} className="inline text-orange-500" /> = devoluciones. Cada ubicación puede tener niveles adentro (árbol), un tipo lógico, dimensiones y código — todo opcional, editando con <Pencil size={11} className="inline" />.</p>
 
           {/* Agregar nueva */}
           <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4 mb-4 space-y-2">
@@ -3789,6 +3862,18 @@ export default function ConfigPage() {
             <input type="text" placeholder="Descripción (opcional)" value={newUbicDesc}
               onChange={e => setNewUbicDesc(e.target.value)}
               className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+            <div className="flex flex-wrap gap-2">
+              <select value={newUbicPadreId} onChange={e => setNewUbicPadreId(e.target.value)}
+                title="Árbol de ubicaciones: si elegís una, esta queda como nivel adentro de esa contenedora"
+                className="flex-1 min-w-[160px] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                <option value="">— Ninguna (contenedora nueva) —</option>
+                {opcionesPadreNuevo.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <input type="text" placeholder="Código (autogenerado si se deja vacío)" value={newUbicCodigo}
+                onChange={e => setNewUbicCodigo(e.target.value)}
+                title="Identificador técnico estructurado (ej. A-03-02). Se autogenera si se deja vacío."
+                className="w-56 flex-shrink-0 px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm font-mono focus:outline-none focus:border-accent-text" />
+            </div>
             {sucursales.length > 1 && (
               <select value={newUbicSucursalId} onChange={e => setNewUbicSucursalId(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
@@ -3803,22 +3888,29 @@ export default function ConfigPage() {
               </label>
               <button type="button" onClick={() => setNewUbicWmsOpen(v => !v)}
                 className="flex items-center gap-1 text-xs text-purple-500 dark:text-purple-400 hover:text-purple-700">
-                <Ruler size={11} /> Dimensiones WMS
+                <Ruler size={11} /> Tipo lógico y dimensiones
                 <ChevronRight size={11} className={`transition-transform ${newUbicWmsOpen ? 'rotate-90' : ''}`} />
               </button>
             </div>
             {newUbicWmsOpen && (
               <div className="grid grid-cols-3 gap-2 pt-1">
-                <select value={newUbicTipo} onChange={e => setNewUbicTipo(e.target.value)}
-                  className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
-                  <option value="">Tipo de ubicación (opcional)</option>
-                  <option value="picking">Picking</option>
-                  <option value="bulk">Bulk / Reserva</option>
-                  <option value="estiba">Estiba / Pallet rack</option>
-                  <option value="camara">Cámara frigorífica</option>
-                  <option value="cross_dock">Cross-dock</option>
-                  <option value="staging">Staging (convergencia de bolsas de Pedidos)</option>
+                <div className="col-span-3 flex items-center gap-1">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">Tipo lógico</span>
+                  <InfoTip text={TIPO_LOGICO_TOOLTIP} />
+                </div>
+                <select value={newUbicTipoLogico}
+                  onChange={e => { const v = e.target.value as UbicacionTipoLogico | ''; setNewUbicTipoLogico(v); if (v !== 'almacenamiento') setNewUbicSubtipo('') }}
+                  className={`${newUbicTipoLogico === 'almacenamiento' ? 'col-span-2' : 'col-span-3'} px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800`}>
+                  <option value="">Sin clasificar</option>
+                  {TIPO_LOGICO_OPCIONES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
+                {newUbicTipoLogico === 'almacenamiento' && (
+                  <select value={newUbicSubtipo} onChange={e => setNewUbicSubtipo(e.target.value as UbicacionSubtipoAlmacenamiento | '')}
+                    className="col-span-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
+                    <option value="">Sub-tipo (opcional)</option>
+                    {SUBTIPO_ALMACENAMIENTO_OPCIONES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                )}
                 {zonas.length > 0 && (
                   <select value={newUbicZonaId} onChange={e => setNewUbicZonaId(e.target.value)}
                     className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
@@ -3846,10 +3938,15 @@ export default function ConfigPage() {
           {/* Lista */}
           {loadingUbic ? <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-4">Cargando...</p> : (
             <div className="space-y-2">
-              {(ubicaciones as any[])
-                .filter(u => !ubicSearch.trim() || u.nombre.toLowerCase().includes(ubicSearch.toLowerCase()))
-                .map((u: any) => (
-                  <div key={u.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5">
+              {/* Con búsqueda activa: lista plana (encontrar puntual importa más que ver el árbol).
+                  Sin búsqueda: orden jerárquico con indentación por profundidad. */}
+              {(ubicSearch.trim()
+                ? (ubicaciones as any[])
+                    .filter(u => u.nombre.toLowerCase().includes(ubicSearch.toLowerCase()) || (u.codigo ?? '').toLowerCase().includes(ubicSearch.toLowerCase()))
+                    .map(u => ({ ...u, _depth: 0 }))
+                : ubicacionesOrdenadas
+              ).map((u: any) => (
+                  <div key={u.id} className="flex items-center gap-2 bg-gray-50 dark:bg-gray-700 rounded-lg px-3 py-2.5" style={{ marginLeft: u._depth * 20 }}>
                     {editUbicId === u.id ? (
                       <div className="flex-1 space-y-2">
                         {/* Fila principal */}
@@ -3880,27 +3977,46 @@ export default function ConfigPage() {
                             </select>
                           </div>
                         )}
-                        {/* Dimensiones WMS (colapsable) */}
+                        {/* Árbol (padre) + código */}
+                        <div className="flex gap-2 items-center">
+                          <select value={editUbicPadreId} onChange={e => setEditUbicPadreId(e.target.value)}
+                            title="Árbol de ubicaciones: si elegís una, esta queda como nivel adentro de esa contenedora"
+                            className="flex-1 min-w-0 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
+                            <option value="">— Ninguna (contenedora raíz) —</option>
+                            {opcionesPadreEdit.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                          </select>
+                          <input type="text" value={editUbicCodigo} onChange={e => setEditUbicCodigo(e.target.value)}
+                            placeholder="Código" title="Identificador técnico estructurado (ej. A-03-02)"
+                            className="w-40 flex-shrink-0 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-xs font-mono focus:outline-none focus:border-accent-text" />
+                        </div>
+                        {/* Tipo lógico y dimensiones (colapsable) */}
                         <button
                           type="button"
                           onClick={() => setEditUbicWmsOpen(v => !v)}
                           className="flex items-center gap-1 text-xs text-purple-500 dark:text-purple-400 hover:text-purple-700">
                           <Ruler size={11} />
-                          <span>Dimensiones WMS (opcional)</span>
+                          <span>Tipo lógico y dimensiones (opcional)</span>
                           <ChevronRight size={11} className={`transition-transform ${editUbicWmsOpen ? 'rotate-90' : ''}`} />
                         </button>
                         {editUbicWmsOpen && (
                           <div className="grid grid-cols-3 gap-2 pt-1">
-                            <select value={editUbicTipo} onChange={e => setEditUbicTipo(e.target.value)}
-                              className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
-                              <option value="">Tipo de ubicación (opcional)</option>
-                              <option value="picking">Picking</option>
-                              <option value="bulk">Bulk / Reserva</option>
-                              <option value="estiba">Estiba / Pallet rack</option>
-                              <option value="camara">Cámara frigorífica</option>
-                              <option value="cross_dock">Cross-dock</option>
-                              <option value="staging">Staging (convergencia de bolsas de Pedidos)</option>
+                            <div className="col-span-3 flex items-center gap-1">
+                              <span className="text-xs text-gray-500 dark:text-gray-400">Tipo lógico</span>
+                              <InfoTip text={TIPO_LOGICO_TOOLTIP} />
+                            </div>
+                            <select value={editUbicTipoLogico}
+                              onChange={e => { const v = e.target.value as UbicacionTipoLogico | ''; setEditUbicTipoLogico(v); if (v !== 'almacenamiento') setEditUbicSubtipo('') }}
+                              className={`${editUbicTipoLogico === 'almacenamiento' ? 'col-span-2' : 'col-span-3'} px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800`}>
+                              <option value="">Sin clasificar</option>
+                              {TIPO_LOGICO_OPCIONES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                             </select>
+                            {editUbicTipoLogico === 'almacenamiento' && (
+                              <select value={editUbicSubtipo} onChange={e => setEditUbicSubtipo(e.target.value as UbicacionSubtipoAlmacenamiento | '')}
+                                className="col-span-1 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
+                                <option value="">Sub-tipo (opcional)</option>
+                                {SUBTIPO_ALMACENAMIENTO_OPCIONES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                              </select>
+                            )}
                             {zonas.length > 0 && (
                               <select value={editUbicZonaId} onChange={e => setEditUbicZonaId(e.target.value)}
                                 className="col-span-3 px-2 py-1 border border-gray-200 dark:border-gray-700 rounded text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
@@ -3931,11 +4047,16 @@ export default function ConfigPage() {
                     ) : (
                       <>
                         <div className="flex-1 min-w-0">
+                          {u._depth > 0 && <span className="text-gray-300 dark:text-gray-600 mr-1">└</span>}
                           <span className={`text-sm font-medium ${u.disponible_surtido ? 'text-gray-800 dark:text-gray-100' : 'text-gray-400 dark:text-gray-500'}`}>{u.nombre}</span>
+                          {u.codigo && <span className="ml-2 text-xs font-mono text-gray-400 dark:text-gray-500" title="Código">{u.codigo}</span>}
                           {u.descripcion && <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{u.descripcion}</span>}
                           {!u.disponible_surtido && <span className="ml-2 text-xs text-red-400">No disponible para surtido</span>}
-                          {u.tipo_ubicacion && (
-                            <span className="ml-2 text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-mono">{u.tipo_ubicacion}</span>
+                          {u.tipo_logico && (
+                            <span className="ml-2 text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded" title={TIPO_LOGICO_TOOLTIP}>
+                              {TIPO_LOGICO_LABELS[u.tipo_logico as UbicacionTipoLogico]}
+                              {u.subtipo_almacenamiento && ` · ${SUBTIPO_ALMACENAMIENTO_LABELS[u.subtipo_almacenamiento as UbicacionSubtipoAlmacenamiento]}`}
+                            </span>
                           )}
                           {(u.alto_cm || u.ancho_cm || u.largo_cm) && (() => {
                             const m3 = volumenUbicacionM3(u.largo_cm, u.ancho_cm, u.alto_cm)
@@ -4210,7 +4331,7 @@ export default function ConfigPage() {
                     <select value={umbralUbicId} onChange={e => setUmbralUbicId(e.target.value)}
                       className="flex-1 min-w-[10rem] px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800 text-primary">
                       <option value="">Ubicación de picking...</option>
-                      {ubicacionesPicking.map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      {ubicacionesPicking.map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                     </select>
                     <input type="number" onWheel={e => e.currentTarget.blur()} min="0" placeholder="Mínimo" value={umbralMin}
                       onChange={e => setUmbralMin(e.target.value)}

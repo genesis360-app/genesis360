@@ -22,6 +22,12 @@ import { PlanLimitModal } from '@/components/PlanLimitModal'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { PresentacionesEditor } from '@/components/PresentacionesEditor'
+import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
+import {
+  parsearPildora, evaluarPildorasProducto, CAMPOS_FILTRO_PRODUCTOS,
+  type PildoraProducto,
+} from '@/lib/productosFiltro'
+import { type Combinador } from '@/lib/pildorasFiltro'
 
 /** 'estructura' = pestaña de EMPAQUE (árbol de presentaciones, Fase 5 mig 310). Se conserva el
  *  id de la pestaña para no romper los deep-links y los tests que ya la referencian. */
@@ -75,7 +81,11 @@ export default function ProductosPage() {
   const [tab, setTab] = useState<Tab>('productos')
 
   // Tab Productos
-  const [search, setSearch] = useState('')
+  // Buscador por píldoras (mismo mecanismo que /picking, ver `productosFiltro.ts`): "entrada"
+  // filtra en vivo igual que las píldoras ya confirmadas (Enter fija una nueva píldora).
+  const [pildoras, setPildoras] = useState<PildoraProducto[]>([])
+  const [entrada, setEntrada] = useState('')
+  const [combinador, setCombinador] = useState<Combinador>('Y')
   const [filterAlerta, setFilterAlerta] = useState(false)
   // Panel de filtros (mismo patrón pill+popover que InventarioPage → tab Inventario)
   const [filterPanelOpen, setFilterPanelOpen] = useState(false)
@@ -156,15 +166,13 @@ export default function ProductosPage() {
   // ── Queries ────────────────────────────────────────────────────────────────
 
   const { data: productos = [], isLoading } = useQuery({
-    queryKey: ['productos', tenant?.id, search],
+    queryKey: ['productos', tenant?.id],
     queryFn: async () => {
-      let q = supabase
+      const { data, error } = await supabase
         .from('productos')
         .select('*, categorias(nombre), proveedores(nombre), estados_inventario(nombre), ubicaciones(nombre)')
         .eq('tenant_id', tenant!.id)
         .order('nombre')
-      if (search) q = q.or(`nombre.ilike.%${search}%,sku.ilike.%${search}%,codigo_barras.eq.${search}`)
-      const { data, error } = await q
       if (error) throw error
       return data ?? []
     },
@@ -431,8 +439,27 @@ export default function ProductosPage() {
 
   // ── Helpers UI ─────────────────────────────────────────────────────────────
 
+  // Lo que todavía se está tipeando (`entrada`) filtra en vivo igual que las píldoras ya
+  // confirmadas — Enter la vuelve una píldora fija. Mismo mecanismo que /picking.
+  const entradaTrim = entrada.trim()
+  const pildoraDeEntrada: PildoraProducto | null = entradaTrim
+    ? (parsearPildora(entradaTrim) ?? { id: '__entrada__', campo: 'libre', operador: 'contiene', valor: entradaTrim })
+    : null
+  const pildorasEfectivas = pildoraDeEntrada ? [...pildoras, pildoraDeEntrada] : pildoras
+
+  const commitEntrada = () => {
+    if (!entradaTrim) return
+    const nueva = parsearPildora(entradaTrim) ?? { id: crypto.randomUUID(), campo: 'libre' as const, operador: 'contiene' as const, valor: entradaTrim }
+    setPildoras(ps => [...ps, nueva])
+    setEntrada('')
+  }
+
   const filtered = productos.filter(p => {
     const prod = p as any
+    if (!evaluarPildorasProducto(
+      { nombre: prod.nombre, sku: prod.sku ?? null, codigoBarras: prod.codigo_barras ?? null },
+      pildorasEfectivas, combinador,
+    )) return false
     if (filterActivo === 'activos' && !prod.activo) return false
     if (filterActivo === 'inactivos' && prod.activo) return false
     if (filterAlerta && prod.stock_actual > prod.stock_minimo) return false
@@ -789,12 +816,23 @@ export default function ProductosPage() {
             </div>
           )}
 
-          <div className="flex gap-2 items-center">
-            <div className="relative flex-1">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500" />
-              <input type="text" value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Buscar por nombre, SKU o código..."
-                className="w-full pl-9 pr-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
+          <div className="flex gap-2 items-start">
+            <div className="flex-1">
+              <BuscadorPildoras
+                camposFiltro={CAMPOS_FILTRO_PRODUCTOS}
+                pildoras={pildoras}
+                entrada={entrada}
+                combinador={combinador}
+                placeholder="Buscar por nombre, SKU o código... o (SKU):43"
+                onEntradaChange={setEntrada}
+                onCommitEntrada={commitEntrada}
+                onCampoChange={(id, campo) => setPildoras(ps => ps.map(p => p.id === id ? pildoraConCampoNuevo(p, campo, CAMPOS_FILTRO_PRODUCTOS) as PildoraProducto : p))}
+                onOperadorChange={(id, operador) => setPildoras(ps => ps.map(p => p.id === id ? { ...p, operador } : p))}
+                onValorChange={(id, valor) => setPildoras(ps => ps.map(p => p.id === id ? { ...p, valor } : p))}
+                onRemove={id => setPildoras(ps => ps.filter(p => p.id !== id))}
+                onRemoveLast={() => setPildoras(ps => ps.slice(0, -1))}
+                onCombinadorChange={setCombinador}
+              />
             </div>
             {/* Filtros — pill button con popover (mismo patrón que InventarioPage → tab Inventario) */}
             <div className="relative shrink-0" ref={filterPanelRef}>
@@ -1152,8 +1190,8 @@ export default function ProductosPage() {
             ) : filteredFlat.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
                 <Package size={40} className="mb-3 opacity-50" />
-                <p className="font-medium">{search ? 'No se encontraron productos' : 'No hay productos aún'}</p>
-                {!search && <Link to="/productos/nuevo" className="mt-3 text-accent-text text-sm hover:underline">Agregá tu primer producto →</Link>}
+                <p className="font-medium">{pildorasEfectivas.length > 0 ? 'No se encontraron productos' : 'No hay productos aún'}</p>
+                {pildorasEfectivas.length === 0 && <Link to="/productos/nuevo" className="mt-3 text-accent-text text-sm hover:underline">Agregá tu primer producto →</Link>}
               </div>
             ) : (
               <div className="divide-y divide-gray-50 dark:divide-gray-700">
@@ -1671,7 +1709,13 @@ export default function ProductosPage() {
       {scannerOpen && (
         <BarcodeScanner
           title="Buscar producto"
-          onDetected={code => { setSearch(code); setScannerOpen(false) }}
+          onDetected={code => {
+            // Un scan es una acción puntual y completa — REEMPLAZA el filtro entero, no lo acumula.
+            const nueva = parsearPildora(code) ?? { id: crypto.randomUUID(), campo: 'libre' as const, operador: 'contiene' as const, valor: code }
+            setPildoras([nueva])
+            setEntrada('')
+            setScannerOpen(false)
+          }}
           onClose={() => setScannerOpen(false)}
         />
       )}

@@ -23,6 +23,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp, uniqueName } from './helpers/navigation'
+import { agregarPrimerProductoAlCarrito } from './helpers/fixtures'
 
 test.describe('Primer uso — smoke (mutante)', () => {
   // ── PU-16 · alta de cliente CON NOTAS (la columna clientes.notas faltaba en PROD) ──
@@ -34,7 +35,6 @@ test.describe('Primer uso — smoke (mutante)', () => {
     const nuevo = page.getByRole('button', { name: /nuevo cliente|agregar cliente|^nuevo$/i }).first()
     await expect(nuevo).toBeVisible({ timeout: 8000 })
     await nuevo.click()
-    await page.waitForTimeout(400)
 
     const nombre = uniqueName('Cliente')
     const dni = String(Date.now()).slice(-8) // DNI único → evita el confirm() de duplicado
@@ -62,17 +62,7 @@ test.describe('Primer uso — smoke (mutante)', () => {
     await goto(page, '/ventas')
     await waitForApp(page)
 
-    const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
-    await expect(buscador).toBeVisible({ timeout: 8000 })
-    await buscador.fill('a')
-    await page.waitForTimeout(1000)
-
-    const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    const hayProducto = await primerProducto.isVisible().catch(() => false)
-    test.skip(!hayProducto, 'No hay productos vendibles en el tenant de prueba')
-    await primerProducto.click()
-    await page.waitForTimeout(600)
-    await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
+    await agregarPrimerProductoAlCarrito(page)
 
     // Si hay más de una caja abierta, elegir una
     const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
@@ -97,7 +87,6 @@ test.describe('Primer uso — smoke (mutante)', () => {
     const montoInput = page.locator('input[type="number"]').last()
     await montoInput.fill(String(total))
     await montoInput.blur()
-    await page.waitForTimeout(400)
 
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
     await expect(finalizar).toBeEnabled({ timeout: 5000 })
@@ -113,15 +102,7 @@ test.describe('Primer uso — smoke (mutante)', () => {
     await goto(page, '/ventas')
     await waitForApp(page)
 
-    const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
-    await expect(buscador).toBeVisible({ timeout: 8000 })
-    await buscador.fill('a')
-    await page.waitForTimeout(1000)
-    const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await primerProducto.isVisible().catch(() => false)), 'No hay productos vendibles')
-    await primerProducto.click()
-    await page.waitForTimeout(600)
-    await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
+    await agregarPrimerProductoAlCarrito(page)
 
     const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
     if (await cajaSelect.isVisible().catch(() => false)) {
@@ -135,9 +116,9 @@ test.describe('Primer uso — smoke (mutante)', () => {
     await page.getByRole('button', { name: /Cliente registrado/i }).click()
     const clienteSearch = page.getByPlaceholder(/Buscar por nombre o DNI/i).first()
     await clienteSearch.fill('a')
-    await page.waitForTimeout(800)
-    await page.locator('div.absolute.z-20 button').first().click()
-    await page.waitForTimeout(300)
+    const primerCliente = page.locator('div.absolute.z-20 button').first()
+    await expect(primerCliente).toBeVisible({ timeout: 5000 })
+    await primerCliente.click()
 
     // Seña en Efectivo cubriendo el total (cumple la seña mínima; efectivo admite excedente)
     const tipoSelect = page.locator('select')
@@ -146,11 +127,9 @@ test.describe('Primer uso — smoke (mutante)', () => {
     const montoInput = page.locator('input[type="number"]').last()
     await montoInput.fill('100000')
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     // Cambiar a modo "Reservar" (toggle) y ejecutar con el botón de acción ("Reservar stock")
     await page.getByRole('button', { name: 'Reservar', exact: true }).first().click()
-    await page.waitForTimeout(300)
     await page.getByRole('button', { name: /Reservar stock/i }).click()
 
     // Reserva OK: el carrito se limpia y NO hay error de seña ni del CHECK de caja_movimientos

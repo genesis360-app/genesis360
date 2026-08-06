@@ -13,6 +13,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Atributo de variante obligatorio al ingresar stock (mutante)', () => {
   test('producto con Talle activado exige el talle al confirmar el ingreso', async ({ page }) => {
@@ -46,28 +47,24 @@ test.describe('Atributo de variante obligatorio al ingresar stock (mutante)', ()
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-    await page.waitForTimeout(400)
 
     const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
     await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
     test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
     await ingresoBtn.click()
-    await page.waitForTimeout(400)
 
     const buscador = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
     await expect(buscador).toBeVisible({ timeout: 6000 })
     await buscador.fill(nombreProducto)
-    await page.waitForTimeout(900)
 
     const modal = page.locator('div.fixed.inset-0').filter({ has: buscador }).first()
     const resultado = modal.getByText(nombreProducto).first()
     await expect(resultado).toBeVisible({ timeout: 6000 })
     await resultado.click()
-    await page.waitForTimeout(500)
 
     // Sucursal destino, si aparece
     const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-    if (await sucSelect.isVisible().catch(() => false)) {
+    if (await visible(sucSelect, 2000)) {
       const vals = await sucSelect.locator('option').evaluateAll(
         opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
       )
@@ -94,8 +91,10 @@ test.describe('Atributo de variante obligatorio al ingresar stock (mutante)', ()
       await expect(nuevoValorInput).toBeVisible({ timeout: 3000 })
       await nuevoValorInput.fill('M-E2E')
       await nuevoValorInput.blur()
+      // guardarNuevo() es async — esperar el VALOR real del select, no un timeout fijo (mismo
+      // patrón que el spec 95: sin esto, "Confirmar" podía salir antes de que el estado terminara).
+      await expect(talleSelect).toHaveValue('M-E2E', { timeout: 6000 })
     })
-    await page.waitForTimeout(400)
 
     await confirmar.click()
     await expect(page.getByText(/Ingreso registrado/i)).toBeVisible({ timeout: 12000 })

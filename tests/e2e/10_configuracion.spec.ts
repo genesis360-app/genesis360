@@ -41,7 +41,6 @@ test.describe('Configuración', () => {
     const tabUbic = page.getByRole('button', { name: /ubicaci/i }).first()
     if (await tabUbic.isVisible({ timeout: 5000 }).catch(() => false)) {
       await tabUbic.click()
-      await page.waitForTimeout(500)
       await expect(
         page.getByText(/ubicaci|sin ubicacion/i).first()
       ).toBeVisible({ timeout: 5000 })

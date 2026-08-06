@@ -19,7 +19,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 
@@ -45,25 +45,21 @@ test.describe('LpnAccionesModal → Mover dentro de la misma sucursal (mutante)'
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-    await page.waitForTimeout(400)
     const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
     await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
     test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
     await ingresoBtn.click()
-    await page.waitForTimeout(400)
 
     const buscador = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
     await expect(buscador).toBeVisible({ timeout: 6000 })
     await buscador.fill(nombreProducto)
-    await page.waitForTimeout(900)
     const modalIngreso = page.locator('div.fixed.inset-0').filter({ has: buscador }).first()
     const resultado = modalIngreso.getByText(nombreProducto).first()
     await expect(resultado).toBeVisible({ timeout: 6000 })
     await resultado.click()
-    await page.waitForTimeout(500)
 
     const sucSelectIngreso = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-    if (await sucSelectIngreso.isVisible().catch(() => false)) {
+    if (await visible(sucSelectIngreso, 2000)) {
       await sucSelectIngreso.selectOption(NORTE)
     }
     const cantidadIngreso = page.locator('input[type="number"][placeholder="0"]').first()
@@ -78,9 +74,7 @@ test.describe('LpnAccionesModal → Mover dentro de la misma sucursal (mutante)'
     const buscadorInv = page.getByPlaceholder(/Buscar por nombre, SKU, código, ubicación o LPN/i).first()
     await expect(buscadorInv).toBeVisible({ timeout: 8000 })
     await buscadorInv.fill(nombreProducto)
-    await page.waitForTimeout(700)
     await page.getByText(nombreProducto, { exact: true }).first().click()
-    await page.waitForTimeout(400)
 
     const accionesBtn = page.getByTitle('Acciones sobre este LPN').first()
     await expect(accionesBtn).toBeVisible({ timeout: 8000 })

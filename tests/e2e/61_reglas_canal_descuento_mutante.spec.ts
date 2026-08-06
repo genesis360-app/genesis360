@@ -18,6 +18,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Tope de descuento por canal aplica al DUEÑO (mutante)', () => {
   test.skip(process.env.E2E_CANAL_DESC_FIXTURE !== '1', 'Fixture reglas_canal.descuento_max_pct=5 no aplicado (E2E_CANAL_DESC_FIXTURE!=1).')
@@ -30,16 +31,13 @@ test.describe('Tope de descuento por canal aplica al DUEÑO (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await prod.isVisible().catch(() => false)), 'No hay productos vendibles en el tenant de prueba')
+    test.skip(!(await visible(prod, 5000)), 'No hay productos vendibles en el tenant de prueba')
     await prod.click()
-    await page.waitForTimeout(600)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // 2) Modo "Venta directa" (el bloque "Descuento general" se renderiza fuera de presupuesto)
     await page.getByRole('button', { name: /^Venta directa$/ }).first().click()
-    await page.waitForTimeout(300)
 
     // 3) Descuento general 20% (input controlado de React; el de "Descuento general" tiene max="100")
     const descInput = page.locator('input[type="number"][max="100"]').first()

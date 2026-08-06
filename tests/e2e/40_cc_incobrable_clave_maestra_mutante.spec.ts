@@ -15,6 +15,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const CLIENTE = 'Gaston Otranto'
 const CLAVE_MAESTRA = '12345678'
@@ -25,12 +26,11 @@ test.describe('Incobrable con clave maestra (mutante)', () => {
     await waitForApp(page)
 
     await page.getByRole('button', { name: /Cuenta Corriente/i }).first().click()
-    await page.waitForTimeout(800)
 
     // Card del cliente → botón "Incobrable"
     const card = page.locator('div').filter({ hasText: new RegExp(CLIENTE) })
       .filter({ has: page.getByRole('button', { name: /Incobrable/i }) }).last()
-    test.skip(!(await card.isVisible().catch(() => false)), `${CLIENTE} sin deuda CC para dar de baja`)
+    test.skip(!(await visible(card, 5000)), `${CLIENTE} sin deuda CC para dar de baja`)
     await card.getByRole('button', { name: /Incobrable/i }).first().click()
 
     // Modal B6

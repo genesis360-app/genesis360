@@ -66,7 +66,6 @@ async function cobrarYFinalizar(page: any, totalEsperado: number) {
   const montoInput = page.getByPlaceholder(/^Monto$/i).first()
   await montoInput.fill(String(Math.ceil(totalEsperado) + 1000))
   await montoInput.blur()
-  await page.waitForTimeout(300)
   const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
   await expect(finalizar).toBeEnabled({ timeout: 5000 })
   await finalizar.click()
@@ -114,7 +113,6 @@ test.describe('Tiers — % sobre lista y prioridad "gana el mejor" en el carrito
     const qtyInput = page.locator('input[inputmode="numeric"], input[inputmode="decimal"]').first()
     await qtyInput.fill(String(CANTIDAD))
     await qtyInput.blur()
-    await page.waitForTimeout(700)
 
     await expect(page.getByText(new RegExp(`Precio mayorista:\\s*\\$${Math.round(precioEsperado)}/u`))).toBeVisible({ timeout: 8000 })
     const total = await totalDelCarrito(page)
@@ -200,7 +198,6 @@ test.describe('Tiers — % sobre lista y prioridad "gana el mejor" en el carrito
     const qtyInput = page.locator('input[inputmode="numeric"], input[inputmode="decimal"]').first()
     await qtyInput.fill(String(CANTIDAD))
     await qtyInput.blur()
-    await page.waitForTimeout(700)
 
     await expect(page.getByText(new RegExp(`Precio mayorista:\\s*\\$${Math.round(precioEsperado)}/u`))).toBeVisible({ timeout: 8000 })
     const total = await totalDelCarrito(page)

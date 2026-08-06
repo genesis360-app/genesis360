@@ -282,6 +282,9 @@ export interface OrdenCompraItem {
   productos?: Pick<Producto, 'id' | 'nombre' | 'sku' | 'unidad_medida' | 'precio_costo'>
 }
 
+export type UbicacionTipoLogico = 'exhibicion' | 'mostrador' | 'picking' | 'almacenamiento'
+export type UbicacionSubtipoAlmacenamiento = 'bulk' | 'estiba' | 'camara' | 'cross_dock' | 'staging'
+
 export interface Ubicacion {
   id: string
   tenant_id: string
@@ -291,7 +294,8 @@ export interface Ubicacion {
   prioridad?: number
   disponible_surtido?: boolean
   es_devolucion?: boolean
-  // WMS Fase 2
+  // WMS Fase 2 — deprecated (mig 334): reemplazada por tipo_logico/subtipo_almacenamiento.
+  // Se mantiene en la columna hasta que ningún archivo la lea (Fase U5, mismo patrón que F3b/F4).
   tipo_ubicacion?: 'picking' | 'bulk' | 'estiba' | 'camara' | 'cross_dock' | 'staging' | null
   alto_cm?: number | null
   ancho_cm?: number | null
@@ -306,6 +310,14 @@ export interface Ubicacion {
   secuencia?: number | null
   // WMS Fase 3 — zonas
   zona_id?: string | null
+  // Árbol de Ubicaciones (mig 334, relevamiento 2026-08-02) — contenedora/nivel self-FK
+  padre_ubicacion_id?: string | null
+  tipo_logico?: UbicacionTipoLogico | null
+  subtipo_almacenamiento?: UbicacionSubtipoAlmacenamiento | null
+  codigo: string
+  pos_x?: number | null
+  pos_y?: number | null
+  orientacion_deg?: number | null
 }
 
 export interface Producto {

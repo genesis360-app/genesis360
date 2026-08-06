@@ -21,7 +21,11 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
 
 ### Barra de búsqueda y filtros
 
-- Search por nombre / SKU / código de barras
+- **🆕 Buscador de "píldoras" combinables Y/O (2026-08-06, ✅ PROD desde v1.158.0):** reemplaza al
+  search server-side viejo (nombre/SKU/código de barras vía Supabase `.ilike`/`.eq`). Ahora se trae
+  el catálogo del tenant una vez y se filtra 100% client-side, con criterios `(Campo):valor`
+  combinables. Ver [[wiki/features/filtro-pildoras]] para el detalle del mecanismo (compartido con
+  Picking e Inventario).
 - Botón píldora **"Filtros"** con popover (✅ v1.138.0, EN PROD desde el 2026-07-22 — ver sección dedicada abajo)
 - Toggle "Agrupar variantes" (ícono Layers) — alterna entre vista plana y vista agrupada por grupos
 
@@ -336,6 +340,7 @@ Ver detalle técnico: [[wiki/features/escaneo-barcode]]
 
 - [[wiki/features/grupos-variantes]]
 - [[wiki/features/atributos-variante]] — catálogo configurable de talle/color/etc. (✅ PROD, las 4 rondas)
+- [[wiki/features/filtro-pildoras]] — buscador de píldoras combinable, compartido con Inventario y Picking
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/wms]]
 - [[wiki/features/multi-sucursal]]

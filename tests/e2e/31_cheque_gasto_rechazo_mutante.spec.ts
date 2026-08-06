@@ -30,12 +30,10 @@ test.describe('Cheque de gasto rechazado → reversión (mutante)', () => {
     await goto(page, '/gastos')
     await waitForApp(page)
     await page.getByRole('button', { name: /nuevo gasto/i }).click()
-    await page.waitForTimeout(500)
 
     await page.getByPlaceholder(/Pago de alquiler|detalles/i).first().fill(desc)
     const montoTotal = page.locator('xpath=//label[contains(.,"Monto total")]/following::input[1]')
     await montoTotal.fill('700')
-    await page.waitForTimeout(300)
 
     // NO se carga medio de pago → estado_pago 'pendiente' (borrador permitido)
     await page.getByRole('button', { name: /Registrar gasto/i }).click()
@@ -56,12 +54,10 @@ test.describe('Cheque de gasto rechazado → reversión (mutante)', () => {
     // Método de pago = Cheque
     const medioSel = page.locator('xpath=//label[contains(.,"Método de pago")]/following::select[1]')
     await medioSel.selectOption({ label: 'Cheque' })
-    await page.waitForTimeout(300)
 
     // Datos del cheque (la sección aparece al elegir Cheque)
     await page.getByPlaceholder(/N° cheque/i).fill(nroCheque)
     await page.locator('input[type="date"]').last().fill(fechaCobro)
-    await page.waitForTimeout(200)
 
     // Confirmar pago
     await page.getByRole('button', { name: /^Registrar$/ }).click()
@@ -73,7 +69,6 @@ test.describe('Cheque de gasto rechazado → reversión (mutante)', () => {
 
     // 3) Ir al tab Cheques y rechazar el cheque recién creado
     await page.getByRole('button', { name: /^Cheques$/ }).first().click()
-    await page.waitForTimeout(800)
 
     // Tarjeta del cheque (por su N° único) con el botón "Rechazado"
     const cardCheque = page.locator('div').filter({ hasText: new RegExp(nroCheque) })

@@ -102,20 +102,18 @@ test.describe('Rol SUPERVISOR — funcionalidad básica', () => {
     const tabHistorial = page.getByRole('button', { name: /historial/i }).first()
     if (await tabHistorial.isVisible().catch(() => false)) {
       await tabHistorial.click()
-      await page.waitForTimeout(1000)
       await expect(page).not.toHaveURL(/login/)
     }
   })
 
   test('puede acceder al dashboard y ver stats', async ({ page }) => {
-    await goto(page, '/dashboard')
-    await waitForApp(page)
-    await page.waitForTimeout(1500)
-
-    // El dashboard debe cargar sin errores JS
+    // El listener se engancha ANTES de navegar — si no, se pierden los errores del load inicial.
     const jsErrors: string[] = []
     page.on('pageerror', err => jsErrors.push(err.message))
-    await page.waitForTimeout(1000)
+
+    await goto(page, '/dashboard')
+    await waitForApp(page)
+    await page.waitForTimeout(1500) // dejar correr el JS de la página para detectar errores async
 
     const criticalErrors = jsErrors.filter(e =>
       !e.includes('ResizeObserver') &&

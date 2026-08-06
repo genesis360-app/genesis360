@@ -20,6 +20,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('cliente_obligatorio=siempre exige cliente en venta directa CF (mutante)', () => {
   test.skip(process.env.E2E_CLI_OBLIG_FIXTURE !== '1', "Fixture cliente_obligatorio='siempre' no aplicado (E2E_CLI_OBLIG_FIXTURE!=1).")
@@ -32,18 +33,15 @@ test.describe('cliente_obligatorio=siempre exige cliente en venta directa CF (mu
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    if (!(await prod.isVisible().catch(() => false))) {
+    if (!(await visible(prod, 5000))) {
       test.skip(true, 'No hay productos vendibles en el tenant de prueba')
     }
     await prod.click()
-    await page.waitForTimeout(500)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // Modo "Venta directa" (Consumidor Final por default; sin tocar el toggle CF)
     await page.getByRole('button', { name: /^Venta directa$/ }).first().click()
-    await page.waitForTimeout(300)
 
     // "Venta directa" (CTA) SIN cliente → guard L20 bloquea por cliente_obligatorio='siempre'
     await page.getByRole('button', { name: /^Venta directa$/ }).last().click()

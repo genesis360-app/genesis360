@@ -51,7 +51,7 @@ test.describe('Dashboard v1.92.0 — 5 sub-pestañas uniformes por área', () =>
         if (!(await subBtn.isVisible().catch(() => false))) continue
         await subBtn.click()
         // dar tiempo a la query (staleTime 0) + render
-        await page.waitForTimeout(250)
+        await page.waitForLoadState('networkidle', { timeout: 2000 }).catch(() => {})
 
         // 1) El error boundary de área NO debe aparecer
         await expect(

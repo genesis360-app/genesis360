@@ -342,7 +342,9 @@ Refinamientos que cierran el módulo al 100%:
   - Despacho directo
 - Sección roja en AlertasPage
 - Badge en `useAlertas`
-- InventarioPage lee `?search=` al montar y pre-filtra
+- InventarioPage lee `?search=` al montar y pre-filtra — **🆕 desde 2026-08-06, ✅ PROD desde
+  v1.158.0 (2026-08-06): el deep-link crea una píldora "libre"** en vez de setear un string plano,
+  consistente con el nuevo buscador de píldoras (ver [[wiki/features/filtro-pildoras]])
 
 ---
 
@@ -557,6 +559,21 @@ Correcciones en el rebaje masivo por lote:
 - **Override**: el operador puede ajustar las cantidades del preview antes de ejecutar
 - Aplica correctamente la regla FIFO (por `created_at` ASC) y FEFO (por `fecha_vencimiento` ASC)
 
+> [!NOTE] **🛑 Bug REAL de Regla de Oro #0 encontrado y corregido (2026-08-06, ✅ PROD desde
+> v1.158.0).** En `src/components/MasivoModal.tsx`, `cargarLineasParaRebaje()` se llama **sin
+> `await`** desde `addProduct()` (fire-and-forget). La validación de ambigüedad de talle/color en
+> `validate()` hacía `if (lineas) { ...chequear ambigüedad... }` — si el fetch async todavía no
+> había resuelto cuando el usuario clickeaba "Confirmar rebaje", `lineasCache[productoId]` era
+> `undefined`, el `if` se saltaba **ENTERO**, y el rebaje masivo se confirmaba por **FIFO ciego SIN
+> pedir el color** — exactamente el escenario que la Regla de Oro #0 prohíbe. Encontrado como un
+> flake real (2/3 corridas) al arreglar el spec e2e 95 (deuda de `waitForTimeout`), no por code
+> review. **Fix: falla CERRADO en vez de ABIERTO** — si `lineasCache[productoId] === undefined`
+> (fetch en vuelo), `validate()` ahora bloquea con un mensaje claro pidiendo reintentar, en vez de
+> saltear el chequeo. Este bug estaba en PROD desde antes del rediseño de Ubicaciones (la lógica de
+> `MasivoModal.tsx` no cambió ahí) — cualquier usuario que confirmara MUY rápido o con conexión
+> lenta a Supabase podía rebajar la variante equivocada sin que el sistema se lo impidiera. Detalle:
+> [[wiki/development/testing]] y `log.md` (2026-08-06). **✅ Deployado a PROD el 2026-08-06 (v1.158.0).**
+
 ---
 
 ## Shortcuts teclado en InventarioPage — v1.8.19
@@ -579,6 +596,12 @@ Implementado `useModalKeyboard` en todas las secciones:
 - Click fuera cierra el panel
 - Las ubicaciones del popover ya están filtradas por sucursal activa
 - Filtros filtran el listado de LPNs por sucursal
+- **🆕 Buscador de "píldoras" combinables Y/O (2026-08-06, ✅ PROD desde v1.158.0):** el buscador de
+  texto de las 2 vistas del tab (por producto y por ubicación) pasó a criterios `(Campo):valor`
+  combinables — `src/lib/inventarioFiltro.ts`. La unidad atómica es la LÍNEA (LPN): un filtro
+  combinado exige que TODOS los criterios matcheen la MISMA línea, no una coincidencia repartida
+  entre líneas distintas del mismo producto. Ver [[wiki/features/filtro-pildoras]] (mecanismo
+  compartido con Productos y Picking).
 
 ---
 
@@ -655,6 +678,8 @@ variantes" (SKU separado). Detalle completo: [[wiki/features/atributos-variante]
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/productos]]
 - [[wiki/features/atributos-variante]]
+- [[wiki/features/filtro-pildoras]] — buscador de píldoras combinable, compartido con Productos y Picking
+- [[wiki/features/ubicaciones]] — árbol de ubicaciones en árbol, tablas que consumen `ubicaciones.id` sin cambios de FK
 - [[wiki/database/triggers]]
 - [[wiki/database/migraciones]] — migs 289, 290, 331
 - [[wiki/database/schema-overview]]

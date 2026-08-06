@@ -6,6 +6,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 /**
  * Extrae un número de un texto. Ejemplo: "12 productos" → 12
@@ -65,12 +66,9 @@ test.describe('Coherencia números Dashboard → páginas destino', () => {
     await goto(page, '/dashboard')
     await waitForApp(page)
 
-    // Esperar que las stats carguen
-    await page.waitForTimeout(2000)
-
-    // Buscar la card de productos activos
+    // Buscar la card de productos activos (bounded wait — las stats cargan async)
     const cardProductos = page.locator('text=/productos? activos?/i').first()
-    if (!await cardProductos.isVisible().catch(() => false)) return // skip si no carga
+    if (!await visible(cardProductos, 5000)) return // skip si no carga
 
     // Subir al elemento padre para obtener el número
     const cardContainer = cardProductos.locator('..').locator('..')
@@ -83,7 +81,7 @@ test.describe('Coherencia números Dashboard → páginas destino', () => {
     // 2. Verificar en ProductosPage
     await goto(page, '/productos')
     await waitForApp(page)
-    await page.waitForTimeout(1500)
+    await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {})
 
     // El conteo de filas en la tabla de productos
     const rows = page.locator('table tbody tr, [data-testid="producto-row"]')
@@ -119,7 +117,7 @@ test.describe('Coherencia números Dashboard → páginas destino', () => {
     const tabInsights = page.getByRole('button', { name: /insights/i }).first()
     if (await tabInsights.isVisible().catch(() => false)) {
       await tabInsights.click()
-      await page.waitForTimeout(1500)
+      await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {})
       await expect(page).not.toHaveURL(/login/)
     }
 
@@ -127,7 +125,7 @@ test.describe('Coherencia números Dashboard → páginas destino', () => {
     const tabMetricas = page.getByRole('button', { name: /m[eé]tricas/i }).first()
     if (await tabMetricas.isVisible().catch(() => false)) {
       await tabMetricas.click()
-      await page.waitForTimeout(1500)
+      await page.waitForLoadState('networkidle', { timeout: 4000 }).catch(() => {})
       await expect(page).not.toHaveURL(/login/)
     }
   })
@@ -135,10 +133,9 @@ test.describe('Coherencia números Dashboard → páginas destino', () => {
   test('Click en card "Stock Crítico" → navega a /alertas', async ({ page }) => {
     await goto(page, '/dashboard')
     await waitForApp(page)
-    await page.waitForTimeout(2000)
 
     const cardCritico = page.locator('text=/stock cr[ií]tico/i').first()
-    if (!await cardCritico.isVisible().catch(() => false)) return
+    if (!await visible(cardCritico, 5000)) return
 
     // Hacer click en la card o en el link dentro de ella
     const link = cardCritico.locator('..').locator('a, button[onclick*="alertas"]').first()

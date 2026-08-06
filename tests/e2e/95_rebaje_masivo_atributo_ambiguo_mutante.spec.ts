@@ -16,7 +16,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
-import { tokenDesdeBrowser, restHeaders, SUPABASE_URL } from './helpers/fixtures'
+import { tokenDesdeBrowser, restHeaders, SUPABASE_URL, visible } from './helpers/fixtures'
 
 test.describe('Rebaje masivo con atributo de variante ambiguo (mutante)', () => {
   test('exige elegir el color antes de rebajar y consume solo la línea elegida', async ({ page, request }) => {
@@ -45,23 +45,19 @@ test.describe('Rebaje masivo con atributo de variante ambiguo (mutante)', () => 
       await goto(page, '/inventario')
       await waitForApp(page)
       await page.getByRole('button', { name: 'Agregar stock' }).first().click()
-      await page.waitForTimeout(400)
       const ingresoBtn = page.getByRole('button', { name: /^Ingreso$/ }).first()
       await expect(ingresoBtn).toBeVisible({ timeout: 8000 })
       test.skip(!(await ingresoBtn.isEnabled()), 'Ingreso deshabilitado (límite de plan alcanzado)')
       await ingresoBtn.click()
-      await page.waitForTimeout(400)
 
       const buscador = page.getByPlaceholder(/Buscar por nombre, SKU/i).first()
       await expect(buscador).toBeVisible({ timeout: 6000 })
       await buscador.fill(nombreProducto)
-      await page.waitForTimeout(900)
       const modal = page.locator('div.fixed.inset-0').filter({ has: buscador }).first()
       await modal.getByText(nombreProducto).first().click()
-      await page.waitForTimeout(500)
 
       const sucSelect = page.locator('xpath=//label[contains(.,"Sucursal destino")]/following::select[1]')
-      if (await sucSelect.isVisible().catch(() => false)) {
+      if (await visible(sucSelect, 2000)) {
         const vals = await sucSelect.locator('option').evaluateAll(
           opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
         )
@@ -73,7 +69,7 @@ test.describe('Rebaje masivo con atributo de variante ambiguo (mutante)', () => 
       // esto las 2 líneas quedan invisibles para `atributoAmbiguoEnLineas` y la ambigüedad nunca
       // se detecta (encontrado corriendo este spec: el rebaje pasaba sin pedir el color).
       const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
-      if (await ubicSelect.isVisible().catch(() => false)) {
+      if (await visible(ubicSelect, 2000)) {
         const vals = await ubicSelect.locator('option').evaluateAll(
           opts => (opts as HTMLOptionElement[]).map(o => o.value).filter(v => v)
         )
@@ -109,20 +105,24 @@ test.describe('Rebaje masivo con atributo de variante ambiguo (mutante)', () => 
     await goto(page, '/inventario')
     await waitForApp(page)
     await page.getByRole('button', { name: /Quitar stock/i }).first().click()
-    await page.waitForTimeout(400)
     await page.getByRole('button', { name: /^Masivo$/ }).click()
-    await page.waitForTimeout(400)
 
     const buscadorMasivo = page.getByPlaceholder('Buscar y agregar producto...')
     await expect(buscadorMasivo).toBeVisible({ timeout: 6000 })
     await buscadorMasivo.fill(nombreProducto)
-    await page.waitForTimeout(700)
     await page.getByRole('button', { name: new RegExp(nombreProducto) }).first().click()
-    await page.waitForTimeout(500)
 
     const cantidadInput = page.locator('input[type="number"][placeholder="0"]').first()
     await expect(cantidadInput).toBeVisible({ timeout: 5000 })
     await cantidadInput.fill('2')
+
+    // `cargarLineasParaRebaje` es fire-and-forget desde `addProduct` (MasivoModal) — esperar a
+    // que el preview de líneas cargue (el select de color aparece recién ahí) antes de probar
+    // el camino negativo. Si no, "Confirmar" corre en la ventana donde el guard todavía no sabe
+    // si hay ambigüedad y responde "todavía está cargando" en vez del mensaje real (el guard
+    // FALLA CERRADO en ese caso — correcto — pero no es lo que este test quiere ejercitar).
+    const colorSelectRebaje = page.locator('select').filter({ has: page.locator('option', { hasText: 'Rojo-E2E' }) }).first()
+    await expect(colorSelectRebaje).toBeVisible({ timeout: 8000 })
 
     // 3) NEGATIVO — confirmar SIN elegir color debe rechazar con el mensaje exacto
     const confirmar = page.getByRole('button', { name: /Confirmar \d+ rebaje/ })
@@ -131,10 +131,7 @@ test.describe('Rebaje masivo con atributo de variante ambiguo (mutante)', () => 
     await expect(page.getByText(/elegí el color a rebajar/i)).toBeVisible({ timeout: 8000 })
 
     // 4) POSITIVO — elegir "Rojo-E2E" y confirmar de nuevo
-    const colorSelectRebaje = page.locator('select').filter({ has: page.locator('option', { hasText: 'Rojo-E2E' }) }).first()
-    await expect(colorSelectRebaje).toBeVisible({ timeout: 5000 })
     await colorSelectRebaje.selectOption({ label: 'Rojo-E2E' })
-    await page.waitForTimeout(400)
     await confirmar.click()
     await expect(page.getByText(/Rebaje masivo registrado/i)).toBeVisible({ timeout: 12000 })
 

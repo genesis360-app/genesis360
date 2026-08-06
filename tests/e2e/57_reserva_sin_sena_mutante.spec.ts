@@ -24,6 +24,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Reserva exige seña (mutante)', () => {
   test('reservar sin seña con reserva_sena_obligatoria → bloquea, no crea reserva', async ({ page }) => {
@@ -34,37 +35,35 @@ test.describe('Reserva exige seña (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    if (!(await prod.isVisible().catch(() => false))) {
+    if (!(await visible(prod, 5000))) {
       test.skip(true, 'No hay productos vendibles en el tenant de prueba')
     }
     await prod.click()
-    await page.waitForTimeout(500)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // Seleccionar cliente (la reserva lo exige por cliente_obligatorio='reservas')
     const cliInput = page.getByPlaceholder(/Buscar por nombre o DNI/i)
     await expect(cliInput).toBeVisible({ timeout: 5000 })
     await cliInput.fill('Fede Messina')
-    await page.waitForTimeout(900)
     const cliOpt = page.getByRole('button', { name: /Fede Messina/ }).first()
-    if (!(await cliOpt.isVisible().catch(() => false))) {
+    if (!(await visible(cliOpt, 5000))) {
       test.skip(true, 'Cliente "Fede Messina" no encontrado en el tenant.')
     }
     await cliOpt.click()
-    await page.waitForTimeout(600)
+    // Dejar asentar el fetch de saldo a favor (ISS E2, auto-aplica "Crédito a favor" como medio si
+    // el cliente tiene saldo) ANTES de neutralizarlo — si se limpia el monto demasiado pronto, el
+    // auto-fill llega después y pisa el "" con el saldo, rompiendo la precondición "sin seña".
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 
     // Neutralizar cualquier medio de pago auto-sugerido (ISS E2: "Crédito a favor" se auto-aplica
     // si el cliente tiene saldo a favor). Si no se limpia, cuenta como "seña real" y el bloqueo
     // esperado no se dispara — ver nota AUTOSUFICIENTE en el header del archivo.
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     if (await montoInput.isVisible().catch(() => false)) await montoInput.fill('')
-    await page.waitForTimeout(200)
 
     // Modo "Reservar" (toggle exacto, distinto del CTA "Reservar stock")
     await page.getByRole('button', { name: /^Reservar$/ }).click()
-    await page.waitForTimeout(300)
 
     // "Reservar stock" SIN haber cobrado seña → guard E6 bloquea
     await page.getByRole('button', { name: /Reservar stock/i }).click()

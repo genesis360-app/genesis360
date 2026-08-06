@@ -14,6 +14,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const PROVEEDOR = 'Mayorista MAX'
 
@@ -25,11 +26,10 @@ test.describe('Devolución a proveedor — reposición (mutante)', () => {
     await waitForApp(page)
 
     await page.getByRole('button', { name: /Órdenes de compra/i }).first().click()
-    await page.waitForTimeout(600)
 
     const provFilter = page.locator('select').filter({ has: page.locator('option', { hasText: /Todos los proveedores/i }) }).first()
     await provFilter.selectOption({ label: PROVEEDOR })
-    await page.waitForTimeout(600)
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 
     const verDetalle = page.getByRole('button', { name: /Ver detalle/i })
     const total = await verDetalle.count()
@@ -37,15 +37,13 @@ test.describe('Devolución a proveedor — reposición (mutante)', () => {
     let abierto = false
     for (let i = 0; i < total; i++) {
       await verDetalle.nth(i).click()
-      await page.waitForTimeout(500)
       const devolverBtn = page.getByRole('button', { name: /Devolver a proveedor/i })
-      if (await devolverBtn.isVisible().catch(() => false)) {
+      if (await visible(devolverBtn, 3000)) {
         await devolverBtn.click()
         abierto = true
         break
       }
       await page.getByRole('button', { name: /^Cerrar$/ }).first().click()
-      await page.waitForTimeout(300)
     }
     test.skip(!abierto, `Ninguna OC de ${PROVEEDOR} está recibida (devolver no disponible)`)
 

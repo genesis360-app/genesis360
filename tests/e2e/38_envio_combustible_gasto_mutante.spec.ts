@@ -31,6 +31,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { agregarPrimerProductoAlCarrito, visible } from './helpers/fixtures'
 
 test.describe('Envío propio → combustible → gasto (mutante)', () => {
   test('registrar combustible de un envío propio genera el gasto', async ({ page }) => {
@@ -40,21 +41,12 @@ test.describe('Envío propio → combustible → gasto (mutante)', () => {
     // 1) FIXTURE FRESCA — parte A: una venta con envío propio (auto-crea el envío, courier OK)
     await goto(page, '/ventas')
     await waitForApp(page)
-    const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
-    await expect(buscador).toBeVisible({ timeout: 8000 })
-    await buscador.fill('a')
-    await page.waitForTimeout(1000)
-    const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await prod.isVisible().catch(() => false)), 'No hay productos vendibles en el tenant de prueba')
-    await prod.click()
-    await page.waitForTimeout(500)
-    await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
+    await agregarPrimerProductoAlCarrito(page)
 
     // Toggle "Incluir envío" → panel expandido (tipo de transporte "propio" es el default)
     await page.getByText('Incluir envío', { exact: true }).click()
-    await page.waitForTimeout(400)
     const propioBtn = page.getByRole('button', { name: /Envío propio/i })
-    if (await propioBtn.isVisible().catch(() => false)) await propioBtn.click()
+    if (await visible(propioBtn, 3000)) await propioBtn.click()
 
     // Medio de pago: cubrir el total con Efectivo (venta normal, no CC)
     const totalTxt = await page.locator('div:has(> span:text-is("Total")) > span').last().textContent()
@@ -65,7 +57,6 @@ test.describe('Envío propio → combustible → gasto (mutante)', () => {
     await medioSelect.selectOption('Efectivo')
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     if (await montoInput.isVisible().catch(() => false)) { await montoInput.fill(String(totalNum)); await montoInput.blur() }
-    await page.waitForTimeout(300)
 
     // Si hay varias cajas abiertas (actividad e2e concurrente), el POS exige elegir una
     const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
@@ -88,7 +79,6 @@ test.describe('Envío propio → combustible → gasto (mutante)', () => {
     const tabEnvios = page.getByRole('button', { name: /^Env[ií]os$/ }).first()
     if (await tabEnvios.isVisible().catch(() => false)) {
       await tabEnvios.click()
-      await page.waitForTimeout(500)
     }
 
     // El envío recién creado es el más reciente (orden created_at desc) → primera fila
@@ -103,9 +93,8 @@ test.describe('Envío propio → combustible → gasto (mutante)', () => {
     // (que ya vino precargado con 'Envío propio' desde el registro existente), así que el valor
     // correcto se preserva al guardar.
     await page.getByRole('button', { name: /Envío propio/i }).click()
-    await page.waitForTimeout(300)
     const vehiculoSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /Moto Reparto Test/i }) }).first()
-    test.skip(!(await vehiculoSelect.isVisible().catch(() => false)), 'No hay vehículo "Moto Reparto Test" activo en el tenant de prueba')
+    test.skip(!(await visible(vehiculoSelect, 3000)), 'No hay vehículo "Moto Reparto Test" activo en el tenant de prueba')
     const vehiculoValue = await vehiculoSelect.locator('option', { hasText: /Moto Reparto Test/i }).first().getAttribute('value')
     await vehiculoSelect.selectOption(vehiculoValue!)
 
@@ -115,7 +104,6 @@ test.describe('Envío propio → combustible → gasto (mutante)', () => {
 
     // 3) Expandir la fila y registrar el combustible
     await fila.getByRole('button').first().click()
-    await page.waitForTimeout(500)
 
     const btnComb = page.getByRole('button', { name: /Registrar combustible/i })
     await expect(btnComb).toBeVisible({ timeout: 5000 })
@@ -124,7 +112,6 @@ test.describe('Envío propio → combustible → gasto (mutante)', () => {
     // Modal: monto del gasto
     await expect(page.getByRole('heading', { name: /Registrar combustible/i })).toBeVisible({ timeout: 5000 })
     await page.locator('xpath=//label[contains(.,"Monto del gasto")]/following::input[1]').fill('5000')
-    await page.waitForTimeout(200)
 
     // Confirmar
     await page.getByRole('button', { name: /Registrar gasto/i }).click()

@@ -12,7 +12,7 @@
  *   - Campos: cantidad + motivo.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Search, X, Plus, Trash2, ChevronDown, ChevronUp, AlertTriangle, Package, Camera } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -26,6 +26,7 @@ import { presentacionesComoNiveles, PRESENTACION_COLS } from '@/lib/presentacion
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { atributoAmbiguoEnLineas, filtrarLineasPorAtributo, type LineaConAtributos } from '@/lib/atributosVariante'
+import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
 
 const ATRIBUTOS_MASIVO: { key: 'talle' | 'color' | 'encaje' | 'formato' | 'saborAroma'; atributo: 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'; tieneKey: 'tieneTalle' | 'tieneColor' | 'tieneEncaje' | 'tieneFormato' | 'tieneSaborAroma'; label: string }[] = [
@@ -176,6 +177,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
     },
     enabled: !!tenant,
   })
+  const ubicacionesPorId = useMemo(() => new Map((ubicaciones as any[]).map(u => [u.id, u])), [ubicaciones])
 
   const { data: estados = [] } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
@@ -311,13 +313,19 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
       }
       // REGLA #0: si hay más de un talle/color en stock para este producto, no rebajar a
       // ciegas por FIFO — exigir que el usuario elija cuál (mismo criterio que la venta).
+      // `cargarLineasParaRebaje` es fire-and-forget desde `addProduct` — si todavía no
+      // resolvió, `lineasCache[it.productoId]` es `undefined` y NO significa "sin ambigüedad":
+      // significa "todavía no lo sabemos". Fallar CERRADO (bloquear) en vez de saltear el
+      // guard — la alternativa dejaba pasar un rebaje FIFO sobre stock ambiguo cuando el
+      // usuario confirmaba más rápido de lo que tardaba el fetch (bug real, encontrado por
+      // el flake intermitente del spec 95).
       if (tipo === 'rebaje') {
         const lineas = lineasCache[it.productoId]
-        if (lineas) {
-          const ambiguo = atributoAmbiguoEnLineas(lineas)
-          if (ambiguo && !it[ambiguo.key === 'sabor_aroma' ? 'saborAroma' : ambiguo.key as 'talle' | 'color' | 'encaje' | 'formato'].trim())
-            return `${it.productoNombre}: elegí el ${ambiguo.label.toLowerCase()} a rebajar — hay más de uno en stock.`
-        }
+        if (lineas === undefined)
+          return `${it.productoNombre}: todavía está cargando el stock disponible — esperá un segundo y confirmá de nuevo.`
+        const ambiguo = atributoAmbiguoEnLineas(lineas)
+        if (ambiguo && !it[ambiguo.key === 'sabor_aroma' ? 'saborAroma' : ambiguo.key as 'talle' | 'color' | 'encaje' | 'formato'].trim())
+          return `${it.productoNombre}: elegí el ${ambiguo.label.toLowerCase()} a rebajar — hay más de uno en stock.`
       }
     }
     return null
@@ -819,7 +827,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ubicación</label>
                                 <select value={it.ubicacionId} onChange={e => upd(it.localId, { ubicacionId: e.target.value })} className={sel}>
                                   <option value="">Sin ubicación</option>
-                                  {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                  {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                                 </select>
                               </div>
                               <div>

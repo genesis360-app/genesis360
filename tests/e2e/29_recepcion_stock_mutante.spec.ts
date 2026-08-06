@@ -9,6 +9,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const PRODUCTO = 'Elite Pañuelos'  // sin lote/vencimiento/series (evita campos obligatorios extra)
 
@@ -21,7 +22,6 @@ test.describe('Recepción → stock (mutante)', () => {
     const nueva = page.getByRole('button', { name: /Nueva recepci|Registrar recepci|^Recibir$/i }).first()
     if (await nueva.isVisible().catch(() => false)) {
       await nueva.click()
-      await page.waitForTimeout(500)
     }
 
     // Proveedor (recepción sin OC lo exige) — select identificado por su opción "Sin proveedor"
@@ -30,11 +30,10 @@ test.describe('Recepción → stock (mutante)', () => {
     const provVals = await provSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
     test.skip(provVals.length === 0, 'No hay proveedores en el tenant')
     await provSelect.selectOption(provVals[0])
-    await page.waitForTimeout(300)
 
     // Sucursal destino (select con opción "Sin sucursal"), si existe
     const sucSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /Sin sucursal/i }) }).first()
-    if (await sucSelect.isVisible().catch(() => false)) {
+    if (await visible(sucSelect, 2000)) {
       const sv = await sucSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
       if (sv.length) await sucSelect.selectOption(sv[0])
     }
@@ -42,9 +41,7 @@ test.describe('Recepción → stock (mutante)', () => {
     // Buscar el producto y agregarlo
     const buscador = page.getByPlaceholder(/Buscar producto por nombre o SKU/i)
     await buscador.fill(PRODUCTO)
-    await page.waitForTimeout(900)
     await page.locator('div.absolute.z-20 button').first().click()
-    await page.waitForTimeout(500)
 
     // Confirmar recepción
     const confirmar = page.getByRole('button', { name: /Confirmar recepción/i })

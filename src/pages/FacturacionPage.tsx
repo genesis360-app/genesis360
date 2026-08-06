@@ -235,16 +235,17 @@ export default function FacturacionPage() {
   }
 
   // ── Queries ──────────────────────────────────────────────────────────────────
-  const { data: config } = useQuery({
-    queryKey: ['facturacion-config', tenant?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('tenants')
-        .select('facturacion_habilitada, condicion_iva_emisor, razon_social_fiscal, cuit, umbral_factura_b, logo_url, domicilio_fiscal, ingresos_brutos, inicio_actividades, sitio_web, banco, cbu, alias_cbu, leyenda_comprobante')
-        .eq('id', tenant!.id).single()
-      return data
-    },
-    enabled: !!tenant,
-  })
+  // F4 (identidad fiscal, mig 271): `emisorPrincipal` (useEmisoresFiscales, arriba) YA es la
+  // fuente de verdad — antes esto releía cuit/condicion_iva_emisor/umbral_factura_b/etc. del
+  // espejo de solo-lectura en `tenants`. `facturacion_habilitada` es un ajuste genuino del
+  // tenant (no fiscal-identity), se lee directo del store sin fetch aparte.
+  const config = {
+    facturacion_habilitada: (tenant as any)?.facturacion_habilitada ?? false,
+    razon_social_fiscal: emisorPrincipal?.razon_social_fiscal ?? null,
+    cuit: emisorPrincipal?.cuit ?? null,
+    condicion_iva_emisor: emisorPrincipal?.condicion_iva_emisor ?? null,
+    umbral_factura_b: emisorPrincipal?.umbral_factura_b ?? null,
+  }
 
   const { data: puntosVenta = [] } = useQuery({
     queryKey: ['puntos-venta-afip', tenant?.id],

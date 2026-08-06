@@ -20,6 +20,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Pagar nómina RRHH (mutante)', () => {
   test('pagar liquidación impaga en efectivo → toast + egreso de caja', async ({ page }) => {
@@ -30,12 +31,11 @@ test.describe('Pagar nómina RRHH (mutante)', () => {
     const tabNomina = page.getByRole('button', { name: /Nómina/i }).first()
     await expect(tabNomina).toBeVisible({ timeout: 20000 })
     await tabNomina.click()
-    await page.waitForTimeout(800)
 
     // La fila del fixture debe estar visible (período actual). Si no aparece, el fixture
     // no fue sembrado para este período → no seguimos (evita falso-rojo / pagar otra liquidación).
     const fila = page.locator('div.rounded-lg.border').filter({ hasText: 'ZZZ Nomina Test' }).first()
-    if (!(await fila.isVisible().catch(() => false))) {
+    if (!(await visible(fila, 5000))) {
       test.skip(true, 'Fixture "ZZZ Nomina Test" no sembrado para el período actual (re-correr el SQL de fixture).')
     }
     await expect(fila).toBeVisible({ timeout: 10000 })

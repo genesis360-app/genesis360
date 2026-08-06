@@ -16,6 +16,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const CLIENTE = 'ZZZ Morosidad Test'
 
@@ -28,11 +29,9 @@ test.describe('Morosidad CC bloquea la venta (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('Mantecol')
-    await page.waitForTimeout(1200)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').filter({ hasText: /Mantecol/i }).first()
-    test.skip(!(await prod.isVisible().catch(() => false)), 'Fixture ausente: producto vendible "Mantecol" en Familia Otranto')
+    test.skip(!(await visible(prod, 5000)), 'Fixture ausente: producto vendible "Mantecol" en Familia Otranto')
     await prod.click()
-    await page.waitForTimeout(600)
     const cartLoaded = await page.getByText(/\d+\s+producto/).first().isVisible({ timeout: 5000 }).catch(() => false)
     test.skip(!cartLoaded, 'No se pudo agregar el producto al carrito en Familia Otranto')
 
@@ -41,19 +40,19 @@ test.describe('Morosidad CC bloquea la venta (mutante)', () => {
     const clienteSearch = page.getByPlaceholder(/Buscar por nombre o DNI/i).first()
     await expect(clienteSearch).toBeVisible({ timeout: 5000 })
     await clienteSearch.fill('ZZZ Morosidad')
-    await page.waitForTimeout(1500)
     const clienteBtn = page.getByRole('button', { name: new RegExp(CLIENTE, 'i') }).first()
     test.skip(!(await clienteBtn.isVisible({ timeout: 6000 }).catch(() => false)),
       'Fixture ausente: cliente "ZZZ Morosidad Test" con deuda vencida + cc_morosidad_politica=bloqueo_total')
     await clienteBtn.click()
-    await page.waitForTimeout(400)
+    // Dejar asentar el fetch de saldo/morosidad del cliente (ISS E2 — ver spec 57) antes de seguir.
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 
     // 3) Pago en efectivo (para habilitar el CTA) — el guard de morosidad corre ANTES que el pago
     const tipoSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /^Efectivo$/ }) }).first()
     if (await tipoSelect.isVisible().catch(() => false)) {
       await tipoSelect.selectOption('Efectivo')
       const montoInput = page.getByPlaceholder(/^Monto$/i).first()
-      await montoInput.fill('5000'); await montoInput.blur(); await page.waitForTimeout(300)
+      await montoInput.fill('5000'); await montoInput.blur()
     }
 
     // 4) "Venta directa" → bloqueada por morosidad (bloqueo_total aplica a cualquier medio)

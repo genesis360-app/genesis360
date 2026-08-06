@@ -10,10 +10,14 @@ import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPil
 import { logActividad } from '@/lib/actividadLog'
 import { useConfirm } from '@/hooks/useConfirm'
 import {
-  parsearPildora, evaluarPildora, evaluarPildoras,
+  parsearPildora, evaluarPildora, evaluarPildoras, CAMPOS_FILTRO, esCampoNumerico,
   type Pildora, type CampoFiltro, type OperadorFiltro, type Combinador,
 } from '@/lib/pickingFiltro'
 import toast from 'react-hot-toast'
+
+// `BuscadorPildoras` es genérico (lo reusan /productos e /inventario) y espera el flag
+// `numerico` por campo — acá ya vivía aparte, en `esCampoNumerico`.
+const CAMPOS_FILTRO_UI = CAMPOS_FILTRO.map(c => ({ ...c, numerico: esCampoNumerico(c.campo) }))
 
 interface TareaWMS {
   id: string
@@ -216,13 +220,14 @@ export default function PickingPage() {
       <div className="flex gap-2 items-start">
         <div className="flex-1">
           <BuscadorPildoras
+            camposFiltro={CAMPOS_FILTRO_UI}
             pildoras={pildoras}
             entrada={entrada}
             combinador={combinador}
             placeholder="Buscar LPN, SKU, producto... o (Pedido):20"
             onEntradaChange={setEntrada}
             onCommitEntrada={commitEntrada}
-            onCampoChange={(id, campo) => setPildoras(ps => ps.map(p => p.id === id ? pildoraConCampoNuevo(p, campo) : p))}
+            onCampoChange={(id, campo) => setPildoras(ps => ps.map(p => p.id === id ? pildoraConCampoNuevo(p, campo, CAMPOS_FILTRO_UI) : p))}
             onOperadorChange={(id, operador) => setPildoras(ps => ps.map(p => p.id === id ? { ...p, operador } : p))}
             onValorChange={(id, valor) => setPildoras(ps => ps.map(p => p.id === id ? { ...p, valor } : p))}
             onRemove={id => setPildoras(ps => ps.filter(p => p.id !== id))}

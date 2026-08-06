@@ -1,5 +1,5 @@
 import imageCompression from 'browser-image-compression'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Upload, X, RefreshCw, Package, Copy, DollarSign, QrCode, Sparkles, Camera, ShoppingBag, ChevronDown, ChevronUp, ScanLine, Plus, Trash2, Check, Boxes, ExternalLink, AlertTriangle } from 'lucide-react'
@@ -23,6 +23,7 @@ import { ProductoQR } from '@/components/ProductoQR'
 import { ReasignarStockVarianteModal } from '@/components/ReasignarStockVarianteModal'
 import { Toggle } from '@/components/Toggle'
 import { useConfirm } from '@/hooks/useConfirm'
+import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
 
 const UNIDADES = ['unidad', 'kg', 'g', 'litro', 'ml', 'metro', 'cm', 'caja', 'pack', 'docena']
@@ -131,6 +132,7 @@ export default function ProductoFormPage() {
     },
     enabled: !!tenant,
   })
+  const ubicacionesPorId = useMemo(() => new Map((ubicaciones as any[]).map(u => [u.id, u])), [ubicaciones])
 
   // Ubicación predeterminada para la sucursal activa en el header
   const [ubicSucursalActiva, setUbicSucursalActiva] = useState('')
@@ -1436,7 +1438,7 @@ export default function ProductoFormPage() {
                       onChange={e => setForm(p => ({ ...p, ubicacion_id: e.target.value }))}
                       className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
                       <option value="">Sin ubicación</option>
-                      {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                     </select>
                   )}
                 </div>

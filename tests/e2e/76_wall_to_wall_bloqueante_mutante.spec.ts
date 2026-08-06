@@ -16,6 +16,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 
@@ -32,16 +33,13 @@ test.describe('Conteo wall-to-wall bloquea el POS (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const prod = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await prod.isVisible().catch(() => false)), 'No hay productos vendibles')
+    test.skip(!(await visible(prod, 5000)), 'No hay productos vendibles')
     await prod.click()
-    await page.waitForTimeout(500)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // Modo "Venta directa" (despachada mueve stock → bloqueado)
     await page.getByRole('button', { name: /^Venta directa$/ }).first().click()
-    await page.waitForTimeout(300)
     await page.getByRole('button', { name: /^Venta directa$/ }).last().click()
 
     // POSITIVO: el guard del conteo wall-to-wall bloquea

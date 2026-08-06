@@ -3,14 +3,87 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-07-28
+updated: 2026-08-06
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.155.0 (2026-08-04) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.155.0 (igual a PROD)  
-**Última actualización:** 4 de Agosto, 2026
+**Versión en PROD:** v1.158.0 (2026-08-06) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
+**Versión en DEV:** v1.158.0 (igual a PROD, deploy completo)  
+**Última actualización:** 6 de Agosto, 2026
+
+---
+
+## v1.158.0 — 🚀 Deploy completo a PROD: `waitForTimeout` CERRADO + Ubicaciones en árbol (U1-U4) + fix Regla #0 MasivoModal + píldoras de filtro — ✅ **PROD** (2026-08-06)
+
+Agrupa TODO lo acumulado en `dev` desde el checkpoint de v1.157.0 (que había quedado solo en DEV,
+sin commitear) más el cierre de la deuda técnica de `waitForTimeout` de esta misma sesión. GO
+autorizó explícitamente el deploy completo: "sigamos con más de wait for timeout hasta finalizarlo
+y luego pasas todo a DEV y PROD". **Sin migraciones nuevas en esta ronda** — 334/335 ya estaban
+escritas desde el 2026-08-05.
+
+**🌳 Rediseño de Ubicaciones en árbol (Fases U1-U4, migs 334/335)** — 1º de 4 relevamientos hacia el
+módulo Repositores: Ubicaciones (este) → Pestaña de supervisor reusable → Motor de Rotación de
+productos con descuento → Repositores. `ubicaciones` pasa de tabla plana a **árbol
+contenedora/nivel** vía self-FK (`padre_ubicacion_id`, mismo patrón que Empaque/mig 307) — ninguna
+FK de `inventario_lineas`/`wms_tareas`/`producto_ubicacion_umbrales`/`producto_ubicacion_sucursal`/
+`venta_item_despachos` necesitó re-apuntar a nada. Nuevo: `tipo_logico` (exhibición/mostrador/
+picking/almacenamiento, solo en nodos hoja) + `subtipo_almacenamiento` + `codigo` autogenerado único
+por tenant + coordenadas reservadas para "Almacén 360". Guard duro `SECURITY DEFINER` que bloquea
+crear un nivel bajo un padre operativo (stock/umbrales/tareas WMS activas) — Regla de Oro #0. 6
+funciones SQL reescritas (`fn_wms_elegir_ubicacion_picking` y otras 5 del módulo Pedidos). Nueva
+`producto_ubicacion_sucursal.ubicacion_exhibicion_id` (separada del default de recepción existente).
+Detalle completo: `wiki/features/ubicaciones.md`.
+
+**🛑 Fix de Regla de Oro #0 en `MasivoModal.tsx`** — al arreglar un spec e2e (95) apareció un flake
+real (2/3 corridas fallaban): `cargarLineasParaRebaje()` se llamaba sin `await` desde `addProduct()`,
+así que si el usuario confirmaba el rebaje masivo antes de que el fetch de líneas resolviera, el
+chequeo de ambigüedad de talle/color se saltaba entero y el rebaje se confirmaba por FIFO ciego SIN
+pedir la variante — exactamente lo que la Regla de Oro #0 prohíbe. Bug que estaba en PROD desde
+antes del rediseño de Ubicaciones (la lógica de `MasivoModal.tsx` no cambió ahí). Fix falla CERRADO:
+bloquea con mensaje claro si el fetch sigue en vuelo, en vez de saltear el chequeo.
+
+**🆕 Filtro de píldoras combinables Y/O en Productos e Inventario** — se llevó el mecanismo de
+`/picking` (v1.153.0, ya en PROD) a `/productos` y `/inventario`: núcleo genérico nuevo
+`src/lib/pildorasFiltro.ts` (`pickingFiltro.ts` intacto, cero riesgo sobre WMS), `productosFiltro.ts`/
+`inventarioFiltro.ts` nuevos, `BuscadorPildoras.tsx` genericizado por prop. `ProductosPage`/
+`InventarioPage` pasan a filtrado 100% client-side. Detalle: `wiki/features/filtro-pildoras.md`.
+
+**🐛 4 gaps de breadcrumb corregidos** — el e2e de verificación manual de Ubicaciones (spec 130)
+encontró 4 selectores operativos (`InventarioPage.tsx` x2, `ConfigPage.tsx`, `PedidosPage.tsx`) que
+habían quedado sin migrar a `breadcrumbUbicacion` en el cierre del 2026-08-05 — gap de UX (no de
+integridad de datos), corregido.
+
+**🧹 Cierre COMPLETO de la deuda de `waitForTimeout`: 315 ocurrencias (80 archivos) → 8 ocurrencias
+(6 archivos)**, las 8 restantes documentadas inline como necesarias (sin señal DOM mejor para
+esperar). 71 archivos tocados en 7 tandas, cada una corrida contra DEV real antes de la siguiente, 6
+patrones de reemplazo sistemáticos aplicados (ver `wiki/development/testing.md`). Se encontraron y
+descartaron 2 flakes de la corrida masiva (no regresiones); `39_cc_condonacion_mutante.spec.ts`
+queda anotado como deuda técnica separada (fixture compartido no auto-sembrado + race con
+`confirm()` nativo del browser), no un bug de esta sesión.
+
+**Verde:** tsc · build · unit 1525 (96 archivos) · suite e2e re-verificada por tandas contra DEV
+real, incluidos specs gateados por env flags.
+
+**Pendiente:** Fase U5 (drop de la columna vieja `tipo_ubicacion`), relevamientos #2/#3/#4 de la
+secuencia hacia Repositores.
+
+---
+
+## v1.156.0 — 🧹 Deuda técnica post-deploy: tests de facturasPDF.ts, waitForTimeout saneado, F4 avanzado — ✅ **PROD desde v1.158.0** (2026-08-04, deployada 2026-08-06)
+
+Ronda 100% técnica sin comportamiento nuevo, deployada a PROD junto con v1.157.0 y el resto del
+trabajo acumulado en el deploy de v1.158.0 (ver arriba). Recorrida la
+lista de deuda técnica no bloqueada por terceros que había quedado anotada al cierre de v1.155.0:
+31 tests nuevos de `facturasPDF.ts` (lógica pura extraída y exportada); `waitForTimeout` bajado de
+331/89 a 312/79 (`tests/e2e/helpers/fixtures.ts` + los 14 specs 115-128); investigado sin repro en
+vivo el bug de `/ventas`→Dashboard; auditoría de FKs de hard-delete de tenant (1 gap real,
+`autorizaciones_inventario` sin CASCADE — flujo NO construido, es destructivo); confirmado que los
+toggles ya estaban 100% migrados desde v1.132.0; avanzado F4 (drift=0 en DEV/PROD, migrado
+`FacturacionPage.tsx` al lector correcto) — el DROP de columnas sigue bloqueado por F3b (necesita
+que GO revise la UX). Detalle completo en `log.md`.
+
+**Verde:** tsc · build · unit 1480 · e2e re-verificados contra DEV real.
 
 ---
 

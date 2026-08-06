@@ -6,7 +6,304 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-04) — backlog Fede 25/7 DEPLOYADO A PROD (v1.155.0). Solo E pendiente (relevamiento con Fede).
+> ### ✅ ARRANCÁ ACÁ (2026-08-06, v1.158.0) — DEPLOY COMPLETO A PROD: waitForTimeout CERRADO (315/80→8/6) + fix Regla #0 MasivoModal + píldoras de filtro + Ubicaciones en árbol (U1-U4) — PROD = DEV = v1.158.0
+>
+> GO pidió explícitamente: "sigamos con más de wait for timeout hasta finalizarlo y luego pasas todo
+> a DEV y PROD". Se cerró de punta a punta la deuda de `waitForTimeout` que había quedado parcial en
+> la sesión anterior del mismo día, y se deployó TODO lo acumulado en `dev` desde v1.157.0 (que
+> había quedado solo en DEV, sin commitear) a PROD. **`APP_VERSION` bumpeada a `v1.158.0`.**
+>
+> **Qué agrupa el deploy de v1.158.0** (todo lo que estaba en el working tree local de `dev` sin
+> commitear, ver bloque histórico debajo para el detalle completo de cada pieza):
+> 1. **Rediseño de Ubicaciones en árbol (Fases U1-U4, migs 334/335)** — `ubicaciones` pasa de tabla
+>    plana a árbol vía self-FK `padre_ubicacion_id`, `tipo_logico`/`subtipo_almacenamiento`, código
+>    autogenerado jerárquico, guard `SECURITY DEFINER` (Regla de Oro #0). 1º de 4 relevamientos hacia
+>    el módulo Repositores.
+> 2. **🛑 Fix de Regla de Oro #0 en `MasivoModal.tsx`** — el rebaje masivo podía confirmarse por FIFO
+>    ciego sin pedir talle/color si el fetch de líneas todavía estaba en vuelo (bug que estaba en
+>    PROD desde antes del rediseño de Ubicaciones). Fix falla CERRADO.
+> 3. **Filtro de píldoras combinables Y/O en Productos e Inventario** — mismo mecanismo de `/picking`
+>    (v1.153.0) generalizado, núcleo genérico nuevo `src/lib/pildorasFiltro.ts`.
+> 4. **4 gaps de breadcrumb corregidos** en selectores operativos (`InventarioPage.tsx` x2,
+>    `ConfigPage.tsx`, `PedidosPage.tsx`) — encontrados por el e2e de verificación manual de
+>    Ubicaciones (spec 130).
+> 5. **🧹 Cierre COMPLETO de la deuda de `waitForTimeout`: 315 ocurrencias (80 archivos) → 8
+>    ocurrencias (6 archivos)**, las 8 restantes documentadas inline como necesarias (sin señal DOM
+>    mejor para esperar). 71 archivos tocados en 7 tandas, cada una corrida contra DEV real. 6
+>    patrones de reemplazo sistemáticos (ver detalle en `log.md` 2026-08-06 y
+>    [[wiki/development/testing]]). 2 flakes investigados y descartados como no-regresión (spec 83,
+>    y un flake preexistente conocido en `39_cc_condonacion_mutante.spec.ts` — fixture compartido no
+>    auto-sembrado + race de timing con `confirm()` nativo del browser, deuda técnica documentada,
+>    NO causada por esta sesión).
+>
+> **Sin migraciones nuevas en esta última ronda** — 334/335 ya estaban escritas desde el 2026-08-05,
+> el deploy solo las llevó a PROD junto con el resto del código.
+>
+> ### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` | **v1.158.0** | **v1.158.0** |
+> | Migraciones | 001-335 | 001-335 |
+> | Branch | `dev` | `main` |
+> | Vercel | — | debe reflejar v1.158.0 tras el deploy |
+>
+> **Verde antes de deployar:** `tsc --noEmit` (0 errores) · `npm run build` · suite unitaria completa
+> (**1525 tests, 96 archivos**) · suite e2e re-verificada por tandas contra DEV real (incluidos specs
+> gateados por env flags).
+>
+> **▶ Pendiente para la próxima sesión** (sin cambios respecto a lo ya conocido, nada nuevo de esta
+> ronda):
+> 1. **Relevamientos #2/#3/#4** de la secuencia hacia el módulo Repositores, sin arrancar: Pestaña de
+>    supervisor reusable → Motor de Rotación de productos con descuento → Repositores.
+> 2. **Fase U5** (limpieza): dropear `ubicaciones.tipo_ubicacion` en una migración futura cuando se
+>    reconfirme 0 lectores (hoy el grep en `src/` ya da 0 salvo el tipo TS deprecated).
+> 3. **Flake conocido, no bloqueante:** `39_cc_condonacion_mutante.spec.ts` — race de timing con el
+>    `confirm()` nativo del browser sobre un fixture compartido no autogenerado. Documentado en
+>    [[wiki/development/testing]], no requiere acción inmediata.
+> 4. Considerar aplicar el mecanismo de píldoras a otros buscadores de texto plano del sistema si GO
+>    lo pide (no se tocó ningún otro salvo Productos/Inventario/Picking).
+>
+> **Estado git:** el commit/PR `dev → main` + tag `v1.158.0` + GitHub release se ejecutan inmediatamente
+> después de este cierre de wiki — verificar con `git log`/`gh release list` si hace falta confirmar
+> que quedó efectivamente publicado.
+>
+> Ver [[wiki/business/roadmap]] (v1.158.0), [[wiki/development/testing]], [[wiki/features/ubicaciones]],
+> [[wiki/features/filtro-pildoras]], [[wiki/features/inventario-stock]], `log.md` (2026-08-06,
+> entradas `update` + `deploy`).
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-06, v1.157.0 sin bump) — waitForTimeout (3 specs) + 🛑 bug REAL de Regla #0 en MasivoModal + 🆕 filtro de píldoras en Productos/Inventario + e2e de Ubicaciones (halló 4 gaps de breadcrumb) — TODO EN DEV, SIN COMMITEAR, PROD sigue en v1.155.0
+>
+> Continuación directa del bloque "ARRANCÁ ACÁ" del 2026-08-05 (rediseño de Ubicaciones v1.157.0,
+> ver histórico debajo). Sesión 100% en el working tree local de `dev`, **sin ningún commit** (no
+> pedido explícitamente por el usuario esta vez) y **sin migraciones nuevas** — todo código de app +
+> tests. `APP_VERSION` sigue en `v1.157.0`.
+>
+> **1. `waitForTimeout` — 3 specs saneados, 28 sleeps fijos eliminados.**
+> `26_primer_uso_smoke.spec.ts` (10→0, reusa el helper `agregarPrimerProductoAlCarrito` de
+> `fixtures.ts` en vez de duplicar el patrón buggy), `95_rebaje_masivo_atributo_ambiguo_mutante.spec.ts`
+> (9→0), `96_venta_bloqueada_atributo_ambiguo_mutante.spec.ts` (9→0). Se exportó el helper
+> `visible(locator, timeout)` de `fixtures.ts` (antes privado) para reusarlo en checks de campos
+> opcionales sin sleeps fijos. Conteo global de la suite: **~315/80 → ~287/77** (quedan specs sin
+> tocar — alcance grande para otra sesión).
+>
+> **2. 🛑 BUG REAL DE REGLA #0 encontrado y corregido — `MasivoModal.tsx` (rebaje masivo).** Al
+> arreglar el spec 95 apareció un flake real (2 de 3 corridas fallaban) que resultó ser un **bug de
+> PRODUCCIÓN**, no del test: en `src/components/MasivoModal.tsx`, `cargarLineasParaRebaje()` se
+> llama **sin `await`** desde `addProduct()` (fire-and-forget). La validación de ambigüedad de
+> talle/color en `validate()` (línea ~316) hacía `if (lineas) { ...chequear ambigüedad... }` — si el
+> fetch async todavía no había resuelto cuando el usuario clickeaba "Confirmar rebaje",
+> `lineasCache[productoId]` era `undefined`, el `if` se saltaba **ENTERO**, y el rebaje masivo se
+> confirmaba por **FIFO ciego SIN pedir el color** — exactamente el escenario que la Regla de Oro #0
+> prohíbe (nunca "cualquiera" por FIFO cuando hay ambigüedad de variante en stock). Confirmado con un
+> archivo de debug temporal que capturó el toast real: "todavía está cargando el stock disponible" —
+> el guard SÍ corría, pero llegaba tarde.
+>
+> **Fix aplicado (falla CERRADO en vez de ABIERTO):** si `lineasCache[productoId] === undefined`
+> (fetch todavía en vuelo), `validate()` ahora bloquea con un mensaje claro ("todavía está cargando
+> el stock disponible — esperá un segundo y confirmá de nuevo") en vez de saltear el chequeo de
+> ambigüedad. El spec 95 se ajustó para esperar a que el preview de líneas cargue (aparece el select
+> de color) ANTES de probar el camino negativo — ahora corre determinístico (4/4 en corridas
+> repetidas, antes ~2/3 de fallas intermitentes).
+>
+> **Amerita aviso explícito a GO:** este bug estaba en PROD (`MasivoModal.tsx` no cambió de lógica en
+> el rediseño de Ubicaciones, viene de antes) — cualquier usuario que agregara un producto al rebaje
+> masivo y confirmara MUY rápido (o con conexión lenta a Supabase) podía rebajar la variante
+> equivocada sin que el sistema se lo impidiera. Con el fix, en el peor caso el usuario ve un mensaje
+> pidiendo reintentar — nunca deja pasar el rebaje ambiguo. **Sin commitear ni deployar todavía.**
+>
+> **3. Feature nueva: filtro por "píldoras" combinables (Y/O) — Productos e Inventario.** Se llevó el
+> mecanismo de búsqueda de `/picking` (chips "Campo:valor", combinables con un solo Y/O global —
+> `src/lib/pickingFiltro.ts` / `src/components/BuscadorPildoras.tsx`) a `/productos` y a
+> `/inventario` (tab Inventario). Arquitectura:
+> - **`src/lib/pildorasFiltro.ts`** (nuevo) — núcleo genérico: parsing "Campo:valor"/alias/
+>   operadores, `coincideValor`, `evaluarPildoras`. **`pickingFiltro.ts` NO se tocó** (cero riesgo
+>   sobre WMS ya en producción) — el núcleo nuevo es para los campos nuevos.
+> - **`src/lib/productosFiltro.ts`** (nuevo) — campos nombre/sku/código sobre el núcleo genérico.
+> - **`src/lib/inventarioFiltro.ts`** (nuevo) — campos producto/sku/código/LPN/ubicación; la unidad
+>   atómica es la LÍNEA (LPN), así que un filtro combinado exige AMBOS en la MISMA línea, no una
+>   coincidencia repartida entre líneas distintas del mismo producto (`productoMatcheaPildoras`).
+> - **`src/components/BuscadorPildoras.tsx`** genericizado — recibe `camposFiltro` por prop.
+>   `PickingPage.tsx` pasa sus propios campos explícitos (flag `numerico` que antes vivía aparte
+>   como `esCampoNumerico`) — CERO cambio de comportamiento, reverificado con el spec e2e real de
+>   Picking (106, 3/3 verde).
+> - **`ProductosPage.tsx`**: se sacó el filtro server-side por `search` (Supabase
+>   `nombre.ilike/sku.ilike/codigo_barras.eq`) — ahora trae todos los productos del tenant una vez
+>   (igual que ya hacía para los otros filtros) y filtra 100% client-side, unificado con el resto.
+> - **`InventarioPage.tsx`** (tab Inventario, las 2 vistas): mismo reemplazo, unificando el matching
+>   en un solo evaluador por línea reusado en ambas vistas (antes cada una tenía su código ad-hoc).
+> - Los 3 scanners de código de barras (Productos, Inventario) y el deep-link `/inventario?search=`
+>   desde AlertasPage migrados a crear una píldora "libre" en vez de setear un string plano.
+>
+> **33 tests unitarios nuevos** (`pildorasFiltro.test.ts`, `productosFiltro.test.ts`,
+> `inventarioFiltro.test.ts`) + **spec e2e nuevo `129_pildoras_filtro_productos_inventario_mutante.spec.ts`**
+> (siembra su propio producto único, prueba texto libre/campo explícito/combinador Y exige
+> ambos/combinador O alcanza con uno, en las dos páginas). 2/2 verde, corrido dos veces. Detalle:
+> [[wiki/features/filtro-pildoras]] (página nueva).
+>
+> **4. Prueba manual (vía Playwright) del rediseño de Ubicaciones — pendiente de la sesión anterior.**
+> GO había probado manualmente creando una ubicación con medidas/tipo lógico y preguntó qué más
+> probar. Se armó `130_ubicaciones_arbol_mutante.spec.ts` (nuevo, 2/2 verde): crear hijo bajo un
+> padre (código autogenerado `U01-1`), guard que rechaza asignar `tipo_logico` a un padre CON hijos,
+> mismo `tipo_logico` SÍ permitido en la hoja, guard que rechaza BORRAR un padre con niveles adentro,
+> y el breadcrumb padre→hijo en un selector operativo real (Inventario → Agregar stock → Ingreso).
+>
+> **Al escribir el punto del breadcrumb aparecieron 4 gaps reales** que contradicen lo que el wiki
+> tenía registrado como completo (Fase U4, "InventarioPage.tsx (3 selects)" migrados a
+> `breadcrumbUbicacion`) — en realidad había **5** selects de Ubicación en ese archivo y solo 3
+> estaban migrados:
+> - `InventarioPage.tsx` línea ~3623 — select de Ubicación del modal de **Ingreso individual**.
+> - `InventarioPage.tsx` línea ~4220 — filtro de Ubicación del panel "Filtros" del tab Inventario.
+> - `ConfigPage.tsx` línea ~4334 — select de ubicaciones de picking en el tab "Zonas y picking".
+> - `PedidosPage.tsx` línea ~1107 — select de "Ubicación de staging" del modal de lanzar bolsa.
+>   Necesitó además ampliar la query `ubicaciones-staging` para traer el árbol COMPLETO con
+>   `padre_ubicacion_id` (antes solo `id, nombre` filtrado a `subtipo_almacenamiento='staging'`).
+>
+> Los 4 corregidos (swap a `breadcrumbUbicacion(u.id, ...PorId)`), verificado con typecheck (0
+> errores) + build verde + specs 95/96/106/129/130 todos re-verificados verdes tras el cambio.
+> **Impacto real:** en un árbol con niveles de igual nombre bajo padres distintos, esos 4
+> selectores mostraban solo el nombre del nivel sin indicar de qué padre — gap de UX (no de
+> integridad de datos, no movía stock mal). Detalle: [[wiki/features/ubicaciones]].
+>
+> **Verde:** `tsc --noEmit` (0 errores) · `npm run build` · suite unitaria completa (**1525 tests, 96
+> archivos**) · e2e re-verificados: 26, 95 (4 corridas), 96, 106, 129 (2 corridas), 130 (2 corridas)
+> — todos verdes.
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. Decidir si commitear/pushear esta ronda (waitForTimeout + fix MasivoModal + píldoras + specs de
+>    Ubicaciones + fix breadcrumb) y bumpear versión.
+> 2. Seguir bajando `waitForTimeout` — quedan ~287 ocurrencias en ~77 specs (bajó de 315/80).
+> 3. Relevamientos #2/#3/#4 de la secuencia hacia Repositores (Pestaña de supervisor reusable →
+>    Motor de Rotación → Repositores) siguen sin arrancar.
+> 4. Considerar aplicar el mecanismo de píldoras a otros buscadores de texto plano del sistema si GO
+>    lo pide (no se tocó ningún otro salvo Productos/Inventario, lo pedido explícitamente).
+>
+> **Estado git:** **sin commitear** — todo en el working tree local de `dev` (`git status` confirma
+> 11 archivos modificados + 8 nuevos, ninguno agregado al índice). Sin migraciones nuevas. `main`/PROD
+> siguen en v1.155.0, sin cambios.
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-05, v1.157.0) — Rediseño de Ubicaciones en árbol (Fases U1-U4), 1º de 4 relevamientos hacia Repositores — TODO EN DEV, PROD sigue en v1.155.0
+>
+> GO/Fede respondieron `relevamiento-ubicaciones-reglas-negocio.html` (raíz del repo, generado
+> 2026-08-02) el 2026-08-05, con GO autorizando explícitamente romper/tocar datos existentes ("no
+> hay clientes reales, son todas pruebas — si hay que modificar lo que ya está para que funcione con
+> lo nuevo, que se haga"). Es el **primero de 4 relevamientos** acordados para desbloquear la **Fase
+> E (módulo Repositores)** del backlog Comercial de Fede, hoy pausada: **Ubicaciones (este) →
+> Pestaña de supervisor reusable → Motor de Rotación de productos con descuento → Repositores.**
+> Plan de diseño armado antes de codear (vía EnterPlanMode), guardado en
+> `C:\Users\gasto\.claude\plans\enumerated-churning-iverson.md`.
+>
+> **Mig 334** (`ubicaciones_arbol_tipo_logico.sql`, DEV): `ubicaciones` pasa de tabla PLANA a ÁRBOL
+> vía self-FK `padre_ubicacion_id` (mismo patrón que `producto_presentaciones.padre_linea_id`, mig
+> 307) — **ninguna FK que ya apunta a `ubicaciones.id`** (`inventario_lineas`, `wms_tareas`,
+> `producto_ubicacion_umbrales`, `producto_ubicacion_sucursal`, `venta_item_despachos`) necesitó
+> re-apuntar a nada. Columnas nuevas: `tipo_logico` (enum de negocio: exhibición/mostrador/
+> picking/almacenamiento, **solo asignable a un nodo SIN HIJOS**) + `subtipo_almacenamiento`
+> (técnico WMS, reemplaza a `tipo_ubicacion`) + `codigo` (autogenerado NOT NULL UNIQUE por tenant,
+> editable) + `pos_x`/`pos_y`/`orientacion_deg` (reservados, sin UI, proyecto "Almacén 360"
+> pospuesto). 4 triggers nuevos, incluido un **guard DURO `SECURITY DEFINER`** que bloquea agregar
+> un nivel bajo un padre operativo (tipo asignado / stock / umbrales / tareas WMS pendientes) — es
+> inventario real, Regla de Oro #0. El `SECURITY DEFINER` se agregó tras un hallazgo del
+> `migration-reviewer`: sin él, un usuario fijado a una sola sucursal podía bypassear el guard
+> (RLS por sucursal en `inventario_lineas`/`wms_tareas`, no en `ubicaciones`). El `migration-reviewer`
+> también encontró y corrigió un bug real en la autogeneración de código (el backfill hubiera
+> arrancado en "U22" en vez de "U01"). Backfill de las 19 filas de DEV (4 en PROD, sin tocar
+> todavía) mapeando `tipo_ubicacion` → `tipo_logico`/`subtipo_almacenamiento`. **6 funciones SQL
+> reescritas** (el relevamiento solo esperaba 2 — grep exhaustivo encontró 4 más):
+> `fn_wms_elegir_ubicacion_picking`, `fn_generar_tareas_reabastecimiento_umbral`,
+> `fn_generar_tareas_picking_envio`, `fn_generar_tareas_picking_pedido_stock`,
+> `fn_generar_tareas_picking_pedido_venta`, `fn_lanzar_bolsa_pedidos` (de paso corrigió un bug
+> latente `<>`→`IS DISTINCT FROM` con NULL). `vw_ubicacion_ocupacion` y
+> `producto_ubicacion_umbrales` **no necesitaron cambios** (ya matcheaban exacto por
+> `ubicacion_id`). `tipo_ubicacion` (columna vieja) **NO se dropeó todavía** — 0 lectores en `src/`
+> salvo el tipo TS deprecated, queda para una **Fase U5** de limpieza futura.
+>
+> **Mig 335** (`producto_ubicacion_exhibicion.sql`, DEV): `producto_ubicacion_sucursal.
+> ubicacion_exhibicion_id` — columna NUEVA (la `ubicacion_id` existente sigue siendo el default de
+> PUTAWAY), es la ubicación de EXHIBICIÓN de cara al cliente que va a necesitar Repositores. Sin
+> obligatoriedad a nivel DB todavía.
+>
+> **Ambas migraciones revisadas por `migration-reviewer` ANTES de aplicar** (2 hallazgos ya
+> corregidos arriba) y **verificadas con queries reales contra DEV** después de aplicar (códigos
+> U01-U19 en orden histórico correcto, `tipo_logico` seteado en las 19 filas,
+> `fn_wms_elegir_ubicacion_picking` sigue devolviendo lo mismo que antes — NULL, nadie tiene
+> picking configurado todavía) + pruebas del guard duro (rechazo por tipo_logico y por stock activo,
+> generación de código jerárquico `U06-1`/`U06-2`), todo en transacciones con ROLLBACK.
+> `schema_full.sql` regenerado (token temporal, ya descartado).
+>
+> **Frontend (Fases U3/U4):** `src/lib/supabase.ts` (interface `Ubicacion` extendida, `codigo` ahora
+> requerido) + `src/lib/ubicacionesArbol.ts` **nuevo** (helpers puros: `breadcrumbUbicacion`,
+> `descendientesDeUbicacion`, `ordenarArbolUbicaciones`) + `ConfigPage.tsx` (Config → Inventario →
+> Ubicaciones reescrita: selector de padre con breadcrumb, código autogenerado/editable con
+> validación de formato, selector de tipo lógico con `InfoTip`, subtipo condicional, lista indentada
+> por profundidad + búsqueda, guard de borrado con mensaje claro si tiene niveles adentro; filtro de
+> `ubicacionesPicking` migrado a `tipo_logico==='picking'`) + **7 archivos operativos** actualizados
+> a `breadcrumbUbicacion`/columnas nuevas: `RecepcionesPage.tsx`, `InventarioPage.tsx` (3 selects),
+> `ProductoFormPage.tsx`, `PedidosPage.tsx` (staging ahora filtra por
+> `subtipo_almacenamiento='staging'`), `TrasladosPanel.tsx`, `LpnAccionesModal.tsx` (2 selects),
+> `MasivoModal.tsx`.
+>
+> **Verde:** `tsc --noEmit` · `npm run build` · **suite unitaria completa: 1492 tests (92 archivos)
+> verdes**, incluidos 12 tests nuevos para `ubicacionesArbol.ts`
+> (`tests/unit/ubicacionesArbol.test.ts`: `breadcrumbUbicacion`, `descendientesDeUbicacion`,
+> `ordenarArbolUbicaciones` — cadena de breadcrumb, ids inexistentes, defensa de ciclo, orden por
+> prioridad/nombre).
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **Nada deployado a PROD** — todo en DEV. `APP_VERSION` bumpeada a v1.157.0 como checkpoint de
+>    sesión (no implica deploy).
+> 2. **Fase U5** (limpieza): dropear `ubicaciones.tipo_ubicacion` en una migración futura cuando se
+>    reconfirme 0 lectores (hoy el grep en `src/` ya da 0 salvo el tipo TS deprecated).
+> 3. Relevamientos #2/#3/#4 de la secuencia hacia Repositores sin arrancar: Pestaña de supervisor
+>    reusable → Motor de Rotación de productos con descuento → Repositores.
+> 4. Sin prueba manual en el navegador todavía (typecheck/build/tests no reemplazan probar la UI).
+>
+> **Estado git:** commiteado y pusheado a `origin/dev` (`8c091da2`), tag `v1.157.0` + GitHub release
+> publicado (marcado `Latest`). **NO** se abrió PR a `main` ni se deployó — `main`/PROD siguen en
+> v1.155.0, sin cambios.
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-04, cierre v1.156.0) — deuda técnica post-deploy recorrida, PROD sigue en v1.155.0
+>
+> Tras deployar v1.155.0 (backlog Comercial de Fede, bloque de abajo), GO pidió avanzar con la
+> deuda técnica que no depende de respuestas de terceros. Se recorrió la lista completa en orden:
+>
+> 1. **`facturasPDF.ts`** — 31 tests unitarios nuevos (extraídas a funciones puras exportadas).
+> 2. **`waitForTimeout`** — 331/89 → **312/79** (arreglado `fixtures.ts` + los 14 specs 115-128).
+>    Detalle y patrón para seguir en `wiki/development/testing.md`.
+> 3. **Bug `/ventas`→Dashboard** — investigado, SIN repro en vivo. Hipótesis descartada con
+>    evidencia real (rol_custom_id null en los 3 usuarios e2e). Hallazgo de código sin confirmar
+>    documentado en `tests/e2e/helpers/fixtures.ts` (comentario de `irAlPOS`).
+> 4. **Hard delete de tenant + gracia** — auditoría de FKs hecha (1 gap real:
+>    `autorizaciones_inventario` sin `CASCADE`, tiene `NO ACTION`). **NO se construyó el flujo** —
+>    es destructivo sobre datos de negocio, queda pendiente de que el usuario lo pida explícito.
+> 5. **~20 toggles a mano** — ya estaba resuelto desde v1.132.0 (nota vieja, no había nada real).
+> 6. **F4 (DROP columnas fiscales de `tenants`)** — drift = 0 en DEV y PROD (criterio cumplido).
+>    Grep de lectores **NO da 0 todavía**: quedan `ConfigPage.tsx` (= **F3b**, gateado a que GO vea
+>    la UX), `GastosPage.tsx`, `DashFacturacionArea.tsx`, `MiPortalPage.tsx`, `RrhhPage.tsx`.
+>    Migrado el único lector aislado que no dependía de F3b: `FacturacionPage.tsx` ahora lee
+>    `emisorPrincipal` (extendido `useEmisoresFiscales.ts` con `razon_social_fiscal`). **El DROP
+>    sigue sin poder ejecutarse** — F3b es el bloqueante real y necesita revisión de UX de GO.
+>
+> **Verde:** tsc · build · unit 1480 · e2e re-verificados (117/118/123/126, 21/86 Facturación).
+> Sin migraciones nuevas esta ronda — todo código de app + tests.
+>
+> **▶ Próxima sesión, si no hay nada más urgente**: seguir bajando `waitForTimeout` (quedan 312/79,
+> ver plan en `wiki/development/testing.md`) es lo más grande y de mayor valor que sigue abierto.
+> F3b (ARCA readonly + panel de Emisores) es el bloqueante real de F4 — necesita que GO vea la UX
+> propuesta antes de codear.
+>
+> **Estado git:** ver commit al pie de esta sesión (`git log` en `dev`) — `main`/PROD siguen en
+> v1.155.0, esta ronda fue 100% técnica sin cambios de comportamiento visible.
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-04) — backlog Fede 25/7 DEPLOYADO A PROD (v1.155.0). Solo E pendiente (relevamiento con Fede).
 >
 > **Deployado.** GO había pausado A/B/C explícitamente porque tocaban plata/stock reales sin e2e,
 > sin prueba manual y sin registro en el UAT (Regla de Oro #0) — ver entrada de abajo (2026-07-30).
@@ -2152,6 +2449,17 @@ type: project
 >    migrar los lectores no-PDF que hoy van vía espejo (GastosPage, DashFacturacionArea,
 >    CierresContablesPanel, `useAuthStore.tenant.*` fiscal) → grep lectores = 0 → drift 0 sostenido
 >    (correr la auditoría del final de mig 271 periódicamente) → soak → mig de DROP.
+>    **Verificado 2026-08-04**: drift = 0 filas en DEV y PROD (auditoría corrida real). El grep de
+>    lectores **NO da 0 todavía** — quedan usos reales en `ConfigPage.tsx` (el editor en sí, es
+>    literalmente el pendiente **F3b** de este mismo bloque, gateado a que GO vea la UX antes de
+>    tocarlo), `GastosPage.tsx`, `DashFacturacionArea.tsx`, `MiPortalPage.tsx`, `RrhhPage.tsx` y
+>    `VentasPage.tsx` (estos últimos ya con el patrón correcto `emisor?.X ?? tenant.X`, fallback no
+>    lectura primaria). **Cerrado en esta sesión**: `FacturacionPage.tsx` migrado a leer
+>    `emisorPrincipal` (`useEmisoresFiscales`, ya lo importaba) en vez del espejo — extendido
+>    `EmisorFiscalLite`/`useEmisoresFiscales.ts` con `razon_social_fiscal` (faltaba en el hook).
+>    tsc/build verdes + e2e 21/86 (Facturación). **F4 sigue SIN poder ejecutarse** — no dropear
+>    columnas hasta migrar el resto de los lectores (F3b primero, es el más grande y necesita el OK
+>    de UX de GO).
 > 3. **Mejora EF `emitir-factura`**: auto-invalidar el **cache de TA WSAA (mig 264)** cuando WSFE
 >    devuelve fault/basura — un TA obtenido durante la caída de AFIP quedó envenenado y hubo que
 >    borrarlo A MANO (`delete from afip_wsaa_ta where cuit=...`). Hoy no se auto-cura.

@@ -29,7 +29,6 @@ test.describe('Clientes', () => {
     const btnImport = page.getByRole('button', { name: /importar|cargar/i }).first()
     if (await btnImport.isVisible({ timeout: 5000 }).catch(() => false)) {
       await btnImport.click()
-      await page.waitForTimeout(400)
       // Debe aparecer texto que incluya "dni" en la descripción de columnas
       await expect(
         page.getByText(/dni/i).first()
@@ -45,20 +44,17 @@ test.describe('Clientes', () => {
     const telefono = '11 ' + String(Date.now()).slice(-8)
 
     await page.getByRole('button', { name: /nuevo cliente/i }).click()
-    await page.waitForTimeout(300)
 
     await page.getByPlaceholder(/nombre completo|razón social/i).first().fill(nombre)
     await page.getByPlaceholder(/30123456|ej: 30/i).first().fill(dni)
     await page.getByPlaceholder(/1234-5678|ej: \+54/i).first().fill(telefono)
 
     await page.getByRole('button', { name: 'Crear cliente', exact: true }).click()
-    await page.waitForTimeout(1200)
 
     // Buscar el cliente recién creado
     const buscador = page.getByPlaceholder(/buscar/i).first()
     if (await buscador.isVisible().catch(() => false)) {
       await buscador.fill(nombre)
-      await page.waitForTimeout(600)
     }
     await expect(page.getByText(nombre).first()).toBeVisible({ timeout: 8000 })
 
@@ -69,7 +65,8 @@ test.describe('Clientes', () => {
       // El confirm del modal es el último botón "Dar de baja"
       const confirmar = page.getByRole('button', { name: /dar de baja/i }).last()
       await confirmar.click()
-      await page.waitForTimeout(800)
+      // Dejar asentar la mutación (soft-delete) antes de que termine el test y cierre la página.
+      await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
     }
   })
 })

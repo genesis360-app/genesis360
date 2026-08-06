@@ -20,6 +20,7 @@
 import { test, expect } from '@playwright/test'
 import type { Locator } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 /** Setea un <input type=number> controlado por React (native value-setter + evento input burbujeante). */
 async function setReactNumber(input: Locator, value: string) {
@@ -39,28 +40,25 @@ test.describe('Crédito a favor no supera el disponible (mutante)', () => {
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
     await buscador.fill('a')
-    await page.waitForTimeout(1000)
     const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
-    if (!(await primerProducto.isVisible().catch(() => false))) {
+    if (!(await visible(primerProducto, 5000))) {
       test.skip(true, 'No hay productos vendibles en el tenant de prueba')
     }
     await primerProducto.click()
-    await page.waitForTimeout(500)
     await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
     // 2) Seleccionar el cliente fixture (crédito $1)
     const cliInput = page.getByPlaceholder(/Buscar por nombre o DNI/i)
     await expect(cliInput).toBeVisible({ timeout: 5000 })
     await cliInput.fill('ZZZ Credito Test')
-    await page.waitForTimeout(900)
     const cliOpt = page.getByRole('button', { name: /ZZZ Credito Test/ }).first()
-    if (!(await cliOpt.isVisible().catch(() => false))) {
+    if (!(await visible(cliOpt, 5000))) {
       test.skip(true, 'Cliente fixture "ZZZ Credito Test" no encontrado (re-sembrar el SQL de fixture).')
     }
     await cliOpt.click()
-    await page.waitForTimeout(900)   // cargar clienteCredito (efecto async) → habilita la opción
 
-    // 3) Medio de pago = Crédito a favor, monto $100 (> $1 disponible)
+    // 3) Medio de pago = Crédito a favor, monto $100 (> $1 disponible) — el locator abajo YA
+    // exige que exista la opción, así que su propio `toBeVisible` espera clienteCredito (ver spec 73).
     const medioSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /Crédito a favor/ }) }).first()
     await expect(medioSelect).toBeVisible({ timeout: 5000 })
     await medioSelect.selectOption('Crédito a favor')

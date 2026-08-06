@@ -2,8 +2,8 @@
 title: WMS — Almacenaje Dirigido y Picking
 category: features
 tags: [wms, lpn, kits, picking, almacenaje, ubicaciones, zonas, reabastecimiento, pedidos]
-sources: [CLAUDE.md, ROADMAP.md, migrations 289, 290, 291, 292, src/pages/PickingPage.tsx]
-updated: 2026-07-22
+sources: [CLAUDE.md, ROADMAP.md, migrations 289, 290, 291, 292, 334, 335, src/pages/PickingPage.tsx]
+updated: 2026-08-05
 ---
 
 # WMS — Warehouse Management System
@@ -59,9 +59,20 @@ Fase 1 ✅ (producto_estructuras — rediseñada con niveles dinámicos por UdM 
 
 ## Fase 2 — Dimensiones en ubicaciones (migration 032, v0.59.0) ✅
 
+> 🟡 **Rediseño en árbol + tipo lógico (migs 334/335, 2026-08-05, EN DEV, sin deploy) — ver página
+> propia [[wiki/features/ubicaciones]].** `ubicaciones` pasa de tabla plana a **árbol** (self-FK
+> `padre_ubicacion_id`, mismo patrón que `producto_presentaciones.padre_linea_id`) y el
+> `tipo_ubicacion` de la tabla de abajo queda **deprecado** — reemplazado por `tipo_logico` (enum de
+> negocio: exhibición/mostrador/picking/almacenamiento) + `subtipo_almacenamiento` (técnico WMS,
+> mismos 5 valores de siempre, solo aplica dentro de `tipo_logico='almacenamiento'`). Guard
+> server-side `SECURITY DEFINER` nuevo que bloquea crear un nivel bajo un padre operativo (tipo
+> asignado / stock / umbrales / tareas WMS pendientes). Es el **1º de 4 relevamientos** acordados
+> para desbloquear la Fase E (módulo Repositores) del backlog Comercial de Fede — ver
+> [[wiki/features/precios-tiers-empaque]] → "Fase E".
+
 **Nuevos campos en `ubicaciones`** (todos opcionales):
 ```sql
-tipo_ubicacion TEXT CHECK IN ('picking','bulk','estiba','camara','cross_dock')
+tipo_ubicacion TEXT CHECK IN ('picking','bulk','estiba','camara','cross_dock')  -- ⚠ deprecado desde mig 334, ver [[wiki/features/ubicaciones]]
 alto_cm      DECIMAL(8,2)
 ancho_cm     DECIMAL(8,2)
 largo_cm     DECIMAL(8,2)
@@ -259,6 +270,11 @@ wms_tareas
     número suelto ya no matchea venta, cambiar de campo conserva valor, combinador Y exige las dos
     píldoras, combinador O alcanza con una, y el invariante de siempre — confirmar la tarea sigue
     dando cero movimiento de stock).
+  - **🆕 Generalizado a Productos e Inventario (2026-08-06, ✅ PROD desde v1.158.0):** `pickingFiltro.ts`
+    y este comportamiento de Picking **no se tocaron** — se escribió un núcleo genérico nuevo
+    (`src/lib/pildorasFiltro.ts`) del que nacen `productosFiltro.ts`/`inventarioFiltro.ts`, y
+    `BuscadorPildoras.tsx` pasó a recibir los campos por prop en vez de importarlos hardcodeados de
+    Picking. Detalle completo: [[wiki/features/filtro-pildoras]].
 - Tab **"Tareas WMS"** nuevo en `InventarioPage` — vista de escritorio para el DUEÑO, con link
   directo a `/picking`.
 - Gating: `modoAvanzado` + rol **DEPOSITO** (nav en `AppLayout.tsx` + redirect guard + ruta en
@@ -444,6 +460,9 @@ Detalle completo en [[wiki/features/multi-sucursal]] → "Traslados entre sucurs
 
 ## Links relacionados
 
+- [[wiki/features/ubicaciones]] — **rediseño en árbol + tipo lógico (migs 334/335, 2026-08-05, EN
+  DEV)**: `ubicaciones` pasa de plana a árbol, `tipo_ubicacion` (arriba, Fase 2) queda deprecado a
+  favor de `tipo_logico`/`subtipo_almacenamiento`. 1º de 4 relevamientos hacia Repositores.
 - [[wiki/features/pedidos]] — **módulo NUEVO (2026-07-22/23) que desde el pivote F4 es el único
   origen real de tareas de picking/reabastecimiento** (ciclo de vida completo PED1-PED5+PED7 ya
   construido) — leer antes de asumir que Ventas/Envíos generan tareas; encontró el fix de mig 297
@@ -454,5 +473,5 @@ Detalle completo en [[wiki/features/multi-sucursal]] → "Traslados entre sucurs
 - [[wiki/features/configuracion]] — sección "Zonas y picking" en Config → Inventario (v1.143.0)
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/clientes-proveedores]]
-- [[wiki/database/migraciones]] — migs 289, 290, 291, 292, 297
+- [[wiki/database/migraciones]] — migs 289, 290, 291, 292, 297, 334, 335
 - [[wiki/database/schema-overview]]

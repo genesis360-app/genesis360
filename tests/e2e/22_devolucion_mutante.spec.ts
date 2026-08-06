@@ -15,6 +15,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 test.describe('Ventas — devolución (alcanzabilidad)', () => {
   test('abre una venta cobrada y llega al modal de devolución', async ({ page }) => {
@@ -23,7 +24,7 @@ test.describe('Ventas — devolución (alcanzabilidad)', () => {
 
     // 1) Tab Historial
     await page.getByRole('button', { name: /^Historial$/ }).first().click()
-    await page.waitForTimeout(800)
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {})
 
     // 2) Buscar una venta con CTA "Devolver": abrir filas hasta encontrarla
     const filas = page.locator('div.divide-y > div').filter({ hasText: /\$/ })
@@ -33,16 +34,14 @@ test.describe('Ventas — devolución (alcanzabilidad)', () => {
     let abrioDevolucion = false
     for (let i = 0; i < Math.min(total, 6); i++) {
       await filas.nth(i).click()
-      await page.waitForTimeout(500)
       const devolver = page.getByRole('button', { name: /^Devolver$/ }).first()
-      if (await devolver.isVisible().catch(() => false)) {
+      if (await visible(devolver, 3000)) {
         await devolver.click()
         abrioDevolucion = true
         break
       }
       // Cerrar el detalle si no era devolvible (ESC) y probar la siguiente
       await page.keyboard.press('Escape').catch(() => {})
-      await page.waitForTimeout(300)
     }
     test.skip(!abrioDevolucion, 'Ninguna venta visible es devolvible (cobrada/despachada con stock)')
 

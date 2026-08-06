@@ -111,7 +111,6 @@ test.describe('Cupón — prorrateo fiscal (mutante)', () => {
     const montoInput = page.getByPlaceholder(/^Monto$/i).first()
     await montoInput.fill(String(Math.ceil(totalEsperado) + 1000))
     await montoInput.blur()
-    await page.waitForTimeout(300)
 
     const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
     await expect(finalizar).toBeEnabled({ timeout: 5000 })

@@ -62,11 +62,9 @@ test.describe('Backlog Config Ventas/Envíos (mutante)', () => {
       const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
       await expect(buscador).toBeVisible({ timeout: 8000 })
       await buscador.fill('a')
-      await page.waitForTimeout(1000)
       const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
       await primerProducto.waitFor({ state: 'visible', timeout: 8000 })
       await primerProducto.click()
-      await page.waitForTimeout(600)
       await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 5000 })
 
       // 2) Elegir caja si corresponde
@@ -87,7 +85,6 @@ test.describe('Backlog Config Ventas/Envíos (mutante)', () => {
       const montoInput = page.getByPlaceholder(/^Monto$/i).first()
       await montoInput.fill('1000000')
       await montoInput.blur()
-      await page.waitForTimeout(300)
 
       // 4) Venta directa
       const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
@@ -137,11 +134,9 @@ test.describe('Backlog Config Ventas/Envíos (mutante)', () => {
 
       const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
       await buscador.fill('a')
-      await page.waitForTimeout(1000)
       const primerProducto = page.locator('div.absolute.top-full button, div.grid > button').first()
       await primerProducto.waitFor({ state: 'visible', timeout: 8000 })
       await primerProducto.click()
-      await page.waitForTimeout(600)
 
       // Activar "Incluir envío" → la regla aplica (total ≥ $1) → banner + costo $0
       await page.getByText(/^Incluir envío$/).click()

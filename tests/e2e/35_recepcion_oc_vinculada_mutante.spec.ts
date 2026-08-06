@@ -16,6 +16,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const PROVEEDOR = 'Mayorista MAX'
 
@@ -26,18 +27,15 @@ test.describe('Recepción vinculada a OC (mutante)', () => {
 
     // Tab Órdenes de compra + filtrar por el proveedor
     await page.getByRole('button', { name: /Órdenes de compra/i }).first().click()
-    await page.waitForTimeout(500)
     const provFilter = page.locator('select').filter({ has: page.locator('option', { hasText: /Todos los proveedores/i }) }).first()
     await provFilter.selectOption({ label: PROVEEDOR })
-    await page.waitForTimeout(600)
 
     // "Recibir mercadería" solo aparece en la OC confirmada → navega a /recepciones?oc_id=…
     const recibir = page.getByRole('button', { name: /Recibir mercadería/i }).first()
-    test.skip(!(await recibir.isVisible().catch(() => false)), `Sin OC confirmada de ${PROVEEDOR} para recibir`)
+    test.skip(!(await visible(recibir, 5000)), `Sin OC confirmada de ${PROVEEDOR} para recibir`)
     await recibir.click()
 
     // El form de recepción auto-abre (oc_id en la URL) pre-poblado con el ítem de la OC
-    await page.waitForTimeout(800)
     await waitForApp(page)
 
     // Por si pide sucursal destino (select con "Sin sucursal"), elegir la primera válida

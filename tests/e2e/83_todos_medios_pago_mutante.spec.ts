@@ -14,6 +14,7 @@
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const EXCLUIR = /cuenta corriente|crédito a favor|credito a favor/i
 
@@ -28,10 +29,10 @@ test.describe('Todos los medios de pago directos (mutante)', () => {
     // Descubrir las opciones del selector de medio (agregando un producto para que aparezca el selector)
     const buscador = page.getByPlaceholder(/buscar por nombre/i).first()
     await expect(buscador).toBeVisible({ timeout: 8000 })
-    await buscador.fill('a'); await page.waitForTimeout(900)
+    await buscador.fill('a')
     const primer = page.locator('div.absolute.top-full button, div.grid > button').first()
-    test.skip(!(await primer.isVisible().catch(() => false)), 'No hay productos vendibles')
-    await primer.click(); await page.waitForTimeout(500)
+    test.skip(!(await visible(primer, 5000)), 'No hay productos vendibles')
+    await primer.click()
 
     const tipoSelect = page.locator('select').filter({ has: page.locator('option', { hasText: /^Efectivo$/ }) }).first()
     await expect(tipoSelect).toBeVisible({ timeout: 6000 })
@@ -45,10 +46,12 @@ test.describe('Todos los medios de pago directos (mutante)', () => {
       // (re)cargar POS limpio para cada medio
       await goto(page, '/ventas'); await waitForApp(page)
       const b = page.getByPlaceholder(/buscar por nombre/i).first()
-      await b.fill('a'); await page.waitForTimeout(900)
+      await b.fill('a')
       const p = page.locator('div.absolute.top-full button, div.grid > button').first()
-      if (!(await p.isVisible().catch(() => false))) { fallidos.push(`${medio} (sin producto)`); continue }
-      await p.click(); await page.waitForTimeout(500)
+      if (!(await visible(p, 5000))) { fallidos.push(`${medio} (sin producto)`); continue }
+      await p.click()
+      // Señal real de que el carrito se pobló (evita leer el Total antes de que renderice)
+      await expect(page.getByText(/\d+\s+producto/).first()).toBeVisible({ timeout: 8000 })
 
       // caja (si hay más de una abierta)
       const cajaSelect = page.locator('label:has-text("Registrar en caja") + select')
@@ -63,12 +66,12 @@ test.describe('Todos los medios de pago directos (mutante)', () => {
 
       const sel = page.locator('select').filter({ has: page.locator('option', { hasText: /^Efectivo$/ }) }).first()
       await sel.selectOption({ label: medio })
-      await page.waitForTimeout(300)
       const monto = page.getByPlaceholder(/^Monto$/i).first()
-      if (await monto.isVisible().catch(() => false)) { await monto.fill(totalNum); await monto.blur(); await page.waitForTimeout(300) }
+      if (await visible(monto, 2000)) { await monto.fill(totalNum); await monto.blur() }
 
       // finalizar
       const finalizar = page.locator('button', { hasText: /^Venta directa$/ }).last()
+      await visible(finalizar, 3000)
       if (!(await finalizar.isEnabled().catch(() => false))) { fallidos.push(`${medio} (CTA disabled)`); continue }
       await finalizar.click()
 

@@ -17,6 +17,7 @@
 import { test, expect } from '@playwright/test'
 import type { Locator } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 const NORTE = 'b56742a9-c3a2-488e-b344-086227ef396e'
 
@@ -43,10 +44,9 @@ test.describe('Doble validación de cierre B7 (mutante)', () => {
       test.skip(true, 'Caja3 no visible en el selector (re-sembrar fixture).')
     }
     await pill.click()
-    await page.waitForTimeout(700)
 
     const btnCerrar = page.getByRole('button', { name: /Cerrar caja/i }).first()
-    if (!(await btnCerrar.isVisible().catch(() => false))) {
+    if (!(await visible(btnCerrar, 4000))) {
       test.skip(true, 'Botón "Cerrar caja" no visible (sesión propia no cargó).')
     }
     await btnCerrar.click()

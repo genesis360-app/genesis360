@@ -15,6 +15,7 @@
 import { test, expect } from '@playwright/test'
 import type { Locator } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
+import { visible } from './helpers/fixtures'
 
 async function setReactNumber(input: Locator, value: string) {
   await input.evaluate((el, v) => {
@@ -35,11 +36,10 @@ test.describe('Extracción de Bóveda no deja negativo (mutante)', () => {
       test.skip(true, 'Sin acceso a la pestaña Caja Fuerte con este rol/config.')
     }
     await tabFuerte.click()
-    await page.waitForTimeout(700)
 
     // Abrir el modal de extracción
     const btnExtraer = page.getByRole('button', { name: /Extraer dinero/i }).first()
-    if (!(await btnExtraer.isVisible().catch(() => false))) {
+    if (!(await visible(btnExtraer, 4000))) {
       test.skip(true, 'Botón "Extraer dinero" no disponible (permiso/saldo).')
     }
     await btnExtraer.click()

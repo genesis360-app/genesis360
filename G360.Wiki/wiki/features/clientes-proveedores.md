@@ -3,7 +3,7 @@ title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-06-03
+updated: 2026-08-06
 ---
 
 # Clientes y Proveedores
@@ -31,6 +31,10 @@ fecha_nacimiento, etiquetas TEXT[], codigo_fiscal, regimen_fiscal  ← v1.3.0
 
 - Por nombre o por DNI (`.or('nombre.ilike.%X%,dni.ilike.%X%')`)
 - Filtro por etiquetas (badges violeta)
+- **🆕 Footer de conteo de registros (2026-08-06, ✅ PROD desde v1.159.0):** `ListaConteoFooter.tsx`
+  (commit `b8d12b87`) al pie de la lista — sin filtro "N clientes", con filtro "Mostrando N de M
+  clientes". Mismo mecanismo en Productos, Inventario y Envíos — ver
+  [[wiki/features/productos]], [[wiki/features/inventario-stock]], [[wiki/features/envios]].
 
 ### Sub-tabs en ficha del cliente
 

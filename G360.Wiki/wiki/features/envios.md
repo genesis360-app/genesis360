@@ -3,7 +3,7 @@ title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
 sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292]
-updated: 2026-07-28
+updated: 2026-08-06
 ---
 
 # Módulo Envíos
@@ -66,6 +66,12 @@ Ver [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 ## Funcionalidades
 
 ### Tab Envíos
+- **🆕 Footer de conteo de registros (2026-08-06, ✅ PROD desde v1.159.0):** `ListaConteoFooter.tsx`
+  (commit `b8d12b87`) al pie de la lista — sin filtro "N envíos", con filtro "Mostrando N de M
+  envíos". La query de esta página tiene `.limit(100)`, así que si el resultado puede estar truncado
+  el footer aclara "de los últimos 100" en vez de mostrar un total falso. Mismo mecanismo en
+  Productos, Inventario y Clientes — ver [[wiki/features/productos]],
+  [[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]].
 - Lista de envíos con filtros: estado / courier / canal / fechas / búsqueda
 - Fila expandible: destinatario completo, courier + tracking, productos + LPN + ubicación
 - **Avanzar estados**: pendiente → despachado → en_camino → **en_bodega** → entregado

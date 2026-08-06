@@ -6,7 +6,60 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
-## [2026-08-06] update | 🛒📦 Retomando MELI/TiendaNube: envío automático (Fase B) + fulfillment sync TN (Fase C, mig 338) + rentabilidad neta MELI (Fase D1, mig 337) + 🐛 corrección de ISS-073 (dato stale) — TODO EN DEV, COMMITEADO a `dev` local (6 commits), SIN push a `origin/dev` ni deploy a PROD
+## [2026-08-06] deploy | 🚀 v1.159.0 — Deploy completo a PROD: envío automático TN/MELI + fulfillment sync TN (mig 338) + rentabilidad neta MELI (mig 337) + footer de conteo de registros
+
+Cierre de sesión: TODO lo acumulado en `dev` a lo largo del día (sidebar scroll + defaults de
+Ubicaciones + Config Clientes/Alertas/Notificaciones + footer de conteo de registros + envío
+automático TN/MELI + fulfillment sync TN + rentabilidad neta MELI — ver las 2 entradas `update` de
+más abajo para el detalle técnico de cada pieza, que sigue siendo válido) se deployó completo a PROD.
+
+**PR #314** (`dev` → `main`), mergeado — merge commit `9caffd63b9d66282736ab9f674e8fad7f065c513`.
+**Tag `v1.159.0`** + GitHub release publicado
+(https://github.com/genesis360-app/genesis360/releases/tag/v1.159.0). **Migraciones 336, 337, 338
+aplicadas en PROD** (proyecto `jjffnbrdjchquexdfgwq`), además de ya estar en DEV.
+
+**⚠ Detalle operativo de la mig 338 (cron entre proyectos):** el `cron.schedule` que llama al worker
+`tn-fulfillment-worker` usa la URL del proyecto Supabase — en el archivo del repo tiene la URL de DEV
+(`gcmhzdedrkmmzfzfveig`), pero al aplicar la migración en PROD se sustituyó a mano por la URL de PROD
+(`jjffnbrdjchquexdfgwq`), igual que ya pasaba con `meli-stock-sync`. Confirmado que el cron job en
+PROD apunta correctamente a su propia URL.
+
+**3 Edge Functions deployadas a PROD**: `tn-webhook` (v18→v19), `meli-webhook` (v10→v11),
+`tn-fulfillment-worker` (nueva, v1). **Vercel**: deployment `dpl_3LsCwHbP3o8UnNmhDynz5XFksdv1`,
+`target: production`, `state: READY`, confirmado contra el commit del merge. **Verificado antes de
+deployar:** typecheck limpio, build verde, **1525 tests unitarios verdes (96 archivos)**.
+
+**🆕 Pieza que había quedado sin documentar en la pasada anterior: footer de conteo de registros**
+(commit `b8d12b87`, ya incluido en el release v1.159.0). Componente nuevo
+`src/components/ListaConteoFooter.tsx` — barra fina al pie de la lista que muestra la cantidad de
+registros con el filtro aplicado vs. el total: sin filtro "N productos", con filtro "Mostrando N de M
+productos". Agregado en 4 páginas: `src/pages/ProductosPage.tsx` (tab Productos),
+`src/pages/InventarioPage.tsx` (tab Inventario), `src/pages/ClientesPage.tsx` (tab Clientes),
+`src/pages/EnviosPage.tsx` (tab Envíos — esta query tiene `.limit(100)`, así que si el resultado puede
+estar truncado el footer aclara "de los últimos 100" en vez de mostrar un total falso). Verificado en
+navegador con Playwright (con y sin filtro, ambas páginas representativas).
+
+**Pendiente real que queda para la próxima sesión:**
+1. **Fase A — conectar un tenant real a MELI/TiendaNube en PROD**: sigue sin haber ningún tenant
+   conectado en PROD (Almacén Jorgito, usado para todas las pruebas de esta sesión y las anteriores,
+   está conectado en DEV) — esto no cambió con este deploy.
+2. **D2/D3 (combos automáticos TN + repricing automático MELI) — bloqueadas**: esperando que GO
+   responda el relevamiento con Fede (`relevamiento-integraciones-ml-tn-reglas-negocio.html`).
+3. **MELI fulfillment sync** (aviso de despacho/entrega a MELI) — pendiente de la misma respuesta de
+   GO sobre si los tenants usan Mercado Envíos o envío propio.
+4. Deuda técnica ya conocida sin cambios: ventas MELI con `sucursal_id = NULL`,
+   `cc_notif_escalado_dias` sin diseñar, relevamientos #2/#3/#4 hacia Repositores, Fase U5 de limpieza
+   (`ubicaciones.tipo_ubicacion`), flake conocido `39_cc_condonacion_mutante.spec.ts`.
+
+Ver [[wiki/business/roadmap]] (v1.159.0), [[wiki/integrations/mercado-libre]],
+[[wiki/integrations/tienda-nube]], [[wiki/integrations/roadmap-apis]], [[wiki/features/productos]],
+[[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]], [[wiki/features/envios]],
+`sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" actualizado), `wiki/database/migraciones.md`
+(migs 336/337/338 pasan a EN DEV Y PROD).
+
+---
+
+## [2026-08-06] update | 🛒📦 Retomando MELI/TiendaNube: envío automático (Fase B) + fulfillment sync TN (Fase C, mig 338) + rentabilidad neta MELI (Fase D1, mig 337) + 🐛 corrección de ISS-073 (dato stale) — EN ESE MOMENTO EN DEV, COMMITEADO a `dev` local (6 commits), SIN push a `origin/dev` ni deploy a PROD — ✅ deployado a PROD en la entrada `deploy` de arriba (v1.159.0)
 
 Sesión nueva sobre el mismo día de la anterior (sidebar/ubicaciones/config, entrada `update` de más
 abajo) — retoma el backlog de integraciones marketplace. **Se commiteó localmente TODO lo acumulado

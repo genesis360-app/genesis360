@@ -7,14 +7,15 @@ updated: 2026-08-06
 
 # Roadmap de Integraciones API
 
-Plan aprobado 2026-05-07. **Retomado 2026-08-06** (🟡 EN DEV, commiteado a `dev` local sin push ni
-deploy): Fase 1.1 (MELI Rentabilidad Neta) ✅ **hecha**, migración 337. Fases 1.2 (TN BOM combos) y
-1.5 (MELI Repricing) quedaron **bloqueadas con relevamiento de negocio armado y pendiente de
-respuesta de GO/Fede** (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz del repo) — no
-es "sin arrancar", es "diseño esperando decisión". Además, fuera del roadmap original, se cerró el
-**envío automático** al confirmar pago (TN+MELI) y el **fulfillment sync** TN→despachado/entregado
-(mig 338) — ver [[wiki/integrations/mercado-libre]] / [[wiki/integrations/tienda-nube]]. El resto de
-las fases (1.3/1.4, 2-6) sigue pausado.
+Plan aprobado 2026-05-07. **Retomado 2026-08-06, ✅ EN PROD desde v1.159.0** (PR #314, deploy
+completo el mismo día): Fase 1.1 (MELI Rentabilidad Neta) ✅ **hecha**, migración 337. Fases 1.2 (TN
+BOM combos) y 1.5 (MELI Repricing) quedaron **bloqueadas con relevamiento de negocio armado y
+pendiente de respuesta de GO/Fede** (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz del
+repo) — no es "sin arrancar", es "diseño esperando decisión". Además, fuera del roadmap original, se
+cerró el **envío automático** al confirmar pago (TN+MELI) y el **fulfillment sync**
+TN→despachado/entregado (mig 338) — ver [[wiki/integrations/mercado-libre]] /
+[[wiki/integrations/tienda-nube]]. **Pendiente real: Fase A — conectar un tenant real a MELI/TN en
+PROD, sigue sin ninguno.** El resto de las fases (1.3/1.4, 2-6) sigue pausado.
 
 ---
 
@@ -22,8 +23,8 @@ las fases (1.3/1.4, 2-6) sigue pausado.
 
 | Integración | Básico | Killer Feature | Estado |
 |---|---|---|---|
-| TiendaNube | orders + stock sync + **envío automático + fulfillment sync (2026-08-06)** | BOM combos ⏸️ (relevamiento armado), FIFO lotes | ✅ básico+ / 🟡 killer bloqueado |
-| MercadoLibre | orders + stock/precio + **envío automático (2026-08-06)** | **Rentabilidad neta ✅ hecho (mig 337, 2026-08-06)**, repricing ⏸️ (relevamiento armado) | ✅ básico+ / 🟡 1 de 2 killers |
+| TiendaNube | orders + stock sync + **envío automático + fulfillment sync (✅ PROD desde v1.159.0)** | BOM combos ⏸️ (relevamiento armado), FIFO lotes | ✅ básico+ / 🟡 killer bloqueado |
+| MercadoLibre | orders + stock/precio + **envío automático (✅ PROD desde v1.159.0)** | **Rentabilidad neta ✅ hecho y en PROD (mig 337)**, repricing ⏸️ (relevamiento armado) | ✅ básico+ / 🟡 1 de 2 killers |
 | MercadoPago | pagos QR + suscripciones | Conciliación, chargeback | ✅ básico / ❌ killers |
 | MODO | Framework listo (migration 109) | Pagos en POS | ⚠️ schema+UI listos / pendiente activar |
 | AFIP | facturación electrónica (parcial) | Auto-completado CUIT | ⚠️ parcial / ❌ killer |
@@ -73,7 +74,7 @@ modo_credentials(
 ## Fase 1 — Quick wins sobre infraestructura existente
 *Alta prioridad. Impacto alto, esfuerzo bajo — la infra ya existe.*
 
-### 1.1 MELI Rentabilidad Neta Real ⭐ — ✅ HECHO (2026-08-06, migración 337, 🟡 EN DEV sin deploy)
+### 1.1 MELI Rentabilidad Neta Real ⭐ — ✅ HECHO (migración 337, ✅ PROD desde v1.159.0, 2026-08-06)
 - Extendido `meli-webhook`: lee `sale_fee` (comisión, en `order_items[]`) y
   `shipping_cost`/`taxes_amount` (viven en `order.payments[]`, NO en la orden ni en `order_items`
   como decía este plan original) de cada orden MELI
@@ -224,7 +225,7 @@ modo_credentials(
 
 | # | Feature | Fase | Esfuerzo | Impacto |
 |---|---|---|---|---|
-| 1 | MELI Rentabilidad Neta | 1 | Bajo | Altísimo — **✅ HECHO 2026-08-06 (mig 337)** |
+| 1 | MELI Rentabilidad Neta | 1 | Bajo | Altísimo — **✅ HECHO y en PROD (mig 337, v1.159.0, 2026-08-06)** |
 | 2 | Conciliación MP automática | 1 | Bajo | Altísimo |
 | 3 | TiendaNube BOM combos | 1 | Medio | Alto — 🟡 relevamiento armado, esperando respuesta de negocio |
 | 4 | AFIP Auto-completado CUIT | 1 | Bajo | Alto |

@@ -3,7 +3,7 @@ title: Inventario y Stock
 category: features
 tags: [inventario, lpn, movimientos, fifo, fefo, stock, autorizaciones, conteos, wms, picking, unidades-medida, udm, aprobacion-foto, anti-fraude]
 sources: [CLAUDE.md, reglas_negocio.md, migrations 289, 290, 293, 331]
-updated: 2026-08-04
+updated: 2026-08-06
 ---
 
 # Inventario y Stock
@@ -37,6 +37,14 @@ Toda unidad de stock es una `inventario_lineas` identificada por:
 7. **Historial** — movimientos con filtros fecha/cat/tipo/motivo (badge "Traslado" ámbar para tipo `traslado`)
 8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO + cambios de estado con foto (🟡 EN DEV, mig 331, ver más abajo)
 9. **Tareas WMS** (✅ EN PROD desde v1.144.0, migs 289-291) — vista de escritorio para el DUEÑO de las tareas de picking/reabastecimiento generadas; link directo a la ruta mobile `/picking`. Ver [[wiki/features/wms]] → "Fase 3"
+
+### Footer de conteo de registros (🆕 2026-08-06, ✅ PROD desde v1.159.0)
+
+Componente nuevo `src/components/ListaConteoFooter.tsx` (commit `b8d12b87`) — barra fina al pie del
+tab **Inventario** con la cantidad de líneas visibles según el filtro/píldoras aplicados vs. el
+total: sin filtro "N productos", con filtro "Mostrando N de M productos". Mismo mecanismo reusado en
+Productos, Clientes y Envíos — ver [[wiki/features/productos]],
+[[wiki/features/clientes-proveedores]], [[wiki/features/envios]].
 
 ---
 

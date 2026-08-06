@@ -381,6 +381,7 @@ serve(async (req) => {
       estado:                 estadoFinal,
       origen:                 'TiendaNube',
       tracking_id:            String(order.number),
+      tn_order_id:            order.id ?? null,
       costo_envio_logistica:  shippingCost,
       total,
       monto_pagado:           montoPagado,

@@ -6,18 +6,33 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-06
 ---
 
-# Historial de Migraciones (001-335)
+# Historial de Migraciones (001-336)
 
-**Total al 2026-08-06:** 335 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-06:** 336 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-335 en DEV y PROD** (v1.158.0, deploy 2026-08-06 — agrupa el rediseño de `ubicaciones` en árbol
-+ tipo lógico (334-335, 1º de 4 relevamientos hacia la Fase E/Repositores, ver
+**001-336 EN DEV, 001-335 en PROD** (🟡 la 336 solo aplicada en DEV vía `apply_migration`, código
+correspondiente sin commitear en el working tree local de `dev` — ver `sources/raw/project_pendientes.md`
+"ARRANCÁ ACÁ"). PROD sigue en v1.158.0 (deploy 2026-08-06 — agrupa el rediseño de `ubicaciones` en
+árbol + tipo lógico (334-335, 1º de 4 relevamientos hacia la Fase E/Repositores, ver
 [[wiki/features/ubicaciones]]) junto con el resto de lo acumulado en DEV desde v1.157.0: fix Regla
 #0 en `MasivoModal.tsx`, filtro de píldoras en Productos/Inventario, gaps de breadcrumb, cierre de
-la deuda de `waitForTimeout` — sin migraciones nuevas en esta última ronda). Antes: 001-333 en DEV y
-PROD desde v1.155.0 (deploy 2026-08-04 — backlog Fede 25/7, Fases F+A+B+C+D de
-[[wiki/features/precios-tiers-empaque]]). ⚠ `schema_full.sql` regenerado hasta la mig 335 el
-2026-08-05 (token de acceso temporal, ya descartado) — antes había quedado hasta la 327.
+la deuda de `waitForTimeout`). Antes: 001-333 en DEV y PROD desde v1.155.0 (deploy 2026-08-04 —
+backlog Fede 25/7, Fases F+A+B+C+D de [[wiki/features/precios-tiers-empaque]]). ⚠ `schema_full.sql`
+regenerado hasta la mig 335 el 2026-08-05 (token de acceso temporal, ya descartado) — antes había
+quedado hasta la 327; actualizado A MANO (sin regenerar por token) para reflejar la 336.
+
+**336 (🔒 `ubicaciones` — `disponible_surtido`/`disponible_tn`/`disponible_meli` pasan a `DEFAULT false`, 🟡 SOLO EN DEV, Regla de Oro #0)** —
+Sesión 2026-08-06, pedido explícito de GO: las ubicaciones nuevas nacían con TN/MercadoLibre/
+picking-venta **ENCENDIDOS** por default (`es_devolucion` ya nacía `false`, no hacía falta tocarla) —
+una ubicación recién creada quedaba expuesta a sync de canales online y a picking/venta sin que el
+usuario lo pidiera. `ALTER TABLE ubicaciones ALTER COLUMN ... SET DEFAULT false` en las 3 columnas,
+aplicada en DEV vía `apply_migration` y verificada con `information_schema.columns` (las 4 columnas
+dan `column_default = 'false'`). Único INSERT de la app a la tabla: `addUbicacion()` en
+`src/pages/ConfigPage.tsx` — no hay seed de onboarding de tenant que dependa de estos defaults, así
+que **no afecta tenants ni ubicaciones existentes**, solo las creadas de acá en adelante. El código
+de la app y esta migración quedaron sin commitear en el working tree local de `dev` — **pendiente
+aplicar en PROD** cuando se decida deployar. Ver [[wiki/features/ubicaciones]], `log.md` (2026-08-06,
+entrada `update`).
 
 **335 (🎯 `producto_ubicacion_sucursal.ubicacion_exhibicion_id` — prepara Repositores, ✅ DEV y PROD desde v1.158.0)** —
 Fede/GO, 1º de 4 relevamientos hacia Fase E (ver [[wiki/features/precios-tiers-empaque]] → "Fase

@@ -6,7 +6,80 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-06, v1.158.0) — DEPLOY COMPLETO A PROD: waitForTimeout CERRADO (315/80→8/6) + fix Regla #0 MasivoModal + píldoras de filtro + Ubicaciones en árbol (U1-U4) — PROD = DEV = v1.158.0
+> ### ✅ ARRANCÁ ACÁ (2026-08-06) — 🖱️ Fix scroll del sidebar + 🔒 Ubicaciones nacen con TN/MELI/picking APAGADOS (mig 336, EN DEV) + 🧾 Config → Clientes/Alertas/Notificaciones con inputs reales (8 configs que ya vivían en el código) — TODO EN DEV, SIN COMMITEAR, PROD sigue en v1.158.0
+>
+> Sesión nueva sobre el mismo día del deploy de v1.158.0 (bloque histórico debajo). **Sin bump de
+> `APP_VERSION`, sin commit, sin PR** — todo en el working tree local de `dev` + 1 migración nueva
+> aplicada solo en DEV vía `apply_migration`. Pendiente decidir con GO si se commitea/deploya.
+>
+> **1. 🖱️ Fix: el sidebar perdía el scroll al navegar** (`src/components/layout/AppLayout.tsx`).
+> Causa raíz: `SidebarContent` estaba definido como función anidada DENTRO del render de `AppLayout`
+> → cada re-render (p.ej. al cambiar de ruta) creaba una identidad de función nueva → React
+> desmontaba y remontaba el `<nav>` entero en vez de reconciliar → `scrollTop` volvía a 0. Se movió
+> `SidebarContent` a un componente de módulo (fuera de `AppLayout`), recibiendo por props lo que
+> antes tomaba por closure (`sidebarCollapsed`, `toggleCollapse`, `setSidebarOpen`,
+> `navVisibilityCtx`, `limits`, `alertCount`, `cajaAbierta`). Verificado con un test Playwright ad-hoc
+> contra DEV: mismo nodo DOM del `<nav>` (dataset attribute) + `scrollTop` idéntico antes/después de
+> navegar a Configuración.
+>
+> **2. 🔒 Fix Regla de Oro #0 (inventario): ubicaciones nuevas nacían con TN/MercadoLibre/picking-venta
+> ENCENDIDOS por default.** En `ubicaciones`, `disponible_surtido` (picking/venta), `disponible_tn`,
+> `disponible_meli` tenían `DEFAULT true` (`es_devolucion` ya era `false`) — una ubicación recién
+> creada quedaba expuesta a sync de canales online y a picking/venta sin que el usuario lo pidiera.
+> **Migración nueva `336_ubicaciones_defaults_apagados.sql`** (`ALTER COLUMN ... SET DEFAULT false`
+> en las 3 columnas), **aplicada en DEV vía `apply_migration`, NO en PROD todavía**; `schema_full.sql`
+> actualizado a mano. Confirmado por SQL contra DEV (`information_schema.columns`) que las 4 columnas
+> (incluida `es_devolucion`) ahora dan `column_default = 'false'`. Único INSERT de la app a la tabla:
+> `addUbicacion()` en `ConfigPage.tsx` (no hay seed de onboarding que dependa de estos defaults) — el
+> cambio no afecta tenants ni ubicaciones existentes, solo las creadas de acá en adelante. Ver
+> [[wiki/features/ubicaciones]].
+>
+> **3. 🧾 Auditoría de Configuración: 3 tabs placeholder → 8 configuraciones YA VIVAS en el código
+> (nunca tuvieron input en pantalla).** GO pidió revisar qué faltaba en Configuración. `Clientes`,
+> `Alertas` y `Notificaciones` eran placeholders puros ("próximamente"), pero el hallazgo real es
+> otro: **8 columnas de `tenants` ya se leen en `VentasPage.tsx`/`ClientesPage.tsx`/
+> `src/lib/notificacionesCC.ts` y ya se guardan desde el mega-form de `ConfigPage.tsx`
+> (`handleSaveBiz`), pero el usuario nunca pudo tocarlas salvo por SQL directo**:
+> `alerta_margen_negativo` · `alerta_devoluciones_n`/`alerta_devoluciones_dias` (tab Alertas) ·
+> `cc_enforcement_politica`/`cc_morosidad_politica`/`limite_cc_default`/`cc_dias_vencimiento`/
+> `cc_interes_mensual_pct` (tab Clientes, políticas de CC que YA gatean si una venta a CC se bloquea,
+> `src/lib/ccLogic.ts`) · `cc_notif_canales`/`cc_notif_registro_deuda`/`cc_notif_pago`/
+> `cc_notif_pre_venc_dias`/`cumple_notif_cliente`/`cumple_notif_duenio` (tab Notificaciones, ya activas
+> — envían email real si están prendidas). Se construyó el UI real en `ConfigPage.tsx` para los 3
+> tabs (sin inventar comportamiento nuevo, cada input documenta lo que el código ya hacía) y se sacó
+> el badge "pronto". **Se dejó explícitamente AFUERA `cc_notif_escalado_dias`** (C3 "escalado por
+> mora") — columna en `tenants` desde la mig 175 pero sin NINGUNA lógica de consumo en el código;
+> única pieza de este relevamiento que sí requiere diseño de negocio antes de construirse (queda
+> pendiente). También se corrigió un texto stale en el tab Caja ("doble validación cierre" decía que
+> faltaba, ya estaba implementada con checkbox real). Verde: typecheck, `npm run build`, 1525 tests
+> unitarios + 2 Playwright ad-hoc contra DEV confirmando contenido real en las 3 tabs. Ver
+> [[wiki/features/configuracion]].
+>
+> ### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` | v1.158.0 (código sin commitear encima) | **v1.158.0** |
+> | Migraciones | 001-336 | 001-335 |
+> | Branch | `dev` (working tree local, sin commit) | `main` |
+> | Vercel | — | v1.158.0 |
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **Decidir con GO si se commitea y deploya** lo de esta sesión (sidebar scroll + defaults de
+>    Ubicaciones + Config Clientes/Alertas/Notificaciones) — nada de esto se commiteó ni se deployó.
+> 2. **Aplicar la migración 336 en PROD** cuando se decida deployar (hoy solo en DEV).
+> 3. **`cc_notif_escalado_dias`** (C3 "escalado por mora") sin diseñar — columna existe desde la mig
+>    175, sin ningún consumidor en el código. Pendiente para un futuro relevamiento de Clientes/CC.
+> 4. Sin cambios respecto al resto de pendientes ya conocidos (relevamientos #2/#3/#4 hacia
+>    Repositores, Fase U5 de limpieza, flake conocido en `39_cc_condonacion_mutante.spec.ts`) — ver
+>    bloque histórico debajo.
+>
+> Ver [[wiki/features/ubicaciones]], [[wiki/features/configuracion]], `log.md` (2026-08-06, entrada
+> `update` nueva).
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-06, v1.158.0) — DEPLOY COMPLETO A PROD: waitForTimeout CERRADO (315/80→8/6) + fix Regla #0 MasivoModal + píldoras de filtro + Ubicaciones en árbol (U1-U4) — PROD = DEV = v1.158.0
 >
 > GO pidió explícitamente: "sigamos con más de wait for timeout hasta finalizarlo y luego pasas todo
 > a DEV y PROD". Se cerró de punta a punta la deuda de `waitForTimeout` que había quedado parcial en

@@ -2954,8 +2954,8 @@ export default function ConfigPage() {
     {
       label: 'Sistema',
       items: [
-        { id: 'alertas',        label: 'Alertas',         icon: Bell,      placeholder: true },
-        { id: 'notificaciones', label: 'Notificaciones',  icon: Bell,      placeholder: true },
+        { id: 'alertas',        label: 'Alertas',         icon: Bell },
+        { id: 'notificaciones', label: 'Notificaciones',  icon: Bell },
         { id: 'conectividad',   label: 'Conectividad',    icon: Plug },
       ],
     },
@@ -6835,10 +6835,79 @@ export default function ConfigPage() {
               </div>
 
               {/* Pendientes */}
-              <PlaceholderTab icon={Clock} title="Más configuraciones de Caja" desc="Tolerancia de diferencia, doble validación cierre y panel cajero — próximamente." />
+              <PlaceholderTab icon={Clock} title="Más configuraciones de Caja" desc="Tolerancia de diferencia en arqueo y panel cajero — próximamente." />
             </div>
           )}
-          {tab === 'clientes' && <PlaceholderTab icon={Users} title="Configuración de Clientes" desc="Cuenta corriente, segmentación, límites de crédito y políticas de cobranza." />}
+          {tab === 'clientes' && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <Wallet size={16} className="text-accent-text" /> Cuenta corriente — políticas
+                </h2>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Al superar el límite de CC</label>
+                    <select value={bizCCEnforcement} disabled={!canEdit}
+                      onChange={e => setBizCCEnforcement(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                      <option value="permitir">Permitir igual</option>
+                      <option value="avisar">Avisar pero permitir</option>
+                      <option value="bloquear">Bloquear la venta a CC</option>
+                    </select>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Qué hacer cuando una venta a cuenta corriente deja al cliente por encima de su límite.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cliente con deuda vencida</label>
+                    <select value={bizCCMorosidad} disabled={!canEdit}
+                      onChange={e => setBizCCMorosidad(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                      <option value="permitir">Permitir vender igual</option>
+                      <option value="bloqueo_cc">Bloquear solo la parte a CC (puede pagar por otro medio)</option>
+                      <option value="bloqueo_total">Bloquear cualquier venta</option>
+                    </select>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Qué hacer cuando el cliente ya tiene deuda vencida (fecha de vencimiento CC pasada).</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Límite de CC por defecto ($)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1000"
+                      value={bizCCLimiteDefault} disabled={!canEdit}
+                      onChange={e => setBizCCLimiteDefault(e.target.value)}
+                      placeholder="Sin límite"
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Se usa para los clientes que no tienen un límite propio cargado en su ficha.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Vencimiento de venta a CC (días)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
+                      value={bizCCDiasVenc} disabled={!canEdit}
+                      onChange={e => setBizCCDiasVenc(e.target.value)}
+                      placeholder="Sin vencimiento"
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Días desde la venta hasta que se considera vencida. Vacío = nunca vencen.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Interés mensual por mora (%)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="0.5"
+                      value={bizCCInteresMensual} disabled={!canEdit}
+                      onChange={e => setBizCCInteresMensual(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Se calcula sobre el saldo vencido, proporcional a los días de atraso. 0 = sin interés.</p>
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar configuración de Clientes'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 px-1">
+                Segmentación y límite de crédito por cliente se manejan desde la ficha de cada cliente en <strong>Clientes</strong>. Los avisos de deuda/pago y saludo de cumpleaños se configuran en <strong>Notificaciones</strong>.
+              </p>
+            </div>
+          )}
           {tab === 'rrhh' && (
             <div className="space-y-4">
               {/* Asistencia / Tardanzas — afecta la liquidación de sueldos */}
@@ -6922,8 +6991,141 @@ export default function ConfigPage() {
               </p>
             </div>
           )}
-          {tab === 'alertas' && <PlaceholderTab icon={Bell} title="Configuración de Alertas" desc="Define qué eventos generan alertas y para qué roles." />}
-          {tab === 'notificaciones' && <PlaceholderTab icon={Bell} title="Configuración de Notificaciones" desc="Canales de notificación (in-app, email, WhatsApp) por tipo de evento." />}
+          {tab === 'alertas' && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <AlertCircle size={16} className="text-accent-text" /> Márgenes y devoluciones
+                </h2>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={bizAlertaMargenNeg} disabled={!canEdit}
+                    onChange={e => setBizAlertaMargenNeg(e.target.checked)}
+                    className="mt-1 rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Alertar venta con margen negativo</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Genera una alerta cuando una venta despachada se vendió por debajo del costo.</p>
+                  </div>
+                </label>
+                <div className="grid sm:grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alertar devoluciones repetidas — cantidad</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
+                      value={bizAlertaDevN} disabled={!canEdit}
+                      onChange={e => setBizAlertaDevN(e.target.value)}
+                      placeholder="Sin alertar"
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Devoluciones del mismo cliente/producto que disparan la alerta. Vacío = desactivado.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">...en los últimos (días)</label>
+                    <input type="number" onWheel={e => e.currentTarget.blur()} min="1" step="1"
+                      value={bizAlertaDevDias} disabled={!canEdit}
+                      onChange={e => setBizAlertaDevDias(e.target.value)}
+                      className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                  </div>
+                </div>
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar configuración de Alertas'}
+                    </button>
+                  </div>
+                )}
+              </div>
+              <p className="text-xs text-gray-400 dark:text-gray-500 px-1">
+                El resto de las alertas (reservas vencidas, OC por vencer, stock sin categoría, deuda de clientes, umbral de bóveda, vencimiento de lote, pedidos atrasados) se generan con reglas fijas del sistema — el umbral de bóveda se define en <strong>Caja</strong>.
+              </p>
+            </div>
+          )}
+          {tab === 'notificaciones' && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <Wallet size={16} className="text-accent-text" /> Cuenta corriente
+                </h2>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Canales</label>
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+                      <input type="checkbox" checked={bizCCNotifCanales.includes('email')} disabled={!canEdit}
+                        onChange={e => setBizCCNotifCanales(cs => e.target.checked ? [...cs, 'email'] : cs.filter(c => c !== 'email'))}
+                        className="rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
+                      Email
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+                      <input type="checkbox" checked={bizCCNotifCanales.includes('whatsapp')} disabled={!canEdit}
+                        onChange={e => setBizCCNotifCanales(cs => e.target.checked ? [...cs, 'whatsapp'] : cs.filter(c => c !== 'whatsapp'))}
+                        className="rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
+                      WhatsApp
+                    </label>
+                  </div>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">WhatsApp es siempre a demanda (botón manual). Email se envía solo si está marcado.</p>
+                </div>
+                <div className="space-y-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bizCCNotifRegistroDeuda} disabled={!canEdit}
+                      onChange={e => setBizCCNotifRegistroDeuda(e.target.checked)}
+                      className="mt-1 rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Avisar al registrar una compra a cuenta corriente</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Le llega un email al cliente confirmando el monto que quedó a su cuenta.</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input type="checkbox" checked={bizCCNotifPago} disabled={!canEdit}
+                      onChange={e => setBizCCNotifPago(e.target.checked)}
+                      className="mt-1 rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Avisar al recibir un pago de cuenta corriente</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Le llega un email al cliente confirmando el pago recibido.</p>
+                    </div>
+                  </label>
+                </div>
+                <div className="pt-2 border-t border-gray-100 dark:border-gray-700">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Aviso de pre-vencimiento (días antes)</label>
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="1"
+                    value={bizCCPreVencDias} disabled={!canEdit}
+                    onChange={e => setBizCCPreVencDias(e.target.value)}
+                    placeholder="Sin recordatorio"
+                    className="sm:max-w-xs w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Cuántos días antes del vencimiento se resalta la deuda como "por vencer" en el tab de Cuenta Corriente del cliente.</p>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-3">
+                <h2 className="font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <Gift size={16} className="text-accent-text" /> Cumpleaños de clientes
+                </h2>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={bizCumpleCliente} disabled={!canEdit}
+                    onChange={e => setBizCumpleCliente(e.target.checked)}
+                    className="mt-1 rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Habilitar saludo por WhatsApp al cliente</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Muestra el botón de saludo manual por WhatsApp en la lista de clientes que cumplen años hoy.</p>
+                  </div>
+                </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={bizCumpleDuenio} disabled={!canEdit}
+                    onChange={e => setBizCumpleDuenio(e.target.checked)}
+                    className="mt-1 rounded border-gray-300 text-accent-text focus:ring-accent-text disabled:opacity-50" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-100">Mostrarme la lista de cumpleaños del día</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Aparece arriba de la lista de clientes cuando alguien cumple años hoy.</p>
+                  </div>
+                </label>
+                {canEdit && (
+                  <div className="flex justify-end pt-1">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar configuración de Notificaciones'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
         </div>{/* end content column */}
       </div>{/* end flex gap-6 */}

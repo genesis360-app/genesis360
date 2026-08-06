@@ -66,6 +66,125 @@ const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rr
 const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion', '/ventas', '/clientes', '/mi-portal']  // J3: CONTADOR read-only en Ventas · CL1-H2: read-only en Clientes
 const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones', '/envios', '/mi-portal', '/picking', '/pedidos']
 
+// ─── Sidebar content ──────────────────────────────────────────────────────
+// Componente de módulo (no anidado en AppLayout): si se define dentro del render de
+// AppLayout, cada re-render (p.ej. al cambiar de ruta) crea una identidad de función
+// nueva y React desmonta/remonta todo el <nav> en vez de actualizarlo — eso reseteaba
+// el scroll del sidebar a 0 en cada navegación.
+function SidebarContent({
+  mobile = false, sidebarCollapsed, toggleCollapse, setSidebarOpen,
+  navVisibilityCtx, limits, alertCount, cajaAbierta,
+}: {
+  mobile?: boolean
+  sidebarCollapsed: boolean
+  toggleCollapse: () => void
+  setSidebarOpen: (v: boolean) => void
+  navVisibilityCtx: any
+  limits: any
+  alertCount: number
+  cajaAbierta: boolean
+}) {
+  const collapsed = !mobile && sidebarCollapsed
+
+  return (
+    <div className="flex flex-col h-full">
+
+      {/* Logo + versión + toggle colapsar */}
+      <div className={`flex items-center border-b border-border-ds flex-shrink-0 ${collapsed ? 'justify-center px-2 py-4' : 'gap-3 px-4 py-4'}`}>
+        <a
+          href="https://www.genesis360.pro"
+          target="_blank"
+          rel="noreferrer"
+          title="Ir al sitio de Genesis360"
+          className="flex items-center gap-3 flex-1 min-w-0 group"
+        >
+          <img src={BRAND.logo} alt={BRAND.name} className="w-8 h-8 rounded-lg flex-shrink-0 object-cover" />
+          {!collapsed && (
+            <div className="flex flex-col min-w-0">
+              <span className="text-primary dark:text-white font-bold text-lg tracking-tight leading-tight truncate">
+                {BRAND.name}
+              </span>
+              <span className="text-muted text-[10px] leading-none">{APP_VERSION}</span>
+            </div>
+          )}
+        </a>
+        {!mobile && (
+          <button
+            onClick={toggleCollapse}
+            title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
+            className="text-gray-400 hover:text-primary dark:hover:text-white transition-colors ml-auto flex-shrink-0"
+          >
+            {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+          </button>
+        )}
+      </div>
+
+      {/* Navegación */}
+      <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-2'}`}>
+        {navItems.map((item: any) => {
+          const { to, icon: Icon, label, badge } = item
+          if (!navItemVisible(item, navVisibilityCtx)) return null
+          const locked = navItemLocked(item, limits as any)
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              onClick={() => setSidebarOpen(false)}
+              title={collapsed ? (locked ? `${label} — requiere plan superior` : label) : undefined}
+              className={({ isActive }) =>
+                `flex items-center rounded-lg text-sm font-medium transition-all
+                ${collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}
+                ${locked
+                  ? 'text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-500'
+                  : isActive
+                    ? 'bg-accent text-white'
+                    : 'text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent-text dark:hover:text-accent-text nav-grad-hover'
+                }`
+              }
+            >
+              <div className="relative flex-shrink-0">
+                <Icon size={18} className="nav-grad-icon" />
+                {to === '/caja' && collapsed && (
+                  <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white dark:border-gray-900 ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} />
+                )}
+                {badge && alertCount > 0 && collapsed && (
+                  <span
+                    className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center border border-white dark:border-gray-900"
+                    style={{ fontSize: 9, lineHeight: 1 }}
+                  >
+                    {alertCount > 9 ? '9+' : alertCount}
+                  </span>
+                )}
+              </div>
+              {!collapsed && <span className="flex-1 nav-grad-text">{label}</span>}
+              {!collapsed && locked && <Lock size={12} className="text-gray-400 dark:text-gray-600 flex-shrink-0" />}
+              {!collapsed && to === '/caja' && !locked && (
+                <span
+                  className={`w-2 h-2 rounded-full ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`}
+                  title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'}
+                />
+              )}
+              {!collapsed && badge && alertCount > 0 && !locked && (
+                <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
+                  {alertCount > 9 ? '9+' : alertCount}
+                </span>
+              )}
+            </NavLink>
+          )
+        })}
+      </nav>
+
+      {/* Pie: CotizacionWidget */}
+      {!collapsed && (
+        <div className="border-t border-border-ds flex-shrink-0">
+          <CotizacionWidget />
+        </div>
+      )}
+
+    </div>
+  )
+}
+
 export function AppLayout() {
   const [sidebarOpen, setSidebarOpen]       = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => localStorage.getItem('sidebar-collapsed') === 'true')
@@ -277,109 +396,6 @@ export function AppLayout() {
     : 0
   const showTrialBanner = tenant?.subscription_status === 'trial' && trialDaysLeft >= 0
 
-  // ─── Sidebar content ────────────────────────────────────────────────────────
-  const SidebarContent = ({ mobile = false }: { mobile?: boolean }) => {
-    const collapsed = !mobile && sidebarCollapsed
-
-    return (
-      <div className="flex flex-col h-full">
-
-        {/* Logo + versión + toggle colapsar */}
-        <div className={`flex items-center border-b border-border-ds flex-shrink-0 ${collapsed ? 'justify-center px-2 py-4' : 'gap-3 px-4 py-4'}`}>
-          <a
-            href="https://www.genesis360.pro"
-            target="_blank"
-            rel="noreferrer"
-            title="Ir al sitio de Genesis360"
-            className="flex items-center gap-3 flex-1 min-w-0 group"
-          >
-            <img src={BRAND.logo} alt={BRAND.name} className="w-8 h-8 rounded-lg flex-shrink-0 object-cover" />
-            {!collapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="text-primary dark:text-white font-bold text-lg tracking-tight leading-tight truncate">
-                  {BRAND.name}
-                </span>
-                <span className="text-muted text-[10px] leading-none">{APP_VERSION}</span>
-              </div>
-            )}
-          </a>
-          {!mobile && (
-            <button
-              onClick={toggleCollapse}
-              title={collapsed ? 'Expandir sidebar' : 'Colapsar sidebar'}
-              className="text-gray-400 hover:text-primary dark:hover:text-white transition-colors ml-auto flex-shrink-0"
-            >
-              {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
-          )}
-        </div>
-
-        {/* Navegación */}
-        <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-2'}`}>
-          {navItems.map((item: any) => {
-            const { to, icon: Icon, label, badge, modulo } = item
-            if (!navItemVisible(item, navVisibilityCtx)) return null
-            const locked = navItemLocked(item, limits as any)
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                onClick={() => setSidebarOpen(false)}
-                title={collapsed ? (locked ? `${label} — requiere plan superior` : label) : undefined}
-                className={({ isActive }) =>
-                  `flex items-center rounded-lg text-sm font-medium transition-all
-                  ${collapsed ? 'justify-center px-2 py-2.5' : 'gap-3 px-3 py-2.5'}
-                  ${locked
-                    ? 'text-gray-400 dark:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-500'
-                    : isActive
-                      ? 'bg-accent text-white'
-                      : 'text-gray-700 dark:text-gray-300 hover:bg-accent/10 hover:text-accent-text dark:hover:text-accent-text nav-grad-hover'
-                  }`
-                }
-              >
-                <div className="relative flex-shrink-0">
-                  <Icon size={18} className="nav-grad-icon" />
-                  {to === '/caja' && collapsed && (
-                    <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white dark:border-gray-900 ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} />
-                  )}
-                  {badge && alertCount > 0 && collapsed && (
-                    <span
-                      className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center border border-white dark:border-gray-900"
-                      style={{ fontSize: 9, lineHeight: 1 }}
-                    >
-                      {alertCount > 9 ? '9+' : alertCount}
-                    </span>
-                  )}
-                </div>
-                {!collapsed && <span className="flex-1 nav-grad-text">{label}</span>}
-                {!collapsed && locked && <Lock size={12} className="text-gray-400 dark:text-gray-600 flex-shrink-0" />}
-                {!collapsed && to === '/caja' && !locked && (
-                  <span
-                    className={`w-2 h-2 rounded-full ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`}
-                    title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'}
-                  />
-                )}
-                {!collapsed && badge && alertCount > 0 && !locked && (
-                  <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
-                    {alertCount > 9 ? '9+' : alertCount}
-                  </span>
-                )}
-              </NavLink>
-            )
-          })}
-        </nav>
-
-        {/* Pie: CotizacionWidget */}
-        {!collapsed && (
-          <div className="border-t border-border-ds flex-shrink-0">
-            <CotizacionWidget />
-          </div>
-        )}
-
-      </div>
-    )
-  }
-
   // Clase base para botones del header
   const hBtn = 'p-2 rounded-lg text-muted hover:text-primary dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-700 transition-all'
 
@@ -399,7 +415,15 @@ export function AppLayout() {
 
       {/* Sidebar desktop */}
       <aside className={`hidden lg:flex flex-col bg-surface border-r border-border-ds flex-shrink-0 transition-all duration-200 ${sidebarCollapsed ? 'w-16' : 'w-64'}`}>
-        <SidebarContent />
+        <SidebarContent
+          sidebarCollapsed={sidebarCollapsed}
+          toggleCollapse={toggleCollapse}
+          setSidebarOpen={setSidebarOpen}
+          navVisibilityCtx={navVisibilityCtx}
+          limits={limits}
+          alertCount={alertCount}
+          cajaAbierta={cajaAbierta}
+        />
       </aside>
 
       {/* Sidebar mobile overlay */}
@@ -413,7 +437,16 @@ export function AppLayout() {
             >
               <X size={20} />
             </button>
-            <SidebarContent mobile />
+            <SidebarContent
+              mobile
+              sidebarCollapsed={sidebarCollapsed}
+              toggleCollapse={toggleCollapse}
+              setSidebarOpen={setSidebarOpen}
+              navVisibilityCtx={navVisibilityCtx}
+              limits={limits}
+              alertCount={alertCount}
+              cajaAbierta={cajaAbierta}
+            />
           </aside>
         </div>
       )}

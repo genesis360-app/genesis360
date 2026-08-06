@@ -69,10 +69,11 @@ indentada + búsqueda, guard de borrado con mensaje claro) + 7 archivos operativ
 **Verde:** tsc · build · suite unitaria completa (1492 tests, 92 archivos), incluidos 12 tests nuevos
 para `ubicacionesArbol.ts` (`tests/unit/ubicacionesArbol.test.ts`).
 
-**Estado:** TODO EN DEV, `APP_VERSION` bumpeada a v1.157.0 como checkpoint de sesión (sin deploy).
-PROD sigue en v1.155.0. Pendiente: Fase U5 (DROP `tipo_ubicacion`), relevamientos #2/#3/#4 de la
-secuencia (Pestaña de supervisor reusable → Motor de Rotación → Repositores), prueba manual en el
-navegador. Detalle completo: [[wiki/features/ubicaciones]].
+**Estado:** commiteado y pusheado a `origin/dev` (`8c091da2`), tag `v1.157.0` + GitHub release
+publicado. `APP_VERSION` bumpeada a v1.157.0 como checkpoint de sesión — **sin PR a `main`, sin
+deploy**. PROD sigue en v1.155.0. Pendiente: Fase U5 (DROP `tipo_ubicacion`), relevamientos #2/#3/#4
+de la secuencia (Pestaña de supervisor reusable → Motor de Rotación → Repositores), prueba manual en
+el navegador. Detalle completo: [[wiki/features/ubicaciones]].
 
 ## [2026-08-04] update | 🧹 Backlog técnico post-deploy: facturasPDF.ts testeado, waitForTimeout saneado (fixtures.ts), F4 avanzado
 

@@ -82,8 +82,9 @@ type: project
 >    reusable → Motor de Rotación de productos con descuento → Repositores.
 > 4. Sin prueba manual en el navegador todavía (typecheck/build/tests no reemplazan probar la UI).
 >
-> **Estado git:** sin commitear (10 archivos modificados + 4 sin trackear — 2 migraciones,
-> `ubicacionesArbol.ts` y su test, ver `git status` en `dev`). `main`/PROD siguen en v1.155.0.
+> **Estado git:** commiteado y pusheado a `origin/dev` (`8c091da2`), tag `v1.157.0` + GitHub release
+> publicado (marcado `Latest`). **NO** se abrió PR a `main` ni se deployó — `main`/PROD siguen en
+> v1.155.0, sin cambios.
 >
 > ---
 >

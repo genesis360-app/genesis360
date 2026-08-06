@@ -2439,7 +2439,8 @@ CREATE TABLE public.venta_items (
   descuento_estado_monto numeric(12,2),
   unidad_medida_id uuid,
   cantidad_uom numeric(12,3),
-  pedido_item_id uuid
+  pedido_item_id uuid,
+  comision_marketplace numeric(12,2)
 );
 
 CREATE TABLE public.venta_series (
@@ -2500,7 +2501,8 @@ CREATE TABLE public.ventas (
   pedido_id uuid,
   pedido_entrega_key uuid,
   cupon_codigo_id uuid,
-  cupon_monto numeric(12,2)
+  cupon_monto numeric(12,2),
+  impuestos_marketplace numeric(12,2)
 );
 
 CREATE TABLE public.ventas_externas_logs (

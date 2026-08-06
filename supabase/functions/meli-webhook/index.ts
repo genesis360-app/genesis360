@@ -190,6 +190,13 @@ serve(async (req) => {
 
     const total = Number(order.total_amount ?? 0)
 
+    // D1 — Rentabilidad neta real: shipping_cost y taxes_amount viven en payments[], no en la
+    // orden ni en order_items (confirmado contra un pedido real de MELI, orden 2000016142224986).
+    // Se suman solo los pagos aprobados para no arrastrar montos de pagos rechazados/reintentados.
+    const pagosAprobados = (order.payments ?? []).filter((p: any) => p.status === 'approved')
+    const shippingCostMeli = pagosAprobados.reduce((acc: number, p: any) => acc + Number(p.shipping_cost ?? 0), 0) || null
+    const impuestosMeli    = pagosAprobados.reduce((acc: number, p: any) => acc + Number(p.taxes_amount ?? 0), 0) || null
+
     const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
       tenant_id:      cred.tenant_id,
       cliente_id:     clienteId,
@@ -203,6 +210,8 @@ serve(async (req) => {
       medio_pago:     JSON.stringify([{ tipo: 'MercadoPago', monto: total }]),
       notas:          `Orden ML #${orderId} | ${(order.order_items ?? []).map((i: any) => `${i.item?.title ?? i.item?.id} x${i.quantity}`).join(', ')}`,
       usuario_id:     null,
+      costo_envio_logistica: shippingCostMeli,
+      impuestos_marketplace: impuestosMeli,
     }).select('id').single()
 
     if (ventaErr) throw ventaErr
@@ -211,12 +220,17 @@ serve(async (req) => {
       const mlItemId = item.item?.id
       const cantidad = item.quantity ?? 1
       const precio   = item.unit_price ?? 0
-      console.log(`Item ML: id=${mlItemId} qty=${cantidad} precio=${precio} tenant=${cred.tenant_id}`)
+      const saleFee  = item.sale_fee ?? null
+      console.log(`Item ML: id=${mlItemId} qty=${cantidad} precio=${precio} sale_fee=${saleFee} tenant=${cred.tenant_id}`)
       const { data: mapped } = await supabase
         .from('inventario_meli_map').select('producto_id')
         .eq('tenant_id', cred.tenant_id).eq('meli_item_id', mlItemId).maybeSingle()
       console.log(`Mapeo: ${mapped ? 'ENCONTRADO producto_id=' + mapped.producto_id : 'NO ENCONTRADO'}`)
       if (mapped) {
+        // D1 — sin esto, precio_costo_historico quedaba siempre NULL en ventas MELI (bug
+        // preexistente) y la ganancia neta no se podía calcular.
+        const { data: producto } = await supabase
+          .from('productos').select('precio_costo').eq('id', mapped.producto_id).maybeSingle()
         const { error: viErr } = await supabase.from('venta_items').insert({
           tenant_id:       cred.tenant_id,
           venta_id:        venta.id,
@@ -226,6 +240,8 @@ serve(async (req) => {
           subtotal:        cantidad * precio,
           alicuota_iva:    21,
           iva_monto:       0,
+          comision_marketplace:  saleFee,
+          precio_costo_historico: producto?.precio_costo ?? 0,
         })
         if (viErr) console.error('Error insertando venta_item:', viErr.message)
         else console.log(`venta_item creado: producto ${mapped.producto_id} x${cantidad}`)

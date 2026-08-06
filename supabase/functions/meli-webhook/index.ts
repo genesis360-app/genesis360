@@ -6,6 +6,75 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const MELI_API = 'https://api.mercadolibre.com'
 
+// Crea el envío + domicilio automáticamente a partir de una orden pagada — best-effort,
+// nunca lanza (el llamador decide si loguear). MELI no trae la dirección en la orden: hay
+// que pedir el shipment aparte. Campos de receiver_address (street_name, street_number,
+// zip_code, city.name, state.name, address_line, receiver_name, comment) confirmados
+// contra un pedido de test real de la cuenta MELI conectada en DEV (orden 2000016142224986,
+// shipment 46929555313, modo "me2" — Mercado Envíos).
+async function crearEnvioAutomaticoMELI(
+  supabase: ReturnType<typeof createClient>,
+  token: string,
+  order: any,
+  ctx: { tenant_id: string; venta_id: string; cliente_id: string },
+): Promise<void> {
+  const shipmentId = order.shipping?.id
+  if (!shipmentId) {
+    console.warn(`Orden ML ${order.id} sin shipping.id — no se creó envío automático`)
+    return
+  }
+
+  const shipRes = await fetch(`${MELI_API}/shipments/${shipmentId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!shipRes.ok) {
+    console.warn(`No se pudo obtener shipment ${shipmentId} de ML (status ${shipRes.status}) — no se creó envío automático`)
+    return
+  }
+  const shipment = await shipRes.json()
+  const ra = shipment.receiver_address
+  const calle = ra?.street_name ?? ra?.address_line ?? null
+  if (!calle) {
+    console.warn(`Shipment ${shipmentId} de ML sin dirección utilizable — no se creó envío automático`)
+    return
+  }
+
+  const { data: domicilio, error: domErr } = await supabase
+    .from('cliente_domicilios')
+    .insert({
+      tenant_id:     ctx.tenant_id,
+      cliente_id:    ctx.cliente_id,
+      nombre:        ra?.receiver_name ?? null,
+      calle,
+      numero:        ra.street_number ?? null,
+      ciudad:        ra.city?.name ?? null,
+      provincia:     ra.state?.name ?? null,
+      codigo_postal: ra.zip_code ?? null,
+      referencias:   ra.comment ?? null,
+      es_principal:  false,
+    })
+    .select('id')
+    .single()
+
+  if (domErr) throw domErr
+
+  const destinoDescripcion = [calle, ra.street_number].filter(Boolean).join(' ')
+    + ([ra.city?.name, ra.state?.name, ra.zip_code].some(Boolean) ? `, ${[ra.city?.name, ra.state?.name, ra.zip_code].filter(Boolean).join(' ')}` : '')
+
+  const { error: envioErr } = await supabase.from('envios').insert({
+    tenant_id:            ctx.tenant_id,
+    sucursal_id:          null,
+    venta_id:             ctx.venta_id,
+    canal:                'MELI',
+    destino_id:           (domicilio as any).id,
+    destino_descripcion:  destinoDescripcion.trim(),
+    estado:               'pendiente',
+  })
+  if (envioErr) throw envioErr
+
+  console.log(`Envío creado automáticamente para venta ${ctx.venta_id} (orden ML #${order.id})`)
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200 })
 
@@ -64,19 +133,32 @@ serve(async (req) => {
 
     if (logInsertErr) {
       // Otra notificación concurrente ya lo procesó — solo actualizar estado si ahora está pagado
+      // Bug histórico: acá se seleccionaba la columna 'payload', que no existe (la real es
+      // 'payload_raw') — esta rama nunca encontraba ventaId y la transición pendiente→reservada
+      // por pago tardío jamás corría. Corregido junto con el envío automático (Fase B ML/TN).
       const { data: existing } = await supabase
-        .from('ventas_externas_logs').select('payload')
+        .from('ventas_externas_logs').select('payload_raw')
         .eq('tenant_id', cred.tenant_id).eq('integracion', 'MercadoLibre')
         .eq('webhook_external_id', logKey).maybeSingle()
-      const ventaId = (existing?.payload as any)?.venta_id
+      const ventaId = (existing?.payload_raw as any)?.venta_id
       if (ventaId && estadoML === 'paid') {
-        const { data: v } = await supabase.from('ventas').select('estado').eq('id', ventaId).maybeSingle()
+        const { data: v } = await supabase.from('ventas').select('estado, cliente_id').eq('id', ventaId).maybeSingle()
         if (v?.estado === 'pendiente') {
           await supabase.from('ventas').update({
             estado: 'reservada',
             monto_pagado: Number(order.total_amount ?? 0),
           }).eq('id', ventaId)
           console.log(`Venta ${ventaId} → reservada (pago tardío)`)
+
+          // Envío automático — best-effort, nunca bloquea la actualización de la venta.
+          // `token` ya está resuelto arriba en este loop (getValidToken).
+          if (v.cliente_id) {
+            try {
+              await crearEnvioAutomaticoMELI(supabase, token, order, { tenant_id: cred.tenant_id, venta_id: ventaId, cliente_id: v.cliente_id })
+            } catch (envioCatchErr: any) {
+              console.error('Error creando envío automático (no bloqueante):', envioCatchErr?.message ?? envioCatchErr)
+            }
+          }
         }
       }
       return new Response(JSON.stringify({ ok: true, idempotent: true }), { status: 200 })
@@ -108,6 +190,13 @@ serve(async (req) => {
 
     const total = Number(order.total_amount ?? 0)
 
+    // D1 — Rentabilidad neta real: shipping_cost y taxes_amount viven en payments[], no en la
+    // orden ni en order_items (confirmado contra un pedido real de MELI, orden 2000016142224986).
+    // Se suman solo los pagos aprobados para no arrastrar montos de pagos rechazados/reintentados.
+    const pagosAprobados = (order.payments ?? []).filter((p: any) => p.status === 'approved')
+    const shippingCostMeli = pagosAprobados.reduce((acc: number, p: any) => acc + Number(p.shipping_cost ?? 0), 0) || null
+    const impuestosMeli    = pagosAprobados.reduce((acc: number, p: any) => acc + Number(p.taxes_amount ?? 0), 0) || null
+
     const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
       tenant_id:      cred.tenant_id,
       cliente_id:     clienteId,
@@ -121,6 +210,8 @@ serve(async (req) => {
       medio_pago:     JSON.stringify([{ tipo: 'MercadoPago', monto: total }]),
       notas:          `Orden ML #${orderId} | ${(order.order_items ?? []).map((i: any) => `${i.item?.title ?? i.item?.id} x${i.quantity}`).join(', ')}`,
       usuario_id:     null,
+      costo_envio_logistica: shippingCostMeli,
+      impuestos_marketplace: impuestosMeli,
     }).select('id').single()
 
     if (ventaErr) throw ventaErr
@@ -129,12 +220,17 @@ serve(async (req) => {
       const mlItemId = item.item?.id
       const cantidad = item.quantity ?? 1
       const precio   = item.unit_price ?? 0
-      console.log(`Item ML: id=${mlItemId} qty=${cantidad} precio=${precio} tenant=${cred.tenant_id}`)
+      const saleFee  = item.sale_fee ?? null
+      console.log(`Item ML: id=${mlItemId} qty=${cantidad} precio=${precio} sale_fee=${saleFee} tenant=${cred.tenant_id}`)
       const { data: mapped } = await supabase
         .from('inventario_meli_map').select('producto_id')
         .eq('tenant_id', cred.tenant_id).eq('meli_item_id', mlItemId).maybeSingle()
       console.log(`Mapeo: ${mapped ? 'ENCONTRADO producto_id=' + mapped.producto_id : 'NO ENCONTRADO'}`)
       if (mapped) {
+        // D1 — sin esto, precio_costo_historico quedaba siempre NULL en ventas MELI (bug
+        // preexistente) y la ganancia neta no se podía calcular.
+        const { data: producto } = await supabase
+          .from('productos').select('precio_costo').eq('id', mapped.producto_id).maybeSingle()
         const { error: viErr } = await supabase.from('venta_items').insert({
           tenant_id:       cred.tenant_id,
           venta_id:        venta.id,
@@ -144,6 +240,8 @@ serve(async (req) => {
           subtotal:        cantidad * precio,
           alicuota_iva:    21,
           iva_monto:       0,
+          comision_marketplace:  saleFee,
+          precio_costo_historico: producto?.precio_costo ?? 0,
         })
         if (viErr) console.error('Error insertando venta_item:', viErr.message)
         else console.log(`venta_item creado: producto ${mapped.producto_id} x${cantidad}`)
@@ -191,6 +289,15 @@ serve(async (req) => {
             .update({ linea_id: primaryLineaId })
             .eq('venta_id', venta.id).eq('producto_id', mapped.producto_id)
         }
+      }
+    }
+
+    // Envío automático — best-effort, nunca bloquea la venta si falla. Solo cuando está pagada.
+    if (nuevoEstado === 'reservada' && clienteId) {
+      try {
+        await crearEnvioAutomaticoMELI(supabase, token, order, { tenant_id: cred.tenant_id, venta_id: venta.id, cliente_id: clienteId })
+      } catch (envioCatchErr: any) {
+        console.error('Error creando envío automático (no bloqueante):', envioCatchErr?.message ?? envioCatchErr)
       }
     }
 

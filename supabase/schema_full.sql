@@ -2325,7 +2325,7 @@ CREATE TABLE public.ubicaciones (
   activo boolean DEFAULT true,
   created_at timestamp with time zone DEFAULT now(),
   prioridad integer NOT NULL DEFAULT 0,
-  disponible_surtido boolean NOT NULL DEFAULT true,
+  disponible_surtido boolean NOT NULL DEFAULT false,
   es_devolucion boolean NOT NULL DEFAULT false,
   tipo_ubicacion text,
   alto_cm numeric(8,2),
@@ -2334,8 +2334,8 @@ CREATE TABLE public.ubicaciones (
   peso_max_kg numeric(8,2),
   capacidad_pallets integer,
   mono_sku boolean DEFAULT false,
-  disponible_tn boolean NOT NULL DEFAULT true,
-  disponible_meli boolean NOT NULL DEFAULT true,
+  disponible_tn boolean NOT NULL DEFAULT false,
+  disponible_meli boolean NOT NULL DEFAULT false,
   sucursal_id uuid,
   secuencia integer,
   zona_id uuid,
@@ -2439,7 +2439,8 @@ CREATE TABLE public.venta_items (
   descuento_estado_monto numeric(12,2),
   unidad_medida_id uuid,
   cantidad_uom numeric(12,3),
-  pedido_item_id uuid
+  pedido_item_id uuid,
+  comision_marketplace numeric(12,2)
 );
 
 CREATE TABLE public.venta_series (
@@ -2500,7 +2501,9 @@ CREATE TABLE public.ventas (
   pedido_id uuid,
   pedido_entrega_key uuid,
   cupon_codigo_id uuid,
-  cupon_monto numeric(12,2)
+  cupon_monto numeric(12,2),
+  impuestos_marketplace numeric(12,2),
+  tn_order_id bigint
 );
 
 CREATE TABLE public.ventas_externas_logs (
@@ -4842,6 +4845,53 @@ BEGIN
   END LOOP;
 
   RETURN COALESCE(NEW, OLD);
+END;
+$function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_enqueue_tn_fulfillment_sync()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_tn_order_id bigint;
+BEGIN
+  IF NEW.canal <> 'TiendaNube' OR NEW.estado NOT IN ('despachado', 'entregado') OR NEW.venta_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  SELECT tn_order_id INTO v_tn_order_id FROM ventas WHERE id = NEW.venta_id;
+  IF v_tn_order_id IS NULL THEN
+    RETURN NEW;
+  END IF;
+
+  INSERT INTO integration_job_queue (tenant_id, sucursal_id, integracion, tipo, payload, next_attempt_at)
+  SELECT
+    NEW.tenant_id,
+    NEW.sucursal_id,
+    'TiendaNube',
+    'sync_fulfillment',
+    jsonb_build_object(
+      'venta_id',       NEW.venta_id::text,
+      'envio_id',       NEW.id::text,
+      'tn_order_id',    v_tn_order_id,
+      'estado_envio',   NEW.estado,
+      'tracking_number', NEW.tracking_number
+    ),
+    NOW()
+  WHERE NOT EXISTS (
+    SELECT 1 FROM integration_job_queue q
+    WHERE q.tenant_id = NEW.tenant_id
+      AND q.integracion = 'TiendaNube'
+      AND q.tipo = 'sync_fulfillment'
+      AND q.status = 'pending'
+      AND q.payload->>'envio_id' = NEW.id::text
+      AND q.payload->>'estado_envio' = NEW.estado
+  );
+
+  RETURN NEW;
 END;
 $function$
 
@@ -10012,6 +10062,7 @@ CREATE TRIGGER lineas_updated_at BEFORE UPDATE ON public.inventario_lineas FOR E
 CREATE TRIGGER trg_inventario_estado_aprobacion_guard BEFORE UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_inventario_estado_aprobacion_guard();
 CREATE TRIGGER trg_meli_stock_sync AFTER INSERT OR DELETE OR UPDATE ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_meli_stock_sync();
 CREATE TRIGGER trg_tn_stock_sync AFTER INSERT OR DELETE OR UPDATE OF cantidad, cantidad_reservada, activo, producto_id ON public.inventario_lineas FOR EACH ROW EXECUTE FUNCTION fn_enqueue_tn_stock_sync();
+CREATE TRIGGER trg_tn_fulfillment_sync AFTER UPDATE OF estado ON public.envios FOR EACH ROW WHEN (NEW.estado IS DISTINCT FROM OLD.estado) EXECUTE FUNCTION fn_enqueue_tn_fulfillment_sync();
 CREATE TRIGGER series_recalcular_stock AFTER INSERT OR DELETE OR UPDATE ON public.inventario_series FOR EACH ROW EXECUTE FUNCTION trigger_recalcular_stock();
 CREATE TRIGGER trg_updated_at_meli_cred BEFORE UPDATE ON public.meli_credentials FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 CREATE TRIGGER trg_updated_at_mp_creds BEFORE UPDATE ON public.mercadopago_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_mp_creds();

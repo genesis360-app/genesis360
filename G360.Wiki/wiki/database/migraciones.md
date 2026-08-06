@@ -6,18 +6,63 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-06
 ---
 
-# Historial de Migraciones (001-335)
+# Historial de Migraciones (001-338)
 
-**Total al 2026-08-06:** 335 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-06:** 338 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-335 en DEV y PROD** (v1.158.0, deploy 2026-08-06 — agrupa el rediseño de `ubicaciones` en árbol
-+ tipo lógico (334-335, 1º de 4 relevamientos hacia la Fase E/Repositores, ver
-[[wiki/features/ubicaciones]]) junto con el resto de lo acumulado en DEV desde v1.157.0: fix Regla
-#0 en `MasivoModal.tsx`, filtro de píldoras en Productos/Inventario, gaps de breadcrumb, cierre de
-la deuda de `waitForTimeout` — sin migraciones nuevas en esta última ronda). Antes: 001-333 en DEV y
-PROD desde v1.155.0 (deploy 2026-08-04 — backlog Fede 25/7, Fases F+A+B+C+D de
-[[wiki/features/precios-tiers-empaque]]). ⚠ `schema_full.sql` regenerado hasta la mig 335 el
-2026-08-05 (token de acceso temporal, ya descartado) — antes había quedado hasta la 327.
+**001-338 EN DEV, 001-335 en PROD** (🟡 336/337/338 solo aplicadas en DEV vía `apply_migration`; el
+código correspondiente SÍ está commiteado localmente a `dev` (6 commits, sesión 2026-08-06 sobre
+MELI/TiendaNube) pero `dev` no fue pusheado a `origin/dev` ni deployado — ver
+`sources/raw/project_pendientes.md` "ARRANCÁ ACÁ"). PROD sigue en v1.158.0 (deploy 2026-08-06 —
+agrupa el rediseño de `ubicaciones` en árbol + tipo lógico (334-335, 1º de 4 relevamientos hacia la
+Fase E/Repositores, ver [[wiki/features/ubicaciones]]) junto con el resto de lo acumulado en DEV
+desde v1.157.0: fix Regla #0 en `MasivoModal.tsx`, filtro de píldoras en Productos/Inventario, gaps
+de breadcrumb, cierre de la deuda de `waitForTimeout`). Antes: 001-333 en DEV y PROD desde v1.155.0
+(deploy 2026-08-04 — backlog Fede 25/7, Fases F+A+B+C+D de [[wiki/features/precios-tiers-empaque]]).
+⚠ `schema_full.sql` actualizado hasta la mig 338 (a mano en las migs 336-338, sin regenerar por
+token) — antes había quedado hasta la 335.
+
+**338 (🚚 `ventas.tn_order_id` + trigger `trg_tn_fulfillment_sync` — avisa a TiendaNube al despachar/entregar, ✅ commiteado a `dev` local, 🟡 SOLO EN DEV)** —
+Sesión 2026-08-06, Fase C del roadmap de integraciones. Agrega `ventas.tn_order_id BIGINT` (ID
+interno de la orden en TN, distinto de `tracking_id`/número visible al comerciante — lo necesita la
+API de fulfillment-orders y `tn-webhook` ahora lo guarda en cada venta nueva). Trigger
+`trg_tn_fulfillment_sync` sobre `envios` (`AFTER UPDATE OF estado`, cuando pasa a
+`despachado`/`entregado` en canal `TiendaNube`) → encola job `sync_fulfillment` en
+`integration_job_queue` → Edge Function nueva `tn-fulfillment-worker` → `PATCH
+/orders/{id}/fulfillment-orders/{fulfillment_id}` con status `DISPATCHED`/`DELIVERED` — mismo patrón
+que `trg_tn_stock_sync` (mig 062). Cron cada 5 min vía `cron.schedule` (job `tn-fulfillment-sync`) +
+backup `.github/workflows/tn-fulfillment-sync.yml`. Bloqueaba esto la falta de los scopes
+`read_fulfillment_orders`/`write_fulfillment_orders` en la app TiendaNube Partners (App ID 30376) —
+GO los agregó y reconectó Almacén Jorgito; verificado con una llamada real (PATCH exitoso, GET
+posterior confirma orden TN 1955532685 en `DISPATCHED`). MercadoLibre queda deliberadamente fuera de
+esta fase. Ver [[wiki/integrations/tienda-nube]], `log.md` (2026-08-06, entrada `update`).
+
+**337 (💰 `venta_items.comision_marketplace` + `ventas.impuestos_marketplace` — rentabilidad neta real MELI, ✅ commiteado a `dev` local, 🟡 SOLO EN DEV)** —
+Sesión 2026-08-06, Fase D1 del roadmap de integraciones (Fase 1.1, ⭐ killer feature). `meli-webhook`
+lee `sale_fee` (comisión ML, en `order_items[]`) y `shipping_cost`/`taxes_amount` (viven en
+`order.payments[]`, NO en la orden ni en `order_items` como decía el roadmap original) y los guarda en
+las 2 columnas nuevas — nombres genéricos (no `meli_...`) porque `costo_envio_logistica` ya se reusa
+entre TN/MELI/POS y podrían aplicar a otras integraciones futuras. `impuestos_marketplace` es la
+retención del marketplace sobre el pago, **NO** el IVA fiscal de la factura (`iva_monto`, AFIP/CAE) —
+conceptos separados a propósito. Badge "Neto $X" en el tab Canales de `VentasPage.tsx`
+(`ganancia_neta = total − costo − comisión − envío − impuestos`). De paso, fix de un bug real
+preexistente: `precio_costo_historico` quedaba siempre NULL en `venta_items` de ventas MELI. Verificado
+end-to-end en DEV con un pedido real (comisión $1793, envío $8720, costo $600 → neto -$7751). Ver
+[[wiki/integrations/mercado-libre]], [[wiki/integrations/roadmap-apis]] (1.1 ✅), `log.md` (2026-08-06,
+entrada `update`).
+
+**336 (🔒 `ubicaciones` — `disponible_surtido`/`disponible_tn`/`disponible_meli` pasan a `DEFAULT false`, ✅ commiteado a `dev` local (sesión 2026-08-06 posterior), 🟡 SOLO EN DEV, Regla de Oro #0)** —
+Sesión 2026-08-06, pedido explícito de GO: las ubicaciones nuevas nacían con TN/MercadoLibre/
+picking-venta **ENCENDIDOS** por default (`es_devolucion` ya nacía `false`, no hacía falta tocarla) —
+una ubicación recién creada quedaba expuesta a sync de canales online y a picking/venta sin que el
+usuario lo pidiera. `ALTER TABLE ubicaciones ALTER COLUMN ... SET DEFAULT false` en las 3 columnas,
+aplicada en DEV vía `apply_migration` y verificada con `information_schema.columns` (las 4 columnas
+dan `column_default = 'false'`). Único INSERT de la app a la tabla: `addUbicacion()` en
+`src/pages/ConfigPage.tsx` — no hay seed de onboarding de tenant que dependa de estos defaults, así
+que **no afecta tenants ni ubicaciones existentes**, solo las creadas de acá en adelante. El código
+de la app y esta migración quedaron sin commitear en el working tree local de `dev` — **pendiente
+aplicar en PROD** cuando se decida deployar. Ver [[wiki/features/ubicaciones]], `log.md` (2026-08-06,
+entrada `update`).
 
 **335 (🎯 `producto_ubicacion_sucursal.ubicacion_exhibicion_id` — prepara Repositores, ✅ DEV y PROD desde v1.158.0)** —
 Fede/GO, 1º de 4 relevamientos hacia Fase E (ver [[wiki/features/precios-tiers-empaque]] → "Fase

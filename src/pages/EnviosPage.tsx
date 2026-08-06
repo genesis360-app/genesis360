@@ -31,6 +31,7 @@ import { TIPOS_ENVIO, sugerirCourierPorCp, plazoDespachoVencido } from '@/lib/en
 import { costoCombustible, kmAcumuladoNuevo, desgloseIvaCombustible } from '@/lib/enviosRecurso'
 import { generarEtiquetasA4PDF, type EtiquetaEnvio, type EtiquetasPorHoja } from '@/lib/etiquetasEnvioPDF'
 import EnviosReportesPanel from '@/components/EnviosReportesPanel'
+import { ListaConteoFooter } from '@/components/ListaConteoFooter'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
@@ -1694,6 +1695,12 @@ export default function EnviosPage() {
                   </tbody>
                 </table>
               </div>
+              <ListaConteoFooter
+                mostrados={enviosFiltrados.length}
+                total={(envios as any[]).length}
+                entidad="envío"
+                totalTruncado={(envios as any[]).length === 100}
+              />
             </div>
           )}
         </div>

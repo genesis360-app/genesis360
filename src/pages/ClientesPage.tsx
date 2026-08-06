@@ -22,6 +22,7 @@ import { useAuthStore } from '@/store/authStore'
 import { moduloSoloLectura } from '@/lib/permisosModulo'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { Toggle } from '@/components/Toggle'
+import { ListaConteoFooter } from '@/components/ListaConteoFooter'
 import toast from 'react-hot-toast'
 
 interface FilaCliente {
@@ -1378,11 +1379,13 @@ export default function ClientesPage() {
           <p className="font-medium text-sm">No hay clientes aún</p>
           <button onClick={() => abrirModal()} className="mt-3 text-accent-text text-sm font-medium hover:underline">Crear el primero</button>
         </div>
-      ) : (
+      ) : (() => {
+        const clientesFiltrados = (clientes as any[]).filter(c =>
+          !filtroEtiqueta || (Array.isArray(c.etiquetas) && c.etiquetas.includes(filtroEtiqueta))
+        )
+        return (
         <div className="space-y-2">
-          {(clientes as any[]).filter(c =>
-            !filtroEtiqueta || (Array.isArray(c.etiquetas) && c.etiquetas.includes(filtroEtiqueta))
-          ).map((c: any) => {
+          {clientesFiltrados.map((c: any) => {
             const stats = statsMap[c.id]
             const isExpanded = expandedId === c.id
             return (
@@ -1744,8 +1747,10 @@ export default function ClientesPage() {
               </div>
             )
           })}
+          <ListaConteoFooter mostrados={clientesFiltrados.length} total={clientes.length} entidad="cliente" />
         </div>
-      )}
+        )
+      })()}
 
       {/* ── Fin tab Lista ── */}
       </>}

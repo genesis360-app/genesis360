@@ -6,7 +6,181 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-06, v1.158.0) — DEPLOY COMPLETO A PROD: waitForTimeout CERRADO (315/80→8/6) + fix Regla #0 MasivoModal + píldoras de filtro + Ubicaciones en árbol (U1-U4) — PROD = DEV = v1.158.0
+> ### ✅ ARRANCÁ ACÁ (2026-08-06) — 🛒📦 Retomando pendientes de MELI/TiendaNube: envío automático (Fase B) + fulfillment sync TN (Fase C, mig 338) + rentabilidad neta MELI (Fase D1, mig 337) + 🐛 ISS-073 corregida (dato stale) — TODO EN DEV, COMMITEADO a `dev` local (6 commits), SIN push a `origin/dev` ni deploy a PROD (sigue en v1.158.0)
+>
+> Sesión nueva sobre el mismo día de la anterior (bloque histórico debajo — sidebar/ubicaciones/
+> config). **Se commiteó localmente TODO lo acumulado en el working tree de `dev`** (6 commits,
+> incluida la sesión anterior que había quedado sin commit) — `dev` queda 6 commits adelante de
+> `origin/dev`, **sin push, sin PR, sin deploy**. `APP_VERSION` sigue en `v1.158.0`. 2 migraciones
+> nuevas (**337**, **338**), aplicadas solo en DEV vía `apply_migration`.
+>
+> **1. 🐛 Corrección de un dato stale del wiki: ISS-073 ya NO aplica.** La fila de "Features grandes"
+> (más abajo en este archivo) decía que TiendaNube "hoy: solo rebaja stock" — **falso desde hace
+> tiempo**, verificado contra `supabase/functions/tn-webhook/index.ts`: TN ya crea venta + cliente +
+> reserva de stock automáticamente. Marcada ✅ cerrada con fecha de hoy en la tabla de abajo.
+>
+> **2. Fase B — envío automático al recibir pedido pagado (TN + MELI).** `tn-webhook`/`meli-webhook`
+> ahora crean `cliente_domicilios` + `envios` automáticamente con los datos reales del comprador al
+> confirmar el pago (antes había que armarlo a mano en Envíos). TN usa los campos de
+> `order.shipping_address` (confirmados contra la doc oficial + un payload real ya capturado en DEV);
+> MELI no trae dirección en la orden — fetch adicional a `GET /shipments/{id}` (confirmado contra un
+> pedido de test real). Best-effort: si falla el envío, la venta se crea igual, nunca bloquea. **Bug
+> real corregido de paso**: en `meli-webhook`, la rama de "pago tardío" (`order/paid` llega después de
+> una notificación ya procesada) seleccionaba la columna `payload` de `ventas_externas_logs` — no
+> existe, la real es `payload_raw` — la transición pendiente→reservada por ese camino nunca corría.
+> Verificado end-to-end contra DEV con pedidos reales.
+>
+> **3. Fase C — avisar a TiendaNube al despachar/entregar (mig 338).** Cuando un envío de canal
+> TiendaNube pasa a `despachado`/`entregado` en G360, se le avisa a TN vía su API real de Fulfillment
+> Orders (`PATCH /orders/{id}/fulfillment-orders/{fulfillment_id}`, status `DISPATCHED`/`DELIVERED`).
+> Server-side vía trigger `trg_tn_fulfillment_sync` (mig 338, sobre `envios`) → `integration_job_queue`
+> → Edge Function nueva `tn-fulfillment-worker` (mismo patrón que `trg_tn_stock_sync`/`tn-stock-worker`).
+> `ventas.tn_order_id` (bigint) nuevo — el endpoint necesita el ID interno de TN, distinto del
+> `tracking_id`/número visible al comerciante; `tn-webhook` lo guarda en cada venta nueva. Cron cada
+> 5 min (pg_cron, job `tn-fulfillment-sync`) + backup GitHub Actions
+> (`.github/workflows/tn-fulfillment-sync.yml`). **Esto estaba bloqueado y se desbloqueó en esta
+> sesión**: la app de TiendaNube Partners (App ID 30376) no tenía los scopes
+> `read_fulfillment_orders`/`write_fulfillment_orders` — GO los agregó (categoría "Shipping" del panel
+> de permisos) y reconectó Almacén Jorgito. Verificado con una llamada real: PATCH exitoso + GET
+> posterior confirmando que la orden TN 1955532685 quedó en `DISPATCHED`. **MercadoLibre queda
+> deliberadamente fuera de esta fase** — no se sabe si los tenants usan Mercado Envíos (el vendedor NO
+> controla el estado por API) o envío propio; quedó como pregunta en el relevamiento del punto 5.
+>
+> **4. Fase D1 — rentabilidad neta real MELI (mig 337) ✅ hecho.** `meli-webhook` lee `sale_fee`
+> (comisión ML, en `order_items[]`) y `shipping_cost`/`taxes_amount` (viven en `order.payments[]`, NO
+> en la orden ni en `order_items` — corrige lo que decía el roadmap original) y los guarda en
+> `venta_items.comision_marketplace` / `ventas.impuestos_marketplace` (nombres genéricos, no acoplados
+> a MELI). `impuestos_marketplace` es la retención del marketplace, NO el IVA fiscal de la factura
+> (`iva_monto`, AFIP/CAE) — conceptos separados a propósito. **Bug real corregido de paso**:
+> `precio_costo_historico` quedaba siempre NULL en `venta_items` de ventas MELI (nunca se leía
+> `productos.precio_costo`) — sin esto la ganancia no se podía calcular ni a mano. UI: tab Canales de
+> `VentasPage.tsx` muestra badge "Neto $X" (rojo si negativo),
+> `ganancia_neta = total − costo − comisión − envío − impuestos`, solo en ventas MELI con datos de
+> comisión cargados (pedidos procesados desde esta fase — los históricos no lo muestran). Verificado
+> end-to-end en DEV con un pedido real de Almacén Jorgito (comisión $1793, envío $8720, costo $600 →
+> neto -$7751), incluida la renderización real en el navegador. **Hallazgo colateral, NO tocado**: las
+> ventas MELI se crean con `sucursal_id = NULL` (a diferencia de TN, que sí lo asigna) — las hace
+> invisibles en vistas que filtran por sucursal específica (p.ej. tab Canales con una sucursal
+> seleccionada en vez de "Todas"). Deuda técnica anotada, no gap causado por esta sesión.
+>
+> **5. D2/D3 — bloqueadas, relevamiento armado (NO implementado).** D2 (combos/kits automáticos al
+> vender por TiendaNube): el único modelo de venta de kits en TODA la app es "armar primero
+> (`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — nunca existió desarme en el momento
+> de la venta, y esas funciones SQL dependen de `auth.uid()` (no invocables desde un webhook
+> server-side tal como están). D3 (repricing automático MELI por margen): `productos.margen_objetivo`
+> YA EXISTE (mig 015) pero nunca se conectó a ninguna acción — hoy es solo un insight pasivo en
+> Métricas. Ambas necesitan una decisión de negocio antes de escribir código. Documento de
+> relevamiento generado: **`relevamiento-integraciones-ml-tn-reglas-negocio.html`** (raíz del repo,
+> mismo patrón que otros relevamientos ya commiteados) — 13 preguntas + 1 checklist de priorización,
+> para que GO lo responda offline con Fede.
+>
+> ### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` | v1.158.0 (código sin deployar encima) | **v1.158.0** |
+> | Migraciones | 001-338 | 001-335 |
+> | Branch | `dev` (6 commits locales, NO pusheados a `origin/dev`) | `main` |
+> | Vercel | — | v1.158.0 |
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **Decidir con GO si se pushea/deploya** todo lo acumulado en `dev` (sidebar scroll + defaults de
+>    Ubicaciones + Config Clientes/Alertas/Notificaciones + footer de conteo de registros en
+>    listados + envío automático TN/MELI + fulfillment sync TN + rentabilidad neta MELI) — nada de
+>    esto llegó a `origin/dev` ni a PROD todavía.
+> 2. **Aplicar las migraciones 336, 337 y 338 en PROD** cuando se decida deployar (hoy solo en DEV).
+> 3. **D2/D3 (combos automáticos TN + repricing automático MELI)**: esperar que GO responda el
+>    relevamiento con Fede (`relevamiento-integraciones-ml-tn-reglas-negocio.html`) antes de
+>    diseñar/codear — bloqueadas a propósito hasta esa respuesta.
+> 4. **MELI fulfillment sync (aviso de despacho/entrega a MELI)**: pendiente de la respuesta de GO
+>    sobre si los tenants usan Mercado Envíos (vendedor no controla el estado por API) o envío propio
+>    — mismo documento de relevamiento del punto 3.
+> 5. **Deuda técnica anotada, no bloqueante**: ventas MELI con `sucursal_id = NULL` (¿debería
+>    asignarse alguna sucursal? a revisar más adelante); `cc_notif_escalado_dias` sin diseñar
+>    (heredado de la sesión anterior). Resto de pendientes ya conocidos sin cambios (relevamientos
+>    #2/#3/#4 hacia Repositores, Fase U5 de limpieza, flake conocido en
+>    `39_cc_condonacion_mutante.spec.ts`) — ver bloque histórico debajo.
+>
+> Ver [[wiki/integrations/mercado-libre]], [[wiki/integrations/tienda-nube]],
+> [[wiki/integrations/roadmap-apis]] (1.1 cerrada, 1.2/1.5 con relevamiento pendiente de respuesta),
+> `log.md` (2026-08-06, entrada `update` nueva), `wiki/database/migraciones.md` (migs 337/338, EN DEV).
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-06, sin bump) — 🖱️ Fix scroll del sidebar + 🔒 Ubicaciones nacen con TN/MELI/picking APAGADOS (mig 336, EN DEV) + 🧾 Config → Clientes/Alertas/Notificaciones con inputs reales (8 configs que ya vivían en el código) — TODO EN DEV, SIN COMMITEAR, PROD sigue en v1.158.0
+>
+> Sesión nueva sobre el mismo día del deploy de v1.158.0 (bloque histórico debajo). **Sin bump de
+> `APP_VERSION`, sin commit, sin PR** — todo en el working tree local de `dev` + 1 migración nueva
+> aplicada solo en DEV vía `apply_migration`. Pendiente decidir con GO si se commitea/deploya.
+>
+> **1. 🖱️ Fix: el sidebar perdía el scroll al navegar** (`src/components/layout/AppLayout.tsx`).
+> Causa raíz: `SidebarContent` estaba definido como función anidada DENTRO del render de `AppLayout`
+> → cada re-render (p.ej. al cambiar de ruta) creaba una identidad de función nueva → React
+> desmontaba y remontaba el `<nav>` entero en vez de reconciliar → `scrollTop` volvía a 0. Se movió
+> `SidebarContent` a un componente de módulo (fuera de `AppLayout`), recibiendo por props lo que
+> antes tomaba por closure (`sidebarCollapsed`, `toggleCollapse`, `setSidebarOpen`,
+> `navVisibilityCtx`, `limits`, `alertCount`, `cajaAbierta`). Verificado con un test Playwright ad-hoc
+> contra DEV: mismo nodo DOM del `<nav>` (dataset attribute) + `scrollTop` idéntico antes/después de
+> navegar a Configuración.
+>
+> **2. 🔒 Fix Regla de Oro #0 (inventario): ubicaciones nuevas nacían con TN/MercadoLibre/picking-venta
+> ENCENDIDOS por default.** En `ubicaciones`, `disponible_surtido` (picking/venta), `disponible_tn`,
+> `disponible_meli` tenían `DEFAULT true` (`es_devolucion` ya era `false`) — una ubicación recién
+> creada quedaba expuesta a sync de canales online y a picking/venta sin que el usuario lo pidiera.
+> **Migración nueva `336_ubicaciones_defaults_apagados.sql`** (`ALTER COLUMN ... SET DEFAULT false`
+> en las 3 columnas), **aplicada en DEV vía `apply_migration`, NO en PROD todavía**; `schema_full.sql`
+> actualizado a mano. Confirmado por SQL contra DEV (`information_schema.columns`) que las 4 columnas
+> (incluida `es_devolucion`) ahora dan `column_default = 'false'`. Único INSERT de la app a la tabla:
+> `addUbicacion()` en `ConfigPage.tsx` (no hay seed de onboarding que dependa de estos defaults) — el
+> cambio no afecta tenants ni ubicaciones existentes, solo las creadas de acá en adelante. Ver
+> [[wiki/features/ubicaciones]].
+>
+> **3. 🧾 Auditoría de Configuración: 3 tabs placeholder → 8 configuraciones YA VIVAS en el código
+> (nunca tuvieron input en pantalla).** GO pidió revisar qué faltaba en Configuración. `Clientes`,
+> `Alertas` y `Notificaciones` eran placeholders puros ("próximamente"), pero el hallazgo real es
+> otro: **8 columnas de `tenants` ya se leen en `VentasPage.tsx`/`ClientesPage.tsx`/
+> `src/lib/notificacionesCC.ts` y ya se guardan desde el mega-form de `ConfigPage.tsx`
+> (`handleSaveBiz`), pero el usuario nunca pudo tocarlas salvo por SQL directo**:
+> `alerta_margen_negativo` · `alerta_devoluciones_n`/`alerta_devoluciones_dias` (tab Alertas) ·
+> `cc_enforcement_politica`/`cc_morosidad_politica`/`limite_cc_default`/`cc_dias_vencimiento`/
+> `cc_interes_mensual_pct` (tab Clientes, políticas de CC que YA gatean si una venta a CC se bloquea,
+> `src/lib/ccLogic.ts`) · `cc_notif_canales`/`cc_notif_registro_deuda`/`cc_notif_pago`/
+> `cc_notif_pre_venc_dias`/`cumple_notif_cliente`/`cumple_notif_duenio` (tab Notificaciones, ya activas
+> — envían email real si están prendidas). Se construyó el UI real en `ConfigPage.tsx` para los 3
+> tabs (sin inventar comportamiento nuevo, cada input documenta lo que el código ya hacía) y se sacó
+> el badge "pronto". **Se dejó explícitamente AFUERA `cc_notif_escalado_dias`** (C3 "escalado por
+> mora") — columna en `tenants` desde la mig 175 pero sin NINGUNA lógica de consumo en el código;
+> única pieza de este relevamiento que sí requiere diseño de negocio antes de construirse (queda
+> pendiente). También se corrigió un texto stale en el tab Caja ("doble validación cierre" decía que
+> faltaba, ya estaba implementada con checkbox real). Verde: typecheck, `npm run build`, 1525 tests
+> unitarios + 2 Playwright ad-hoc contra DEV confirmando contenido real en las 3 tabs. Ver
+> [[wiki/features/configuracion]].
+>
+> ### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` | v1.158.0 (código sin commitear encima) | **v1.158.0** |
+> | Migraciones | 001-336 | 001-335 |
+> | Branch | `dev` (working tree local, sin commit) | `main` |
+> | Vercel | — | v1.158.0 |
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **Decidir con GO si se commitea y deploya** lo de esta sesión (sidebar scroll + defaults de
+>    Ubicaciones + Config Clientes/Alertas/Notificaciones) — nada de esto se commiteó ni se deployó.
+> 2. **Aplicar la migración 336 en PROD** cuando se decida deployar (hoy solo en DEV).
+> 3. **`cc_notif_escalado_dias`** (C3 "escalado por mora") sin diseñar — columna existe desde la mig
+>    175, sin ningún consumidor en el código. Pendiente para un futuro relevamiento de Clientes/CC.
+> 4. Sin cambios respecto al resto de pendientes ya conocidos (relevamientos #2/#3/#4 hacia
+>    Repositores, Fase U5 de limpieza, flake conocido en `39_cc_condonacion_mutante.spec.ts`) — ver
+>    bloque histórico debajo.
+>
+> Ver [[wiki/features/ubicaciones]], [[wiki/features/configuracion]], `log.md` (2026-08-06, entrada
+> `update` nueva).
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-06, v1.158.0) — DEPLOY COMPLETO A PROD: waitForTimeout CERRADO (315/80→8/6) + fix Regla #0 MasivoModal + píldoras de filtro + Ubicaciones en árbol (U1-U4) — PROD = DEV = v1.158.0
 >
 > GO pidió explícitamente: "sigamos con más de wait for timeout hasta finalizarlo y luego pasas todo
 > a DEV y PROD". Se cerró de punta a punta la deuda de `waitForTimeout` que había quedado parcial en
@@ -4087,7 +4261,7 @@ Auditoría de flujos cruzados entre módulos (verificada contra código). **Quic
 6. ✅ **EFs huérfanas — RESUELTO en v1.54.0 (hallazgo corregido):** `process-aging` **eliminada** (código muerto: ConfigPage llama la RPC `process_aging_profiles` directo). `birthday-notifications` **NO estaba huérfana** — corre por cron diario de GitHub Actions (`.github/workflows/birthday-notifications.yml`, runs OK; la auditoría no había mirado workflows). 
 7. ✅ **Sweeps lazy sin cron — CERRADO en v1.73.0.** EF `cron-sweeps` (service_role) + workflow `sweeps.yml` (diario) corren `liberar_reservas_vencidas_all()` + `recalcular_intereses_cc_all()` (mig 215) para todos los tenants. **Servicios recurrentes quedan asistidos** a propósito (generan gastos; no se cronean sin revisión, igual que ventas_recurrentes).
 8. 🟠 **RLS por sucursal + portal empleado**: aislamiento solo client-side (deuda conocida, re-confirmada en auditoría).
-9. Conocidos ya en backlog: ISS-073 (TN→ventas completas), NC electrónica AFIP (L1), EN6 couriers (bloqueado B2B), venta física USD.
+9. Conocidos ya en backlog: NC electrónica AFIP (L1), EN6 couriers (bloqueado B2B), venta física USD. (ISS-073 ✅ corregida/cerrada 2026-08-06 — era un dato stale, ver tabla "Features grandes" arriba.)
 10. ✅ **Sucursales en modo BÁSICO — CERRADO en v1.73.0 (Opción B).** Síntoma original: tras devolución/anulación el stock reingresado solo se veía en "Todas" (`sucursal_id` NULL) + una línea por unidad. Resuelto: (1) v1.72.0 — reingreso hereda `sucursal_id` de la venta (4 spots) + backfill. (2) **v1.73.0 Opción B** — en básico con 1 sucursal se fija como contexto activo (nunca "Todas") y se oculta el selector (`AppLayout.sucursalUnicaBasico` + effect de pin). (3) **#10b** — reingreso consolida en la línea existente del producto (no crea una por unidad; bump manual de stock porque el trigger solo recalcula en INSERT). (4) **Origen visible** en el Inventario básico (muestra `inventario_lineas.notas`). **Pendiente menor (futuro, no bloqueante):** el caso *básico con >1 sucursal* mantiene el selector (edge raro); y la consolidación aplica a reingresos, no a los ingresos manuales (cada "Agregar stock" sigue creando su línea). Ver [[reference_basico_stock_null_ubicacion_estado]].
 
 ### ▶ Testing e2e — ✅ HECHO (v1.51.1, 2026-06-11)
@@ -4207,7 +4381,7 @@ Respuestas completas y cruce con Ventas en `relevamiento_clientes_respuestas.md`
 
 | ID | Módulo | Descripción | Complejidad |
 |---|---|---|---|
-| ISS-073 | TiendaNube + Ventas + Envíos + Clientes | Sincronización completa de flujo TN: la orden TN crea automáticamente venta Genesis (con `numero` = número TN para trazabilidad) + cliente nuevo con datos y domicilio si no existe + envío en estado `pendiente` con datos del comprador. Estados sincronizados bidireccional: pendiente_pago → pagada → empaquetada → despachada → entregada / devuelta. Hoy: solo rebaja stock. | Alta — webhook + estado-machine + creación multi-entidad transaccional |
+| ~~ISS-073~~ | TiendaNube + Ventas + Envíos + Clientes | ✅ **Corregida/cerrada 2026-08-06** — esta fila estaba **stale**: describía a TN como si "hoy: solo rebaja stock", pero desde hace tiempo `tn-webhook` ya crea venta + cliente + reserva de stock automáticamente (verificado contra `supabase/functions/tn-webhook/index.ts`). En esta sesión además se cerró el envío automático (`cliente_domicilios`+`envios` con datos reales del comprador, TN y MELI) y el aviso de despacho/entrega a TN (mig 338, `PATCH /orders/{id}/fulfillment-orders/{fulfillment_id}`). Ver `log.md` 2026-08-06 y [[wiki/integrations/tienda-nube]]. | ✅ Hecho |
 | ~~ISS-127~~ | Config + Inventario + Ventas + Recepciones | ✅ **Cerrado v1.11.6** — Códigos compuestos GS1 (GS1-128 + DataMatrix + QR) leer/escribir con múltiples AIs. Ver `escaneo-barcode.md` y diseño/fases abajo. | ✅ Hecho |
 | ISS-130 | Inventario + Ventas | Comandos por voz: hablarle a la app para rebajar/ingresar (SKU, cantidad, estado, ubicación, lote, fecha) y consultar ("¿qué hay en ubicación X?"). Web Speech API + parseo intenciones | Alta — UX nueva, requiere prototipo |
 | ISS-137 | Config | Evaluación: integración con Google Drive como almacenamiento propio del cliente para documentos/imágenes | Requiere evaluación primero |

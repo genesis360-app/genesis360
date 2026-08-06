@@ -2,7 +2,7 @@
 title: Ubicaciones — Rediseño en árbol (tipo lógico + jerarquía)
 category: features
 tags: [ubicaciones, wms, arbol, jerarquia, tipo-logico, picking, repositores, comercial]
-sources: [supabase/migrations/334_ubicaciones_arbol_tipo_logico.sql, supabase/migrations/335_producto_ubicacion_exhibicion.sql, src/lib/ubicacionesArbol.ts, src/lib/supabase.ts, src/pages/ConfigPage.tsx, tests/e2e/130_ubicaciones_arbol_mutante.spec.ts, relevamiento-ubicaciones-reglas-negocio.html]
+sources: [supabase/migrations/334_ubicaciones_arbol_tipo_logico.sql, supabase/migrations/335_producto_ubicacion_exhibicion.sql, supabase/migrations/336_ubicaciones_defaults_apagados.sql, src/lib/ubicacionesArbol.ts, src/lib/supabase.ts, src/pages/ConfigPage.tsx, tests/e2e/130_ubicaciones_arbol_mutante.spec.ts, relevamiento-ubicaciones-reglas-negocio.html]
 updated: 2026-08-06
 ---
 
@@ -228,21 +228,48 @@ de integridad de datos** (no movía stock mal, Regla de Oro #0 intacta) — es u
 contradecía lo que el wiki daba por cerrado. Lección: al cerrar una migración de "N selects", contar
 los selects reales del archivo (grep), no dar por sentado el número que dijo el plan original.
 
+## 🔒 Mig 336 (2026-08-06, 🟡 SOLO EN DEV) — ubicaciones nuevas nacen con TN/MELI/picking-venta APAGADOS
+
+Pedido explícito de GO, distinto del rediseño en árbol de arriba (mismas 3 columnas existían desde
+antes de la 334, sin tocar por U1-U4): en `ubicaciones`, **`disponible_surtido`** (habilita la
+ubicación para picking/venta), **`disponible_tn`** y **`disponible_meli`** tenían `DEFAULT true`
+(`es_devolucion` ya nacía `false`, no hacía falta tocarla) — una ubicación recién creada quedaba
+expuesta a sync de canales online (TiendaNube/MercadoLibre) y a picking/venta **sin que el usuario lo
+pidiera**. Eso es justo lo que la Regla de Oro #0 pide evitar en inventario: exposición no pedida por
+default.
+
+**`336_ubicaciones_defaults_apagados.sql`** — `ALTER TABLE ubicaciones ALTER COLUMN
+disponible_surtido/disponible_tn/disponible_meli SET DEFAULT false`. **Aplicada en DEV vía
+`apply_migration`, NO en PROD todavía** — el código correspondiente (sin cambios de lógica, solo el
+default de la columna) quedó sin commitear en el working tree local de `dev` junto con el resto de
+la sesión. `supabase/schema_full.sql` actualizado a mano para reflejarlo.
+
+**Verificación:** confirmado por SQL contra DEV (`information_schema.columns`) que las 4 columnas
+(incluida `es_devolucion`, que ya era `false`) dan `column_default = 'false'`. El único INSERT de la
+app a esta tabla es `addUbicacion()` en `src/pages/ConfigPage.tsx` — no hay seed de onboarding de
+tenant que dependa de estos defaults, así que el cambio **no afecta tenants ni ubicaciones
+existentes**, solo las creadas de acá en adelante.
+
 ## Pendiente
 
 1. **✅ Deployado a PROD el 2026-08-06 (v1.158.0)** — junto con el resto de lo acumulado en DEV
    desde v1.157.0 (fix Regla #0 en `MasivoModal.tsx`, píldoras de filtro, gaps de breadcrumb, cierre
    de la deuda de `waitForTimeout`). Ver `log.md` (2026-08-06, entrada `deploy`).
-2. **Fase U5 (limpieza):** dropear `ubicaciones.tipo_ubicacion` en una migración futura cuando se
+2. **🟡 Mig 336 (defaults apagados) SOLO EN DEV** — pendiente decidir con GO si se commitea/deploya
+   junto con el resto de la sesión del 2026-08-06 (fix de scroll del sidebar + Config
+   Clientes/Alertas/Notificaciones, ver [[wiki/features/configuracion]]). Aplicar en PROD cuando se
+   decida.
+3. **Fase U5 (limpieza):** dropear `ubicaciones.tipo_ubicacion` en una migración futura cuando se
    reconfirme 0 lectores (hoy el grep en `src/` ya da 0 salvo el tipo TS deprecated — falta la
    migración de `DROP` en sí).
-3. **Relevamientos #2/#3/#4** de la secuencia hacia Repositores sin arrancar: Pestaña de supervisor
+4. **Relevamientos #2/#3/#4** de la secuencia hacia Repositores sin arrancar: Pestaña de supervisor
    reusable → Motor de Rotación de productos con descuento → Repositores.
-4. **Prueba manual en el navegador** — cubierta por Playwright (spec 130) el 2026-08-06, pero GO
+5. **Prueba manual en el navegador** — cubierta por Playwright (spec 130) el 2026-08-06, pero GO
    todavía no recorrió la UI a mano el árbol completo con los 4 fixes de breadcrumb aplicados.
 
 ## Links relacionados
 
+- [[wiki/features/configuracion]] — sub-tab Ubicaciones dentro de Config → Inventario.
 - [[wiki/features/precios-tiers-empaque]] — "Fase E" (módulo Repositores), de donde nace esta
   secuencia de 4 relevamientos.
 - [[wiki/features/wms]] — Fase 2 ("Dimensiones en ubicaciones"), donde vivía el `tipo_ubicacion`

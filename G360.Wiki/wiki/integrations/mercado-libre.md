@@ -3,7 +3,7 @@ title: Integración MercadoLibre (MELI)
 category: integrations
 tags: [mercadolibre, meli, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-05-06
+updated: 2026-08-06
 ---
 
 # Integración MercadoLibre (MELI)
@@ -108,6 +108,89 @@ Al crear venta `Reservada` desde webhook MELI:
 1. Incrementa `cantidad_reservada` en `inventario_lineas` (FIFO)
 2. El sync worker usa `cantidad - cantidad_reservada` → sin oversell
 3. `order/cancelled` → libera `cantidad_reservada` y cancela venta en G360
+
+---
+
+## 🆕 Envío automático al confirmar el pago (2026-08-06, 🟡 EN DEV, commiteado a `dev` local sin push/deploy)
+
+> [!NOTE] Corrige un dato viejo del wiki: la fila ISS-073 de `project_pendientes.md` decía que
+> TiendaNube/MELI "solo rebajan stock" — eso ya era falso desde hace tiempo (ambos webhooks crean
+> venta + cliente + reserva de stock). Ver [[wiki/integrations/tienda-nube]].
+
+`meli-webhook` ahora crea automáticamente `cliente_domicilios` + `envios` con los datos reales del
+comprador al confirmar el pago del pedido — antes había que armarlo a mano en `EnviosPage`.
+
+- **MELI no incluye la dirección en la orden** (a diferencia de TN) — se agregó un fetch adicional a
+  `GET /shipments/{id}` para resolverla.
+- Campos leídos (confirmados contra un pedido de test real de la cuenta conectada en DEV):
+  `receiver_address.street_name`, `.street_number`, `.zip_code`, `.city.name`, `.state.name`,
+  `receiver_name`.
+- **Best-effort**: si falla la creación del envío, la venta se crea igual — nunca bloquea.
+- **🐛 Bug real corregido de paso**: la rama de "pago tardío" (`order/paid` llega después de una
+  notificación ya procesada) seleccionaba la columna `payload` de `ventas_externas_logs` — no existe,
+  la columna real es `payload_raw` — así que la transición pendiente→reservada por ese camino nunca
+  corría. Corregido.
+- Verificado end-to-end contra DEV con pedidos reales (venta pendiente→reservada + envío + domicilio
+  creados).
+- Archivo: `supabase/functions/meli-webhook/index.ts`.
+
+---
+
+## 🆕 Rentabilidad neta real por venta (Fase D1 del roadmap, migración 337, ✅ hecho — 2026-08-06, 🟡 EN DEV)
+
+> Cierra la Fase 1.1 ⭐ del roadmap de integraciones. Ver [[wiki/integrations/roadmap-apis]].
+
+`meli-webhook` lee y guarda, por cada orden:
+- **`sale_fee`** (comisión de MercadoLibre) — viene en `order_items[]` → `venta_items.comision_marketplace numeric(12,2)`.
+- **`shipping_cost`** y **`taxes_amount`** — **viven en `order.payments[]`, NO en la orden ni en
+  `order_items`** (corrige lo que decía el roadmap original) → `ventas.impuestos_marketplace numeric(12,2)`.
+
+> [!WARNING] `impuestos_marketplace` es la **retención del marketplace** sobre el pago (comisión +
+> impuestos que retiene MELI), **NO** el IVA fiscal de la factura (columna `ventas.iva_monto`, usada
+> para AFIP/CAE) — son conceptos separados a propósito, para no mezclar lo comercial con lo fiscal.
+
+**Bug real corregido de paso**: `precio_costo_historico` quedaba siempre NULL en `venta_items` de
+ventas MELI (nunca se leía `productos.precio_costo`) — sin esto la ganancia no se podía calcular ni
+a mano.
+
+**UI** — tab Canales de `VentasPage.tsx`: badge **"Neto $X"** (rojo si da negativo) con
+`ganancia_neta = total − costo − comisión − envío − impuestos`, visible solo en ventas MELI que
+tengan datos de comisión cargados (pedidos procesados desde que existe esta fase — las ventas
+históricas no lo muestran).
+
+Verificado end-to-end en DEV con un pedido real de Almacén Jorgito (comisión $1793, envío $8720,
+costo $600 → neto **-$7751**), incluida la renderización real en el navegador.
+
+> [!WARNING] **Deuda técnica anotada (no gap de esta sesión)**: las ventas MELI se crean con
+> `sucursal_id = NULL` (a diferencia de TN, que sí lo asigna) — esto las hace invisibles en vistas que
+> filtran por sucursal específica (p.ej. el tab Canales con una sucursal puntual seleccionada en vez
+> de "Todas"). Pendiente decidir si corresponde asignarles alguna sucursal.
+
+Archivos: `supabase/functions/meli-webhook/index.ts`, `src/pages/VentasPage.tsx`,
+`supabase/migrations/337_meli_rentabilidad_neta.sql`.
+
+---
+
+## 🟡 Repricing automático por margen (Fase D3 del roadmap) — bloqueado, relevamiento armado
+
+`productos.margen_objetivo` **ya existe** (migración 015) pero nunca se conectó a ninguna acción —
+hoy es solo un insight pasivo en Métricas. Falta decidir con GO/Fede: si el umbral es global o por
+producto, si el ajuste de precio en MELI es automático o requiere aprobación, si actualiza también el
+precio en G360, y cómo estimar la comisión de MELI antes de vender (hoy no se conoce hasta después de
+la venta). Preguntas armadas en `relevamiento-integraciones-ml-tn-reglas-negocio.html` (raíz del
+repo, 2026-08-06) — pendiente de que GO lo responda offline con Fede. Ver
+[[wiki/integrations/roadmap-apis]] (1.5).
+
+---
+
+## 🔴 Sync de fulfillment (aviso de despacho/entrega) — diferido, NO implementado para MELI
+
+A diferencia de TiendaNube (ver [[wiki/integrations/tienda-nube]] → "Fulfillment sync"), MELI **NO**
+recibe ningún aviso automático de G360 cuando un envío pasa a despachado/entregado. Se evaluó junto
+con la Fase C del roadmap (2026-08-06) y se descartó a propósito por ahora: no se sabe si los tenants
+usan **Mercado Envíos** (ahí el vendedor NO controla el estado por API, lo controla la logística de
+MELI) o envío propio — la respuesta cambia por completo el diseño. Pregunta abierta en el mismo
+relevamiento de arriba.
 
 ---
 

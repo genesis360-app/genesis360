@@ -666,7 +666,7 @@ Primeras 3 fases del backlog Ventas H-K. Respuestas en `sources/raw/relevamiento
 ### VF4 — Reportes y alertas (K1-K3, v1.16.0)
 - **K1** (`ReportesPage`): reportes nuevos **baja-rotacion**, **mas-devoluciones**, **anuladas-devueltas** (devoluciones + ventas canceladas con motivo), **comparativa-canal** (online/presencial vía `useCanalesVenta`), **margen-real** (total − `precio_costo_historico`).
 - **K3**: export **CSV** (`exportarCSV` + `sheet_to_csv`) además de Excel/PDF.
-- **K2** (mig 170): alertas event-driven a DUEÑO/SUPERVISOR/ADMIN (`notificarRolesVentas`): **margen negativo** al cerrar venta despachada; **cliente/producto con >N devoluciones en M días** al `procesarDevolucion`. Umbrales `tenants.alerta_margen_negativo` / `alerta_devoluciones_n` / `alerta_devoluciones_dias` en Config → Ventas → Operativa.
+- **K2** (mig 170): alertas event-driven a DUEÑO/SUPERVISOR/ADMIN (`notificarRolesVentas`): **margen negativo** al cerrar venta despachada; **cliente/producto con >N devoluciones en M días** al `procesarDevolucion`. Umbrales `tenants.alerta_margen_negativo` / `alerta_devoluciones_n` / `alerta_devoluciones_dias`. **🧾 2026-08-06 (🟡 EN DEV, sin commitear): UI real en Config → Alertas** (antes ese tab era un placeholder "próximamente" y estas columnas se guardaban desde el mega-form sin ningún input visible — ver [[wiki/features/configuracion]]).
 
 ### VF5 — Edición post-venta + NC interna (H1, v1.17.0)
 - **H1a — autorización post-cobro**: quitar/editar ítems de una venta cobrada (vía **Devolver**) requiere rol DUEÑO/SUPERVISOR/ADMIN; otros roles (CAJERO) necesitan la **clave maestra** de un autorizado (`pedirClaveMaestra` en `abrirModalDevolucion`). Sin clave configurada, se bloquea.

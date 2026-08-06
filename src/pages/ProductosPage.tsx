@@ -23,6 +23,7 @@ import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { PresentacionesEditor } from '@/components/PresentacionesEditor'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
+import { ListaConteoFooter } from '@/components/ListaConteoFooter'
 import {
   parsearPildora, evaluarPildorasProducto, CAMPOS_FILTRO_PRODUCTOS,
   type PildoraProducto,
@@ -1454,6 +1455,8 @@ export default function ProductosPage() {
             )}
           </div>
           )}
+
+          {!isLoading && <ListaConteoFooter mostrados={filtered.length} total={productos.length} entidad="producto" />}
         </>
       )}
 

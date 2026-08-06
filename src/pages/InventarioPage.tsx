@@ -44,6 +44,7 @@ import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralCo
 import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
 import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
 import { BuscadorPildoras, pildoraConCampoNuevo } from '@/components/BuscadorPildoras'
+import { ListaConteoFooter } from '@/components/ListaConteoFooter'
 import {
   parsearPildora as parsearPildoraInv, evaluarPildorasLinea, productoMatcheaPildoras,
   CAMPOS_FILTRO_INVENTARIO, type PildoraInventario,
@@ -4643,6 +4644,9 @@ export default function InventarioPage() {
                   )
                 })}
               </div>
+            )}
+            {!(invLoading || lineasLoading) && (
+              <ListaConteoFooter mostrados={filteredInv.length} total={productos.length} entidad="producto" />
             )}
           </div>
 

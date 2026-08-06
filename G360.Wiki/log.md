@@ -6,6 +6,155 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-06] update | 🛒📦 Retomando MELI/TiendaNube: envío automático (Fase B) + fulfillment sync TN (Fase C, mig 338) + rentabilidad neta MELI (Fase D1, mig 337) + 🐛 corrección de ISS-073 (dato stale) — TODO EN DEV, COMMITEADO a `dev` local (6 commits), SIN push a `origin/dev` ni deploy a PROD
+
+Sesión nueva sobre el mismo día de la anterior (sidebar/ubicaciones/config, entrada `update` de más
+abajo) — retoma el backlog de integraciones marketplace. **Se commiteó localmente TODO lo acumulado
+en el working tree de `dev`** (6 commits, incluida la sesión anterior que había quedado sin commit) —
+`dev` queda 6 commits adelante de `origin/dev`, **sin push, sin PR, sin deploy**. `APP_VERSION` sigue
+en `v1.158.0`. Migraciones nuevas **337** y **338**, aplicadas solo en DEV vía `apply_migration`.
+
+**🐛 Corrección de un dato stale del wiki (ISS-073).** `project_pendientes.md` tenía una fila de
+"Features grandes" describiendo a TiendaNube como si "hoy: solo rebaja stock" — **falso desde hace
+tiempo**, verificado contra `supabase/functions/tn-webhook/index.ts`: TN ya crea venta + cliente +
+reserva de stock automáticamente. Corregida y marcada ✅ cerrada con fecha de hoy.
+
+**Fase B — envío automático al recibir pedido pagado (TN + MELI).** `tn-webhook` y `meli-webhook`
+ahora crean `cliente_domicilios` + `envios` automáticamente con los datos reales del comprador al
+confirmar el pago (antes había que armarlo a mano en Envíos). TN usa los campos de
+`order.shipping_address` (`address`/`number`/`floor`/`locality`/`city`/`province`/`zipcode`/`phone`),
+confirmados contra la doc oficial de TiendaNube y contra un payload real ya capturado en DEV. MELI no
+trae dirección en la orden — se agregó un fetch adicional a `GET /shipments/{id}`
+(`receiver_address.street_name/street_number/zip_code/city.name/state.name/receiver_name`),
+confirmados contra un pedido de test real. Best-effort: si falla la creación del envío, la venta se
+crea igual, nunca bloquea. **Bug real corregido de paso**: en `meli-webhook`, la rama de "pago
+tardío" (`order/paid` llega después de una notificación ya procesada) seleccionaba la columna
+`payload` de `ventas_externas_logs`, que no existe (la real es `payload_raw`) — la transición
+pendiente→reservada por ese camino nunca funcionaba. Ambos verificados end-to-end contra DEV con
+pedidos reales. Archivos: `supabase/functions/tn-webhook/index.ts`,
+`supabase/functions/meli-webhook/index.ts`.
+
+**Fase C — avisar a TiendaNube al despachar/entregar (MELI queda diferido).** Cuando un envío de
+canal TiendaNube pasa a `despachado`/`entregado` en G360, ahora se le avisa a TN vía su API real de
+Fulfillment Orders (`PATCH /orders/{id}/fulfillment-orders/{fulfillment_id}`, status
+`DISPATCHED`/`DELIVERED`). Mecanismo server-side: trigger `trg_tn_fulfillment_sync` (**migración
+338**, sobre la tabla `envios`) que encola un job en `integration_job_queue`, procesado por la Edge
+Function nueva `tn-fulfillment-worker` — mismo patrón que `trg_tn_stock_sync`/`tn-stock-worker`. Se
+agregó `ventas.tn_order_id` (bigint) porque el endpoint de fulfillment necesita el ID interno de TN,
+distinto del `tracking_id`/número visible al comerciante — `tn-webhook` ahora lo guarda en cada venta
+nueva. Cron cada 5 min vía pg_cron (job `tn-fulfillment-sync`, mismo patrón que `meli-stock-sync`) +
+backup GitHub Actions (`.github/workflows/tn-fulfillment-sync.yml`). **Este trabajo estuvo bloqueado
+y se desbloqueó en esta misma sesión**: la app de TiendaNube Partners (App ID 30376) no tenía los
+scopes `read_fulfillment_orders`/`write_fulfillment_orders`. GO los agregó (categoría "Shipping" →
+"Edit/View Fulfillment orders" en el panel de permisos) y reconectó la tienda Almacén Jorgito.
+Verificado con una llamada real: PATCH exitoso, confirmado con un GET posterior que el pedido real
+(orden TN 1955532685) quedó en estado `DISPATCHED`. **MercadoLibre queda deliberadamente fuera de
+esta fase** — no se sabe si los tenants usan Mercado Envíos (ahí el vendedor NO controla el estado
+por API, lo hace la logística de MELI) o envío propio. Quedó como pregunta en el relevamiento (ver
+abajo). Migración: `supabase/migrations/338_tn_fulfillment_sync.sql`. Edge Function nueva:
+`supabase/functions/tn-fulfillment-worker/index.ts`.
+
+**Fase D1 — rentabilidad neta real MELI (Fase 1.1 del roadmap-apis.md) ✅ hecho.** `meli-webhook`
+ahora lee `sale_fee` (comisión ML, viene en `order_items[]`) y `shipping_cost`/`taxes_amount` (viven
+en `order.payments[]`, NO en la orden ni en `order_items` — esto corrige lo que decía el roadmap
+original) y los guarda. **Migración 337**: `venta_items.comision_marketplace`,
+`ventas.impuestos_marketplace` (nombres genéricos, no acoplados a MELI). `impuestos_marketplace` es
+la retención del marketplace, NO el IVA fiscal de la factura (columna `iva_monto`, usada para
+AFIP/CAE) — son conceptos separados a propósito. **Bug real corregido de paso**:
+`precio_costo_historico` quedaba siempre NULL en `venta_items` de ventas MELI (nunca se leía
+`productos.precio_costo`) — sin esto la ganancia no se podía calcular ni a mano. Corregido. UI: tab
+Canales de `VentasPage.tsx` muestra un badge "Neto $X" (rojo si da negativo) con
+`ganancia_neta = total − costo − comisión − envío − impuestos`, solo en ventas MELI que tengan datos
+de comisión cargados (pedidos procesados desde que existe esta fase — los históricos no lo van a
+mostrar). Verificado end-to-end en DEV con un pedido real (comisión $1793, envío $8720, costo $600 →
+neto -$7751), incluida la renderización real en el navegador. **Hallazgo colateral**: se descubrió
+que las ventas MELI se crean con `sucursal_id = NULL` (a diferencia de TN, que sí lo asigna) — esto
+hace que sean invisibles en vistas que filtran por sucursal específica (como el tab Canales cuando
+hay una sucursal seleccionada en vez de "Todas"). No se tocó — es un gap preexistente, no algo que
+rompió esta sesión, pero queda anotado como deuda técnica para revisar más adelante (¿debería
+asignarse alguna sucursal a las ventas MELI?).
+
+**D2 y D3 — bloqueadas, quedó relevamiento armado (NO implementado).** D2 (combos/kits automáticos al
+vender por TiendaNube): investigar reveló que en TODA la app el único modelo de venta de kits es
+"armar primero (`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — nunca existió desarme
+en el momento de la venta. Esas funciones SQL dependen de `auth.uid()` (usuario logueado), así que ni
+siquiera se pueden invocar desde un webhook server-side tal como están. Se necesita una decisión de
+negocio (qué hacer si no hay stock armado suficiente, a qué ubicación va el armado automático, etc.)
+antes de escribir código. D3 (repricing automático por margen en MELI): se descubrió que
+`productos.margen_objetivo` YA EXISTE (migración 015) pero nunca se conectó a ninguna acción — hoy es
+solo un insight pasivo en Métricas. Falta definir si es global o por producto, si el ajuste es
+automático o requiere aprobación, si actualiza también el precio en G360, y cómo estimar la comisión
+de MELI antes de vender (no se conoce hasta después de la venta). Documento de relevamiento
+generado: **`relevamiento-integraciones-ml-tn-reglas-negocio.html`** (raíz del repo, mismo patrón que
+otros relevamientos ya commiteados) — 13 preguntas + 1 checklist de priorización, para que GO lo
+responda offline con Fede.
+
+Ver [[wiki/integrations/mercado-libre]], [[wiki/integrations/tienda-nube]],
+[[wiki/integrations/roadmap-apis]] (1.1 cerrada, 1.2/1.5 con relevamiento pendiente de respuesta),
+`sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" actualizado + fila ISS-073 corregida),
+`wiki/database/migraciones.md` (migs 337/338, EN DEV).
+
+## [2026-08-06] update | 🖱️ Fix scroll del sidebar + 🔒 Ubicaciones nacen APAGADAS (mig 336) + 🧾 Config → Clientes/Alertas/Notificaciones con inputs reales — TODO EN DEV, sin commitear, PROD sigue en v1.158.0
+
+Sesión nueva sobre el mismo día del deploy de v1.158.0 (entrada `deploy` de más abajo). **Sin bump
+de `APP_VERSION`, sin commit, sin PR** — todo quedó en el working tree local de `dev` más 1
+migración nueva aplicada solo en DEV vía `apply_migration`. Pendiente decidir con GO si se
+commitea/deploya.
+
+**1. Fix: el sidebar perdía el scroll al navegar** (`src/components/layout/AppLayout.tsx`). Causa
+raíz: `SidebarContent` estaba definido como función anidada DENTRO del render de `AppLayout`, así
+que cada re-render (p.ej. al cambiar de ruta) creaba una identidad de función nueva → React
+desmontaba y remontaba el `<nav>` entero en vez de reconciliar → el `scrollTop` volvía a 0. Se movió
+`SidebarContent` a un componente de módulo (fuera de `AppLayout`), recibiendo por props lo que antes
+tomaba por closure (`sidebarCollapsed`, `toggleCollapse`, `setSidebarOpen`, `navVisibilityCtx`,
+`limits`, `alertCount`, `cajaAbierta`). Verificado con un test Playwright ad-hoc contra DEV: mismo
+nodo DOM del `<nav>` (dataset attribute) + `scrollTop` idéntico antes/después de navegar a
+Configuración.
+
+**2. 🛑 Fix Regla de Oro #0 (inventario): ubicaciones nuevas nacían con TN/MercadoLibre/picking-venta
+ENCENDIDOS por default.** En `ubicaciones`, `disponible_surtido` (picking/venta), `disponible_tn` y
+`disponible_meli` tenían `DEFAULT true` (`es_devolucion` ya era `false`, no hacía falta tocarla) —
+una ubicación recién creada quedaba expuesta a sync de canales online y a picking/venta sin que el
+usuario lo pidiera. Pedido explícito de GO: que nazcan todas apagadas y se activen a demanda.
+**Migración nueva `supabase/migrations/336_ubicaciones_defaults_apagados.sql`** (`ALTER COLUMN ...
+SET DEFAULT false` en las 3 columnas), **aplicada en DEV vía `apply_migration`, NO en PROD todavía**;
+`supabase/schema_full.sql` actualizado a mano. Confirmado por SQL contra DEV
+(`information_schema.columns`) que las 4 columnas (incluida `es_devolucion`) ahora dan
+`column_default = 'false'`. El único INSERT de la app a esta tabla es `addUbicacion()` en
+`src/pages/ConfigPage.tsx` (no hay seed de onboarding de tenant que dependa de estos defaults), así
+que el cambio no afecta tenants ni ubicaciones existentes — solo aplica a las creadas de acá en
+adelante.
+
+**3. Auditoría de Configuración: 3 tabs placeholder → 8 configuraciones YA VIVAS en el código (nunca
+tuvieron input en pantalla).** GO pidió revisar qué faltaba en Configuración. `Clientes`, `Alertas` y
+`Notificaciones` eran placeholders puros ("próximamente"), pero el hallazgo real fue otro: **8
+columnas de `tenants` ya se leían en `VentasPage.tsx`/`ClientesPage.tsx`/
+`src/lib/notificacionesCC.ts` y ya se guardaban desde el mega-form de `ConfigPage.tsx`
+(`handleSaveBiz`), pero el usuario nunca pudo tocarlas salvo por SQL directo**: `alerta_margen_negativo`
+· `alerta_devoluciones_n`/`alerta_devoluciones_dias` (alertas de venta/devoluciones, gate en
+VentasPage) · `cc_enforcement_politica`/`cc_morosidad_politica`/`limite_cc_default`/
+`cc_dias_vencimiento`/`cc_interes_mensual_pct` (políticas de cuenta corriente de clientes que YA
+gatean si una venta a CC se bloquea, `src/lib/ccLogic.ts`) · `cc_notif_canales`/
+`cc_notif_registro_deuda`/`cc_notif_pago`/`cc_notif_pre_venc_dias`/`cumple_notif_cliente`/
+`cumple_notif_duenio` (notificaciones de CC y cumpleaños, ya activas vía
+`src/lib/notificacionesCC.ts`/`ClientesPage.tsx`, envían email real si están prendidas). Se
+construyó el UI real en `ConfigPage.tsx` para los 3 tabs (Clientes → políticas de CC, Alertas →
+márgenes/devoluciones, Notificaciones → canales CC + cumpleaños), sin inventar comportamiento nuevo
+— cada input documenta exactamente lo que el código ya hacía — y se sacó el badge "pronto" de las 3
+tabs en `tabGroups`. **Se dejó explícitamente AFUERA `cc_notif_escalado_dias`** (C3 "escalado por
+mora") — columna en `tenants` desde la mig 175 pero sin NINGUNA lógica de consumo en ningún lado del
+código; es la única pieza de este relevamiento que sí requiere diseño de negocio antes de
+construirse, queda pendiente para un futuro relevamiento de Clientes/CC. También se corrigió un
+texto desactualizado en el tab Caja ("Más configuraciones de Caja" decía que faltaba "doble
+validación cierre", que ya estaba implementada con un checkbox real — se sacó esa mención).
+
+**Verificado:** typecheck limpio, `npm run build` verde, 1525 tests unitarios (vitest) verdes, y 2
+tests Playwright ad-hoc contra DEV confirmando que las 3 tabs muestran contenido real (ya no
+"próximamente").
+
+Ver [[wiki/features/ubicaciones]], [[wiki/features/configuracion]], `sources/raw/project_pendientes.md`
+(bloque "ARRANCÁ ACÁ" actualizado), `wiki/database/migraciones.md` (mig 336, EN DEV).
+
 ## [2026-08-06] deploy | 🚀 v1.158.0 a PROD — waitForTimeout CERRADO + fix Regla #0 MasivoModal + píldoras de filtro + Ubicaciones en árbol (U1-U4)
 
 Continuación directa de la entrada `update` de más abajo (mismo día). GO pidió explícitamente:

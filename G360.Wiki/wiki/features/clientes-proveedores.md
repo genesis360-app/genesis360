@@ -300,7 +300,11 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 - **C1/C4:** email automático al registrar deuda CC y al registrar un pago (las 3 vías) — `src/lib/notificacionesCC.ts`, event-driven vía Edge Function `send-email`.
 - **C2:** umbral `cc_notif_pre_venc_dias` (default 3) resalta "próxima a vencer" en el tab CC.
 - **C5:** panel "🎂 Cumpleaños de hoy" en Clientes + saludo por WhatsApp.
-- Config en Config → Ventas → Operativa → Cuenta corriente (canales email/WhatsApp). **Defaults OFF** (opt-in). WhatsApp manual; sin envío background (no hay pg_cron).
+- **🧾 2026-08-06 (🟡 EN DEV, sin commitear):** el UI real (canales email/WhatsApp) vive ahora en
+  **Config → Notificaciones** — antes ese tab era un placeholder "próximamente" y estas columnas se
+  guardaban desde el mega-form de `ConfigPage.tsx` sin ningún input visible en pantalla. Ver
+  [[wiki/features/configuracion]]. **Defaults OFF** (opt-in). WhatsApp manual; sin envío background
+  (no hay pg_cron).
 
 ### CL5 — CC proveedores (mig 176) · v1.23.0
 - **D6:** cuentas bancarias múltiples por proveedor (tabla `proveedor_cuentas_bancarias`, RLS por tenant) + CRUD en el modal CC.
@@ -312,7 +316,9 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 - **G3:** export a Excel de los reportes.
 - **F4:** audit log de cambios del cliente (`actividad_log`, entidad `cliente`) + sub-tab "Cambios" en la ficha.
 - **G2:** alertas de deuda vencida ya en `DashClientesArea` (dashboard) + el aging report.
-- **Config:** ConfigPage → Ventas → Operativa → "Cuenta corriente de clientes".
+- **Config:** políticas de enforcement/morosidad/límite/vencimiento/interés de CL2 (arriba) —
+  **🧾 2026-08-06 (🟡 EN DEV, sin commitear): UI real en Config → Clientes** (antes placeholder
+  "próximamente", ver [[wiki/features/configuracion]]).
 
 ### Backlog diferido — cerrado en v1.24.0 (sin migración)
 - **C6 — Segmentación de clientes (marketing):** en el tab "Reportes" de Clientes, sección "Segmentación de clientes". Filtros: etiqueta · estado CC (habilitada / con deuda / sin deuda) · actividad (compraron alguna vez / nunca / inactivos +60d) · mínimo comprado · con email o teléfono. Export **CSV/Excel** de la lista segmentada (nombre, DNI, teléfono, email, etiquetas, total comprado, compras, última compra, deuda, saldo a favor) para enviar desde una herramienta de mailing/WhatsApp externa. No hay bulk-sender nativo (decisión del relevamiento). Reusa `statsMap`/`ventasCC`/`creditoMap`/`etiquetasCatalogo`.

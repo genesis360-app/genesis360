@@ -3807,7 +3807,7 @@ export default function VentasPage() {
     queryKey: ['canal-ventas', tenant?.id, sucursalId, canalFiltro, canalEstado, canalDesde, canalHasta],
     queryFn: async () => {
       let q = supabase.from('ventas')
-        .select('id, numero, estado, total, monto_pagado, origen, created_at, despachado_at, cliente_nombre, medio_pago, tracking_id, notas, venta_items(cantidad, precio_unitario, productos(nombre, sku))')
+        .select('id, numero, estado, total, monto_pagado, origen, created_at, despachado_at, cliente_nombre, medio_pago, tracking_id, notas, costo_envio_logistica, impuestos_marketplace, venta_items(cantidad, precio_unitario, precio_costo_historico, comision_marketplace, productos(nombre, sku))')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(200)
@@ -7773,6 +7773,27 @@ export default function VentasPage() {
                       <span className="text-sm font-semibold text-primary flex-shrink-0">
                         ${Number(v.total ?? 0).toLocaleString('es-AR', { maximumFractionDigits: 0 })}
                       </span>
+                      {/* D1 — Ganancia neta real (MELI): total − costo producto − comisión ML −
+                          envío − impuestos retenidos por el marketplace. Solo si hay datos de
+                          comisión cargados (pedidos procesados desde que existe esta fase). */}
+                      {v.origen === 'MELI' && (v.venta_items ?? []).some((it: any) => it.comision_marketplace != null) && (() => {
+                        const costoProductos = (v.venta_items ?? []).reduce((acc: number, it: any) =>
+                          acc + Number(it.precio_costo_historico ?? 0) * Number(it.cantidad ?? 0), 0)
+                        const comisiones = (v.venta_items ?? []).reduce((acc: number, it: any) =>
+                          acc + Number(it.comision_marketplace ?? 0), 0)
+                        const envio = Number(v.costo_envio_logistica ?? 0)
+                        const impuestos = Number(v.impuestos_marketplace ?? 0)
+                        const gananciaNeta = Number(v.total ?? 0) - costoProductos - comisiones - envio - impuestos
+                        return (
+                          <span
+                            title={`Ganancia neta real: $${v.total} (total) − $${costoProductos.toFixed(0)} (costo) − $${comisiones.toFixed(0)} (comisión ML) − $${envio.toFixed(0)} (envío) − $${impuestos.toFixed(0)} (impuestos)`}
+                            className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${gananciaNeta < 0
+                              ? 'text-red-600 bg-red-100 dark:bg-red-900/30 dark:text-red-400'
+                              : 'text-emerald-700 bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-400'}`}>
+                            Neto ${gananciaNeta.toLocaleString('es-AR', { maximumFractionDigits: 0 })}
+                          </span>
+                        )
+                      })()}
                     </div>
                   )
                 })}

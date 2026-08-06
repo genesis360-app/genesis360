@@ -3,7 +3,7 @@ title: Integración TiendaNube
 category: integrations
 tags: [tiendanube, tn, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-04-30
+updated: 2026-08-06
 ---
 
 # Integración TiendaNube
@@ -69,6 +69,76 @@ Token **permanente** — TiendaNube no expira access tokens.
 **Race condition resuelta (v1.0.0):**
 - `order/paid` + `order/created` pueden llegar simultáneos
 - Si `order/created` llega después y ya existe venta, la saltea
+
+> [!NOTE] **ISS-073 corregida en el wiki (2026-08-06)**: `project_pendientes.md` tenía una fila
+> vieja diciendo que TN "hoy: solo rebaja stock" — eso era **falso desde hace tiempo**, este webhook
+> ya crea venta + cliente + reserva de stock automáticamente (arriba). Marcada ✅ cerrada.
+
+---
+
+## 🆕 Envío automático al confirmar el pago (2026-08-06, 🟡 EN DEV, commiteado a `dev` local sin push/deploy)
+
+`tn-webhook` ahora crea automáticamente `cliente_domicilios` + `envios` con los datos reales del
+comprador al confirmar el pago del pedido (`order/paid`) — antes había que armarlo a mano en
+`EnviosPage`.
+
+- Campos leídos de `order.shipping_address` (confirmados contra la doc oficial de TiendaNube y
+  contra un payload real ya capturado en DEV): `address`, `number`, `floor`, `locality`, `city`,
+  `province`, `zipcode`, `phone`.
+- **Best-effort**: si falla la creación del envío, la venta se crea igual — nunca bloquea.
+- Verificado end-to-end contra DEV con pedidos reales.
+- Archivo: `supabase/functions/tn-webhook/index.ts`.
+
+(Ver también [[wiki/integrations/mercado-libre]] → "Envío automático" para el equivalente MELI, que
+necesita un fetch adicional a `GET /shipments/{id}` porque la orden no trae dirección.)
+
+---
+
+## 🆕 Fulfillment sync — aviso a TiendaNube al despachar/entregar (Fase C del roadmap, migración 338, 🟡 EN DEV, commiteado a `dev` local sin push/deploy)
+
+Cuando un envío de canal TiendaNube pasa a `despachado`/`entregado` en G360, ahora se le avisa a TN
+vía su API real de **Fulfillment Orders**: `PATCH /orders/{id}/fulfillment-orders/{fulfillment_id}`
+con `status` `DISPATCHED`/`DELIVERED`.
+
+**Mecanismo server-side** (mismo patrón que `trg_tn_stock_sync`/`tn-stock-worker`, no depende de que
+el usuario no cierre la pestaña):
+1. Trigger **`trg_tn_fulfillment_sync`** (migración 338) — `AFTER UPDATE OF estado ON envios`, filtra
+   canal `TiendaNube` + estado `despachado`/`entregado`.
+2. Encola job `sync_fulfillment` en `integration_job_queue`.
+3. Edge Function nueva **`tn-fulfillment-worker`** procesa el job y hace el PATCH real.
+
+- **`ventas.tn_order_id BIGINT`** (migración 338, nueva) — el endpoint de fulfillment-orders necesita
+  el **ID interno** de la orden en TN, distinto de `tracking_id`/el número visible al comerciante
+  (`order.number`). `tn-webhook` lo guarda en cada venta nueva.
+- **Cron cada 5 min** vía `pg_cron` (job `tn-fulfillment-sync`, mismo patrón que `meli-stock-sync`) +
+  backup **`.github/workflows/tn-fulfillment-sync.yml`**.
+
+> [!WARNING] **Este trabajo estuvo bloqueado y se desbloqueó recién en la sesión del 2026-08-06**: la
+> app de TiendaNube Partners (App ID 30376) no tenía los scopes `read_fulfillment_orders`/
+> `write_fulfillment_orders`. GO los agregó (categoría "Shipping" → "Edit/View Fulfillment orders" en
+> el panel de permisos de la app) y reconectó la tienda Almacén Jorgito. Verificado con una llamada
+> real: PATCH exitoso, confirmado con un GET posterior que el pedido real (orden TN 1955532685) quedó
+> en estado `DISPATCHED`.
+
+> [!NOTE] **MercadoLibre queda deliberadamente fuera de esta fase** — no se sabe si los tenants usan
+> Mercado Envíos (ahí el vendedor NO controla el estado por API, lo hace la logística de MELI) o
+> envío propio. Ver [[wiki/integrations/mercado-libre]] → "Sync de fulfillment — diferido".
+
+Archivos: `supabase/migrations/338_tn_fulfillment_sync.sql`,
+`supabase/functions/tn-fulfillment-worker/index.ts` (nueva), `supabase/functions/tn-webhook/index.ts`.
+
+---
+
+## 🟡 BOM automático para combos/kits (Fase D2 del roadmap) — bloqueado, relevamiento armado
+
+Investigado el 2026-08-06: en TODA la app el único modelo de venta de kits es "armar primero
+(`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — nunca existió desarme de kit en el
+momento de la venta. Esas funciones SQL dependen de `auth.uid()` (usuario logueado), así que ni
+siquiera se pueden invocar desde un webhook server-side tal como están hoy. Falta una decisión de
+negocio (qué hacer si no hay stock armado suficiente al llegar el pedido, a qué ubicación va el
+armado automático, etc.) antes de escribir código. Preguntas armadas en
+`relevamiento-integraciones-ml-tn-reglas-negocio.html` (raíz del repo) — pendiente de que GO lo
+responda offline con Fede. Ver [[wiki/integrations/roadmap-apis]] (1.2).
 
 ---
 

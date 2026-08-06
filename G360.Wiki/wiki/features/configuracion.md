@@ -1,15 +1,19 @@
 ---
 title: Módulo Configuración
 category: features
-tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking]
+tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking, alertas, notificaciones, cuenta-corriente]
 sources: [CLAUDE.md, migrations 289, 290, 292, 299]
-updated: 2026-08-05
+updated: 2026-08-06
 ---
 
 # Módulo Configuración
 
 **Página:** `src/pages/ConfigPage.tsx` (`/configuracion`)  
 **Acceso:** DUEÑO · ADMIN (lectura para otros roles según campo)
+
+> [!NOTE] **🧾 2026-08-06 (EN DEV, sin commitear):** los tabs **Clientes**, **Alertas** y
+> **Notificaciones** dejaron de ser placeholders ("próximamente") — ver sección "Clientes, Alertas y
+> Notificaciones" más abajo.
 
 ---
 
@@ -39,7 +43,7 @@ La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con se
 | **Mi negocio** | Nombre, tipo de comercio, timeout de sesión, plan actual, marketplace |
 | **Ventas** | Sub-tabs: Métodos de pago · Descuentos y combos · Operativa |
 | **Caja** | Contraseña maestra, umbral bóveda |
-| **Clientes** | Placeholder — próximamente |
+| **Clientes** | **🟡 EN DEV (2026-08-06): políticas de Cuenta Corriente** (antes sin input en pantalla) — ver "Clientes, Alertas y Notificaciones" |
 | **Inventario** | Sub-tabs: Reglas de stock · Categorías · Ubicaciones · Estados · Motivos · Unidades · Atributos (✅ PROD v1.134.0) · **Zonas y picking** (✅ PROD desde v1.144.0) |
 | **Envíos** | Costo por km, plantilla WhatsApp |
 | **Facturación** | CUIT, condición IVA, razón social, domicilio fiscal, umbral factura B, token AFIP, certificados, puntos de venta |
@@ -49,8 +53,8 @@ La ConfigPage fue reorganizada de 10 tabs planas a **11 tabs temáticas** con se
 
 | Tab | Contenido |
 |-----|-----------|
-| **Alertas** | Placeholder — próximamente |
-| **Notificaciones** | Placeholder — próximamente |
+| **Alertas** | **🟡 EN DEV (2026-08-06): margen negativo + devoluciones repetidas** (antes sin input en pantalla) — ver "Clientes, Alertas y Notificaciones" |
+| **Notificaciones** | **🟡 EN DEV (2026-08-06): canales CC + cumpleaños** (antes sin input en pantalla) — ver "Clientes, Alertas y Notificaciones" |
 | **Conectividad** | Sub-tabs: Integraciones (TN, MELI, MP, MODO) · API |
 
 ---
@@ -115,6 +119,68 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 | Contraseña maestra | `tenants.clave_maestra` — requerida para cerrar caja ajena, abrir con diferencia, anular, dar de baja incobrable, pago OC/courier sobre umbral. **Guardada HASHEADA (bcrypt, mig 233)** — se setea vía el RPC `set_clave_maestra` (solo DUEÑO, mínimo 6 chars, con campo de confirmación); se verifica con `verificar_clave_maestra`. No se compara nunca en el cliente. |
 | Umbral bóveda | `tenants.boveda_umbral_caja` — desde **H4 (2026-06-22)** genera una **alerta no-bloqueante**: cuando una caja operativa abierta tiene efectivo sobre este monto → "conviene depositar a la Caja Fuerte". Aparece en el badge del sidebar (`useAlertas`) y en `AlertasPage`. No mueve plata. Helper `cajasSobreUmbralBoveda` (`lib/cajaSaldo.ts`). |
 
+> [!NOTE] **2026-08-06 (EN DEV):** se corrigió el texto del placeholder "Más configuraciones de
+> Caja" — decía que faltaba "doble validación cierre" cuando esa función ya estaba implementada con
+> un checkbox real (ver [[wiki/features/caja]] → v1.9.5, B7). Ahora solo menciona lo que sigue
+> pendiente: tolerancia de diferencia en arqueo y panel cajero.
+
+---
+
+## Clientes, Alertas y Notificaciones — 8 configuraciones YA VIVAS, recién con UI real (2026-08-06, 🟡 EN DEV)
+
+> [!IMPORTANT] Estos 3 tabs eran placeholders puros ("próximamente") hasta el 2026-08-06. La
+> auditoría encontró que **8 columnas de `tenants` ya se leían en producción** (`VentasPage.tsx`,
+> `ClientesPage.tsx`, `src/lib/notificacionesCC.ts`) y **ya se guardaban** desde el mega-form de
+> `ConfigPage.tsx` (`handleSaveBiz`) — pero el usuario nunca tuvo un input para tocarlas salvo por SQL
+> directo. Se construyó el UI real exponiendo exactamente lo que el código ya hacía, sin inventar
+> comportamiento nuevo. **Sin commitear, sin deployar** — ver `sources/raw/project_pendientes.md`
+> "ARRANCÁ ACÁ" y `log.md` (2026-08-06).
+
+### Tab Clientes → Cuenta corriente — políticas
+
+| Campo | DB | Ya gatea en |
+|-------|-----|-------------|
+| Al superar el límite de CC | `tenants.cc_enforcement_politica` (permitir / avisar / bloquear) | `VentasPage.tsx` vía `src/lib/ccLogic.ts` — despacho a CC |
+| Cliente con deuda vencida | `tenants.cc_morosidad_politica` (permitir / bloqueo_cc / bloqueo_total) | ídem |
+| Límite de CC por defecto | `tenants.limite_cc_default` — fallback si el cliente no tiene `clientes.limite_credito` propio | ídem |
+| Vencimiento de venta a CC (días) | `tenants.cc_dias_vencimiento` | `ventas.fecha_vencimiento_cc` |
+| Interés mensual por mora (%) | `tenants.cc_interes_mensual_pct` | `recalcular_intereses_cc()` |
+
+Ver [[wiki/features/clientes-proveedores]] → CL2 (estas mismas columnas ya estaban documentadas ahí
+como parte de la lógica de negocio; la referencia a dónde se configuraban en el UI estaba stale,
+corregida en esta misma sesión).
+
+### Tab Alertas → Márgenes y devoluciones
+
+| Campo | DB | Ya gatea en |
+|-------|-----|-------------|
+| Alertar venta con margen negativo | `tenants.alerta_margen_negativo` (bool) | `VentasPage.tsx` al cerrar una venta despachada |
+| Alertar devoluciones repetidas — cantidad | `tenants.alerta_devoluciones_n` (vacío = desactivado) | `procesarDevolucion` |
+| ...en los últimos (días) | `tenants.alerta_devoluciones_dias` | ídem |
+
+El resto de las alertas del sistema (reservas vencidas, OC por vencer, stock sin categoría, deuda de
+clientes, umbral de bóveda, vencimiento de lote, pedidos atrasados) siguen con reglas fijas, sin
+configuración — ver [[wiki/features/alertas]].
+
+### Tab Notificaciones → Cuenta corriente + Cumpleaños de clientes
+
+| Campo | DB | Ya activo en |
+|-------|-----|-------------|
+| Canales (email / WhatsApp) | `tenants.cc_notif_canales` (default `['whatsapp']`) | `src/lib/notificacionesCC.ts` |
+| Avisar al registrar deuda CC | `tenants.cc_notif_registro_deuda` (bool) | ídem, envía email real vía EF `send-email` |
+| Avisar al recibir un pago CC | `tenants.cc_notif_pago` (bool) | ídem |
+| Aviso de pre-vencimiento (días antes) | `tenants.cc_notif_pre_venc_dias` | resalta "próxima a vencer" en el tab CC del cliente |
+| Saludo por WhatsApp al cliente que cumple años | `tenants.cumple_notif_cliente` (bool) | `ClientesPage.tsx` |
+| Mostrarme la lista de cumpleaños del día | `tenants.cumple_notif_duenio` (bool) | ídem |
+
+> [!WARNING] **Deuda pendiente, a propósito NO implementada:** `tenants.cc_notif_escalado_dias` (C3
+> "escalado por mora") existe en la tabla desde la **mig 175** pero **nunca tuvo ninguna lógica de
+> consumo** en ningún lado del código — ni backend ni frontend. Es la única pieza de este
+> relevamiento que sí requiere diseño de negocio (¿qué pasa al escalar? ¿a quién se avisa? ¿qué
+> acción dispara?) antes de construirse. Queda para un futuro relevamiento de Clientes/CC — no
+> confundir con las 8 configuraciones de arriba, que sí estaban 100% implementadas y solo les
+> faltaba el input.
+
 ---
 
 ## Inventario
@@ -134,11 +200,14 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 ### Sub-tabs heredados
 Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs de Inventario:
 - **Categorías** → ABM de categorías de productos
-- **Ubicaciones** → ABM con WMS (dimensiones, tipo, mono-SKU, surtido, devolución). **🟡 EN DEV
-  (migs 334/335, 2026-08-05):** reescrita como ÁRBOL — selector de ubicación padre (breadcrumb),
-  código autogenerado/editable, `tipo_logico` (enum de negocio, con `InfoTip`) + sub-tipo de
-  almacenamiento condicional (reemplaza al `tipo_ubicacion` viejo), lista indentada por profundidad
-  + búsqueda, guard de borrado si tiene niveles adentro. Detalle completo:
+- **Ubicaciones** → ABM con WMS (dimensiones, tipo, mono-SKU, surtido, devolución). **✅ PROD desde
+  v1.158.0 (migs 334/335, deploy 2026-08-06):** reescrita como ÁRBOL — selector de ubicación padre
+  (breadcrumb), código autogenerado/editable, `tipo_logico` (enum de negocio, con `InfoTip`) +
+  sub-tipo de almacenamiento condicional (reemplaza al `tipo_ubicacion` viejo), lista indentada por
+  profundidad + búsqueda, guard de borrado si tiene niveles adentro. **🔒 2026-08-06 (🟡 EN DEV, sin
+  commitear, mig 336): `disponible_surtido`/`disponible_tn`/`disponible_meli` pasan de `DEFAULT true`
+  a `DEFAULT false`** — las ubicaciones nuevas ya no nacen expuestas a picking/venta ni a sync de
+  TN/MercadoLibre, se activan a demanda (Regla de Oro #0). Detalle completo:
   [[wiki/features/ubicaciones]].
 - **Estados** → ABM + Grupos de estados + Progresión (aging profiles) + **columna % desc.** en
   "Permisos por estado" (v1.139.0, mig 284) — descuento automático al vender stock de ese estado,
@@ -251,7 +320,10 @@ Conectar cuentas externas por sucursal:
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/wms]] — "Zonas y picking" (v1.143.0)
 - [[wiki/features/ubicaciones]] — rediseño en árbol + `tipo_logico` del sub-tab Ubicaciones (migs
-  334/335, 🟡 EN DEV)
+  334/335, ✅ PROD desde v1.158.0); defaults de picking/TN/MELI apagados (mig 336, 🟡 EN DEV)
+- [[wiki/features/clientes-proveedores]] — CL2 (políticas de CC, ahora con UI real en tab Clientes)
+- [[wiki/features/alertas]] — márgenes/devoluciones, ahora con UI real en tab Alertas
+- [[wiki/features/ventas-pos]] — VF4/K2 (alertas de margen negativo/devoluciones), ahora con UI real
 - [[wiki/features/pedidos]] — módulo NUEVO, tab "Pedidos" en Config (PED7, completa: numeración,
   tipos, cierre automático, editor de roles por transición)
 - [[wiki/features/estructuras-udm]] — roadmap de Zonas/Picking/Reabastecimiento

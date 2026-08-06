@@ -2,12 +2,19 @@
 title: Roadmap de Integraciones API
 category: integrations
 tags: [apis, roadmap, killer-features, meli, tiendanube, mercadopago, logistica, ads, whatsapp]
-updated: 2026-05-07
+updated: 2026-08-06
 ---
 
 # Roadmap de Integraciones API
 
-Plan aprobado 2026-05-07. Implementación pausada — retomar cuando se decida avanzar.
+Plan aprobado 2026-05-07. **Retomado 2026-08-06** (🟡 EN DEV, commiteado a `dev` local sin push ni
+deploy): Fase 1.1 (MELI Rentabilidad Neta) ✅ **hecha**, migración 337. Fases 1.2 (TN BOM combos) y
+1.5 (MELI Repricing) quedaron **bloqueadas con relevamiento de negocio armado y pendiente de
+respuesta de GO/Fede** (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz del repo) — no
+es "sin arrancar", es "diseño esperando decisión". Además, fuera del roadmap original, se cerró el
+**envío automático** al confirmar pago (TN+MELI) y el **fulfillment sync** TN→despachado/entregado
+(mig 338) — ver [[wiki/integrations/mercado-libre]] / [[wiki/integrations/tienda-nube]]. El resto de
+las fases (1.3/1.4, 2-6) sigue pausado.
 
 ---
 
@@ -15,8 +22,8 @@ Plan aprobado 2026-05-07. Implementación pausada — retomar cuando se decida a
 
 | Integración | Básico | Killer Feature | Estado |
 |---|---|---|---|
-| TiendaNube | orders + stock sync | BOM combos, FIFO lotes | ✅ básico / ❌ killers |
-| MercadoLibre | orders + stock/precio | Rentabilidad neta, repricing | ✅ básico / ❌ killers |
+| TiendaNube | orders + stock sync + **envío automático + fulfillment sync (2026-08-06)** | BOM combos ⏸️ (relevamiento armado), FIFO lotes | ✅ básico+ / 🟡 killer bloqueado |
+| MercadoLibre | orders + stock/precio + **envío automático (2026-08-06)** | **Rentabilidad neta ✅ hecho (mig 337, 2026-08-06)**, repricing ⏸️ (relevamiento armado) | ✅ básico+ / 🟡 1 de 2 killers |
 | MercadoPago | pagos QR + suscripciones | Conciliación, chargeback | ✅ básico / ❌ killers |
 | MODO | Framework listo (migration 109) | Pagos en POS | ⚠️ schema+UI listos / pendiente activar |
 | AFIP | facturación electrónica (parcial) | Auto-completado CUIT | ⚠️ parcial / ❌ killer |
@@ -66,15 +73,23 @@ modo_credentials(
 ## Fase 1 — Quick wins sobre infraestructura existente
 *Alta prioridad. Impacto alto, esfuerzo bajo — la infra ya existe.*
 
-### 1.1 MELI Rentabilidad Neta Real ⭐
-- Extender `meli-webhook` + `meli-stock-worker`: leer `sale_fee`, `shipping_cost`, `taxes` de cada orden MELI
-- Mostrar en dashboard de ventas: ganancia neta = total - costo_producto - comisión - envío - impuestos
+### 1.1 MELI Rentabilidad Neta Real ⭐ — ✅ HECHO (2026-08-06, migración 337, 🟡 EN DEV sin deploy)
+- Extendido `meli-webhook`: lee `sale_fee` (comisión, en `order_items[]`) y
+  `shipping_cost`/`taxes_amount` (viven en `order.payments[]`, NO en la orden ni en `order_items`
+  como decía este plan original) de cada orden MELI
+- Dashboard de ventas: tab Canales de `VentasPage.tsx` muestra badge "Neto $X" = total - costo_producto - comisión - envío - impuestos
 - **Por qué killer**: ningún competidor muestra el margen neto exacto por venta MELI
+- Detalle completo: [[wiki/integrations/mercado-libre]] → "Rentabilidad neta real por venta"
 
-### 1.2 TiendaNube — BOM automático para combos ⭐
+### 1.2 TiendaNube — BOM automático para combos ⭐ — 🟡 BLOQUEADO, relevamiento armado (2026-08-06)
 - En `tn-webhook` al procesar `order/paid`: si el producto tiene `es_kit=true`, descontar automáticamente cada componente con FIFO/FEFO desde las ubicaciones correctas del depósito
 - Actualmente el combo se descuenta como unidad, no sus componentes individuales
 - **Por qué killer**: TiendaNube es pésima manejando kits/combos
+- **Bloqueado por diseño, no por esfuerzo**: el único modelo de venta de kits en toda la app es "armar
+  antes (`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — esas funciones dependen de
+  `auth.uid()`, no invocables desde un webhook server-side tal como están. 13 preguntas armadas en
+  `relevamiento-integraciones-ml-tn-reglas-negocio.html` (raíz del repo), esperando respuesta de
+  GO/Fede. Detalle: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits"
 
 ### 1.3 AFIP Auto-completado desde CUIT ⭐
 - Llamada al WS público de ARCA: `GET https://soa.afip.gob.ar/sr-padron/v2/persona/{cuit}`
@@ -87,10 +102,15 @@ modo_credentials(
 - Auto-crear en tabla nueva `creditos_fiscales`: `"Retención IIBB - Pago #N"`
 - **Por qué killer**: ahorra horas de trabajo al contador, nadie más lo hace
 
-### 1.5 MELI Repricing automático por margen
+### 1.5 MELI Repricing automático por margen — 🟡 BLOQUEADO, relevamiento armado (2026-08-06)
 - Extender `meli-stock-worker`: al hacer sync, comparar `(precio - costo - comision) / costo` vs `margen_objetivo`
 - Si margen cayó bajo el objetivo → actualizar precio en MELI por API automáticamente
 - Se activa cuando el usuario modifica `precio_costo` en G360
+- **`productos.margen_objetivo` YA EXISTE** (migración 015) pero nunca se conectó a ninguna acción —
+  hoy es solo un insight pasivo en Métricas. Falta definir: ¿global o por producto? ¿automático o con
+  aprobación? ¿actualiza también el precio en G360? ¿cómo estimar la comisión de MELI antes de vender
+  (no se conoce hasta después)? Mismo documento de relevamiento que 1.2, esperando respuesta de
+  GO/Fede. Detalle: [[wiki/integrations/mercado-libre]] → "Repricing automático por margen"
 
 ---
 
@@ -204,11 +224,11 @@ modo_credentials(
 
 | # | Feature | Fase | Esfuerzo | Impacto |
 |---|---|---|---|---|
-| 1 | MELI Rentabilidad Neta | 1 | Bajo | Altísimo |
+| 1 | MELI Rentabilidad Neta | 1 | Bajo | Altísimo — **✅ HECHO 2026-08-06 (mig 337)** |
 | 2 | Conciliación MP automática | 1 | Bajo | Altísimo |
-| 3 | TiendaNube BOM combos | 1 | Medio | Alto |
+| 3 | TiendaNube BOM combos | 1 | Medio | Alto — 🟡 relevamiento armado, esperando respuesta de negocio |
 | 4 | AFIP Auto-completado CUIT | 1 | Bajo | Alto |
-| 5 | MELI Repricing automático | 1 | Medio | Alto |
+| 5 | MELI Repricing automático | 1 | Medio | Alto — 🟡 relevamiento armado, esperando respuesta de negocio |
 | 6 | PagoNube | 2 | Medio | Medio |
 | 7 | EnvíoNube + Rate shopping | 2 | Medio | Alto |
 | 8 | MELI Ads + Auto-pausado | 4 | Medio | Alto |

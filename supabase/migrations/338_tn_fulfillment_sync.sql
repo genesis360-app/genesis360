@@ -61,6 +61,9 @@ CREATE TRIGGER trg_tn_fulfillment_sync
 
 -- Mecanismo principal de invocación del worker (más confiable que el GH Actions de backup,
 -- .github/workflows/tn-fulfillment-sync.yml) — mismo patrón que meli-stock-sync.
+-- ⚠ La URL es DE ESTE PROYECTO (DEV). meli-stock-sync (mig previa) confirma que este mismo
+-- cron.schedule se aplica en PROD con la URL de PROD (jjffnbrdjchquexdfgwq) sustituida a mano —
+-- no correr este archivo tal cual contra PROD, ajustar la URL antes de aplicarlo ahí.
 SELECT cron.schedule(
   'tn-fulfillment-sync',
   '*/5 * * * *',

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Plus, ArrowLeft, Trash2, Search, CheckCircle, XCircle, ChevronDown, ChevronRight, Warehouse, AlertTriangle, GitBranch, RotateCcw, X, Camera, Upload, Loader2, ScanBarcode } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -14,6 +14,7 @@ import { logActividad } from '@/lib/actividadLog'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import type { Recepcion } from '@/lib/supabase'
 import { useConfirm } from '@/hooks/useConfirm'
+import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 
 // ─── Tipos internos ────────────────────────────────────────────────────────────
 
@@ -214,11 +215,12 @@ export default function RecepcionesPage() {
   const { data: ubicaciones = [] } = useQuery({
     queryKey: ['ubicaciones-rec', tenant?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('ubicaciones').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      const { data } = await supabase.from('ubicaciones').select('id, nombre, padre_ubicacion_id').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },
     enabled: !!tenant && showForm,
   })
+  const ubicacionesPorId = useMemo(() => new Map((ubicaciones as any[]).map(u => [u.id, u])), [ubicaciones])
 
   const { data: estadosInv = [] } = useQuery({
     queryKey: ['estados-inv-rec', tenant?.id],
@@ -1338,7 +1340,7 @@ export default function RecepcionesPage() {
                         <select value={it.ubicacion_id} onChange={e => updItem(it._key, { ubicacion_id: e.target.value })}
                           className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text dark:bg-gray-600">
                           <option value="">Sin ubicación</option>
-                          {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                          {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                         </select>
                       </div>
                       <div>

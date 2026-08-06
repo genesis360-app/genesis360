@@ -388,7 +388,9 @@ la función ENTERA — no hay bolsas parciales.
 
 `'staging'` se agregó al CHECK de `ubicaciones.tipo_ubicacion` (antes
 `picking/bulk/estiba/camara/cross_dock`, mig 032) — son las ubicaciones que se ofrecen al elegir
-dónde converge la mercadería de una bolsa.
+dónde converge la mercadería de una bolsa. ⚠ **Actualizado 2026-08-05 (mig 334, EN DEV):**
+`tipo_ubicacion` quedó deprecado — el selector de staging de `PedidosPage.tsx` ahora filtra por
+`subtipo_almacenamiento='staging'` (mismo valor, columna nueva). Ver [[wiki/features/ubicaciones]].
 
 **Bug real encontrado por el `migration-reviewer` antes de aplicar:** sin un guard explícito, un
 pedido YA lanzado (con `wms_tareas` existentes) incluido por error en una bolsa nueva no generaba
@@ -561,7 +563,8 @@ stock).
   inventario por línea (ya incorporado a PED1 como `pedido_items.estado_id`) · listas de picking
   imprimibles (PED6) · lanzamiento en "bolsa de pedidos" con ubicaciones de **staging** (PED6, requiere
   agregar `'staging'` al CHECK de `ubicaciones.tipo_ubicacion`, hoy `picking/bulk/estiba/camara/
-  cross_dock`, mig 032).
+  cross_dock`, mig 032 — ⚠ `tipo_ubicacion` deprecado desde la mig 334, ver
+  [[wiki/features/ubicaciones]]).
 
 ---
 
@@ -758,6 +761,9 @@ una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT
 
 - [[wiki/features/wms]] — schema/RPCs de `wms_tareas` que Pedidos reusa desde PED3; `fn_completar_tarea_reabastecimiento`
   (mig 290) recibió un fix compartido en la mig 297 encontrado al construir PED4 (ver ahí)
+- [[wiki/features/ubicaciones]] — rediseño en árbol + `tipo_logico` (migs 334/335, 🟡 EN DEV,
+  2026-08-05): el selector de staging de "Lanzar bolsa" (arriba) ahora filtra por
+  `subtipo_almacenamiento='staging'` en vez del `tipo_ubicacion` deprecado
 - [[wiki/features/estructuras-udm]] — roadmap del que nació la discusión de picking; Fase 2 (UdM al
   ingresar/rebajar, mig 293) es un feature paralelo de la misma sesión, sin relación directa con Pedidos
 - [[wiki/features/ventas-pos]] — Pedidos nunca pasa por `registrarVenta()`; el precio se resuelve

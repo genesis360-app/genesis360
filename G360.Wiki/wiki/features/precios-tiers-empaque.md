@@ -3,7 +3,7 @@ title: Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 category: features
 tags: [precios, tiers, mayorista, empaque, descuentos, comercial, repositores, cupones, aprobacion-foto, anti-fraude]
 sources: [migrations 328, 329, 330, 331, 332, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx]
-updated: 2026-08-04
+updated: 2026-08-05
 ---
 
 # Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
@@ -13,8 +13,10 @@ updated: 2026-08-04
 > (aprobación con foto) también, pero su detalle técnico vive en
 > [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto" por ser un feature
 > 100% de Inventario, sin relación con precios. **Fase D** (módulo Comercial) también — detalle en
-> [[wiki/features/comercial]]. **Solo Fase E (módulo Repositores) sigue por delante**, con el
-> relevamiento ya generado (ver más abajo), pendiente de que GO/Fede lo respondan.
+> [[wiki/features/comercial]]. **Solo Fase E (módulo Repositores) sigue por delante** — se partió en
+> **4 relevamientos secuenciales**: **Ubicaciones** (🟡 EN DEV desde 2026-08-05, migs 334/335, ver
+> [[wiki/features/ubicaciones]]) → Pestaña de supervisor reusable → Motor de Rotación de productos
+> con descuento → Repositores (ver más abajo).
 > **e2e/UAT (sesión 2026-08-04):** 14 specs nuevos (`tests/e2e/115..128*.spec.ts`), todos verdes,
 > registrados en `tests/specs/uat-modo-basico.md` §49 — plan completo en
 > `tests/specs/comercial-fede-abcd.plan.md`. Encontró y cerró un hallazgo real de Regla de Oro #0
@@ -292,24 +294,40 @@ Consolida B (aprobación con foto no forma parte, es 100% Inventario) + C (cupon
 superficie de gestión nueva, delegable sin darle Config completa a nadie más que el dueño. Detalle
 técnico completo: [[wiki/features/comercial]].
 
-## 🔴 Pendiente — Fase E (sin construir, relevamiento generado)
+## 🔴 Pendiente — Fase E (sin construir, partida en 4 relevamientos secuenciales)
 
 **Fase E** — módulo Repositores (nuevo). El pedido original de Fede fue un único punto sin detalle
-("Módulo Repositores (nuevo)"); en vez de inventar alcance se generó
+("Módulo Repositores (nuevo)"); en un primer paso se generó
 `relevamiento-repositores-reglas-negocio.html` (raíz del repo, 2026-07-30) — 35 preguntas en 12
 secciones, 33 `NUEVO` + 2 `CAMBIO` (reinterpretar `disponible_surtido` como destino positivo de una
 tarea — hoy es solo un filtro de exclusión en ventas/picking —, y la restricción real de que la
-impresión automática de etiquetas no es viable desde una SPA sin un agente local). Queda en blanco
-para que GO lo responda offline con Fede; las respuestas van a
-`G360.Wiki/sources/raw/relevamiento_repositores_respuestas.md` antes de diseñar/implementar.
+impresión automática de etiquetas no es viable desde una SPA sin un agente local).
 
-**No cerrar este tema como terminado** — F, A, B, C y D ya están, pero Fase E sigue por delante y es
-parte de la misma iniciativa de 6 fases.
+**Decisión de proceso (2026-08-02/05): en vez de intentar diseñar/implementar Repositores de una
+sola vez, se partió el camino en 4 relevamientos secuenciales**, cada uno con su propio HTML y sus
+propias respuestas antes de codear (mismo criterio de "features grandes por fases" de siempre):
+
+1. **Ubicaciones** — 🟡 **EN DEV** (`relevamiento-ubicaciones-reglas-negocio.html`, generado
+   2026-08-02, respondido 2026-08-05 con GO autorizando romper/tocar datos de prueba existentes).
+   Migs 334/335: `ubicaciones` pasa de tabla plana a árbol (`tipo_logico`/`subtipo_almacenamiento`)
+   + `producto_ubicacion_sucursal.ubicacion_exhibicion_id`. Detalle completo:
+   [[wiki/features/ubicaciones]].
+2. **Pestaña de supervisor reusable** — sin arrancar.
+3. **Motor de Rotación de productos con descuento** — sin arrancar.
+4. **Repositores** (el módulo en sí) — sin arrancar.
+
+Las respuestas de cada relevamiento van a `G360.Wiki/sources/raw/relevamiento_<tema>_respuestas.md`
+antes de diseñar/implementar cada paso.
+
+**No cerrar este tema como terminado** — F, A, B, C y D ya están, pero Fase E (y sus 4 pasos previos)
+sigue por delante y es parte de la misma iniciativa.
 
 ---
 
 ## Links relacionados
 
+- [[wiki/features/ubicaciones]] — 1º de los 4 relevamientos hacia Fase E (Repositores): rediseño de
+  `ubicaciones` en árbol + `tipo_logico` (migs 334/335, 🟡 EN DEV).
 - [[wiki/features/estructuras-udm]] — el árbol de `producto_presentaciones` (Fase 5, migs 310/311)
   que la Fase A enlaza desde el tier; también documenta la Fase 2-bis (mig 306, tiers con operador)
   sobre la que se construye este motor.

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   X, Edit2, Trash2, ArrowRightLeft, Hash, Plus,
@@ -17,6 +17,7 @@ import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
 import { AvisoCapacidadUbicacion } from '@/components/AvisoCapacidadUbicacion'
 import { useConfirm } from '@/hooks/useConfirm'
+import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
 
 type AccionTab = 'editar' | 'mover' | 'series' | 'eliminar'
@@ -116,19 +117,21 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     },
     enabled: !!tenant,
   })
+  const ubicacionesPorId = useMemo(() => new Map((ubicaciones as any[]).map(u => [u.id, u])), [ubicaciones])
   // Ubicaciones de la SUCURSAL DESTINO elegida en la pestaña "Mover" — nunca las de la
   // sucursal activa. Si `sucursalDestino` cambia, este catálogo cambia con ella (y el
   // campo se limpia en el propio onChange del selector, ver más abajo).
   const { data: ubicacionesDestinoMover = [] } = useQuery({
     queryKey: ['ubicaciones-destino-lpn', tenant?.id, sucursalDestino],
     queryFn: async () => {
-      let q = supabase.from('ubicaciones').select('id, nombre').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
+      let q = supabase.from('ubicaciones').select('id, nombre, padre_ubicacion_id').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       q = sucursalDestino ? q.or(`sucursal_id.eq.${sucursalDestino},sucursal_id.is.null`) : q.is('sucursal_id', null)
       const { data } = await q
       return data ?? []
     },
     enabled: !!tenant && tab === 'mover',
   })
+  const ubicacionesDestinoMoverPorId = useMemo(() => new Map((ubicacionesDestinoMover as any[]).map(u => [u.id, u])), [ubicacionesDestinoMover])
   const esCrossSucursal = esMovimientoCrossSucursal(sucursalDestino, linea.sucursal_id)
   const { data: conteoBloqueanteOrigen } = useConteoBloqueante(tenant?.id, esCrossSucursal ? linea.sucursal_id : null)
   const { data: proveedores = [] } = useQuery({
@@ -741,7 +744,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                   <select value={editForm.ubicacion_id} onChange={e => setEditForm(p => ({ ...p, ubicacion_id: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                     <option value="">Sin ubicación</option>
-                    {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                    {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                   </select>
                 </div>
               </div>
@@ -914,7 +917,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
                     <select value={ubicDestino} onChange={e => setUbicDestino(e.target.value)}
                       className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text">
                       <option value="">Seleccioná ubicación...</option>
-                      {(ubicacionesDestinoMover as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      {(ubicacionesDestinoMover as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesDestinoMoverPorId)}</option>)}
                     </select>
                     {(ubicacionesDestinoMover as any[]).length === 0 && (
                       <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Esa sucursal no tiene ubicaciones cargadas.</p>

@@ -6,7 +6,88 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-04, cierre v1.156.0) — deuda técnica post-deploy recorrida, PROD sigue en v1.155.0
+> ### 🟡 ARRANCÁ ACÁ (2026-08-05, v1.157.0) — Rediseño de Ubicaciones en árbol (Fases U1-U4), 1º de 4 relevamientos hacia Repositores — TODO EN DEV, PROD sigue en v1.155.0
+>
+> GO/Fede respondieron `relevamiento-ubicaciones-reglas-negocio.html` (raíz del repo, generado
+> 2026-08-02) el 2026-08-05, con GO autorizando explícitamente romper/tocar datos existentes ("no
+> hay clientes reales, son todas pruebas — si hay que modificar lo que ya está para que funcione con
+> lo nuevo, que se haga"). Es el **primero de 4 relevamientos** acordados para desbloquear la **Fase
+> E (módulo Repositores)** del backlog Comercial de Fede, hoy pausada: **Ubicaciones (este) →
+> Pestaña de supervisor reusable → Motor de Rotación de productos con descuento → Repositores.**
+> Plan de diseño armado antes de codear (vía EnterPlanMode), guardado en
+> `C:\Users\gasto\.claude\plans\enumerated-churning-iverson.md`.
+>
+> **Mig 334** (`ubicaciones_arbol_tipo_logico.sql`, DEV): `ubicaciones` pasa de tabla PLANA a ÁRBOL
+> vía self-FK `padre_ubicacion_id` (mismo patrón que `producto_presentaciones.padre_linea_id`, mig
+> 307) — **ninguna FK que ya apunta a `ubicaciones.id`** (`inventario_lineas`, `wms_tareas`,
+> `producto_ubicacion_umbrales`, `producto_ubicacion_sucursal`, `venta_item_despachos`) necesitó
+> re-apuntar a nada. Columnas nuevas: `tipo_logico` (enum de negocio: exhibición/mostrador/
+> picking/almacenamiento, **solo asignable a un nodo SIN HIJOS**) + `subtipo_almacenamiento`
+> (técnico WMS, reemplaza a `tipo_ubicacion`) + `codigo` (autogenerado NOT NULL UNIQUE por tenant,
+> editable) + `pos_x`/`pos_y`/`orientacion_deg` (reservados, sin UI, proyecto "Almacén 360"
+> pospuesto). 4 triggers nuevos, incluido un **guard DURO `SECURITY DEFINER`** que bloquea agregar
+> un nivel bajo un padre operativo (tipo asignado / stock / umbrales / tareas WMS pendientes) — es
+> inventario real, Regla de Oro #0. El `SECURITY DEFINER` se agregó tras un hallazgo del
+> `migration-reviewer`: sin él, un usuario fijado a una sola sucursal podía bypassear el guard
+> (RLS por sucursal en `inventario_lineas`/`wms_tareas`, no en `ubicaciones`). El `migration-reviewer`
+> también encontró y corrigió un bug real en la autogeneración de código (el backfill hubiera
+> arrancado en "U22" en vez de "U01"). Backfill de las 19 filas de DEV (4 en PROD, sin tocar
+> todavía) mapeando `tipo_ubicacion` → `tipo_logico`/`subtipo_almacenamiento`. **6 funciones SQL
+> reescritas** (el relevamiento solo esperaba 2 — grep exhaustivo encontró 4 más):
+> `fn_wms_elegir_ubicacion_picking`, `fn_generar_tareas_reabastecimiento_umbral`,
+> `fn_generar_tareas_picking_envio`, `fn_generar_tareas_picking_pedido_stock`,
+> `fn_generar_tareas_picking_pedido_venta`, `fn_lanzar_bolsa_pedidos` (de paso corrigió un bug
+> latente `<>`→`IS DISTINCT FROM` con NULL). `vw_ubicacion_ocupacion` y
+> `producto_ubicacion_umbrales` **no necesitaron cambios** (ya matcheaban exacto por
+> `ubicacion_id`). `tipo_ubicacion` (columna vieja) **NO se dropeó todavía** — 0 lectores en `src/`
+> salvo el tipo TS deprecated, queda para una **Fase U5** de limpieza futura.
+>
+> **Mig 335** (`producto_ubicacion_exhibicion.sql`, DEV): `producto_ubicacion_sucursal.
+> ubicacion_exhibicion_id` — columna NUEVA (la `ubicacion_id` existente sigue siendo el default de
+> PUTAWAY), es la ubicación de EXHIBICIÓN de cara al cliente que va a necesitar Repositores. Sin
+> obligatoriedad a nivel DB todavía.
+>
+> **Ambas migraciones revisadas por `migration-reviewer` ANTES de aplicar** (2 hallazgos ya
+> corregidos arriba) y **verificadas con queries reales contra DEV** después de aplicar (códigos
+> U01-U19 en orden histórico correcto, `tipo_logico` seteado en las 19 filas,
+> `fn_wms_elegir_ubicacion_picking` sigue devolviendo lo mismo que antes — NULL, nadie tiene
+> picking configurado todavía) + pruebas del guard duro (rechazo por tipo_logico y por stock activo,
+> generación de código jerárquico `U06-1`/`U06-2`), todo en transacciones con ROLLBACK.
+> `schema_full.sql` regenerado (token temporal, ya descartado).
+>
+> **Frontend (Fases U3/U4):** `src/lib/supabase.ts` (interface `Ubicacion` extendida, `codigo` ahora
+> requerido) + `src/lib/ubicacionesArbol.ts` **nuevo** (helpers puros: `breadcrumbUbicacion`,
+> `descendientesDeUbicacion`, `ordenarArbolUbicaciones`) + `ConfigPage.tsx` (Config → Inventario →
+> Ubicaciones reescrita: selector de padre con breadcrumb, código autogenerado/editable con
+> validación de formato, selector de tipo lógico con `InfoTip`, subtipo condicional, lista indentada
+> por profundidad + búsqueda, guard de borrado con mensaje claro si tiene niveles adentro; filtro de
+> `ubicacionesPicking` migrado a `tipo_logico==='picking'`) + **7 archivos operativos** actualizados
+> a `breadcrumbUbicacion`/columnas nuevas: `RecepcionesPage.tsx`, `InventarioPage.tsx` (3 selects),
+> `ProductoFormPage.tsx`, `PedidosPage.tsx` (staging ahora filtra por
+> `subtipo_almacenamiento='staging'`), `TrasladosPanel.tsx`, `LpnAccionesModal.tsx` (2 selects),
+> `MasivoModal.tsx`.
+>
+> **Verde:** `tsc --noEmit` · `npm run build` · **suite unitaria completa: 1492 tests (92 archivos)
+> verdes**, incluidos 12 tests nuevos para `ubicacionesArbol.ts`
+> (`tests/unit/ubicacionesArbol.test.ts`: `breadcrumbUbicacion`, `descendientesDeUbicacion`,
+> `ordenarArbolUbicaciones` — cadena de breadcrumb, ids inexistentes, defensa de ciclo, orden por
+> prioridad/nombre).
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **Nada deployado a PROD** — todo en DEV. `APP_VERSION` bumpeada a v1.157.0 como checkpoint de
+>    sesión (no implica deploy).
+> 2. **Fase U5** (limpieza): dropear `ubicaciones.tipo_ubicacion` en una migración futura cuando se
+>    reconfirme 0 lectores (hoy el grep en `src/` ya da 0 salvo el tipo TS deprecated).
+> 3. Relevamientos #2/#3/#4 de la secuencia hacia Repositores sin arrancar: Pestaña de supervisor
+>    reusable → Motor de Rotación de productos con descuento → Repositores.
+> 4. Sin prueba manual en el navegador todavía (typecheck/build/tests no reemplazan probar la UI).
+>
+> **Estado git:** sin commitear (10 archivos modificados + 4 sin trackear — 2 migraciones,
+> `ubicacionesArbol.ts` y su test, ver `git status` en `dev`). `main`/PROD siguen en v1.155.0.
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-04, cierre v1.156.0) — deuda técnica post-deploy recorrida, PROD sigue en v1.155.0
 >
 > Tras deployar v1.155.0 (backlog Comercial de Fede, bloque de abajo), GO pidió avanzar con la
 > deuda técnica que no depende de respuestas de terceros. Se recorrió la lista completa en orden:

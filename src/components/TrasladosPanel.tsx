@@ -8,7 +8,7 @@
  * (destino) → stock entra (mismo LPN/lote/series) · faltantes auditados. Cancelar en
  * tránsito → reingreso al origen.
  */
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Truck, Plus, X, Check, PackageCheck, AlertTriangle, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -23,6 +23,7 @@ import {
   puedeCrearTraslado, puedeConfirmarRecepcion, disponibleLinea,
   validarCantidadTraslado, validarRecepcion, estadoDesdeRecepcion, totalFaltante,
 } from '@/lib/trasladoLogic'
+import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 
 const ESTADO_BADGE: Record<string, { label: string; cls: string }> = {
   en_transito:      { label: 'En tránsito',       cls: 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' },
@@ -102,7 +103,7 @@ export default function TrasladosPanel() {
     queryKey: ['traslado-ubic-destino', tenant?.id, recibirTraslado?.sucursal_destino_id],
     queryFn: async () => {
       const { data } = await supabase.from('ubicaciones')
-        .select('id, nombre')
+        .select('id, nombre, padre_ubicacion_id')
         .eq('tenant_id', tenant!.id)
         .or(`sucursal_id.eq.${recibirTraslado!.sucursal_destino_id},sucursal_id.is.null`)
         .order('prioridad', { ascending: true })
@@ -110,6 +111,7 @@ export default function TrasladosPanel() {
     },
     enabled: !!tenant && !!recibirTraslado,
   })
+  const ubicacionesDestinoPorId = useMemo(() => new Map((ubicacionesDestino as any[]).map(u => [u.id, u])), [ubicacionesDestino])
 
   // ── Agregar línea al borrador ──────────────────────────────────────────────
   const agregarLinea = async (linea: any) => {
@@ -685,7 +687,7 @@ export default function TrasladosPanel() {
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ubicación destino</label>
                 <select value={recibirUbicacionId} onChange={e => setRecibirUbicacionId(e.target.value)} className={inputCls}>
                   <option value="">Sin ubicación</option>
-                  {(ubicacionesDestino as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  {(ubicacionesDestino as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesDestinoPorId)}</option>)}
                 </select>
               </div>
               <div className="space-y-2">

@@ -6,6 +6,74 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-05] update | 🏗️ Rediseño de Ubicaciones (Fases U1-U4) — árbol + tipo lógico, 1º de 4 relevamientos hacia Repositores (migs 334/335, EN DEV)
+
+GO/Fede respondieron `relevamiento-ubicaciones-reglas-negocio.html` (generado 2026-08-02) el
+2026-08-05, autorizando explícitamente romper/tocar datos de prueba existentes ("no hay clientes
+reales, son todas pruebas — si hay que modificar lo que ya está para que funcione con lo nuevo, que
+se haga"). Es el primero de 4 relevamientos acordados para desbloquear la Fase E (módulo
+Repositores) del backlog Comercial de Fede, hoy pausada: **Ubicaciones (esta) → Pestaña de
+supervisor reusable → Motor de Rotación de productos con descuento → Repositores**. Plan de diseño
+armado antes de codear (vía EnterPlanMode), guardado en
+`C:\Users\gasto\.claude\plans\enumerated-churning-iverson.md`.
+
+**Mig 334** (`ubicaciones_arbol_tipo_logico.sql`): `ubicaciones` pasa de tabla plana a ÁRBOL vía
+self-FK `padre_ubicacion_id` (mismo patrón que `producto_presentaciones.padre_linea_id`, mig 307) —
+como un nivel nuevo es una fila más de la misma tabla, ninguna de las 5 FK que ya apuntaban a
+`ubicaciones.id` (`inventario_lineas`, `wms_tareas`, `producto_ubicacion_umbrales`,
+`producto_ubicacion_sucursal`, `venta_item_despachos`) necesitó re-apuntar a nada. Columnas nuevas:
+`tipo_logico` (enum de negocio: exhibición/mostrador/picking/almacenamiento, solo asignable a un
+nodo SIN HIJOS — responde la pregunta del propio relevamiento sobre el "nivel implícito") +
+`subtipo_almacenamiento` (técnico WMS, reemplaza `tipo_ubicacion`) + `codigo` (autogenerado NOT
+NULL UNIQUE por tenant, jerárquico `U01`, `U01-1`..., editable) + `pos_x`/`pos_y`/`orientacion_deg`
+(reservados, sin UI, proyecto pospuesto "Almacén 360"). 4 triggers nuevos: anti-ciclo, guard de
+consistencia tipo/subtipo, autogeneración de código, y un **guard DURO `SECURITY DEFINER`** que
+bloquea agregar un nivel bajo un padre operativo (tipo asignado, stock activo, umbrales
+configurados o tareas WMS pendientes) — inventario real, Regla de Oro #0.
+
+**2 hallazgos del `migration-reviewer` antes de aplicar, corregidos:** (1) sin `SECURITY DEFINER`
+el guard duro era bypasseable por un usuario fijado a una sola sucursal, porque
+`inventario_lineas`/`wms_tareas` tienen RLS por sucursal y `ubicaciones` no; (2) el backfill de
+`codigo` hubiera arrancado en "U22" en vez de "U01" por contar filas que todavía no tenían código.
+
+Backfill de las 19 filas de DEV (4 en PROD, sin tocar) mapeando `tipo_ubicacion` viejo al par
+nuevo. **6 funciones SQL reescritas** (el relevamiento solo esperaba 2 — un grep exhaustivo de
+`schema_full.sql` encontró 4 más): `fn_wms_elegir_ubicacion_picking`,
+`fn_generar_tareas_reabastecimiento_umbral`, `fn_generar_tareas_picking_envio`,
+`fn_generar_tareas_picking_pedido_stock`, `fn_generar_tareas_picking_pedido_venta`,
+`fn_lanzar_bolsa_pedidos` (de paso, bug latente `<>`→`IS DISTINCT FROM` con NULL). Confirmado que
+`vw_ubicacion_ocupacion` y la comparación de `producto_ubicacion_umbrales` NO necesitaron cambios
+(ya matcheaban exacto por `ubicacion_id`, nunca sumaban por descendientes). La columna vieja
+`tipo_ubicacion` NO se dropeó (0 lectores en `src/` salvo el tipo TS deprecated) — queda para una
+Fase U5 de limpieza futura, mismo patrón que F3b/F4 con `tenants`.
+
+**Mig 335** (`producto_ubicacion_exhibicion.sql`): `producto_ubicacion_sucursal.
+ubicacion_exhibicion_id` nueva (la `ubicacion_id` existente sigue siendo el default de PUTAWAY) —
+la ubicación de exhibición de cara al cliente que va a necesitar Repositores.
+
+Ambas migraciones pasaron por el `migration-reviewer` antes de aplicarse y se verificaron con
+queries reales contra DEV después (códigos únicos en orden histórico, `tipo_logico` seteado en las
+19 filas, `fn_wms_elegir_ubicacion_picking` sigue devolviendo NULL como antes) + pruebas del guard
+duro y de la generación de código jerárquico, todo en transacciones con ROLLBACK. `schema_full.sql`
+regenerado.
+
+**Frontend (Fases U3/U4):** `src/lib/supabase.ts` (interface `Ubicacion` extendida) +
+`src/lib/ubicacionesArbol.ts` nuevo (`breadcrumbUbicacion`/`descendientesDeUbicacion`/
+`ordenarArbolUbicaciones`) + `ConfigPage.tsx` (Config → Inventario → Ubicaciones reescrita: padre
+con breadcrumb, código autogenerado/editable, tipo lógico con `InfoTip`, subtipo condicional, lista
+indentada + búsqueda, guard de borrado con mensaje claro) + 7 archivos operativos migrados a
+`breadcrumbUbicacion`/columnas nuevas (`RecepcionesPage.tsx`, `InventarioPage.tsx`,
+`ProductoFormPage.tsx`, `PedidosPage.tsx`, `TrasladosPanel.tsx`, `LpnAccionesModal.tsx`,
+`MasivoModal.tsx`).
+
+**Verde:** tsc · build · suite unitaria completa (1492 tests, 92 archivos), incluidos 12 tests nuevos
+para `ubicacionesArbol.ts` (`tests/unit/ubicacionesArbol.test.ts`).
+
+**Estado:** TODO EN DEV, `APP_VERSION` bumpeada a v1.157.0 como checkpoint de sesión (sin deploy).
+PROD sigue en v1.155.0. Pendiente: Fase U5 (DROP `tipo_ubicacion`), relevamientos #2/#3/#4 de la
+secuencia (Pestaña de supervisor reusable → Motor de Rotación → Repositores), prueba manual en el
+navegador. Detalle completo: [[wiki/features/ubicaciones]].
+
 ## [2026-08-04] update | 🧹 Backlog técnico post-deploy: facturasPDF.ts testeado, waitForTimeout saneado (fixtures.ts), F4 avanzado
 
 Con el deploy de v1.155.0 ya cerrado, GO pidió avanzar con la deuda técnica que no depende de

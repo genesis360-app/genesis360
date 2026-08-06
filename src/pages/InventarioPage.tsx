@@ -44,6 +44,7 @@ import { requiereAutorizacion, requiereReconteo, reconciliarDelta, type UmbralCo
 import { requiereAuthAjuste, modoAjusteRol } from '@/lib/ajusteAutorizacion'
 import { estadoCambioRequiereAprobacion } from '@/lib/aprobacionEstado'
 import { clasificarABC, sugerirConteoCiclico, reporteExactitud, type ItemValor } from '@/lib/conteoAbc'
+import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import { useConfirm } from '@/hooks/useConfirm'
 import * as XLSX from 'xlsx'
 
@@ -430,6 +431,7 @@ export default function InventarioPage() {
     },
     enabled: !!tenant,
   })
+  const ubicacionesPorId = useMemo(() => new Map((ubicaciones as any[]).map(u => [u.id, u])), [ubicaciones])
 
   const { data: proveedores = [] } = useQuery({
     queryKey: ['proveedores', tenant?.id],
@@ -2890,7 +2892,7 @@ export default function InventarioPage() {
                                   onChange={e => setMasivoRows(prev => prev.map((r, i) => i === idx ? { ...r, ubicacion_id: e.target.value } : r))}
                                   className="w-full px-2 py-1.5 border border-gray-200 dark:border-gray-600 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800">
                                   <option value="">Sin ubic.</option>
-                                  {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                  {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                                 </select>
                               </td>
                               )}
@@ -5290,7 +5292,7 @@ export default function InventarioPage() {
                       <select value={kittingUbicacionId} onChange={e => setKittingUbicacionId(e.target.value)}
                         className="w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 rounded-xl text-sm bg-white dark:bg-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-accent-text/30">
                         <option value="">Sin ubicación</option>
-                        {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                        {ubicaciones.map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                       </select>
                     </div>
 
@@ -5440,7 +5442,7 @@ export default function InventarioPage() {
                       <>
                         <option value="">Seleccioná una ubicación</option>
                         <option value="__sin__">Sin ubicación</option>
-                        {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                        {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                       </>
                     )}
                     {conteoTipo === 'producto' && (

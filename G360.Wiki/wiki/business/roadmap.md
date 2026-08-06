@@ -3,14 +3,39 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-07-28
+updated: 2026-08-05
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** v1.155.0 (2026-08-04) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.156.0 (2026-08-04, sin deploy a PROD — ronda 100% técnica, sin cambios de comportamiento)  
-**Última actualización:** 4 de Agosto, 2026
+**Versión en DEV:** v1.157.0 (2026-08-05, sin deploy a PROD — rediseño de Ubicaciones en árbol, Fases U1-U4)  
+**Última actualización:** 5 de Agosto, 2026
+
+---
+
+## v1.157.0 — 🌳 Rediseño de Ubicaciones en árbol (Fases U1-U4) — 1º de 4 relevamientos hacia Repositores — 🟡 **EN DEV** (2026-08-05)
+
+**Sin cambios a PROD** (sigue v1.155.0). Primero de 4 relevamientos acordados con Fede/GO para
+desbloquear el módulo Repositores: Ubicaciones (este) → Pestaña de supervisor reusable → Motor de
+Rotación de productos con descuento → Repositores. `ubicaciones` pasa de tabla plana a **árbol
+contenedora/nivel** vía self-FK (`padre_ubicacion_id`, mismo patrón que Empaque/mig 307) — ninguna
+FK de `inventario_lineas`/`wms_tareas`/`producto_ubicacion_umbrales`/`producto_ubicacion_sucursal`/
+`venta_item_despachos` necesitó re-apuntar a nada. Nuevo: `tipo_logico` (exhibición/mostrador/
+picking/almacenamiento, solo en nodos hoja) + `subtipo_almacenamiento` + `codigo` autogenerado único
+por tenant + coordenadas reservadas para "Almacén 360". Guard duro `SECURITY DEFINER` que bloquea
+crear un nivel bajo un padre operativo (stock/umbrales/tareas WMS activas) — Regla de Oro #0. 6
+funciones SQL reescritas (`fn_wms_elegir_ubicacion_picking` y otras 5 del módulo Pedidos). Nueva
+`producto_ubicacion_sucursal.ubicacion_exhibicion_id` (separada del default de recepción existente).
+Revisado por `migration-reviewer` (2 hallazgos reales corregidos antes de aplicar) y verificado con
+datos reales de DEV/PROD. Frontend: Config → Ubicaciones reescrita completa (árbol, tipo lógico con
+tooltip, subtipo condicional, código editable, breadcrumb, guard de borrado) + 7 archivos operativos
+migrados. Detalle completo: `wiki/features/ubicaciones.md`.
+
+**Verde:** tsc · build · unit 1492 (12 nuevos para `ubicacionesArbol.ts`).
+
+**Pendiente:** Fase U5 (drop de la columna vieja `tipo_ubicacion`), relevamientos #2/#3/#4 de la
+secuencia, prueba manual en el navegador.
 
 ---
 

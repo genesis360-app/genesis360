@@ -12,7 +12,7 @@
  *   - Campos: cantidad + motivo.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { Search, X, Plus, Trash2, ChevronDown, ChevronUp, AlertTriangle, Package, Camera } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
@@ -26,6 +26,7 @@ import { presentacionesComoNiveles, PRESENTACION_COLS } from '@/lib/presentacion
 import { BarcodeScanner } from '@/components/BarcodeScanner'
 import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { atributoAmbiguoEnLineas, filtrarLineasPorAtributo, type LineaConAtributos } from '@/lib/atributosVariante'
+import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
 
 const ATRIBUTOS_MASIVO: { key: 'talle' | 'color' | 'encaje' | 'formato' | 'saborAroma'; atributo: 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'; tieneKey: 'tieneTalle' | 'tieneColor' | 'tieneEncaje' | 'tieneFormato' | 'tieneSaborAroma'; label: string }[] = [
@@ -176,6 +177,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
     },
     enabled: !!tenant,
   })
+  const ubicacionesPorId = useMemo(() => new Map((ubicaciones as any[]).map(u => [u.id, u])), [ubicaciones])
 
   const { data: estados = [] } = useQuery({
     queryKey: ['estados_inventario', tenant?.id],
@@ -819,7 +821,7 @@ export function MasivoModal({ tipo, onClose, onSuccess }: Props) {
                                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Ubicación</label>
                                 <select value={it.ubicacionId} onChange={e => upd(it.localId, { ubicacionId: e.target.value })} className={sel}>
                                   <option value="">Sin ubicación</option>
-                                  {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                  {(ubicaciones as any[]).map((u: any) => <option key={u.id} value={u.id}>{breadcrumbUbicacion(u.id, ubicacionesPorId)}</option>)}
                                 </select>
                               </div>
                               <div>

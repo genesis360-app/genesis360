@@ -3,7 +3,7 @@ title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking]
 sources: [CLAUDE.md, migrations 289, 290, 292, 299]
-updated: 2026-07-28
+updated: 2026-08-05
 ---
 
 # Módulo Configuración
@@ -134,7 +134,12 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 ### Sub-tabs heredados
 Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs de Inventario:
 - **Categorías** → ABM de categorías de productos
-- **Ubicaciones** → ABM con WMS (dimensiones, tipo, mono-SKU, surtido, devolución)
+- **Ubicaciones** → ABM con WMS (dimensiones, tipo, mono-SKU, surtido, devolución). **🟡 EN DEV
+  (migs 334/335, 2026-08-05):** reescrita como ÁRBOL — selector de ubicación padre (breadcrumb),
+  código autogenerado/editable, `tipo_logico` (enum de negocio, con `InfoTip`) + sub-tipo de
+  almacenamiento condicional (reemplaza al `tipo_ubicacion` viejo), lista indentada por profundidad
+  + búsqueda, guard de borrado si tiene niveles adentro. Detalle completo:
+  [[wiki/features/ubicaciones]].
 - **Estados** → ABM + Grupos de estados + Progresión (aging profiles) + **columna % desc.** en
   "Permisos por estado" (v1.139.0, mig 284) — descuento automático al vender stock de ese estado,
   ver [[wiki/features/ventas-pos]] → "Descuento automático por estado de inventario"
@@ -245,6 +250,8 @@ Conectar cuentas externas por sucursal:
 - [[wiki/features/ventas-pos]]
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/wms]] — "Zonas y picking" (v1.143.0)
+- [[wiki/features/ubicaciones]] — rediseño en árbol + `tipo_logico` del sub-tab Ubicaciones (migs
+  334/335, 🟡 EN DEV)
 - [[wiki/features/pedidos]] — módulo NUEVO, tab "Pedidos" en Config (PED7, completa: numeración,
   tipos, cierre automático, editor de roles por transición)
 - [[wiki/features/estructuras-udm]] — roadmap de Zonas/Picking/Reabastecimiento

@@ -178,6 +178,18 @@ movimientos_stock.tipo: + 'kitting' + 'des_kitting'
 - Badge "KIT" naranja en dropdown de búsqueda de VentasPage
 - KIT como producto vendible (precio/stock igual que cualquier SKU)
 
+**🆕 2026-08-07 (mig 343, 🟡 SOLO EN DEV, sin commitear, backlog Comercial de Fede — Motor de Rotación,
+Opción 3): `iniciar_armado_kit` prioriza el lote en descuento** — si el tenant/categoría/producto tiene
+`rotacion_armar_kits` activo (mig 341), la reserva de componentes ya no es FIFO ciego al estado: los
+lotes en un estado con `dispara_rotacion=true` se reservan PRIMERO (prioridad, no exclusividad). Para
+componentes sin la regla activa, 0 cambio de comportamiento. Además, el bloque "Sugerido según la
+receta" en Inventario → Kits autogenera nombre/precio del KIT (precio de lista × cantidad, sin restar
+descuento — el % lo aplica el estado en la venta), con modificar el precio requiriendo autorización de
+supervisor si el rol no es DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN. **E3 (prioridad de reserva) ✅
+VERIFICADA end-to-end** (test permanente `132_kit_armado_prioridad_rotacion_mutante.spec.ts`);
+autogeneración/aprobación de precio construida sin verificar en navegador. Detalle completo:
+[[wiki/features/precios-tiers-empaque]] → "Fase E" → Motor de Rotación → Opción 3.
+
 ---
 
 ## Fase 3 — Tareas WMS y Listas de Picking (✅ migs 289-291 — **EN PROD desde v1.144.0, 2026-07-28**)

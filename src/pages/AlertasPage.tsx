@@ -331,12 +331,34 @@ export default function AlertasPage() {
     enabled: !!tenant,
   })
 
+  // Motor de Rotación, Opción 1 (C1/C2/C3) — productos con stock por vencer que bloquea la
+  // sugerencia de reposición EN ESTA SUCURSAL. No conocemos la fecha de vencimiento que tendría el
+  // stock nuevo acá (eso se resuelve recién al registrar la recepción real), así que la exclusión
+  // de OC sugerida es un bloqueo simple; el matiz de "misma fecha sí, más lejana no" se aplica en
+  // Recepciones.
+  const { data: productosBloqueadosRotacion = new Set<string>() } = useQuery({
+    queryKey: ['productos-bloqueados-rotacion', tenant?.id, sucursalId],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('fn_rotacion_productos_bloqueados_reposicion', {
+        p_tenant_id: tenant!.id, p_sucursal_id: sucursalId || null,
+      })
+      if (error) throw error
+      return new Set<string>((data ?? []).map((r: any) => r.producto_id))
+    },
+    enabled: !!tenant,
+  })
+
   // CO7/A3 — auto-draft de OCs sugeridas consolidando productos bajo mínimo por proveedor.
   const generarOCsSugeridas = useMutation({
     mutationFn: async () => {
       if (!sucursalId) throw new Error('Elegí una sucursal específica (no "Todas") para generar las OCs.')
-      const lowStock = (alertas as any[]).filter(a => a.tipo === 'stock_minimo' && a.productos).map(a => a.productos)
-      if (!lowStock.length) throw new Error('No hay productos bajo mínimo.')
+      const lowStockTodo = (alertas as any[]).filter(a => a.tipo === 'stock_minimo' && a.productos).map(a => a.productos)
+      // Motor de Rotación (C1/C2/C3) — no sugerir reponer mientras quede stock por vencer sin agotar.
+      const lowStock = lowStockTodo.filter((p: any) => !productosBloqueadosRotacion.has(p.id))
+      const excluidosPorRotacion = lowStockTodo.length - lowStock.length
+      if (!lowStock.length) throw new Error(excluidosPorRotacion > 0
+        ? `Los ${excluidosPorRotacion} producto(s) bajo mínimo tienen stock por vencer sin agotar — no se sugiere reponer todavía.`
+        : 'No hay productos bajo mínimo.')
       const prodIds = lowStock.map((p: any) => p.id)
       const { data: pps } = await supabase.from('proveedor_productos')
         .select('proveedor_id, producto_id, precio_compra, cantidad_minima, proveedores(nombre)')
@@ -358,11 +380,11 @@ export default function AlertasPage() {
         if (itErr) throw itErr
         creadas++
       }
-      return { creadas, sinProveedor }
+      return { creadas, sinProveedor, excluidosPorRotacion }
     },
-    onSuccess: ({ creadas, sinProveedor }) => {
+    onSuccess: ({ creadas, sinProveedor, excluidosPorRotacion }) => {
       qc.invalidateQueries({ queryKey: ['ordenes_compra'] })
-      toast.success(`${creadas} OC borrador creada${creadas !== 1 ? 's' : ''}${sinProveedor.length ? ` · ${sinProveedor.length} sin proveedor` : ''}`)
+      toast.success(`${creadas} OC borrador creada${creadas !== 1 ? 's' : ''}${sinProveedor.length ? ` · ${sinProveedor.length} sin proveedor` : ''}${excluidosPorRotacion > 0 ? ` · ${excluidosPorRotacion} con stock por vencer (no repuestos)` : ''}`)
       navigate('/proveedores?tab=ordenes')
     },
     onError: (e: any) => toast.error(e.message),
@@ -667,6 +689,12 @@ export default function AlertasPage() {
                           productosConOC.has((a as any).productos.id)
                             ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-medium">OC en camino</span>
                             : <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 font-medium">Sin OC pendiente</span>
+                        )}
+                        {(a as any).productos?.id && productosBloqueadosRotacion.has((a as any).productos.id) && (
+                          <span title="Tiene stock por vencer sin agotar en esta sucursal — no se sugiere reponer hasta que se venda/retire (Motor de Rotación)"
+                            className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 font-medium">
+                            ⏳ Rotación: no reponer aún
+                          </span>
                         )}
                       </p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">

@@ -3,7 +3,7 @@ title: Testing — Unit + E2E
 category: development
 tags: [testing, vitest, playwright, e2e, unit-tests]
 sources: [CLAUDE.md]
-updated: 2026-06-11
+updated: 2026-08-07
 ---
 
 # Testing
@@ -125,6 +125,8 @@ npm run test:unit:coverage # coverage report
 | `88_mobile_responsive.spec.ts` | **Barrido responsive mobile** — 10 pantallas × 2 viewports (375/360px), assertea sin overflow horizontal en el **contenido (`<main>`) Y el `<header>`**. Project `chromium-mobile` (`isMobile`+`hasTouch`, sesión owner). Helper `detectarOverflowHorizontal(page, { selector })` mide dentro del contenedor (el root `AppLayout` clippea con `overflow-hidden`) tanto rect como overflow de texto, ignorando scroll intencional | ✅ |
 | `129_pildoras_filtro_productos_inventario_mutante.spec.ts` | **Filtro de píldoras en Productos e Inventario (2026-08-06, ✅ PROD desde v1.158.0)** — siembra su propio producto único, prueba texto libre / campo explícito / combinador Y exige ambos / combinador O alcanza con uno, en las dos páginas. 2/2 verde, corrido dos veces. Ver [[wiki/features/filtro-pildoras]] | ✅ |
 | `130_ubicaciones_arbol_mutante.spec.ts` | **Rediseño de Ubicaciones en árbol (2026-08-06, ✅ PROD desde v1.158.0)** — crear hijo con código autogenerado jerárquico, guard tipo_logico con hijos, guard borrado con niveles adentro, breadcrumb en selector operativo real (encontró y sirvió para corregir 4 gaps reales, ver [[wiki/features/ubicaciones]]). 2/2 verde | ✅ |
+| `131_rotacion_prioridad_envios_mutante.spec.ts` | **Motor de Rotación — Opción 2, prioridad de envíos (2026-08-07, 🟡 SOLO EN DEV, sin commitear)** — crea estado `dispara_rotacion=true` + producto `rotacion_prioridad_envios=true`, ingresa 2 lotes reales por UI (viejo en estado normal, nuevo en estado de Rotación), agrega al carrito ANTES de elegir canal (como un cajero real), elige canal "WhatsApp" (no-presencial), cobra, y verifica en DB que el despacho salió del lote de Rotación. **Encontró y sirvió para corregir un bug real de Regla de Oro #0** en `VentasPage.tsx` (la Fase A de `registrarVenta` ignoraba la prioridad calculada). 2/2 corridas verdes. Ver [[wiki/features/precios-tiers-empaque]] | ✅ |
+| `132_kit_armado_prioridad_rotacion_mutante.spec.ts` | **Motor de Rotación — Opción 3, armado de kits E3 (2026-08-07, 🟡 SOLO EN DEV, sin commitear)** — crea estado `dispara_rotacion=true` + producto componente `rotacion_armar_kits=true` + KIT con receta 1:2, ingresa 2 lotes reales por UI del componente (viejo en "Disponible", nuevo en estado de Rotación), dispara el armado desde la UI real (Inventario → Kits → Armar → confirmar), y verifica en DB que `iniciar_armado_kit` reservó SOLO de la línea en Rotación (`cantidad_reservada`), dejando la línea vieja intacta, y que `kitting_log.componentes_reservados` apunta a la línea correcta. 2/2 corridas verdes. Ver [[wiki/features/precios-tiers-empaque]] | ✅ |
 
 > **Barrido responsive (2026-07-15):** primera cobertura mobile en e2e. Detecta el patrón "se sale del marco" (contenido más ancho que el `<main>`). Corre en su propio project `chromium-mobile`; el project desktop lo excluye por `testIgnore`. Guard contra regresiones de overflow. Ver log 2026-07-15.
 
@@ -193,15 +195,29 @@ npm run test:unit:coverage # coverage report
 > resto del barrido:** cuando un spec falla intermitente incluso con esperas "razonables", no asumir
 > que es solo timing del test — puede estar exponiendo una carrera real en el código de la app.
 >
-> **⚠ Deuda técnica separada, NO cerrada por esta ronda — flake conocido en
+> **⚠ Deuda técnica separada, NO cerrada por esta ronda (2026-08-06) — flake conocido en
 > `39_cc_condonacion_mutante.spec.ts`.** Durante la verificación final falló una vez con "Deuda Venta
 > #N condonada" no encontrado. Confirmado que el código tocado en ese archivo en esta sesión (el paso
-> ANTERIOR al click de "Condonar") no toca el punto que falló — es un **race de timing preexistente**
-> con el `confirm()` nativo del browser sobre un **fixture compartido no autogenerado** (cliente real
-> "Gaston Otranto", en vez de sembrar su propia precondición como manda la regla de specs mutantes,
-> ver nota de 2026-07-15 más arriba). No es un bug de la app ni fue causado por esta ronda de
-> `waitForTimeout` — queda documentado como deuda técnica para una sesión futura que reescriba ese
-> spec para autosembrarse.
+> ANTERIOR al click de "Condonar") no toca el punto que falló — se documentó en ese momento como un
+> "race de timing preexistente con el `confirm()` nativo del browser sobre un fixture compartido no
+> autogenerado".
+>
+> **🔧 CORREGIDO 2026-08-06→08-07 — no era timing, era un diagnóstico equivocado: causa raíz real
+> encontrada y arreglada (🟡 fix en el working tree local, SIN COMMITEAR).** El diagnóstico de arriba
+> resultó incompleto: no había ningún `confirm()` nativo del browser al que "aceptar" — desde el
+> **2026-07-29 (v1.152.0)** TODOS los diálogos nativos (`confirm()`/`alert()`/`prompt()`) se
+> reemplazaron por el modal propio `useConfirm()` (`role="alertdialog"`, botón "Confirmar"), y este
+> spec (junto con `51_autorizacion_ajuste_aprobar_mutante.spec.ts` y
+> `69_cc_revertir_condonacion_mutante.spec.ts`, mismo patrón) se quedó con un handler
+> `page.on('dialog', ...)` apuntando a un diálogo que ya no existe — **nunca clickeaba el modal**, así
+> que cuando el fixture SÍ estaba presente el test **siempre fallaba** (no era intermitente). Fix:
+> agregado `await page.getByRole('alertdialog').getByRole('button', { name: /^Confirmar$/ }).click()`
+> después de disparar la acción, en los 3 archivos. Mecanismo verificado en vivo contra DEV corriendo
+> `121_aprobacion_estado_resolver_mutante.spec.ts` (spec más nuevo que ya usa exactamente el mismo
+> patrón contra el mismo call site de `InventarioPage.tsx` — pasó 4/4). Los 3 specs en sí no se
+> pudieron correr de punta a punta por falta de fixture fresco en DEV (dato preexistente, sigue como
+> deuda técnica separada — no culpa de este fix). Ver `log.md` (2026-08-07) y
+> `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ").
 
 ### Configuración Playwright
 

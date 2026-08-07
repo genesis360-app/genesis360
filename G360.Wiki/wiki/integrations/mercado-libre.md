@@ -3,7 +3,7 @@ title: Integración MercadoLibre (MELI)
 category: integrations
 tags: [mercadolibre, meli, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-06
+updated: 2026-08-07
 ---
 
 # Integración MercadoLibre (MELI)
@@ -162,15 +162,36 @@ históricas no lo muestran).
 Verificado end-to-end en DEV con un pedido real de Almacén Jorgito (comisión $1793, envío $8720,
 costo $600 → neto **-$7751**), incluida la renderización real en el navegador.
 
-> [!WARNING] **Deuda técnica anotada (no gap de esta sesión)**: las ventas MELI se crean con
-> `sucursal_id = NULL` (a diferencia de TN, que sí lo asigna) — esto las hace invisibles en vistas que
-> filtran por sucursal específica (p.ej. el tab Canales con una sucursal puntual seleccionada en vez
-> de "Todas"). Pendiente decidir si corresponde asignarles alguna sucursal.
+> [!WARNING] **Deuda técnica anotada el 2026-08-06 — ✅ corregida el 2026-08-07**, ver sección de abajo
+> ("Fix: `sucursal_id` NULL en ventas MELI").
 
 Archivos: `supabase/functions/meli-webhook/index.ts`, `src/pages/VentasPage.tsx`,
 `supabase/migrations/337_meli_rentabilidad_neta.sql`.
 
 **✅ Deployado a PROD el 2026-08-06** (PR #314, tag `v1.159.0`, mig 337 aplicada en `jjffnbrdjchquexdfgwq`).
+
+---
+
+## 🐛 Fix: `sucursal_id = NULL` en ventas MELI (2026-08-07 — corregido en el working tree local, deployado a la Edge Function en DEV, NO commiteado)
+
+> [!WARNING] Bug real (Regla de Oro #0, no solo deuda técnica): `meli-webhook` nunca leía ni
+> propagaba `meli_credentials.sucursal_id` al crear la venta ni el envío — a diferencia de
+> `tn-webhook`, que sí lo hacía desde siempre. El tenant piloto conectado en PROD (Almacén Jorgito) es
+> multi-sucursal y multi-emisor, así que las ventas MELI podían perder visibilidad en vistas filtradas
+> por sucursal y, en un tenant multi-CUIT, facturarse potencialmente con el emisor equivocado.
+
+**Fix:** se agregó `sucursal_id` al `SELECT` de `meli_credentials` y se propagó tanto al `INSERT` de
+`ventas` como al de `envios` (dentro de `crearEnvioAutomaticoMELI`) — mismo patrón que `tn-webhook`.
+Cierra la nota de "deuda técnica anotada" que quedaba en la sección de arriba (Fase D1, 2026-08-06).
+
+- **Deployado a la Edge Function `meli-webhook` en DEV** (v24, `verify_jwt: false` preservado).
+- **⚠ No probado de punta a punta contra un pedido real de MercadoLibre** — requeriría un pedido
+  nuevo real en la cuenta de test conectada; la limitación ya existía desde que se construyó la Fase B
+  original.
+- **No commiteado** — vive en el working tree de `dev` junto con el resto de los cambios de la
+  sesión (ver `sources/raw/project_pendientes.md`, bloque "ARRANCÁ ACÁ" del 2026-08-07).
+
+Archivo: `supabase/functions/meli-webhook/index.ts`.
 
 ---
 

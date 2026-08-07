@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box, Recycle } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -36,7 +36,7 @@ import toast from 'react-hot-toast'
 
 type Tab = 'negocio' | 'ventas' | 'caja' | 'clientes' | 'inventario' | 'envios' | 'pedidos' | 'gastos' | 'facturacion' | 'rrhh' | 'alertas' | 'notificaciones' | 'conectividad'
 type VentasSubTab = 'metodos' | 'descuentos' | 'operativa'
-type InvSubTab = 'reglas' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'empaque' | 'atributos' | 'codigos' | 'zonas'
+type InvSubTab = 'reglas' | 'rotacion' | 'categorias' | 'ubicaciones' | 'estados' | 'motivos' | 'unidades' | 'empaque' | 'atributos' | 'codigos' | 'zonas'
 type AtributoVariante = 'talle' | 'color' | 'encaje' | 'formato' | 'sabor_aroma'
 // Fede 25/7, punto 6: categoría informativa del empaque (solo reportes — sin función técnica).
 // Lista abierta a propósito (sin CHECK en DB, ver mig 328): agregar un valor acá alcanza, no hace falta migración.
@@ -644,7 +644,7 @@ export default function ConfigPage() {
   useEffect(() => {
     if (modoAvanzado) return
     if (tab === 'envios' || tab === 'pedidos') setTab('negocio')
-    if (['reglas', 'ubicaciones', 'estados', 'codigos'].includes(invSubTab)) setInvSubTab('categorias')
+    if (['reglas', 'rotacion', 'ubicaciones', 'estados', 'codigos'].includes(invSubTab)) setInvSubTab('categorias')
     if (conSubTab === 'api') setConSubTab('integraciones')
   }, [modoAvanzado, tab, invSubTab, conSubTab])
 
@@ -678,6 +678,11 @@ export default function ConfigPage() {
   const [bizCubicajeFactor, setBizCubicajeFactor] = useState(
     String(Math.round((Number(tenant?.cubicaje_factor_aprovechamiento ?? FACTOR_APROVECHAMIENTO_DEFAULT)) * 100))
   )
+  // Motor de Rotación (A1-A3) — default a nivel tenant
+  const [bizRotacionAgotar, setBizRotacionAgotar] = useState(!!(tenant as any)?.rotacion_agotar_antes_reponer)
+  const [bizRotacionEnvios, setBizRotacionEnvios] = useState(!!(tenant as any)?.rotacion_prioridad_envios)
+  const [bizRotacionKits, setBizRotacionKits] = useState(!!(tenant as any)?.rotacion_armar_kits)
+  const [bizRotacionUbicacionExcepcion, setBizRotacionUbicacionExcepcion] = useState((tenant as any)?.rotacion_ubicacion_excepcion_id ?? '')
   // F3 — gate de ajustes de conteo + umbrales de doble conteo
   const num = (v: any) => v != null ? String(v) : ''
   const [bizConteoGate, setBizConteoGate] = useState({
@@ -1195,6 +1200,14 @@ export default function ConfigPage() {
         const pct = Number(bizCubicajeFactor)
         return Number.isFinite(pct) && pct > 0 && pct <= 100 ? pct / 100 : FACTOR_APROVECHAMIENTO_DEFAULT
       })(),
+      // Motor de Rotación de productos con descuento (A1/A2/A3) — default a nivel tenant, cae en
+      // cascada desde categoría/producto vía fn_rotacion_reglas_efectivas. Matriz de compatibilidad
+      // (1+3 bloqueado) la hace cumplir el CHECK de la tabla — acá solo se evita mandar un combo que
+      // el usuario ya vio bloqueado en la UI.
+      rotacion_agotar_antes_reponer: bizRotacionAgotar,
+      rotacion_prioridad_envios: bizRotacionEnvios,
+      rotacion_armar_kits: bizRotacionKits,
+      rotacion_ubicacion_excepcion_id: bizRotacionUbicacionExcepcion || null,
       conteo_modo: bizConteoModo,
       ajuste_autorizacion_roles: Object.keys(bizAjusteRoles).length ? bizAjusteRoles : null,
       conteo_gate_activo: bizConteoGate.activo,
@@ -1438,6 +1451,14 @@ export default function ConfigPage() {
     const old = (categorias as Item[]).find(c => c.id === id)
     const { error } = await supabase.from('categorias').delete().eq('id', id)
     if (error) toast.error('No se puede eliminar, tiene productos asociados'); else { toast.success('Eliminada'); qc.invalidateQueries({ queryKey: ['categorias'] }); logActividad({ entidad: 'categoria', entidad_id: id, entidad_nombre: old?.nombre, accion: 'eliminar', pagina: '/configuracion' }) }
+  }
+  // Motor de Rotación (A3) — override por categoría. `valor` en null = "usa el default del tenant"
+  // (cae en cascada vía fn_rotacion_reglas_efectivas). El CHECK de la tabla bloquea 1+3 en la
+  // misma fila; acá además se evita mandar el combo si la UI ya lo tiene deshabilitado.
+  const updateCategoriaRotacion = async (id: string, campo: 'rotacion_agotar_antes_reponer' | 'rotacion_prioridad_envios' | 'rotacion_armar_kits' | 'rotacion_ubicacion_excepcion_id', valor: any) => {
+    const { error } = await supabase.from('categorias').update({ [campo]: valor }).eq('id', id)
+    if (error) toast.error(error.message)
+    else qc.invalidateQueries({ queryKey: ['categorias'] })
   }
 
   // Ubicaciones
@@ -2002,6 +2023,21 @@ export default function ConfigPage() {
   // (ej. "Eliminado" da de baja stock pero no tiene % de descuento asociado).
   const toggleRequiereAprobacion = async (estadoId: string, value: boolean) => {
     const { error } = await supabase.from('estados_inventario').update({ requiere_aprobacion: value }).eq('id', estadoId)
+    if (error) toast.error(error.message)
+    else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+  }
+  // B2 (Motor de Rotación) — switch aparte de `descuento_pct`: un estado con descuento puede NO
+  // disparar las reglas de Rotación (agotar antes de reponer / prioridad envíos / armar kits).
+  const toggleDisparaRotacion = async (estadoId: string, value: boolean) => {
+    const { error } = await supabase.from('estados_inventario').update({ dispara_rotacion: value }).eq('id', estadoId)
+    if (error) toast.error(error.message)
+    else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
+  }
+  // C3 (Motor de Rotación) — de las reglas que disparan Rotación, la Opción 1 (agotar antes de
+  // reponer) SOLO cuenta motivo vencimiento, nunca otros motivos (ej. "Dañado"). Sin este flag no
+  // hay forma de distinguir un estado del otro — son solo nombres libres por tenant.
+  const toggleMotivoVencimiento = async (estadoId: string, value: boolean) => {
+    const { error } = await supabase.from('estados_inventario').update({ motivo_vencimiento: value }).eq('id', estadoId)
     if (error) toast.error(error.message)
     else qc.invalidateQueries({ queryKey: ['estados_inventario'] })
   }
@@ -3619,6 +3655,7 @@ export default function ConfigPage() {
           <PageTabs
             tabs={([
               { id: 'reglas' as InvSubTab, label: 'Reglas de stock', icon: Timer },
+              { id: 'rotacion' as InvSubTab, label: 'Rotación', icon: Recycle },
               { id: 'categorias' as InvSubTab, label: 'Categorías', icon: Tag },
               { id: 'ubicaciones' as InvSubTab, label: 'Ubicaciones', icon: MapPin },
               { id: 'estados' as InvSubTab, label: 'Estados', icon: CircleDot },
@@ -3629,7 +3666,7 @@ export default function ConfigPage() {
               { id: 'codigos' as InvSubTab, label: 'Códigos', icon: ScanBarcode },
               { id: 'zonas' as InvSubTab, label: 'Zonas y picking', icon: Navigation },
               // Reglas (FIFO/conteos), Ubicaciones, Estados, Códigos GS1 y Zonas/picking son WMS → solo avanzado
-            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'ubicaciones', 'estados', 'codigos', 'zonas'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
+            ] as const).filter(({ id }) => modoAvanzado || !['reglas', 'rotacion', 'ubicaciones', 'estados', 'codigos', 'zonas'].includes(id)).map(({ id, label, icon }) => ({ id, label, icon }))}
             active={invSubTab}
             onChange={(id) => setInvSubTab(id as InvSubTab)}
           />
@@ -3643,17 +3680,6 @@ export default function ConfigPage() {
           {invSubTab === 'reglas' && (
             <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
               <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reglas de gestión de stock</h2>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Regla de inventario</label>
-                <select value={bizRegla} disabled={!canEdit}
-                  onChange={e => setBizRegla(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
-                  {REGLAS_INVENTARIO.map(r => (
-                    <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
-                  ))}
-                </select>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Define cómo se selecciona el stock al rebajar. Se puede sobreescribir por producto.</p>
-              </div>
               <div className="flex items-center justify-between py-1">
                 <div>
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Permitir over-receipt</p>
@@ -3816,6 +3842,157 @@ export default function ConfigPage() {
                   </button>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* ── Motor de Rotación de productos con descuento (relevamiento 2026-08-07) ────── */}
+          {invSubTab === 'rotacion' && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700 space-y-4">
+                <div className="flex items-center gap-2">
+                  <Recycle size={18} className="text-accent-text" />
+                  <h2 className="font-semibold text-gray-700 dark:text-gray-300">Motor de Rotación de productos con descuento</h2>
+                </div>
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Define qué pasa con el stock que entra a un estado con descuento (ej. "Próximo a Vencer").
+                  Marcá en <strong>Inventario → Estados</strong> (ícono <RefreshCw size={11} className="inline" />)
+                  qué estados disparan estas reglas. Acá definís el default del negocio; más abajo podés poner
+                  una excepción por categoría (una categoría sin elegir usa este default).
+                </p>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Regla de inventario (FIFO/FEFO)</label>
+                  <select value={bizRegla} disabled={!canEdit}
+                    onChange={e => setBizRegla(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                    {REGLAS_INVENTARIO.map(r => (
+                      <option key={r.value} value={r.value}>{r.label} — {r.desc}</option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Define cómo se selecciona el stock al rebajar. Se puede sobreescribir por producto.</p>
+                </div>
+
+                <div className="border-t border-gray-100 dark:border-gray-700 pt-3 space-y-1">
+                  <label className={`flex items-start gap-3 py-1 ${(!canEdit || bizRotacionKits) ? 'opacity-60' : 'cursor-pointer'}`}>
+                    <div className="mt-0.5"><Toggle size="lg" disabled={!canEdit || bizRotacionKits} checked={bizRotacionAgotar}
+                      onChange={() => setBizRotacionAgotar(v => !v)} aria-label="Terminar stock para reponer" /></div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">1 — Terminar stock para reponer</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">No sugiere reponer con vencimiento más lejano mientras quede stock en un estado con descuento por vencimiento (sí se puede sumar más con la misma fecha).</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-start gap-3 py-1 ${!canEdit ? 'opacity-60' : 'cursor-pointer'}`}>
+                    <div className="mt-0.5"><Toggle size="lg" disabled={!canEdit} checked={bizRotacionEnvios}
+                      onChange={() => setBizRotacionEnvios(v => !v)} aria-label="Prioridad en envíos y reservas" /></div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">2 — Prioridad en envíos y reservas</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Ese stock se toma primero para pedidos con envío/reserva. El mostrador pierde prioridad (no queda excluido) salvo venta directa presencial.</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-start gap-3 py-1 ${(!canEdit || bizRotacionAgotar) ? 'opacity-60' : 'cursor-pointer'}`}>
+                    <div className="mt-0.5"><Toggle size="lg" disabled={!canEdit || bizRotacionAgotar} checked={bizRotacionKits}
+                      onChange={() => setBizRotacionKits(v => !v)} aria-label="Armar kits con descuento" /></div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">3 — Armar kits con descuento</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Habilita re-empaquetar el stock en descuento como kit (nombre/precio/código autogenerados, editable).</p>
+                    </div>
+                  </label>
+                  {(bizRotacionAgotar || bizRotacionKits) && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 pl-11">
+                      <AlertCircle size={12} /> "Terminar stock para reponer" y "Armar kits" no se pueden combinar — la matriz de compatibilidad los bloquea.
+                    </p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Ubicación de excepción (opcional)</label>
+                  <select value={bizRotacionUbicacionExcepcion} disabled={!canEdit}
+                    onChange={e => setBizRotacionUbicacionExcepcion(e.target.value)}
+                    className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700 bg-white dark:bg-gray-800">
+                    <option value="">— Sin ubicación de excepción (queda donde está) —</option>
+                    {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                  </select>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Solo aplica a las reglas 1 y 2 — un kit armado (regla 3) es un producto distinto, puede estar en cualquier lado.</p>
+                </div>
+
+                {canEdit && (
+                  <div className="flex justify-end">
+                    <button onClick={handleSaveBiz} disabled={savingBiz}
+                      className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-white font-semibold rounded-xl transition-all disabled:opacity-60 text-sm">
+                      {savingBiz ? 'Guardando...' : 'Guardar'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 dark:border-gray-700">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Excepciones por categoría</h3>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">Jerarquía: producto (a futuro) → categoría → negocio. "Usa default" cae en el nivel de arriba.</p>
+                {categorias.length === 0 ? (
+                  <p className="text-sm text-gray-400 dark:text-gray-500">No hay categorías cargadas — creá alguna en la sub-pestaña "Categorías".</p>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-xs text-gray-400 dark:text-gray-500 border-b border-gray-100 dark:border-gray-700">
+                          <th className="py-2 pr-2 font-medium">Categoría</th>
+                          <th className="py-2 px-2 font-medium">1 — Agotar antes</th>
+                          <th className="py-2 px-2 font-medium">2 — Envíos</th>
+                          <th className="py-2 px-2 font-medium">3 — Kits</th>
+                          <th className="py-2 pl-2 font-medium">Ubicación excepción</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(categorias as any[]).map(c => {
+                          const kitsBloqueado = c.rotacion_agotar_antes_reponer === true
+                          const agotarBloqueado = c.rotacion_armar_kits === true
+                          const selectCls = "px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs dark:bg-gray-700 dark:text-white disabled:opacity-50 w-full"
+                          return (
+                            <tr key={c.id} className="border-b border-gray-50 dark:border-gray-700/50 last:border-0">
+                              <td className="py-2 pr-2 font-medium text-gray-700 dark:text-gray-300">{c.nombre}</td>
+                              <td className="py-2 px-2">
+                                <select disabled={!canEdit || agotarBloqueado} value={c.rotacion_agotar_antes_reponer === null || c.rotacion_agotar_antes_reponer === undefined ? '' : String(c.rotacion_agotar_antes_reponer)}
+                                  onChange={e => updateCategoriaRotacion(c.id, 'rotacion_agotar_antes_reponer', e.target.value === '' ? null : e.target.value === 'true')}
+                                  className={selectCls}>
+                                  <option value="">Usa default</option>
+                                  <option value="true">Sí</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </td>
+                              <td className="py-2 px-2">
+                                <select disabled={!canEdit} value={c.rotacion_prioridad_envios === null || c.rotacion_prioridad_envios === undefined ? '' : String(c.rotacion_prioridad_envios)}
+                                  onChange={e => updateCategoriaRotacion(c.id, 'rotacion_prioridad_envios', e.target.value === '' ? null : e.target.value === 'true')}
+                                  className={selectCls}>
+                                  <option value="">Usa default</option>
+                                  <option value="true">Sí</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </td>
+                              <td className="py-2 px-2">
+                                <select disabled={!canEdit || kitsBloqueado} value={c.rotacion_armar_kits === null || c.rotacion_armar_kits === undefined ? '' : String(c.rotacion_armar_kits)}
+                                  onChange={e => updateCategoriaRotacion(c.id, 'rotacion_armar_kits', e.target.value === '' ? null : e.target.value === 'true')}
+                                  className={selectCls}>
+                                  <option value="">Usa default</option>
+                                  <option value="true">Sí</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </td>
+                              <td className="py-2 pl-2">
+                                <select disabled={!canEdit} value={c.rotacion_ubicacion_excepcion_id ?? ''}
+                                  onChange={e => updateCategoriaRotacion(c.id, 'rotacion_ubicacion_excepcion_id', e.target.value || null)}
+                                  className={selectCls}>
+                                  <option value="">Usa default</option>
+                                  {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                                </select>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -4485,6 +4662,28 @@ export default function ConfigPage() {
                             ? 'bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-200'
                             : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
                           <ShieldCheck size={14} />
+                        </button>
+
+                        {/* Toggle dispara Rotación (B2) — independiente de descuento_pct: un estado
+                            puede tener descuento sin activar agotar-antes/prioridad-envíos/armar-kits */}
+                        <button
+                          onClick={() => toggleDisparaRotacion(e.id, !e.dispara_rotacion)}
+                          title={e.dispara_rotacion ? 'Este estado dispara las reglas de Rotación (Config → Inventario → Rotación) — click para quitar' : 'Marcar: este estado va a disparar las reglas de Rotación configuradas por categoría/producto'}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${e.dispara_rotacion
+                            ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 hover:bg-purple-200'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
+                          <RefreshCw size={14} />
+                        </button>
+
+                        {/* Toggle motivo vencimiento (C3) — solo relevante junto con dispara_rotacion,
+                            pero se deja marcar siempre para no forzar un orden de carga */}
+                        <button
+                          onClick={() => toggleMotivoVencimiento(e.id, !e.motivo_vencimiento)}
+                          title={e.motivo_vencimiento ? 'Motivo: vencimiento — cuenta para "Terminar stock para reponer" (Rotación) — click para quitar' : 'Marcar si este estado representa stock por VENCER (no dañado/otro motivo) — la regla "Terminar stock para reponer" de Rotación solo cuenta estados marcados así'}
+                          className={`w-8 h-8 flex items-center justify-center rounded-lg transition-colors ${e.motivo_vencimiento
+                            ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 hover:bg-amber-200'
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 hover:bg-gray-200'}`}>
+                          <Clock size={14} />
                         </button>
                       </div>
                     ))}

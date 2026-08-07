@@ -2,8 +2,8 @@
 title: Ubicaciones — Rediseño en árbol (tipo lógico + jerarquía)
 category: features
 tags: [ubicaciones, wms, arbol, jerarquia, tipo-logico, picking, repositores, comercial]
-sources: [supabase/migrations/334_ubicaciones_arbol_tipo_logico.sql, supabase/migrations/335_producto_ubicacion_exhibicion.sql, supabase/migrations/336_ubicaciones_defaults_apagados.sql, src/lib/ubicacionesArbol.ts, src/lib/supabase.ts, src/pages/ConfigPage.tsx, tests/e2e/130_ubicaciones_arbol_mutante.spec.ts, relevamiento-ubicaciones-reglas-negocio.html]
-updated: 2026-08-06
+sources: [supabase/migrations/334_ubicaciones_arbol_tipo_logico.sql, supabase/migrations/335_producto_ubicacion_exhibicion.sql, supabase/migrations/336_ubicaciones_defaults_apagados.sql, supabase/migrations/339_ubicaciones_drop_tipo_ubicacion.sql, src/lib/ubicacionesArbol.ts, src/lib/supabase.ts, src/pages/ConfigPage.tsx, tests/e2e/130_ubicaciones_arbol_mutante.spec.ts, relevamiento-ubicaciones-reglas-negocio.html]
+updated: 2026-08-07
 ---
 
 # Ubicaciones — Rediseño en árbol (tipo lógico + jerarquía)
@@ -255,15 +255,24 @@ existentes**, solo las creadas de acá en adelante.
 1. **✅ Deployado a PROD el 2026-08-06 (v1.158.0)** — junto con el resto de lo acumulado en DEV
    desde v1.157.0 (fix Regla #0 en `MasivoModal.tsx`, píldoras de filtro, gaps de breadcrumb, cierre
    de la deuda de `waitForTimeout`). Ver `log.md` (2026-08-06, entrada `deploy`).
-2. **🟡 Mig 336 (defaults apagados) SOLO EN DEV** — pendiente decidir con GO si se commitea/deploya
-   junto con el resto de la sesión del 2026-08-06 (fix de scroll del sidebar + Config
-   Clientes/Alertas/Notificaciones, ver [[wiki/features/configuracion]]). Aplicar en PROD cuando se
-   decida.
-3. **Fase U5 (limpieza):** dropear `ubicaciones.tipo_ubicacion` en una migración futura cuando se
-   reconfirme 0 lectores (hoy el grep en `src/` ya da 0 salvo el tipo TS deprecated — falta la
-   migración de `DROP` en sí).
-4. **Relevamientos #2/#3/#4** de la secuencia hacia Repositores sin arrancar: Pestaña de supervisor
-   reusable → Motor de Rotación de productos con descuento → Repositores.
+2. **✅ Mig 336 (defaults apagados) deployada también a PROD** — junto con el resto del deploy de
+   v1.159.0 el 2026-08-06 (envío automático TN/MELI, fulfillment sync TN, rentabilidad neta MELI,
+   footer de conteo de registros). Ver `log.md` (2026-08-06, entrada `deploy` v1.159.0).
+3. **✅ Fase U5 (limpieza) hecha — mig 339 (2026-08-07), 🟡 SOLO EN DEV, sin commitear.** Dropea
+   `ubicaciones.tipo_ubicacion` (0 lectores reales confirmados: sin funciones/triggers/vistas ni
+   referencias en `supabase/functions`, en `src/` solo el tipo TS deprecated, limpiado junto con la
+   migración). Archivo `supabase/migrations/339_ubicaciones_drop_tipo_ubicacion.sql` existe en el
+   repo pero como untracked (`??`) en `git status` — no commiteado, no pusheado, no en PROD. Ver
+   `wiki/database/migraciones.md`, `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ").
+4. **Relevamiento #2** de la secuencia hacia Repositores (Pestaña de supervisor reusable) — ✅
+   respondido completo el 2026-08-07, diseño/construcción sin arrancar todavía (esperan al #3). **#3
+   (Motor de Rotación de productos con descuento)** — ✅ relevamiento 100% respondido el 2026-08-07
+   (B4/C2/E5 cerrados por GO), con esquema de CONFIGURACIÓN + UI (mig 341) y ejecución real de las
+   Opciones 1 y 2 (mig 342) ya construidos — **Opción 2 ✅ VERIFICADA end-to-end el mismo 2026-08-07**
+   (encontró y corrigió un bug real de Regla de Oro #0 en `VentasPage.tsx`, test e2e permanente spec
+   131), Opción 3 (kits) sin arrancar; 🟡 TODO SOLO EN DEV, sin commitear — ver
+   [[wiki/features/precios-tiers-empaque]].
+   **#4 (Repositores) sigue bloqueado.**
 5. **Prueba manual en el navegador** — cubierta por Playwright (spec 130) el 2026-08-06, pero GO
    todavía no recorrió la UI a mano el árbol completo con los 4 fixes de breadcrumb aplicados.
 

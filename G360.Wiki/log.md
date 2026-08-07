@@ -6,6 +6,334 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-07] update | 🧩 Motor de Rotación Opción 3 (kits): fix E3 (iniciar_armado_kit prioriza lote en descuento, mig 343) + autogenerar nombre/precio E2/E4 con autorización de supervisor — verificado end-to-end con test e2e permanente (spec 132) — SIN COMMITEAR
+
+Continuación, mismo día, de la entrada `update` siguiente (Motor de Rotación Opción 2, verificada
+end-to-end con el spec 131, que había dejado "arrancar la Opción 3 (kits)" como siguiente paso del
+orden estricto). Esta sesión avanzó los 2 sub-puntos de la Opción 3 (armado de kits) que GO ya había
+scopeado como independientes de la Pestaña de supervisor: fix del gap técnico **E3** y autogenerar
+nombre/precio/código del kit (**E2/E4**), reusando la pantalla de Kits EXISTENTE de forma MANUAL (sin
+disparo automático — eso depende de la Pestaña de supervisor, que no existe todavía). **Nada de lo
+nuevo está commiteado** — `git status` en `dev` sigue con el working tree sucio, `APP_VERSION` sigue en
+`v1.159.0`, PROD sin cambios.
+
+**Migración 343** (`343_kits_rotacion_prioridad_y_precio_autorizacion.sql`, aplicada solo en DEV vía
+`apply_migration`, proyecto `gcmhzdedrkmmzfzfveig`, revisada por el `migration-reviewer` ANTES de
+aplicar — sin hallazgos bloqueantes): **E3**, `CREATE OR REPLACE FUNCTION public.iniciar_armado_kit(...)`
+— para cada componente de la receta resuelve `fn_rotacion_reglas_efectivas(comp_producto_id)` (mig 341)
+y, si `armar_kits` está activo, reordena la reserva con
+`ORDER BY CASE WHEN v_armar_kits AND estado_id = ANY(v_estados_rotacion) THEN 0 ELSE 1 END, created_at`
+en vez de solo `created_at` — el lote en un estado que dispara Rotación se reserva PRIMERO (prioridad,
+no exclusividad — mismo criterio D3 que la Opción 2: el lote en descuento pierde prioridad para el
+resto, nunca queda excluido). Para componentes/tenants sin la regla activa, 0 cambio de comportamiento.
+**E2 (parte DB)**: extiende el `CHECK` de `autorizaciones_inventario.tipo` sumando `'kit_precio'` (7mo
+tipo) — habilita el flujo de aprobación reusando la infraestructura EXISTENTE (mismo patrón que
+`bulk_edit`), sin RPC `SECURITY DEFINER` nueva.
+
+**`src/lib/kits.ts` nuevo** (lógica pura + vitest, patrón del repo) — `sugerirNombreKit(componentes)` y
+`sugerirPrecioKit(componentes)` (E4: suma `precio_venta × cantidad` de cada componente, SIN restar
+descuento — el % de estado lo aplica el mecanismo existente en el momento de la venta). 9 tests
+unitarios nuevos en `tests/unit/kits.test.ts`.
+
+**UI nueva en Inventario → Kits** (`InventarioPage.tsx`, card de KIT expandida): bloque "Sugerido según
+la receta" con nombre sugerido (botón "Usar", aplica directo, sin autorización) y precio sugerido
+(DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN aplica directo; cualquier otro rol crea una solicitud pendiente en
+`autorizaciones_inventario` tipo `kit_precio`, que aparece en la pestaña "Autorizaciones" ya existente
+con el mismo flujo de aprobar/rechazar). Extendida `aprobarAutorizacion` (aplica `productos.precio_venta`
+al aprobar) y el render de la lista de autorizaciones (label "Precio de KIT", color violeta). Agregado
+`precio_venta` a las queries de `kitsProductos`/`kit_recetas` (antes no se traía).
+
+**✅ Verificación end-to-end de E3 (lo más importante técnicamente):** test permanente nuevo
+`tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts` — siembra su propia precondición (estado
+nuevo con `dispara_rotacion=true`, producto componente con `rotacion_armar_kits=true`, producto KIT con
+receta 1:2, DOS ingresos reales por UI del componente: primero al estado normal "Disponible" —línea más
+VIEJA—, después al estado de Rotación —línea más NUEVA—), dispara el armado desde la UI real (Inventario
+→ Kits → Armar → confirmar cantidad, no llamando la RPC a mano), y verifica en la base de datos que
+`iniciar_armado_kit` reservó (`cantidad_reservada`) SOLO de la línea de Rotación (más nueva), dejando la
+línea normal (más vieja) intacta, y que `kitting_log.componentes_reservados` apunta a la línea correcta.
+**2 corridas consecutivas verdes contra DEV.**
+
+**⚠️ NO verificado en el navegador: la UI de autogeneración/aprobación de precio (E2)** — solo unit
+tests (`kits.ts`) + code review, sin driving real del flujo "sugerencia → aprobación → aprobar como
+supervisor". Si se retoma este módulo, es lo primero a probar antes de darlo por cerrado (mismo tipo de
+gap que tuvo la Opción 2 hasta la sesión pasada).
+
+**Gotcha de infraestructura, no bloqueante:** `npm run schema:dump` volvió a fallar (falta
+`SUPABASE_ACCESS_TOKEN` — el mismo bloqueo recurrente de sesiones anteriores). `supabase/schema_full.sql`
+parcheado A MANO con exactamente los mismos 2 cambios de la mig 343 (función `iniciar_armado_kit`
+completa + `CHECK` de `autorizaciones_inventario_tipo_check`) — no es un dump real, convendría
+regenerar completo si alguien tiene el token.
+
+**Verificación final, todo verde:** `npx tsc --noEmit` limpio · `npm run build` limpio · `npm run
+test:unit`: **1538 tests unitarios verdes** (97 archivos), incluidos los 9 nuevos de `kits.ts` · specs
+e2e **131** (Opción 2, sesión anterior) y **132** (Opción 3/E3, esta sesión) verdes en corridas
+consecutivas.
+
+**La Opción 3 del Motor de Rotación queda parcialmente verificada** — E3 (el fix técnico, lo que movía
+plata/stock real de Regla de Oro #0) tiene test e2e permanente contra regresión; E2/E4 (autogeneración
+y aprobación de precio) están construidos y respaldados por unit tests, pero sin driving real en el
+navegador. E5 (desarmado de kit) y lo que depende de la Pestaña de supervisor siguen sin arrancar, a
+propósito.
+
+**📋 Estado real del repo:** se suman 4 archivos nuevos + 3 modificados a la pila ya acumulada de las 3
+sesiones anteriores del mismo día — nuevo (`??`): `supabase/migrations/343_kits_rotacion_prioridad_y_precio_autorizacion.sql`,
+`src/lib/kits.ts`, `tests/unit/kits.test.ts`, `tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts`;
+modificados: `src/pages/InventarioPage.tsx`, `src/lib/supabase.ts`, `supabase/schema_full.sql`. Nada
+pusheado, nada mergeado, `APP_VERSION` sigue en v1.159.0 (PROD 001-338, DEV 001-343 sin cambios de
+339-342 esta sesión + 343 nueva).
+
+Ver `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" nuevo, cont. 4),
+[[wiki/features/precios-tiers-empaque]], `tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts`,
+`wiki/database/migraciones.md` (mig 343).
+
+---
+
+## [2026-08-07] update | 🐛✅ Bug real encontrado y corregido en Motor de Rotación Opción 2 (prioridad de envíos) — verificado end-to-end con test e2e permanente (spec 131) — SIN COMMITEAR
+
+Continuación, mismo día, de la entrada `update` siguiente (Motor de Rotación: B4/C2/E5 cerrados +
+ejecución real de Opción 1 y Opción 2 construida, mig 342), que había dejado la Opción 2 "código listo
+pero sin verificar en navegador" como **prioridad ALTA explícita** para esta sesión. Esta sesión ES esa
+verificación. **Nada de lo nuevo está commiteado** — `git status` en `dev` sigue con el working tree
+sucio, `APP_VERSION` sigue en `v1.159.0`, PROD sin cambios.
+
+**Test e2e nuevo y PERMANENTE** (no un script ad-hoc descartable, sigue la convención real del repo de
+specs "_mutante" numeradas que siembran su propia precondición): `tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts`.
+Simula el flujo REAL de un cajero: crea un estado nuevo con `dispara_rotacion=true` + un producto nuevo
+con `rotacion_prioridad_envios=true`, ingresa por UI dos lotes reales (uno al estado normal
+"Disponible" — línea más VIEJA — y después uno al estado de Rotación — línea más NUEVA), agrega el
+producto al carrito PRIMERO (como haría un cajero real, antes de saber el canal), recién DESPUÉS elige
+el canal "WhatsApp" (no-presencial), cobra en efectivo, y verifica en la base de datos real
+(`inventario_lineas`, `venta_item_despachos`) que el despacho salió del lote de Rotación, no del lote
+viejo/normal.
+
+**🐛 El test FALLÓ al primer intento — confirmó un bug real de inventario (Regla de Oro #0).** Causa
+raíz encontrada leyendo el código: en `VentasPage.tsx`, al agregar un producto al carrito (línea
+~1513), se precalcula un plan de qué LPN va a salir (`item.lpn_fuentes`) con `getRebajeSort(...)` SIN
+el parámetro de prioridad de Rotación — porque en ese momento todavía no se sabe si la venta va a
+calificar como envío/reserva (el canal se elige DESPUÉS, en el panel de cobro). Ese plan "congelado" se
+consumía tal cual en la **Fase A** de `registrarVenta` (el bloque que sigue el plan del carrito), y la
+lógica correcta con prioridad de Rotación solo vivía en la **Fase B** (el fallback, que solo actúa
+sobre lo que sobra DESPUÉS de la Fase A). Como la Fase A ya cubría toda la cantidad pedida con el lote
+viejo, la Fase B nunca llegaba a ejecutarse — la prioridad de Rotación estaba bien CALCULADA pero nunca
+se APLICABA en el flujo real de POS.
+
+**Fix mínimo aplicado** en `VentasPage.tsx`, dentro del loop de la Fase A de `registrarVenta`: cuando
+el producto tiene la regla de prioridad de Rotación activa para esta venta (`estadoIdsPrioridadItem` no
+nulo), la Fase A ahora SOLO respeta las entradas del plan elegidas A MANO por el operador (`manualIds`,
+vía el selector de LPN manual); el resto (automático) se salta y queda para la Fase B, que sí usa el
+sort fresco con prioridad. Para productos/ventas SIN la regla activa, el comportamiento es IDÉNTICO al
+de antes — 0 cambios.
+
+**🧪 Segunda falla al re-correr el test — no relacionada con Rotación, fragilidad preexistente del
+arnés de test, corregida.** El helper compartido `ingresoRealPorUI` (`tests/e2e/helpers/fixtures.ts`,
+usado por muchos specs) elegía a ciegas la PRIMERA opción del combo de Ubicación, que resultó ser
+"Estantería A › A-01-1" — una ubicación con `mono_sku=true` (solo admite UN producto, nada la libera
+entre corridas). La primera corrida del spec 131 reclamó esa ubicación con su propio producto; la
+segunda corrida (producto nuevo, distinto) chocó en silencio contra el `mono_sku` — el insert fallaba
+con un toast de error que se autodescartaba en unos segundos, sin pista de la causa real (se veía solo
+como "el toast de éxito nunca apareció"; la causa se confirmó recién leyendo la mutación completa y
+verificando por SQL que la ubicación tenía `mono_sku=true`). Fix: parámetro opcional nuevo
+`ubicacionNombre` en `ingresoRealPorUI` (mismo patrón que el `estadoNombre` que ya existía) para poder
+elegir una ubicación explícita y segura — el spec 131 usa "RACK2" (verificado por SQL:
+`mono_sku=false`, sin tope de pallets). 100% retrocompatible.
+
+**Verificación final, todo verde:** `npx tsc --noEmit` limpio · `npm run build` limpio · `npm run
+test:unit`: **1529 tests unitarios verdes** (96 archivos, 5 todo, sin cambios respecto de la sesión
+anterior) · spec 131 con **2 corridas consecutivas verdes** contra DEV (confirma que no es un pase de
+suerte).
+
+**La Opción 2 del Motor de Rotación queda VERIFICADA end-to-end** — ya no es "código listo sin probar":
+el bug real que la neutralizaba en el flujo real de POS está corregido, y hay un test permanente que la
+guarda contra regresión futura.
+
+**📋 Estado real del repo:** se suman 3 archivos a la pila ya acumulada de las 2 sesiones anteriores del
+mismo día — nuevo (`??`): `tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts`; modificados:
+`src/pages/VentasPage.tsx`, `tests/e2e/helpers/fixtures.ts`. Nada pusheado, nada mergeado, `APP_VERSION`
+sigue en v1.159.0 (PROD 001-338, DEV 001-342 sin cambios esta sesión).
+
+Ver `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" nuevo, cont. 3),
+[[wiki/features/precios-tiers-empaque]], `tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts`,
+`tests/e2e/helpers/fixtures.ts`.
+
+---
+
+## [2026-08-07] update | 🔄 Motor de Rotación: B4/C2/E5 CERRADOS por GO + ejecución real Opción 1 y Opción 2 construida (mig 342) — Opción 2 SIN VERIFICAR EN NAVEGADOR, SIN COMMITEAR, SIN PUSH, SIN DEPLOY A PROD
+
+Continuación, mismo día, de la entrada `update` siguiente (esquema de CONFIGURACIÓN del Motor de
+Rotación, mig 341, con 3 gaps abiertos B4/C2/E5). Esta sesión: GO cerró los 3 gaps y se construyó la
+lógica de EJECUCIÓN real de las Opciones 1 y 2 (Opción 3/kits queda para la próxima sesión). **Nada
+de lo nuevo está commiteado** — `git status` en `dev` sigue con el working tree sucio, `APP_VERSION`
+sigue en `v1.159.0`, PROD sin cambios.
+
+**B4/C2/E5 respondidos por GO (2026-08-07) — el relevamiento de Rotación queda 100% cerrado.** B4: el
+motor actúa recién con el cambio de estado APROBADO (opción a) — ya lo garantiza la arquitectura
+existente (`LpnAccionesModal` no toca `inventario_lineas.estado_id` hasta que `aprobarAutorizacion`
+corre), no hizo falta código nuevo. C2: "agotado" se mide por LOTE/estado (opción a) — cualquier
+cantidad > 0 en el estado con descuento de ESE producto bloquea, sin importar stock sano en otro
+estado; alcance nuevo confirmado por GO: el bloqueo es POR SUCURSAL. E5: se puede desarmar un kit de
+Rotación, los componentes vuelven al MISMO estado con descuento del que salieron (opción b) — para
+Opción 3, pendiente.
+
+**Migración 342** (`342_rotacion_motivo_vencimiento_y_helpers.sql`, aplicada solo en DEV vía
+`apply_migration`, archivo `??` sin commitear): `estados_inventario.motivo_vencimiento boolean` nueva
+— distingue estados "por vencimiento" de otros motivos (ej. "Dañado"), toggle nuevo en Config →
+Inventario → Estados (ícono reloj ⏰). 2 funciones SQL nuevas de solo lectura,
+`fn_rotacion_productos_bloqueados_reposicion(tenant_id, sucursal_id)` y
+`fn_rotacion_vencimiento_bloqueante(producto_id, sucursal_id)`, ambas con `p_sucursal_id` EXPLÍCITO
+(el bloqueo de C2 es por sucursal, no implícito vía RLS). `migration-reviewer` encontró y corrigió
+antes de aplicar: faltaba `anon` en los `REVOKE` de las 2 funciones nuevas.
+
+**Opción 1 — ejecución real construida.** OC sugerida (`AlertasPage.tsx`): productos con stock por
+vencer sin agotar en la sucursal activa se EXCLUYEN de la generación automática de OC, badge "⏳
+Rotación: no reponer aún" + conteo de excluidos en el toast. Ingreso simple (`InventarioPage.tsx`):
+si se ingresa una fecha de vencimiento MÁS LEJANA que la del lote bloqueante, pide confirmación
+explícita (`confirmar()`, no bloquea duro); sumar más de la MISMA fecha no dispara el aviso.
+Pendiente NO bloqueante (decisión consciente): el mismo aviso no se extendió al ingreso masivo
+(`MasivoModal`) ni a Recepciones.
+
+**Opción 2 — ejecución real construida, ⚠️ CÓDIGO LISTO PERO SIN VERIFICAR EN NAVEGADOR.**
+`src/lib/rebajeSort.ts`: `getRebajeSort()` suma un 5º parámetro opcional
+`estadoIdsPrioridad?: Set<string> | null` — las líneas con `estado_id` en ese set se ordenan SIEMPRE
+primero, antes que FIFO/FEFO/LIFO/Manual (que sigue como desempate); 100% compatible hacia atrás, 4
+tests unitarios nuevos. `VentasPage.tsx` (`registrarVenta(estado)`): resuelve si la venta califica
+como "envío o reserva" (`estado === 'reservada' || clasificacionDe(canalPOS) !== 'presencial'`, hook
+`useCanalesVenta` ya existente); si califica, resuelve por ítem (`fn_rotacion_reglas_efectivas`) si
+tiene la regla de prioridad de envíos activa y le pasa el set de estados `dispara_rotacion=true` del
+tenant a `getRebajeSort`. **NO VERIFICADO EN NAVEGADOR — pendiente prioridad ALTA de la próxima
+sesión.** Se intentó una prueba e2e ad-hoc y se trabó en 3 obstáculos del arnés de test: el filtro
+"Ver stock de: Disponible ★" es un grupo curado que no incluía el estado de prueba nuevo (usar
+"Todos"); hace falta `ubicacion_id` con `disponible_surtido=true`, no alcanza con `sucursal_id`; y un
+timing donde el `<select>` de "Canal de venta" no exponía "WhatsApp" a tiempo para `selectOption()`.
+El código está respaldado por typecheck/build limpios + **1529 tests unitarios verdes** (incluidos
+los 4 nuevos de `rebajeSort`) + piezas ya verificadas por separado — pero sin prueba de punta a punta
+con los propios ojos. Fixture de prueba limpiado completo, nada quedó en DEV. Sin tocar todavía:
+MELI/TiendaNube (reserva FIFO plana propia, sin `getRebajeSort`).
+
+**Opción 3 (kits) — sin arrancar.** GO ya decidió el enfoque (opción B): construir ya lo independiente
+de tareas/reasignación (fix del gap técnico E3 — `iniciar_armado_kit` consume FIFO ciego al estado —
+más autogenerar nombre/precio/código del kit con edición manual, E2/E4), reusando la pantalla de Kits
+existente de forma manual. Lo que depende de la Pestaña de supervisor queda para después.
+
+Ver `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" nuevo, cont. 2),
+`sources/raw/relevamiento_rotacion_descuento_respuestas.md` (relevamiento 100% cerrado),
+[[wiki/features/precios-tiers-empaque]], [[wiki/features/ubicaciones]],
+`wiki/database/migraciones.md` (mig 342).
+
+---
+
+## [2026-08-07] update | 🐛⚡🧪 Fix `sucursal_id` NULL en MELI + thumbnail de imagen (perf) + fix de flake real en 3 e2e + esquema config del Motor de Rotación (mig 341) — TODO EN WORKING TREE LOCAL, SIN COMMITEAR, SIN PUSH, SIN DEPLOY A PROD
+
+Continuación, mismo día, de la sesión de relevamiento (entrada `update` siguiente, 100% wiki/negocio).
+Esta parte sí tocó código de la app y de la DB — pero **nada de lo que sigue quedó commiteado**:
+`git status` en `dev` sigue con el working tree sucio. `APP_VERSION` sigue en `v1.159.0`, PROD sin
+cambios. **3 migraciones nuevas (339, 340, 341), aplicadas solo en DEV** vía `apply_migration`
+(proyecto `gcmhzdedrkmmzfzfveig`) — los archivos existen en `supabase/migrations/` pero como
+untracked (`??`) en git.
+
+**Mig 339 — Fase U5, dropea `ubicaciones.tipo_ubicacion`.** Cierra la limpieza pendiente desde la mig
+334 (v1.157.0): 0 lectores reales verificados (funciones/triggers/vistas/`supabase/functions`/`src`,
+salvo el tipo TS `deprecated` ya limpiado). DROP idempotente, sin tocar datos operativos.
+
+**Mig 340 + fix de performance — thumbnail de imagen de producto.** Investigación de por qué Supabase
+**DEV** entró en "grace period" por exceder la cuota de **Cached Egress** + agotar el **Disk IO
+Budget**: las imágenes de producto se servían a tamaño COMPLETO (hasta 1200px/1.5MB) incluso como
+ícono de 32-36px, sin `loading="lazy"`, en Productos/Inventario/POS. Fix: `loading="lazy"` en los 4
+`<img>` de producto + thumbnail REAL generado al subir la imagen (`ProductoFormPage.tsx`,
+`browser-image-compression`, `maxWidthOrHeight: 200, maxSizeMB: 0.05`) guardado en la columna nueva
+`productos.imagen_thumb_url` (mig 340), usado con fallback a `imagen_url` en las 3 pantallas. Verde:
+tsc · build · 1525 tests unitarios. **NO probado con un usuario real subiendo una imagen en el
+navegador.** ⚠ **Pendiente operativo de GO** (no de código): Genesis360-DEV vive en la MISMA
+organización de Supabase ("Argentum Business Group", plan Free) que Genesis360-PRD — si la cuota no
+se regulariza antes del 2026-09-01, la Fair Use Policy podría devolver 402 en AMBOS proyectos; el
+upgrade a Pro es una decisión de negocio de GO.
+
+**Mig 341 — esquema de CONFIGURACIÓN del Motor de Rotación de productos con descuento (sin ejecución
+todavía).** Fede respondió el relevamiento el 2026-08-03, GO compartió la respuesta hoy. 3 preguntas
+con gap real (B4/C2/E5, Fede contestó algo relacionado pero distinto a lo preguntado) quedan
+pendientes de que GO las cierre o repregunte; el resto (A1-A3, B1-B3, C1/C3, D1-D3, E1-E4, F1-F2,
+G1-G3) cerró completo. Con eso resuelto se avanzó el esquema de configuración + UI en paralelo, a
+propósito **sin ninguna lógica de EJECUCIÓN** (depende de cerrar los 3 gaps). Jerarquía de 3 niveles
+(producto→categoría→tenant) + matriz de compatibilidad (1+3 bloqueado) — el `migration-reviewer`
+encontró que el CHECK por fila no cubre el conflicto CRUZANDO niveles, resuelto con desempate
+explícito de solo lectura en `fn_rotacion_reglas_efectivas`. UI nueva en Config → Inventario →
+Rotación (`ConfigPage.tsx`): default de tenant, excepciones por categoría, toggle
+`estados_inventario.dispara_rotacion`, FIFO/FEFO movido ahí. Detalle técnico completo:
+`G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
+
+**🐛 Bug real corregido: `sucursal_id` NULL en ventas de MercadoLibre.** `meli-webhook/index.ts` nunca
+leía ni propagaba `meli_credentials.sucursal_id` al crear la venta ni el envío — a diferencia de
+`tn-webhook`, que sí lo hacía desde siempre. Bug real activo (Regla de Oro #0): el tenant piloto
+conectado en PROD (Almacén Jorgito) es multi-sucursal y multi-emisor, así que las ventas MELI podían
+perder visibilidad en vistas filtradas por sucursal y, en un tenant multi-CUIT, facturarse
+potencialmente con el emisor equivocado. Fix: `sucursal_id` agregado al `SELECT` de
+`meli_credentials` y propagado al `INSERT` de `ventas` y de `envios` — mismo patrón que `tn-webhook`.
+**Deployado a la Edge Function en DEV** (`meli-webhook` v24, `verify_jwt: false` preservado). **NO
+probado de punta a punta contra un pedido real de MercadoLibre.** No commiteado.
+
+**🧪 Flake real (no era timing) en 3 specs e2e — causa raíz encontrada y corregida.**
+`39_cc_condonacion_mutante.spec.ts`, `51_autorizacion_ajuste_aprobar_mutante.spec.ts`,
+`69_cc_revertir_condonacion_mutante.spec.ts` quedaron desactualizados desde el 2026-07-29 (v1.152.0),
+cuando se sacaron todos los diálogos nativos del navegador a favor del modal propio `useConfirm()`:
+los 3 seguían con `page.on('dialog', ...)` apuntando a un diálogo que ya no existe — el modal es un
+componente React (`role="alertdialog"`) y ninguno de los 3 lo clickeaba, así que el flujo nunca se
+completaba. Documentado como "flake preexistente, no bloqueante" — en realidad, con el fixture
+presente, el test siempre fallaba (no era intermitente). Fix: agregado el click de "Confirmar" del
+modal en los 3 archivos. Verificado en vivo corriendo `121_aprobacion_estado_resolver_mutante.spec.ts`
+(mismo patrón, mismo call site — pasó 4/4). Los specs 39/51 no se pudieron correr de punta a punta por
+falta de fixture fresco en DEV (preexistente, no culpa del fix). No commiteado.
+
+**📋 Estado real del repo:** `git status` en `dev` — 16 archivos modificados sin commitear + 5 nuevos
+sin trackear (2 relevamientos + las 3 migraciones). Nada pusheado, nada mergeado, `APP_VERSION` sigue
+en v1.159.0 (PROD 001-338, DEV 001-341 en la base de datos aunque los archivos de migración no estén
+commiteados).
+
+Ver `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" nuevo),
+`sources/raw/relevamiento_rotacion_descuento_respuestas.md`, [[wiki/integrations/mercado-libre]],
+[[wiki/features/productos]], [[wiki/features/ubicaciones]], `wiki/database/migraciones.md` (migs
+339/340/341).
+
+---
+
+## [2026-08-07] update | 🗺️ Relevamiento derivado #2 (Pestaña de supervisor reusable) RESPONDIDO COMPLETO — sin código, sin deploy
+
+Sesión puramente de negocio/wiki, dentro de la secuencia de 4 relevamientos hacia el módulo
+Repositores (Ubicaciones → **Pestaña de supervisor reusable** → Motor de Rotación → Repositores). No
+se tocó código de la app (`src/`, `supabase/`) ni hubo deploy — PROD y DEV siguen en v1.159.0
+(migraciones 001-338), sin cambios.
+
+Fede había respondido por escrito el relevamiento `relevamiento-supervisor-tab-reglas-negocio.html`
+(16 preguntas, secciones A-G) el 2026-08-03 ("De Fede para Tonga"), pero dejó 2 preguntas abiertas
+para repreguntar. GO compartió la respuesta hoy y las confirmó:
+
+- **D2** (orden respecto de Repositores): GO eligió la opción **(a)** — completar 100% este patrón
+  (diseño + construcción real, incluido el retrofit de la tab Autorizaciones de Inventario al modelo
+  nuevo) ANTES de arrancar el diseño de Repositores. Mismo criterio que el proyecto ya usa en features
+  grandes (relevamiento → diseño completo → fases).
+- **G2** (comentarios libres): sin comentarios adicionales.
+
+**Decisión de negocio cerrada (C2), transversal a TODA la app:** en vez de una tabla de configuración
+nueva para "quién aprueba", se agrega un **4º nivel de permiso `admin`** al sistema de roles ya
+existente (hoy `no_ver/ver/editar`). El DUEÑO tiene `admin` en TODOS los módulos de forma
+**inmutable** — nadie se lo puede quitar ni editar. Configuración/Sucursales/Usuarios son exclusivos
+del dueño por default en el sidebar. El acceso a Usuarios sí es delegable a otro usuario, pero quien
+lo reciba nunca puede tocar el acceso del propio dueño.
+
+**3 decisiones que Fede catalogó explícitamente como "técnicas, en manos de Tonga" — que es GO, NO el
+asistente — quedan pendientes de discutir con GO antes de implementar, no a decidir unilateralmente:**
+A1 (¿generalizar `autorizaciones_inventario` a una tabla `autorizaciones` + columna `modulo`, o
+dejarla exclusiva de Inventario?), A3 (¿trazabilidad por módulo = filtro de `actividad_log`/
+`HistorialPage`, tabla nueva, o ambos?), B1 (¿componente genérico dentro de cada `PageTabs`, o ruta/
+página compartida `/supervisor?modulo=`?).
+
+**Próximo paso real:** GO responde con Fede el relevamiento derivado #3 (Motor de Rotación de
+productos con descuento, `relevamiento-rotacion-descuento-reglas-negocio.html`, ya generado, sin
+responder todavía). Repositores (relevamiento #4) sigue bloqueado hasta que se respondan el #3 y se
+complete el diseño + construcción real de este #2.
+
+Documento fuente nuevo: `G360.Wiki/sources/raw/relevamiento_supervisor_tab_respuestas.md`. Ver
+[[wiki/features/precios-tiers-empaque]] → "Fase E", `sources/raw/project_pendientes.md` (bloque
+"ARRANCÁ ACÁ" actualizado).
+
 ## [2026-08-06] deploy | 🚀 v1.159.0 — Deploy completo a PROD: envío automático TN/MELI + fulfillment sync TN (mig 338) + rentabilidad neta MELI (mig 337) + footer de conteo de registros
 
 Cierre de sesión: TODO lo acumulado en `dev` a lo largo del día (sidebar scroll + defaults de

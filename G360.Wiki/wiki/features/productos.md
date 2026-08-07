@@ -3,7 +3,7 @@ title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
 sources: [CLAUDE.md, migrations 329, 330]
-updated: 2026-07-30
+updated: 2026-08-06
 ---
 
 # Productos
@@ -28,6 +28,17 @@ CRUD de productos con búsqueda, filtros por categoría/proveedor y acciones mas
   Picking e Inventario).
 - Botón píldora **"Filtros"** con popover (✅ v1.138.0, EN PROD desde el 2026-07-22 — ver sección dedicada abajo)
 - Toggle "Agrupar variantes" (ícono Layers) — alterna entre vista plana y vista agrupada por grupos
+
+### Footer de conteo de registros (🆕 2026-08-06, ✅ PROD desde v1.159.0)
+
+Componente nuevo `src/components/ListaConteoFooter.tsx` (commit `b8d12b87`) — barra fina al pie del
+listado con la cantidad de registros visibles según el filtro/píldoras aplicados vs. el total del
+tenant:
+- **Sin filtro:** "N productos".
+- **Con filtro:** "Mostrando N de M productos".
+
+Reusado también en Inventario (tab Inventario), Clientes y Envíos — ver
+[[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]], [[wiki/features/envios]].
 
 ### Vista plana (default)
 

@@ -111,7 +111,7 @@ Al crear venta `Reservada` desde webhook MELI:
 
 ---
 
-## 🆕 Envío automático al confirmar el pago (2026-08-06, 🟡 EN DEV, commiteado a `dev` local sin push/deploy)
+## 🆕 Envío automático al confirmar el pago (2026-08-06, ✅ PROD desde v1.159.0)
 
 > [!NOTE] Corrige un dato viejo del wiki: la fila ISS-073 de `project_pendientes.md` decía que
 > TiendaNube/MELI "solo rebajan stock" — eso ya era falso desde hace tiempo (ambos webhooks crean
@@ -133,10 +133,11 @@ comprador al confirmar el pago del pedido — antes había que armarlo a mano en
 - Verificado end-to-end contra DEV con pedidos reales (venta pendiente→reservada + envío + domicilio
   creados).
 - Archivo: `supabase/functions/meli-webhook/index.ts`.
+- **✅ Deployado a PROD el 2026-08-06** (PR #314, tag `v1.159.0`, EF `meli-webhook` v10→v11).
 
 ---
 
-## 🆕 Rentabilidad neta real por venta (Fase D1 del roadmap, migración 337, ✅ hecho — 2026-08-06, 🟡 EN DEV)
+## 🆕 Rentabilidad neta real por venta (Fase D1 del roadmap, migración 337, ✅ hecho — ✅ PROD desde v1.159.0)
 
 > Cierra la Fase 1.1 ⭐ del roadmap de integraciones. Ver [[wiki/integrations/roadmap-apis]].
 
@@ -168,6 +169,8 @@ costo $600 → neto **-$7751**), incluida la renderización real en el navegador
 
 Archivos: `supabase/functions/meli-webhook/index.ts`, `src/pages/VentasPage.tsx`,
 `supabase/migrations/337_meli_rentabilidad_neta.sql`.
+
+**✅ Deployado a PROD el 2026-08-06** (PR #314, tag `v1.159.0`, mig 337 aplicada en `jjffnbrdjchquexdfgwq`).
 
 ---
 

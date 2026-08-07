@@ -8,9 +8,58 @@ updated: 2026-08-06
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.158.0 (2026-08-06) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.158.0 (igual a PROD, deploy completo)  
+**Versión en PROD:** v1.159.0 (2026-08-06) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
+**Versión en DEV:** v1.159.0 (igual a PROD, deploy completo)  
 **Última actualización:** 6 de Agosto, 2026
+
+---
+
+## v1.159.0 — 🚀 Deploy completo a PROD: envío automático TN/MELI + fulfillment sync TN (mig 338) + rentabilidad neta MELI (mig 337) + footer de conteo de registros — ✅ **PROD** (2026-08-06)
+
+Deploy completo de TODO lo acumulado en `dev` a lo largo del día (checkpoint de v1.158.0 no incluía
+todavía esta ronda): sidebar scroll + defaults de Ubicaciones apagados (mig 336) + Config →
+Clientes/Alertas/Notificaciones con inputs reales + footer de conteo de registros + envío automático
+al confirmar pago (TN+MELI) + fulfillment sync TN→despachado/entregado (mig 338) + rentabilidad neta
+real MELI (mig 337). **PR #314** (`dev`→`main`), merge commit
+`9caffd63b9d66282736ab9f674e8fad7f065c513`. **Tag+release `v1.159.0`.**
+
+**🚚 Envío automático al confirmar el pago (TN + MELI)** — `tn-webhook`/`meli-webhook` crean
+`cliente_domicilios` + `envios` automáticamente con los datos reales del comprador al confirmar el
+pago (antes había que armarlo a mano en Envíos). MELI necesita un fetch adicional a
+`GET /shipments/{id}` (la orden no trae dirección). Best-effort: si falla, la venta se crea igual. De
+paso, fix de un bug real en `meli-webhook` (leía la columna `payload` inexistente de
+`ventas_externas_logs`, la real es `payload_raw` — rompía la transición pendiente→reservada en pagos
+tardíos). Detalle: `wiki/integrations/mercado-libre.md` / `wiki/integrations/tienda-nube.md`.
+
+**📦 Fulfillment sync TiendaNube (mig 338)** — cuando un envío de canal TiendaNube pasa a
+despachado/entregado en G360, se le avisa a TN vía su API real de Fulfillment Orders. Trigger
+`trg_tn_fulfillment_sync` → `integration_job_queue` → Edge Function nueva `tn-fulfillment-worker`.
+Desbloqueado en esta sesión agregando los scopes `read/write_fulfillment_orders` a la app TN
+Partners. MercadoLibre queda deliberadamente fuera (no se sabe si los tenants usan Mercado Envíos o
+envío propio).
+
+**💰 Rentabilidad neta real MELI (mig 337, Fase 1.1 ⭐ del roadmap de integraciones)** —
+`meli-webhook` lee `sale_fee`/`shipping_cost`/`taxes_amount` de cada orden y los guarda en
+`venta_items.comision_marketplace`/`ventas.impuestos_marketplace`. Badge "Neto $X" en el tab Canales
+de `VentasPage.tsx`. Fix de paso: `precio_costo_historico` quedaba NULL en ventas MELI.
+
+**🆕 Footer de conteo de registros** — componente nuevo `src/components/ListaConteoFooter.tsx`, barra
+al pie de la lista con la cantidad de registros filtrados vs. el total ("N productos" / "Mostrando N
+de M productos"). Agregado en Productos, Inventario, Clientes y Envíos (este último con nota "de los
+últimos 100" por el `.limit(100)` de su query).
+
+**D2/D3 (combos automáticos TN + repricing MELI) quedan bloqueadas**, relevamiento de 13 preguntas
+armado (`relevamiento-integraciones-ml-tn-reglas-negocio.html`), esperando respuesta de GO/Fede.
+
+**Deploy en PROD:** migraciones 336/337/338 aplicadas en `jjffnbrdjchquexdfgwq` (el cron de la mig 338
+se corrigió a mano a la URL de PROD); 3 Edge Functions redeployadas (`tn-webhook` v19, `meli-webhook`
+v11, `tn-fulfillment-worker` nueva v1); Vercel `dpl_3LsCwHbP3o8UnNmhDynz5XFksdv1` READY.
+
+**Verde:** tsc · build · **1525 tests unitarios (96 archivos)**.
+
+**Pendiente:** Fase A (conectar un tenant real a MELI/TiendaNube en PROD, sigue sin ninguno) · D2/D3
+bloqueadas esperando relevamiento con Fede · relevamientos #2/#3/#4 hacia Repositores · Fase U5 de
+limpieza (`ubicaciones.tipo_ubicacion`).
 
 ---
 

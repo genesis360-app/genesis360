@@ -76,7 +76,7 @@ Token **permanente** — TiendaNube no expira access tokens.
 
 ---
 
-## 🆕 Envío automático al confirmar el pago (2026-08-06, 🟡 EN DEV, commiteado a `dev` local sin push/deploy)
+## 🆕 Envío automático al confirmar el pago (2026-08-06, ✅ PROD desde v1.159.0)
 
 `tn-webhook` ahora crea automáticamente `cliente_domicilios` + `envios` con los datos reales del
 comprador al confirmar el pago del pedido (`order/paid`) — antes había que armarlo a mano en
@@ -88,13 +88,14 @@ comprador al confirmar el pago del pedido (`order/paid`) — antes había que ar
 - **Best-effort**: si falla la creación del envío, la venta se crea igual — nunca bloquea.
 - Verificado end-to-end contra DEV con pedidos reales.
 - Archivo: `supabase/functions/tn-webhook/index.ts`.
+- **✅ Deployado a PROD el 2026-08-06** (PR #314, tag `v1.159.0`, EF `tn-webhook` v18→v19).
 
 (Ver también [[wiki/integrations/mercado-libre]] → "Envío automático" para el equivalente MELI, que
 necesita un fetch adicional a `GET /shipments/{id}` porque la orden no trae dirección.)
 
 ---
 
-## 🆕 Fulfillment sync — aviso a TiendaNube al despachar/entregar (Fase C del roadmap, migración 338, 🟡 EN DEV, commiteado a `dev` local sin push/deploy)
+## 🆕 Fulfillment sync — aviso a TiendaNube al despachar/entregar (Fase C del roadmap, migración 338, ✅ PROD desde v1.159.0)
 
 Cuando un envío de canal TiendaNube pasa a `despachado`/`entregado` en G360, ahora se le avisa a TN
 vía su API real de **Fulfillment Orders**: `PATCH /orders/{id}/fulfillment-orders/{fulfillment_id}`
@@ -126,6 +127,10 @@ el usuario no cierre la pestaña):
 
 Archivos: `supabase/migrations/338_tn_fulfillment_sync.sql`,
 `supabase/functions/tn-fulfillment-worker/index.ts` (nueva), `supabase/functions/tn-webhook/index.ts`.
+
+**✅ Deployado a PROD el 2026-08-06** (PR #314, tag `v1.159.0`): mig 338 aplicada en `jjffnbrdjchquexdfgwq`
+(el `cron.schedule` se corrigió a mano a la URL de PROD, mismo criterio que `meli-stock-sync`), EF
+`tn-fulfillment-worker` deployada (v1) y `tn-webhook` redeployada (v18→v19).
 
 ---
 

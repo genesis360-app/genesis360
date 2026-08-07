@@ -6,7 +6,98 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-07, cont. 4) — 🧩 Motor de Rotación Opción 3 (kits): fix E3 (`iniciar_armado_kit` prioriza el lote en descuento, mig 343) VERIFICADO end-to-end (spec 132) + autogenerar nombre/precio E2/E4 con autorización de supervisor, SIN verificar en navegador — TODO EN EL WORKING TREE LOCAL de `dev`, NADA COMMITEADO, NADA PUSHEADO, NADA DEPLOYADO A PROD; PROD sigue en v1.159.0 (001-338)
+> ### 🚀 ARRANCÁ ACÁ (2026-08-07, cont. 5) — v1.160.0: DEPLOY A PROD EN CURSO — commit real commiteado y pusheado a `origin/dev` (`e4b5d9de`) + migraciones 339-343 aplicadas en PROD; FALTA el PR `dev→main` + merge + tag/release + redeploy de Edge Functions + verificación de Vercel
+>
+> GO autorizó el deploy completo a PROD de TODO lo acumulado en el día (4 sesiones `update` seguidas —
+> ver los bloques "cont. 2/3/4" de abajo, todo ese detalle técnico sigue vigente). Esta sesión es la
+> ejecución de ese deploy — **EN CURSO, no cerrado todavía**: falta el PR `dev`→`main` + merge +
+> tag/release + verificación de Vercel, que quedan para después de esta actualización del wiki.
+>
+> **1. Commit real, commiteado y pusheado a `origin/dev`**: `e4b5d9de` ("feat: v1.160.0 — Motor de
+> Rotación completo (Opción 1/2/3) + fix sucursal_id MELI + thumbnail de imagen + fix flake e2e") —
+> agrupa TODO lo que venía acumulado sin commitear en las 4 sesiones anteriores del mismo día: Fase U5
+> (mig 339), thumbnail de imagen de producto (mig 340), fix real de `sucursal_id` NULL en
+> `meli-webhook`, fix de flake real en los specs 39/51/69, y el Motor de Rotación de productos con
+> descuento COMPLETO (Opción 1 mig 342, Opción 2 verificada end-to-end, Opción 3 mig 343). `dev` local
+> y `origin/dev` quedan sincronizados (working tree limpio). **`APP_VERSION` bumpeada a v1.160.0.**
+>
+> **2. ✅ Cierre real de un pendiente que había quedado abierto: E2/E4 (autogeneración/aprobación de
+> precio de KIT) ahora SÍ está verificado end-to-end.** Spec e2e permanente nuevo,
+> `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts` — dos sesiones reales en el mismo
+> test (mismo patrón que los specs de rol 13-18): rol DEPOSITO (no está en la lista de bypass) dispara
+> desde la UI real el cambio de nombre del KIT (se aplica directo) y de precio (queda pendiente en
+> Autorizaciones); DUEÑO lo aprueba desde la pestaña real. Verifica en base de datos en cada paso, no
+> solo el toast. Con esto, **las 3 Opciones del Motor de Rotación (agotar antes de reponer / prioridad
+> de envíos / armar kits) quedan las 3 con test e2e permanente verificándolas de punta a punta** —
+> specs `131_rotacion_prioridad_envios_mutante.spec.ts`, `132_kit_armado_prioridad_rotacion_mutante.spec.ts`,
+> `133_kit_precio_sugerido_autorizacion_mutante.spec.ts`.
+>
+> **3. Migraciones 339-343 aplicadas en PROD** (proyecto `jjffnbrdjchquexdfgwq`) vía `apply_migration`,
+> en orden, las 5 exitosas — mismo patrón ya usado antes (DDL aditivo a PROD ANTES de mergear
+> `dev`→`main`, ver `feedback_deploy_order_migrations_aditivas`). **Advisors de seguridad de PROD
+> re-corridos después de aplicar: 0 hallazgos nuevos** — 122 WARN + 10 INFO, los mismos de antes,
+> ninguno de los objetos nuevos de esta sesión aparece en la lista.
+>
+> **4. Regresión e2e completa corrida ANTES de deployar** (139 specs, ~38 min): **270 pasaron, 42
+> skipped, 29 fallaron.** Investigación de los 29 fallos: **100% atribuibles a una fragilidad
+> PREEXISTENTE y ya documentada del arnés de test**, no a una regresión de esta sesión — los specs que
+> fallaron dependen ciegamente de la PRIMERA opción del combo de "Ubicación" en el helper
+> `ingresoRealPorUI` (o copias inline del mismo patrón), que resulta ser una ubicación `mono_sku=true`
+> compartida ("A-01-1" o "RACK1") que el primer producto que entra ahí reclama para siempre. Confirmado
+> con evidencia dura: el spec `23_inventario_ingreso_mutante.spec.ts` ya documentaba este MISMO problema
+> con "RACK1" en un comentario fechado **2026-07-28** — una semana antes de esta sesión, no es una
+> regresión de hoy. Ningún fallo llegó a ejecutar la lógica de negocio bajo prueba; todos murieron en el
+> paso de sembrar el fixture de ingreso. Se liberó la ubicación "A-01-1" (ocupada por un residuo de test
+> de esta sesión) como limpieza, pero el problema de fondo (arnés de test con fixtures compartidos
+> frágiles) **queda como deuda técnica NO bloqueante**, anotada para una sesión futura dedicada a
+> test-infra (candidatos: hacer que `ingresoRealPorUI` cree su propia ubicación por corrida, o exigir
+> `ubicacionNombre` explícito en todos los call sites).
+>
+> **5. Verde total antes de mergear:** `npx tsc --noEmit` limpio · `npm run build` limpio ·
+> `npm run test:unit`: **1538 tests unitarios verdes** (98 archivos) · specs e2e **131/132/133** (2+
+> corridas cada uno, sin fallas).
+>
+> **📋 Estado real del repo ahora mismo:** `git status` en `dev` — working tree LIMPIO, HEAD = tip de
+> `origin/dev` (`e4b5d9de`). El commit **NO está en `main`** todavía (sin PR, sin merge, sin tag, sin
+> release). Las migraciones **SÍ** están en la base de PROD (001-343) — aplicadas de forma aditiva,
+> ANTES del merge de código, mismo patrón ya usado en releases anteriores. **Vercel PROD y las Edge
+> Functions de PROD siguen sirviendo el código anterior (v1.159.0)** hasta que se complete el
+> PR→merge→tag→release→redeploy.
+>
+> ### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` (código) | v1.160.0 (commiteado y pusheado a `origin/dev`, `e4b5d9de`) | v1.159.0 (Vercel/Edge Functions siguen con el código anterior — merge todavía pendiente) |
+> | Migraciones aplicadas en la DB | **001-343** | **001-343** (339-343 aplicadas hoy vía `apply_migration`, ANTES del merge — DDL aditivo) |
+> | Edge Function `meli-webhook` | **v24** (con el fix de `sucursal_id`) | v11 (sin el fix — pendiente redeploy tras el merge) |
+> | Branch | `dev` (HEAD = `origin/dev`, working tree limpio) | `main` (sin cambios todavía — PR pendiente) |
+>
+> **▶ Pendiente para la próxima sesión (ORDEN ESTRICTO — cerrar el deploy):**
+> 1. **PR `dev`→`main`** con título `v1.160.0 — ...`.
+> 2. **Merge del PR** (revisado por GO, Claude Code nunca mergea sin autorización explícita).
+> 3. **Tag `v1.160.0` + GitHub release** con notas de todo lo acumulado.
+> 4. **Redeploy de Edge Functions a PROD** — como mínimo `meli-webhook` (fix de `sucursal_id`); revisar
+>    si alguna otra EF tocada esta sesión necesita redeploy.
+> 5. **Verificar el deployment de Vercel PROD** (`READY`, confirmado contra el commit del merge).
+> 6. **QA manual pendiente heredado de sesiones anteriores:** thumbnail de imagen con un usuario real
+>    subiendo una imagen en el navegador, y el fix de `sucursal_id` MELI contra un pedido real (requiere
+>    un pedido nuevo en la cuenta de test conectada).
+> 7. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no) — sin
+>    cambios.
+> 8. **Deuda técnica de test-infra anotada, NO bloqueante:** arnés de e2e con fixtures de ubicación
+>    compartidos frágiles (`ingresoRealPorUI`/mono_sku) — ver punto 4 de arriba, sesión futura dedicada.
+> 9. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
+>    D2/D3 de integraciones ML/TN bloqueadas; relevamiento derivado #4 (Repositores) sigue bloqueado
+>    hasta completar el #2 (supervisor-tab, diseño/construcción real) — el #3 (Motor de Rotación) ya
+>    cerró 100% esta sesión.
+>
+> Ver `log.md` (2026-08-07, entrada `deploy` nueva), [[wiki/business/roadmap]] (v1.160.0),
+> `wiki/database/migraciones.md` (migs 339-343, EN DEV Y PROD), `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts`.
+>
+> ---
+>
+> ### ✅ (2026-08-07, cont. 4) — 🧩 Motor de Rotación Opción 3 (kits): fix E3 (`iniciar_armado_kit` prioriza el lote en descuento, mig 343) VERIFICADO end-to-end (spec 132) + autogenerar nombre/precio E2/E4 con autorización de supervisor, SIN verificar en navegador — TODO EN EL WORKING TREE LOCAL de `dev`, NADA COMMITEADO, NADA PUSHEADO, NADA DEPLOYADO A PROD; PROD sigue en v1.159.0 (001-338)
 >
 > Continuación, mismo día, del bloque "cont. 3" de abajo, que dejó la Opción 2 verificada end-to-end y
 > "arrancar la Opción 3 (kits)" como siguiente paso del orden estricto. Esta sesión ES eso — avanzó los
@@ -64,11 +155,11 @@ type: project
 > (más nueva), dejando la línea normal (más vieja) intacta — y que `kitting_log.componentes_reservados`
 > apunta a la línea correcta. **2 corridas consecutivas verdes contra DEV.**
 >
-> **5. ⚠️ NO verificado en el navegador: la UI de autogeneración/aprobación de precio (E2)** — solo
-> unit tests (`kits.ts`) + code review, sin driving real del flujo "sugerencia → aprobación → aprobar
-> como supervisor". Si se retoma este módulo, es lo primero a probar antes de darlo por cerrado (mismo
-> tipo de gap que tuvo Opción 2 la sesión pasada — código que "parece listo" pero nunca se ejerció con
-> los propios ojos).
+> **5. ⚠️ NO verificado en el navegador en su momento: la UI de autogeneración/aprobación de precio
+> (E2)** — solo unit tests (`kits.ts`) + code review, sin driving real del flujo "sugerencia →
+> aprobación → aprobar como supervisor". ✅ **ACTUALIZACIÓN (cont. 5, sesión de deploy, mismo día):
+> verificado end-to-end con el test e2e permanente `133_kit_precio_sugerido_autorizacion_mutante.spec.ts`
+> — ver el bloque "ARRANCÁ ACÁ" al principio del archivo.**
 >
 > **6. Gotcha de infraestructura, no bloqueante:** `npm run schema:dump` volvió a fallar (falta
 > `SUPABASE_ACCESS_TOKEN` en el entorno — el mismo bloqueo recurrente de sesiones anteriores, ver

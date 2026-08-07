@@ -11,7 +11,7 @@ updated: 2026-08-06
 **Página:** `src/pages/ConfigPage.tsx` (`/configuracion`)  
 **Acceso:** DUEÑO · ADMIN (lectura para otros roles según campo)
 
-> [!NOTE] **🧾 2026-08-06 (EN DEV, sin commitear):** los tabs **Clientes**, **Alertas** y
+> [!NOTE] **🧾 2026-08-06 (✅ PROD desde v1.159.0):** los tabs **Clientes**, **Alertas** y
 > **Notificaciones** dejaron de ser placeholders ("próximamente") — ver sección "Clientes, Alertas y
 > Notificaciones" más abajo.
 

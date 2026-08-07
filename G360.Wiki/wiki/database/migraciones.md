@@ -10,25 +10,32 @@ updated: 2026-08-07
 
 **Total al 2026-08-07:** 343 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-338 EN DEV Y PROD** — ✅ deploy completo, PR #314 (`dev`→`main`), merge commit
-`9caffd63b9d66282736ab9f674e8fad7f065c513`, tag+release `v1.159.0`. Las migraciones 336, 337 y 338 se
-aplicaron en PROD (proyecto `jjffnbrdjchquexdfgwq`) el mismo día que se escribieron en DEV — ver
-`sources/raw/project_pendientes.md` "ARRANCÁ ACÁ". PROD está en v1.159.0 (deploy 2026-08-06 — agrupa
-envío automático TN/MELI al confirmar pago, fulfillment sync TN→despachado/entregado (mig 338),
-rentabilidad neta real MELI (mig 337), ubicaciones nuevas nacen con TN/MELI/picking apagados (mig
-336) y el footer de conteo de registros en Productos/Inventario/Clientes/Envíos). Antes: 001-335 en
-DEV y PROD desde v1.158.0 (deploy 2026-08-06 más temprano — rediseño de `ubicaciones` en árbol +
-tipo lógico, 334-335, 1º de 4 relevamientos hacia la Fase E/Repositores, ver
-[[wiki/features/ubicaciones]]). ⚠ `schema_full.sql` actualizado hasta la mig 338 (a mano en las migs
-336-338, sin regenerar por token).
+**001-343 EN DEV Y PROD (base de datos)** — las migraciones 339-343 se aplicaron en PROD (proyecto
+`jjffnbrdjchquexdfgwq`) el 2026-08-07 vía `apply_migration`, **ANTES del merge del código** (mismo
+patrón "DDL aditivo antes de mergear `dev`→`main`", ver `feedback_deploy_order_migrations_aditivas`).
+El **código de la app (Vercel) y las Edge Functions de PROD siguen sirviendo v1.159.0** hasta que se
+complete el PR `dev`→`main` + merge + tag/release `v1.160.0` — el commit `e4b5d9de` ya está commiteado y
+pusheado a `origin/dev` con TODO lo acumulado (Motor de Rotación completo Opción 1/2/3, fix
+`sucursal_id` MELI, thumbnail de imagen, fix de flake e2e) — ver `sources/raw/project_pendientes.md`
+"ARRANCÁ ACÁ". Antes: 001-338 EN DEV Y PROD desde v1.159.0 (deploy 2026-08-06 — PR #314, merge commit
+`9caffd63b9d66282736ab9f674e8fad7f065c513`, tag+release `v1.159.0` — agrupa envío automático TN/MELI al
+confirmar pago, fulfillment sync TN→despachado/entregado (mig 338), rentabilidad neta real MELI (mig
+337), ubicaciones nuevas nacen con TN/MELI/picking apagados (mig 336) y el footer de conteo de
+registros en Productos/Inventario/Clientes/Envíos). Antes: 001-335 en DEV y PROD desde v1.158.0 (deploy
+2026-08-06 más temprano — rediseño de `ubicaciones` en árbol + tipo lógico, 334-335, 1º de 4
+relevamientos hacia la Fase E/Repositores, ver [[wiki/features/ubicaciones]]). ⚠ `schema_full.sql`
+actualizado hasta la mig 343 (a mano en las migs 339-343, sin regenerar por token — ver
+`reference_supabase_pooler_auth_bug`).
 
-> [!WARNING] **339-343 — SOLO EN DEV, NO COMMITEADAS.** Aplicadas el 2026-08-07 vía `apply_migration`
-> directo contra el proyecto DEV (`gcmhzdedrkmmzfzfveig`) — los 5 archivos existen en
-> `supabase/migrations/` pero como `??` (untracked) en `git status` de `dev`: no están commiteadas, no
-> están pusheadas, no están en PROD. `APP_VERSION` sigue en `v1.159.0`, sin bump. Ver
-> `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ") y `log.md` (2026-08-07, entrada `update`).
+> [!NOTE] **339-343 — YA EN PROD (base de datos), deploy de CÓDIGO en curso.** Aplicadas el 2026-08-07
+> vía `apply_migration` directo contra PROD (`jjffnbrdjchquexdfgwq`). Los 5 archivos están commiteados y
+> pusheados a `origin/dev` (commit `e4b5d9de`, `APP_VERSION` bumpeada a `v1.160.0`) — pero el PR
+> `dev`→`main` todavía no se mergeó, así que el código/Edge Functions de PROD siguen sirviendo v1.159.0.
+> **Advisors de seguridad de PROD re-corridos después de aplicar: 0 hallazgos nuevos** (122 WARN + 10
+> INFO, todos preexistentes — ninguno de los objetos nuevos de esta sesión aparece en la lista). Ver
+> `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ") y `log.md` (2026-08-07, entrada `deploy`).
 
-**343 (🧩 Motor de Rotación — ejecución real Opción 3 (kits): E3 `iniciar_armado_kit` prioriza el lote en descuento + `'kit_precio'` en `autorizaciones_inventario.tipo`, 🟡 SOLO EN DEV, sin commitear)** —
+**343 (🧩 Motor de Rotación — ejecución real Opción 3 (kits): E3 `iniciar_armado_kit` prioriza el lote en descuento + `'kit_precio'` en `autorizaciones_inventario.tipo`, ✅ EN DEV Y PROD, deploy de código en curso)** —
 Sesión 2026-08-07, cont. 4, inmediatamente después de que la sesión anterior (mig 342) verificara la
 Opción 2 end-to-end (spec 131). GO había scopeado E3+E2/E4 como lo independiente de la Pestaña de
 supervisor (construir YA, reusando la pantalla de Kits existente de forma MANUAL, sin disparo
@@ -62,9 +69,10 @@ confirmar cantidad, no llamando la RPC a mano —, verifica en la base que la re
 línea en el estado de Rotación, la más nueva, dejando la línea normal/vieja intacta, y que
 `kitting_log.componentes_reservados` apunta a la línea correcta) — **2 corridas consecutivas verdes**
 contra DEV.
-⚠️ **E2/E4 (UI de autogeneración/aprobación de precio) construidos, SIN VERIFICAR en el navegador** —
-solo unit tests + code review, sin driving real del flujo "sugerencia → aprobación → aprobar como
-supervisor". Próximo paso si se retoma este módulo.
+✅ **E2/E4 (UI de autogeneración/aprobación de precio) VERIFICADOS end-to-end en la sesión de deploy
+(2026-08-07, mismo día)**: test permanente `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts`
+— rol DEPOSITO dispara el cambio de nombre (directo) y de precio (queda pendiente) desde la UI real,
+DUEÑO lo aprueba desde Autorizaciones, verificado en DB en cada paso.
 🟡 **E5 (desarmado de kit devuelve componentes al mismo estado de descuento) y lo que depende de la
 Pestaña de supervisor (disparo automático de la Opción 3) siguen sin arrancar, a propósito** — GO
 scopeó explícitamente E3+E2/E4 como lo independiente de eso.
@@ -72,9 +80,9 @@ scopeó explícitamente E3+E2/E4 como lo independiente de eso.
 de `SUPABASE_ACCESS_TOKEN` faltante para `npm run schema:dump` — no es un dump real).
 Verde: tsc · build · **1538 tests unitarios** (97 archivos, 9 nuevos de `kits.ts`).
 Ver [[wiki/features/precios-tiers-empaque]], `sources/raw/relevamiento_rotacion_descuento_respuestas.md`,
-`sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ", cont. 4).
+`sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ", cont. 5), `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts`.
 
-**342 (🔄 Motor de Rotación — ejecución real Opción 1 (agotar antes de reponer): `motivo_vencimiento` + helpers de bloqueo por sucursal, 🟡 SOLO EN DEV, sin commitear)** —
+**342 (🔄 Motor de Rotación — ejecución real Opción 1 (agotar antes de reponer): `motivo_vencimiento` + helpers de bloqueo por sucursal, ✅ EN DEV Y PROD, deploy de código en curso)** —
 Sesión 2026-08-07, misma tarde que la mig 341, después de que GO cerró los 3 gaps del relevamiento
 (B4/C2/E5 — ver mig 341 abajo y
 `sources/raw/relevamiento_rotacion_descuento_respuestas.md`). `estados_inventario.motivo_vencimiento
@@ -105,7 +113,7 @@ E3 VERIFICADO end-to-end / E2-E4 construidos sin verificar en navegador desde la
 `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
 Verde: tsc · build · 1529 tests unitarios (4 nuevos de `rebajeSort`).
 
-**341 (🔄 Motor de Rotación de productos con descuento — SOLO esquema de configuración, sin lógica de ejecución, 🟡 SOLO EN DEV, sin commitear)** —
+**341 (🔄 Motor de Rotación de productos con descuento — SOLO esquema de configuración, sin lógica de ejecución, ✅ EN DEV Y PROD, deploy de código en curso)** —
 Sesión 2026-08-07, 3º de los 4 relevamientos hacia la Fase E/Repositores (ver
 [[wiki/features/precios-tiers-empaque]] → "Fase E"). Respondido por Fede el 2026-08-03, GO compartió
 la respuesta el 2026-08-07 — **3 preguntas con gap real (B4, C2, E5)** siguen sin cerrar (Fede
@@ -139,7 +147,7 @@ ad-hoc, sin persistir nada).
 Verde: tsc · build · 1525 tests unitarios. Detalle técnico completo:
 `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
 
-**340 (🖼️ `productos.imagen_thumb_url` — thumbnail para bajar Cached Egress de Supabase Storage, 🟡 SOLO EN DEV, sin commitear)** —
+**340 (🖼️ `productos.imagen_thumb_url` — thumbnail para bajar Cached Egress de Supabase Storage, ✅ EN DEV Y PROD, deploy de código en curso)** —
 Sesión 2026-08-07. Investigación de por qué Supabase DEV (`gcmhzdedrkmmzfzfveig`) entró en "grace
 period" por exceder la cuota de **Cached Egress** + agotar el **Disk IO Budget**: las imágenes de
 producto se servían a tamaño COMPLETO (hasta 1200px/1.5MB) incluso como ícono de 32-36px, sin
@@ -150,7 +158,7 @@ sin thumbnail siguen funcionando, solo sin la optimización hasta que se re-suba
 `loading="lazy"` en los 4 `<img>` de producto. Verde: tsc · build · 1525 tests unitarios. **NO
 probado con un usuario real subiendo una imagen en el navegador.** Ver [[wiki/features/productos]].
 
-**339 (🧹 Fase U5 — dropea `ubicaciones.tipo_ubicacion`, columna vieja reemplazada en la mig 334, 🟡 SOLO EN DEV, sin commitear)** —
+**339 (🧹 Fase U5 — dropea `ubicaciones.tipo_ubicacion`, columna vieja reemplazada en la mig 334, ✅ EN DEV Y PROD, deploy de código en curso)** —
 Sesión 2026-08-07. Cierra la limpieza pendiente desde la mig 334 (v1.157.0, rediseño de `ubicaciones`
 en árbol): la columna vieja quedó reemplazada por `tipo_logico`/`subtipo_almacenamiento`. Verificado
 0 lectores reales antes de aplicar: sin funciones/triggers/vistas en `schema_full.sql` que lean o

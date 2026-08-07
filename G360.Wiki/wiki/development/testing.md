@@ -125,8 +125,9 @@ npm run test:unit:coverage # coverage report
 | `88_mobile_responsive.spec.ts` | **Barrido responsive mobile** — 10 pantallas × 2 viewports (375/360px), assertea sin overflow horizontal en el **contenido (`<main>`) Y el `<header>`**. Project `chromium-mobile` (`isMobile`+`hasTouch`, sesión owner). Helper `detectarOverflowHorizontal(page, { selector })` mide dentro del contenedor (el root `AppLayout` clippea con `overflow-hidden`) tanto rect como overflow de texto, ignorando scroll intencional | ✅ |
 | `129_pildoras_filtro_productos_inventario_mutante.spec.ts` | **Filtro de píldoras en Productos e Inventario (2026-08-06, ✅ PROD desde v1.158.0)** — siembra su propio producto único, prueba texto libre / campo explícito / combinador Y exige ambos / combinador O alcanza con uno, en las dos páginas. 2/2 verde, corrido dos veces. Ver [[wiki/features/filtro-pildoras]] | ✅ |
 | `130_ubicaciones_arbol_mutante.spec.ts` | **Rediseño de Ubicaciones en árbol (2026-08-06, ✅ PROD desde v1.158.0)** — crear hijo con código autogenerado jerárquico, guard tipo_logico con hijos, guard borrado con niveles adentro, breadcrumb en selector operativo real (encontró y sirvió para corregir 4 gaps reales, ver [[wiki/features/ubicaciones]]). 2/2 verde | ✅ |
-| `131_rotacion_prioridad_envios_mutante.spec.ts` | **Motor de Rotación — Opción 2, prioridad de envíos (2026-08-07, 🟡 SOLO EN DEV, sin commitear)** — crea estado `dispara_rotacion=true` + producto `rotacion_prioridad_envios=true`, ingresa 2 lotes reales por UI (viejo en estado normal, nuevo en estado de Rotación), agrega al carrito ANTES de elegir canal (como un cajero real), elige canal "WhatsApp" (no-presencial), cobra, y verifica en DB que el despacho salió del lote de Rotación. **Encontró y sirvió para corregir un bug real de Regla de Oro #0** en `VentasPage.tsx` (la Fase A de `registrarVenta` ignoraba la prioridad calculada). 2/2 corridas verdes. Ver [[wiki/features/precios-tiers-empaque]] | ✅ |
-| `132_kit_armado_prioridad_rotacion_mutante.spec.ts` | **Motor de Rotación — Opción 3, armado de kits E3 (2026-08-07, 🟡 SOLO EN DEV, sin commitear)** — crea estado `dispara_rotacion=true` + producto componente `rotacion_armar_kits=true` + KIT con receta 1:2, ingresa 2 lotes reales por UI del componente (viejo en "Disponible", nuevo en estado de Rotación), dispara el armado desde la UI real (Inventario → Kits → Armar → confirmar), y verifica en DB que `iniciar_armado_kit` reservó SOLO de la línea en Rotación (`cantidad_reservada`), dejando la línea vieja intacta, y que `kitting_log.componentes_reservados` apunta a la línea correcta. 2/2 corridas verdes. Ver [[wiki/features/precios-tiers-empaque]] | ✅ |
+| `131_rotacion_prioridad_envios_mutante.spec.ts` | **Motor de Rotación — Opción 2, prioridad de envíos (2026-08-07, ✅ commiteado/pusheado `e4b5d9de`, migraciones ya en PROD, deploy de código EN CURSO)** — crea estado `dispara_rotacion=true` + producto `rotacion_prioridad_envios=true`, ingresa 2 lotes reales por UI (viejo en estado normal, nuevo en estado de Rotación), agrega al carrito ANTES de elegir canal (como un cajero real), elige canal "WhatsApp" (no-presencial), cobra, y verifica en DB que el despacho salió del lote de Rotación. **Encontró y sirvió para corregir un bug real de Regla de Oro #0** en `VentasPage.tsx` (la Fase A de `registrarVenta` ignoraba la prioridad calculada). 2/2 corridas verdes. Ver [[wiki/features/precios-tiers-empaque]] | ✅ |
+| `132_kit_armado_prioridad_rotacion_mutante.spec.ts` | **Motor de Rotación — Opción 3, armado de kits E3 (2026-08-07, ✅ commiteado/pusheado `e4b5d9de`, migraciones ya en PROD, deploy de código EN CURSO)** — crea estado `dispara_rotacion=true` + producto componente `rotacion_armar_kits=true` + KIT con receta 1:2, ingresa 2 lotes reales por UI del componente (viejo en "Disponible", nuevo en estado de Rotación), dispara el armado desde la UI real (Inventario → Kits → Armar → confirmar), y verifica en DB que `iniciar_armado_kit` reservó SOLO de la línea en Rotación (`cantidad_reservada`), dejando la línea vieja intacta, y que `kitting_log.componentes_reservados` apunta a la línea correcta. 2/2 corridas verdes. Ver [[wiki/features/precios-tiers-empaque]] | ✅ |
+| `133_kit_precio_sugerido_autorizacion_mutante.spec.ts` | **Motor de Rotación — Opción 3, nombre/precio sugerido de KIT + autorización E2/E4 (2026-08-07, ✅ commiteado/pusheado `e4b5d9de`, migraciones ya en PROD, deploy de código EN CURSO)** — dos sesiones reales (rol DEPOSITO + DUEÑO, mismo patrón de los specs de rol 13-18): DEPOSITO dispara desde la UI real de Inventario → Kits el cambio de nombre del KIT (se aplica directo, cualquier rol) y de precio (queda pendiente en `autorizaciones_inventario` tipo `kit_precio` porque DEPOSITO no está en la lista de bypass), DUEÑO lo aprueba desde la pestaña Autorizaciones. Verifica en DB en cada paso, no solo el toast. **Cierra el pendiente de E2/E4 sin verificar en el navegador** que había quedado abierto tras la mig 343. 2/2 corridas verdes. Ver [[wiki/features/precios-tiers-empaque]] | ✅ |
 
 > **Barrido responsive (2026-07-15):** primera cobertura mobile en e2e. Detecta el patrón "se sale del marco" (contenido más ancho que el `<main>`). Corre en su propio project `chromium-mobile`; el project desktop lo excluye por `testIgnore`. Guard contra regresiones de overflow. Ver log 2026-07-15.
 
@@ -203,7 +204,8 @@ npm run test:unit:coverage # coverage report
 > autogenerado".
 >
 > **🔧 CORREGIDO 2026-08-06→08-07 — no era timing, era un diagnóstico equivocado: causa raíz real
-> encontrada y arreglada (🟡 fix en el working tree local, SIN COMMITEAR).** El diagnóstico de arriba
+> encontrada y arreglada (✅ commiteado y pusheado a `origin/dev`, commit `e4b5d9de`, deploy de código
+> en curso).** El diagnóstico de arriba
 > resultó incompleto: no había ningún `confirm()` nativo del browser al que "aceptar" — desde el
 > **2026-07-29 (v1.152.0)** TODOS los diálogos nativos (`confirm()`/`alert()`/`prompt()`) se
 > reemplazaron por el modal propio `useConfirm()` (`role="alertdialog"`, botón "Confirmar"), y este
@@ -218,6 +220,24 @@ npm run test:unit:coverage # coverage report
 > pudieron correr de punta a punta por falta de fixture fresco en DEV (dato preexistente, sigue como
 > deuda técnica separada — no culpa de este fix). Ver `log.md` (2026-08-07) y
 > `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ").
+>
+> **🚀 Regresión e2e completa corrida antes del deploy de v1.160.0 (2026-08-07) — 139 specs, ~38 min:
+> 270 pasaron, 42 skipped, 29 fallaron.** Investigación de los 29 fallos: **100% atribuibles a una
+> fragilidad PREEXISTENTE y ya documentada del arnés de test, no a una regresión de esta sesión.** Los
+> specs que fallaron dependen ciegamente de la PRIMERA opción del combo de "Ubicación" en el helper
+> `ingresoRealPorUI` (o copias inline del mismo patrón), que resulta ser una ubicación `mono_sku=true`
+> compartida ("A-01-1" o "RACK1") que el primer producto que entra ahí reclama para siempre — el
+> siguiente producto que la necesita choca en silencio. Confirmado con evidencia dura: el spec
+> `23_inventario_ingreso_mutante.spec.ts` ya documentaba este MISMO problema con "RACK1" en un
+> comentario fechado **2026-07-28**, una semana antes de esta sesión (ver su nota "🌱 SIEMBRA SU PROPIO
+> PRODUCTO"). Ningún fallo llegó a ejecutar la lógica de negocio bajo prueba — todos murieron en el
+> paso de sembrar el fixture de ingreso. Se liberó la ubicación "A-01-1" (ocupada por un residuo de
+> test de esta sesión) como limpieza puntual, pero **el problema de fondo (arnés de test con fixtures
+> de ubicación compartidos y frágiles) queda como deuda técnica NO bloqueante**, anotada para una
+> sesión futura dedicada a test-infra — candidatos: que `ingresoRealPorUI` cree su propia ubicación por
+> corrida, o exigir `ubicacionNombre` explícito en todos los call sites (el parámetro ya existe desde el
+> fix del spec 131). Ver `log.md` (2026-08-07, entrada `deploy`) y `sources/raw/project_pendientes.md`
+> (bloque "ARRANCÁ ACÁ").
 
 ### Configuración Playwright
 

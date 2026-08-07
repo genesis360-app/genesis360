@@ -172,7 +172,7 @@ Archivos: `supabase/functions/meli-webhook/index.ts`, `src/pages/VentasPage.tsx`
 
 ---
 
-## 🐛 Fix: `sucursal_id = NULL` en ventas MELI (2026-08-07 — corregido en el working tree local, deployado a la Edge Function en DEV, NO commiteado)
+## 🐛 Fix: `sucursal_id = NULL` en ventas MELI (2026-08-07 — ✅ commiteado y pusheado a `origin/dev` `e4b5d9de`, deployado a la Edge Function en DEV; redeploy a la EF de PROD pendiente del merge)
 
 > [!WARNING] Bug real (Regla de Oro #0, no solo deuda técnica): `meli-webhook` nunca leía ni
 > propagaba `meli_credentials.sucursal_id` al crear la venta ni el envío — a diferencia de
@@ -188,8 +188,10 @@ Cierra la nota de "deuda técnica anotada" que quedaba en la sección de arriba 
 - **⚠ No probado de punta a punta contra un pedido real de MercadoLibre** — requeriría un pedido
   nuevo real en la cuenta de test conectada; la limitación ya existía desde que se construyó la Fase B
   original.
-- **No commiteado** — vive en el working tree de `dev` junto con el resto de los cambios de la
-  sesión (ver `sources/raw/project_pendientes.md`, bloque "ARRANCÁ ACÁ" del 2026-08-07).
+- **✅ Commiteado y pusheado a `origin/dev`** (`e4b5d9de`, `APP_VERSION` v1.160.0) junto con el resto
+  de los cambios de la sesión — deploy de código a PROD **EN CURSO** (falta el PR `dev`→`main` + merge
+  + redeploy de la Edge Function a PROD; hasta entonces `meli-webhook` en PROD sigue en v11, sin el
+  fix). Ver `sources/raw/project_pendientes.md`, bloque "ARRANCÁ ACÁ" del 2026-08-07.
 
 Archivo: `supabase/functions/meli-webhook/index.ts`.
 

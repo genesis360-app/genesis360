@@ -138,7 +138,8 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 > ambos sentidos mostró lo recién guardado. **Sin migración — fix 100% frontend.**
 
 > [!NOTE] **🆕 Thumbnail de imagen + `loading="lazy"` — fix de performance (2026-08-07, mig 340,
-> 🟡 SOLO EN DEV, sin commitear).** Investigación de por qué Supabase DEV entró en "grace period" por
+> ✅ EN DEV Y PROD — commiteado y pusheado a `origin/dev` `e4b5d9de`, migración ya aplicada en PROD,
+> deploy de código EN CURSO).** Investigación de por qué Supabase DEV entró en "grace period" por
 > exceder la cuota de **Cached Egress** + agotar el **Disk IO Budget**: la imagen del producto se
 > mostraba a tamaño COMPLETO (hasta 1200px/1.5MB, sin resize) incluso como ícono de 32-36px en
 > Productos, Inventario y POS/Ventas — cada vista de lista/galería volvía a bajar el archivo entero.

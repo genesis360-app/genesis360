@@ -258,19 +258,21 @@ existentes**, solo las creadas de acá en adelante.
 2. **✅ Mig 336 (defaults apagados) deployada también a PROD** — junto con el resto del deploy de
    v1.159.0 el 2026-08-06 (envío automático TN/MELI, fulfillment sync TN, rentabilidad neta MELI,
    footer de conteo de registros). Ver `log.md` (2026-08-06, entrada `deploy` v1.159.0).
-3. **✅ Fase U5 (limpieza) hecha — mig 339 (2026-08-07), 🟡 SOLO EN DEV, sin commitear.** Dropea
-   `ubicaciones.tipo_ubicacion` (0 lectores reales confirmados: sin funciones/triggers/vistas ni
+3. **✅ Fase U5 (limpieza) hecha — mig 339 (2026-08-07), ✅ EN DEV Y PROD, deploy de código EN CURSO.**
+   Dropea `ubicaciones.tipo_ubicacion` (0 lectores reales confirmados: sin funciones/triggers/vistas ni
    referencias en `supabase/functions`, en `src/` solo el tipo TS deprecated, limpiado junto con la
-   migración). Archivo `supabase/migrations/339_ubicaciones_drop_tipo_ubicacion.sql` existe en el
-   repo pero como untracked (`??`) en `git status` — no commiteado, no pusheado, no en PROD. Ver
-   `wiki/database/migraciones.md`, `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ").
+   migración). Archivo `supabase/migrations/339_ubicaciones_drop_tipo_ubicacion.sql` commiteado y
+   pusheado a `origin/dev` (`e4b5d9de`), migración ya aplicada en PROD; falta el merge `dev`→`main`
+   para que el código llegue a Vercel de PROD. Ver `wiki/database/migraciones.md`,
+   `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ").
 4. **Relevamiento #2** de la secuencia hacia Repositores (Pestaña de supervisor reusable) — ✅
    respondido completo el 2026-08-07, diseño/construcción sin arrancar todavía (esperan al #3). **#3
-   (Motor de Rotación de productos con descuento)** — ✅ relevamiento 100% respondido el 2026-08-07
-   (B4/C2/E5 cerrados por GO), con esquema de CONFIGURACIÓN + UI (mig 341) y ejecución real de las
-   Opciones 1 y 2 (mig 342) ya construidos — **Opción 2 ✅ VERIFICADA end-to-end el mismo 2026-08-07**
-   (encontró y corrigió un bug real de Regla de Oro #0 en `VentasPage.tsx`, test e2e permanente spec
-   131), Opción 3 (kits) sin arrancar; 🟡 TODO SOLO EN DEV, sin commitear — ver
+   (Motor de Rotación de productos con descuento)** — ✅ relevamiento 100% respondido y **COMPLETO**
+   el 2026-08-07 (B4/C2/E5 cerrados por GO), con esquema de CONFIGURACIÓN + UI (mig 341) y ejecución
+   real de las 3 Opciones (migs 342/343) construidas y **las 3 verificadas end-to-end** — Opción 2
+   (encontró y corrigió un bug real de Regla de Oro #0 en `VentasPage.tsx`, spec 131), Opción 3/E3
+   (spec 132) y Opción 3/E2-E4 nombre+precio de KIT con autorización (spec 133); ✅ commiteado y
+   pusheado a `origin/dev` (`e4b5d9de`), migraciones ya en PROD, deploy de código EN CURSO — ver
    [[wiki/features/precios-tiers-empaque]].
    **#4 (Repositores) sigue bloqueado.**
 5. **Prueba manual en el navegador** — cubierta por Playwright (spec 130) el 2026-08-06, pero GO

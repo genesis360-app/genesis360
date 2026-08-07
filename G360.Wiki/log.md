@@ -6,6 +6,63 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-07] deploy | 🚀 v1.160.0 — Motor de Rotación completo a PROD (migraciones aplicadas, código en dev pusheado, PR/merge/release en curso)
+
+GO autorizó el deploy completo a PROD de TODO lo acumulado en el día (4 sesiones `update` seguidas, ver
+las entradas de abajo) — **EN CURSO, no cerrado todavía**: falta el PR `dev`→`main` + merge + tag/release
++ verificación de Vercel, que quedan para después de este cierre de wiki.
+
+**1. Commit real, commiteado y pusheado a `origin/dev`** (`e4b5d9de`, "feat: v1.160.0 — Motor de
+Rotación completo (Opción 1/2/3) + fix sucursal_id MELI + thumbnail de imagen + fix flake e2e") —
+agrupa TODO lo acumulado del día: Fase U5 (mig 339, dropea `ubicaciones.tipo_ubicacion`), thumbnail de
+imagen de producto (mig 340, fix de Cached Egress), fix real de `sucursal_id` NULL en `meli-webhook`,
+fix de flake real (no timing) en los specs 39/51/69, y el **Motor de Rotación de productos con
+descuento COMPLETO**: Opción 1 (agotar antes de reponer, mig 342), Opción 2 (prioridad de envíos,
+`getRebajeSort`/`registrarVenta`, verificada end-to-end con el bug real de Regla de Oro #0 encontrado y
+corregido en `VentasPage.tsx`) y Opción 3 (armar kits, mig 343: E3 prioriza el lote en descuento en
+`iniciar_armado_kit`, E2/E4 autogenera nombre/precio del KIT con autorización de supervisor).
+**`APP_VERSION` bumpeada a v1.160.0** en el mismo commit. 3 specs e2e permanentes nuevos
+(`131_rotacion_prioridad_envios_mutante.spec.ts`, `132_kit_armado_prioridad_rotacion_mutante.spec.ts`,
+`133_kit_precio_sugerido_autorizacion_mutante.spec.ts`) prueban las 3 Opciones de punta a punta contra
+DEV real — **las 3, no solo E3, quedan verificadas end-to-end**, cerrando el pendiente que había quedado
+abierto de "E2/E4 sin verificar en el navegador" (spec 133: rol DEPOSITO pide el cambio de precio del
+KIT, DUEÑO lo aprueba desde Autorizaciones, verificado en DB en cada paso).
+
+**2. Migraciones 339-343 aplicadas en PROD** (proyecto `jjffnbrdjchquexdfgwq`) vía `apply_migration`, en
+orden, las 5 exitosas — mismo patrón ya usado antes (DDL aditivo a PROD antes de mergear `dev`→`main`,
+ver `feedback_deploy_order_migrations_aditivas`). **Advisors de seguridad de PROD re-corridos después de
+aplicar:** 0 hallazgos nuevos — 122 WARN + 10 INFO, los mismos de antes, ninguno de los objetos nuevos
+de esta sesión aparece en la lista.
+
+**3. Regresión e2e completa corrida ANTES de deployar** (139 specs, ~38 min): **270 pasaron, 42
+skipped, 29 fallaron.** Investigación de los 29 fallos: **100% atribuibles a una fragilidad
+PREEXISTENTE y ya documentada del arnés de test**, no a una regresión de esta sesión — los specs que
+fallaron dependen ciegamente de la PRIMERA opción del combo de "Ubicación" en el helper
+`ingresoRealPorUI` (o copias inline del mismo patrón), que resulta ser una ubicación `mono_sku=true`
+compartida ("A-01-1" o "RACK1") que el primer producto que entra ahí reclama para siempre. Confirmado
+con evidencia dura: el spec `23_inventario_ingreso_mutante.spec.ts` ya documentaba este MISMO problema
+con "RACK1" en un comentario fechado **2026-07-28** — una semana antes de esta sesión. Ningún fallo
+llegó a ejecutar la lógica de negocio bajo prueba; todos murieron en el paso de sembrar el fixture de
+ingreso. Se liberó la ubicación "A-01-1" (ocupada por un residuo de test de esta sesión) como limpieza,
+pero el problema de fondo (arnés de test con fixtures compartidos frágiles) **queda como deuda técnica
+NO bloqueante**, anotada para una sesión futura dedicada a test-infra.
+
+**4. Verde total antes de mergear:** `npx tsc --noEmit` · `npm run build` · **1538 tests unitarios**
+(98 archivos) · specs e2e **131/132/133** (2+ corridas cada uno, sin fallas).
+
+**📋 Estado real, EN CURSO:** código en `origin/dev` (HEAD = `e4b5d9de`), NO en `main` todavía;
+migraciones ya en la base de PROD (001-343); **Vercel PROD y las Edge Functions de PROD siguen
+sirviendo el código anterior (v1.159.0)** hasta que se complete el PR `dev`→`main` + merge + tag/release
++ redeploy de Edge Functions (`meli-webhook` con el fix de `sucursal_id`, entre otras) — eso queda para
+el cierre real del deploy, después de esta actualización del wiki.
+
+Ver `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" nuevo, cont. 5), [[wiki/business/roadmap]]
+(v1.160.0), [[wiki/features/precios-tiers-empaque]], [[wiki/features/ubicaciones]],
+[[wiki/features/productos]], [[wiki/integrations/mercado-libre]], [[wiki/development/testing]],
+`wiki/database/migraciones.md` (migs 339-343, EN DEV Y PROD).
+
+---
+
 ## [2026-08-07] update | 🧩 Motor de Rotación Opción 3 (kits): fix E3 (iniciar_armado_kit prioriza lote en descuento, mig 343) + autogenerar nombre/precio E2/E4 con autorización de supervisor — verificado end-to-end con test e2e permanente (spec 132) — SIN COMMITEAR
 
 Continuación, mismo día, de la entrada `update` siguiente (Motor de Rotación Opción 2, verificada

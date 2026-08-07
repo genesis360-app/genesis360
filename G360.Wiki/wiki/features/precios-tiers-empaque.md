@@ -372,12 +372,17 @@ propias respuestas antes de codear (mismo criterio de "features grandes por fase
        el % de estado lo aplica el mecanismo existente en la venta, 9 tests), UI nueva en Inventario →
        Kits (bloque "Sugerido según la receta": nombre aplica directo, precio requiere autorización de
        supervisor para roles no-DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN vía `autorizaciones_inventario`
-       tipo `kit_precio` nuevo, mismo flujo de aprobar/rechazar existente). **⚠️ SIN VERIFICAR en el
-       navegador** — solo unit tests + code review, próximo paso si se retoma este módulo.
+       tipo `kit_precio` nuevo, mismo flujo de aprobar/rechazar existente). **✅ VERIFICADO end-to-end
+       en la sesión de deploy (2026-08-07, mismo día)** con el test e2e permanente
+       `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts` — rol DEPOSITO pide el cambio de
+       precio, DUEÑO lo aprueba desde Autorizaciones, verificado en DB en cada paso.
      - **E5** (desarmado de kit devuelve componentes al mismo estado de descuento) y lo que depende de
        la Pestaña de supervisor (disparo automático) **siguen sin arrancar, a propósito.**
-   🟡 **TODO SOLO EN DEV, sin commitear** — migs 341/342/343, el código y los tests 131/132 viven en el
-   working tree local de `dev`. Detalle completo: `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
+   ✅ **Las 3 Opciones del Motor de Rotación quedan COMPLETAS y verificadas end-to-end** — código
+   commiteado y pusheado a `origin/dev` (commit `e4b5d9de`, `APP_VERSION` v1.160.0), migs 341/342/343
+   ya aplicadas en la base de PROD. **Deploy de código a PROD EN CURSO** — falta el PR `dev`→`main` +
+   merge + tag/release (ver `sources/raw/project_pendientes.md`, bloque "ARRANCÁ ACÁ"). Detalle
+   completo: `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
 4. **Repositores** (el módulo en sí) — bloqueado hasta que se complete el diseño + construcción real
    del #2 y se termine la Opción 3 (kits) del #3 (según la decisión D2 de arriba).
 

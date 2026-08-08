@@ -3,39 +3,75 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
-# Historial de Migraciones (001-343)
+# Historial de Migraciones (001-344)
 
-**Total al 2026-08-07:** 343 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-08:** 344 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**001-343 EN DEV Y PROD (base de datos)** — las migraciones 339-343 se aplicaron en PROD (proyecto
-`jjffnbrdjchquexdfgwq`) el 2026-08-07 vía `apply_migration`, **ANTES del merge del código** (mismo
-patrón "DDL aditivo antes de mergear `dev`→`main`", ver `feedback_deploy_order_migrations_aditivas`).
-El **código de la app (Vercel) y las Edge Functions de PROD siguen sirviendo v1.159.0** hasta que se
-complete el PR `dev`→`main` + merge + tag/release `v1.160.0` — el commit `e4b5d9de` ya está commiteado y
-pusheado a `origin/dev` con TODO lo acumulado (Motor de Rotación completo Opción 1/2/3, fix
-`sucursal_id` MELI, thumbnail de imagen, fix de flake e2e) — ver `sources/raw/project_pendientes.md`
-"ARRANCÁ ACÁ". Antes: 001-338 EN DEV Y PROD desde v1.159.0 (deploy 2026-08-06 — PR #314, merge commit
+**001-344 EN DEV Y PROD (base de datos), deploy v1.160.0 100% CERRADO** — las migraciones 339-343 se
+aplicaron en PROD (proyecto `jjffnbrdjchquexdfgwq`) el 2026-08-07 vía `apply_migration`, ANTES del merge
+del código (mismo patrón "DDL aditivo antes de mergear `dev`→`main`", ver
+`feedback_deploy_order_migrations_aditivas`). **PR #317 (`dev`→`main`) mergeado limpio** (commit
+`181a6f52`), **tag + GitHub release `v1.160.0`** publicados (`--latest`). **Vercel PROD verificado de
+forma independiente por curl**: `app.genesis360.pro` sirve el bundle `assets/index-DY_QVG8v.js` con el
+string `v1.160.0` literal (deployment `dpl_6jhCxXxJxiYiFjpDvpciXFY4aB7T`, target `production`, `READY`).
+Antes: 001-338 EN DEV Y PROD desde v1.159.0 (deploy 2026-08-06 — PR #314, merge commit
 `9caffd63b9d66282736ab9f674e8fad7f065c513`, tag+release `v1.159.0` — agrupa envío automático TN/MELI al
 confirmar pago, fulfillment sync TN→despachado/entregado (mig 338), rentabilidad neta real MELI (mig
 337), ubicaciones nuevas nacen con TN/MELI/picking apagados (mig 336) y el footer de conteo de
-registros en Productos/Inventario/Clientes/Envíos). Antes: 001-335 en DEV y PROD desde v1.158.0 (deploy
-2026-08-06 más temprano — rediseño de `ubicaciones` en árbol + tipo lógico, 334-335, 1º de 4
-relevamientos hacia la Fase E/Repositores, ver [[wiki/features/ubicaciones]]). ⚠ `schema_full.sql`
-actualizado hasta la mig 343 (a mano en las migs 339-343, sin regenerar por token — ver
-`reference_supabase_pooler_auth_bug`).
+registros en Productos/Inventario/Clientes/Envíos). ⚠ `schema_full.sql` actualizado hasta la mig 343
+(a mano en las migs 339-343, sin regenerar por token — ver `reference_supabase_pooler_auth_bug`) — la
+344 todavía no está reflejada ahí, pendiente de una próxima regeneración.
 
-> [!NOTE] **339-343 — YA EN PROD (base de datos), deploy de CÓDIGO en curso.** Aplicadas el 2026-08-07
-> vía `apply_migration` directo contra PROD (`jjffnbrdjchquexdfgwq`). Los 5 archivos están commiteados y
-> pusheados a `origin/dev` (commit `e4b5d9de`, `APP_VERSION` bumpeada a `v1.160.0`) — pero el PR
-> `dev`→`main` todavía no se mergeó, así que el código/Edge Functions de PROD siguen sirviendo v1.159.0.
-> **Advisors de seguridad de PROD re-corridos después de aplicar: 0 hallazgos nuevos** (122 WARN + 10
-> INFO, todos preexistentes — ninguno de los objetos nuevos de esta sesión aparece en la lista). Ver
-> `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ") y `log.md` (2026-08-07, entrada `deploy`).
+> [!WARNING] **🛑 CORRECCIÓN — 334 y 335 NUNCA estuvieron en PROD hasta el 2026-08-08 (mig 344), pese a
+> lo que este wiki decía antes.** Este documento (y [[wiki/features/ubicaciones]],
+> `wiki/features/configuracion.md`, `wiki/features/precios-tiers-empaque.md`) afirmaban "334/335 ✅ EN
+> PROD desde v1.158.0" — **esa afirmación era incorrecta**: `list_migrations` de PROD saltaba de 333 a
+> 336 directo, las dos migraciones nunca se habían aplicado ahí. Se descubrió durante el deploy de
+> v1.160.0 porque la mig 339 (Fase U5, este mismo deploy) asumía que 334 ya había reescrito 6 funciones
+> SQL de WMS/Pedidos que leían `ubicaciones.tipo_ubicacion` — sin corregirlo, esas 6 funciones habrían
+> quedado rotas en runtime en PROD (columna inexistente). La mig 344 (ver abajo) reaplicó el contenido
+> completo de 334+335 en PROD y cerró el gap. Ver el punto 8 del bloque "ARRANCÁ ACÁ" de
+> `sources/raw/project_pendientes.md` para el detalle completo de la investigación y verificación.
 
-**343 (🧩 Motor de Rotación — ejecución real Opción 3 (kits): E3 `iniciar_armado_kit` prioriza el lote en descuento + `'kit_precio'` en `autorizaciones_inventario.tipo`, ✅ EN DEV Y PROD, deploy de código en curso)** —
+**344 (🛑 Fix de un gap real de deploy: reaplica 334+335 en PROD, donde nunca se habían aplicado, ✅ EN PROD desde v1.160.0 — Regla de Oro #0/inventario)** —
+Sesión 2026-08-07/08, durante el cierre del deploy de v1.160.0. Hallazgo real: `list_migrations` de
+PROD (`jjffnbrdjchquexdfgwq`) saltaba de 333 a 336 — las migraciones **334**
+(`ubicaciones_arbol_tipo_logico`) y **335** (`producto_ubicacion_exhibicion`), commiteadas en `main`/DEV
+desde v1.157.0/v1.158.0 y **documentadas en este wiki (por error) como "✅ EN PROD desde v1.158.0"**,
+**nunca se habían aplicado en la base de PROD**. Era inofensivo hasta que la migración 339 de este mismo
+deploy (Fase U5, dropea `ubicaciones.tipo_ubicacion`) asumió que 334 ya había reescrito las 6 funciones
+SQL de WMS/Pedidos que leían esa columna (`fn_wms_elegir_ubicacion_picking`,
+`fn_generar_tareas_reabastecimiento_umbral`, `fn_generar_tareas_picking_envio/pedido_stock/pedido_venta`,
+`fn_lanzar_bolsa_pedidos`) — confirmado con `pg_get_functiondef` contra PROD que las 6 habían quedado
+efectivamente rotas (referenciaban una columna ya inexistente, error garantizado en runtime). **Sin este
+fix, cualquier lanzamiento de pedido, reabastecimiento por umbral o bolsa de picking real en PROD habría
+fallado — caso real de Regla de Oro #0 (inventario).**
+`344_fix_ubicaciones_backfill_gap_334_335_en_prod.sql` reaplica el contenido íntegro de 334+335
+(columnas `padre_ubicacion_id`/`tipo_logico`/`subtipo_almacenamiento`/`codigo`/`pos_x`/`pos_y`/
+`orientacion_deg`, los 4 triggers, el backfill de `codigo`, y el rewrite de las 6 funciones, más
+`producto_ubicacion_sucursal.ubicacion_exhibicion_id` de la 335), con la única sección que ya no podía
+ejecutarse tal cual (el backfill de `tipo_logico` leyendo `tipo_ubicacion`, columna que la propia 339 ya
+había dropeado en este mismo deploy) reemplazada por el mismo valor neutro de fallback que 334 ya usaba
+para los casos sin tipo asignado.
+✅ **Verificado con SQL directo contra PROD, de forma independiente** (no solo confiado en el reporte del
+fix): `select count(*) from ubicaciones` → 7 filas, 0 con `codigo` NULL, 0 con `tipo_logico` NULL (los
+nodos contenedora del árbol no aplican todavía en PROD — no hay árbol armado). Las 6 funciones
+confirmadas SIN ninguna referencia a `tipo_ubicacion` (`pg_get_functiondef(oid) ilike '%tipo_ubicacion%'`
+→ `false` en las 6). Mismo chequeo en DEV (donde 334/335 sí venían aplicadas desde el principio): 114
+ubicaciones, 0 sin código, 10 sin `tipo_logico` (correcto — nodos contenedora reales del árbol de DEV, el
+guard `trg_ubic_tipo_logico_guard` no permite `tipo_logico` en un nodo con hijos, la migración los
+excluye a propósito).
+**Impacto de datos conocido y aceptado**: en PROD, 1 ubicación que tenía `tipo_ubicacion='camara'`
+históricamente perdió esa clasificación puntual (la columna origen ya no existe en PROD, no se puede
+recuperar) — reclasificable a mano desde Config, cero impacto en stock/fiscal/contable.
+Commiteada en el mismo PR #317 (commit `b87667d2`). Ver el punto 8 del bloque "ARRANCÁ ACÁ" de
+`sources/raw/project_pendientes.md`, [[wiki/features/ubicaciones]] (banner corregido), `log.md`
+(2026-08-08, entrada `deploy` de cierre).
+
+**343 (🧩 Motor de Rotación — ejecución real Opción 3 (kits): E3 `iniciar_armado_kit` prioriza el lote en descuento + `'kit_precio'` en `autorizaciones_inventario.tipo`, ✅ EN DEV Y PROD desde v1.160.0)** —
 Sesión 2026-08-07, cont. 4, inmediatamente después de que la sesión anterior (mig 342) verificara la
 Opción 2 end-to-end (spec 131). GO había scopeado E3+E2/E4 como lo independiente de la Pestaña de
 supervisor (construir YA, reusando la pantalla de Kits existente de forma MANUAL, sin disparo
@@ -82,7 +118,7 @@ Verde: tsc · build · **1538 tests unitarios** (97 archivos, 9 nuevos de `kits.
 Ver [[wiki/features/precios-tiers-empaque]], `sources/raw/relevamiento_rotacion_descuento_respuestas.md`,
 `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ", cont. 5), `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts`.
 
-**342 (🔄 Motor de Rotación — ejecución real Opción 1 (agotar antes de reponer): `motivo_vencimiento` + helpers de bloqueo por sucursal, ✅ EN DEV Y PROD, deploy de código en curso)** —
+**342 (🔄 Motor de Rotación — ejecución real Opción 1 (agotar antes de reponer): `motivo_vencimiento` + helpers de bloqueo por sucursal, ✅ EN DEV Y PROD desde v1.160.0)** —
 Sesión 2026-08-07, misma tarde que la mig 341, después de que GO cerró los 3 gaps del relevamiento
 (B4/C2/E5 — ver mig 341 abajo y
 `sources/raw/relevamiento_rotacion_descuento_respuestas.md`). `estados_inventario.motivo_vencimiento
@@ -113,7 +149,7 @@ E3 VERIFICADO end-to-end / E2-E4 construidos sin verificar en navegador desde la
 `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
 Verde: tsc · build · 1529 tests unitarios (4 nuevos de `rebajeSort`).
 
-**341 (🔄 Motor de Rotación de productos con descuento — SOLO esquema de configuración, sin lógica de ejecución, ✅ EN DEV Y PROD, deploy de código en curso)** —
+**341 (🔄 Motor de Rotación de productos con descuento — SOLO esquema de configuración, sin lógica de ejecución, ✅ EN DEV Y PROD desde v1.160.0)** —
 Sesión 2026-08-07, 3º de los 4 relevamientos hacia la Fase E/Repositores (ver
 [[wiki/features/precios-tiers-empaque]] → "Fase E"). Respondido por Fede el 2026-08-03, GO compartió
 la respuesta el 2026-08-07 — **3 preguntas con gap real (B4, C2, E5)** siguen sin cerrar (Fede
@@ -147,7 +183,7 @@ ad-hoc, sin persistir nada).
 Verde: tsc · build · 1525 tests unitarios. Detalle técnico completo:
 `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
 
-**340 (🖼️ `productos.imagen_thumb_url` — thumbnail para bajar Cached Egress de Supabase Storage, ✅ EN DEV Y PROD, deploy de código en curso)** —
+**340 (🖼️ `productos.imagen_thumb_url` — thumbnail para bajar Cached Egress de Supabase Storage, ✅ EN DEV Y PROD desde v1.160.0)** —
 Sesión 2026-08-07. Investigación de por qué Supabase DEV (`gcmhzdedrkmmzfzfveig`) entró en "grace
 period" por exceder la cuota de **Cached Egress** + agotar el **Disk IO Budget**: las imágenes de
 producto se servían a tamaño COMPLETO (hasta 1200px/1.5MB) incluso como ícono de 32-36px, sin
@@ -158,7 +194,7 @@ sin thumbnail siguen funcionando, solo sin la optimización hasta que se re-suba
 `loading="lazy"` en los 4 `<img>` de producto. Verde: tsc · build · 1525 tests unitarios. **NO
 probado con un usuario real subiendo una imagen en el navegador.** Ver [[wiki/features/productos]].
 
-**339 (🧹 Fase U5 — dropea `ubicaciones.tipo_ubicacion`, columna vieja reemplazada en la mig 334, ✅ EN DEV Y PROD, deploy de código en curso)** —
+**339 (🧹 Fase U5 — dropea `ubicaciones.tipo_ubicacion`, columna vieja reemplazada en la mig 334, ✅ EN DEV Y PROD desde v1.160.0)** —
 Sesión 2026-08-07. Cierra la limpieza pendiente desde la mig 334 (v1.157.0, rediseño de `ubicaciones`
 en árbol): la columna vieja quedó reemplazada por `tipo_logico`/`subtipo_almacenamiento`. Verificado
 0 lectores reales antes de aplicar: sin funciones/triggers/vistas en `schema_full.sql` que lean o
@@ -212,7 +248,7 @@ que **no afecta tenants ni ubicaciones existentes**, solo las creadas de acá en
 en PROD el 2026-08-06** junto con el resto del deploy de v1.159.0 (PR #314). Ver
 [[wiki/features/ubicaciones]], `log.md` (2026-08-06, entrada `deploy`).
 
-**335 (🎯 `producto_ubicacion_sucursal.ubicacion_exhibicion_id` — prepara Repositores, ✅ DEV y PROD desde v1.158.0)** —
+**335 (🎯 `producto_ubicacion_sucursal.ubicacion_exhibicion_id` — prepara Repositores, ✅ EN DEV desde v1.158.0; 🛑 EN PROD nunca aplicada hasta el 2026-08-08 vía la mig 344 — ver nota arriba)** —
 Fede/GO, 1º de 4 relevamientos hacia Fase E (ver [[wiki/features/precios-tiers-empaque]] → "Fase
 E"). Columna **nueva** (no se reinterpretó la `ubicacion_id` existente, que sigue siendo el default
 de PUTAWAY al recibir stock): la ubicación de **EXHIBICIÓN** de cara al cliente, que el futuro
@@ -220,7 +256,7 @@ módulo Repositores va a necesitar para saber "qué va dónde en el piso de vent
 a nivel DB todavía — es una regla condicional de negocio, para una fase de UI futura. Ver
 [[wiki/features/ubicaciones]].
 
-**334 (🏗️ `ubicaciones` pasa de tabla PLANA a ÁRBOL + `tipo_logico`/`subtipo_almacenamiento`, ✅ DEV y PROD desde v1.158.0, 🛑 toca inventario real — Regla #0)** —
+**334 (🏗️ `ubicaciones` pasa de tabla PLANA a ÁRBOL + `tipo_logico`/`subtipo_almacenamiento`, ✅ EN DEV desde v1.158.0; 🛑 EN PROD nunca aplicada hasta el 2026-08-08 vía la mig 344 — este wiki decía "DEV y PROD desde v1.158.0", era incorrecto, ver la nota de arriba y la mig 344)** —
 Fede/GO, 1º de 4 relevamientos hacia la Fase E (módulo Repositores) del backlog Comercial de Fede —
 ver [[wiki/features/precios-tiers-empaque]] → "Fase E". Respondido el 2026-08-05 sobre
 `relevamiento-ubicaciones-reglas-negocio.html` (generado 2026-08-02), con GO autorizando

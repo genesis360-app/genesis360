@@ -3,26 +3,40 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.159.0 (2026-08-06) — código/Vercel/Edge Functions; **la base de datos ya tiene
-las migraciones 001-343** (deploy v1.160.0 EN CURSO, ver abajo) — ver
-`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.160.0 (commiteado y pusheado a `origin/dev`, commit `e4b5d9de` — pendiente PR→`main`)  
-**Última actualización:** 7 de Agosto, 2026
+**Versión en PROD:** v1.160.0 (2026-08-08) — código/Vercel/Edge Functions; **la base de datos tiene las
+migraciones 001-344** (deploy 100% cerrado: PR #317 mergeado, tag+release `v1.160.0`, Vercel verificado
+por curl independiente) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
+**Versión en DEV:** v1.160.0 (= PROD)  
+**Última actualización:** 8 de Agosto, 2026
 
 ---
 
-## v1.160.0 — 🔄🧩 Motor de Rotación de productos con descuento COMPLETO (Opción 1/2/3) + fix `sucursal_id` MELI + thumbnail de imagen + fix flake e2e — 🟡 DEPLOY A PROD EN CURSO (código en `origin/dev`, migraciones 339-343 ya en PROD) (2026-08-07)
+## v1.160.0 — 🔄🧩 Motor de Rotación de productos con descuento COMPLETO (Opción 1/2/3) + fix `sucursal_id` MELI + thumbnail de imagen + fix flake e2e + 🛑 fix de un gap real de migraciones (334/335 nunca en PROD, mig 344) — ✅ **PROD** (2026-08-08)
 
 Deploy completo autorizado por GO de TODO lo acumulado en `dev` a lo largo del día (4 sesiones `update`
-seguidas) — **EN CURSO**: código commiteado y pusheado a `origin/dev` (`e4b5d9de`) y migraciones 339-343
-ya aplicadas en la base de PROD (`jjffnbrdjchquexdfgwq`), pero **todavía falta el PR `dev`→`main` +
-merge + tag/release + redeploy de Edge Functions + verificación de Vercel** — Vercel PROD sigue
-sirviendo v1.159.0 hasta que eso pase.
+seguidas) — **100% CERRADO**: **PR #317** (`dev`→`main`) mergeado limpio, sin conflictos (commit
+`181a6f52`), **tag + GitHub release `v1.160.0`** publicados (`--latest`). **Vercel PROD verificado de
+forma independiente por curl**: `app.genesis360.pro` sirve el bundle `assets/index-DY_QVG8v.js` con el
+string `v1.160.0` literal (deployment `dpl_6jhCxXxJxiYiFjpDvpciXFY4aB7T`, target `production`, `READY`).
+
+**🛑 Hallazgo real durante el deploy — migración 344, gap de migraciones 334/335 nunca aplicadas en
+PROD.** Se descubrió que las migraciones 334 (`ubicaciones_arbol_tipo_logico`) y 335
+(`producto_ubicacion_exhibicion`) — en `main`/DEV desde v1.157.0/v1.158.0, y documentadas en este wiki
+(por error) como "en PROD desde v1.158.0" — **nunca se habían aplicado en la base de PROD**
+(`list_migrations` saltaba de 333 a 336). Inofensivo hasta que la mig 339 de este mismo deploy (Fase
+U5, dropea `ubicaciones.tipo_ubicacion`) asumió que 334 ya había reescrito 6 funciones SQL de WMS/
+Pedidos que leían esa columna — sin el fix, esas 6 funciones habrían roto en runtime en PROD
+(**caso real de Regla de Oro #0/inventario**: cualquier lanzamiento de pedido, reabastecimiento o
+bolsa de picking real habría fallado). La mig 344 reaplicó el contenido íntegro de 334+335 en PROD y
+cerró el gap, verificado con SQL directo contra PROD (0 filas con `codigo`/`tipo_logico` NULL, las 6
+funciones sin ninguna referencia a la columna dropeada). Impacto de datos conocido: 1 ubicación de
+PROD perdió su clasificación `tipo_ubicacion='camara'` histórica (irrecuperable, reclasificable a
+mano). Detalle completo: `wiki/database/migraciones.md` (mig 344).
 
 **🔄🧩 Motor de Rotación de productos con descuento — COMPLETO, las 3 Opciones verificadas end-to-end**
 (4º de 4 relevamientos hacia la Fase E/Repositores, ver [[wiki/features/precios-tiers-empaque]]):
@@ -46,7 +60,8 @@ sirviendo v1.159.0 hasta que eso pase.
 **🐛 Fix real: `sucursal_id` NULL en ventas de MercadoLibre** — `meli-webhook` no propagaba
 `meli_credentials.sucursal_id` a `ventas`/`envios` (a diferencia de `tn-webhook`), riesgo de visibilidad
 por sucursal y de emisor equivocado en un tenant multi-CUIT/multi-sucursal. Deployado a la Edge Function
-en DEV (v24); **pendiente redeploy a PROD** tras el merge.
+en DEV (v24). ⚠ **No confirmado si se redeployó también a la Edge Function de PROD** — pendiente de
+verificar/confirmar con GO en la próxima sesión.
 
 **🖼️ Thumbnail de imagen de producto (mig 340)** — fix de performance: Supabase DEV había excedido la
 cuota de Cached Egress sirviendo la imagen completa como ícono de 32-36px. `imagen_thumb_url` generado
@@ -57,7 +72,8 @@ al subir con `browser-image-compression`, `loading="lazy"` en los 4 `<img>` de p
 `page.on('dialog', ...)` apuntando a un `confirm()` nativo que ya no existe desde v1.152.0 (reemplazado
 por el modal propio `useConfirm()`).
 
-**Migraciones 339-343 aplicadas en PROD** vía `apply_migration`, en orden, las 5 exitosas. Advisors de
+**Migraciones 339-344 aplicadas en PROD** vía `apply_migration` (339-343 el 2026-08-07, 344 el
+2026-08-07/08 cerrando el gap real de 334/335 encontrado durante este mismo deploy). Advisors de
 seguridad de PROD re-corridos post-migración: 0 hallazgos nuevos (122 WARN + 10 INFO, todos
 preexistentes).
 
@@ -72,8 +88,10 @@ test-infra.
 **Verde:** tsc · build · **1538 tests unitarios** (98 archivos) · specs e2e **131/132/133** (2+ corridas
 cada uno, sin fallas).
 
-**Pendiente para cerrar el deploy:** PR `dev`→`main` + merge + tag/release `v1.160.0` + redeploy de
-Edge Functions a PROD (`meli-webhook` con el fix de `sucursal_id`) + verificación de Vercel READY.
+**✅ Deploy cerrado.** PR #317 mergeado (`181a6f52`), tag+release `v1.160.0` publicados, Vercel PROD
+`READY` verificado por curl independiente. Pendiente real (no bloqueante del deploy en sí): confirmar
+si `meli-webhook` se redeployó también en la Edge Function de PROD con el fix de `sucursal_id`, y el QA
+manual heredado (thumbnail de imagen, pedido real MELI) — ver `sources/raw/project_pendientes.md`.
 
 ---
 
@@ -146,6 +164,12 @@ crear un nivel bajo un padre operativo (stock/umbrales/tareas WMS activas) — R
 funciones SQL reescritas (`fn_wms_elegir_ubicacion_picking` y otras 5 del módulo Pedidos). Nueva
 `producto_ubicacion_sucursal.ubicacion_exhibicion_id` (separada del default de recepción existente).
 Detalle completo: `wiki/features/ubicaciones.md`.
+
+> [!WARNING] **🛑 CORRECCIÓN (2026-08-08):** este párrafo daba a entender (y otras páginas del wiki lo
+> afirmaban explícitamente) que las migraciones 334/335 habían quedado aplicadas en **PROD** junto con
+> el resto del deploy de v1.158.0. **Eso era incorrecto** — nunca se aplicaron en la base de PROD hasta
+> el 2026-08-08, cuando se descubrió el gap real durante el deploy de v1.160.0 y se cerró con la mig
+> **344**. Detalle completo en la entrada de v1.160.0 (arriba) y en `wiki/database/migraciones.md`.
 
 **🛑 Fix de Regla de Oro #0 en `MasivoModal.tsx`** — al arreglar un spec e2e (95) apareció un flake
 real (2/3 corridas fallaban): `cargarLineasParaRebaje()` se llamaba sin `await` desde `addProduct()`,

@@ -3,7 +3,7 @@ title: Testing — Unit + E2E
 category: development
 tags: [testing, vitest, playwright, e2e, unit-tests]
 sources: [CLAUDE.md]
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # Testing
@@ -204,8 +204,8 @@ npm run test:unit:coverage # coverage report
 > autogenerado".
 >
 > **🔧 CORREGIDO 2026-08-06→08-07 — no era timing, era un diagnóstico equivocado: causa raíz real
-> encontrada y arreglada (✅ commiteado y pusheado a `origin/dev`, commit `e4b5d9de`, deploy de código
-> en curso).** El diagnóstico de arriba
+> encontrada y arreglada (✅ EN PROD desde v1.160.0, commit `e4b5d9de`, PR #317 mergeado el
+> 2026-08-08).** El diagnóstico de arriba
 > resultó incompleto: no había ningún `confirm()` nativo del browser al que "aceptar" — desde el
 > **2026-07-29 (v1.152.0)** TODOS los diálogos nativos (`confirm()`/`alert()`/`prompt()`) se
 > reemplazaron por el modal propio `useConfirm()` (`role="alertdialog"`, botón "Confirmar"), y este

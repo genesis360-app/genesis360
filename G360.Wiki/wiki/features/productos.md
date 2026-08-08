@@ -3,7 +3,7 @@ title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
 sources: [CLAUDE.md, migrations 329, 330, 340]
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # Productos
@@ -137,9 +137,8 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 > probar nada): ancla cambiada ida y vuelta (Caja→Pallet→Caja) con reapertura real en el medio, en
 > ambos sentidos mostró lo recién guardado. **Sin migración — fix 100% frontend.**
 
-> [!NOTE] **🆕 Thumbnail de imagen + `loading="lazy"` — fix de performance (2026-08-07, mig 340,
-> ✅ EN DEV Y PROD — commiteado y pusheado a `origin/dev` `e4b5d9de`, migración ya aplicada en PROD,
-> deploy de código EN CURSO).** Investigación de por qué Supabase DEV entró en "grace period" por
+> [!NOTE] **🆕 Thumbnail de imagen + `loading="lazy"` — fix de performance (mig 340, ✅ EN DEV Y PROD
+> desde v1.160.0, PR #317 mergeado el 2026-08-08).** Investigación de por qué Supabase DEV entró en "grace period" por
 > exceder la cuota de **Cached Egress** + agotar el **Disk IO Budget**: la imagen del producto se
 > mostraba a tamaño COMPLETO (hasta 1200px/1.5MB, sin resize) incluso como ícono de 32-36px en
 > Productos, Inventario y POS/Ventas — cada vista de lista/galería volvía a bajar el archivo entero.

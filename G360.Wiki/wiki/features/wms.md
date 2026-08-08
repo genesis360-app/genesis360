@@ -59,7 +59,8 @@ Fase 1 ✅ (producto_estructuras — rediseñada con niveles dinámicos por UdM 
 
 ## Fase 2 — Dimensiones en ubicaciones (migration 032, v0.59.0) ✅
 
-> 🟡 **Rediseño en árbol + tipo lógico (migs 334/335, 2026-08-05, EN DEV, sin deploy) — ver página
+> ✅ **Rediseño en árbol + tipo lógico (migs 334/335, ✅ EN PROD desde v1.160.0 — el gap real de
+> deploy que dejó 334/335 fuera de PROD hasta el 2026-08-08 se cerró con la mig 344) — ver página
 > propia [[wiki/features/ubicaciones]].** `ubicaciones` pasa de tabla plana a **árbol** (self-FK
 > `padre_ubicacion_id`, mismo patrón que `producto_presentaciones.padre_linea_id`) y el
 > `tipo_ubicacion` de la tabla de abajo queda **deprecado** — reemplazado por `tipo_logico` (enum de
@@ -475,9 +476,10 @@ Detalle completo en [[wiki/features/multi-sucursal]] → "Traslados entre sucurs
 
 ## Links relacionados
 
-- [[wiki/features/ubicaciones]] — **rediseño en árbol + tipo lógico (migs 334/335, 2026-08-05, EN
-  DEV)**: `ubicaciones` pasa de plana a árbol, `tipo_ubicacion` (arriba, Fase 2) queda deprecado a
-  favor de `tipo_logico`/`subtipo_almacenamiento`. 1º de 4 relevamientos hacia Repositores.
+- [[wiki/features/ubicaciones]] — **rediseño en árbol + tipo lógico (migs 334/335, ✅ EN PROD desde
+  v1.160.0, mig 344 cerró el gap real de deploy)**: `ubicaciones` pasa de plana a árbol,
+  `tipo_ubicacion` (arriba, Fase 2) dropeado (mig 339) a favor de `tipo_logico`/`subtipo_almacenamiento`.
+  1º de 4 relevamientos hacia Repositores.
 - [[wiki/features/pedidos]] — **módulo NUEVO (2026-07-22/23) que desde el pivote F4 es el único
   origen real de tareas de picking/reabastecimiento** (ciclo de vida completo PED1-PED5+PED7 ya
   construido) — leer antes de asumir que Ventas/Envíos generan tareas; encontró el fix de mig 297
@@ -488,5 +490,5 @@ Detalle completo en [[wiki/features/multi-sucursal]] → "Traslados entre sucurs
 - [[wiki/features/configuracion]] — sección "Zonas y picking" en Config → Inventario (v1.143.0)
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/clientes-proveedores]]
-- [[wiki/database/migraciones]] — migs 289, 290, 291, 292, 297, 334, 335
+- [[wiki/database/migraciones]] — migs 289, 290, 291, 292, 297, 334, 335, 339, 344
 - [[wiki/database/schema-overview]]

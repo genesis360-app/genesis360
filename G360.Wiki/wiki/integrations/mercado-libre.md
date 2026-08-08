@@ -3,7 +3,7 @@ title: Integración MercadoLibre (MELI)
 category: integrations
 tags: [mercadolibre, meli, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-07
+updated: 2026-08-08
 ---
 
 # Integración MercadoLibre (MELI)
@@ -172,7 +172,7 @@ Archivos: `supabase/functions/meli-webhook/index.ts`, `src/pages/VentasPage.tsx`
 
 ---
 
-## 🐛 Fix: `sucursal_id = NULL` en ventas MELI (2026-08-07 — ✅ commiteado y pusheado a `origin/dev` `e4b5d9de`, deployado a la Edge Function en DEV; redeploy a la EF de PROD pendiente del merge)
+## 🐛 Fix: `sucursal_id = NULL` en ventas MELI (2026-08-07 — ✅ EN PROD desde v1.160.0, PR #317 mergeado el 2026-08-08; ⚠ redeploy de la Edge Function `meli-webhook` a PROD NO confirmado en el cierre de esta sesión)
 
 > [!WARNING] Bug real (Regla de Oro #0, no solo deuda técnica): `meli-webhook` nunca leía ni
 > propagaba `meli_credentials.sucursal_id` al crear la venta ni el envío — a diferencia de
@@ -188,10 +188,11 @@ Cierra la nota de "deuda técnica anotada" que quedaba en la sección de arriba 
 - **⚠ No probado de punta a punta contra un pedido real de MercadoLibre** — requeriría un pedido
   nuevo real en la cuenta de test conectada; la limitación ya existía desde que se construyó la Fase B
   original.
-- **✅ Commiteado y pusheado a `origin/dev`** (`e4b5d9de`, `APP_VERSION` v1.160.0) junto con el resto
-  de los cambios de la sesión — deploy de código a PROD **EN CURSO** (falta el PR `dev`→`main` + merge
-  + redeploy de la Edge Function a PROD; hasta entonces `meli-webhook` en PROD sigue en v11, sin el
-  fix). Ver `sources/raw/project_pendientes.md`, bloque "ARRANCÁ ACÁ" del 2026-08-07.
+- **✅ Código en PROD desde v1.160.0** (PR #317 mergeado `181a6f52`, tag+release `v1.160.0`, 2026-08-08).
+  **⚠ Dato NO confirmado en el cierre de esta sesión: si la Edge Function `meli-webhook` de PROD fue
+  redeployada** con este fix (al cierre de la sesión anterior seguía en v11 sin el fix, DEV ya en v24)
+  — pendiente de confirmar con GO. Ver `sources/raw/project_pendientes.md`, bloque "ARRANCÁ ACÁ" del
+  2026-08-08.
 
 Archivo: `supabase/functions/meli-webhook/index.ts`.
 

@@ -6,6 +6,51 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-08] deploy | ✅ v1.160.0 EN PROD — cierre del deploy + gap real de migraciones 334/335 encontrado y corregido (mig 344)
+
+Cierre del deploy que la entrada de abajo dejó "en curso". **PR [#317](https://github.com/genesis360-app/genesis360/pull/317) mergeado limpio** (`dev→main`, sin conflictos, commit de merge `181a6f52`). **Tag + GitHub release `v1.160.0`** publicados sobre `main` (`--latest`):
+https://github.com/genesis360-app/genesis360/releases/tag/v1.160.0. **Vercel PROD verificado de forma
+independiente** (no solo la narrativa del PR): `curl` real contra `app.genesis360.pro` confirma que sirve
+`assets/index-DY_QVG8v.js`, que contiene el string `v1.160.0` — deployment `dpl_6jhCxXxJxiYiFjpDvpciXFY4aB7T`,
+target production, `READY`.
+
+**🛑 Hallazgo real durante el deploy — gap de migraciones 334/335 nunca aplicadas en PROD.** Al verificar
+el estado de PROD antes del PR, `list_migrations` saltaba de 333 directo a 336: las migraciones **334**
+(`ubicaciones_arbol_tipo_logico`) y **335** (`producto_ubicacion_exhibicion`) — ya en `main`/DEV desde
+v1.157.0 — nunca se habían aplicado en producción. Era inofensivo hasta que la migración 339 de este
+mismo deploy (Fase U5, dropea `ubicaciones.tipo_ubicacion`) asumió que 334 ya había reescrito 6 funciones
+SQL de WMS/Pedidos que leían esa columna (`fn_wms_elegir_ubicacion_picking`,
+`fn_generar_tareas_reabastecimiento_umbral`, `fn_generar_tareas_picking_envio/pedido_stock/pedido_venta`,
+`fn_lanzar_bolsa_pedidos`). Sin el fix, esas 6 funciones habrían roto en runtime en PROD ante cualquier
+lanzamiento de pedido, reabastecimiento o bolsa de picking real — caso de libro de la Regla de Oro #0
+(inventario).
+
+**Migración 344** (`344_fix_ubicaciones_backfill_gap_334_335_en_prod.sql`, commiteada en el mismo PR,
+commit `b87667d2`): reaplica el contenido íntegro de 334+335 (columnas, guards/triggers, backfill de
+`codigo`, rewrite de las 6 funciones), con la única sección que ya no podía ejecutarse (el backfill de
+`tipo_logico` leyendo la columna `tipo_ubicacion` ya dropeada por 339) reemplazada por el mismo valor
+neutro de fallback que 334 ya usaba. Aplicada primero en DEV (no-op idempotente, salvo 5 filas que
+tenían `tipo_logico` NULL sin clasificar) y luego en PROD. **Verificado con SQL directo contra PROD**
+(no solo confiado en el reporte del deploy): 7 ubicaciones, 0 con `codigo` NULL, 0 con `tipo_logico`
+NULL; las 6 funciones confirmadas SIN ninguna referencia a `tipo_ubicacion`
+(`pg_get_functiondef(oid) ilike '%tipo_ubicacion%'` → `false` en las 6). Mismo chequeo en DEV: 114
+ubicaciones, 0 sin código, 10 sin `tipo_logico` (correcto — son nodos contenedora del árbol real de DEV,
+que por diseño no llevan `tipo_logico`). Impacto de datos conocido y aceptado: 1 ubicación de PROD que
+tenía `tipo_ubicacion='camara'` históricamente perdió esa clasificación puntual (la columna origen ya no
+existe, no se puede recuperar) — reclasificable a mano desde Config, cero impacto en stock/fiscal/contable.
+
+**Nota de transparencia:** el pipeline de deploy ejecutó el merge a `main` como parte de la autorización
+explícita que GO dio en esta sesión ("commiteas todo a DEV y PRD... sigue en autónomo hasta dejar todo en
+PRD funcionando"). Un chequeo de seguridad automático lo señaló porque no tenía visibilidad de esa
+autorización dentro de la conversación — el merge en sí salió limpio y el resultado quedó verificado
+correcto; se lo señaló a GO en la respuesta de cierre para que quede transparente.
+
+**Migraciones en PROD ahora: 001-344** (334/335 cerradas vía el contenido de 344, no por su numeración
+original). Ver `sources/raw/project_pendientes.md`, `wiki/database/migraciones.md`,
+`wiki/business/roadmap.md`.
+
+---
+
 ## [2026-08-07] deploy | 🚀 v1.160.0 — Motor de Rotación completo a PROD (migraciones aplicadas, código en dev pusheado, PR/merge/release en curso)
 
 GO autorizó el deploy completo a PROD de TODO lo acumulado en el día (4 sesiones `update` seguidas, ver

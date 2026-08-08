@@ -3,7 +3,7 @@ title: Módulo Configuración
 category: features
 tags: [configuracion, config, metodos-pago, ubicaciones, estados, categorias, sucursales, zonas, picking, alertas, notificaciones, cuenta-corriente]
 sources: [CLAUDE.md, migrations 289, 290, 292, 299]
-updated: 2026-08-06
+updated: 2026-08-08
 ---
 
 # Módulo Configuración
@@ -200,13 +200,15 @@ configuración — ver [[wiki/features/alertas]].
 ### Sub-tabs heredados
 Todas estas secciones existían antes como tabs autónomas; ahora son sub-tabs de Inventario:
 - **Categorías** → ABM de categorías de productos
-- **Ubicaciones** → ABM con WMS (dimensiones, tipo, mono-SKU, surtido, devolución). **✅ PROD desde
-  v1.158.0 (migs 334/335, deploy 2026-08-06):** reescrita como ÁRBOL — selector de ubicación padre
-  (breadcrumb), código autogenerado/editable, `tipo_logico` (enum de negocio, con `InfoTip`) +
-  sub-tipo de almacenamiento condicional (reemplaza al `tipo_ubicacion` viejo), lista indentada por
-  profundidad + búsqueda, guard de borrado si tiene niveles adentro. **🔒 2026-08-06 (🟡 EN DEV, sin
-  commitear, mig 336): `disponible_surtido`/`disponible_tn`/`disponible_meli` pasan de `DEFAULT true`
-  a `DEFAULT false`** — las ubicaciones nuevas ya no nacen expuestas a picking/venta ni a sync de
+- **Ubicaciones** → ABM con WMS (dimensiones, tipo, mono-SKU, surtido, devolución). **✅ EN PROD desde
+  v1.160.0 (migs 334/335, cerradas en PROD recién el 2026-08-08 vía la mig 344 — nunca habían llegado
+  a la base de PROD pese a lo que este wiki decía antes, ver [[wiki/features/ubicaciones]]):**
+  reescrita como ÁRBOL — selector de ubicación padre (breadcrumb), código autogenerado/editable,
+  `tipo_logico` (enum de negocio, con `InfoTip`) + sub-tipo de almacenamiento condicional (reemplaza al
+  `tipo_ubicacion` viejo, dropeado en la mig 339, ✅ EN PROD desde v1.160.0), lista indentada por
+  profundidad + búsqueda, guard de borrado si tiene niveles adentro. **🔒 `disponible_surtido`/
+  `disponible_tn`/`disponible_meli` pasan de `DEFAULT true` a `DEFAULT false` (mig 336, ✅ EN PROD
+  desde v1.159.0)** — las ubicaciones nuevas ya no nacen expuestas a picking/venta ni a sync de
   TN/MercadoLibre, se activan a demanda (Regla de Oro #0). Detalle completo:
   [[wiki/features/ubicaciones]].
 - **Estados** → ABM + Grupos de estados + Progresión (aging profiles) + **columna % desc.** en
@@ -320,7 +322,8 @@ Conectar cuentas externas por sucursal:
 - [[wiki/features/inventario-stock]]
 - [[wiki/features/wms]] — "Zonas y picking" (v1.143.0)
 - [[wiki/features/ubicaciones]] — rediseño en árbol + `tipo_logico` del sub-tab Ubicaciones (migs
-  334/335, ✅ PROD desde v1.158.0); defaults de picking/TN/MELI apagados (mig 336, 🟡 EN DEV)
+  334/335, ✅ PROD desde v1.160.0 — recién el 2026-08-08 vía mig 344, gap real de deploy); defaults de
+  picking/TN/MELI apagados (mig 336, ✅ EN PROD desde v1.159.0)
 - [[wiki/features/clientes-proveedores]] — CL2 (políticas de CC, ahora con UI real en tab Clientes)
 - [[wiki/features/alertas]] — márgenes/devoluciones, ahora con UI real en tab Alertas
 - [[wiki/features/ventas-pos]] — VF4/K2 (alertas de margen negativo/devoluciones), ahora con UI real

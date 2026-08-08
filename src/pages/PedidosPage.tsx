@@ -268,8 +268,9 @@ export default function PedidosPage() {
       if (prec && prec.estado !== 'completada') { toast.error('Primero hay que completar el reabastecimiento de esta tarea'); return }
     }
     const esReab = t.tipo === 'replenishment'
+    const esArmado = t.tipo === 'armado'
     setCompletandoWms(t.id)
-    const rpc = esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+    const rpc = esArmado ? 'fn_completar_tarea_armado' : esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
     const { error } = await supabase.rpc(rpc, { p_tarea_id: t.id })
     setCompletandoWms(null)
     if (error) { toast.error(error.message); return }
@@ -284,8 +285,10 @@ export default function PedidosPage() {
   }
   const cancelarTareaWms = async (t: any) => {
     const esReab = t.tipo === 'replenishment'
+    const esArmado = t.tipo === 'armado'
     const tieneDependiente = esReab && (wmsTareas as any[]).some(x => x.tarea_precedente_id === t.id)
-    const msg = `¿Cancelar esta tarea de ${esReab ? 'reabastecimiento' : 'picking'}?` +
+    const msg = `¿Cancelar esta tarea de ${esArmado ? 'armado' : esReab ? 'reabastecimiento' : 'picking'}?` +
+      (esArmado ? ' Se libera la reserva de los componentes.' : '') +
       (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
     if (!(await confirmar(msg, { danger: true }))) return
     setCompletandoWms(t.id)
@@ -967,17 +970,20 @@ export default function PedidosPage() {
             <div className="space-y-2">
               {(wmsTareas as any[]).map(t => {
                 const esReab = t.tipo === 'replenishment'
+                const esArmado = t.tipo === 'armado'
                 const precedente = t.tarea_precedente_id ? (wmsTareas as any[]).find(x => x.id === t.tarea_precedente_id) : null
                 const bloqueada = !!precedente && precedente.estado !== 'completada'
                 return (
                   <div key={t.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 flex items-center gap-3 flex-wrap">
-                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                      {esReab ? 'Reabastecimiento' : 'Picking'}
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${esArmado ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                      {esArmado ? 'Armado' : esReab ? 'Reabastecimiento' : 'Picking'}
                     </span>
                     <div className="flex-1 min-w-[180px]">
                       <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{t.productos?.nombre ?? '—'} <span className="text-xs text-gray-400 font-normal">{t.productos?.sku}</span></p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
-                        {t.ubicacion_origen?.nombre ?? 'sin ubicación'}{esReab && t.ubicacion_destino ? ` → ${t.ubicacion_destino.nombre}` : ''}
+                        {esArmado
+                          ? (t.ubicacion_destino?.nombre ? `Destino: ${t.ubicacion_destino.nombre}` : 'Sin ubicación de destino')
+                          : (t.ubicacion_origen?.nombre ?? 'sin ubicación') + (esReab && t.ubicacion_destino ? ` → ${t.ubicacion_destino.nombre}` : '')}
                         {t.envios?.numero ? ` · Envío #${t.envios.numero}` : ''}{t.lpn_origen ? ` · LPN ${t.lpn_origen}` : ''}
                       </p>
                     </div>

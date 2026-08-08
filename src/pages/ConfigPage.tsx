@@ -1794,6 +1794,24 @@ export default function ConfigPage() {
     toast.success(nuevo ? 'Reabastecimiento por umbral habilitado' : 'Reabastecimiento por umbral deshabilitado')
   }
 
+  // Armado automático (D2): operario al que nace pre-asignada la tarea de armado que genera
+  // solo una orden de TN/MELI (sin operario logueado que la tome a mano en el momento).
+  const { data: usuariosArmado = [] } = useQuery({
+    queryKey: ['usuarios-armado-default', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('users')
+        .select('id, nombre_display, rol').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre_display')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'zonas',
+  })
+  const actualizarOperarioArmadoDefault = async (usuarioId: string) => {
+    const { data, error } = await supabase.from('tenants').update({ wms_armado_operario_default_id: usuarioId || null }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(usuarioId ? 'Operario por defecto actualizado' : 'Armado automático queda sin operario por defecto')
+  }
+
   const { data: umbrales = [], isLoading: loadingUmbrales } = useQuery({
     queryKey: ['producto_ubicacion_umbrales', tenant?.id],
     queryFn: async () => {
@@ -4374,6 +4392,25 @@ export default function ConfigPage() {
                 <p className="text-xs text-gray-400 dark:text-gray-500">Genera tareas proactivas cuando el stock de un producto en una ubicación de picking cae por debajo del mínimo configurado abajo.</p>
               </div>
             </label>
+          </div>
+
+          {/* Armado automático (D2) — operario por defecto */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+            <div className="flex items-center gap-2">
+              <Layers size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Armado automático de kits</h2>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Cuando una orden de TiendaNube o MercadoLibre vende un KIT y alcanza el stock de sus
+              componentes, se genera sola una tarea de armado en Pedidos → Tareas WMS (nunca arma en
+              silencio). Elegí a quién nace asignada esa tarea — si no elegís a nadie, queda sin
+              asignar y la puede tomar cualquiera del depósito, igual que hoy con picking/reabastecimiento.
+            </p>
+            <select value={t289?.wms_armado_operario_default_id ?? ''} onChange={e => actualizarOperarioArmadoDefault(e.target.value)}
+              className="w-full max-w-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
+              <option value="">Sin operario por defecto — nace sin asignar</option>
+              {(usuariosArmado as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre_display ?? u.rol}</option>)}
+            </select>
           </div>
 
           {/* Zonas */}

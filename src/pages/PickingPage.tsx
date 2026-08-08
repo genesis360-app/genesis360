@@ -21,7 +21,7 @@ const CAMPOS_FILTRO_UI = CAMPOS_FILTRO.map(c => ({ ...c, numerico: esCampoNumeri
 
 interface TareaWMS {
   id: string
-  tipo: 'picking' | 'replenishment' | 'putaway' | 'conteo'
+  tipo: 'picking' | 'replenishment' | 'putaway' | 'conteo' | 'armado'
   estado: 'pendiente' | 'en_curso' | 'completada' | 'cancelada'
   prioridad: number
   producto_id: string | null
@@ -168,8 +168,9 @@ export default function PickingPage() {
       }
     }
     const esReab = tarea.tipo === 'replenishment'
+    const esArmado = tarea.tipo === 'armado'
     setCompletando(tarea.id)
-    const rpc = esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+    const rpc = esArmado ? 'fn_completar_tarea_armado' : esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
     const { error } = await supabase.rpc(rpc, { p_tarea_id: tarea.id })
     setCompletando(null)
     if (error) { toast.error(error.message); return }
@@ -180,13 +181,15 @@ export default function PickingPage() {
       pagina: '/picking', tipo_transaccion: esReab ? 'traslado' : undefined,
       producto_id: tarea.producto_id, lpn: tarea.lpn_origen, sucursal_id: tarea.sucursal_id,
     })
-    toast.success(esReab ? 'Reabastecimiento completado — stock movido a picking' : 'Picking completado')
+    toast.success(esArmado ? 'Armado completado — stock del kit ingresado' : esReab ? 'Reabastecimiento completado — stock movido a picking' : 'Picking completado')
   }
 
   const cancelarTarea = async (tarea: TareaWMS) => {
     const esReab = tarea.tipo === 'replenishment'
+    const esArmado = tarea.tipo === 'armado'
     const tieneDependiente = esReab && tareas.some(t => t.tarea_precedente_id === tarea.id)
-    const msg = `¿Cancelar esta tarea de ${esReab ? 'reabastecimiento' : 'picking'}?` +
+    const msg = `¿Cancelar esta tarea de ${esArmado ? 'armado' : esReab ? 'reabastecimiento' : 'picking'}?` +
+      (esArmado ? ' Se libera la reserva de los componentes.' : '') +
       (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
     if (!(await confirmar(msg, { danger: true }))) return
     setCompletando(tarea.id)
@@ -259,11 +262,12 @@ export default function PickingPage() {
             const precedente = t.tarea_precedente_id ? tareasPorId.get(t.tarea_precedente_id) : null
             const bloqueada = !!precedente && precedente.estado !== 'completada'
             const esReab = t.tipo === 'replenishment'
+            const esArmado = t.tipo === 'armado'
             return (
-              <div key={t.id} data-testid={`tarea-${t.id}`} className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border ${esReab ? 'border-orange-200 dark:border-orange-900' : 'border-gray-100 dark:border-gray-700'}`}>
+              <div key={t.id} data-testid={`tarea-${t.id}`} className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border ${esArmado ? 'border-purple-200 dark:border-purple-900' : esReab ? 'border-orange-200 dark:border-orange-900' : 'border-gray-100 dark:border-gray-700'}`}>
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                    {esReab ? 'Reabastecimiento' : 'Picking'}
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${esArmado ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                    {esArmado ? 'Armado' : esReab ? 'Reabastecimiento' : 'Picking'}
                   </span>
                   {t.pedidos?.numero != null && (
                     <button type="button" onClick={() => navigate('/pedidos')}
@@ -292,8 +296,14 @@ export default function PickingPage() {
                 {t.notas && <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t.notas}</p>}
                 <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 mb-3">
                   <MapPin size={13} className="text-gray-400" />
-                  <span>{t.ubicacion_origen?.nombre ?? 'sin ubicación'}</span>
-                  {esReab && t.ubicacion_destino && (<><ArrowRight size={13} className="text-gray-400" /><span>{t.ubicacion_destino.nombre}</span></>)}
+                  {esArmado ? (
+                    <span>{t.ubicacion_destino?.nombre ?? 'sin ubicación de destino'}</span>
+                  ) : (
+                    <>
+                      <span>{t.ubicacion_origen?.nombre ?? 'sin ubicación'}</span>
+                      {esReab && t.ubicacion_destino && (<><ArrowRight size={13} className="text-gray-400" /><span>{t.ubicacion_destino.nombre}</span></>)}
+                    </>
+                  )}
                 </div>
 
                 {bloqueada && (
@@ -304,7 +314,7 @@ export default function PickingPage() {
                 <div className="flex gap-2">
                   <button onClick={() => completarTarea(t)} disabled={bloqueada || completando === t.id}
                     className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                    {completando === t.id ? 'Completando...' : <><CheckCircle2 size={16} /> {esReab ? 'Confirmar reabastecimiento' : 'Confirmar retiro'}</>}
+                    {completando === t.id ? 'Completando...' : <><CheckCircle2 size={16} /> {esArmado ? 'Confirmar armado' : esReab ? 'Confirmar reabastecimiento' : 'Confirmar retiro'}</>}
                   </button>
                   <button onClick={() => cancelarTarea(t)} disabled={completando === t.id}
                     title="Cancelar tarea" aria-label="Cancelar tarea"

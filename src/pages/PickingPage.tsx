@@ -21,7 +21,7 @@ const CAMPOS_FILTRO_UI = CAMPOS_FILTRO.map(c => ({ ...c, numerico: esCampoNumeri
 
 interface TareaWMS {
   id: string
-  tipo: 'picking' | 'replenishment' | 'putaway' | 'conteo'
+  tipo: 'picking' | 'replenishment' | 'putaway' | 'conteo' | 'armado'
   estado: 'pendiente' | 'en_curso' | 'completada' | 'cancelada'
   prioridad: number
   producto_id: string | null
@@ -32,6 +32,8 @@ interface TareaWMS {
   tarea_precedente_id: string | null
   envio_id: string | null
   created_at: string
+  usuario_asignado_id: string | null
+  usuario_asignado: { nombre_display: string | null } | null
   productos: { nombre: string; sku: string } | null
   ubicacion_origen: { nombre: string } | null
   ubicacion_destino: { nombre: string } | null
@@ -50,7 +52,7 @@ const ventaIdDe = (t: TareaWMS) => t.pedidos?.venta_origen_id ?? t.envios?.venta
 // motor de ventas/rebaje. Ver comentario de cabecera de la mig 289.
 export default function PickingPage() {
   const navigate = useNavigate()
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
@@ -76,15 +78,18 @@ export default function PickingPage() {
   const [completando, setCompletando] = useState<string | null>(null)
 
   const { data: tareas = [], isLoading } = useQuery({
-    queryKey: ['wms_tareas', tenant?.id, sucursalId],
+    queryKey: ['wms_tareas', tenant?.id, sucursalId, user?.id],
     queryFn: async () => {
       let q = supabase.from('wms_tareas')
-        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero, venta_id), pedidos(numero, venta_origen_id)')
+        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero, venta_id), pedidos(numero, venta_origen_id), usuario_asignado:users!wms_tareas_usuario_asignado_id_fkey(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['pendiente', 'en_curso'])
         .order('prioridad', { ascending: false })
         .order('created_at')
       if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      // Cada operario ve las tareas libres (para tomar) + las que le asignaron a él puntualmente
+      // — una tarea asignada a OTRO usuario no aparece acá (pedido de GO, 2026-08-08).
+      if (user?.id) q = q.or(`usuario_asignado_id.is.null,usuario_asignado_id.eq.${user.id}`)
       const { data, error } = await q
       if (error) throw error
       return (data ?? []) as unknown as TareaWMS[]
@@ -163,8 +168,9 @@ export default function PickingPage() {
       }
     }
     const esReab = tarea.tipo === 'replenishment'
+    const esArmado = tarea.tipo === 'armado'
     setCompletando(tarea.id)
-    const rpc = esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+    const rpc = esArmado ? 'fn_completar_tarea_armado' : esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
     const { error } = await supabase.rpc(rpc, { p_tarea_id: tarea.id })
     setCompletando(null)
     if (error) { toast.error(error.message); return }
@@ -175,13 +181,15 @@ export default function PickingPage() {
       pagina: '/picking', tipo_transaccion: esReab ? 'traslado' : undefined,
       producto_id: tarea.producto_id, lpn: tarea.lpn_origen, sucursal_id: tarea.sucursal_id,
     })
-    toast.success(esReab ? 'Reabastecimiento completado — stock movido a picking' : 'Picking completado')
+    toast.success(esArmado ? 'Armado completado — stock del kit ingresado' : esReab ? 'Reabastecimiento completado — stock movido a picking' : 'Picking completado')
   }
 
   const cancelarTarea = async (tarea: TareaWMS) => {
     const esReab = tarea.tipo === 'replenishment'
+    const esArmado = tarea.tipo === 'armado'
     const tieneDependiente = esReab && tareas.some(t => t.tarea_precedente_id === tarea.id)
-    const msg = `¿Cancelar esta tarea de ${esReab ? 'reabastecimiento' : 'picking'}?` +
+    const msg = `¿Cancelar esta tarea de ${esArmado ? 'armado' : esReab ? 'reabastecimiento' : 'picking'}?` +
+      (esArmado ? ' Se libera la reserva de los componentes.' : '') +
       (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
     if (!(await confirmar(msg, { danger: true }))) return
     setCompletando(tarea.id)
@@ -254,11 +262,12 @@ export default function PickingPage() {
             const precedente = t.tarea_precedente_id ? tareasPorId.get(t.tarea_precedente_id) : null
             const bloqueada = !!precedente && precedente.estado !== 'completada'
             const esReab = t.tipo === 'replenishment'
+            const esArmado = t.tipo === 'armado'
             return (
-              <div key={t.id} data-testid={`tarea-${t.id}`} className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border ${esReab ? 'border-orange-200 dark:border-orange-900' : 'border-gray-100 dark:border-gray-700'}`}>
+              <div key={t.id} data-testid={`tarea-${t.id}`} className={`bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border ${esArmado ? 'border-purple-200 dark:border-purple-900' : esReab ? 'border-orange-200 dark:border-orange-900' : 'border-gray-100 dark:border-gray-700'}`}>
                 <div className="flex items-start justify-between gap-2 mb-2">
-                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
-                    {esReab ? 'Reabastecimiento' : 'Picking'}
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${esArmado ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400' : esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                    {esArmado ? 'Armado' : esReab ? 'Reabastecimiento' : 'Picking'}
                   </span>
                   {t.pedidos?.numero != null && (
                     <button type="button" onClick={() => navigate('/pedidos')}
@@ -278,14 +287,23 @@ export default function PickingPage() {
                   {t.envios?.numero && (
                     <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1"><Truck size={11} /> Envío #{t.envios.numero}</span>
                   )}
+                  {t.usuario_asignado_id === user?.id && (
+                    <span className="text-xs font-medium text-accent-text bg-accent/10 px-2 py-0.5 rounded-full">Asignada a mí</span>
+                  )}
                 </div>
                 <p className="font-medium text-gray-800 dark:text-gray-100">{t.productos?.nombre ?? '—'}</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">{t.productos?.sku}{t.lpn_origen ? ` · LPN ${t.lpn_origen}` : ''}</p>
                 {t.notas && <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t.notas}</p>}
                 <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 mb-3">
                   <MapPin size={13} className="text-gray-400" />
-                  <span>{t.ubicacion_origen?.nombre ?? 'sin ubicación'}</span>
-                  {esReab && t.ubicacion_destino && (<><ArrowRight size={13} className="text-gray-400" /><span>{t.ubicacion_destino.nombre}</span></>)}
+                  {esArmado ? (
+                    <span>{t.ubicacion_destino?.nombre ?? 'sin ubicación de destino'}</span>
+                  ) : (
+                    <>
+                      <span>{t.ubicacion_origen?.nombre ?? 'sin ubicación'}</span>
+                      {esReab && t.ubicacion_destino && (<><ArrowRight size={13} className="text-gray-400" /><span>{t.ubicacion_destino.nombre}</span></>)}
+                    </>
+                  )}
                 </div>
 
                 {bloqueada && (
@@ -296,7 +314,7 @@ export default function PickingPage() {
                 <div className="flex gap-2">
                   <button onClick={() => completarTarea(t)} disabled={bloqueada || completando === t.id}
                     className="flex-1 bg-accent hover:bg-accent/90 text-white font-semibold py-2.5 rounded-xl text-sm disabled:opacity-50 flex items-center justify-center gap-2">
-                    {completando === t.id ? 'Completando...' : <><CheckCircle2 size={16} /> {esReab ? 'Confirmar reabastecimiento' : 'Confirmar retiro'}</>}
+                    {completando === t.id ? 'Completando...' : <><CheckCircle2 size={16} /> {esArmado ? 'Confirmar armado' : esReab ? 'Confirmar reabastecimiento' : 'Confirmar retiro'}</>}
                   </button>
                   <button onClick={() => cancelarTarea(t)} disabled={completando === t.id}
                     title="Cancelar tarea" aria-label="Cancelar tarea"

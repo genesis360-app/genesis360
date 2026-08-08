@@ -15,6 +15,15 @@ updated: 2026-08-08
 > **Notificaciones** dejaron de ser placeholders ("próximamente") — ver sección "Clientes, Alertas y
 > Notificaciones" más abajo.
 
+> [!WARNING] **🐛✅ 2026-08-08 (NO commiteado, working tree de `dev`):** las sub-pestañas **Métodos de
+> pago** y **Operativa** de **Ventas** existían como botones pero no mostraban ningún contenido desde
+> el commit `6661d5c6` (backlog Fede 25/7, módulo Comercial) — reorganizó las pestañas de
+> `ConfigPage.tsx` y borró por completo el JSX de renderizado de ambas sub-pestañas sin tocar los
+> botones ni el estado/mutations, que seguían intactos. Causa raíz encontrada y **corregida** —
+> restauradas ambas, verificadas en el navegador real. Detalle completo en la sección "Ventas" más
+> abajo. Pendiente que GO decida si se commitea/deploya. Ver `sources/raw/project_pendientes.md`
+> ("ARRANCÁ ACÁ") y `log.md` (2026-08-08).
+
 ---
 
 ## 🧾 Pedidos → "Canales que generan pedido" (v1.147.0, mig 315, ✅ PROD desde 2026-07-29)
@@ -81,10 +90,31 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 
 ## Ventas
 
+> [!WARNING] **🐛✅ Bug real encontrado y corregido (2026-08-08, NO commiteado):** las sub-pestañas
+> **Métodos de pago** y **Operativa** (documentadas abajo) existían como botones en `subTabNav` pero,
+> desde el commit `6661d5c6`, **no tenían ningún JSX de renderizado** — la pestaña "cargaba" sin error
+> y quedaba vacía. El estado/mutations (`nuevoMetodo`, `metodosPago`, `cuotasBancos`,
+> `bizReservaSenaObligatoria`, etc.) nunca se tocó, solo el bloque de render. Restauradas en
+> `src/pages/ConfigPage.tsx` (líneas ~6130 y ~6416) y **verificadas en el navegador real** (Playwright
+> contra el dev server, no solo `tsc`/`build`) — 7 métodos de pago reales con comisión/cuenta vinculada
+> visibles en "Métodos de pago"; Canales de venta + las 4 secciones de "Operativa" (ver abajo) visibles
+> y con datos reales. Regresión del spec e2e `98_config_ventas_envios_mutante.spec.ts`: 4/4 verde (2
+> fallos de la primera corrida fueron timeout de 30s, flake de timing, no relacionado). "Operativa" se
+> restauró **recortada a propósito**: NO se duplicaron "Alertas de ventas" ni "Cuenta corriente de
+> clientes" (esas 2 ya se habían reconstruido en su propio lugar — tabs Alertas/Clientes/Notificaciones,
+> sesión 2026-08-06 — duplicarlas crearía dos pantallas editando el mismo dato). **Estado real: sin
+> commitear**, working tree de `dev`, pendiente decisión de GO sobre cuándo commitear/deployar. Sin
+> migración nueva (fix 100% frontend). A pedido de GO también se auditó **Config → Caja** con el mismo
+> método (cruzar estado `biz*` contra su uso en JSX) y **no tiene ningún bloque huérfano** — lo único
+> "faltante" ahí es un placeholder explícito ("Tolerancia de diferencia en arqueo y panel cajero —
+> próximamente"), no un bug.
+
 ### Sub-tab: Métodos de pago
 
 - **Lista de métodos**: toggle activo, color, nombre — cargados desde tabla `metodos_pago` (ISS-133)
 - **Comisión % por método** (`metodos_pago.comision_pct`): el % que cobra la plataforma (MP cobra 5%, tarjeta 3%). Útil para calcular ganancia neta en Dashboard.
+- **Vínculo a cuenta de origen** (`metodos_pago.cuenta_origen_id`): a qué cuenta se acredita el cobro con ese método (badge azul en la lista).
+- **Promo por método** (`metodos_pago.config` jsonb): descuento **al cliente** por pagar con ese método — % + tope $ opcional + días de la semana + vigencia desde/hasta. Distinto de la comisión (naranja = costo del tenant; verde = descuento al cliente). Detalle de aplicación en el POS: [[wiki/features/ventas-pos]] → "Promo por método de pago".
 - **Agregar método personalizado**
 - **Cuotas por banco** (`tenants.cuotas_bancos JSONB`): config por banco → planes de cuotas
 
@@ -103,8 +133,20 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 
 ### Sub-tab: Operativa
 
-- **Validez de presupuesto** (`tenants.presupuesto_validez_dias`): días antes de expirar
-- **Cliente en POS**:
+- **Canales de venta** (`<CanalesVentaPanel />`): CRUD de `canales_venta` con clasificación
+  online/presencial + reglas por clasificación (`tenants.reglas_canal`) — cliente obligatorio, tope de
+  descuento, lista de precio, plazo de devolución. Detalle completo: [[wiki/features/ventas-pos]] →
+  "VF2 — Canales configurables + reglas online/presencial".
+- **Documentos** → **Validez de presupuesto** (`tenants.presupuesto_validez_dias`): días antes de expirar
+- **Reservas** (E1/E2/E6, mig 160) — políticas de seña y cancelación, dinero de clientes (Regla de Oro #0):
+  - `tenants.reserva_sena_obligatoria` (default ON): sin seña no se puede reservar
+  - `tenants.reserva_sena_minima_pct`: seña mínima como % del total (0 = cualquier seña > 0)
+  - `tenants.reserva_vencimiento_dias`: vacío = sin vencimiento; pasados estos días sin despachar, el
+    stock reservado se libera automáticamente y la reserva se cancela
+  - `tenants.reserva_penalidad_pct`: % de la seña que se retiene al cancelar (0 = se devuelve completa)
+  - Detalle de operación completo (liberación automática, cancelación con crédito a favor, redención):
+    [[wiki/features/ventas-pos]] → "Reservas — operaciones especiales"
+- **Cliente en el punto de venta**:
   - `cliente_obligatorio`: siempre / solo reservas / nunca
   - `cliente_datos_minimos`: nombre / nombre+DNI / nombre+DNI+email / todos
   - `cliente_consumidor_final` BOOLEAN: permite vender sin identificar al cliente

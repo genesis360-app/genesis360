@@ -51,7 +51,7 @@ export default function ProductoFormPage() {
     nombre: '', sku: '', descripcion: '', categoria_id: '', proveedor_id: '',
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
     stock_minimo: '', unidad_medida: 'unidad', unidad_medida_base_id: '', codigo_barras: '', activo: true,
-    tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false,
+    tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false, ubicacion_kit_default_id: '',
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
     // Nuevos atributos
     marca: '',
@@ -361,6 +361,7 @@ export default function ProductoFormPage() {
         tiene_lote: productoData.tiene_lote ?? false,
         tiene_vencimiento: productoData.tiene_vencimiento ?? false,
         es_kit: productoData.es_kit ?? false,
+        ubicacion_kit_default_id: (productoData as any).ubicacion_kit_default_id ?? '',
         regla_inventario: productoData.regla_inventario ?? '',
         aging_profile_id: productoData.aging_profile_id ?? '',
         margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
@@ -523,6 +524,7 @@ export default function ProductoFormPage() {
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
         es_kit: form.es_kit,
+        ubicacion_kit_default_id: form.es_kit ? (form.ubicacion_kit_default_id || null) : null,
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
@@ -767,6 +769,7 @@ export default function ProductoFormPage() {
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
         es_kit: form.es_kit,
+        ubicacion_kit_default_id: form.es_kit ? (form.ubicacion_kit_default_id || null) : null,
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
@@ -1620,6 +1623,20 @@ export default function ProductoFormPage() {
                       <p className="text-xs text-gray-400 dark:text-gray-500">Se arma a partir de otros SKUs (kitting). Configurá la receta en Inventario → Kits.</p>
                     </div>
                   </label>
+                  )}
+
+                  {/* Ubicación de armado por defecto — solo si es kit. La usa el armado automático
+                      (D2, órdenes de TN/MELI) para saber dónde dejar el kit terminado; el armado
+                      manual sigue pidiendo la ubicación en el momento, sin cambios. */}
+                  {form.es_kit && (
+                    <div className="pl-11 -mt-2">
+                      <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Ubicación de armado por defecto (opcional)</label>
+                      <select value={form.ubicacion_kit_default_id} onChange={e => setForm(p => ({ ...p, ubicacion_kit_default_id: e.target.value }))}
+                        className="w-full max-w-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
+                        <option value="">Sin definir — el armado automático lo deja sin ubicación</option>
+                        {(ubicaciones as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre}</option>)}
+                      </select>
+                    </div>
                   )}
                 </div>
 

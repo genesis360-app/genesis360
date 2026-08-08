@@ -51,8 +51,11 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
 
     const ubicRes = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
       headers, data: [
-        { tenant_id: tenantId, nombre: `E2E Picking Ped ${ts}`, tipo_ubicacion: 'picking', activo: true },
-        { tenant_id: tenantId, nombre: `E2E Bulk Ped ${ts}`, tipo_ubicacion: 'bulk', activo: true },
+        { tenant_id: tenantId, nombre: `E2E Picking Ped ${ts}`, tipo_logico: 'picking', subtipo_almacenamiento: null, disponible_surtido: true, activo: true },
+        // disponible_surtido en el bulk TAMBIÉN debe ser true: fn_generar_tareas_picking_pedido_stock
+        // cuenta como stock "asignable" cualquier ubicación con disponible_surtido!=false, sea o no
+        // de picking — es la que arranca en bulk para forzar el camino reabastecimiento+picking.
+        { tenant_id: tenantId, nombre: `E2E Bulk Ped ${ts}`, tipo_logico: 'almacenamiento', subtipo_almacenamiento: 'bulk', disponible_surtido: true, activo: true },
       ],
     })
     expect(ubicRes.ok(), `[107] no se pudieron crear las ubicaciones: ${await ubicRes.text()}`).toBe(true)
@@ -133,9 +136,9 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
     // fn_wms_elegir_ubicacion_picking elige la MEJOR ubicación picking del tenant (no
     // necesariamente la que creó este test — puede haber otras ya cargadas con prioridad más
     // alta) — no asumimos cuál, solo que sea alguna de tipo 'picking' real.
-    const destinoUbicRes = await request.get(`${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${destinoPost.ubicacion_id}&select=tipo_ubicacion`, { headers })
-    const [destinoUbic] = (await destinoUbicRes.json()) as Array<{ tipo_ubicacion: string }>
-    expect(destinoUbic.tipo_ubicacion, '[107] el reabastecimiento debe mover el stock a una ubicación tipo picking').toBe('picking')
+    const destinoUbicRes = await request.get(`${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${destinoPost.ubicacion_id}&select=tipo_logico`, { headers })
+    const [destinoUbic] = (await destinoUbicRes.json()) as Array<{ tipo_logico: string }>
+    expect(destinoUbic.tipo_logico, '[107] el reabastecimiento debe mover el stock a una ubicación tipo picking').toBe('picking')
     expect(Number(destinoPost.cantidad), '[107] destino picking: 6 unidades movidas').toBe(6)
     expect(Number(destinoPost.cantidad_reservada), '[107] FIX MIG 297: el LPN nuevo en picking debe NACER reservado (antes nacía en 0 — stock fantasma)').toBe(6)
 
@@ -238,7 +241,7 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
     const [producto] = (await prodRes.json()) as Array<{ id: string }>
 
     const ubicRes = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
-      headers, data: { tenant_id: tenantId, nombre: `E2E Picking Desl ${ts}`, tipo_ubicacion: 'picking', activo: true },
+      headers, data: { tenant_id: tenantId, nombre: `E2E Picking Desl ${ts}`, tipo_logico: 'picking', disponible_surtido: true, activo: true },
     })
     expect(ubicRes.ok(), `[107] no se pudo crear la ubicación: ${await ubicRes.text()}`).toBe(true)
     const [ubicPicking] = (await ubicRes.json()) as Array<{ id: string }>
@@ -318,8 +321,8 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
 
     const ubicRes = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
       headers, data: [
-        { tenant_id: tenantId, nombre: `E2E Picking Bolsa ${ts}`, tipo_ubicacion: 'picking', activo: true },
-        { tenant_id: tenantId, nombre: `E2E Staging Bolsa ${ts}`, tipo_ubicacion: 'staging', activo: true },
+        { tenant_id: tenantId, nombre: `E2E Picking Bolsa ${ts}`, tipo_logico: 'picking', subtipo_almacenamiento: null, disponible_surtido: true, activo: true },
+        { tenant_id: tenantId, nombre: `E2E Staging Bolsa ${ts}`, tipo_logico: 'almacenamiento', subtipo_almacenamiento: 'staging', disponible_surtido: false, activo: true },
       ],
     })
     expect(ubicRes.ok(), `[107] no se pudieron crear las ubicaciones: ${await ubicRes.text()}`).toBe(true)
@@ -448,7 +451,7 @@ test.describe('Pedidos — ciclo de vida completo (mutante)', () => {
       productoId = producto.id
 
       const ubicRes = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
-        headers, data: { tenant_id: tenantId, nombre: `E2E Picking CC ${ts}`, tipo_ubicacion: 'picking', activo: true },
+        headers, data: { tenant_id: tenantId, nombre: `E2E Picking CC ${ts}`, tipo_logico: 'picking', disponible_surtido: true, activo: true },
       })
       expect(ubicRes.ok(), `[107] no se pudo crear la ubicación: ${await ubicRes.text()}`).toBe(true)
       const [ubicPicking] = (await ubicRes.json()) as Array<{ id: string }>

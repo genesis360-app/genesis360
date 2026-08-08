@@ -6,10 +6,23 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-08
 ---
 
-# Historial de Migraciones (001-344)
+# Historial de Migraciones (001-345)
 
-**Total al 2026-08-08:** 344 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-08:** 345 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+**345 (`345_armado_kits_automatico_d2.sql`) — 🟡 SOLO EN DEV, sin aplicar en PROD** (backend de Combos
+automáticos TN/MELI, Fase D2 del roadmap — ver el bloque "ARRANCÁ ACÁ" de
+`sources/raw/project_pendientes.md` para el detalle completo): `wms_tareas.tipo` suma `'armado'` y
+`wms_tareas.origen` suma `'marketplace'`, `wms_tareas.kitting_log_id` (FK a `kitting_log`),
+`productos.ubicacion_kit_default_id`, `tenants.wms_armado_operario_default_id`, RPCs nuevas
+`fn_iniciar_armado_kit_auto` (sin `auth.uid()`, `GRANT` solo `service_role`, filtro de canal
+`disponible_tn`/`disponible_meli` aplicado por primera vez a una reserva ENTRANTE, todo-o-nada con
+`pg_advisory_xact_lock`) y `fn_completar_tarea_armado`, y `fn_cancelar_tarea_wms` extendida para liberar
+la reserva de un armado. 🔒 **2 hallazgos del `migration-reviewer` antes de aplicar, corregidos:**
+bloqueante #1 la primera versión de `fn_cancelar_tarea_wms` perdía la cascada de cancelación
+picking↔reabastecimiento de la mig 291; bloqueante #2 faltaba el chequeo final anti-carrera de stock en
+`fn_iniciar_armado_kit_auto`. Verificada con SQL directo contra DEV (todo-o-nada, camino exitoso, filtro
+de canal, cancelación — detalle completo en `project_pendientes.md`); datos de prueba limpiados.
 **001-344 EN DEV Y PROD (base de datos), deploy v1.160.0 100% CERRADO** — las migraciones 339-343 se
 aplicaron en PROD (proyecto `jjffnbrdjchquexdfgwq`) el 2026-08-07 vía `apply_migration`, ANTES del merge
 del código (mismo patrón "DDL aditivo antes de mergear `dev`→`main`", ver
@@ -201,6 +214,20 @@ en árbol): la columna vieja quedó reemplazada por `tipo_logico`/`subtipo_almac
 escriban la columna, sin referencias en `supabase/functions`, y en `src/` solo quedaba el tipo TS
 `deprecated` (`src/lib/supabase.ts`), limpiado junto con esta migración. DROP idempotente, no afecta
 datos operativos (nada consumía el valor histórico). Ver [[wiki/features/ubicaciones]].
+
+> [!WARNING] **🐛 Deuda técnica encontrada y corregida el 2026-08-08 — la verificación de "0 lectores"
+> de esta migración (y el cambio de default de la mig 336, ver abajo) no había chequeado los fixtures
+> de los tests e2e.** `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts` y
+> `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` seguían creando ubicaciones de prueba con
+> `tipo_ubicacion: 'picking'/'bulk'/'staging'` (columna ya inexistente) y dependían implícitamente del
+> viejo `DEFAULT true` de `ubicaciones.disponible_surtido` que la mig 336 cambió a `false` — 6 de 7
+> tests fallaban. Fix (sin migración nueva, 100% fixtures de test): `tipo_ubicacion: 'picking'` →
+> `tipo_logico: 'picking'`; `tipo_ubicacion: 'bulk'/'staging'` → `tipo_logico: 'almacenamiento',
+> subtipo_almacenamiento: 'bulk'/'staging'` (mapeo real de la mig 334) + `disponible_surtido: true`
+> explícito donde el stock necesita ser encontrado por `fn_generar_tareas_picking_pedido_stock`.
+> **7/7 verdes en ambos specs.** No es un bug de producción — el comportamiento de ambas migraciones es
+> intencional — fue puramente deuda de los fixtures de e2e, expuesta dos migraciones después. Detalle
+> completo: [[wiki/features/wms]] → "Asignación de tareas a un usuario", [[wiki/features/pedidos]].
 
 **338 (🚚 `ventas.tn_order_id` + trigger `trg_tn_fulfillment_sync` — avisa a TiendaNube al despachar/entregar, ✅ EN DEV Y PROD desde v1.159.0)** —
 Sesión 2026-08-06, Fase C del roadmap de integraciones. Agrega `ventas.tn_order_id BIGINT` (ID

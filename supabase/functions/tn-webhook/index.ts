@@ -441,6 +441,30 @@ serve(async (req) => {
         if (remaining <= 0) break
       }
 
+      // D2 — si sigue faltando stock y el producto es un KIT/combo, intentar generar
+      // automáticamente una tarea de armado con los componentes. Best-effort: si no alcanza
+      // el stock de componentes en ubicaciones habilitadas para TN, la RPC no hace nada y la
+      // venta queda con el mismo faltante que tendría cualquier producto sin armar — nunca
+      // arma en silencio (relevamiento D2, A2).
+      if (remaining > 0) {
+        const { data: prodKit } = await supabase.from('productos').select('es_kit').eq('id', productoId).single()
+        if (prodKit?.es_kit) {
+          const { data: tareaArmadoId, error: armadoErr } = await supabase.rpc('fn_iniciar_armado_kit_auto', {
+            p_tenant_id: tenant_id,
+            p_kit_producto_id: productoId,
+            p_cantidad: remaining,
+            p_canal: 'TiendaNube',
+            p_sucursal_id: sucursal_id,
+            p_origen_ref: String(order.number),
+          })
+          if (armadoErr) {
+            console.error('Error generando armado automático de kit (no bloqueante):', armadoErr.message)
+          } else if (tareaArmadoId) {
+            console.log(`Armado automático generado para kit ${productoId} (orden TN #${order.number}): tarea ${tareaArmadoId}`)
+          }
+        }
+      }
+
       // Guardar linea_id en el venta_item para trazabilidad al despachar
       if (primaryLineaId) {
         await supabase.from('venta_items')

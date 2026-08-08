@@ -54,7 +54,7 @@ test.describe('WMS — Picking y reabastecimiento (mutante)', () => {
     // Ubicación tipo bulk (no picking) — para probar que NO se encadena reabastecimiento
     // aunque el LPN esté fuera de zona de picking, porque la venta ya está despachada.
     const ubicRes = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
-      headers, data: { tenant_id: tenantId, nombre: `E2E Bulk F1 ${ts}`, tipo_ubicacion: 'bulk', activo: true },
+      headers, data: { tenant_id: tenantId, nombre: `E2E Bulk F1 ${ts}`, tipo_logico: 'almacenamiento', subtipo_almacenamiento: 'bulk', activo: true },
     })
     expect(ubicRes.ok(), `[106] no se pudo crear la ubicación: ${await ubicRes.text()}`).toBe(true)
     const [ubicBulk] = (await ubicRes.json()) as Array<{ id: string; nombre: string }>
@@ -170,8 +170,8 @@ test.describe('WMS — Picking y reabastecimiento (mutante)', () => {
 
     const ubicRes = await request.post(`${SUPABASE_URL}/rest/v1/ubicaciones`, {
       headers, data: [
-        { tenant_id: tenantId, nombre: `E2E Picking F2 ${ts}`, tipo_ubicacion: 'picking', activo: true },
-        { tenant_id: tenantId, nombre: `E2E Bulk F2 ${ts}`, tipo_ubicacion: 'bulk', activo: true },
+        { tenant_id: tenantId, nombre: `E2E Picking F2 ${ts}`, tipo_logico: 'picking', subtipo_almacenamiento: null, disponible_surtido: true, activo: true },
+        { tenant_id: tenantId, nombre: `E2E Bulk F2 ${ts}`, tipo_logico: 'almacenamiento', subtipo_almacenamiento: 'bulk', disponible_surtido: false, activo: true },
       ],
     })
     expect(ubicRes.ok(), `[106] no se pudieron crear las ubicaciones: ${await ubicRes.text()}`).toBe(true)
@@ -260,10 +260,10 @@ test.describe('WMS — Picking y reabastecimiento (mutante)', () => {
       .toBe(tareaReab.ubicacion_destino_id)
 
     const ubicDestRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${tareaReab.ubicacion_destino_id}&select=tipo_ubicacion`, { headers },
+      `${SUPABASE_URL}/rest/v1/ubicaciones?id=eq.${tareaReab.ubicacion_destino_id}&select=tipo_logico`, { headers },
     )
-    const [ubicDest] = (await ubicDestRes.json()) as Array<{ tipo_ubicacion: string }>
-    expect(ubicDest?.tipo_ubicacion, '[106] el destino del reabastecimiento tiene que ser zona de picking').toBe('picking')
+    const [ubicDest] = (await ubicDestRes.json()) as Array<{ tipo_logico: string }>
+    expect(ubicDest?.tipo_logico, '[106] el destino del reabastecimiento tiene que ser zona de picking').toBe('picking')
 
     await expect(btnPicking).toBeEnabled({ timeout: 5000 })
     await btnPicking.click()

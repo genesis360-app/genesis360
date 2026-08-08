@@ -3,7 +3,7 @@ title: Integración TiendaNube
 category: integrations
 tags: [tiendanube, tn, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-06
+updated: 2026-08-08
 ---
 
 # Integración TiendaNube
@@ -134,16 +134,78 @@ Archivos: `supabase/migrations/338_tn_fulfillment_sync.sql`,
 
 ---
 
-## 🟡 BOM automático para combos/kits (Fase D2 del roadmap) — bloqueado, relevamiento armado
+## 🟢 BOM automático para combos/kits (Fase D2 del roadmap) — backend CONSTRUIDO y VERIFICADO por RPC (mig 345, 2026-08-08, EN DEV), falta deployar webhooks + probar con kit real
 
-Investigado el 2026-08-06: en TODA la app el único modelo de venta de kits es "armar primero
+Investigado el 2026-08-06: en TODA la app el único modelo de venta de kits era "armar primero
 (`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — nunca existió desarme de kit en el
-momento de la venta. Esas funciones SQL dependen de `auth.uid()` (usuario logueado), así que ni
-siquiera se pueden invocar desde un webhook server-side tal como están hoy. Falta una decisión de
-negocio (qué hacer si no hay stock armado suficiente al llegar el pedido, a qué ubicación va el
-armado automático, etc.) antes de escribir código. Preguntas armadas en
-`relevamiento-integraciones-ml-tn-reglas-negocio.html` (raíz del repo) — pendiente de que GO lo
-responda offline con Fede. Ver [[wiki/integrations/roadmap-apis]] (1.2).
+momento de la venta, y esas funciones SQL dependen de `auth.uid()` (usuario logueado), así que no se
+podían invocar desde un webhook server-side tal como estaban. El relevamiento de negocio quedó **100%
+respondido por Fede** el mismo 2026-08-06 (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz
+del repo, respuestas transcriptas en `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`) y
+el 2026-08-08, misma sesión, se construyó y verificó el backend real:
+
+- Armado **mixto**: cuando hay stock suficiente de los componentes en las ubicaciones habilitadas para
+  ese canal, el sistema genera automáticamente la TAREA de armado — no arma en silencio sin que nadie
+  se entere.
+- Todo-o-nada si falta cualquier componente (mismo criterio que el armado manual hoy).
+- **El kit pasa a ser su propio SKU**, con ubicación predefinida en su ficha (o sugerida
+  automáticamente según volumen, editable a mano) — conecta con el cubicaje volumétrico ya
+  parcialmente construido. Cada armado resta las unidades de los componentes y suma una unidad al SKU
+  del kit.
+- Nunca silencioso: tarea asignada (automática o preset del supervisor) + alerta a supervisor/dueño.
+- Al resolverse con SKU propio, sirve para MELI y TiendaNube por igual, sin lógica separada por canal.
+- **Idea nueva de Fede, fuera del relevamiento original**: ficha técnica de armado por kit (texto/
+  imágenes/video), opcional, con un botón visible del lado de quien arma solo si existe una cargada
+  para ESE kit — **sigue sin construir, fuera de esta fase a propósito**.
+
+### ✅ Backend construido y verificado (mig `345_armado_kits_automatico_d2.sql`, 2026-08-08, EN DEV, sin aplicar en PROD)
+
+- `wms_tareas.tipo` suma `'armado'` y `wms_tareas.origen` suma `'marketplace'`; `wms_tareas.kitting_log_id`
+  (FK nueva a `kitting_log`, mig 040) linkea la tarea de depósito con el ledger real de kitting.
+- `productos.ubicacion_kit_default_id` (FK a `ubicaciones`) — ubicación de armado por defecto de un kit
+  (A3 del relevamiento), editable en `src/pages/ProductoFormPage.tsx` cuando `es_kit=true`.
+- `tenants.wms_armado_operario_default_id` (FK a `users`) — a quién nace pre-asignada una tarea de
+  armado automático, configurable en `src/pages/ConfigPage.tsx` → Inventario → Zonas.
+- **RPC nueva `fn_iniciar_armado_kit_auto(p_tenant_id, p_kit_producto_id, p_cantidad, p_canal,
+  p_sucursal_id, p_origen_ref, p_notas)`** — SIN `auth.uid()` (recibe `p_tenant_id` explícito),
+  invocable con el cliente `service_role` desde un webhook. Replica el algoritmo de reserva de
+  `iniciar_armado_kit` (mig 343, con prioridad de Rotación) y agrega el filtro de "componentes en
+  ubicaciones/estados habilitados para el canal" (`ubicaciones.disponible_tn/disponible_meli`,
+  `estados_inventario.es_disponible_tn/es_disponible_meli` — mismo criterio que `tn-stock-worker`/
+  `meli-stock-worker` ya usaban para el push saliente, aplicado ACÁ por primera vez también a la
+  reserva de una orden ENTRANTE). Todo-o-nada real (A2): si no alcanza, `RETURN NULL` sin reservar
+  nada; `pg_advisory_xact_lock` por (tenant,kit) + chequeo final con `RAISE EXCEPTION` (rollback
+  automático) contra una carrera de stock entre el chequeo y la reserva — encontrado y corregido por el
+  `migration-reviewer` antes de aplicar. `REVOKE ALL FROM PUBLIC/anon/authenticated`, `GRANT` solo a
+  `service_role`.
+- **RPC nueva `fn_completar_tarea_armado(p_tarea_id)`** — la ejecuta un operario logueado real desde
+  Pedidos/Picking, reusa `confirmar_armado_kit` (mig 244/343) sin duplicar el camino de escritura de
+  stock. `GRANT authenticated, service_role`.
+- **`fn_cancelar_tarea_wms` extendida**: si la tarea es `'armado'`, llama a
+  `cancelar_armado_kit(kitting_log_id)` y libera la reserva de componentes antes de cancelar — el
+  `migration-reviewer` encontró que la primera versión perdía la cascada de cancelación
+  picking↔reabastecimiento de la mig 291; restaurada.
+- **Verificado con SQL directo contra DEV** (tenant E2E real, impersonando usuario con `SET LOCAL
+  request.jwt.claim.sub`): todo-o-nada, camino exitoso (reserva + tarea + 4 notificaciones reales),
+  `fn_completar_tarea_armado` (stock consumido/kit ingresado correcto), filtro de canal (misma
+  ubicación con `disponible_meli=false` devuelve `NULL` para MELI), cancelación (libera reserva).
+  Datos de prueba limpiados al terminar.
+- **UI**: `src/pages/PedidosPage.tsx` (tab "Tareas WMS") y `src/pages/PickingPage.tsx` reconocen
+  `tipo='armado'` — badge morado "Armado", ubicación de destino en vez de origen, botón "Completar"
+  llama a `fn_completar_tarea_armado`.
+- **Webhooks — código escrito, a propósito SIN deployar ni probar end-to-end**: `tn-webhook`/
+  `meli-webhook`, después del loop de reserva FIFO existente contra el stock del kit, si sigue
+  faltando cantidad y el producto tiene `es_kit=true`, invocan `fn_iniciar_armado_kit_auto` con el
+  cliente `service_role` — best-effort, nunca bloquea la venta si falla (mismo patrón que el envío
+  automático). Las Edge Functions no se deployan solas (`deploy_edge_function` explícito, separado del
+  deploy de frontend), así que hoy este código no tiene efecto en ningún ambiente; tampoco se pudo
+  simular un webhook real de TN/MELI con firma válida en este entorno.
+
+**Pendiente real:** decisión de GO sobre cuándo deployar `tn-webhook`/`meli-webhook` a DEV y probarlos
+con un kit real conectado a un canal de test; aplicar la mig 345 en PROD cuando se decida deployar esta
+fase; Fase D2.3 (ficha técnica) sigue sin construir. Ver [[wiki/integrations/roadmap-apis]] (1.2),
+[[wiki/features/wms]] (tipo de tarea "armado"), `wiki/database/migraciones.md` (mig 345),
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ---
 

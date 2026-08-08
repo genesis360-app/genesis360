@@ -2,17 +2,21 @@
 title: Roadmap de Integraciones API
 category: integrations
 tags: [apis, roadmap, killer-features, meli, tiendanube, mercadopago, logistica, ads, whatsapp]
-updated: 2026-08-06
+updated: 2026-08-08
 ---
 
 # Roadmap de Integraciones API
 
 Plan aprobado 2026-05-07. **Retomado 2026-08-06, ✅ EN PROD desde v1.159.0** (PR #314, deploy
 completo el mismo día): Fase 1.1 (MELI Rentabilidad Neta) ✅ **hecha**, migración 337. Fases 1.2 (TN
-BOM combos) y 1.5 (MELI Repricing) quedaron **bloqueadas con relevamiento de negocio armado y
-pendiente de respuesta de GO/Fede** (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz del
-repo) — no es "sin arrancar", es "diseño esperando decisión". Además, fuera del roadmap original, se
-cerró el **envío automático** al confirmar pago (TN+MELI) y el **fulfillment sync**
+BOM combos) y 1.5 (MELI Repricing) tenían un relevamiento de negocio armado esperando respuesta de
+GO/Fede — **Fede lo respondió completo el 2026-08-06, GO lo compartió el 2026-08-08** (ver
+`sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`). **Fase 1.2 (D2) pasó de "lista para
+diseñar" a backend CONSTRUIDO y VERIFICADO el mismo día** (mig 345, `fn_iniciar_armado_kit_auto`/
+`fn_completar_tarea_armado`, EN DEV, sin PROD) — falta deployar `tn-webhook`/`meli-webhook` (código ya
+escrito, best-effort) y probar con un kit real. **Fase 1.5 (D3, repricing MELI) sigue solo con el
+relevamiento cerrado, sin una línea de código.** Además, fuera del roadmap original, se cerró el
+**envío automático** al confirmar pago (TN+MELI) y el **fulfillment sync**
 TN→despachado/entregado (mig 338) — ver [[wiki/integrations/mercado-libre]] /
 [[wiki/integrations/tienda-nube]]. **Pendiente real: Fase A — conectar un tenant real a MELI/TN en
 PROD, sigue sin ninguno.** El resto de las fases (1.3/1.4, 2-6) sigue pausado.
@@ -23,8 +27,8 @@ PROD, sigue sin ninguno.** El resto de las fases (1.3/1.4, 2-6) sigue pausado.
 
 | Integración | Básico | Killer Feature | Estado |
 |---|---|---|---|
-| TiendaNube | orders + stock sync + **envío automático + fulfillment sync (✅ PROD desde v1.159.0)** | BOM combos ⏸️ (relevamiento armado), FIFO lotes | ✅ básico+ / 🟡 killer bloqueado |
-| MercadoLibre | orders + stock/precio + **envío automático (✅ PROD desde v1.159.0)** | **Rentabilidad neta ✅ hecho y en PROD (mig 337)**, repricing ⏸️ (relevamiento armado) | ✅ básico+ / 🟡 1 de 2 killers |
+| TiendaNube | orders + stock sync + **envío automático + fulfillment sync (✅ PROD desde v1.159.0)** | BOM combos 🟢 backend construido y verificado (mig 345, EN DEV), falta deployar webhooks + probar con kit real, FIFO lotes | ✅ básico+ / 🟢 killer backend listo |
+| MercadoLibre | orders + stock/precio + **envío automático (✅ PROD desde v1.159.0)** | **Rentabilidad neta ✅ hecho y en PROD (mig 337)**, repricing 🟡 (relevamiento respondido 2026-08-08, falta diseñar/construir) | ✅ básico+ / 🟡 1 de 2 killers |
 | MercadoPago | pagos QR + suscripciones | Conciliación, chargeback | ✅ básico / ❌ killers |
 | MODO | Framework listo (migration 109) | Pagos en POS | ⚠️ schema+UI listos / pendiente activar |
 | AFIP | facturación electrónica (parcial) | Auto-completado CUIT | ⚠️ parcial / ❌ killer |
@@ -82,15 +86,24 @@ modo_credentials(
 - **Por qué killer**: ningún competidor muestra el margen neto exacto por venta MELI
 - Detalle completo: [[wiki/integrations/mercado-libre]] → "Rentabilidad neta real por venta"
 
-### 1.2 TiendaNube — BOM automático para combos ⭐ — 🟡 BLOQUEADO, relevamiento armado (2026-08-06)
-- En `tn-webhook` al procesar `order/paid`: si el producto tiene `es_kit=true`, descontar automáticamente cada componente con FIFO/FEFO desde las ubicaciones correctas del depósito
-- Actualmente el combo se descuenta como unidad, no sus componentes individuales
-- **Por qué killer**: TiendaNube es pésima manejando kits/combos
-- **Bloqueado por diseño, no por esfuerzo**: el único modelo de venta de kits en toda la app es "armar
-  antes (`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — esas funciones dependen de
-  `auth.uid()`, no invocables desde un webhook server-side tal como están. 13 preguntas armadas en
-  `relevamiento-integraciones-ml-tn-reglas-negocio.html` (raíz del repo), esperando respuesta de
-  GO/Fede. Detalle: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits"
+### 1.2 TiendaNube — BOM automático para combos ⭐ — 🟢 backend CONSTRUIDO y VERIFICADO por RPC (mig 345, EN DEV, 2026-08-08), falta deployar webhooks + probar con kit real
+- En `tn-webhook`/`meli-webhook`, si tras la reserva FIFO normal sigue faltando cantidad y el producto
+  tiene `es_kit=true`: código escrito para invocar la RPC nueva `fn_iniciar_armado_kit_auto` (mig 345)
+  que reserva automáticamente cada componente en las ubicaciones habilitadas para ese canal y crea una
+  TAREA de armado (`wms_tareas.tipo='armado'`) — nunca arma en silencio.
+- **Backend 100% construido y verificado con SQL directo contra DEV** (todo-o-nada, camino exitoso,
+  filtro de canal `disponible_tn`/`disponible_meli`, cancelación con liberación de reserva) — detalle
+  completo: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits", `wiki/features/wms`
+  → tipo de tarea "armado", `wiki/database/migraciones` (mig 345).
+- **Pendiente real, a propósito sin hacer todavía:** deployar `tn-webhook`/`meli-webhook` (Edge
+  Functions no se deployan solas) y probar con un producto kit real conectado a un canal de test —
+  no se pudo simular un webhook real con firma válida en este entorno. Aplicar la mig 345 en PROD
+  cuando se decida deployar esta fase. Fase D2.3 (ficha técnica de armado por kit, idea nueva de Fede)
+  sigue sin construir.
+- **Por qué killer**: TiendaNube es pésima manejando kits/combos.
+- Detalle: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits",
+  `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`,
+  `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ### 1.3 AFIP Auto-completado desde CUIT ⭐
 - Llamada al WS público de ARCA: `GET https://soa.afip.gob.ar/sr-padron/v2/persona/{cuit}`
@@ -103,15 +116,17 @@ modo_credentials(
 - Auto-crear en tabla nueva `creditos_fiscales`: `"Retención IIBB - Pago #N"`
 - **Por qué killer**: ahorra horas de trabajo al contador, nadie más lo hace
 
-### 1.5 MELI Repricing automático por margen — 🟡 BLOQUEADO, relevamiento armado (2026-08-06)
+### 1.5 MELI Repricing automático por margen — 🟡 relevamiento RESPONDIDO (2026-08-08), listo para diseñar/construir
 - Extender `meli-stock-worker`: al hacer sync, comparar `(precio - costo - comision) / costo` vs `margen_objetivo`
-- Si margen cayó bajo el objetivo → actualizar precio en MELI por API automáticamente
-- Se activa cuando el usuario modifica `precio_costo` en G360
-- **`productos.margen_objetivo` YA EXISTE** (migración 015) pero nunca se conectó a ninguna acción —
-  hoy es solo un insight pasivo en Métricas. Falta definir: ¿global o por producto? ¿automático o con
-  aprobación? ¿actualiza también el precio en G360? ¿cómo estimar la comisión de MELI antes de vender
-  (no se conoce hasta después)? Mismo documento de relevamiento que 1.2, esperando respuesta de
-  GO/Fede. Detalle: [[wiki/integrations/mercado-libre]] → "Repricing automático por margen"
+- Si margen cayó bajo el objetivo → actualizar precio en MELI por API automáticamente (o generar alerta, según config)
+- **`productos.margen_objetivo` YA EXISTE** (migración 015) pero todavía no se conectó a ninguna
+  acción de código — hoy sigue siendo solo un insight pasivo en Métricas. Fede respondió el
+  relevamiento completo: 2 mecanismos independientes (ajuste ÚNICO cross-canal por margen objetivo,
+  opt-in; y ajuste por % diferencial PROPIO de cada canal), configurable por el dueño (automático /
+  alerta / umbral en $), precio base siempre manda, comisión MELI solo informativa (nunca certera para
+  fijar precio), tope+umbral configurables, interruptor por producto. Detalle:
+  [[wiki/integrations/mercado-libre]] → "Repricing automático por margen",
+  `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`
 
 ---
 
@@ -227,9 +242,9 @@ modo_credentials(
 |---|---|---|---|---|
 | 1 | MELI Rentabilidad Neta | 1 | Bajo | Altísimo — **✅ HECHO y en PROD (mig 337, v1.159.0, 2026-08-06)** |
 | 2 | Conciliación MP automática | 1 | Bajo | Altísimo |
-| 3 | TiendaNube BOM combos | 1 | Medio | Alto — 🟡 relevamiento armado, esperando respuesta de negocio |
+| 3 | TiendaNube BOM combos | 1 | Medio | Alto — 🟡 relevamiento respondido (2026-08-08), falta diseñar/construir |
 | 4 | AFIP Auto-completado CUIT | 1 | Bajo | Alto |
-| 5 | MELI Repricing automático | 1 | Medio | Alto — 🟡 relevamiento armado, esperando respuesta de negocio |
+| 5 | MELI Repricing automático | 1 | Medio | Alto — 🟡 relevamiento respondido (2026-08-08), falta diseñar/construir |
 | 6 | PagoNube | 2 | Medio | Medio |
 | 7 | EnvíoNube + Rate shopping | 2 | Medio | Alto |
 | 8 | MELI Ads + Auto-pausado | 4 | Medio | Alto |

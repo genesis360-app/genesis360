@@ -345,14 +345,94 @@ nunca las de otro.
   `disponible_surtido: true` explícito (la mig 336 cambió el default a `false`, decisión deliberada,
   ver [[wiki/features/ubicaciones]]). **7/7 verdes en ambos specs.** Detalle en
   `wiki/database/migraciones.md`.
-- **Pendiente A PROPÓSITO, no construido:** "preset de operario por defecto para tareas de armado"
-  que GO había pedido — pospuesto hasta construir el backend de armado automático de D2 (Combos
-  TN/MELI, diseño técnico conversacional el mismo día, sin código todavía — ver
-  `sources/raw/project_pendientes.md` → "ARRANCÁ ACÁ"), porque hoy no existe ningún consumidor de ese
-  config (no hay tareas tipo `'armado'` todavía).
+- **Pendiente A PROPÓSITO en ESTE punto, resuelto más abajo en la continuación de la misma sesión:**
+  "preset de operario por defecto para tareas de armado" que GO había pedido — pospuesto hasta
+  construir el backend de armado automático de D2 (Combos TN/MELI). Ver "🆕 Tipo de tarea 'armado'
+  (Fase D2, mig 345)" más abajo para el detalle completo, ya construido y verificado.
 - **Estado real: NO commiteado.** `src/pages/InventarioPage.tsx`, `src/pages/PedidosPage.tsx`,
   `src/pages/PickingPage.tsx` y los 2 specs e2e modificados en el working tree de `dev`, sin migración
   nueva, `APP_VERSION` sigue en v1.160.0.
+
+### 🆕 Tipo de tarea 'armado' — backend de armado automático de kits (Fase D2, mig 345, 2026-08-08, EN DEV, sin PROD)
+
+Continuación, mismo día, del punto de arriba ("preset de operario para tareas de armado" quedaba
+pendiente porque no existía consumidor). Ver [[wiki/integrations/tienda-nube]] → "BOM automático para
+combos/kits" para el detalle completo del diseño de negocio (D2, relevamiento de Fede) — acá el foco es
+el mecanismo WMS.
+
+**`345_armado_kits_automatico_d2.sql`** (ya aplicada en DEV, sin aplicar en PROD):
+- `wms_tareas.tipo` CHECK suma `'armado'` (antes solo `picking | replenishment | putaway | conteo`).
+  `wms_tareas.origen` CHECK suma `'marketplace'` (antes `envio | manual | umbral`).
+- `wms_tareas.kitting_log_id` (FK nueva a `kitting_log`, Fase 2.5 de esta misma página) — la tarea de
+  depósito queda linkeada al ledger real de kitting, no es un registro paralelo.
+- `productos.ubicacion_kit_default_id` (FK a `ubicaciones`) — dónde se arma un kit por defecto (A3 del
+  relevamiento), editable en `ProductoFormPage.tsx` cuando `es_kit=true`.
+- `tenants.wms_armado_operario_default_id` (FK a `users`) — a quién nace pre-asignada una tarea de
+  armado automático (cierra el pendiente del punto anterior), configurable en Config → Inventario →
+  Zonas.
+- **`fn_iniciar_armado_kit_auto(p_tenant_id, p_kit_producto_id, p_cantidad, p_canal, p_sucursal_id,
+  p_origen_ref, p_notas)`** — variante de `iniciar_armado_kit` (mig 343, con prioridad de Rotación) SIN
+  `auth.uid()` (recibe `p_tenant_id` explícito), pensada para invocarse con `service_role` desde un
+  webhook server-side sin sesión de usuario — mismo molde que `liberar_reservas_vencidas_all`. Suma el
+  filtro de "componentes en ubicaciones/estados habilitados para el canal"
+  (`ubicaciones.disponible_tn/disponible_meli`, `estados_inventario.es_disponible_tn/es_disponible_meli`
+  — el mismo criterio que `tn-stock-worker`/`meli-stock-worker` ya usaban para el push SALIENTE de
+  stock, aplicado acá por primera vez también a la reserva de una orden ENTRANTE). Todo-o-nada real: si
+  no alcanza, `RETURN NULL` sin reservar nada. `pg_advisory_xact_lock` por (tenant,kit) + chequeo final
+  de `v_restante` con `RAISE EXCEPTION` (rollback automático) contra una carrera de stock entre el
+  chequeo y la reserva — **encontrado y corregido por el `migration-reviewer` antes de aplicar
+  (bloqueante #2)**. `REVOKE ALL FROM PUBLIC/anon/authenticated`, `GRANT` solo a `service_role` (a
+  propósito: un `p_tenant_id` arbitrario en manos de un usuario común sería explotable).
+- **`fn_completar_tarea_armado(p_tarea_id)`** — la ejecuta un operario logueado real desde
+  Pedidos/Picking; reusa `confirmar_armado_kit` (mig 244/343) vía `PERFORM`, sin duplicar el camino de
+  escritura de stock, y marca la tarea `completada`. `GRANT authenticated, service_role`.
+- **`fn_cancelar_tarea_wms` extendida** (mismo nombre/firma): si la tarea es `tipo='armado'`, llama a
+  `cancelar_armado_kit(kitting_log_id)` y libera la reserva de componentes antes de cancelar — sin esto
+  quedaba `cantidad_reservada` bloqueada para siempre. **El `migration-reviewer` encontró como
+  bloqueante #1** que la primera versión de este `CREATE OR REPLACE` perdía la rama de cascada de
+  cancelación picking↔reabastecimiento de la mig 291 (cancelar un reabastecimiento cancela el picking
+  encadenado) — restaurada, sigue intacta.
+
+**Verificación real con SQL directo contra DEV** (no solo "aplicó sin error"): escenario completo en el
+tenant E2E real (producto componente + producto kit + receta + ubicación con `disponible_tn=true` +
+stock), impersonando usuario real con `SET LOCAL request.jwt.claim.sub` para los pasos que dependen de
+`auth.uid()`:
+- Todo-o-nada: pedir más de lo que hay devuelve `NULL` sin tocar nada (cero efectos secundarios).
+- Camino exitoso: reserva correcta de componentes (3×2=6 de 10), `wms_tareas` con `tipo=armado`,
+  `origen=marketplace`, `ubicacion_destino_id`=la default del kit, `usuario_asignado_id`=el preset del
+  tenant, `kitting_log_id` linkeado; 4 notificaciones a DUEÑO/SUPERVISOR/SUPER_USUARIO reales.
+- `fn_completar_tarea_armado`: componente consumido (10→4), reserva liberada, kit terminado ingresado
+  (2 unidades) en la ubicación correcta, tarea marcada completada.
+- Filtro de canal: la MISMA ubicación con `disponible_tn=true` pero `disponible_meli=false` devuelve
+  `NULL` si se pide armar para MercadoLibre.
+- Cancelación: libera la reserva de componentes y marca `kitting_log` como `cancelado`.
+- Todos los datos de prueba se limpiaron al terminar.
+
+**UI:**
+- `src/pages/ConfigPage.tsx` — card "Armado automático de kits" en Config → Inventario → Zonas,
+  `<select>` para el operario por defecto.
+- `src/pages/ProductoFormPage.tsx` — `<select>` "Ubicación de armado por defecto", visible solo con
+  `es_kit=true`.
+- `src/pages/PedidosPage.tsx` (tab "Tareas WMS") y `src/pages/PickingPage.tsx` — reconocen
+  `tipo='armado'`: badge morado "Armado", muestran la ubicación de DESTINO en vez de origen, "Completar"
+  llama a `fn_completar_tarea_armado`, "Cancelar" sigue siendo el botón genérico existente.
+
+**Webhooks — código escrito, a propósito SIN deployar ni probar end-to-end.** `tn-webhook` y
+`meli-webhook`: después del loop de reserva FIFO existente contra el stock del kit (su propio SKU), si
+sigue faltando cantidad y el producto tiene `es_kit=true`, invocan `fn_iniciar_armado_kit_auto` con el
+cliente `service_role` que esos archivos ya usan — best-effort, nunca bloquea la venta (mismo patrón
+que el envío automático). Las Edge Functions no se deployan solas (`deploy_edge_function` explícito,
+separado del deploy de frontend) — hoy este código no tiene efecto en ningún ambiente. Tampoco se pudo
+simular un webhook real de TN/MELI con firma válida en este entorno; la única verificación posible fue
+la de la RPC en sí (arriba).
+
+**Estado real: TODAVÍA NO COMMITEADO** (working tree de `dev`: `ConfigPage.tsx`, `ProductoFormPage.tsx`,
+`PedidosPage.tsx`, `PickingPage.tsx`, `supabase/functions/tn-webhook/index.ts`,
+`supabase/functions/meli-webhook/index.ts`, `supabase/migrations/345_armado_kits_automatico_d2.sql`
+nuevo — se commitea inmediatamente después de esta actualización de wiki). `APP_VERSION` sigue en
+v1.160.0. Migración 345 solo en DEV. **Pendiente:** decisión de GO sobre cuándo deployar los webhooks a
+DEV y probarlos con un kit real conectado a un canal de test; aplicar la mig 345 en PROD cuando se
+decida deployar esta fase.
 
 ### Fixes de la primera ronda de pruebas manuales de GO (mig 291, 2026-07-22 — ✅ EN PROD desde v1.144.0)
 

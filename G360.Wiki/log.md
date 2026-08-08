@@ -6,6 +6,59 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-08] update | 🧩✅ Backend real de Combos automáticos TN/MELI (D2) construido y verificado por RPC (mig 345, EN DEV) + UI de configuración + webhooks tn-webhook/meli-webhook escritos (sin deployar)
+
+Continuación, mismo día, de la entrada de abajo (diseño técnico conversacional de D2, sin código
+todavía). Esta vez se construyó el backend real y se lo verificó de punta a punta con SQL directo.
+
+**Migración nueva `345_armado_kits_automatico_d2.sql` — YA APLICADA EN DEV, sin aplicar en PROD.**
+`wms_tareas.tipo` suma `'armado'` y `wms_tareas.origen` suma `'marketplace'`; `wms_tareas.kitting_log_id`
+(FK a `kitting_log`) linkea la tarea con el ledger real de kitting; `productos.ubicacion_kit_default_id`
+(A3 del relevamiento, editable en la ficha cuando `es_kit=true`); `tenants.wms_armado_operario_default_id`
+(preset de operario, configurable en Config → Inventario → Zonas). RPC nueva
+`fn_iniciar_armado_kit_auto(p_tenant_id, ...)` — SIN `auth.uid()`, invocable con `service_role` desde un
+webhook, replica el algoritmo de reserva de `iniciar_armado_kit` (mig 343, con prioridad de Rotación) +
+agrega el filtro de canal (`disponible_tn`/`disponible_meli` en ubicaciones y estados, aplicado por
+primera vez a la reserva de una orden ENTRANTE, no solo al push saliente); todo-o-nada real
+(`RETURN NULL` sin reservar nada si no alcanza) con `pg_advisory_xact_lock` + chequeo final con
+`RAISE EXCEPTION` para blindar contra una carrera de stock — **encontrado y corregido por el
+`migration-reviewer` (bloqueante #2)**; `REVOKE ALL FROM PUBLIC/anon/authenticated`, `GRANT` solo a
+`service_role`. RPC nueva `fn_completar_tarea_armado(p_tarea_id)` — la ejecuta un operario logueado real,
+reusa `confirmar_armado_kit` existente (sin duplicar el camino de escritura de stock). `fn_cancelar_tarea_wms`
+extendida para, si la tarea es `'armado'`, liberar la reserva de componentes vía `cancelar_armado_kit` —
+**el `migration-reviewer` encontró como bloqueante #1** que la primera versión perdía la cascada de
+cancelación picking↔reabastecimiento de la mig 291; restaurada.
+
+**Verificación real por SQL directo contra DEV** (tenant E2E real, producto componente + kit + receta +
+ubicación con `disponible_tn=true` + stock, impersonando usuario real con `SET LOCAL
+request.jwt.claim.sub`): todo-o-nada confirmado (pedir de más devuelve `NULL` sin efectos), camino
+exitoso (reserva 3×2=6 de 10, tarea `tipo=armado`/`origen=marketplace` con ubicación destino/operario/
+`kitting_log_id` correctos, 4 notificaciones reales), `fn_completar_tarea_armado` (componente 10→4, kit
++2 en la ubicación correcta, tarea completada), filtro de canal (misma ubicación con `disponible_meli=false`
+devuelve `NULL` para MELI), cancelación (libera reserva + `kitting_log=cancelado`). Datos de prueba
+limpiados al terminar.
+
+**UI construida:** `src/pages/ConfigPage.tsx` (card "Armado automático de kits", Config → Inventario →
+Zonas), `src/pages/ProductoFormPage.tsx` (selector "Ubicación de armado por defecto" solo si `es_kit`),
+`src/pages/PedidosPage.tsx`/`src/pages/PickingPage.tsx` (badge morado "Armado", ubicación destino, botón
+"Completar" llama a `fn_completar_tarea_armado`).
+
+**Webhooks — código escrito, a propósito SIN deployar ni probar end-to-end.**
+`supabase/functions/tn-webhook/index.ts` y `meli-webhook/index.ts`: si tras la reserva FIFO normal sigue
+faltando cantidad y el producto es kit, invocan `fn_iniciar_armado_kit_auto` con `service_role`,
+best-effort (nunca bloquea la venta). Las Edge Functions no se deployan solas — falta un
+`deploy_edge_function` explícito, así que hoy este código no tiene efecto en ningún ambiente. Tampoco se
+pudo simular un webhook real de TN/MELI en este entorno.
+
+**Estado real: TODAVÍA NO COMMITEADO** (se commitea inmediatamente después de esta actualización de
+wiki). `APP_VERSION` sigue en v1.160.0. Migración 345 solo en DEV, sin aplicar en PROD.
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), [[wiki/features/wms]],
+[[wiki/integrations/tienda-nube]], [[wiki/integrations/mercado-libre]],
+[[wiki/integrations/roadmap-apis]], `wiki/database/migraciones.md` (mig 345).
+
+---
+
 ## [2026-08-08] update | 🧩 Diseño técnico de Combos TN/MELI (D2, sin código) + ✅ reorganización "Tareas WMS" (Inventario→Pedidos) con asignación a usuario, construida y verificada + fix de fixtures e2e rotos por migs 336/339
 
 Continuación, mismo día, de la entrada de abajo (relevamiento D2/D3 ya cerrado). Dos pedidos distintos

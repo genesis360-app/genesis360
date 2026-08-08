@@ -6,10 +6,23 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-08
 ---
 
-# Historial de Migraciones (001-344)
+# Historial de Migraciones (001-345)
 
-**Total al 2026-08-08:** 344 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-08:** 345 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+**345 (`345_armado_kits_automatico_d2.sql`) — 🟡 SOLO EN DEV, sin aplicar en PROD** (backend de Combos
+automáticos TN/MELI, Fase D2 del roadmap — ver el bloque "ARRANCÁ ACÁ" de
+`sources/raw/project_pendientes.md` para el detalle completo): `wms_tareas.tipo` suma `'armado'` y
+`wms_tareas.origen` suma `'marketplace'`, `wms_tareas.kitting_log_id` (FK a `kitting_log`),
+`productos.ubicacion_kit_default_id`, `tenants.wms_armado_operario_default_id`, RPCs nuevas
+`fn_iniciar_armado_kit_auto` (sin `auth.uid()`, `GRANT` solo `service_role`, filtro de canal
+`disponible_tn`/`disponible_meli` aplicado por primera vez a una reserva ENTRANTE, todo-o-nada con
+`pg_advisory_xact_lock`) y `fn_completar_tarea_armado`, y `fn_cancelar_tarea_wms` extendida para liberar
+la reserva de un armado. 🔒 **2 hallazgos del `migration-reviewer` antes de aplicar, corregidos:**
+bloqueante #1 la primera versión de `fn_cancelar_tarea_wms` perdía la cascada de cancelación
+picking↔reabastecimiento de la mig 291; bloqueante #2 faltaba el chequeo final anti-carrera de stock en
+`fn_iniciar_armado_kit_auto`. Verificada con SQL directo contra DEV (todo-o-nada, camino exitoso, filtro
+de canal, cancelación — detalle completo en `project_pendientes.md`); datos de prueba limpiados.
 **001-344 EN DEV Y PROD (base de datos), deploy v1.160.0 100% CERRADO** — las migraciones 339-343 se
 aplicaron en PROD (proyecto `jjffnbrdjchquexdfgwq`) el 2026-08-07 vía `apply_migration`, ANTES del merge
 del código (mismo patrón "DDL aditivo antes de mergear `dev`→`main`", ver

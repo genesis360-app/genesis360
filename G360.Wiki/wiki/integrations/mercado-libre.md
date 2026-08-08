@@ -109,6 +109,15 @@ Al crear venta `Reservada` desde webhook MELI:
 2. El sync worker usa `cantidad - cantidad_reservada` → sin oversell
 3. `order/cancelled` → libera `cantidad_reservada` y cancela venta en G360
 
+**🟢 2026-08-08 (código escrito, a propósito SIN deployar): armado automático de kits (D2).** Si tras
+el loop de reserva FIFO anterior sigue faltando cantidad y el producto tiene `es_kit=true`,
+`meli-webhook` invoca la RPC nueva `fn_iniciar_armado_kit_auto` (mig 345, `service_role`, sin
+`auth.uid()`) para reservar los componentes en las ubicaciones habilitadas para MELI y crear una tarea
+`wms_tareas.tipo='armado'` — best-effort, nunca bloquea la venta. El backend (RPC) ya está construido y
+verificado por SQL directo contra DEV; el webhook en sí no se deployó ni se probó con una orden real.
+Detalle completo (mismo mecanismo, doc primaria): [[wiki/integrations/tienda-nube]] → "BOM automático
+para combos/kits".
+
 ---
 
 ## 🆕 Envío automático al confirmar el pago (2026-08-06, ✅ PROD desde v1.159.0)

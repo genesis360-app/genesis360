@@ -11,9 +11,12 @@ Plan aprobado 2026-05-07. **Retomado 2026-08-06, ✅ EN PROD desde v1.159.0** (P
 completo el mismo día): Fase 1.1 (MELI Rentabilidad Neta) ✅ **hecha**, migración 337. Fases 1.2 (TN
 BOM combos) y 1.5 (MELI Repricing) tenían un relevamiento de negocio armado esperando respuesta de
 GO/Fede — **Fede lo respondió completo el 2026-08-06, GO lo compartió el 2026-08-08** (ver
-`sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`): quedan **listas para diseñar/
-construir**, no bloqueadas — todavía sin una línea de código nueva. Además, fuera del roadmap
-original, se cerró el **envío automático** al confirmar pago (TN+MELI) y el **fulfillment sync**
+`sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`). **Fase 1.2 (D2) pasó de "lista para
+diseñar" a backend CONSTRUIDO y VERIFICADO el mismo día** (mig 345, `fn_iniciar_armado_kit_auto`/
+`fn_completar_tarea_armado`, EN DEV, sin PROD) — falta deployar `tn-webhook`/`meli-webhook` (código ya
+escrito, best-effort) y probar con un kit real. **Fase 1.5 (D3, repricing MELI) sigue solo con el
+relevamiento cerrado, sin una línea de código.** Además, fuera del roadmap original, se cerró el
+**envío automático** al confirmar pago (TN+MELI) y el **fulfillment sync**
 TN→despachado/entregado (mig 338) — ver [[wiki/integrations/mercado-libre]] /
 [[wiki/integrations/tienda-nube]]. **Pendiente real: Fase A — conectar un tenant real a MELI/TN en
 PROD, sigue sin ninguno.** El resto de las fases (1.3/1.4, 2-6) sigue pausado.
@@ -24,7 +27,7 @@ PROD, sigue sin ninguno.** El resto de las fases (1.3/1.4, 2-6) sigue pausado.
 
 | Integración | Básico | Killer Feature | Estado |
 |---|---|---|---|
-| TiendaNube | orders + stock sync + **envío automático + fulfillment sync (✅ PROD desde v1.159.0)** | BOM combos 🟡 (relevamiento respondido 2026-08-08, falta diseñar/construir), FIFO lotes | ✅ básico+ / 🟡 killer por construir |
+| TiendaNube | orders + stock sync + **envío automático + fulfillment sync (✅ PROD desde v1.159.0)** | BOM combos 🟢 backend construido y verificado (mig 345, EN DEV), falta deployar webhooks + probar con kit real, FIFO lotes | ✅ básico+ / 🟢 killer backend listo |
 | MercadoLibre | orders + stock/precio + **envío automático (✅ PROD desde v1.159.0)** | **Rentabilidad neta ✅ hecho y en PROD (mig 337)**, repricing 🟡 (relevamiento respondido 2026-08-08, falta diseñar/construir) | ✅ básico+ / 🟡 1 de 2 killers |
 | MercadoPago | pagos QR + suscripciones | Conciliación, chargeback | ✅ básico / ❌ killers |
 | MODO | Framework listo (migration 109) | Pagos en POS | ⚠️ schema+UI listos / pendiente activar |
@@ -83,17 +86,24 @@ modo_credentials(
 - **Por qué killer**: ningún competidor muestra el margen neto exacto por venta MELI
 - Detalle completo: [[wiki/integrations/mercado-libre]] → "Rentabilidad neta real por venta"
 
-### 1.2 TiendaNube — BOM automático para combos ⭐ — 🟡 relevamiento RESPONDIDO (2026-08-08), listo para diseñar/construir
-- En `tn-webhook` al procesar `order/paid`: si el producto tiene `es_kit=true`, descontar automáticamente cada componente con FIFO/FEFO desde las ubicaciones correctas del depósito
-- Actualmente el combo se descuenta como unidad, no sus componentes individuales
-- **Por qué killer**: TiendaNube es pésima manejando kits/combos
-- **Ya no bloqueado por falta de definición de negocio** — Fede respondió el relevamiento completo
-  (el kit pasa a ser su propio SKU, armado mixto con tarea automática, todo-o-nada si falta stock,
-  ficha técnica opcional). Sigue pendiente el diseño técnico: el único modelo de venta de kits en toda
-  la app es "armar antes (`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — esas
-  funciones dependen de `auth.uid()`, no invocables desde un webhook server-side tal como están.
-  Detalle: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits",
-  `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`
+### 1.2 TiendaNube — BOM automático para combos ⭐ — 🟢 backend CONSTRUIDO y VERIFICADO por RPC (mig 345, EN DEV, 2026-08-08), falta deployar webhooks + probar con kit real
+- En `tn-webhook`/`meli-webhook`, si tras la reserva FIFO normal sigue faltando cantidad y el producto
+  tiene `es_kit=true`: código escrito para invocar la RPC nueva `fn_iniciar_armado_kit_auto` (mig 345)
+  que reserva automáticamente cada componente en las ubicaciones habilitadas para ese canal y crea una
+  TAREA de armado (`wms_tareas.tipo='armado'`) — nunca arma en silencio.
+- **Backend 100% construido y verificado con SQL directo contra DEV** (todo-o-nada, camino exitoso,
+  filtro de canal `disponible_tn`/`disponible_meli`, cancelación con liberación de reserva) — detalle
+  completo: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits", `wiki/features/wms`
+  → tipo de tarea "armado", `wiki/database/migraciones` (mig 345).
+- **Pendiente real, a propósito sin hacer todavía:** deployar `tn-webhook`/`meli-webhook` (Edge
+  Functions no se deployan solas) y probar con un producto kit real conectado a un canal de test —
+  no se pudo simular un webhook real con firma válida en este entorno. Aplicar la mig 345 en PROD
+  cuando se decida deployar esta fase. Fase D2.3 (ficha técnica de armado por kit, idea nueva de Fede)
+  sigue sin construir.
+- **Por qué killer**: TiendaNube es pésima manejando kits/combos.
+- Detalle: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits",
+  `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`,
+  `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ### 1.3 AFIP Auto-completado desde CUIT ⭐
 - Llamada al WS público de ARCA: `GET https://soa.afip.gob.ar/sr-padron/v2/persona/{cuit}`

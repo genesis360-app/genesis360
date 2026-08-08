@@ -2,8 +2,8 @@
 title: WMS — Almacenaje Dirigido y Picking
 category: features
 tags: [wms, lpn, kits, picking, almacenaje, ubicaciones, zonas, reabastecimiento, pedidos]
-sources: [CLAUDE.md, ROADMAP.md, migrations 289, 290, 291, 292, 334, 335, src/pages/PickingPage.tsx]
-updated: 2026-08-07
+sources: [CLAUDE.md, ROADMAP.md, migrations 289, 290, 291, 292, 334, 335, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx]
+updated: 2026-08-08
 ---
 
 # WMS — Warehouse Management System
@@ -291,8 +291,10 @@ wms_tareas
     (`src/lib/pildorasFiltro.ts`) del que nacen `productosFiltro.ts`/`inventarioFiltro.ts`, y
     `BuscadorPildoras.tsx` pasó a recibir los campos por prop en vez de importarlos hardcodeados de
     Picking. Detalle completo: [[wiki/features/filtro-pildoras]].
-- Tab **"Tareas WMS"** nuevo en `InventarioPage` — vista de escritorio para el DUEÑO, con link
-  directo a `/picking`.
+- Tab **"Tareas WMS"** — vista de escritorio para el DUEÑO, con link directo a `/picking`. 🆕
+  **2026-08-08 (sin commitear): se MUDÓ de `InventarioPage` a `PedidosPage` (`PageTabs` 'Pedidos' |
+  'Tareas WMS')**, a pedido de GO — ver más abajo "Asignación de tareas a un usuario" para el detalle
+  completo (mismo pedido de GO, misma sesión).
 - Gating: `modoAvanzado` + rol **DEPOSITO** (nav en `AppLayout.tsx` + redirect guard + ruta en
   `App.tsx`), mismo patrón que "Recepciones".
 
@@ -306,6 +308,51 @@ specs) · **e2e nuevo 106** (mutante, verificación real en DB). `APP_VERSION` =
 real de stock, el deploy queda para cuando GO lo pida).
 
 Detalle completo del roadmap de las 5 fases: [[wiki/features/estructuras-udm]] → "Roadmap del plan".
+
+### 🆕 Asignación de tareas a un usuario + tab "Tareas WMS" mudado a Pedidos (2026-08-08, sin commitear)
+
+Pedido explícito de GO: mover la pestaña "Tareas WMS" del módulo Inventario al módulo
+[[wiki/features/pedidos]], poder asignar cada tarea (picking/reabastecimiento, y a futuro armado, ver
+"Motor de Rotación → Opción 3" y el punto de D2 más abajo) a un usuario puntual, y que en `/picking`
+cada usuario vea únicamente las tareas sin asignar (las puede tomar) o las que le asignaron a él —
+nunca las de otro.
+
+- **`src/pages/InventarioPage.tsx`**: se eliminó por completo el tab `'wms'` (nav, query de
+  `wms_tareas`, mutations `completarTareaWms`/`cancelarTareaWms`, bloque de render). Inventario ya NO
+  tiene pestaña "Tareas WMS" — ver [[wiki/features/inventario-stock]].
+- **`src/pages/PedidosPage.tsx`**: `PageTabs` nuevo 'Pedidos' | 'Tareas WMS' (solo modo avanzado), con
+  la misma lista de tareas que antes vivía en Inventario, ahora con un `<select>` de asignación a
+  usuario — gateado a DUEÑO/SUPERVISOR/SUPER_USUARIO (mismo criterio que `puedeVerAutorizaciones`;
+  otros roles ven texto plano "Asignada a X"/"Sin asignar"). Escribe directo
+  `wms_tareas.usuario_asignado_id` — **sin RPC nueva**, la columna y el RLS ya lo permitían.
+- **`src/pages/PickingPage.tsx`**: la query de `wms_tareas` filtra `usuario_asignado_id IS NULL OR
+  usuario_asignado_id = <usuario logueado>` (una tarea asignada a OTRO ya no aparece para nadie más),
+  + badge "Asignada a mí" en la card cuando corresponde.
+- **Sin migración nueva** — se reusó `wms_tareas.usuario_asignado_id`, columna del schema desde la mig
+  289 que hasta esta sesión no tenía ninguna lógica de asignación implementada en todo el repo.
+- **Verificado de verdad en el navegador** (no solo tsc/build) con Playwright headless contra el dev
+  server y el tenant E2E real ("Almacén Jorgito", DEV): Pedidos muestra ambas pestañas, el select de
+  asignación lista los usuarios reales del tenant y persiste tras reload, Inventario ya no muestra el
+  tab, y — lo más importante — un usuario (deposito1) ve en `/picking` su propia tarea asignada con el
+  badge "Asignada a mí" pero NO ve una tarea asignada a otro usuario (cajero1). Datos de prueba
+  revertidos al estado original al terminar.
+- **Deuda técnica encontrada y corregida de paso (misma sesión):** `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts`
+  y `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` fallaban 6/7 por un problema preexistente,
+  no causado por esta sesión — seguían creando ubicaciones de prueba con la columna
+  `ubicaciones.tipo_ubicacion`, dropeada por la mig 339 (la verificación de "0 lectores" de esa
+  migración había chequeado `src/`/`supabase/functions` pero no los fixtures de e2e). Fix:
+  `tipo_ubicacion` → `tipo_logico`/`subtipo_almacenamiento` (mapeo real de la mig 334) +
+  `disponible_surtido: true` explícito (la mig 336 cambió el default a `false`, decisión deliberada,
+  ver [[wiki/features/ubicaciones]]). **7/7 verdes en ambos specs.** Detalle en
+  `wiki/database/migraciones.md`.
+- **Pendiente A PROPÓSITO, no construido:** "preset de operario por defecto para tareas de armado"
+  que GO había pedido — pospuesto hasta construir el backend de armado automático de D2 (Combos
+  TN/MELI, diseño técnico conversacional el mismo día, sin código todavía — ver
+  `sources/raw/project_pendientes.md` → "ARRANCÁ ACÁ"), porque hoy no existe ningún consumidor de ese
+  config (no hay tareas tipo `'armado'` todavía).
+- **Estado real: NO commiteado.** `src/pages/InventarioPage.tsx`, `src/pages/PedidosPage.tsx`,
+  `src/pages/PickingPage.tsx` y los 2 specs e2e modificados en el working tree de `dev`, sin migración
+  nueva, `APP_VERSION` sigue en v1.160.0.
 
 ### Fixes de la primera ronda de pruebas manuales de GO (mig 291, 2026-07-22 — ✅ EN PROD desde v1.144.0)
 
@@ -486,7 +533,8 @@ Detalle completo en [[wiki/features/multi-sucursal]] → "Traslados entre sucurs
   de `fn_completar_tarea_reabastecimiento` (arriba, Fase 4)
 - [[wiki/features/estructuras-udm]] — estructuras con niveles dinámicos por UdM (footprints) + roadmap picking/almacenaje/reabastecimiento por UdM (Fases 3-5 ✅ v1.143.0) + Fase 2 (ingreso/rebaje por UdM, ✅ mig 293)
 - [[wiki/features/modo-basico-avanzado]] — desde v1.55.0 las superficies WMS solo se muestran en modo de operación **Avanzado** (toggle por tenant, plan Pro+); el modo gatea UI, nunca datos
-- [[wiki/features/inventario-stock]] — tab "Tareas WMS" (v1.143.0)
+- [[wiki/features/inventario-stock]] — 🆕 2026-08-08 (sin commitear): el tab "Tareas WMS" (v1.143.0)
+  se MUDÓ de acá a [[wiki/features/pedidos]], ver "Asignación de tareas a un usuario" más arriba
 - [[wiki/features/configuracion]] — sección "Zonas y picking" en Config → Inventario (v1.143.0)
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/clientes-proveedores]]

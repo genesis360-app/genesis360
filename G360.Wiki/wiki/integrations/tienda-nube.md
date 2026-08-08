@@ -3,7 +3,7 @@ title: Integración TiendaNube
 category: integrations
 tags: [tiendanube, tn, oauth, stock-sync, webhook, integraciones]
 sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-06
+updated: 2026-08-08
 ---
 
 # Integración TiendaNube
@@ -134,16 +134,34 @@ Archivos: `supabase/migrations/338_tn_fulfillment_sync.sql`,
 
 ---
 
-## 🟡 BOM automático para combos/kits (Fase D2 del roadmap) — bloqueado, relevamiento armado
+## 🟡 BOM automático para combos/kits (Fase D2 del roadmap) — relevamiento RESPONDIDO por Fede (2026-08-08), listo para diseñar/construir
 
 Investigado el 2026-08-06: en TODA la app el único modelo de venta de kits es "armar primero
 (`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — nunca existió desarme de kit en el
 momento de la venta. Esas funciones SQL dependen de `auth.uid()` (usuario logueado), así que ni
-siquiera se pueden invocar desde un webhook server-side tal como están hoy. Falta una decisión de
-negocio (qué hacer si no hay stock armado suficiente al llegar el pedido, a qué ubicación va el
-armado automático, etc.) antes de escribir código. Preguntas armadas en
-`relevamiento-integraciones-ml-tn-reglas-negocio.html` (raíz del repo) — pendiente de que GO lo
-responda offline con Fede. Ver [[wiki/integrations/roadmap-apis]] (1.2).
+siquiera se pueden invocar desde un webhook server-side tal como están hoy. El relevamiento de negocio
+quedó **100% respondido por Fede** (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz del
+repo) — detalle completo en `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`. En
+síntesis:
+
+- Armado **mixto**: cuando hay stock suficiente de los componentes en las ubicaciones habilitadas para
+  ese canal, el sistema genera automáticamente la TAREA de armado — no arma en silencio sin que nadie
+  se entere.
+- Todo-o-nada si falta cualquier componente (mismo criterio que el armado manual hoy).
+- **El kit pasa a ser su propio SKU**, con ubicación predefinida en su ficha (o sugerida
+  automáticamente según volumen, editable a mano) — conecta con el cubicaje volumétrico ya
+  parcialmente construido. Cada armado resta las unidades de los componentes y suma una unidad al SKU
+  del kit.
+- Nunca silencioso: tarea asignada (automática o preset del supervisor) + alerta a supervisor/dueño.
+- Al resolverse con SKU propio, sirve para MELI y TiendaNube por igual, sin lógica separada por canal.
+- **Idea nueva de Fede, fuera del relevamiento original**: ficha técnica de armado por kit (texto/
+  imágenes/video), opcional, con un botón visible del lado de quien arma solo si existe una cargada
+  para ESE kit.
+
+**Nada de esto está construido todavía** — el relevamiento está cerrado, falta el diseño técnico +
+implementación (ej. variante de `iniciar_armado_kit`/`confirmar_armado_kit` invocable server-side sin
+`auth.uid()`, infraestructura de "tarea asignada + alerta"). Ver [[wiki/integrations/roadmap-apis]]
+(1.2).
 
 ---
 

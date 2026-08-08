@@ -6,7 +6,255 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-08) — v1.160.0: 100% DEPLOYADO Y VERIFICADO EN PROD (PR #317 mergeado, tag+release `v1.160.0`, Vercel confirmado por curl independiente) + hallazgo real cerrado: gap de migraciones 334/335 NUNCA aplicadas en PROD, corregido con la mig 344
+> ### ✅ ARRANCÁ ACÁ (2026-08-08, cont. 7) — 🧩 Diseño técnico conversacional de Combos TN/MELI (D2, SOLO CONVERSACIÓN, sin código) + ✅ Feature CONSTRUIDA Y VERIFICADA: reorganización "Tareas WMS" (Inventario→Pedidos) + asignación a usuario + filtro en Picking + 🐛 fix de deuda técnica en los specs e2e 106/107 (fixtures rotos por las migs 336/339) — NADA COMMITEADO, la pila de cambios sigue creciendo
+>
+> Continuación, mismo día, del bloque de abajo (cont. 6, relevamiento D2/D3 ya 100% respondido por
+> Fede). Esta sesión tuvo dos pedidos distintos de GO: primero avanzar el diseño técnico de D2, después
+> pivotar a algo más inmediato (reorganización de Tareas WMS + asignación).
+>
+> **1. Diseño técnico conversacional de "Combos automáticos TN/MELI" (D2) — SOLO CONVERSACIÓN, NADA
+> IMPLEMENTADO (sin migración, sin código).** Se investigó el código real (agente Explore) y se armó
+> una propuesta de arquitectura:
+> - El kit YA es su propio SKU hoy (mig 040/244 — `kit_recetas`, `kitting_log`,
+>   `iniciar_armado_kit`/`confirmar_armado_kit`) — A3 del relevamiento ya está resuelto por el modelo
+>   existente, no hace falta inventar nada nuevo ahí.
+> - **Gap real encontrado:** esas RPCs dependen de `auth.uid()` — no son invocables desde un webhook
+>   con `service_role` sin sesión de usuario. Propuesta: RPCs nuevas
+>   `fn_iniciar_armado_kit_auto`/`fn_completar_tarea_armado` con `p_tenant_id` explícito, sin
+>   `auth.uid()`, `GRANT` a `service_role` — mismo molde ya usado por
+>   `liberar_reservas_vencidas_all`/`fn_generar_tareas_reabastecimiento_umbral`.
+> - **Gap real:** no existe el tipo `'armado'` en el CHECK de `wms_tareas.tipo` (hoy solo
+>   picking/replenishment/putaway/conteo).
+> - **Gap real, YA RESUELTO en el punto 2 de abajo:** `wms_tareas.usuario_asignado_id` existe en el
+>   schema desde la mig 289 pero no tenía ninguna lógica de asignación implementada en todo el repo.
+> - **Gap real:** los webhooks `tn-webhook`/`meli-webhook` no expanden kit/combo a componentes ni
+>   filtran por `disponible_tn`/`disponible_meli` al reservar stock de una orden ENTRANTE (ese filtro
+>   hoy solo se usa en el push saliente de stock).
+> - **Decisión de GO en el momento:** si no alcanza el stock de componentes, todo-o-nada falla y el
+>   pedido sigue el mismo camino que hoy tiene cualquier producto sin stock — sin cambio de
+>   comportamiento. Queda anotada para cuando se construya, no implementada todavía.
+> - Este diseño quedó memorizado, GO pivotó al pedido del punto 2 antes de arrancar a codear.
+>
+> **2. ✅ Feature CONSTRUIDA y VERIFICADA esta sesión: reorganización de "Tareas WMS" (Inventario →
+> Pedidos) + asignación manual a usuario + filtro por asignación en Picking.** Pedido explícito de GO:
+> mover la pestaña "Tareas WMS" del módulo Inventario al módulo Pedidos, poder asignar una tarea
+> (picking/reabastecimiento, y a futuro armado) a un usuario puntual desde ahí, y que en `/picking`
+> cada usuario vea solo las tareas sin asignar (las puede tomar) o las asignadas a él — nunca las de
+> otro.
+> - `src/pages/InventarioPage.tsx`: eliminado por completo el tab `'wms'` (nav, query de `wms_tareas`,
+>   mutations `completarTareaWms`/`cancelarTareaWms`, bloque de render) — Inventario ya NO tiene
+>   pestaña "Tareas WMS".
+> - `src/pages/PedidosPage.tsx`: `PageTabs` nuevo 'Pedidos' | 'Tareas WMS' (solo modo avanzado), misma
+>   lista de tareas que antes vivía en Inventario, ahora con un `<select>` de asignación a usuario
+>   (gateado a DUEÑO/SUPERVISOR/SUPER_USUARIO, mismo criterio que `puedeVerAutorizaciones`; otros roles
+>   ven texto plano "Asignada a X"/"Sin asignar"). Escribe directo `wms_tareas.usuario_asignado_id` —
+>   **sin RPC nueva**, la columna y el RLS ya lo permitían.
+> - `src/pages/PickingPage.tsx`: la query de `wms_tareas` ahora filtra `usuario_asignado_id IS NULL OR
+>   usuario_asignado_id = <usuario logueado>` (una tarea asignada a OTRO ya no aparece para nadie más),
+>   + badge "Asignada a mí" en la card cuando corresponde.
+> - **Sin migración nueva** — se reusó la columna `usuario_asignado_id`, existente sin uso desde la mig
+>   289.
+> - **Verificado de verdad en el navegador** (no solo tsc/build) con Playwright headless contra el dev
+>   server y el tenant E2E real ("Almacén Jorgito", DEV): Pedidos muestra ambas pestañas; el select de
+>   asignación lista los usuarios reales del tenant y persiste tras reload; Inventario ya no muestra el
+>   tab; y — lo más importante — un usuario (deposito1) ve en `/picking` su propia tarea asignada con
+>   el badge "Asignada a mí" pero NO ve una tarea asignada a otro usuario (cajero1). Datos de prueba
+>   revertidos al estado original al terminar.
+> - **Pendiente A PROPÓSITO, no construido:** el "preset de operario por defecto para tareas de
+>   armado" que GO había pedido — pospuesto hasta construir el backend de armado automático de D2
+>   (punto 1), porque hoy no existe ningún consumidor de ese config (no hay tareas tipo `'armado'`
+>   todavía) y un toggle sin efecto en Config sería una funcionalidad a medias.
+>
+> **3. 🐛✅ Bug de deuda técnica en tests, encontrado y corregido (Regla de Oro #0 — cobertura de tests
+> de inventario).** Al correr `106_wms_picking_reabastecimiento_mutante.spec.ts` y
+> `107_pedidos_ciclo_completo_mutante.spec.ts` para chequear regresión del punto 2, **6 de 7 fallaban**
+> por un problema PREEXISTENTE, no causado por esta sesión: ambos specs seguían creando ubicaciones de
+> prueba con la columna `tipo_ubicacion`, que la **migración 339** (ya aplicada en DEV y PROD, deploy
+> v1.160.0) DROPEÓ por completo — la verificación de "0 lectores" al dropearla había chequeado `src/` y
+> `supabase/functions` pero NO los fixtures de los tests e2e. Fix en ambos archivos:
+> `tipo_ubicacion: 'picking'` → `tipo_logico: 'picking'`; `tipo_ubicacion: 'bulk'/'staging'` →
+> `tipo_logico: 'almacenamiento', subtipo_almacenamiento: 'bulk'/'staging'` (mapeo real, tomado de la
+> mig 334). De paso se encontró que además dependían implícitamente del viejo `DEFAULT true` de
+> `ubicaciones.disponible_surtido`, que la **migración 336** (`336_ubicaciones_defaults_apagados.sql`,
+> ya aplicada, decisión DELIBERADA — "nuevas ubicaciones nacen con TN/MELI/surtido apagados") cambió a
+> `false` — se agregó `disponible_surtido: true` explícito en los fixtures que necesitan que su stock
+> sea encontrado por `fn_generar_tareas_picking_pedido_stock`. **Los 7 tests de ambos specs quedan
+> 7/7 verdes.** No es un bug de producción (el default `false` es intencional y ya tiene su
+> toggle+label en Config → Inventario → Ubicaciones) — fue puramente deuda de los fixtures de test,
+> expuesta por dos migraciones (336 y 339) de sesiones anteriores.
+>
+> **📋 Estado real al cierre — NADA de esto está commiteado todavía.** Working tree de `dev` sigue
+> sucio, con MÁS archivos que la sesión anterior:
+> - `G360.Wiki/*` (wiki de esta sesión) y `src/pages/ConfigPage.tsx` (fix de Métodos de pago/Operativa
+>   del bloque de abajo, cont. 6 — sigue sin commitear a pedido explícito de GO, "dejarlo como está por
+>   ahora").
+> - **Nuevos esta sesión:** `src/pages/InventarioPage.tsx`, `src/pages/PedidosPage.tsx`,
+>   `src/pages/PickingPage.tsx`, `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts`,
+>   `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts`.
+>
+> `APP_VERSION` sigue en **v1.160.0** (ya deployado a PROD). **Sin migraciones nuevas** esta sesión (0
+> archivos nuevos en `supabase/migrations/`). Typecheck limpio; build no verificado explícitamente esta
+> sesión (sí typecheck); e2e **106+107 verdes (7/7)**; verificación manual en navegador con Playwright
+> contra el tenant E2E de DEV.
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **Decisión de GO:** commitear/pushear esta tanda completa — incluye el fix viejo de
+>    `ConfigPage.tsx` (cont. 6) + la feature nueva de asignación WMS (punto 2) + el fix de los 2 specs
+>    e2e (punto 3) — o seguir sumando a la próxima.
+> 2. **Decisión de GO:** arrancar el backend real de D2 (Combos TN, punto 1) ahora o en otra sesión —
+>    el diseño técnico ya está conversado, incluidos los gaps concretos a resolver (RPCs sin
+>    `auth.uid()`, tipo `'armado'` en `wms_tareas`, expansión de kit en webhooks entrantes).
+> 3. Resto de pendientes ya conocidos sin cambios: C1 (Mercado Envíos vs. envío propio, sin dato de
+>    clientes reales), D3 (Repricing MELI, mismo estado que D2 — relevamiento cerrado, diseño sin
+>    arrancar), decisión de GO sobre la cuota de Supabase, deuda técnica de arnés e2e
+>    (`ingresoRealPorUI`/mono_sku), QA manual heredado (thumbnail/sucursal_id MELI), relevamiento
+>    derivado #4 (Repositores) bloqueado.
+>
+> Ver `log.md` (2026-08-08, entrada `update` nueva), [[wiki/features/wms]], [[wiki/features/pedidos]],
+> [[wiki/features/inventario-stock]] (tab "Tareas WMS" removido), `wiki/database/migraciones.md` (nota
+> de deuda técnica sobre las migs 336/339), `src/pages/InventarioPage.tsx`,
+> `src/pages/PedidosPage.tsx`, `src/pages/PickingPage.tsx`,
+> `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts`,
+> `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts`.
+>
+> ---
+>
+> ### ✅ ARRANCÁ ACÁ (histórico, 2026-08-08) — 📋 Relevamiento Combos TN (D2) + Repricing MELI (D3) RESPONDIDO COMPLETO por Fede — LISTO PARA DISEÑAR/CONSTRUIR (salvo C1, dato pendiente de clientes reales); esto es SOLO relevamiento, no se construyó código — el fix de Config Ventas (bloque de abajo, cont. 6) SIGUE sin commitear
+>
+> GO pegó las respuestas completas de Fede (respondidas el 2026-08-06) al relevamiento de reglas de
+> negocio que había quedado armado y bloqueado desde la sesión del 2026-08-06 (ver bloque histórico más
+> abajo, "D2/D3 — bloqueadas, relevamiento armado") — **`relevamiento-integraciones-ml-tn-reglas-negocio.html`**
+> (raíz del repo). Las 2 features del roadmap que dependían de esta respuesta (Fase 1.2 "TiendaNube —
+> BOM automático para combos" y Fase 1.5 "MELI Repricing automático por margen") pasan de
+> **🟡 bloqueado** a **🟡 listo para diseñar/construir** — el relevamiento en sí no genera ningún cambio
+> de código.
+>
+> Transcripción completa de las respuestas + resumen ejecutivo en
+> `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md` (nuevo). En síntesis:
+>
+> **Bloque 1 — Combos automáticos TN (D2): ✅ 100% resuelto.** A1: armado mixto — cuando hay stock
+> suficiente en las ubicaciones habilitadas para ese canal, el sistema genera automáticamente la TAREA
+> de armado (no arma en silencio). A2: todo-o-nada, mismo criterio que el armado manual hoy. A3: **el
+> kit pasa a ser su propio SKU**, con ubicación predefinida en su ficha (o sugerida por volumen —
+> conecta con el cubicaje ya parcialmente construido). A4: tarea asignada (automática o preset del
+> supervisor) + alerta a supervisor/dueño, nunca silencioso. A5: al resolverse con SKU propio, sirve
+> para MELI y TN por igual sin lógica separada por canal. **Idea nueva de Fede, fuera del relevamiento
+> original:** ficha técnica de armado por kit (texto/imágenes/video), opcional, botón visible solo si
+> existe una cargada para ESE kit.
+>
+> **Bloque 2 — Repricing automático MELI (D3): ✅ 100% resuelto**, con **2 mecanismos independientes**
+> definidos por Fede (no estaban en las opciones originales del documento): (1) **ajuste automático por
+> margen objetivo**, opt-in por producto — si se activa, el ajuste es ÚNICO, se aplica igual en G360 y
+> en TODOS los marketplaces conectados (no hay precio por canal en este mecanismo); (2) **ajuste por
+> diferencial de % por canal**, independiente del margen objetivo — campos nuevos en la ficha de
+> producto para MELI y TN por separado, % sobre el precio base, para amortiguar la comisión de cada
+> canal. B2: configurable por el dueño (automático siempre / alerta para aprobar / automático solo
+> desde X$ de diferencia). B3: **el precio base SIEMPRE manda**, un cambio en el marketplace nunca
+> modifica `precio_venta`. B4: la comisión de MELI se proyecta informativamente con la última comisión
+> real cobrada a ese SKU — **NUNCA se usa como dato certero para calcular un precio**. B5: tope de suba
+> + umbral de aviso, ambos configurables por el dueño, sin default único. B6: interruptor por producto,
+> en la ficha del producto.
+>
+> **Nota operativa C1 (Mercado Envíos vs. envío propio): 🟡 NO resuelto — Fede no tiene el dato** (no
+> opera un negocio real en G360 hoy), va a variar cliente a cliente. Queda como dato a relevar con
+> CLIENTES REALES antes de decidir si la Fase C (avisar a MELI del despacho, ya diferida) es viable. Lo
+> que SÍ quedó definido es el DISEÑO (independiente del dato): pestaña nueva en Envíos con sub-pestañas
+> por canal, tipo de envío por defecto por producto y por canal, y override a nivel de venta individual
+> (mientras no se haya despachado).
+>
+> **Prioridad (D1/D2 del documento original): sin responder** — Fede deja a criterio de GO ("Tonga", ver
+> [[reference_tonga_es_go]]) decidir si hace falta ordenar el cierre de los puntos técnicos que quedaron
+> abiertos (ej. la separación de "precio por canal" en el modelo de datos) o si alcanza con lo ya
+> resuelto para arrancar directo.
+>
+> **📋 Estado real: 100% relevamiento, NADA de código nuevo esta sesión.** No se tocó `src/`, no hay
+> migraciones nuevas, no hay commits. El único archivo de código pendiente de decisión sigue siendo el
+> fix de Config Ventas del bloque de abajo (cont. 6), que esta sesión NO modifica.
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **Decisión de GO sobre el fix de Config Ventas** (bloque de abajo, cont. 6) — commitear ahora o
+>    sumar a la próxima tanda. Sigue sin cambios.
+> 2. **Arrancar el diseño técnico de Combos TN (D2) / Repricing MELI (D3)** con este relevamiento ya
+>    cerrado — puntos a resolver antes de codear (ver el documento de respuestas, sección "Decisiones
+>    técnicas pendientes de discutir con GO"): modelo de datos de "precio por canal" (mecanismo 2 de
+>    repricing), variante de `iniciar_armado_kit`/`confirmar_armado_kit` invocable server-side (sin
+>    `auth.uid()`) para el armado automático de kits, e infraestructura de "tarea asignada + alerta"
+>    para el armado (reusar WMS de picking o algo nuevo acotado a kits).
+> 3. **C1 (Mercado Envíos vs. envío propio) sigue sin dato** — no bloquea arrancar ninguno de los 2
+>    bloques, solo bloquea decidir si la Fase C (aviso de despacho a MELI) es viable.
+> 4. Resto de pendientes ya conocidos sin cambios (QA manual thumbnail/sucursal_id MELI, cuota
+>    Supabase, deuda técnica e2e, Fase A MELI/TN, relevamiento derivado #4 Repositores bloqueado).
+>
+> Ver `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md` (nuevo, transcripción completa),
+> `log.md` (2026-08-08, entrada `update` nueva), [[wiki/integrations/mercado-libre]],
+> [[wiki/integrations/tienda-nube]], [[wiki/integrations/roadmap-apis]].
+>
+> ---
+>
+> ### ✅ (2026-08-08, cont. 6) — 🐛✅ Bug real de Regla de Oro #0 encontrado y corregido: 2 pestañas de Configuración → Ventas ("Métodos de pago" y "Operativa") sin contenido desde hacía varias versiones — NO commiteado, pendiente decisión de GO
+>
+> GO reportó que en `Configuración → Ventas` las sub-pestañas "Métodos de pago" y "Operativa" existían
+> como botones pero no mostraban ningún contenido. **Causa raíz confirmada con `git log -S`:** el
+> commit `6661d5c6` ("feat(comercial): backlog Fede 25/7 — descuentos por empaque/pallet + módulo
+> Comercial + relevamiento Repositores") reorganizó las pestañas de `ConfigPage.tsx` y en el proceso
+> **borró por completo el JSX de renderizado** de `{tab === 'ventas' && ventasSubTab === 'metodos' &&
+> (...)}` y `{tab === 'ventas' && ventasSubTab === 'operativa' && (...)}`, sin tocar los botones del
+> `subTabNav` (que seguían mostrando los 3 sub-tabs `metodos`/`descuentos`/`operativa`) ni el
+> estado/mutations (`nuevoMetodo`, `metodosPago`, `cuotasBancos`, `bizReservaSenaObligatoria`, etc.,
+> todos intactos) — solo el bloque de renderizado había desaparecido. Nadie lo notó porque el bug es
+> silencioso: la pestaña "carga" sin error, solo queda vacía.
+>
+> **Impacto real, encontrado cruzando las 110 variables de estado `biz*` de `ConfigPage.tsx` contra su
+> uso en JSX en todo el archivo:**
+> - **"Métodos de pago"**: TODO el bloque huérfano — listar/agregar/editar/eliminar métodos de pago,
+>   comisión %, vínculo a cuenta de origen, promo por método de pago (% descuento al cliente + tope +
+>   días + vigencia) y cuotas por banco de tarjeta de crédito. Sin esta pantalla no se podía
+>   agregar/editar un método de pago desde Config — toca `cuentas_origen` (área contable, Regla de
+>   Oro #0).
+> - **"Operativa"**: de lo que había antes del borrado, "Alertas de ventas" y "Cuenta corriente de
+>   clientes" YA se habían reconstruido en su propio lugar en la sesión del 2026-08-06 (tabs
+>   Alertas/Clientes/Notificaciones) — esas NO estaban rotas. Pero **4 piezas seguían 100% huérfanas**:
+>   `<CanalesVentaPanel />` (canales de venta online/presencial), "Documentos" → validez de presupuesto,
+>   **"Reservas" completa** (seña obligatoria, seña mínima %, vencimiento en días, penalidad al
+>   cancelar % — **esto es dinero de clientes, Regla de Oro #0**), y "Cliente en el punto de venta"
+>   (cuándo pedir cliente, datos mínimos, permitir Consumidor Final, alta inline desde el POS).
+>
+> **Fix aplicado en `src/pages/ConfigPage.tsx`:** se restauraron ambos bloques JSX. "Métodos de pago"
+> completo, sin cambios de contenido (el estado nunca se había tocado). "Operativa" restaurada
+> RECORTADA a propósito — solo las 4 piezas huérfanas (`CanalesVentaPanel`, Documentos, Reservas,
+> Cliente en POS) — sin duplicar Alertas de ventas ni Cuenta corriente de clientes, que ya tienen su UI
+> correcta en otro lado; duplicarlas crearía dos pantallas editando el mismo dato.
+>
+> **Verificación real, no solo tsc/build:** `npx tsc --noEmit` y `npm run build` limpios. **Probado en
+> el navegador con Playwright contra el dev server** (no solo compilación): "Métodos de pago" muestra 7
+> métodos reales con comisiones/cuentas vinculadas del tenant de prueba; "Operativa" muestra Canales de
+> venta con datos reales y las 4 secciones restauradas (Documentos/Reservas/Cliente en el punto de venta
+> con sus 8 campos) presentes y visibles. Regresión del spec e2e existente
+> `98_config_ventas_envios_mutante.spec.ts`: 2 fallos por timeout de 30s en la primera corrida (flake de
+> timing, no relacionado al fix), **4/4 verdes en la segunda corrida** (26.7s). A pedido de GO se
+> auditó también `Configuración → Caja` con el mismo método sistemático (cruzar estado `biz*` contra su
+> uso en JSX) — **sin ningún bloque huérfano**; lo único "faltante" ahí es un placeholder explícito e
+> intencional ("Tolerancia de diferencia en arqueo y panel cajero — próximamente"), no un bug.
+>
+> **📋 Estado real: NO commiteado.** Solo `src/pages/ConfigPage.tsx` modificado en el working tree de
+> `dev` (se suma a la pila ya modificada de sesiones previas del mismo día — ver tabla de abajo, sin
+> cambios). Sin migración nueva (fix 100% frontend, sin cambios de schema). Pendiente que GO decida si
+> se commitea/deploya ahora o se suma a la próxima tanda.
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **Decisión de GO:** commitear este fix (y con qué alcance/versión) o sumarlo a la próxima tanda de
+>    cambios acumulados.
+> 2. Resto de pendientes ya conocidos sin cambios — ver el bloque de abajo (cont. 5) y sus propios
+>    pendientes heredados (QA manual thumbnail/sucursal_id MELI, cuota Supabase, deuda técnica e2e,
+>    Fase A MELI/TN, D2/D3 integraciones, relevamiento Repositores).
+>
+> Ver `log.md` (2026-08-08, entrada `update` nueva), [[wiki/features/configuracion]] (sub-tabs
+> "Métodos de pago" y "Operativa" con todo el detalle reconciliado), `src/pages/ConfigPage.tsx` (líneas
+> ~6130 y ~6416).
+>
+> ---
+>
+> ### ✅ (2026-08-08, cont. 5) — v1.160.0: 100% DEPLOYADO Y VERIFICADO EN PROD (PR #317 mergeado, tag+release `v1.160.0`, Vercel confirmado por curl independiente) + hallazgo real cerrado: gap de migraciones 334/335 NUNCA aplicadas en PROD, corregido con la mig 344
 >
 > GO autorizó el deploy completo a PROD de TODO lo acumulado en el día (4 sesiones `update` seguidas —
 > ver los bloques "cont. 2/3/4" de abajo, todo ese detalle técnico sigue vigente). Esta entrada cierra

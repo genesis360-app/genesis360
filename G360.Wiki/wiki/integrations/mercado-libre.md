@@ -198,14 +198,27 @@ Archivo: `supabase/functions/meli-webhook/index.ts`.
 
 ---
 
-## 🟡 Repricing automático por margen (Fase D3 del roadmap) — bloqueado, relevamiento armado
+## 🟡 Repricing automático por margen (Fase D3 del roadmap) — relevamiento RESPONDIDO por Fede (2026-08-08), listo para diseñar/construir
 
-`productos.margen_objetivo` **ya existe** (migración 015) pero nunca se conectó a ninguna acción —
-hoy es solo un insight pasivo en Métricas. Falta decidir con GO/Fede: si el umbral es global o por
-producto, si el ajuste de precio en MELI es automático o requiere aprobación, si actualiza también el
-precio en G360, y cómo estimar la comisión de MELI antes de vender (hoy no se conoce hasta después de
-la venta). Preguntas armadas en `relevamiento-integraciones-ml-tn-reglas-negocio.html` (raíz del
-repo, 2026-08-06) — pendiente de que GO lo responda offline con Fede. Ver
+`productos.margen_objetivo` **ya existe** (migración 015) pero todavía no se conectó a ninguna acción
+de código — hoy sigue siendo solo un insight pasivo en Métricas. El relevamiento de negocio quedó
+**100% respondido por Fede** (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz del repo) —
+detalle completo en `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`. En síntesis:
+
+- **2 mecanismos independientes**, no solo un umbral único: (1) **ajuste automático por margen
+  objetivo**, opt-in por producto — si se activa, el ajuste es ÚNICO y se aplica igual en G360 y en
+  TODOS los marketplaces conectados (sin precio distinto por canal); (2) **ajuste por diferencial de %
+  por canal**, independiente del margen objetivo — campo separado en la ficha del producto para MELI y
+  para TN, % sobre el precio base, para amortiguar la comisión de cada canal por separado.
+- Configurable por el dueño (automático siempre / alerta para aprobar / automático desde X$ de
+  diferencia), con tope de suba + umbral de aviso también configurables, sin default único.
+- **El precio base (`precio_venta`) SIEMPRE manda** — un cambio en el marketplace nunca lo modifica.
+- La comisión de MELI se proyecta informativamente con la última comisión real cobrada a ese SKU —
+  **nunca se usa como dato certero para fijar un precio**.
+- Interruptor de repricing por producto, en la ficha del producto.
+
+**Nada de esto está construido todavía** — el relevamiento está cerrado, falta el diseño técnico +
+implementación (ej. modelo de datos para "precio por canal" del mecanismo 2, hoy no existe). Ver
 [[wiki/integrations/roadmap-apis]] (1.5).
 
 ---
@@ -216,8 +229,15 @@ A diferencia de TiendaNube (ver [[wiki/integrations/tienda-nube]] → "Fulfillme
 recibe ningún aviso automático de G360 cuando un envío pasa a despachado/entregado. Se evaluó junto
 con la Fase C del roadmap (2026-08-06) y se descartó a propósito por ahora: no se sabe si los tenants
 usan **Mercado Envíos** (ahí el vendedor NO controla el estado por API, lo controla la logística de
-MELI) o envío propio — la respuesta cambia por completo el diseño. Pregunta abierta en el mismo
-relevamiento de arriba.
+MELI) o envío propio — la respuesta cambia por completo si esta fase es viable.
+
+**Nota operativa C1 del relevamiento (2026-08-08): sigue SIN el dato.** Fede no opera un negocio real
+en Genesis360 hoy, así que no tiene el dato real de qué tipo de envío predomina — va a variar cliente a
+cliente entre los futuros clientes de Genesis360. Queda como dato a relevar con **clientes reales**
+antes de decidir si esta fase es viable. Lo que SÍ quedó definido (independiente del dato) es el
+**diseño de la pantalla**: pestaña nueva dentro de Envíos, con sub-pestañas por canal (MELI, TN, etc.),
+tipo de envío por defecto por producto y por canal, y override a nivel de venta individual (mientras no
+se haya despachado). Detalle completo: `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`.
 
 ---
 

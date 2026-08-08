@@ -2,8 +2,8 @@
 title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
-sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
-updated: 2026-07-30
+sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
+updated: 2026-08-08
 ---
 
 # Módulo Pedidos
@@ -206,6 +206,48 @@ estado — no rompe el total, solo la trazabilidad fina por LPN puntual).
 **UI (`PedidosPage.tsx`):** botón "Lanzar" para `estado='confirmado'`; botón "Ver en Picking" para
 `en_preparacion`/`listo_para_entrega` (linkea a `/picking`, la página YA EXISTENTE del módulo WMS —
 sin cambios ahí). Al expandir un pedido lanzado se ve la lista de sus `wms_tareas` con estado.
+
+---
+
+## 🆕 Tab "Tareas WMS" mudado acá desde Inventario + asignación a un usuario (2026-08-08, sin commitear)
+
+Pedido explícito de GO: la pestaña **"Tareas WMS"** que vivía en `InventarioPage.tsx` desde v1.144.0
+(migs 289-291, ver [[wiki/features/wms]] → "Fase 3") se movió por completo a este módulo, más natural
+porque Pedidos ya es —desde el pivote F4— el único origen real de `wms_tareas`. De paso se agregó la
+posibilidad de **asignar cada tarea a un usuario puntual**, y que `/picking` respete esa asignación.
+
+- **`PedidosPage.tsx`** gana un `PageTabs` nuevo 'Pedidos' | 'Tareas WMS' (solo visible en modo
+  avanzado) con la misma lista/mecánica de tareas que antes vivía en `InventarioPage.tsx` (completar,
+  cancelar), más un `<select>` de asignación a usuario del tenant. Gateado a
+  DUEÑO/SUPERVISOR/SUPER_USUARIO (mismo criterio que `puedeVerAutorizaciones`); el resto de roles ve
+  texto plano "Asignada a X" / "Sin asignar", sin poder reasignar. Escribe directo
+  `wms_tareas.usuario_asignado_id` — **sin RPC nueva**, la columna (mig 289) y su RLS por sucursal ya
+  lo permitían; hasta esta sesión no tenía ninguna lógica de asignación implementada en todo el repo.
+- **`InventarioPage.tsx`** pierde el tab `'wms'` por completo (nav, query de `wms_tareas`, mutations
+  `completarTareaWms`/`cancelarTareaWms`, render) — ver [[wiki/features/inventario-stock]].
+- **`PickingPage.tsx`**: la query de `wms_tareas` filtra `usuario_asignado_id IS NULL OR
+  usuario_asignado_id = <usuario logueado>` — una tarea asignada a OTRO usuario ya no aparece para
+  nadie más — y suma un badge "Asignada a mí" en la card cuando corresponde. El resto de `/picking`
+  (escaneo, filtro por píldoras, etc.) no cambió.
+- **Sin migración nueva.**
+- **Verificado de verdad en el navegador** (no solo tsc/build) con Playwright headless contra el dev
+  server y el tenant E2E real ("Almacén Jorgito", DEV): Pedidos muestra ambas pestañas, el select de
+  asignación lista los usuarios reales del tenant y persiste tras reload, Inventario ya no muestra el
+  tab, y — el chequeo más importante — un usuario (deposito1) ve en `/picking` su propia tarea
+  asignada con el badge "Asignada a mí" pero NO ve una tarea asignada a otro usuario (cajero1). Datos
+  de prueba revertidos al estado original al terminar.
+- **Deuda técnica encontrada y corregida de paso, no causada por esta sesión:**
+  `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts` y
+  `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` fallaban 6/7 por fixtures que seguían usando
+  la columna `ubicaciones.tipo_ubicacion`, dropeada por la mig 339 — fix: `tipo_logico`/
+  `subtipo_almacenamiento` (mig 334) + `disponible_surtido: true` explícito (default cambiado a
+  `false` por la mig 336). **7/7 verdes en ambos specs.** Detalle en `wiki/database/migraciones.md`.
+- **Pendiente a propósito, no construido:** preset de operario por defecto para tareas de armado
+  automático (pospuesto hasta el backend real de D2 — Combos TN/MELI, diseño técnico conversacional
+  del mismo día, sin código todavía, ver `sources/raw/project_pendientes.md` → "ARRANCÁ ACÁ").
+- **Estado real: NO commiteado.** `PedidosPage.tsx`, `InventarioPage.tsx`, `PickingPage.tsx` y los 2
+  specs e2e de arriba modificados en el working tree de `dev`. `APP_VERSION` sigue en v1.160.0, sin
+  migración nueva.
 
 ---
 
@@ -761,7 +803,9 @@ una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT
 ## Links relacionados
 
 - [[wiki/features/wms]] — schema/RPCs de `wms_tareas` que Pedidos reusa desde PED3; `fn_completar_tarea_reabastecimiento`
-  (mig 290) recibió un fix compartido en la mig 297 encontrado al construir PED4 (ver ahí)
+  (mig 290) recibió un fix compartido en la mig 297 encontrado al construir PED4 (ver ahí); 🆕
+  2026-08-08 (sin commitear): "Asignación de tareas a un usuario" documenta el mismo cambio del tab
+  "Tareas WMS" mudado acá
 - [[wiki/features/ubicaciones]] — rediseño en árbol + `tipo_logico` (migs 334/335, ✅ EN PROD desde
   v1.160.0 — 2026-08-08, mig 344 cerró el gap de deploy): el selector de staging de "Lanzar bolsa"
   (arriba) ahora filtra por `subtipo_almacenamiento='staging'` en vez del `tipo_ubicacion` deprecado
@@ -785,6 +829,11 @@ una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT
 - `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` — e2e del ciclo completo: lanzar con
   reabastecimiento → completar → entregar (verifica el fix de la mig 297); deslanzar; lanzar en
   bolsa (verifica el guard de "pedido ya lanzado" de la mig 298); entregar a Cuenta Corriente sobre
-  el límite (verifica el fix de la mig 299) — 5/5 verde contra datos reales de DEV
+  el límite (verifica el fix de la mig 299) — 5/5 verde contra datos reales de DEV. 🆕 2026-08-08: sus
+  fixtures de ubicación usaban la columna `tipo_ubicacion` ya dropeada por la mig 339 — corregido a
+  `tipo_logico`/`subtipo_almacenamiento` + `disponible_surtido: true` explícito, ver
+  `wiki/database/migraciones.md`
+- `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts` — mismo fix de fixtures que arriba
+  (2026-08-08), 7/7 verde entre ambos specs
 - `tests/unit/pedidoTransiciones.test.ts` — 8 casos de `puedeTransicionPedido` (defaults, config
   explícita, allow-list vacía, bypass de ADMIN)

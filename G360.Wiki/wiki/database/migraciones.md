@@ -202,6 +202,20 @@ escriban la columna, sin referencias en `supabase/functions`, y en `src/` solo q
 `deprecated` (`src/lib/supabase.ts`), limpiado junto con esta migración. DROP idempotente, no afecta
 datos operativos (nada consumía el valor histórico). Ver [[wiki/features/ubicaciones]].
 
+> [!WARNING] **🐛 Deuda técnica encontrada y corregida el 2026-08-08 — la verificación de "0 lectores"
+> de esta migración (y el cambio de default de la mig 336, ver abajo) no había chequeado los fixtures
+> de los tests e2e.** `tests/e2e/106_wms_picking_reabastecimiento_mutante.spec.ts` y
+> `tests/e2e/107_pedidos_ciclo_completo_mutante.spec.ts` seguían creando ubicaciones de prueba con
+> `tipo_ubicacion: 'picking'/'bulk'/'staging'` (columna ya inexistente) y dependían implícitamente del
+> viejo `DEFAULT true` de `ubicaciones.disponible_surtido` que la mig 336 cambió a `false` — 6 de 7
+> tests fallaban. Fix (sin migración nueva, 100% fixtures de test): `tipo_ubicacion: 'picking'` →
+> `tipo_logico: 'picking'`; `tipo_ubicacion: 'bulk'/'staging'` → `tipo_logico: 'almacenamiento',
+> subtipo_almacenamiento: 'bulk'/'staging'` (mapeo real de la mig 334) + `disponible_surtido: true`
+> explícito donde el stock necesita ser encontrado por `fn_generar_tareas_picking_pedido_stock`.
+> **7/7 verdes en ambos specs.** No es un bug de producción — el comportamiento de ambas migraciones es
+> intencional — fue puramente deuda de los fixtures de e2e, expuesta dos migraciones después. Detalle
+> completo: [[wiki/features/wms]] → "Asignación de tareas a un usuario", [[wiki/features/pedidos]].
+
 **338 (🚚 `ventas.tn_order_id` + trigger `trg_tn_fulfillment_sync` — avisa a TiendaNube al despachar/entregar, ✅ EN DEV Y PROD desde v1.159.0)** —
 Sesión 2026-08-06, Fase C del roadmap de integraciones. Agrega `ventas.tn_order_id BIGINT` (ID
 interno de la orden en TN, distinto de `tracking_id`/número visible al comerciante — lo necesita la

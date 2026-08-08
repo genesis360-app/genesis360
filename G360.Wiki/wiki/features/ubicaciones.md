@@ -2,14 +2,20 @@
 title: Ubicaciones — Rediseño en árbol (tipo lógico + jerarquía)
 category: features
 tags: [ubicaciones, wms, arbol, jerarquia, tipo-logico, picking, repositores, comercial]
-sources: [supabase/migrations/334_ubicaciones_arbol_tipo_logico.sql, supabase/migrations/335_producto_ubicacion_exhibicion.sql, supabase/migrations/336_ubicaciones_defaults_apagados.sql, supabase/migrations/339_ubicaciones_drop_tipo_ubicacion.sql, src/lib/ubicacionesArbol.ts, src/lib/supabase.ts, src/pages/ConfigPage.tsx, tests/e2e/130_ubicaciones_arbol_mutante.spec.ts, relevamiento-ubicaciones-reglas-negocio.html]
-updated: 2026-08-07
+sources: [supabase/migrations/334_ubicaciones_arbol_tipo_logico.sql, supabase/migrations/335_producto_ubicacion_exhibicion.sql, supabase/migrations/336_ubicaciones_defaults_apagados.sql, supabase/migrations/339_ubicaciones_drop_tipo_ubicacion.sql, supabase/migrations/344_fix_ubicaciones_backfill_gap_334_335_en_prod.sql, src/lib/ubicacionesArbol.ts, src/lib/supabase.ts, src/pages/ConfigPage.tsx, tests/e2e/130_ubicaciones_arbol_mutante.spec.ts, relevamiento-ubicaciones-reglas-negocio.html]
+updated: 2026-08-08
 ---
 
 # Ubicaciones — Rediseño en árbol (tipo lógico + jerarquía)
 
-> ✅ **PROD desde v1.158.0 (deploy 2026-08-06).** Migs **334** y **335** aplicadas en DEV Y PROD. El
-> e2e de verificación manual (`130_ubicaciones_arbol_mutante`, escrito el 2026-08-06) encontró y
+> ✅ **PROD desde v1.160.0 (2026-08-08), no desde v1.158.0 como decía antes esta página.** Migs
+> **334** y **335** se escribieron y aplicaron en DEV desde el 2026-08-05/06, pero **nunca llegaron a
+> aplicarse en la base de PROD** — un gap real de deploy, descubierto recién el 2026-08-08 al construir
+> la mig 339 (Fase U5, dropea `ubicaciones.tipo_ubicacion`) de este mismo módulo, que asumía sin
+> quererlo que 334 ya había reescrito 6 funciones SQL de WMS/Pedidos en PROD. Se cerró con la **mig
+> 344**, que reaplicó el contenido íntegro de 334+335 directo en PROD — ver
+> `wiki/database/migraciones.md` (mig 344) para el detalle completo de la investigación/verificación.
+> El e2e de verificación manual (`130_ubicaciones_arbol_mutante`, escrito el 2026-08-06) encontró y
 > corrigió **4 gaps reales** de breadcrumb que quedaban del cierre del 2026-08-05 — ver sección "🐛 4
 > gaps de breadcrumb encontrados el 2026-08-06" más abajo. Es el **1º de 4 relevamientos** acordados
 > con Fede/GO para desbloquear la **Fase E (módulo Repositores)** del backlog Comercial de Fede, hoy
@@ -121,12 +127,11 @@ El relevamiento solo esperaba 2 lectoras de `tipo_ubicacion`; un grep exhaustivo
 hacían match exacto por `ubicacion_id` — nunca sumaban por descendientes del árbol — así que ya
 miden "por nivel" tal cual sin ningún cambio.
 
-### `tipo_ubicacion` (columna vieja) — NO se dropeó todavía
+### `tipo_ubicacion` (columna vieja) — ✅ dropeada (Fase U5, mig 339, PROD desde v1.160.0)
 
-Queda para una **Fase U5** de limpieza futura, mismo patrón que F3b/F4 con las columnas fiscales de
-`tenants`: se dropea recién cuando un grep de lectores da 0. **Estado actual del grep:** 0 en `src/`
-salvo el propio tipo TS marcado `deprecated` en `src/lib/supabase.ts` — la migración de `DROP
-COLUMN` en sí queda pendiente.
+Mismo patrón que F3b/F4 con las columnas fiscales de `tenants`: se dropeó cuando el grep de lectores
+dio 0 (sin funciones/triggers/vistas ni referencias en `supabase/functions`, en `src/` solo el tipo TS
+marcado `deprecated`, limpiado junto con la migración). Ver sección "Pendiente" más abajo.
 
 ## Mig 335 — prepara Repositores
 
@@ -228,7 +233,7 @@ de integridad de datos** (no movía stock mal, Regla de Oro #0 intacta) — es u
 contradecía lo que el wiki daba por cerrado. Lección: al cerrar una migración de "N selects", contar
 los selects reales del archivo (grep), no dar por sentado el número que dijo el plan original.
 
-## 🔒 Mig 336 (2026-08-06, 🟡 SOLO EN DEV) — ubicaciones nuevas nacen con TN/MELI/picking-venta APAGADOS
+## 🔒 Mig 336 (2026-08-06, ✅ EN DEV Y PROD desde v1.159.0) — ubicaciones nuevas nacen con TN/MELI/picking-venta APAGADOS
 
 Pedido explícito de GO, distinto del rediseño en árbol de arriba (mismas 3 columnas existían desde
 antes de la 334, sin tocar por U1-U4): en `ubicaciones`, **`disponible_surtido`** (habilita la
@@ -239,10 +244,9 @@ pidiera**. Eso es justo lo que la Regla de Oro #0 pide evitar en inventario: exp
 default.
 
 **`336_ubicaciones_defaults_apagados.sql`** — `ALTER TABLE ubicaciones ALTER COLUMN
-disponible_surtido/disponible_tn/disponible_meli SET DEFAULT false`. **Aplicada en DEV vía
-`apply_migration`, NO en PROD todavía** — el código correspondiente (sin cambios de lógica, solo el
-default de la columna) quedó sin commitear en el working tree local de `dev` junto con el resto de
-la sesión. `supabase/schema_full.sql` actualizado a mano para reflejarlo.
+disponible_surtido/disponible_tn/disponible_meli SET DEFAULT false`. **✅ Aplicada en DEV Y PROD** —
+deployada junto con el resto del deploy de v1.159.0 (PR #314, 2026-08-06). `supabase/schema_full.sql`
+actualizado para reflejarlo.
 
 **Verificación:** confirmado por SQL contra DEV (`information_schema.columns`) que las 4 columnas
 (incluida `es_devolucion`, que ya era `false`) dan `column_default = 'false'`. El único INSERT de la
@@ -258,24 +262,26 @@ existentes**, solo las creadas de acá en adelante.
 2. **✅ Mig 336 (defaults apagados) deployada también a PROD** — junto con el resto del deploy de
    v1.159.0 el 2026-08-06 (envío automático TN/MELI, fulfillment sync TN, rentabilidad neta MELI,
    footer de conteo de registros). Ver `log.md` (2026-08-06, entrada `deploy` v1.159.0).
-3. **✅ Fase U5 (limpieza) hecha — mig 339 (2026-08-07), ✅ EN DEV Y PROD, deploy de código EN CURSO.**
-   Dropea `ubicaciones.tipo_ubicacion` (0 lectores reales confirmados: sin funciones/triggers/vistas ni
-   referencias en `supabase/functions`, en `src/` solo el tipo TS deprecated, limpiado junto con la
-   migración). Archivo `supabase/migrations/339_ubicaciones_drop_tipo_ubicacion.sql` commiteado y
-   pusheado a `origin/dev` (`e4b5d9de`), migración ya aplicada en PROD; falta el merge `dev`→`main`
-   para que el código llegue a Vercel de PROD. Ver `wiki/database/migraciones.md`,
-   `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ").
-4. **Relevamiento #2** de la secuencia hacia Repositores (Pestaña de supervisor reusable) — ✅
+3. **✅ Fase U5 (limpieza) hecha — mig 339, ✅ EN DEV Y PROD desde v1.160.0 (deploy cerrado el
+   2026-08-08, PR #317, tag+release `v1.160.0`).** Dropea `ubicaciones.tipo_ubicacion` (0 lectores
+   reales confirmados: sin funciones/triggers/vistas ni referencias en `supabase/functions`, en `src/`
+   solo el tipo TS deprecated, limpiado junto con la migración).
+4. **✅ Mig 344 (2026-08-08) — cierra un gap real: 334/335 NUNCA habían llegado a la base de PROD.**
+   Descubierto al construir la mig 339 (arriba), que asumía que 334 ya había reescrito 6 funciones SQL
+   de WMS/Pedidos en PROD — sin el fix esas 6 funciones habrían roto en runtime (caso real de Regla de
+   Oro #0). La mig 344 reaplicó el contenido íntegro de 334+335 directo en PROD, verificado con SQL
+   directo (0 filas con `codigo`/`tipo_logico` NULL, funciones sin referencia a la columna dropeada).
+   Detalle completo: `wiki/database/migraciones.md` (mig 344).
+5. **Relevamiento #2** de la secuencia hacia Repositores (Pestaña de supervisor reusable) — ✅
    respondido completo el 2026-08-07, diseño/construcción sin arrancar todavía (esperan al #3). **#3
-   (Motor de Rotación de productos con descuento)** — ✅ relevamiento 100% respondido y **COMPLETO**
-   el 2026-08-07 (B4/C2/E5 cerrados por GO), con esquema de CONFIGURACIÓN + UI (mig 341) y ejecución
-   real de las 3 Opciones (migs 342/343) construidas y **las 3 verificadas end-to-end** — Opción 2
-   (encontró y corrigió un bug real de Regla de Oro #0 en `VentasPage.tsx`, spec 131), Opción 3/E3
-   (spec 132) y Opción 3/E2-E4 nombre+precio de KIT con autorización (spec 133); ✅ commiteado y
-   pusheado a `origin/dev` (`e4b5d9de`), migraciones ya en PROD, deploy de código EN CURSO — ver
+   (Motor de Rotación de productos con descuento)** — ✅ **COMPLETO y EN PROD desde v1.160.0**
+   (B4/C2/E5 cerrados por GO), con esquema de CONFIGURACIÓN + UI (mig 341) y ejecución real de las 3
+   Opciones (migs 342/343) construidas y **las 3 verificadas end-to-end** — Opción 2 (encontró y
+   corrigió un bug real de Regla de Oro #0 en `VentasPage.tsx`, spec 131), Opción 3/E3 (spec 132) y
+   Opción 3/E2-E4 nombre+precio de KIT con autorización (spec 133) — ver
    [[wiki/features/precios-tiers-empaque]].
-   **#4 (Repositores) sigue bloqueado.**
-5. **Prueba manual en el navegador** — cubierta por Playwright (spec 130) el 2026-08-06, pero GO
+   **#4 (Repositores) sigue bloqueado**, ahora esperando arrancar el #2.
+6. **Prueba manual en el navegador** — cubierta por Playwright (spec 130) el 2026-08-06, pero GO
    todavía no recorrió la UI a mano el árbol completo con los 4 fixes de breadcrumb aplicados.
 
 ## Links relacionados
@@ -291,4 +297,4 @@ existentes**, solo las creadas de acá en adelante.
   `subtipo_almacenamiento='staging'`.
 - [[wiki/features/inventario-stock]] — tablas que consumen `ubicaciones.id` sin cambios de FK
   (`inventario_lineas`, `producto_ubicacion_umbrales`).
-- [[wiki/database/migraciones]] — migs 334, 335.
+- [[wiki/database/migraciones]] — migs 334, 335, 339, 344.

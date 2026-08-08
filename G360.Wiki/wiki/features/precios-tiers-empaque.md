@@ -2,8 +2,8 @@
 title: Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 category: features
 tags: [precios, tiers, mayorista, empaque, descuentos, comercial, repositores, cupones, aprobacion-foto, anti-fraude]
-sources: [migrations 328, 329, 330, 331, 332, 341, 342, 343, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/lib/rebajeSort.ts, src/lib/kits.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/pages/AlertasPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx, tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts, tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts, tests/e2e/helpers/fixtures.ts]
-updated: 2026-08-07
+sources: [migrations 328, 329, 330, 331, 332, 341, 342, 343, 344, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/lib/rebajeSort.ts, src/lib/kits.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/pages/AlertasPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx, tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts, tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts, tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts, tests/e2e/helpers/fixtures.ts]
+updated: 2026-08-08
 ---
 
 # Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
@@ -14,15 +14,15 @@ updated: 2026-08-07
 > [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto" por ser un feature
 > 100% de Inventario, sin relación con precios. **Fase D** (módulo Comercial) también — detalle en
 > [[wiki/features/comercial]]. **Solo Fase E (módulo Repositores) sigue por delante** — se partió en
-> **4 relevamientos secuenciales**: **1) Ubicaciones** (✅ EN PROD desde v1.158.0, migs 334/335, ver
-> [[wiki/features/ubicaciones]]) → **2) Pestaña de supervisor reusable** (✅ respondido completo el
-> 2026-08-07, diseño/construcción sin arrancar todavía — ver más abajo) → **3) Motor de Rotación de
-> productos con descuento** (✅ relevamiento 100% respondido el 2026-08-07 — B4/C2/E5 cerrados por
-> GO; ejecución real de Opción 1, 2 y 3 construida, migs 342/343; **Opción 2 ✅ VERIFICADA end-to-end
-> el mismo 2026-08-07** — encontró y corrigió un bug real de inventario, test e2e permanente spec 131;
-> **Opción 3/kits: E3 ✅ VERIFICADA end-to-end el mismo 2026-08-07 (mig 343, spec 132), E2/E4
-> (autogenerar nombre/precio con autorización) construidos SIN verificar en navegador, E5 (desarmado)
-> pendiente** — ver más abajo) → **4) Repositores** (ver más abajo).
+> **4 relevamientos secuenciales**: **1) Ubicaciones** (✅ EN PROD desde v1.160.0 — migs 334/335
+> cerraron el gap real de deploy recién el 2026-08-08 vía la mig 344, ver [[wiki/features/ubicaciones]])
+> → **2) Pestaña de supervisor reusable** (✅ respondido completo el 2026-08-07, diseño/construcción
+> sin arrancar todavía — ver más abajo) → **3) Motor de Rotación de productos con descuento** (✅
+> **COMPLETO y EN PROD desde v1.160.0** — B4/C2/E5 cerrados por GO; ejecución real de Opción 1, 2 y 3
+> construida y deployada, migs 342/343; **Opción 2 ✅ VERIFICADA end-to-end** — encontró y corrigió un
+> bug real de inventario, test e2e permanente spec 131; **Opción 3/kits: E3 ✅ VERIFICADA end-to-end
+> (mig 343, spec 132), E2/E4 (autogenerar nombre/precio con autorización) ✅ VERIFICADOS end-to-end
+> (spec 133), E5 (desarmado) pendiente** — ver más abajo) → **4) Repositores** (ver más abajo).
 > **e2e/UAT (sesión 2026-08-04):** 14 specs nuevos (`tests/e2e/115..128*.spec.ts`), todos verdes,
 > registrados en `tests/specs/uat-modo-basico.md` §49 — plan completo en
 > `tests/specs/comercial-fede-abcd.plan.md`. Encontró y cerró un hallazgo real de Regla de Oro #0
@@ -313,10 +313,12 @@ impresión automática de etiquetas no es viable desde una SPA sin un agente loc
 sola vez, se partió el camino en 4 relevamientos secuenciales**, cada uno con su propio HTML y sus
 propias respuestas antes de codear (mismo criterio de "features grandes por fases" de siempre):
 
-1. **Ubicaciones** — ✅ **EN PROD desde v1.158.0** (`relevamiento-ubicaciones-reglas-negocio.html`,
+1. **Ubicaciones** — ✅ **EN PROD desde v1.160.0** (`relevamiento-ubicaciones-reglas-negocio.html`,
    generado 2026-08-02, respondido 2026-08-05 con GO autorizando romper/tocar datos de prueba
    existentes). Migs 334/335: `ubicaciones` pasa de tabla plana a árbol
-   (`tipo_logico`/`subtipo_almacenamiento`) + `producto_ubicacion_sucursal.ubicacion_exhibicion_id`.
+   (`tipo_logico`/`subtipo_almacenamiento`) + `producto_ubicacion_sucursal.ubicacion_exhibicion_id` —
+   ⚠ escritas y en DEV desde el 2026-08-05, pero un gap real de deploy hizo que **nunca llegaran a la
+   base de PROD hasta el 2026-08-08**, cerrado con la mig 344 (ver [[wiki/features/ubicaciones]]).
    Detalle completo: [[wiki/features/ubicaciones]].
 2. **Pestaña de supervisor reusable** — ✅ **respondido completo el 2026-08-07**
    (`relevamiento-supervisor-tab-reglas-negocio.html`, 16 preguntas; Fede respondió el 2026-08-03,
@@ -378,11 +380,10 @@ propias respuestas antes de codear (mismo criterio de "features grandes por fase
        precio, DUEÑO lo aprueba desde Autorizaciones, verificado en DB en cada paso.
      - **E5** (desarmado de kit devuelve componentes al mismo estado de descuento) y lo que depende de
        la Pestaña de supervisor (disparo automático) **siguen sin arrancar, a propósito.**
-   ✅ **Las 3 Opciones del Motor de Rotación quedan COMPLETAS y verificadas end-to-end** — código
-   commiteado y pusheado a `origin/dev` (commit `e4b5d9de`, `APP_VERSION` v1.160.0), migs 341/342/343
-   ya aplicadas en la base de PROD. **Deploy de código a PROD EN CURSO** — falta el PR `dev`→`main` +
-   merge + tag/release (ver `sources/raw/project_pendientes.md`, bloque "ARRANCÁ ACÁ"). Detalle
-   completo: `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
+   ✅ **Las 3 Opciones del Motor de Rotación quedan COMPLETAS, verificadas end-to-end y EN PROD desde
+   v1.160.0** — PR #317 mergeado (`181a6f52`), tag+release `v1.160.0` publicados, migs 341/342/343 en
+   PROD, Vercel verificado por curl independiente (ver `sources/raw/project_pendientes.md`, bloque
+   "ARRANCÁ ACÁ"). Detalle completo: `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
 4. **Repositores** (el módulo en sí) — bloqueado hasta que se complete el diseño + construcción real
    del #2 y se termine la Opción 3 (kits) del #3 (según la decisión D2 de arriba).
 
@@ -397,7 +398,8 @@ sigue por delante y es parte de la misma iniciativa.
 ## Links relacionados
 
 - [[wiki/features/ubicaciones]] — 1º de los 4 relevamientos hacia Fase E (Repositores): rediseño de
-  `ubicaciones` en árbol + `tipo_logico` (migs 334/335, ✅ EN PROD desde v1.158.0).
+  `ubicaciones` en árbol + `tipo_logico` (migs 334/335, ✅ EN PROD desde v1.160.0 — mig 344 cerró un
+  gap real de deploy).
 - [[wiki/features/estructuras-udm]] — el árbol de `producto_presentaciones` (Fase 5, migs 310/311)
   que la Fase A enlaza desde el tier; también documenta la Fase 2-bis (mig 306, tiers con operador)
   sobre la que se construye este motor.

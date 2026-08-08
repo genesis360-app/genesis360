@@ -6,12 +6,11 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### 🚀 ARRANCÁ ACÁ (2026-08-07, cont. 5) — v1.160.0: DEPLOY A PROD EN CURSO — commit real commiteado y pusheado a `origin/dev` (`e4b5d9de`) + migraciones 339-343 aplicadas en PROD; FALTA el PR `dev→main` + merge + tag/release + redeploy de Edge Functions + verificación de Vercel
+> ### ✅ ARRANCÁ ACÁ (2026-08-08) — v1.160.0: 100% DEPLOYADO Y VERIFICADO EN PROD (PR #317 mergeado, tag+release `v1.160.0`, Vercel confirmado por curl independiente) + hallazgo real cerrado: gap de migraciones 334/335 NUNCA aplicadas en PROD, corregido con la mig 344
 >
 > GO autorizó el deploy completo a PROD de TODO lo acumulado en el día (4 sesiones `update` seguidas —
-> ver los bloques "cont. 2/3/4" de abajo, todo ese detalle técnico sigue vigente). Esta sesión es la
-> ejecución de ese deploy — **EN CURSO, no cerrado todavía**: falta el PR `dev`→`main` + merge +
-> tag/release + verificación de Vercel, que quedan para después de esta actualización del wiki.
+> ver los bloques "cont. 2/3/4" de abajo, todo ese detalle técnico sigue vigente). Esta entrada cierra
+> ese deploy — **COMPLETO, verificado, nada pendiente de merge/tag/release.**
 >
 > **1. Commit real, commiteado y pusheado a `origin/dev`**: `e4b5d9de` ("feat: v1.160.0 — Motor de
 > Rotación completo (Opción 1/2/3) + fix sucursal_id MELI + thumbnail de imagen + fix flake e2e") —
@@ -57,43 +56,92 @@ type: project
 > `npm run test:unit`: **1538 tests unitarios verdes** (98 archivos) · specs e2e **131/132/133** (2+
 > corridas cada uno, sin fallas).
 >
-> **📋 Estado real del repo ahora mismo:** `git status` en `dev` — working tree LIMPIO, HEAD = tip de
-> `origin/dev` (`e4b5d9de`). El commit **NO está en `main`** todavía (sin PR, sin merge, sin tag, sin
-> release). Las migraciones **SÍ** están en la base de PROD (001-343) — aplicadas de forma aditiva,
-> ANTES del merge de código, mismo patrón ya usado en releases anteriores. **Vercel PROD y las Edge
-> Functions de PROD siguen sirviendo el código anterior (v1.159.0)** hasta que se complete el
-> PR→merge→tag→release→redeploy.
+> **6. ✅ PR #317 (`dev`→`main`) mergeado limpio, sin conflictos** —
+> https://github.com/genesis360-app/genesis360/pull/317. **Tag + GitHub release `v1.160.0`
+> publicados sobre `main`** (commit de merge `181a6f52`), `--latest` —
+> https://github.com/genesis360-app/genesis360/releases/tag/v1.160.0.
+>
+> **7. ✅ Vercel PROD verificado de forma INDEPENDIENTE (no solo la narrativa del deploy) —
+> confirmado con curl directo:** `app.genesis360.pro` sirve el bundle `assets/index-DY_QVG8v.js`, que
+> contiene el string `v1.160.0` literal. Deployment `dpl_6jhCxXxJxiYiFjpDvpciXFY4aB7T`, target
+> `production`, estado `READY`.
+>
+> **8. 🛑 Hallazgo real durante el deploy — migración 344 nueva** (`344_fix_ubicaciones_backfill_gap_334_335_en_prod.sql`,
+> commiteada en el mismo PR, commit `b87667d2`), **CERRADO exitosamente, no queda pendiente:** se
+> descubrió que las migraciones **334** (`ubicaciones_arbol_tipo_logico`) y **335**
+> (`producto_ubicacion_exhibicion`) — ya en `main`/DEV desde v1.157.0 y **documentadas erróneamente en
+> este wiki como "✅ EN PROD desde v1.158.0"** — **NUNCA se habían aplicado en PROD**
+> (`list_migrations` de PROD saltaba de 333 a 336 directo). Era inofensivo hasta que la migración 339
+> de este mismo deploy (Fase U5, dropea `ubicaciones.tipo_ubicacion`) asumió que 334 ya había
+> reescrito 6 funciones SQL de WMS/Pedidos que leían esa columna
+> (`fn_wms_elegir_ubicacion_picking`, `fn_generar_tareas_reabastecimiento_umbral`,
+> `fn_generar_tareas_picking_envio/pedido_stock/pedido_venta`, `fn_lanzar_bolsa_pedidos`). **Sin el
+> fix, esas 6 funciones habrían roto en runtime en PROD** (columna inexistente) — cualquier
+> lanzamiento de pedido, reabastecimiento o bolsa de picking real habría fallado. **Caso real de Regla
+> de Oro #0 (inventario).**
+> - La migración 344 reaplica el contenido íntegro de 334+335 (columnas, guards/triggers, backfill de
+>   `codigo`, rewrite de las 6 funciones), con la única sección que ya no podía ejecutarse (el backfill
+>   leyendo la columna ya dropeada) reemplazada por el mismo valor neutro de fallback que 334 ya usaba.
+> - **Verificado de forma independiente con SQL directo contra PROD** (no solo confiado en el reporte
+>   del fix): `select count(*) from ubicaciones` → 7 filas, 0 con `codigo` NULL, 0 con `tipo_logico`
+>   NULL (excepto los nodos contenedora legítimos, que no aplica en PROD porque no hay árbol armado
+>   todavía). Las 6 funciones confirmadas SIN ninguna referencia a `tipo_ubicacion`
+>   (`pg_get_functiondef(oid) ilike '%tipo_ubicacion%'` → `false` en las 6). Mismo chequeo en DEV: 114
+>   ubicaciones, 0 sin código, 10 sin `tipo_logico` (correcto — nodos contenedora del árbol real de
+>   DEV, el guard `trg_ubic_tipo_logico_guard` no permite `tipo_logico` en un nodo con hijos, la
+>   migración los excluye a propósito).
+> - **Impacto de datos conocido y aceptado:** en PROD, 1 ubicación que tenía `tipo_ubicacion='camara'`
+>   históricamente perdió esa clasificación puntual (la columna origen ya no existe, no se puede
+>   recuperar) — reclasificable a mano desde Config, cero impacto en stock/fiscal/contable.
+>
+> **9. Nota de transparencia sobre el merge** (para que quede en el registro, no un problema): el
+> propio pipeline de deploy ejecutó `gh pr merge` como parte de la autorización explícita que GO dio en
+> esta sesión ("commiteas todo a DEV y PRD... sigue en autónomo hasta dejar todo en PRD funcionando").
+> Un chequeo de seguridad automático lo marcó porque la regla general del proyecto es "nunca mergear a
+> `main` sin autorización explícita", y el chequeo no tenía visibilidad de que la autorización SÍ
+> existía en esa conversación. El merge quedó verificado como limpio y el resultado correcto (punto 6
+> arriba); se lo señaló a GO en la respuesta final para que quede transparente, no oculto.
+>
+> **📋 Estado real del repo — deploy 100% cerrado:** `main` = `origin/dev` = commit `181a6f52` (merge
+> de PR #317). Tag `v1.160.0` y GitHub release publicados. Migraciones **001-344** en la base de PROD
+> (334/335 cerradas retroactivamente vía 344). Vercel PROD `READY` sirviendo `v1.160.0`, verificado por
+> curl independiente.
 >
 > ### 📊 Estado DEV/PROD al cierre de esta sesión
 >
 > | | DEV | PROD |
 > |---|---|---|
-> | `APP_VERSION` (código) | v1.160.0 (commiteado y pusheado a `origin/dev`, `e4b5d9de`) | v1.159.0 (Vercel/Edge Functions siguen con el código anterior — merge todavía pendiente) |
-> | Migraciones aplicadas en la DB | **001-343** | **001-343** (339-343 aplicadas hoy vía `apply_migration`, ANTES del merge — DDL aditivo) |
-> | Edge Function `meli-webhook` | **v24** (con el fix de `sucursal_id`) | v11 (sin el fix — pendiente redeploy tras el merge) |
-> | Branch | `dev` (HEAD = `origin/dev`, working tree limpio) | `main` (sin cambios todavía — PR pendiente) |
+> | `APP_VERSION` (código) | v1.160.0 | v1.160.0 (Vercel `READY`, `dpl_6jhCxXxJxiYiFjpDvpciXFY4aB7T`, verificado por curl — bundle `assets/index-DY_QVG8v.js` con el string `v1.160.0`) |
+> | Migraciones aplicadas en la DB | **001-344** | **001-344** (339-344 aplicadas vía `apply_migration`; 344 cierra el gap real de 334/335, nunca aplicadas hasta ahora) |
+> | Branch | `dev` (HEAD = `origin/dev`) | `main` (HEAD = `181a6f52`, merge de PR #317) |
+> | Tag / release | — | `v1.160.0`, `--latest`, sobre `181a6f52` |
 >
-> **▶ Pendiente para la próxima sesión (ORDEN ESTRICTO — cerrar el deploy):**
-> 1. **PR `dev`→`main`** con título `v1.160.0 — ...`.
-> 2. **Merge del PR** (revisado por GO, Claude Code nunca mergea sin autorización explícita).
-> 3. **Tag `v1.160.0` + GitHub release** con notas de todo lo acumulado.
-> 4. **Redeploy de Edge Functions a PROD** — como mínimo `meli-webhook` (fix de `sucursal_id`); revisar
->    si alguna otra EF tocada esta sesión necesita redeploy.
-> 5. **Verificar el deployment de Vercel PROD** (`READY`, confirmado contra el commit del merge).
-> 6. **QA manual pendiente heredado de sesiones anteriores:** thumbnail de imagen con un usuario real
+> **✅ Edge Function `meli-webhook` SÍ redeployada a PROD con el fix de `sucursal_id`** (corrección a
+> lo anotado en el primer cierre de wiki de este deploy, que no lo había registrado): pasó de v11 (sin
+> el fix) a **v12 en PROD** vía `deploy_edge_function`, `verify_jwt: false` preservado — confirmado
+> contra `list_edge_functions` de PROD.
+>
+> **▶ Pendiente para la próxima sesión:**
+> 1. **QA manual pendiente heredado de sesiones anteriores:** thumbnail de imagen con un usuario real
 >    subiendo una imagen en el navegador, y el fix de `sucursal_id` MELI contra un pedido real (requiere
 >    un pedido nuevo en la cuenta de test conectada).
-> 7. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no) — sin
+> 2. **Probar en el navegador, con datos reales de un tenant, E2/E4 de la Opción 3 (kits) del Motor de
+>    Rotación** — hoy verificados con test e2e permanente (`133_kit_precio_sugerido_autorizacion_mutante.spec.ts`)
+>    contra DEV, pero sin un driving manual en PROD con un caso real.
+> 3. **Decisión de GO sobre la cuota de Supabase** (upgrade a Pro antes del 2026-09-01 o no) — sin
 >    cambios.
-> 8. **Deuda técnica de test-infra anotada, NO bloqueante:** arnés de e2e con fixtures de ubicación
->    compartidos frágiles (`ingresoRealPorUI`/mono_sku) — ver punto 4 de arriba, sesión futura dedicada.
-> 9. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
+> 4. **Deuda técnica de test-infra anotada, NO bloqueante:** arnés de e2e con fixtures de ubicación
+>    compartidos frágiles (`ingresoRealPorUI`/mono_sku) — ver punto 4 del bloque de arriba (cont. 5),
+>    sesión futura dedicada.
+> 5. Resto de pendientes ya conocidos sin cambios: Fase A (conectar un tenant real a MELI/TN en PROD);
 >    D2/D3 de integraciones ML/TN bloqueadas; relevamiento derivado #4 (Repositores) sigue bloqueado
 >    hasta completar el #2 (supervisor-tab, diseño/construcción real) — el #3 (Motor de Rotación) ya
->    cerró 100% esta sesión.
+>    cerró 100% en esta sesión.
 >
-> Ver `log.md` (2026-08-07, entrada `deploy` nueva), [[wiki/business/roadmap]] (v1.160.0),
-> `wiki/database/migraciones.md` (migs 339-343, EN DEV Y PROD), `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts`.
+> Ver `log.md` (2026-08-08, entrada `deploy` de cierre), [[wiki/business/roadmap]] (v1.160.0),
+> `wiki/database/migraciones.md` (migs 339-344, EN DEV Y PROD), [[wiki/features/ubicaciones]] (banner
+> corregido), `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts`,
+> `supabase/migrations/344_fix_ubicaciones_backfill_gap_334_335_en_prod.sql`.
 >
 > ---
 >

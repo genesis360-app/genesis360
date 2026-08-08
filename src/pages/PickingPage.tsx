@@ -32,6 +32,8 @@ interface TareaWMS {
   tarea_precedente_id: string | null
   envio_id: string | null
   created_at: string
+  usuario_asignado_id: string | null
+  usuario_asignado: { nombre_display: string | null } | null
   productos: { nombre: string; sku: string } | null
   ubicacion_origen: { nombre: string } | null
   ubicacion_destino: { nombre: string } | null
@@ -50,7 +52,7 @@ const ventaIdDe = (t: TareaWMS) => t.pedidos?.venta_origen_id ?? t.envios?.venta
 // motor de ventas/rebaje. Ver comentario de cabecera de la mig 289.
 export default function PickingPage() {
   const navigate = useNavigate()
-  const { tenant } = useAuthStore()
+  const { tenant, user } = useAuthStore()
   const { sucursalId } = useSucursalFilter()
   const qc = useQueryClient()
   const confirmar = useConfirm()
@@ -76,15 +78,18 @@ export default function PickingPage() {
   const [completando, setCompletando] = useState<string | null>(null)
 
   const { data: tareas = [], isLoading } = useQuery({
-    queryKey: ['wms_tareas', tenant?.id, sucursalId],
+    queryKey: ['wms_tareas', tenant?.id, sucursalId, user?.id],
     queryFn: async () => {
       let q = supabase.from('wms_tareas')
-        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero, venta_id), pedidos(numero, venta_origen_id)')
+        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero, venta_id), pedidos(numero, venta_origen_id), usuario_asignado:users!wms_tareas_usuario_asignado_id_fkey(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['pendiente', 'en_curso'])
         .order('prioridad', { ascending: false })
         .order('created_at')
       if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      // Cada operario ve las tareas libres (para tomar) + las que le asignaron a él puntualmente
+      // — una tarea asignada a OTRO usuario no aparece acá (pedido de GO, 2026-08-08).
+      if (user?.id) q = q.or(`usuario_asignado_id.is.null,usuario_asignado_id.eq.${user.id}`)
       const { data, error } = await q
       if (error) throw error
       return (data ?? []) as unknown as TareaWMS[]
@@ -277,6 +282,9 @@ export default function PickingPage() {
                   )}
                   {t.envios?.numero && (
                     <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1"><Truck size={11} /> Envío #{t.envios.numero}</span>
+                  )}
+                  {t.usuario_asignado_id === user?.id && (
+                    <span className="text-xs font-medium text-accent-text bg-accent/10 px-2 py-0.5 rounded-full">Asignada a mí</span>
                   )}
                 </div>
                 <p className="font-medium text-gray-800 dark:text-gray-100">{t.productos?.nombre ?? '—'}</p>

@@ -9,9 +9,9 @@
  * y lanzamiento en bolsa con staging (PED6) disponibles en los puntos que corresponda.
  */
 import { useState, useMemo } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download } from 'lucide-react'
+import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download, ScanBarcode } from 'lucide-react'
 import toast from 'react-hot-toast'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
@@ -19,9 +19,11 @@ import autoTable from 'jspdf-autotable'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
+import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { logActividad } from '@/lib/actividadLog'
 import { BRAND } from '@/config/brand'
 import { ActionMenu } from '@/components/ActionMenu'
+import { PageTabs } from '@/components/PageTabs'
 import { puedeTransicionPedido, type PedidoTransicion, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import { esDecimal } from '@/lib/ventasValidation'
@@ -48,6 +50,7 @@ export default function PedidosPage() {
   const navigate = useNavigate()
   const { tenant, user } = useAuthStore()
   const { sucursalId, puedeVerTodas } = useSucursalFilter()
+  const { avanzado: modoAvanzado } = useModoOperacion()
   const qc = useQueryClient()
   const confirmar = useConfirm()
 
@@ -57,6 +60,13 @@ export default function PedidosPage() {
   // cualquier rol). Ver src/lib/pedidoTransiciones.ts.
   const puedeYo = (transicion: PedidoTransicion) =>
     puedeTransicionPedido(user?.rol, transicion, ((tenant as any)?.pedido_transiciones_roles ?? null) as PedidoTransicionesConfig)
+
+  // ── Tab "Tareas WMS" — mudado acá desde Inventario (2026-08-08): Pedidos es donde vive el
+  // ciclo de vida de la preparación/despacho, tiene más sentido gestionar la cola acá que en
+  // Inventario. Misma fuente y RPCs que /picking (mobile); acá es la vista de gestión de
+  // escritorio, con asignación manual a un operario.
+  const [tab, setTab] = useState<'pedidos' | 'wms'>('pedidos')
+  const puedeAsignarTareas = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
 
   const [showNuevo, setShowNuevo] = useState(false)
   const [tipoPedidoId, setTipoPedidoId] = useState('')
@@ -218,6 +228,88 @@ export default function PedidosPage() {
     },
     enabled: !!expandedId,
   })
+
+  // ── Tab WMS: cola de tareas de picking/reabastecimiento (mig 289), mudada desde Inventario.
+  // Misma fuente y RPCs que /picking (mobile); acá es una lista de escritorio sin escaneo, con
+  // asignación manual a un operario (usuario_asignado_id, columna que ya existía sin uso).
+  const { data: wmsTareas = [], isLoading: loadingWms } = useQuery({
+    queryKey: ['wms_tareas', tenant?.id, sucursalId],
+    queryFn: async () => {
+      let q = supabase.from('wms_tareas')
+        .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero), usuario_asignado:users!wms_tareas_usuario_asignado_id_fkey(nombre_display)')
+        .eq('tenant_id', tenant!.id)
+        .in('estado', ['pendiente', 'en_curso'])
+        .order('prioridad', { ascending: false })
+        .order('created_at')
+      if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
+      const { data, error } = await q
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'wms',
+  })
+
+  // Operarios asignables — cualquier usuario activo del tenant (no se restringe por rol: en
+  // equipos chicos el mismo DUEÑO/SUPERVISOR también hace picking/armado).
+  const { data: usuariosAsignables = [] } = useQuery({
+    queryKey: ['usuarios-asignables-wms', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('users')
+        .select('id, nombre_display, rol').eq('tenant_id', tenant!.id).eq('activo', true).order('nombre_display')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'wms' && puedeAsignarTareas,
+  })
+
+  const [completandoWms, setCompletandoWms] = useState<string | null>(null)
+  const completarTareaWms = async (t: any) => {
+    if (t.tarea_precedente_id) {
+      const prec = (wmsTareas as any[]).find(x => x.id === t.tarea_precedente_id)
+      if (prec && prec.estado !== 'completada') { toast.error('Primero hay que completar el reabastecimiento de esta tarea'); return }
+    }
+    const esReab = t.tipo === 'replenishment'
+    setCompletandoWms(t.id)
+    const rpc = esReab ? 'fn_completar_tarea_reabastecimiento' : 'fn_completar_tarea_picking'
+    const { error } = await supabase.rpc(rpc, { p_tarea_id: t.id })
+    setCompletandoWms(null)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    logActividad({
+      entidad: 'wms_tarea', entidad_id: t.id, entidad_nombre: t.productos?.nombre ?? t.lpn_origen ?? undefined,
+      accion: 'cambio_estado', campo: 'estado', valor_anterior: t.estado, valor_nuevo: 'completada',
+      pagina: '/pedidos', tipo_transaccion: esReab ? 'traslado' : undefined,
+      producto_id: t.producto_id, lpn: t.lpn_origen, sucursal_id: t.sucursal_id,
+    })
+    toast.success('Tarea completada')
+  }
+  const cancelarTareaWms = async (t: any) => {
+    const esReab = t.tipo === 'replenishment'
+    const tieneDependiente = esReab && (wmsTareas as any[]).some(x => x.tarea_precedente_id === t.id)
+    const msg = `¿Cancelar esta tarea de ${esReab ? 'reabastecimiento' : 'picking'}?` +
+      (tieneDependiente ? ' La tarea de picking que depende de este reabastecimiento también se va a cancelar.' : '')
+    if (!(await confirmar(msg, { danger: true }))) return
+    setCompletandoWms(t.id)
+    const { error } = await supabase.rpc('fn_cancelar_tarea_wms', { p_tarea_id: t.id })
+    setCompletandoWms(null)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    logActividad({
+      entidad: 'wms_tarea', entidad_id: t.id, entidad_nombre: t.productos?.nombre ?? t.lpn_origen ?? undefined,
+      accion: 'cambio_estado', campo: 'estado', valor_anterior: t.estado, valor_nuevo: 'cancelada',
+      pagina: '/pedidos', producto_id: t.producto_id, lpn: t.lpn_origen, sucursal_id: t.sucursal_id,
+    })
+    toast.success('Tarea cancelada')
+  }
+  const asignarTareaWms = async (t: any, usuarioId: string | null) => {
+    const { error } = await supabase.from('wms_tareas').update({ usuario_asignado_id: usuarioId }).eq('id', t.id)
+    if (error) { toast.error(error.message); return }
+    qc.invalidateQueries({ queryKey: ['wms_tareas'] })
+    logActividad({
+      entidad: 'wms_tarea', entidad_id: t.id, entidad_nombre: t.productos?.nombre ?? t.lpn_origen ?? undefined,
+      accion: 'editar', campo: 'usuario_asignado_id', valor_anterior: t.usuario_asignado_id, valor_nuevo: usuarioId,
+      pagina: '/pedidos', producto_id: t.producto_id, lpn: t.lpn_origen, sucursal_id: t.sucursal_id,
+    })
+  }
 
   // ── Ventas generadas por el pedido expandido (A5: guía para devolver antes de cancelar) ──
   const { data: ventasPedidoExp = [] } = useQuery({
@@ -628,6 +720,19 @@ export default function PedidosPage() {
         )}
       </div>
 
+      {modoAvanzado && (
+        <PageTabs
+          tabs={[
+            { id: 'pedidos', label: 'Pedidos', icon: Package },
+            { id: 'wms', label: 'Tareas WMS', icon: ScanBarcode },
+          ]}
+          active={tab}
+          onChange={(id) => setTab(id as 'pedidos' | 'wms')}
+        />
+      )}
+
+      {tab === 'pedidos' && (
+      <>
       <div className="flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[180px] max-w-[280px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -837,6 +942,76 @@ export default function PedidosPage() {
           )
         })}
       </div>
+      </>
+      )}
+
+      {tab === 'wms' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500 dark:text-gray-400">Tareas de picking y reabastecimiento pendientes (logística de depósito — no toca ventas ni rebajes).</p>
+            <Link to="/picking" className="flex-shrink-0 text-sm text-accent-text font-medium hover:underline flex items-center gap-1">
+              <ScanBarcode size={14} /> Abrir vista de picking →
+            </Link>
+          </div>
+
+          {loadingWms ? (
+            <div className="flex items-center justify-center py-16">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+            </div>
+          ) : wmsTareas.length === 0 ? (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+              <ScanBarcode size={32} className="mx-auto mb-3 opacity-30" />
+              <p>No hay tareas WMS pendientes</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {(wmsTareas as any[]).map(t => {
+                const esReab = t.tipo === 'replenishment'
+                const precedente = t.tarea_precedente_id ? (wmsTareas as any[]).find(x => x.id === t.tarea_precedente_id) : null
+                const bloqueada = !!precedente && precedente.estado !== 'completada'
+                return (
+                  <div key={t.id} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-4 flex items-center gap-3 flex-wrap">
+                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${esReab ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>
+                      {esReab ? 'Reabastecimiento' : 'Picking'}
+                    </span>
+                    <div className="flex-1 min-w-[180px]">
+                      <p className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{t.productos?.nombre ?? '—'} <span className="text-xs text-gray-400 font-normal">{t.productos?.sku}</span></p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {t.ubicacion_origen?.nombre ?? 'sin ubicación'}{esReab && t.ubicacion_destino ? ` → ${t.ubicacion_destino.nombre}` : ''}
+                        {t.envios?.numero ? ` · Envío #${t.envios.numero}` : ''}{t.lpn_origen ? ` · LPN ${t.lpn_origen}` : ''}
+                      </p>
+                    </div>
+                    {puedeAsignarTareas ? (
+                      <select value={t.usuario_asignado_id ?? ''} onChange={e => asignarTareaWms(t, e.target.value || null)}
+                        className="text-xs border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-700 dark:text-gray-200 flex-shrink-0"
+                        title="Asignar tarea a un operario">
+                        <option value="">Sin asignar</option>
+                        {(usuariosAsignables as any[]).map(u => (
+                          <option key={u.id} value={u.id}>{u.nombre_display ?? u.rol}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="text-xs text-gray-400 dark:text-gray-500 flex-shrink-0">
+                        {t.usuario_asignado?.nombre_display ? `Asignada a ${t.usuario_asignado.nombre_display}` : 'Sin asignar'}
+                      </span>
+                    )}
+                    <button onClick={() => completarTareaWms(t)} disabled={bloqueada || completandoWms === t.id}
+                      title={bloqueada ? 'Esperando que se complete el reabastecimiento' : undefined}
+                      className="flex-shrink-0 bg-accent hover:bg-accent/90 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
+                      {completandoWms === t.id ? '...' : 'Completar'}
+                    </button>
+                    <button onClick={() => cancelarTareaWms(t)} disabled={completandoWms === t.id}
+                      title="Cancelar tarea"
+                      className="flex-shrink-0 text-gray-400 hover:text-red-500 disabled:opacity-50 p-1.5">
+                      <X size={16} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Modal nuevo pedido */}
       {showNuevo && (

@@ -16,7 +16,7 @@ async function crearEnvioAutomaticoMELI(
   supabase: ReturnType<typeof createClient>,
   token: string,
   order: any,
-  ctx: { tenant_id: string; venta_id: string; cliente_id: string },
+  ctx: { tenant_id: string; sucursal_id: string | null; venta_id: string; cliente_id: string },
 ): Promise<void> {
   const shipmentId = order.shipping?.id
   if (!shipmentId) {
@@ -63,7 +63,7 @@ async function crearEnvioAutomaticoMELI(
 
   const { error: envioErr } = await supabase.from('envios').insert({
     tenant_id:            ctx.tenant_id,
-    sucursal_id:          null,
+    sucursal_id:          ctx.sucursal_id,
     venta_id:             ctx.venta_id,
     canal:                'MELI',
     destino_id:           (domicilio as any).id,
@@ -98,7 +98,7 @@ serve(async (req) => {
     // Puede haber múltiples tenants con el mismo seller en testing — procesar todos
     const { data: creds } = await supabase
       .from('meli_credentials')
-      .select('tenant_id, access_token, refresh_token, expires_at, seller_id')
+      .select('tenant_id, sucursal_id, access_token, refresh_token, expires_at, seller_id')
       .eq('seller_id', sellerId)
       .eq('conectado', true)
 
@@ -154,7 +154,7 @@ serve(async (req) => {
           // `token` ya está resuelto arriba en este loop (getValidToken).
           if (v.cliente_id) {
             try {
-              await crearEnvioAutomaticoMELI(supabase, token, order, { tenant_id: cred.tenant_id, venta_id: ventaId, cliente_id: v.cliente_id })
+              await crearEnvioAutomaticoMELI(supabase, token, order, { tenant_id: cred.tenant_id, sucursal_id: cred.sucursal_id, venta_id: ventaId, cliente_id: v.cliente_id })
             } catch (envioCatchErr: any) {
               console.error('Error creando envío automático (no bloqueante):', envioCatchErr?.message ?? envioCatchErr)
             }
@@ -199,6 +199,7 @@ serve(async (req) => {
 
     const { data: venta, error: ventaErr } = await supabase.from('ventas').insert({
       tenant_id:      cred.tenant_id,
+      sucursal_id:    cred.sucursal_id,
       cliente_id:     clienteId,
       cliente_nombre: buyerNick ?? buyerName,
       estado:         nuevoEstado,
@@ -295,7 +296,7 @@ serve(async (req) => {
     // Envío automático — best-effort, nunca bloquea la venta si falla. Solo cuando está pagada.
     if (nuevoEstado === 'reservada' && clienteId) {
       try {
-        await crearEnvioAutomaticoMELI(supabase, token, order, { tenant_id: cred.tenant_id, venta_id: venta.id, cliente_id: clienteId })
+        await crearEnvioAutomaticoMELI(supabase, token, order, { tenant_id: cred.tenant_id, sucursal_id: cred.sucursal_id, venta_id: venta.id, cliente_id: clienteId })
       } catch (envioCatchErr: any) {
         console.error('Error creando envío automático (no bloqueante):', envioCatchErr?.message ?? envioCatchErr)
       }

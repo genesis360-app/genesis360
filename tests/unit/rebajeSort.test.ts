@@ -10,9 +10,11 @@ const linea = (opts: {
   created_at: string
   prioridad?: number
   fecha_vencimiento?: string | null
+  estado_id?: string | null
 }) => ({
   created_at: opts.created_at,
   fecha_vencimiento: opts.fecha_vencimiento ?? null,
+  estado_id: opts.estado_id ?? null,
   ubicaciones: { prioridad: opts.prioridad ?? 0 },
 })
 
@@ -124,6 +126,39 @@ describe('getRebajeSort — LEFO', () => {
     const sorted = [...lineasConVenc].sort(sort)
     expect(sorted[0].fecha_vencimiento).toBe('2025-12-31')
     expect(sorted[1].fecha_vencimiento).toBe('2025-01-01')
+  })
+})
+
+describe('getRebajeSort — prioridad por estado (Motor de Rotación, Opción 2)', () => {
+  test('sin estadoIdsPrioridad, se comporta igual que antes (compatibilidad)', () => {
+    const sinPrioridad = getRebajeSort('FIFO', null, false)
+    const conPrioridadVacia = getRebajeSort('FIFO', null, false, new Set())
+    const conPrioridadNull = getRebajeSort('FIFO', null, false, null)
+    expect([...LINEAS].sort(sinPrioridad)).toEqual([...LINEAS].sort(conPrioridadVacia))
+    expect([...LINEAS].sort(sinPrioridad)).toEqual([...LINEAS].sort(conPrioridadNull))
+  })
+
+  test('la línea en un estado prioritario va primero, aunque la regla normal la pondría después', () => {
+    // FIFO pondría primero la más vieja (2024-01-01); la de "Próximo a Vencer" es la más nueva.
+    const vieja = linea({ created_at: '2024-01-01', estado_id: null })
+    const prioritaria = linea({ created_at: '2024-06-01', estado_id: 'estado-prox-vencer' })
+    const sort = getRebajeSort('FIFO', null, false, new Set(['estado-prox-vencer']))
+    const sorted = [vieja, prioritaria].sort(sort)
+    expect(sorted[0]).toBe(prioritaria)
+  })
+
+  test('entre 2 líneas prioritarias, desempata con la regla normal (FIFO)', () => {
+    const p1 = linea({ created_at: '2024-03-01', estado_id: 'estado-x' })
+    const p2 = linea({ created_at: '2024-01-01', estado_id: 'estado-x' })
+    const sort = getRebajeSort('FIFO', null, false, new Set(['estado-x']))
+    const sorted = [p1, p2].sort(sort)
+    expect(sorted[0]).toBe(p2) // más vieja primero, FIFO normal
+  })
+
+  test('ninguna línea en estado prioritario → idéntico a sin el parámetro', () => {
+    const sort = getRebajeSort('FIFO', null, false, new Set(['estado-que-no-aparece']))
+    const sortBase = getRebajeSort('FIFO', null, false)
+    expect([...LINEAS].sort(sort)).toEqual([...LINEAS].sort(sortBase))
   })
 })
 

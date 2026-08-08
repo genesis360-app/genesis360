@@ -294,9 +294,6 @@ export interface Ubicacion {
   prioridad?: number
   disponible_surtido?: boolean
   es_devolucion?: boolean
-  // WMS Fase 2 — deprecated (mig 334): reemplazada por tipo_logico/subtipo_almacenamiento.
-  // Se mantiene en la columna hasta que ningún archivo la lea (Fase U5, mismo patrón que F3b/F4).
-  tipo_ubicacion?: 'picking' | 'bulk' | 'estiba' | 'camara' | 'cross_dock' | 'staging' | null
   alto_cm?: number | null
   ancho_cm?: number | null
   largo_cm?: number | null
@@ -339,6 +336,7 @@ export interface Producto {
   unidad_medida: string
   codigo_barras?: string
   imagen_url?: string
+  imagen_thumb_url?: string
   tiene_series?: boolean
   tiene_lote?: boolean
   tiene_vencimiento?: boolean
@@ -595,7 +593,7 @@ export interface KitReceta {
   cantidad: number
   created_at: string
   // Joins
-  componente?: Pick<Producto, 'id' | 'nombre' | 'sku' | 'stock_actual' | 'unidad_medida'>
+  componente?: Pick<Producto, 'id' | 'nombre' | 'sku' | 'stock_actual' | 'unidad_medida' | 'precio_venta'>
 }
 
 export interface KittingLog {

@@ -1239,7 +1239,7 @@ export default function ProductosPage() {
                         </div>
 
                         {(p as any).imagen_url ? (
-                          <img src={(p as any).imagen_url} alt={p.nombre} className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
+                          <img src={(p as any).imagen_thumb_url || (p as any).imagen_url} alt={p.nombre} loading="lazy" className="w-9 h-9 rounded-lg object-cover flex-shrink-0" />
                         ) : (
                           <div className="w-9 h-9 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0">
                             <Package size={16} className="text-gray-400 dark:text-gray-500" />

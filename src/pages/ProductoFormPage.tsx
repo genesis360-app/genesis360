@@ -83,6 +83,7 @@ export default function ProductoFormPage() {
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [existingImageUrl, setExistingImageUrl] = useState<string | null>(null)
+  const [existingThumbUrl, setExistingThumbUrl] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -390,6 +391,7 @@ export default function ProductoFormPage() {
       })
       if (productoData.publicado_marketplace) setShowMarketplace(true)
       if (productoData.imagen_url) setExistingImageUrl(productoData.imagen_url)
+      if ((productoData as any).imagen_thumb_url) setExistingThumbUrl((productoData as any).imagen_thumb_url)
       setProductoPadreId((productoData as any).producto_padre_id ?? null)
       setVarianteDiferenciador((productoData as any).variante_diferenciador ?? '')
       setLoaded(true)
@@ -468,13 +470,24 @@ export default function ProductoFormPage() {
       }
 
       let imagen_url = existingImageUrl
+      let imagen_thumb_url = existingThumbUrl
       if (imageFile) {
         const ext = imageFile.name.split('.').pop()
-        const path = `${tenant!.id}/${Date.now()}.${ext}`
+        const stamp = Date.now()
+        const path = `${tenant!.id}/${stamp}.${ext}`
         const { error: uploadError } = await supabase.storage.from('productos').upload(path, imageFile, { upsert: true })
         if (uploadError) throw uploadError
         const { data: urlData } = supabase.storage.from('productos').getPublicUrl(path)
         imagen_url = urlData.publicUrl
+
+        // Thumbnail chico para íconos/galería (Productos, Inventario, POS) — evita bajar la imagen
+        // completa (hasta 1200px/1.5MB) para mostrarla como ícono de 32-36px. Baja Cached Egress.
+        const thumbBlob = await imageCompression(imageFile, { maxSizeMB: 0.05, maxWidthOrHeight: 200, useWebWorker: true })
+        const thumbPath = `${tenant!.id}/${stamp}_thumb.${ext}`
+        const { error: thumbUploadError } = await supabase.storage.from('productos').upload(thumbPath, thumbBlob, { upsert: true })
+        if (thumbUploadError) throw thumbUploadError
+        const { data: thumbUrlData } = supabase.storage.from('productos').getPublicUrl(thumbPath)
+        imagen_thumb_url = thumbUrlData.publicUrl
       }
 
       // El nombre de un hijo lo compone el trigger de DB (madre.nombre — diferenciador, mig 305):
@@ -505,7 +518,7 @@ export default function ProductoFormPage() {
         unidad_medida: form.unidad_medida,
         unidad_medida_base_id: form.unidad_medida_base_id || null,
         codigo_barras: form.codigo_barras.trim() || null,
-        imagen_url, activo: form.activo,
+        imagen_url, imagen_thumb_url, activo: form.activo,
         tiene_series: form.tiene_series,
         tiene_lote: form.tiene_lote,
         tiene_vencimiento: form.tiene_vencimiento,
@@ -748,6 +761,7 @@ export default function ProductoFormPage() {
         unidad_medida: form.unidad_medida,
         codigo_barras: null,
         imagen_url: existingImageUrl,
+        imagen_thumb_url: existingThumbUrl,
         activo: true,
         tiene_series: form.tiene_series,
         tiene_lote: form.tiene_lote,
@@ -1915,7 +1929,7 @@ export default function ProductoFormPage() {
                     <img src={imagePreview ?? existingImageUrl!} alt="Preview" className="w-full h-full object-cover" />
                     {canEdit && (
                       <button type="button"
-                        onClick={() => { setImageFile(null); setImagePreview(null); setExistingImageUrl(null) }}
+                        onClick={() => { setImageFile(null); setImagePreview(null); setExistingImageUrl(null); setExistingThumbUrl(null) }}
                         className="absolute top-2 right-2 bg-red-50 dark:bg-red-900/200 text-white rounded-full p-1 hover:bg-red-600">
                         <X size={14} />
                       </button>

@@ -3,14 +3,77 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-06
+updated: 2026-08-07
 ---
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.159.0 (2026-08-06) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.159.0 (igual a PROD, deploy completo)  
-**Última actualización:** 6 de Agosto, 2026
+**Versión en PROD:** v1.159.0 (2026-08-06) — código/Vercel/Edge Functions; **la base de datos ya tiene
+las migraciones 001-343** (deploy v1.160.0 EN CURSO, ver abajo) — ver
+`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
+**Versión en DEV:** v1.160.0 (commiteado y pusheado a `origin/dev`, commit `e4b5d9de` — pendiente PR→`main`)  
+**Última actualización:** 7 de Agosto, 2026
+
+---
+
+## v1.160.0 — 🔄🧩 Motor de Rotación de productos con descuento COMPLETO (Opción 1/2/3) + fix `sucursal_id` MELI + thumbnail de imagen + fix flake e2e — 🟡 DEPLOY A PROD EN CURSO (código en `origin/dev`, migraciones 339-343 ya en PROD) (2026-08-07)
+
+Deploy completo autorizado por GO de TODO lo acumulado en `dev` a lo largo del día (4 sesiones `update`
+seguidas) — **EN CURSO**: código commiteado y pusheado a `origin/dev` (`e4b5d9de`) y migraciones 339-343
+ya aplicadas en la base de PROD (`jjffnbrdjchquexdfgwq`), pero **todavía falta el PR `dev`→`main` +
+merge + tag/release + redeploy de Edge Functions + verificación de Vercel** — Vercel PROD sigue
+sirviendo v1.159.0 hasta que eso pase.
+
+**🔄🧩 Motor de Rotación de productos con descuento — COMPLETO, las 3 Opciones verificadas end-to-end**
+(4º de 4 relevamientos hacia la Fase E/Repositores, ver [[wiki/features/precios-tiers-empaque]]):
+- **Opción 1 (agotar antes de reponer, migs 341/342):** productos con stock por vencer sin agotar se
+  excluyen de la OC sugerida (`AlertasPage.tsx`); el ingreso simple avisa (no bloquea) si la fecha nueva
+  es más lejana que el lote bloqueante.
+- **Opción 2 (prioridad de envíos, mig 341):** `getRebajeSort()` prioriza el lote en el estado de
+  descuento en ventas que califican como envío/reserva. Verificada con test e2e permanente
+  (`131_rotacion_prioridad_envios_mutante.spec.ts`) que encontró y sirvió para corregir un **bug real de
+  Regla de Oro #0** en `VentasPage.tsx` — la Fase A de `registrarVenta` consumía a ciegas el plan de LPN
+  precalculado al agregar al carrito, sin dejar actuar a la Fase B (que sí tenía la prioridad correcta).
+- **Opción 3 (armar kits, mig 343):** `iniciar_armado_kit` (E3) prioriza el lote en descuento al
+  reservar componentes — verificado con `132_kit_armado_prioridad_rotacion_mutante.spec.ts`. Autogenera
+  nombre/precio del KIT desde su receta (`src/lib/kits.ts`, E2/E4), con autorización de supervisor para
+  cambiar el precio (reusa `autorizaciones_inventario`, tipo nuevo `kit_precio`) — verificado con
+  `133_kit_precio_sugerido_autorizacion_mutante.spec.ts` (rol DEPOSITO pide, DUEÑO aprueba).
+
+**🧹 Fase U5 (mig 339):** dropea `ubicaciones.tipo_ubicacion` (0 lectores reales, reemplazada por
+`tipo_logico`/`subtipo_almacenamiento` desde la mig 334).
+
+**🐛 Fix real: `sucursal_id` NULL en ventas de MercadoLibre** — `meli-webhook` no propagaba
+`meli_credentials.sucursal_id` a `ventas`/`envios` (a diferencia de `tn-webhook`), riesgo de visibilidad
+por sucursal y de emisor equivocado en un tenant multi-CUIT/multi-sucursal. Deployado a la Edge Function
+en DEV (v24); **pendiente redeploy a PROD** tras el merge.
+
+**🖼️ Thumbnail de imagen de producto (mig 340)** — fix de performance: Supabase DEV había excedido la
+cuota de Cached Egress sirviendo la imagen completa como ícono de 32-36px. `imagen_thumb_url` generado
+al subir con `browser-image-compression`, `loading="lazy"` en los 4 `<img>` de producto.
+
+**🧪 Fix de flake real (no era timing) en 3 specs e2e** (`39_cc_condonacion_mutante`,
+`51_autorizacion_ajuste_aprobar_mutante`, `69_cc_revertir_condonacion_mutante`) — seguían con
+`page.on('dialog', ...)` apuntando a un `confirm()` nativo que ya no existe desde v1.152.0 (reemplazado
+por el modal propio `useConfirm()`).
+
+**Migraciones 339-343 aplicadas en PROD** vía `apply_migration`, en orden, las 5 exitosas. Advisors de
+seguridad de PROD re-corridos post-migración: 0 hallazgos nuevos (122 WARN + 10 INFO, todos
+preexistentes).
+
+**Regresión e2e completa corrida antes de deployar** (139 specs, ~38 min): 270 pasaron, 42 skipped, 29
+fallaron — **100% atribuibles a una fragilidad PREEXISTENTE y ya documentada del arnés de test** (specs
+que dependen ciegamente de la primera opción del combo de "Ubicación" del helper `ingresoRealPorUI`, que
+resulta ser una ubicación `mono_sku=true` compartida — confirmado con el comentario del spec
+`23_inventario_ingreso_mutante.spec.ts`, fechado 2026-07-28, una semana antes de esta sesión), no una
+regresión de esta sesión. Queda anotada como deuda técnica NO bloqueante para una sesión futura de
+test-infra.
+
+**Verde:** tsc · build · **1538 tests unitarios** (98 archivos) · specs e2e **131/132/133** (2+ corridas
+cada uno, sin fallas).
+
+**Pendiente para cerrar el deploy:** PR `dev`→`main` + merge + tag/release `v1.160.0` + redeploy de
+Edge Functions a PROD (`meli-webhook` con el fix de `sucursal_id`) + verificación de Vercel READY.
 
 ---
 

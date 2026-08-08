@@ -174,12 +174,22 @@ export async function garantizarCajaAbierta(
  * `estadoNombre`, si se pasa, selecciona ESE estado por label exacto — necesario cuando el test
  * depende de que sea `es_disponible_venta=true` para que el producto aparezca en el POS (sin
  * esto, el combo deja el default de la primera opción, que puede no ser vendible).
+ *
+ * `ubicacionNombre`, si se pasa, selecciona ESA ubicación por label exacto en vez de la primera
+ * opción del combo. 🛑 Sin esto, dos specs que ingresan productos DISTINTOS pueden pisarse: la
+ * primera opción real del combo resultó ser "Estantería A › A-01-1", que tiene `mono_sku=true` —
+ * el PRIMER producto que entra ahí la reclama para siempre (nada la libera entre corridas) y
+ * cualquier otro producto que intente entrar después revienta con "La ubicación ... es Mono-SKU y
+ * ya tiene <otro producto>" (toast de error que se autodescarta en unos segundos — se ve como que
+ * "Ingreso registrado" nunca apareció, sin pista de la causa real). Encontrado en vivo con el spec
+ * 131 (Motor de Rotación, Opción 2): la primera corrida reclamó la ubicación con su propio
+ * producto, la segunda corrida (producto nuevo) chocó contra el mono_sku de la primera.
  */
 export async function ingresoRealPorUI(
   page: Page,
-  opts: { nombreProducto: string; cantidad: number; estadoNombre?: string },
+  opts: { nombreProducto: string; cantidad: number; estadoNombre?: string; ubicacionNombre?: string },
 ): Promise<void> {
-  const { nombreProducto, cantidad, estadoNombre } = opts
+  const { nombreProducto, cantidad, estadoNombre, ubicacionNombre } = opts
   await goto(page, '/inventario')
   await waitForApp(page)
   await page.getByRole('button', { name: 'Agregar stock' }).first().click()
@@ -224,8 +234,12 @@ export async function ingresoRealPorUI(
 
   const ubicSelect = page.locator('xpath=//label[contains(.,"Ubicación")]/following::select[1]')
   if (await visible(ubicSelect, 3000)) {
-    const vals = await ubicSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
-    if (vals.length > 0) await ubicSelect.selectOption(vals[0])
+    if (ubicacionNombre) {
+      await ubicSelect.selectOption({ label: ubicacionNombre })
+    } else {
+      const vals = await ubicSelect.locator('option').evaluateAll(o => (o as HTMLOptionElement[]).map(x => x.value).filter(Boolean))
+      if (vals.length > 0) await ubicSelect.selectOption(vals[0])
+    }
   }
 
   await page.locator('input[type="number"][placeholder="0"]').first().fill(String(cantidad))

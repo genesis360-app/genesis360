@@ -304,7 +304,7 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 - **C1/C4:** email automático al registrar deuda CC y al registrar un pago (las 3 vías) — `src/lib/notificacionesCC.ts`, event-driven vía Edge Function `send-email`.
 - **C2:** umbral `cc_notif_pre_venc_dias` (default 3) resalta "próxima a vencer" en el tab CC.
 - **C5:** panel "🎂 Cumpleaños de hoy" en Clientes + saludo por WhatsApp.
-- **🧾 2026-08-06 (🟡 EN DEV, sin commitear):** el UI real (canales email/WhatsApp) vive ahora en
+- **🧾 2026-08-06 (✅ PROD desde v1.159.0):** el UI real (canales email/WhatsApp) vive ahora en
   **Config → Notificaciones** — antes ese tab era un placeholder "próximamente" y estas columnas se
   guardaban desde el mega-form de `ConfigPage.tsx` sin ningún input visible en pantalla. Ver
   [[wiki/features/configuracion]]. **Defaults OFF** (opt-in). WhatsApp manual; sin envío background
@@ -321,7 +321,7 @@ Backlog del relevamiento de Clientes (ver `sources/raw/relevamiento_clientes_res
 - **F4:** audit log de cambios del cliente (`actividad_log`, entidad `cliente`) + sub-tab "Cambios" en la ficha.
 - **G2:** alertas de deuda vencida ya en `DashClientesArea` (dashboard) + el aging report.
 - **Config:** políticas de enforcement/morosidad/límite/vencimiento/interés de CL2 (arriba) —
-  **🧾 2026-08-06 (🟡 EN DEV, sin commitear): UI real en Config → Clientes** (antes placeholder
+  **🧾 2026-08-06 (✅ PROD desde v1.159.0): UI real en Config → Clientes** (antes placeholder
   "próximamente", ver [[wiki/features/configuracion]]).
 
 ### Backlog diferido — cerrado en v1.24.0 (sin migración)

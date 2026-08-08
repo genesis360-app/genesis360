@@ -2,6 +2,10 @@
 -- Genesis360 — Schema completo del esquema `public`
 -- Generado 2026-08-05T22:26:34.361Z desde gcmhzdedrkmmzfzfveig vía API
 -- Última migración aplicada: 20260805210703 · 152 tablas
+-- ⚠ 2026-08-07: parcheado A MANO (sin SUPABASE_ACCESS_TOKEN a mano) para reflejar solo las migs
+-- 339 (drop ubicaciones.tipo_ubicacion) y 340 (productos.imagen_thumb_url) — no reincorpora
+-- ningún otro drift que hubiera entre 20260805210703 y estas dos. Regenerar completo la próxima
+-- vez que haya token disponible.
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -344,7 +348,11 @@ CREATE TABLE public.categorias (
   nombre text NOT NULL,
   descripcion text,
   activo boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now()
+  created_at timestamp with time zone DEFAULT now(),
+  rotacion_agotar_antes_reponer boolean,
+  rotacion_prioridad_envios boolean,
+  rotacion_armar_kits boolean,
+  rotacion_ubicacion_excepcion_id uuid
 );
 
 CREATE TABLE public.categorias_gasto (
@@ -827,7 +835,8 @@ CREATE TABLE public.estados_inventario (
   es_disponible_venta boolean NOT NULL DEFAULT true,
   es_disponible_meli boolean NOT NULL DEFAULT true,
   descuento_pct numeric(5,2),
-  requiere_aprobacion boolean NOT NULL DEFAULT false
+  requiere_aprobacion boolean NOT NULL DEFAULT false,
+  dispara_rotacion boolean NOT NULL DEFAULT false
 );
 
 CREATE TABLE public.gasto_cuotas (
@@ -1483,6 +1492,7 @@ END,
   unidad_medida text DEFAULT 'unidad'::text,
   codigo_barras text,
   imagen_url text,
+  imagen_thumb_url text,
   tiene_series boolean DEFAULT false,
   tiene_lote boolean DEFAULT false,
   tiene_vencimiento boolean DEFAULT false,
@@ -1522,7 +1532,11 @@ END,
   notas text,
   unidad_medida_base_id uuid,
   producto_padre_id uuid,
-  variante_diferenciador text
+  variante_diferenciador text,
+  rotacion_agotar_antes_reponer boolean,
+  rotacion_prioridad_envios boolean,
+  rotacion_armar_kits boolean,
+  rotacion_ubicacion_excepcion_id uuid
 );
 
 CREATE TABLE public.proveedor_cc_movimientos (
@@ -2249,7 +2263,11 @@ CREATE TABLE public.tenants (
   pedido_canales_excluidos jsonb NOT NULL DEFAULT '[]'::jsonb,
   pedido_manual_habilitado boolean NOT NULL DEFAULT false,
   cubicaje_habilitado boolean NOT NULL DEFAULT false,
-  cubicaje_factor_aprovechamiento numeric NOT NULL DEFAULT 0.70
+  cubicaje_factor_aprovechamiento numeric NOT NULL DEFAULT 0.70,
+  rotacion_agotar_antes_reponer boolean NOT NULL DEFAULT false,
+  rotacion_prioridad_envios boolean NOT NULL DEFAULT false,
+  rotacion_armar_kits boolean NOT NULL DEFAULT false,
+  rotacion_ubicacion_excepcion_id uuid
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2327,7 +2345,6 @@ CREATE TABLE public.ubicaciones (
   prioridad integer NOT NULL DEFAULT 0,
   disponible_surtido boolean NOT NULL DEFAULT false,
   es_devolucion boolean NOT NULL DEFAULT false,
-  tipo_ubicacion text,
   alto_cm numeric(8,2),
   ancho_cm numeric(8,2),
   largo_cm numeric(8,2),
@@ -2616,6 +2633,7 @@ ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_clasificacion_chec
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_pkey PRIMARY KEY (id);
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_pkey PRIMARY KEY (id);
+ALTER TABLE public.categorias ADD CONSTRAINT chk_categorias_rotacion_matriz CHECK ((NOT ((COALESCE(rotacion_agotar_antes_reponer, false)) AND (COALESCE(rotacion_armar_kits, false)))));
 ALTER TABLE public.categorias_gasto ADD CONSTRAINT categorias_gasto_pkey PRIMARY KEY (id);
 ALTER TABLE public.categorias_gasto ADD CONSTRAINT categorias_gasto_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_estado_check CHECK ((estado = ANY (ARRAY['en_cartera'::text, 'entregado'::text, 'depositado'::text, 'cobrado'::text, 'endosado'::text, 'rechazado'::text, 'anulado'::text])));
@@ -2785,6 +2803,7 @@ ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_stock_minimo_check CHECK ((stock_minimo >= 0));
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_tenant_id_producto_id_ubicacion_key UNIQUE (tenant_id, producto_id, ubicacion_id);
 ALTER TABLE public.productos ADD CONSTRAINT chk_productos_variante_sin_atributos CHECK ((NOT ((producto_padre_id IS NOT NULL) AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma))));
+ALTER TABLE public.productos ADD CONSTRAINT chk_productos_rotacion_matriz CHECK ((NOT ((COALESCE(rotacion_agotar_antes_reponer, false)) AND (COALESCE(rotacion_armar_kits, false)))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_alicuota_iva_check CHECK ((alicuota_iva = ANY (ARRAY[(0)::numeric, 10.5, (21)::numeric, (27)::numeric])));
 ALTER TABLE public.productos ADD CONSTRAINT productos_clase_abc_check CHECK (((clase_abc IS NULL) OR (clase_abc = ANY (ARRAY['A'::text, 'B'::text, 'C'::text]))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_hijo_tiene_diferenciador CHECK (((producto_padre_id IS NULL) OR (variante_diferenciador IS NOT NULL)));
@@ -2864,6 +2883,7 @@ ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_pkey PRIMARY KEY (
 ALTER TABLE public.tenant_addons ADD CONSTRAINT tenant_addons_tipo_check CHECK ((tipo = ANY (ARRAY['fijo'::text, 'temporal'::text])));
 ALTER TABLE public.tenant_certificates ADD CONSTRAINT tenant_certificates_pkey PRIMARY KEY (id);
 ALTER TABLE public.tenants ADD CONSTRAINT chk_tenants_cubicaje_factor CHECK (((cubicaje_factor_aprovechamiento > (0)::numeric) AND (cubicaje_factor_aprovechamiento <= (1)::numeric)));
+ALTER TABLE public.tenants ADD CONSTRAINT chk_tenants_rotacion_matriz CHECK ((NOT (rotacion_agotar_antes_reponer AND rotacion_armar_kits)));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_afip_provider_check CHECK ((afip_provider = ANY (ARRAY['afipsdk'::text, 'propio'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_billing_mode_check CHECK ((billing_mode = ANY (ARRAY['auto'::text, 'manual'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_cc_enforcement_chk CHECK ((cc_enforcement_politica = ANY (ARRAY['permitir'::text, 'avisar'::text, 'bloquear'::text])));
@@ -2896,7 +2916,6 @@ ALTER TABLE public.ubicaciones ADD CONSTRAINT chk_ubicaciones_codigo_formato CHE
 ALTER TABLE public.ubicaciones ADD CONSTRAINT chk_ubicaciones_subtipo_almacenamiento CHECK (((subtipo_almacenamiento IS NULL) OR (subtipo_almacenamiento = ANY (ARRAY['bulk'::text, 'estiba'::text, 'camara'::text, 'cross_dock'::text, 'staging'::text]))));
 ALTER TABLE public.ubicaciones ADD CONSTRAINT chk_ubicaciones_tipo_logico CHECK (((tipo_logico IS NULL) OR (tipo_logico = ANY (ARRAY['exhibicion'::text, 'mostrador'::text, 'picking'::text, 'almacenamiento'::text]))));
 ALTER TABLE public.ubicaciones ADD CONSTRAINT ubicaciones_pkey PRIMARY KEY (id);
-ALTER TABLE public.ubicaciones ADD CONSTRAINT ubicaciones_tipo_ubicacion_check CHECK ((tipo_ubicacion = ANY (ARRAY['picking'::text, 'bulk'::text, 'estiba'::text, 'camara'::text, 'cross_dock'::text, 'staging'::text])));
 ALTER TABLE public.ubicaciones ADD CONSTRAINT uq_ubicaciones_tenant_codigo UNIQUE (tenant_id, codigo);
 ALTER TABLE public.unidades_medida ADD CONSTRAINT unidades_medida_pkey PRIMARY KEY (id);
 ALTER TABLE public.unidades_medida ADD CONSTRAINT unidades_medida_tenant_id_nombre_key UNIQUE (tenant_id, nombre);
@@ -2987,6 +3006,9 @@ ALTER TABLE public.cajas ADD CONSTRAINT cajas_sucursal_id_fkey FOREIGN KEY (sucu
 ALTER TABLE public.cajas ADD CONSTRAINT cajas_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.canales_venta ADD CONSTRAINT canales_venta_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.categorias ADD CONSTRAINT categorias_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
+ALTER TABLE public.categorias ADD CONSTRAINT categorias_rotacion_ubicacion_excepcion_id_fkey FOREIGN KEY (rotacion_ubicacion_excepcion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
+ALTER TABLE public.tenants ADD CONSTRAINT tenants_rotacion_ubicacion_excepcion_id_fkey FOREIGN KEY (rotacion_ubicacion_excepcion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
+ALTER TABLE public.productos ADD CONSTRAINT productos_rotacion_ubicacion_excepcion_id_fkey FOREIGN KEY (rotacion_ubicacion_excepcion_id) REFERENCES ubicaciones(id) ON DELETE SET NULL;
 ALTER TABLE public.categorias_gasto ADD CONSTRAINT categorias_gasto_tenant_id_fkey FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE;
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_created_by_fkey FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE public.cheques ADD CONSTRAINT cheques_endosado_a_proveedor_id_fkey FOREIGN KEY (endosado_a_proveedor_id) REFERENCES proveedores(id) ON DELETE SET NULL;
@@ -6978,6 +7000,30 @@ BEGIN
 END $function$
 
 
+CREATE OR REPLACE FUNCTION public.fn_rotacion_reglas_efectivas(p_producto_id uuid)
+ RETURNS TABLE(agotar_antes_reponer boolean, prioridad_envios boolean, armar_kits boolean, ubicacion_excepcion_id uuid)
+ LANGUAGE sql STABLE
+ SET search_path TO 'public'
+AS $function$
+  SELECT
+    r.agotar_antes_reponer,
+    r.prioridad_envios,
+    (r.armar_kits AND NOT r.agotar_antes_reponer) AS armar_kits,
+    r.ubicacion_excepcion_id
+  FROM (
+    SELECT
+      COALESCE(p.rotacion_agotar_antes_reponer, c.rotacion_agotar_antes_reponer, t.rotacion_agotar_antes_reponer) AS agotar_antes_reponer,
+      COALESCE(p.rotacion_prioridad_envios,     c.rotacion_prioridad_envios,     t.rotacion_prioridad_envios)     AS prioridad_envios,
+      COALESCE(p.rotacion_armar_kits,            c.rotacion_armar_kits,            t.rotacion_armar_kits)          AS armar_kits,
+      COALESCE(p.rotacion_ubicacion_excepcion_id, c.rotacion_ubicacion_excepcion_id, t.rotacion_ubicacion_excepcion_id) AS ubicacion_excepcion_id
+    FROM public.productos p
+    JOIN public.tenants t ON t.id = p.tenant_id
+    LEFT JOIN public.categorias c ON c.id = p.categoria_id
+    WHERE p.id = p_producto_id
+  ) r;
+$function$
+
+
 CREATE OR REPLACE FUNCTION public.fn_saldo_proveedor_cc(p_proveedor_id uuid)
  RETURNS numeric
  LANGUAGE sql
@@ -7339,6 +7385,25 @@ CREATE OR REPLACE FUNCTION public.fn_updated_at_tn_creds()
 AS $function$
 BEGIN NEW.updated_at = NOW(); RETURN NEW; END;
 $function$
+
+
+CREATE OR REPLACE FUNCTION public.fn_valida_rotacion_ubicacion_mismo_tenant()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SET search_path TO 'public'
+AS $function$
+DECLARE
+  v_ubic_tenant uuid;
+  v_tenant_esperado uuid;
+BEGIN
+  IF NEW.rotacion_ubicacion_excepcion_id IS NULL THEN RETURN NEW; END IF;
+  SELECT tenant_id INTO v_ubic_tenant FROM ubicaciones WHERE id = NEW.rotacion_ubicacion_excepcion_id;
+  v_tenant_esperado := CASE WHEN TG_TABLE_NAME = 'tenants' THEN NEW.id ELSE NEW.tenant_id END;
+  IF v_ubic_tenant IS NULL OR v_ubic_tenant <> v_tenant_esperado THEN
+    RAISE EXCEPTION 'La ubicación de excepción de Rotación debe pertenecer al mismo tenant';
+  END IF;
+  RETURN NEW;
+END $function$
 
 
 CREATE OR REPLACE FUNCTION public.fn_venta_requiere_pedido(p_venta_id uuid, p_con_envio boolean DEFAULT false)
@@ -7837,23 +7902,39 @@ DECLARE
   v_tenant uuid; rec RECORD; ln RECORD;
   v_requerido numeric; v_disponible numeric; v_restante numeric; v_reservar numeric;
   v_reservados jsonb := '[]'::jsonb; v_log_id uuid; v_nrecetas int;
+  v_estados_rotacion uuid[];
+  v_armar_kits boolean;
 BEGIN
   SELECT tenant_id INTO v_tenant FROM users WHERE id = auth.uid();
   IF v_tenant IS NULL THEN RAISE EXCEPTION 'Usuario sin tenant'; END IF;
   IF p_cantidad IS NULL OR p_cantidad <= 0 THEN RAISE EXCEPTION 'Cantidad inválida'; END IF;
   SELECT count(*) INTO v_nrecetas FROM kit_recetas WHERE tenant_id = v_tenant AND kit_producto_id = p_kit_producto_id;
   IF v_nrecetas = 0 THEN RAISE EXCEPTION 'El KIT no tiene receta configurada'; END IF;
+
+  SELECT array_agg(id) INTO v_estados_rotacion FROM estados_inventario WHERE tenant_id = v_tenant AND dispara_rotacion = true;
+
   FOR rec IN SELECT comp_producto_id, cantidad FROM kit_recetas WHERE tenant_id = v_tenant AND kit_producto_id = p_kit_producto_id LOOP
     v_requerido := rec.cantidad * p_cantidad;
     SELECT COALESCE(sum(cantidad - COALESCE(cantidad_reservada, 0)), 0) INTO v_disponible FROM inventario_lineas
       WHERE tenant_id = v_tenant AND producto_id = rec.comp_producto_id AND activo = true AND (p_sucursal_id IS NULL OR sucursal_id = p_sucursal_id);
     IF v_disponible < v_requerido THEN RAISE EXCEPTION 'Stock insuficiente del componente % (necesita %, hay %)', rec.comp_producto_id, v_requerido, v_disponible; END IF;
   END LOOP;
+
   FOR rec IN SELECT comp_producto_id, cantidad FROM kit_recetas WHERE tenant_id = v_tenant AND kit_producto_id = p_kit_producto_id LOOP
     v_restante := rec.cantidad * p_cantidad;
-    FOR ln IN SELECT id, (cantidad - COALESCE(cantidad_reservada, 0)) AS disp FROM inventario_lineas
+
+    v_armar_kits := false;
+    IF v_estados_rotacion IS NOT NULL THEN
+      SELECT r.armar_kits INTO v_armar_kits FROM fn_rotacion_reglas_efectivas(rec.comp_producto_id) r;
+    END IF;
+
+    FOR ln IN SELECT id, estado_id, (cantidad - COALESCE(cantidad_reservada, 0)) AS disp FROM inventario_lineas
       WHERE tenant_id = v_tenant AND producto_id = rec.comp_producto_id AND activo = true AND (p_sucursal_id IS NULL OR sucursal_id = p_sucursal_id)
-        AND (cantidad - COALESCE(cantidad_reservada, 0)) > 0 ORDER BY created_at LOOP
+        AND (cantidad - COALESCE(cantidad_reservada, 0)) > 0
+      ORDER BY
+        CASE WHEN v_armar_kits AND estado_id = ANY(v_estados_rotacion) THEN 0 ELSE 1 END,
+        created_at
+    LOOP
       EXIT WHEN v_restante <= 0;
       v_reservar := LEAST(ln.disp, v_restante);
       UPDATE inventario_lineas SET cantidad_reservada = COALESCE(cantidad_reservada, 0) + v_reservar WHERE id = ln.id;
@@ -10043,6 +10124,7 @@ CREATE TRIGGER trg_updated_at_aut_inv BEFORE UPDATE ON public.autorizaciones_inv
 CREATE TRIGGER trg_caja_mov_cierre BEFORE DELETE OR UPDATE ON public.caja_movimientos FOR EACH ROW EXECUTE FUNCTION trg_caja_mov_periodo_cerrado();
 CREATE TRIGGER trg_caja_ses_cierre BEFORE DELETE OR UPDATE ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION trg_caja_ses_periodo_cerrado();
 CREATE TRIGGER trg_set_caja_sesion_numero BEFORE INSERT ON public.caja_sesiones FOR EACH ROW EXECUTE FUNCTION fn_set_caja_sesion_numero();
+CREATE TRIGGER trg_categorias_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.categorias FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_set_cheque_numero BEFORE INSERT ON public.cheques FOR EACH ROW EXECUTE FUNCTION set_cheque_numero();
 CREATE TRIGGER trg_set_devprov_numero BEFORE INSERT ON public.devoluciones_proveedor FOR EACH ROW EXECUTE FUNCTION set_devprov_numero();
 CREATE TRIGGER trg_enforce_cuits BEFORE INSERT OR UPDATE OF activo, es_default ON public.emisores_fiscales FOR EACH ROW EXECUTE FUNCTION fn_enforce_limite_cuits();
@@ -10082,6 +10164,7 @@ CREATE TRIGGER trg_enforce_sku BEFORE INSERT OR UPDATE OF activo ON public.produ
 CREATE TRIGGER trg_productos_compose_nombre BEFORE INSERT OR UPDATE OF producto_padre_id, variante_diferenciador, nombre ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_compose_nombre();
 CREATE TRIGGER trg_productos_presentacion_base AFTER INSERT OR UPDATE OF unidad_medida ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_sembrar_presentacion_base();
 CREATE TRIGGER trg_productos_propagar_nombre AFTER UPDATE OF nombre ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_propagar_nombre();
+CREATE TRIGGER trg_productos_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.productos FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_productos_udm_familia BEFORE UPDATE OF unidad_medida_base_id ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_producto_udm_cambio_familia();
 CREATE TRIGGER trg_productos_variante_atributos BEFORE INSERT OR UPDATE OF producto_padre_id, tiene_talle, tiene_color, tiene_encaje, tiene_formato, tiene_sabor_aroma ON public.productos FOR EACH ROW EXECUTE FUNCTION trg_variante_atributos_incompatibles();
 CREATE TRIGGER trg_set_recepcion_numero BEFORE INSERT ON public.recepciones FOR EACH ROW EXECUTE FUNCTION trg_fn_set_recepcion_numero();
@@ -10105,6 +10188,7 @@ CREATE TRIGGER trg_seed_tenant_defaults AFTER INSERT ON public.tenants FOR EACH 
 CREATE TRIGGER trg_seed_tipos_pedido_new_tenant AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_seed_tipos_pedido_new_tenant();
 CREATE TRIGGER trg_seed_umf AFTER INSERT ON public.tenants FOR EACH ROW EXECUTE FUNCTION trg_seed_umf_new_tenant();
 CREATE TRIGGER trg_set_primera_compra BEFORE UPDATE ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_set_primera_compra();
+CREATE TRIGGER trg_tenants_rotacion_ubicacion BEFORE INSERT OR UPDATE OF rotacion_ubicacion_excepcion_id ON public.tenants FOR EACH ROW EXECUTE FUNCTION fn_valida_rotacion_ubicacion_mismo_tenant();
 CREATE TRIGGER trg_updated_at_tn_creds BEFORE UPDATE ON public.tiendanube_credentials FOR EACH ROW EXECUTE FUNCTION fn_updated_at_tn_creds();
 CREATE TRIGGER trg_set_traslado_numero BEFORE INSERT ON public.traslados FOR EACH ROW EXECUTE FUNCTION set_traslado_numero();
 CREATE TRIGGER trg_ubic_autogenerar_codigo BEFORE INSERT OR UPDATE OF codigo ON public.ubicaciones FOR EACH ROW EXECUTE FUNCTION trg_ubic_autogenerar_codigo();

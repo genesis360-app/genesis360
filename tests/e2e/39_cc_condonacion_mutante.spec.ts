@@ -10,6 +10,11 @@
  * Aserción POSITIVA (toast "Deuda Venta #N condonada"); el efecto (monto_pagado=total + tag
  * 'Condonación CC') se verifica aparte con execute_sql.
  *
+ * NOTA (2026-08-06): `condonarDeudaCC` usa el modal propio `useConfirm()` desde v1.152.0 (sin
+ * diálogos nativos del navegador) — el test clickea el botón "Confirmar" del modal, no un
+ * `confirm()` nativo. `page.on('dialog', ...)` se deja de todos modos por si alguna otra
+ * interacción de la página dispara un diálogo nativo real.
+ *
  * Usa el cliente "Gaston Otranto" (tiene deuda CC en el tenant de prueba DEV). Corre con OWNER
  * (chromium). NOTA: el otro flujo de #9 — "dar de baja incobrable" (B6) — exige la clave maestra
  * del tenant (configurada, desconocida) → no automatizable acá; se valida la condonación per-venta.
@@ -36,7 +41,10 @@ test.describe('Condonación de deuda CC (mutante)', () => {
     test.skip(!(await visible(card, 5000)), `${CLIENTE} no tiene deuda CC condonable`)
     await card.getByRole('button', { name: /^Condonar$/ }).first().click()
 
-    // POSITIVO: toast de condonación (el confirm se acepta vía el handler de dialog)
+    // Modal propio (no diálogo nativo) — confirmar
+    await page.getByRole('alertdialog').getByRole('button', { name: /^Confirmar$/ }).click()
+
+    // POSITIVO: toast de condonación
     await expect(page.getByText(/Deuda Venta #\d+ condonada/i)).toBeVisible({ timeout: 10000 })
     await expect(page.getByText(/Error al condonar/i)).not.toBeVisible()
   })

@@ -235,7 +235,7 @@ export default function VentasPage() {
   // A2 — conteo wall-to-wall en curso en la sucursal → bloquea reservas/despachos (mueven stock)
   const { data: conteoBloqueante } = useConteoBloqueante(tenant?.id, sucursalId)
   const { isPeriodoCerrado, ultimoCierre } = useCierreContable()
-  const { canalesActivos, reglaDe } = useCanalesVenta()  // VF2 (I1/I2)
+  const { canalesActivos, reglaDe, clasificacionDe } = useCanalesVenta()  // VF2 (I1/I2)
   const clienteObligatorio  = (tenant as any)?.cliente_obligatorio    ?? 'reservas'
   const clienteCreacionInline = (tenant as any)?.cliente_creacion_inline ?? true
   const permiteCF           = (tenant as any)?.cliente_consumidor_final ?? true  // H5: ¿se puede vender como Consumidor Final?
@@ -1121,7 +1121,7 @@ export default function VentasPage() {
 
       // Buscar productos
       let prodQuery = supabase.from('productos')
-        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, es_kit, alicuota_iva, precio_usd, moneda_venta')
+        .select('id, nombre, sku, precio_venta, precio_costo, tiene_series, tiene_vencimiento, regla_inventario, stock_actual, unidad_medida, imagen_url, imagen_thumb_url, es_kit, alicuota_iva, precio_usd, moneda_venta')
         .eq('tenant_id', tenant!.id).eq('activo', true)
         .order('nombre')
         .limit(viewMode === 'galeria' ? 60 : 20)
@@ -3254,6 +3254,19 @@ export default function VentasPage() {
       // ISS-075: acumular el desglose de despacho por LPN/ubicación (solo despachada)
       const despachoRows: any[] = []
       const _hoy = new Date().toISOString().split('T')[0]
+
+      // Motor de Rotación, Opción 2 (D1-D3) — el lote en descuento pierde prioridad SOLO en venta
+      // 100% mostrador-directo (presencial + despachada al toque); una reserva presencial SÍ
+      // prioriza (D1), igual que cualquier venta con canal no-presencial. Se resuelve UNA vez para
+      // toda la venta (no por ítem) — estado y canal son los mismos para todo el carrito.
+      const esEnvioOReserva = estado === 'reservada' || clasificacionDe(canalPOS) !== 'presencial'
+      let estadosPrioridadRotacion: Set<string> | null = null
+      if (esEnvioOReserva) {
+        const { data: estadosRot } = await supabase.from('estados_inventario')
+          .select('id').eq('tenant_id', tenant!.id).eq('dispara_rotacion', true)
+        if (estadosRot && estadosRot.length > 0) estadosPrioridadRotacion = new Set(estadosRot.map((e: any) => e.id))
+      }
+
       // Procesamiento SECUENCIAL (no Promise.all): si el mismo producto está en varias
       // líneas del carrito, el rebaje en paralelo leería el mismo stock y se pisaría (race).
       for (let i = 0; i < cart.length; i++) {
@@ -3286,10 +3299,18 @@ export default function VentasPage() {
         }
 
         if (!item.tiene_series && (estado === 'reservada' || estado === 'despachada')) {
-          const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento)
+          // La regla de Rotación es por producto (jerarquía SKU>categoría>tenant) — se resuelve acá,
+          // no arriba, porque cada ítem del carrito puede ser un producto distinto.
+          let estadoIdsPrioridadItem: Set<string> | null = null
+          if (estadosPrioridadRotacion) {
+            const { data: reglasRot } = await supabase.rpc('fn_rotacion_reglas_efectivas', { p_producto_id: item.producto_id })
+            const infoRot = Array.isArray(reglasRot) ? reglasRot[0] : reglasRot
+            if (infoRot?.prioridad_envios) estadoIdsPrioridadItem = estadosPrioridadRotacion
+          }
+          const sortLineas = getRebajeSort(item.regla_inventario, tenant!.regla_inventario, item.tiene_vencimiento, estadoIdsPrioridadItem)
           let lineasQ = soloUbicado(
             supabase.from('inventario_lineas')
-              .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, ubicacion_id, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
+              .select('id, lpn, cantidad, cantidad_reservada, created_at, fecha_vencimiento, estado_id, ubicacion_id, talle, color, encaje, formato, sabor_aroma, ubicaciones(nombre, prioridad, disponible_surtido)')
               .eq('producto_id', item.producto_id).eq('activo', true).gt('cantidad', 0)
           )
           // Filtrar ESTRICTAMENTE por sucursal activa para no tocar stock de otra sucursal
@@ -3339,9 +3360,19 @@ export default function VentasPage() {
           const lineaById: Record<string, any> = Object.fromEntries(lineas.map((l: any) => [l.id, l]))
           for (const f of (item.lpn_fuentes ?? [])) {
             if (restante <= 0) break
+            const esManual = manualIds.has(f.linea_id)
+            // Motor de Rotación, Opción 2 — bug real encontrado en vivo (spec 131): `lpn_fuentes`
+            // se calculó al agregar el producto al carrito, ANTES de saber si la venta iba a
+            // calificar como envío/reserva (el canal se elige después, en el panel de cobro), así
+            // que ese plan NUNCA tiene en cuenta la prioridad de Rotación. Si se lo seguía a
+            // ciegas acá, el lote en descuento por vencimiento nunca se despachaba primero pese a
+            // que `estadoIdsPrioridadItem` (abajo) estaba bien calculado. Con la regla activa para
+            // este producto, solo se respeta lo que el operador eligió A MANO; el resto (auto) se
+            // deja para la Fase B, que sí usa el sort fresco con prioridad de Rotación.
+            if (estadoIdsPrioridadItem && !esManual) continue
             const linea = lineaById[f.linea_id]
             if (!linea) continue   // la línea elegida ya no tiene stock → se cubre en la Fase B
-            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante), manualIds.has(f.linea_id) ? 'manual' : 'auto')
+            restante -= await consumirLinea(linea, Math.min(f.cantidad, restante), esManual ? 'manual' : 'auto')
           }
           // Fase B — fallback por orden de sort (regla de rebaje del sistema). origen='auto'.
           for (const linea of lineas) {
@@ -4928,7 +4959,7 @@ export default function VentasPage() {
                           {/* Imagen pequeña */}
                           <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 overflow-hidden">
                             {p.imagen_url
-                              ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover" />
+                              ? <img src={p.imagen_thumb_url || p.imagen_url} alt={p.nombre} loading="lazy" className="w-full h-full object-cover" />
                               : <Package size={14} className="text-gray-300" />
                             }
                           </div>
@@ -4991,7 +5022,7 @@ export default function VentasPage() {
                           : 'border-gray-200 dark:border-gray-700 hover:border-accent-text'}`}>
                       <div className="relative w-full aspect-square bg-gray-50 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden mb-2">
                         {p.imagen_url
-                          ? <img src={p.imagen_url} alt={p.nombre} className="w-full h-full object-cover rounded-lg" />
+                          ? <img src={p.imagen_thumb_url || p.imagen_url} alt={p.nombre} loading="lazy" className="w-full h-full object-cover rounded-lg" />
                           : <Package size={22} className="text-gray-300" />
                         }
                       </div>

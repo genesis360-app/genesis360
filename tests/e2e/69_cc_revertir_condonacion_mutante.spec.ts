@@ -13,7 +13,8 @@
  * "Condonación CC" removido → deuda $5.000 restaurada.
  *
  * Flujo UI: Clientes → tab "Cuenta Corriente" → fila de la venta #247 (badge "Condonada") → "Revertir"
- * (confirm nativo). Aserción POSITIVA del toast; el efecto en DB se verifica aparte con execute_sql.
+ * (modal propio `useConfirm()`, sin diálogos nativos desde v1.152.0). Aserción POSITIVA del toast;
+ * el efecto en DB se verifica aparte con execute_sql.
  * MUTANTE: re-sembrar el SQL para re-correr. GATE: E2E_CC_REVERTIR=1. Corre con OWNER (chromium).
  */
 import { test, expect } from '@playwright/test'
@@ -37,6 +38,9 @@ test.describe('Revertir condonación CC (mutante)', () => {
       test.skip(true, 'Fila de la venta condonada #247 no visible (re-sembrar fixture).')
     }
     await row247.getByRole('button', { name: /^Revertir$/ }).click()
+
+    // Modal propio (no diálogo nativo) — confirmar
+    await page.getByRole('alertdialog').getByRole('button', { name: /^Confirmar$/ }).click()
 
     // POSITIVO: la venta se revirtió a "falta pagar"
     await expect(page.getByText(/revertida a "falta pagar"/i)).toBeVisible({ timeout: 10000 })

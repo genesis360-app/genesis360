@@ -2,8 +2,8 @@
 title: Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 category: features
 tags: [precios, tiers, mayorista, empaque, descuentos, comercial, repositores, cupones, aprobacion-foto, anti-fraude]
-sources: [migrations 328, 329, 330, 331, 332, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx]
-updated: 2026-08-05
+sources: [migrations 328, 329, 330, 331, 332, 341, 342, 343, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/lib/rebajeSort.ts, src/lib/kits.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/pages/AlertasPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx, tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts, tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts, tests/e2e/helpers/fixtures.ts]
+updated: 2026-08-07
 ---
 
 # Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
@@ -14,9 +14,15 @@ updated: 2026-08-05
 > [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto" por ser un feature
 > 100% de Inventario, sin relación con precios. **Fase D** (módulo Comercial) también — detalle en
 > [[wiki/features/comercial]]. **Solo Fase E (módulo Repositores) sigue por delante** — se partió en
-> **4 relevamientos secuenciales**: **Ubicaciones** (🟡 EN DEV desde 2026-08-05, migs 334/335, ver
-> [[wiki/features/ubicaciones]]) → Pestaña de supervisor reusable → Motor de Rotación de productos
-> con descuento → Repositores (ver más abajo).
+> **4 relevamientos secuenciales**: **1) Ubicaciones** (✅ EN PROD desde v1.158.0, migs 334/335, ver
+> [[wiki/features/ubicaciones]]) → **2) Pestaña de supervisor reusable** (✅ respondido completo el
+> 2026-08-07, diseño/construcción sin arrancar todavía — ver más abajo) → **3) Motor de Rotación de
+> productos con descuento** (✅ relevamiento 100% respondido el 2026-08-07 — B4/C2/E5 cerrados por
+> GO; ejecución real de Opción 1, 2 y 3 construida, migs 342/343; **Opción 2 ✅ VERIFICADA end-to-end
+> el mismo 2026-08-07** — encontró y corrigió un bug real de inventario, test e2e permanente spec 131;
+> **Opción 3/kits: E3 ✅ VERIFICADA end-to-end el mismo 2026-08-07 (mig 343, spec 132), E2/E4
+> (autogenerar nombre/precio con autorización) construidos SIN verificar en navegador, E5 (desarmado)
+> pendiente** — ver más abajo) → **4) Repositores** (ver más abajo).
 > **e2e/UAT (sesión 2026-08-04):** 14 specs nuevos (`tests/e2e/115..128*.spec.ts`), todos verdes,
 > registrados en `tests/specs/uat-modo-basico.md` §49 — plan completo en
 > `tests/specs/comercial-fede-abcd.plan.md`. Encontró y cerró un hallazgo real de Regla de Oro #0
@@ -307,14 +313,78 @@ impresión automática de etiquetas no es viable desde una SPA sin un agente loc
 sola vez, se partió el camino en 4 relevamientos secuenciales**, cada uno con su propio HTML y sus
 propias respuestas antes de codear (mismo criterio de "features grandes por fases" de siempre):
 
-1. **Ubicaciones** — 🟡 **EN DEV** (`relevamiento-ubicaciones-reglas-negocio.html`, generado
-   2026-08-02, respondido 2026-08-05 con GO autorizando romper/tocar datos de prueba existentes).
-   Migs 334/335: `ubicaciones` pasa de tabla plana a árbol (`tipo_logico`/`subtipo_almacenamiento`)
-   + `producto_ubicacion_sucursal.ubicacion_exhibicion_id`. Detalle completo:
-   [[wiki/features/ubicaciones]].
-2. **Pestaña de supervisor reusable** — sin arrancar.
-3. **Motor de Rotación de productos con descuento** — sin arrancar.
-4. **Repositores** (el módulo en sí) — sin arrancar.
+1. **Ubicaciones** — ✅ **EN PROD desde v1.158.0** (`relevamiento-ubicaciones-reglas-negocio.html`,
+   generado 2026-08-02, respondido 2026-08-05 con GO autorizando romper/tocar datos de prueba
+   existentes). Migs 334/335: `ubicaciones` pasa de tabla plana a árbol
+   (`tipo_logico`/`subtipo_almacenamiento`) + `producto_ubicacion_sucursal.ubicacion_exhibicion_id`.
+   Detalle completo: [[wiki/features/ubicaciones]].
+2. **Pestaña de supervisor reusable** — ✅ **respondido completo el 2026-08-07**
+   (`relevamiento-supervisor-tab-reglas-negocio.html`, 16 preguntas; Fede respondió el 2026-08-03,
+   GO confirmó las 2 preguntas abiertas — D2: orden de trabajo opción (a), completar 100% este
+   patrón ANTES de diseñar Repositores; G2: sin comentarios). **Diseño/construcción del patrón
+   sin arrancar todavía** — esperan al #3. Decisión de negocio cerrada y transversal a toda la app
+   (C2): 4º nivel de permiso `admin` en el sistema de roles, DUEÑO con `admin` inmutable en todos los
+   módulos. 3 piezas técnicas (A1, A3, B1) quedan pendientes de discutir con GO antes de implementar
+   — no a decidir unilateralmente. Detalle completo:
+   `G360.Wiki/sources/raw/relevamiento_supervisor_tab_respuestas.md`.
+3. **Motor de Rotación de productos con descuento** — ✅ **RELEVAMIENTO 100% RESPONDIDO (2026-08-07)**
+   (`relevamiento-rotacion-descuento-reglas-negocio.html`, 25 preguntas; Fede respondió el 2026-08-03,
+   GO compartió la respuesta y **cerró los 3 gaps reales (B4, C2, E5) el mismo 2026-08-07** — Fede
+   había contestado algo relacionado pero distinto a lo preguntado en esas 3; el resto (A1-A3, B1-B3,
+   C1/C3, D1-D3, E1-E4, F1-F2, G1-G3) ya había cerrado completo). Con el relevamiento cerrado, se
+   construyó **esquema de CONFIGURACIÓN + UI** (mig 341, Config → Inventario → Rotación) Y **ejecución
+   real de las Opciones 1 y 2** (mig 342):
+   - **Opción 1 (agotar antes de reponer):** OC sugerida excluye productos bloqueados (badge "⏳
+     Rotación: no reponer aún" en `AlertasPage.tsx`), ingreso simple avisa (no bloquea) si la fecha
+     nueva es más lejana que el lote bloqueante (`InventarioPage.tsx`). Pendiente NO bloqueante:
+     mismo aviso no extendido a ingreso masivo ni Recepciones.
+   - **Opción 2 (prioridad de envíos):** `getRebajeSort()` (`src/lib/rebajeSort.ts`) suma un 5º
+     parámetro opcional que prioriza líneas en estado de Rotación antes que FIFO/FEFO/LIFO/Manual;
+     `VentasPage.tsx` lo dispara en `registrarVenta` para ventas "envío o reserva". **✅ VERIFICADA
+     end-to-end el mismo 2026-08-07 (sesión siguiente)** con un test e2e PERMANENTE nuevo
+     (`tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts`, simula el flujo real de un cajero:
+     agrega al carrito ANTES de elegir el canal, luego elige "WhatsApp"). **🐛 El test encontró un bug
+     real de inventario (Regla de Oro #0):** el plan de LPN a despachar se precalculaba al agregar al
+     carrito (`item.lpn_fuentes`) SIN la prioridad de Rotación —porque el canal todavía no se conoce en
+     ese momento— y la Fase A de `registrarVenta` lo consumía tal cual, sin dejarle nada a la Fase B
+     (que sí tenía la lógica correcta); la prioridad estaba bien calculada pero nunca se aplicaba en el
+     flujo real de POS. **Fix:** para productos con la regla activa, la Fase A ahora solo respeta lo
+     elegido A MANO por el operador (`manualIds`); el resto queda para la Fase B con el sort correcto —
+     0 cambios para productos/ventas sin la regla. De paso corrigió una fragilidad preexistente del
+     arnés de test: `ingresoRealPorUI` (`tests/e2e/helpers/fixtures.ts`) elegía a ciegas la primera
+     ubicación del combo, que resultó `mono_sku=true` — parámetro nuevo opcional `ubicacionNombre`,
+     100% retrocompatible. Verde: tsc · build · 1529 tests unitarios · spec 131 con 2 corridas
+     consecutivas verdes.
+   - **Opción 3 (armar kits) — E3 ✅ VERIFICADA end-to-end, E2/E4 construidos SIN verificar en
+     navegador, E5 pendiente (mig 343, sesión siguiente el mismo 2026-08-07).** GO scopeó E3+E2/E4
+     como lo independiente de la Pestaña de supervisor: construir YA, reusando la pantalla de Kits
+     EXISTENTE de forma MANUAL (sin disparo automático — eso depende de la Pestaña de supervisor, que
+     no existe todavía).
+     - **E3** (gap técnico: `iniciar_armado_kit` consumía FIFO ciego al `estado_id`): la RPC ahora
+       reordena la reserva de componentes con `ORDER BY CASE WHEN v_armar_kits AND estado_id = ANY(v_estados_rotacion)
+       THEN 0 ELSE 1 END, created_at` — el lote en un estado que dispara Rotación se reserva PRIMERO
+       (prioridad, no exclusividad, mismo criterio D3 de la Opción 2). **✅ Verificado con un test
+       e2e PERMANENTE** (`tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts`: siembra su
+       propia precondición, dispara el armado desde la UI real de Inventario → Kits, verifica en la
+       base que la reserva salió SOLO de la línea en Rotación) — 2 corridas consecutivas verdes.
+     - **E2/E4** (autogenerar nombre/precio/código del kit): `src/lib/kits.ts` nuevo
+       (`sugerirNombreKit`/`sugerirPrecioKit`, E4 = precio de lista × cantidad SIN restar descuento —
+       el % de estado lo aplica el mecanismo existente en la venta, 9 tests), UI nueva en Inventario →
+       Kits (bloque "Sugerido según la receta": nombre aplica directo, precio requiere autorización de
+       supervisor para roles no-DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN vía `autorizaciones_inventario`
+       tipo `kit_precio` nuevo, mismo flujo de aprobar/rechazar existente). **✅ VERIFICADO end-to-end
+       en la sesión de deploy (2026-08-07, mismo día)** con el test e2e permanente
+       `tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts` — rol DEPOSITO pide el cambio de
+       precio, DUEÑO lo aprueba desde Autorizaciones, verificado en DB en cada paso.
+     - **E5** (desarmado de kit devuelve componentes al mismo estado de descuento) y lo que depende de
+       la Pestaña de supervisor (disparo automático) **siguen sin arrancar, a propósito.**
+   ✅ **Las 3 Opciones del Motor de Rotación quedan COMPLETAS y verificadas end-to-end** — código
+   commiteado y pusheado a `origin/dev` (commit `e4b5d9de`, `APP_VERSION` v1.160.0), migs 341/342/343
+   ya aplicadas en la base de PROD. **Deploy de código a PROD EN CURSO** — falta el PR `dev`→`main` +
+   merge + tag/release (ver `sources/raw/project_pendientes.md`, bloque "ARRANCÁ ACÁ"). Detalle
+   completo: `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
+4. **Repositores** (el módulo en sí) — bloqueado hasta que se complete el diseño + construcción real
+   del #2 y se termine la Opción 3 (kits) del #3 (según la decisión D2 de arriba).
 
 Las respuestas de cada relevamiento van a `G360.Wiki/sources/raw/relevamiento_<tema>_respuestas.md`
 antes de diseñar/implementar cada paso.
@@ -327,7 +397,7 @@ sigue por delante y es parte de la misma iniciativa.
 ## Links relacionados
 
 - [[wiki/features/ubicaciones]] — 1º de los 4 relevamientos hacia Fase E (Repositores): rediseño de
-  `ubicaciones` en árbol + `tipo_logico` (migs 334/335, 🟡 EN DEV).
+  `ubicaciones` en árbol + `tipo_logico` (migs 334/335, ✅ EN PROD desde v1.158.0).
 - [[wiki/features/estructuras-udm]] — el árbol de `producto_presentaciones` (Fase 5, migs 310/311)
   que la Fase A enlaza desde el tier; también documenta la Fase 2-bis (mig 306, tiers con operador)
   sobre la que se construye este motor.

@@ -3,7 +3,7 @@ title: WMS — Almacenaje Dirigido y Picking
 category: features
 tags: [wms, lpn, kits, picking, almacenaje, ubicaciones, zonas, reabastecimiento, pedidos]
 sources: [CLAUDE.md, ROADMAP.md, migrations 289, 290, 291, 292, 334, 335, src/pages/PickingPage.tsx]
-updated: 2026-08-05
+updated: 2026-08-07
 ---
 
 # WMS — Warehouse Management System
@@ -177,6 +177,21 @@ movimientos_stock.tipo: + 'kitting' + 'des_kitting'
 - Botón Clonar: copia receta a otro KIT
 - Badge "KIT" naranja en dropdown de búsqueda de VentasPage
 - KIT como producto vendible (precio/stock igual que cualquier SKU)
+
+**🆕 2026-08-07 (mig 343, ✅ EN DEV Y PROD — deploy de código EN CURSO, backlog Comercial de Fede —
+Motor de Rotación, Opción 3): `iniciar_armado_kit` prioriza el lote en descuento** — si el
+tenant/categoría/producto tiene `rotacion_armar_kits` activo (mig 341), la reserva de componentes ya no
+es FIFO ciego al estado: los lotes en un estado con `dispara_rotacion=true` se reservan PRIMERO
+(prioridad, no exclusividad). Para componentes sin la regla activa, 0 cambio de comportamiento. Además,
+el bloque "Sugerido según la receta" en Inventario → Kits autogenera nombre/precio del KIT (precio de
+lista × cantidad, sin restar descuento — el % lo aplica el estado en la venta), con modificar el precio
+requiriendo autorización de supervisor si el rol no es DUEÑO/SUPERVISOR/SUPER_USUARIO/ADMIN. **E3
+(prioridad de reserva) ✅ VERIFICADA end-to-end** (test permanente
+`132_kit_armado_prioridad_rotacion_mutante.spec.ts`); **autogeneración/aprobación de precio (E2/E4)
+también ✅ VERIFICADA end-to-end** (test permanente `133_kit_precio_sugerido_autorizacion_mutante.spec.ts`,
+mismo día, sesión de deploy). Código commiteado y pusheado a `origin/dev` (`e4b5d9de`), migración ya
+aplicada en PROD; falta el merge `dev`→`main` para que el código llegue a Vercel/EFs de PROD. Detalle
+completo: [[wiki/features/precios-tiers-empaque]] → "Fase E" → Motor de Rotación → Opción 3.
 
 ---
 

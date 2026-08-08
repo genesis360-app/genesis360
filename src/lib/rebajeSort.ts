@@ -13,6 +13,13 @@
  * FEFO/LEFO requieren tiene_vencimiento = true en el producto.
  * Si no tiene vencimiento, hace fallback a FIFO.
  * LPNs sin ubicación se tratan como prioridad 999 (van al final).
+ *
+ * Motor de Rotación, Opción 2 (D1-D3) — `estadoIdsPrioridad` opcional: si se pasa un set no
+ * vacío, las líneas cuyo `estado_id` esté en ese set se ordenan SIEMPRE primero (antes que
+ * cualquier otro criterio), y dentro de cada grupo (prioritario / no prioritario) se aplica la
+ * regla normal como desempate. Pensado para pedidos con envío/reserva: el lote en descuento por
+ * vencimiento se toma primero que el resto, sin tocar el comportamiento para nadie que no pase
+ * este parámetro (mostrador directo, o tenants sin Rotación activada).
  */
 
 export type ReglaInventario = 'FIFO' | 'LIFO' | 'FEFO' | 'LEFO' | 'Manual'
@@ -34,48 +41,61 @@ export const REGLAS_INVENTARIO: { value: ReglaInventario; label: string; desc: s
 export function getRebajeSort(
   reglaProducto: string | null | undefined,
   reglaTenant: string | null | undefined,
-  tieneVencimiento: boolean
+  tieneVencimiento: boolean,
+  estadoIdsPrioridad?: Set<string> | null
 ): (a: any, b: any) => number {
   const regla = (reglaProducto || reglaTenant || 'FIFO') as ReglaInventario
 
-  // FEFO / LEFO: ordenar por fecha de vencimiento
-  // Si el producto no tiene vencimiento → fallback a FIFO
-  if (regla === 'FEFO' || regla === 'LEFO') {
-    if (tieneVencimiento) {
-      const dir = regla === 'FEFO' ? 1 : -1
+  const base = ((): (a: any, b: any) => number => {
+    // FEFO / LEFO: ordenar por fecha de vencimiento
+    // Si el producto no tiene vencimiento → fallback a FIFO
+    if (regla === 'FEFO' || regla === 'LEFO') {
+      if (tieneVencimiento) {
+        const dir = regla === 'FEFO' ? 1 : -1
+        return (a, b) => {
+          const da = a.fecha_vencimiento ? new Date(a.fecha_vencimiento).getTime() : Infinity
+          const db = b.fecha_vencimiento ? new Date(b.fecha_vencimiento).getTime() : Infinity
+          return (da - db) * dir
+        }
+      }
+      // Fallback a FIFO si no tiene vencimiento
+    }
+
+    const porPrioridad = (a: any, b: any) =>
+      (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999)
+
+    if (regla === 'Manual') {
+      // Si prioridades iguales → FIFO como desempate
       return (a, b) => {
-        const da = a.fecha_vencimiento ? new Date(a.fecha_vencimiento).getTime() : Infinity
-        const db = b.fecha_vencimiento ? new Date(b.fecha_vencimiento).getTime() : Infinity
-        return (da - db) * dir
+        const p = porPrioridad(a, b)
+        if (p !== 0) return p
+        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       }
     }
-    // Fallback a FIFO si no tiene vencimiento
-  }
 
-  const porPrioridad = (a: any, b: any) =>
-    (a.ubicaciones?.prioridad ?? 999) - (b.ubicaciones?.prioridad ?? 999)
+    if (regla === 'LIFO') {
+      return (a, b) => {
+        const p = porPrioridad(a, b)
+        if (p !== 0) return p
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      }
+    }
 
-  if (regla === 'Manual') {
-    // Si prioridades iguales → FIFO como desempate
+    // FIFO (default)
     return (a, b) => {
       const p = porPrioridad(a, b)
       if (p !== 0) return p
       return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     }
-  }
+  })()
 
-  if (regla === 'LIFO') {
-    return (a, b) => {
-      const p = porPrioridad(a, b)
-      if (p !== 0) return p
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    }
-  }
+  if (!estadoIdsPrioridad || estadoIdsPrioridad.size === 0) return base
 
-  // FIFO (default)
+  // Motor de Rotación, Opción 2: prioridad > regla normal, que solo desempata dentro del mismo grupo.
   return (a, b) => {
-    const p = porPrioridad(a, b)
-    if (p !== 0) return p
-    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    const ap = estadoIdsPrioridad.has(a.estado_id) ? 0 : 1
+    const bp = estadoIdsPrioridad.has(b.estado_id) ? 0 : 1
+    if (ap !== bp) return ap - bp
+    return base(a, b)
   }
 }

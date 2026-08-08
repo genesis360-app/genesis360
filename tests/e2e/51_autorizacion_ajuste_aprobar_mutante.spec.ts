@@ -17,7 +17,8 @@
  *
  * Aserción POSITIVA (label correcto + toast "Autorización aprobada y ejecutada"); el efecto en
  * `inventario_lineas.cantidad` (126→127), el `movimientos_stock` ajuste_ingreso y `estado='aprobada'`
- * se verifican aparte con execute_sql. El botón Aprobar dispara un `confirm()` nativo → se acepta.
+ * se verifican aparte con execute_sql. El botón Aprobar abre el modal propio `useConfirm()` (sin
+ * diálogos nativos desde v1.152.0) → el test clickea "Confirmar" ahí.
  *
  * Re-ejecutable: re-sembrar el fixture (autorización pendiente) antes de cada corrida; skip-guard si ausente.
  */
@@ -52,6 +53,9 @@ test.describe('Aprobación de ajuste de inventario — 2 actores (mutante)', () 
 
     // Aprobar (2º actor = DUEÑO)
     await fila.getByRole('button', { name: /Aprobar/i }).click()
+
+    // Modal propio (no diálogo nativo) — confirmar
+    await page.getByRole('alertdialog').getByRole('button', { name: /^Confirmar$/ }).click()
 
     // POSITIVO: toast de éxito
     await expect(page.getByText(/Autorización aprobada y ejecutada/i)).toBeVisible({ timeout: 12000 })

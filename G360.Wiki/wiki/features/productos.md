@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md, migrations 329, 330]
-updated: 2026-08-06
+sources: [CLAUDE.md, migrations 329, 330, 340]
+updated: 2026-08-07
 ---
 
 # Productos
@@ -136,6 +136,24 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 > producto real de GO con navegación SPA real (no `page.goto()`, que resetearía la caché igual sin
 > probar nada): ancla cambiada ida y vuelta (Caja→Pallet→Caja) con reapertura real en el medio, en
 > ambos sentidos mostró lo recién guardado. **Sin migración — fix 100% frontend.**
+
+> [!NOTE] **🆕 Thumbnail de imagen + `loading="lazy"` — fix de performance (2026-08-07, mig 340,
+> ✅ EN DEV Y PROD — commiteado y pusheado a `origin/dev` `e4b5d9de`, migración ya aplicada en PROD,
+> deploy de código EN CURSO).** Investigación de por qué Supabase DEV entró en "grace period" por
+> exceder la cuota de **Cached Egress** + agotar el **Disk IO Budget**: la imagen del producto se
+> mostraba a tamaño COMPLETO (hasta 1200px/1.5MB, sin resize) incluso como ícono de 32-36px en
+> Productos, Inventario y POS/Ventas — cada vista de lista/galería volvía a bajar el archivo entero.
+> **Fix:** al subir la imagen, `ProductoFormPage.tsx` genera además un thumbnail chico con
+> `browser-image-compression` (`maxWidthOrHeight: 200, maxSizeMB: 0.05`), lo sube a Storage como
+> `<stamp>_thumb.<ext>` y lo guarda en la columna nueva **`productos.imagen_thumb_url`** (mig 340,
+> nullable). `ProductosPage.tsx`, `InventarioPage.tsx` (buscador de producto) y `VentasPage.tsx`
+> (carrito, vista lista y galería) ahora renderizan `imagen_thumb_url || imagen_url` con
+> **`loading="lazy"`** — productos ya existentes sin thumbnail siguen mostrando la imagen completa
+> (fallback), solo pierden la optimización hasta que se re-suba la imagen. Verde: tsc · build ·
+> **1525 tests unitarios**. **⚠ NO probado con un usuario real subiendo una imagen nueva en el
+> navegador** — verificado por code review y tipos, queda pendiente de QA manual. Detalle completo del
+> hallazgo (incluida la nota operativa sobre la cuota compartida DEV/PROD de Supabase, pendiente de
+> GO): `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ" del 2026-08-07), `log.md`.
 
 ### Card 1: Identificación
 

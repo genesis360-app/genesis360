@@ -1,0 +1,21 @@
+name: Repricing automático por margen (D3)
+
+on:
+  schedule:
+    # Cada 6 horas — solo afecta productos con "Reajuste automático por margen" activado
+    - cron: '0 */6 * * *'
+  workflow_dispatch:  # Permite ejecución manual
+
+jobs:
+  repricing-sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call repricing-sweep Edge Function
+        run: |
+          curl -X POST \
+            "${{ secrets.SUPABASE_URL }}/functions/v1/repricing-sweep" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
+            -H "Content-Type: application/json" \
+            --fail \
+            --silent \
+            --show-error

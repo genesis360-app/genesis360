@@ -98,10 +98,18 @@ serve(async (req) => {
       }
 
       if (job.tipo === 'sync_precio') {
+        // D3, mecanismo 2 — si el producto tiene precio_ajuste_meli_pct, el precio PUBLICADO en
+        // MELI se deriva del precio base + ese %, sin tocar precio_venta (B3: el precio base
+        // siempre manda). Sin % configurado, se publica el precio base tal cual (comportamiento
+        // previo).
         const { data: prod } = await supabase
-          .from('productos').select('precio_venta')
+          .from('productos').select('precio_venta, precio_ajuste_meli_pct')
           .eq('id', producto_id).maybeSingle()
         if (!prod) { await markFailed(supabase, job.id, 'Producto no encontrado'); failed++; continue }
+
+        const precioPublicado = prod.precio_ajuste_meli_pct
+          ? Math.round(Number(prod.precio_venta) * (1 + Number(prod.precio_ajuste_meli_pct) / 100) * 100) / 100
+          : Number(prod.precio_venta)
 
         const endpoint = meli_variation_id
           ? `${MELI_API}/items/${meli_item_id}/variations/${meli_variation_id}`
@@ -110,13 +118,13 @@ serve(async (req) => {
         const res = await fetch(endpoint, {
           method: 'PUT',
           headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ price: prod.precio_venta }),
+          body: JSON.stringify({ price: precioPublicado }),
         })
 
         if (!res.ok) {
           const err = await res.text(); await markRetry(supabase, job, err); retrying++; continue
         }
-        console.log(`ML precio sync OK: ${meli_item_id} = $${prod.precio_venta}`)
+        console.log(`ML precio sync OK: ${meli_item_id} = $${precioPublicado} (base $${prod.precio_venta}${prod.precio_ajuste_meli_pct ? `, ajuste ${prod.precio_ajuste_meli_pct}%` : ''})`)
       }
 
       // Actualizar ultimo_sync_at

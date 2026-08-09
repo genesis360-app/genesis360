@@ -53,6 +53,7 @@ export default function ProductoFormPage() {
     stock_minimo: '', unidad_medida: 'unidad', unidad_medida_base_id: '', codigo_barras: '', activo: true,
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false, ubicacion_kit_default_id: '',
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
+    reajuste_margen_auto: false, precio_ajuste_meli_pct: '', precio_ajuste_tn_pct: '',
     // Nuevos atributos
     marca: '',
     shelf_life_dias: '',
@@ -134,6 +135,17 @@ export default function ProductoFormPage() {
     enabled: !!tenant,
   })
   const ubicacionesPorId = useMemo(() => new Map((ubicaciones as any[]).map(u => [u.id, u])), [ubicaciones])
+
+  // D3 (B4) — comisión de MELI a modo informativo desde la última venta real de este SKU. Nunca se
+  // usa para calcular un precio, solo se muestra como referencia junto a los % de ajuste por canal.
+  const { data: ultimaComisionMeli } = useQuery({
+    queryKey: ['ultima-comision-meli', id],
+    queryFn: async () => {
+      const { data } = await supabase.rpc('fn_ultima_comision_meli', { p_producto_id: id })
+      return data?.[0] ?? null
+    },
+    enabled: isEditing && !!id,
+  })
 
   // Ubicación predeterminada para la sucursal activa en el header
   const [ubicSucursalActiva, setUbicSucursalActiva] = useState('')
@@ -362,6 +374,9 @@ export default function ProductoFormPage() {
         tiene_vencimiento: productoData.tiene_vencimiento ?? false,
         es_kit: productoData.es_kit ?? false,
         ubicacion_kit_default_id: (productoData as any).ubicacion_kit_default_id ?? '',
+        reajuste_margen_auto: (productoData as any).reajuste_margen_auto ?? false,
+        precio_ajuste_meli_pct: (productoData as any).precio_ajuste_meli_pct != null ? String((productoData as any).precio_ajuste_meli_pct) : '',
+        precio_ajuste_tn_pct: (productoData as any).precio_ajuste_tn_pct != null ? String((productoData as any).precio_ajuste_tn_pct) : '',
         regla_inventario: productoData.regla_inventario ?? '',
         aging_profile_id: productoData.aging_profile_id ?? '',
         margen_objetivo: productoData.margen_objetivo != null ? productoData.margen_objetivo.toString() : '',
@@ -525,6 +540,9 @@ export default function ProductoFormPage() {
         tiene_vencimiento: form.tiene_vencimiento,
         es_kit: form.es_kit,
         ubicacion_kit_default_id: form.es_kit ? (form.ubicacion_kit_default_id || null) : null,
+        reajuste_margen_auto: form.reajuste_margen_auto,
+        precio_ajuste_meli_pct: form.precio_ajuste_meli_pct !== '' ? parseFloat(form.precio_ajuste_meli_pct) : null,
+        precio_ajuste_tn_pct: form.precio_ajuste_tn_pct !== '' ? parseFloat(form.precio_ajuste_tn_pct) : null,
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
@@ -770,6 +788,9 @@ export default function ProductoFormPage() {
         tiene_vencimiento: form.tiene_vencimiento,
         es_kit: form.es_kit,
         ubicacion_kit_default_id: form.es_kit ? (form.ubicacion_kit_default_id || null) : null,
+        reajuste_margen_auto: form.reajuste_margen_auto,
+        precio_ajuste_meli_pct: form.precio_ajuste_meli_pct !== '' ? parseFloat(form.precio_ajuste_meli_pct) : null,
+        precio_ajuste_tn_pct: form.precio_ajuste_tn_pct !== '' ? parseFloat(form.precio_ajuste_tn_pct) : null,
         regla_inventario: form.regla_inventario || null,
         aging_profile_id: form.aging_profile_id || null,
         margen_objetivo: form.margen_objetivo !== '' ? parseFloat(form.margen_objetivo) : null,
@@ -1223,6 +1244,61 @@ export default function ProductoFormPage() {
                   </div>
                 </div>
                 )}
+              </div>
+
+              {/* D3, mecanismo 1 (B6) — opt-in de reajuste automático por margen objetivo. El CÓMO
+                  se aplica (automático/alerta/tope/umbral) se configura en Config → Integraciones. */}
+              {verCosto && (
+                <label className={`flex items-start gap-3 ${canEdit ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'}`}>
+                  <div className="mt-0.5"><Toggle checked={form.reajuste_margen_auto} disabled={!canEdit || !form.margen_objetivo}
+                    onChange={v => setForm(p => ({ ...p, reajuste_margen_auto: v }))} aria-label="reajuste_margen_auto" /></div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Reajuste automático por margen</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {form.margen_objetivo
+                        ? 'Ajusta el precio de venta (Genesis360 y todos los canales) cuando se desvía del margen objetivo — según el modo configurado en Config → Integraciones.'
+                        : 'Necesita un margen objetivo cargado arriba para activarse.'}
+                    </p>
+                  </div>
+                </label>
+              )}
+
+              {/* D3, mecanismo 2 — ajuste % PROPIO por canal, independiente del margen objetivo.
+                  No toca precio_venta: solo cambia lo PUBLICADO en cada marketplace. */}
+              <div className="border-t border-gray-100 dark:border-gray-700 pt-4">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Ajuste de precio por canal (opcional)</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
+                  % de diferencia respecto al precio base para amortiguar la comisión de cada canal — no cambia el precio de Genesis360, solo lo publicado ahí.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">MercadoLibre</label>
+                    <div className="relative">
+                      <input type="number" onWheel={e => e.currentTarget.blur()} step="0.1" disabled={!canEdit}
+                        value={form.precio_ajuste_meli_pct}
+                        onChange={e => setForm(p => ({ ...p, precio_ajuste_meli_pct: e.target.value }))}
+                        placeholder="Ej: 15"
+                        className="w-full pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
+                    </div>
+                    {ultimaComisionMeli && (
+                      <p className="text-[11px] text-gray-400 mt-1">
+                        Última comisión ML real: ${Number(ultimaComisionMeli.comision_marketplace).toLocaleString('es-AR')} (informativo, no se usa para calcular precio)
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">TiendaNube</label>
+                    <div className="relative">
+                      <input type="number" onWheel={e => e.currentTarget.blur()} step="0.1" disabled={!canEdit}
+                        value={form.precio_ajuste_tn_pct}
+                        onChange={e => setForm(p => ({ ...p, precio_ajuste_tn_pct: e.target.value }))}
+                        placeholder="Ej: 10"
+                        className="w-full pl-3 pr-8 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-500 text-sm">%</span>
+                    </div>
+                  </div>
+                </div>
               </div>
 
               {/* G5 — Moneda de venta + precio USD */}

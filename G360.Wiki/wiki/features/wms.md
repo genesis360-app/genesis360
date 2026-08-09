@@ -292,9 +292,9 @@ wms_tareas
     `BuscadorPildoras.tsx` pasó a recibir los campos por prop en vez de importarlos hardcodeados de
     Picking. Detalle completo: [[wiki/features/filtro-pildoras]].
 - Tab **"Tareas WMS"** — vista de escritorio para el DUEÑO, con link directo a `/picking`. 🆕
-  **2026-08-08 (sin commitear): se MUDÓ de `InventarioPage` a `PedidosPage` (`PageTabs` 'Pedidos' |
-  'Tareas WMS')**, a pedido de GO — ver más abajo "Asignación de tareas a un usuario" para el detalle
-  completo (mismo pedido de GO, misma sesión).
+  **2026-08-08, ✅ EN PROD desde v1.161.0: se MUDÓ de `InventarioPage` a `PedidosPage` (`PageTabs`
+  'Pedidos' | 'Tareas WMS')**, a pedido de GO — ver más abajo "Asignación de tareas a un usuario" para
+  el detalle completo (mismo pedido de GO, misma sesión).
 - Gating: `modoAvanzado` + rol **DEPOSITO** (nav en `AppLayout.tsx` + redirect guard + ruta en
   `App.tsx`), mismo patrón que "Recepciones".
 
@@ -309,7 +309,7 @@ real de stock, el deploy queda para cuando GO lo pida).
 
 Detalle completo del roadmap de las 5 fases: [[wiki/features/estructuras-udm]] → "Roadmap del plan".
 
-### 🆕 Asignación de tareas a un usuario + tab "Tareas WMS" mudado a Pedidos (2026-08-08, sin commitear)
+### 🆕 Asignación de tareas a un usuario + tab "Tareas WMS" mudado a Pedidos (2026-08-08, ✅ EN PROD desde v1.161.0)
 
 Pedido explícito de GO: mover la pestaña "Tareas WMS" del módulo Inventario al módulo
 [[wiki/features/pedidos]], poder asignar cada tarea (picking/reabastecimiento, y a futuro armado, ver
@@ -349,18 +349,19 @@ nunca las de otro.
   "preset de operario por defecto para tareas de armado" que GO había pedido — pospuesto hasta
   construir el backend de armado automático de D2 (Combos TN/MELI). Ver "🆕 Tipo de tarea 'armado'
   (Fase D2, mig 345)" más abajo para el detalle completo, ya construido y verificado.
-- **Estado real: NO commiteado.** `src/pages/InventarioPage.tsx`, `src/pages/PedidosPage.tsx`,
-  `src/pages/PickingPage.tsx` y los 2 specs e2e modificados en el working tree de `dev`, sin migración
-  nueva, `APP_VERSION` sigue en v1.160.0.
+- **Estado real: ✅ commiteado y deployado a PROD (v1.161.0, PR #319).** `src/pages/InventarioPage.tsx`,
+  `src/pages/PedidosPage.tsx`, `src/pages/PickingPage.tsx` y los 2 specs e2e de arriba, ya en `main`,
+  sin migración nueva propia (reusa `wms_tareas.usuario_asignado_id`, mig 289).
 
-### 🆕 Tipo de tarea 'armado' — backend de armado automático de kits (Fase D2, mig 345, 2026-08-08, EN DEV, sin PROD)
+### 🆕 Tipo de tarea 'armado' — backend de armado automático de kits (Fase D2, mig 345, ✅ EN PROD desde v1.161.0, 2026-08-08) — falta la prueba end-to-end con una orden real
 
 Continuación, mismo día, del punto de arriba ("preset de operario para tareas de armado" quedaba
 pendiente porque no existía consumidor). Ver [[wiki/integrations/tienda-nube]] → "BOM automático para
 combos/kits" para el detalle completo del diseño de negocio (D2, relevamiento de Fede) — acá el foco es
 el mecanismo WMS.
 
-**`345_armado_kits_automatico_d2.sql`** (ya aplicada en DEV, sin aplicar en PROD):
+**`345_armado_kits_automatico_d2.sql`** (✅ aplicada en DEV Y PROD, confirmada con `list_migrations` +
+queries directas contra ambos ambientes):
 - `wms_tareas.tipo` CHECK suma `'armado'` (antes solo `picking | replenishment | putaway | conteo`).
   `wms_tareas.origen` CHECK suma `'marketplace'` (antes `envio | manual | umbral`).
 - `wms_tareas.kitting_log_id` (FK nueva a `kitting_log`, Fase 2.5 de esta misma página) — la tarea de
@@ -417,22 +418,27 @@ stock), impersonando usuario real con `SET LOCAL request.jwt.claim.sub` para los
   `tipo='armado'`: badge morado "Armado", muestran la ubicación de DESTINO en vez de origen, "Completar"
   llama a `fn_completar_tarea_armado`, "Cancelar" sigue siendo el botón genérico existente.
 
-**Webhooks — código escrito, a propósito SIN deployar ni probar end-to-end.** `tn-webhook` y
+**Webhooks — ✅ deployados, sanity check OK, TODAVÍA sin probar contra una orden real.** `tn-webhook` y
 `meli-webhook`: después del loop de reserva FIFO existente contra el stock del kit (su propio SKU), si
 sigue faltando cantidad y el producto tiene `es_kit=true`, invocan `fn_iniciar_armado_kit_auto` con el
 cliente `service_role` que esos archivos ya usan — best-effort, nunca bloquea la venta (mismo patrón
-que el envío automático). Las Edge Functions no se deployan solas (`deploy_edge_function` explícito,
-separado del deploy de frontend) — hoy este código no tiene efecto en ningún ambiente. Tampoco se pudo
-simular un webhook real de TN/MELI con firma válida en este entorno; la única verificación posible fue
-la de la RPC en sí (arriba).
+que el envío automático). Deployados vía `deploy_edge_function` a DEV (v21/v25) y PROD (v20/v13).
+Sanity check post-deploy contra DEV: `tn-webhook` con payload vacío devuelve 400 "Missing fields"
+(esperado) y `meli-webhook` con un topic de test devuelve 200 `{ok:true, skipped:...}` (esperado) —
+confirma que el deploy no rompió el boot de ninguna de las dos funciones. **Sigue sin probarse un
+webhook real de TN/MELI con firma válida y una orden real** — la única verificación de la lógica de
+armado en sí sigue siendo la de la RPC (arriba), con datos de prueba directos.
 
-**Estado real: TODAVÍA NO COMMITEADO** (working tree de `dev`: `ConfigPage.tsx`, `ProductoFormPage.tsx`,
-`PedidosPage.tsx`, `PickingPage.tsx`, `supabase/functions/tn-webhook/index.ts`,
-`supabase/functions/meli-webhook/index.ts`, `supabase/migrations/345_armado_kits_automatico_d2.sql`
-nuevo — se commitea inmediatamente después de esta actualización de wiki). `APP_VERSION` sigue en
-v1.160.0. Migración 345 solo en DEV. **Pendiente:** decisión de GO sobre cuándo deployar los webhooks a
-DEV y probarlos con un kit real conectado a un canal de test; aplicar la mig 345 en PROD cuando se
-decida deployar esta fase.
+**Estado real: ✅ 100% DEPLOYADO A PROD (v1.161.0, 2026-08-08).** `APP_VERSION` bumpeada a `v1.161.0`
+(commit `2e3b84e1`). Migración 345 aplicada en DEV y PROD. PR #319 (`dev`→`main`) mergeado limpio
+(merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), tag + release `v1.161.0` publicados
+(`--latest`), Vercel PROD verificado de forma independiente (`dpl_CaSPmabR76uEBq6Uuv2d74x78PTP`,
+`READY`, `production`). **Pendiente real, no bloqueante del deploy:** la prueba end-to-end contra una
+orden real — requiere que GO o Fede creen un producto kit real mapeado en una de las 2 tiendas TN de
+test ya conectadas en DEV (tenant `bbf7546e-69d6-4ec0-8464-96a6ddc3028d` store `7615512`, tenant
+`3769b1db-10f4-46a6-bc7f-eb669307730d` store `7610321`) y generen una orden real ahí — acceso que
+Claude Code no tiene; después se revisa el resultado (venta creada, tarea de armado generada,
+notificación a supervisores) contra la base real.
 
 ### Fixes de la primera ronda de pruebas manuales de GO (mig 291, 2026-07-22 — ✅ EN PROD desde v1.144.0)
 
@@ -613,8 +619,8 @@ Detalle completo en [[wiki/features/multi-sucursal]] → "Traslados entre sucurs
   de `fn_completar_tarea_reabastecimiento` (arriba, Fase 4)
 - [[wiki/features/estructuras-udm]] — estructuras con niveles dinámicos por UdM (footprints) + roadmap picking/almacenaje/reabastecimiento por UdM (Fases 3-5 ✅ v1.143.0) + Fase 2 (ingreso/rebaje por UdM, ✅ mig 293)
 - [[wiki/features/modo-basico-avanzado]] — desde v1.55.0 las superficies WMS solo se muestran en modo de operación **Avanzado** (toggle por tenant, plan Pro+); el modo gatea UI, nunca datos
-- [[wiki/features/inventario-stock]] — 🆕 2026-08-08 (sin commitear): el tab "Tareas WMS" (v1.143.0)
-  se MUDÓ de acá a [[wiki/features/pedidos]], ver "Asignación de tareas a un usuario" más arriba
+- [[wiki/features/inventario-stock]] — 🆕 2026-08-08, ✅ EN PROD desde v1.161.0: el tab "Tareas WMS"
+  (v1.143.0) se MUDÓ de acá a [[wiki/features/pedidos]], ver "Asignación de tareas a un usuario" más arriba
 - [[wiki/features/configuracion]] — sección "Zonas y picking" en Config → Inventario (v1.143.0)
 - [[wiki/features/multi-sucursal]]
 - [[wiki/features/clientes-proveedores]]

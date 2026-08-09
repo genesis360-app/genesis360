@@ -15,14 +15,14 @@ updated: 2026-08-08
 > **Notificaciones** dejaron de ser placeholders ("próximamente") — ver sección "Clientes, Alertas y
 > Notificaciones" más abajo.
 
-> [!WARNING] **🐛✅ 2026-08-08 (NO commiteado, working tree de `dev`):** las sub-pestañas **Métodos de
-> pago** y **Operativa** de **Ventas** existían como botones pero no mostraban ningún contenido desde
-> el commit `6661d5c6` (backlog Fede 25/7, módulo Comercial) — reorganizó las pestañas de
-> `ConfigPage.tsx` y borró por completo el JSX de renderizado de ambas sub-pestañas sin tocar los
-> botones ni el estado/mutations, que seguían intactos. Causa raíz encontrada y **corregida** —
-> restauradas ambas, verificadas en el navegador real. Detalle completo en la sección "Ventas" más
-> abajo. Pendiente que GO decida si se commitea/deploya. Ver `sources/raw/project_pendientes.md`
-> ("ARRANCÁ ACÁ") y `log.md` (2026-08-08).
+> [!WARNING] **🐛✅ 2026-08-08, ✅ EN PROD desde v1.161.0:** las sub-pestañas **Métodos de pago** y
+> **Operativa** de **Ventas** existían como botones pero no mostraban ningún contenido desde el commit
+> `6661d5c6` (backlog Fede 25/7, módulo Comercial) — reorganizó las pestañas de `ConfigPage.tsx` y
+> borró por completo el JSX de renderizado de ambas sub-pestañas sin tocar los botones ni el
+> estado/mutations, que seguían intactos. Causa raíz encontrada y **corregida** (commit `36ab5a89`) —
+> restauradas ambas, verificadas en el navegador real, ya deployadas a PROD junto con el resto de
+> v1.161.0 (PR #319). Detalle completo en la sección "Ventas" más abajo. Ver
+> `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ") y `log.md` (2026-08-08).
 
 ---
 
@@ -90,24 +90,24 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 
 ## Ventas
 
-> [!WARNING] **🐛✅ Bug real encontrado y corregido (2026-08-08, NO commiteado):** las sub-pestañas
-> **Métodos de pago** y **Operativa** (documentadas abajo) existían como botones en `subTabNav` pero,
-> desde el commit `6661d5c6`, **no tenían ningún JSX de renderizado** — la pestaña "cargaba" sin error
-> y quedaba vacía. El estado/mutations (`nuevoMetodo`, `metodosPago`, `cuotasBancos`,
-> `bizReservaSenaObligatoria`, etc.) nunca se tocó, solo el bloque de render. Restauradas en
-> `src/pages/ConfigPage.tsx` (líneas ~6130 y ~6416) y **verificadas en el navegador real** (Playwright
-> contra el dev server, no solo `tsc`/`build`) — 7 métodos de pago reales con comisión/cuenta vinculada
-> visibles en "Métodos de pago"; Canales de venta + las 4 secciones de "Operativa" (ver abajo) visibles
-> y con datos reales. Regresión del spec e2e `98_config_ventas_envios_mutante.spec.ts`: 4/4 verde (2
-> fallos de la primera corrida fueron timeout de 30s, flake de timing, no relacionado). "Operativa" se
-> restauró **recortada a propósito**: NO se duplicaron "Alertas de ventas" ni "Cuenta corriente de
-> clientes" (esas 2 ya se habían reconstruido en su propio lugar — tabs Alertas/Clientes/Notificaciones,
-> sesión 2026-08-06 — duplicarlas crearía dos pantallas editando el mismo dato). **Estado real: sin
-> commitear**, working tree de `dev`, pendiente decisión de GO sobre cuándo commitear/deployar. Sin
-> migración nueva (fix 100% frontend). A pedido de GO también se auditó **Config → Caja** con el mismo
-> método (cruzar estado `biz*` contra su uso en JSX) y **no tiene ningún bloque huérfano** — lo único
-> "faltante" ahí es un placeholder explícito ("Tolerancia de diferencia en arqueo y panel cajero —
-> próximamente"), no un bug.
+> [!WARNING] **🐛✅ Bug real encontrado y corregido (2026-08-08, ✅ EN PROD desde v1.161.0):** las
+> sub-pestañas **Métodos de pago** y **Operativa** (documentadas abajo) existían como botones en
+> `subTabNav` pero, desde el commit `6661d5c6`, **no tenían ningún JSX de renderizado** — la pestaña
+> "cargaba" sin error y quedaba vacía. El estado/mutations (`nuevoMetodo`, `metodosPago`,
+> `cuotasBancos`, `bizReservaSenaObligatoria`, etc.) nunca se tocó, solo el bloque de render.
+> Restauradas en `src/pages/ConfigPage.tsx` (líneas ~6130 y ~6416) y **verificadas en el navegador
+> real** (Playwright contra el dev server, no solo `tsc`/`build`) — 7 métodos de pago reales con
+> comisión/cuenta vinculada visibles en "Métodos de pago"; Canales de venta + las 4 secciones de
+> "Operativa" (ver abajo) visibles y con datos reales. Regresión del spec e2e
+> `98_config_ventas_envios_mutante.spec.ts`: 4/4 verde (2 fallos de la primera corrida fueron timeout
+> de 30s, flake de timing, no relacionado). "Operativa" se restauró **recortada a propósito**: NO se
+> duplicaron "Alertas de ventas" ni "Cuenta corriente de clientes" (esas 2 ya se habían reconstruido en
+> su propio lugar — tabs Alertas/Clientes/Notificaciones, sesión 2026-08-06 — duplicarlas crearía dos
+> pantallas editando el mismo dato). **Estado real: ✅ commiteado (`36ab5a89`) y deployado a PROD**
+> (v1.161.0, PR #319). Sin migración nueva (fix 100% frontend). A pedido de GO también se auditó
+> **Config → Caja** con el mismo método (cruzar estado `biz*` contra su uso en JSX) y **no tiene ningún
+> bloque huérfano** — lo único "faltante" ahí es un placeholder explícito ("Tolerancia de diferencia en
+> arqueo y panel cajero — próximamente"), no un bug.
 
 ### Sub-tab: Métodos de pago
 
@@ -168,15 +168,16 @@ Toggle activo + webhook URL (`tenants.marketplace_activo`, `tenants.marketplace_
 
 ---
 
-## Clientes, Alertas y Notificaciones — 8 configuraciones YA VIVAS, recién con UI real (2026-08-06, 🟡 EN DEV)
+## Clientes, Alertas y Notificaciones — 8 configuraciones YA VIVAS, recién con UI real (2026-08-06, ✅ PROD desde v1.159.0)
 
 > [!IMPORTANT] Estos 3 tabs eran placeholders puros ("próximamente") hasta el 2026-08-06. La
 > auditoría encontró que **8 columnas de `tenants` ya se leían en producción** (`VentasPage.tsx`,
 > `ClientesPage.tsx`, `src/lib/notificacionesCC.ts`) y **ya se guardaban** desde el mega-form de
 > `ConfigPage.tsx` (`handleSaveBiz`) — pero el usuario nunca tuvo un input para tocarlas salvo por SQL
 > directo. Se construyó el UI real exponiendo exactamente lo que el código ya hacía, sin inventar
-> comportamiento nuevo. **Sin commitear, sin deployar** — ver `sources/raw/project_pendientes.md`
-> "ARRANCÁ ACÁ" y `log.md` (2026-08-06).
+> comportamiento nuevo. **✅ Deployado a PROD desde v1.159.0** (PR #314, 2026-08-06) — nota corregida
+> el 2026-08-08, había quedado stale como "sin commitear". Ver `wiki/business/roadmap.md` (v1.159.0) y
+> `log.md` (2026-08-06).
 
 ### Tab Clientes → Cuenta corriente — políticas
 
@@ -342,10 +343,17 @@ Conectar cuentas externas por sucursal:
 
 | Plataforma | OAuth | Modelo |
 |---|---|---|
-| TiendaNube | ✅ | Sync stock bidireccional + mapeo productos |
+| TiendaNube | ✅ | Sync stock bidireccional + mapeo productos + sync de precio (🆕 D3, mig 346) |
 | MercadoLibre | ✅ | Sync stock + mapeo + precios |
 | MercadoPago | ✅ | Credenciales de pago por sucursal |
 | MODO | Credenciales | Merchant ID + API Key + ambiente (test/prod) |
+
+**🆕 Card "Repricing automático por margen" (Fase D3, 2026-08-08, mig 346, backend EN PROD)** — modo
+(automático siempre / alerta para aprobar / automático desde un monto en $), tope de suba (%,
+opcional) y umbral de aviso ($, opcional). Config a nivel tenant del mecanismo 1 (ajuste ÚNICO
+cross-canal por margen objetivo); el interruptor por producto y el ajuste % propio por canal viven en
+la ficha del producto. Detalle completo: [[wiki/integrations/mercado-libre]] → "Repricing automático
+por margen".
 
 ### Sub-tab: API
 

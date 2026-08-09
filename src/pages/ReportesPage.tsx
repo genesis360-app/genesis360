@@ -135,7 +135,7 @@ export default function ReportesPage() {
     queryKey: ['reporte-productos', tenant?.id],
     queryFn: async () => {
       const { data } = await supabase.from('productos')
-        .select('*, categorias(nombre), proveedores(nombre), ubicaciones(nombre)')
+        .select('*, categorias(nombre), proveedores(nombre), ubicaciones!productos_ubicacion_id_fkey(nombre)')
         .eq('tenant_id', tenant!.id).eq('activo', true).order('nombre')
       return data ?? []
     },

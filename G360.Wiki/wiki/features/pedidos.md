@@ -244,13 +244,14 @@ posibilidad de **asignar cada tarea a un usuario puntual**, y que `/picking` res
   `false` por la mig 336). **7/7 verdes en ambos specs.** Detalle en `wiki/database/migraciones.md`.
 - **Pendiente A PROPÓSITO en el momento, resuelto en la continuación de la misma sesión:** preset de
   operario por defecto para tareas de armado automático — construido junto con el backend real de D2
-  (Combos TN/MELI): mig `345_armado_kits_automatico_d2.sql` (EN DEV, sin PROD) agrega
+  (Combos TN/MELI): mig `345_armado_kits_automatico_d2.sql` (✅ EN DEV Y PROD desde v1.161.0) agrega
   `tenants.wms_armado_operario_default_id` + `wms_tareas.tipo='armado'` + RPCs
   `fn_iniciar_armado_kit_auto`/`fn_completar_tarea_armado`, y `PedidosPage.tsx`/`PickingPage.tsx`
   reconocen el nuevo tipo con badge morado "Armado". Detalle completo: [[wiki/features/wms]] → "Tipo de
   tarea 'armado'", [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits".
-- **Estado real: NO commiteado.** `PedidosPage.tsx`, `InventarioPage.tsx`, `PickingPage.tsx` y los 2
-  specs e2e de arriba modificados en el working tree de `dev`. `APP_VERSION` sigue en v1.160.0.
+- **Estado real: ✅ commiteado y deployado a PROD (v1.161.0, PR #319).** `PedidosPage.tsx`,
+  `InventarioPage.tsx`, `PickingPage.tsx` y los 2 specs e2e de arriba, ya en `main`. `APP_VERSION`
+  bumpeada a v1.161.0.
 
 ---
 

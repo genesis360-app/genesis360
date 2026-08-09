@@ -6,11 +6,44 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-08
 ---
 
-# Historial de Migraciones (001-345)
+# Historial de Migraciones (001-346)
 
-**Total al 2026-08-08:** 345 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-08:** 346 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
-**345 (`345_armado_kits_automatico_d2.sql`) — 🟡 SOLO EN DEV, sin aplicar en PROD** (backend de Combos
+**346 (`346_repricing_margen_meli_d3.sql`) — ✅ APLICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
+(`jjffnbrdjchquexdfgwq`), código pendiente de release (Fase D3 del roadmap de integraciones — ver el
+bloque "ARRANCÁ ACÁ" de `sources/raw/project_pendientes.md` para el detalle completo):** dos
+mecanismos independientes definidos por Fede. Mecanismo 1 — `productos.reajuste_margen_auto`
+(opt-in), ajusta `precio_venta` (precio base, único cross-canal) para volver al `margen_objetivo`;
+config a nivel tenant `tenants.repricing_modo`/`repricing_tope_pct`/`repricing_umbral_aviso_monto`/
+`repricing_automatico_desde_monto`. RPC `fn_precio_para_margen` (IMMUTABLE, fórmula única) y
+`fn_evaluar_repricing_margen(p_tenant_id)` (el sweep, sin `auth.uid()`, `GRANT` solo `service_role`,
+mismo patrón que `fn_iniciar_armado_kit_auto` de la mig 345) que aplica directo o genera fila en
+`autorizaciones_inventario` (nuevo tipo `'repricing_margen'` en el CHECK, reusa la pantalla existente,
+mismo patrón que `'kit_precio'` de la mig 343). RPC `fn_ultima_comision_meli` de solo lectura
+(informativa, nunca certera para fijar precio). Mecanismo 2 — `productos.precio_ajuste_meli_pct`/
+`precio_ajuste_tn_pct` (independiente del mecanismo 1): el precio PUBLICADO en cada canal se deriva
+del precio base + ese %, sin tocar `precio_venta`. Trigger `trg_enqueue_sync_precio` (función
+`fn_enqueue_sync_precio`) encola `sync_precio` en `integration_job_queue` para MELI/TN. 🔒 **Hallazgo
+del `migration-reviewer` antes de aplicar, corregido**: el trigger reaccionaba a CUALQUIER cambio de
+`precio_venta` sin gate — como `inventario_meli_map.sync_precio` viene `DEFAULT true` desde la mig 065
+(checkbox "dormido"), esto habría despertado el push automático de precio para cualquier producto ya
+mapeado sin participar de D3 (verificado con datos reales: afectaría 2 ítems de una cuenta MELI real
+conectada en DEV) — corregido con un gate que solo dispara si el producto tiene algo de D3 configurado.
+Edge Functions `meli-stock-worker` (aplica `precio_ajuste_meli_pct` al publicar, el job `sync_precio`
+ya existía dormido) y `tn-stock-worker` (no soportaba precio en absoluto, se le agregó desde cero)
+actualizadas, y Edge Function nueva `repricing-sweep` (+ GitHub Action `repricing-sweep.yml`, cron
+cada 6hs, no hay pg_cron habilitado) deployadas en DEV y PROD. Verificado con datos reales en DEV
+(fórmula, modo alerta sin duplicar, modo automático con tope clampeado, opt-in del trigger, sweep
+probado en vivo contra los 10 tenants de DEV, 0 cambios reales). **`APP_VERSION` bumpeada a
+`v1.162.0`, commit `792bda42` en la rama LOCAL `dev` — falta push a `origin/dev` + PR `dev→main` +
+merge + tag/release para cerrar el pipeline de release del código** (la migración y las 3 Edge
+Functions ya están aplicadas/deployadas en los proyectos Supabase de DEV y PROD, mismo criterio de DDL
+aditivo antes del merge que las migs 339-343). Pendiente real: el mecanismo 2 (push real de precio)
+sin probar contra una cuenta MELI/TN real conectada. Detalle: [[wiki/integrations/mercado-libre]],
+[[wiki/integrations/tienda-nube]].
+
+**345 (`345_armado_kits_automatico_d2.sql`) — ✅ EN DEV Y PROD desde v1.161.0** (backend de Combos
 automáticos TN/MELI, Fase D2 del roadmap — ver el bloque "ARRANCÁ ACÁ" de
 `sources/raw/project_pendientes.md` para el detalle completo): `wms_tareas.tipo` suma `'armado'` y
 `wms_tareas.origen` suma `'marketplace'`, `wms_tareas.kitting_log_id` (FK a `kitting_log`),
@@ -22,7 +55,20 @@ la reserva de un armado. 🔒 **2 hallazgos del `migration-reviewer` antes de ap
 bloqueante #1 la primera versión de `fn_cancelar_tarea_wms` perdía la cascada de cancelación
 picking↔reabastecimiento de la mig 291; bloqueante #2 faltaba el chequeo final anti-carrera de stock en
 `fn_iniciar_armado_kit_auto`. Verificada con SQL directo contra DEV (todo-o-nada, camino exitoso, filtro
-de canal, cancelación — detalle completo en `project_pendientes.md`); datos de prueba limpiados.
+de canal, cancelación); datos de prueba limpiados. **Aplicada en PROD el 2026-08-08** vía
+`apply_migration`, confirmada con `list_migrations` + queries directas contra PROD (CHECK de
+`wms_tareas.tipo`/`origen` con los valores nuevos, ambas funciones presentes). Edge Functions
+`tn-webhook`/`meli-webhook` (con el wiring del armado automático) deployadas en DEV (v21/v25) y PROD
+(v20/v13) vía `deploy_edge_function`, sanity check post-deploy OK contra DEV. **PR #319 (`dev`→`main`)
+mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **tag + GitHub release
+`v1.161.0`** publicados (`--latest`). **Vercel PROD verificado de forma independiente**: deployment
+`dpl_CaSPmabR76uEBq6Uuv2d74x78PTP`, `state: READY`, `target: production`. **🟡 Pendiente real, no
+bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
+generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
+acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
+**001-346 EN DEV Y PROD (base de datos y Edge Functions); código (`APP_VERSION` v1.162.0, commit
+`792bda42`) SOLO EN `dev` LOCAL, pipeline de release (push/PR/merge/tag) sin cerrar.**
+**001-345 EN DEV Y PROD (base de datos), deploy v1.161.0 100% CERRADO.**
 **001-344 EN DEV Y PROD (base de datos), deploy v1.160.0 100% CERRADO** — las migraciones 339-343 se
 aplicaron en PROD (proyecto `jjffnbrdjchquexdfgwq`) el 2026-08-07 vía `apply_migration`, ANTES del merge
 del código (mismo patrón "DDL aditivo antes de mergear `dev`→`main`", ver
@@ -35,8 +81,8 @@ Antes: 001-338 EN DEV Y PROD desde v1.159.0 (deploy 2026-08-06 — PR #314, merg
 confirmar pago, fulfillment sync TN→despachado/entregado (mig 338), rentabilidad neta real MELI (mig
 337), ubicaciones nuevas nacen con TN/MELI/picking apagados (mig 336) y el footer de conteo de
 registros en Productos/Inventario/Clientes/Envíos). ⚠ `schema_full.sql` actualizado hasta la mig 343
-(a mano en las migs 339-343, sin regenerar por token — ver `reference_supabase_pooler_auth_bug`) — la
-344 todavía no está reflejada ahí, pendiente de una próxima regeneración.
+(a mano en las migs 339-343, sin regenerar por token — ver `reference_supabase_pooler_auth_bug`) — las
+migs **344, 345 y 346 todavía no están reflejadas ahí**, pendiente de una próxima regeneración.
 
 > [!WARNING] **🛑 CORRECCIÓN — 334 y 335 NUNCA estuvieron en PROD hasta el 2026-08-08 (mig 344), pese a
 > lo que este wiki decía antes.** Este documento (y [[wiki/features/ubicaciones]],

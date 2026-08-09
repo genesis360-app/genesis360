@@ -23,7 +23,7 @@ serve(async (req) => {
     .from('integration_job_queue')
     .select('*')
     .eq('integracion', 'TiendaNube')
-    .eq('tipo', 'sync_stock')
+    .in('tipo', ['sync_stock', 'sync_precio'])
     .eq('status', 'pending')
     .lte('next_attempt_at', new Date().toISOString())
     .order('next_attempt_at', { ascending: true })
@@ -88,23 +88,41 @@ serve(async (req) => {
     }
 
     try {
-      const etIds = estadosMap.get(job.tenant_id) ?? []
+      let body: Record<string, unknown>
 
-      let lq = supabase.from('inventario_lineas')
-        .select('cantidad, cantidad_reservada, ubicaciones(disponible_tn)')
-        .eq('tenant_id', job.tenant_id)
-        .eq('producto_id', producto_id)
-        .eq('activo', true)
-      if (etIds.length > 0) lq = lq.in('estado_id', etIds)
-      const { data: lineasRaw } = await lq
+      if (job.tipo === 'sync_precio') {
+        // D3, mecanismo 2 — TN no tenía NINGÚN push de precio hasta esta feature (el campo
+        // sync_precio de inventario_tn_map existía desde la mig 061 pero nada lo usaba). El precio
+        // PUBLICADO se deriva del precio base + precio_ajuste_tn_pct, sin tocar precio_venta.
+        const { data: prod } = await supabase
+          .from('productos').select('precio_venta, precio_ajuste_tn_pct')
+          .eq('id', producto_id).maybeSingle()
+        if (!prod) { await markFailed(supabase, job.id, 'Producto no encontrado'); failed++; return }
 
-      const lineas = (lineasRaw ?? []).filter(
-        (l: any) => !l.ubicaciones || l.ubicaciones.disponible_tn !== false
-      )
-      const stockDisponible = Math.max(0, Math.floor(
-        lineas.reduce((acc: number, l: any) =>
-          acc + (Number(l.cantidad) - Number(l.cantidad_reservada ?? 0)), 0)
-      ))
+        const precioPublicado = prod.precio_ajuste_tn_pct
+          ? Math.round(Number(prod.precio_venta) * (1 + Number(prod.precio_ajuste_tn_pct) / 100) * 100) / 100
+          : Number(prod.precio_venta)
+        body = { price: precioPublicado }
+      } else {
+        const etIds = estadosMap.get(job.tenant_id) ?? []
+
+        let lq = supabase.from('inventario_lineas')
+          .select('cantidad, cantidad_reservada, ubicaciones(disponible_tn)')
+          .eq('tenant_id', job.tenant_id)
+          .eq('producto_id', producto_id)
+          .eq('activo', true)
+        if (etIds.length > 0) lq = lq.in('estado_id', etIds)
+        const { data: lineasRaw } = await lq
+
+        const lineas = (lineasRaw ?? []).filter(
+          (l: any) => !l.ubicaciones || l.ubicaciones.disponible_tn !== false
+        )
+        const stockDisponible = Math.max(0, Math.floor(
+          lineas.reduce((acc: number, l: any) =>
+            acc + (Number(l.cantidad) - Number(l.cantidad_reservada ?? 0)), 0)
+        ))
+        body = { stock: stockDisponible }
+      }
 
       const tnRes = await fetch(
         `${TN_API_BASE}/${cred.store_id}/products/${tn_product_id}/variants/${tn_variant_id}`,
@@ -115,7 +133,7 @@ serve(async (req) => {
             'User-Agent':     TN_USER_AGENT,
             'Content-Type':   'application/json',
           },
-          body: JSON.stringify({ stock: stockDisponible }),
+          body: JSON.stringify(body),
         },
       )
 
@@ -131,6 +149,7 @@ serve(async (req) => {
             .update({ status: 'done' })
             .eq('id', job.id),
         ])
+        if (job.tipo === 'sync_precio') console.log(`TN precio sync OK: producto ${producto_id} = ${JSON.stringify(body)}`)
         done++
       } else {
         const errText = await tnRes.text()

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box, Recycle } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, Tag, MapPin, Building2, CircleDot, MessageSquare, Search, Gift, Upload, Layers, Star, StarOff, ShoppingCart, Timer, ChevronDown, ChevronUp, ChevronRight, Play, RotateCcw, Ruler, Globe, ShieldCheck, KeyRound, CreditCard, Plug, Store, Wallet, AlertCircle, CheckCircle2, ExternalLink, Unplug, Receipt, Eye, Hash, Key, Copy, RefreshCw, Package, Truck, Users, Bell, UserCog, Navigation, Clock, TrendingDown, TrendingUp, ToggleLeft, ToggleRight, DollarSign, Lock, ScanBarcode, ClipboardCheck, Settings, Wand2, Shirt, Percent, ListOrdered, Box, Recycle } from 'lucide-react'
 import { MONEDAS_DISPONIBLES } from '@/lib/formato'
 import { TIPOS_COMERCIO } from '@/config/tiposComercio'
 import { REGLAS_INVENTARIO } from '@/lib/rebajeSort'
@@ -1810,6 +1810,16 @@ export default function ConfigPage() {
     if (error) { toast.error(error.message); return }
     setTenant(data)
     toast.success(usuarioId ? 'Operario por defecto actualizado' : 'Armado automático queda sin operario por defecto')
+  }
+
+  // D3 — Repricing automático por margen objetivo (mecanismo 1). Config a nivel tenant (B2/B5):
+  // el ajuste es único, igual en G360 y todos los canales — no hay nada "por canal" acá (eso es
+  // el mecanismo 2, que vive en la ficha del producto).
+  const actualizarRepricingConfig = async (campos: Record<string, unknown>) => {
+    const { data, error } = await supabase.from('tenants').update(campos).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success('Configuración de repricing actualizada')
   }
 
   const { data: umbrales = [], isLoading: loadingUmbrales } = useQuery({
@@ -7088,6 +7098,56 @@ export default function ConfigPage() {
                 )}
               </div>
             )}
+          </div>
+
+          {/* D3 — Repricing automático por margen objetivo (mecanismo 1, config a nivel tenant).
+              El interruptor por producto vive en la ficha (B6); acá solo el CÓMO se aplica. */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 p-5 space-y-4">
+            <div className="flex items-center gap-2">
+              <TrendingUp size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Repricing automático por margen</h2>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Para los productos con "Reajuste automático por margen" activado en su ficha, define
+              CÓMO se aplica el ajuste cuando el precio se desvía del margen objetivo. El ajuste es
+              único — el mismo precio para Genesis360 y todos los canales conectados.
+            </p>
+            <div>
+              <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Modo</label>
+              <select value={(tenant as any)?.repricing_modo ?? 'alerta'}
+                onChange={e => actualizarRepricingConfig({ repricing_modo: e.target.value })}
+                className="w-full max-w-sm border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
+                <option value="alerta">Alerta — siempre pide mi aprobación</option>
+                <option value="automatico">Automático — siempre aplica directo</option>
+                <option value="automatico_desde_monto">Automático desde un monto — si no, pide aprobación</option>
+              </select>
+            </div>
+            {(tenant as any)?.repricing_modo === 'automatico_desde_monto' && (
+              <div>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Aplicar directo si la diferencia es mayor o igual a ($)</label>
+                <input type="number" min="0" step="0.01" defaultValue={(tenant as any)?.repricing_automatico_desde_monto ?? ''}
+                  onBlur={e => actualizarRepricingConfig({ repricing_automatico_desde_monto: e.target.value ? parseFloat(e.target.value) : null })}
+                  className="w-full max-w-xs border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200" />
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Tope de suba por ajuste (%, opcional)</label>
+                <input type="number" min="0" step="0.1" defaultValue={(tenant as any)?.repricing_tope_pct ?? ''}
+                  onBlur={e => actualizarRepricingConfig({ repricing_tope_pct: e.target.value ? parseFloat(e.target.value) : null })}
+                  placeholder="Sin tope"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200" />
+                <p className="text-[11px] text-gray-400 mt-1">El ajuste automático nunca mueve el precio más de este % de una sola vez.</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 dark:text-gray-400 block mb-1">Umbral de aviso ($, opcional)</label>
+                <input type="number" min="0" step="0.01" defaultValue={(tenant as any)?.repricing_umbral_aviso_monto ?? ''}
+                  onBlur={e => actualizarRepricingConfig({ repricing_umbral_aviso_monto: e.target.value ? parseFloat(e.target.value) : null })}
+                  placeholder="Siempre avisa"
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200" />
+                <p className="text-[11px] text-gray-400 mt-1">Solo notifica a Dueño/Supervisor si la diferencia alcanza este monto.</p>
+              </div>
+            </div>
           </div>
 
           {/* ISS-072: MODO — cobro QR interoperable */}

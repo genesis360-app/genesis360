@@ -37,10 +37,10 @@ Toda unidad de stock es una `inventario_lineas` identificada por:
 7. **Historial** — movimientos con filtros fecha/cat/tipo/motivo (badge "Traslado" ámbar para tipo `traslado`)
 8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO + cambios de estado con foto (🟡 EN DEV, mig 331, ver más abajo)
 
-> [!NOTE] 🆕 **2026-08-08 (sin commitear): el tab "Tareas WMS" (que estaba acá desde v1.144.0) se MUDÓ
-> al módulo [[wiki/features/pedidos]]** (pedido explícito de GO) — de paso ganó asignación de cada
-> tarea a un usuario puntual y `/picking` filtra por esa asignación. Inventario ya NO tiene esta
-> pestaña. Detalle completo: [[wiki/features/wms]] → "Asignación de tareas a un usuario".
+> [!NOTE] 🆕 **2026-08-08, ✅ EN PROD desde v1.161.0: el tab "Tareas WMS" (que estaba acá desde
+> v1.144.0) se MUDÓ al módulo [[wiki/features/pedidos]]** (pedido explícito de GO) — de paso ganó
+> asignación de cada tarea a un usuario puntual y `/picking` filtra por esa asignación. Inventario ya
+> NO tiene esta pestaña. Detalle completo: [[wiki/features/wms]] → "Asignación de tareas a un usuario".
 
 ### Footer de conteo de registros (🆕 2026-08-06, ✅ PROD desde v1.159.0)
 
@@ -415,7 +415,7 @@ masivo sin probar clickeando en el navegador.** (Deployado a PROD el 2026-07-28 
 
 ---
 
-## ⛔ Tab "Tareas WMS" — MUDADO a Pedidos (2026-08-08, sin commitear)
+## ⛔ Tab "Tareas WMS" — MUDADO a Pedidos (2026-08-08, ✅ EN PROD desde v1.161.0)
 
 Este tab vivió acá desde v1.144.0 (migs 289-291, cierra Fases 3-5 de estructuras-udm). **A pedido
 explícito de GO, se movió por completo al módulo [[wiki/features/pedidos]]** (`PageTabs` 'Pedidos' |
@@ -426,9 +426,9 @@ perdió el tab `'wms'` entero (nav, queries, mutations, render).
 
 Detalle completo del mecanismo (schema/RPCs/verificación/asignación): [[wiki/features/wms]] →
 "Asignación de tareas a un usuario". Configuración de Zonas/Reglas de almacenaje/Umbrales sigue en
-[[wiki/features/configuracion]] → "Zonas y picking" (sin cambios). **Estado real: NO commiteado** —
-`InventarioPage.tsx`/`PedidosPage.tsx`/`PickingPage.tsx` modificados en el working tree de `dev`, sin
-migración nueva.
+[[wiki/features/configuracion]] → "Zonas y picking" (sin cambios). **Estado real: ✅ commiteado y
+deployado a PROD (v1.161.0, PR #319)** — `InventarioPage.tsx`/`PedidosPage.tsx`/`PickingPage.tsx` ya en
+`main`, sin migración propia.
 
 ---
 
@@ -673,8 +673,8 @@ variantes" (SKU separado). Detalle completo: [[wiki/features/atributos-variante]
 - [[wiki/features/precios-tiers-empaque]] — panorama completo de las 6 fases del backlog Fede 25/7
   (esta página documenta la Fase B; F/A/pricing viven allá)
 - [[wiki/features/pedidos]] — módulo NUEVO, único origen de tareas WMS desde el pivote F4 (2026-07-22);
-  🆕 2026-08-08 (sin commitear): el tab "Tareas WMS" se mudó de Inventario para acá, con asignación a
-  usuario
+  🆕 2026-08-08, ✅ EN PROD desde v1.161.0: el tab "Tareas WMS" se mudó de Inventario para acá, con
+  asignación a usuario
 - [[wiki/features/alertas]]
 - [[wiki/features/wms]] — "Fase 3"/"Fase 4" (Tareas WMS/picking/reabastecimiento, v1.143.0) y
   "Asignación de tareas a un usuario" (2026-08-08)

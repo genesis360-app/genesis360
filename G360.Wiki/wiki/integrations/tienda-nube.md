@@ -134,7 +134,7 @@ Archivos: `supabase/migrations/338_tn_fulfillment_sync.sql`,
 
 ---
 
-## 🟢 BOM automático para combos/kits (Fase D2 del roadmap) — backend CONSTRUIDO y VERIFICADO por RPC (mig 345, 2026-08-08, EN DEV), falta deployar webhooks + probar con kit real
+## 🟢 BOM automático para combos/kits (Fase D2 del roadmap) — ✅ EN PROD desde v1.161.0 (mig 345 + webhooks deployados, 2026-08-08), falta la prueba end-to-end con una orden real
 
 Investigado el 2026-08-06: en TODA la app el único modelo de venta de kits era "armar primero
 (`iniciar_armado_kit`/`confirmar_armado_kit`), vender después" — nunca existió desarme de kit en el
@@ -158,7 +158,7 @@ el 2026-08-08, misma sesión, se construyó y verificó el backend real:
   imágenes/video), opcional, con un botón visible del lado de quien arma solo si existe una cargada
   para ESE kit — **sigue sin construir, fuera de esta fase a propósito**.
 
-### ✅ Backend construido y verificado (mig `345_armado_kits_automatico_d2.sql`, 2026-08-08, EN DEV, sin aplicar en PROD)
+### ✅ Backend construido, verificado Y DEPLOYADO A PROD (mig `345_armado_kits_automatico_d2.sql`, ✅ EN PROD desde v1.161.0, 2026-08-08)
 
 - `wms_tareas.tipo` suma `'armado'` y `wms_tareas.origen` suma `'marketplace'`; `wms_tareas.kitting_log_id`
   (FK nueva a `kitting_log`, mig 040) linkea la tarea de depósito con el ledger real de kitting.
@@ -193,26 +193,67 @@ el 2026-08-08, misma sesión, se construyó y verificó el backend real:
 - **UI**: `src/pages/PedidosPage.tsx` (tab "Tareas WMS") y `src/pages/PickingPage.tsx` reconocen
   `tipo='armado'` — badge morado "Armado", ubicación de destino en vez de origen, botón "Completar"
   llama a `fn_completar_tarea_armado`.
-- **Webhooks — código escrito, a propósito SIN deployar ni probar end-to-end**: `tn-webhook`/
-  `meli-webhook`, después del loop de reserva FIFO existente contra el stock del kit, si sigue
-  faltando cantidad y el producto tiene `es_kit=true`, invocan `fn_iniciar_armado_kit_auto` con el
+- **Webhooks — ✅ deployados a DEV y PROD, sanity check OK, TODAVÍA sin probar contra una orden real**:
+  `tn-webhook`/`meli-webhook`, después del loop de reserva FIFO existente contra el stock del kit, si
+  sigue faltando cantidad y el producto tiene `es_kit=true`, invocan `fn_iniciar_armado_kit_auto` con el
   cliente `service_role` — best-effort, nunca bloquea la venta si falla (mismo patrón que el envío
-  automático). Las Edge Functions no se deployan solas (`deploy_edge_function` explícito, separado del
-  deploy de frontend), así que hoy este código no tiene efecto en ningún ambiente; tampoco se pudo
-  simular un webhook real de TN/MELI con firma válida en este entorno.
+  automático). Deployados vía `deploy_edge_function` a DEV (v21/v25) y PROD (v20/v13). Sanity check
+  post-deploy contra DEV (payload vacío/topic de test → respuesta esperada sin crashear) confirma que
+  el deploy no rompió el boot de ninguna función; sigue sin probarse contra un webhook real de TN/MELI
+  con firma válida y una orden real.
 
-**Pendiente real:** decisión de GO sobre cuándo deployar `tn-webhook`/`meli-webhook` a DEV y probarlos
-con un kit real conectado a un canal de test; aplicar la mig 345 en PROD cuando se decida deployar esta
-fase; Fase D2.3 (ficha técnica) sigue sin construir. Ver [[wiki/integrations/roadmap-apis]] (1.2),
-[[wiki/features/wms]] (tipo de tarea "armado"), `wiki/database/migraciones.md` (mig 345),
-`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+**✅ Deploy 100% cerrado — PR #319 (`dev`→`main`) mergeado limpio** (merge commit
+`7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **tag + GitHub release `v1.161.0`** publicados
+(`--latest`), Vercel PROD verificado de forma independiente (`dpl_CaSPmabR76uEBq6Uuv2d74x78PTP`,
+`READY`, `production`). **Pendiente real, no bloqueante del deploy:** la prueba end-to-end contra una
+orden real — requiere que GO o Fede creen un producto kit real mapeado en una de las 2 tiendas TN de
+test ya conectadas en DEV (tenant `bbf7546e-69d6-4ec0-8464-96a6ddc3028d` store `7615512`, tenant
+`3769b1db-10f4-46a6-bc7f-eb669307730d` store `7610321`) y generen una orden real ahí — acceso que
+Claude Code no tiene. Fase D2.3 (ficha técnica) sigue sin construir. Ver
+[[wiki/integrations/roadmap-apis]] (1.2), [[wiki/features/wms]] (tipo de tarea "armado"),
+`wiki/database/migraciones.md` (mig 345), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
+
+---
+
+## 🟢 Repricing automático por margen (Fase D3 del roadmap) — backend CONSTRUIDO, VERIFICADO y con la infraestructura YA EN PROD (migración 346, 2026-08-08) — falta cerrar el release de código + probar el mecanismo 2 con un canal real
+
+Mismo mecanismo que MELI, documentación primaria en [[wiki/integrations/mercado-libre]] →
+"Repricing automático por margen". Para TiendaNube puntualmente:
+
+- **Mecanismo 2 — ajuste % PROPIO por canal** (`productos.precio_ajuste_tn_pct`, independiente del
+  ajuste por margen objetivo): el precio PUBLICADO en TN se deriva del precio base
+  (`productos.precio_venta`) + ese %, sin tocar el precio base.
+- **`tn-stock-worker` no soportaba precio EN ABSOLUTO hasta esta feature** — el flag
+  `inventario_tn_map.sync_precio` existía desde la mig 061 pero nada lo usaba. Ahora, cuando llega un
+  job `sync_precio`, calcula `precio_venta * (1 + precio_ajuste_tn_pct / 100)` (o el precio base tal
+  cual si no hay % cargado) y lo publica con el mismo endpoint `PUT
+  /v1/{store_id}/products/{tn_product_id}/variants/{tn_variant_id}` que ya usaba para stock
+  (`{ price: N }` en vez de `{ stock: N }`).
+- El trigger que encola el job (`trg_enqueue_sync_precio`, `AFTER UPDATE OF precio_venta,
+  precio_ajuste_meli_pct, precio_ajuste_tn_pct ON productos`) solo dispara para productos que
+  participan de D3 (`reajuste_margen_auto=true` o algún `precio_ajuste_*_pct` seteado) — mismo gate
+  que para MELI, para no despertar de golpe el push de precio de productos ya mapeados que nunca
+  pidieron participar (hallazgo real del `migration-reviewer`, ver detalle en
+  [[wiki/integrations/mercado-libre]]).
+- **Migración `346_repricing_margen_meli_d3.sql` aplicada en DEV (`gcmhzdedrkmmzfzfveig`) y PROD
+  (`jjffnbrdjchquexdfgwq`)**, `tn-stock-worker` deployado en DEV y PROD con el soporte de
+  `sync_precio` nuevo. **`APP_VERSION` bumpeada a `v1.162.0`, commit `792bda42` en la rama LOCAL
+  `dev` — falta push a `origin/dev` + PR `dev→main` + merge + tag/release para cerrar el pipeline de
+  release del código** (la migración y las Edge Functions ya están aplicadas/deployadas en los
+  proyectos Supabase de DEV y PROD).
+- **Pendiente real**: el push real de precio a TiendaNube sigue sin probarse contra una tienda de
+  test real conectada (requiere acceso que Claude Code no tiene, mismo motivo que D2).
+
+Ver [[wiki/integrations/roadmap-apis]] (1.5), `wiki/database/migraciones.md` (mig 346),
+`sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`.
 
 ---
 
 ## Sync de stock hacia TiendaNube
 
 **EF `tn-stock-worker`** (sin JWT):
-- Procesa jobs `sync_stock` de `integration_job_queue`
+- Procesa jobs `sync_stock` y, desde D3 (2026-08-08, mig 346), también `sync_precio` de
+  `integration_job_queue` — ver "Repricing automático por margen" arriba.
 - Calcula `SUM(cantidad - cantidad_reservada)` en `inventario_lineas`
 - `PUT /v1/{store_id}/products/{tn_product_id}/variants/{tn_variant_id}` con `{ stock: N }`
 - Solo productos en `inventario_tn_map` con `sync_stock=true`

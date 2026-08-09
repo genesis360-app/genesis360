@@ -12,14 +12,20 @@ completo el mismo día): Fase 1.1 (MELI Rentabilidad Neta) ✅ **hecha**, migrac
 BOM combos) y 1.5 (MELI Repricing) tenían un relevamiento de negocio armado esperando respuesta de
 GO/Fede — **Fede lo respondió completo el 2026-08-06, GO lo compartió el 2026-08-08** (ver
 `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`). **Fase 1.2 (D2) pasó de "lista para
-diseñar" a backend CONSTRUIDO y VERIFICADO el mismo día** (mig 345, `fn_iniciar_armado_kit_auto`/
-`fn_completar_tarea_armado`, EN DEV, sin PROD) — falta deployar `tn-webhook`/`meli-webhook` (código ya
-escrito, best-effort) y probar con un kit real. **Fase 1.5 (D3, repricing MELI) sigue solo con el
-relevamiento cerrado, sin una línea de código.** Además, fuera del roadmap original, se cerró el
-**envío automático** al confirmar pago (TN+MELI) y el **fulfillment sync**
-TN→despachado/entregado (mig 338) — ver [[wiki/integrations/mercado-libre]] /
-[[wiki/integrations/tienda-nube]]. **Pendiente real: Fase A — conectar un tenant real a MELI/TN en
-PROD, sigue sin ninguno.** El resto de las fases (1.3/1.4, 2-6) sigue pausado.
+diseñar" a backend CONSTRUIDO y VERIFICADO el mismo día, y quedó ✅ 100% EN PROD desde v1.161.0
+(2026-08-08)** (mig 345 en DEV y PROD, `fn_iniciar_armado_kit_auto`/`fn_completar_tarea_armado`,
+`tn-webhook`/`meli-webhook` deployados en DEV y PROD) — **falta la prueba end-to-end con una orden real
+de un canal de test** (requiere que GO o Fede generen la orden, Claude Code no tiene ese acceso).
+**🆕 Fase 1.5 (D3, repricing MELI/TN) — mismo día, construida y VERIFICADA, con la infraestructura
+(mig 346 + `meli-stock-worker`/`tn-stock-worker`/`repricing-sweep`) YA APLICADA/DEPLOYADA en DEV Y
+PROD** — falta cerrar el pipeline de release del código (`push`/PR `dev→main`/merge/tag `v1.162.0`) y
+la prueba end-to-end del mecanismo 2 contra una cuenta MELI/TN real conectada. Además, fuera del
+roadmap original, se cerró el **envío automático** al confirmar pago (TN+MELI) y el **fulfillment
+sync** TN→despachado/entregado (mig 338) — ver [[wiki/integrations/mercado-libre]] /
+[[wiki/integrations/tienda-nube]]. **Con D2 y D3 con su backend construido y verificado, la Fase 1 del
+roadmap de integraciones ML/TN queda con las piezas grandes cerradas** — revisar en la próxima sesión
+qué queda del roadmap completo (1.3/1.4, Fase 2 en adelante). **Pendiente real: Fase A — conectar un
+tenant real a MELI/TN en PROD, sigue sin ninguno.** El resto de las fases (1.3/1.4, 2-6) sigue pausado.
 
 ---
 
@@ -28,7 +34,7 @@ PROD, sigue sin ninguno.** El resto de las fases (1.3/1.4, 2-6) sigue pausado.
 | Integración | Básico | Killer Feature | Estado |
 |---|---|---|---|
 | TiendaNube | orders + stock sync + **envío automático + fulfillment sync (✅ PROD desde v1.159.0)** | BOM combos 🟢 backend construido y verificado (mig 345, EN DEV), falta deployar webhooks + probar con kit real, FIFO lotes | ✅ básico+ / 🟢 killer backend listo |
-| MercadoLibre | orders + stock/precio + **envío automático (✅ PROD desde v1.159.0)** | **Rentabilidad neta ✅ hecho y en PROD (mig 337)**, repricing 🟡 (relevamiento respondido 2026-08-08, falta diseñar/construir) | ✅ básico+ / 🟡 1 de 2 killers |
+| MercadoLibre | orders + stock/precio + **envío automático (✅ PROD desde v1.159.0)** | **Rentabilidad neta ✅ hecho y en PROD (mig 337)**, **repricing 🟢 backend construido y verificado, infraestructura (mig 346) EN PROD (2026-08-08), falta el release de código + prueba end-to-end con un canal real** | ✅ básico+ / 🟢 2 de 2 killers con backend listo |
 | MercadoPago | pagos QR + suscripciones | Conciliación, chargeback | ✅ básico / ❌ killers |
 | MODO | Framework listo (migration 109) | Pagos en POS | ⚠️ schema+UI listos / pendiente activar |
 | AFIP | facturación electrónica (parcial) | Auto-completado CUIT | ⚠️ parcial / ❌ killer |
@@ -86,20 +92,28 @@ modo_credentials(
 - **Por qué killer**: ningún competidor muestra el margen neto exacto por venta MELI
 - Detalle completo: [[wiki/integrations/mercado-libre]] → "Rentabilidad neta real por venta"
 
-### 1.2 TiendaNube — BOM automático para combos ⭐ — 🟢 backend CONSTRUIDO y VERIFICADO por RPC (mig 345, EN DEV, 2026-08-08), falta deployar webhooks + probar con kit real
+### 1.2 TiendaNube — BOM automático para combos ⭐ — ✅ EN PROD desde v1.161.0 (mig 345 + webhooks deployados, 2026-08-08), falta la prueba end-to-end con una orden real de un canal de test
 - En `tn-webhook`/`meli-webhook`, si tras la reserva FIFO normal sigue faltando cantidad y el producto
-  tiene `es_kit=true`: código escrito para invocar la RPC nueva `fn_iniciar_armado_kit_auto` (mig 345)
-  que reserva automáticamente cada componente en las ubicaciones habilitadas para ese canal y crea una
-  TAREA de armado (`wms_tareas.tipo='armado'`) — nunca arma en silencio.
+  tiene `es_kit=true`: invocan la RPC `fn_iniciar_armado_kit_auto` (mig 345) que reserva
+  automáticamente cada componente en las ubicaciones habilitadas para ese canal y crea una TAREA de
+  armado (`wms_tareas.tipo='armado'`) — nunca arma en silencio.
 - **Backend 100% construido y verificado con SQL directo contra DEV** (todo-o-nada, camino exitoso,
   filtro de canal `disponible_tn`/`disponible_meli`, cancelación con liberación de reserva) — detalle
   completo: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits", `wiki/features/wms`
   → tipo de tarea "armado", `wiki/database/migraciones` (mig 345).
-- **Pendiente real, a propósito sin hacer todavía:** deployar `tn-webhook`/`meli-webhook` (Edge
-  Functions no se deployan solas) y probar con un producto kit real conectado a un canal de test —
-  no se pudo simular un webhook real con firma válida en este entorno. Aplicar la mig 345 en PROD
-  cuando se decida deployar esta fase. Fase D2.3 (ficha técnica de armado por kit, idea nueva de Fede)
-  sigue sin construir.
+- **✅ Deploy 100% cerrado (2026-08-08):** migración 345 aplicada en DEV y PROD (confirmada con
+  `list_migrations` + queries directas); `tn-webhook`/`meli-webhook` deployados en DEV (v21/v25) y
+  PROD (v20/v13) vía `deploy_edge_function`, sanity check post-deploy OK; PR #319 (`dev`→`main`)
+  mergeado limpio (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), tag + release `v1.161.0`
+  publicados (`--latest`), Vercel PROD verificado de forma independiente (`dpl_CaSPmabR76uEBq6Uuv2d74x78PTP`,
+  `READY`, `production`).
+- **Pendiente real, no bloqueante del deploy: la prueba end-to-end contra una orden real.** No se pudo
+  simular un webhook real con firma válida en este entorno — falta que GO o Fede creen un producto kit
+  real mapeado en una de las 2 tiendas TN de test ya conectadas en DEV (tenant
+  `bbf7546e-69d6-4ec0-8464-96a6ddc3028d` store `7615512`, tenant `3769b1db-10f4-46a6-bc7f-eb669307730d`
+  store `7610321`) y generen una orden real ahí; después se revisa el resultado (venta creada, tarea de
+  armado, notificación a supervisores) contra la base real. Fase D2.3 (ficha técnica de armado por kit,
+  idea nueva de Fede) sigue sin construir.
 - **Por qué killer**: TiendaNube es pésima manejando kits/combos.
 - Detalle: [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits",
   `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`,
@@ -116,17 +130,42 @@ modo_credentials(
 - Auto-crear en tabla nueva `creditos_fiscales`: `"Retención IIBB - Pago #N"`
 - **Por qué killer**: ahorra horas de trabajo al contador, nadie más lo hace
 
-### 1.5 MELI Repricing automático por margen — 🟡 relevamiento RESPONDIDO (2026-08-08), listo para diseñar/construir
-- Extender `meli-stock-worker`: al hacer sync, comparar `(precio - costo - comision) / costo` vs `margen_objetivo`
-- Si margen cayó bajo el objetivo → actualizar precio en MELI por API automáticamente (o generar alerta, según config)
-- **`productos.margen_objetivo` YA EXISTE** (migración 015) pero todavía no se conectó a ninguna
-  acción de código — hoy sigue siendo solo un insight pasivo en Métricas. Fede respondió el
-  relevamiento completo: 2 mecanismos independientes (ajuste ÚNICO cross-canal por margen objetivo,
-  opt-in; y ajuste por % diferencial PROPIO de cada canal), configurable por el dueño (automático /
-  alerta / umbral en $), precio base siempre manda, comisión MELI solo informativa (nunca certera para
-  fijar precio), tope+umbral configurables, interruptor por producto. Detalle:
-  [[wiki/integrations/mercado-libre]] → "Repricing automático por margen",
-  `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`
+### 1.5 MELI/TN Repricing automático por margen — 🟢 backend CONSTRUIDO y VERIFICADO, infraestructura EN PROD (mig 346, 2026-08-08), falta la prueba end-to-end con un canal real
+- **`productos.margen_objetivo` YA EXISTE** (migración 015) y ahora sí se conectó a una acción de
+  código real (antes era solo un insight pasivo en Métricas). Fede respondió el relevamiento completo
+  (2026-08-08): 2 mecanismos independientes.
+- **Mecanismo 1 — ajuste automático por margen objetivo**, opt-in por producto
+  (`productos.reajuste_margen_auto`): toca `precio_venta` (precio base, ÚNICO — igual en Genesis360 y
+  TODOS los canales). RPC `fn_evaluar_repricing_margen` (sweep, `service_role`, Edge Function
+  `repricing-sweep` con cron cada 6h) ajusta directo o genera una autorización pendiente
+  (`autorizaciones_inventario.tipo='repricing_margen'`, reusa la pantalla existente), según
+  `tenants.repricing_modo` (automático siempre / alerta / automático desde un monto), con tope de
+  suba y umbral de aviso configurables.
+- **Mecanismo 2 — ajuste % PROPIO por canal** (`productos.precio_ajuste_meli_pct`/
+  `precio_ajuste_tn_pct`, independiente del mecanismo 1): el precio PUBLICADO en cada canal se deriva
+  del precio base + ese %, sin tocar `precio_venta` — amortigua la comisión de cada canal.
+  `meli-stock-worker` (el job `sync_precio` ya sabía pushear precio, dormido) y `tn-stock-worker`
+  (no soportaba precio en absoluto) ahora lo aplican al publicar.
+- Comisión MELI proyectada solo informativamente (`fn_ultima_comision_meli`, última venta real de ese
+  SKU) — **nunca certera para fijar precio**.
+- **🔴 Hallazgo real del `migration-reviewer` antes de aplicar, corregido**: el trigger que dispara el
+  push de precio (`fn_enqueue_sync_precio`) reaccionaba a CUALQUIER cambio de precio sin gate —
+  como `inventario_meli_map.sync_precio` viene `DEFAULT true` desde la mig 065 (checkbox "dormido"),
+  esto habría despertado el push automático para productos ya mapeados sin participar de D3 (2 ítems
+  reales de una cuenta MELI real conectada en DEV). Corregido: solo dispara para productos con algo de
+  D3 configurado.
+- **✅ Migración 346 aplicada en DEV y PROD, Edge Functions `meli-stock-worker`/`tn-stock-worker`/
+  `repricing-sweep` deployadas en DEV y PROD, verificado con datos reales en DEV** (fórmula, modo
+  alerta sin duplicar, modo automático con tope clampeado, opt-in del trigger, sweep probado en vivo
+  contra los 10 tenants de DEV). **`APP_VERSION` bumpeada a `v1.162.0`, commit `792bda42` en `dev`
+  LOCAL — falta push a `origin/dev` + PR `dev→main` + merge + tag/release para cerrar el pipeline.**
+- **Pendiente real**: el mecanismo 2 (push real de precio) sin probar contra una cuenta MELI/TN real
+  conectada (requiere acceso que Claude Code no tiene, mismo motivo que D2).
+- Detalle: [[wiki/integrations/mercado-libre]] → "Repricing automático por margen",
+  [[wiki/integrations/tienda-nube]] → "Repricing automático por margen",
+  `wiki/database/migraciones.md` (mig 346),
+  `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`,
+  `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ")
 
 ---
 
@@ -244,7 +283,7 @@ modo_credentials(
 | 2 | Conciliación MP automática | 1 | Bajo | Altísimo |
 | 3 | TiendaNube BOM combos | 1 | Medio | Alto — 🟡 relevamiento respondido (2026-08-08), falta diseñar/construir |
 | 4 | AFIP Auto-completado CUIT | 1 | Bajo | Alto |
-| 5 | MELI Repricing automático | 1 | Medio | Alto — 🟡 relevamiento respondido (2026-08-08), falta diseñar/construir |
+| 5 | MELI/TN Repricing automático | 1 | Medio | Alto — 🟢 backend construido y verificado, infraestructura EN PROD (mig 346, 2026-08-08), falta el release de código + prueba end-to-end con un canal real |
 | 6 | PagoNube | 2 | Medio | Medio |
 | 7 | EnvíoNube + Rate shopping | 2 | Medio | Alto |
 | 8 | MELI Ads + Auto-pausado | 4 | Medio | Alto |

@@ -8,11 +8,97 @@ updated: 2026-08-08
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.160.0 (2026-08-08) — código/Vercel/Edge Functions; **la base de datos tiene las
-migraciones 001-344** (deploy 100% cerrado: PR #317 mergeado, tag+release `v1.160.0`, Vercel verificado
-por curl independiente) — ver `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.160.0 (= PROD)  
+**Versión en PROD:** v1.161.0 (código/Vercel, 2026-08-08) — el release `v1.162.0` (D3, repricing) tiene
+el commit listo en `dev` LOCAL (`792bda42`) pero todavía sin push/PR/merge/tag; **la base de datos y
+las Edge Functions de PROD ya tienen las migraciones 001-346** (`346` aplicada directo, mismo criterio
+de DDL/infra aditiva antes del merge de código que las migs 339-343) — ver
+`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
+**Versión en DEV:** v1.162.0 (commiteado localmente en `dev`, SIN push a `origin/dev` — 🟡 release
+`v1.162.0` pendiente de confirmar)  
 **Última actualización:** 8 de Agosto, 2026
+
+---
+
+## v1.162.0 — 💲🟢 Repricing automático por margen MELI/TN (D3): backend construido y verificado, infraestructura (mig 346 + `meli-stock-worker`/`tn-stock-worker`/`repricing-sweep`) YA EN PROD — 🟡 **release sin confirmar** (código commiteado en `dev` local, falta push/PR/merge/tag) (2026-08-08)
+
+Continuación, mismo día, del deploy de v1.161.0 (D2). Se construyó y deployó el segundo bloque del
+relevamiento de negocio ya respondido por Fede: repricing automático por margen en
+MercadoLibre/TiendaNube (Fase 1.5 del roadmap de integraciones — ver
+`sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`, Bloque 2).
+
+**🧩 Migración `346_repricing_margen_meli_d3.sql` aplicada en DEV (`gcmhzdedrkmmzfzfveig`) y PROD
+(`jjffnbrdjchquexdfgwq`)** — dos mecanismos independientes: (1) **ajuste automático por margen
+objetivo**, opt-in por producto (`productos.reajuste_margen_auto`), toca `precio_venta` (precio base,
+único cross-canal) vía el sweep `fn_evaluar_repricing_margen` (`service_role`, Edge Function
+`repricing-sweep` con cron cada 6h), configurable por tenant (automático / alerta / automático desde
+un monto, con tope de suba y umbral de aviso); genera autorizaciones en la pantalla YA EXISTENTE
+(nuevo tipo `'repricing_margen'`) en vez de aplicar directo si el modo no es automático; (2) **ajuste
+% propio por canal** (`productos.precio_ajuste_meli_pct`/`precio_ajuste_tn_pct`, independiente del
+mecanismo 1): el precio PUBLICADO en cada canal se deriva del precio base + ese %, sin tocar
+`precio_venta`.
+
+**🔴 Hallazgo real del `migration-reviewer` antes de aplicar, corregido**: el trigger que dispara el
+push de precio a MELI/TN reaccionaba a CUALQUIER cambio de precio sin gate — como el checkbox "Sync
+precio" del mapeo de productos viene activado por default desde hace tiempo (mig 065, "dormido"), esto
+habría despertado el push automático para cualquier producto ya mapeado sin participar de D3
+(verificado con datos reales: afectaría 2 ítems de una cuenta MercadoLibre REAL conectada en DEV).
+Corregido con un gate que solo dispara para productos que efectivamente optaron a D3.
+
+**📦 Edge Functions `meli-stock-worker` (aplica el % de ajuste MELI al publicar), `tn-stock-worker`
+(no soportaba precio en absoluto — se le agregó desde cero) y `repricing-sweep` (nueva)** deployadas
+en DEV y PROD. **UI**: card "Repricing automático por margen" en Config → Integraciones, toggle +
+2 campos de % de ajuste por canal en la ficha de producto, y nueva rama en el tab Autorizaciones de
+Inventario. Verificado con datos reales en DEV (fórmula, modo alerta sin duplicar, modo automático
+con tope clampeado, opt-in del trigger, sweep probado en vivo contra los 10 tenants de DEV).
+
+**🛑 Estado real: `APP_VERSION` bumpeada a `v1.162.0`, build/typecheck verdes, commit `792bda42`
+("feat(pricing): repricing automático por margen objetivo MELI/TN (D3)") en la rama LOCAL `dev` —
+falta push a `origin/dev`, PR `dev→main`, merge y tag/release para cerrar el pipeline. La migración
+346 y las 3 Edge Functions ya están aplicadas/deployadas en los proyectos Supabase de DEV y PROD.**
+**Pendiente real, no bloqueante de lo construido: el mecanismo 2 (push real de precio a un canal)
+sigue sin probarse contra una cuenta MELI/TN real conectada** — mismo motivo que D2 (armado
+automático de kits): requiere acceso a una tienda de test real que Claude Code no tiene.
+
+Detalle completo: `wiki/database/migraciones.md` (mig 346), [[wiki/integrations/mercado-libre]],
+[[wiki/integrations/tienda-nube]], [[wiki/integrations/roadmap-apis]].
+
+---
+
+## v1.161.0 — 🧩📦 Armado automático de kits para combos TN/MELI (D2) EN PROD (mig 345 + webhooks tn-webhook/meli-webhook) — falta la prueba end-to-end con una orden real — ✅ **PROD** (2026-08-08)
+
+Deploy completo a PROD del backend de "Combos automáticos TN/MELI" (Fase D2 del roadmap de
+integraciones), construido y verificado por RPC en la sesión anterior — **100% CERRADO**: **PR #319**
+(`dev`→`main`) mergeado limpio, sin conflictos (merge commit
+`7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **tag + GitHub release `v1.161.0`** publicados
+(`--latest`): https://github.com/genesis360-app/genesis360/releases/tag/v1.161.0. **Vercel PROD
+verificado de forma independiente**: deployment `dpl_CaSPmabR76uEBq6Uuv2d74x78PTP`, `state: READY`,
+`target: production`, apuntando al commit del merge.
+
+**🧩 Migración `345_armado_kits_automatico_d2.sql` aplicada en DEV Y PROD** — `wms_tareas.tipo` suma
+`'armado'` y `wms_tareas.origen` suma `'marketplace'`; RPCs nuevas `fn_iniciar_armado_kit_auto` (sin
+`auth.uid()`, invocable con `service_role` desde un webhook, todo-o-nada con filtro de canal
+`disponible_tn`/`disponible_meli` aplicado por primera vez a una reserva ENTRANTE) y
+`fn_completar_tarea_armado`; `fn_cancelar_tarea_wms` extendida para liberar la reserva de un armado.
+Confirmado en PROD con `list_migrations` + queries directas (CHECK y funciones presentes en ambos
+ambientes). Detalle completo de las RPCs y su verificación por SQL directo: `wiki/database/migraciones.md`
+(mig 345), [[wiki/features/wms]].
+
+**📦 Edge Functions `tn-webhook`/`meli-webhook` deployadas en DEV (v21/v25) y PROD (v20/v13)** vía
+`deploy_edge_function`, con el wiring del armado automático: si tras la reserva FIFO normal sigue
+faltando cantidad y el producto es un kit, invocan `fn_iniciar_armado_kit_auto`, best-effort (nunca
+bloquea la venta). Sanity check post-deploy contra DEV confirmó que el deploy no rompió el boot de
+ninguna de las dos funciones (respuestas esperadas ante payload vacío/topic de test, sin crashear).
+
+**🛑 Pendiente real, no bloqueante del deploy en sí: la prueba end-to-end con una orden real.** El
+armado automático nunca se disparó contra un webhook real de TN/MELI — falta crear un producto kit
+real mapeado en una de las 2 tiendas TN de test ya conectadas en DEV (tenant
+`bbf7546e-69d6-4ec0-8464-96a6ddc3028d` store `7615512`, tenant `3769b1db-10f4-46a6-bc7f-eb669307730d`
+store `7610321`) y generar una orden real ahí — requiere a GO o Fede (Claude Code no tiene ese acceso).
+La lógica de las RPCs ya está 100% verificada con datos de prueba reales (todo-o-nada, reserva, filtro
+de canal, completar, cancelar).
+
+Detalle completo: `wiki/database/migraciones.md` (mig 345), [[wiki/integrations/tienda-nube]],
+[[wiki/integrations/mercado-libre]], [[wiki/integrations/roadmap-apis]], [[wiki/features/wms]].
 
 ---
 

@@ -80,6 +80,14 @@ Auto-complete por SKU/nombre con **EF `meli-search-items`**: busca items en MELI
 
 **EF `meli-stock-worker`** (sin JWT):
 - Procesa jobs `sync_stock` y `sync_precio` de `integration_job_queue`
+- **🟢 `sync_precio` ya no está "dormido" desde D3 (2026-08-08, mig 346)**: el trigger
+  `trg_enqueue_sync_precio` (`AFTER UPDATE OF precio_venta, precio_ajuste_meli_pct,
+  precio_ajuste_tn_pct ON productos`) encola el job **solo si el producto participa de D3**
+  (`reajuste_margen_auto=true` o algún `precio_ajuste_*_pct` seteado) — para el resto de los
+  productos mapeados con `inventario_meli_map.sync_precio=true` (default desde la mig 065) el push de
+  precio sigue sin dispararse, a propósito (ver "Repricing automático por margen" arriba). El worker
+  publica `precio_venta * (1 + precio_ajuste_meli_pct / 100)` si el producto tiene ese % cargado
+  (mecanismo 2), o el precio base tal cual si no.
 - Calcula stock disponible: `SUM(cantidad - cantidad_reservada)` en `inventario_lineas`
 - Filtra por:
   - `es_disponible_meli = true` en estados de inventario (migration 066)
@@ -109,14 +117,16 @@ Al crear venta `Reservada` desde webhook MELI:
 2. El sync worker usa `cantidad - cantidad_reservada` → sin oversell
 3. `order/cancelled` → libera `cantidad_reservada` y cancela venta en G360
 
-**🟢 2026-08-08 (código escrito, a propósito SIN deployar): armado automático de kits (D2).** Si tras
-el loop de reserva FIFO anterior sigue faltando cantidad y el producto tiene `es_kit=true`,
-`meli-webhook` invoca la RPC nueva `fn_iniciar_armado_kit_auto` (mig 345, `service_role`, sin
-`auth.uid()`) para reservar los componentes en las ubicaciones habilitadas para MELI y crear una tarea
-`wms_tareas.tipo='armado'` — best-effort, nunca bloquea la venta. El backend (RPC) ya está construido y
-verificado por SQL directo contra DEV; el webhook en sí no se deployó ni se probó con una orden real.
-Detalle completo (mismo mecanismo, doc primaria): [[wiki/integrations/tienda-nube]] → "BOM automático
-para combos/kits".
+**🟢 ✅ EN PROD desde v1.161.0 (2026-08-08): armado automático de kits (D2).** Si tras el loop de
+reserva FIFO anterior sigue faltando cantidad y el producto tiene `es_kit=true`, `meli-webhook` invoca
+la RPC nueva `fn_iniciar_armado_kit_auto` (mig 345, `service_role`, sin `auth.uid()`) para reservar los
+componentes en las ubicaciones habilitadas para MELI y crear una tarea `wms_tareas.tipo='armado'` —
+best-effort, nunca bloquea la venta. El backend (RPC) ya estaba construido y verificado por SQL directo
+contra DEV; `meli-webhook` fue deployado a DEV (v25) y PROD (v13) vía `deploy_edge_function`, sanity
+check post-deploy OK (topic de test → 200 `{ok:true, skipped:...}` esperado, sin crashear). **Pendiente
+real, no bloqueante:** el webhook en sí sigue sin probarse contra una orden real de MELI (requiere GO/
+Fede generando una orden real en una tienda de test con un kit mapeado). Detalle completo (mismo
+mecanismo, doc primaria): [[wiki/integrations/tienda-nube]] → "BOM automático para combos/kits".
 
 ---
 
@@ -207,28 +217,75 @@ Archivo: `supabase/functions/meli-webhook/index.ts`.
 
 ---
 
-## 🟡 Repricing automático por margen (Fase D3 del roadmap) — relevamiento RESPONDIDO por Fede (2026-08-08), listo para diseñar/construir
+## 🟢 Repricing automático por margen (Fase D3 del roadmap) — backend CONSTRUIDO, VERIFICADO y con la infraestructura YA EN PROD (migración 346, 2026-08-08) — falta cerrar el release de código + probar el mecanismo 2 con un canal real
 
-`productos.margen_objetivo` **ya existe** (migración 015) pero todavía no se conectó a ninguna acción
-de código — hoy sigue siendo solo un insight pasivo en Métricas. El relevamiento de negocio quedó
-**100% respondido por Fede** (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz del repo) —
-detalle completo en `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`. En síntesis:
+`productos.margen_objetivo` **ya existe** (migración 015) y ahora sí se conectó a una acción de
+código real — antes era solo un insight pasivo en Métricas. El relevamiento de negocio quedó **100%
+respondido por Fede** (`relevamiento-integraciones-ml-tn-reglas-negocio.html`, raíz del repo) —
+detalle completo en `sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`. El mismo día
+(2026-08-08) se construyó y verificó el backend real:
 
-- **2 mecanismos independientes**, no solo un umbral único: (1) **ajuste automático por margen
-  objetivo**, opt-in por producto — si se activa, el ajuste es ÚNICO y se aplica igual en G360 y en
-  TODOS los marketplaces conectados (sin precio distinto por canal); (2) **ajuste por diferencial de %
-  por canal**, independiente del margen objetivo — campo separado en la ficha del producto para MELI y
-  para TN, % sobre el precio base, para amortiguar la comisión de cada canal por separado.
-- Configurable por el dueño (automático siempre / alerta para aprobar / automático desde X$ de
-  diferencia), con tope de suba + umbral de aviso también configurables, sin default único.
+- **Mecanismo 1 — ajuste automático por margen objetivo, opt-in por producto**
+  (`productos.reajuste_margen_auto`): si se activa, ajusta `precio_venta` (el precio BASE, ÚNICO —
+  igual en Genesis360 y en TODOS los marketplaces conectados, nunca un precio distinto por canal)
+  cuando se desvía del `margen_objetivo` ya cargado en la ficha.
+- **RPC `fn_precio_para_margen(costo, margen_objetivo, alicuota_iva)`** — extrae a SQL puro
+  (`IMMUTABLE`) la fórmula que vivía duplicada en JSX (`ProductoFormPage.tsx`/`MetricasPage.tsx`).
+- **RPC `fn_evaluar_repricing_margen(p_tenant_id)`** — el sweep, sin `auth.uid()` (mismo patrón que
+  `fn_iniciar_armado_kit_auto` de D2/mig 345), `GRANT` solo `service_role`. Según
+  `tenants.repricing_modo` (configurable en Config → Integraciones → card "Repricing automático por
+  margen": automático siempre / alerta para aprobar / automático desde un monto en $, con
+  `repricing_tope_pct` y `repricing_umbral_aviso_monto` opcionales): aplica el precio directo
+  (notificando a DUEÑO/SUPERVISOR/SUPER_USUARIO) o genera una fila en `autorizaciones_inventario`
+  (nuevo tipo `'repricing_margen'` — **reusa la pantalla de Autorizaciones YA EXISTENTE**, mismo
+  patrón que `'kit_precio'` de la mig 343) sin duplicar sugerencias pendientes entre corridas.
+  Disparado por **Edge Function `repricing-sweep`** + GitHub Action `repricing-sweep.yml` cada 6
+  horas (no hay pg_cron habilitado).
+- **RPC `fn_ultima_comision_meli(producto_id)`** — de solo lectura, comisión + precio de la venta MELI
+  más reciente de ese SKU, informativa en la ficha del producto — **nunca se usa como dato certero
+  para fijar un precio** (B4 del relevamiento).
+- **Mecanismo 2 — ajuste por diferencial de % por canal, independiente del mecanismo 1**
+  (`productos.precio_ajuste_meli_pct`/`precio_ajuste_tn_pct`): el precio PUBLICADO en cada canal se
+  deriva del precio base + ese %, sin tocar `precio_venta` — amortigua la comisión de cada canal por
+  separado. Ver más abajo "Sync de stock hacia MELI" y [[wiki/integrations/tienda-nube]].
 - **El precio base (`precio_venta`) SIEMPRE manda** — un cambio en el marketplace nunca lo modifica.
-- La comisión de MELI se proyecta informativamente con la última comisión real cobrada a ese SKU —
-  **nunca se usa como dato certero para fijar un precio**.
-- Interruptor de repricing por producto, en la ficha del producto.
+- Interruptor del mecanismo 1 por producto ("Reajuste automático por margen", deshabilitado sin
+  `margen_objetivo` cargado) + los 2 % del mecanismo 2, todo en la ficha del producto
+  (`ProductoFormPage.tsx`).
 
-**Nada de esto está construido todavía** — el relevamiento está cerrado, falta el diseño técnico +
-implementación (ej. modelo de datos para "precio por canal" del mecanismo 2, hoy no existe). Ver
-[[wiki/integrations/roadmap-apis]] (1.5).
+> [!WARNING] **🔴 Hallazgo real del `migration-reviewer` antes de aplicar, corregido.** El trigger que
+> dispara el push de precio a MELI/TN (`fn_enqueue_sync_precio`) originalmente reaccionaba a
+> CUALQUIER cambio de `precio_venta`, sin gate. Como `inventario_meli_map.sync_precio` viene
+> `DEFAULT true` desde la mig 065 (un checkbox de Config "dormido" hace tiempo, sin nada que lo
+> disparara), esto habría despertado el push automático de precio para CUALQUIER producto ya mapeado,
+> sin que nadie haya pedido participar de D3 — verificado con datos reales que afectaría 2 ítems de
+> una cuenta de MercadoLibre REAL conectada en el tenant de test de DEV. **Corregido**: el trigger
+> ahora solo dispara para productos que tienen algo de D3 configurado (`reajuste_margen_auto=true` o
+> alguno de los 2 % de ajuste seteado) — el checkbox viejo sigue "dormido" para el resto, a propósito.
+
+**Verificado con datos reales en DEV**, tenant SIN conexión real a MELI/TN ("Familia Otranto De
+Porto"): fórmula (`costo $100, margen 50%, IVA 21%` → `$181,50`); modo alerta genera autorización +
+notificación, segunda corrida del sweep NO duplica; aprobación simulada aplica el precio; modo
+automático con tope 10% clampea `$181,50` a `$110`; fix del trigger — producto opt-in + mapeo MELI
+(falso) SÍ encola `sync_precio`, producto SIN opt-in con el mismo mapeo NO encola nada;
+`repricing-sweep` probado en vivo por curl contra DEV (10 tenants, 0 cambios — correcto, ningún
+producto real tiene el opt-in todavía). Datos de prueba limpiados.
+
+**Migración `346_repricing_margen_meli_d3.sql` aplicada en DEV (`gcmhzdedrkmmzfzfveig`) y PROD
+(`jjffnbrdjchquexdfgwq`).** Edge Functions `meli-stock-worker`/`tn-stock-worker`/`repricing-sweep`
+deployadas en DEV y PROD. **`APP_VERSION` bumpeada a `v1.162.0`, commit `792bda42` en la rama LOCAL
+`dev` — falta push a `origin/dev` + PR `dev→main` + merge + tag/release para cerrar el pipeline de
+release del código** (la migración y las Edge Functions ya están aplicadas/deployadas en los
+proyectos Supabase de DEV y PROD, mismo criterio que el DDL aditivo de las migs 339-343).
+
+**Pendiente real**: el mecanismo 2 (push real de precio a un canal) sigue sin probarse contra una
+cuenta MELI/TN real conectada — mismo motivo que D2 (armado automático de kits): requiere acceso a
+una tienda de test real que Claude Code no tiene. La lógica (RPC + workers) está 100% verificada.
+
+Ver [[wiki/integrations/roadmap-apis]] (1.5), [[wiki/integrations/tienda-nube]] → "Repricing
+automático por margen", `wiki/database/migraciones.md` (mig 346),
+`sources/raw/relevamiento_ml_tn_combos_repricing_respuestas.md`,
+`sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ").
 
 ---
 

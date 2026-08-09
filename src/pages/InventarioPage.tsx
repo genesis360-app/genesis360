@@ -862,6 +862,12 @@ export default function InventarioPage() {
         const { producto_id, precio_nuevo } = aut.datos_cambio as { producto_id: string; precio_nuevo: number }
         const { error } = await supabase.from('productos').update({ precio_venta: precio_nuevo }).eq('id', producto_id)
         if (error) throw error
+      } else if (aut.tipo === 'repricing_margen') {
+        // D3 — sugerencia del sweep de repricing por margen objetivo (fn_evaluar_repricing_margen,
+        // mig 346), recién acá se escribe el precio nuevo.
+        const { producto_id, precio_nuevo } = aut.datos_cambio as { producto_id: string; precio_nuevo: number }
+        const { error } = await supabase.from('productos').update({ precio_venta: precio_nuevo }).eq('id', producto_id)
+        if (error) throw error
       } else if (aut.tipo === 'cambio_estado') {
         // Fede 25/7, punto 2: recién ACÁ se aplica el estado_id real — hasta este momento la(s)
         // línea(s) siguieron con el estado de siempre (cualquier descuento/baja asociado al
@@ -898,27 +904,30 @@ export default function InventarioPage() {
         : aut.tipo === 'ajuste_conteo' ? 'Diferencia de conteo'
         : aut.tipo === 'cambio_estado' ? 'Cambio de estado'
         : aut.tipo === 'kit_precio' ? 'Cambio de precio de KIT'
+        : aut.tipo === 'repricing_margen' ? 'Ajuste de precio por margen objetivo'
         : 'Edición masiva de atributos'
       logActividad({
-        entidad: aut.tipo === 'kit_precio' ? 'producto' : 'inventario_linea',
-        entidad_id: aut.tipo === 'kit_precio' ? (aut.datos_cambio?.producto_id ?? '') : (aut.linea_id ?? ''),
+        entidad: (aut.tipo === 'kit_precio' || aut.tipo === 'repricing_margen') ? 'producto' : 'inventario_linea',
+        entidad_id: (aut.tipo === 'kit_precio' || aut.tipo === 'repricing_margen') ? (aut.datos_cambio?.producto_id ?? '') : (aut.linea_id ?? ''),
         entidad_nombre: aut.tipo === 'bulk_edit'
           ? `Bulk edit — ${(aut.datos_cambio?.linea_ids?.length ?? 0)} LPN(s)`
           : aut.tipo === 'kit_precio'
           ? (aut.datos_cambio?.kit_nombre ?? '')
+          : aut.tipo === 'repricing_margen'
+          ? (aut.datos_cambio?.producto_nombre ?? '')
           : (linea?.productos?.nombre ?? linea?.lpn ?? aut.linea_id),
         accion: aut.tipo === 'cambio_estado' ? 'cambio_estado' : 'editar',
         campo: aut.tipo,
         valor_anterior: aut.tipo === 'cambio_estado'
           ? ((estados as any[]).find((e: any) => e.id === aut.datos_cambio?.estado_anterior_id)?.nombre ?? '')
-          : aut.tipo === 'kit_precio'
+          : (aut.tipo === 'kit_precio' || aut.tipo === 'repricing_margen')
           ? String(aut.datos_cambio?.precio_anterior ?? '')
           : String(aut.datos_cambio?.cantidad_anterior ?? ''),
         valor_nuevo: aut.tipo === 'bulk_edit'
           ? JSON.stringify(aut.datos_cambio?.campos ?? {})
           : aut.tipo === 'cambio_estado'
           ? ((estados as any[]).find((e: any) => e.id === aut.datos_cambio?.estado_nuevo_id)?.nombre ?? '')
-          : aut.tipo === 'kit_precio'
+          : (aut.tipo === 'kit_precio' || aut.tipo === 'repricing_margen')
           ? String(aut.datos_cambio?.precio_nuevo ?? '')
           : String(aut.datos_cambio?.cantidad_nueva ?? aut.datos_cambio?.cantidad ?? ''),
         pagina: '/inventario',
@@ -6121,9 +6130,10 @@ export default function InventarioPage() {
                   : aut.tipo === 'eliminar_serie' ? 'Eliminar serie'
                   : aut.tipo === 'cambio_estado' ? 'Cambio de estado'
                   : aut.tipo === 'kit_precio' ? 'Precio de KIT'
+                  : aut.tipo === 'repricing_margen' ? 'Repricing por margen'
                   : 'Eliminar LPN'
                 // ajuste_* = orange (suma/resta stock), bulk_edit = blue (atributos), cambio_estado = purple,
-                // kit_precio = violet (Motor de Rotación, Opción 3), eliminar_* = red
+                // kit_precio = violet (Motor de Rotación, Opción 3), repricing_margen = teal (D3), eliminar_* = red
                 const tipoColor = (aut.tipo === 'ajuste_cantidad' || aut.tipo === 'ajuste_conteo')
                   ? 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400'
                   : aut.tipo === 'bulk_edit'
@@ -6132,6 +6142,8 @@ export default function InventarioPage() {
                   ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400'
                   : aut.tipo === 'kit_precio'
                   ? 'bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400'
+                  : aut.tipo === 'repricing_margen'
+                  ? 'bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400'
                   : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
                 const resolveEstadoNombre = (estId: string | null) => (estados as any[]).find((e: any) => e.id === estId)?.nombre ?? '—'
                 const verFotoAprobacion = async (path: string) => {
@@ -6146,17 +6158,28 @@ export default function InventarioPage() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${tipoColor}`}>{tipoLabel}</span>
                           <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">
-                            {prod?.nombre ?? (aut.tipo === 'kit_precio' ? aut.datos_cambio?.kit_nombre : null) ?? '—'}
+                            {prod?.nombre
+                              ?? (aut.tipo === 'kit_precio' ? aut.datos_cambio?.kit_nombre : null)
+                              ?? (aut.tipo === 'repricing_margen' ? aut.datos_cambio?.producto_nombre : null)
+                              ?? '—'}
                           </span>
                           <span className="text-xs text-gray-400">{prod?.sku}</span>
                         </div>
                         <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
-                          {aut.tipo !== 'kit_precio' && <p>LPN: <span className="font-mono font-medium">{linea?.lpn ?? '—'}</span></p>}
+                          {aut.tipo !== 'kit_precio' && aut.tipo !== 'repricing_margen' && <p>LPN: <span className="font-mono font-medium">{linea?.lpn ?? '—'}</span></p>}
                           {aut.tipo === 'kit_precio' && (
                             <p>
                               Precio: <span className="line-through">${Number(aut.datos_cambio.precio_anterior ?? 0).toLocaleString('es-AR')}</span>
                               {' → '}
                               <span className="font-semibold text-violet-600 dark:text-violet-400">${Number(aut.datos_cambio.precio_nuevo ?? 0).toLocaleString('es-AR')}</span>
+                            </p>
+                          )}
+                          {aut.tipo === 'repricing_margen' && (
+                            <p>
+                              Precio: <span className="line-through">${Number(aut.datos_cambio.precio_anterior ?? 0).toLocaleString('es-AR')}</span>
+                              {' → '}
+                              <span className="font-semibold text-teal-600 dark:text-teal-400">${Number(aut.datos_cambio.precio_nuevo ?? 0).toLocaleString('es-AR')}</span>
+                              {' '}(margen objetivo {aut.datos_cambio.margen_objetivo}%)
                             </p>
                           )}
                           {aut.tipo === 'ajuste_cantidad' && (
@@ -6210,7 +6233,7 @@ export default function InventarioPage() {
 
                       {autEstado === 'pendiente' && (
                         <div className="flex flex-col gap-2 flex-shrink-0">
-                          <button onClick={async () => { if (await confirmar(`¿Aprobar y ejecutar: ${tipoLabel} en ${aut.tipo === 'kit_precio' ? aut.datos_cambio?.kit_nombre : linea?.lpn}?`)) aprobarAutorizacion.mutate(aut) }}
+                          <button onClick={async () => { if (await confirmar(`¿Aprobar y ejecutar: ${tipoLabel} en ${aut.tipo === 'kit_precio' ? aut.datos_cambio?.kit_nombre : aut.tipo === 'repricing_margen' ? aut.datos_cambio?.producto_nombre : linea?.lpn}?`)) aprobarAutorizacion.mutate(aut) }}
                             disabled={aprobarAutorizacion.isPending}
                             className="flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium px-3 py-1.5 rounded-lg disabled:opacity-50">
                             <CheckCircle2 size={13} /> Aprobar

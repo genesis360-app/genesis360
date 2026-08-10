@@ -6,6 +6,85 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-09] update | 🔴🛑 BUG CRÍTICO EN PROD: embed ambiguo de `ubicaciones` (PGRST201) vacía Productos/Reportes — fix pusheado a `origin/dev` (v1.162.1), deploy a PROD BLOQUEADO esperando autorización de GO
+
+GO reportó en vivo: "en Almacén Jorgito no tengo productos, ¿qué se rompió?". Investigado y confirmado
+que es un bug real de PROD, no un problema puntual de ese tenant.
+
+**Causa raíz**: las migraciones **342** (Motor de Rotación, v1.160.0) y **345** (D2 armado automático
+de kits, v1.161.0) agregaron 2 FK nuevas de `productos` hacia `ubicaciones`
+(`rotacion_ubicacion_excepcion_id`, `ubicacion_kit_default_id`), sumadas a la ya existente
+`ubicacion_id`. Desde entonces, cualquier `.select()` que embebiera `ubicaciones(nombre)` **sin
+calificar cuál FK usar** quedó ambiguo para PostgREST — devuelve `PGRST201`/HTTP 300 y la query
+**entera** falla (no solo la columna embebida). Dos queries reales lo hacían: `src/pages/ProductosPage.tsx`
+(la query PRINCIPAL de la lista de productos) y `src/pages/ReportesPage.tsx` (el reporte "Stock
+actual"). Resultado: la lista de Productos (y ese reporte) se veía **VACÍA** en la UI, en cualquier
+tenant, sin ningún error visible — **los datos están intactos** (615 productos confirmados en el
+tenant de prueba de DEV), es puramente un problema de cómo se pide el embed.
+
+**Descubrimiento y verificación real**: reproducido con `curl` directo contra el endpoint REST de DEV
+(mismo `select=` del frontend) — y confirmado que **el mismo error YA estaba presente contra el
+schema real de PROD** (`jjffnbrdjchquexdfgwq.supabase.co`). El bug lleva viviendo en PROD desde el
+deploy de la migración 342 (v1.160.0) o, como muy tarde, la 345 (v1.161.0) — afecta a cualquier
+tenant de PROD que abra Productos o el reporte de Stock actual, ahora mismo.
+
+**El fix (commit `68a48d9e`, `APP_VERSION` bumpeada a `v1.162.1`)**: en ambos archivos se calificó
+explícitamente la FK a usar — `ubicaciones(nombre)` → `ubicaciones!productos_ubicacion_id_fkey(nombre)`
+(la original/histórica). Verificado con `curl` que la query corregida devuelve HTTP 200 tanto en DEV
+como contra el schema real de PROD. **Sin migración de base de datos** — fix 100% frontend. Se
+auditaron de paso los demás `.select()` del repo que embeben `ubicaciones(nombre)`
+(`ConfigPage.tsx`, `InventarioPage.tsx`, `MetricasPage.tsx`, `EnviosPage.tsx`, `VentasPage.tsx`): todos
+son sobre tablas con una sola FK a `ubicaciones` (`inventario_lineas`, `producto_ubicacion_umbrales`),
+no afectadas.
+
+**Estado — CRÍTICO**: ✅ fix commiteado y **pusheado a `origin/dev`** (`68a48d9e`), el Vercel de DEV ya
+lo sirve. 🔴 **PROD SIGUE ROTO** — el deploy del hotfix (PR `dev`→`main`, merge, tag `v1.162.1`) quedó
+**bloqueado por el clasificador de seguridad del entorno**, y **GO pidió explícitamente ESPERAR** (no
+reintentar, no hacerlo por otro camino) hasta que él lo autorice o lo haga directamente.
+
+**Lección técnica agregada al wiki**: agregar una FK nueva de una tabla A hacia una tabla B que YA
+tenía otra FK hacia B puede romper en **runtime** (no en el DDL) los embeds de PostgREST sin calificar
+que ya existían en el frontend — el `migration-reviewer` revisa el SQL, no el consumo del schema cache
+por PostgREST vía el frontend, así que esta clase de bug queda fuera de su alcance actual. Documentado
+en [[wiki/development/convenciones-codigo]] → "Embeds de PostgREST con FK ambigua".
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ", prioridad #1), [[wiki/features/productos]],
+[[wiki/features/reportes-metricas]], [[wiki/development/convenciones-codigo]].
+
+---
+
+## [2026-08-08] deploy | 🚀 v1.162.0 CONFIRMADO 100% EN PROD — repricing automático por margen MELI/TN (D3, mig 346): PR #320 mergeado, tag+release publicados, Vercel PROD verificado
+
+Cierra el release que había quedado documentado como "commit hecho, pipeline de Git sin cerrar" en la
+entrada de abajo. El contenido técnico completo (mecanismo 1 — ajuste por margen objetivo vía
+`fn_evaluar_repricing_margen`/sweep `repricing-sweep`; mecanismo 2 — ajuste % propio por canal en
+`meli-stock-worker`/`tn-stock-worker`; hallazgo del `migration-reviewer` sobre el trigger de
+`sync_precio` sin gate; verificación con datos reales en DEV) ya quedó documentado en la entrada de
+abajo — esta entrada solo cierra el pipeline de Git/Vercel.
+
+**PR #320** (`dev`→`main`): https://github.com/genesis360-app/genesis360/pull/320 — **merge commit
+`bbc8c1db43216512e9608301d715331900e038b0`**. **Tag + GitHub release `v1.162.0`** publicados:
+https://github.com/genesis360-app/genesis360/releases/tag/v1.162.0. **Vercel PROD**: deployment
+`dpl_GVHKjDYT8FkDRuFQi9zHYdYcfLLg`, `state: READY`, `target: production`. La migración 346 y las 3
+Edge Functions (`meli-stock-worker`, `tn-stock-worker`, `repricing-sweep`) ya estaban
+aplicadas/deployadas en DEV y PROD desde antes del merge (mismo criterio de DDL/infra aditiva antes
+del merge de código).
+
+🛑 **Nota importante**: las migraciones que trajo este release y el anterior (342/345) son la causa
+raíz de un bug crítico de PROD descubierto en la sesión siguiente (embed ambiguo de `ubicaciones`,
+PGRST201) — ver la entrada de arriba (2026-08-09) y el bloque "ARRANCÁ ACÁ" de
+`sources/raw/project_pendientes.md`.
+
+Pendiente real sin cambios: el mecanismo 2 de D3 (push real de precio a un canal) y el armado
+automático de D2 siguen sin probarse contra una cuenta MELI/TN real conectada — requiere acceso que
+Claude Code no tiene.
+
+Ver `sources/raw/project_pendientes.md`, [[wiki/business/roadmap]] (v1.162.0),
+`wiki/database/migraciones.md` (mig 346), [[wiki/integrations/mercado-libre]],
+[[wiki/integrations/tienda-nube]], [[wiki/integrations/roadmap-apis]].
+
+---
+
 ## [2026-08-08] update | 💲🟢 D3 — Repricing automático por margen MELI/TN: backend construido, verificado y con infraestructura (mig 346 + meli-stock-worker/tn-stock-worker/repricing-sweep) YA EN PROD; falta cerrar el pipeline de release v1.162.0 (push/PR/merge/tag)
 
 Continuación, mismo día, de la entrada de abajo (cierre del deploy de v1.161.0/D2). Se construyó y

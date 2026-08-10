@@ -205,6 +205,48 @@ El GRANT habilita a PostgREST para rutear las requests. Las policies RLS siguen 
 
 ---
 
+## Embeds de PostgREST con FK ambigua (🐛 incidente real, 2026-08-09)
+
+> [!WARNING] Agregar una FK **nueva** de una tabla A hacia una tabla B que YA tenía otra FK hacia B rompe en **runtime** (no en el DDL) cualquier embed sin calificar de esa tabla B que ya existiera en el frontend.
+
+**Qué pasó:** las migraciones 342 y 345 agregaron 2 columnas FK nuevas de `productos` hacia
+`ubicaciones` (`rotacion_ubicacion_excepcion_id`, `ubicacion_kit_default_id`), sumadas a la ya
+existente `ubicacion_id`. Con 3 relaciones posibles entre las mismas dos tablas, PostgREST ya no
+puede adivinar cuál usar en un embed sin calificar — `.select('..., ubicaciones(nombre)')` empezó a
+devolver `PGRST201` / HTTP 300 ("Could not embed because more than one relationship was found"). La
+query **entera** falla (no solo la columna embebida), y en React Query eso se traduce en una lista
+vacía silenciosa (`const { data = [] }` esconde el error). Así se manifestó: "no tengo productos" en
+`ProductosPage.tsx` y en el reporte de Stock de `ReportesPage.tsx`, con los datos intactos en la DB.
+Rompió en DEV **y en PROD real** (mismas migraciones, mismo bug), sin que ningún test lo detectara —
+ningún e2e ejercitaba esa combinación exacta de columnas seleccionadas.
+
+**Por qué `migration-reviewer` no lo cazó:** revisa el SQL de la migración (el DDL en sí era correcto,
+sin nada "mal escrito"), no el consumo del schema cache por PostgREST desde el frontend — este tipo de
+ambigüedad es un efecto de composición entre una migración vieja y otra nueva, invisible mirando cada
+una por separado.
+
+**El fix:** calificar el embed con el nombre exacto de la constraint:
+
+```ts
+// ❌ Ambiguo apenas hay 2+ FK entre las mismas tablas
+.select('*, ubicaciones(nombre)')
+
+// ✅ Le dice a PostgREST exactamente qué relación usar
+.select('*, ubicaciones!productos_ubicacion_id_fkey(nombre)')
+```
+
+La clave del objeto devuelto sigue siendo `ubicaciones` (el hint `!fkey` no cambia el nombre en el
+JSON, solo desambigua la relación) — no hace falta tocar el código que lee `producto.ubicaciones?.nombre`.
+
+**Cómo aplicar hacia adelante:** antes de dar por inofensiva una migración que agrega una FK nueva
+hacia una tabla muy referenciada (`ubicaciones`, `users`, `productos`, `sucursales`...), grepear el
+frontend por embeds sin calificar de esa tabla destino (`grep "tabla_destino(" src -r` sobre queries
+`.from('tabla_origen')`) y, si ya hay 1+ FK previa entre esas dos tablas, calificar el embed
+existente ANTES de aplicar la migración — o inmediatamente después, verificando con `curl` directo al
+endpoint REST real (no solo `execute_sql`, que no pasa por el schema cache de PostgREST).
+
+---
+
 ## Funciones puras → extraer a lib/
 
 Las funciones de lógica de negocio sin side effects van en `src/lib/`:

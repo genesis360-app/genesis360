@@ -6,7 +6,107 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-08, cont. 10) — 💲🟢 D3 (Repricing automático por margen MELI/TN) CONSTRUIDO, VERIFICADO y con la infraestructura YA EN PROD (mig 346 + `meli-stock-worker`/`tn-stock-worker`/`repricing-sweep` deployados en DEV y PROD) — falta push a `origin/dev` + PR `dev→main` + merge + tag/release para cerrar el release `v1.162.0`
+> ### 🔴 ARRANCÁ ACÁ (2026-08-09) — BUG CRÍTICO EN PROD: embed ambiguo de `ubicaciones` (PGRST201) vacía la lista de Productos/Reportes — fix YA en `origin/dev` (`v1.162.1`), PROD SIGUE ROTO, deploy del hotfix BLOQUEADO esperando autorización de GO — + release `v1.162.0` (D3, repricing) CONFIRMADO CERRADO en PROD
+>
+> **Prioridad #1 de la próxima sesión, por encima de cualquier feature nueva.** Si GO no lo menciona al
+> arrancar, preguntarle explícitamente si ya autorizó/hizo el deploy del hotfix a PROD antes de asumir
+> que sigue roto.
+>
+> #### 1. El bug
+>
+> Las migraciones **342** (Motor de Rotación, v1.160.0) y **345** (D2, armado automático de kits,
+> v1.161.0) agregaron 2 FK nuevas de `productos` hacia `ubicaciones` (`rotacion_ubicacion_excepcion_id`,
+> `ubicacion_kit_default_id`), sumadas a la ya existente `ubicacion_id`. PostgREST no puede resolver un
+> embed `ubicaciones(nombre)` sin calificar cuál FK usar cuando hay más de una relación posible entre
+> dos tablas — devuelve `PGRST201`/HTTP 300 y **la query entera falla** (no solo la columna embebida).
+> Dos queries reales del frontend hacían exactamente eso:
+> - `src/pages/ProductosPage.tsx` — la query PRINCIPAL de la lista de productos (`['productos',
+>   tenant?.id]`).
+> - `src/pages/ReportesPage.tsx` — la query `['reporte-productos', ...]` que alimenta el reporte
+>   "Stock actual" (exports Excel/PDF).
+>
+> Resultado real: la lista de Productos (y ese reporte) se veía **VACÍA** en la UI para cualquier
+> tenant, en DEV y en PROD, sin ningún error visible al usuario. **Los datos están intactos** (615
+> productos confirmados en el tenant de prueba de DEV, por ejemplo) — es un problema de cómo se pide el
+> embed a PostgREST, no una pérdida de datos.
+>
+> **Cómo se descubrió:** GO reportó en vivo "en Almacén Jorgito no tengo productos, ¿qué se rompió?".
+> Se reprodujo con `curl` directo contra el endpoint REST real de DEV (mismo `select=` que usa el
+> frontend) y se confirmó que **el mismo error YA estaba presente contra el schema real de PROD**
+> (`jjffnbrdjchquexdfgwq.supabase.co`) — el bug lleva viviendo en PROD desde que se deployó la
+> migración 342 (v1.160.0) o, como muy tarde, la 345 (v1.161.0): **afecta a CUALQUIER tenant de PROD
+> que abra Productos o el reporte de Stock actual, ahora mismo.**
+>
+> #### 2. El fix — YA en `origin/dev`, PROD sin tocar
+>
+> Commit `68a48d9e` ("fix(productos): desambigua embed ubicaciones() en Productos/Reportes
+> (PGRST201)"), `APP_VERSION` bumpeada a **`v1.162.1`**. En ambos archivos se calificó explícitamente la
+> FK a usar: `ubicaciones(nombre)` → `ubicaciones!productos_ubicacion_id_fkey(nombre)` (la
+> original/histórica). Verificado con `curl` que la query corregida devuelve HTTP 200 tanto contra DEV
+> como contra el schema real de PROD. **Sin migración de base de datos** — fix 100% frontend, sin
+> cambios de schema. Auditados de paso los demás `.select()` que embeben `ubicaciones(nombre)` en el
+> repo (`ConfigPage.tsx`, `InventarioPage.tsx`, `MetricasPage.tsx`, `EnviosPage.tsx`, `VentasPage.tsx`)
+> — todos son sobre tablas con una sola FK a `ubicaciones` (`inventario_lineas`,
+> `producto_ubicacion_umbrales`), no afectadas por este bug.
+>
+> #### 3. Estado real — CRÍTICO
+>
+> - ✅ Fix commiteado y **pusheado a `origin/dev`** (`68a48d9e`) — el Vercel de DEV ya sirve el fix.
+> - 🔴 **PROD SIGUE ROTO.** El deploy del hotfix a PROD (PR `dev`→`main`, merge, tag `v1.162.1`) quedó
+>   **bloqueado por el clasificador de seguridad del entorno**, y **GO pidió explícitamente ESPERAR**
+>   (no reintentar, no hacerlo por otro camino) hasta que él lo autorice o lo haga directamente.
+> - **Sin migración nueva** — nada que aplicar en Supabase para este fix.
+>
+> #### 4. Lección técnica para el wiki (ya agregada)
+>
+> Agregar una FK nueva de una tabla A hacia una tabla B que YA tenía otra FK hacia B puede romper en
+> **RUNTIME** (no en el DDL) los embeds de PostgREST sin calificar que ya existían en el frontend — el
+> `migration-reviewer` revisa el SQL, no el consumo del schema cache por PostgREST vía el frontend, así
+> que esta clase de bug queda fuera de su alcance actual. Gotcha documentado en
+> [[wiki/development/convenciones-codigo]] → "Embeds de PostgREST con FK ambigua".
+>
+> ---
+>
+> #### 5. Aparte: release `v1.162.0` (D3 — repricing automático) CONFIRMADO CERRADO en PROD
+>
+> Esto se completó ANTES del hallazgo del bug de arriba (que lo introdujeron las migraciones de este
+> release y el anterior, no D3 en sí) — **100% en PROD, confirmado**:
+> - **PR #320** (`dev`→`main`): https://github.com/genesis360-app/genesis360/pull/320 — **merge commit
+>   `bbc8c1db43216512e9608301d715331900e038b0`**.
+> - **Tag + GitHub release `v1.162.0`**:
+>   https://github.com/genesis360-app/genesis360/releases/tag/v1.162.0
+> - **Vercel PROD**: deployment `dpl_GVHKjDYT8FkDRuFQi9zHYdYcfLLg`, `state: READY`, `target:
+>   production`.
+> - Contenido: repricing automático por margen objetivo MELI/TN (mig 346) — detalle técnico completo ya
+>   documentado en la sesión anterior en `wiki/database/migraciones.md` (mig 346) y
+>   [[wiki/business/roadmap]] (v1.162.0) — solo cambia el estado de "release sin confirmar" a "✅
+>   confirmado en PROD".
+>
+> ### 📊 Estado DEV/PROD al cierre de esta sesión
+>
+> | | DEV | PROD |
+> |---|---|---|
+> | `APP_VERSION` (código) | v1.162.1 (fix pusheado a `origin/dev`, `68a48d9e`) | **v1.162.0** (Vercel `READY`, `dpl_GVHKjDYT8FkDRuFQi9zHYdYcfLLg` — 🔴 el bug PGRST201 de Productos/Reportes SIGUE VIVO en esta versión) |
+> | Migraciones aplicadas en la DB | 001-346 | 001-346 (sin cambios — el hotfix no toca schema) |
+> | Branch | `origin/dev` (`68a48d9e`) | `main` (HEAD en el merge de PR #320, `bbc8c1db`) |
+> | Tag / release | — | `v1.162.0` (confirmado); `v1.162.1` (hotfix) pendiente de autorización de GO |
+>
+> **🛑 Pendiente real para la próxima sesión, en orden de prioridad:**
+> 1. **Confirmar con GO si ya autorizó/hizo el deploy del hotfix `v1.162.1` a PROD.** Si no, es la
+>    prioridad #1 — Productos/Reportes siguen rotos en PROD real para cualquier tenant.
+> 2. Resto de pendientes conocidos sin cambios: prueba end-to-end de D2 (armado automático real contra
+>    una orden de un canal de test) y de D3 mecanismo 2 (push real de precio a MELI/TN), C1 (Mercado
+>    Envíos vs. envío propio) sin dato de clientes reales, decisión de GO sobre la cuota de Supabase,
+>    deuda técnica de arnés e2e, QA manual heredado.
+>
+> Ver `log.md` (2026-08-09, entrada del hallazgo + entrada de cierre de v1.162.0),
+> [[wiki/business/roadmap]] (v1.162.1 + v1.162.0 confirmado), `wiki/database/migraciones.md` (mig 346,
+> release confirmado), [[wiki/development/convenciones-codigo]] (gotcha nuevo),
+> [[wiki/features/productos]], [[wiki/features/reportes-metricas]].
+>
+> ---
+>
+> ### ✅ ARRANCÁ ACÁ (histórico, 2026-08-08, cont. 10) — 💲🟢 D3 (Repricing automático por margen MELI/TN) CONSTRUIDO, VERIFICADO y con la infraestructura YA EN PROD (mig 346 + `meli-stock-worker`/`tn-stock-worker`/`repricing-sweep` deployados en DEV y PROD) — falta push a `origin/dev` + PR `dev→main` + merge + tag/release para cerrar el release `v1.162.0` — este bloque quedó SUPERADO por el de arriba (2026-08-09): release confirmado cerrado en PROD + bug crítico PGRST201 encontrado (fix en `dev`, PROD sin deployar)
 >
 > Continuación, mismo día, del bloque de abajo (cont. 9, cierre del deploy de v1.161.0/D2 — ahora
 > histórico). Se construyó y deployó el segundo bloque del relevamiento ya respondido por Fede: D3,

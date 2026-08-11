@@ -8,17 +8,53 @@ updated: 2026-08-08
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.163.0 (código/Vercel, confirmado — PR #322, merge `3163772b`, verificado por
-`curl` directo a los chunks reales, no solo `list_deployments`) — el hotfix PGRST201 (v1.162.1) y la
-Pestaña de Supervisor reusable (mig 347) están ambos en PROD, verificados contra el bundle real.
-Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque
-"ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.163.0 (mismo commit, `origin/dev` sincronizado con `main`)  
-**Última actualización:** 10 de Agosto, 2026
+**Versión en PROD:** v1.164.0 (código/Vercel, confirmado — PR #323, merge `f5bdca88`, verificado
+contra el bundle real vía Vercel API) — la Pestaña de Supervisor reusable queda 100% completa (mig
+347+348: núcleo + F1 "Avisar al supervisor" + A2 auto-asignación). Detalle completo en
+`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
+**Versión en DEV:** v1.164.0 (mismo commit, `origin/dev` sincronizado con `main`)  
+**Última actualización:** 11 de Agosto, 2026
 
 ---
 
-## v1.163.0 — 🎯👥 Pestaña de Supervisor reusable (mig 347) — ✅ EN PROD (2026-08-10)
+## v1.164.0 — 🎯👥 Pestaña de Supervisor 100% COMPLETA: F1 "Avisar al supervisor" + A2 auto-asignación (mig 348) — ✅ EN PROD (2026-08-11)
+
+Cierre real del patrón de Supervisor tras auditar honestamente contra el relevamiento original (GO:
+"quiero todo 100% listo, decime qué falta definir"). Dos requisitos que Fede ya había confirmado
+quedaron sin construir en v1.163.0:
+
+- **F1** — botón reusable "Avisar al supervisor" (`AvisarSupervisorButton` + `avisarSupervisor()`),
+  wireado en el detalle de LPN de Inventario. Notifica a todos los que puedan supervisar el módulo
+  (excepto quien avisa), con nota opcional.
+- **A2** — auto-asignación al crear una autorización: regla de enrutamiento explícita
+  (tenant+modulo+tipo → usuario, configurable en Config → Inventario → Zonas y picking) o, si no hay
+  regla, reparto por carga entre los elegibles (empate al azar). Mig 348: tabla
+  `autorizaciones_reglas_enrutamiento` + `fn_usuarios_supervisan_modulo` (espejo SQL de
+  `puedeSupervisarModulo`) + trigger `fn_autorizaciones_auto_asignar`.
+
+GO pidió verificar TODO antes de dar por cerrado — esa ronda **encontró y corrigió un bug real**: el
+nav item "Supervisión" quedaba oculto para CAJERO/DEPOSITO/CONTADOR/RRHH pese a tener `supervisa` vía
+rol custom (el allowlist de operador de `navVisibility.ts` bloqueaba antes de chequear el permiso
+real) — encontrado escribiendo tests unitarios dedicados (`navVisibility.test.ts`/
+`permisosModulo.test.ts`), no a los ponchazos en el navegador.
+
+`migration-reviewer` en 2 rondas para la mig 348: la primera encontró 2 bloqueantes de idempotencia +
+5 mejoras (todas aplicadas), la segunda confirmó "APTA". Verificado con SQL real (auto-asignación por
+carga y por regla) y con un **JWT real de un usuario CAJERO** vía `fetch()` directo a PostgREST —
+`execute_sql` corre como `postgres` con `rolbypassrls=true` y no sirve para probar RLS de escritura.
+
+**PR #323** mergeado (`f5bdca88`), **tag+release `v1.164.0`**, migración 348 en DEV y PROD antes del
+merge, **Vercel PROD verificado con el bundle real** (deployment `dpl_5raLducNVwK7dvK3eSWKw9CzTHh1`).
+
+Con esto, los 3 relevamientos derivados hacia Repositores (Ubicaciones, Pestaña de Supervisor, Motor
+de Rotación) están completos contra sus decisiones originales — falta solo diseñar/construir
+Repositores en sí, con 3 puntos de negocio propios pendientes de decisión de GO.
+
+Detalle completo: [[wiki/features/supervision]], `wiki/database/migraciones.md` (mig 348).
+
+---
+
+## v1.163.0 — 🎯👥 Pestaña de Supervisor reusable — núcleo (mig 347) — ✅ EN PROD (2026-08-10)
 
 2º de 4 relevamientos derivados hacia el módulo Repositores, construido completo en la misma sesión
 tras cerrar con GO las 4 decisiones técnicas pendientes (A1/A3/B1/C2 — ver

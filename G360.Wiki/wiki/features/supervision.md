@@ -2,15 +2,17 @@
 title: Supervisión — Patrón "Pestaña de Supervisor" reusable
 category: features
 tags: [supervision, autorizaciones, permisos, aprobaciones, reasignar, trazabilidad, repositores]
-sources: [migration 347, relevamiento_supervisor_tab_respuestas.md, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx]
-updated: 2026-08-10
+sources: [migration 347, migration 348, relevamiento_supervisor_tab_respuestas.md, src/components/SupervisionPanel.tsx, src/hooks/useSupervisorAutorizaciones.ts, src/pages/SupervisionPage.tsx, src/components/AvisarSupervisorButton.tsx]
+updated: 2026-08-11
 ---
 
 # Supervisión — Patrón "Pestaña de Supervisor" reusable
 
-✅ **EN PROD desde v1.163.0 (2026-08-10, mig 347).** 2º de 4 relevamientos derivados hacia el módulo
-Repositores (backlog Comercial de Fede, Fase E) — ver [[project_backlog_fede_comercial_25_7]] y
-`relevamiento_supervisor_tab_respuestas.md` para las decisiones de negocio completas.
+✅ **100% COMPLETO Y EN PROD desde v1.164.0 (2026-08-11, migs 347+348).** 2º de 4 relevamientos
+derivados hacia el módulo Repositores (backlog Comercial de Fede, Fase E) — ver
+[[project_backlog_fede_comercial_25_7]] y `relevamiento_supervisor_tab_respuestas.md` para las
+decisiones de negocio completas. v1.163.0 dejó construido el núcleo (A1/A3/B1/C2/D1/E1/E2); v1.164.0
+cerró las 2 piezas que habían quedado pendientes de esa primera pasada (F1 y A2 — ver abajo).
 
 ## Qué resuelve
 
@@ -76,6 +78,50 @@ sub-secciones nuevas al lado. La RPC `aprobar_cambio_estado_inventario` (REGLA #
 server-side del cambio de estado con foto) se redefinió (mismo nombre, misma lógica) para apuntar a la
 tabla renombrada — verificada end-to-end con un usuario real impersonado antes de deployar.
 
+## F1 — "Avisar al supervisor" (v1.164.0)
+
+Requisito confirmado en el relevamiento ("se construye genérico desde el día uno, cualquier módulo
+puede usar el botón") que había quedado sin construir en la primera pasada — GO lo marcó como gap real
+al pedir verificación exhaustiva. `avisarSupervisor(tenantId, modulo, remitenteId, titulo, mensaje,
+actionUrl)` en `useSupervisorAutorizaciones.ts`: notifica (tabla `notificaciones`, tipo
+`aviso_supervisor`) a TODOS los que `puedeSupervisarModulo` en ese módulo, excepto quien avisa.
+Componente reusable `AvisarSupervisorButton` (nota opcional vía `usePrompt()`) wireado en
+`LpnAccionesModal.tsx` (header del detalle de LPN) — el mensaje ya trae identificado LPN/producto/
+ubicación, igual que pedía el relevamiento original de Repositores (C1). Verificado end-to-end en el
+navegador contra DEV real: 4 supervisores notificados correctamente.
+
+## A2 — Auto-asignación por reglas o carga (v1.164.0, mig 348)
+
+Requisito de negocio cerrado en el relevamiento ("asignación automática por prioridad como default" +
+"reglas predefinidas de enrutamiento") cuya implementación concreta se dejó a propósito para la etapa
+de diseño técnico — definida recién con GO el 2026-08-11:
+
+1. **Regla de enrutamiento explícita** (tabla nueva `autorizaciones_reglas_enrutamiento`: tenant+modulo
+   +tipo → usuario fijo, `UNIQUE(tenant_id, modulo, tipo)`) — configurable en Config → Inventario →
+   Zonas y picking → card "Reglas de asignación — Supervisión".
+2. **Si no hay regla, reparto por CARGA**: se asigna a quien, entre los elegibles
+   (`fn_usuarios_supervisan_modulo`, espejo SQL de `puedeSupervisarModulo`), tenga MENOS pendientes
+   asignadas ahora mismo en ese módulo — empate desempatado al azar (no siempre el mismo UUID).
+
+Trigger `trg_autorizaciones_auto_asignar` (`BEFORE INSERT ON autorizaciones`) — corre para CUALQUIER
+INSERT a la tabla, sin importar si lo hace un usuario real o `fn_evaluar_repricing_margen` con
+`service_role`. RLS de la tabla de reglas: SELECT tenant-wide (necesario para que el trigger, que corre
+`SECURITY INVOKER`, pueda leer la regla bajo el rol de CUALQUIER usuario que cree una autorización, no
+solo DUEÑO/ADMIN) + escritura (INSERT/UPDATE/DELETE) acotada a DUEÑO/ADMIN.
+
+**`migration-reviewer` en 2 rondas**: la primera encontró 2 bloqueantes de idempotencia (falta
+`IF NOT EXISTS` en la tabla y en la policy) + 5 mejoras (`ON DELETE CASCADE`, restricción de escritura
+por rol, guard de tenant en `usuario_id`, `REVOKE FROM PUBLIC/anon`, desempate justo por `random()`
+en vez de siempre el mismo UUID) — todas aplicadas antes de la segunda pasada, que confirmó "APTA".
+
+**Gotcha real encontrado al verificar la RLS**: `execute_sql` conecta como `postgres` con
+`rolbypassrls=true` — probar la restricción de escritura (DUEÑO/ADMIN) con ese canal siempre "pasa",
+sin importar qué rol se simule en `request.jwt.claims`. Hubo que probarlo con un JWT real de un usuario
+CAJERO (extraído de una sesión de navegador ya autenticada) vía `fetch()` directo a PostgREST — recién
+ahí se confirmó el 403 real. Técnica a reusar cada vez que una migración nueva agregue una policy RLS
+que restrinja por rol: `execute_sql`/`SET request.jwt.claims` alcanza para probar lógica de negocio
+dentro de una función (`get_user_role()` explícito), pero NO para probar RLS en sí.
+
 ## Verificación
 
 - **SQL real contra DEV**: `aprobar_cambio_estado_inventario` ejecutada con `SET request.jwt.claims`
@@ -86,8 +132,18 @@ tabla renombrada — verificada end-to-end con un usuario real impersonado antes
   agregada, gating de permisos (CAJERO no ve el nav item nuevo). Encontró y corrigió un bug propio:
   `permisos_custom` NO es una columna de `users` — se resuelve vía `rol_custom_id → roles_custom.permisos`
   (mismo join que ya hace `authStore.ts` al cargar la sesión), no una columna directa.
-- **Bundle real de PROD** verificado por `curl` (no solo `list_deployments`): el chunk de Inventario
-  contiene el texto "Supervisión" y la queryKey `usuarios-supervisa`.
+- **Bundle real de PROD** verificado por `curl`/Vercel API (no solo que el deployment esté READY): en
+  v1.163.0 el chunk de Inventario tenía "Supervisión" + `usuarios-supervisa`; en v1.164.0 se confirmó
+  además `"Avisar al supervisor"` (x2) en el chunk de Inventario y `reglas_enrutamiento` +
+  "Reglas de asignación — Supervisión" en el chunk de Config.
+- **Ronda de verificación adicional (2026-08-11), a pedido explícito de GO ("verifica todo")**: rol
+  SUPERVISOR (nav+tab visibles, navegador real) · flujo Rechazar en vivo (DB confirma
+  estado/motivo_rechazo/aprobado_por, luego revertido) · rol custom con `supervisa` explícito — cubierto
+  con tests unitarios dedicados en vez de un hack de sesión de navegador (más riguroso para lógica
+  pura), que **encontraron y corrigieron un bug real**: el nav item "Supervisión" quedaba oculto para
+  CAJERO/DEPOSITO/CONTADOR/RRHH aunque tuvieran `supervisa` vía rol custom, porque el allowlist de
+  operador de `navVisibility.ts` corría ANTES de chequear `requiereSupervisarModulo` — corregido para
+  que ese flag bypasee el allowlist de rol (se gobierna 100% por permiso real, no por rol).
 
 ## Pendiente real
 
@@ -96,6 +152,9 @@ Ningún otro módulo usa el patrón todavía — Pedidos/WMS sigue con su propia
 operativas, no solicitudes de aprobación) que no se unificó a propósito en esta tanda (fuera del
 alcance de D1, que solo pedía retrofitear Inventario).
 
-**Próximo paso de la secuencia hacia Repositores**: con este relevamiento cerrado (3 de 4), el
-siguiente es diseñar y construir el módulo Repositores en sí — ver
-`relevamiento_repositores_respuestas.md`.
+**Próximo paso de la secuencia hacia Repositores**: con este relevamiento 100% cerrado (3 de 4
+relevamientos derivados completos), el siguiente es diseñar y construir el módulo Repositores en sí —
+ver `relevamiento_repositores_respuestas.md`. Tiene puntos de negocio propios sin cerrar (rol nuevo vs.
+patrón de rol custom, alcance default de acceso a Inventario, restricción técnica real de impresión de
+etiquetas sin agente local) que necesitan decisión de GO antes de diseñar/construir — mismo criterio
+que se aplicó acá con A1/A3/B1/C2 antes de tocar código.

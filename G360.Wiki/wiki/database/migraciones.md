@@ -6,10 +6,32 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-08
 ---
 
-# Historial de Migraciones (001-347)
+# Historial de Migraciones (001-348)
 
-**Total al 2026-08-10:** 347 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-11:** 348 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**348 (`348_autorizaciones_auto_asignacion.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.164.0` CONFIRMADO 100% EN
+PROD (A2 del relevamiento de Supervisor — asignación automática, cierra 100% el patrón de Supervisor
+junto con F1 "Avisar al supervisor" — ver el bloque "ARRANCÁ ACÁ" de `sources/raw/project_pendientes.md`
+para el detalle completo):** tabla nueva `autorizaciones_reglas_enrutamiento`
+(tenant_id+modulo+tipo → usuario_id, `UNIQUE(tenant_id,modulo,tipo)`, `ON DELETE CASCADE` en
+`tenant_id`) — RLS con 2 policies separadas: SELECT tenant-wide (necesario porque el trigger de abajo
+corre `SECURITY INVOKER` bajo el rol de CUALQUIER usuario que cree una autorización) y
+escritura (INSERT/UPDATE/DELETE) acotada a `get_user_role() IN ('DUEÑO','ADMIN')`. Trigger
+`fn_regla_enrutamiento_valida_tenant` (guard: `usuario_id` de la regla debe pertenecer al mismo
+tenant). Función `fn_usuarios_supervisan_modulo(p_tenant_id, p_modulo)` — espejo SQL fiel de
+`puedeSupervisarModulo` (permisosModulo.ts), `REVOKE FROM PUBLIC/anon`. Trigger
+`fn_autorizaciones_auto_asignar` (`BEFORE INSERT ON autorizaciones`): si hay regla de enrutamiento la
+respeta, si no reparte por carga (COUNT de pendientes agrupado por `asignado_a`, filtrado a elegibles,
+empate desempatado por `random()` — no siempre el mismo UUID, para que el reparto sea justo de verdad).
+🔒 **`migration-reviewer` en 2 rondas**: la primera encontró 2 bloqueantes de idempotencia (`CREATE
+TABLE`/`CREATE POLICY` sin guard `IF NOT EXISTS`) — corregidos; la segunda confirmó "APTA". Verificado
+con SQL real (auto-asignación por carga y por regla, ambas correctas) y con un **JWT real de un
+usuario CAJERO** vía `fetch()` directo a PostgREST (403 al intentar escribir una regla) — `execute_sql`
+corre como `postgres` con `rolbypassrls=true` y no sirve para probar RLS de escritura. Detalle:
+[[wiki/features/supervision]].
 
 **347 (`347_autorizaciones_generico_supervisor.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.163.0` CONFIRMADO 100% EN
@@ -94,8 +116,10 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
-**001-347 EN DEV Y PROD (base de datos y Edge Functions); código `v1.163.0` 100% CERRADO Y EN PROD**
-(PR #322) — incluye el hotfix `v1.162.1` (PGRST201) y la Pestaña de Supervisor reusable (mig 347).
+**001-348 EN DEV Y PROD (base de datos y Edge Functions); código `v1.164.0` 100% CERRADO Y EN PROD**
+(PR #323) — Pestaña de Supervisor reusable 100% completa (F1 + A2, mig 348).
+**001-347 EN DEV Y PROD, código `v1.163.0` 100% CERRADO Y EN PROD (PR #322)** — incluye el hotfix
+`v1.162.1` (PGRST201) y el núcleo de la Pestaña de Supervisor reusable (mig 347).
 **001-346 EN DEV Y PROD, código `v1.162.0` (D3) 100% CERRADO Y EN PROD (PR #320).**
 **001-345 EN DEV Y PROD (base de datos), deploy v1.161.0 100% CERRADO.**
 **001-344 EN DEV Y PROD (base de datos), deploy v1.160.0 100% CERRADO** — las migraciones 339-343 se

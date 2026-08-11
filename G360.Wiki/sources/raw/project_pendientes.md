@@ -6,7 +6,75 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-10) — v1.163.0 EN PROD: hotfix PGRST201 (v1.162.1) CERRADO + Pestaña de Supervisor reusable CONSTRUIDA (mig 347, retrofit de Inventario) — 3 de 4 relevamientos derivados hacia Repositores YA CERRADOS, falta solo el #4 (Repositores en sí)
+> ### ✅ ARRANCÁ ACÁ (2026-08-11) — v1.164.0 EN PROD: Pestaña de Supervisor reusable 100% COMPLETA (F1 + A2, mig 348) — los 3 relevamientos derivados hacia Repositores ya cerrados, falta solo el #4 (Repositores en sí, con decisiones de negocio propias sin cerrar)
+>
+> Continuación directa de la sesión de abajo (v1.163.0). GO: *"q nos falta entonces para terminar? te
+> dije q lo queria 100% listo, decime q falta definir"* — auditoría honesta contra el relevamiento
+> original encontró 2 requisitos ya confirmados por Fede que habían quedado sin construir: **F1**
+> (botón "Avisar al supervisor") y **A2** (asignación automática por prioridad/reglas de enrutamiento,
+> implementación definida recién ahora con GO). Luego GO pidió *"verifica todo, esos 2 puntos y todo lo
+> demás"* — esa ronda de verificación **encontró y corrigió un bug real**: el nav item "Supervisión"
+> quedaba oculto para CAJERO/DEPOSITO/CONTADOR/RRHH aunque tuvieran el permiso `supervisa` vía rol
+> custom (el allowlist de operador de `navVisibility.ts` bloqueaba antes de llegar a chequear el
+> permiso real) — encontrado escribiendo tests unitarios dedicados, no a los ponchazos en el navegador.
+>
+> #### 1. F1 — "Avisar al supervisor" (CONSTRUIDO, verificado end-to-end en el navegador)
+>
+> `avisarSupervisor()` + componente `AvisarSupervisorButton`, wireado en `LpnAccionesModal.tsx`.
+> Notifica a todos los que puedan supervisar el módulo (excepto quien avisa), con nota opcional.
+> Verificado contra DEV real: click → prompt → confirmar → "Avisado — 4 supervisores notificados" →
+> confirmado en DB, limpiado después.
+>
+> #### 2. A2 — Auto-asignación por reglas o carga (mig 348, CONSTRUIDO y verificado)
+>
+> Tabla `autorizaciones_reglas_enrutamiento` (tenant+modulo+tipo → usuario) + función
+> `fn_usuarios_supervisan_modulo` (espejo SQL de `puedeSupervisarModulo`) + trigger
+> `fn_autorizaciones_auto_asignar` (`BEFORE INSERT ON autorizaciones`): si hay regla, se respeta; si
+> no, reparto por carga entre los elegibles (empate al azar). UI de reglas en Config → Inventario →
+> Zonas y picking.
+>
+> **`migration-reviewer` en 2 rondas**: la primera encontró 2 bloqueantes de idempotencia (`CREATE
+> TABLE`/`CREATE POLICY` sin guard) + 5 mejoras (`ON DELETE CASCADE`, escritura acotada a DUEÑO/ADMIN,
+> guard de tenant en `usuario_id`, `REVOKE FROM PUBLIC/anon`, desempate por `random()` en vez de
+> siempre el mismo UUID) — todas aplicadas antes de la segunda pasada, que confirmó "APTA".
+>
+> **Gotcha real de verificación**: `execute_sql` conecta como `postgres` con `rolbypassrls=true` — no
+> sirve para probar RLS de escritura (siempre "pasa" sin importar el rol simulado en
+> `request.jwt.claims`). Hubo que extraer un JWT real de una sesión de navegador de un usuario CAJERO
+> y hacer un `fetch()` directo a PostgREST para confirmar el 403 real al intentar escribir una regla.
+>
+> #### 3. Deploy — PR #323, tag/release `v1.164.0`, verificado contra el bundle real
+>
+> **PR #323**: https://github.com/genesis360-app/genesis360/pull/323 — merge commit `f5bdca887e784ffdd8bc38912c7095a4ce818c5c`.
+> **Release**: https://github.com/genesis360-app/genesis360/releases/tag/v1.164.0. Migración 348
+> aplicada y verificada en DEV y PROD antes del merge. **Vercel PROD verificado con el bundle real**
+> (deployment `dpl_5raLducNVwK7dvK3eSWKw9CzTHh1`) — confirmado "Avisar al supervisor" en el chunk de
+> Inventario y "Reglas de asignación — Supervisión" en el chunk de Config, no solo que el deployment
+> esté READY.
+>
+> #### 4. Estado real de la secuencia hacia Repositores — el patrón de Supervisor 100% cerrado
+>
+> Los 3 relevamientos derivados (Ubicaciones, Pestaña de Supervisor, Motor de Rotación) están
+> **completos contra sus decisiones originales**, no solo "construidos y con algo pendiente". Queda
+> **solo el #4 (Repositores en sí)**, con puntos de negocio propios sin cerrar — no son decisiones
+> técnicas que se puedan tomar solas:
+> - **A1**: rol nuevo "Repositor" (lo que pidió Fede) vs. patrón de rol custom ya construido (mismo
+>   resultado percibido, sin el costo de migrar el enum de roles + auditar RLS).
+> - **A2/B3**: alcance de acceso default — Fede dijo "Reposición + Inventario completo", pero
+>   Inventario completo expone `precio_costo` y ajustes de stock más allá de lo necesario.
+> - **H1**: restricción técnica REAL confirmada — la impresión automática de etiquetas no es viable
+>   desde una SPA sin un agente local corriendo en la PC del local. Necesita que GO decida cómo
+>   resolverlo (¿PDF para imprimir a mano? ¿otro enfoque?).
+>
+> **Próximo paso real**: presentarle esto a GO y cerrar esas 3 decisiones ANTES de diseñar/construir
+> Repositores — mismo criterio que ya se aplicó acá con A1/A3/B1/C2 antes de tocar código.
+>
+> Ver `log.md` (2026-08-11), [[wiki/business/roadmap]] (v1.164.0), `wiki/database/migraciones.md`
+> (mig 348), [[wiki/features/supervision]] (F1/A2 documentados), `relevamiento_repositores_respuestas.md`.
+>
+> ---
+>
+> ### ✅ (histórico 2026-08-10) — v1.163.0 EN PROD: hotfix PGRST201 (v1.162.1) CERRADO + Pestaña de Supervisor reusable CONSTRUIDA (mig 347, retrofit de Inventario) — el núcleo del patrón (A1/A3/B1/C2/D1/E1/E2), F1/A2 se cerraron después en v1.164.0 (ver bloque de arriba)
 >
 > Continuación directa de la sesión de abajo (2026-08-09, hotfix PGRST201). GO: *"contruye ahora,
 > comienza y termina, luego pasamos todo junto a prd con el fix incluido. Pero quiero todo 100%

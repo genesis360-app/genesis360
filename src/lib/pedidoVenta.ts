@@ -133,7 +133,7 @@ export const ESTADOS_VENTA_VIVA = ['pendiente', 'reservada', 'despachada', 'fact
 
 /**
  * Por qué NO se puede lanzar el pedido de esta venta (o null si se puede). Espejo de
- * `fn_pedido_venta_viva` (mig 323) — el servidor lo revalida.
+ * `fn_pedido_venta_viva` (mig 323 + 350) — el servidor lo revalida.
  */
 export function motivoNoLanzarPedido(estadoVenta: string | null | undefined): string | null {
   if (!estadoVenta) return null   // pedido de logística puro: no aplica
@@ -142,6 +142,9 @@ export function motivoNoLanzarPedido(estadoVenta: string | null | undefined): st
   }
   if (estadoVenta === 'pendiente') {
     return 'La venta todavía es un PRESUPUESTO: confirmala antes de mandar a preparar la mercadería.'
+  }
+  if (estadoVenta === 'despachada' || estadoVenta === 'facturada') {
+    return 'La venta ya fue despachada (el stock ya se rebajó desde Ventas): no se puede lanzar picking para volver a preparar/rebajar la misma mercadería.'
   }
   return null
 }

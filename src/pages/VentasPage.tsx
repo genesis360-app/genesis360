@@ -1313,6 +1313,24 @@ export default function VentasPage() {
     enabled: !!ventaDetalle?.id,
   })
 
+  // Rebaje por un solo camino (venta #619, hallazgo real 2026-08-10): si hay un Pedido vivo
+  // (no cancelado) para esta venta, el rebaje de stock ya está en manos de Pedidos → Picking.
+  // "Finalizar (rebaja stock)" desde acá quedaría en carrera con el picking del pedido y podría
+  // rebajar dos veces (o el pedido lanzarse sobre una venta que un cajero ya rebajó a mano).
+  const { data: pedidoActivoVenta = null } = useQuery({
+    queryKey: ['venta-pedido-activo', ventaDetalle?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('pedidos')
+        .select('id, numero, numero_sucursal, estado')
+        .eq('venta_origen_id', ventaDetalle!.id)
+        .neq('estado', 'cancelado')
+        .limit(1)
+        .maybeSingle()
+      return data ?? null
+    },
+    enabled: !!ventaDetalle?.id,
+  })
+
   // 🔎 Búsqueda del historial: si hay término, se busca EN EL SERVIDOR (sin la ventana de 50).
   // Bug real que esto arregla (destapado por el spec 42, 2026-07-17): la búsqueda filtraba
   // client-side SOLO sobre las últimas `ventasLimit` (50) ventas → buscar el número de una
@@ -4884,7 +4902,7 @@ export default function VentasPage() {
         tabs={esContador
           ? [{ id: 'historial', label: 'Historial', icon: FileText }]
           : [{ id: 'nueva', label: 'Nueva venta', icon: Plus }, { id: 'historial', label: 'Historial', icon: FileText },
-             { id: 'pedidos', label: pedidosMostrador.length > 0 ? `Pedidos (${pedidosMostrador.length})` : 'Pedidos', icon: PackageCheck },
+             { id: 'pedidos', label: pedidosMostrador.length > 0 ? `Retiro (${pedidosMostrador.length})` : 'Retiro', icon: PackageCheck },
              { id: 'canales', label: 'Canales', icon: Layers }]}
         active={tab}
         onChange={(id) => setTab(id as Tab)}
@@ -6649,6 +6667,15 @@ export default function VentasPage() {
               })()}
               {(ventaDetalle.estado === 'pendiente' || ventaDetalle.estado === 'reservada') && (() => {
                 const vencido = ventaDetalle.estado === 'pendiente' && isPresupuestoVencido(ventaDetalle, (tenant as any)?.presupuesto_validez_dias)
+                if (pedidoActivoVenta) {
+                  return (
+                    <div className="w-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl px-3 py-2.5 text-xs text-indigo-700 dark:text-indigo-300">
+                      Esta venta tiene el <strong>Pedido #{pedidoActivoVenta.numero_sucursal ?? pedidoActivoVenta.numero}</strong> en curso
+                      ({pedidoActivoVenta.estado}) — el rebaje de stock se hace desde ahí (Pedidos → Picking), no desde acá, para evitar
+                      descontarlo dos veces.
+                    </div>
+                  )
+                }
                 return (
                   <button onClick={() => {
                     const totalConShipping = (ventaDetalle.total ?? 0) + (ventaDetalle.costo_envio ?? 0)
@@ -7603,7 +7630,7 @@ export default function VentasPage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
             <div className="flex items-center gap-2 mb-1">
               <PackageCheck size={18} className="text-accent-text" />
-              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Pedidos listos para retirar</h2>
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Retiro en mostrador</h2>
             </div>
             <p className="text-xs text-gray-400 dark:text-gray-500 mb-3">
               Pedidos ya preparados que el cliente pasa a buscar por el local. Buscá por nombre, DNI o número de pedido.
@@ -7624,7 +7651,7 @@ export default function VentasPage() {
             <div className="bg-white dark:bg-gray-800 rounded-xl p-10 shadow-sm border border-gray-100 dark:border-gray-700 text-center">
               <PackageCheck size={32} className="mx-auto text-gray-300 dark:text-gray-600 mb-2" />
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                {pedidoBusqueda ? 'Ningún pedido coincide con la búsqueda' : 'No hay pedidos listos para retirar'}
+                {pedidoBusqueda ? 'Ningún pedido coincide con la búsqueda' : 'No hay pedidos listos para retiro en mostrador'}
               </p>
               {!pedidoBusqueda && (
                 <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
@@ -7856,7 +7883,18 @@ export default function VentasPage() {
                   ${mpLinkModal.monto.toLocaleString('es-AR', { maximumFractionDigits: 0 })} confirmado por MercadoPago
                 </p>
                 {/* Reserva abierta en historial → finalizar con cambiarEstado */}
-                {ventaDetalle?.id === mpLinkModal.ventaId ? (
+                {ventaDetalle?.id === mpLinkModal.ventaId && pedidoActivoVenta ? (
+                  <div className="space-y-2">
+                    <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl px-3 py-2.5 text-xs text-indigo-700 dark:text-indigo-300 text-left">
+                      El pago ya quedó registrado. Esta venta tiene el <strong>Pedido #{pedidoActivoVenta.numero_sucursal ?? pedidoActivoVenta.numero}</strong> en
+                      curso — el rebaje de stock se hace desde Pedidos → Picking, no desde acá.
+                    </div>
+                    <button onClick={() => setMpLinkModal(null)}
+                      className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                      Cerrar
+                    </button>
+                  </div>
+                ) : ventaDetalle?.id === mpLinkModal.ventaId ? (
                   <button
                     onClick={() => {
                       setMpLinkModal(null)

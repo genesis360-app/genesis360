@@ -25,6 +25,7 @@ import { BRAND } from '@/config/brand'
 import { ActionMenu } from '@/components/ActionMenu'
 import { PageTabs } from '@/components/PageTabs'
 import { puedeTransicionPedido, type PedidoTransicion, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
+import { motivoNoLanzarPedido } from '@/lib/pedidoVenta'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import { esDecimal } from '@/lib/ventasValidation'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -122,12 +123,13 @@ export default function PedidosPage() {
     queryKey: ['pedidos', tenant?.id, sucursalId],
     queryFn: async () => {
       let q = supabase.from('pedidos')
-        .select('*, tipos_pedido(nombre), clientes(nombre), pedido_items(*, productos(nombre, sku, unidad_medida))')
+        .select('*, tipos_pedido(nombre), clientes(nombre), pedido_items(*, productos(nombre, sku, unidad_medida)), ventas:venta_origen_id(estado)')
         .eq('tenant_id', tenant!.id)
         .order('created_at', { ascending: false })
         .limit(100)
       if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)
-      const { data } = await q
+      const { data, error } = await q
+      if (error) throw error
       return data ?? []
     },
     enabled: !!tenant,
@@ -804,14 +806,17 @@ export default function PedidosPage() {
                     Confirmar
                   </button>
                 )}
-                {p.estado === 'confirmado' && puedeYo('lanzar') && (
-                  <button onClick={() => lanzarPedido.mutate(p)}
-                    disabled={lanzarPedido.isPending}
-                    title="Genera las tareas de picking/reabastecimiento en Depósito y reserva el stock"
-                    className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50">
-                    <Rocket size={13} /> {lanzarPedido.isPending ? 'Lanzando…' : 'Lanzar'}
-                  </button>
-                )}
+                {p.estado === 'confirmado' && puedeYo('lanzar') && (() => {
+                  const motivoBloqueo = motivoNoLanzarPedido(p.ventas?.estado)
+                  return (
+                    <button onClick={() => lanzarPedido.mutate(p)}
+                      disabled={lanzarPedido.isPending || !!motivoBloqueo}
+                      title={motivoBloqueo ?? 'Genera las tareas de picking/reabastecimiento en Depósito y reserva el stock'}
+                      className="flex items-center gap-1.5 text-xs font-semibold bg-amber-500 text-white px-3 py-1.5 rounded-lg hover:bg-amber-600 transition-colors disabled:opacity-50">
+                      <Rocket size={13} /> {lanzarPedido.isPending ? 'Lanzando…' : 'Lanzar'}
+                    </button>
+                  )
+                })()}
                 {['en_preparacion', 'listo_para_entrega'].includes(p.estado) && (
                   <button onClick={() => navigate(`/picking?busqueda=${encodeURIComponent(`Pedido:${p.numero}`)}`)}
                     className="text-xs font-semibold text-accent-text border border-accent-text/30 px-3 py-1.5 rounded-lg hover:bg-accent/10 transition-colors">

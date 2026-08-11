@@ -6,6 +6,49 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-11] deploy | 🚀 v1.164.0 EN PROD: F1 "Avisar al supervisor" + A2 auto-asignación (mig 348) — Pestaña de Supervisor 100% completa, verificación exhaustiva encontró y corrigió un bug real de nav
+
+GO, al cerrar v1.163.0: *"q nos falta entonces para terminar? te dije q lo queria 100% listo, decime
+q falta definir"*. Auditoría honesta contra el relevamiento original encontró 2 requisitos ya
+confirmados por Fede que habían quedado sin construir en la primera pasada:
+
+- **F1** — botón "Avisar al supervisor" (notificación directa a quien pueda supervisar el módulo).
+- **A2** — asignación automática por prioridad/reglas de enrutamiento (la implementación concreta se
+  había dejado pendiente de definir; se cerró recién ahora con GO: regla explícita tipo→usuario, o si
+  no hay, reparto por carga entre los elegibles).
+
+GO pidió verificar TODO (no solo estas 2 piezas) antes de dar la feature por cerrada. Esa ronda de
+verificación **encontró y corrigió un bug real**: el nav item "Supervisión" quedaba oculto para
+CAJERO/DEPOSITO/CONTADOR/RRHH aunque tuvieran el permiso `supervisa` vía rol custom — el allowlist de
+operador de `navVisibility.ts` bloqueaba antes de llegar a chequear el permiso real. Se encontró
+escribiendo tests unitarios dedicados (más riguroso que forzar una sesión de rol custom en el
+navegador), agregados a `navVisibility.test.ts`/`permisosModulo.test.ts`.
+
+**F1** (`avisarSupervisor` + `AvisarSupervisorButton`, wireado en `LpnAccionesModal.tsx`): notifica a
+todos los que puedan supervisar el módulo salvo quien avisa, con nota opcional. Verificado en el
+navegador contra DEV real: 4 supervisores notificados correctamente.
+
+**A2** (mig 348): tabla `autorizaciones_reglas_enrutamiento` + función `fn_usuarios_supervisan_modulo`
+(espejo SQL de `puedeSupervisarModulo`) + trigger `fn_autorizaciones_auto_asignar`. UI en Config →
+Inventario → Zonas y picking. `migration-reviewer` en 2 rondas: la primera encontró 2 bloqueantes de
+idempotencia + 5 mejoras (todas aplicadas), la segunda confirmó apta. **Gotcha de verificación real**:
+`execute_sql` conecta como `postgres` con `rolbypassrls=true` — no sirve para probar RLS de escritura;
+hubo que usar un JWT real de un usuario CAJERO extraído de una sesión de navegador para confirmar el
+403 real al intentar escribir una regla sin ser DUEÑO/ADMIN.
+
+**Deploy**: PR #323 mergeado (`f5bdca88`), tag+release `v1.164.0`, migración 348 aplicada y verificada
+en DEV y PROD antes del merge. Vercel PROD verificado con el bundle real (deployment
+`dpl_5raLducNVwK7dvK3eSWKw9CzTHh1`) — confirmado el string "Avisar al supervisor" en el chunk de
+Inventario y "Reglas de asignación — Supervisión" en el chunk de Config.
+
+**Con esto, el patrón de Supervisor queda 100% completo** contra las decisiones originales de Fede/GO
+— no quedan piezas del relevamiento sin construir. El siguiente paso real de la secuencia hacia
+Repositores es diseñar y construir ese módulo, que tiene sus propios puntos de negocio abiertos (rol
+nuevo vs. custom, alcance de acceso default, impresión de etiquetas) pendientes de decisión de GO.
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), [[wiki/business/roadmap]] (v1.164.0),
+`wiki/database/migraciones.md` (mig 348), [[wiki/features/supervision]].
+
 ## [2026-08-10] deploy | 🚀 v1.163.0 EN PROD: hotfix PGRST201 (v1.162.1) CERRADO + Pestaña de Supervisor reusable construida (mig 347) — 3 de 4 relevamientos hacia Repositores ya cerrados
 
 GO: *"contruye ahora, comienza y termina, luego pasamos todo junto a prd con el fix incluido. Pero

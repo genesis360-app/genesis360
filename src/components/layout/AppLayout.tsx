@@ -6,10 +6,16 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2, ScanBarcode, ListOrdered, Tag,
+  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2, ScanBarcode, ListOrdered, Tag, UserCog,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useAlertas } from '@/hooks/useAlertas'
+import { useSupervisionBadge } from '@/hooks/useSupervisorAutorizaciones'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
+
+// Módulos que hoy participan del patrón de Supervisor (mig 347) — extender acá el día que se
+// retrofitee un módulo nuevo (mismo criterio que el CHECK de `autorizaciones.modulo`).
+const MODULOS_SUPERVISION = ['inventario']
 import { CotizacionWidget } from '@/components/CotizacionWidget'
 import { Walkthrough, useWalkthrough } from '@/components/Walkthrough'
 import { differenceInDays } from 'date-fns'
@@ -48,6 +54,7 @@ const navItems = [
   { to: '/comercial',     icon: Tag,             label: 'Comercial',     modulo: 'comercial',      supervisorOnly: true },
   { to: '/biblioteca',    icon: FolderOpen,      label: 'Biblioteca',     modulo: 'biblioteca',    ownerOnly: true, avanzadoOnly: true },
   { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true,           depositoVisible: true },
+  { to: '/supervision',   icon: UserCog,         label: 'Supervisión',    modulo: 'supervision',   badge: true,           requiereSupervisarModulo: true },
   { to: '/rrhh',          icon: Briefcase,       label: 'RRHH',           modulo: 'rrhh',          ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
   { to: '/historial',     icon: ClipboardList,   label: 'Historial',      modulo: 'historial',     supervisorOnly: true, planFeature: 'puede_historial', contadorVisible: true, avanzadoOnly: true },
   { to: '/reportes',      icon: BarChart2,       label: 'Reportes',       modulo: 'reportes',      planFeature: 'puede_reportes', contadorVisible: true },
@@ -73,7 +80,7 @@ const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta',
 // el scroll del sidebar a 0 en cada navegación.
 function SidebarContent({
   mobile = false, sidebarCollapsed, toggleCollapse, setSidebarOpen,
-  navVisibilityCtx, limits, alertCount, cajaAbierta,
+  navVisibilityCtx, limits, badgeCounts, cajaAbierta,
 }: {
   mobile?: boolean
   sidebarCollapsed: boolean
@@ -81,7 +88,8 @@ function SidebarContent({
   setSidebarOpen: (v: boolean) => void
   navVisibilityCtx: any
   limits: any
-  alertCount: number
+  /** Conteos de badge por `modulo` — hoy 'alertas' y 'supervision'. */
+  badgeCounts: Record<string, number>
   cajaAbierta: boolean
 }) {
   const collapsed = !mobile && sidebarCollapsed
@@ -122,9 +130,10 @@ function SidebarContent({
       {/* Navegación */}
       <nav className={`flex-1 py-3 space-y-0.5 overflow-y-auto ${collapsed ? 'px-1.5' : 'px-2'}`}>
         {navItems.map((item: any) => {
-          const { to, icon: Icon, label, badge } = item
+          const { to, icon: Icon, label, badge, modulo } = item
           if (!navItemVisible(item, navVisibilityCtx)) return null
           const locked = navItemLocked(item, limits as any)
+          const itemBadgeCount = badgeCounts[modulo] ?? 0
           return (
             <NavLink
               key={to}
@@ -147,12 +156,12 @@ function SidebarContent({
                 {to === '/caja' && collapsed && (
                   <span className={`absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full border border-white dark:border-gray-900 ${cajaAbierta ? 'bg-green-400' : 'bg-red-400'}`} />
                 )}
-                {badge && alertCount > 0 && collapsed && (
+                {badge && itemBadgeCount > 0 && collapsed && (
                   <span
                     className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center border border-white dark:border-gray-900"
                     style={{ fontSize: 9, lineHeight: 1 }}
                   >
-                    {alertCount > 9 ? '9+' : alertCount}
+                    {itemBadgeCount > 9 ? '9+' : itemBadgeCount}
                   </span>
                 )}
               </div>
@@ -164,9 +173,9 @@ function SidebarContent({
                   title={cajaAbierta ? 'Caja abierta' : 'Caja cerrada'}
                 />
               )}
-              {!collapsed && badge && alertCount > 0 && !locked && (
+              {!collapsed && badge && itemBadgeCount > 0 && !locked && (
                 <span className="bg-red-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
-                  {alertCount > 9 ? '9+' : alertCount}
+                  {itemBadgeCount > 9 ? '9+' : itemBadgeCount}
                 </span>
               )}
             </NavLink>
@@ -215,6 +224,7 @@ export function AppLayout() {
   const confirmar = useConfirm()
   useInactivityTimeout(tenant?.session_timeout_minutes)
   const { count: alertCount } = useAlertas()
+  const { count: supervisionCount } = useSupervisionBadge(MODULOS_SUPERVISION.filter(m => puedeSupervisarModulo(user, m)))
 
   // Notificaciones globales de pagos MP recibidos
   const seenMpLogs = useRef<Set<string>>(new Set())
@@ -335,6 +345,7 @@ export function AppLayout() {
 
   // Contexto de visibilidad del nav — compartido entre el render del sidebar y el
   // Asistente IA (que le pasa a la EF el menú REAL que ve este usuario).
+  const modulosSupervisables = MODULOS_SUPERVISION.filter(m => puedeSupervisarModulo(user, m))
   const navVisibilityCtx = {
     rol: user?.rol,
     permisosCustom: user?.permisos_custom,
@@ -342,6 +353,7 @@ export function AppLayout() {
     rrhhPortalEmpleado: (tenant as any)?.rrhh_portal_empleado,
     facturacionHabilitada: (tenant as any)?.facturacion_habilitada,
     sucursalesCount: sucursales.length,
+    modulosSupervisables,
   }
   const modulosVisibles = navItems
     .filter((item: any) => navItemVisible(item, navVisibilityCtx))
@@ -421,7 +433,7 @@ export function AppLayout() {
           setSidebarOpen={setSidebarOpen}
           navVisibilityCtx={navVisibilityCtx}
           limits={limits}
-          alertCount={alertCount}
+          badgeCounts={{ alertas: alertCount, supervision: supervisionCount }}
           cajaAbierta={cajaAbierta}
         />
       </aside>
@@ -444,7 +456,7 @@ export function AppLayout() {
               setSidebarOpen={setSidebarOpen}
               navVisibilityCtx={navVisibilityCtx}
               limits={limits}
-              alertCount={alertCount}
+              badgeCounts={{ alertas: alertCount, supervision: supervisionCount }}
               cajaAbierta={cajaAbierta}
             />
           </aside>

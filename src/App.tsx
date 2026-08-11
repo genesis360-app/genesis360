@@ -29,6 +29,7 @@ const MiPortalPage         = lazy(() => import('@/pages/MiPortalPage'))
 const MetricasPage         = lazy(() => import('@/pages/MetricasPage'))
 const VentasPage       = lazy(() => import('@/pages/VentasPage'))
 const AlertasPage      = lazy(() => import('@/pages/AlertasPage'))
+const SupervisionPage  = lazy(() => import('@/pages/SupervisionPage'))
 const ReportesPage     = lazy(() => import('@/pages/ReportesPage'))
 const UsuariosPage     = lazy(() => import('@/pages/UsuariosPage'))
 const ConfigPage       = lazy(() => import('@/pages/ConfigPage'))
@@ -160,6 +161,7 @@ function App() {
                   <Route path="/movimientos" element={<Navigate to="/inventario" replace />} />
                   <Route path="/ventas" element={<VentasPage />} />
                   <Route path="/alertas" element={<AlertasPage />} />
+                  <Route path="/supervision" element={<SupervisionPage />} />
                   <Route path="/reportes" element={<ReportesPage />} />
                   <Route path="/usuarios" element={<UsuariosPage />} />
                   <Route path="/rrhh" element={<RrhhPage />} />

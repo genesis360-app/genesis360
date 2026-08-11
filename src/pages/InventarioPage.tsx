@@ -26,7 +26,9 @@ import { useCotizacion } from '@/hooks/useCotizacion'
 import { useModalKeyboard } from '@/hooks/useModalKeyboard'
 import { usePlanLimits } from '@/hooks/usePlanLimits'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
-import { moduloSoloLectura } from '@/lib/permisosModulo'
+import { moduloSoloLectura, puedeSupervisarModulo } from '@/lib/permisosModulo'
+import { useSupervisorAutorizaciones } from '@/hooks/useSupervisorAutorizaciones'
+import { SupervisionPanel } from '@/components/SupervisionPanel'
 import { PlanProgressBar } from '@/components/PlanProgressBar'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useConteoBloqueante } from '@/hooks/useConteoBloqueante'
@@ -745,23 +747,16 @@ export default function InventarioPage() {
     enabled: !!tenant && tab === 'historial',
   })
 
-  // ── Autorizaciones (lazy, solo Dueño/SUPERVISOR/ADMIN) ─────────────────────
-  const puedeVerAutorizaciones = ['DUEÑO', 'SUPERVISOR', 'SUPER_USUARIO'].includes(user?.rol ?? '')
+  // ── Supervisión / Autorizaciones (lazy, quien tenga permiso 'supervisa' en inventario) ─────────
+  const puedeVerAutorizaciones = puedeSupervisarModulo(user, 'inventario')
 
-  const { data: autorizaciones = [], isLoading: autLoading, refetch: refetchAut } = useQuery({
-    queryKey: ['autorizaciones_inventario', tenant?.id, autEstado],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('autorizaciones_inventario')
-        .select('*, inventario_lineas(lpn, cantidad, producto_id, productos(nombre, sku, unidad_medida)), users!solicitado_por(nombre_display)')
-        .eq('tenant_id', tenant!.id)
-        .eq('estado', autEstado)
-        .order('created_at', { ascending: false })
-      if (error) throw error
-      return data ?? []
-    },
-    enabled: !!tenant && tab === 'autorizaciones' && puedeVerAutorizaciones,
-  })
+  const {
+    autorizaciones, isLoading: autLoading, marcarAprobada, rechazar: rechazarAutorizacionHook, reasignar: reasignarAutorizacionHook,
+  } = useSupervisorAutorizaciones(
+    'inventario',
+    'inventario_lineas(lpn, cantidad, producto_id, productos(nombre, sku, unidad_medida))',
+    autEstado,
+  )
 
   // ── Helper: stock por sucursal activa (o global si no hay sucursal) ──────────
   // Uso: movimientos_stock.stock_antes / stock_despues + display en formularios
@@ -897,7 +892,7 @@ export default function InventarioPage() {
           })
         }
       }
-      await supabase.from('autorizaciones_inventario').update({ estado: 'aprobada', aprobado_por: user?.id }).eq('id', aut.id)
+      await marcarAprobada(aut.id)
       const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad'
         : aut.tipo === 'eliminar_serie' ? 'Eliminación de serie'
         : aut.tipo === 'eliminar_lpn' ? 'Eliminación de LPN'
@@ -932,10 +927,16 @@ export default function InventarioPage() {
           : String(aut.datos_cambio?.cantidad_nueva ?? aut.datos_cambio?.cantidad ?? ''),
         pagina: '/inventario',
       })
+      // Trazabilidad del patrón de Supervisor (A3) — entidad genérica 'autorizacion', separada del
+      // log de arriba (que traza el efecto sobre la línea/producto afectado).
+      logActividad({
+        entidad: 'autorizacion', entidad_id: aut.id, entidad_nombre: tipoLabel,
+        accion: 'aprobar', pagina: '/inventario',
+      })
     },
     onSuccess: () => {
       toast.success('Autorización aprobada y ejecutada')
-      qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+      qc.invalidateQueries({ queryKey: ['autorizaciones', 'inventario'] })
       qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
       qc.invalidateQueries({ queryKey: ['movimientos'] })
       qc.invalidateQueries({ queryKey: ['productos'] })
@@ -944,20 +945,25 @@ export default function InventarioPage() {
   })
 
   const rechazarAutorizacion = useMutation({
-    mutationFn: async ({ id, motivo }: { id: string; motivo: string }) => {
-      if (!motivo.trim()) throw new Error('Ingresá un motivo de rechazo')
-      await supabase.from('autorizaciones_inventario').update({
-        estado: 'rechazada', aprobado_por: user?.id, motivo_rechazo: motivo,
-      }).eq('id', id)
+    mutationFn: async ({ id, motivo, entidadNombre }: { id: string; motivo: string; entidadNombre: string }) => {
+      await rechazarAutorizacionHook(id, motivo, entidadNombre)
     },
     onSuccess: () => {
       toast.success('Autorización rechazada')
       setAutRechazoId(null)
       setAutMotivoRechazo('')
-      qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  const reasignarAutorizacion = async (id: string, usuarioId: string | null, usuarioNombre: string | null, entidadNombre: string) => {
+    try {
+      await reasignarAutorizacionHook(id, usuarioId, usuarioNombre, entidadNombre)
+      toast.success(usuarioId ? 'Solicitud reasignada' : 'Solicitud sin asignar')
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudo reasignar')
+    }
+  }
 
   // ── Bulk actions en LPNs ─────────────────────────────────────────────────
   const bulkEstadoDestino = (estados as any[]).find((e: any) => e.id === bulkEstadoId)
@@ -976,8 +982,9 @@ export default function InventarioPage() {
         const path = `${tenant!.id}/bulk-${Date.now()}.${ext}`
         const { error: upErr } = await supabase.storage.from('autorizaciones-fotos').upload(path, fotoAprobacionBulkEstado)
         if (upErr) throw upErr
-        const { error } = await supabase.from('autorizaciones_inventario').insert({
+        const { error } = await supabase.from('autorizaciones').insert({
           tenant_id: tenant!.id,
+          modulo: 'inventario',
           tipo: 'cambio_estado',
           linea_id: null,
           datos_cambio: { linea_ids: selectedLineas, estado_nuevo_id: estadoId, foto_path: path },
@@ -1011,7 +1018,7 @@ export default function InventarioPage() {
     onSuccess: (result: any) => {
       if (result?.esAutorizacion) {
         toast.success(`Solicitud enviada — ${selectedLineas.length} LPN(s) pendientes de aprobación`)
-        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+        qc.invalidateQueries({ queryKey: ['autorizaciones', 'inventario'] })
       } else {
         toast.success(`Estado actualizado en ${selectedLineas.length} LPN(s)`)
         qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -1055,8 +1062,9 @@ export default function InventarioPage() {
       if (Object.keys(campos).length === 0) throw new Error('Seleccioná al menos un campo para cambiar')
 
       if (requiereAprob) {
-        const { error } = await supabase.from('autorizaciones_inventario').insert({
+        const { error } = await supabase.from('autorizaciones').insert({
           tenant_id: tenant!.id,
+          modulo: 'inventario',
           tipo: 'bulk_edit',
           linea_id: null,
           datos_cambio: { linea_ids: selectedLineas, campos },
@@ -1076,7 +1084,7 @@ export default function InventarioPage() {
     onSuccess: (result: any) => {
       if (result?.esAutorizacion) {
         toast.success(`Solicitud de edición enviada — ${selectedLineas.length} LPN(s) pendientes de aprobación`)
-        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+        qc.invalidateQueries({ queryKey: ['autorizaciones', 'inventario'] })
       } else {
         toast.success(`${selectedLineas.length} LPN(s) actualizados`)
         qc.invalidateQueries({ queryKey: ['inventario_lineas_all'] })
@@ -1534,8 +1542,9 @@ export default function InventarioPage() {
         if (error) throw new Error(error.message)
         return { esAutorizacion: false }
       }
-      const { error } = await supabase.from('autorizaciones_inventario').insert({
+      const { error } = await supabase.from('autorizaciones').insert({
         tenant_id: tenant!.id,
+        modulo: 'inventario',
         tipo: 'kit_precio',
         linea_id: null,
         datos_cambio: { producto_id: kitId, kit_nombre: kitNombre, precio_anterior: precioActual, precio_nuevo: precioNuevo },
@@ -1549,7 +1558,7 @@ export default function InventarioPage() {
     onSuccess: (result: any) => {
       if (result?.esAutorizacion) {
         toast.success('Solicitud de cambio de precio enviada — pendiente de aprobación del supervisor')
-        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+        qc.invalidateQueries({ queryKey: ['autorizaciones', 'inventario'] })
       } else {
         toast.success('Precio del KIT actualizado')
         qc.invalidateQueries({ queryKey: ['kits-productos'] })
@@ -1996,8 +2005,8 @@ export default function InventarioPage() {
         // toque; 'siempre' va a aprobación sí o sí; 'umbral' sigue el gate por umbral de abajo.
         const umbralReq = requiereAutorizacion(conteoGateActivo, diffAbs, row.cantidad_esperada, valorDiff, conteoGateConfig)
         if (requiereAuthAjuste(user?.rol, ajusteAuthConfig, umbralReq)) {
-          await supabase.from('autorizaciones_inventario').insert({
-            tenant_id: tenant!.id, tipo: 'ajuste_conteo', linea_id: row.linea_id, estado: 'pendiente',
+          await supabase.from('autorizaciones').insert({
+            tenant_id: tenant!.id, modulo: 'inventario', tipo: 'ajuste_conteo', linea_id: row.linea_id, estado: 'pendiente',
             solicitado_por: user?.id,
             datos_cambio: {
               conteo_id: conteoId, producto_id: row.producto_id, sku: row.sku, lpn: row.lpn || null,
@@ -2732,7 +2741,7 @@ export default function InventarioPage() {
              tab === 'quitar' ? 'Rebajá o ajustá el stock' :
              tab === 'conteo' ? 'Verificá el stock real contra el esperado' :
              tab === 'historial' ? 'Registro de todos los movimientos' :
-             tab === 'autorizaciones' ? 'Solicitudes de ajuste o eliminación pendientes de aprobación' :
+             tab === 'autorizaciones' ? 'Aprobaciones, reasignación, trazabilidad y KPIs del equipo' :
              'Armado y desarmado de kits'}
           </p>
         </div>
@@ -2792,9 +2801,10 @@ export default function InventarioPage() {
             ...(modoAvanzado ? [{ id: 'kits', label: 'Kits', icon: Layers }] : []),
             { id: 'conteo', label: 'Conteos', icon: ClipboardList },
             { id: 'historial', label: 'Historial', icon: Clock },
-            // Autorizaciones: aprobación de ajustes/conteos. También en BÁSICO: el tab Conteo
-            // genera ajustes que requieren aprobación (corregido 2026-06-19, antes se ocultaba mal).
-            ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones', label: 'Autorizaciones', icon: CheckCircle2 }] : []),
+            // Supervisión (ex "Autorizaciones", mig 347): aprobación de ajustes/conteos + reasignar +
+            // trazabilidad + KPIs. También en BÁSICO: el tab Conteo genera ajustes que requieren
+            // aprobación (corregido 2026-06-19, antes se ocultaba mal).
+            ...(puedeVerAutorizaciones ? [{ id: 'autorizaciones', label: 'Supervisión', icon: CheckCircle2 }] : []),
           ]}
           active={tab}
           onChange={(id) => setTab(id as Tab)}
@@ -6096,20 +6106,34 @@ export default function InventarioPage() {
         </div>
       )}
 
-      {/* ═══════════ TAB: AUTORIZACIONES ═══════════════════════════════════ */}
-      {tab === 'autorizaciones' && puedeVerAutorizaciones && (
-        <div className="space-y-4">
-          {/* Estado selector */}
-          <div className="flex gap-2">
-            {(['pendiente', 'aprobada', 'rechazada'] as const).map(e => (
-              <button key={e} onClick={() => setAutEstado(e)}
-                className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors capitalize
-                  ${autEstado === e ? 'bg-accent text-white' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'}`}>
-                {e === 'pendiente' ? 'Pendientes' : e === 'aprobada' ? 'Aprobadas' : 'Rechazadas'}
-              </button>
-            ))}
-          </div>
-
+      {/* ═══════════ TAB: SUPERVISIÓN (ex "Autorizaciones", mig 347) ═══════════════════════════ */}
+      {tab === 'autorizaciones' && puedeVerAutorizaciones && (() => {
+        const resumenDeAutorizacion = (aut: any) => {
+          const tipoLabel = aut.tipo === 'ajuste_cantidad' ? 'Ajuste de cantidad'
+            : aut.tipo === 'ajuste_conteo' ? 'Diferencia de conteo'
+            : aut.tipo === 'bulk_edit' ? 'Edición masiva'
+            : aut.tipo === 'eliminar_serie' ? 'Eliminar serie'
+            : aut.tipo === 'cambio_estado' ? 'Cambio de estado'
+            : aut.tipo === 'kit_precio' ? 'Precio de KIT'
+            : aut.tipo === 'repricing_margen' ? 'Repricing por margen'
+            : 'Eliminar LPN'
+          const nombre = aut.inventario_lineas?.productos?.nombre
+            ?? aut.datos_cambio?.kit_nombre
+            ?? aut.datos_cambio?.producto_nombre
+            ?? aut.inventario_lineas?.lpn
+            ?? '—'
+          return `${tipoLabel} — ${nombre}`
+        }
+        return (
+        <SupervisionPanel
+          modulo="inventario"
+          autEstado={autEstado}
+          onEstadoChange={setAutEstado}
+          autorizaciones={autorizaciones as any[]}
+          isLoading={autLoading}
+          onReasignar={reasignarAutorizacion}
+          resumenDe={resumenDeAutorizacion}
+        >
           {autLoading ? (
             <div className="flex items-center justify-center py-16">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
@@ -6244,7 +6268,7 @@ export default function InventarioPage() {
                                 placeholder="Motivo de rechazo..."
                                 className="w-44 px-2 py-1.5 border border-gray-200 dark:border-gray-700 rounded-lg text-xs focus:outline-none focus:border-accent-text bg-white dark:bg-gray-800" />
                               <div className="flex gap-1">
-                                <button onClick={() => rechazarAutorizacion.mutate({ id: aut.id, motivo: autMotivoRechazo })}
+                                <button onClick={() => rechazarAutorizacion.mutate({ id: aut.id, motivo: autMotivoRechazo, entidadNombre: resumenDeAutorizacion(aut) })}
                                   disabled={rechazarAutorizacion.isPending || !autMotivoRechazo.trim()}
                                   className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium px-2 py-1.5 rounded-lg disabled:opacity-50">
                                   Confirmar
@@ -6269,8 +6293,9 @@ export default function InventarioPage() {
               })}
             </div>
           )}
-        </div>
-      )}
+        </SupervisionPanel>
+        )
+      })()}
 
           {showDesarmarModal && desarmarKitId && (() => {
             const kit = kitsProductos.find((k: any) => k.id === desarmarKitId)

@@ -12,7 +12,7 @@
  *
  * La precondición (la solicitud YA PENDIENTE) se siembra directo por REST reproduciendo
  * exactamente lo que deja `LpnAccionesModal`/`bulkCambiarEstado` al crearla — foto real subida
- * al bucket privado `autorizaciones-fotos` + fila en `autorizaciones_inventario` con
+ * al bucket privado `autorizaciones-fotos` + fila en `autorizaciones` con
  * `datos_cambio`/`estado='pendiente'`. La RLS de esa tabla es tenant-only (mig 056): no exige el
  * rol sujeto al gate para el INSERT, así que no hace falta re-ejercitar el flujo completo de
  * creación (ya cubierto por el spec 117) solo para poder probar la resolución.
@@ -93,16 +93,17 @@ async function subirFotoEvidencia(request: any, c: Ctx, path: string) {
   expect(res.ok(), `[121] no se pudo subir la foto de evidencia real al bucket: ${await res.text()}`).toBe(true)
 }
 
-/** Crea la fila PENDIENTE de `autorizaciones_inventario` — misma forma que deja la UI real
+/** Crea la fila PENDIENTE de `autorizaciones` — misma forma que deja la UI real
  *  (LpnAccionesModal single / InventarioPage bulk). */
 async function crearAutorizacionPendiente(
   request: any, c: Ctx,
   opts: { lineaId?: string; lineaIds?: string[]; estadoAnteriorId: string | null; estadoNuevoId: string; fotoPath: string },
 ) {
-  const res = await request.post(`${SUPABASE_URL}/rest/v1/autorizaciones_inventario`, {
+  const res = await request.post(`${SUPABASE_URL}/rest/v1/autorizaciones`, {
     headers: c.headers,
     data: {
       tenant_id: c.tenantId,
+      modulo: 'inventario',
       tipo: 'cambio_estado',
       linea_id: opts.lineaId ?? null,
       datos_cambio: {
@@ -178,7 +179,7 @@ test.describe('Resolver autorizaciones de cambio de estado — ciclo de vida com
     const [despues] = (await despuesRes.json()) as Array<{ estado_id: string | null }>
     expect(despues.estado_id, '🛑 [121] APROB-05: al aprobar, estado_id debe pasar al nuevo estado').toBe(estado.id)
 
-    const autPostRes = await request.get(`${SUPABASE_URL}/rest/v1/autorizaciones_inventario?id=eq.${aut.id}&select=estado,aprobado_por`, { headers: c.headers })
+    const autPostRes = await request.get(`${SUPABASE_URL}/rest/v1/autorizaciones?id=eq.${aut.id}&select=estado,aprobado_por`, { headers: c.headers })
     const [autPost] = (await autPostRes.json()) as Array<{ estado: string; aprobado_por: string | null }>
     expect(autPost.estado, '[121] la autorización debe quedar aprobada').toBe('aprobada')
     expect(autPost.aprobado_por, '[121] aprobado_por debe registrar quién aprobó').toBe(c.userId)
@@ -259,7 +260,7 @@ test.describe('Resolver autorizaciones de cambio de estado — ciclo de vida com
     const [lineaPost] = (await lineaPostRes.json()) as Array<{ estado_id: string | null }>
     expect(lineaPost.estado_id, '🛑 [121] APROB-07: al rechazar, estado_id NO debe cambiar').toBe(estadoIdOriginal)
 
-    const autPostRes = await request.get(`${SUPABASE_URL}/rest/v1/autorizaciones_inventario?id=eq.${aut.id}&select=estado,motivo_rechazo,aprobado_por`, { headers: c.headers })
+    const autPostRes = await request.get(`${SUPABASE_URL}/rest/v1/autorizaciones?id=eq.${aut.id}&select=estado,motivo_rechazo,aprobado_por`, { headers: c.headers })
     const [autPost] = (await autPostRes.json()) as Array<{ estado: string; motivo_rechazo: string | null; aprobado_por: string | null }>
     expect(autPost.estado, '[121] la autorización debe quedar rechazada').toBe('rechazada')
     expect(autPost.motivo_rechazo, '[121] motivo_rechazo debe guardar el texto ingresado').toBe(motivo)

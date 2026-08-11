@@ -2,7 +2,7 @@
  * 51_autorizacion_ajuste_aprobar_mutante.spec.ts
  * E2E MUTANTE — Aprobación de ajuste de inventario por 2 actores (REGLA #0, stock).
  *
- * Complementa la spec 47 (un rol ≠ DUEÑO SOLICITA → `autorizaciones_inventario` pendiente, sin mutar).
+ * Complementa la spec 47 (un rol ≠ DUEÑO SOLICITA → `autorizaciones` pendiente, sin mutar).
  * Acá se valida el OTRO actor: el DUEÑO APRUEBA la solicitud → recién entonces se MUTA el stock
  * (`aprobarAutorizacion`, tipo `ajuste_conteo`, mig 228): reconcilia por delta, actualiza
  * `inventario_lineas.cantidad` e inserta `movimientos_stock` (ajuste_ingreso/rebaje).

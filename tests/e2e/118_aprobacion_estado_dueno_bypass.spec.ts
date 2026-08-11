@@ -10,7 +10,7 @@
  * Given un estado con `requiere_aprobacion=true` y la config default del tenant (sin entrada
  * explícita para DUEÑO en `ajuste_autorizacion_roles`), When el propio DUEÑO cambia un LPN a ese
  * estado, Then el cambio se aplica DIRECTO — sin pedir foto, sin crear ninguna fila en
- * `autorizaciones_inventario` — y `inventario_lineas.estado_id` queda actualizado de inmediato.
+ * `autorizaciones` — y `inventario_lineas.estado_id` queda actualizado de inmediato.
  */
 import { test, expect } from '@playwright/test'
 import { goto, waitForApp } from './helpers/navigation'
@@ -95,13 +95,13 @@ test.describe('Aprobación de cambio de estado — bypass del DUEÑO (H2, compor
     // Sin confirm dialog de aprobación — se aplica directo
     await expect(page.getByText(/LPN actualizado/i)).toBeVisible({ timeout: 10000 })
 
-    // POSITIVO en DB: estado_id cambió YA, sin pasar por autorizaciones_inventario
+    // POSITIVO en DB: estado_id cambió YA, sin pasar por autorizaciones
     const lineaPostRes = await request.get(`${SUPABASE_URL}/rest/v1/inventario_lineas?id=eq.${linea.id}&select=estado_id`, { headers })
     const [lineaPost] = (await lineaPostRes.json()) as Array<{ estado_id: string | null }>
     expect(lineaPost.estado_id, '[118] APROB-03: el DUEÑO aplica el cambio DIRECTO').toBe(estado.id)
 
     const autRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/autorizaciones_inventario?linea_id=eq.${linea.id}&tipo=eq.cambio_estado&select=id`, { headers })
+      `${SUPABASE_URL}/rest/v1/autorizaciones?linea_id=eq.${linea.id}&tipo=eq.cambio_estado&select=id`, { headers })
     const auts = (await autRes.json()) as any[]
     expect(auts, '[118] no debe crearse ninguna autorización pendiente para el DUEÑO').toHaveLength(0)
   })

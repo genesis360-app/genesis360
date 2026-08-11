@@ -1,0 +1,84 @@
+import { useQuery } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
+import { UserCog, ClipboardList } from 'lucide-react'
+import { supabase } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
+
+// Vista agregada cross-módulo del patrón de Supervisor (mig 347, relevamiento derivado #2 hacia
+// Repositores, decisión B1) — "¿qué tengo pendiente en TODO el negocio?" de un vistazo, sin entrar
+// módulo por módulo. La acción real (aprobar/rechazar/reasignar) vive en la pestaña "Supervisión" de
+// cada módulo — esta página solo agrega y linkea. Extender MODULOS al retrofitear un módulo nuevo.
+const MODULOS: { key: string; label: string; ruta: string }[] = [
+  { key: 'inventario', label: 'Inventario', ruta: '/inventario?tab=autorizaciones' },
+]
+
+export default function SupervisionPage() {
+  const { tenant, user } = useAuthStore()
+  const modulosPermitidos = MODULOS.filter(m => puedeSupervisarModulo(user, m.key))
+
+  const { data: pendientes = [], isLoading } = useQuery({
+    queryKey: ['supervision-pendientes', tenant?.id, modulosPermitidos.map(m => m.key).join(',')],
+    queryFn: async () => {
+      if (modulosPermitidos.length === 0) return []
+      const { data } = await supabase.from('autorizaciones')
+        .select('id, modulo, tipo, notas, created_at')
+        .eq('tenant_id', tenant!.id).eq('estado', 'pendiente')
+        .in('modulo', modulosPermitidos.map(m => m.key))
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!tenant && modulosPermitidos.length > 0,
+  })
+
+  const porModulo = modulosPermitidos.map(m => ({
+    ...m,
+    items: pendientes.filter((p: any) => p.modulo === m.key),
+  }))
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-primary flex items-center gap-2">
+          <UserCog size={22} className="text-accent-text" /> Supervisión
+        </h1>
+        <p className="text-gray-500 dark:text-gray-400 text-sm mt-0.5">
+          Todo lo pendiente de tu aprobación, en todos los módulos, en un solo lugar
+        </p>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-16">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        </div>
+      ) : pendientes.length === 0 ? (
+        <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm p-12 text-center text-gray-400 dark:text-gray-500">
+          <ClipboardList size={32} className="mx-auto mb-3 opacity-30" />
+          <p>No hay nada pendiente de tu aprobación</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {porModulo.filter(m => m.items.length > 0).map(m => (
+            <div key={m.key} className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-gray-700/50">
+                <span className="font-semibold text-gray-800 dark:text-gray-100">{m.label}</span>
+                <span className="text-xs bg-accent/10 text-accent-text px-2 py-0.5 rounded-full font-medium">{m.items.length} pendiente{m.items.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="divide-y divide-gray-100 dark:divide-gray-700">
+                {m.items.slice(0, 5).map((it: any) => (
+                  <div key={it.id} className="px-4 py-2.5 text-sm text-gray-600 dark:text-gray-300 flex items-center justify-between gap-3">
+                    <span className="truncate">{it.notas || it.tipo}</span>
+                    <span className="text-xs text-gray-400 flex-shrink-0">{new Date(it.created_at).toLocaleDateString('es-AR')}</span>
+                  </div>
+                ))}
+              </div>
+              <Link to={m.ruta} className="block px-4 py-2.5 text-sm font-medium text-accent-text hover:bg-accent/5 border-t border-gray-100 dark:border-gray-700">
+                Ver y resolver en {m.label} →
+              </Link>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

@@ -1313,17 +1313,21 @@ export default function VentasPage() {
     enabled: !!ventaDetalle?.id,
   })
 
-  // Rebaje por un solo camino (venta #619, hallazgo real 2026-08-10): si hay un Pedido vivo
-  // (no cancelado) para esta venta, el rebaje de stock ya está en manos de Pedidos → Picking.
-  // "Finalizar (rebaja stock)" desde acá quedaría en carrera con el picking del pedido y podría
-  // rebajar dos veces (o el pedido lanzarse sobre una venta que un cajero ya rebajó a mano).
+  // Rebaje por un solo camino (venta #619, hallazgo real 2026-08-10) — corregido 2026-08-11 tras
+  // verificar contra el SQL real: el picking NUNCA rebaja stock ni toca `cantidad_reservada` para
+  // un pedido nacido de una venta (mig 316/320/323 — la reserva es de la VENTA, el picking solo
+  // prepara/ubica la mercadería). El único código que rebaja de verdad es este botón. La razón real
+  // para ocultarlo mientras el Pedido sigue vivo es TEMPORAL, no "doble rebaje": no tiene sentido
+  // marcar la venta como 'despachada' (mercadería afuera) mientras todavía se está preparando en
+  // depósito. Por eso 'entregado' (el cliente ya se la llevó del mostrador) NO bloquea — ahí es
+  // exactamente cuando hace falta poder rebajar, o el stock reservado queda así para siempre.
   const { data: pedidoActivoVenta = null } = useQuery({
     queryKey: ['venta-pedido-activo', ventaDetalle?.id],
     queryFn: async () => {
       const { data } = await supabase.from('pedidos')
         .select('id, numero, numero_sucursal, estado')
         .eq('venta_origen_id', ventaDetalle!.id)
-        .neq('estado', 'cancelado')
+        .not('estado', 'in', '(cancelado,entregado)')
         .limit(1)
         .maybeSingle()
       return data ?? null
@@ -1418,7 +1422,7 @@ export default function VentasPage() {
       if (error) throw error
       logActividad({ entidad: 'pedido', entidad_id: pedidoId, entidad_nombre: `Pedido #${numero}`,
         accion: 'cambio_estado', campo: 'estado', valor_anterior: 'listo_para_entrega',
-        valor_nuevo: 'entregado', pagina: '/ventas' })
+        valor_nuevo: 'entregado', pagina: '/ventas', venta_id: ventaId ? String(ventaId) : null })
       toast.success(`Pedido #${numero} entregado`)
       qc.invalidateQueries({ queryKey: ['pedidos-mostrador'] })
       qc.invalidateQueries({ queryKey: ['pedidos'] })
@@ -3477,7 +3481,7 @@ export default function VentasPage() {
         }
       }
 
-      logActividad({ entidad: 'venta', entidad_id: venta.id, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'crear', valor_nuevo: estado, pagina: '/ventas', tipo_transaccion: 'venta', sucursal_id: sucursalId || null })
+      logActividad({ entidad: 'venta', entidad_id: venta.id, entidad_nombre: `Venta #${venta.numero ?? ''}`, accion: 'crear', valor_nuevo: estado, pagina: '/ventas', tipo_transaccion: 'venta', sucursal_id: sucursalId || null, venta_id: venta.id })
       // E2: consumir crédito a favor aplicado (movimiento negativo en el ledger)
       if (estado !== 'pendiente' && montoCredito > 0.001 && clienteId) {
         await supabase.from('cliente_creditos').insert({
@@ -4107,6 +4111,7 @@ export default function VentasPage() {
             accion: 'editar', campo: 'devolución', valor_anterior: item.nombre, valor_nuevo: `${cantDev} u${numero_nc ? ` · ${numero_nc}` : ''}`,
             pagina: '/ventas', transaccion_id: txDev, tipo_transaccion: 'devolucion',
             producto_id: item.producto_id, sucursal_id: (devolucionVenta as any).sucursal_id ?? null,
+            venta_id: devolucionVenta.id,
           })
         } else {
           // No serializado. El stock devuelto vuelve a la sucursal de la venta (sin esto la línea
@@ -4191,6 +4196,7 @@ export default function VentasPage() {
             valor_nuevo: `${cantDev} u${numero_nc ? ` · ${numero_nc}` : ''}${devDestinoStock === 'vendible' ? ' · reintegrado vendible' : ' · a revisión'}`,
             pagina: '/ventas', transaccion_id: txDev, tipo_transaccion: 'devolucion',
             producto_id: item.producto_id, lpn: lineaLpn ?? null, sucursal_id: sucReingreso,
+            venta_id: devolucionVenta.id,
           })
         }
       }
@@ -4835,7 +4841,7 @@ export default function VentasPage() {
         entidad: 'venta', entidad_id: ventaId, entidad_nombre: `Venta #${venta.numero ?? ''}`,
         accion: 'cambio_estado', valor_anterior: venta.estado, valor_nuevo: nuevoEstado, pagina: '/ventas',
         tipo_transaccion: nuevoEstado === 'despachada' ? 'venta' : nuevoEstado === 'devuelta' ? 'devolucion' : undefined,
-        sucursal_id: (venta as any).sucursal_id ?? null,
+        sucursal_id: (venta as any).sucursal_id ?? null, venta_id: ventaId,
       })
     },
     onSuccess: (_data, variables) => {
@@ -6671,8 +6677,8 @@ export default function VentasPage() {
                   return (
                     <div className="w-full bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl px-3 py-2.5 text-xs text-indigo-700 dark:text-indigo-300">
                       Esta venta tiene el <strong>Pedido #{pedidoActivoVenta.numero_sucursal ?? pedidoActivoVenta.numero}</strong> en curso
-                      ({pedidoActivoVenta.estado}) — el rebaje de stock se hace desde ahí (Pedidos → Picking), no desde acá, para evitar
-                      descontarlo dos veces.
+                      ({pedidoActivoVenta.estado}) — la mercadería todavía se está preparando en depósito. Cuando el pedido se entregue
+                      (Pedidos → Picking), volvé acá para finalizar y rebajar el stock.
                     </div>
                   )
                 }
@@ -7887,7 +7893,7 @@ export default function VentasPage() {
                   <div className="space-y-2">
                     <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl px-3 py-2.5 text-xs text-indigo-700 dark:text-indigo-300 text-left">
                       El pago ya quedó registrado. Esta venta tiene el <strong>Pedido #{pedidoActivoVenta.numero_sucursal ?? pedidoActivoVenta.numero}</strong> en
-                      curso — el rebaje de stock se hace desde Pedidos → Picking, no desde acá.
+                      curso — la mercadería se está preparando en depósito. Cuando el pedido se entregue, volvé a la venta para finalizar y rebajar el stock.
                     </div>
                     <button onClick={() => setMpLinkModal(null)}
                       className="w-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 font-medium py-2.5 rounded-xl text-sm hover:bg-gray-50 dark:hover:bg-gray-700/50">

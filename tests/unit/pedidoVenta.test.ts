@@ -238,10 +238,8 @@ describe('resumenPagoTicket', () => {
 
 // 🐛 Hallazgo de GO: el pedido de una venta anulada quedaba vivo y se podía lanzar.
 describe('motivoNoLanzarPedido', () => {
-  it('venta viva → se puede lanzar', () => {
+  it('venta viva sin rebajar todavía → se puede lanzar', () => {
     expect(motivoNoLanzarPedido('reservada')).toBeNull()
-    expect(motivoNoLanzarPedido('despachada')).toBeNull()
-    expect(motivoNoLanzarPedido('facturada')).toBeNull()
   })
 
   it('🛑 venta cancelada o devuelta → no se prepara mercadería para algo que ya no existe', () => {
@@ -251,6 +249,11 @@ describe('motivoNoLanzarPedido', () => {
 
   it('🛑 la venta sigue siendo un presupuesto → primero se confirma', () => {
     expect(motivoNoLanzarPedido('pendiente')).toContain('PRESUPUESTO')
+  })
+
+  it('🛑 rebaje por un solo camino: venta ya despachada/facturada → no se lanza picking de nuevo', () => {
+    expect(motivoNoLanzarPedido('despachada')).toContain('ya se rebajó')
+    expect(motivoNoLanzarPedido('facturada')).toContain('ya se rebajó')
   })
 
   it('pedido de logística puro (sin venta) → no aplica', () => {

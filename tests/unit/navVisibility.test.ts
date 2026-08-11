@@ -20,6 +20,7 @@ const NAV: NavItemFlags[] = [
   { modulo: 'comercial',     supervisorOnly: true },                                    // Fase D backlog Fede 25/7
   { modulo: 'biblioteca',    ownerOnly: true, avanzadoOnly: true },
   { modulo: 'alertas',       depositoVisible: true },
+  { modulo: 'supervision',   requiereSupervisarModulo: true },
   { modulo: 'rrhh',          ownerOnly: true, planFeature: 'puede_rrhh', rrhhVisible: true },
   { modulo: 'historial',     supervisorOnly: true, planFeature: 'puede_historial', contadorVisible: true, avanzadoOnly: true },
   { modulo: 'reportes',      planFeature: 'puede_reportes', contadorVisible: true },
@@ -155,6 +156,25 @@ describe('permisos de rol custom afectan el nav', () => {
   it("'ver' / 'editar' no ocultan", () => {
     const v = visibles(base({ rol: 'CAJERO', modoAvanzado: false, permisosCustom: { ventas: 'ver' } }))
     expect(v).toContain('ventas')
+  })
+})
+
+// ─── Supervisión (patrón de Supervisor reusable, mig 347) ───────────────────
+describe('nav item "Supervisión" — requiereSupervisarModulo', () => {
+  it('oculto si el usuario no puede supervisar ningún módulo (modulosSupervisables vacío/undefined)', () => {
+    expect(visibles(base({ rol: 'DUEÑO' }))).not.toContain('supervision')
+    expect(visibles(base({ rol: 'DUEÑO', modulosSupervisables: [] }))).not.toContain('supervision')
+  })
+  it('visible si puede supervisar al menos un módulo, en cualquier rol', () => {
+    expect(visibles(base({ rol: 'DUEÑO', modulosSupervisables: ['inventario'] }))).toContain('supervision')
+    expect(visibles(base({ rol: 'CAJERO', modulosSupervisables: ['inventario'] }))).toContain('supervision')
+  })
+  it('visible en modo básico también (sin avanzadoOnly) si hay algo para supervisar', () => {
+    expect(visibles(base({ rol: 'DUEÑO', modoAvanzado: false, modulosSupervisables: ['inventario'] }))).toContain('supervision')
+  })
+  it("'no_ver' de rol custom sigue ocultando el módulo aunque pueda supervisar", () => {
+    const v = visibles(base({ rol: 'CAJERO', modulosSupervisables: ['inventario'], permisosCustom: { supervision: 'no_ver' } }))
+    expect(v).not.toContain('supervision')
   })
 })
 

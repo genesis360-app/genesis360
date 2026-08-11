@@ -2,7 +2,7 @@
 name: relevamiento_supervisor_tab_respuestas
 description: Respuestas de Fede (+ confirmaciones de GO en D2/G2) al relevamiento del patrón "Pestaña de supervisor" reusable — 2º de 4 relevamientos derivados hacia el módulo Repositores.
 type: project
-status: ✅ RESPONDIDO COMPLETO (2026-08-07) — 3 decisiones técnicas (A1/A3/B1) quedan delegadas a GO ("Tonga"), a discutir con Claude ANTES de implementar, no a decidir unilateralmente. Diseño/construcción arranca DESPUÉS de cerrar el 3º relevamiento derivado (Motor de Rotación) y de completar D1 (retrofit de Inventario) — GO confirmó D2 opción (a).
+status: ✅ CONSTRUIDO Y EN PROD (2026-08-10, mig 347, v1.163.0). Las 3 decisiones técnicas (A1/A3/B1) + el diseño de C2 se cerraron con GO y se implementaron — ver detalle en `project_pendientes.md` bloque "ARRANCÁ ACÁ" y [[wiki/features/supervision]]. D1 (retrofit de Inventario) completo. Con esto, 3 de los 4 relevamientos derivados hacia Repositores están cerrados — solo falta el propio relevamiento de Repositores.
 source: relevamiento-supervisor-tab-reglas-negocio.html
 updated: 2026-08-07
 ---
@@ -72,27 +72,33 @@ updated: 2026-08-07
 
 ---
 
-## Decisiones técnicas pendientes de discutir con GO (NO decidir unilateralmente)
+## Decisiones técnicas — CERRADAS con GO el 2026-08-09/10, construidas en mig 347 (v1.163.0)
 
 Fede delegó explícitamente estas 3 piezas "en manos de Tonga" — que es GO, no el asistente (ver
-[[reference_tonga_es_go]]). Antes de implementar cualquiera de estas, Claude debe traer opciones y
-discutirlas con GO:
+[[reference_tonga_es_go]]). Se discutieron con GO antes de implementar, como correspondía:
 
-1. **A1** — ¿se generaliza `autorizaciones_inventario` (tabla + columna `modulo`) o queda exclusiva de
-   Inventario?
-2. **A3** — ¿trazabilidad por módulo = filtro de `actividad_log`/`HistorialPage`, tabla nueva, o ambos?
-3. **B1** — ¿componente genérico dentro de cada `PageTabs`, o ruta/página compartida `/supervisor?modulo=`?
+1. **A1 — ✅ CERRADO: se generalizó** `autorizaciones_inventario` → `autorizaciones` (RENAME + columna
+   `modulo`, CHECK acotado al set real de módulos, mismo patrón incremental que ya usa `tipo`).
+2. **A3 — ✅ CERRADO: se reusa** `actividad_log` (entidad `'autorizacion'` nueva, acción `'reasignar'`
+   nueva) filtrado por módulo — sin tabla nueva.
+3. **B1 — ✅ CERRADO: híbrido**, no una sola opción de las planteadas — componente reusable
+   (`SupervisionPanel` + hook `useSupervisorAutorizaciones`) montado como tab dentro de cada módulo
+   (contextual) Y como página agregada cross-módulo nueva `/supervision` (vista "qué tengo pendiente
+   en todo el negocio", con badge en el nav — no se planteó originalmente en el documento de Fede, se
+   propuso al construir para priorizar la experiencia real del supervisor sobre el patrón ya usado).
 
-Más el diseño detallado de **C2** (4º nivel de permiso `admin`) — no es ambiguo en el QUÉ, pero es
-transversal a toda la app y merece revisión cuidadosa antes de tocar el sistema de roles existente.
+**C2** (4º nivel de permiso) — ✅ CERRADO: se llama **`supervisa`**, no `admin` (para no chocar con el
+rol fijo ADMIN=staff de soporte cross-tenant). DUEÑO/SUPER_USUARIO/ADMIN lo tienen siempre e
+inmutable; SUPERVISOR lo hereda automático en los módulos donde ya tenía acceso; roles custom lo
+activan explícito.
 
-## Orden de trabajo (secuencia de 4 relevamientos hacia Repositores)
+## Orden de trabajo (secuencia de 4 relevamientos hacia Repositores) — 3 de 4 CERRADOS
 
-Ubicaciones (✅ respondido, EN PROD desde v1.157.0) → **Pestaña de supervisor reusable (este, ✅
-respondido completo)** → Motor de Rotación de productos con descuento (relevamiento derivado #3,
-generado, `relevamiento-rotacion-descuento-reglas-negocio.html`, **sin responder todavía**) →
-Repositores (relevamiento final, depende de los 3 anteriores).
+Ubicaciones (✅ EN PROD desde v1.157.0) → **Pestaña de supervisor reusable (✅ CONSTRUIDA Y EN PROD,
+v1.163.0, este documento)** → Motor de Rotación de productos con descuento (✅ CERRADO, sesión previa)
+→ **Repositores (relevamiento final, `relevamiento_repositores_respuestas.md` — 35 preguntas
+respondidas, YA DESBLOQUEADO, sin arrancar diseño/construcción todavía)**.
 
-**Próximo paso real:** GO responde el relevamiento de Motor de Rotación con Fede. Recién con los 3
-relevamientos derivados respondidos se arma el diseño técnico de la Pestaña de Supervisor (discutido
-con GO, no decidido solo) y se construye — según D2, ANTES de diseñar Repositores en sí.
+**Próximo paso real:** diseñar + construir Repositores — arrancando por cerrar con GO los puntos que
+su propio relevamiento dejó abiertos (rol nuevo vs. patrón custom, alcance default de acceso a
+Inventario, decisión sobre la restricción de impresión de etiquetas sin agente local).

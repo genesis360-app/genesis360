@@ -16,6 +16,7 @@ import { LpnQR } from '@/components/LpnQR'
 import { AtributoValorSelect } from '@/components/AtributoValorSelect'
 import { CodigoCompuestoModal } from '@/components/CodigoCompuestoModal'
 import { AvisoCapacidadUbicacion } from '@/components/AvisoCapacidadUbicacion'
+import { AvisarSupervisorButton } from '@/components/AvisarSupervisorButton'
 import { useConfirm } from '@/hooks/useConfirm'
 import { breadcrumbUbicacion } from '@/lib/ubicacionesArbol'
 import toast from 'react-hot-toast'
@@ -680,6 +681,12 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
           )}
           {linea.ubicaciones && <span className="flex items-center gap-1"><MapPin size={12} /> {linea.ubicaciones.nombre}</span>}
           {linea.nro_lote && <span className="flex items-center gap-1"><Tag size={12} /> {linea.nro_lote}</span>}
+          <AvisarSupervisorButton
+            modulo="inventario"
+            contexto={`LPN ${linea.lpn} — ${producto.nombre}${linea.ubicaciones ? ` (${linea.ubicaciones.nombre})` : ''}`}
+            actionUrl="/inventario"
+            className="flex items-center gap-1 text-amber-700 dark:text-amber-400 hover:underline ml-auto"
+          />
         </div>
 
         {/* Banner de restricción cuando hay reservas */}

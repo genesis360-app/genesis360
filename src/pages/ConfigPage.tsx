@@ -28,6 +28,7 @@ import { MODO_BASICO_ENABLED } from '@/config/brand'
 import { motivoBasico } from '@/lib/modoOperacion'
 import { PEDIDO_TRANSICIONES, PEDIDO_ROLES_CONFIGURABLES, PEDIDO_TRANSICION_ROLES_DEFAULT, puedeTransicionPedido, type PedidoTransicionesConfig } from '@/lib/pedidoTransiciones'
 import { canalesExcluidosValidos } from '@/lib/pedidoVenta'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { useConfirm, usePrompt } from '@/hooks/useConfirm'
 import { estadoCapacidadUbicacion, estadoCargaUbicacion, etiquetaOcupacion, volumenUbicacionM3, capacidadUtilM3, estadoVolumenUbicacion, FACTOR_APROVECHAMIENTO_DEFAULT } from '@/lib/medidasLogistica'
 import { agruparPorFamilia, ETIQUETA_FAMILIA, FAMILIAS_FISICAS, PRESETS_RUBRO, type UnidadFisica } from '@/lib/unidadMedidaFisica'
@@ -1810,6 +1811,53 @@ export default function ConfigPage() {
     if (error) { toast.error(error.message); return }
     setTenant(data)
     toast.success(usuarioId ? 'Operario por defecto actualizado' : 'Armado automático queda sin operario por defecto')
+  }
+
+  // A2 del relevamiento de Supervisor (mig 348): reglas de enrutamiento "tipo X -> Usuario A" para
+  // la auto-asignación de autorizaciones al crearse (si no hay regla, el trigger reparte por carga).
+  const SUPERVISION_TIPOS_INVENTARIO: { key: string; label: string }[] = [
+    { key: 'ajuste_cantidad', label: 'Ajuste de cantidad' },
+    { key: 'ajuste_conteo', label: 'Diferencia de conteo' },
+    { key: 'bulk_edit', label: 'Edición masiva' },
+    { key: 'eliminar_serie', label: 'Eliminar serie' },
+    { key: 'eliminar_lpn', label: 'Eliminar LPN' },
+    { key: 'cambio_estado', label: 'Cambio de estado' },
+    { key: 'kit_precio', label: 'Precio de KIT' },
+    { key: 'repricing_margen', label: 'Repricing por margen' },
+  ]
+  const { data: usuariosSupervisanInventario = [] } = useQuery({
+    queryKey: ['usuarios-supervisan-inventario', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('users')
+        .select('id, nombre_display, rol, rol_custom_id, roles_custom(permisos)')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+      return (data ?? [])
+        .map((u: any) => ({ ...u, permisos_custom: u.roles_custom?.permisos ?? null }))
+        .filter((u: any) => puedeSupervisarModulo(u, 'inventario'))
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'zonas',
+  })
+  const { data: reglasEnrutamiento = [], refetch: refetchReglasEnrutamiento } = useQuery({
+    queryKey: ['reglas-enrutamiento', tenant?.id, 'inventario'],
+    queryFn: async () => {
+      const { data } = await supabase.from('autorizaciones_reglas_enrutamiento')
+        .select('id, tipo, usuario_id').eq('tenant_id', tenant!.id).eq('modulo', 'inventario')
+      return data ?? []
+    },
+    enabled: !!tenant && tab === 'inventario' && invSubTab === 'zonas',
+  })
+  const actualizarReglaEnrutamiento = async (tipo: string, usuarioId: string) => {
+    if (!usuarioId) {
+      const { error } = await supabase.from('autorizaciones_reglas_enrutamiento')
+        .delete().eq('tenant_id', tenant!.id).eq('modulo', 'inventario').eq('tipo', tipo)
+      if (error) { toast.error(error.message); return }
+    } else {
+      const { error } = await supabase.from('autorizaciones_reglas_enrutamiento')
+        .upsert({ tenant_id: tenant!.id, modulo: 'inventario', tipo, usuario_id: usuarioId }, { onConflict: 'tenant_id,modulo,tipo' })
+      if (error) { toast.error(error.message); return }
+    }
+    toast.success('Regla de asignación actualizada')
+    refetchReglasEnrutamiento()
   }
 
   // D3 — Repricing automático por margen objetivo (mecanismo 1). Config a nivel tenant (B2/B5):
@@ -4421,6 +4469,35 @@ export default function ConfigPage() {
               <option value="">Sin operario por defecto — nace sin asignar</option>
               {(usuariosArmado as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre_display ?? u.rol}</option>)}
             </select>
+          </div>
+
+          {/* A2 (relevamiento Supervisor, mig 348): reglas de enrutamiento por tipo de autorización */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+            <div className="flex items-center gap-2">
+              <UserCog size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Reglas de asignación — Supervisión</h2>
+            </div>
+            <p className="text-xs text-gray-400 dark:text-gray-500">
+              Al crearse una autorización pendiente (tab Supervisión de Inventario), se asigna sola.
+              Elegí acá quién se hace cargo de cada tipo — el que no tenga regla se reparte
+              automáticamente entre quienes pueden supervisar, priorizando a quien tenga menos
+              pendientes asignadas en este momento.
+            </p>
+            <div className="space-y-2">
+              {SUPERVISION_TIPOS_INVENTARIO.map(t => {
+                const regla = (reglasEnrutamiento as any[]).find(r => r.tipo === t.key)
+                return (
+                  <div key={t.key} className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-gray-600 dark:text-gray-400">{t.label}</span>
+                    <select value={regla?.usuario_id ?? ''} onChange={e => actualizarReglaEnrutamiento(t.key, e.target.value)}
+                      className="w-full max-w-[220px] border border-gray-200 dark:border-gray-700 rounded-lg px-2 py-1.5 text-xs bg-white dark:bg-gray-800 dark:text-gray-200">
+                      <option value="">Reparto automático por carga</option>
+                      {(usuariosSupervisanInventario as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre_display ?? u.rol}</option>)}
+                    </select>
+                  </div>
+                )
+              })}
+            </div>
           </div>
 
           {/* Zonas */}

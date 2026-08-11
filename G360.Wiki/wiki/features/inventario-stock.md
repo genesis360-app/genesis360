@@ -35,7 +35,7 @@ Toda unidad de stock es una `inventario_lineas` identificada por:
 5. **Kits** — CRUD recetas, ejecutar kitting/des-kitting
 6. **Conteos** — conteo por ubicación o producto con ajuste automático
 7. **Historial** — movimientos con filtros fecha/cat/tipo/motivo (badge "Traslado" ámbar para tipo `traslado`)
-8. **Autorizaciones** — aprobación de cambios solicitados por DEPOSITO + cambios de estado con foto (🟡 EN DEV, mig 331, ver más abajo)
+8. **Supervisión** (ex "Autorizaciones", ✅ EN PROD desde v1.163.0, mig 347) — aprobación de cambios solicitados por DEPOSITO + cambios de estado con foto, ahora con 4 sub-secciones (Aprobaciones/Reasignar/Trazabilidad/KPIs) — ver [[wiki/features/supervision]] para el patrón reusable completo; detalle histórico del contenido de Aprobaciones más abajo
 
 > [!NOTE] 🆕 **2026-08-08, ✅ EN PROD desde v1.161.0: el tab "Tareas WMS" (que estaba acá desde
 > v1.144.0) se MUDÓ al módulo [[wiki/features/pedidos]]** (pedido explícito de GO) — de paso ganó
@@ -120,6 +120,12 @@ Si `cantidad_reservada > 0`: solo se muestra tab Mover + banner naranja.
 ---
 
 ## Autorizaciones DEPOSITO (Sprint C · migrations 055+056)
+
+> [!NOTE] **Renombrada a `autorizaciones` (mig 347, v1.163.0, 2026-08-10)** y el tab pasó a llamarse
+> "Supervisión" — ver [[wiki/features/supervision]] para el patrón reusable completo (permiso
+> `supervisa`, reasignación, trazabilidad, KPIs, página `/supervision` agregada). El contenido de
+> "Aprobaciones" descripto abajo (tipos, flujo DEPOSITO, guard REGLA #0) sigue siendo válido tal cual
+> — solo cambió el nombre de la tabla/tab y se sumaron las 3 sub-secciones nuevas al lado.
 
 DEPOSITO no puede ejecutar cambios directamente — quedan pendientes de aprobación:
 - Cambio de cantidad de un LPN

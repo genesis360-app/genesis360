@@ -70,6 +70,16 @@ export function navItemVisible(item: NavItemFlags, ctx: NavVisibilityCtx): boole
   // Portal del empleado
   if (item.portalEmpleado && !ctx.rrhhPortalEmpleado) return false
 
+  // Patrón de Supervisor (mig 347): gobernado 100% por el PERMISO real (puede supervisar algún
+  // módulo), no por el rol — a propósito bypassea los allowlists de operador (cajeroVisible/
+  // depositoVisible/etc.) y ownerOnly/supervisorOnly de más abajo. Un CAJERO con un rol custom que
+  // le sume 'supervisa' en algún módulo tiene que poder ver este item aunque CAJERO normalmente no
+  // esté en el allowlist de nada acá — el permiso ya lo validó `puedeSupervisarModulo`.
+  if (item.requiereSupervisarModulo) {
+    if ((ctx.modulosSupervisables?.length ?? 0) === 0) return false
+    return ctx.permisosCustom?.[item.modulo] !== 'no_ver'
+  }
+
   // Lector (Viewer): allowlist fija de módulos operativos + reportes (ver constante arriba).
   // Va después de los gates de modo (avanzadoOnly) para que en básico no asomen items de WMS.
   if (rol === 'VIEWER') return VIEWER_MODULOS.has(item.modulo)

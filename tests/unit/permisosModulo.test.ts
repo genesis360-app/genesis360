@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { moduloSoloLectura, moduloOculto, puedeEditarModulo } from '@/lib/permisosModulo'
+import { moduloSoloLectura, moduloOculto, puedeEditarModulo, puedeSupervisarModulo } from '@/lib/permisosModulo'
 
 // Enforcement de rol custom en mutaciones (gap cerrado v1.57.0): 'ver' = solo lectura.
 
@@ -36,6 +36,38 @@ describe('puedeEditarModulo', () => {
   it('no editar cuando es ver o no_ver', () => {
     expect(puedeEditarModulo({ permisos_custom: { ventas: 'ver' } }, 'ventas')).toBe(false)
     expect(puedeEditarModulo({ permisos_custom: { ventas: 'no_ver' } }, 'ventas')).toBe(false)
+  })
+})
+
+describe('puedeSupervisarModulo (patrón de Supervisor reusable, mig 347)', () => {
+  it('DUEÑO/SUPER_USUARIO/ADMIN: siempre, en cualquier módulo, sin permisos_custom', () => {
+    for (const rol of ['DUEÑO', 'SUPER_USUARIO', 'ADMIN']) {
+      expect(puedeSupervisarModulo({ rol }, 'inventario')).toBe(true)
+      expect(puedeSupervisarModulo({ rol }, 'configuracion')).toBe(true)
+      expect(puedeSupervisarModulo({ rol, permisos_custom: null }, 'inventario')).toBe(true)
+    }
+  })
+  it('SUPERVISOR: heredado en módulos operativos, NO en los ownerOnly', () => {
+    expect(puedeSupervisarModulo({ rol: 'SUPERVISOR' }, 'inventario')).toBe(true)
+    expect(puedeSupervisarModulo({ rol: 'SUPERVISOR' }, 'pedidos')).toBe(true)
+    for (const m of ['configuracion', 'usuarios', 'sucursales', 'rrhh', 'facturacion', 'proveedores', 'recursos', 'biblioteca']) {
+      expect(puedeSupervisarModulo({ rol: 'SUPERVISOR' }, m), `SUPERVISOR no debería supervisar ${m}`).toBe(false)
+    }
+  })
+  it('rol custom: solo con supervisa explícito en permisos_custom', () => {
+    expect(puedeSupervisarModulo({ rol: 'CAJERO', permisos_custom: { inventario: 'supervisa' } }, 'inventario')).toBe(true)
+    expect(puedeSupervisarModulo({ rol: 'CAJERO', permisos_custom: { inventario: 'editar' } }, 'inventario')).toBe(false)
+    expect(puedeSupervisarModulo({ rol: 'CAJERO', permisos_custom: null }, 'inventario')).toBe(false)
+    expect(puedeSupervisarModulo({ rol: 'DEPOSITO' }, 'inventario')).toBe(false)
+  })
+  it('otro módulo no listado en permisos_custom no supervisa', () => {
+    expect(puedeSupervisarModulo({ rol: 'CAJERO', permisos_custom: { caja: 'supervisa' } }, 'inventario')).toBe(false)
+  })
+})
+
+describe("puedeEditarModulo: 'supervisa' es superset de 'editar'", () => {
+  it("un rol custom con 'supervisa' también puede editar el módulo normalmente", () => {
+    expect(puedeEditarModulo({ permisos_custom: { inventario: 'supervisa' } }, 'inventario')).toBe(true)
   })
 })
 

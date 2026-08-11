@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { logActividad } from '@/lib/actividadLog'
+import { puedeSupervisarModulo } from '@/lib/permisosModulo'
 
 // Capa de datos genérica del patrón "Pestaña de Supervisor" reusable (relevamiento derivado #2 hacia
 // Repositores, decisiones A1/A3/B1 — 2026-08-09). `autorizaciones` es una tabla ÚNICA compartida por
@@ -60,6 +61,30 @@ export function useSupervisorAutorizaciones(modulo: string, selectExtra: string,
   }
 
   return { autorizaciones: query.data ?? [], isLoading: query.isLoading, marcarAprobada, rechazar, reasignar }
+}
+
+/** F1 del relevamiento de Supervisor: "cualquier módulo puede usar el botón 'Avisar al supervisor'" —
+ *  genérico desde el día uno. F2: llega a quien tenga permiso `supervisa` en ese módulo (resuelto por
+ *  herencia de C2, sin config aparte). Notifica a TODOS los que puedan supervisar el módulo, salvo
+ *  quien avisa (no tiene sentido auto-notificarse). Devuelve cuántos destinatarios recibieron el aviso. */
+export async function avisarSupervisor(
+  tenantId: string, modulo: string, remitenteId: string | undefined,
+  titulo: string, mensaje: string, actionUrl: string,
+): Promise<number> {
+  const { data: usuarios } = await supabase.from('users')
+    .select('id, rol, permisos_custom:roles_custom(permisos)')
+    .eq('tenant_id', tenantId).eq('activo', true)
+  const destinatarios = (usuarios ?? [])
+    .map((u: any) => ({ ...u, permisos_custom: u.permisos_custom?.permisos ?? null }))
+    .filter((u: any) => u.id !== remitenteId && puedeSupervisarModulo(u, modulo))
+  if (destinatarios.length === 0) return 0
+  const { error } = await supabase.from('notificaciones').insert(
+    destinatarios.map((u: any) => ({
+      tenant_id: tenantId, user_id: u.id, tipo: 'aviso_supervisor', titulo, mensaje, action_url: actionUrl,
+    }))
+  )
+  if (error) throw error
+  return destinatarios.length
 }
 
 /** Badge cross-módulo (nav "Supervisión") — cuenta autorizaciones pendientes de TODOS los módulos

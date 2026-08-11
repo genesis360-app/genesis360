@@ -1,23 +1,28 @@
 /**
- * RepositoresPage — módulo NUEVO "Repositores" (Fase 1, mig 352).
+ * RepositoresPage — módulo NUEVO "Repositores" (Fase 1, mig 352 + fix seguridad mig 353).
  * Relevado con Fede/GO — ver G360.Wiki/sources/raw/relevamiento_repositores_respuestas.md.
  *
  * Fase 1 = solo tareas de "cambiar el cartel de precio en la góndola", generadas automáticamente
  * por trigger de DB (cambio de precio o entrada a un estado con descuento) — nunca a mano. Prioridad
  * automática (C1-C3): vendida con el cartel desactualizado > precio subió > vencimiento cercano >
- * más vieja primero. NO incluye todavía: reposición física a góndola, asignación/reasignación,
- * etiquetas/impresión, notificaciones, reportes — quedan para fases siguientes.
+ * más vieja primero.
+ *
+ * Fase 2 (mig 354, E2/E4 del relevamiento) = asignación automática por carga al crearse la tarea +
+ * reasignación manual con motivo, gateada a quien puede supervisar el módulo. Sigue siendo cola
+ * compartida: cualquiera con acceso puede completar/cancelar CUALQUIER tarea visible, asignado o no —
+ * el asignado es "de quién es la responsabilidad", no una restricción dura de quién puede tocarla.
+ * NO incluye todavía: reposición física a góndola, etiquetas/impresión, notificaciones, reportes.
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, Tags, Flame, TrendingUp, Clock, Check, X, Tag, CircleDot } from 'lucide-react'
+import { ArrowLeft, Tags, Flame, TrendingUp, Clock, Check, X, Tag, CircleDot, UserCog, User } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSucursalFilter } from '@/hooks/useSucursalFilter'
 import { useModoOperacion } from '@/hooks/useModoOperacion'
-import { moduloOculto, puedeEditarModulo } from '@/lib/permisosModulo'
+import { moduloOculto, puedeEditarModulo, puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { logActividad } from '@/lib/actividadLog'
 import { useConfirm, usePrompt } from '@/hooks/useConfirm'
 
@@ -35,9 +40,11 @@ export default function RepositoresPage() {
   const qc = useQueryClient()
 
   const [filtro, setFiltro] = useState<FiltroEstado>('activas')
+  const [reasignando, setReasignando] = useState<string | null>(null)
 
   const oculto = moduloOculto(user, 'repositores')
   const puedeEditar = puedeEditarModulo(user, 'repositores')
+  const puedeSupervisar = puedeSupervisarModulo(user, 'repositores')
 
   const { data: tareas = [], isLoading } = useQuery({
     queryKey: ['tareas-repositor', tenant?.id, sucursalId, filtro],
@@ -67,7 +74,7 @@ export default function RepositoresPage() {
         .eq('id', t.id)
       if (error) throw error
       logActividad({
-        entidad: 'pedido', entidad_id: t.id, entidad_nombre: `Cartel ${t.producto_nombre}`,
+        entidad: 'tarea_repositor', entidad_id: t.id, entidad_nombre: `Cartel ${t.producto_nombre}`,
         accion: 'cambio_estado', campo: 'estado', valor_anterior: t.estado, valor_nuevo: 'completada',
         pagina: '/repositores', sucursal_id: t.sucursal_id, producto_id: t.producto_id,
       })
@@ -86,7 +93,7 @@ export default function RepositoresPage() {
         .eq('id', t.id)
       if (error) throw error
       logActividad({
-        entidad: 'pedido', entidad_id: t.id, entidad_nombre: `Cartel ${t.producto_nombre}`,
+        entidad: 'tarea_repositor', entidad_id: t.id, entidad_nombre: `Cartel ${t.producto_nombre}`,
         accion: 'cambio_estado', campo: 'estado', valor_anterior: t.estado, valor_nuevo: 'cancelada',
         pagina: '/repositores', sucursal_id: t.sucursal_id, producto_id: t.producto_id,
       })
@@ -97,6 +104,50 @@ export default function RepositoresPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  // Fase 2 (mig 354, E2/E4): pool de elegibles para reasignar, por sucursal de la tarea abierta —
+  // mismo criterio que usa el trigger de auto-asignación en la DB (fn_usuarios_hacen_repositor).
+  const { data: usuariosElegibles = [] } = useQuery({
+    queryKey: ['usuarios-hacen-repositor', tenant?.id, reasignando && (tareas as any[]).find(t => t.id === reasignando)?.sucursal_id],
+    queryFn: async () => {
+      const t = (tareas as any[]).find(x => x.id === reasignando)
+      if (!t) return []
+      const { data, error } = await supabase.rpc('fn_usuarios_hacen_repositor', {
+        p_tenant_id: tenant!.id, p_sucursal_id: t.sucursal_id,
+      })
+      if (error) throw error
+      return data ?? []
+    },
+    enabled: !!tenant && !!reasignando,
+  })
+
+  const reasignarTarea = useMutation({
+    mutationFn: async ({ t, usuarioId, usuarioNombre, motivo }: { t: any; usuarioId: string | null; usuarioNombre: string | null; motivo: string }) => {
+      const { error } = await supabase.from('tareas_repositor').update({ usuario_asignado_id: usuarioId }).eq('id', t.id)
+      if (error) throw error
+      logActividad({
+        entidad: 'tarea_repositor', entidad_id: t.id, entidad_nombre: `Cartel ${t.producto_nombre}`,
+        accion: 'reasignar', campo: 'usuario_asignado_id',
+        valor_anterior: t.usuario_asignado_nombre ?? 'Sin asignar',
+        valor_nuevo: `${usuarioNombre ?? 'Sin asignar'} — ${motivo}`,
+        pagina: '/repositores', sucursal_id: t.sucursal_id, producto_id: t.producto_id,
+      })
+    },
+    onSuccess: () => {
+      toast.success('Tarea reasignada')
+      qc.invalidateQueries({ queryKey: ['tareas-repositor'] })
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
+  const handleReasignar = async (t: any, usuarioId: string | null, usuarioNombre: string | null) => {
+    setReasignando(null)
+    const motivo = await preguntar('¿Por qué se reasigna esta tarea?', {
+      titulo: 'Reasignar tarea', placeholder: 'Ej: se fue antes, tiene otra prioridad…',
+    })
+    if (motivo == null) return
+    reasignarTarea.mutate({ t, usuarioId, usuarioNombre, motivo: motivo.trim() || 'Sin motivo especificado' })
+  }
 
   const handleCancelar = async (t: any) => {
     const motivo = await preguntar('¿Por qué se cancela esta tarea?', {
@@ -187,10 +238,36 @@ export default function RepositoresPage() {
                         <Clock size={10} /> Vence {new Date(t.fecha_vencimiento).toLocaleDateString('es-AR')}
                       </span>
                     )}
+                    {filtro === 'activas' && (
+                      <span className="text-[11px] text-gray-400 dark:text-gray-500 inline-flex items-center gap-1">
+                        <User size={10} /> {t.usuario_asignado_nombre ?? 'Sin asignar'}
+                      </span>
+                    )}
                   </div>
                 </div>
                 {filtro === 'activas' && puedeEditar && (
                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {puedeSupervisar && (
+                      reasignando === t.id ? (
+                        <select autoFocus defaultValue=""
+                          onChange={(e) => {
+                            const usuarioId = e.target.value || null
+                            const usuarioNombre = usuarioId ? (usuariosElegibles.find((u: any) => u.usuario_id === usuarioId)?.nombre ?? null) : null
+                            handleReasignar(t, usuarioId, usuarioNombre)
+                          }}
+                          onBlur={() => setReasignando(null)}
+                          className="border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 text-xs bg-white dark:bg-gray-700 dark:text-white">
+                          <option value="">Sin asignar</option>
+                          {usuariosElegibles.map((u: any) => <option key={u.usuario_id} value={u.usuario_id}>{u.nombre}</option>)}
+                        </select>
+                      ) : (
+                        <button onClick={() => setReasignando(t.id)}
+                          title="Reasignar"
+                          className="p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50 text-gray-400 dark:text-gray-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-500 transition-colors">
+                          <UserCog size={16} />
+                        </button>
+                      )
+                    )}
                     <button onClick={() => handleCompletar(t)} disabled={completarTarea.isPending}
                       title="Marcar como lista"
                       className="p-2 rounded-lg bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 disabled:opacity-50 transition-colors">

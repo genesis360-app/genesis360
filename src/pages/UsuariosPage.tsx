@@ -26,7 +26,7 @@ const ROLES: Record<UserRole, { label: string; desc: string; color: string }> = 
   VIEWER:     { label: 'Lector',        desc: 'Solo lectura — supervisa, no edita', color: 'bg-gray-100 dark:bg-gray-700/40 text-gray-600 dark:text-gray-300'         },
 }
 
-type Permiso = 'no_ver' | 'ver' | 'editar'
+type Permiso = 'no_ver' | 'ver' | 'editar' | 'supervisa'
 interface RolCustom {
   id: string
   tenant_id: string
@@ -55,11 +55,12 @@ const MODULOS: { key: string; label: string }[] = [
   { key: 'sucursales',    label: 'Sucursales' },
 ]
 
-const PERMISO_LABELS: Record<Permiso, string> = { no_ver: 'No ver', ver: 'Ver', editar: 'Editar' }
+const PERMISO_LABELS: Record<Permiso, string> = { no_ver: 'No ver', ver: 'Ver', editar: 'Editar', supervisa: 'Supervisa' }
 const PERMISO_COLORS: Record<Permiso, string> = {
-  no_ver: 'bg-gray-100 dark:bg-gray-700 text-gray-400',
-  ver:    'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
-  editar: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+  no_ver:    'bg-gray-100 dark:bg-gray-700 text-gray-400',
+  ver:       'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+  editar:    'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',
+  supervisa: 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400',
 }
 
 function defaultPermisos(): Record<string, Permiso> {
@@ -307,7 +308,7 @@ export default function UsuariosPage() {
   }
 
   const cyclePermiso = (modulo: string) => {
-    const order: Permiso[] = ['no_ver', 'ver', 'editar']
+    const order: Permiso[] = ['no_ver', 'ver', 'editar', 'supervisa']
     const current = rolPermisos[modulo] ?? 'no_ver'
     const next = order[(order.indexOf(current) + 1) % order.length]
     setRolPermisos(prev => ({ ...prev, [modulo]: next }))
@@ -738,7 +739,7 @@ export default function UsuariosPage() {
                 return (
                   <button key={m.key} type="button"
                     onClick={() => {
-                      const order: Permiso[] = ['no_ver', 'ver', 'editar']
+                      const order: Permiso[] = ['no_ver', 'ver', 'editar', 'supervisa']
                       const next = order[(order.indexOf(p) + 1) % order.length]
                       setUserPermisosData(prev => ({ ...prev, [m.key]: next }))
                     }}
@@ -751,7 +752,7 @@ export default function UsuariosPage() {
                 )
               })}
             </div>
-            <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">Click en cada módulo para cambiar. "No ver" = oculta el módulo.</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-3">Click en cada módulo para cambiar. "No ver" = oculta el módulo. "Supervisa" = además de editar, puede aprobar/reasignar en la pestaña Supervisión de ese módulo.</p>
             <div className="flex gap-2 mt-5 justify-end">
               <button onClick={() => setUserPermisosTarget(null)}
                 className="px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg text-sm text-gray-600 dark:text-gray-400">

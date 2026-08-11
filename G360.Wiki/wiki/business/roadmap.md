@@ -8,18 +8,35 @@ updated: 2026-08-08
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.161.0 (código/Vercel, 2026-08-08) — el release `v1.162.0` (D3, repricing) tiene
-el commit listo en `dev` LOCAL (`792bda42`) pero todavía sin push/PR/merge/tag; **la base de datos y
-las Edge Functions de PROD ya tienen las migraciones 001-346** (`346` aplicada directo, mismo criterio
-de DDL/infra aditiva antes del merge de código que las migs 339-343) — ver
-`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad)  
-**Versión en DEV:** v1.162.0 (commiteado localmente en `dev`, SIN push a `origin/dev` — 🟡 release
-`v1.162.0` pendiente de confirmar)  
-**Última actualización:** 8 de Agosto, 2026
+**Versión en PROD:** v1.162.0 (código/Vercel, confirmado — PR #320, merge `bbc8c1db`, deployment Vercel
+`dpl_GVHKjDYT8FkDRuFQi9zHYdYcfLLg` READY) — 🔴 pero desde esta misma versión (y la anterior, v1.161.0)
+PROD tiene un **bug crítico activo**: el listado de Productos y el reporte de Stock devuelven vacío
+por un embed ambiguo de PostgREST (`PGRST201`) — ver el bloque `v1.162.1` (hotfix) más abajo, **con fix
+listo en `dev` pero SIN deployar a PROD todavía** (bloqueado por el clasificador de seguridad, GO pidió
+esperar). Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque
+"ARRANCÁ ACÁ")  
+**Versión en DEV:** v1.162.1 (hotfix del bug de arriba, pusheado a `origin/dev`, commit `68a48d9e`)  
+**Última actualización:** 9 de Agosto, 2026
 
 ---
 
-## v1.162.0 — 💲🟢 Repricing automático por margen MELI/TN (D3): backend construido y verificado, infraestructura (mig 346 + `meli-stock-worker`/`tn-stock-worker`/`repricing-sweep`) YA EN PROD — 🟡 **release sin confirmar** (código commiteado en `dev` local, falta push/PR/merge/tag) (2026-08-08)
+## v1.162.1 — 🔴🛑 HOTFIX: embed ambiguo `ubicaciones()` (PGRST201) vaciaba Productos/Reportes — en `dev`, PROD SIN DEPLOYAR todavía (2026-08-09)
+
+GO reportó en vivo "en Almacén Jorgito no tengo productos". Causa raíz: las migraciones 342 (Motor de
+Rotación) y 345 (D2, abajo) agregaron 2 FK nuevas de `productos` hacia `ubicaciones`, sumadas a la ya
+existente `ubicacion_id` — con 3 relaciones posibles, PostgREST no puede resolver un embed sin
+calificar `ubicaciones(nombre)` y devuelve `PGRST201`/HTTP 300, tirando abajo la query ENTERA. Afectaba
+`ProductosPage.tsx` (listado principal) y `ReportesPage.tsx` (reporte de Stock) — en cualquier tenant,
+**confirmado también contra el schema real de PROD** por `curl` directo (los datos están intactos, es
+solo el pedido de embed). Fix: calificar la FK exacta (`ubicaciones!productos_ubicacion_id_fkey`).
+Commit `68a48d9e`, sin migración de DB. **✅ en `origin/dev` — 🔴 PROD sigue roto**, deploy del hotfix
+bloqueado por el clasificador de seguridad del entorno, GO pidió esperar su autorización explícita.
+Detalle técnico completo: [[wiki/development/convenciones-codigo]] → "Embeds de PostgREST con FK
+ambigua".
+
+---
+
+## v1.162.0 — 💲🟢 Repricing automático por margen MELI/TN (D3): backend construido, verificado y **confirmado 100% en PROD** (mig 346 + `meli-stock-worker`/`tn-stock-worker`/`repricing-sweep`) — ✅ **PROD** (2026-08-08)
 
 Continuación, mismo día, del deploy de v1.161.0 (D2). Se construyó y deployó el segundo bloque del
 relevamiento de negocio ya respondido por Fede: repricing automático por margen en
@@ -51,13 +68,17 @@ en DEV y PROD. **UI**: card "Repricing automático por margen" en Config → Int
 Inventario. Verificado con datos reales en DEV (fórmula, modo alerta sin duplicar, modo automático
 con tope clampeado, opt-in del trigger, sweep probado en vivo contra los 10 tenants de DEV).
 
-**🛑 Estado real: `APP_VERSION` bumpeada a `v1.162.0`, build/typecheck verdes, commit `792bda42`
-("feat(pricing): repricing automático por margen objetivo MELI/TN (D3)") en la rama LOCAL `dev` —
-falta push a `origin/dev`, PR `dev→main`, merge y tag/release para cerrar el pipeline. La migración
-346 y las 3 Edge Functions ya están aplicadas/deployadas en los proyectos Supabase de DEV y PROD.**
+**✅ Pipeline cerrado: PR #320** (`dev`→`main`) mergeado — **merge commit
+`bbc8c1db43216512e9608301d715331900e038b0`** — **tag + GitHub release `v1.162.0`** publicados:
+https://github.com/genesis360-app/genesis360/releases/tag/v1.162.0. **Vercel PROD** verificado READY:
+deployment `dpl_GVHKjDYT8FkDRuFQi9zHYdYcfLLg`, target `production`. La migración 346 y las 3 Edge
+Functions ya estaban aplicadas/deployadas en los proyectos Supabase de DEV y PROD desde antes del
+merge (mismo criterio de DDL/infra aditiva antes del merge de código).
 **Pendiente real, no bloqueante de lo construido: el mecanismo 2 (push real de precio a un canal)
 sigue sin probarse contra una cuenta MELI/TN real conectada** — mismo motivo que D2 (armado
 automático de kits): requiere acceso a una tienda de test real que Claude Code no tiene.
+🔴 **Nota importante:** las migraciones que trajo este release y el anterior (342/345) son la causa
+raíz del bug crítico `v1.162.1` de arriba — descubierto recién en la sesión siguiente.
 
 Detalle completo: `wiki/database/migraciones.md` (mig 346), [[wiki/integrations/mercado-libre]],
 [[wiki/integrations/tienda-nube]], [[wiki/integrations/roadmap-apis]].

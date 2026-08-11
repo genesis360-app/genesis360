@@ -161,8 +161,9 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
   }
 
   const crearAutorizacion = async (tipo: string, datosCambio: Record<string, any>, notas?: string) => {
-    const { error } = await supabase.from('autorizaciones_inventario').insert({
+    const { error } = await supabase.from('autorizaciones').insert({
       tenant_id: tenant!.id,
+      modulo: 'inventario',
       tipo,
       linea_id: linea.id,
       datos_cambio: datosCambio,
@@ -535,7 +536,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     onSuccess: (result: any) => {
       if (result?.esAutorizacion) {
         toast.success('Solicitud de eliminación enviada — pendiente de aprobación')
-        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+        qc.invalidateQueries({ queryKey: ['autorizaciones', 'inventario'] })
         onClose()
       } else {
         toast.success('LPN eliminado')
@@ -602,7 +603,7 @@ export function LpnAccionesModal({ linea, producto, onClose }: Props) {
     onSuccess: (result: any) => {
       if (result?.esAutorizacion) {
         toast.success('Solicitud de eliminación de serie enviada — pendiente de aprobación')
-        qc.invalidateQueries({ queryKey: ['autorizaciones_inventario'] })
+        qc.invalidateQueries({ queryKey: ['autorizaciones', 'inventario'] })
       } else {
         toast.success('Serie eliminada')
         invalidar()

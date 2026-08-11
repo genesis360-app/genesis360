@@ -171,7 +171,7 @@ export default function ProductosPage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('productos')
-        .select('*, categorias(nombre), proveedores(nombre), estados_inventario(nombre), ubicaciones(nombre)')
+        .select('*, categorias(nombre), proveedores(nombre), estados_inventario(nombre), ubicaciones!productos_ubicacion_id_fkey(nombre)')
         .eq('tenant_id', tenant!.id)
         .order('nombre')
       if (error) throw error

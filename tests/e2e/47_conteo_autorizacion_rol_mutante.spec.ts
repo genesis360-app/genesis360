@@ -8,7 +8,7 @@
  * acá un SUPERVISOR finaliza un conteo con diferencia +1 → 0 ajustes aplicados + 1 pendiente.
  *
  * Aserción POSITIVA: toast "… pendiente de aprobación" (y NO "ajuste aplicado" > 0). El efecto
- * (fila `autorizaciones_inventario` tipo 'ajuste_conteo' estado 'pendiente', stock SIN cambiar) se
+ * (fila `autorizaciones` tipo 'ajuste_conteo' estado 'pendiente', stock SIN cambiar) se
  * verifica aparte con execute_sql. El artefacto pendiente se limpia luego por SQL.
  *
  * Producto: Elite Pañuelos (simple). Corre con SUPERVISOR (proyecto chromium-supervisor).

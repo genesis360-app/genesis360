@@ -9,7 +9,7 @@
  *
  * APROB-01: sin foto, el guardado queda BLOQUEADO (botón deshabilitado, `estado_id` no cambia).
  * APROB-02: con foto, el cambio queda PENDIENTE — se sube la foto al bucket privado
- *   `autorizaciones-fotos`, se crea `autorizaciones_inventario` (tipo `cambio_estado`, pendiente),
+ *   `autorizaciones-fotos`, se crea `autorizaciones` (tipo `cambio_estado`, pendiente),
  *   se notifica a DUEÑO/SUPERVISOR/SUPER_USUARIO, y `inventario_lineas.estado_id` sigue siendo el
  *   viejo hasta que alguien apruebe — verificado en DB, no solo por el toast.
  * APROB-04: el caso MASIVO (≥2 LPNs) es la regresión del bug de seguridad que esta fase cerró
@@ -148,9 +148,9 @@ test.describe('Aprobación de cambio de estado — bypass masivo cerrado (mutant
 
     // POSITIVO en DB: autorización pendiente creada, con la foto y los estados correctos
     const autRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/autorizaciones_inventario?linea_id=eq.${linea.id}&tipo=eq.cambio_estado&order=created_at.desc&limit=1&select=id,estado,tipo,linea_id,datos_cambio`,
+      `${SUPABASE_URL}/rest/v1/autorizaciones?linea_id=eq.${linea.id}&tipo=eq.cambio_estado&order=created_at.desc&limit=1&select=id,estado,tipo,linea_id,datos_cambio`,
       { headers: c.headers })
-    expect(autRes.ok(), `[117] no se pudo leer autorizaciones_inventario: ${await autRes.text()}`).toBe(true)
+    expect(autRes.ok(), `[117] no se pudo leer autorizaciones: ${await autRes.text()}`).toBe(true)
     const [aut] = (await autRes.json()) as Array<{ id: string; estado: string; datos_cambio: any }>
     expect(aut, '[117] APROB-02: no se creó la autorización de cambio_estado').toBeTruthy()
     expect(aut.estado, '[117] la autorización debe quedar PENDIENTE').toBe('pendiente')
@@ -230,9 +230,9 @@ test.describe('Aprobación de cambio de estado — bypass masivo cerrado (mutant
 
     // POSITIVO en DB: UNA sola autorización para todo el lote
     const autRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/autorizaciones_inventario?tipo=eq.cambio_estado&linea_id=is.null&order=created_at.desc&limit=5&select=id,estado,datos_cambio`,
+      `${SUPABASE_URL}/rest/v1/autorizaciones?tipo=eq.cambio_estado&linea_id=is.null&order=created_at.desc&limit=5&select=id,estado,datos_cambio`,
       { headers: c.headers })
-    expect(autRes.ok(), `[117] no se pudo leer autorizaciones_inventario: ${await autRes.text()}`).toBe(true)
+    expect(autRes.ok(), `[117] no se pudo leer autorizaciones: ${await autRes.text()}`).toBe(true)
     const bulkAuts = (await autRes.json()) as Array<{ id: string; estado: string; datos_cambio: any }>
     const aut = bulkAuts.find(a => {
       const ids: string[] = a.datos_cambio?.linea_ids ?? []

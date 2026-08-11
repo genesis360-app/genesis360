@@ -176,9 +176,9 @@ test.describe('Aprobación de estado convive con aprobación de cantidad (mutant
 
     // ── POSITIVO en DB: DOS autorizaciones independientes, una por gate ──
     const autsRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/autorizaciones_inventario?linea_id=eq.${linea.id}&order=created_at.desc&limit=5&select=id,tipo,estado,datos_cambio`,
+      `${SUPABASE_URL}/rest/v1/autorizaciones?linea_id=eq.${linea.id}&order=created_at.desc&limit=5&select=id,tipo,estado,datos_cambio`,
       { headers: c.headers })
-    expect(autsRes.ok(), `[126] no se pudo leer autorizaciones_inventario: ${await autsRes.text()}`).toBe(true)
+    expect(autsRes.ok(), `[126] no se pudo leer autorizaciones: ${await autsRes.text()}`).toBe(true)
     const auts = (await autsRes.json()) as Array<{ id: string; tipo: string; estado: string; datos_cambio: any }>
 
     const autCantidad = auts.find(a => a.tipo === 'ajuste_cantidad')

@@ -11,8 +11,10 @@ updated: 2026-08-08
 **Total al 2026-08-08:** 346 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
 **346 (`346_repricing_margen_meli_d3.sql`) — ✅ APLICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
-(`jjffnbrdjchquexdfgwq`), código pendiente de release (Fase D3 del roadmap de integraciones — ver el
-bloque "ARRANCÁ ACÁ" de `sources/raw/project_pendientes.md` para el detalle completo):** dos
+(`jjffnbrdjchquexdfgwq`), código release `v1.162.0` CONFIRMADO 100% EN PROD (Fase D3 del roadmap de
+integraciones — ver el bloque "ARRANCÁ ACÁ" de `sources/raw/project_pendientes.md` para el detalle
+completo, incluido el bug crítico `v1.162.1` que las migs 342/345 causaron y que sigue sin deployar a
+PROD):** dos
 mecanismos independientes definidos por Fede. Mecanismo 1 — `productos.reajuste_margen_auto`
 (opt-in), ajusta `precio_venta` (precio base, único cross-canal) para volver al `margen_objetivo`;
 config a nivel tenant `tenants.repricing_modo`/`repricing_tope_pct`/`repricing_umbral_aviso_monto`/
@@ -36,12 +38,23 @@ actualizadas, y Edge Function nueva `repricing-sweep` (+ GitHub Action `repricin
 cada 6hs, no hay pg_cron habilitado) deployadas en DEV y PROD. Verificado con datos reales en DEV
 (fórmula, modo alerta sin duplicar, modo automático con tope clampeado, opt-in del trigger, sweep
 probado en vivo contra los 10 tenants de DEV, 0 cambios reales). **`APP_VERSION` bumpeada a
-`v1.162.0`, commit `792bda42` en la rama LOCAL `dev` — falta push a `origin/dev` + PR `dev→main` +
-merge + tag/release para cerrar el pipeline de release del código** (la migración y las 3 Edge
-Functions ya están aplicadas/deployadas en los proyectos Supabase de DEV y PROD, mismo criterio de DDL
-aditivo antes del merge que las migs 339-343). Pendiente real: el mecanismo 2 (push real de precio)
-sin probar contra una cuenta MELI/TN real conectada. Detalle: [[wiki/integrations/mercado-libre]],
-[[wiki/integrations/tienda-nube]].
+`v1.162.0`, commit `792bda42`. Pipeline cerrado: PR #320 (`dev`→`main`) mergeado — merge commit
+`bbc8c1db43216512e9608301d715331900e038b0` — tag + GitHub release `v1.162.0` publicados, Vercel PROD
+verificado READY (deployment `dpl_GVHKjDYT8FkDRuFQi9zHYdYcfLLg`).** Pendiente real: el mecanismo 2
+(push real de precio) sin probar contra una cuenta MELI/TN real conectada. Detalle:
+[[wiki/integrations/mercado-libre]], [[wiki/integrations/tienda-nube]].
+
+**🔴 346-bis (sin número propio, hotfix de código puro `v1.162.1`) — embed ambiguo `ubicaciones()`
+(PGRST201):** las migraciones 342 y 345 agregaron 2 FK nuevas de `productos` hacia `ubicaciones`
+(`rotacion_ubicacion_excepcion_id`, `ubicacion_kit_default_id`), sumadas a la ya existente
+`ubicacion_id` — con 3 relaciones posibles, PostgREST ya no puede resolver un embed sin calificar
+`ubicaciones(nombre)` (usado en `ProductosPage.tsx`/`ReportesPage.tsx`), devuelve `PGRST201`/HTTP 300 y
+tira abajo la lista de Productos y el reporte de Stock en cualquier tenant. **Confirmado en vivo contra
+PROD real** con `curl` directo al endpoint REST. Fix: calificar la FK exacta
+(`ubicaciones!productos_ubicacion_id_fkey`). **Sin migración de DB** — commit `68a48d9e`, en
+`origin/dev`, 🔴 **PROD sigue roto**, deploy bloqueado por el clasificador de seguridad, GO pidió
+esperar su autorización. Detalle técnico: [[wiki/development/convenciones-codigo]] → "Embeds de
+PostgREST con FK ambigua".
 
 **345 (`345_armado_kits_automatico_d2.sql`) — ✅ EN DEV Y PROD desde v1.161.0** (backend de Combos
 automáticos TN/MELI, Fase D2 del roadmap — ver el bloque "ARRANCÁ ACÁ" de
@@ -66,8 +79,8 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
-**001-346 EN DEV Y PROD (base de datos y Edge Functions); código (`APP_VERSION` v1.162.0, commit
-`792bda42`) SOLO EN `dev` LOCAL, pipeline de release (push/PR/merge/tag) sin cerrar.**
+**001-346 EN DEV Y PROD (base de datos y Edge Functions); código `v1.162.0` (D3) 100% CERRADO Y EN
+PROD (PR #320). 🔴 Hotfix `v1.162.1` (PGRST201) en `origin/dev`, SIN deployar a PROD todavía.**
 **001-345 EN DEV Y PROD (base de datos), deploy v1.161.0 100% CERRADO.**
 **001-344 EN DEV Y PROD (base de datos), deploy v1.160.0 100% CERRADO** — las migraciones 339-343 se
 aplicaron en PROD (proyecto `jjffnbrdjchquexdfgwq`) el 2026-08-07 vía `apply_migration`, ANTES del merge

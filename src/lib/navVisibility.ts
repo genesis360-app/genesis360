@@ -17,7 +17,7 @@ const VIEWER_MODULOS = new Set([
   'clientes', 'alertas', 'historial', 'reportes',
 ])
 
-export type PermisoModulo = 'no_ver' | 'ver' | 'editar'
+export type PermisoModulo = 'no_ver' | 'ver' | 'editar' | 'supervisa'
 
 export interface NavItemFlags {
   modulo: string
@@ -34,6 +34,10 @@ export interface NavItemFlags {
   basicoSiFacturacion?: boolean
   /** En modo básico solo se muestra si el tenant tiene más de una sucursal. */
   basicoSiMultisucursal?: boolean
+  /** Solo visible si el usuario puede supervisar AL MENOS UN módulo (`ctx.modulosSupervisables`
+   *  no vacío) — patrón de Supervisor reusable, mig 347. DISTINTO de supervisorOnly (ese es por
+   *  ROL fijo; este es por permiso real, cubre también un rol custom con 'supervisa'). */
+  requiereSupervisarModulo?: boolean
 }
 
 export interface NavVisibilityCtx {
@@ -43,6 +47,10 @@ export interface NavVisibilityCtx {
   rrhhPortalEmpleado?: boolean
   facturacionHabilitada?: boolean
   sucursalesCount?: number
+  /** Módulos donde el usuario actual puede supervisar (aprobar/reasignar) — ver
+   *  puedeSupervisarModulo en permisosModulo.ts. Solo lo consultan los items con
+   *  requiereSupervisarModulo. */
+  modulosSupervisables?: string[]
 }
 
 /**
@@ -89,6 +97,8 @@ export function navItemVisible(item: NavItemFlags, ctx: NavVisibilityCtx): boole
 
   // Rol custom: 'no_ver' oculta el módulo
   if (ctx.permisosCustom?.[item.modulo] === 'no_ver') return false
+
+  if (item.requiereSupervisarModulo && (ctx.modulosSupervisables?.length ?? 0) === 0) return false
 
   return true
 }

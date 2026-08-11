@@ -107,7 +107,7 @@ test.describe('Motor de Rotación — nombre/precio sugerido de KIT + autorizaci
     await depositoPage.getByRole('button', { name: 'Usar' }).click()
     await expect(depositoPage.getByText(/Nombre del KIT actualizado/i)).toBeVisible({ timeout: 10000 })
 
-    // POSITIVO en DB: el nombre se aplicó SIN pasar por autorizaciones_inventario
+    // POSITIVO en DB: el nombre se aplicó SIN pasar por autorizaciones
     const kitPostNombreRes = await request.get(`${SUPABASE_URL}/rest/v1/productos?id=eq.${kit.id}&select=nombre`, { headers })
     const [kitPostNombre] = (await kitPostNombreRes.json()) as Array<{ nombre: string }>
     expect(kitPostNombre?.nombre, '[133] el nombre del KIT debía quedar actualizado al sugerido').toBe(nombreSugeridoEsperado)
@@ -142,11 +142,11 @@ test.describe('Motor de Rotación — nombre/precio sugerido de KIT + autorizaci
     expect(Number(kitTrasPedido?.precio_venta) || 0, '[133] el precio del KIT NO debía cambiar todavía — falta la aprobación').not.toBe(PRECIO_SUGERIDO)
 
     const autRes = await request.get(
-      `${SUPABASE_URL}/rest/v1/autorizaciones_inventario?tipo=eq.kit_precio&estado=eq.pendiente` +
+      `${SUPABASE_URL}/rest/v1/autorizaciones?tipo=eq.kit_precio&estado=eq.pendiente` +
         `&datos_cambio->>producto_id=eq.${kit.id}&select=id,datos_cambio&order=created_at.desc&limit=1`,
       { headers },
     )
-    expect(autRes.ok(), `[133] no se pudo leer autorizaciones_inventario: ${await autRes.text()}`).toBe(true)
+    expect(autRes.ok(), `[133] no se pudo leer autorizaciones: ${await autRes.text()}`).toBe(true)
     const [aut] = (await autRes.json()) as Array<{ id: string; datos_cambio: { precio_nuevo: number; precio_anterior: number; kit_nombre: string } }>
     expect(aut, '[133] no se encontró la autorización pendiente de kit_precio').toBeTruthy()
     expect(aut.datos_cambio.precio_nuevo, '[133] la autorización debe pedir el precio sugerido exacto').toBe(PRECIO_SUGERIDO)
@@ -175,7 +175,7 @@ test.describe('Motor de Rotación — nombre/precio sugerido de KIT + autorizaci
     const [kitFinal] = (await kitFinalRes.json()) as Array<{ precio_venta: number | null }>
     expect(Number(kitFinal?.precio_venta), '[133] el precio del KIT debía quedar en el valor sugerido tras la aprobación').toBe(PRECIO_SUGERIDO)
 
-    const autFinalRes = await request.get(`${SUPABASE_URL}/rest/v1/autorizaciones_inventario?id=eq.${aut.id}&select=estado`, { headers })
+    const autFinalRes = await request.get(`${SUPABASE_URL}/rest/v1/autorizaciones?id=eq.${aut.id}&select=estado`, { headers })
     const [autFinal] = (await autFinalRes.json()) as Array<{ estado: string }>
     expect(autFinal?.estado, '[133] la autorización debía quedar aprobada').toBe('aprobada')
   })

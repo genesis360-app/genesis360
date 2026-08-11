@@ -36,6 +36,8 @@ listado con la cantidad de registros visibles según el filtro/píldoras aplicad
 tenant:
 - **Sin filtro:** "N productos".
 - **Con filtro:** "Mostrando N de M productos".
+- 🆕 **Sticky al fondo del viewport desde v1.165.0 (2026-08-11)** — detalle completo en
+  [[wiki/features/inventario-stock]] "Footer de conteo de registros".
 
 Reusado también en Inventario (tab Inventario), Clientes y Envíos — ver
 [[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]], [[wiki/features/envios]].

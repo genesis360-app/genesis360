@@ -6,7 +6,87 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-11) — v1.164.0 EN PROD: Pestaña de Supervisor reusable 100% COMPLETA (F1 + A2, mig 348) — los 3 relevamientos derivados hacia Repositores ya cerrados, falta solo el #4 (Repositores en sí, con decisiones de negocio propias sin cerrar)
+> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont.) — v1.165.0 EN DEPLOY A PROD (PR #324): cierra un hueco real de REGLA #0 (rebaje de stock por 2 caminos, venta #619, mig 350) + fix de Compras `registrar_pago_oc` (mig 349) + 2 mejoras de UX
+>
+> Continuación directa de la sesión de abajo (v1.164.0, mismo día). GO, revisando la venta real
+> **#619** del tenant "Almacén Jorgito" en DEV, encontró un hueco real de la Regla de Oro #0: Ventas
+> tiene el botón "Finalizar (rebaja stock)" que rebaja stock directo, pero si esa misma venta tiene un
+> Pedido activo (nacido automáticamente para preparación/picking, migs 315-319), alguien podía además
+> "Lanzar" ese Pedido y generar una tarea de picking que, al completarse, **rebajaría el stock por
+> segunda vez** para la misma mercadería. En la #619 real no llegó a duplicarse (la tarea se canceló
+> antes de completarse) pero el sistema lo permitía.
+>
+> #### 1. Fix REGLA #0 — rebaje de stock por un solo camino (mig 350 + frontend)
+>
+> - **Frontend (`VentasPage.tsx`)**: query nueva `pedidoActivoVenta` (Pedido con `venta_origen_id` =
+>   la venta abierta y `estado <> 'cancelado'`). Si existe, el botón "Finalizar (rebaja stock)" — en
+>   la ficha de venta y en el modal de confirmación de pago MP — se reemplaza por un aviso: el rebaje
+>   se hace desde Pedidos → Picking.
+> - **Backend (mig 350)**: `fn_pedido_venta_viva` (mig 323) ya bloqueaba venta presupuesto/
+>   cancelada/devuelta al "Lanzar" — ahora también bloquea `despachada`/`facturada` (los 2 estados
+>   reales del CHECK de `ventas.estado` que significan "el stock ya se rebajó"; confirmado contra el
+>   código real que a `facturada` solo se llega pasando por `despachada`, sin re-rebajar stock en esa
+>   transición).
+> - **Pedidos (`PedidosPage.tsx` + `pedidoVenta.ts`)**: el botón "Lanzar" ahora se **deshabilita
+>   preventivamente** (antes solo fallaba reactivo con un toast del servidor) cuando la venta de
+>   origen ya se despachó, vía `motivoNoLanzarPedido()` (espejo de la función SQL) contra
+>   `ventas:venta_origen_id(estado)` traído con un join nuevo.
+> - 🐛 **Bug real encontrado de paso al agregar ese join**: PostgREST devolvía HTTP 300 (embed
+>   ambiguo, PGRST201) porque `pedidos`↔`ventas` tienen 2 FK entre sí (`pedidos.venta_origen_id` y
+>   `ventas.pedido_id`) — mismo patrón de bug ya documentado para Productos/Ubicaciones (2026-08-09).
+>   Se resolvió calificando la relación por columna: `ventas:venta_origen_id(estado)` (variante de
+>   sintaxis distinta a `!constraint_name`, misma idea). De paso se corrigió que esa misma query de
+>   Pedidos silenciaba cualquier error de Supabase (`const { data } = await q` sin chequear `error`)
+>   — ahora hace `throw error` si falla.
+> - **Verificado en el navegador contra DEV real**: venta #622 (con Pedido #23 confirmado) mostró el
+>   aviso en vez del botón; 7 pedidos reales cuya venta ya estaba despachada mostraron "Lanzar"
+>   deshabilitado con el tooltip correcto.
+>
+> #### 2. Fix real de Compras — `registrar_pago_oc` (mig 349)
+>
+> `registrar_pago_oc` (mig 237) fallaba con "column oc_id does not exist" al pagar una OC sin
+> `monto_total` seteado directo (el fallback sumaba `orden_compra_items` filtrando por una columna
+> `oc_id` que nunca existió ahí — la real es `orden_compra_id`). Reproducido con la OC #30 real de
+> DEV. Fix de una línea (`WHERE oc_id = p_oc_id` → `WHERE orden_compra_id = p_oc_id`), resto de la
+> función textualmente idéntico a la mig 237.
+>
+> #### 3. UX — rename + sticky footer
+>
+> - La pestaña "Pedidos listos para retirar" de Ventas (`/ventas`) pasa a llamarse **"Retiro"** (tab)
+>   / **"Retiro en mostrador"** (encabezado) — es explícitamente pickup-only (`requiere_envio=false`);
+>   los pedidos que salen por envío nunca aparecen ahí por diseño, no por bug (GO preguntó por qué los
+>   pedidos de TiendaNube no aparecían ahí).
+> - `ListaConteoFooter` (contador "Mostrando N de M...") pasa a `sticky bottom-0` en vez de quedar al
+>   final del documento — visible sin scrollear hasta el final de la lista. Afecta Productos,
+>   Inventario, Clientes, Envíos.
+>
+> #### 4. Deploy — PR #324 ABIERTO, migraciones 349/350 YA aplicadas en DEV y PROD, merge/tag/release EN CURSO vía `deploy-runner`
+>
+> `APP_VERSION` bumpeada a **v1.165.0**, commit `c3ea45aa` pusheado a `origin/dev`. **PR #324**
+> (`dev`→`main`) abierto: https://github.com/genesis360-app/genesis360/pull/324 (verificado con `gh pr
+> list` al escribir esta entrada — todavía NO mergeado). Migraciones 349 y 350 aplicadas y verificadas
+> en DEV (`gcmhzdedrkmmzfzfveig`) y PROD (`jjffnbrdjchquexdfgwq`) antes del merge (mismo criterio de
+> DDL aditivo/no-destructivo primero). El merge a `main` + tag/release `v1.165.0` + verificación del
+> bundle en Vercel PROD los completa el `deploy-runner`, corriendo en paralelo a esta actualización de
+> wiki — **confirmar en la próxima sesión** que el PR quedó MERGED y el release publicado (`gh pr view
+> 324` / `gh release list`) antes de dar el release por cerrado.
+>
+> #### 5. Pendiente anotado, NO construido — trazabilidad completa de una venta en /historial
+>
+> GO pidió poder filtrar `/historial` por número de venta y ver TODO lo que le pasó (pedidos, envíos,
+> devoluciones, movimientos de stock) — quedó como diseño propuesto y **explícitamente diferido**
+> ("hacerlo en estos días, apenas terminemos con lo que estamos haciendo"). Anotado también en
+> [[wiki/features/pedidos]] y [[wiki/features/reportes-metricas]] para que no se pierda.
+>
+> Ver `log.md` (2026-08-11), [[wiki/business/roadmap]] (v1.165.0), `wiki/database/migraciones.md`
+> (migs 349/350), [[wiki/features/pedidos]] (guard de la mig 350 + fix del embed PGRST201),
+> [[wiki/features/ventas-pos]] (aviso "Finalizar" + rename "Retiro"),
+> [[wiki/features/clientes-proveedores]] (fix `registrar_pago_oc`),
+> [[wiki/development/convenciones-codigo]] (2ª instancia del gotcha PGRST201).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-11) — v1.164.0 EN PROD: Pestaña de Supervisor reusable 100% COMPLETA (F1 + A2, mig 348) — los 3 relevamientos derivados hacia Repositores ya cerrados; las 3 decisiones de negocio que quedaban abiertas (A1/A2-B3/H1) se resolvieron MÁS TARDE en esta misma sesión, ver el bloque de arriba (v1.165.0) → punto 4 — este bloque quedó SUPERADO
 >
 > Continuación directa de la sesión de abajo (v1.163.0). GO: *"q nos falta entonces para terminar? te
 > dije q lo queria 100% listo, decime q falta definir"* — auditoría honesta contra el relevamiento
@@ -52,22 +132,28 @@ type: project
 > Inventario y "Reglas de asignación — Supervisión" en el chunk de Config, no solo que el deployment
 > esté READY.
 >
-> #### 4. Estado real de la secuencia hacia Repositores — el patrón de Supervisor 100% cerrado
+> #### 4. Estado real de la secuencia hacia Repositores — DESBLOQUEADO 100%, falta escribir el relevamiento final (histórico, ver arriba para lo último aplicado)
 >
-> Los 3 relevamientos derivados (Ubicaciones, Pestaña de Supervisor, Motor de Rotación) están
-> **completos contra sus decisiones originales**, no solo "construidos y con algo pendiente". Queda
-> **solo el #4 (Repositores en sí)**, con puntos de negocio propios sin cerrar — no son decisiones
-> técnicas que se puedan tomar solas:
-> - **A1**: rol nuevo "Repositor" (lo que pidió Fede) vs. patrón de rol custom ya construido (mismo
->   resultado percibido, sin el costo de migrar el enum de roles + auditar RLS).
-> - **A2/B3**: alcance de acceso default — Fede dijo "Reposición + Inventario completo", pero
->   Inventario completo expone `precio_costo` y ajustes de stock más allá de lo necesario.
-> - **H1**: restricción técnica REAL confirmada — la impresión automática de etiquetas no es viable
->   desde una SPA sin un agente local corriendo en la PC del local. Necesita que GO decida cómo
->   resolverlo (¿PDF para imprimir a mano? ¿otro enfoque?).
+> ⚠ **Esta entrada quedó vieja el mismo día**: las 3 decisiones de abajo se presentaron a GO más tarde
+> en esta misma sesión (2026-08-11) y **las resolvió en el momento** — quedaron registradas en la
+> memoria `project_backlog_fede_comercial_25_7.md` → "Actualización 2026-08-11" y en
+> `relevamiento_repositores_respuestas.md` → "Cierre de ambigüedades (2026-08-11)":
+> - **A1** (rol nuevo vs. custom): **rol custom** — reusa el patrón ya construido en Fase D (Comercial).
+> - **A2/B3** (acceso default): **SOLO Reposición**, sin Inventario completo (evita exponer
+>   `precio_costo`/ajustes de stock de más).
+> - **H1** (impresión): **PDF para imprimir a mano, diseñado para que sirva también en una Zebra
+>   térmica** si el negocio tiene una — sin agente local en esta fase.
 >
-> **Próximo paso real**: presentarle esto a GO y cerrar esas 3 decisiones ANTES de diseñar/construir
-> Repositores — mismo criterio que ya se aplicó acá con A1/A3/B1/C2 antes de tocar código.
+> Las otras 2 ambigüedades que el relevamiento marcaba (C3, I3) **no necesitaban decisión de GO/Fede**:
+> C3 es una nota técnica (Fede ya definió el orden de prioridad; solo falta dimensionar que el criterio
+> #1 es backend real, no UI) e I3 se resuelve redactando el relevamiento final, no repreguntando —
+> Ubicaciones (la dependencia que lo bloqueaba) ya está cerrado. Detalle completo de por qué no bloquean
+> en `relevamiento_repositores_respuestas.md`.
+>
+> **Próximo paso real, sin nada pendiente de GO/Fede**: escribir el **relevamiento final de Repositores**
+> (punto 4 del "Orden de trabajo acordado" en `relevamiento_repositores_respuestas.md`) — junta las
+> respuestas de los 3 relevamientos derivados + resuelve I3 como propuesta de diseño + marca C3 como
+> nota de dimensionamiento. Recién ahí diseñar/construir la Fase E en sí (todavía sin arrancar).
 >
 > Ver `log.md` (2026-08-11), [[wiki/business/roadmap]] (v1.164.0), `wiki/database/migraciones.md`
 > (mig 348), [[wiki/features/supervision]] (F1/A2 documentados), `relevamiento_repositores_respuestas.md`.

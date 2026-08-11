@@ -50,6 +50,12 @@ total: sin filtro "N productos", con filtro "Mostrando N de M productos". Mismo 
 Productos, Clientes y Envíos — ver [[wiki/features/productos]],
 [[wiki/features/clientes-proveedores]], [[wiki/features/envios]].
 
+> 🆕 **Sticky al fondo del viewport (2026-08-11, v1.165.0).** Pedido de GO: con listas largas el
+> contador quedaba al final del documento — había que scrollear toda la lista para verlo. Pasa de
+> `flex-shrink-0` normal a `sticky bottom-0 z-10` (clavado contra el borde inferior del `<main>`, el
+> único contenedor con scroll, según `src/components/layout/AppLayout.tsx`), sin `fixed` ni cálculo
+> del ancho del sidebar. Mismo cambio en las 4 páginas que usan el componente.
+
 ---
 
 ## Tipos de movimiento de stock

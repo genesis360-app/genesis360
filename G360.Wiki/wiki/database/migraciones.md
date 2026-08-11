@@ -3,13 +3,41 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-08
+updated: 2026-08-11
 ---
 
-# Historial de Migraciones (001-348)
+# Historial de Migraciones (001-350)
 
-**Total al 2026-08-11:** 348 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-11:** 350 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**350 (`350_pedido_venta_viva_bloquea_ya_despachada.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.165.0` (PR #324 abierto,
+deploy a PROD EN CURSO vía `deploy-runner` en paralelo a esta actualización de wiki — confirmar
+merge/tag/release en la próxima sesión):** 🛑 REGLA #0 (inventario) — cierra el hueco real de rebaje
+de stock **por 2 caminos** que encontró GO con la venta real #619 del tenant "Almacén Jorgito" en DEV.
+`fn_pedido_venta_viva` (mig 323) ya bloqueaba LANZAR un pedido si la venta era un presupuesto o estaba
+anulada/devuelta, pero NO si ya estaba `despachada`/`facturada` — el único camino que rebaja stock
+DIRECTO es el botón "Finalizar (rebaja stock)" de Ventas; si alguien lo usa mientras el Pedido de esa
+misma venta sigue vivo, y después alguien lanza ese Pedido, se generan tareas de picking para volver a
+preparar/rebajar mercadería que YA salió. En la #619 real no hubo doble rebaje solo porque esa tarea
+se canceló antes de completarse, pero el sistema lo permitía. `CREATE OR REPLACE` de la misma función
+de la mig 323 — agrega el bloqueo `IN ('despachada','facturada')`, resto idéntico. El frontend
+(`VentasPage.tsx`) ahora oculta el botón "Finalizar" cuando hay un Pedido vivo (`pedidoActivoVenta`) —
+esta migración es el guard SERVER-SIDE que exige la Regla de Oro #0 (la UI se cachea/bypassea).
+Verificado en el navegador contra DEV real (venta #622 con Pedido #23, 7 pedidos con venta ya
+despachada). Detalle completo: [[wiki/features/pedidos]] "Cuarta barrera".
+
+**349 (`349_fix_registrar_pago_oc_oc_id.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.165.0` (PR #324 abierto,
+deploy a PROD EN CURSO):** 🐛 fix real de Compras — `registrar_pago_oc` (mig 237) fallaba con
+**"column oc_id does not exist"** al pagar una OC sin `monto_total` seteado directo: el fallback que
+suma `orden_compra_items` filtraba por una columna `oc_id` que nunca existió ahí (la real es
+`orden_compra_id`) — bug dormido desde que se creó la función en la mig 237, disparado solo en ese
+caso puntual. Reproducido con datos reales: la OC #30 del tenant Almacén Jorgito en DEV.
+`CREATE OR REPLACE` de la misma función, único cambio real `WHERE oc_id = p_oc_id` →
+`WHERE orden_compra_id = p_oc_id`, resto textualmente idéntico. Detalle:
+[[wiki/features/clientes-proveedores]] "Fix real de CO5".
 
 **348 (`348_autorizaciones_auto_asignacion.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
 (`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.164.0` CONFIRMADO 100% EN

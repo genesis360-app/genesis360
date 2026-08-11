@@ -2,8 +2,8 @@
 title: Clientes y Proveedores
 category: features
 tags: [clientes, proveedores, crm, cuenta-corriente, ordenes-compra]
-sources: [CLAUDE.md, ROADMAP.md]
-updated: 2026-08-06
+sources: [CLAUDE.md, ROADMAP.md, migration 349]
+updated: 2026-08-11
 ---
 
 # Clientes y Proveedores
@@ -35,6 +35,8 @@ fecha_nacimiento, etiquetas TEXT[], codigo_fiscal, regimen_fiscal  ← v1.3.0
   (commit `b8d12b87`) al pie de la lista — sin filtro "N clientes", con filtro "Mostrando N de M
   clientes". Mismo mecanismo en Productos, Inventario y Envíos — ver
   [[wiki/features/productos]], [[wiki/features/inventario-stock]], [[wiki/features/envios]].
+  🆕 **Sticky al fondo del viewport desde v1.165.0 (2026-08-11)** — detalle en
+  [[wiki/features/inventario-stock]] "Footer de conteo de registros".
 
 ### Sub-tabs en ficha del cliente
 
@@ -190,6 +192,17 @@ Lógica pura en `src/lib/comprasReportes.ts`. Tab **Reportes** en Gastos (`src/c
 - **G2 — alerta:** "bajo mínimo sin OC pendiente" en Alertas (badge *OC en camino* / *Sin OC pendiente*). Las demás alertas de compras ya existían (anticipo CO5, cheque CO6, costo CO3).
 
 > 🎉 **Compras 2.0 (CO1-CO8) cerrado al 100%.** Sin pendientes del módulo.
+
+### 🐛 Fix real de CO5 — `registrar_pago_oc` (mig 349, v1.165.0, 2026-08-11)
+
+`registrar_pago_oc` (mig 237) fallaba con **"column oc_id does not exist"** al pagar una OC **sin
+`monto_total` seteado directo** — ese caso fuerza el fallback que suma `orden_compra_items`, y el
+fallback filtraba por una columna `oc_id` que **nunca existió ahí** (la columna real es
+`orden_compra_id`). Bug dormido desde que se creó la función en la mig 237, disparado solo en ese
+caso puntual. Reproducido con datos reales: la **OC #30** del tenant Almacén Jorgito en DEV.
+`CREATE OR REPLACE` de la misma función — único cambio real `WHERE oc_id = p_oc_id` →
+`WHERE orden_compra_id = p_oc_id`, resto textualmente idéntico. Ver [[wiki/database/migraciones]]
+(mig 349).
 
 ---
 

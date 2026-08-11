@@ -3,17 +3,72 @@ title: Roadmap y Versiones
 category: business
 tags: [roadmap, versiones, releases, pendiente, prod]
 sources: [CLAUDE.md, ROADMAP.md, WORKFLOW.md, project_pendientes.md]
-updated: 2026-08-08
+updated: 2026-08-11
 ---
 
 # Roadmap y Versiones
 
 **Versión en PROD:** v1.164.0 (código/Vercel, confirmado — PR #323, merge `f5bdca88`, verificado
-contra el bundle real vía Vercel API) — la Pestaña de Supervisor reusable queda 100% completa (mig
-347+348: núcleo + F1 "Avisar al supervisor" + A2 auto-asignación). Detalle completo en
+contra el bundle real vía Vercel API) — **v1.165.0 en camino a PROD:** PR #324 (`dev`→`main`) abierto,
+migraciones 349+350 ya aplicadas y verificadas en PROD; el merge a `main` + tag/release + verificación
+del bundle en Vercel los completa el `deploy-runner` en paralelo a esta actualización de wiki — sin
+confirmar todavía por `curl`/Vercel API, actualizar en la próxima sesión. Detalle completo en
 `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.164.0 (mismo commit, `origin/dev` sincronizado con `main`)  
+**Versión en DEV:** v1.165.0 (`origin/dev` @ `c3ea45aa`)  
 **Última actualización:** 11 de Agosto, 2026
+
+---
+
+## v1.165.0 — 🛑 REGLA #0 (inventario): rebaje de stock por un solo camino (venta #619) + fix Compras (`registrar_pago_oc`) + 2 UX (migs 349+350) — 🚧 deploy a PROD EN CURSO (PR #324)
+
+Continuación directa de la sesión de v1.164.0, mismo día. GO, revisando la venta real **#619** del
+tenant "Almacén Jorgito" en DEV, encontró un hueco real de la Regla de Oro #0: Ventas tiene el botón
+"Finalizar (rebaja stock)" que rebaja stock directo, pero si esa misma venta tiene un Pedido activo
+(nacido automáticamente para preparación/picking, migs 315-319), alguien podía además "Lanzar" ese
+Pedido y generar una tarea de picking que, al completarse, **rebajaría el stock por segunda vez** para
+la misma mercadería. En la #619 real no llegó a duplicarse (la tarea se canceló antes de completarse)
+pero el sistema lo permitía.
+
+- **Frontend (`VentasPage.tsx`)**: query `pedidoActivoVenta` (Pedido con `venta_origen_id` = la venta
+  abierta y `estado <> 'cancelado'`) — si existe, el botón "Finalizar (rebaja stock)" (ficha de venta
+  + modal de confirmación de pago MP) se reemplaza por un aviso: el rebaje se hace desde Pedidos →
+  Picking.
+- **Backend (mig 350)**: `fn_pedido_venta_viva` (mig 323) ya bloqueaba presupuesto/cancelada/devuelta
+  al "Lanzar" — ahora también bloquea `despachada`/`facturada` (los 2 estados del CHECK de
+  `ventas.estado` que significan "el stock ya se rebajó"; confirmado contra el código real que a
+  `facturada` solo se llega pasando por `despachada`, sin re-rebajar stock en esa transición).
+- **Pedidos (`PedidosPage.tsx` + `pedidoVenta.ts`)**: el botón "Lanzar" se deshabilita
+  **preventivamente** (antes solo fallaba reactivo con un toast del servidor) cuando la venta de
+  origen ya se despachó, vía `motivoNoLanzarPedido()` contra `ventas:venta_origen_id(estado)` (join
+  nuevo). 🐛 De paso se encontró y corrigió un embed ambiguo (PGRST201 — `pedidos`↔`ventas` tienen 2
+  FK entre sí) resuelto calificando por columna, y un error de Supabase que la query silenciaba sin
+  chequear (`throw error` agregado).
+- **Compras (mig 349)**: `registrar_pago_oc` (mig 237) fallaba con "column oc_id does not exist" al
+  pagar una OC sin `monto_total` seteado directo — el fallback filtraba `orden_compra_items` por una
+  columna `oc_id` que nunca existió ahí (la real es `orden_compra_id`). Reproducido con la OC #30 real
+  de DEV.
+- **UX**: pestaña "Pedidos listos para retirar" de Ventas → **"Retiro"** (tab) / "Retiro en mostrador"
+  (encabezado) — explícitamente pickup-only por diseño, no bug (los pedidos con envío nunca aparecen
+  ahí). `ListaConteoFooter` pasa a `sticky bottom-0` (Productos/Inventario/Clientes/Envíos).
+
+Verificado en el navegador contra DEV real: venta #622 (con Pedido #23 confirmado) mostró el aviso en
+vez del botón; 7 pedidos reales cuya venta ya estaba despachada mostraron "Lanzar" deshabilitado con
+el tooltip correcto.
+
+**`APP_VERSION` v1.165.0, commit `c3ea45aa` pusheado a `origin/dev`. PR #324 (`dev`→`main`) abierto.**
+Migraciones 349 y 350 aplicadas y verificadas en DEV y PROD antes del merge (DDL aditivo/no-destructivo
+primero, mismo criterio de siempre). El merge a `main` + tag/release `v1.165.0` + verificación del
+bundle en Vercel PROD los completa el `deploy-runner` en paralelo a esta actualización de wiki —
+confirmar en la próxima sesión.
+
+Pendiente anotado, NO construido: GO pidió trazabilidad completa de una venta en `/historial`
+(filtrar por número de venta, ver pedidos/envíos/devoluciones/movimientos de stock asociados) —
+diseño propuesto, explícitamente diferido ("hacerlo en estos días, apenas terminemos con lo que
+estamos haciendo"). Ver [[wiki/features/reportes-metricas]].
+
+Ver `log.md` (2026-08-11), `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"),
+`wiki/database/migraciones.md` (migs 349/350), [[wiki/features/pedidos]], [[wiki/features/ventas-pos]],
+[[wiki/features/clientes-proveedores]].
 
 ---
 

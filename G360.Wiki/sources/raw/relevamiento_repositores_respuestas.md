@@ -2,7 +2,7 @@
 name: relevamiento_repositores_respuestas
 description: Respuestas de Fede al relevamiento del módulo Repositores (Fase E del backlog Comercial 25/7) + revisión de Claude + clarificaciones de GO. Reveló que "Fase E" son 4 proyectos con dependencias reales, no una sola fase.
 type: project
-status: 🟢 DESBLOQUEADO — los 3 relevamientos derivados (Ubicaciones v1.157.0, Pestaña de Supervisor v1.163/164.0, Motor de Rotación) y las 3 ambigüedades de negocio (A1/A2-B3/H1) ya están cerrados. Falta escribir el relevamiento final (paso 4 del orden acordado) y recién ahí diseñar/construir. Ver "Cierre de ambigüedades" al final.
+status: 🟡 EN CONSTRUCCIÓN POR FASES — en vez de escribir un relevamiento final único, se partió en fases (F→A→B→C→D... mismo criterio que Comercial) por ser un módulo grande. Fase 1 (núcleo + disparadores + prioridad, mig 352) CONSTRUIDA Y VERIFICADA EN DEV el 2026-08-11 — ver [[wiki/features/repositores]]. NO deployada a PROD todavía. Fases futuras (reposición física/I3, asignación, etiquetas, notificaciones, reportes) sin arrancar.
 source: relevamiento-repositores-reglas-negocio.html
 updated: 2026-08-11
 ---
@@ -230,3 +230,30 @@ antes de diseñar/construir es escribir el **relevamiento final de Repositores**
 trabajo acordado" abajo) — que junta las respuestas de los 3 relevamientos derivados + resuelve I3 como
 propuesta de diseño + marca C3 como nota de dimensionamiento — y recién ahí arrancar la Fase E en sí.
 Ese documento todavía NO se escribió.
+
+## ✅ Actualización 2026-08-11 (misma tarde) — C3 e I3 resueltos EN LA PRÁCTICA, Fase 1 construida, sin escribir el relevamiento final como documento aparte
+
+En vez de escribir el "relevamiento final" como documento previo separado, se decidió partir Fase E en
+fases de CONSTRUCCIÓN directamente (mismo criterio que Comercial F→A→B→C→D) y resolver C3/I3 al
+construir cada fase, no antes por escrito:
+
+- **C3** (prioridad, criterio "backend real") — implementado en la mig 352: `vw_tareas_repositor`
+  calcula el criterio #1 ("se vendió con el cartel viejo") con un `EXISTS` correlacionado contra
+  `venta_items`/`ventas`, recalculado en cada lectura. Verificado con datos reales.
+- **I3** (reusar `wms_tareas.tipo='replenishment'` o tipo nuevo) — resuelto por investigación de
+  código real (no hacía falta preguntarle a nadie): `fn_wms_elegir_ubicacion_picking` filtra DURO por
+  `tipo_logico='picking'`, así que un `replenishment` hoy NUNCA puede apuntar a una góndola. El propio
+  repo ya tiene el precedente de crear un `tipo` nuevo para un mecanismo compartido cuando agregó
+  `'armado'` (mig 345). Conclusión: reusar el MECANISMO de movimiento de stock, tipo de tarea NUEVO
+  (ej. `reposicion_gondola`) — queda pendiente de construir en la fase que agregue reposición física
+  (no es parte de la Fase 1).
+
+**Fase 1 (núcleo + disparadores automáticos + prioridad) CONSTRUIDA Y VERIFICADA EN DEV** —
+detalle completo en [[wiki/features/repositores]]. Migración 352, `origin/dev` commit `62ba97ec`
+(v1.167.0). **NO deployada a PROD** — es un módulo nuevo, se le preguntó a GO si deployar ahora o
+esperar más revisión antes de subirlo; sin respuesta al cierre de la sesión que la construyó.
+
+**Próxima sesión**: confirmar la decisión de GO sobre deployar Fase 1 a PROD, y si corresponde
+retomar, seguir con la fase de reposición física a góndola (construye I3) o la de asignación/
+reasignación (conecta con la Pestaña de Supervisor, ya construida) — el orden entre esas dos no está
+decidido todavía.

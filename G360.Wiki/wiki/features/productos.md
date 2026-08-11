@@ -260,7 +260,8 @@ Visible solo si el tenant tiene `marketplace_activo = true`.
 producto_ubicacion_sucursal(
   producto_id UUID,
   sucursal_id UUID,
-  ubicacion_id UUID,
+  ubicacion_id UUID,               -- putaway default (esta sección)
+  ubicacion_exhibicion_id UUID,    -- góndola, mig 335 — ver abajo
   UNIQUE(producto_id, sucursal_id)
 )
 ```
@@ -281,6 +282,19 @@ producto_ubicacion_sucursal(
 **Corrección bug (v1.8.31-dev):** un solo `<select>` por sucursal activa (antes renderizaba dos selects cuando la sucursal variaba durante la sesión de edición).
 
 Patrón idéntico a `producto_stock_minimo_sucursal` (migration 052).
+
+### Ubicación de exhibición — góndola (mig 335 + 352 · v1.167.0, para el módulo Repositores)
+
+Campo nuevo (2026-08-11) **"Ubicación de exhibición (góndola)"**, mismo bloque que "Ubicación
+predeterminada" arriba pero en su propio select, filtrado a ubicaciones con `tipo_logico =
+'exhibicion'` de la sucursal activa. Guarda en la MISMA fila de `producto_ubicacion_sucursal`
+(columna `ubicacion_exhibicion_id`) — el upsert/delete de esa fila ahora contempla los dos campos
+independientemente (no borra uno porque el otro quedó vacío).
+
+La columna existía desde la mig 335 (rediseño de Ubicaciones) pero **no tenía ninguna UI** hasta la
+mig 352 — sin ella asignada, el módulo [[wiki/features/repositores]] no genera ninguna tarea para ese
+producto (sus triggers de "cambió el precio"/"entró en descuento" dependen de este campo para saber
+si corresponde avisar a un repositor).
 
 ---
 

@@ -6,6 +6,59 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-11] update | 🆕 Repositores Fase 1 (mig 352) CONSTRUIDA Y VERIFICADA EN DEV, sin deployar + v1.166.1 EN PROD (link a Pedido) + límite de gasto de cuenta corta subagentes
+
+Continuación directa de la entrada de abajo (v1.166.0), mismo día.
+
+**v1.166.1 EN PROD** — badge "Pedido #N · estado" clickeable en el detalle de venta (mismo patrón que
+el badge de Envío, que sí lo tenía) → `/pedidos?busqueda=N`. `PedidosPage.tsx` no leía el query param
+`busqueda` de la URL todavía (`EnviosPage.tsx` sí) — se agregó. PR #327 mergeado, tag/release
+`v1.166.1`, bundle de Vercel PROD verificado. Sin migraciones.
+
+**🆕 Repositores — Fase 1 (núcleo + disparadores + prioridad).** Repositores (Fase E del backlog de
+Fede) quedó 100% desbloqueado el 2026-08-11 (A1/A2-B3/H1 cerrados por GO) sin arrancar diseño — es un
+módulo grande (12 secciones), se partió en fases como Comercial (F→A→B→C→D). GO eligió la Fase 1 más
+chica de 3 propuestas: rol + módulo + generación automática de tareas + prioridad, sin reposición
+física/asignación/etiquetas/notificaciones/reportes (fases futuras).
+
+**I3** (¿reusar `wms_tareas.tipo='replenishment'` para la reposición física a góndola?) se resolvió
+por investigación de código, no era decisión de negocio: la función que elige destino de un
+`replenishment` filtra duro por `tipo_logico='picking'`, y el repo ya tiene precedente de tipo nuevo
+para mecanismo compartido (`'armado'`, mig 345) — se resuelve así en la fase futura correspondiente.
+
+**Mig 352**: tabla `tareas_repositor` + 2 triggers (`productos.precio_venta`, `inventario_lineas.
+estado_id` si el estado tiene `descuento_pct>0`) + vista `vw_tareas_repositor` con la prioridad C1-C3
+de Fede (vendido con cartel viejo > precio subió > vencimiento > más vieja primero) calculada en cada
+lectura. Solo genera tarea si el producto tiene `producto_ubicacion_sucursal.ubicacion_exhibicion_id`
+apuntando a una ubicación `tipo_logico='exhibicion'` en esa sucursal, y el tenant está en modo
+avanzado. Dedupe por (producto, sucursal, tipo) vía `UNIQUE` parcial + `ON CONFLICT ... DO UPDATE`
+(cierra una race condition real que tenía el patrón `UPDATE...; IF NOT FOUND THEN INSERT` inicial).
+
+**Gap real encontrado al verificar**: `ubicacion_exhibicion_id` (mig 335, agregada como prep para
+Repositores) no tenía NINGUNA UI para setearla — se agregó el campo "Ubicación de exhibición (góndola)"
+en `ProductoFormPage.tsx`.
+
+**Verificado end-to-end contra DEV real**: asignación de exhibición + 2 cambios de precio reales por
+la UI → tarea `cambio_precio` correcta con badge "Precio subió" → cambio real de `estado_id` a un
+estado con descuento → tarea `cambio_estado` correcta → completar desde la UI → toast + movimiento a
+"Completadas". Datos de prueba limpiados después (tenant quedó como estaba).
+
+Commiteado y pusheado a `origin/dev` (v1.167.0, commit `62ba97ec`). Migración 352 **SOLO en DEV** —
+**sin deployar a PROD**: es un módulo nuevo, se le preguntó a GO si deployar ahora o esperar más
+revisión — sin respuesta al cierre de esta sesión.
+
+**⚠ Cuenta llegó al límite mensual de gasto** a mitad de sesión — `deploy-runner` y
+`migration-reviewer` fallaron con "You've hit your monthly spend limit". El deploy de v1.166.1 terminó
+bien igual (Vercel no depende del agente). La mig 352 se revisó a mano contra el mismo checklist del
+subagente. Confirmar la próxima sesión si el límite ya se levantó.
+
+**3 preguntas de GO anotadas para revisar después** (sin investigar ni tocar código todavía): paginar
+Alertas/Supervisión como Historial · venta de TiendaNube muestra "Sin cliente" · revisar el flujo
+Presupuesto→Finalizar (¿tiene sentido saltear "Reservar"?). Detalle completo en memoria — ver
+`project_pendientes.md` bloque ARRANCÁ ACÁ punto 4.
+
+---
+
 ## [2026-08-11] deploy | 🔍🛑 v1.166.0 EN PROD: trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0 — el stock reservado quedaba atascado para siempre tras entregar el pedido
 
 Continuación directa de la sesión de abajo (v1.165.0/v1.165.1), mismo día. Construye lo que había

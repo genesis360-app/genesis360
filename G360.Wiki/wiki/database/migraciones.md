@@ -6,10 +6,33 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-11
 ---
 
-# Historial de Migraciones (001-351)
+# Historial de Migraciones (001-352)
 
-**Total al 2026-08-11:** 351 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-11:** 352 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**352 (`352_repositores_fase1_nucleo.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
+NO aplicada en PROD (`jjffnbrdjchquexdfgwq`) todavía — código en `origin/dev` (v1.167.0, commit
+`62ba97ec`), sin mergear a `main`:** 🆕 Módulo nuevo Repositores, Fase 1 (núcleo + disparadores +
+prioridad) del backlog Comercial de Fede — ver [[wiki/features/repositores]] para el detalle completo.
+Tabla `tareas_repositor` (ciclo de vida pendiente/en_curso/completada/cancelada, mismo patrón que
+`wms_tareas`) + 2 triggers `SECURITY DEFINER` (`fn_generar_tarea_repositor_precio` AFTER UPDATE OF
+`precio_venta` ON `productos`; `fn_generar_tarea_repositor_estado` AFTER UPDATE OF `estado_id` ON
+`inventario_lineas`, solo si el estado destino tiene `descuento_pct>0`) que generan/actualizan una
+tarea de "cambiar cartel de precio en la góndola", **solo** si el producto tiene
+`producto_ubicacion_sucursal.ubicacion_exhibicion_id` apuntando a una ubicación `tipo_logico=
+'exhibicion'` en esa sucursal y el tenant está en `modo_operacion='avanzado'`. Dedupe por (producto,
+sucursal, tipo) vía `UNIQUE` parcial `WHERE estado IN ('pendiente','en_curso')` + `INSERT ... ON
+CONFLICT ... DO UPDATE` — corrige una race condition real que tenía el patrón inicial
+`UPDATE...; IF NOT FOUND THEN INSERT` (encontrada en el self-review, ver abajo). Vista
+`vw_tareas_repositor` calcula la prioridad de Fede (vendido con el cartel desactualizado > precio
+subió > cercanía a vencimiento > más vieja primero) en cada lectura, nunca cacheada — cruza contra
+`venta_items`/`ventas` con un `EXISTS` correlacionado para saber si se vendió algo desde que nació la
+tarea. Migración puramente aditiva, sin `migration-reviewer` disponible (falló por el límite de gasto
+mensual de la cuenta a mitad de sesión) — **revisada a mano contra el mismo checklist que usa el
+subagente** (race conditions, `SECURITY DEFINER`, RLS heredada por la vista, GRANTs). Verificada
+end-to-end contra datos reales de DEV: los 2 triggers, la prioridad, completar/cancelar — todo
+probado con acciones reales por la UI (datos de prueba limpiados después).
 
 **351 (`351_actividad_log_venta_id.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y
 PROD (`jjffnbrdjchquexdfgwq`), código release `v1.166.0` CONFIRMADO 100% EN PROD (PR #326 mergeado
@@ -176,6 +199,10 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
+**001-352: 351 EN DEV Y PROD, 352 SOLO EN DEV.** Código `v1.166.1` 100% CERRADO Y EN PROD (PR #327,
+link directo al Pedido desde el detalle de venta, sin migración propia). **Código `v1.167.0`
+(Repositores Fase 1, mig 352) EN `origin/dev` (commit `62ba97ec`), SIN mergear a `main` ni deployar —
+decisión pendiente de GO.**
 **001-351 EN DEV Y PROD, código `v1.166.0` 100% CERRADO Y EN PROD (PR #326, merge `95e837f6`, tag+release
 `v1.166.0`)** — trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0 (el stock
 reservado de una venta quedaba atascado tras entregar su pedido, sin migración propia, código de

@@ -6,7 +6,102 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont. 2) — v1.166.0 EN PROD (PR #326): trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0 — el stock reservado de una venta quedaba atascado para siempre tras entregar el pedido
+> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont. 3) — v1.166.1 EN PROD (link directo al Pedido) + 🆕 Repositores Fase 1 CONSTRUIDA Y VERIFICADA EN DEV (mig 352, SIN deployar a PROD todavía) + 3 preguntas de GO anotadas para revisar + ⚠ cuenta llegó al límite mensual de gasto (subagentes caídos)
+>
+> Continuación directa de la sesión de abajo (v1.166.0, mismo día).
+>
+> #### 1. v1.166.1 EN PROD — link directo al Pedido desde el detalle de venta
+>
+> GO se encontró con el aviso "Finalizar bloqueado — hay un Pedido en curso" (v1.165.0/v1.166.0) sin
+> ningún link para ir a ver ese pedido, a diferencia del badge de Envío (sí clickeable). Se agregó el
+> mismo patrón: badge "Pedido #N · estado" en el header del detalle de venta → `/pedidos?busqueda=N`
+> ya filtrado. `PedidosPage.tsx` no leía ese query param todavía (`EnviosPage.tsx` sí) — se agregó.
+> PR #327 (`https://github.com/genesis360-app/genesis360/pull/327`) mergeado, tag/release `v1.166.1`,
+> bundle de Vercel PROD verificado con la cadena "v1.166.1". Sin migraciones.
+>
+> #### 2. 🆕 Repositores — Fase 1 (núcleo + disparadores + prioridad) CONSTRUIDA Y VERIFICADA EN DEV
+>
+> Repositores (Fase E del backlog Comercial de Fede, ver [[project_backlog_fede_comercial_25_7]])
+> quedó 100% desbloqueado el 2026-08-11 (A1/A2-B3/H1 cerrados por GO) pero sin arrancar diseño. Es un
+> módulo grande (12 secciones del relevamiento) — se partió en fases, mismo criterio que Comercial
+> (F→A→B→C→D). GO confirmó arrancar por **Fase 1 = núcleo + disparadores automáticos + prioridad**
+> (la opción más chica de 3 propuestas), dejando para fases futuras: reposición física a góndola,
+> asignación/reasignación vía Pestaña de Supervisor, etiquetas/impresión, notificaciones, reportes.
+>
+> **I3 resuelto por investigación de código** (no había decisión de negocio pendiente, era técnica):
+> ¿reusar `wms_tareas.tipo='replenishment'` para la reposición física o hacer un tipo nuevo? La función
+> que elige destino de un `replenishment` filtra DURO por `tipo_logico='picking'` (no acepta góndola) y
+> el propio repo ya tiene precedente de crear un `tipo` nuevo para un mecanismo compartido (`'armado'`,
+> mig 345) — se resuelve así en la fase futura que construya reposición física, no ahora.
+>
+> **Mig 352** (tabla `tareas_repositor` + 2 triggers + vista `vw_tareas_repositor`):
+> - `productos.precio_venta` (AFTER UPDATE) y `inventario_lineas.estado_id` (AFTER UPDATE, si el
+>   estado destino tiene `descuento_pct>0`) generan/actualizan una tarea, **solo** si el producto tiene
+>   `producto_ubicacion_sucursal.ubicacion_exhibicion_id` apuntando a una ubicación
+>   `tipo_logico='exhibicion'` en esa sucursal, y **solo** si `tenants.modo_operacion='avanzado'`.
+> - Dedupe por (producto, sucursal, tipo) vía `UNIQUE` parcial + `ON CONFLICT ... DO UPDATE` — 1 sola
+>   tarea por SKU aunque se edite en bulk (B1 del relevamiento), y cierra una race condition real que
+>   tenía el patrón inicial `UPDATE...; IF NOT FOUND THEN INSERT` (self-reviewed: el `migration-reviewer`
+>   subagente falló por el límite de gasto de la cuenta, así que esta migración se revisó a mano contra
+>   el mismo checklist que usa el subagente).
+> - Prioridad automática (C1-C3, Fede): vendido con el cartel desactualizado > precio subió >
+>   cercanía a vencimiento > más vieja primero — calculada en cada lectura (`vw_tareas_repositor`,
+>   nunca cacheada; si hoy no vendió nada pero mañana sí, escala de prioridad sola).
+>
+> **Gap real encontrado al verificar**: `producto_ubicacion_sucursal.ubicacion_exhibicion_id` (mig 335,
+> agregada como prep para Repositores) **no tenía NINGUNA UI para setearla** — sin eso los triggers
+> nunca iban a disparar nunca. Se agregó el campo "Ubicación de exhibición (góndola)" en
+> `ProductoFormPage.tsx`, mismo patrón que "Ubicación predeterminada" ya existente.
+>
+> Módulo nuevo `/repositores` (`RepositoresPage.tsx`) + rol delegable vía `roles_custom` (se agregó
+> `'repositores'` a la lista `MODULOS` de `UsuariosPage.tsx`, patrón ya usado por Comercial) + nav item
+> gateado a Modo Avanzado (`cajeroVisible`/`depositoVisible`, sin `ownerOnly`/`supervisorOnly` — no se
+> sabe todavía qué rol base va a usar GO para el custom role).
+>
+> **Verificado end-to-end contra datos reales de DEV** (no solo unit/build): asigné "Góndola1" como
+> exhibición de un producto real vía la UI → cambié su precio dos veces por la UI real → confirmé la
+> tarea `cambio_precio` en la tabla con `precio_anterior`/`precio_nuevo` correctos y el badge "Precio
+> subió" en la pantalla → cambié el `estado_id` de una línea real a un estado con descuento → confirmé
+> la tarea `cambio_estado` con el nombre/% correcto → completé una tarea desde la UI y confirmó el
+> toast + el movimiento a la pestaña "Completadas". **Todos los datos de prueba se limpiaron después**
+> (revertido precio, ubicación de exhibición, estado de línea; tareas de prueba borradas) — el tenant
+> "Almacén Jorgito" quedó como estaba antes de probar.
+>
+> **Commiteado y pusheado a `origin/dev`** (`APP_VERSION` v1.167.0, commit `62ba97ec`). Migración 352
+> aplicada **SOLO en DEV** (`gcmhzdedrkmmzfzfveig`) — **NO se aplicó en PROD ni se deployó**: es un
+> módulo nuevo, no un fix, así que se le preguntó a GO si deployar ahora o esperar más revisión/que lo
+> pruebe Fede — sin respuesta todavía al momento de cerrar esta sesión. **Decisión pendiente real de
+> la próxima sesión.**
+>
+> #### 3. ⚠ Cuenta llegó al límite mensual de gasto — subagentes fallaron a mitad de sesión
+>
+> El `deploy-runner` (deploy de v1.166.1) y el `migration-reviewer` (revisión de la mig 352) fallaron
+> con *"You've hit your monthly spend limit"*. El deploy de v1.166.1 terminó bien igual (Vercel sigue
+> el build solo, no depende del agente — se verificó el bundle real por curl). La migración 352 se
+> revisó a mano contra el mismo checklist que usa el subagente (ver arriba). **Confirmar la próxima
+> sesión si el límite ya se levantó** antes de asumir que los subagentes funcionan de nuevo.
+>
+> #### 4. Preguntas de GO anotadas para revisar — NINGUNA se investigó ni se tocó código todavía
+>
+> Tres preguntas que GO pidió explícitamente guardar para después (no actuar ahora), documentadas en
+> memoria con el detalle completo — no reinvestigar desde cero, arrancar leyendo la memoria:
+> - **Paginar Alertas/Supervisión** como ya tiene Historial (footer "Mostrando X de Y" + selector de
+>   cantidad) — Alertas hoy trae todo de una, sospecha de que pesa en el tiempo de carga.
+> - **Venta de TiendaNube muestra "Sin cliente"** aunque el pedido de TN sí trae datos del comprador —
+>   ¿no matchea? ¿conviene auto-crear el cliente con un ID interno? Investigar antes de proponer.
+> - **Revisar el flujo Presupuesto→Finalizar**: ¿tiene sentido que un presupuesto pueda saltear
+>   "Reservar stock" e ir directo a "Finalizar (rebaja stock)"? Pensar en simple/intuitivo/flexible.
+>
+> Ver `log.md` (2026-08-11, entrada al principio), [[wiki/business/roadmap]] (v1.166.1 + Repositores
+> Fase 1), `wiki/database/migraciones.md` (mig 352), [[wiki/features/repositores]] (página nueva),
+> [[wiki/features/productos]] (campo "Ubicación de exhibición"),
+> [[project_backlog_fede_comercial_25_7]] (memoria — estado real de Fase E),
+> [[project_paginacion_alertas_supervision]], [[project_tn_venta_sin_cliente]],
+> [[project_revision_flujo_presupuesto_finalizar]] (memorias de las 3 preguntas diferidas).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-11 cont. 2) — v1.166.0 EN PROD (PR #326): trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0 — el stock reservado de una venta quedaba atascado para siempre tras entregar el pedido
 >
 > Continuación directa de la sesión de abajo (v1.165.0/v1.165.1, mismo día). Construye lo que había
 > quedado anotado como pendiente y **explícitamente diferido** por GO en esa sesión ("trazabilidad

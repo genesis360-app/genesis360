@@ -2,21 +2,22 @@
 title: Módulo Repositores
 category: features
 tags: [repositores, precios, etiquetas, gondola, prioridad, roles-custom, modo-avanzado]
-sources: [migration 352, migration 353, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/components/layout/AppLayout.tsx]
+sources: [migration 352, migration 353, migration 354, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts]
 updated: 2026-08-11
 ---
 
 # Módulo Repositores
 
-> 🟡 **Fase 1 (núcleo + disparadores + prioridad) CONSTRUIDA Y VERIFICADA EN DEV (mig 352 + fix de
-> seguridad mig 353, 2026-08-11) — NO deployada a PROD todavía.** Es un módulo nuevo, no un fix: se le
-> preguntó a GO si deployar ahora o esperar más revisión (de él o de Fede) antes de subirlo — sin
-> respuesta al cierre de la sesión que lo construyó. Confirmar el estado real (`gh pr list`, `git log
-> origin/main`) antes de asumir que sigue en DEV.
+> 🟡 **Fase 1 (núcleo + disparadores + prioridad, mig 352 + fix de seguridad mig 353) y Fase 2
+> (asignación automática + reasignación manual, mig 354) CONSTRUIDAS Y VERIFICADAS EN DEV (2026-08-11)
+> — NINGUNA deployada a PROD todavía.** Es un módulo nuevo, no un fix: se le preguntó a GO si deployar
+> ahora o esperar más revisión (de él o de Fede) antes de subirlo — sin respuesta al cierre de la
+> sesión que lo construyó. Confirmar el estado real (`gh pr list`, `git log origin/main`) antes de
+> asumir que sigue en DEV.
 >
-> 🔒🛑 **Bug de seguridad real encontrado y corregido en la misma sesión (mig 353), mientras estuvo
-> SOLO en DEV, nunca llegó a PROD**: `vw_tareas_repositor` había quedado creada sin `security_invoker`
-> — ver "Fix de seguridad" más abajo.
+> 🔒🛑 **Bug de seguridad real encontrado y corregido en la Fase 1 (mig 353), mientras estuvo SOLO en
+> DEV, nunca llegó a PROD**: `vw_tareas_repositor` había quedado creada sin `security_invoker` — ver
+> "Fix de seguridad" más abajo.
 
 Módulo para que la persona que repone mercadería en el local sepa, sin tener que acordarse ni
 recorrer la góndola, **qué cartel de precio hay que cambiar** — cada vez que un precio cambia o un
@@ -30,11 +31,14 @@ ya en PROD) y 3 decisiones de negocio (A1/A2-B3/H1, cerradas por GO el 2026-08-1
 resuelto, el módulo es grande de más para construir de una — se partió en **fases**, mismo criterio
 que ya usó el backlog de Comercial (F→A→B→C→D):
 
-- **Fase 1 (esta, ✅ construida)**: núcleo del módulo + disparadores automáticos + prioridad.
-- **Fases futuras (sin arrancar)**: reposición física de stock a góndola (requiere I3, ver abajo),
-  asignación/reasignación de tareas vía la Pestaña de Supervisor (ya existe el patrón genérico, ver
-  [[wiki/features/supervision]]), etiquetas + impresión (PDF pensado para servir también en
-  impresoras térmicas Zebra, decisión de GO), notificaciones, reportes.
+- **Fase 1 (✅ construida)**: núcleo del módulo + disparadores automáticos + prioridad.
+- **Fase 2 (esta, ✅ construida, mig 354)**: asignación automática por carga + reasignación manual vía
+  el patrón de la Pestaña de Supervisor (ya existía como pieza genérica, ver
+  [[wiki/features/supervision]]).
+- **Fases futuras (sin arrancar, ahora 2, no 3)**: reposición física de stock a góndola (requiere I3,
+  ver abajo), etiquetas + impresión (PDF pensado para servir también en impresoras térmicas Zebra,
+  decisión de GO), notificaciones, reportes — el orden entre reposición física y etiquetas no está
+  decidido todavía.
 
 ## Qué hace la Fase 1
 
@@ -151,17 +155,104 @@ DB real de DEV: `pg_class.reloptions` confirma `security_invoker=true`;
   `wms_tareas.tipo='replenishment'` (la función que elige destino filtra duro por
   `tipo_logico='picking'`, incompatible con góndola) — hace falta un tipo nuevo (ej.
   `reposicion_gondola`), reusando el MECANISMO de movimiento de stock pero no el tag. Mismo
-  precedente que ya usó el proyecto al agregar `'armado'` (mig 345) para un caso análogo.
-- **Asignación/reasignación de tareas** — hoy es una cola compartida sin asignar (mismo punto de
-  partida que tuvo `wms_tareas` antes de tener asignación). La Pestaña de Supervisor reusable (mig
-  347/348, [[wiki/features/supervision]]) ya existe como patrón — conectarla es la fase que sigue.
+  precedente que ya usó el proyecto al agregar `'armado'` (mig 345) para un caso análogo. Todavía sin
+  arrancar.
+- **Asignación/reasignación de tareas** — ✅ **construida en la Fase 2 (mig 354, ver abajo)**, hoy era
+  una cola compartida sin asignar (mismo punto de partida que tuvo `wms_tareas` antes de tener
+  asignación).
 - **Etiquetas + impresión** (G/H del relevamiento) — diseño de etiqueta con precio por unidad grande
   (usa la conversión de `unidades_medida_fisicas` ya existente) + PDF pensado para servir también en
   una impresora térmica Zebra si el negocio tiene una (decisión de GO, sin impresión automática — un
-  humano dispara la impresión).
-- **Notificaciones** (J) y **reportes** (K).
+  humano dispara la impresión). Todavía sin arrancar.
+- **Notificaciones** (J) y **reportes** (K). Todavía sin arrancar.
 
-## Verificación real (2026-08-11, contra DEV)
+## Qué hace la Fase 2 (mig 354) — asignación automática + reasignación manual
+
+GO eligió esta fase (de las 3 propuestas: reposición física / asignación-reasignación / etiquetas) como
+la siguiente a construir, conectando con E2/E4 del relevamiento y con el patrón genérico de la Pestaña
+de Supervisor (mig 347/348, [[wiki/features/supervision]]).
+
+### Pool de repositores y reparto por carga
+
+- **`fn_usuarios_hacen_repositor(p_tenant_id, p_sucursal_id)`** — pool de usuarios elegibles para
+  HACER trabajo de repositor en una sucursal. Es un pool **distinto** del de
+  `fn_usuarios_supervisan_modulo` (mig 348), que es para SUPERVISAR/aprobar — acá es para que le caiga
+  la tarea de reponer. Elegibles: roles fijos DUEÑO/SUPER_USUARIO/SUPERVISOR/CAJERO/DEPOSITO, o un rol
+  custom con permiso `'editar'`/`'supervisa'` en `'repositores'`. Excluye a propósito el rol ADMIN
+  (staff de soporte cross-tenant de Genesis360) — no tiene sentido que trabajo físico de góndola le
+  caiga a alguien de soporte. `SQL STABLE`, **sin** `SECURITY DEFINER`: al correr como invoker, si
+  alguien pasa un `tenant_id` ajeno por RPC, la RLS de `users` lo bloquea sola (confirmado correcto por
+  el `migration-reviewer`).
+- **`fn_repositor_elegir_asignado(p_tenant_id, p_sucursal_id)`** — del pool de arriba, elige quien
+  tiene MENOS tareas `pendiente`/`en_curso` asignadas ahora mismo en esa sucursal; empate al azar
+  (mismo patrón que `fn_autorizaciones_auto_asignar` de la mig 348, para que el reparto sea justo de
+  verdad y no siempre caiga en el mismo usuario). Uso interno, sin RPC pública propia.
+- La elección se **inlineó directo en el `INSERT` de los 2 triggers de la mig 352**
+  (`fn_generar_tarea_repositor_precio`/`fn_generar_tarea_repositor_estado`, redefinidos con
+  `CREATE OR REPLACE`) — a diferencia del patrón de `autorizaciones`, acá **no** se agregó un trigger
+  `BEFORE INSERT` genérico aparte, porque TODAS las filas de `tareas_repositor` nacen únicamente de
+  esos 2 triggers. El dedupe `ON CONFLICT ... DO UPDATE` (mig 352) sigue **sin tocar**
+  `usuario_asignado_id` a propósito: un cambio de precio repetido sobre una tarea ya asignada no la
+  reasigna a otra persona.
+
+### Guard de tenant y vista
+
+- **`fn_tarea_repositor_asignado_valido_tenant`** (trigger `BEFORE INSERT/UPDATE OF
+  usuario_asignado_id`): rechaza si el usuario asignado no pertenece al mismo tenant — mismo patrón
+  que `fn_regla_enrutamiento_valida_tenant` de la mig 348, cierra el mismo tipo de gap (un `PATCH`
+  directo a REST podría intentar asignar la tarea a alguien de otro tenant).
+- **`vw_tareas_repositor`** (`CREATE OR REPLACE`, preserva `WITH (security_invoker=true)` de la mig
+  353) suma la columna `usuario_asignado_nombre` — agregada AL FINAL del `SELECT` porque Postgres
+  rechaza insertar una columna nueva en el medio de una vista existente ("cannot change name of view
+  column").
+
+### Reviewer — veredicto APTA
+
+`migration-reviewer` corrió completo, sin hallazgos bloqueantes. 4 sugerencias 🟡 no bloqueantes, 2
+aplicadas en el momento (mismo archivo, antes de commitear): `fn_repositor_elegir_asignado` pasó de
+`STABLE` a `VOLATILE` (usa `random()`, clasificación correcta aunque inofensivo en la práctica) y se
+agregó `REVOKE ALL FROM PUBLIC, anon, authenticated` al guard de tenant (ruido del Security Advisor, no
+explotable). Las otras 2 quedan como nota, sin actuar:
+- La reasignación está gateada **solo client-side** (`puedeSupervisarModulo`), igual que el patrón ya
+  aceptado de `autorizaciones`/mig 347 — no es tema fiscal/contable/inventario, así que no se consideró
+  bloqueante, pero vale confirmarlo con GO si en algún momento se quiere endurecer server-side.
+- `schema_full.sql` sigue desactualizado (gap ya conocido de antes en esta sesión, falta
+  `SUPABASE_ACCESS_TOKEN` — no específico de esta migración).
+
+### Frontend — `RepositoresPage.tsx`
+
+Cada tarea activa muestra un badge con el nombre del asignado (o "Sin asignar"). Si el usuario logueado
+puede supervisar el módulo `'repositores'` (`puedeSupervisarModulo`), aparece un botón "Reasignar"
+(ícono `UserCog`) al lado de completar/cancelar — abre un `<select>` con los usuarios elegibles (RPC a
+`fn_usuarios_hacen_repositor`) + "Sin asignar"; al elegir uno pide un motivo (modal propio, no
+`window.prompt`) y reasigna.
+
+**Bug de trazabilidad preexistente de la Fase 1, encontrado y corregido de paso**: completar/cancelar
+una tarea logueaba `entidad: 'pedido'` en `actividad_log` en vez de un tipo propio — se agregó
+`'tarea_repositor'` a `EntidadLog` (`src/lib/actividadLog.ts`) y se corrigieron las 2 llamadas.
+
+### Verificación real (2026-08-11) — SQL contra DEV + navegador real
+
+- **SQL contra DEV real** (tenant "Almacén Jorgito", Sucursal Norte): cambio de precio real vía
+  `UPDATE` → tarea nace con `usuario_asignado_id` ya asignado (reparto por carga, pool exacto de 5
+  elegibles vs. 4 excluidos por rol confirmado: ADMIN/CONTADOR/RRHH quedaron afuera como se esperaba);
+  un segundo cambio de precio en OTRO producto fue a una persona distinta (carga balanceada, no
+  siempre la misma); un tercer cambio de precio sobre la MISMA tarea ya asignada NO la reasignó (dedupe
+  respetado); un intento de asignar a un usuario de OTRO tenant fue RECHAZADO por el guard nuevo.
+- **Navegador real** (Playwright ad-hoc contra `localhost:5173`, login real con usuario DUEÑO de
+  prueba): `/repositores` carga sin errores de consola/red; con una tarea de prueba real se vio el
+  badge "E2E Tester" (auto-asignado), se clickeó Reasignar, el picker mostró los 5 usuarios elegibles
+  reales, se reasignó a "cajero1" con motivo, apareció el toast "Tarea reasignada" y el badge cambió a
+  "cajero1" — confirmado también en DB (`actividad_log` con `entidad='tarea_repositor'`,
+  `accion='reasignar'`, motivo incluido).
+- Todos los datos de prueba se limpiaron después (tarea, ubicación de exhibición temporal, precio
+  revertido, log de prueba borrado) — el tenant quedó como estaba.
+
+Commiteado y pusheado a `origin/dev` (commit `e200d673`). **Mig 354, igual que 352 y 353, SOLO en
+DEV** — sin deployar a PROD; sin tag/release de GitHub todavía (pendiente de confirmar con GO si
+corresponde igual, no decidido).
+
+## Verificación real (2026-08-11, contra DEV) — Fase 1
 
 Con el tenant "Almacén Jorgito": se asignó "Góndola1" como ubicación de exhibición de un producto
 real vía la UI → se cambió su precio dos veces por la UI real (`$555 → $777`) → la tarea
@@ -176,7 +267,7 @@ el tenant quedó exactamente como estaba antes de probar.
 
 - [[project_backlog_fede_comercial_25_7]] (memoria) — estado completo del backlog de Fede, las 5
   fases, y el detalle de las decisiones A1/A2-B3/H1 que cerró GO.
-- [[wiki/features/supervision]] — el patrón de Pestaña de Supervisor que va a usar la fase de
-  asignación/reasignación.
+- [[wiki/features/supervision]] — el patrón de Pestaña de Supervisor cuyo criterio de reparto por
+  carga/reasignación reusó la Fase 2 de Repositores.
 - `G360.Wiki/sources/raw/relevamiento_repositores_respuestas.md` — las 35 preguntas originales y sus
   respuestas completas, incluida la sección "Cierre de ambigüedades" que resolvió A1/A2/H1/C3/I3.

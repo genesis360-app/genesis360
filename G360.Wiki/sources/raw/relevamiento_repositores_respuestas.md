@@ -2,7 +2,7 @@
 name: relevamiento_repositores_respuestas
 description: Respuestas de Fede al relevamiento del módulo Repositores (Fase E del backlog Comercial 25/7) + revisión de Claude + clarificaciones de GO. Reveló que "Fase E" son 4 proyectos con dependencias reales, no una sola fase.
 type: project
-status: 🟡 EN CONSTRUCCIÓN POR FASES — en vez de escribir un relevamiento final único, se partió en fases (F→A→B→C→D... mismo criterio que Comercial) por ser un módulo grande. Fase 1 (núcleo + disparadores + prioridad, mig 352) CONSTRUIDA Y VERIFICADA EN DEV el 2026-08-11 — ver [[wiki/features/repositores]]. NO deployada a PROD todavía. Fases futuras (reposición física/I3, asignación, etiquetas, notificaciones, reportes) sin arrancar.
+status: 🟡 EN CONSTRUCCIÓN POR FASES — en vez de escribir un relevamiento final único, se partió en fases (F→A→B→C→D... mismo criterio que Comercial) por ser un módulo grande. Fase 1 (núcleo + disparadores + prioridad, mig 352+353) y Fase 2 (asignación automática + reasignación manual, mig 354) CONSTRUIDAS Y VERIFICADAS EN DEV el 2026-08-11 — ver [[wiki/features/repositores]]. NINGUNA deployada a PROD todavía. Fases futuras (reposición física/I3, etiquetas, notificaciones, reportes) sin arrancar — ahora 2, no 3.
 source: relevamiento-repositores-reglas-negocio.html
 updated: 2026-08-11
 ---
@@ -94,9 +94,9 @@ tensiona con mover esos datos a "nivel interno" — detalle completo en `log.md`
 | # | Respuesta | Resumen |
 |---|---|---|
 | E1 | Se mantienen los 4 estados existentes (pendiente/en curso/completada/cancelada) — mide tiempos por etapa. Cancelar exige **motivo obligatorio**, visible al supervisor | Mismo patrón que `wms_tareas` ya tiene. |
-| E2 | **Mixto**: asignación automática inteligente por defecto (reparto equilibrado entre repositores disponibles de la sucursal), con reasignación manual de supervisor/dueño, o especialización configurable (precios vs. reposición física) | La pieza de "reasignación" no existe hoy en ningún módulo — candidata fuerte para el patrón de "Pestaña de supervisor reusable" (relevamiento derivado #2). `wms_tareas.usuario_asignado_id` existe en el schema pero ningún frontend lo usa. |
+| E2 | **Mixto**: asignación automática inteligente por defecto (reparto equilibrado entre repositores disponibles de la sucursal), con reasignación manual de supervisor/dueño, o especialización configurable (precios vs. reposición física) | ✅ **Construido en la Fase 2 (mig 354, 2026-08-11)** — `fn_repositor_elegir_asignado` reparte por carga (menos tareas pendientes/en_curso primero) entre el pool de `fn_usuarios_hacen_repositor`; reasignación manual vía botón "Reasignar" en `RepositoresPage.tsx`. Especialización configurable (precios vs. reposición física) sigue sin construir — depende de que exista la fase de reposición física. |
 | E3 | Configurable por el dueño en Config. Default: botón "Listo" sin evidencia. Opcional: foto de la etiqueta puesta, o escaneo del código de barras | — |
-| E4 | Sí, supervisor puede cancelar/reasignar, con motivo obligatorio (ver E1) | Ver nota transversal (pestaña de supervisor). |
+| E4 | Sí, supervisor puede cancelar/reasignar, con motivo obligatorio (ver E1) | ✅ **Construido en la Fase 2 (mig 354, 2026-08-11)** — reasignar pide motivo obligatorio (modal propio, no `window.prompt`), gateado a quien puede supervisar el módulo `'repositores'`. |
 
 ## F. Vista informativa e historial
 
@@ -249,11 +249,24 @@ construir cada fase, no antes por escrito:
   (no es parte de la Fase 1).
 
 **Fase 1 (núcleo + disparadores automáticos + prioridad) CONSTRUIDA Y VERIFICADA EN DEV** —
-detalle completo en [[wiki/features/repositores]]. Migración 352, `origin/dev` commit `62ba97ec`
-(v1.167.0). **NO deployada a PROD** — es un módulo nuevo, se le preguntó a GO si deployar ahora o
-esperar más revisión antes de subirlo; sin respuesta al cierre de la sesión que la construyó.
+detalle completo en [[wiki/features/repositores]]. Migración 352 (+ fix de seguridad 353),
+`origin/dev` commit `62ba97ec` (v1.167.0). **NO deployada a PROD** — es un módulo nuevo, se le
+preguntó a GO si deployar ahora o esperar más revisión antes de subirlo; sin respuesta al cierre de la
+sesión que la construyó.
 
-**Próxima sesión**: confirmar la decisión de GO sobre deployar Fase 1 a PROD, y si corresponde
-retomar, seguir con la fase de reposición física a góndola (construye I3) o la de asignación/
-reasignación (conecta con la Pestaña de Supervisor, ya construida) — el orden entre esas dos no está
-decidido todavía.
+## ✅ Actualización 2026-08-11 (misma tarde, continuación) — Fase 2 (asignación/reasignación) CONSTRUIDA Y VERIFICADA EN DEV, E2/E4 resueltos en la práctica
+
+Se le preguntó a GO con cuál de las 3 fases futuras seguir (reposición física a góndola / asignación-
+reasignación / etiquetas+impresión) — eligió **Asignación/reasignación** (E2/E4 de este relevamiento).
+
+**Fase 2 (asignación automática por carga + reasignación manual) CONSTRUIDA Y VERIFICADA EN DEV** —
+detalle completo en [[wiki/features/repositores]] → "Qué hace la Fase 2 (mig 354)". Migración 354,
+`origin/dev` commit `e200d673`. **NO deployada a PROD**, igual que la Fase 1 — decisión de GO
+pendiente. Verificada con SQL real contra DEV (reparto por carga entre el pool exacto de elegibles,
+guard de tenant) y con Playwright real contra el navegador (reasignación con motivo, badge, toast,
+`actividad_log`). De paso corrigió un bug de trazabilidad preexistente de la Fase 1 (completar/cancelar
+logueaba `entidad:'pedido'` en vez de un tipo propio).
+
+**Próxima sesión**: confirmar la decisión de GO sobre deployar Fase 1+2 a PROD, y si corresponde
+retomar, seguir con la fase de reposición física a góndola (construye I3) o la de etiquetas+impresión
+(G/H) — el orden entre esas dos (ahora las únicas 2 que quedan) no está decidido todavía.

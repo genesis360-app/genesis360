@@ -12,9 +12,9 @@ updated: 2026-08-11
 bundle real de Vercel verificado con la cadena "v1.166.1"). Sin migraciones nuevas respecto de
 v1.166.0. Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque
 "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.167.0 (`origin/dev` @ `36fc075b`) — **Repositores Fase 1 (mig 352 + fix de
-seguridad mig 353) construida y verificada en DEV, sin deployar a PROD todavía** (decisión pendiente de
-GO)  
+**Versión en DEV:** v1.167.0 (`origin/dev` @ `e200d673`) — **Repositores Fase 1 (mig 352 + fix de
+seguridad mig 353) y Fase 2 (mig 354, asignación/reasignación) construidas y verificadas en DEV, sin
+deployar a PROD todavía** (decisión pendiente de GO)  
 **Última actualización:** 11 de Agosto, 2026
 
 ---
@@ -56,6 +56,18 @@ historial fuera del patrón ya usado desde la mig 053. Mientras estuvo así (sol
 cualquier usuario autenticado de cualquier tenant podía leer tareas/precios/stock de TODOS los tenants.
 Corregido y verificado contra la DB real de DEV; commit `36fc075b` en `origin/dev`. Detalle completo en
 [[wiki/features/repositores]] y `wiki/database/migraciones.md` (mig 353). Sigue sin deployar a PROD.
+
+**🆕 2026-08-11 (misma sesión continuada, mig 354): Fase 2 — asignación automática + reasignación
+manual.** GO eligió esta de las 3 fases futuras propuestas (reposición física / asignación-reasignación
+/ etiquetas). `fn_usuarios_hacen_repositor`/`fn_repositor_elegir_asignado` (reparto por carga, excluye
+ADMIN a propósito) inlineados en los 2 triggers de la mig 352; guard nuevo de tenant en
+`usuario_asignado_id`; `RepositoresPage.tsx` suma badge de asignado + botón "Reasignar" (motivo
+obligatorio). `migration-reviewer`: veredicto APTA. Verificado con SQL real contra DEV y con Playwright
+real en el navegador (reasignación completa, `actividad_log`). De paso corrigió un bug de trazabilidad
+preexistente de la Fase 1 (`entidad:'pedido'` en vez de `'tarea_repositor'`). Commit `e200d673` en
+`origin/dev`. Detalle completo en [[wiki/features/repositores]] y `wiki/database/migraciones.md` (mig
+354). **Fases sin arrancar ahora 2, no 3**: reposición física a góndola (I3) y etiquetas+impresión.
+Sigue sin deployar a PROD, sin tag/release de GitHub (mig 354 no fue a PROD, igual que 352/353).
 
 ---
 

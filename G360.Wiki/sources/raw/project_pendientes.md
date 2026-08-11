@@ -6,7 +6,102 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont. 4) — 🔒🛑 Fix de seguridad real en Repositores (mig 353): `vw_tareas_repositor` sin `security_invoker` exponía datos cross-tenant + límite de gasto mensual CONFIRMADO liberado + pendiente nuevo (PAT de Supabase para `schema_full.sql`)
+> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont. 5) — 🆕 Repositores Fase 2 (mig 354): asignación automática + reasignación manual CONSTRUIDA Y VERIFICADA EN DEV — sigue sin deployar a PROD, decisión de GO pendiente
+>
+> Continuación directa de la sesión de abajo (cont. 4, mismo día). Se le preguntó a GO con cuál de las 3
+> fases futuras de Repositores seguir (reposición física a góndola / asignación-reasignación / etiquetas
+> + impresión) — eligió **Asignación/reasignación** (E2/E4 del relevamiento).
+>
+> #### 1. Mig `354_repositores_fase2_asignacion.sql` — asignación automática + reasignación manual
+>
+> - **`fn_usuarios_hacen_repositor(p_tenant_id, p_sucursal_id)`** — pool de usuarios elegibles para
+>   HACER trabajo de repositor en una sucursal (distinto del pool de `fn_usuarios_supervisan_modulo` de
+>   la mig 348, que es para SUPERVISAR/aprobar). Roles fijos DUEÑO/SUPER_USUARIO/SUPERVISOR/CAJERO/
+>   DEPOSITO o rol custom con permiso `'editar'`/`'supervisa'` en `'repositores'`; excluye a propósito
+>   el rol ADMIN (staff de soporte cross-tenant) — no tiene sentido que trabajo de góndola le caiga a
+>   alguien de soporte. `SQL STABLE` sin `SECURITY DEFINER` (decisión de seguridad correcta, confirmada
+>   por el `migration-reviewer`: al ser invoker, si alguien pasa un `tenant_id` ajeno por RPC, la RLS de
+>   `users` lo bloquea sola).
+> - **`fn_repositor_elegir_asignado(p_tenant_id, p_sucursal_id)`** — reparto por carga: del pool de
+>   arriba, elige quien tiene MENOS tareas `pendiente`/`en_curso` asignadas ahora mismo en esa sucursal,
+>   empate al azar (mismo patrón que `fn_autorizaciones_auto_asignar` de la mig 348). Uso interno, no
+>   expuesta por RPC.
+> - Esta elección se **inlineó directo en el `INSERT` de los 2 triggers de la mig 352**
+>   (`fn_generar_tarea_repositor_precio`/`estado`, redefinidos con `CREATE OR REPLACE`) — **no** se
+>   agregó un trigger `BEFORE INSERT` genérico aparte (a diferencia del patrón de `autorizaciones`)
+>   porque TODAS las filas de `tareas_repositor` nacen únicamente de esos 2 triggers. El
+>   `ON CONFLICT ... DO UPDATE` (dedupe de la mig 352) sigue **sin tocar** `usuario_asignado_id` a
+>   propósito: un cambio de precio repetido sobre una tarea ya asignada no se la reasigna a otra
+>   persona.
+> - Guard nuevo **`fn_tarea_repositor_asignado_valido_tenant`** (trigger `BEFORE INSERT/UPDATE OF
+>   usuario_asignado_id`): rechaza si el usuario asignado no pertenece al mismo tenant — mismo patrón
+>   que `fn_regla_enrutamiento_valida_tenant` de la mig 348, cierra el mismo tipo de gap (un `PATCH`
+>   directo a REST podría asignar la tarea a alguien de otro tenant).
+> - **`vw_tareas_repositor`** (`CREATE OR REPLACE`, preservando `WITH (security_invoker=true)` de la
+>   mig 353) suma columna `usuario_asignado_nombre` — tuvo que agregarse AL FINAL del `SELECT` porque
+>   Postgres rechaza insertar una columna nueva en el medio de una vista existente ("cannot change name
+>   of view column").
+>
+> #### 2. `migration-reviewer` — veredicto APTA, sin hallazgos bloqueantes
+>
+> 4 sugerencias 🟡 no bloqueantes; 2 se aplicaron en el momento (mismo archivo, antes de commitear):
+> `fn_repositor_elegir_asignado` pasó de `STABLE` a `VOLATILE` (usa `random()`, es la clasificación
+> correcta aunque inofensivo en la práctica) y se agregó `REVOKE ALL FROM PUBLIC, anon, authenticated`
+> al guard de tenant (ruido del Security Advisor, no explotable). Las otras 2 quedan como nota, **sin
+> actuar**:
+> - La reasignación está gateada **solo client-side** (`puedeSupervisarModulo`), igual que el patrón ya
+>   aceptado de `autorizaciones`/mig 347 — no es tema fiscal/contable/inventario así que no se consideró
+>   bloqueante, pero vale confirmarlo con GO si en algún momento se quiere endurecer server-side.
+> - `schema_full.sql` sigue desactualizado (gap ya conocido de antes en esta sesión, por falta de
+>   `SUPABASE_ACCESS_TOKEN` — no específico de esta migración, ver punto 4 del bloque de abajo).
+>
+> #### 3. Frontend — `RepositoresPage.tsx`
+>
+> Cada tarea activa muestra un badge con el nombre del asignado (o "Sin asignar"). Si el usuario
+> logueado puede supervisar el módulo `'repositores'` (`puedeSupervisarModulo`), aparece un botón
+> "Reasignar" (ícono `UserCog`) al lado de completar/cancelar — abre un `<select>` con los usuarios
+> elegibles (RPC a `fn_usuarios_hacen_repositor`) + "Sin asignar"; al elegir uno pide un motivo (modal
+> propio, no `window.prompt`) y reasigna.
+>
+> **Bug de trazabilidad preexistente de la Fase 1, encontrado y corregido de paso**: completar/cancelar
+> una tarea logueaba `entidad: 'pedido'` en `actividad_log` en vez de un tipo propio — se agregó
+> `'tarea_repositor'` a `EntidadLog` (`src/lib/actividadLog.ts`) y se corrigieron las 2 llamadas.
+>
+> #### 4. Verificación real — SQL contra DEV + navegador real (Playwright)
+>
+> - **SQL contra DEV real** (tenant "Almacén Jorgito", Sucursal Norte): cambio de precio real vía
+>   `UPDATE` → tarea nace con `usuario_asignado_id` ya asignado (reparto por carga, confirmado el pool
+>   exacto de 5 elegibles vs. 4 excluidos por rol: ADMIN/CONTADOR/RRHH quedaron afuera como se esperaba);
+>   un segundo cambio de precio en OTRO producto fue a una persona distinta (carga balanceada, no
+>   siempre la misma); un tercer cambio de precio sobre la MISMA tarea ya asignada NO la reasignó
+>   (dedupe respetado); intento de asignar a un usuario de otro tenant fue RECHAZADO por el guard nuevo.
+> - **Navegador real** (Playwright ad-hoc contra `localhost:5173`, login real con usuario DUEÑO de
+>   prueba): `/repositores` carga sin errores de consola/red; con una tarea de prueba real se vio el
+>   badge "E2E Tester" (auto-asignado), se clickeó Reasignar, el picker mostró los 5 usuarios elegibles
+>   reales, se reasignó a "cajero1" con motivo, apareció el toast "Tarea reasignada" y el badge cambió a
+>   "cajero1" — confirmado también en DB (`actividad_log` con `entidad='tarea_repositor'`,
+>   `accion='reasignar'`, motivo incluido).
+> - Todos los datos de prueba se limpiaron después (tarea, ubicación de exhibición temporal, precio
+>   revertido, log de prueba borrado) — el tenant quedó como estaba.
+>
+> #### 5. Estado de deploy y fases que quedan
+>
+> Commiteado y pusheado a `origin/dev` (commit `e200d673`). **Mig 354, igual que 352 y 353, SOLO en
+> DEV** — Repositores Fase 1+2 sigue sin deployar a PROD, la decisión de GO (deployar ahora o esperar
+> más revisión/que lo pruebe Fede) sigue sin respuesta. Sin tag/release de GitHub todavía (la mig 354
+> no fue a PROD, igual que 352/353) — pendiente de confirmar con GO si corresponde igual, no decidido.
+>
+> **Fases que quedan sin arrancar de Repositores** (ahora **2**, no 3): reposición física a góndola
+> (requiere I3, tipo de tarea WMS nuevo) y etiquetas + impresión (G/H del relevamiento) — el orden entre
+> esas dos tampoco está decidido, queda para cuando GO elija la próxima.
+>
+> Ver `log.md` (2026-08-11, entrada al principio del archivo), `wiki/database/migraciones.md` (mig
+> 354), [[wiki/features/repositores]] (sección "Fase 2"),
+> `sources/raw/relevamiento_repositores_respuestas.md`.
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-11 cont. 4) — 🔒🛑 Fix de seguridad real en Repositores (mig 353): `vw_tareas_repositor` sin `security_invoker` exponía datos cross-tenant + límite de gasto mensual CONFIRMADO liberado + pendiente nuevo (PAT de Supabase para `schema_full.sql`) — este bloque quedó SUPERADO por el de arriba (cont. 5): Repositores Fase 2 (asignación/reasignación, mig 354) construida y verificada en DEV
 >
 > Continuación directa de la sesión de abajo (cont. 3, mismo día). GO confirmó que el límite mensual de
 > gasto de la cuenta ya no aplica (al menos por un buen rato) — se volvió a correr el subagente

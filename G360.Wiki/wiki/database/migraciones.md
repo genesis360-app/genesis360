@@ -6,10 +6,42 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-11
 ---
 
-# Historial de Migraciones (001-353)
+# Historial de Migraciones (001-354)
 
-**Total al 2026-08-11:** 353 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-11:** 354 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**354 (`354_repositores_fase2_asignacion.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
+`e200d673`), sin mergear a `main`:** 🆕 Repositores Fase 2 (asignación automática + reasignación
+manual), misma sesión de Repositores continuada — GO eligió esta de las 3 fases futuras propuestas
+(reposición física / asignación-reasignación / etiquetas). `fn_usuarios_hacen_repositor(p_tenant_id,
+p_sucursal_id)` — pool de usuarios elegibles para HACER trabajo de repositor en una sucursal (distinto
+del pool de `fn_usuarios_supervisan_modulo` de la mig 348, que es para SUPERVISAR/aprobar); roles fijos
+DUEÑO/SUPER_USUARIO/SUPERVISOR/CAJERO/DEPOSITO o rol custom con permiso 'editar'/'supervisa' en
+'repositores', excluye a propósito ADMIN (staff cross-tenant); `SQL STABLE` sin `SECURITY DEFINER`
+(correcto por ser invoker: la RLS de `users` bloquea sola un `tenant_id` ajeno pasado por RPC).
+`fn_repositor_elegir_asignado(p_tenant_id, p_sucursal_id)` — reparto por carga (menos tareas
+pendientes/en_curso primero, empate al azar, mismo patrón que `fn_autorizaciones_auto_asignar` de la
+mig 348), uso interno sin RPC propia; la elección se inlineó DIRECTO en el `INSERT` de los 2 triggers
+de la mig 352 (`CREATE OR REPLACE`) en vez de un trigger `BEFORE INSERT` genérico aparte, porque todas
+las filas de `tareas_repositor` nacen únicamente de esos 2 triggers; el `ON CONFLICT ... DO UPDATE`
+(dedupe de la mig 352) sigue sin tocar `usuario_asignado_id` a propósito. Guard nuevo
+`fn_tarea_repositor_asignado_valido_tenant` (trigger `BEFORE INSERT/UPDATE OF usuario_asignado_id`)
+rechaza asignar a un usuario de otro tenant — mismo patrón que `fn_regla_enrutamiento_valida_tenant` de
+la mig 348. `vw_tareas_repositor` (`CREATE OR REPLACE`, preserva `security_invoker=true` de la mig 353)
+suma `usuario_asignado_nombre` al final del `SELECT` (Postgres no permite insertar una columna nueva en
+el medio de una vista existente). 🔒 **`migration-reviewer`: veredicto APTA**, 4 sugerencias 🟡 no
+bloqueantes, 2 aplicadas en el momento (`fn_repositor_elegir_asignado` de `STABLE` a `VOLATILE` por usar
+`random()`; `REVOKE ALL FROM PUBLIC, anon, authenticated` en el guard de tenant), 2 quedan de nota sin
+actuar (reasignación gateada solo client-side, igual que `autorizaciones`/mig 347; `schema_full.sql`
+sigue desactualizado, falta `SUPABASE_ACCESS_TOKEN`). Verificada con SQL real contra DEV (pool exacto de
+5 elegibles vs. 4 excluidos por rol, reparto balanceado entre 2 productos distintos, dedupe respeta el
+asignado existente, guard rechaza usuario de otro tenant) y con Playwright real contra `localhost:5173`
+(badge de asignado, reasignación con motivo vía UI, toast, `actividad_log` real con
+`entidad='tarea_repositor'`/`accion='reasignar'`). De paso corrigió un bug de trazabilidad preexistente
+de la Fase 1 (completar/cancelar logueaba `entidad:'pedido'` en vez de un tipo propio — se sumó
+`'tarea_repositor'` a `EntidadLog`, `src/lib/actividadLog.ts`). Ver [[wiki/features/repositores]].
 
 **353 (`353_fix_security_invoker_vw_tareas_repositor.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
 (`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
@@ -221,6 +253,10 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
+**001-354: 351 EN DEV Y PROD, 352-354 SOLO EN DEV.** Mig 354 es Repositores Fase 2 (asignación
+automática + reasignación manual) — misma sesión de Repositores continuada, commit `e200d673` en
+`origin/dev`, sin mergear a `main` ni deployar — decisión pendiente de GO. Fases que quedan sin
+arrancar del módulo: ahora solo 2 (reposición física a góndola, etiquetas+impresión), no 3.
 **001-353: 351 EN DEV Y PROD, 352-353 SOLO EN DEV.** Mig 353 es un fix de seguridad
 (`security_invoker`) sobre la vista de la mig 352 (`vw_tareas_repositor` exponía datos cross-tenant) —
 misma sesión de Repositores Fase 1 continuada, commit `36fc075b` en `origin/dev`, sin mergear a `main`

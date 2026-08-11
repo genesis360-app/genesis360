@@ -9,6 +9,7 @@ import {
   ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2, ScanBarcode, ListOrdered, Tag, UserCog,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
+import { useListaConteoStore } from '@/store/listaConteoStore'
 import { useAlertas } from '@/hooks/useAlertas'
 import { useSupervisionBadge } from '@/hooks/useSupervisorAutorizaciones'
 import { puedeSupervisarModulo } from '@/lib/permisosModulo'
@@ -200,6 +201,7 @@ export function AppLayout() {
   const [walkthroughOpen, setWalkthroughOpen] = useState(false)
   const [darkMode, setDarkMode]             = useState(() => localStorage.getItem('dark-mode') === 'true')
   const [ayudaOpen, setAyudaOpen]           = useState(false)
+  const listaConteo = useListaConteoStore(s => s.conteo)
 
   const toggleCollapse = () => {
     setSidebarCollapsed(v => {
@@ -643,6 +645,25 @@ export function AppLayout() {
             <Outlet />
           </ErrorBoundary>
         </main>
+
+        {/* Barra de conteo "Mostrando N de M..." — hermana fija de <main>, igual que el header:
+            el contenido de arriba se achica para dejarle lugar, nunca queda tapado por ella (ver
+            useListaConteoStore/ListaConteoFooter). Solo aparece en páginas que publican un conteo. */}
+        {listaConteo && (() => {
+          const { mostrados, total, entidad, totalTruncado } = listaConteo
+          const plural = (n: number) => `${entidad}${n === 1 ? '' : 's'}`
+          return (
+            <div className="flex-shrink-0 flex items-center justify-end px-4 lg:px-6 py-1 border-t border-gray-100 dark:border-gray-700 bg-surface">
+              <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                {totalTruncado
+                  ? `Mostrando ${mostrados} de los últimos ${total} ${plural(total)}`
+                  : mostrados === total
+                    ? `${mostrados} ${plural(mostrados)}`
+                    : `Mostrando ${mostrados} de ${total} ${plural(total)}`}
+              </span>
+            </div>
+          )
+        })()}
 
       </div>
     </div>

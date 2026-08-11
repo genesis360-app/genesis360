@@ -6,6 +6,77 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-11] deploy | 🛑 v1.165.0 en deploy a PROD (PR #324): REGLA #0 cierra el rebaje de stock por 2 caminos (venta #619, mig 350) + fix Compras `registrar_pago_oc` (mig 349) + 2 mejoras de UX
+
+Continuación directa de la sesión anterior (v1.164.0), mismo día. GO, revisando la venta real **#619**
+del tenant "Almacén Jorgito" en DEV, encontró un hueco real de la Regla de Oro #0 (inventario): Ventas
+tiene el botón "Finalizar (rebaja stock)" que rebaja stock directo, pero si esa misma venta tiene un
+Pedido activo (nacido automáticamente para preparación/picking, migs 315-319), alguien podía además
+"Lanzar" ese Pedido y generar una tarea de picking que, al completarse, **rebajaría el stock por
+segunda vez** para la misma mercadería. En la #619 real no llegó a duplicarse (la tarea se canceló
+antes de completarse) pero el sistema lo permitía.
+
+**Fix en 3 capas, todo verificado con datos reales del tenant "Almacén Jorgito" en DEV antes de este
+handoff:**
+
+1. **Frontend (`VentasPage.tsx`)** — query nueva `pedidoActivoVenta` (Pedido con `venta_origen_id` =
+   la venta abierta y `estado <> 'cancelado'`). Si existe, el botón "Finalizar (rebaja stock)" — en
+   la ficha de venta y en el modal de confirmación de pago MP — se reemplaza por un aviso: el rebaje
+   se hace desde Pedidos → Picking.
+2. **Backend (mig 350)** — `fn_pedido_venta_viva` (mig 323) ya bloqueaba venta presupuesto/
+   cancelada/devuelta al "Lanzar"; ahora también bloquea `despachada`/`facturada` (los 2 estados
+   reales del CHECK de `ventas.estado` que significan "el stock ya se rebajó" — confirmado contra el
+   código real que a `facturada` solo se llega pasando por `despachada`, sin re-rebajar stock en esa
+   transición). Guard server-side porque la UI se cachea/bypassea.
+3. **Pedidos (`PedidosPage.tsx` + `pedidoVenta.ts`)** — el botón "Lanzar" se deshabilita
+   **preventivamente** (antes solo fallaba reactivo con un toast del servidor) cuando la venta de
+   origen ya se despachó, vía `motivoNoLanzarPedido()` (espejo de la función SQL) contra
+   `ventas:venta_origen_id(estado)` traído con un join nuevo.
+
+🐛 **Bug real encontrado de paso al agregar ese join**: PostgREST devolvía HTTP 300 (embed ambiguo,
+PGRST201) porque `pedidos`↔`ventas` tienen 2 FK entre sí (`pedidos.venta_origen_id` y
+`ventas.pedido_id`) — 2ª instancia real del mismo patrón de bug ya documentado el 2026-08-09 para
+Productos/Ubicaciones. Se resolvió calificando la relación **por columna** (`ventas:venta_origen_id
+(estado)`), una variante de sintaxis distinta a `!constraint_name` pero la misma idea. De paso se
+corrigió que esa misma query de la lista de Pedidos silenciaba cualquier error de Supabase
+(`const { data } = await q` sin chequear `error`) — ahora hace `throw error` si falla. Verificado en
+el navegador contra DEV real: venta #622 (con Pedido #23 confirmado) mostró el aviso en vez del botón;
+7 pedidos reales cuya venta ya estaba despachada mostraron "Lanzar" deshabilitado con el tooltip
+correcto.
+
+**Aparte, 2 hallazgos/mejoras más de la misma sesión:**
+
+- 🐛 **Fix real de Compras (mig 349)** — `registrar_pago_oc` (mig 237) fallaba con "column oc_id does
+  not exist" al pagar una OC sin `monto_total` seteado directo: el fallback que suma
+  `orden_compra_items` filtraba por una columna `oc_id` que nunca existió ahí (la real es
+  `orden_compra_id`). Reproducido con la OC #30 real de DEV. Fix de una línea, resto de la función
+  textualmente idéntico a la mig 237.
+- **UX** — la pestaña "Pedidos listos para retirar" de Ventas (`/ventas`) pasa a llamarse **"Retiro"**
+  (tab) / **"Retiro en mostrador"** (encabezado): es explícitamente pickup-only
+  (`requiere_envio=false`), los pedidos que salen por envío nunca aparecen ahí por diseño, no por bug
+  (GO preguntó por qué los pedidos de TiendaNube no aparecían ahí). `ListaConteoFooter` (contador
+  "Mostrando N de M...") pasa a `sticky bottom-0` en vez de quedar al final del documento, visible sin
+  scrollear hasta el final de la lista — afecta Productos, Inventario, Clientes, Envíos.
+
+**Deploy**: `APP_VERSION` v1.165.0, commit `c3ea45aa` pusheado a `origin/dev`. **PR #324**
+(`dev`→`main`) abierto — https://github.com/genesis360-app/genesis360/pull/324 (verificado con `gh pr
+list` al escribir esta entrada, todavía sin mergear). Migraciones 349 y 350 aplicadas y verificadas en
+DEV y PROD antes del merge, mismo criterio de siempre (DDL aditivo/no-destructivo primero). El merge a
+`main` + tag/release `v1.165.0` + verificación del bundle en Vercel PROD los completa el
+`deploy-runner`, corriendo en paralelo a esta actualización de wiki — **confirmar en la próxima
+sesión** que el PR quedó MERGED y el release publicado antes de dar el release por cerrado.
+
+**Pendiente anotado, NO construido**: GO pidió trazabilidad completa de una venta en `/historial`
+(filtrar por número de venta, ver TODO lo que le pasó — pedidos, envíos, devoluciones, movimientos de
+stock) — quedó como diseño propuesto y **explícitamente diferido** ("hacerlo en estos días, apenas
+terminemos con lo que estamos haciendo"). Anotado en [[wiki/features/pedidos]] y
+[[wiki/features/reportes-metricas]] para que no se pierda.
+
+Ver `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"), [[wiki/business/roadmap]] (v1.165.0),
+`wiki/database/migraciones.md` (migs 349/350), [[wiki/features/pedidos]],
+[[wiki/features/ventas-pos]], [[wiki/features/clientes-proveedores]],
+[[wiki/development/convenciones-codigo]] (2ª instancia del gotcha PGRST201).
+
 ## [2026-08-11] deploy | 🚀 v1.164.0 EN PROD: F1 "Avisar al supervisor" + A2 auto-asignación (mig 348) — Pestaña de Supervisor 100% completa, verificación exhaustiva encontró y corrigió un bug real de nav
 
 GO, al cerrar v1.163.0: *"q nos falta entonces para terminar? te dije q lo queria 100% listo, decime

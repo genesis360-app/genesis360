@@ -3,7 +3,7 @@ title: Convenciones de Código
 category: development
 tags: [convenciones, typescript, naming, patterns, reglas]
 sources: [CLAUDE.md]
-updated: 2026-04-30
+updated: 2026-08-11
 ---
 
 # Convenciones de Código
@@ -244,6 +244,31 @@ frontend por embeds sin calificar de esa tabla destino (`grep "tabla_destino(" s
 `.from('tabla_origen')`) y, si ya hay 1+ FK previa entre esas dos tablas, calificar el embed
 existente ANTES de aplicar la migración — o inmediatamente después, verificando con `curl` directo al
 endpoint REST real (no solo `execute_sql`, que no pasa por el schema cache de PostgREST).
+
+### 🐛 2ª instancia real (2026-08-11) — `pedidos`↔`ventas`, variante de sintaxis: alias por columna
+
+No hizo falta una migración nueva para reproducir el mismo bug: `pedidos` y `ventas` ya tenían **2 FK
+cruzadas** entre sí (`pedidos.venta_origen_id` y `ventas.pedido_id`), documentado desde antes como
+motivo para resolver el link Pedido↔Venta de `/picking` con una query aparte (ver
+[[wiki/features/pedidos]]). Al agregar un embed nuevo `ventas(estado)` sobre `pedidos` (para el guard
+de "Lanzar" de la mig 350) volvió a salir `PGRST201`/HTTP 300. Esta vez se resolvió embebiendo
+directo, con la **otra** sintaxis de desambiguación que soporta PostgREST — alias por **nombre de
+columna FK** en vez de por nombre de constraint:
+
+```ts
+// ❌ Ambiguo: pedidos.venta_origen_id Y ventas.pedido_id apuntan a la otra tabla
+.select('*, ventas(estado)')
+
+// ✅ alias:columna_fk(...) — le dice a PostgREST qué relación seguir sin necesitar el nombre exacto
+// de la constraint (`!pedidos_venta_origen_id_fkey` funcionaría también, más verboso)
+.select('*, ventas:venta_origen_id(estado)')
+```
+
+La clave del objeto devuelto pasa a ser el alias (`ventas`, no `venta_origen_id`) — mismo resultado
+que con `!fkey`, sintaxis más corta cuando ya se conoce el nombre de la columna. De paso se encontró
+que esa misma query silenciaba cualquier error de Supabase (`const { data } = await q` sin chequear
+`error`) — un patrón a evitar en cualquier query que dependa de un embed que puede romperse en runtime
+por este motivo exacto.
 
 ---
 

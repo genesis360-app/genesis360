@@ -2,8 +2,8 @@
 title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, src/lib/tiers.ts]
-updated: 2026-07-30
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, src/lib/tiers.ts]
+updated: 2026-08-11
 ---
 
 # Ventas / POS
@@ -34,6 +34,17 @@ POS completo integrado con inventario, caja, clientes y facturación AFIP.
 | `devuelta` | — | — | Reingresado |
 
 > [!NOTE] El valor en DB sigue siendo `'despachada'`. En la UI se muestra como "Finalizada" desde v0.61.0.
+
+> 🛑 **REGLA #0 — el botón "Finalizar (rebaja stock)" se oculta si la venta tiene un Pedido vivo
+> (mig 350, v1.165.0, 2026-08-11).** GO encontró con la venta real **#619** (Almacén Jorgito, DEV) que
+> "Finalizar" y "Lanzar" (en Pedidos) podían rebajar el stock de la misma mercadería **por 2 caminos
+> distintos**: el rebaje directo de acá, y el picking del Pedido de preparación que la misma venta
+> genera automáticamente (migs 315-319). Fix: query `pedidoActivoVenta` (Pedido con
+> `venta_origen_id` = la venta y `estado <> 'cancelado'`) — si existe, tanto el botón de la ficha de
+> venta como el del modal de confirmación de pago MP muestran un **aviso** en vez del botón ("el
+> rebaje se hace desde Pedidos → Picking"). Guard SERVER-SIDE espejado en `fn_pedido_venta_viva`
+> (bloquea "Lanzar" si la venta ya está `despachada`/`facturada`) — ver [[wiki/features/pedidos]]
+> "Cuarta barrera" para el detalle completo, incluido el bug de embed PGRST201 encontrado de paso.
 
 ---
 
@@ -391,6 +402,16 @@ distinto: [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
 
 Mini-form desde el checkout: nombre + DNI + teléfono (todos obligatorios).
 Búsqueda por nombre o DNI. `validarDNI()` + `validarTelefono()` al blur.
+
+---
+
+## Tab Retiro (ex "Pedidos", renombrada v1.165.0)
+
+Mostrador de retiro en el local para los Pedidos ya preparados (`listo_para_entrega` + retiro en
+local). Documentada en detalle en [[wiki/features/pedidos]] → "La pestaña Ventas → Pedidos". 🆕
+2026-08-11: se renombró de "Pedidos listos para retirar" a **"Retiro"** (tab) / **"Retiro en
+mostrador"** (encabezado) — es pickup-only por diseño (`requiere_envio=false`), los pedidos que salen
+por envío nunca aparecen acá (no es un bug).
 
 ---
 

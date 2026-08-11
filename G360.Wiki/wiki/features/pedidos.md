@@ -2,8 +2,8 @@
 title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
-sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts]
-updated: 2026-08-08
+sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts]
+updated: 2026-08-11
 ---
 
 # Módulo Pedidos
@@ -648,6 +648,36 @@ canal ONLINE sin envío (= retiro en local)                    -> genera
 >
 > Tercera barrera: **no se puede lanzar** un pedido cuya venta esté anulada, devuelta o siga siendo
 > un presupuesto (mig 324).
+>
+> 🛑 **Cuarta barrera (mig 350, v1.165.0, 2026-08-11) — cierra el hueco de rebaje por 2 caminos.**
+> GO, revisando la venta real **#619** del tenant "Almacén Jorgito" en DEV, encontró que
+> `fn_pedido_venta_viva` (mig 323) bloqueaba presupuesto/cancelada/devuelta pero **no** una venta ya
+> `despachada`/`facturada`. El único camino que rebaja stock DIRECTO es el botón "Finalizar (rebaja
+> stock)" de Ventas — si alguien lo usa mientras el Pedido de esa misma venta sigue vivo, y después
+> alguien lanza ese Pedido, se generan tareas de picking para volver a preparar/rebajar mercadería
+> que YA salió. En la #619 real no hubo doble rebaje solo porque esa tarea se canceló antes de
+> completarse, pero el sistema lo permitía. Fix en 2 capas:
+> - **Frontend (`VentasPage.tsx`)**: query `pedidoActivoVenta` (Pedido con `venta_origen_id` = la
+>   venta abierta y `estado <> 'cancelado'`) — si existe, el botón "Finalizar (rebaja stock)" (ficha
+>   de venta + modal de confirmación de pago MP) se reemplaza por un aviso indicando que el rebaje se
+>   hace desde Pedidos → Picking.
+> - **Backend (mig 350)**: `CREATE OR REPLACE` de `fn_pedido_venta_viva` — agrega el bloqueo cuando
+>   `ventas.estado IN ('despachada','facturada')` (los 2 estados del CHECK que significan "el stock
+>   ya se rebajó"; a `facturada` solo se llega pasando por `despachada`, sin re-rebajar stock en esa
+>   transición). Guard server-side porque la UI se cachea/bypassea (REGLA #0).
+> - **`PedidosPage.tsx` + `pedidoVenta.ts`**: el botón "Lanzar" ahora se **deshabilita
+>   preventivamente** (antes solo fallaba reactivo con un toast del servidor) usando
+>   `motivoNoLanzarPedido()` (espejo de la función SQL, actualizado con la misma rama) contra el
+>   estado real de la venta, traído con el join `ventas:venta_origen_id(estado)`.
+> - 🐛 **Bug real encontrado de paso al agregar ese join**: PostgREST devolvía HTTP 300 (embed
+>   ambiguo, PGRST201) — mismo patrón ya documentado más abajo, resuelto calificando la relación por
+>   columna en vez de por nombre de constraint. Ver [[wiki/development/convenciones-codigo]] y la
+>   sección "De dónde saca el picking la mercadería" más abajo para el detalle previo de esta
+>   ambigüedad. De paso se corrigió que esa misma query de la lista de Pedidos silenciaba cualquier
+>   error de Supabase (`const { data } = await q` sin chequear `error`) — ahora hace `throw error`.
+> - **Verificado en el navegador contra DEV real**: venta #622 (con Pedido #23 confirmado) mostró el
+>   aviso en vez del botón; 7 pedidos reales cuya venta ya estaba despachada mostraron "Lanzar"
+>   deshabilitado con el tooltip correcto.
 
 Deriva de `canales_venta.clasificacion` (mig 168): **no hay nada que configurar** y es correcto por
 default para todos los tenants. `tenants.pedido_canales_excluidos` es solo la excepción (canales que
@@ -705,6 +735,13 @@ Pedido de GO: sin eso, un LPN mal pickeado no se puede rastrear hasta el cliente
 anidada: `ventas` y `pedidos` se referencian en las **dos** direcciones (`ventas.pedido_id` y
 `pedidos.venta_origen_id`), así que el embed anidado de PostgREST es ambiguo.
 
+> 🐛 **2026-08-11 (mig 350, v1.165.0): esta misma ambigüedad reapareció en la lista principal de
+> `PedidosPage.tsx`** al agregar un embed `ventas(estado)` para la "Cuarta barrera" de arriba
+> (`motivoNoLanzarPedido`) — HTTP 300 / PGRST201. Acá SÍ se resolvió con un embed calificado, no con
+> una query aparte: `ventas:venta_origen_id(estado)` (alias por nombre de COLUMNA, no de constraint —
+> variante del mismo fix documentado en [[wiki/development/convenciones-codigo]] para
+> `ubicaciones!productos_ubicacion_id_fkey`). La clave en el objeto devuelto sigue siendo `ventas`.
+
 ### 💵 El ticket dice cuánto falta pagar
 
 El ticket mostraba el TOTAL y, en gris, lo pagado — nunca el **saldo**, que es el número por el que
@@ -724,12 +761,18 @@ Estaba en el CHECK desde la mig 292, con badge en la UI y leído como precondici
 pero **ningún código lo seteaba nunca**. Desde la mig 316, completar la **última tarea de picking**
 del pedido lo promueve. Es la condición que define la pestaña del mostrador.
 
-### La pestaña Ventas → Pedidos
+### La pestaña Ventas → Pedidos ("Retiro" desde v1.165.0)
 
 Muestra **solo** `listo_para_entrega` + **retiro en local** + nacidos de una venta. Búsqueda por
 nombre (sin tildes), **DNI** (por dígitos y por **prefijo**, mínimo 3) y **N° de pedido** (exacto).
 El prefijo y el match exacto no son cosmética: con "contiene", tipear "5" para el pedido 5 devolvía
 además a todo cliente con un 5 en el documento.
+
+> 🆕 **Rename 2026-08-11 (v1.165.0):** la pestaña se llamaba "Pedidos listos para retirar" (tab) /
+> "Pedidos listos para retirar" (encabezado) — pasó a **"Retiro"** (tab) / **"Retiro en mostrador"**
+> (encabezado). Es explícitamente **pickup-only** (`requiere_envio=false`): los pedidos que salen por
+> envío nunca aparecen acá **por diseño, no por bug** — GO preguntó por qué los pedidos de TiendaNube
+> no aparecían ahí, y el nombre viejo era la causa real de la confusión (no una lista incompleta).
 
 El botón **Entregado** llama a `fn_pedido_entregar_retiro`: valida el pago, **no toca plata ni
 stock**, deja el rastro en Envíos como `retiro_local`/`entregado` y devuelve el id de la venta para
@@ -806,6 +849,13 @@ una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT
 
 ## Links relacionados
 
+> 🟡 **Pendiente propuesto (2026-08-11), NO construido:** GO pidió trazabilidad completa de una venta
+> en `/historial` — filtrar por número de venta y ver TODO lo que le pasó (pedidos, envíos,
+> devoluciones, movimientos de stock). Diseño propuesto, **explícitamente diferido** ("hacerlo en
+> estos días, apenas terminemos con lo que estamos haciendo"). Ver [[wiki/features/reportes-metricas]]
+> → "Trazabilidad-extendida" (hub existente que ya cruza `actividad_log`/`venta_item_despachos`, la
+> extensión sería agregar Pedidos/Envíos al cruce por número de venta).
+
 - [[wiki/features/wms]] — schema/RPCs de `wms_tareas` que Pedidos reusa desde PED3; `fn_completar_tarea_reabastecimiento`
   (mig 290) recibió un fix compartido en la mig 297 encontrado al construir PED4 (ver ahí); 🆕
   2026-08-08 (sin commitear): "Asignación de tareas a un usuario" documenta el mismo cambio del tab
@@ -822,7 +872,7 @@ una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT
   crédito (`clientes.limite_credito`) ahora también lo valida Pedidos (mig 299, ver arriba)
 - [[wiki/features/configuracion]] — tab "Pedidos" (PED7): numeración, cierre automático, tipos de
   pedido, editor E3 de roles por transición
-- [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297, 298, 299, 300, 301, 302
+- [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 350
 - `relevamiento-unidades-medida-empaque-reglas-negocio.html` — relevamiento nuevo (2026-07-23) para
   separar Unidad de Medida física (kg/g/L, conversión universal) de Nivel de Empaque (Caja/Pallet,
   factor por producto); afecta el `esDecimal` que Pedidos usa para validar cantidad — sin implementar

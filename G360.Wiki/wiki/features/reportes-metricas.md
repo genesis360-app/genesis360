@@ -3,7 +3,7 @@ title: Reportes y Métricas
 category: features
 tags: [reportes, metricas, kpi, dashboard, excel, pdf, insights]
 sources: [CLAUDE.md]
-updated: 2026-05-20
+updated: 2026-08-11
 ---
 
 # Reportes y Métricas
@@ -151,6 +151,15 @@ Objetivo (pedido GO 2026-05-30): que `/historial` sea el **hub único de trazabi
 **3. Export completo** — el botón Excel exporta el **set filtrado completo** (no solo la página visible, hasta 10.000 filas) con las columnas del ledger (Tipo, LPN, Serie, Lote, Transacción).
 
 `tipo_transaccion`: `ingreso` · `rebaje` · `traslado` · `ajuste` · `edicion` · `venta` · `devolucion` · `eliminacion`.
+
+> 🟡 **Pendiente propuesto (2026-08-11), NO construido — trazabilidad completa por N° de venta.** GO
+> pidió, revisando la venta real #619, poder filtrar `/historial` por **número de venta** y ver TODO
+> lo que le pasó a esa venta en un solo lugar: Pedidos generados, Envíos, Devoluciones y movimientos
+> de stock asociados (hoy el hub cruza `actividad_log` + `venta_item_despachos`, pero no trae Pedidos
+> ni Envíos al mismo cruce). Quedó como diseño propuesto y **explícitamente diferido** por GO
+> ("hacerlo en estos días, apenas terminemos con lo que estamos haciendo") — no confundir con
+> "descartado". Ver [[wiki/features/pedidos]] → "Links relacionados" para el mismo pendiente anotado
+> desde el lado de Pedidos.
 
 ### ISS-075 — Movimientos de stock en el Historial (mig 153)
 

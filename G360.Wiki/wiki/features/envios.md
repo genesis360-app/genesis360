@@ -72,6 +72,8 @@ Ver [[wiki/features/pedidos]] → "Pedido nacido de una VENTA".
   el footer aclara "de los últimos 100" en vez de mostrar un total falso. Mismo mecanismo en
   Productos, Inventario y Clientes — ver [[wiki/features/productos]],
   [[wiki/features/inventario-stock]], [[wiki/features/clientes-proveedores]].
+  🆕 **Sticky al fondo del viewport desde v1.165.0 (2026-08-11)** — detalle en
+  [[wiki/features/inventario-stock]] "Footer de conteo de registros".
 - Lista de envíos con filtros: estado / courier / canal / fechas / búsqueda
 - Fila expandible: destinatario completo, courier + tracking, productos + LPN + ubicación
 - **Avanzar estados**: pendiente → despachado → en_camino → **en_bodega** → entregado

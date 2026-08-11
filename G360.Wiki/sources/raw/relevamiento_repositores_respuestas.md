@@ -2,9 +2,9 @@
 name: relevamiento_repositores_respuestas
 description: Respuestas de Fede al relevamiento del módulo Repositores (Fase E del backlog Comercial 25/7) + revisión de Claude + clarificaciones de GO. Reveló que "Fase E" son 4 proyectos con dependencias reales, no una sola fase.
 type: project
-status: 🟡 EN CURSO — respondido, pero BLOQUEADO por 3 relevamientos derivados (Ubicaciones, Pestaña de supervisor, Motor de Rotación) antes de poder diseñar/implementar Repositores en sí.
+status: 🟢 DESBLOQUEADO — los 3 relevamientos derivados (Ubicaciones v1.157.0, Pestaña de Supervisor v1.163/164.0, Motor de Rotación) y las 3 ambigüedades de negocio (A1/A2-B3/H1) ya están cerrados. Falta escribir el relevamiento final (paso 4 del orden acordado) y recién ahí diseñar/construir. Ver "Cierre de ambigüedades" al final.
 source: relevamiento-repositores-reglas-negocio.html
-updated: 2026-08-03
+updated: 2026-08-11
 ---
 
 # Respuestas — Relevamiento Reglas de Negocio · Repositores
@@ -199,3 +199,34 @@ ambigüedades de A1/A2/C3/I3 de este documento.
 `relevamiento_rotacion_descuento_respuestas.md` en `sources/raw/` → recién ahí se arma el
 relevamiento final de Repositores (punto 4) y se puede diseñar/implementar. Detalle día a día en
 `G360.Wiki/log.md` (entradas 2026-07-30 y 2026-08-03).
+
+## Cierre de ambigüedades (2026-08-11) — de las 4 marcadas arriba, 3 eran decisión de GO/Fede y 1 es una nota técnica
+
+De las 4 ambigüedades que el "Orden de trabajo acordado" (abajo) exigía cerrar antes del relevamiento
+final (A1/A2/C3/I3), **A1, A2/B3 y H1 (que no estaba en esa lista original pero se sumó al
+presentárselo a GO) ya las resolvió GO** — quedó registrado en la memoria de sesión
+`project_backlog_fede_comercial_25_7.md` → "Actualización 2026-08-11":
+
+- **A1** (rol nuevo vs. custom): **rol custom** — reusa el patrón ya construido en Fase D (Comercial),
+  sin migrar el enum fijo de `users.rol`.
+- **A2/B3** (alcance de acceso default): acceso default **SOLO a Reposición**, sin Inventario
+  completo — evita exponer `precio_costo`/ajustes de stock de más. El dueño lo suma a mano si quiere.
+- **H1** (impresión): **PDF para imprimir a mano, diseñado para que el mismo layout sirva también en
+  una Zebra térmica** si el negocio tiene una — sin integración directa por agente local en esta fase.
+
+**C3 e I3 (las otras 2 de la lista original) NO necesitan una decisión nueva de GO/Fede — son trabajo
+de diseño/implementación, no de negocio:**
+- **C3** (prioridad de tareas): Fede YA definió el orden completo (vendido a precio viejo > precio
+  nuevo más alto > cercanía a vencimiento > tiempo pendiente) — lo que quedó como nota es que el
+  criterio #1 requiere backend real (snapshot de precio+timestamp cruzado contra ventas posteriores),
+  no una bandera de UI. Se dimensiona como tal al construir, no bloquea el diseño.
+- **I3** (reusar `replenishment` de WMS vs. tercer tramo separado): el propio documento decía "se
+  resuelve al armar el relevamiento final de Repositores, con las respuestas de Ubicaciones ya
+  cerradas" — Ubicaciones (v1.157.0) ya está cerrado, así que esto se resuelve REDACTANDO el
+  relevamiento final (punto 4), no preguntándole a Fede de nuevo.
+
+**Conclusión: Repositores está 100% desbloqueado en lo que depende de GO/Fede.** Lo único que falta
+antes de diseñar/construir es escribir el **relevamiento final de Repositores** (punto 4 del "Orden de
+trabajo acordado" abajo) — que junta las respuestas de los 3 relevamientos derivados + resuelve I3 como
+propuesta de diseño + marca C3 como nota de dimensionamiento — y recién ahí arrancar la Fase E en sí.
+Ese documento todavía NO se escribió.

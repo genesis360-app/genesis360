@@ -8,19 +8,45 @@ updated: 2026-08-08
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.162.0 (código/Vercel, confirmado — PR #320, merge `bbc8c1db`, deployment Vercel
-`dpl_GVHKjDYT8FkDRuFQi9zHYdYcfLLg` READY) — 🔴 pero desde esta misma versión (y la anterior, v1.161.0)
-PROD tiene un **bug crítico activo**: el listado de Productos y el reporte de Stock devuelven vacío
-por un embed ambiguo de PostgREST (`PGRST201`) — ver el bloque `v1.162.1` (hotfix) más abajo, **con fix
-listo en `dev` pero SIN deployar a PROD todavía** (bloqueado por el clasificador de seguridad, GO pidió
-esperar). Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque
+**Versión en PROD:** v1.163.0 (código/Vercel, confirmado — PR #322, merge `3163772b`, verificado por
+`curl` directo a los chunks reales, no solo `list_deployments`) — el hotfix PGRST201 (v1.162.1) y la
+Pestaña de Supervisor reusable (mig 347) están ambos en PROD, verificados contra el bundle real.
+Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque
 "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.162.1 (hotfix del bug de arriba, pusheado a `origin/dev`, commit `68a48d9e`)  
-**Última actualización:** 9 de Agosto, 2026
+**Versión en DEV:** v1.163.0 (mismo commit, `origin/dev` sincronizado con `main`)  
+**Última actualización:** 10 de Agosto, 2026
 
 ---
 
-## v1.162.1 — 🔴🛑 HOTFIX: embed ambiguo `ubicaciones()` (PGRST201) vaciaba Productos/Reportes — en `dev`, PROD SIN DEPLOYAR todavía (2026-08-09)
+## v1.163.0 — 🎯👥 Pestaña de Supervisor reusable (mig 347) — ✅ EN PROD (2026-08-10)
+
+2º de 4 relevamientos derivados hacia el módulo Repositores, construido completo en la misma sesión
+tras cerrar con GO las 4 decisiones técnicas pendientes (A1/A3/B1/C2 — ver
+`relevamiento_supervisor_tab_respuestas.md`). Generaliza `autorizaciones_inventario` → `autorizaciones`
+(RENAME + columna `modulo` + columna `asignado_a` para reasignación), suma el permiso `'supervisa'`
+(DUEÑO/SUPER_USUARIO/ADMIN siempre, SUPERVISOR heredado, roles custom explícito), y retrofitea el tab
+"Autorizaciones" de Inventario al patrón nuevo: ahora "Supervisión" con 4 sub-secciones (Aprobaciones/
+Reasignar/Trazabilidad/KPIs) vía el hook reusable `useSupervisorAutorizaciones` + componente
+`SupervisionPanel`. Nav item + página `/supervision` nuevos: inbox agregado de todo lo pendiente en
+cualquier módulo, con badge, sin tener que entrar módulo por módulo.
+
+**`migration-reviewer` encontró un bloqueante real**: el frontend seguía referenciando la tabla vieja
+en varios INSERT/SELECT (incluida `aprobar_cambio_estado_inventario`, el guard REGLA #0 anti-fraude de
+cambio de estado) — corregido antes de aplicar. Verificado **end-to-end contra DEV real** (RPC
+ejecutada con un usuario impersonado de verdad) y en el **navegador real** (Playwright ad-hoc) —
+encontró y corrigió un bug propio (`permisos_custom` no es columna de `users`, se resuelve vía
+`roles_custom`). **PR #322** mergeado, **tag+release `v1.163.0`**, migración 347 aplicada y verificada
+en DEV y PROD antes del merge, **Vercel PROD verificado por `curl` directo a los chunks reales**.
+
+Con esto, 3 de los 4 relevamientos derivados hacia Repositores están cerrados (Ubicaciones, Pestaña de
+Supervisor, Motor de Rotación) — solo falta diseñar/construir el módulo Repositores en sí.
+
+Detalle completo: [[wiki/features/supervision]], `wiki/database/migraciones.md` (mig 347),
+[[wiki/features/inventario-stock]].
+
+---
+
+## v1.162.1 — ✅ HOTFIX: embed ambiguo `ubicaciones()` (PGRST201) vaciaba Productos/Reportes — EN PROD desde v1.163.0 (2026-08-10)
 
 GO reportó en vivo "en Almacén Jorgito no tengo productos". Causa raíz: las migraciones 342 (Motor de
 Rotación) y 345 (D2, abajo) agregaron 2 FK nuevas de `productos` hacia `ubicaciones`, sumadas a la ya
@@ -29,8 +55,9 @@ calificar `ubicaciones(nombre)` y devuelve `PGRST201`/HTTP 300, tirando abajo la
 `ProductosPage.tsx` (listado principal) y `ReportesPage.tsx` (reporte de Stock) — en cualquier tenant,
 **confirmado también contra el schema real de PROD** por `curl` directo (los datos están intactos, es
 solo el pedido de embed). Fix: calificar la FK exacta (`ubicaciones!productos_ubicacion_id_fkey`).
-Commit `68a48d9e`, sin migración de DB. **✅ en `origin/dev` — 🔴 PROD sigue roto**, deploy del hotfix
-bloqueado por el clasificador de seguridad del entorno, GO pidió esperar su autorización explícita.
+Commit `68a48d9e`, sin migración de DB. **✅ CERRADO — deployado a PROD junto con v1.163.0** (el primer
+intento de deploy quedó bloqueado por el clasificador de seguridad y GO pidió esperar; se retomó y
+cerró en la sesión de continuación). Confirmado contra el bundle real de PROD por `curl`.
 Detalle técnico completo: [[wiki/development/convenciones-codigo]] → "Embeds de PostgREST con FK
 ambigua".
 

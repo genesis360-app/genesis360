@@ -6,15 +6,31 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-08
 ---
 
-# Historial de Migraciones (001-346)
+# Historial de Migraciones (001-347)
 
-**Total al 2026-08-08:** 346 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-10:** 347 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**347 (`347_autorizaciones_generico_supervisor.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.163.0` CONFIRMADO 100% EN
+PROD (Pestaña de Supervisor reusable, 2º de 4 relevamientos derivados hacia Repositores — ver el bloque
+"ARRANCÁ ACÁ" de `sources/raw/project_pendientes.md` para el detalle completo):** `RENAME TABLE
+autorizaciones_inventario → autorizaciones` (preserva PK/FK/RLS/índices/trigger por OID) + columna
+`modulo` (NOT NULL, CHECK acotado a `'inventario'` hoy, mismo patrón incremental que `tipo`) + columna
+`asignado_a` (reasignación puntual, E1 del relevamiento) + 2 índices nuevos
+(`tenant_id,modulo,estado` y `asignado_a`). Redefine (`CREATE OR REPLACE`, lógica idéntica salvo el
+nombre de tabla) las 2 únicas funciones que la referenciaban por texto en su cuerpo plpgsql —
+`aprobar_cambio_estado_inventario` (REGLA #0, guard anti-fraude de cambio de estado) y
+`fn_evaluar_repricing_margen` (D3) — porque un `RENAME TABLE` no actualiza el texto de una función.
+🔒 **Hallazgo del `migration-reviewer` antes de aplicar**: el frontend (`InventarioPage.tsx`,
+`LpnAccionesModal.tsx`, 7 specs e2e) seguía apuntando al nombre viejo de la tabla — corregido antes de
+aplicar. Verificado con SQL real contra DEV: la RPC `aprobar_cambio_estado_inventario` ejecutada con un
+usuario impersonado de verdad (`SET request.jwt.claims`) cambió el estado real y marcó la autorización
+aprobada; cleanup sin residuo. Estructura (RLS/índices/trigger/grants) verificada intacta en ambos
+proyectos tras el rename. Detalle: [[wiki/features/supervision]].
+
 **346 (`346_repricing_margen_meli_d3.sql`) — ✅ APLICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y PROD
-(`jjffnbrdjchquexdfgwq`), código release `v1.162.0` CONFIRMADO 100% EN PROD (Fase D3 del roadmap de
-integraciones — ver el bloque "ARRANCÁ ACÁ" de `sources/raw/project_pendientes.md` para el detalle
-completo, incluido el bug crítico `v1.162.1` que las migs 342/345 causaron y que sigue sin deployar a
-PROD):** dos
+(`jjffnbrdjchquexdfgwq`), código release `v1.162.0` CONFIRMADO 100% EN PROD:** dos
 mecanismos independientes definidos por Fede. Mecanismo 1 — `productos.reajuste_margen_auto`
 (opt-in), ajusta `precio_venta` (precio base, único cross-canal) para volver al `margen_objetivo`;
 config a nivel tenant `tenants.repricing_modo`/`repricing_tope_pct`/`repricing_umbral_aviso_monto`/
@@ -51,10 +67,9 @@ verificado READY (deployment `dpl_GVHKjDYT8FkDRuFQi9zHYdYcfLLg`).** Pendiente re
 `ubicaciones(nombre)` (usado en `ProductosPage.tsx`/`ReportesPage.tsx`), devuelve `PGRST201`/HTTP 300 y
 tira abajo la lista de Productos y el reporte de Stock en cualquier tenant. **Confirmado en vivo contra
 PROD real** con `curl` directo al endpoint REST. Fix: calificar la FK exacta
-(`ubicaciones!productos_ubicacion_id_fkey`). **Sin migración de DB** — commit `68a48d9e`, en
-`origin/dev`, 🔴 **PROD sigue roto**, deploy bloqueado por el clasificador de seguridad, GO pidió
-esperar su autorización. Detalle técnico: [[wiki/development/convenciones-codigo]] → "Embeds de
-PostgREST con FK ambigua".
+(`ubicaciones!productos_ubicacion_id_fkey`). **Sin migración de DB** — commit `68a48d9e`. ✅ **CERRADO,
+deployado a PROD junto con v1.163.0** (2026-08-10), confirmado contra el bundle real por `curl`.
+Detalle técnico: [[wiki/development/convenciones-codigo]] → "Embeds de PostgREST con FK ambigua".
 
 **345 (`345_armado_kits_automatico_d2.sql`) — ✅ EN DEV Y PROD desde v1.161.0** (backend de Combos
 automáticos TN/MELI, Fase D2 del roadmap — ver el bloque "ARRANCÁ ACÁ" de
@@ -79,8 +94,9 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
-**001-346 EN DEV Y PROD (base de datos y Edge Functions); código `v1.162.0` (D3) 100% CERRADO Y EN
-PROD (PR #320). 🔴 Hotfix `v1.162.1` (PGRST201) en `origin/dev`, SIN deployar a PROD todavía.**
+**001-347 EN DEV Y PROD (base de datos y Edge Functions); código `v1.163.0` 100% CERRADO Y EN PROD**
+(PR #322) — incluye el hotfix `v1.162.1` (PGRST201) y la Pestaña de Supervisor reusable (mig 347).
+**001-346 EN DEV Y PROD, código `v1.162.0` (D3) 100% CERRADO Y EN PROD (PR #320).**
 **001-345 EN DEV Y PROD (base de datos), deploy v1.161.0 100% CERRADO.**
 **001-344 EN DEV Y PROD (base de datos), deploy v1.160.0 100% CERRADO** — las migraciones 339-343 se
 aplicaron en PROD (proyecto `jjffnbrdjchquexdfgwq`) el 2026-08-07 vía `apply_migration`, ANTES del merge

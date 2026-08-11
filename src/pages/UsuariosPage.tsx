@@ -44,6 +44,7 @@ const MODULOS: { key: string; label: string }[] = [
   { key: 'clientes',      label: 'Clientes' },
   { key: 'inventario',    label: 'Inventario' },
   { key: 'movimientos',   label: 'Movimientos stock' },
+  { key: 'repositores',   label: 'Repositores' },
   { key: 'alertas',       label: 'Alertas' },
   { key: 'reportes',      label: 'Reportes' },
   { key: 'historial',     label: 'Historial actividad' },

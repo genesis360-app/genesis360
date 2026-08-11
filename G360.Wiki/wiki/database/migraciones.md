@@ -6,15 +6,47 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-11
 ---
 
-# Historial de Migraciones (001-350)
+# Historial de Migraciones (001-351)
 
-**Total al 2026-08-11:** 350 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-11:** 351 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
 
+**351 (`351_actividad_log_venta_id.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y
+PROD (`jjffnbrdjchquexdfgwq`), código release `v1.166.0` CONFIRMADO 100% EN PROD (PR #326 mergeado
+`95e837f6`, tag+release `v1.166.0`, bundle real de Vercel verificado con la cadena "v1.166.0"):**
+🔍 Trazabilidad completa de una venta en `/historial` — pedido de GO tras trazar a mano la venta real
+**#619** (quería filtrar por número de venta y ver TODO lo que pasó — pedido, picking, envío,
+devolución — sin cruzar 6 tablas a mano). `ALTER TABLE actividad_log ADD COLUMN venta_id uuid NULL
+REFERENCES ventas(id) ON DELETE SET NULL` + índice parcial (`WHERE venta_id IS NOT NULL`), poblada
+**WRITE-TIME** (nunca heurística de lectura — mismo criterio que el ledger de trazabilidad de la mig
+155) desde `logActividad()`: directo para filas de venta, resuelto vía `pedido.venta_origen_id` o
+`envio.venta_id` para las indirectas. `LogParams` gana `venta_id?: string | null`; se suma `'envio'`
+al tipo `EntidadLog` (antes Envíos no tenía tipo de entidad propio en el log). **Auditoría real de
+gaps ANTES de diseñar**: `EnviosPage.tsx` tenía CERO llamadas a `logActividad()` en todo el archivo
+(crear/cambio de estado/eliminar agregados); `PedidosPage.tsx` no logueaba `fn_pedido_cerrar` ni
+`fn_pedido_deslanzar` (completados). Filtro nuevo "N° de venta" en `/historial` — trae toda la línea
+de tiempo de la venta sin paginar, cruza con `venta_item_despachos` para el LPN/ubicación de cada
+línea, distingue "no existe" de "existe pero es de antes de esta trazabilidad" (sin backfill
+retroactivo). Verificado end-to-end contra DEV real (insert de prueba en la venta #622, visible y
+borrado; venta vieja mostró el mensaje correcto de "sin trazabilidad retroactiva").
+🛑 **De paso, construyendo la trazabilidad, GO preguntó si el picking realmente rebaja stock — bug
+real de REGLA #0 encontrado y corregido (sin migración propia, fix de frontend en `VentasPage.tsx`):**
+verificado contra el SQL real que el picking NUNCA rebaja stock ni toca `cantidad_reservada` para un
+pedido nacido de una venta (la reserva es de la venta, migs 316/320/323); el guard de "rebaje por un
+solo camino" (mig 350, v1.165.0) excluía solo `estado <> 'cancelado'`, no `'entregado'` — así que una
+vez entregado el pedido, el stock reservado por la venta quedaba atascado para siempre, sin ningún
+camino para convertirse en rebaje real. Fix: `.not('estado', 'in', '(cancelado,entregado)')`.
+Verificado con datos reales de DEV: venta #599 (reservada) con su pedido #91 ya `entregado` — la
+query vieja bloqueaba el botón "Finalizar", la nueva lo desbloquea; esa venta sigue así en DEV como
+evidencia viva del bug, sin backfill retroactivo. **No confundir con la venta #619** (caso de estudio
+de la mig 350) — son ventas reales distintas del mismo tenant. Detalle completo:
+[[wiki/features/reportes-metricas]] "Trazabilidad completa de una venta", [[wiki/features/pedidos]]
+"Cuarta barrera" (corrección), [[wiki/features/ventas-pos]], [[wiki/features/envios]].
+
 **350 (`350_pedido_venta_viva_bloquea_ya_despachada.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.165.0` (PR #324 abierto,
-deploy a PROD EN CURSO vía `deploy-runner` en paralelo a esta actualización de wiki — confirmar
-merge/tag/release en la próxima sesión):** 🛑 REGLA #0 (inventario) — cierra el hueco real de rebaje
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.165.0` CONFIRMADO 100% EN
+PROD (PR #324 mergeado, tag+release `v1.165.0`; PR #325/`v1.165.1` — fix del footer de conteo —
+también en PROD, ver [[wiki/business/roadmap]]):** 🛑 REGLA #0 (inventario) — cierra el hueco real de rebaje
 de stock **por 2 caminos** que encontró GO con la venta real #619 del tenant "Almacén Jorgito" en DEV.
 `fn_pedido_venta_viva` (mig 323) ya bloqueaba LANZAR un pedido si la venta era un presupuesto o estaba
 anulada/devuelta, pero NO si ya estaba `despachada`/`facturada` — el único camino que rebaja stock
@@ -29,8 +61,8 @@ Verificado en el navegador contra DEV real (venta #622 con Pedido #23, 7 pedidos
 despachada). Detalle completo: [[wiki/features/pedidos]] "Cuarta barrera".
 
 **349 (`349_fix_registrar_pago_oc_oc_id.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
-(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.165.0` (PR #324 abierto,
-deploy a PROD EN CURSO):** 🐛 fix real de Compras — `registrar_pago_oc` (mig 237) fallaba con
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.165.0` CONFIRMADO 100% EN
+PROD (PR #324 mergeado, tag+release `v1.165.0`):** 🐛 fix real de Compras — `registrar_pago_oc` (mig 237) fallaba con
 **"column oc_id does not exist"** al pagar una OC sin `monto_total` seteado directo: el fallback que
 suma `orden_compra_items` filtraba por una columna `oc_id` que nunca existió ahí (la real es
 `orden_compra_id`) — bug dormido desde que se creó la función en la mig 237, disparado solo en ese
@@ -144,6 +176,13 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
+**001-351 EN DEV Y PROD, código `v1.166.0` 100% CERRADO Y EN PROD (PR #326, merge `95e837f6`, tag+release
+`v1.166.0`)** — trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0 (el stock
+reservado de una venta quedaba atascado tras entregar su pedido, sin migración propia, código de
+`VentasPage.tsx`).
+**001-350 EN DEV Y PROD, código `v1.165.0` 100% CERRADO Y EN PROD (PR #324, tag+release `v1.165.0`) +
+`v1.165.1` (PR #325, patch de UI del footer de conteo, sin migración propia) también en PROD** — rebaje
+de stock por un solo camino (venta #619, mig 350) + fix Compras `registrar_pago_oc` (mig 349).
 **001-348 EN DEV Y PROD (base de datos y Edge Functions); código `v1.164.0` 100% CERRADO Y EN PROD**
 (PR #323) — Pestaña de Supervisor reusable 100% completa (F1 + A2, mig 348).
 **001-347 EN DEV Y PROD, código `v1.163.0` 100% CERRADO Y EN PROD (PR #322)** — incluye el hotfix

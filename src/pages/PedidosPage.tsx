@@ -9,7 +9,7 @@
  * y lanzamiento en bolsa con staging (PED6) disponibles en los puntos que corresponda.
  */
 import { useState, useMemo } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Plus, X, Search, ChevronDown, ChevronUp, Package, User, Truck, CalendarClock, Rocket, Layers, Printer, Download, ScanBarcode } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -49,6 +49,7 @@ interface ItemDraft {
 
 export default function PedidosPage() {
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { tenant, user } = useAuthStore()
   const { sucursalId, puedeVerTodas } = useSucursalFilter()
   const { avanzado: modoAvanzado } = useModoOperacion()
@@ -84,7 +85,8 @@ export default function PedidosPage() {
   const [items, setItems] = useState<ItemDraft[]>([])
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [filtroEstado, setFiltroEstado] = useState('')
-  const [busqueda, setBusqueda] = useState('')
+  // Deep-link desde Ventas/Envíos ("Ver pedido" en el detalle de una venta) — mismo patrón que EnviosPage.
+  const [busqueda, setBusqueda] = useState(() => searchParams.get('busqueda') ?? '')
 
   // ── Entregar (PED4): genera la venta real + rebaja stock reservado + asienta caja ────
   const [entregaModal, setEntregaModal] = useState<any | null>(null)

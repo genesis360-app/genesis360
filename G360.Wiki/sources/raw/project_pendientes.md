@@ -6,7 +6,95 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont.) — v1.165.0 EN DEPLOY A PROD (PR #324): cierra un hueco real de REGLA #0 (rebaje de stock por 2 caminos, venta #619, mig 350) + fix de Compras `registrar_pago_oc` (mig 349) + 2 mejoras de UX
+> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont. 2) — v1.166.0 EN PROD (PR #326): trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0 — el stock reservado de una venta quedaba atascado para siempre tras entregar el pedido
+>
+> Continuación directa de la sesión de abajo (v1.165.0/v1.165.1, mismo día). Construye lo que había
+> quedado anotado como pendiente y **explícitamente diferido** por GO en esa sesión ("trazabilidad
+> full de venta") — arrancando por venta, no por todo el inventario ("es mucho hacerlo todo junto" —
+> GO).
+>
+> #### 1. Trazabilidad completa de una venta en `/historial` (mig 351, CONSTRUIDA y verificada)
+>
+> Columna nueva `actividad_log.venta_id uuid NULL REFERENCES ventas(id) ON DELETE SET NULL` + índice
+> parcial, poblada **WRITE-TIME** (nunca heurística de lectura, mismo criterio que el ledger de
+> trazabilidad ya existente, mig 155) desde `logActividad()`. `src/lib/actividadLog.ts`: `LogParams`
+> gana `venta_id?: string | null`, se agrega `'envio'` a `EntidadLog` (antes no existía).
+>
+> **Auditoría real de gaps ANTES de diseñar** (mismo criterio de la sesión anterior — auditar TODOS
+> los puntos donde Pedidos/Envíos deberían loguear y no lo hacen): `src/pages/EnviosPage.tsx` **tenía
+> CERO llamadas a `logActividad()`** en todo el archivo — se agregó crear envío, cambio de estado,
+> eliminar envío (a propósito quedan afuera ediciones de campos sueltos: combustible, domicilio, POD,
+> tracking automático). `src/pages/PedidosPage.tsx` tenía la mayoría de las transiciones logueadas,
+> pero `fn_pedido_cerrar` y `fn_pedido_deslanzar` no logueaban nada — se completaron. Todos los
+> `logActividad()` de Ventas/Pedidos/Envíos ahora pasan `venta_id` (directo cuando `entidad==='venta'`,
+> resuelto vía `pedido.venta_origen_id` o `envio.venta_id` en los demás casos).
+>
+> `src/pages/HistorialPage.tsx`: filtro nuevo "N° de venta" ("Trazá una venta completa") — matchea por
+> número de tenant o de sucursal (mismo patrón dual que Pedidos), trae TODA la actividad de esa venta
+> sin paginar y reutiliza el cruce con `venta_item_despachos` para mostrar de qué LPN/ubicación salió
+> cada línea. Distingue "no existe esa venta" de "existe pero es de antes de esta trazabilidad" (sin
+> backfill retroactivo).
+>
+> **Verificado end-to-end contra DEV real**: insert de prueba en `actividad_log` con `venta_id` de la
+> venta #622 → visible en `/historial` filtrando por "622" → borrado. Una venta vieja (anterior a la
+> mig 351) mostró el mensaje correcto de "sin trazabilidad retroactiva" en vez de "no existe".
+>
+> **Alcance a propósito acotado a VENTA**, no un rediseño de trazabilidad de inventario completo: la
+> idea original de GO también mencionaba "inventario" en general, parcialmente cubierta vía el cruce
+> con `venta_item_despachos` (ya mostraba LPN/ubicación), pero esto no reemplaza un rediseño de
+> trazabilidad de inventario en sí.
+>
+> #### 2. 🛑 Fix REGLA #0 — bug real encontrado MIENTRAS se construía la trazabilidad
+>
+> GO preguntó "¿el picking realmente rebaja stock?" viendo el mensaje del guard de v1.165.0. Al
+> verificar contra el SQL real (no contra el comentario/supuesto), se confirmó que **el picking NUNCA
+> rebaja stock ni toca `cantidad_reservada`** para un pedido nacido de una venta
+> (`fn_completar_tarea_picking`, `fn_generar_tareas_picking_pedido_venta`, `fn_pedido_entregar_retiro`
+> — ninguna de las tres toca `inventario_lineas.cantidad`, `cantidad_reservada` ni
+> `productos.stock_actual`; documentadas en migs 316/320/323 con comentarios explícitos tipo "NO toca
+> cantidad_reservada", "el picking NUNCA reserva"). El único código que rebaja de verdad es el botón
+> "Finalizar (rebaja stock)" de `VentasPage.tsx`.
+>
+> El guard de v1.165.0 (`pedidoActivoVenta`, `.neq('estado', 'cancelado')`) ocultaba ese botón mientras
+> el Pedido vinculado estuviera "activo" — pero **'entregado' no estaba excluido**, solo 'cancelado'.
+> Resultado: en el flujo venta reservada → Pedido → Picking → retiro en mostrador, una vez que el
+> pedido se entregaba, el stock que la venta había reservado quedaba reservado **PARA SIEMPRE** — sin
+> ningún camino de código para convertirse en un rebaje real.
+>
+> Fix: la query pasa a `.not('estado', 'in', '(cancelado,entregado)')` — el botón "Finalizar" reaparece
+> una vez que el pedido está `entregado` (justo cuando hace falta poder rebajar). Los 2 banners de
+> aviso (ficha de venta + modal de pago MP) se corrigieron: ya no dicen "el rebaje se hace desde
+> Pedidos → Picking" (falso), explican que la mercadería se está preparando y hay que volver a Ventas
+> una vez entregada.
+>
+> **Verificado con datos reales de DEV, no solo lógica**: venta **#599** (reservada) con su pedido #91
+> ya `entregado` — query REST directa (JWT real, respetando RLS) confirmó que la query vieja devolvía
+> el pedido #91 (bloqueaba el botón) y la nueva devuelve vacío (lo desbloquea). Esa venta sigue en ese
+> estado en DEV, dejada como evidencia viva del bug — no se tocó manualmente (sin backfill/fix
+> retroactivo de datos, misma regla de no reescribir históricos).
+>
+> ⚠ **No confundir**: la venta **#619** es el caso de estudio de v1.165.0 (bloque de abajo, "rebaje por
+> 2 caminos") y la venta **#599** es la evidencia de v1.166.0 (bloque de acá, "guard no excluía
+> entregado") — son **dos ventas reales distintas** del mismo tenant "Almacén Jorgito" en DEV.
+>
+> #### 3. Deploy — PR #326 mergeado, tag/release `v1.166.0`, migración 351 verificada en DEV y PROD
+>
+> `APP_VERSION` v1.166.0, commit `e14179b5`. **PR #326**
+> (https://github.com/genesis360-app/genesis360/pull/326) mergeado — merge commit `95e837f6`. **Tag +
+> GitHub release `v1.166.0`**
+> (https://github.com/genesis360-app/genesis360/releases/tag/v1.166.0) publicados. Migración 351
+> aplicada y verificada en DEV (`gcmhzdedrkmmzfzfveig`) y PROD (`jjffnbrdjchquexdfgwq`) antes del merge
+> (mismo criterio de DDL aditivo/no-destructivo primero). Bundle real de Vercel PROD verificado con la
+> cadena "v1.166.0" literal.
+>
+> Ver `log.md` (2026-08-11, entrada al principio del archivo), [[wiki/business/roadmap]] (v1.166.0),
+> `wiki/database/migraciones.md` (mig 351), [[wiki/features/reportes-metricas]] ("Trazabilidad completa
+> de una venta"), [[wiki/features/pedidos]] ("Cuarta barrera" corregida + "Links relacionados"),
+> [[wiki/features/ventas-pos]], [[wiki/features/envios]].
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-11 cont.) — v1.165.0/v1.165.1 EN PROD (PR #324/#325): cierra un hueco real de REGLA #0 (rebaje de stock por 2 caminos, venta #619, mig 350) + fix de Compras `registrar_pago_oc` (mig 349) + 2 mejoras de UX — este bloque quedó SUPERADO por el de arriba (v1.166.0), que corrigió el guard de fondo y construyó la trazabilidad que acá quedó diferida
 >
 > Continuación directa de la sesión de abajo (v1.164.0, mismo día). GO, revisando la venta real
 > **#619** del tenant "Almacén Jorgito" en DEV, encontró un hueco real de la Regla de Oro #0: Ventas
@@ -60,23 +148,23 @@ type: project
 >   final del documento — visible sin scrollear hasta el final de la lista. Afecta Productos,
 >   Inventario, Clientes, Envíos.
 >
-> #### 4. Deploy — PR #324 ABIERTO, migraciones 349/350 YA aplicadas en DEV y PROD, merge/tag/release EN CURSO vía `deploy-runner`
+> #### 4. Deploy — ✅ CERRADO: PR #324 mergeado, tag/release `v1.165.0` confirmados; `v1.165.1` (PR #325) también en PROD
 >
-> `APP_VERSION` bumpeada a **v1.165.0**, commit `c3ea45aa` pusheado a `origin/dev`. **PR #324**
-> (`dev`→`main`) abierto: https://github.com/genesis360-app/genesis360/pull/324 (verificado con `gh pr
-> list` al escribir esta entrada — todavía NO mergeado). Migraciones 349 y 350 aplicadas y verificadas
-> en DEV (`gcmhzdedrkmmzfzfveig`) y PROD (`jjffnbrdjchquexdfgwq`) antes del merge (mismo criterio de
-> DDL aditivo/no-destructivo primero). El merge a `main` + tag/release `v1.165.0` + verificación del
-> bundle en Vercel PROD los completa el `deploy-runner`, corriendo en paralelo a esta actualización de
-> wiki — **confirmar en la próxima sesión** que el PR quedó MERGED y el release publicado (`gh pr view
-> 324` / `gh release list`) antes de dar el release por cerrado.
+> `APP_VERSION` bumpeada a **v1.165.0**, commit `c3ea45aa`. **PR #324**
+> (`dev`→`main`) — https://github.com/genesis360-app/genesis360/pull/324 — **MERGED, confirmado en la
+> sesión siguiente**. Migraciones 349 y 350 aplicadas y verificadas en DEV (`gcmhzdedrkmmzfzfveig`) y
+> PROD (`jjffnbrdjchquexdfgwq`) antes del merge (mismo criterio de DDL aditivo/no-destructivo primero).
+> **v1.165.1 (PR #325, mismo día)**: patch de UI del footer de conteo (`ListaConteoFooter` pintado por
+> `AppLayout` en vez de `sticky` dentro de la lista), sin migración propia, también confirmado en PROD.
 >
-> #### 5. Pendiente anotado, NO construido — trazabilidad completa de una venta en /historial
+> #### 5. Pendiente anotado en esta sesión — ✅ CONSTRUIDO en la sesión siguiente (v1.166.0, ver el bloque "ARRANCÁ ACÁ" al principio del archivo)
 >
 > GO pidió poder filtrar `/historial` por número de venta y ver TODO lo que le pasó (pedidos, envíos,
 > devoluciones, movimientos de stock) — quedó como diseño propuesto y **explícitamente diferido**
-> ("hacerlo en estos días, apenas terminemos con lo que estamos haciendo"). Anotado también en
-> [[wiki/features/pedidos]] y [[wiki/features/reportes-metricas]] para que no se pierda.
+> ("hacerlo en estos días, apenas terminemos con lo que estamos haciendo"). Esa misma verificación de
+> "cómo rebaja el picking", necesaria para construir la trazabilidad, encontró además un bug real de
+> REGLA #0 en el guard de arriba (`pedidoActivoVenta` no excluía `'entregado'`) — ver el bloque
+> "ARRANCÁ ACÁ" (v1.166.0, mig 351) al principio de este archivo para el detalle completo de ambos.
 >
 > Ver `log.md` (2026-08-11), [[wiki/business/roadmap]] (v1.165.0), `wiki/database/migraciones.md`
 > (migs 349/350), [[wiki/features/pedidos]] (guard de la mig 350 + fix del embed PGRST201),

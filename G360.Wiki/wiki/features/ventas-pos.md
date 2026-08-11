@@ -2,7 +2,7 @@
 title: Ventas / POS
 category: features
 tags: [ventas, pos, checkout, carrito, pagos, reservas, combos, cuenta-corriente, envios, multi-sucursal, unidad-medida]
-sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, src/lib/tiers.ts]
+sources: [CLAUDE.md, reglas_negocio.md, migrations 284, 285, 286, 306, 329, 330, 350, 351, src/lib/tiers.ts]
 updated: 2026-08-11
 ---
 
@@ -41,10 +41,30 @@ POS completo integrado con inventario, caja, clientes y facturación AFIP.
 > distintos**: el rebaje directo de acá, y el picking del Pedido de preparación que la misma venta
 > genera automáticamente (migs 315-319). Fix: query `pedidoActivoVenta` (Pedido con
 > `venta_origen_id` = la venta y `estado <> 'cancelado'`) — si existe, tanto el botón de la ficha de
-> venta como el del modal de confirmación de pago MP muestran un **aviso** en vez del botón ("el
-> rebaje se hace desde Pedidos → Picking"). Guard SERVER-SIDE espejado en `fn_pedido_venta_viva`
-> (bloquea "Lanzar" si la venta ya está `despachada`/`facturada`) — ver [[wiki/features/pedidos]]
-> "Cuarta barrera" para el detalle completo, incluido el bug de embed PGRST201 encontrado de paso.
+> venta como el del modal de confirmación de pago MP muestran un **aviso** en vez del botón. Guard
+> SERVER-SIDE espejado en `fn_pedido_venta_viva` (bloquea "Lanzar" si la venta ya está
+> `despachada`/`facturada`) — ver [[wiki/features/pedidos]] "Cuarta barrera" para el detalle
+> completo, incluido el bug de embed PGRST201 encontrado de paso.
+>
+> 🐛✅ **Corrección real 2026-08-11 (mig 351, v1.166.0) — el guard de arriba dejaba el stock
+> reservado para siempre.** Construyendo la trazabilidad de venta (ver [[wiki/features/reportes-metricas]]
+> "Trazabilidad completa de una venta"), GO preguntó "¿el picking realmente rebaja stock?" y, al
+> verificar contra el SQL real (`fn_completar_tarea_picking`/`fn_generar_tareas_picking_pedido_venta`/
+> `fn_pedido_entregar_retiro`), se confirmó que **el picking NUNCA rebaja stock ni toca
+> `cantidad_reservada`** para un pedido nacido de una venta — la reserva es de la VENTA, el picking
+> solo prepara/ubica mercadería (documentado explícitamente en migs 316/320/323). El mensaje de
+> arriba ("el rebaje se hace desde Pedidos → Picking") era **falso**. Peor: la query
+> `pedidoActivoVenta` solo excluía `estado <> 'cancelado'`, no `'entregado'` — así que una vez que el
+> pedido se entregaba en mostrador, el stock que la venta había reservado quedaba reservado **para
+> siempre**, sin ningún camino de código para convertirse en un rebaje real. Fix: la query pasa a
+> `.not('estado', 'in', '(cancelado,entregado)')` — el botón "Finalizar" reaparece apenas el pedido
+> está `entregado` (justo cuando hace falta rebajar). Los 2 banners (ficha de venta + modal de pago
+> MP) se corrigieron para explicar que la mercadería se está preparando y hay que volver una vez
+> entregada, sin mencionar un rebaje por Pedidos que nunca existió. **Verificado con datos reales de
+> DEV**: venta #599 (reservada) con su Pedido #91 ya `entregado` — query REST directa con JWT real
+> confirmó que la query vieja bloqueaba el botón y la nueva lo desbloquea; esa venta sigue en ese
+> estado en DEV, dejada como evidencia viva del bug (sin backfill/fix retroactivo de datos). No
+> confundir con la venta #619 (caso de estudio de v1.165.0, arriba) — son ventas reales distintas.
 
 ---
 

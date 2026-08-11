@@ -71,6 +71,14 @@ const ENVIO_ESTADO_LABELS: Record<string, string> = {
   en_bodega: 'En bodega', entregado: 'Entregado', devolucion: 'En devolución', cancelado: 'Cancelado',
 }
 
+// Labels de pedidos.estado — copia liviana de ESTADO_BADGE en PedidosPage.tsx (no exportado),
+// solo para el badge de "Pedido #N" en el detalle de venta.
+const PEDIDO_ESTADO_LABELS: Record<string, string> = {
+  borrador: 'Borrador', confirmado: 'Confirmado', en_preparacion: 'En preparación',
+  listo_para_entrega: 'Listo para entrega', entregado: 'Entregado', entregado_parcial: 'Entrega parcial',
+  cancelado: 'Cancelado',
+}
+
 // Fallback si el tenant aún no tiene métodos configurados — se prefiere la lista dinámica de Config
 const MEDIOS_PAGO_FALLBACK = ['Efectivo', 'Tarjeta de débito', 'Tarjeta de crédito', 'Transferencia', 'Mercado Pago']
 // E3 — catálogo cerrado de motivos de cancelación de reserva (+ observación libre opcional)
@@ -1307,6 +1315,21 @@ export default function VentasPage() {
       const { data } = await supabase.from('envios')
         .select('id, numero, estado, courier, tracking_number')
         .eq('venta_id', ventaDetalle!.id)
+        .order('created_at', { ascending: false })
+      return data ?? []
+    },
+    enabled: !!ventaDetalle?.id,
+  })
+
+  // Pedido(s) asociado(s) a la venta abierta — mismo problema que enviosVenta: GO se encontró con
+  // el aviso de "Finalizar" bloqueado (pedidoActivoVenta) mencionando el número del pedido pero sin
+  // ningún link para ir a verlo, a diferencia del badge de Envío que sí es clickeable.
+  const { data: pedidosVenta = [] } = useQuery({
+    queryKey: ['venta-pedidos', ventaDetalle?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('pedidos')
+        .select('id, numero, numero_sucursal, estado')
+        .eq('venta_origen_id', ventaDetalle!.id)
         .order('created_at', { ascending: false })
       return data ?? []
     },
@@ -6275,6 +6298,12 @@ export default function VentasPage() {
                     <button key={e.id} onClick={() => navigate(`/envios?busqueda=${e.numero}`)}
                       title="Ver envío" className="text-xs font-medium px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1 hover:bg-indigo-200 dark:hover:bg-indigo-900/50">
                       <Truck size={11} /> Envío #{e.numero} · {ENVIO_ESTADO_LABELS[e.estado] ?? e.estado}
+                    </button>
+                  ))}
+                  {(pedidosVenta as any[]).map(p => (
+                    <button key={p.id} onClick={() => navigate(`/pedidos?busqueda=${p.numero}`)}
+                      title="Ver pedido" className="text-xs font-medium px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 inline-flex items-center gap-1 hover:bg-amber-200 dark:hover:bg-amber-900/50">
+                      <Package size={11} /> Pedido #{p.numero_sucursal ?? p.numero} · {PEDIDO_ESTADO_LABELS[p.estado] ?? p.estado}
                     </button>
                   ))}
                 </div>

@@ -2,7 +2,7 @@
 title: Módulo Pedidos (logística, separado de Ventas)
 category: features
 tags: [pedidos, logistica, picking, wms, reabastecimiento, tipos-pedido, cliente-suelto, bolsa, staging]
-sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts]
+sources: [migrations 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 330, 350, 351, relevamiento_pedidos_respuestas.md, src/pages/PedidosPage.tsx, src/pages/PickingPage.tsx, src/pages/ConfigPage.tsx, src/lib/pedidoTransiciones.ts, src/lib/pedidoVenta.ts]
 updated: 2026-08-11
 ---
 
@@ -286,7 +286,9 @@ menos que el total pedido por línea; lo no entregado queda pendiente para una e
 Pedido puede generar N ventas, A4). **G4 — cierre automático/manual:** `tenants.pedido_cierre_automatico`
 (columna nueva, default `true`) — si TRUE y se completa el 100%, `pedidos.estado='entregado'` solo;
 si FALSE, queda en `'entregado_parcial'` hasta que alguien lo cierre a mano (`fn_pedido_cerrar`, ya
-existía desde antes de esta fase, sin cambios).
+existía desde antes de esta fase, sin cambios). 🆕 **2026-08-11 (v1.166.0):** el cierre manual desde
+`PedidosPage.tsx` no llamaba `logActividad()` — auditando gaps para la trazabilidad de venta (ver
+"Links relacionados") se encontró y cerró; ahora loguea `cambio_estado` con `venta_id` resuelto.
 
 **Bugs reales encontrados por el `migration-reviewer` y corregidos antes de aplicar:**
 1. 🔴 **El guard de estado no incluía `'entregado_parcial'`** — la SEGUNDA entrega de cualquier
@@ -330,7 +332,9 @@ Genera un `crypto.randomUUID()` como `p_idempotency_key` al abrir el modal.
   libera todas las reservas pendientes/en_curso, cancela esas `wms_tareas`, cancela el envío
   auto-generado si no se despachó, vuelve `pedidos.estado` a `'confirmado'` (limpia
   `lanzado_at`/`lanzado_por`). Solo si NINGUNA tarea del pedido está `completada`. Útil para corregir
-  un lanzamiento con datos mal cargados sin tener que cancelar el pedido entero.
+  un lanzamiento con datos mal cargados sin tener que cancelar el pedido entero. 🆕 **2026-08-11
+  (v1.166.0): tampoco logueaba** — mismo gap y mismo fix que `fn_pedido_cerrar` arriba, ahora
+  `PedidosPage.tsx` llama `logActividad()` al deslanzar (con `venta_id` resuelto).
 - **`fn_cancelar_pedido(p_pedido_id)`**: cancelación completa (cualquier estado no terminal), mismo
   guard + mismo mecanismo de liberación, pasa a `'cancelado'`.
 - **`fn_unpick_tarea_wms(p_tarea_id, p_ubicacion_destino_id)`** (E4, "des-pickeo"): para una tarea
@@ -678,6 +682,30 @@ canal ONLINE sin envío (= retiro en local)                    -> genera
 > - **Verificado en el navegador contra DEV real**: venta #622 (con Pedido #23 confirmado) mostró el
 >   aviso en vez del botón; 7 pedidos reales cuya venta ya estaba despachada mostraron "Lanzar"
 >   deshabilitado con el tooltip correcto.
+>
+> 🐛✅ **Corrección real de la Cuarta barrera (mig 351, v1.166.0, 2026-08-11) — el picking NUNCA
+> rebaja stock, y el guard dejaba la reserva de la venta atascada para siempre.** Construyendo la
+> trazabilidad de venta (ver "Links relacionados" abajo), GO preguntó si el picking realmente rebaja
+> stock. Verificado contra el SQL real (`fn_completar_tarea_picking`, `fn_generar_tareas_picking_pedido_venta`,
+> `fn_pedido_entregar_retiro`): **ninguna de las tres toca `inventario_lineas.cantidad`,
+> `cantidad_reservada` ni `productos.stock_actual`** para un pedido con `venta_origen_id` — están
+> documentadas con comentarios explícitos tipo "el picking NUNCA reserva" desde las migs 316/320/323.
+> La reserva es siempre de la VENTA; el picking solo prepara/ubica mercadería. El único código que
+> rebaja de verdad sigue siendo el botón "Finalizar (rebaja stock)" de Ventas.
+> La query `pedidoActivoVenta` de arriba solo excluía `estado <> 'cancelado'` — **no `'entregado'`** —
+> así que en el flujo venta reservada → Pedido → Picking → retiro en mostrador, una vez que el pedido
+> se entregaba, el stock que la venta había reservado quedaba reservado **para siempre**, sin ningún
+> camino de código para convertirse en un rebaje real. Fix: `.not('estado', 'in',
+> '(cancelado,entregado)')` — el botón "Finalizar" reaparece exactamente cuando el pedido pasa a
+> `entregado`. Los 2 banners de aviso en `VentasPage.tsx` (ficha de venta + modal de pago MP) se
+> corrigieron: ya no dicen "el rebaje se hace desde Pedidos → Picking" (falso), explican que la
+> mercadería se está preparando y hay que volver a Ventas una vez entregada.
+> **Verificado con datos reales de DEV, no solo lógica**: venta #599 (reservada) con su Pedido #91 ya
+> `entregado` — query REST directa con JWT real (respetando RLS) confirmó que la query vieja devolvía
+> el pedido #91 (bloqueaba el botón) y la nueva devuelve vacío (lo desbloquea). Esa venta sigue en ese
+> estado en DEV, dejada como evidencia viva del bug — no hay backfill/fix retroactivo de datos (misma
+> regla de no reescribir históricos). No confundir con la venta #619 (caso de estudio de la Cuarta
+> barrera original, arriba) — son ventas reales distintas del mismo tenant.
 
 Deriva de `canales_venta.clasificacion` (mig 168): **no hay nada que configurar** y es correcto por
 default para todos los tenants. `tenants.pedido_canales_excluidos` es solo la excepción (canales que
@@ -849,12 +877,16 @@ una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT
 
 ## Links relacionados
 
-> 🟡 **Pendiente propuesto (2026-08-11), NO construido:** GO pidió trazabilidad completa de una venta
-> en `/historial` — filtrar por número de venta y ver TODO lo que le pasó (pedidos, envíos,
-> devoluciones, movimientos de stock). Diseño propuesto, **explícitamente diferido** ("hacerlo en
-> estos días, apenas terminemos con lo que estamos haciendo"). Ver [[wiki/features/reportes-metricas]]
-> → "Trazabilidad-extendida" (hub existente que ya cruza `actividad_log`/`venta_item_despachos`, la
-> extensión sería agregar Pedidos/Envíos al cruce por número de venta).
+> ✅ **CONSTRUIDO (mig 351, v1.166.0, 2026-08-11):** GO había pedido trazabilidad completa de una
+> venta en `/historial` — filtrar por número de venta y ver TODO lo que le pasó. Se construyó
+> arrancando por venta (GO: "es mucho hacerlo todo junto"). Antes de diseñar se auditaron TODOS los
+> puntos donde Pedidos/Envíos deberían loguear y no lo hacían: **Envíos tenía CERO llamadas a
+> `logActividad()`** en todo `EnviosPage.tsx` (crear/cambio de estado/eliminar agregados); en Pedidos,
+> `fn_pedido_cerrar` y `fn_pedido_deslanzar` no logueaban nada (ver PED4/PED5 arriba). Detalle completo
+> en [[wiki/features/reportes-metricas]] → "Trazabilidad completa de una venta". **Alcance a propósito
+> acotado a VENTA** — la idea original también mencionaba trazabilidad de "inventario" en general, que
+> queda parcialmente cubierta vía el cruce ya existente con `venta_item_despachos` (LPN/ubicación por
+> línea), pero esto NO es un rediseño completo de trazabilidad de inventario, solo de venta.
 
 - [[wiki/features/wms]] — schema/RPCs de `wms_tareas` que Pedidos reusa desde PED3; `fn_completar_tarea_reabastecimiento`
   (mig 290) recibió un fix compartido en la mig 297 encontrado al construir PED4 (ver ahí); 🆕
@@ -872,7 +904,7 @@ una reserva + excepción, 5/5, todo por REST) · regresión **107** verde · UAT
   crédito (`clientes.limite_credito`) ahora también lo valida Pedidos (mig 299, ver arriba)
 - [[wiki/features/configuracion]] — tab "Pedidos" (PED7): numeración, cierre automático, tipos de
   pedido, editor E3 de roles por transición
-- [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 350
+- [[wiki/database/migraciones]] — migs 292, 294, 295, 296, 297, 298, 299, 300, 301, 302, 350, 351
 - `relevamiento-unidades-medida-empaque-reglas-negocio.html` — relevamiento nuevo (2026-07-23) para
   separar Unidad de Medida física (kg/g/L, conversión universal) de Nivel de Empaque (Caja/Pallet,
   factor por producto); afecta el `esDecimal` que Pedidos usa para validar cantidad — sin implementar

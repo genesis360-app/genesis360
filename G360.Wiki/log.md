@@ -6,6 +6,54 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-11] update | 🔒🛑 Fix de seguridad real en Repositores (mig 353): `vw_tareas_repositor` sin `security_invoker` exponía datos cross-tenant + límite de gasto de subagentes YA LIBERADO
+
+Continuación directa de la entrada de abajo (mig 352, límite de gasto), mismo día. GO confirmó que el
+límite mensual de gasto de la cuenta ya no aplica (al menos por un buen rato) — se volvió a correr el
+subagente `migration-reviewer` sobre la mig 352, esta vez completo (la vez anterior había fallado a
+mitad de revisión con "You've hit your monthly spend limit").
+
+**🔒🛑 Bug de seguridad real encontrado.** `vw_tareas_repositor` (mig 352) había quedado creada **SIN**
+`WITH (security_invoker = true)`. Por default, Postgres evalúa las RLS policies de las tablas
+subyacentes con los permisos del DUEÑO de la vista, no del usuario que consulta — el mismo gotcha que
+el proyecto ya había resuelto en la **mig 053** (`stock_por_producto`) y replicado desde entonces en
+TODAS las vistas nuevas (migs 136, 141, 142, 226: `vw_boveda_cuentas`, `vw_diferencias_por_cajero`,
+`vw_caja_resumen_diario`, `vw_caja_mensual_por_sucursal`). `vw_tareas_repositor` fue la **ÚNICA** vista
+de todo el historial de migraciones que quedó afuera de ese patrón — el comentario de la vista decía
+"RLS heredada de las tablas base (mismo patrón que el resto de las vistas del proyecto)", que en este
+punto era incorrecto.
+
+**Impacto real mientras estuvo así (solo en DEV, nunca llegó a PROD)**: cualquier usuario autenticado
+de CUALQUIER tenant que consultara la vista podía ver tareas — y por join, precios/estados de
+inventario/vencimientos/patrones de venta — de TODOS los tenants, no solo el propio.
+
+El reviewer también sugirió (no bloqueante) sumar `authenticated` al `REVOKE` de las 2 funciones
+trigger de la mig 352 (`fn_generar_tarea_repositor_precio`, `fn_generar_tarea_repositor_estado`),
+alineado con el precedente de la mig 272.
+
+**Fix — mig `353_fix_security_invoker_vw_tareas_repositor.sql`**: `ALTER VIEW
+public.vw_tareas_repositor SET (security_invoker = true);` + `REVOKE ALL ON FUNCTION ... FROM PUBLIC,
+anon, authenticated;` en ambas funciones trigger. Aplicada y verificada contra la DB real de DEV
+(`gcmhzdedrkmmzfzfveig`): `pg_class.reloptions` confirma `security_invoker=true`,
+`information_schema.role_routine_grants` confirma que las 2 funciones ya no tienen grant a
+`authenticated`/`anon` (solo `postgres`/`service_role`). Commiteada y pusheada a `origin/dev` (commit
+`36fc075b`). **Mig 353, igual que la 352, SOLO en DEV** — sin deployar a PROD; la decisión de si
+deployar el módulo Repositores Fase 1 ahora o esperar más revisión/que lo pruebe Fede sigue pendiente
+de GO, sin cambios respecto a la sesión anterior.
+
+**✅ Límite de gasto mensual CONFIRMADO liberado** — cierra el pendiente que había quedado anotado en
+la entrada de abajo.
+
+**Hallazgo aparte, NO bloqueante y SIN tocar.** Al intentar correr `npm run schema:dump` para reflejar
+las migs 352/353 en `supabase/schema_full.sql`, se descubrió que ese archivo ya estaba desactualizado
+desde ANTES de esta sesión (le falta `actividad_log.venta_id` de la mig 351 en adelante). El modo
+automático de `dump-schema.mjs` necesita `SUPABASE_ACCESS_TOKEN` (PAT de Supabase), no configurado en
+este entorno; el modo fallback por conexión directa sigue bloqueado por el bug del pooler ya
+documentado. No se tocó el archivo (parchear a mano un dump de ~11800 líneas es de alto riesgo).
+**Pendiente nuevo**: configurar el PAT para poder regenerar `schema_full.sql` normalmente.
+
+---
+
 ## [2026-08-11] update | 🆕 Repositores Fase 1 (mig 352) CONSTRUIDA Y VERIFICADA EN DEV, sin deployar + v1.166.1 EN PROD (link a Pedido) + límite de gasto de cuenta corta subagentes
 
 Continuación directa de la entrada de abajo (v1.166.0), mismo día.

@@ -6,7 +6,69 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont. 3) — v1.166.1 EN PROD (link directo al Pedido) + 🆕 Repositores Fase 1 CONSTRUIDA Y VERIFICADA EN DEV (mig 352, SIN deployar a PROD todavía) + 3 preguntas de GO anotadas para revisar + ⚠ cuenta llegó al límite mensual de gasto (subagentes caídos)
+> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont. 4) — 🔒🛑 Fix de seguridad real en Repositores (mig 353): `vw_tareas_repositor` sin `security_invoker` exponía datos cross-tenant + límite de gasto mensual CONFIRMADO liberado + pendiente nuevo (PAT de Supabase para `schema_full.sql`)
+>
+> Continuación directa de la sesión de abajo (cont. 3, mismo día). GO confirmó que el límite mensual de
+> gasto de la cuenta ya no aplica (al menos por un buen rato) — se volvió a correr el subagente
+> `migration-reviewer` sobre la mig 352, esta vez completo (la vez anterior había fallado a mitad de
+> revisión con "You've hit your monthly spend limit", ver bloque de abajo, punto 3 original).
+>
+> #### 1. 🔒🛑 Bug de seguridad real encontrado — `vw_tareas_repositor` sin `security_invoker`
+>
+> El reviewer encontró que `vw_tareas_repositor` (mig 352) había quedado creada **SIN** `WITH
+> (security_invoker = true)`. Por default, Postgres evalúa las RLS policies de las tablas subyacentes
+> con los permisos del DUEÑO de la vista, no del usuario que consulta — es el mismo gotcha que el
+> proyecto ya había resuelto en la **mig 053** (`stock_por_producto`) y replicado desde entonces en
+> TODAS las vistas nuevas (migs 136, 141, 142, 226: `vw_boveda_cuentas`, `vw_diferencias_por_cajero`,
+> `vw_caja_resumen_diario`, `vw_caja_mensual_por_sucursal`). `vw_tareas_repositor` fue la **ÚNICA**
+> vista de todo el historial de migraciones que quedó afuera de ese patrón — el comentario de la vista
+> decía "RLS heredada de las tablas base (mismo patrón que el resto de las vistas del proyecto)", que en
+> este punto era **incorrecto**.
+>
+> **Impacto real mientras estuvo así (solo en DEV, nunca llegó a PROD)**: cualquier usuario autenticado
+> de CUALQUIER tenant que consultara la vista podía ver tareas — y por join, precios/estados de
+> inventario/vencimientos/patrones de venta — de TODOS los tenants, no solo el propio.
+>
+> El reviewer también sugirió (no bloqueante) sumar `authenticated` al `REVOKE` de las 2 funciones
+> trigger de la mig 352 (`fn_generar_tarea_repositor_precio`, `fn_generar_tarea_repositor_estado`),
+> alineado con el precedente de la mig 272.
+>
+> #### 2. Fix — mig 353 aplicada y verificada en DEV
+>
+> `supabase/migrations/353_fix_security_invoker_vw_tareas_repositor.sql`:
+> - `ALTER VIEW public.vw_tareas_repositor SET (security_invoker = true);`
+> - `REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon, authenticated;` en ambas funciones trigger.
+>
+> Aplicada y verificada contra la DB real de DEV (`gcmhzdedrkmmzfzfveig`): `pg_class.reloptions`
+> confirma `security_invoker=true`, `information_schema.role_routine_grants` confirma que las 2
+> funciones ya no tienen grant a `authenticated`/`anon` (solo `postgres`/`service_role`). Commiteada y
+> pusheada a `origin/dev` (commit `36fc075b`). **Mig 353, igual que la 352, SOLO en DEV** — sin
+> deployar a PROD; la decisión de si deployar el módulo Repositores Fase 1 ahora o esperar más
+> revisión/que lo pruebe Fede sigue pendiente de GO, **sin cambios respecto a la sesión anterior**.
+>
+> #### 3. ✅ Límite de gasto mensual — CONFIRMADO liberado
+>
+> GO confirmó que el límite de gasto ya no aplica (al menos por un buen rato) — cierra el punto #3 de
+> la sesión anterior (bloque de abajo). El `migration-reviewer` volvió a funcionar completo en esta
+> sesión.
+>
+> #### 4. Hallazgo aparte, NO bloqueante y SIN tocar — `schema_full.sql` desactualizado, falta el PAT
+>
+> Al intentar correr `npm run schema:dump` para reflejar las migs 352/353 en `supabase/schema_full.sql`,
+> se descubrió que ese archivo ya estaba desactualizado desde ANTES de esta sesión (le falta
+> `actividad_log.venta_id` de la mig 351 en adelante). El modo automático de `dump-schema.mjs` necesita
+> `SUPABASE_ACCESS_TOKEN` (PAT de Supabase), no configurado en este entorno; el modo fallback por
+> conexión directa sigue bloqueado por el bug del pooler ya documentado (ver
+> `reference_schema_dump_metodo`/`reference_supabase_pooler_auth_bug` en memoria). No se tocó el
+> archivo (parchear a mano un dump de ~11800 líneas es de alto riesgo). **Pendiente nuevo, próxima
+> sesión**: configurar el PAT para poder regenerar `schema_full.sql` normalmente.
+>
+> Ver `log.md` (2026-08-11, entrada al principio del archivo), `wiki/database/migraciones.md` (mig
+> 353), [[wiki/features/repositores]] (nota del fix de seguridad).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-11 cont. 3) — v1.166.1 EN PROD (link directo al Pedido) + 🆕 Repositores Fase 1 CONSTRUIDA Y VERIFICADA EN DEV (mig 352, SIN deployar a PROD todavía) + 3 preguntas de GO anotadas para revisar + ⚠ cuenta llegó al límite mensual de gasto (subagentes caídos) — este bloque quedó SUPERADO por el de arriba (cont. 4): mig 353 corrigió un bug de seguridad real de la vista de la mig 352 y el límite de gasto se confirmó liberado
 >
 > Continuación directa de la sesión de abajo (v1.166.0, mismo día).
 >
@@ -73,13 +135,16 @@ type: project
 > pruebe Fede — sin respuesta todavía al momento de cerrar esta sesión. **Decisión pendiente real de
 > la próxima sesión.**
 >
-> #### 3. ⚠ Cuenta llegó al límite mensual de gasto — subagentes fallaron a mitad de sesión
+> #### 3. ⚠ Cuenta llegó al límite mensual de gasto — subagentes fallaron a mitad de sesión — ✅ RESUELTO en la sesión siguiente (cont. 4, arriba)
 >
 > El `deploy-runner` (deploy de v1.166.1) y el `migration-reviewer` (revisión de la mig 352) fallaron
 > con *"You've hit your monthly spend limit"*. El deploy de v1.166.1 terminó bien igual (Vercel sigue
 > el build solo, no depende del agente — se verificó el bundle real por curl). La migración 352 se
 > revisó a mano contra el mismo checklist que usa el subagente (ver arriba). **Confirmar la próxima
-> sesión si el límite ya se levantó** antes de asumir que los subagentes funcionan de nuevo.
+> sesión si el límite ya se levantó** antes de asumir que los subagentes funcionan de nuevo. **✅
+> Confirmado por GO en la sesión siguiente (cont. 4, bloque de arriba)**: el límite ya no aplica, y el
+> `migration-reviewer` completo encontró un bug de seguridad real (mig 353) que el self-review a mano se
+> había perdido.
 >
 > #### 4. Preguntas de GO anotadas para revisar — NINGUNA se investigó ni se tocó código todavía
 >

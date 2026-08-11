@@ -12,8 +12,9 @@ updated: 2026-08-11
 bundle real de Vercel verificado con la cadena "v1.166.1"). Sin migraciones nuevas respecto de
 v1.166.0. Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque
 "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.167.0 (`origin/dev` @ `62ba97ec`) — **Repositores Fase 1 (mig 352) construida y
-verificada en DEV, sin deployar a PROD todavía** (decisión pendiente de GO)  
+**Versión en DEV:** v1.167.0 (`origin/dev` @ `36fc075b`) — **Repositores Fase 1 (mig 352 + fix de
+seguridad mig 353) construida y verificada en DEV, sin deployar a PROD todavía** (decisión pendiente de
+GO)  
 **Última actualización:** 11 de Agosto, 2026
 
 ---
@@ -47,6 +48,14 @@ ninguna UI para setearla — se agregó el campo "Ubicación de exhibición (gó
 **🟡 Sin deployar a PROD** — migración 352 solo en DEV, commit `62ba97ec` en `origin/dev` sin mergear a
 `main`. Es un módulo nuevo (no un fix), se le preguntó a GO si deployar ahora — sin respuesta al cierre
 de la sesión.
+
+**🔒🛑 2026-08-11 (misma sesión continuada, mig 353):** con el límite de gasto mensual de subagentes ya
+liberado, el `migration-reviewer` completo (la vez anterior había fallado a mitad de revisión) encontró
+que `vw_tareas_repositor` había quedado creada sin `security_invoker` — la ÚNICA vista de todo el
+historial fuera del patrón ya usado desde la mig 053. Mientras estuvo así (solo en DEV, nunca en PROD),
+cualquier usuario autenticado de cualquier tenant podía leer tareas/precios/stock de TODOS los tenants.
+Corregido y verificado contra la DB real de DEV; commit `36fc075b` en `origin/dev`. Detalle completo en
+[[wiki/features/repositores]] y `wiki/database/migraciones.md` (mig 353). Sigue sin deployar a PROD.
 
 ---
 

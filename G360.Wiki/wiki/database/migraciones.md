@@ -6,10 +6,32 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-11
 ---
 
-# Historial de Migraciones (001-352)
+# Historial de Migraciones (001-353)
 
-**Total al 2026-08-11:** 352 archivos de migración + 086b correctivo (algunos números salteados por PRs
+**Total al 2026-08-11:** 353 archivos de migración + 086b correctivo (algunos números salteados por PRs
 descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+
+**353 (`353_fix_security_invoker_vw_tareas_repositor.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
+`36fc075b`), sin mergear a `main`:** 🔒🛑 Fix de seguridad real sobre la vista de la mig 352, misma
+sesión de Repositores continuada. Con el límite de gasto mensual de subagentes ya liberado (confirmado
+por GO), se volvió a correr el `migration-reviewer` completo sobre la mig 352 (la vez anterior había
+fallado a mitad de revisión) — encontró que `vw_tareas_repositor` había quedado creada **SIN** `WITH
+(security_invoker = true)`, el mismo gotcha que el proyecto ya había resuelto en la **mig 053**
+(`stock_por_producto`) y replicado desde entonces en TODAS las vistas nuevas (migs 136, 141, 142, 226:
+`vw_boveda_cuentas`, `vw_diferencias_por_cajero`, `vw_caja_resumen_diario`,
+`vw_caja_mensual_por_sucursal`) — `vw_tareas_repositor` fue la **ÚNICA** vista de todo el historial que
+quedó afuera de ese patrón (su comentario decía "RLS heredada de las tablas base", incorrecto en este
+caso). Sin `security_invoker`, Postgres evalúa las RLS de las tablas subyacentes con los permisos del
+DUEÑO de la vista, no del usuario que consulta. **Impacto real mientras estuvo así (solo en DEV, nunca
+en PROD)**: cualquier usuario autenticado de CUALQUIER tenant podía leer tareas — y por join,
+precios/estados de inventario/vencimientos/patrones de venta — de TODOS los tenants. Fix: `ALTER VIEW
+public.vw_tareas_repositor SET (security_invoker = true);` + `REVOKE ALL ... FROM PUBLIC, anon,
+authenticated` en las 2 funciones trigger de la mig 352 (`fn_generar_tarea_repositor_precio`,
+`fn_generar_tarea_repositor_estado`), sugerencia no bloqueante del reviewer alineada con el precedente
+de la mig 272. Verificado contra la DB real de DEV: `pg_class.reloptions` confirma
+`security_invoker=true`; `information_schema.role_routine_grants` confirma que las 2 funciones ya no
+tienen grant a `authenticated`/`anon` (solo `postgres`/`service_role`). Ver [[wiki/features/repositores]].
 
 **352 (`352_repositores_fase1_nucleo.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
 NO aplicada en PROD (`jjffnbrdjchquexdfgwq`) todavía — código en `origin/dev` (v1.167.0, commit
@@ -199,6 +221,10 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
+**001-353: 351 EN DEV Y PROD, 352-353 SOLO EN DEV.** Mig 353 es un fix de seguridad
+(`security_invoker`) sobre la vista de la mig 352 (`vw_tareas_repositor` exponía datos cross-tenant) —
+misma sesión de Repositores Fase 1 continuada, commit `36fc075b` en `origin/dev`, sin mergear a `main`
+ni deployar — decisión pendiente de GO.
 **001-352: 351 EN DEV Y PROD, 352 SOLO EN DEV.** Código `v1.166.1` 100% CERRADO Y EN PROD (PR #327,
 link directo al Pedido desde el detalle de venta, sin migración propia). **Código `v1.167.0`
 (Repositores Fase 1, mig 352) EN `origin/dev` (commit `62ba97ec`), SIN mergear a `main` ni deployar —

@@ -2,17 +2,21 @@
 title: Módulo Repositores
 category: features
 tags: [repositores, precios, etiquetas, gondola, prioridad, roles-custom, modo-avanzado]
-sources: [migration 352, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/components/layout/AppLayout.tsx]
+sources: [migration 352, migration 353, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/components/layout/AppLayout.tsx]
 updated: 2026-08-11
 ---
 
 # Módulo Repositores
 
-> 🟡 **Fase 1 (núcleo + disparadores + prioridad) CONSTRUIDA Y VERIFICADA EN DEV (mig 352,
-> 2026-08-11) — NO deployada a PROD todavía.** Es un módulo nuevo, no un fix: se le preguntó a GO si
-> deployar ahora o esperar más revisión (de él o de Fede) antes de subirlo — sin respuesta al cierre
-> de la sesión que lo construyó. Confirmar el estado real (`gh pr list`, `git log origin/main`) antes
-> de asumir que sigue en DEV.
+> 🟡 **Fase 1 (núcleo + disparadores + prioridad) CONSTRUIDA Y VERIFICADA EN DEV (mig 352 + fix de
+> seguridad mig 353, 2026-08-11) — NO deployada a PROD todavía.** Es un módulo nuevo, no un fix: se le
+> preguntó a GO si deployar ahora o esperar más revisión (de él o de Fede) antes de subirlo — sin
+> respuesta al cierre de la sesión que lo construyó. Confirmar el estado real (`gh pr list`, `git log
+> origin/main`) antes de asumir que sigue en DEV.
+>
+> 🔒🛑 **Bug de seguridad real encontrado y corregido en la misma sesión (mig 353), mientras estuvo
+> SOLO en DEV, nunca llegó a PROD**: `vw_tareas_repositor` había quedado creada sin `security_invoker`
+> — ver "Fix de seguridad" más abajo.
 
 Módulo para que la persona que repone mercadería en el local sepa, sin tener que acordarse ni
 recorrer la góndola, **qué cartel de precio hay que cambiar** — cada vez que un precio cambia o un
@@ -100,6 +104,32 @@ THEN INSERT` — se cambió a `ON CONFLICT` porque el patrón viejo tiene una ra
 concurrencia (dos UPDATEs simultáneos al mismo producto podían no verse entre sí y terminar creando 2
 tareas duplicadas). Encontrado en el self-review de la migración (el subagente `migration-reviewer`
 falló por el límite de gasto mensual de la cuenta — se revisó a mano contra el mismo checklist).
+
+## 🔒 Fix de seguridad (mig 353) — `vw_tareas_repositor` sin `security_invoker`
+
+Con el límite de gasto mensual de subagentes ya liberado (confirmado por GO), se volvió a correr el
+`migration-reviewer` completo sobre la mig 352 (la vez anterior había fallado a mitad de revisión) y
+encontró que `vw_tareas_repositor` había quedado creada **SIN** `WITH (security_invoker = true)`. Por
+default, Postgres evalúa las RLS policies de las tablas subyacentes con los permisos del **DUEÑO de la
+vista**, no del usuario que consulta — el mismo gotcha que el proyecto ya había resuelto en la **mig
+053** (`stock_por_producto`) y replicado desde entonces en TODAS las vistas nuevas (migs 136, 141, 142,
+226: `vw_boveda_cuentas`, `vw_diferencias_por_cajero`, `vw_caja_resumen_diario`,
+`vw_caja_mensual_por_sucursal`). `vw_tareas_repositor` fue la **ÚNICA** vista de todo el historial de
+migraciones que quedó afuera de ese patrón — su comentario decía "RLS heredada de las tablas base
+(mismo patrón que el resto de las vistas del proyecto)", que en este punto era incorrecto.
+
+**Impacto real mientras estuvo así** (solo en DEV, nunca llegó a PROD): cualquier usuario autenticado
+de CUALQUIER tenant que consultara la vista podía ver tareas — y por join, precios/estados de
+inventario/vencimientos/patrones de venta — de TODOS los tenants, no solo el propio.
+
+**Fix (`353_fix_security_invoker_vw_tareas_repositor.sql`)**: `ALTER VIEW public.vw_tareas_repositor
+SET (security_invoker = true);` + `REVOKE ALL ON FUNCTION ... FROM PUBLIC, anon, authenticated;` en las
+2 funciones trigger (`fn_generar_tarea_repositor_precio`, `fn_generar_tarea_repositor_estado`) —
+sugerencia no bloqueante del reviewer, alineada con el precedente de la mig 272. Verificado contra la
+DB real de DEV: `pg_class.reloptions` confirma `security_invoker=true`;
+`information_schema.role_routine_grants` confirma que las 2 funciones ya no tienen grant a
+`authenticated`/`anon` (solo `postgres`/`service_role`). Commiteada y pusheada a `origin/dev` (commit
+`36fc075b`) — **mig 353, igual que la 352, SOLO en DEV**, sin deployar a PROD.
 
 ## Acceso y rol
 

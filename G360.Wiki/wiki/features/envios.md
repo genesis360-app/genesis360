@@ -2,8 +2,8 @@
 title: Módulo Envíos
 category: features
 tags: [envios, logistica, courier, remito, tracking, whatsapp, google-maps, km-auto, pod, transportista, iss-174, cotizacion-courier, pedidos]
-sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292]
-updated: 2026-08-06
+sources: [CLAUDE.md, ROADMAP.md, relevamiento_envios_respuestas.md, migrations 292, 351]
+updated: 2026-08-11
 ---
 
 # Módulo Envíos
@@ -27,6 +27,17 @@ updated: 2026-08-06
 > sin construir), ANTES de que exista la venta real; `envios.venta_id` se completa recién cuando el
 > Pedido termine facturando. Coexiste con `venta_id`, sin cambiar el comportamiento actual de esta
 > página.
+
+> 🐛✅ **Auditoría real 2026-08-11 (mig 351, v1.166.0): `EnviosPage.tsx` tenía CERO llamadas a
+> `logActividad()`** en todo el archivo (146KB, uno de los módulos más grandes de la app) — encontrado
+> al auditar gaps para construir la trazabilidad completa de una venta en `/historial` (ver
+> [[wiki/features/reportes-metricas]] → "Trazabilidad completa de una venta"). Se agregó logging real
+> a **crear envío**, **cambio de estado** y **eliminar envío**, cada uno resolviendo `venta_id` (de
+> `payload.venta_id`/`envio.venta_id`) para que aparezcan en el cruce de trazabilidad de su venta.
+> Queda afuera a propósito (fuera de alcance de esta pasada): ediciones de campos sueltos (combustible,
+> domicilio, POD, tracking automático vía courier) — son detalles logísticos internos, no hitos del
+> ciclo de vida que alguien necesite ver trazando una venta. `envio` se suma como `EntidadLog` propio
+> en `actividadLog.ts` (antes Envíos no tenía tipo de entidad en el log).
 
 Módulo de seguimiento de envíos y entregas. Implementado en v1.3.0 PROD ✅.  
 **Última actualización:** 2026-06-10 — **courier `probar` + logging diagnóstico en `courier-api`** (v1.49.0, PROD): botón "Probar credenciales" en Config → Envíos + logs del intercambio HTTP crudo (sin credenciales) para validar adapters con cuentas B2B. Antes: EN7 (envío propio + recursos + reportes/alertas) en PROD (v1.45.0, mig 194). Envíos cerrado salvo EN6 (integraciones courier, bloqueado por cuentas B2B). Ver "Relevamiento Envíos 2.0" al final.

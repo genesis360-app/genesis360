@@ -2,7 +2,7 @@
 title: Reportes y Métricas
 category: features
 tags: [reportes, metricas, kpi, dashboard, excel, pdf, insights]
-sources: [CLAUDE.md]
+sources: [CLAUDE.md, migrations 155, 351]
 updated: 2026-08-11
 ---
 
@@ -152,14 +152,45 @@ Objetivo (pedido GO 2026-05-30): que `/historial` sea el **hub único de trazabi
 
 `tipo_transaccion`: `ingreso` · `rebaje` · `traslado` · `ajuste` · `edicion` · `venta` · `devolucion` · `eliminacion`.
 
-> 🟡 **Pendiente propuesto (2026-08-11), NO construido — trazabilidad completa por N° de venta.** GO
-> pidió, revisando la venta real #619, poder filtrar `/historial` por **número de venta** y ver TODO
-> lo que le pasó a esa venta en un solo lugar: Pedidos generados, Envíos, Devoluciones y movimientos
-> de stock asociados (hoy el hub cruza `actividad_log` + `venta_item_despachos`, pero no trae Pedidos
-> ni Envíos al mismo cruce). Quedó como diseño propuesto y **explícitamente diferido** por GO
-> ("hacerlo en estos días, apenas terminemos con lo que estamos haciendo") — no confundir con
-> "descartado". Ver [[wiki/features/pedidos]] → "Links relacionados" para el mismo pendiente anotado
-> desde el lado de Pedidos.
+### Trazabilidad completa de una venta (mig 351, ✅ CONSTRUIDO v1.166.0, 2026-08-11)
+
+GO había pedido, revisando la venta real #619, poder filtrar `/historial` por **número de venta** y
+ver TODO lo que le pasó en un solo lugar — quedó explícitamente diferido en esa sesión ("hacerlo en
+estos días, apenas terminemos con lo que estamos haciendo") y se construyó en la sesión siguiente,
+arrancando por venta ("es mucho hacerlo todo junto" — GO).
+
+**Antes de diseñar, auditoría real de gaps** (mismo criterio que el resto del ledger, mig 155): dónde
+Pedidos/Envíos deberían loguear en `actividad_log` y no lo hacían. Encontrados y cerrados: `EnviosPage.tsx`
+**tenía CERO llamadas a `logActividad()`** en todo el archivo (uno de los módulos más grandes) — se
+agregó crear envío, cambio de estado y eliminar envío (a propósito quedaron afuera ediciones de campos
+sueltos como combustible/domicilio/POD/tracking automático — detalles logísticos internos, no hitos del
+ciclo de vida); `PedidosPage.tsx` tenía la mayoría de las transiciones logueadas pero `fn_pedido_cerrar`
+y `fn_pedido_deslanzar` no logueaban nada — completadas (ver [[wiki/features/pedidos]] PED4/PED5).
+
+**Mecanismo (mig 351):** columna nueva `actividad_log.venta_id uuid NULL REFERENCES ventas(id) ON DELETE
+SET NULL` + índice parcial, poblada **WRITE-TIME** (nunca heurística de lectura) desde `logActividad()`
+— directo cuando `entidad='venta'`, resuelto vía `pedido.venta_origen_id` o `envio.venta_id` en los
+demás casos. `LogParams` (`src/lib/actividadLog.ts`) gana `venta_id?: string | null`; se agrega
+`'envio'` al tipo `EntidadLog` (antes Envíos no tenía tipo de entidad propio en el log).
+
+**Filtro nuevo en `/historial`** ("Trazá una venta completa", junto al "Trazá una unidad/recall" ya
+existente): matchea por número de tenant O de sucursal (mismo patrón dual que Pedidos), trae TODA la
+actividad de esa venta sin paginar (igual que el modo recall) y reutiliza el cruce con
+`venta_item_despachos` para mostrar de qué LPN/ubicación salió cada línea. Distingue explícitamente
+**"no existe esa venta"** de **"existe pero es de antes de que existiera esta trazabilidad"** (sin
+backfill retroactivo — no hay forma de reconstruir con certeza qué le pasó a una venta vieja).
+
+**Verificado end-to-end contra DEV real**: insert de prueba en `actividad_log` con `venta_id` de la
+venta #622 → confirmado visible en `/historial` filtrando por "622" → borrado. También confirmado que
+una venta vieja (anterior a la mig 351) muestra el mensaje correcto de "sin trazabilidad retroactiva"
+en vez de "no existe".
+
+**Alcance a propósito acotado a VENTA** — la idea original de GO también mencionaba trazabilidad de
+"inventario" en general; eso queda parcialmente cubierto vía el cruce ya existente con
+`venta_item_despachos` (LPN/ubicación por línea), pero esto **no es** un rediseño completo de
+trazabilidad de inventario, solo de venta. Ver [[wiki/features/pedidos]] → "Links relacionados" y
+"Cuarta barrera" (el mismo trabajo de verificar el picking encontró y corrigió un bug real de REGLA
+#0: el stock reservado de una venta quedaba atascado para siempre tras entregar el pedido).
 
 ### ISS-075 — Movimientos de stock en el Historial (mig 153)
 

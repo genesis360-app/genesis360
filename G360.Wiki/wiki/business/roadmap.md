@@ -8,18 +8,88 @@ updated: 2026-08-11
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.164.0 (código/Vercel, confirmado — PR #323, merge `f5bdca88`, verificado
-contra el bundle real vía Vercel API) — **v1.165.0 en camino a PROD:** PR #324 (`dev`→`main`) abierto,
-migraciones 349+350 ya aplicadas y verificadas en PROD; el merge a `main` + tag/release + verificación
-del bundle en Vercel los completa el `deploy-runner` en paralelo a esta actualización de wiki — sin
-confirmar todavía por `curl`/Vercel API, actualizar en la próxima sesión. Detalle completo en
+**Versión en PROD:** v1.166.0 (código/Vercel, CONFIRMADO — PR #326, merge `95e837f6`, tag+release
+`v1.166.0` publicados, bundle real de Vercel verificado con la cadena "v1.166.0"). Migración 351
+(`actividad_log.venta_id`) aplicada y verificada en DEV y PROD. Detalle completo en
 `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.165.0 (`origin/dev` @ `c3ea45aa`)  
+**Versión en DEV:** v1.166.0 (`origin/dev` @ `e14179b5`, mergeado a `main`)  
 **Última actualización:** 11 de Agosto, 2026
 
 ---
 
-## v1.165.0 — 🛑 REGLA #0 (inventario): rebaje de stock por un solo camino (venta #619) + fix Compras (`registrar_pago_oc`) + 2 UX (migs 349+350) — 🚧 deploy a PROD EN CURSO (PR #324)
+## v1.166.0 — 🔍🛑 Trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0: el stock reservado quedaba atascado tras entregar el pedido — ✅ EN PROD (2026-08-11)
+
+Continuación directa de la sesión de v1.165.0/v1.165.1, mismo día. Construye lo que había quedado
+anotado como pendiente y explícitamente diferido en esa sesión ("trazabilidad full de venta") —
+arrancando por venta, no por todo el inventario ("es mucho hacerlo todo junto" — GO).
+
+**1. Trazabilidad completa de una venta en `/historial` (mig 351).** Columna nueva
+`actividad_log.venta_id uuid NULL REFERENCES ventas(id) ON DELETE SET NULL` + índice parcial, poblada
+**WRITE-TIME** (nunca heurística de lectura, mismo criterio que el ledger de trazabilidad de la mig
+155) desde `logActividad()`. `LogParams` gana `venta_id?: string | null`; se suma `'envio'` al tipo
+`EntidadLog` (Envíos no tenía tipo de entidad propio en el log).
+
+**Auditoría real de gaps ANTES de diseñar** (mismo criterio: "empezar por auditar TODOS los puntos
+donde Pedidos/Envíos deberían loguear y no lo hacen"): `EnviosPage.tsx` **tenía CERO llamadas a
+`logActividad()`** en todo el archivo (146KB, uno de los módulos más grandes) — se agregó crear envío,
+cambio de estado y eliminar envío (a propósito quedaron afuera ediciones de campos sueltos como
+combustible/domicilio/POD/tracking automático — detalles logísticos internos, no hitos del ciclo de
+vida). `PedidosPage.tsx` tenía la mayoría de las transiciones logueadas, pero `fn_pedido_cerrar` y
+`fn_pedido_deslanzar` no logueaban nada — completadas.
+
+**Filtro nuevo en `/historial`** ("Trazá una venta completa", junto al "Trazá una unidad/recall" ya
+existente): matchea por número de tenant o de sucursal (mismo patrón dual que Pedidos), trae TODA la
+actividad de esa venta sin paginar y reutiliza el cruce con `venta_item_despachos` para mostrar de qué
+LPN/ubicación salió cada línea. Distingue "no existe esa venta" de "existe pero es de antes de que
+existiera esta trazabilidad" (sin backfill retroactivo). Verificado end-to-end contra DEV real: insert
+de prueba en la venta #622 → visible en `/historial` filtrando por "622" → borrado; una venta vieja
+(anterior a la mig 351) mostró el mensaje correcto de "sin trazabilidad retroactiva".
+
+**2. 🛑 Fix REGLA #0 — bug real encontrado MIENTRAS se construía la trazabilidad.** GO preguntó "¿el
+picking realmente rebaja stock?" viendo el mensaje del guard de v1.165.0. Verificado contra el SQL
+real (no contra el comentario/supuesto): **el picking NUNCA rebaja stock ni toca `cantidad_reservada`**
+para un pedido nacido de una venta (`fn_completar_tarea_picking`, `fn_generar_tareas_picking_pedido_venta`,
+`fn_pedido_entregar_retiro` — ninguna de las tres toca `inventario_lineas.cantidad`,
+`cantidad_reservada` ni `productos.stock_actual`; documentadas con comentarios explícitos desde las
+migs 316/320/323). El único código que rebaja de verdad es el botón "Finalizar (rebaja stock)" de
+`VentasPage.tsx`.
+
+El guard de v1.165.0 (`pedidoActivoVenta`, `.neq('estado', 'cancelado')`) ocultaba ese botón mientras
+el Pedido vinculado estuviera "activo" — pero **'entregado' no estaba excluido**, solo 'cancelado'.
+Resultado: en el flujo venta reservada → Pedido → Picking → retiro en mostrador, una vez que el pedido
+se entregaba, el stock que la venta había reservado quedaba reservado **para siempre**, sin ningún
+camino de código para convertirse en un rebaje real.
+
+Fix: la query pasa a `.not('estado', 'in', '(cancelado,entregado)')` — el botón "Finalizar" reaparece
+una vez que el pedido está `entregado`. Los 2 banners de aviso (ficha de venta + modal de pago MP) se
+corrigieron para no decir "el rebaje se hace desde Pedidos → Picking" (falso) sino explicar que la
+mercadería se está preparando y hay que volver una vez entregada.
+
+**Verificado con datos reales de DEV, no solo lógica**: venta #599 (reservada) con su pedido #91 ya
+`entregado` — query REST directa (JWT real, respetando RLS) confirmó que la query vieja devolvía el
+pedido #91 (bloqueaba el botón) y la nueva devuelve vacío (lo desbloquea). Esa venta sigue en ese
+estado en DEV, dejada como evidencia viva del bug — sin backfill/fix retroactivo de datos (misma regla
+de no reescribir históricos). **No confundir con la venta #619** (caso de estudio de v1.165.0, abajo)
+— son ventas reales distintas del mismo tenant.
+
+**Alcance a propósito acotado a VENTA** — la idea original de GO también mencionaba trazabilidad de
+"inventario" en general; queda parcialmente cubierta vía el cruce con `venta_item_despachos` que ya
+mostraba LPN/ubicación, pero esto no es un rediseño completo de trazabilidad de inventario, solo de
+venta.
+
+**Deploy**: `APP_VERSION` v1.166.0, commit `e14179b5` en `origin/dev`. **PR #326 mergeado** (merge
+commit `95e837f6`), **tag + GitHub release `v1.166.0`** publicados. Migración 351 aplicada y
+verificada en DEV y PROD antes del merge. Bundle real de Vercel PROD verificado con la cadena
+"v1.166.0".
+
+Ver `log.md` (2026-08-11), `sources/raw/project_pendientes.md` ("ARRANCÁ ACÁ"),
+`wiki/database/migraciones.md` (mig 351), [[wiki/features/reportes-metricas]] "Trazabilidad completa
+de una venta", [[wiki/features/pedidos]] "Cuarta barrera" (corrección) y "Links relacionados",
+[[wiki/features/ventas-pos]], [[wiki/features/envios]].
+
+---
+
+## v1.165.0 — 🛑 REGLA #0 (inventario): rebaje de stock por un solo camino (venta #619) + fix Compras (`registrar_pago_oc`) + 2 UX (migs 349+350) — ✅ EN PROD (2026-08-11), corregido de fondo en v1.166.0 (ver arriba)
 
 Continuación directa de la sesión de v1.164.0, mismo día. GO, revisando la venta real **#619** del
 tenant "Almacén Jorgito" en DEV, encontró un hueco real de la Regla de Oro #0: Ventas tiene el botón
@@ -55,16 +125,20 @@ Verificado en el navegador contra DEV real: venta #622 (con Pedido #23 confirmad
 vez del botón; 7 pedidos reales cuya venta ya estaba despachada mostraron "Lanzar" deshabilitado con
 el tooltip correcto.
 
-**`APP_VERSION` v1.165.0, commit `c3ea45aa` pusheado a `origin/dev`. PR #324 (`dev`→`main`) abierto.**
-Migraciones 349 y 350 aplicadas y verificadas en DEV y PROD antes del merge (DDL aditivo/no-destructivo
-primero, mismo criterio de siempre). El merge a `main` + tag/release `v1.165.0` + verificación del
-bundle en Vercel PROD los completa el `deploy-runner` en paralelo a esta actualización de wiki —
-confirmar en la próxima sesión.
+**`APP_VERSION` v1.165.0, commit `c3ea45aa`. PR #324 (`dev`→`main`) mergeado, tag+release `v1.165.0`
+confirmados en PROD.** Migraciones 349 y 350 aplicadas y verificadas en DEV y PROD antes del merge (DDL
+aditivo/no-destructivo primero, mismo criterio de siempre). **v1.165.1 (PR #325, mismo día):** patch de
+UI — fix del footer de conteo (`ListaConteoFooter` pintado por `AppLayout` en vez de `sticky` dentro de
+la lista, corrige que quedara flotando encima de la última fila), sin migración propia — también en
+PROD.
 
-Pendiente anotado, NO construido: GO pidió trazabilidad completa de una venta en `/historial`
-(filtrar por número de venta, ver pedidos/envíos/devoluciones/movimientos de stock asociados) —
-diseño propuesto, explícitamente diferido ("hacerlo en estos días, apenas terminemos con lo que
-estamos haciendo"). Ver [[wiki/features/reportes-metricas]].
+Pendiente anotado en esta sesión, **construido en la sesión siguiente (v1.166.0, ver arriba)**: GO
+pidió trazabilidad completa de una venta en `/historial` (filtrar por número de venta, ver
+pedidos/envíos/devoluciones/movimientos de stock asociados) — quedó como diseño propuesto y
+explícitamente diferido en esta sesión ("hacerlo en estos días, apenas terminemos con lo que estamos
+haciendo"). Esa misma verificación de "cómo rebaja el picking" para construir la trazabilidad encontró
+además un bug real de REGLA #0 en el guard de arriba (`pedidoActivoVenta` no excluía `'entregado'`) —
+ver [[wiki/features/reportes-metricas]] y el bloque v1.166.0 arriba.
 
 Ver `log.md` (2026-08-11), `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"),
 `wiki/database/migraciones.md` (migs 349/350), [[wiki/features/pedidos]], [[wiki/features/ventas-pos]],

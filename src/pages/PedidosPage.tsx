@@ -474,6 +474,7 @@ export default function PedidosPage() {
       logActividad({
         entidad: 'pedido', entidad_id: pedido.id, entidad_nombre: `Pedido #${pedido.numero}`,
         accion: 'cambio_estado', campo: 'estado', valor_anterior: pedido.estado, valor_nuevo: 'en_preparacion', pagina: '/pedidos',
+        venta_id: pedido.venta_origen_id ?? null,
       })
       return { numero: pedido.numero, nTareas: (data ?? []).length }
     },
@@ -526,6 +527,7 @@ export default function PedidosPage() {
         logActividad({
           entidad: 'pedido', entidad_id: id, entidad_nombre: `Pedido #${p?.numero ?? '?'}`,
           accion: 'cambio_estado', campo: 'estado', valor_anterior: 'confirmado', valor_nuevo: 'en_preparacion', pagina: '/pedidos',
+          venta_id: p?.venta_origen_id ?? null,
         })
       }
       return { nPedidos: ids.length, nTareas: (data ?? []).length }
@@ -624,7 +626,7 @@ export default function PedidosPage() {
       if (error) throw error
       logActividad({
         entidad: 'pedido', entidad_id: pedido.id, entidad_nombre: `Pedido #${pedido.numero}`,
-        accion: 'crear', pagina: '/pedidos', tipo_transaccion: 'venta',
+        accion: 'crear', pagina: '/pedidos', tipo_transaccion: 'venta', venta_id: data as string,
       })
       return { numero: pedido.numero, ventaId: data as string }
     },
@@ -641,6 +643,11 @@ export default function PedidosPage() {
     mutationFn: async (pedido: any) => {
       const { error } = await supabase.rpc('fn_pedido_cerrar', { p_pedido_id: pedido.id })
       if (error) throw error
+      logActividad({
+        entidad: 'pedido', entidad_id: pedido.id, entidad_nombre: `Pedido #${pedido.numero}`,
+        accion: 'cambio_estado', campo: 'estado', valor_anterior: pedido.estado, valor_nuevo: 'entregado', pagina: '/pedidos',
+        venta_id: pedido.venta_origen_id ?? null,
+      })
       return pedido.numero
     },
     onSuccess: (numero) => {
@@ -659,6 +666,7 @@ export default function PedidosPage() {
       logActividad({
         entidad: 'pedido', entidad_id: pedido.id, entidad_nombre: `Pedido #${pedido.numero}`,
         accion: 'cambio_estado', campo: 'estado', valor_anterior: pedido.estado, valor_nuevo: nuevoEstado, pagina: '/pedidos',
+        venta_id: pedido.venta_origen_id ?? null,
       })
       return { numero: pedido.numero, nuevoEstado }
     },
@@ -677,6 +685,7 @@ export default function PedidosPage() {
       logActividad({
         entidad: 'pedido', entidad_id: pedido.id, entidad_nombre: `Pedido #${pedido.numero}`,
         accion: 'cambio_estado', campo: 'estado', valor_anterior: pedido.estado, valor_nuevo: 'cancelado', pagina: '/pedidos',
+        venta_id: pedido.venta_origen_id ?? null,
       })
       return pedido.numero
     },
@@ -693,6 +702,11 @@ export default function PedidosPage() {
     mutationFn: async (pedido: any) => {
       const { error } = await supabase.rpc('fn_pedido_deslanzar', { p_pedido_id: pedido.id })
       if (error) throw error
+      logActividad({
+        entidad: 'pedido', entidad_id: pedido.id, entidad_nombre: `Pedido #${pedido.numero}`,
+        accion: 'cambio_estado', campo: 'estado', valor_anterior: pedido.estado, valor_nuevo: 'confirmado', pagina: '/pedidos',
+        venta_id: pedido.venta_origen_id ?? null,
+      })
       return pedido.numero
     },
     onSuccess: (numero) => {

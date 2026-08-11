@@ -29,6 +29,7 @@ export type EntidadLog =
   | 'tenant'
   | 'wms_tarea'
   | 'pedido'
+  | 'envio'
   | 'autorizacion'
 
 export type AccionLog = 'crear' | 'editar' | 'eliminar' | 'cambio_estado' | 'cerrar' | 'pagar' | 'solicitar' | 'aprobar' | 'rechazar' | 'reasignar' | 'ingreso_stock' | 'rebaje_stock' | 'incobrable' | 'despacho_traslado' | 'recepcion_traslado' | 'faltante_traslado'
@@ -57,6 +58,9 @@ interface LogParams {
   /** Snapshot del lote afectado. */
   lote?: string | null
   sucursal_id?: string | null
+  /** Venta a la que pertenece esta actividad, directa o indirectamente (pedido/envío/devolución de
+   * esa venta) — mig 351. Resolver ANTES de llamar (nunca heurística de lectura). */
+  venta_id?: string | null
 }
 
 /**
@@ -95,5 +99,6 @@ export function logActividad(params: LogParams): void {
     nro_serie:        params.nro_serie ?? null,
     lote:             params.lote ?? null,
     sucursal_id:      params.sucursal_id ?? null,
+    venta_id:         params.venta_id ?? null,
   }).then(() => {}) // fire-and-forget
 }

@@ -32,6 +32,7 @@ import { costoCombustible, kmAcumuladoNuevo, desgloseIvaCombustible } from '@/li
 import { generarEtiquetasA4PDF, type EtiquetaEnvio, type EtiquetasPorHoja } from '@/lib/etiquetasEnvioPDF'
 import EnviosReportesPanel from '@/components/EnviosReportesPanel'
 import { ListaConteoFooter } from '@/components/ListaConteoFooter'
+import { logActividad } from '@/lib/actividadLog'
 import toast from 'react-hot-toast'
 import { BRAND } from '@/config/brand'
 
@@ -620,7 +621,7 @@ export default function EnviosPage() {
         // o si es envío propio (sin courier a quien pagar), nace saldado → no va a Pagos Courier.
         const envioYaSaldado = payload.courier === 'Envío propio'
           || (!!ventaSeleccionada && Number(ventaSeleccionada.costo_envio ?? 0) > 0 && ventaSeleccionada.estado === 'despachada')
-        const { data: nuevo, error } = await supabase.from('envios').insert({ ...payload, costo_pagado: envioYaSaldado }).select('id').single()
+        const { data: nuevo, error } = await supabase.from('envios').insert({ ...payload, costo_pagado: envioYaSaldado }).select('id, numero').single()
         if (error) throw error
         // EN5/A5 — desglose: persistir qué ítems se fueron en este envío (de la venta)
         if (nuevo?.id && ventaSeleccionada?.id && (ventaItemsForm as any[]).length > 0) {
@@ -628,6 +629,13 @@ export default function EnviosPage() {
             .filter(it => Number(it.cantidad) > 0)
             .map(it => ({ tenant_id: tenant!.id, envio_id: nuevo.id, producto_id: it.producto_id ?? null, cantidad: Number(it.cantidad), lpn: it.lpn ?? null }))
           if (filas.length > 0) await supabase.from('envio_items').insert(filas)
+        }
+        if (nuevo?.id) {
+          logActividad({
+            entidad: 'envio', entidad_id: nuevo.id, entidad_nombre: `Envío #${nuevo.numero ?? ''}`,
+            accion: 'crear', pagina: '/envios', sucursal_id: sucursalId || null,
+            venta_id: payload.venta_id ?? null,
+          })
         }
       }
     },
@@ -655,6 +663,11 @@ export default function EnviosPage() {
       if (!verificarPagoAntes(envio)) throw new Error('pago_pendiente')
       const { error } = await supabase.from('envios').update({ estado }).eq('id', id)
       if (error) throw error
+      logActividad({
+        entidad: 'envio', entidad_id: id, entidad_nombre: `Envío #${envio.numero ?? ''}`,
+        accion: 'cambio_estado', campo: 'estado', valor_anterior: envio.estado, valor_nuevo: estado,
+        pagina: '/envios', venta_id: envio.venta_id ?? null,
+      })
     },
     onSuccess: (_, { estado, envio }) => {
       toast.success(`Estado: ${ESTADO_CFG[estado].label}`)
@@ -677,9 +690,13 @@ export default function EnviosPage() {
   })
 
   const eliminarEnvio = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('envios').delete().eq('id', id)
+    mutationFn: async (envio: any) => {
+      const { error } = await supabase.from('envios').delete().eq('id', envio.id)
       if (error) throw error
+      logActividad({
+        entidad: 'envio', entidad_id: envio.id, entidad_nombre: `Envío #${envio.numero ?? ''}`,
+        accion: 'eliminar', pagina: '/envios', venta_id: envio.venta_id ?? null,
+      })
     },
     onSuccess: () => { toast.success('Envío eliminado'); qc.invalidateQueries({ queryKey: ['envios'] }) },
     onError: (e: any) => toast.error(e.message),
@@ -1432,7 +1449,7 @@ export default function EnviosPage() {
                                   className="p-1.5 text-gray-400 hover:text-accent-text hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
                                   <Pencil size={14} />
                                 </button>
-                                <button onClick={async () => { if (await confirmar('¿Eliminar este envío?', { danger: true })) eliminarEnvio.mutate(e.id) }}
+                                <button onClick={async () => { if (await confirmar('¿Eliminar este envío?', { danger: true })) eliminarEnvio.mutate(e) }}
                                   className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors">
                                   <Trash2 size={14} />
                                 </button>

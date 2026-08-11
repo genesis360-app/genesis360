@@ -20,6 +20,7 @@ type Filtros = {
   lpn: string         // trazabilidad por unidad (recall)
   serie: string
   producto: string    // recall por producto (nombre o SKU)
+  venta: string        // trazabilidad completa de una venta (mig 351)
 }
 
 // Una "transacción": una o varias filas de actividad_log que comparten transaccion_id.
@@ -39,6 +40,7 @@ const ENTIDAD_ICONS: Record<string, any> = {
   combo: Gift,
   wms_tarea: Truck,
   pedido: Package,
+  envio: Truck,
 }
 
 const ENTIDAD_LABELS: Record<string, string> = {
@@ -55,6 +57,7 @@ const ENTIDAD_LABELS: Record<string, string> = {
   combo: 'Combo',
   wms_tarea: 'Tarea WMS',
   pedido: 'Pedido',
+  envio: 'Envío',
 }
 
 const ACCION_LABELS: Record<string, { label: string; color: string; bg: string }> = {
@@ -141,7 +144,7 @@ function agruparTransacciones(logs: any[]): Transaccion[] {
   return out
 }
 
-const FILTROS_VACIOS: Filtros = { entidad: '', accion: '', tipo: '', usuario_id: '', desde: '', hasta: '', buscar: '', lpn: '', serie: '', producto: '' }
+const FILTROS_VACIOS: Filtros = { entidad: '', accion: '', tipo: '', usuario_id: '', desde: '', hasta: '', buscar: '', lpn: '', serie: '', producto: '', venta: '' }
 const PAGE_SIZES = [20, 50, 75, 100]
 
 export default function HistorialPage() {
@@ -164,9 +167,34 @@ export default function HistorialPage() {
   // Modo "trazá una unidad" (recall): al filtrar por LPN / serie / producto traemos
   // TODA la historia de esa unidad (sin paginar) cruzando con venta_item_despachos.
   const unitMode = !!(filtros.lpn.trim() || filtros.serie.trim() || filtros.producto.trim())
+  // Modo "trazá una venta completa" (mig 351): todo lo que le pasó a UNA venta puntual —
+  // creación, cambios de estado, su Pedido, su Envío, devoluciones — sin paginar (nunca son
+  // muchas filas para una sola venta). Distinto de `filtros.buscar`: ese solo matchea el nombre
+  // de la fila de la venta misma, no lo que le pasó vía Pedido/Envío.
+  const ventaMode = !!filtros.venta.trim()
+
+  // Existencia de la venta buscada (independiente de si tiene filas en actividad_log): una venta
+  // anterior a la mig 351 existe pero sus filas viejas tienen venta_id NULL (no hay backfill
+  // retroactivo) — sin esto el estado vacío diría "no existe" para una venta real y vieja. El
+  // número que tipeó el usuario puede ser el correlativo del tenant o el de la sucursal (mismo
+  // patrón dual que pedidos) — se matchea exacto contra cualquiera de los dos.
+  const { data: ventaBuscada } = useQuery({
+    queryKey: ['historial-venta-existe', tenant?.id, filtros.venta],
+    queryFn: async () => {
+      const num = parseInt(filtros.venta.trim(), 10)
+      if (!Number.isFinite(num)) return null
+      const { data } = await supabase.from('ventas')
+        .select('id, numero, numero_sucursal, created_at').eq('tenant_id', tenant!.id)
+        .or(`numero.eq.${num},numero_sucursal.eq.${num}`)
+        .limit(1).maybeSingle()
+      return data ?? null
+    },
+    enabled: !!tenant && ventaMode,
+  })
+  const ventaId = ventaBuscada?.id ?? null
 
   const { data: logs = [], isLoading } = useQuery({
-    queryKey: ['actividad_log', tenant?.id, filtros, page, pageSize, unitMode],
+    queryKey: ['actividad_log', tenant?.id, filtros, page, pageSize, unitMode, ventaMode, ventaId],
     queryFn: async () => {
       // Recall por producto: resolver nombre/SKU → ids (para cruzar con los snapshots producto_id)
       let productoIds: string[] = []
@@ -178,6 +206,8 @@ export default function HistorialPage() {
           .limit(100)
         productoIds = (prods ?? []).map((p: any) => p.id)
       }
+
+      const ventaNoEncontrada = ventaMode && !ventaId
 
       let q = supabase.from('actividad_log')
         .select('*', { count: 'exact' })
@@ -199,24 +229,35 @@ export default function HistorialPage() {
         if (productoIds.length) ors.unshift(`producto_id.in.(${productoIds.join(',')})`)
         q = q.or(ors.join(','))
       }
+      if (ventaMode) {
+        if (ventaNoEncontrada) return []   // corte temprano: no existe esa venta en el tenant
+        q = q.eq('venta_id', ventaId!)
+      }
 
-      if (unitMode) q = q.limit(1000)
-      else          q = q.range(page * pageSize, (page + 1) * pageSize - 1)
+      if (unitMode || ventaMode) q = q.limit(1000)
+      else                       q = q.range(page * pageSize, (page + 1) * pageSize - 1)
 
       const { data, count } = await q
       setTotalCount(count ?? 0)
       let rows = (data ?? []) as any[]
 
-      // Fase 2 — cruce con despachos de venta para reconstruir la historia de la unidad.
-      if (unitMode) {
+      // Fase 2 — cruce con despachos de venta para reconstruir la historia de la unidad (o de la
+      // venta completa en ventaMode: de qué LPN/ubicación salió cada línea).
+      if (unitMode || ventaMode) {
         let dq = supabase.from('venta_item_despachos')
           .select('id, venta_id, producto_id, lpn, nro_serie, cantidad, ubicacion_nombre, origen, created_at, ventas(numero)')
           .eq('tenant_id', tenant!.id)
-        if (filtros.lpn)   dq = dq.ilike('lpn', `%${filtros.lpn}%`)
-        if (filtros.serie) dq = dq.ilike('nro_serie', `%${filtros.serie}%`)
-        if (filtros.producto && productoIds.length) dq = dq.in('producto_id', productoIds)
-        // Si se filtra solo por producto sin matches de id, no traer despachos.
-        const skipDesp = !!filtros.producto && !filtros.lpn && !filtros.serie && productoIds.length === 0
+        let skipDesp = false
+        if (ventaMode) {
+          if (ventaNoEncontrada) skipDesp = true
+          else dq = dq.eq('venta_id', ventaId!)
+        } else {
+          if (filtros.lpn)   dq = dq.ilike('lpn', `%${filtros.lpn}%`)
+          if (filtros.serie) dq = dq.ilike('nro_serie', `%${filtros.serie}%`)
+          if (filtros.producto && productoIds.length) dq = dq.in('producto_id', productoIds)
+          // Si se filtra solo por producto sin matches de id, no traer despachos.
+          skipDesp = !!filtros.producto && !filtros.lpn && !filtros.serie && productoIds.length === 0
+        }
         const { data: desp } = skipDesp ? { data: [] } : await dq.limit(1000)
         const synth = (desp ?? []).map((d: any) => ({
           id: `desp-${d.id}`,
@@ -237,7 +278,9 @@ export default function HistorialPage() {
       }
       return rows
     },
-    enabled: !!tenant && puedeVer,
+    // En ventaMode espera a que ventaBuscada resuelva (encontrada o no) antes de correr — si no,
+    // hay un instante con ventaId todavía en null que se leería como "no existe" sin serlo.
+    enabled: !!tenant && puedeVer && (!ventaMode || ventaBuscada !== undefined),
   })
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
@@ -429,6 +472,24 @@ export default function HistorialPage() {
             </div>
           </div>
 
+          {/* Trazabilidad completa de una venta (mig 351) */}
+          <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
+            <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+              <ShoppingCart size={13} /> Trazá una venta completa
+            </p>
+            <div className="max-w-xs">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">N° de venta</label>
+              <input type="text" inputMode="numeric" placeholder="Ej: 619" value={filtros.venta}
+                onChange={e => { setFiltros(f => ({ ...f, venta: e.target.value })); setPage(0) }}
+                className="w-full px-3 py-2 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:border-accent-text" />
+            </div>
+            {ventaMode && (
+              <p className="text-[11px] text-accent-text mt-2">
+                Mostrando todo lo que le pasó a esa venta: creación, cambios de estado, su Pedido, su Envío, devoluciones y de qué LPN salió cada línea.
+              </p>
+            )}
+          </div>
+
           {/* Trazabilidad por unidad (recall) */}
           <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700">
             <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
@@ -468,13 +529,21 @@ export default function HistorialPage() {
       )}
 
       {/* Timeline */}
-      {isLoading ? (
+      {isLoading || (ventaMode && ventaBuscada === undefined) ? (
         <div className="text-center py-16 text-gray-400 dark:text-gray-500">Cargando historial...</div>
       ) : (logs as any[]).length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
           <ClipboardList size={44} className="mb-3 text-gray-200" />
-          <p className="font-medium">Sin actividad registrada</p>
-          <p className="text-sm mt-1">Las acciones aparecerán aquí a medida que se realicen.</p>
+          <p className="font-medium">
+            {ventaMode
+              ? (ventaBuscada ? `La venta #${filtros.venta.trim()} no tiene actividad registrada` : `No existe la venta #${filtros.venta.trim()} en este tenant`)
+              : 'Sin actividad registrada'}
+          </p>
+          <p className="text-sm mt-1">
+            {ventaMode
+              ? (ventaBuscada ? 'Es de antes de que existiera esta trazabilidad — no hay forma de reconstruirla retroactivamente.' : 'Revisá el número — puede ser el correlativo del tenant o el de la sucursal.')
+              : 'Las acciones aparecerán aquí a medida que se realicen.'}
+          </p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -539,8 +608,8 @@ export default function HistorialPage() {
         </div>
       )}
 
-      {/* Paginación (oculta en modo trazabilidad de unidad: ahí mostramos todo) */}
-      {(logs as any[]).length > 0 && !unitMode && (
+      {/* Paginación (oculta en modo trazabilidad de unidad/venta: ahí mostramos todo) */}
+      {(logs as any[]).length > 0 && !unitMode && !ventaMode && (
         <div className="flex items-center justify-between pt-2 gap-2 flex-wrap">
           {/* Selector cantidad */}
           <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">

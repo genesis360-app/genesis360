@@ -6,7 +6,109 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-11/12 cont. 6) — 🆕 Repositores Fase 3 (mig 355+356): reposición física a góndola CONSTRUIDA Y VERIFICADA EN DEV — sigue sin deployar a PROD, decisión de GO pendiente. Queda 1 SOLA fase sin arrancar (etiquetas+impresión)
+> ### ✅ ARRANCÁ ACÁ (2026-08-11/12 cont. 7) — 🆕 Repositores Fase 4 (mig 357): etiquetas de precio + impresión CONSTRUIDA Y VERIFICADA EN DEV — MÓDULO REPOSITORES 100% COMPLETO (4/4 fases). GO ya pidió deployar TODO (mig 352-357) a PROD — el deploy queda EN CURSO a continuación, en esta misma sesión
+>
+> Continuación directa de la sesión de abajo (cont. 6, mismo día, sesión que ya había cruzado medianoche
+> a 2026-08-12). Era la última fase que quedaba de Repositores (G/H del relevamiento: etiquetas +
+> impresión) — con esto el módulo queda 100% construido.
+>
+> #### 1. Investigación previa al diseño — 2 patrones existentes reusados, no reinventados
+>
+> Antes de diseñar se revisaron 2 mecanismos de impresión ya construidos: `src/lib/etiquetasEnvioPDF.ts`
+> (EN7 de Envíos — jsPDF en grilla A4 4/6/12 por hoja, con QR) tomado como plantilla estructural, y
+> `src/components/CodigoMasivoModal.tsx` (Inventario — renderiza códigos GS1 con `bwip-js` a un canvas
+> offscreen → dataURL, soporta imprimir N etiquetas de una tanda). Se confirmó que `convertirFisica()`
+> (`src/lib/unidadMedidaFisica.ts`) ya existía y no había que reprogramarla, y que no existía ningún
+> campo de "contenido" en `productos` (grep negativo).
+>
+> #### 2. Mig `357_repositores_fase4_etiquetas.sql` — solo 4 `ADD COLUMN`, sin RLS/triggers/funciones
+>
+> - `productos.contenido_cantidad` (numeric, `CHECK > 0`) + `productos.contenido_unidad_id` (FK a
+>   `unidades_medida_fisicas`) — cuánto contiene FÍSICAMENTE 1 unidad de venta (ej. 120 para un shampoo
+>   de 120ml). Distinto de `unidad_medida_base_id` (cómo se vende/cobra, no cuánto contiene).
+> - `tenants.repositor_etiquetas_por_hoja` (integer, `CHECK IN (4,6,12)`, default 12 — menos hojas) y
+>   `tenants.repositor_hora_impresion` (time, nullable = sin aviso configurado).
+>
+> **G1 (contenido de la etiqueta)**: nombre + precio nuevo siempre; precio anterior tachado AL LADO del
+> nuevo SOLO si es un descuento real (precio bajó) — si el precio SUBIÓ no se tacha nada (tachar en una
+> suba sería un mensaje incorrecto de cara al cliente). Código de barras del producto vía `bwip-js`
+> (`code128`, número incluido automáticamente debajo por `includetext:true`). Con
+> `contenido_cantidad`/`contenido_unidad_id` cargados, la etiqueta agrega "Precio por L/Kg/m: $X" —
+> nueva función `precioPorUnidadGrande()` en `src/lib/unidadMedidaFisica.ts`, que solo agrega el mapeo
+> familia→unidad de referencia (peso→Kilogramo, volumen→Litro, longitud→Metro) sobre `convertirFisica()`
+> ya existente, sin tocarla.
+>
+> **G2 (formato configurable)**: card nueva "Repositores — Etiquetas de precio" en Config → Inventario →
+> Zonas y picking, con select de tamaño de hoja y input de hora — mismo patrón `update`+`setTenant` que
+> el resto de `ConfigPage.tsx`.
+>
+> **G3 (una etiqueta por producto)**: consecuencia natural del diseño, sin código extra.
+>
+> **H1/H2 (aviso a partir de una hora, sin impresión automática)**: banner DENTRO de `/repositores` (no
+> notificación cross-app del sistema de `notificaciones`) que aparece cuando la hora actual ya pasó la
+> configurada Y quedan carteles pendientes. Se evalúa en cada render — el proyecto no tiene cron ni
+> `setInterval` (ver `reference_pg_cron_no_habilitado` en memoria), así que no hay disparo en tiempo real
+> al llegar la hora exacta; el aviso aparece la próxima vez que la página se re-renderiza — suficiente
+> para el caso de uso, no se justificó agregar infraestructura de polling nueva solo para esto.
+>
+> **H3 (tanda de impresión)**: en "Precios/Etiquetas" → filtro "Pendientes", checkboxes por tarea +
+> "Seleccionar todas" + botón "Imprimir etiquetas (N)" → 1 solo PDF. **Imprimir NO completa la tarea** —
+> son 2 acciones separadas a propósito (imprimir el cartel es un paso, completarlo tras pegarlo es otro,
+> ya existente desde la Fase 1) — no se agregó ninguna columna `impreso_at`, la migración quedó minimal.
+>
+> **Nuevo archivo `src/lib/etiquetasPreciosPDF.ts`**: mismo patrón jsPDF en grilla A4 que
+> `etiquetasEnvioPDF.ts`, con código de barras (bwip-js) en vez de QR, y precio/descuento en vez de
+> datos de envío/destinatario.
+>
+> #### 3. Migración self-reviewed, sin `migration-reviewer` — decisión explícita
+>
+> Perfil de riesgo bajo (solo 4 `ADD COLUMN`, sin RLS/triggers/funciones nuevos — las columnas heredan
+> la RLS de fila ya existente en `productos`/`tenants`), a diferencia de las migraciones 352-356 (que sí
+> tocaban RLS/SECURITY DEFINER/movimiento real de stock) — se revisó a mano contra el mismo checklist en
+> vez de despachar el subagente. No fue un salteo por apuro.
+>
+> #### 4. Verificación real contra DEV (navegador, Playwright ad-hoc)
+>
+> - 2 tareas de prueba reales (`tareas_repositor`, tipo `cambio_precio`): una con descuento real
+>   ($1.000→$800, producto CON código de barras) y otra con precio que SUBIÓ ($500→$600, producto SIN
+>   código de barras) — para cubrir ambas ramas de G1.
+> - `contenido_cantidad=2.5` + `contenido_unidad_id=Litro` en "Bebida Coca Cola 2.5L" ($600), para
+>   probar "Precio por L: $240".
+> - `/repositores` → "Precios/Etiquetas" → "Seleccionar todas" → "Imprimir etiquetas (2)" → descarga real
+>   de PDF (58.910 bytes, capturada), sin errores de consola/red.
+> - Aislado el producto SIN código de barras solo: PDF de 3.480 bytes (vs. 58KB con el código real
+>   incluido) — confirma que `if (codigo)` funciona bien, sin imagen de barcode vacía/rota.
+> - Verificado visualmente (screenshot) el campo "Contenido" en `ProductoFormPage.tsx` → Identificación,
+>   entre Marca y Descripción, con placeholder y select de unidad deshabilitado hasta cargar cantidad.
+> - Verificado visualmente (screenshot) la card "Repositores — Etiquetas de precio" en Config →
+>   Inventario → Zonas y picking; guardar la hora persistió correctamente (update real + revertido).
+> - Todos los datos de prueba se limpiaron después (tareas borradas, campos de contenido y hora
+>   revertidos a NULL) — el tenant "Almacén Jorgito" quedó exactamente como estaba antes de probar.
+>
+> Typecheck + build verdes.
+>
+> #### 5. Commit de esta sesión (a `origin/dev`, ninguno a PROD todavía)
+>
+> `ad35d0f6` (Fase 4, mig 357) — sigue el hilo de commits de la sesión anterior (`36fc075b`/`4ebd7552` →
+> `e200d673`/`f29557f4` → `2037f3f9` → `45a3c89b` → `d6f37b08` → `f72b5351`).
+>
+> #### 6. Estado final: módulo 100% completo, deploy a PROD EN CURSO a continuación (misma sesión)
+>
+> **Mig 352-357, TODAS solo en DEV** (`gcmhzdedrkmmzfzfveig`) — Repositores queda **100% construido: las
+> 4 fases (núcleo+disparadores, asignación/reasignación, reposición física, etiquetas+impresión)**,
+> todas verificadas, ninguna en PROD todavía. **A diferencia de las sesiones anteriores, esto YA NO es
+> "decisión pendiente de GO" — GO pidió explícitamente deployar TODO (mig 352-357 + el resto del delta
+> `dev`→`main`) a PROD, y el deploy queda EN CURSO a continuación, en esta misma sesión.** El resultado
+> real del deploy (PR, tag/release, verificación en PROD) se documenta en una entrada de log/wiki
+> separada una vez confirmado — este bloque NO lo da por hecho.
+>
+> Ver `log.md` (2026-08-11, entrada al principio del archivo), `wiki/database/migraciones.md` (mig 357),
+> [[wiki/features/repositores]] (sección "Fase 4"), [[wiki/features/productos]] (campo "Contenido"),
+> `sources/raw/relevamiento_repositores_respuestas.md` (G1-G3/H1-H3 marcados construidos).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-11/12 cont. 6) — 🆕 Repositores Fase 3 (mig 355+356): reposición física a góndola CONSTRUIDA Y VERIFICADA EN DEV — este bloque quedó SUPERADO por el de arriba (cont. 7): Repositores Fase 4 (etiquetas de precio + impresión, mig 357) construida y verificada en DEV, módulo 100% completo
 >
 > Continuación directa de la sesión de abajo (cont. 5, mismo día, cruzó medianoche a 2026-08-12). Se le
 > preguntó a GO con cuál de las 2 fases futuras seguir (reposición física a góndola / etiquetas +

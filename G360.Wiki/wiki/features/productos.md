@@ -2,8 +2,8 @@
 title: Productos
 category: features
 tags: [productos, inventario, variantes, sku, marca, unidades-medida, ubicacion-sucursal, scan-ticket, vision]
-sources: [CLAUDE.md, migrations 329, 330, 340]
-updated: 2026-08-08
+sources: [CLAUDE.md, migrations 329, 330, 340, 357]
+updated: 2026-08-11
 ---
 
 # Productos
@@ -164,7 +164,18 @@ La página de creación/edición fue reorganizada en 6 cards temáticos. Columna
 | SKU | text | Auto-generado con `calcularSiguienteSKU()` si está vacío |
 | Código de barras | text | Scan con cámara disponible |
 | Marca | text | Sin required (ISS-115, migration 118) |
+| Contenido | number + select unidad | Opcional — cuánto contiene 1 unidad de venta (ej. 120 + "ml"). Nuevo (mig 357, módulo Repositores) — ver nota abajo |
 | Descripción | textarea | — |
+
+> [!NOTE] **Campo "Contenido" (mig 357, 🟡 EN DEV, para el módulo Repositores).** `productos.
+> contenido_cantidad` (numeric) + `productos.contenido_unidad_id` (FK a `unidades_medida_fisicas`) —
+> cuánto contiene FÍSICAMENTE 1 unidad de venta (ej. 120 para un shampoo de 120ml). **Distinto** de
+> "Unidad de medida" en Card 4 (`unidad_medida_base_id`, cómo se vende/cobra el producto) — un
+> producto puede venderse "por Unidad" y a la vez contener 120 ml adentro. Opcional: sin cargar, el
+> selector de unidad queda deshabilitado y la etiqueta de precio de Repositores no muestra "Precio por
+> L/Kg/m". El select solo ofrece las familias peso/volumen/longitud (agrupadas por `<optgroup>`), no
+> conteo/área. Único consumidor hoy: la etiqueta de precio imprimible de
+> [[wiki/features/repositores]] → "Qué hace la Fase 4".
 
 ### Card 2: Clasificación
 

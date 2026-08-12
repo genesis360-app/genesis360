@@ -2,17 +2,23 @@
 name: relevamiento_repositores_respuestas
 description: Respuestas de Fede al relevamiento del módulo Repositores (Fase E del backlog Comercial 25/7) + revisión de Claude + clarificaciones de GO. Reveló que "Fase E" son 4 proyectos con dependencias reales, no una sola fase.
 type: project
-status: 🟡 EN CONSTRUCCIÓN POR FASES — en vez de escribir un relevamiento final único, se partió en fases (F→A→B→C→D... mismo criterio que Comercial) por ser un módulo grande. Fase 1 (núcleo + disparadores + prioridad, mig 352+353), Fase 2 (asignación automática + reasignación manual, mig 354) y Fase 3 (reposición física a góndola, mig 355+356) CONSTRUIDAS Y VERIFICADAS EN DEV el 2026-08-11/12 — ver [[wiki/features/repositores]]. NINGUNA deployada a PROD todavía. Solo queda 1 fase sin arrancar: etiquetas + impresión (notificaciones y reportes tampoco arrancaron). La Fase 3 CORRIGIÓ la resolución anterior de I3 (ver nota abajo, sección I).
+status: ✅ MÓDULO 100% COMPLETO (4/4 fases) — en vez de escribir un relevamiento final único, se partió en fases (F→A→B→C→D... mismo criterio que Comercial) por ser un módulo grande. Fase 1 (núcleo + disparadores + prioridad, mig 352+353), Fase 2 (asignación automática + reasignación manual, mig 354), Fase 3 (reposición física a góndola, mig 355+356) y Fase 4 (etiquetas de precio + impresión, mig 357, ÚLTIMA fase) CONSTRUIDAS Y VERIFICADAS EN DEV el 2026-08-11/12 — ver [[wiki/features/repositores]]. Con esto, las 35 preguntas de este relevamiento tienen EJECUCIÓN REAL (no solo respuesta escrita), salvo notificaciones (J) y reportes (K) que quedaron fuera del alcance final del módulo. NINGUNA de las migraciones (352-357) deployada a PROD todavía — el deploy queda en curso a continuación, en la misma sesión que cerró la Fase 4. La Fase 3 CORRIGIÓ la resolución anterior de I3 (ver nota abajo, sección I).
 source: relevamiento-repositores-reglas-negocio.html
 updated: 2026-08-11
 ---
 
 # Respuestas — Relevamiento Reglas de Negocio · Repositores
 
-> **Estado:** Fede respondió las 35 preguntas completas (30/7/2026). Al revisarlas contra el código
-> real, se detectó que el alcance real son **4 proyectos con dependencias entre sí**, no una fase —
-> ver "Orden de trabajo acordado" al final. **No diseñar ni implementar Repositores todavía**: faltan
-> las respuestas de los 3 relevamientos derivados.
+> **Estado (histórico, al 30/7/2026):** Fede respondió las 35 preguntas completas. Al revisarlas contra
+> el código real, se detectó que el alcance real son **4 proyectos con dependencias entre sí**, no una
+> fase — ver "Orden de trabajo acordado" al final. En ese momento: "No diseñar ni implementar
+> Repositores todavía, faltan las respuestas de los 3 relevamientos derivados" — texto dejado como
+> registro histórico, **ya superado**.
+>
+> ✅ **Estado actual (2026-08-11/12): módulo 100% COMPLETO, 4/4 fases construidas y verificadas en
+> DEV** (mig 352-357) — ver el `status` del frontmatter arriba y [[wiki/features/repositores]].
+> Ninguna migración deployada a PROD todavía; el deploy queda en curso a continuación de la sesión que
+> cerró la Fase 4.
 
 ---
 
@@ -110,17 +116,17 @@ tensiona con mover esos datos a "nivel interno" — detalle completo en `log.md`
 
 | # | Respuesta | Resumen |
 |---|---|---|
-| G1 | Etiqueta: nombre + precio nuevo siempre. Con descuento: precio anterior tachado junto al nuevo. Sin descuento: solo el precio, sin tachado. Código de barras + número debajo. **Campo nuevo "Contenido"** (cantidad+unidad: ml/gr/oz/kg, en Identificación) para productos de contenido fijo — la etiqueta muestra en chico el precio por unidad grande (Kg/L/M), ej. shampoo 120ml a $3.000 → "Precio por L: $25.000" | ✅ **Verificado por Claude**: la conversión de unidades física ya existe (`unidades_medida_fisicas`, `familia` + `factor_base_familia`) — no hay que reprogramarla, Fede tenía razón. El campo "Contenido" es nuevo, no colisiona con nada existente en `productos`. |
-| G2 | Formato configurable por supervisor/dueño (tamaño, cantidad por hoja). Default: menor cantidad de hojas posible, tamaño estándar de supermercado | — |
-| G3 | Una etiqueta por producto, sin depender de la cantidad de niveles de estante | — |
+| G1 | Etiqueta: nombre + precio nuevo siempre. Con descuento: precio anterior tachado junto al nuevo. Sin descuento: solo el precio, sin tachado. Código de barras + número debajo. **Campo nuevo "Contenido"** (cantidad+unidad: ml/gr/oz/kg, en Identificación) para productos de contenido fijo — la etiqueta muestra en chico el precio por unidad grande (Kg/L/M), ej. shampoo 120ml a $3.000 → "Precio por L: $25.000" | ✅ **Construido en la Fase 4 (mig 357, 2026-08-11/12)** — `productos.contenido_cantidad`/`contenido_unidad_id` nuevos, `precioPorUnidadGrande()` reusa `convertirFisica()` (`unidades_medida_fisicas`) sin tocarla, confirmando que Fede tenía razón: no hacía falta reprogramar la conversión. Tachado solo si es descuento REAL (precio bajó), nunca en una suba. Código de barras vía `bwip-js` — ver [[wiki/features/repositores]] → "Qué hace la Fase 4". |
+| G2 | Formato configurable por supervisor/dueño (tamaño, cantidad por hoja). Default: menor cantidad de hojas posible, tamaño estándar de supermercado | ✅ **Construido en la Fase 4 (mig 357)** — `tenants.repositor_etiquetas_por_hoja` (4/6/12, default 12 = menos hojas), card "Repositores — Etiquetas de precio" en Config → Inventario → Zonas y picking. |
+| G3 | Una etiqueta por producto, sin depender de la cantidad de niveles de estante | ✅ **Construido en la Fase 4 (mig 357)** — consecuencia natural del diseño (1 tarea seleccionada = 1 producto = 1 etiqueta), sin código extra. |
 
 ## H. Impresión
 
 | # | Respuesta | Resumen |
 |---|---|---|
-| H1 | A partir de una hora configurada, aparece notificación/alerta para imprimir. Primera persona disponible dispara la impresión manualmente (config preseleccionada o default). **Sin impresión automática en esta fase** — un agente local queda como proyecto aparte a futuro | Confirma el hallazgo técnico original: no hay integración de impresora física en el código hoy (`etiquetasEnvioPDF.ts`/`CodigoMasivoModal.tsx` son los 2 patrones existentes, ninguno imprime sin un humano). |
-| H2 | Se entera por la misma notificación de H1 | — |
-| H3 | Se juntan varias etiquetas pendientes en **una sola tanda de impresión** | Coherente con B1: confirmación por tarea individual, pero impresión consolidada. |
+| H1 | A partir de una hora configurada, aparece notificación/alerta para imprimir. Primera persona disponible dispara la impresión manualmente (config preseleccionada o default). **Sin impresión automática en esta fase** — un agente local queda como proyecto aparte a futuro | ✅ **Construido en la Fase 4 (mig 357)** — `tenants.repositor_hora_impresion` + banner DENTRO de `/repositores` (no notificación cross-app del sistema de `notificaciones`), evaluado en cada render (sin cron/`setInterval` en el proyecto). Confirma el hallazgo técnico original: `etiquetasEnvioPDF.ts`/`CodigoMasivoModal.tsx` fueron los 2 patrones reusados, ninguno imprime sin un humano. |
+| H2 | Se entera por la misma notificación de H1 | ✅ **Construido en la Fase 4** — mismo banner de H1. |
+| H3 | Se juntan varias etiquetas pendientes en **una sola tanda de impresión** | ✅ **Construido en la Fase 4** — checkboxes + "Seleccionar todas" + "Imprimir etiquetas (N)" generan 1 solo PDF; imprimir NO completa la tarea (2 acciones separadas a propósito). Coherente con B1: confirmación por tarea individual, pero impresión consolidada. |
 
 ## I. Integración con WMS/Picking
 
@@ -287,12 +293,33 @@ Se REUSA tal cual `fn_completar_tarea_reabastecimiento` (mig 297).
 
 **Fase 3 (mig 355+356) CONSTRUIDA Y VERIFICADA EN DEV** — detalle completo en
 [[wiki/features/repositores]] → "Qué hace la Fase 3". `origin/dev` commits `45a3c89b` (mig 355) y
-`d6f37b08` (fix de dedupe, mig 356). **NO deployada a PROD**, igual que Fases 1+2 — decisión de GO
-pendiente. Verificada con SQL real contra DEV (movimiento físico de stock unidad por unidad, reparto
-por carga, guard cross-tenant, dedupe atómico) y con Playwright real contra el navegador (tab
-"Reposición física", completar → toast + movimiento real en DB).
+`d6f37b08` (fix de dedupe, mig 356). Verificada con SQL real contra DEV (movimiento físico de stock
+unidad por unidad, reparto por carga, guard cross-tenant, dedupe atómico) y con Playwright real contra
+el navegador (tab "Reposición física", completar → toast + movimiento real en DB).
 
-**Próxima sesión**: confirmar la decisión de GO sobre deployar Fase 1+2+3 a PROD, y si corresponde
-retomar, construir la última fase que queda: **etiquetas + impresión** (G/H de este relevamiento —
-diseño de etiqueta con precio por unidad grande, campo "Contenido" nuevo en Identificación de
-producto, PDF pensado también para impresora térmica Zebra).
+## ✅ Actualización 2026-08-11/12 (misma sesión continuada) — Fase 4 (etiquetas de precio + impresión) CONSTRUIDA Y VERIFICADA EN DEV — MÓDULO REPOSITORES 100% COMPLETO (4/4 FASES)
+
+Era la última fase que quedaba, no hizo falta elegir entre opciones — G/H de este relevamiento
+(etiquetas + impresión).
+
+**G1-G3/H1-H3 — resolución final, todas construidas.** Investigación previa reusó 2 patrones
+existentes de impresión (`etiquetasEnvioPDF.ts` de Envíos EN7, `CodigoMasivoModal.tsx` de Inventario)
+y confirmó que la conversión de unidades física (`convertirFisica()`) ya existía — el único campo
+nuevo en el modelo de datos fue "Contenido" (`productos.contenido_cantidad`/`contenido_unidad_id`,
+mig 357). Detalle completo de cada punto (G1 tachado solo en descuento real, G2 tamaño de hoja
+configurable, G3 una etiqueta por producto, H1/H2 banner en la página sin cron, H3 tanda de
+impresión sin completar la tarea) en [[wiki/features/repositores]] → "Qué hace la Fase 4".
+
+**Fase 4 (mig 357) CONSTRUIDA Y VERIFICADA EN DEV** — `origin/dev` commit `ad35d0f6`. Verificada con
+Playwright real contra el navegador (2 tareas de prueba cubriendo ambas ramas de G1, descarga real de
+PDF de 58.910 bytes, aislamiento del caso sin código de barras — 3.480 bytes sin la imagen del
+barcode, campo "Contenido" y card de Config verificados visualmente). Migración self-reviewed sin
+`migration-reviewer` (perfil de riesgo bajo: solo 4 `ADD COLUMN`, sin RLS/triggers/funciones nuevos).
+
+**Con esto, el módulo Repositores queda 100% construido: Fases 1-4 (mig 352-357), TODAS verificadas
+en DEV, NINGUNA en PROD todavía.** Notificaciones (J) y reportes (K) del relevamiento original quedan
+fuera del alcance final del módulo — no se construyeron como parte de Repositores.
+
+**Próxima sesión**: confirmar el resultado real del deploy a PROD de Repositores (mig 352-357) — GO ya
+pidió deployar TODO junto, el deploy queda en curso a continuación de esta misma sesión (no
+documentado acá como hecho hasta confirmarse).

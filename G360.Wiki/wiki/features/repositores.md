@@ -2,17 +2,18 @@
 title: Módulo Repositores
 category: features
 tags: [repositores, precios, etiquetas, gondola, prioridad, roles-custom, modo-avanzado]
-sources: [migration 352, migration 353, migration 354, migration 355, migration 356, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts]
+sources: [migration 352, migration 353, migration 354, migration 355, migration 356, migration 357, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/pages/ConfigPage.tsx, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts, src/lib/etiquetasPreciosPDF.ts, src/lib/unidadMedidaFisica.ts]
 updated: 2026-08-11
 ---
 
 # Módulo Repositores
 
-> 🟡 **Fase 1 (núcleo + disparadores + prioridad, mig 352 + fix de seguridad mig 353), Fase 2
-> (asignación automática + reasignación manual, mig 354) y Fase 3 (reposición física a góndola, mig
-> 355 + fix de dedupe mig 356) CONSTRUIDAS Y VERIFICADAS EN DEV (2026-08-11/12) — NINGUNA deployada a
-> PROD todavía.** Es un módulo nuevo, no un fix: se le preguntó a GO si deployar ahora o esperar más
-> revisión (de él o de Fede) antes de subirlo — sin respuesta al cierre de la sesión que lo construyó.
+> ✅ **Módulo 100% COMPLETO — Fase 1 (núcleo + disparadores + prioridad, mig 352 + fix de seguridad
+> mig 353), Fase 2 (asignación automática + reasignación manual, mig 354), Fase 3 (reposición física a
+> góndola, mig 355 + fix de dedupe mig 356) y Fase 4 (etiquetas de precio + impresión, mig 357, ÚLTIMA
+> fase) CONSTRUIDAS Y VERIFICADAS EN DEV (2026-08-11/12) — NINGUNA deployada a PROD todavía.** Es un
+> módulo nuevo, no un fix: con las 4 fases cerradas, GO pidió deployar TODO junto (migraciones
+> 352-357) — el deploy a PROD queda en curso a continuación, en la misma sesión que cerró la Fase 4.
 > Confirmar el estado real (`gh pr list`, `git log origin/main`) antes de asumir que sigue en DEV.
 >
 > 🔒🛑 **Bug de seguridad real encontrado y corregido en la Fase 1 (mig 353), mientras estuvo SOLO en
@@ -40,12 +41,14 @@ que ya usó el backlog de Comercial (F→A→B→C→D):
 - **Fase 2 (✅ construida, mig 354)**: asignación automática por carga + reasignación manual vía el
   patrón de la Pestaña de Supervisor (ya existía como pieza genérica, ver
   [[wiki/features/supervision]]).
-- **Fase 3 (esta, ✅ construida, mig 355+356)**: reposición física de stock a góndola — resuelve I3
-  (ver abajo), reusando el mecanismo real de movimiento de stock de WMS con un tipo de tarea nuevo
+- **Fase 3 (✅ construida, mig 355+356)**: reposición física de stock a góndola — resuelve I3 (ver
+  abajo), reusando el mecanismo real de movimiento de stock de WMS con un tipo de tarea nuevo
   (`reposicion_gondola`).
-- **Fase futura (sin arrancar, ahora 1 sola, no 2)**: etiquetas + impresión (PDF pensado para servir
-  también en impresoras térmicas Zebra, decisión de GO). Notificaciones y reportes también sin
-  arrancar.
+- **Fase 4 (esta, ✅ construida, mig 357, ÚLTIMA fase del módulo)**: etiquetas de precio + impresión
+  (G/H del relevamiento) — PDF en grilla A4 con código de barras, imprimible también en una impresora
+  térmica Zebra si el negocio tiene una (decisión de GO). Con esta fase el módulo Repositores queda
+  **100% construido**. Notificaciones (J) y reportes (K) del relevamiento original quedan fuera del
+  alcance de Repositores — no se retoman como parte de este módulo.
 
 ## Qué hace la Fase 1
 
@@ -167,11 +170,13 @@ DB real de DEV: `pg_class.reloptions` confirma `security_invoker=true`;
 - **Asignación/reasignación de tareas** — ✅ **construida en la Fase 2 (mig 354, ver abajo)**, hoy era
   una cola compartida sin asignar (mismo punto de partida que tuvo `wms_tareas` antes de tener
   asignación).
-- **Etiquetas + impresión** (G/H del relevamiento) — diseño de etiqueta con precio por unidad grande
-  (usa la conversión de `unidades_medida_fisicas` ya existente) + PDF pensado para servir también en
-  una impresora térmica Zebra si el negocio tiene una (decisión de GO, sin impresión automática — un
-  humano dispara la impresión). Todavía sin arrancar.
-- **Notificaciones** (J) y **reportes** (K). Todavía sin arrancar.
+- **Etiquetas + impresión** (G/H del relevamiento) — ✅ **construida en la Fase 4 (mig 357, ver
+  abajo)**, diseño de etiqueta con precio por unidad grande (usa la conversión de
+  `unidades_medida_fisicas` ya existente) + PDF pensado para servir también en una impresora térmica
+  Zebra si el negocio tiene una (decisión de GO, sin impresión automática — un humano dispara la
+  impresión).
+- **Notificaciones** (J) y **reportes** (K) del relevamiento original — fuera del alcance final del
+  módulo, no se construyeron como parte de Repositores.
 
 ## Qué hace la Fase 2 (mig 354) — asignación automática + reasignación manual
 
@@ -382,9 +387,118 @@ usar UNA VEZ sin guardarlo — se usó inline (nunca escrito a disco) para regen
 persistido.
 
 Commiteado y pusheado a `origin/dev` (commits `45a3c89b` mig 355, `d6f37b08` fix dedupe mig 356 +
-`PedidosPage.tsx`). **Mig 355+356, igual que 352-354, SOLO en DEV** — sin deployar a PROD; sin
-tag/release de GitHub todavía (pendiente de confirmar con GO si corresponde igual, no decidido).
-**Queda 1 SOLA fase sin arrancar: etiquetas + impresión.**
+`PedidosPage.tsx`). **Mig 355+356, igual que 352-354, SOLO en DEV** — sin deployar a PROD.
+
+## Qué hace la Fase 4 (mig 357) — etiquetas de precio + impresión (última fase del módulo)
+
+GO eligió etiquetas+impresión como la última fase que quedaba (era la única) — resuelve G1-G3/H1-H3
+del relevamiento y cierra el módulo Repositores completo (4/4 fases).
+
+### Investigación previa — 2 patrones existentes reusados
+
+Antes de diseñar se revisaron 2 mecanismos de impresión ya construidos: `src/lib/etiquetasEnvioPDF.ts`
+(EN7 de Envíos — jsPDF en grilla A4 4/6/12 por hoja, con QR) tomado como plantilla estructural, y
+`src/components/CodigoMasivoModal.tsx` (Inventario — renderiza códigos GS1 con `bwip-js` a un canvas
+offscreen → dataURL, soporta imprimir N etiquetas de una tanda). Se confirmó que `convertirFisica()`
+(`src/lib/unidadMedidaFisica.ts`, ver [[wiki/features/estructuras-udm]] → Fase 1) ya existía y no había
+que reprogramarla, y que no existía ningún campo de "contenido" en `productos` (confirmado con grep).
+
+### Mig `357_repositores_fase4_etiquetas.sql`
+
+Solo 4 `ALTER TABLE ADD COLUMN IF NOT EXISTS` — sin tablas/RLS/triggers/funciones nuevos, las columnas
+heredan la RLS de fila ya existente en `productos`/`tenants`:
+
+- **`productos.contenido_cantidad`** (numeric, `CHECK > 0`) + **`productos.contenido_unidad_id`** (FK a
+  `unidades_medida_fisicas`) — cuánto contiene FÍSICAMENTE 1 unidad de venta (ej. 120 para un shampoo
+  de 120ml). Distinto de `productos.unidad_medida_base_id` (cómo se vende/cobra el producto, no cuánto
+  contiene) — ver "Card 1: Identificación" en [[wiki/features/productos]].
+- **`tenants.repositor_etiquetas_por_hoja`** (integer, `CHECK IN (4,6,12)`, default 12 — la opción de
+  menos hojas).
+- **`tenants.repositor_hora_impresion`** (time, nullable = sin aviso configurado).
+
+### G1 — contenido de la etiqueta
+
+Nombre + precio nuevo siempre. Precio anterior tachado AL LADO del nuevo **solo si es un descuento
+real** (precio bajó) — si el precio SUBIÓ no se tacha nada (mostrar "tachado" en una suba de precio
+sería un mensaje incorrecto de cara al cliente). Código de barras del producto vía `bwip-js`
+(`code128`, con el número incluido automáticamente debajo por `includetext:true`).
+
+Con `contenido_cantidad`/`contenido_unidad_id` cargados, la etiqueta agrega en chico "Precio por
+L/Kg/m: $X" — nueva función **`precioPorUnidadGrande()`** en `src/lib/unidadMedidaFisica.ts`, que solo
+agrega el mapeo familia→unidad de referencia (peso→Kilogramo, volumen→Litro, longitud→Metro) por
+encima de `convertirFisica()` ya existente, **sin tocarla**. Sin esos dos campos cargados, la etiqueta
+simplemente no muestra esa línea (no es un error).
+
+### G2 — formato configurable
+
+Card nueva **"Repositores — Etiquetas de precio"** en Config → Inventario → Zonas y picking, con un
+select de tamaño de hoja (4/6/12, default 12) y un input de hora — mismo patrón `update` +
+`setTenant(data)` que el resto de `ConfigPage.tsx`.
+
+### G3 — una etiqueta por producto
+
+Consecuencia natural del diseño, sin código extra: 1 tarea seleccionada = 1 producto = 1 etiqueta en
+el PDF.
+
+### H1/H2 — aviso a partir de una hora configurada, sin impresión automática
+
+Banner **DENTRO** de la página `/repositores` (no una notificación cross-app del sistema de
+`notificaciones`) que aparece cuando la hora actual ya pasó `tenants.repositor_hora_impresion` **y**
+quedan carteles pendientes. Se evalúa en cada render — el proyecto no tiene cron ni `setInterval` en
+ningún lado (ver `reference_pg_cron_no_habilitado` en memoria), así que no hay un "disparo" en tiempo
+real al llegar la hora exacta: el aviso aparece la próxima vez que la página se re-renderiza
+(navegación, refetch normal de React Query) — suficiente para el caso de uso, no se justificó agregar
+infraestructura de polling nueva solo para esto.
+
+### H3 — tanda de impresión
+
+En la sección "Precios/Etiquetas" de `/repositores`, filtro "Pendientes": checkboxes por tarea +
+"Seleccionar todas" + botón "Imprimir etiquetas (N)" que junta todas las seleccionadas en un solo PDF
+(`generarEtiquetasPreciosPDF`, nuevo en `src/lib/etiquetasPreciosPDF.ts`). **Imprimir NO completa la
+tarea** — son 2 acciones separadas a propósito (imprimir el cartel es un paso, ir a pegarlo
+físicamente y click en "Completar" es otro, ya existente desde la Fase 1) — no se agregó ninguna
+columna `impreso_at` a `tareas_repositor`, la migración quedó minimal.
+
+### `src/lib/etiquetasPreciosPDF.ts` — nuevo
+
+Mismo patrón jsPDF en grilla A4 que `etiquetasEnvioPDF.ts`, pero con código de barras (`bwip-js`) en
+vez de QR, y contenido de precio/descuento en vez de datos de envío/destinatario.
+
+### Migración self-reviewed, sin `migration-reviewer`
+
+Decisión explícita, no un salteo por apuro: perfil de riesgo bajo (solo 4 `ADD COLUMN`, sin
+RLS/triggers/funciones nuevos) a diferencia de las migraciones 352-356 (que sí tocaban
+RLS/SECURITY DEFINER/movimiento real de stock) — se revisó a mano contra el mismo checklist en vez de
+despachar el subagente.
+
+### Verificación real (2026-08-11/12, contra DEV, navegador Playwright ad-hoc)
+
+- 2 tareas de prueba reales (`tareas_repositor`, tipo `cambio_precio`): una con descuento real
+  ($1.000→$800, producto CON código de barras) y otra con precio que SUBIÓ ($500→$600, producto SIN
+  código de barras) — para cubrir ambas ramas de la regla G1.
+- `contenido_cantidad=2.5` + `contenido_unidad_id=Litro` asignados a "Bebida Coca Cola 2.5L" ($600),
+  para probar "Precio por L: $240".
+- `/repositores` → "Precios/Etiquetas" → "Seleccionar todas" → "Imprimir etiquetas (2)" → descarga real
+  de PDF (58.910 bytes, capturada), sin errores de consola/red.
+- Aislado el producto SIN código de barras solo: PDF de 3.480 bytes (vs. 58KB con el código real
+  incluido) — confirma que `if (codigo)` funciona bien y no genera una imagen de barcode vacía/rota
+  cuando no hay código.
+- Verificado visualmente (screenshot) el campo "Contenido" en `ProductoFormPage.tsx` → Identificación,
+  entre Marca y Descripción, con placeholder y select de unidad deshabilitado hasta cargar una
+  cantidad.
+- Verificado visualmente (screenshot) la card "Repositores — Etiquetas de precio" en Config →
+  Inventario → Zonas y picking, con el select de tamaño de hoja y el input de hora; guardar la hora
+  persistió correctamente (update real + revertido después).
+- Todos los datos de prueba se limpiaron después (tareas borradas, `contenido_cantidad`/
+  `contenido_unidad_id` del producto revertidos a NULL, `repositor_hora_impresion` del tenant revertido
+  a NULL) — el tenant "Almacén Jorgito" quedó exactamente como estaba antes de probar.
+
+Typecheck + build verdes. Commiteado y pusheado a `origin/dev` (commit `ad35d0f6`). **Mig 357, igual
+que 352-356, SOLO en DEV** — sin deployar a PROD todavía.
+
+**Con esto, el módulo Repositores queda 100% construido: Fases 1-4 (mig 352-357), TODAS verificadas en
+DEV, ninguna en PROD.** GO ya pidió deployar TODO junto — el deploy a PROD sigue a continuación, en la
+misma sesión que cerró esta fase (documentado en una entrada de log/wiki separada una vez confirmado).
 
 ## Verificación real (2026-08-11, contra DEV) — Fase 1
 
@@ -406,6 +520,12 @@ el tenant quedó exactamente como estaba antes de probar.
 - [[wiki/features/wms]] — `fn_completar_tarea_reabastecimiento` (mig 297) y el camino de
   reabastecimiento por umbral que la Fase 3 de Repositores reusa; nota agregada ahí sobre el 2do
   llamador (mig 355+356).
+- [[wiki/features/envios]] — `etiquetasEnvioPDF.ts` (EN7), la plantilla estructural jsPDF que reusó la
+  Fase 4 para `etiquetasPreciosPDF.ts`.
+- [[wiki/features/productos]] — "Card 1: Identificación" documenta el campo nuevo "Contenido"
+  (`contenido_cantidad`/`contenido_unidad_id`, mig 357) usado por la etiqueta de precio de la Fase 4.
+- [[wiki/features/estructuras-udm]] — `unidades_medida_fisicas`/`convertirFisica()`, la conversión de
+  unidades física que reusa `precioPorUnidadGrande()` (Fase 4) sin tocarla.
 - `G360.Wiki/sources/raw/relevamiento_repositores_respuestas.md` — las 35 preguntas originales y sus
   respuestas completas, incluida la sección "Cierre de ambigüedades" que resolvió A1/A2/H1/C3/I3, y la
   nota que corrige I3 con la conclusión final de la Fase 3.

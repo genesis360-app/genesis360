@@ -6,6 +6,101 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-11] update | 🆕 Repositores Fase 4 (mig 357): etiquetas de precio + impresión CONSTRUIDA Y VERIFICADA EN DEV — módulo Repositores 100% COMPLETO (4/4 fases), deploy a PROD en curso a continuación en esta misma sesión
+
+Continuación directa de la entrada de abajo (mig 355+356, Fase 3), mismo día, sesión que ya había
+cruzado medianoche a 2026-08-12. Esta era la **última fase** que quedaba del módulo: etiquetas de
+precio + impresión (G/H del relevamiento).
+
+**Investigación previa — 2 patrones existentes reusados, no reinventados.** Antes de diseñar se
+revisaron 2 mecanismos de impresión ya construidos: `src/lib/etiquetasEnvioPDF.ts` (EN7 de Envíos,
+jsPDF en grilla A4 4/6/12 por hoja con QR) tomado como plantilla estructural, y
+`src/components/CodigoMasivoModal.tsx` (Inventario, renderiza códigos GS1 con `bwip-js` a un canvas
+offscreen → dataURL, imprime N etiquetas de una tanda). Se confirmó que `convertirFisica()`
+(`src/lib/unidadMedidaFisica.ts`) ya existía y no había que reprogramarla, y que no existía ningún
+campo de "contenido" en `productos` (grep negativo).
+
+**Mig `357_repositores_fase4_etiquetas.sql`** — 4 `ALTER TABLE ADD COLUMN IF NOT EXISTS` (2 en
+`productos`, 2 en `tenants`), sin tablas/RLS/funciones/triggers nuevos:
+- `productos.contenido_cantidad` (numeric) + `productos.contenido_unidad_id` (FK a
+  `unidades_medida_fisicas`) — cuánto contiene FÍSICAMENTE 1 unidad de venta (ej. 120 para un shampoo
+  de 120ml), distinto de `unidad_medida_base_id` (cómo se vende/cobra, no cuánto contiene).
+- `tenants.repositor_etiquetas_por_hoja` (integer, `CHECK IN (4,6,12)`, default 12) y
+  `tenants.repositor_hora_impresion` (time, nullable = sin aviso configurado).
+
+**G1 (contenido de la etiqueta)**: nombre + precio nuevo siempre; precio anterior tachado AL LADO del
+nuevo solo si es un descuento real (precio bajó) — si el precio SUBIÓ no se tacha nada (tachar en una
+suba sería un mensaje incorrecto de cara al cliente). Código de barras del producto vía `bwip-js`
+(`code128`, con el número incluido automáticamente debajo por `includetext:true`). Con
+`contenido_cantidad`/`contenido_unidad_id` cargados, la etiqueta muestra "Precio por L/Kg/m: $X" —
+nueva función `precioPorUnidadGrande()` en `src/lib/unidadMedidaFisica.ts`, que solo agrega el mapeo
+familia→unidad de referencia (peso→Kilogramo, volumen→Litro, longitud→Metro) sobre `convertirFisica()`
+ya existente, sin tocarla.
+
+**G2 (formato configurable)**: card nueva "Repositores — Etiquetas de precio" en Config → Inventario →
+Zonas y picking, con el select de tamaño de hoja (4/6/12, default 12 = menos hojas) y el input de hora
+del aviso — mismo patrón `update` + `setTenant(data)` que el resto de `ConfigPage.tsx`.
+
+**G3 (una etiqueta por producto)**: consecuencia natural del diseño, sin código extra — 1 tarea
+seleccionada = 1 producto = 1 etiqueta.
+
+**H1/H2 (aviso a partir de una hora configurada, sin impresión automática)**: banner DENTRO de
+`/repositores` (no una notificación cross-app del sistema de `notificaciones`) que aparece cuando la
+hora actual ya pasó `tenants.repositor_hora_impresion` Y quedan carteles pendientes. Se evalúa en cada
+render — el proyecto no tiene cron ni `setInterval` en ningún lado (ver
+`reference_pg_cron_no_habilitado` en memoria), así que no hay un disparo en tiempo real al llegar la
+hora exacta; el aviso aparece la próxima vez que la página se re-renderiza (navegación, refetch normal
+de React Query) — suficiente para el caso de uso, no se justificó agregar infraestructura de polling
+nueva solo para esto.
+
+**H3 (tanda de impresión)**: en la sección "Precios/Etiquetas" de `/repositores`, filtro "Pendientes",
+aparecen checkboxes por tarea + "Seleccionar todas" + botón "Imprimir etiquetas (N)" que junta todas
+las seleccionadas en un solo PDF (`generarEtiquetasPreciosPDF`). **Imprimir NO completa la tarea** —
+son 2 acciones separadas a propósito (imprimir el cartel es un paso, ir a pegarlo y completar es otro,
+ya existente desde la Fase 1) — no se agregó ninguna columna `impreso_at` a `tareas_repositor`, la
+migración quedó minimal.
+
+**Nuevo archivo `src/lib/etiquetasPreciosPDF.ts`** — mismo patrón jsPDF en grilla A4 que
+`etiquetasEnvioPDF.ts`, pero con código de barras (`bwip-js`) en vez de QR, y contenido de
+precio/descuento en vez de datos de envío/destinatario.
+
+**Migración self-reviewed, sin `migration-reviewer`** — decisión explícita, no un salteo por apuro.
+Perfil de riesgo bajo (solo 4 `ADD COLUMN`, sin RLS/triggers/funciones nuevos — las columnas heredan
+la RLS de fila ya existente en `productos`/`tenants`), a diferencia de las migraciones 352-356 (que sí
+tocaban RLS/SECURITY DEFINER/movimiento real de stock), así que se revisó a mano contra el mismo
+checklist.
+
+**Verificación real contra DEV (navegador, Playwright ad-hoc)**:
+- 2 tareas de prueba reales (`tareas_repositor`, tipo `cambio_precio`): una con descuento real
+  ($1.000→$800, producto CON código de barras) y otra con precio que SUBIÓ ($500→$600, producto SIN
+  código de barras) — para cubrir ambas ramas de la regla G1.
+- `contenido_cantidad=2.5` + `contenido_unidad_id=Litro` en "Bebida Coca Cola 2.5L" ($600), para
+  probar "Precio por L: $240".
+- `/repositores` → "Precios/Etiquetas" → "Seleccionar todas" → "Imprimir etiquetas (2)" → descarga real
+  de PDF (58.910 bytes, capturada), sin errores de consola/red.
+- Aislado el producto SIN código de barras solo: PDF de 3.480 bytes (vs. 58KB con el código real
+  incluido) — confirma que `if (codigo)` funciona bien y no genera una imagen de barcode vacía/rota
+  cuando no hay código.
+- Verificado visualmente (screenshot) el campo "Contenido" en `ProductoFormPage.tsx` → Identificación,
+  entre Marca y Descripción, con placeholder y select de unidad deshabilitado hasta cargar una
+  cantidad.
+- Verificado visualmente (screenshot) la card "Repositores — Etiquetas de precio" en Config →
+  Inventario → Zonas y picking, con el select de tamaño de hoja y el input de hora; guardar la hora
+  persistió correctamente (update real + revertido después).
+- Todos los datos de prueba se limpiaron después (tareas borradas, `contenido_cantidad`/
+  `contenido_unidad_id` del producto revertidos a NULL, `repositor_hora_impresion` del tenant revertido
+  a NULL) — el tenant "Almacén Jorgito" quedó exactamente como estaba antes de probar.
+
+Typecheck + build verdes. Commiteado y pusheado a `origin/dev` (commit `ad35d0f6`).
+
+**Estado final: Repositores 100% construido (Fases 1-4), migraciones 352-357, TODAS solo en DEV**
+(`gcmhzdedrkmmzfzfveig`), ninguna en PROD todavía. **Inmediatamente después, en esta MISMA sesión, se
+procede a deployar TODO (migraciones 352-357 + el resto del delta `dev`→`main`) a PROD** — GO ya pidió
+deployar, no queda pendiente de decisión; el resultado real del deploy se documenta en una entrada de
+log separada una vez confirmado (esta entrada NO lo da por hecho).
+
+---
+
 ## [2026-08-11] update | 🆕 Repositores Fase 3 (mig 355+356): reposición física a góndola CONSTRUIDA Y VERIFICADA EN DEV, sigue sin deployar a PROD — corrige la resolución anterior de I3
 
 Continuación directa de la entrada de abajo (mig 354, Fase 2), mismo día, sesión que cruzó medianoche a

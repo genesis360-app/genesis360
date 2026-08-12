@@ -6,11 +6,36 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-11
 ---
 
-# Historial de Migraciones (001-356)
+# Historial de Migraciones (001-357)
 
-**Total al 2026-08-11/12:** 356 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-11/12:** 357 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
 sesión).
+
+**357 (`357_repositores_fase4_etiquetas.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
+`ad35d0f6`), sin mergear a `main`:** 🆕 Repositores Fase 4 (etiquetas de precio + impresión) — **última
+fase del módulo**, misma sesión de Repositores continuada (cruzó medianoche a 2026-08-12). Solo 4
+`ALTER TABLE ADD COLUMN IF NOT EXISTS`, sin tablas/RLS/triggers/funciones nuevos: `productos.
+contenido_cantidad` (numeric) + `productos.contenido_unidad_id` (FK a `unidades_medida_fisicas`) —
+cuánto contiene físicamente 1 unidad de venta (ej. 120 para un shampoo de 120ml), distinto de
+`unidad_medida_base_id` (cómo se vende); `tenants.repositor_etiquetas_por_hoja` (`CHECK IN (4,6,12)`,
+default 12) y `tenants.repositor_hora_impresion` (time, nullable). Investigación previa reusó 2
+patrones existentes (`etiquetasEnvioPDF.ts` de Envíos EN7, `CodigoMasivoModal.tsx` de Inventario) —
+nuevo `src/lib/etiquetasPreciosPDF.ts`, mismo patrón jsPDF en grilla A4, con código de barras (bwip-js
+`code128`) en vez de QR. G1: precio anterior tachado SOLO si es descuento real (nunca en una suba);
+`precioPorUnidadGrande()` nueva en `src/lib/unidadMedidaFisica.ts` (mapeo familia→unidad de referencia
+Kg/L/m sobre `convertirFisica()` ya existente, sin tocarla). G2: card "Repositores — Etiquetas de
+precio" en Config → Inventario → Zonas y picking. H1/H2: banner DENTRO de `/repositores` (no
+notificación cross-app), evaluado en cada render — el proyecto no tiene cron ni `setInterval`. H3:
+selección múltiple de tareas pendientes → 1 solo PDF en tanda; imprimir NO completa la tarea (2
+acciones separadas a propósito). Self-reviewed sin `migration-reviewer` (perfil de riesgo bajo, sin
+RLS/SECURITY DEFINER/movimiento de stock a diferencia de 352-356). Verificado con Playwright real
+contra DEV (2 tareas de prueba cubriendo ambas ramas de G1, descarga real de PDF de 58.910 bytes,
+aislamiento del caso sin código de barras confirmando `if (codigo)` — 3.480 bytes sin la imagen del
+barcode, campo "Contenido" y card de Config verificados visualmente). **Cierra el módulo Repositores:
+las 4 fases (mig 352-357) construidas y verificadas, TODAS solo en DEV** — deploy a PROD en curso a
+continuación en la misma sesión. Ver [[wiki/features/repositores]].
 
 **356 (`356_fix_dedupe_reposicion_gondola.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
 (`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
@@ -301,6 +326,11 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
+**001-357: 351 EN DEV Y PROD, 352-357 SOLO EN DEV.** Mig 357 es Repositores Fase 4 (etiquetas de
+precio + impresión) — **última fase del módulo**, misma sesión de Repositores continuada (cruzó
+medianoche a 2026-08-12), commit `ad35d0f6` en `origin/dev`, sin mergear a `main` ni deployar. Con
+esto **Repositores queda 100% construido (Fases 1-4, mig 352-357), TODAS solo en DEV** — deploy a
+PROD en curso a continuación en la misma sesión (GO ya pidió deployar).
 **001-356: 351 EN DEV Y PROD, 352-356 SOLO EN DEV.** Migs 355+356 son Repositores Fase 3 (reposición
 física a góndola + fix de dedupe) — misma sesión de Repositores continuada (cruzó medianoche a
 2026-08-12), commits `45a3c89b`/`d6f37b08` en `origin/dev`, sin mergear a `main` ni deployar — decisión

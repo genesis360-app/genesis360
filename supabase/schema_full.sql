@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-08-12T03:14:14.889Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260812031051 · 154 tablas
+-- Generado 2026-08-12T03:50:15.384Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260812033819 · 154 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -1549,7 +1549,9 @@ END,
   ubicacion_kit_default_id uuid,
   reajuste_margen_auto boolean NOT NULL DEFAULT false,
   precio_ajuste_meli_pct numeric(5,2),
-  precio_ajuste_tn_pct numeric(5,2)
+  precio_ajuste_tn_pct numeric(5,2),
+  contenido_cantidad numeric,
+  contenido_unidad_id uuid
 );
 
 CREATE TABLE public.proveedor_cc_movimientos (
@@ -2305,7 +2307,9 @@ CREATE TABLE public.tenants (
   repricing_modo text NOT NULL DEFAULT 'alerta'::text,
   repricing_automatico_desde_monto numeric(12,2),
   repricing_tope_pct numeric(5,2),
-  repricing_umbral_aviso_monto numeric(12,2)
+  repricing_umbral_aviso_monto numeric(12,2),
+  repositor_etiquetas_por_hoja integer NOT NULL DEFAULT 12,
+  repositor_hora_impresion time without time zone
 );
 
 CREATE TABLE public.tiendanube_credentials (
@@ -2848,6 +2852,7 @@ ALTER TABLE public.productos ADD CONSTRAINT chk_productos_rotacion_matriz CHECK 
 ALTER TABLE public.productos ADD CONSTRAINT chk_productos_variante_sin_atributos CHECK ((NOT ((producto_padre_id IS NOT NULL) AND (tiene_talle OR tiene_color OR tiene_encaje OR tiene_formato OR tiene_sabor_aroma))));
 ALTER TABLE public.productos ADD CONSTRAINT productos_alicuota_iva_check CHECK ((alicuota_iva = ANY (ARRAY[(0)::numeric, 10.5, (21)::numeric, (27)::numeric])));
 ALTER TABLE public.productos ADD CONSTRAINT productos_clase_abc_check CHECK (((clase_abc IS NULL) OR (clase_abc = ANY (ARRAY['A'::text, 'B'::text, 'C'::text]))));
+ALTER TABLE public.productos ADD CONSTRAINT productos_contenido_cantidad_check CHECK (((contenido_cantidad IS NULL) OR (contenido_cantidad > (0)::numeric)));
 ALTER TABLE public.productos ADD CONSTRAINT productos_hijo_tiene_diferenciador CHECK (((producto_padre_id IS NULL) OR (variante_diferenciador IS NOT NULL)));
 ALTER TABLE public.productos ADD CONSTRAINT productos_padre_no_self CHECK (((producto_padre_id IS NULL) OR (producto_padre_id <> id)));
 ALTER TABLE public.productos ADD CONSTRAINT productos_pkey PRIMARY KEY (id);
@@ -2946,6 +2951,7 @@ ALTER TABLE public.tenants ADD CONSTRAINT tenants_pedido_numeracion_check CHECK 
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_pkey PRIMARY KEY (id);
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_plan_tier_check CHECK ((plan_tier = ANY (ARRAY['free'::text, 'basico'::text, 'pro'::text, 'enterprise'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_precio_redondeo_check CHECK ((precio_redondeo = ANY (ARRAY['none'::text, '10'::text, '50'::text, '100'::text, '500'::text, '1000'::text])));
+ALTER TABLE public.tenants ADD CONSTRAINT tenants_repositor_etiquetas_por_hoja_check CHECK ((repositor_etiquetas_por_hoja = ANY (ARRAY[4, 6, 12])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_repricing_modo_check CHECK ((repricing_modo = ANY (ARRAY['automatico'::text, 'alerta'::text, 'automatico_desde_monto'::text])));
 ALTER TABLE public.tenants ADD CONSTRAINT tenants_subscription_status_check CHECK ((subscription_status = ANY (ARRAY['trial'::text, 'active'::text, 'inactive'::text, 'cancelled'::text])));
 ALTER TABLE public.tiendanube_credentials ADD CONSTRAINT tiendanube_credentials_pkey PRIMARY KEY (id);
@@ -3279,6 +3285,7 @@ ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion
 ALTER TABLE public.producto_ubicacion_umbrales ADD CONSTRAINT producto_ubicacion_umbrales_ubicacion_id_fkey FOREIGN KEY (ubicacion_id) REFERENCES ubicaciones(id) ON DELETE CASCADE;
 ALTER TABLE public.productos ADD CONSTRAINT productos_aging_profile_id_fkey FOREIGN KEY (aging_profile_id) REFERENCES aging_profiles(id) ON DELETE SET NULL;
 ALTER TABLE public.productos ADD CONSTRAINT productos_categoria_id_fkey FOREIGN KEY (categoria_id) REFERENCES categorias(id);
+ALTER TABLE public.productos ADD CONSTRAINT productos_contenido_unidad_id_fkey FOREIGN KEY (contenido_unidad_id) REFERENCES unidades_medida_fisicas(id) ON DELETE SET NULL;
 ALTER TABLE public.productos ADD CONSTRAINT productos_estado_id_fkey FOREIGN KEY (estado_id) REFERENCES estados_inventario(id);
 ALTER TABLE public.productos ADD CONSTRAINT productos_producto_padre_id_fkey FOREIGN KEY (producto_padre_id) REFERENCES productos(id) ON DELETE RESTRICT;
 ALTER TABLE public.productos ADD CONSTRAINT productos_proveedor_id_fkey FOREIGN KEY (proveedor_id) REFERENCES proveedores(id);

@@ -17,15 +17,23 @@
  * sobre `wms_tareas.tipo='reposicion_gondola'` (NO `tareas_repositor` — mecanismo de movimiento de
  * stock real, reusa `fn_completar_tarea_reabastecimiento`, mismo que Picking usa para replenishment).
  * Se genera bajo demanda ("Revisar reposición") cuando una góndola con `disponible_surtido=true`
- * quedó en cero — no hay cron en este proyecto. NO incluye todavía: etiquetas/impresión,
- * notificaciones, reportes.
+ * quedó en cero — no hay cron en este proyecto.
+ *
+ * Fase 4 (mig 357, G/H del relevamiento — última fase del módulo) = etiquetas de precio para
+ * imprimir: selección múltiple de carteles pendientes → un solo PDF en tanda (H3), con precio
+ * (tachado el anterior si hay descuento real, G1), código de barras del producto, y "precio por
+ * unidad grande" (Kg/L/m) si el producto tiene `contenido_cantidad`/`contenido_unidad_id` cargados.
+ * Aviso en la página (no notificación cross-app) a partir de `tenants.repositor_hora_impresion`
+ * (H1/H2) si quedan carteles activos — evaluado en cada render, sin cron ni setInterval. Imprimir NO
+ * completa la tarea — son 2 acciones separadas (imprimir el cartel, después ponerlo y completar).
+ * NO incluye: notificaciones cross-app, reportes (quedan fuera del alcance de Repositores).
  */
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Tags, Flame, TrendingUp, Clock, Check, X, Tag, CircleDot, UserCog, User,
-  RefreshCw, MapPin, ArrowRight, PackageCheck,
+  RefreshCw, MapPin, ArrowRight, PackageCheck, Printer, Bell,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '@/lib/supabase'
@@ -35,6 +43,8 @@ import { useModoOperacion } from '@/hooks/useModoOperacion'
 import { moduloOculto, puedeEditarModulo, puedeSupervisarModulo } from '@/lib/permisosModulo'
 import { logActividad } from '@/lib/actividadLog'
 import { useConfirm, usePrompt } from '@/hooks/useConfirm'
+import { generarEtiquetasPreciosPDF, type EtiquetaPrecio, type EtiquetasPorHoja } from '@/lib/etiquetasPreciosPDF'
+import { precioPorUnidadGrande, type UnidadFisica } from '@/lib/unidadMedidaFisica'
 
 type FiltroEstado = 'activas' | 'completada' | 'cancelada'
 type Seccion = 'carteles' | 'reposicion'
@@ -54,6 +64,8 @@ export default function RepositoresPage() {
   const [filtro, setFiltro] = useState<FiltroEstado>('activas')
   const [reasignando, setReasignando] = useState<string | null>(null)
   const [revisando, setRevisando] = useState(false)
+  const [seleccionadas, setSeleccionadas] = useState<Set<string>>(new Set())
+  const [imprimiendo, setImprimiendo] = useState(false)
 
   const oculto = moduloOculto(user, 'repositores')
   const puedeEditar = puedeEditarModulo(user, 'repositores')
@@ -118,6 +130,78 @@ export default function RepositoresPage() {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  // ── Etiquetas de precio (Fase 4, mig 357) ───────────────────────────────────────────────────────
+  const { data: unidadesFisicas = [] } = useQuery<UnidadFisica[]>({
+    queryKey: ['unidades_medida_fisicas', tenant?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('unidades_medida_fisicas')
+        .select('id, familia, nombre, simbolo, factor_base_familia, es_base_familia, permite_decimales')
+        .eq('tenant_id', tenant!.id).eq('activo', true)
+      return (data ?? []) as UnidadFisica[]
+    },
+    enabled: !!tenant && seccion === 'carteles',
+  })
+
+  const toggleSeleccion = (id: string) => {
+    setSeleccionadas(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const imprimirEtiquetas = async () => {
+    const elegidas = (tareas as any[]).filter(t => seleccionadas.has(t.id))
+    if (elegidas.length === 0) return
+    setImprimiendo(true)
+    try {
+      const productoIds = Array.from(new Set(elegidas.map(t => t.producto_id)))
+      const { data: productos, error } = await supabase.from('productos')
+        .select('id, precio_venta, codigo_barras, gtin, contenido_cantidad, contenido_unidad_id')
+        .in('id', productoIds)
+      if (error) throw error
+      const productosPorId = new Map((productos ?? []).map((p: any) => [p.id, p]))
+
+      const etiquetas: EtiquetaPrecio[] = elegidas.map(t => {
+        const prod = productosPorId.get(t.producto_id)
+        let precio: number
+        let precioAnterior: number | null = null
+        if (t.tipo === 'cambio_precio') {
+          precio = Number(t.precio_nuevo ?? 0)
+          const anterior = Number(t.precio_anterior ?? 0)
+          precioAnterior = anterior > precio ? anterior : null   // G1: solo tachar si es un descuento real
+        } else {
+          const base = Number(prod?.precio_venta ?? 0)
+          const pct = Number(t.descuento_pct ?? 0)
+          precio = pct > 0 ? base * (1 - pct / 100) : base
+          precioAnterior = pct > 0 ? base : null
+        }
+        let pug: EtiquetaPrecio['precioPorUnidadGrande'] = null
+        if (prod?.contenido_cantidad && prod?.contenido_unidad_id) {
+          const unidadContenido = unidadesFisicas.find(u => u.id === prod.contenido_unidad_id)
+          if (unidadContenido) pug = precioPorUnidadGrande(precio, Number(prod.contenido_cantidad), unidadContenido, unidadesFisicas)
+        }
+        return {
+          nombre: t.producto_nombre, sku: t.producto_sku,
+          codigoBarras: prod?.gtin || prod?.codigo_barras || null,
+          precio, precioAnterior, precioPorUnidadGrande: pug,
+        }
+      })
+
+      const porHoja = ((tenant as any)?.repositor_etiquetas_por_hoja ?? 12) as EtiquetasPorHoja
+      generarEtiquetasPreciosPDF(etiquetas, porHoja)
+      toast.success(`PDF generado — ${etiquetas.length} etiqueta(s)`)
+      setSeleccionadas(new Set())
+    } catch (e: any) {
+      toast.error(e.message ?? 'No se pudieron generar las etiquetas')
+    } finally {
+      setImprimiendo(false)
+    }
+  }
+
+  const horaAviso = (tenant as any)?.repositor_hora_impresion as string | null | undefined
+  const horaAvisoAlcanzada = !!horaAviso && new Date().toTimeString().slice(0, 5) >= horaAviso.slice(0, 5)
 
   // ── Reposición física (Fase 3, mig 355) ─────────────────────────────────────────────────────────
   const { data: tareasRepo = [], isLoading: isLoadingRepo } = useQuery({
@@ -290,7 +374,7 @@ export default function RepositoresPage() {
 
       <div className="flex gap-2">
         {([['carteles', 'Precios/Etiquetas'], ['reposicion', 'Reposición física']] as [Seccion, string][]).map(([key, label]) => (
-          <button key={key} onClick={() => { setSeccion(key); setReasignando(null) }}
+          <button key={key} onClick={() => { setSeccion(key); setReasignando(null); setSeleccionadas(new Set()) }}
             className={`px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors ${
               seccion === key ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
             {label}
@@ -300,13 +384,36 @@ export default function RepositoresPage() {
 
       <div className="flex gap-2">
         {([['activas', 'Pendientes'], ['completada', 'Completadas'], ['cancelada', 'Canceladas']] as [FiltroEstado, string][]).map(([key, label]) => (
-          <button key={key} onClick={() => setFiltro(key)}
+          <button key={key} onClick={() => { setFiltro(key); setSeleccionadas(new Set()) }}
             className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               filtro === key ? 'bg-accent text-white' : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50'}`}>
             {label}
           </button>
         ))}
       </div>
+
+      {seccion === 'carteles' && filtro === 'activas' && horaAvisoAlcanzada && (tareas as any[]).length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 flex items-center gap-2 text-sm text-amber-700 dark:text-amber-400">
+          <Bell size={16} className="flex-shrink-0" />
+          Hay {(tareas as any[]).length} cartel{(tareas as any[]).length === 1 ? '' : 'es'} pendiente{(tareas as any[]).length === 1 ? '' : 's'} de imprimir desde las {horaAviso!.slice(0, 5)}.
+        </div>
+      )}
+
+      {seccion === 'carteles' && filtro === 'activas' && puedeEditar && (tareas as any[]).length > 0 && (
+        <div className="flex items-center justify-between gap-2 bg-white dark:bg-gray-800 rounded-xl px-4 py-2.5 border border-gray-100 dark:border-gray-700">
+          <label className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 cursor-pointer">
+            <input type="checkbox"
+              checked={seleccionadas.size > 0 && seleccionadas.size === (tareas as any[]).length}
+              onChange={(e) => setSeleccionadas(e.target.checked ? new Set((tareas as any[]).map(t => t.id)) : new Set())}
+              className="rounded border-gray-300" />
+            {seleccionadas.size > 0 ? `${seleccionadas.size} seleccionada${seleccionadas.size === 1 ? '' : 's'}` : 'Seleccionar todas'}
+          </label>
+          <button onClick={imprimirEtiquetas} disabled={seleccionadas.size === 0 || imprimiendo}
+            className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+            <Printer size={14} /> {imprimiendo ? 'Generando…' : `Imprimir etiquetas${seleccionadas.size > 0 ? ` (${seleccionadas.size})` : ''}`}
+          </button>
+        </div>
+      )}
 
       {cargando ? (
         <div className="text-center py-16 text-gray-400 dark:text-gray-500">Cargando tareas…</div>
@@ -327,6 +434,10 @@ export default function RepositoresPage() {
           {(tareas as any[]).map(t => (
             <div key={t.id} className="bg-white dark:bg-gray-800 rounded-xl px-4 py-3 shadow-sm border border-gray-100 dark:border-gray-700">
               <div className="flex items-start gap-3">
+                {filtro === 'activas' && puedeEditar && (
+                  <input type="checkbox" checked={seleccionadas.has(t.id)} onChange={() => toggleSeleccion(t.id)}
+                    className="mt-1.5 flex-shrink-0 rounded border-gray-300" />
+                )}
                 <div className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5">
                   {t.tipo === 'cambio_precio' ? <Tag size={15} className="text-gray-500 dark:text-gray-400" /> : <CircleDot size={15} className="text-gray-500 dark:text-gray-400" />}
                 </div>

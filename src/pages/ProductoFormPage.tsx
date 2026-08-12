@@ -51,6 +51,9 @@ export default function ProductoFormPage() {
     nombre: '', sku: '', descripcion: '', categoria_id: '', proveedor_id: '',
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
     stock_minimo: '', unidad_medida: 'unidad', unidad_medida_base_id: '', codigo_barras: '', activo: true,
+    // Repositores Fase 4 (mig 357, G1) — cuánto contiene 1 unidad de venta (ej. 120 ml), para la
+    // etiqueta de precio. Distinto de unidad_medida_base_id (cómo se vende).
+    contenido_cantidad: '', contenido_unidad_id: '',
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false, ubicacion_kit_default_id: '',
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
     reajuste_margen_auto: false, precio_ajuste_meli_pct: '', precio_ajuste_tn_pct: '',
@@ -373,6 +376,8 @@ export default function ProductoFormPage() {
         precio_venta: productoData.precio_venta.toString(), stock_actual: productoData.stock_actual.toString(),
         stock_minimo: productoData.stock_minimo.toString(), unidad_medida: productoData.unidad_medida,
         unidad_medida_base_id: (productoData as any).unidad_medida_base_id ?? '',
+        contenido_cantidad: (productoData as any).contenido_cantidad != null ? String((productoData as any).contenido_cantidad) : '',
+        contenido_unidad_id: (productoData as any).contenido_unidad_id ?? '',
         codigo_barras: productoData.codigo_barras ?? '', activo: productoData.activo,
         tiene_series: productoData.tiene_series ?? false,
         tiene_lote: productoData.tiene_lote ?? false,
@@ -538,6 +543,8 @@ export default function ProductoFormPage() {
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida,
         unidad_medida_base_id: form.unidad_medida_base_id || null,
+        contenido_cantidad: form.contenido_cantidad !== '' ? parseFloat(form.contenido_cantidad) : null,
+        contenido_unidad_id: form.contenido_cantidad !== '' ? (form.contenido_unidad_id || null) : null,
         codigo_barras: form.codigo_barras.trim() || null,
         imagen_url, imagen_thumb_url, activo: form.activo,
         tiene_series: form.tiene_series,
@@ -742,6 +749,8 @@ export default function ProductoFormPage() {
         proveedor_id: src.proveedor_id ?? null,
         unidad_medida: src.unidad_medida ?? 'unidad',
         unidad_medida_base_id: src.unidad_medida_base_id ?? null,
+        contenido_cantidad: src.contenido_cantidad ?? null,
+        contenido_unidad_id: src.contenido_unidad_id ?? null,
         precio_venta: src.precio_venta ?? 0,
         precio_costo: src.precio_costo ?? 0,
         alicuota_iva: src.alicuota_iva ?? 21,
@@ -1027,6 +1036,31 @@ export default function ProductoFormPage() {
                   onChange={e => setForm(p => ({ ...p, marca: e.target.value }))}
                   placeholder="Ej: Hellmans"
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+              </div>
+
+              {/* Contenido — Repositores Fase 4 (mig 357, G1): cuánto trae 1 unidad de venta */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contenido <span className="text-gray-400 text-xs font-normal">(opcional)</span></label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Para productos de contenido fijo (ej. shampoo 120ml) — la etiqueta de precio de Repositores muestra el precio por unidad grande (Kg/L/m) para comparar.</p>
+                <div className="flex gap-2">
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="any" value={form.contenido_cantidad} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, contenido_cantidad: e.target.value }))}
+                    placeholder="Ej: 120" className="w-28 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                  <select value={form.contenido_unidad_id} disabled={!canEdit || form.contenido_cantidad === ''}
+                    onChange={e => setForm(p => ({ ...p, contenido_unidad_id: e.target.value }))}
+                    className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="">— Unidad —</option>
+                    {(['peso', 'volumen', 'longitud'] as const).map(fam => {
+                      const us = agruparPorFamilia(unidadesFisicas)[fam]
+                      if (us.length === 0) return null
+                      return (
+                        <optgroup key={fam} label={ETIQUETA_FAMILIA[fam]}>
+                          {us.map(u => <option key={u.id} value={u.id}>{u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}</option>)}
+                        </optgroup>
+                      )
+                    })}
+                  </select>
+                </div>
               </div>
 
               {/* Descripción */}

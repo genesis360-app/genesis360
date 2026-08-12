@@ -93,6 +93,36 @@ export const PRESETS_RUBRO: { label: string; unidades: string[] }[] = [
   { label: 'Farmacia / Cosmética',    unidades: ['Unidad', 'Miligramo', 'Gramo', 'Mililitro'] },
 ]
 
+/** Repositores Fase 4 (mig 357, G1): unidad "grande" de referencia por familia, para mostrar en la
+ *  etiqueta de precio "Precio por L/Kg/m" — no es la unidad BASE de la familia (esa suele ser la más
+ *  chica, ej. mililitro para volumen), es la unidad grande de uso cotidiano. */
+const NOMBRE_UNIDAD_GRANDE: Partial<Record<FamiliaFisica, string>> = {
+  peso: 'Kilogramo', volumen: 'Litro', longitud: 'Metro',
+}
+
+/**
+ * Precio por unidad "grande" (Kg/L/m) a partir del contenido físico real de 1 unidad de venta.
+ * Ej: shampoo de 120 ml a $3.000 → precioPorUnidadGrande(3000, 120, ml, unidades) = { valor: 25000,
+ * simbolo: 'L' }. Devuelve null si la familia es 'conteo'/'area' (sin unidad grande definida), si el
+ * catálogo del tenant no tiene la unidad grande esperada (la sacó de su catálogo activo), o si algún
+ * dato de contenido es inválido — nunca lanza.
+ */
+export function precioPorUnidadGrande(
+  precio: number,
+  contenidoCantidad: number,
+  contenidoUnidad: Pick<UnidadFisica, 'familia' | 'factor_base_familia'>,
+  unidades: UnidadFisica[],
+): { valor: number; simbolo: string } | null {
+  if (!(precio > 0) || !(contenidoCantidad > 0)) return null
+  const nombreGrande = NOMBRE_UNIDAD_GRANDE[contenidoUnidad.familia]
+  if (!nombreGrande) return null
+  const unidadGrande = unidades.find(u => u.familia === contenidoUnidad.familia && u.nombre === nombreGrande)
+  if (!unidadGrande) return null
+  const cantidadEnGrande = convertirFisica(contenidoCantidad, contenidoUnidad, unidadGrande)
+  if (!cantidadEnGrande || cantidadEnGrande <= 0) return null
+  return { valor: precio / cantidadEnGrande, simbolo: unidadGrande.simbolo ?? unidadGrande.nombre }
+}
+
 /**
  * Mapea un texto legacy de `productos.unidad_medida` a una unidad física del catálogo, best-effort.
  * Espejo exacto del backfill SQL de la mig 303 — para que el frontend preseleccione lo mismo que la

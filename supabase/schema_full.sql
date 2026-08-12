@@ -1,7 +1,7 @@
 -- ============================================================
 -- Genesis360 — Schema completo del esquema `public`
--- Generado 2026-08-12T02:57:56.739Z desde gcmhzdedrkmmzfzfveig vía API
--- Última migración aplicada: 20260812025654 · 154 tablas
+-- Generado 2026-08-12T03:14:14.889Z desde gcmhzdedrkmmzfzfveig vía API
+-- Última migración aplicada: 20260812031051 · 154 tablas
 --
 -- Reconstruido desde el catálogo de Postgres (NO es pg_dump byte-a-byte).
 -- Regenerar:  npm run schema:dump   (ver cabecera de scripts/dump-schema.mjs)
@@ -3990,6 +3990,7 @@ CREATE UNIQUE INDEX uq_tenant_addons_fijo_dim ON public.tenant_addons USING btre
 CREATE UNIQUE INDEX uq_tenant_addons_mp_payment ON public.tenant_addons USING btree (mp_payment_id) WHERE (mp_payment_id IS NOT NULL);
 CREATE UNIQUE INDEX uq_tenant_certificates_emisor ON public.tenant_certificates USING btree (emisor_id);
 CREATE UNIQUE INDEX uq_tenant_certificates_tenant_legacy ON public.tenant_certificates USING btree (tenant_id) WHERE (emisor_id IS NULL);
+CREATE UNIQUE INDEX uq_wms_tareas_reposicion_gondola_activa ON public.wms_tareas USING btree (producto_id, ubicacion_destino_id) WHERE ((tipo = 'reposicion_gondola'::text) AND (estado = ANY (ARRAY['pendiente'::text, 'en_curso'::text])));
 -- ============================================================
 -- FUNCIONES
 -- ============================================================
@@ -5924,13 +5925,18 @@ BEGIN
 
     CONTINUE WHEN v_disponible <= 0;
 
+    v_nueva_id := NULL;
     INSERT INTO wms_tareas (tenant_id, sucursal_id, tipo, producto_id, cantidad, ubicacion_origen_id, ubicacion_destino_id, origen, usuario_asignado_id, notas)
     VALUES (p_tenant_id, v_pus.sucursal_id, 'reposicion_gondola', v_pus.producto_id, v_disponible, v_origen_id, v_pus.ubicacion_exhibicion_id, 'repositor',
             fn_repositor_elegir_asignado(p_tenant_id, v_pus.sucursal_id),
             'Góndola sin stock — ' || fn_wms_describir_cantidad(v_pus.producto_id, v_disponible))
+    ON CONFLICT (producto_id, ubicacion_destino_id) WHERE tipo = 'reposicion_gondola' AND estado IN ('pendiente', 'en_curso')
+    DO NOTHING
     RETURNING id INTO v_nueva_id;
 
-    RETURN QUERY SELECT v_nueva_id;
+    IF v_nueva_id IS NOT NULL THEN
+      RETURN QUERY SELECT v_nueva_id;
+    END IF;
   END LOOP;
 
   RETURN;

@@ -243,6 +243,9 @@ export default function PedidosPage() {
         .select('*, productos(nombre, sku), ubicacion_origen:ubicaciones!wms_tareas_ubicacion_origen_id_fkey(nombre), ubicacion_destino:ubicaciones!wms_tareas_ubicacion_destino_id_fkey(nombre), envios(numero), usuario_asignado:users!wms_tareas_usuario_asignado_id_fkey(nombre_display)')
         .eq('tenant_id', tenant!.id)
         .in('estado', ['pendiente', 'en_curso'])
+        // reposicion_gondola (mig 355) es trabajo del Repositor, vive en /repositores — nunca se mezcla
+        // con la tab WMS de Pedidos.
+        .neq('tipo', 'reposicion_gondola')
         .order('prioridad', { ascending: false })
         .order('created_at')
       if (sucursalId) q = q.or(`sucursal_id.eq.${sucursalId},sucursal_id.is.null`)

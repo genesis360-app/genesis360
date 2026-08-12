@@ -3,18 +3,22 @@ title: Historial de Migraciones
 category: database
 tags: [migraciones, schema, postgresql, supabase]
 sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
-updated: 2026-08-11
+updated: 2026-08-12
 ---
 
 # Historial de Migraciones (001-357)
 
-**Total al 2026-08-11/12:** 357 archivos de migración + 086b correctivo (algunos números salteados por
+**Total al 2026-08-12:** 357 archivos de migración + 086b correctivo (algunos números salteados por
 PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
-sesión).
+sesión). **Migraciones 001-357 TODAS aplicadas tanto en DEV (`gcmhzdedrkmmzfzfveig`) como en PROD
+(`jjffnbrdjchquexdfgwq`)** — las 352-357 (módulo Repositores) deployadas a PROD el 2026-08-12 (v1.168.0,
+PR #328), verificado con `list_migrations` real contra el proyecto PROD.
 
-**357 (`357_repositores_fase4_etiquetas.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
-(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
-`ad35d0f6`), sin mergear a `main`:** 🆕 Repositores Fase 4 (etiquetas de precio + impresión) — **última
+**357 (`357_repositores_fase4_etiquetas.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
+Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado
+`75ad544719467380368cbbcb783c4371d068a791`, tag+release `v1.168.0`, `list_migrations` real contra PROD
+y bundle real de `https://genesis360.pro/` verificados con la cadena "v1.168.0"):** 🆕 Repositores Fase
+4 (etiquetas de precio + impresión) — **última
 fase del módulo**, misma sesión de Repositores continuada (cruzó medianoche a 2026-08-12). Solo 4
 `ALTER TABLE ADD COLUMN IF NOT EXISTS`, sin tablas/RLS/triggers/funciones nuevos: `productos.
 contenido_cantidad` (numeric) + `productos.contenido_unidad_id` (FK a `unidades_medida_fisicas`) —
@@ -34,12 +38,14 @@ RLS/SECURITY DEFINER/movimiento de stock a diferencia de 352-356). Verificado co
 contra DEV (2 tareas de prueba cubriendo ambas ramas de G1, descarga real de PDF de 58.910 bytes,
 aislamiento del caso sin código de barras confirmando `if (codigo)` — 3.480 bytes sin la imagen del
 barcode, campo "Contenido" y card de Config verificados visualmente). **Cierra el módulo Repositores:
-las 4 fases (mig 352-357) construidas y verificadas, TODAS solo en DEV** — deploy a PROD en curso a
-continuación en la misma sesión. Ver [[wiki/features/repositores]].
+las 4 fases (mig 352-357) construidas, verificadas Y DEPLOYADAS A PROD el 2026-08-12 (v1.168.0, PR
+#328)** — deploy verificado de forma independiente (`gh pr view 328` MERGED, `list_migrations` de PROD
+confirma 352-357 aplicadas, bundle real con la cadena "v1.168.0"). Ver [[wiki/features/repositores]].
 
-**356 (`356_fix_dedupe_reposicion_gondola.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
-(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
-`d6f37b08`), sin mergear a `main`:** 🐛 Fix de dedupe no atómico en el generador de la mig 355, mismo
+**356 (`356_fix_dedupe_reposicion_gondola.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`)
+Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado
+`75ad544719467380368cbbcb783c4371d068a791`, tag+release `v1.168.0`):** 🐛 Fix de dedupe no atómico en
+el generador de la mig 355, mismo
 día que Repositores Fase 3, sesión continuada (cruzó medianoche a 2026-08-12). Hallazgo del
 `migration-reviewer`: `fn_generar_tareas_reposicion_gondola` dedupeaba con `CONTINUE WHEN EXISTS`
 (patrón heredado de `fn_generar_tareas_reabastecimiento_umbral`), no atómico — 2 llamadas concurrentes
@@ -53,9 +59,10 @@ además de Picking) suma `.neq('tipo', 'reposicion_gondola')` a su query — sin
 confundía). Verificado con 2 llamadas seguidas al generador contra DEV real: solo 1 tarea creada. Ver
 [[wiki/features/repositores]].
 
-**355 (`355_repositores_fase3_reposicion_gondola.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
-(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
-`45a3c89b`), sin mergear a `main`:** 🆕 Repositores Fase 3 (reposición física a góndola), misma sesión
+**355 (`355_repositores_fase3_reposicion_gondola.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN
+PROD (PR #328 mergeado `75ad544719467380368cbbcb783c4371d068a791`, tag+release `v1.168.0`):** 🆕
+Repositores Fase 3 (reposición física a góndola), misma sesión
 de Repositores continuada — GO eligió esta de las 2 fases futuras que quedaban (reposición física /
 etiquetas+impresión). **Corrige la resolución anterior de I3**: investigación previa encontró que
 `fn_wms_elegir_ubicacion_picking` (camino de picking automático) sí filtra duro por
@@ -84,9 +91,10 @@ stock de origen a 0 preservando reserva, cancelación/reasignación, guard cross
 Playwright real contra el navegador (tab "Reposición física", completar → toast + movimiento real en
 DB). Ver [[wiki/features/repositores]] y [[wiki/features/wms]].
 
-**354 (`354_repositores_fase2_asignacion.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
-(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
-`e200d673`), sin mergear a `main`:** 🆕 Repositores Fase 2 (asignación automática + reasignación
+**354 (`354_repositores_fase2_asignacion.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN
+PROD (PR #328 mergeado `75ad544719467380368cbbcb783c4371d068a791`, tag+release `v1.168.0`):** 🆕
+Repositores Fase 2 (asignación automática + reasignación
 manual), misma sesión de Repositores continuada — GO eligió esta de las 3 fases futuras propuestas
 (reposición física / asignación-reasignación / etiquetas). `fn_usuarios_hacen_repositor(p_tenant_id,
 p_sucursal_id)` — pool de usuarios elegibles para HACER trabajo de repositor en una sucursal (distinto
@@ -116,9 +124,10 @@ asignado existente, guard rechaza usuario de otro tenant) y con Playwright real 
 de la Fase 1 (completar/cancelar logueaba `entidad:'pedido'` en vez de un tipo propio — se sumó
 `'tarea_repositor'` a `EntidadLog`, `src/lib/actividadLog.ts`). Ver [[wiki/features/repositores]].
 
-**353 (`353_fix_security_invoker_vw_tareas_repositor.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
-(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
-`36fc075b`), sin mergear a `main`:** 🔒🛑 Fix de seguridad real sobre la vista de la mig 352, misma
+**353 (`353_fix_security_invoker_vw_tareas_repositor.sql`) — ✅ APLICADA Y VERIFICADA EN DEV
+(`gcmhzdedrkmmzfzfveig`) Y PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN
+PROD (PR #328 mergeado `75ad544719467380368cbbcb783c4371d068a791`, tag+release `v1.168.0`):** 🔒🛑 Fix
+de seguridad real sobre la vista de la mig 352, misma
 sesión de Repositores continuada. Con el límite de gasto mensual de subagentes ya liberado (confirmado
 por GO), se volvió a correr el `migration-reviewer` completo sobre la mig 352 (la vez anterior había
 fallado a mitad de revisión) — encontró que `vw_tareas_repositor` había quedado creada **SIN** `WITH
@@ -138,9 +147,10 @@ de la mig 272. Verificado contra la DB real de DEV: `pg_class.reloptions` confir
 `security_invoker=true`; `information_schema.role_routine_grants` confirma que las 2 funciones ya no
 tienen grant a `authenticated`/`anon` (solo `postgres`/`service_role`). Ver [[wiki/features/repositores]].
 
-**352 (`352_repositores_fase1_nucleo.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV (`gcmhzdedrkmmzfzfveig`),
-NO aplicada en PROD (`jjffnbrdjchquexdfgwq`) todavía — código en `origin/dev` (v1.167.0, commit
-`62ba97ec`), sin mergear a `main`:** 🆕 Módulo nuevo Repositores, Fase 1 (núcleo + disparadores +
+**352 (`352_repositores_fase1_nucleo.sql`) — ✅ APLICADA Y VERIFICADA EN DEV (`gcmhzdedrkmmzfzfveig`) Y
+PROD (`jjffnbrdjchquexdfgwq`), código release `v1.168.0` CONFIRMADO 100% EN PROD (PR #328 mergeado
+`75ad544719467380368cbbcb783c4371d068a791`, tag+release `v1.168.0`):** 🆕 Módulo nuevo Repositores,
+Fase 1 (núcleo + disparadores +
 prioridad) del backlog Comercial de Fede — ver [[wiki/features/repositores]] para el detalle completo.
 Tabla `tareas_repositor` (ciclo de vida pendiente/en_curso/completada/cancelada, mismo patrón que
 `wms_tareas`) + 2 triggers `SECURITY DEFINER` (`fn_generar_tarea_repositor_precio` AFTER UPDATE OF
@@ -326,29 +336,39 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
-**001-357: 351 EN DEV Y PROD, 352-357 SOLO EN DEV.** Mig 357 es Repositores Fase 4 (etiquetas de
-precio + impresión) — **última fase del módulo**, misma sesión de Repositores continuada (cruzó
-medianoche a 2026-08-12), commit `ad35d0f6` en `origin/dev`, sin mergear a `main` ni deployar. Con
-esto **Repositores queda 100% construido (Fases 1-4, mig 352-357), TODAS solo en DEV** — deploy a
-PROD en curso a continuación en la misma sesión (GO ya pidió deployar).
-**001-356: 351 EN DEV Y PROD, 352-356 SOLO EN DEV.** Migs 355+356 son Repositores Fase 3 (reposición
-física a góndola + fix de dedupe) — misma sesión de Repositores continuada (cruzó medianoche a
-2026-08-12), commits `45a3c89b`/`d6f37b08` en `origin/dev`, sin mergear a `main` ni deployar — decisión
-pendiente de GO. Corrige la resolución anterior de I3 (el camino de reabastecimiento por umbral nunca
-tuvo el filtro de `tipo_logico` que sí tiene el picking automático). Queda **1 SOLA fase sin arrancar**
-del módulo: etiquetas + impresión.
-**001-354: 351 EN DEV Y PROD, 352-354 SOLO EN DEV.** Mig 354 es Repositores Fase 2 (asignación
-automática + reasignación manual) — misma sesión de Repositores continuada, commit `e200d673` en
-`origin/dev`, sin mergear a `main` ni deployar — decisión pendiente de GO. Fases que quedan sin
-arrancar del módulo: ahora solo 2 (reposición física a góndola, etiquetas+impresión), no 3.
-**001-353: 351 EN DEV Y PROD, 352-353 SOLO EN DEV.** Mig 353 es un fix de seguridad
-(`security_invoker`) sobre la vista de la mig 352 (`vw_tareas_repositor` exponía datos cross-tenant) —
-misma sesión de Repositores Fase 1 continuada, commit `36fc075b` en `origin/dev`, sin mergear a `main`
-ni deployar — decisión pendiente de GO.
-**001-352: 351 EN DEV Y PROD, 352 SOLO EN DEV.** Código `v1.166.1` 100% CERRADO Y EN PROD (PR #327,
-link directo al Pedido desde el detalle de venta, sin migración propia). **Código `v1.167.0`
-(Repositores Fase 1, mig 352) EN `origin/dev` (commit `62ba97ec`), SIN mergear a `main` ni deployar —
-decisión pendiente de GO.**
+**001-357: TODAS (352-357 incluidas) EN DEV Y PROD** — ✅ **deploy confirmado el 2026-08-12** (v1.168.0,
+PR #328 mergeado `75ad544719467380368cbbcb783c4371d068a791`, tag+release `v1.168.0`, verificado de
+forma independiente con `gh pr view 328` MERGED + `list_migrations` real contra PROD + bundle real de
+`https://genesis360.pro/` con la cadena "v1.168.0"). Módulo Repositores (Fases 1-4) 100% construido Y
+EN PRODUCCIÓN.
+**001-357 (histórico, 2026-08-11/12): 351 EN DEV Y PROD, 352-357 SOLO EN DEV.** Mig 357 es Repositores
+Fase 4 (etiquetas de precio + impresión) — **última fase del módulo**, misma sesión de Repositores
+continuada (cruzó medianoche a 2026-08-12), commit `ad35d0f6` en `origin/dev`, sin mergear a `main` ni
+deployar. Con esto **Repositores quedó 100% construido (Fases 1-4, mig 352-357), TODAS solo en DEV** —
+deploy a PROD en curso a continuación en la misma sesión (GO ya pidió deployar). **✅ Deployado el
+2026-08-12 — ver la línea de arriba.**
+**001-356 (histórico, 2026-08-11/12): 351 EN DEV Y PROD, 352-356 SOLO EN DEV.** Migs 355+356 son
+Repositores Fase 3 (reposición física a góndola + fix de dedupe) — misma sesión de Repositores
+continuada (cruzó medianoche a 2026-08-12), commits `45a3c89b`/`d6f37b08` en `origin/dev`, sin mergear
+a `main` ni deployar — decisión pendiente de GO. Corrige la resolución anterior de I3 (el camino de
+reabastecimiento por umbral nunca tuvo el filtro de `tipo_logico` que sí tiene el picking automático).
+Quedaba **1 SOLA fase sin arrancar** del módulo: etiquetas + impresión. **✅ Deployado el 2026-08-12
+junto con el resto del módulo — ver la línea "001-357" de arriba.**
+**001-354 (histórico, 2026-08-11): 351 EN DEV Y PROD, 352-354 SOLO EN DEV.** Mig 354 es Repositores
+Fase 2 (asignación automática + reasignación manual) — misma sesión de Repositores continuada, commit
+`e200d673` en `origin/dev`, sin mergear a `main` ni deployar — decisión pendiente de GO. Fases que
+quedaban sin arrancar del módulo: 2 (reposición física a góndola, etiquetas+impresión), no 3. **✅
+Deployado el 2026-08-12 — ver la línea "001-357" de arriba.**
+**001-353 (histórico, 2026-08-11): 351 EN DEV Y PROD, 352-353 SOLO EN DEV.** Mig 353 es un fix de
+seguridad (`security_invoker`) sobre la vista de la mig 352 (`vw_tareas_repositor` exponía datos
+cross-tenant) — misma sesión de Repositores Fase 1 continuada, commit `36fc075b` en `origin/dev`, sin
+mergear a `main` ni deployar — decisión pendiente de GO. **✅ Deployado el 2026-08-12 — ver la línea
+"001-357" de arriba.**
+**001-352 (histórico, 2026-08-11): 351 EN DEV Y PROD, 352 SOLO EN DEV.** Código `v1.166.1` 100%
+CERRADO Y EN PROD (PR #327, link directo al Pedido desde el detalle de venta, sin migración propia).
+**Código `v1.167.0` (Repositores Fase 1, mig 352) EN `origin/dev` (commit `62ba97ec`), SIN mergear a
+`main` ni deployar — decisión pendiente de GO.** **✅ Deployado el 2026-08-12 — ver la línea "001-357"
+de arriba.**
 **001-351 EN DEV Y PROD, código `v1.166.0` 100% CERRADO Y EN PROD (PR #326, merge `95e837f6`, tag+release
 `v1.166.0`)** — trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0 (el stock
 reservado de una venta quedaba atascado tras entregar su pedido, sin migración propia, código de

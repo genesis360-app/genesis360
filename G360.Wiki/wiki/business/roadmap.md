@@ -8,18 +8,51 @@ updated: 2026-08-11
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.166.1 (código/Vercel, CONFIRMADO — PR #327, tag+release `v1.166.1` publicados,
-bundle real de Vercel verificado con la cadena "v1.166.1"). Sin migraciones nuevas respecto de
-v1.166.0. Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque
-"ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.167.0 (`origin/dev` @ `e200d673`) — **Repositores Fase 1 (mig 352 + fix de
-seguridad mig 353) y Fase 2 (mig 354, asignación/reasignación) construidas y verificadas en DEV, sin
-deployar a PROD todavía** (decisión pendiente de GO)  
-**Última actualización:** 11 de Agosto, 2026
+**Versión en PROD:** v1.168.0 (código/Vercel, CONFIRMADO de forma independiente — PR #328 mergeado a
+`main` (`75ad544719467380368cbbcb783c4371d068a791`), tag+release `v1.168.0` publicados,
+`list_migrations` contra el proyecto PROD confirma el historial hasta `357_repositores_fase4_etiquetas`,
+bundle real de `https://genesis360.pro/` verificado con la cadena "v1.168.0"). **Módulo Repositores
+COMPLETO (4/4 fases, migraciones 352-357) EN PRODUCCIÓN.** Detalle completo en
+`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
+**Versión en DEV:** v1.168.0 (`origin/dev`, en paridad con PROD tras el merge del PR #328) — sin
+pendientes de deploy  
+**Última actualización:** 12 de Agosto, 2026
 
 ---
 
-## v1.167.0 — 🆕📋 Repositores Fase 1: núcleo + disparadores automáticos + prioridad (mig 352) — 🟡 EN DEV, sin deployar a PROD (2026-08-11)
+## v1.168.0 — 🆕📋 Módulo Repositores COMPLETO (4 fases, migraciones 352-357) — ✅ EN PROD (2026-08-12)
+
+Deploy a PROD de las 4 fases del módulo nuevo "Repositores" (Fase E del backlog Comercial de Fede,
+25/7/2026), construidas y verificadas en DEV en la sesión anterior (2026-08-11/12) y deployadas juntas
+tras autorización explícita de GO ("pasamos todo a PRD").
+
+- **Fase 1 (mig 352 + fix de seguridad mig 353)**: núcleo del módulo — tabla `tareas_repositor` + 2
+  triggers write-time (`productos.precio_venta`, `inventario_lineas.estado_id` con descuento) generan/
+  actualizan una tarea de "cambiar cartel", solo si el producto tiene ubicación de exhibición tipo
+  Góndola y el tenant está en modo avanzado; vista `vw_tareas_repositor` calcula la prioridad (vendido
+  con cartel viejo > precio subió > vencimiento > más vieja primero) en cada lectura. Mig 353 corrigió
+  un bug de seguridad real (`vw_tareas_repositor` sin `security_invoker`, mientras estuvo solo en DEV).
+- **Fase 2 (mig 354)**: asignación automática por carga + reasignación manual con motivo, vía el patrón
+  de la Pestaña de Supervisor.
+- **Fase 3 (mig 355 + fix de dedupe mig 356)**: reposición física de stock real a góndola — resuelve
+  I3 (el camino de reabastecimiento por umbral nunca filtraba por `tipo_logico`), reusa el mecanismo
+  real de movimiento de stock de WMS con un tipo de tarea nuevo (`reposicion_gondola`).
+- **Fase 4 (mig 357, última)**: etiquetas de precio + impresión — PDF en grilla A4 con código de barras
+  (`bwip-js`), precio anterior tachado solo si es descuento real, "Precio por L/Kg/m" si el producto
+  tiene "Contenido" cargado, tamaño de hoja configurable (4/6/12) y aviso por hora configurada.
+
+Con esto el módulo queda **100% construido y en producción**. Notificaciones (J) y reportes (K) del
+relevamiento original quedaron fuera del alcance final del módulo. Detalle técnico completo en
+[[wiki/features/repositores]] y `wiki/database/migraciones.md` (352-357).
+
+**Deploy verificado de forma independiente** (no solo el resumen del subagente `deploy-runner`):
+`gh pr view 328` → `MERGED`; `gh release view v1.168.0` → publicado sobre `main`; `list_migrations`
+contra PROD confirma 352-357 aplicadas; `curl` a `https://genesis360.pro/` confirma la cadena
+"v1.168.0" en el bundle real servido.
+
+---
+
+## v1.167.0 — 🆕📋 Repositores Fase 1: núcleo + disparadores automáticos + prioridad (mig 352) — ✅ EN PROD desde v1.168.0 (2026-08-11, deployado 2026-08-12)
 
 Fase 1 del módulo nuevo "Repositores" (Fase E del backlog Comercial de Fede) — desbloqueado 100% el
 mismo día (A1/A2-B3/H1 cerrados por GO), partido en fases por ser grande (12 secciones del
@@ -45,9 +78,10 @@ ninguna UI para setearla — se agregó el campo "Ubicación de exhibición (gó
 — todo probado con acciones reales por la UI, datos de prueba limpiados después. Detalle completo en
 [[wiki/features/repositores]].
 
-**🟡 Sin deployar a PROD** — migración 352 solo en DEV, commit `62ba97ec` en `origin/dev` sin mergear a
-`main`. Es un módulo nuevo (no un fix), se le preguntó a GO si deployar ahora — sin respuesta al cierre
-de la sesión.
+**🟡 (histórico) Sin deployar a PROD** — migración 352 solo en DEV, commit `62ba97ec` en `origin/dev`
+sin mergear a `main`. Es un módulo nuevo (no un fix), se le preguntó a GO si deployar ahora — sin
+respuesta al cierre de la sesión. **✅ Deployado a PROD el 2026-08-12 junto con el resto de las fases
+(v1.168.0, PR #328) — ver el bloque de arriba.**
 
 **🔒🛑 2026-08-11 (misma sesión continuada, mig 353):** con el límite de gasto mensual de subagentes ya
 liberado, el `migration-reviewer` completo (la vez anterior había fallado a mitad de revisión) encontró
@@ -55,7 +89,8 @@ que `vw_tareas_repositor` había quedado creada sin `security_invoker` — la Ú
 historial fuera del patrón ya usado desde la mig 053. Mientras estuvo así (solo en DEV, nunca en PROD),
 cualquier usuario autenticado de cualquier tenant podía leer tareas/precios/stock de TODOS los tenants.
 Corregido y verificado contra la DB real de DEV; commit `36fc075b` en `origin/dev`. Detalle completo en
-[[wiki/features/repositores]] y `wiki/database/migraciones.md` (mig 353). Sigue sin deployar a PROD.
+[[wiki/features/repositores]] y `wiki/database/migraciones.md` (mig 353). **✅ Deployado a PROD el
+2026-08-12 (v1.168.0, PR #328).**
 
 **🆕 2026-08-11 (misma sesión continuada, mig 354): Fase 2 — asignación automática + reasignación
 manual.** GO eligió esta de las 3 fases futuras propuestas (reposición física / asignación-reasignación
@@ -67,7 +102,9 @@ real en el navegador (reasignación completa, `actividad_log`). De paso corrigi�
 preexistente de la Fase 1 (`entidad:'pedido'` en vez de `'tarea_repositor'`). Commit `e200d673` en
 `origin/dev`. Detalle completo en [[wiki/features/repositores]] y `wiki/database/migraciones.md` (mig
 354). **Fases sin arrancar ahora 2, no 3**: reposición física a góndola (I3) y etiquetas+impresión.
-Sigue sin deployar a PROD, sin tag/release de GitHub (mig 354 no fue a PROD, igual que 352/353).
+(Histórico: en su momento sin deployar a PROD; las 2 fases que faltaban se construyeron en las sesiones
+siguientes — Fase 3 mig 355+356, Fase 4 mig 357 — y **todo el módulo se deployó junto a PROD el
+2026-08-12, v1.168.0, PR #328**.)
 
 ---
 

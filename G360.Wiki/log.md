@@ -6,6 +6,47 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-12] deploy | 🚀 v1.168.0 DEPLOYADO A PROD Y VERIFICADO DE FORMA INDEPENDIENTE — módulo Repositores COMPLETO (4/4 fases, migraciones 352-357) ya está en producción real
+
+Continuación directa de la entrada de abajo (2026-08-11/12, Repositores Fase 4) — ahí el módulo había
+quedado 100% construido y verificado EN DEV, con el deploy "en curso". Esta entrada confirma el
+resultado real del deploy, **re-chequeado a mano** (no se confió solo en el resumen del subagente
+`deploy-runner`):
+
+- `gh pr view 328` → `state: MERGED`, `mergeCommit: 75ad544719467380368cbbcb783c4371d068a791`.
+- `gh release view v1.168.0` → publicado, `targetCommitish: main`.
+- `mcp__claude_ai_Supabase__list_migrations` contra el proyecto PROD (`jjffnbrdjchquexdfgwq`) → el
+  historial de PROD termina en `357_repositores_fase4_etiquetas`, con `352` a `357` aplicadas en orden
+  justo después de `351_actividad_log_venta_id`.
+- `curl` real a `https://genesis360.pro/` → siguió el bundle (`assets/index-BmjPNELS.js`) y confirmó el
+  string `v1.168.0` adentro — el sitio real ya sirve el código nuevo, no es solo un build que completó
+  en Vercel.
+
+**Qué quedó en PROD**: módulo Repositores completo — Fase 1 (núcleo + disparadores automáticos +
+prioridad, mig 352 + fix de seguridad mig 353), Fase 2 (asignación automática por carga + reasignación
+manual, mig 354), Fase 3 (reposición física de stock a góndola, mig 355 + fix de dedupe mig 356) y
+Fase 4 (etiquetas de precio + impresión, mig 357). Detalle técnico completo de las 4 fases en las
+entradas históricas de abajo (2026-08-11/12) — esta entrada no lo repite, solo confirma el deploy.
+`APP_VERSION` v1.168.0, PR #328 (`v1.168.0 — Módulo Repositores completo (4 fases)`) mergeado a `main`,
+tag/release `v1.168.0` publicados.
+
+**Nota operativa (no de negocio, para que quede documentado por transparencia)**: el subagente
+`deploy-runner` ejecutó el merge del PR (`gh pr merge`) como parte de su flujo estándar de deploy
+autorizado — está documentado como parte de su función, y GO había autorizado explícitamente el deploy
+completo de esta sesión ("pasamos todo a PRD"). Se limpió después un worktree/branch temporal
+(`worktree-agent-a9fc48a14905f76b9`) que había quedado del subagente, sin contenido único (mismo commit
+que `dev`, sin cambios sin pushear).
+
+**Estado real post-deploy**: PROD y DEV en paridad, ambos en v1.168.0 (commit
+`75ad544719467380368cbbcb783c4371d068a791`), migraciones 001-357 todas aplicadas en ambos entornos.
+Módulo Repositores ya NO es "decisión pendiente de GO" ni "solo en DEV" — está en producción real.
+
+Wiki actualizado: `sources/raw/project_pendientes.md` (bloque "ARRANCÁ ACÁ"), `wiki/business/roadmap.md`
+(entrada v1.168.0), `wiki/features/repositores.md` (callout a EN PROD), `wiki/database/migraciones.md`
+(352-357 a EN PROD), `index.md` (Repositores a EN PROD).
+
+---
+
 ## [2026-08-11] update | 🆕 Repositores Fase 4 (mig 357): etiquetas de precio + impresión CONSTRUIDA Y VERIFICADA EN DEV — módulo Repositores 100% COMPLETO (4/4 fases), deploy a PROD en curso a continuación en esta misma sesión
 
 Continuación directa de la entrada de abajo (mig 355+356, Fase 3), mismo día, sesión que ya había

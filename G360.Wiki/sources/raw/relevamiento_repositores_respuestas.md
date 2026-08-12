@@ -323,3 +323,16 @@ fuera del alcance final del módulo — no se construyeron como parte de Reposit
 **Próxima sesión**: confirmar el resultado real del deploy a PROD de Repositores (mig 352-357) — GO ya
 pidió deployar TODO junto, el deploy queda en curso a continuación de esta misma sesión (no
 documentado acá como hecho hasta confirmarse).
+
+## ✅ Actualización 2026-08-12 — DEPLOY A PROD CONFIRMADO (v1.168.0) — módulo Repositores 100% completo y en producción real
+
+Resultado real del deploy pendiente de la actualización de arriba, **re-chequeado a mano** (no solo el
+resumen del subagente `deploy-runner`): `gh pr view 328` → `state: MERGED`, `mergeCommit:
+75ad544719467380368cbbcb783c4371d068a791`; `gh release view v1.168.0` → publicado, `targetCommitish:
+main`; `list_migrations` contra el proyecto PROD (`jjffnbrdjchquexdfgwq`) confirma el historial hasta
+`357_repositores_fase4_etiquetas`, 352-357 aplicadas justo después de `351_actividad_log_venta_id`;
+`curl` real a `https://genesis360.pro/` confirmó la cadena "v1.168.0" en el bundle real servido.
+
+**Con esto, las 4 fases del módulo (mig 352-357) quedan construidas, verificadas Y en PROD.**
+Notificaciones (J) y reportes (K) del relevamiento original siguen fuera del alcance final del módulo
+— no se construyeron como parte de Repositores. No queda ningún punto pendiente de este relevamiento.

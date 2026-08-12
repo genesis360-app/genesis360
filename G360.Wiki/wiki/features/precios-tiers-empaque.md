@@ -3,26 +3,29 @@ title: Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 category: features
 tags: [precios, tiers, mayorista, empaque, descuentos, comercial, repositores, cupones, aprobacion-foto, anti-fraude]
 sources: [migrations 328, 329, 330, 331, 332, 341, 342, 343, 344, src/lib/tiers.ts, src/lib/presentaciones.ts, src/lib/cupones.ts, src/lib/rebajeSort.ts, src/lib/kits.ts, src/pages/ProductoFormPage.tsx, src/pages/VentasPage.tsx, src/pages/ConfigPage.tsx, src/pages/AlertasPage.tsx, src/components/PresentacionesEditor.tsx, src/components/LpnAccionesModal.tsx, src/pages/InventarioPage.tsx, tests/e2e/131_rotacion_prioridad_envios_mutante.spec.ts, tests/e2e/132_kit_armado_prioridad_rotacion_mutante.spec.ts, tests/e2e/133_kit_precio_sugerido_autorizacion_mutante.spec.ts, tests/e2e/helpers/fixtures.ts]
-updated: 2026-08-08
+updated: 2026-08-12
 ---
 
 # Descuentos por empaque/pallet + backlog Comercial (Fede 25/7)
 
-> ✅ **EN PROD desde v1.155.0 (2026-08-04).** Esta página documenta las **Fases F y A**
-> (pricing/empaque) y **C** (cupones), ya construidas, testeadas y deployadas; la **Fase B**
-> (aprobación con foto) también, pero su detalle técnico vive en
+> ✅ **EN PROD desde v1.155.0 (2026-08-04) — y el backlog completo de Fede (F/A/B/C/D/E) quedó 100%
+> COMPLETO Y EN PROD el 2026-08-12 (v1.168.0), con el deploy del módulo Repositores (Fase E).** Esta
+> página documenta las **Fases F y A** (pricing/empaque) y **C** (cupones), ya construidas, testeadas y
+> deployadas; la **Fase B** (aprobación con foto) también, pero su detalle técnico vive en
 > [[wiki/features/inventario-stock]] → "Aprobación de cambio de estado con foto" por ser un feature
 > 100% de Inventario, sin relación con precios. **Fase D** (módulo Comercial) también — detalle en
-> [[wiki/features/comercial]]. **Solo Fase E (módulo Repositores) sigue por delante** — se partió en
-> **4 relevamientos secuenciales**: **1) Ubicaciones** (✅ EN PROD desde v1.160.0 — migs 334/335
-> cerraron el gap real de deploy recién el 2026-08-08 vía la mig 344, ver [[wiki/features/ubicaciones]])
-> → **2) Pestaña de supervisor reusable** (✅ respondido completo el 2026-08-07, diseño/construcción
-> sin arrancar todavía — ver más abajo) → **3) Motor de Rotación de productos con descuento** (✅
-> **COMPLETO y EN PROD desde v1.160.0** — B4/C2/E5 cerrados por GO; ejecución real de Opción 1, 2 y 3
-> construida y deployada, migs 342/343; **Opción 2 ✅ VERIFICADA end-to-end** — encontró y corrigió un
-> bug real de inventario, test e2e permanente spec 131; **Opción 3/kits: E3 ✅ VERIFICADA end-to-end
-> (mig 343, spec 132), E2/E4 (autogenerar nombre/precio con autorización) ✅ VERIFICADOS end-to-end
-> (spec 133), E5 (desarmado) pendiente** — ver más abajo) → **4) Repositores** (ver más abajo).
+> [[wiki/features/comercial]]. **Fase E (módulo Repositores) también ✅ COMPLETA Y EN PROD** (4/4 fases,
+> migraciones 352-357, deployadas el 2026-08-12 — detalle completo en [[wiki/features/repositores]]) —
+> se partió en **4 relevamientos secuenciales**: **1) Ubicaciones** (✅ EN PROD desde v1.160.0 — migs
+> 334/335 cerraron el gap real de deploy recién el 2026-08-08 vía la mig 344, ver
+> [[wiki/features/ubicaciones]]) → **2) Pestaña de supervisor reusable** (✅ EN PROD desde v1.164.0) →
+> **3) Motor de Rotación de productos con descuento** (✅ **COMPLETO y EN PROD desde v1.160.0** —
+> B4/C2/E5 cerrados por GO; ejecución real de Opción 1, 2 y 3 construida y deployada, migs 342/343;
+> **Opción 2 ✅ VERIFICADA end-to-end** — encontró y corrigió un bug real de inventario, test e2e
+> permanente spec 131; **Opción 3/kits: E3 ✅ VERIFICADA end-to-end (mig 343, spec 132), E2/E4
+> (autogenerar nombre/precio con autorización) ✅ VERIFICADOS end-to-end (spec 133), E5 (desarmado)
+> pendiente** — ver más abajo) → **4) Repositores** (✅ módulo completo y EN PROD desde v1.168.0,
+> 2026-08-12 — ver [[wiki/features/repositores]]).
 > **e2e/UAT (sesión 2026-08-04):** 14 specs nuevos (`tests/e2e/115..128*.spec.ts`), todos verdes,
 > registrados en `tests/specs/uat-modo-basico.md` §49 — plan completo en
 > `tests/specs/comercial-fede-abcd.plan.md`. Encontró y cerró un hallazgo real de Regla de Oro #0
@@ -294,13 +297,19 @@ aplicarse en DEV.
 
 ---
 
-## ✅ Fase D — módulo Comercial (construida, EN DEV) — ver página propia
+## ✅ Fase D — módulo Comercial (construida, EN PROD desde v1.155.0) — ver página propia
 
 Consolida B (aprobación con foto no forma parte, es 100% Inventario) + C (cupones) + Combos en una
 superficie de gestión nueva, delegable sin darle Config completa a nadie más que el dueño. Detalle
 técnico completo: [[wiki/features/comercial]].
 
-## 🔴 Pendiente — Fase E (sin construir, partida en 4 relevamientos secuenciales)
+## ✅ Fase E — módulo Repositores (construido y EN PROD desde v1.168.0, 2026-08-12) — partida en 4 relevamientos secuenciales
+
+> ✅ **Módulo Repositores 100% completo (4/4 fases, migraciones 352-357) y deployado a PROD el
+> 2026-08-12 (v1.168.0, PR #328) — con esto el backlog completo de Fede (F/A/B/C/D/E) queda 100%
+> COMPLETO Y EN PROD.** Ver [[wiki/features/repositores]] para el detalle técnico completo de las 4
+> fases; el contenido histórico de esta sección (relevamiento y decisiones que llevaron a construirlo)
+> queda como registro, ya no representa el estado actual del módulo.
 
 **Fase E** — módulo Repositores (nuevo). El pedido original de Fede fue un único punto sin detalle
 ("Módulo Repositores (nuevo)"); en un primer paso se generó
@@ -320,11 +329,11 @@ propias respuestas antes de codear (mismo criterio de "features grandes por fase
    ⚠ escritas y en DEV desde el 2026-08-05, pero un gap real de deploy hizo que **nunca llegaran a la
    base de PROD hasta el 2026-08-08**, cerrado con la mig 344 (ver [[wiki/features/ubicaciones]]).
    Detalle completo: [[wiki/features/ubicaciones]].
-2. **Pestaña de supervisor reusable** — ✅ **respondido completo el 2026-08-07**
+2. **Pestaña de supervisor reusable** — ✅ **respondido completo el 2026-08-07 y construida/EN PROD
+   desde v1.164.0** (2026-08-11, migs 347+348 — ver [[wiki/features/supervision]])
    (`relevamiento-supervisor-tab-reglas-negocio.html`, 16 preguntas; Fede respondió el 2026-08-03,
    GO confirmó las 2 preguntas abiertas — D2: orden de trabajo opción (a), completar 100% este
-   patrón ANTES de diseñar Repositores; G2: sin comentarios). **Diseño/construcción del patrón
-   sin arrancar todavía** — esperan al #3. Decisión de negocio cerrada y transversal a toda la app
+   patrón ANTES de diseñar Repositores; G2: sin comentarios). Decisión de negocio cerrada y transversal a toda la app
    (C2): 4º nivel de permiso `admin` en el sistema de roles, DUEÑO con `admin` inmutable en todos los
    módulos. 3 piezas técnicas (A1, A3, B1) quedan pendientes de discutir con GO antes de implementar
    — no a decidir unilateralmente. Detalle completo:
@@ -384,14 +393,17 @@ propias respuestas antes de codear (mismo criterio de "features grandes por fase
    v1.160.0** — PR #317 mergeado (`181a6f52`), tag+release `v1.160.0` publicados, migs 341/342/343 en
    PROD, Vercel verificado por curl independiente (ver `sources/raw/project_pendientes.md`, bloque
    "ARRANCÁ ACÁ"). Detalle completo: `G360.Wiki/sources/raw/relevamiento_rotacion_descuento_respuestas.md`.
-4. **Repositores** (el módulo en sí) — bloqueado hasta que se complete el diseño + construcción real
-   del #2 y se termine la Opción 3 (kits) del #3 (según la decisión D2 de arriba).
+4. **Repositores** (el módulo en sí) — ✅ **construido y EN PROD desde v1.168.0 (2026-08-12)**: Fase 1
+   (núcleo + disparadores + prioridad, mig 352+353), Fase 2 (asignación/reasignación, mig 354), Fase 3
+   (reposición física a góndola, mig 355+356), Fase 4 (etiquetas de precio + impresión, mig 357).
+   Detalle técnico completo en [[wiki/features/repositores]].
 
 Las respuestas de cada relevamiento van a `G360.Wiki/sources/raw/relevamiento_<tema>_respuestas.md`
-antes de diseñar/implementar cada paso.
+(quedan como registro histórico de las decisiones tomadas antes de diseñar/implementar cada paso).
 
-**No cerrar este tema como terminado** — F, A, B, C y D ya están, pero Fase E (y sus 4 pasos previos)
-sigue por delante y es parte de la misma iniciativa.
+**✅ Tema cerrado — F, A, B, C, D y E (los 4 pasos previos incluidos) quedaron 100% construidos y EN
+PROD** al 2026-08-12 (v1.168.0). Ya no queda ningún punto pendiente del backlog Comercial de Fede
+(25/7/2026).
 
 ---
 

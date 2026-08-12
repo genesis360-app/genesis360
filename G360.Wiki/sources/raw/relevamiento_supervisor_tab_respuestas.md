@@ -2,7 +2,7 @@
 name: relevamiento_supervisor_tab_respuestas
 description: Respuestas de Fede (+ confirmaciones de GO en D2/G2) al relevamiento del patrón "Pestaña de supervisor" reusable — 2º de 4 relevamientos derivados hacia el módulo Repositores.
 type: project
-status: ✅ CONSTRUIDO Y EN PROD (2026-08-10, mig 347, v1.163.0). Las 3 decisiones técnicas (A1/A3/B1) + el diseño de C2 se cerraron con GO y se implementaron — ver detalle en `project_pendientes.md` bloque "ARRANCÁ ACÁ" y [[wiki/features/supervision]]. D1 (retrofit de Inventario) completo. Con esto, 3 de los 4 relevamientos derivados hacia Repositores están cerrados — solo falta el propio relevamiento de Repositores.
+status: ✅ CONSTRUIDO Y EN PROD (2026-08-10, mig 347, v1.163.0). Las 3 decisiones técnicas (A1/A3/B1) + el diseño de C2 se cerraron con GO y se implementaron — ver detalle en `project_pendientes.md` bloque "ARRANCÁ ACÁ" y [[wiki/features/supervision]]. D1 (retrofit de Inventario) completo. **Con esto, los 4 relevamientos derivados hacia Repositores quedaron cerrados y el módulo Repositores en sí se construyó y deployó a PROD el 2026-08-12 (v1.168.0) — ver `relevamiento_repositores_respuestas.md`.**
 source: relevamiento-supervisor-tab-reglas-negocio.html
 updated: 2026-08-07
 ---
@@ -97,8 +97,8 @@ activan explícito.
 Ubicaciones (✅ EN PROD desde v1.157.0) → **Pestaña de supervisor reusable (✅ CONSTRUIDA Y EN PROD,
 v1.163.0, este documento)** → Motor de Rotación de productos con descuento (✅ CERRADO, sesión previa)
 → **Repositores (relevamiento final, `relevamiento_repositores_respuestas.md` — 35 preguntas
-respondidas, YA DESBLOQUEADO, sin arrancar diseño/construcción todavía)**.
+respondidas, ✅ CONSTRUIDO Y EN PROD desde v1.168.0, 2026-08-12)**.
 
-**Próximo paso real:** diseñar + construir Repositores — arrancando por cerrar con GO los puntos que
+**(Histórico) Próximo paso en su momento:** diseñar + construir Repositores — arrancando por cerrar con GO los puntos que
 su propio relevamiento dejó abiertos (rol nuevo vs. patrón custom, alcance default de acceso a
 Inventario, decisión sobre la restricción de impresión de etiquetas sin agente local).

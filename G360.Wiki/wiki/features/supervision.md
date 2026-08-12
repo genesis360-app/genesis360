@@ -158,5 +158,6 @@ alcance de D1, que solo pedía retrofitear Inventario).
 `fn_tarea_repositor_asignado_valido_tenant` de la Fase 2 — no como una integración con `autorizaciones`
 en sí (Repositores tiene su propia tabla `tareas_repositor`, no pasa por la Pestaña de Supervisor
 genérica), sino como el mismo diseño aplicado a un módulo nuevo. Detalle completo en
-[[wiki/features/repositores]]. Ambas fases SOLO EN DEV, sin deployar a PROD — decisión de GO pendiente.
+[[wiki/features/repositores]]. **✅ Módulo Repositores completo (Fases 1-4) deployado a PROD el
+2026-08-12 (v1.168.0, PR #328) — ver [[wiki/features/repositores]] para el estado actual.**
 Quedan sin arrancar (ahora 2, no 3): reposición física de stock a góndola (I3) y etiquetas+impresión.

@@ -3,18 +3,21 @@ title: Módulo Repositores
 category: features
 tags: [repositores, precios, etiquetas, gondola, prioridad, roles-custom, modo-avanzado]
 sources: [migration 352, migration 353, migration 354, migration 355, migration 356, migration 357, relevamiento_repositores_respuestas.md, project_backlog_fede_comercial_25_7.md, src/pages/RepositoresPage.tsx, src/pages/ProductoFormPage.tsx, src/pages/UsuariosPage.tsx, src/pages/ConfigPage.tsx, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx, src/components/layout/AppLayout.tsx, src/lib/actividadLog.ts, src/lib/etiquetasPreciosPDF.ts, src/lib/unidadMedidaFisica.ts]
-updated: 2026-08-11
+updated: 2026-08-12
 ---
 
 # Módulo Repositores
 
-> ✅ **Módulo 100% COMPLETO — Fase 1 (núcleo + disparadores + prioridad, mig 352 + fix de seguridad
-> mig 353), Fase 2 (asignación automática + reasignación manual, mig 354), Fase 3 (reposición física a
-> góndola, mig 355 + fix de dedupe mig 356) y Fase 4 (etiquetas de precio + impresión, mig 357, ÚLTIMA
-> fase) CONSTRUIDAS Y VERIFICADAS EN DEV (2026-08-11/12) — NINGUNA deployada a PROD todavía.** Es un
-> módulo nuevo, no un fix: con las 4 fases cerradas, GO pidió deployar TODO junto (migraciones
-> 352-357) — el deploy a PROD queda en curso a continuación, en la misma sesión que cerró la Fase 4.
-> Confirmar el estado real (`gh pr list`, `git log origin/main`) antes de asumir que sigue en DEV.
+> ✅ **Módulo 100% COMPLETO Y EN PROD (v1.168.0, deploy real 2026-08-12, PR #328) — Fase 1 (núcleo +
+> disparadores + prioridad, mig 352 + fix de seguridad mig 353), Fase 2 (asignación automática +
+> reasignación manual, mig 354), Fase 3 (reposición física a góndola, mig 355 + fix de dedupe mig 356)
+> y Fase 4 (etiquetas de precio + impresión, mig 357, ÚLTIMA fase) — las 4 fases fueron construidas y
+> verificadas en DEV el 2026-08-11/12 y deployadas juntas a PROD el 2026-08-12, con autorización
+> explícita de GO ("pasamos todo a PRD").** Deploy verificado de forma independiente: `gh pr view 328`
+> → `MERGED` (`mergeCommit` `75ad544719467380368cbbcb783c4371d068a791`); `gh release view v1.168.0` →
+> publicado sobre `main`; `list_migrations` contra PROD (`jjffnbrdjchquexdfgwq`) confirma el historial
+> hasta `357_repositores_fase4_etiquetas`; bundle real de `https://genesis360.pro/` confirmado con la
+> cadena "v1.168.0".
 >
 > 🔒🛑 **Bug de seguridad real encontrado y corregido en la Fase 1 (mig 353), mientras estuvo SOLO en
 > DEV, nunca llegó a PROD**: `vw_tareas_repositor` había quedado creada sin `security_invoker` — ver
@@ -143,7 +146,7 @@ sugerencia no bloqueante del reviewer, alineada con el precedente de la mig 272.
 DB real de DEV: `pg_class.reloptions` confirma `security_invoker=true`;
 `information_schema.role_routine_grants` confirma que las 2 funciones ya no tienen grant a
 `authenticated`/`anon` (solo `postgres`/`service_role`). Commiteada y pusheada a `origin/dev` (commit
-`36fc075b`) — **mig 353, igual que la 352, SOLO en DEV**, sin deployar a PROD.
+`36fc075b`) — **mig 353 ✅ EN PROD desde v1.168.0 (deploy real 2026-08-12, PR #328)**.
 
 ## Acceso y rol
 
@@ -260,9 +263,8 @@ una tarea logueaba `entidad: 'pedido'` en `actividad_log` en vez de un tipo prop
 - Todos los datos de prueba se limpiaron después (tarea, ubicación de exhibición temporal, precio
   revertido, log de prueba borrado) — el tenant quedó como estaba.
 
-Commiteado y pusheado a `origin/dev` (commit `e200d673`). **Mig 354, igual que 352 y 353, SOLO en
-DEV** — sin deployar a PROD; sin tag/release de GitHub todavía (pendiente de confirmar con GO si
-corresponde igual, no decidido).
+Commiteado y pusheado a `origin/dev` (commit `e200d673`). **Mig 354 ✅ EN PROD desde v1.168.0 (deploy
+real 2026-08-12, PR #328, tag/release `v1.168.0`).**
 
 ## Qué hace la Fase 3 (mig 355+356) — reposición física de stock a góndola
 
@@ -387,7 +389,7 @@ usar UNA VEZ sin guardarlo — se usó inline (nunca escrito a disco) para regen
 persistido.
 
 Commiteado y pusheado a `origin/dev` (commits `45a3c89b` mig 355, `d6f37b08` fix dedupe mig 356 +
-`PedidosPage.tsx`). **Mig 355+356, igual que 352-354, SOLO en DEV** — sin deployar a PROD.
+`PedidosPage.tsx`). **Mig 355+356 ✅ EN PROD desde v1.168.0 (deploy real 2026-08-12, PR #328).**
 
 ## Qué hace la Fase 4 (mig 357) — etiquetas de precio + impresión (última fase del módulo)
 
@@ -493,12 +495,13 @@ despachar el subagente.
   `contenido_unidad_id` del producto revertidos a NULL, `repositor_hora_impresion` del tenant revertido
   a NULL) — el tenant "Almacén Jorgito" quedó exactamente como estaba antes de probar.
 
-Typecheck + build verdes. Commiteado y pusheado a `origin/dev` (commit `ad35d0f6`). **Mig 357, igual
-que 352-356, SOLO en DEV** — sin deployar a PROD todavía.
+Typecheck + build verdes. Commiteado y pusheado a `origin/dev` (commit `ad35d0f6`). **Mig 357 ✅ EN
+PROD desde v1.168.0 (deploy real 2026-08-12, PR #328).**
 
 **Con esto, el módulo Repositores queda 100% construido: Fases 1-4 (mig 352-357), TODAS verificadas en
-DEV, ninguna en PROD.** GO ya pidió deployar TODO junto — el deploy a PROD sigue a continuación, en la
-misma sesión que cerró esta fase (documentado en una entrada de log/wiki separada una vez confirmado).
+DEV Y DEPLOYADAS A PROD el 2026-08-12 (v1.168.0, PR #328, tag/release `v1.168.0` publicados).** El
+deploy fue verificado de forma independiente: `gh pr view 328` → `MERGED`; `list_migrations` contra
+PROD confirma 352-357 aplicadas; bundle real de `https://genesis360.pro/` con la cadena "v1.168.0".
 
 ## Verificación real (2026-08-11, contra DEV) — Fase 1
 

@@ -19,14 +19,13 @@ updated: 2026-07-30
 > `producto_presentaciones` es la **fuente de verdad** del empaque y admite **hermanas**;
 > `producto_estructuras`/`_niveles` quedaron deprecadas (solo lectura histórica).
 >
-> **🆕 Sobre este rediseño (ya completo) se construye una iniciativa NUEVA y DISTINTA, EN CURSO:**
-> el backlog de 6 puntos que mandó Fede el 25/7/2026 (descuentos por empaque/pallet, módulo
-> Comercial con cupones y aprobación por foto, módulo Repositores, agrupación visual de Estructura,
-> color de unidades base, tipo de empaque). Las Fases F (quick wins), A (motor de precio de tiers
-> enlazado a `producto_presentaciones`, migs 328-330) y B (aprobación de cambio de estado con foto,
-> mig 331) ya están construidas, **EN DEV sin deploy**; C/D/E siguen pendientes. Ver
-> [[wiki/features/precios-tiers-empaque]] — no confundir con las fases del rediseño de arriba, que
-> sí están cerradas.
+> **🆕 Sobre este rediseño (ya completo) se construyó una iniciativa NUEVA y DISTINTA, ✅ AHORA 100%
+> COMPLETA Y EN PROD:** el backlog de 6 puntos que mandó Fede el 25/7/2026 (descuentos por
+> empaque/pallet, módulo Comercial con cupones y aprobación por foto, módulo Repositores, agrupación
+> visual de Estructura, color de unidades base, tipo de empaque). Las 6 fases (F/A/B/C/D/E) están
+> construidas y deployadas — la última, **Fase E (módulo Repositores), deployada a PROD el 2026-08-12
+> (v1.168.0, PR #328)**. Ver [[wiki/features/precios-tiers-empaque]] — no confundir con las fases del
+> rediseño de arriba, que son un roadmap distinto (también cerrado).
 
 ## 🆕 Rediseño UoM — Fase 1: Unidad de Medida física (mig 303, EN PROD)
 

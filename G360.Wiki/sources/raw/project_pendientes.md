@@ -49,6 +49,13 @@ type: project
 >   reportes (K) del relevamiento original de Repositores quedaron explícitamente fuera del alcance del
 >   módulo (ver [[wiki/features/repositores]]).
 >
+> **Candidatas para arrancar la próxima sesión** (3 preguntas de GO del 2026-08-11, guardadas en
+> memoria con el detalle completo — GO pidió explícitamente esperar a que cerrara Repositores antes de
+> tocarlas, ya está cerrado): paginar Alertas/Supervisión como Historial (Mostrando X de Y) · venta de
+> TiendaNube que muestra "Sin cliente" pese a traer datos del comprador · revisar si tiene sentido que
+> un Presupuesto pueda saltear "Reservar stock" e ir directo a "Finalizar". Ninguna se investigó ni se
+> tocó código todavía — arrancar releyendo la memoria de cada una, no re-derivar desde cero.
+>
 > Ver `log.md` (2026-08-12, entrada al principio del archivo), [[wiki/business/roadmap]] (v1.168.0),
 > `wiki/database/migraciones.md` (352-357 actualizadas a EN PROD), [[wiki/features/repositores]]
 > (callout actualizado a EN PROD), `sources/raw/relevamiento_repositores_respuestas.md`.

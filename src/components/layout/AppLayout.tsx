@@ -6,7 +6,7 @@ import {
   LayoutDashboard, Package, Boxes, Bell,
   BarChart2, Users, Briefcase, Shield, Settings, Menu, X,
   ChevronRight, ChevronLeft, ShoppingCart, DollarSign, TrendingDown,
-  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2, ScanBarcode, ListOrdered, Tag, UserCog,
+  ClipboardList, Moon, Sun, Lock, Building2, Truck, FolderOpen, Warehouse, Send, Receipt, Landmark, UserCircle2, ScanBarcode, ListOrdered, Tag, Tags, UserCog,
 } from 'lucide-react'
 import { useAuthStore } from '@/store/authStore'
 import { useListaConteoStore } from '@/store/listaConteoStore'
@@ -52,6 +52,7 @@ const navItems = [
   { to: '/recepciones',   icon: Warehouse,       label: 'Recepciones',    modulo: 'recepciones',   supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
   { to: '/picking',       icon: ScanBarcode,     label: 'Picking',       modulo: 'picking',        supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
   { to: '/pedidos',       icon: ListOrdered,     label: 'Pedidos',       modulo: 'pedidos',        supervisorOnly: true, depositoVisible: true, avanzadoOnly: true },
+  { to: '/repositores',   icon: Tags,            label: 'Repositores',   modulo: 'repositores',    cajeroVisible: true, depositoVisible: true, avanzadoOnly: true },
   { to: '/comercial',     icon: Tag,             label: 'Comercial',     modulo: 'comercial',      supervisorOnly: true },
   { to: '/biblioteca',    icon: FolderOpen,      label: 'Biblioteca',     modulo: 'biblioteca',    ownerOnly: true, avanzadoOnly: true },
   { to: '/alertas',       icon: Bell,            label: 'Alertas',        modulo: 'alertas',       badge: true,           depositoVisible: true },
@@ -69,10 +70,10 @@ const navItems = [
 const PROD_HOSTNAMES = ['app.genesis360.pro', 'genesis360.pro', 'www.genesis360.pro']
 const isDevEnv = !PROD_HOSTNAMES.includes(window.location.hostname)
 
-const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta', '/mi-portal']
+const CAJERO_ALLOWED = ['/ventas', '/caja', '/clientes', '/envios', '/mi-cuenta', '/mi-portal', '/repositores']
 const SUPERVISOR_FORBIDDEN = ['/configuracion', '/usuarios', '/sucursales', '/rrhh']
 const CONTADOR_ALLOWED = ['/dashboard', '/gastos', '/caja', '/reportes', '/historial', '/metricas', '/mi-cuenta', '/suscripcion', '/ventas', '/clientes', '/mi-portal']  // J3: CONTADOR read-only en Ventas · CL1-H2: read-only en Clientes
-const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones', '/envios', '/mi-portal', '/picking', '/pedidos']
+const DEPOSITO_ALLOWED = ['/inventario', '/productos', '/alertas', '/mi-cuenta', '/recepciones', '/envios', '/mi-portal', '/picking', '/pedidos', '/repositores']
 
 // ─── Sidebar content ──────────────────────────────────────────────────────
 // Componente de módulo (no anidado en AppLayout): si se define dentro del render de

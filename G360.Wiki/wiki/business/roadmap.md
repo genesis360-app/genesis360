@@ -8,12 +8,76 @@ updated: 2026-08-11
 
 # Roadmap y Versiones
 
-**Versión en PROD:** v1.166.0 (código/Vercel, CONFIRMADO — PR #326, merge `95e837f6`, tag+release
-`v1.166.0` publicados, bundle real de Vercel verificado con la cadena "v1.166.0"). Migración 351
-(`actividad_log.venta_id`) aplicada y verificada en DEV y PROD. Detalle completo en
-`G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque "ARRANCÁ ACÁ")  
-**Versión en DEV:** v1.166.0 (`origin/dev` @ `e14179b5`, mergeado a `main`)  
+**Versión en PROD:** v1.166.1 (código/Vercel, CONFIRMADO — PR #327, tag+release `v1.166.1` publicados,
+bundle real de Vercel verificado con la cadena "v1.166.1"). Sin migraciones nuevas respecto de
+v1.166.0. Detalle completo en `G360.Wiki/sources/raw/project_pendientes.md` (fuente de verdad, bloque
+"ARRANCÁ ACÁ")  
+**Versión en DEV:** v1.167.0 (`origin/dev` @ `e200d673`) — **Repositores Fase 1 (mig 352 + fix de
+seguridad mig 353) y Fase 2 (mig 354, asignación/reasignación) construidas y verificadas en DEV, sin
+deployar a PROD todavía** (decisión pendiente de GO)  
 **Última actualización:** 11 de Agosto, 2026
+
+---
+
+## v1.167.0 — 🆕📋 Repositores Fase 1: núcleo + disparadores automáticos + prioridad (mig 352) — 🟡 EN DEV, sin deployar a PROD (2026-08-11)
+
+Fase 1 del módulo nuevo "Repositores" (Fase E del backlog Comercial de Fede) — desbloqueado 100% el
+mismo día (A1/A2-B3/H1 cerrados por GO), partido en fases por ser grande (12 secciones del
+relevamiento). GO eligió la fase más chica de 3 propuestas: rol + módulo + tareas automáticas +
+prioridad, dejando reposición física/asignación/etiquetas/notificaciones/reportes para fases futuras.
+
+**Mig 352**: tabla `tareas_repositor` + 2 triggers (`productos.precio_venta`, `inventario_lineas.
+estado_id` si el estado tiene descuento) generan/actualizan una tarea de "cambiar cartel", solo si el
+producto tiene ubicación de exhibición tipo Góndola asignada en esa sucursal y el tenant está en modo
+avanzado. Vista `vw_tareas_repositor` calcula la prioridad de Fede (vendido con cartel viejo > precio
+subió > vencimiento > más vieja primero) en cada lectura. Dedupe por producto+sucursal+tipo vía
+`UNIQUE` parcial + `ON CONFLICT` (1 sola tarea por SKU aunque se edite en bulk).
+
+**I3** (¿reusar el tipo de tarea WMS `replenishment` o uno nuevo para la reposición física?) resuelto
+por investigación de código: tipo nuevo, mismo precedente que `'armado'` (mig 345) — se construye en
+la fase que agregue reposición física.
+
+**Gap real encontrado**: `producto_ubicacion_sucursal.ubicacion_exhibicion_id` (mig 335) no tenía
+ninguna UI para setearla — se agregó el campo "Ubicación de exhibición (góndola)" en
+`ProductoFormPage.tsx`. Módulo nuevo `/repositores`, rol delegable vía `roles_custom`.
+
+**Verificado end-to-end contra datos reales de DEV**: los 2 triggers, la prioridad, completar/cancelar
+— todo probado con acciones reales por la UI, datos de prueba limpiados después. Detalle completo en
+[[wiki/features/repositores]].
+
+**🟡 Sin deployar a PROD** — migración 352 solo en DEV, commit `62ba97ec` en `origin/dev` sin mergear a
+`main`. Es un módulo nuevo (no un fix), se le preguntó a GO si deployar ahora — sin respuesta al cierre
+de la sesión.
+
+**🔒🛑 2026-08-11 (misma sesión continuada, mig 353):** con el límite de gasto mensual de subagentes ya
+liberado, el `migration-reviewer` completo (la vez anterior había fallado a mitad de revisión) encontró
+que `vw_tareas_repositor` había quedado creada sin `security_invoker` — la ÚNICA vista de todo el
+historial fuera del patrón ya usado desde la mig 053. Mientras estuvo así (solo en DEV, nunca en PROD),
+cualquier usuario autenticado de cualquier tenant podía leer tareas/precios/stock de TODOS los tenants.
+Corregido y verificado contra la DB real de DEV; commit `36fc075b` en `origin/dev`. Detalle completo en
+[[wiki/features/repositores]] y `wiki/database/migraciones.md` (mig 353). Sigue sin deployar a PROD.
+
+**🆕 2026-08-11 (misma sesión continuada, mig 354): Fase 2 — asignación automática + reasignación
+manual.** GO eligió esta de las 3 fases futuras propuestas (reposición física / asignación-reasignación
+/ etiquetas). `fn_usuarios_hacen_repositor`/`fn_repositor_elegir_asignado` (reparto por carga, excluye
+ADMIN a propósito) inlineados en los 2 triggers de la mig 352; guard nuevo de tenant en
+`usuario_asignado_id`; `RepositoresPage.tsx` suma badge de asignado + botón "Reasignar" (motivo
+obligatorio). `migration-reviewer`: veredicto APTA. Verificado con SQL real contra DEV y con Playwright
+real en el navegador (reasignación completa, `actividad_log`). De paso corrigió un bug de trazabilidad
+preexistente de la Fase 1 (`entidad:'pedido'` en vez de `'tarea_repositor'`). Commit `e200d673` en
+`origin/dev`. Detalle completo en [[wiki/features/repositores]] y `wiki/database/migraciones.md` (mig
+354). **Fases sin arrancar ahora 2, no 3**: reposición física a góndola (I3) y etiquetas+impresión.
+Sigue sin deployar a PROD, sin tag/release de GitHub (mig 354 no fue a PROD, igual que 352/353).
+
+---
+
+## v1.166.1 — 🔗 Link directo al Pedido desde el detalle de venta — ✅ EN PROD (2026-08-11)
+
+El aviso "Finalizar bloqueado — hay un Pedido en curso" (v1.165.0/v1.166.0) mencionaba el número del
+pedido sin ningún link para verlo, a diferencia del badge de Envío (sí clickeable). Se agregó el mismo
+patrón: badge "Pedido #N · estado" en el header del detalle de venta → `/pedidos?busqueda=N` ya
+filtrado. `PedidosPage.tsx` no leía ese query param de la URL todavía — se agregó (mismo patrón que
+`EnviosPage.tsx`). Sin migraciones. PR #327 mergeado, tag/release `v1.166.1`.
 
 ---
 

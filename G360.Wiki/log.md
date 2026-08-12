@@ -6,6 +6,371 @@ Tipos: `init` · `ingest` · `query` · `update` · `lint` · `deploy`
 
 ---
 
+## [2026-08-11] update | 🆕 Repositores Fase 4 (mig 357): etiquetas de precio + impresión CONSTRUIDA Y VERIFICADA EN DEV — módulo Repositores 100% COMPLETO (4/4 fases), deploy a PROD en curso a continuación en esta misma sesión
+
+Continuación directa de la entrada de abajo (mig 355+356, Fase 3), mismo día, sesión que ya había
+cruzado medianoche a 2026-08-12. Esta era la **última fase** que quedaba del módulo: etiquetas de
+precio + impresión (G/H del relevamiento).
+
+**Investigación previa — 2 patrones existentes reusados, no reinventados.** Antes de diseñar se
+revisaron 2 mecanismos de impresión ya construidos: `src/lib/etiquetasEnvioPDF.ts` (EN7 de Envíos,
+jsPDF en grilla A4 4/6/12 por hoja con QR) tomado como plantilla estructural, y
+`src/components/CodigoMasivoModal.tsx` (Inventario, renderiza códigos GS1 con `bwip-js` a un canvas
+offscreen → dataURL, imprime N etiquetas de una tanda). Se confirmó que `convertirFisica()`
+(`src/lib/unidadMedidaFisica.ts`) ya existía y no había que reprogramarla, y que no existía ningún
+campo de "contenido" en `productos` (grep negativo).
+
+**Mig `357_repositores_fase4_etiquetas.sql`** — 4 `ALTER TABLE ADD COLUMN IF NOT EXISTS` (2 en
+`productos`, 2 en `tenants`), sin tablas/RLS/funciones/triggers nuevos:
+- `productos.contenido_cantidad` (numeric) + `productos.contenido_unidad_id` (FK a
+  `unidades_medida_fisicas`) — cuánto contiene FÍSICAMENTE 1 unidad de venta (ej. 120 para un shampoo
+  de 120ml), distinto de `unidad_medida_base_id` (cómo se vende/cobra, no cuánto contiene).
+- `tenants.repositor_etiquetas_por_hoja` (integer, `CHECK IN (4,6,12)`, default 12) y
+  `tenants.repositor_hora_impresion` (time, nullable = sin aviso configurado).
+
+**G1 (contenido de la etiqueta)**: nombre + precio nuevo siempre; precio anterior tachado AL LADO del
+nuevo solo si es un descuento real (precio bajó) — si el precio SUBIÓ no se tacha nada (tachar en una
+suba sería un mensaje incorrecto de cara al cliente). Código de barras del producto vía `bwip-js`
+(`code128`, con el número incluido automáticamente debajo por `includetext:true`). Con
+`contenido_cantidad`/`contenido_unidad_id` cargados, la etiqueta muestra "Precio por L/Kg/m: $X" —
+nueva función `precioPorUnidadGrande()` en `src/lib/unidadMedidaFisica.ts`, que solo agrega el mapeo
+familia→unidad de referencia (peso→Kilogramo, volumen→Litro, longitud→Metro) sobre `convertirFisica()`
+ya existente, sin tocarla.
+
+**G2 (formato configurable)**: card nueva "Repositores — Etiquetas de precio" en Config → Inventario →
+Zonas y picking, con el select de tamaño de hoja (4/6/12, default 12 = menos hojas) y el input de hora
+del aviso — mismo patrón `update` + `setTenant(data)` que el resto de `ConfigPage.tsx`.
+
+**G3 (una etiqueta por producto)**: consecuencia natural del diseño, sin código extra — 1 tarea
+seleccionada = 1 producto = 1 etiqueta.
+
+**H1/H2 (aviso a partir de una hora configurada, sin impresión automática)**: banner DENTRO de
+`/repositores` (no una notificación cross-app del sistema de `notificaciones`) que aparece cuando la
+hora actual ya pasó `tenants.repositor_hora_impresion` Y quedan carteles pendientes. Se evalúa en cada
+render — el proyecto no tiene cron ni `setInterval` en ningún lado (ver
+`reference_pg_cron_no_habilitado` en memoria), así que no hay un disparo en tiempo real al llegar la
+hora exacta; el aviso aparece la próxima vez que la página se re-renderiza (navegación, refetch normal
+de React Query) — suficiente para el caso de uso, no se justificó agregar infraestructura de polling
+nueva solo para esto.
+
+**H3 (tanda de impresión)**: en la sección "Precios/Etiquetas" de `/repositores`, filtro "Pendientes",
+aparecen checkboxes por tarea + "Seleccionar todas" + botón "Imprimir etiquetas (N)" que junta todas
+las seleccionadas en un solo PDF (`generarEtiquetasPreciosPDF`). **Imprimir NO completa la tarea** —
+son 2 acciones separadas a propósito (imprimir el cartel es un paso, ir a pegarlo y completar es otro,
+ya existente desde la Fase 1) — no se agregó ninguna columna `impreso_at` a `tareas_repositor`, la
+migración quedó minimal.
+
+**Nuevo archivo `src/lib/etiquetasPreciosPDF.ts`** — mismo patrón jsPDF en grilla A4 que
+`etiquetasEnvioPDF.ts`, pero con código de barras (`bwip-js`) en vez de QR, y contenido de
+precio/descuento en vez de datos de envío/destinatario.
+
+**Migración self-reviewed, sin `migration-reviewer`** — decisión explícita, no un salteo por apuro.
+Perfil de riesgo bajo (solo 4 `ADD COLUMN`, sin RLS/triggers/funciones nuevos — las columnas heredan
+la RLS de fila ya existente en `productos`/`tenants`), a diferencia de las migraciones 352-356 (que sí
+tocaban RLS/SECURITY DEFINER/movimiento real de stock), así que se revisó a mano contra el mismo
+checklist.
+
+**Verificación real contra DEV (navegador, Playwright ad-hoc)**:
+- 2 tareas de prueba reales (`tareas_repositor`, tipo `cambio_precio`): una con descuento real
+  ($1.000→$800, producto CON código de barras) y otra con precio que SUBIÓ ($500→$600, producto SIN
+  código de barras) — para cubrir ambas ramas de la regla G1.
+- `contenido_cantidad=2.5` + `contenido_unidad_id=Litro` en "Bebida Coca Cola 2.5L" ($600), para
+  probar "Precio por L: $240".
+- `/repositores` → "Precios/Etiquetas" → "Seleccionar todas" → "Imprimir etiquetas (2)" → descarga real
+  de PDF (58.910 bytes, capturada), sin errores de consola/red.
+- Aislado el producto SIN código de barras solo: PDF de 3.480 bytes (vs. 58KB con el código real
+  incluido) — confirma que `if (codigo)` funciona bien y no genera una imagen de barcode vacía/rota
+  cuando no hay código.
+- Verificado visualmente (screenshot) el campo "Contenido" en `ProductoFormPage.tsx` → Identificación,
+  entre Marca y Descripción, con placeholder y select de unidad deshabilitado hasta cargar una
+  cantidad.
+- Verificado visualmente (screenshot) la card "Repositores — Etiquetas de precio" en Config →
+  Inventario → Zonas y picking, con el select de tamaño de hoja y el input de hora; guardar la hora
+  persistió correctamente (update real + revertido después).
+- Todos los datos de prueba se limpiaron después (tareas borradas, `contenido_cantidad`/
+  `contenido_unidad_id` del producto revertidos a NULL, `repositor_hora_impresion` del tenant revertido
+  a NULL) — el tenant "Almacén Jorgito" quedó exactamente como estaba antes de probar.
+
+Typecheck + build verdes. Commiteado y pusheado a `origin/dev` (commit `ad35d0f6`).
+
+**Estado final: Repositores 100% construido (Fases 1-4), migraciones 352-357, TODAS solo en DEV**
+(`gcmhzdedrkmmzfzfveig`), ninguna en PROD todavía. **Inmediatamente después, en esta MISMA sesión, se
+procede a deployar TODO (migraciones 352-357 + el resto del delta `dev`→`main`) a PROD** — GO ya pidió
+deployar, no queda pendiente de decisión; el resultado real del deploy se documenta en una entrada de
+log separada una vez confirmado (esta entrada NO lo da por hecho).
+
+---
+
+## [2026-08-11] update | 🆕 Repositores Fase 3 (mig 355+356): reposición física a góndola CONSTRUIDA Y VERIFICADA EN DEV, sigue sin deployar a PROD — corrige la resolución anterior de I3
+
+Continuación directa de la entrada de abajo (mig 354, Fase 2), mismo día, sesión que cruzó medianoche a
+2026-08-12. Se le preguntó a GO con cuál de las 2 fases futuras de Repositores seguir (reposición
+física a góndola / etiquetas+impresión) — eligió **Reposición física a góndola**.
+
+**Investigación previa al diseño — corrige I3.** Antes de tocar código se investigó a fondo
+`wms_tareas`, `fn_wms_elegir_ubicacion_picking`, `fn_generar_tareas_reabastecimiento_umbral`, el
+modelo de Ubicaciones post-rediseño, `venta_item_despachos` y si el Motor de Rotación ya estaba
+construido. Hallazgo clave: la resolución anterior de I3 (documentada en
+`relevamiento_repositores_respuestas.md` y en el comentario de la mig 352) asumía que hacía falta
+"reusar el MECANISMO con un tipo de tarea nuevo" porque "un replenishment nunca puede apuntar a una
+góndola" — eso es cierto SOLO para el camino de picking automático
+(`fn_wms_elegir_ubicacion_picking`, que sí filtra duro por `tipo_logico='picking'`), pero el camino de
+**reabastecimiento POR UMBRAL** (`fn_generar_tareas_reabastecimiento_umbral`) **nunca tuvo ese filtro
+en SQL** — el único bloqueo real era la UI de Config, que solo ofrecía ubicaciones picking en el
+selector de umbrales. Conclusión más precisa: sí se construye un `tipo` nuevo (separación conceptual,
+para que la tarea viva en Repositores y no en la cola de Picking del depósito), pero se **REUSA el
+mecanismo real de movimiento de stock** (`fn_completar_tarea_reabastecimiento`) tal cual, sin duplicar
+su lógica.
+
+**Chequeo REGLA #0 antes de diseñar**: el stock que llega a una ubicación `tipo_logico='exhibicion'`
+es INVISIBLE para una venta de mostrador normal si esa ubicación tiene `disponible_surtido=false`
+(default desde la mig 336 para toda ubicación nueva) — confirmado grepeando ~9 queries de
+`VentasPage.tsx`/`MasivoModal.tsx` que excluyen `disponible_surtido=false` del sourcing de venta. Sin
+este chequeo, la reposición física movería stock real a un lugar donde el POS seguiría diciendo "sin
+stock". El generador nuevo SOLO considera góndolas con `disponible_surtido=true` — si el dueño no lo
+habilitó para una góndola, esa góndola simplemente no genera tareas.
+
+**Mig `355_repositores_fase3_reposicion_gondola.sql`**. Regla de disparo (MVP, cero configuración
+extra, mismo criterio que Fase 1): se genera una tarea cuando el stock en la ubicación de exhibición
+de un SKU (asignada en Fase 1 vía `producto_ubicacion_sucursal.ubicacion_exhibicion_id`) llega a CERO.
+No reusa `producto_ubicacion_umbrales` (exigiría configurar un mínimo/máximo por SKU+góndola, trabajo
+no pedido para esta fase) — la cantidad a mover es todo lo disponible en el lote FEFO más próximo a
+vencer en depósito (`ubicaciones.subtipo_almacenamiento IN ('bulk','estiba','camara')`).
+`wms_tareas.tipo` gana `'reposicion_gondola'` (mismo precedente que `'armado'`, mig 345) y
+`wms_tareas.origen` gana `'repositor'`. `fn_generar_tareas_reposicion_gondola(p_tenant_id)` — nueva,
+`SECURITY INVOKER` a propósito (si alguien pasa un tenant ajeno, la RLS de las 4 tablas que toca lo
+bloquea sola, verificado por el reviewer contra las policies reales); recorre SKUs con exhibición
+asignada + `disponible_surtido=true`, detecta góndola en cero, busca FEFO en depósito, dedupea, arma
+la tarea con `usuario_asignado_id` completado por el MISMO reparto por carga de Fase 2
+(`fn_repositor_elegir_asignado`, mig 354). `fn_completar_tarea_reabastecimiento` (mig 297) se REUSA
+tal cual — único cambio, el guard de tipo pasa de `<> 'replenishment'` a `NOT IN ('replenishment',
+'reposicion_gondola')`. Guard nuevo `fn_wms_tarea_asignado_valido_tenant` (trigger) en
+`wms_tareas.usuario_asignado_id` — la columna existe desde la mig 289 y ya se usaba en
+`PickingPage.tsx` (filtro "tareas mías o libres", pedido de GO 2026-08-08) pero nunca había tenido
+este guard de tenant. `fn_repositor_elegir_asignado` (mig 354) ganó `GRANT EXECUTE TO authenticated`
+porque ahora tiene un 2do llamador (el generador, invocado directo por RPC).
+
+**Frontend**: `RepositoresPage.tsx` gana la sección "Reposición física" (toggle junto a
+"Precios/Etiquetas") con botón "Revisar reposición" (mismo patrón que "Revisar umbral" de Picking),
+lista con origen→destino, completar/cancelar/reasignar (mismo patrón de Fase 2, motivo obligatorio).
+`PickingPage.tsx` excluye `reposicion_gondola` de su cola (`.neq('tipo', 'reposicion_gondola')`) para
+que no se mezcle con el trabajo de depósito.
+
+**`migration-reviewer` — 2 hallazgos reales corregidos en el momento**: (1) `PedidosPage.tsx` tiene su
+PROPIA tab de WMS (además de Picking) que también mostraba tareas `reposicion_gondola` sin
+filtrarlas — un click en "Confirmar retiro" ahí fallaba ruidosamente (no corrompía stock, pero
+confundía), corregido con el mismo `.neq('tipo', 'reposicion_gondola')`. (2) **Dedupe no atómico** en
+el generador (`CONTINUE WHEN EXISTS`, patrón heredado de `fn_generar_tareas_reabastecimiento_umbral`)
+— 2 llamadas concurrentes (doble click, 2 repositores) podían crear 2 tareas activas para el mismo
+producto+góndola, sobre-moviendo stock real. **Mig `356_fix_dedupe_reposicion_gondola.sql`**: índice
+único parcial `uq_wms_tareas_reposicion_gondola_activa` + `ON CONFLICT DO NOTHING`, mismo patrón que
+`uq_tareas_repositor_activa` de Fase 1. Verificado con 2 llamadas seguidas al generador: solo 1 tarea
+creada.
+
+**2 notas del reviewer, NO corregidas (bajo riesgo hoy)**: el generador no filtra por sucursal visible
+del llamador (mismo patrón preexistente de `fn_generar_tareas_reabastecimiento_umbral`, riesgo real
+bajo mientras no haya tenant multi-sucursal+avanzado+WMS activo en producción); y `tareas_repositor`
+(Fase 1) nunca tuvo `authenticated` explícito en el `REVOKE ALL FROM PUBLIC, anon` — por
+default-privileges de Supabase igual tiene INSERT/DELETE ahí (contradice el comentario "sin INSERT a
+propósito" de la mig 352), bajo impacto, hallazgo adyacente no específico de esta fase.
+
+**Verificación real contra DEV** (tenant "Almacén Jorgito", Sucursal Norte, "Bebida Coca Cola 2.5L" y
+"Elite Pañuelos Super Pack x3"): SQL — generación con reparto por carga confirmado (excluyó
+correctamente ADMIN/CONTADOR/RRHH del pool), movimiento físico de stock verificado unidad por unidad
+(13 unidades RACK1→Góndola1, sumando 2 LPN de origen), stock de origen decrementado a 0 preservando
+una línea reservada intacta, cancelación con motivo verificada, reasignación dentro del tenant
+verificada, guard cross-tenant RECHAZADO correctamente, dedupe atómico verificado (2 llamadas seguidas
+= 1 sola tarea). Navegador (Playwright ad-hoc, login real DUEÑO): tab "Reposición física" carga sin
+errores, card con origen→destino y cantidad, picker de reasignar con los usuarios reales del pool,
+reasignación con motivo → toast, completar → toast "Reposición completada — stock movido a la góndola"
+con movimiento real confirmado en DB. Todos los datos de prueba se limpiaron después (tareas,
+`producto_ubicacion_sucursal.ubicacion_exhibicion_id`, stock restaurado a sus cantidades originales,
+`actividad_log` de prueba borrado) — el tenant quedó exactamente como estaba antes de probar.
+
+**Housekeeping**: `supabase/schema_full.sql` estaba desactualizado desde la mig 351 (le faltaban
+351-356) porque el modo automático de `dump-schema.mjs` necesita un `SUPABASE_ACCESS_TOKEN` no
+configurado en este entorno. GO pasó un token temporal en el chat para usar UNA VEZ sin guardarlo — se
+usó inline (nunca escrito a disco) para regenerar el archivo dos veces (tras mig 355 y tras mig 356),
+quedó current. El token no se guardó en ningún archivo ni quedó persistido.
+
+**Commits de esta sesión (todos a `origin/dev`, ninguno a PROD)**: `36fc075b`/`4ebd7552` (fix
+seguridad mig 353 + wiki) → `e200d673`/`f29557f4` (Fase 2 mig 354 + wiki) → `2037f3f9` (schema dump) →
+`45a3c89b` (Fase 3 mig 355) → `d6f37b08` (fix dedupe mig 356 + `PedidosPage.tsx`) → `f72b5351` (schema
+dump final).
+
+**Estado**: mig 352-356, TODAS solo en DEV. Repositores (Fase 1+2+3) sigue sin deployar a PROD —
+decisión de GO pendiente, sin respuesta todavía. **Queda 1 SOLA fase sin arrancar: etiquetas +
+impresión** (diseño de etiqueta con precio por unidad grande, campo "Contenido" nuevo en
+Identificación de producto, PDF pensado también para impresora térmica Zebra). Sin tag/release de
+GitHub — nada fue a PROD esta sesión — pendiente de confirmar con GO si corresponde igual, no
+decidido.
+
+---
+
+## [2026-08-11] update | 🆕 Repositores Fase 2 (mig 354): asignación automática + reasignación manual CONSTRUIDA Y VERIFICADA EN DEV, sigue sin deployar a PROD
+
+Continuación directa de la entrada de abajo (mig 353, fix de seguridad), mismo día. Se le preguntó a GO
+con cuál de las 3 fases futuras de Repositores seguir (reposición física a góndola / asignación-
+reasignación / etiquetas+impresión) — eligió **Asignación/reasignación** (E2/E4 del relevamiento).
+
+**Mig `354_repositores_fase2_asignacion.sql`**: `fn_usuarios_hacen_repositor(p_tenant_id,
+p_sucursal_id)` — pool de usuarios elegibles para HACER trabajo de repositor en una sucursal (distinto
+del pool de `fn_usuarios_supervisan_modulo` de la mig 348, que es para SUPERVISAR/aprobar). Roles fijos
+DUEÑO/SUPER_USUARIO/SUPERVISOR/CAJERO/DEPOSITO o rol custom con permiso 'editar'/'supervisa' en
+'repositores'; excluye a propósito el rol ADMIN (staff de soporte cross-tenant). SQL STABLE sin
+`SECURITY DEFINER` (decisión de seguridad correcta, confirmada por el reviewer: al ser invoker, la RLS
+de `users` bloquea sola un `tenant_id` ajeno pasado por RPC). `fn_repositor_elegir_asignado(p_tenant_id,
+p_sucursal_id)` — reparto por carga entre el pool de arriba (menos tareas pendientes/en_curso primero,
+empate al azar, mismo patrón que `fn_autorizaciones_auto_asignar` de la mig 348), uso interno sin RPC
+propia. La elección se inlineó DIRECTO en el `INSERT` de los 2 triggers de la mig 352 (redefinidos con
+`CREATE OR REPLACE`) — **no** un trigger `BEFORE INSERT` genérico aparte, porque todas las filas de
+`tareas_repositor` nacen únicamente de esos 2 triggers. El `ON CONFLICT ... DO UPDATE` (dedupe de la mig
+352) sigue sin tocar `usuario_asignado_id` a propósito — un cambio de precio repetido sobre una tarea ya
+asignada no la reasigna. Guard nuevo `fn_tarea_repositor_asignado_valido_tenant` (trigger `BEFORE
+INSERT/UPDATE OF usuario_asignado_id`) rechaza asignar a un usuario de otro tenant — mismo patrón que
+`fn_regla_enrutamiento_valida_tenant` de la mig 348. `vw_tareas_repositor` (`CREATE OR REPLACE`,
+preserva `security_invoker=true` de la mig 353) suma `usuario_asignado_nombre` — al final del `SELECT`
+porque Postgres no permite insertar una columna nueva en el medio de una vista existente.
+
+**`migration-reviewer`: veredicto APTA, sin hallazgos bloqueantes.** 4 sugerencias 🟡 no bloqueantes, 2
+aplicadas en el momento (`fn_repositor_elegir_asignado` de `STABLE` a `VOLATILE` por usar `random()`;
+`REVOKE ALL FROM PUBLIC, anon, authenticated` en el guard de tenant). Las otras 2 quedan de nota sin
+actuar: la reasignación está gateada solo client-side (`puedeSupervisarModulo`, mismo patrón ya aceptado
+de `autorizaciones`/mig 347 — no bloqueante por no ser tema fiscal/contable/inventario, pero vale
+confirmar con GO si se quiere endurecer server-side); y `schema_full.sql` sigue desactualizado (gap ya
+conocido de antes en esta sesión, falta `SUPABASE_ACCESS_TOKEN`, no específico de esta migración).
+
+**Frontend (`RepositoresPage.tsx`)**: cada tarea activa muestra un badge con el nombre del asignado (o
+"Sin asignar"). Si el usuario puede supervisar el módulo 'repositores' (`puedeSupervisarModulo`),
+aparece un botón "Reasignar" (ícono `UserCog`) que abre un `<select>` con los usuarios elegibles (RPC a
+`fn_usuarios_hacen_repositor`) + "Sin asignar"; al elegir uno pide un motivo (modal propio, no
+`window.prompt`) y reasigna. **Bug de trazabilidad preexistente de la Fase 1, corregido de paso**:
+completar/cancelar una tarea logueaba `entidad: 'pedido'` en `actividad_log` en vez de un tipo propio —
+se agregó `'tarea_repositor'` a `EntidadLog` (`src/lib/actividadLog.ts`) y se corrigieron las 2
+llamadas.
+
+**Verificación real, no solo code review**: SQL contra DEV real (tenant "Almacén Jorgito", Sucursal
+Norte) — cambio de precio real vía `UPDATE` genera tarea con `usuario_asignado_id` ya asignado (pool
+exacto de 5 elegibles vs. 4 excluidos por rol confirmado); un segundo cambio de precio en otro producto
+fue a otra persona (carga balanceada); un tercer cambio sobre la MISMA tarea no la reasignó (dedupe
+respetado); un intento de asignar a un usuario de otro tenant fue RECHAZADO por el guard nuevo.
+Navegador real (Playwright ad-hoc contra `localhost:5173`, login real DUEÑO de prueba): `/repositores`
+carga sin errores, badge "E2E Tester" (auto-asignado) visible, Reasignar mostró los 5 elegibles reales,
+reasignación a "cajero1" con motivo confirmada por el toast + badge actualizado + `actividad_log` real
+(`entidad='tarea_repositor'`, `accion='reasignar'`, motivo incluido). Datos de prueba limpiados después
+(tarea, ubicación de exhibición temporal, precio revertido, log de prueba borrado) — el tenant quedó
+como estaba.
+
+Commiteado y pusheado a `origin/dev` (commit `e200d673`). **Mig 354, igual que 352 y 353, SOLO en DEV**
+— Repositores Fase 1+2 sigue sin deployar a PROD, decisión de GO pendiente. **Fases que quedan sin
+arrancar (ahora 2, no 3)**: reposición física a góndola (requiere I3, tipo de tarea WMS nuevo) y
+etiquetas+impresión (G/H del relevamiento) — orden entre esas dos sin decidir. Sin tag/release de
+GitHub (mig 354 no fue a PROD, igual que 352/353) — pendiente de confirmar con GO si corresponde
+igual.
+
+---
+
+## [2026-08-11] update | 🔒🛑 Fix de seguridad real en Repositores (mig 353): `vw_tareas_repositor` sin `security_invoker` exponía datos cross-tenant + límite de gasto de subagentes YA LIBERADO
+
+Continuación directa de la entrada de abajo (mig 352, límite de gasto), mismo día. GO confirmó que el
+límite mensual de gasto de la cuenta ya no aplica (al menos por un buen rato) — se volvió a correr el
+subagente `migration-reviewer` sobre la mig 352, esta vez completo (la vez anterior había fallado a
+mitad de revisión con "You've hit your monthly spend limit").
+
+**🔒🛑 Bug de seguridad real encontrado.** `vw_tareas_repositor` (mig 352) había quedado creada **SIN**
+`WITH (security_invoker = true)`. Por default, Postgres evalúa las RLS policies de las tablas
+subyacentes con los permisos del DUEÑO de la vista, no del usuario que consulta — el mismo gotcha que
+el proyecto ya había resuelto en la **mig 053** (`stock_por_producto`) y replicado desde entonces en
+TODAS las vistas nuevas (migs 136, 141, 142, 226: `vw_boveda_cuentas`, `vw_diferencias_por_cajero`,
+`vw_caja_resumen_diario`, `vw_caja_mensual_por_sucursal`). `vw_tareas_repositor` fue la **ÚNICA** vista
+de todo el historial de migraciones que quedó afuera de ese patrón — el comentario de la vista decía
+"RLS heredada de las tablas base (mismo patrón que el resto de las vistas del proyecto)", que en este
+punto era incorrecto.
+
+**Impacto real mientras estuvo así (solo en DEV, nunca llegó a PROD)**: cualquier usuario autenticado
+de CUALQUIER tenant que consultara la vista podía ver tareas — y por join, precios/estados de
+inventario/vencimientos/patrones de venta — de TODOS los tenants, no solo el propio.
+
+El reviewer también sugirió (no bloqueante) sumar `authenticated` al `REVOKE` de las 2 funciones
+trigger de la mig 352 (`fn_generar_tarea_repositor_precio`, `fn_generar_tarea_repositor_estado`),
+alineado con el precedente de la mig 272.
+
+**Fix — mig `353_fix_security_invoker_vw_tareas_repositor.sql`**: `ALTER VIEW
+public.vw_tareas_repositor SET (security_invoker = true);` + `REVOKE ALL ON FUNCTION ... FROM PUBLIC,
+anon, authenticated;` en ambas funciones trigger. Aplicada y verificada contra la DB real de DEV
+(`gcmhzdedrkmmzfzfveig`): `pg_class.reloptions` confirma `security_invoker=true`,
+`information_schema.role_routine_grants` confirma que las 2 funciones ya no tienen grant a
+`authenticated`/`anon` (solo `postgres`/`service_role`). Commiteada y pusheada a `origin/dev` (commit
+`36fc075b`). **Mig 353, igual que la 352, SOLO en DEV** — sin deployar a PROD; la decisión de si
+deployar el módulo Repositores Fase 1 ahora o esperar más revisión/que lo pruebe Fede sigue pendiente
+de GO, sin cambios respecto a la sesión anterior.
+
+**✅ Límite de gasto mensual CONFIRMADO liberado** — cierra el pendiente que había quedado anotado en
+la entrada de abajo.
+
+**Hallazgo aparte, NO bloqueante y SIN tocar.** Al intentar correr `npm run schema:dump` para reflejar
+las migs 352/353 en `supabase/schema_full.sql`, se descubrió que ese archivo ya estaba desactualizado
+desde ANTES de esta sesión (le falta `actividad_log.venta_id` de la mig 351 en adelante). El modo
+automático de `dump-schema.mjs` necesita `SUPABASE_ACCESS_TOKEN` (PAT de Supabase), no configurado en
+este entorno; el modo fallback por conexión directa sigue bloqueado por el bug del pooler ya
+documentado. No se tocó el archivo (parchear a mano un dump de ~11800 líneas es de alto riesgo).
+**Pendiente nuevo**: configurar el PAT para poder regenerar `schema_full.sql` normalmente.
+
+---
+
+## [2026-08-11] update | 🆕 Repositores Fase 1 (mig 352) CONSTRUIDA Y VERIFICADA EN DEV, sin deployar + v1.166.1 EN PROD (link a Pedido) + límite de gasto de cuenta corta subagentes
+
+Continuación directa de la entrada de abajo (v1.166.0), mismo día.
+
+**v1.166.1 EN PROD** — badge "Pedido #N · estado" clickeable en el detalle de venta (mismo patrón que
+el badge de Envío, que sí lo tenía) → `/pedidos?busqueda=N`. `PedidosPage.tsx` no leía el query param
+`busqueda` de la URL todavía (`EnviosPage.tsx` sí) — se agregó. PR #327 mergeado, tag/release
+`v1.166.1`, bundle de Vercel PROD verificado. Sin migraciones.
+
+**🆕 Repositores — Fase 1 (núcleo + disparadores + prioridad).** Repositores (Fase E del backlog de
+Fede) quedó 100% desbloqueado el 2026-08-11 (A1/A2-B3/H1 cerrados por GO) sin arrancar diseño — es un
+módulo grande (12 secciones), se partió en fases como Comercial (F→A→B→C→D). GO eligió la Fase 1 más
+chica de 3 propuestas: rol + módulo + generación automática de tareas + prioridad, sin reposición
+física/asignación/etiquetas/notificaciones/reportes (fases futuras).
+
+**I3** (¿reusar `wms_tareas.tipo='replenishment'` para la reposición física a góndola?) se resolvió
+por investigación de código, no era decisión de negocio: la función que elige destino de un
+`replenishment` filtra duro por `tipo_logico='picking'`, y el repo ya tiene precedente de tipo nuevo
+para mecanismo compartido (`'armado'`, mig 345) — se resuelve así en la fase futura correspondiente.
+
+**Mig 352**: tabla `tareas_repositor` + 2 triggers (`productos.precio_venta`, `inventario_lineas.
+estado_id` si el estado tiene `descuento_pct>0`) + vista `vw_tareas_repositor` con la prioridad C1-C3
+de Fede (vendido con cartel viejo > precio subió > vencimiento > más vieja primero) calculada en cada
+lectura. Solo genera tarea si el producto tiene `producto_ubicacion_sucursal.ubicacion_exhibicion_id`
+apuntando a una ubicación `tipo_logico='exhibicion'` en esa sucursal, y el tenant está en modo
+avanzado. Dedupe por (producto, sucursal, tipo) vía `UNIQUE` parcial + `ON CONFLICT ... DO UPDATE`
+(cierra una race condition real que tenía el patrón `UPDATE...; IF NOT FOUND THEN INSERT` inicial).
+
+**Gap real encontrado al verificar**: `ubicacion_exhibicion_id` (mig 335, agregada como prep para
+Repositores) no tenía NINGUNA UI para setearla — se agregó el campo "Ubicación de exhibición (góndola)"
+en `ProductoFormPage.tsx`.
+
+**Verificado end-to-end contra DEV real**: asignación de exhibición + 2 cambios de precio reales por
+la UI → tarea `cambio_precio` correcta con badge "Precio subió" → cambio real de `estado_id` a un
+estado con descuento → tarea `cambio_estado` correcta → completar desde la UI → toast + movimiento a
+"Completadas". Datos de prueba limpiados después (tenant quedó como estaba).
+
+Commiteado y pusheado a `origin/dev` (v1.167.0, commit `62ba97ec`). Migración 352 **SOLO en DEV** —
+**sin deployar a PROD**: es un módulo nuevo, se le preguntó a GO si deployar ahora o esperar más
+revisión — sin respuesta al cierre de esta sesión.
+
+**⚠ Cuenta llegó al límite mensual de gasto** a mitad de sesión — `deploy-runner` y
+`migration-reviewer` fallaron con "You've hit your monthly spend limit". El deploy de v1.166.1 terminó
+bien igual (Vercel no depende del agente). La mig 352 se revisó a mano contra el mismo checklist del
+subagente. Confirmar la próxima sesión si el límite ya se levantó.
+
+**3 preguntas de GO anotadas para revisar después** (sin investigar ni tocar código todavía): paginar
+Alertas/Supervisión como Historial · venta de TiendaNube muestra "Sin cliente" · revisar el flujo
+Presupuesto→Finalizar (¿tiene sentido saltear "Reservar"?). Detalle completo en memoria — ver
+`project_pendientes.md` bloque ARRANCÁ ACÁ punto 4.
+
+---
+
 ## [2026-08-11] deploy | 🔍🛑 v1.166.0 EN PROD: trazabilidad completa de una venta en `/historial` (mig 351) + fix REGLA #0 — el stock reservado quedaba atascado para siempre tras entregar el pedido
 
 Continuación directa de la sesión de abajo (v1.165.0/v1.165.1), mismo día. Construye lo que había

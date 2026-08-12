@@ -51,6 +51,9 @@ export default function ProductoFormPage() {
     nombre: '', sku: '', descripcion: '', categoria_id: '', proveedor_id: '',
     ubicacion_id: '', estado_id: '', precio_costo: '', precio_venta: '', stock_actual: '',
     stock_minimo: '', unidad_medida: 'unidad', unidad_medida_base_id: '', codigo_barras: '', activo: true,
+    // Repositores Fase 4 (mig 357, G1) — cuánto contiene 1 unidad de venta (ej. 120 ml), para la
+    // etiqueta de precio. Distinto de unidad_medida_base_id (cómo se vende).
+    contenido_cantidad: '', contenido_unidad_id: '',
     tiene_series: false, tiene_lote: false, tiene_vencimiento: false, es_kit: false, ubicacion_kit_default_id: '',
     regla_inventario: '', aging_profile_id: '', margen_objetivo: '', alicuota_iva: '21',
     reajuste_margen_auto: false, precio_ajuste_meli_pct: '', precio_ajuste_tn_pct: '',
@@ -149,13 +152,18 @@ export default function ProductoFormPage() {
 
   // Ubicación predeterminada para la sucursal activa en el header
   const [ubicSucursalActiva, setUbicSucursalActiva] = useState('')
+  // Ubicación de exhibición (góndola) por sucursal — la usa el módulo Repositores (mig 335/352)
+  // para saber si a este producto le corresponde una tarea de "cambiar cartel" al cambiar precio o
+  // entrar en un estado con descuento. Mismo registro que ubicSucursalActiva (producto_ubicacion_sucursal).
+  const [ubicExhibicionActiva, setUbicExhibicionActiva] = useState('')
   useQuery({
     queryKey: ['producto-ubicacion-sucursal', id, sucursalId],
     queryFn: async () => {
       if (!sucursalId) return null
       const { data } = await supabase.from('producto_ubicacion_sucursal')
-        .select('ubicacion_id').eq('producto_id', id!).eq('sucursal_id', sucursalId).maybeSingle()
+        .select('ubicacion_id, ubicacion_exhibicion_id').eq('producto_id', id!).eq('sucursal_id', sucursalId).maybeSingle()
       setUbicSucursalActiva((data as any)?.ubicacion_id ?? '')
+      setUbicExhibicionActiva((data as any)?.ubicacion_exhibicion_id ?? '')
       return data
     },
     enabled: !!id && !!sucursalId,
@@ -368,6 +376,8 @@ export default function ProductoFormPage() {
         precio_venta: productoData.precio_venta.toString(), stock_actual: productoData.stock_actual.toString(),
         stock_minimo: productoData.stock_minimo.toString(), unidad_medida: productoData.unidad_medida,
         unidad_medida_base_id: (productoData as any).unidad_medida_base_id ?? '',
+        contenido_cantidad: (productoData as any).contenido_cantidad != null ? String((productoData as any).contenido_cantidad) : '',
+        contenido_unidad_id: (productoData as any).contenido_unidad_id ?? '',
         codigo_barras: productoData.codigo_barras ?? '', activo: productoData.activo,
         tiene_series: productoData.tiene_series ?? false,
         tiene_lote: productoData.tiene_lote ?? false,
@@ -533,6 +543,8 @@ export default function ProductoFormPage() {
         stock_minimo: parseInt(form.stock_minimo) || 0,
         unidad_medida: form.unidad_medida,
         unidad_medida_base_id: form.unidad_medida_base_id || null,
+        contenido_cantidad: form.contenido_cantidad !== '' ? parseFloat(form.contenido_cantidad) : null,
+        contenido_unidad_id: form.contenido_cantidad !== '' ? (form.contenido_unidad_id || null) : null,
         codigo_barras: form.codigo_barras.trim() || null,
         imagen_url, imagen_thumb_url, activo: form.activo,
         tiene_series: form.tiene_series,
@@ -580,15 +592,17 @@ export default function ProductoFormPage() {
         logActividad({ entidad: 'producto', entidad_nombre: nombreFinal, accion: 'crear', pagina: '/productos' })
       }
 
-      // Guardar ubicación predeterminada para la sucursal activa
+      // Guardar ubicación predeterminada + de exhibición para la sucursal activa (mismo registro,
+      // dos campos independientes — no borrar uno porque el otro quedó vacío).
       if (productoId && sucursalId) {
-        if (ubicSucursalActiva) {
+        if (ubicSucursalActiva || ubicExhibicionActiva) {
           await supabase.from('producto_ubicacion_sucursal').upsert({
             tenant_id: tenant!.id, producto_id: productoId,
-            sucursal_id: sucursalId, ubicacion_id: ubicSucursalActiva,
+            sucursal_id: sucursalId, ubicacion_id: ubicSucursalActiva || null,
+            ubicacion_exhibicion_id: ubicExhibicionActiva || null,
           }, { onConflict: 'producto_id,sucursal_id' })
         } else {
-          // Si quedó vacío, borrar el registro para esta sucursal
+          // Si quedaron los dos vacíos, borrar el registro para esta sucursal
           await supabase.from('producto_ubicacion_sucursal')
             .delete().eq('producto_id', productoId).eq('sucursal_id', sucursalId)
         }
@@ -735,6 +749,8 @@ export default function ProductoFormPage() {
         proveedor_id: src.proveedor_id ?? null,
         unidad_medida: src.unidad_medida ?? 'unidad',
         unidad_medida_base_id: src.unidad_medida_base_id ?? null,
+        contenido_cantidad: src.contenido_cantidad ?? null,
+        contenido_unidad_id: src.contenido_unidad_id ?? null,
         precio_venta: src.precio_venta ?? 0,
         precio_costo: src.precio_costo ?? 0,
         alicuota_iva: src.alicuota_iva ?? 21,
@@ -1020,6 +1036,31 @@ export default function ProductoFormPage() {
                   onChange={e => setForm(p => ({ ...p, marca: e.target.value }))}
                   placeholder="Ej: Hellmans"
                   className="w-full px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+              </div>
+
+              {/* Contenido — Repositores Fase 4 (mig 357, G1): cuánto trae 1 unidad de venta */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contenido <span className="text-gray-400 text-xs font-normal">(opcional)</span></label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Para productos de contenido fijo (ej. shampoo 120ml) — la etiqueta de precio de Repositores muestra el precio por unidad grande (Kg/L/m) para comparar.</p>
+                <div className="flex gap-2">
+                  <input type="number" onWheel={e => e.currentTarget.blur()} min="0" step="any" value={form.contenido_cantidad} disabled={!canEdit}
+                    onChange={e => setForm(p => ({ ...p, contenido_cantidad: e.target.value }))}
+                    placeholder="Ej: 120" className="w-28 px-4 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700" />
+                  <select value={form.contenido_unidad_id} disabled={!canEdit || form.contenido_cantidad === ''}
+                    onChange={e => setForm(p => ({ ...p, contenido_unidad_id: e.target.value }))}
+                    className="flex-1 px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                    <option value="">— Unidad —</option>
+                    {(['peso', 'volumen', 'longitud'] as const).map(fam => {
+                      const us = agruparPorFamilia(unidadesFisicas)[fam]
+                      if (us.length === 0) return null
+                      return (
+                        <optgroup key={fam} label={ETIQUETA_FAMILIA[fam]}>
+                          {us.map(u => <option key={u.id} value={u.id}>{u.nombre}{u.simbolo ? ` (${u.simbolo})` : ''}</option>)}
+                        </optgroup>
+                      )
+                    })}
+                  </select>
+                </div>
               </div>
 
               {/* Descripción */}
@@ -1544,6 +1585,34 @@ export default function ProductoFormPage() {
                     {(estados as any[]).map(e => <option key={e.id} value={e.id}>{e.nombre}</option>)}
                   </select>
                 </div>
+              </div>
+              )}
+
+              {/* Ubicación de exhibición (góndola) — de acá sale la tarea de Repositores de
+                  "cambiar cartel" al bajar/subir el precio o entrar en un estado con descuento.
+                  Sin sucursal activa no tiene sentido (es por sucursal) — mismo criterio que
+                  "Ubicación predeterminada" arriba. */}
+              {modoAvanzado && sucursalId && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Ubicación de exhibición (góndola)
+                  <span className="ml-1.5 text-xs font-normal text-accent-text">
+                    · {(sucursales as any[]).find(s => s.id === sucursalId)?.nombre}
+                  </span>
+                  <span className="ml-1 text-gray-400 dark:text-gray-500 font-normal text-xs">— para el módulo Repositores</span>
+                </label>
+                <select
+                  disabled={!canEdit}
+                  value={ubicExhibicionActiva}
+                  onChange={e => setUbicExhibicionActiva(e.target.value)}
+                  className="w-full px-3 py-2.5 border border-gray-200 dark:border-gray-700 rounded-xl text-sm focus:outline-none focus:border-accent-text disabled:bg-gray-50 dark:bg-gray-700">
+                  <option value="">Sin ubicación de exhibición</option>
+                  {(ubicaciones as any[])
+                    .filter((u: any) => u.tipo_logico === 'exhibicion' && (u.sucursal_id === sucursalId || u.sucursal_id === null))
+                    .map((u: any) => (
+                      <option key={u.id} value={u.id}>{u.nombre}</option>
+                    ))}
+                </select>
               </div>
               )}
 

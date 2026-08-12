@@ -152,9 +152,11 @@ Ningún otro módulo usa el patrón todavía — Pedidos/WMS sigue con su propia
 operativas, no solicitudes de aprobación) que no se unificó a propósito en esta tanda (fuera del
 alcance de D1, que solo pedía retrofitear Inventario).
 
-**Próximo paso de la secuencia hacia Repositores**: con este relevamiento 100% cerrado (3 de 4
-relevamientos derivados completos), el siguiente es diseñar y construir el módulo Repositores en sí —
-ver `relevamiento_repositores_respuestas.md`. Tiene puntos de negocio propios sin cerrar (rol nuevo vs.
-patrón de rol custom, alcance default de acceso a Inventario, restricción técnica real de impresión de
-etiquetas sin agente local) que necesitan decisión de GO antes de diseñar/construir — mismo criterio
-que se aplicó acá con A1/A3/B1/C2 antes de tocar código.
+**Actualización 2026-08-11 — el módulo Repositores en sí ya se construyó (Fase 1, mig 352+353, y Fase
+2, mig 354)**: el criterio de reparto por carga/reasignación de este patrón (`fn_autorizaciones_auto_asignar`/
+`fn_regla_enrutamiento_valida_tenant`, mig 348) se reusó directo en `fn_repositor_elegir_asignado`/
+`fn_tarea_repositor_asignado_valido_tenant` de la Fase 2 — no como una integración con `autorizaciones`
+en sí (Repositores tiene su propia tabla `tareas_repositor`, no pasa por la Pestaña de Supervisor
+genérica), sino como el mismo diseño aplicado a un módulo nuevo. Detalle completo en
+[[wiki/features/repositores]]. Ambas fases SOLO EN DEV, sin deployar a PROD — decisión de GO pendiente.
+Quedan sin arrancar (ahora 2, no 3): reposición física de stock a góndola (I3) y etiquetas+impresión.

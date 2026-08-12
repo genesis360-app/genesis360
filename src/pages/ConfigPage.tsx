@@ -1813,6 +1813,21 @@ export default function ConfigPage() {
     toast.success(usuarioId ? 'Operario por defecto actualizado' : 'Armado automático queda sin operario por defecto')
   }
 
+  // Repositores Fase 4 (mig 357, G2/H1): tamaño de hoja de etiquetas de precio + hora del aviso de
+  // "hay carteles pendientes de imprimir". Mismo patrón update+setTenant que el resto de esta página.
+  const actualizarEtiquetasPorHoja = async (n: number) => {
+    const { data, error } = await supabase.from('tenants').update({ repositor_etiquetas_por_hoja: n }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success('Tamaño de hoja actualizado')
+  }
+  const actualizarHoraImpresion = async (hora: string) => {
+    const { data, error } = await supabase.from('tenants').update({ repositor_hora_impresion: hora || null }).eq('id', tenant!.id).select().single()
+    if (error) { toast.error(error.message); return }
+    setTenant(data)
+    toast.success(hora ? 'Hora de aviso actualizada' : 'Aviso de impresión desactivado')
+  }
+
   // A2 del relevamiento de Supervisor (mig 348): reglas de enrutamiento "tipo X -> Usuario A" para
   // la auto-asignación de autorizaciones al crearse (si no hay regla, el trigger reparte por carga).
   const SUPERVISION_TIPOS_INVENTARIO: { key: string; label: string }[] = [
@@ -4469,6 +4484,33 @@ export default function ConfigPage() {
               <option value="">Sin operario por defecto — nace sin asignar</option>
               {(usuariosArmado as any[]).map(u => <option key={u.id} value={u.id}>{u.nombre_display ?? u.rol}</option>)}
             </select>
+          </div>
+
+          {/* Repositores Fase 4 (mig 357, G2/H1): etiquetas de precio */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-5 shadow-sm border border-gray-100 space-y-3">
+            <div className="flex items-center gap-2">
+              <Tag size={18} className="text-accent-text" />
+              <h2 className="font-semibold text-gray-700 dark:text-gray-300">Repositores — Etiquetas de precio</h2>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tamaño de hoja</label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Cuántas etiquetas por hoja A4 al imprimir en tanda desde /repositores</p>
+                <select value={t289?.repositor_etiquetas_por_hoja ?? 12} onChange={e => actualizarEtiquetasPorHoja(Number(e.target.value))}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200">
+                  <option value={4}>4 por hoja (grandes)</option>
+                  <option value={6}>6 por hoja</option>
+                  <option value={12}>12 por hoja (menos hojas)</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Aviso de impresión</label>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">A partir de esta hora, avisa en Repositores si quedan carteles sin imprimir. Vacío = sin aviso.</p>
+                <input type="time" value={t289?.repositor_hora_impresion?.slice(0, 5) ?? ''}
+                  onChange={e => actualizarHoraImpresion(e.target.value)}
+                  className="w-full border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 dark:text-gray-200" />
+              </div>
+            </div>
           </div>
 
           {/* A2 (relevamiento Supervisor, mig 348): reglas de enrutamiento por tipo de autorización */}

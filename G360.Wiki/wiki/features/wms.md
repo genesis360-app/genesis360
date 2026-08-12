@@ -2,8 +2,8 @@
 title: WMS — Almacenaje Dirigido y Picking
 category: features
 tags: [wms, lpn, kits, picking, almacenaje, ubicaciones, zonas, reabastecimiento, pedidos]
-sources: [CLAUDE.md, ROADMAP.md, migrations 289, 290, 291, 292, 334, 335, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx]
-updated: 2026-08-08
+sources: [CLAUDE.md, ROADMAP.md, migrations 289, 290, 291, 292, 334, 335, 355, 356, src/pages/PickingPage.tsx, src/pages/PedidosPage.tsx]
+updated: 2026-08-11
 ---
 
 # WMS — Warehouse Management System
@@ -534,6 +534,22 @@ F4) — ver [[wiki/features/pedidos]] y la nota de vigencia al principio de "Fas
   implementar**, sigue pendiente.
 - **KPIs WMS** (tasa de error picking, tiempo promedio por tarea, utilización de ubicaciones): sin
   implementar, sigue pendiente.
+
+> 🆕 **2026-08-11/12 (mig 355+356, 🟡 EN DEV): `fn_completar_tarea_reabastecimiento` gana un 2do
+> llamador — Repositores Fase 3 (reposición física a góndola).** El generador nuevo
+> `fn_generar_tareas_reposicion_gondola` crea tareas `wms_tareas.tipo='reposicion_gondola'` (tipo
+> nuevo, mismo precedente que `'armado'` de la mig 345 — separación conceptual para que la cola de
+> Repositores no se mezcle con la de Picking) pero **REUSA tal cual el mecanismo real de mover stock**
+> de esta función (mig 297), sin duplicar su lógica — único cambio acá, el guard de tipo pasa de
+> `<> 'replenishment'` a `NOT IN ('replenishment', 'reposicion_gondola')`. Investigación previa
+> importante que **corrige la resolución anterior de I3** (ver [[wiki/features/repositores]] → "Fase
+> 3"): `fn_wms_elegir_ubicacion_picking` (camino de picking automático) sí filtra duro por
+> `tipo_logico='picking'`, pero `fn_generar_tareas_reabastecimiento_umbral` (el camino de arriba, "Por
+> umbral") **nunca tuvo ese filtro en SQL** — el único bloqueo real para apuntar a una góndola era la
+> UI de Config, que solo ofrecía ubicaciones picking en el selector de umbrales. `PickingPage.tsx` y
+> la tab de WMS de `PedidosPage.tsx` excluyen `reposicion_gondola` de su cola (`.neq('tipo',
+> 'reposicion_gondola')`) para no mezclarla con el trabajo de depósito. Detalle completo, incluida la
+> mig 356 (fix de dedupe no atómico), en [[wiki/features/repositores]] → "Fase 3".
 
 ---
 

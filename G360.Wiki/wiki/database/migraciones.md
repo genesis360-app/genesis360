@@ -6,10 +6,58 @@ sources: [WORKFLOW.md, CLAUDE.md, ROADMAP.md]
 updated: 2026-08-11
 ---
 
-# Historial de Migraciones (001-354)
+# Historial de Migraciones (001-356)
 
-**Total al 2026-08-11:** 354 archivos de migración + 086b correctivo (algunos números salteados por PRs
-descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de sesión).
+**Total al 2026-08-11/12:** 356 archivos de migración + 086b correctivo (algunos números salteados por
+PRs descartados; la tabla de abajo no está estrictamente ordenada — se agrega al final de cada tanda de
+sesión).
+
+**356 (`356_fix_dedupe_reposicion_gondola.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
+`d6f37b08`), sin mergear a `main`:** 🐛 Fix de dedupe no atómico en el generador de la mig 355, mismo
+día que Repositores Fase 3, sesión continuada (cruzó medianoche a 2026-08-12). Hallazgo del
+`migration-reviewer`: `fn_generar_tareas_reposicion_gondola` dedupeaba con `CONTINUE WHEN EXISTS`
+(patrón heredado de `fn_generar_tareas_reabastecimiento_umbral`), no atómico — 2 llamadas concurrentes
+(doble click, 2 repositores) podían crear 2 tareas activas para el mismo producto+góndola,
+sobre-moviendo stock real (riesgo REGLA #0). Fix: índice único parcial
+`uq_wms_tareas_reposicion_gondola_activa` (`WHERE tipo='reposicion_gondola' AND estado IN
+('pendiente','en_curso')`) + `INSERT ... ON CONFLICT DO NOTHING` en el generador, mismo patrón que
+`uq_tareas_repositor_activa` de la mig 352. De paso, `PedidosPage.tsx` (que tiene su propia tab de WMS
+además de Picking) suma `.neq('tipo', 'reposicion_gondola')` a su query — sin ese filtro, un click en
+"Confirmar retiro" sobre una tarea de reposición fallaba ruidosamente ahí (no corrompía stock, pero
+confundía). Verificado con 2 llamadas seguidas al generador contra DEV real: solo 1 tarea creada. Ver
+[[wiki/features/repositores]].
+
+**355 (`355_repositores_fase3_reposicion_gondola.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
+(`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
+`45a3c89b`), sin mergear a `main`:** 🆕 Repositores Fase 3 (reposición física a góndola), misma sesión
+de Repositores continuada — GO eligió esta de las 2 fases futuras que quedaban (reposición física /
+etiquetas+impresión). **Corrige la resolución anterior de I3**: investigación previa encontró que
+`fn_wms_elegir_ubicacion_picking` (camino de picking automático) sí filtra duro por
+`tipo_logico='picking'`, pero `fn_generar_tareas_reabastecimiento_umbral` (camino "por umbral") nunca
+tuvo ese filtro en SQL — el único bloqueo real era la UI de Config. Conclusión final: se construye un
+`tipo` nuevo (separación conceptual, no mezclar con la cola de Picking), pero se REUSA el mecanismo
+real de movimiento de stock (`fn_completar_tarea_reabastecimiento`, mig 297) tal cual. Regla de disparo
+MVP: tarea cuando el stock en la ubicación de exhibición del SKU llega a CERO, cantidad = todo lo
+disponible en el lote FEFO más próximo a vencer en depósito. `wms_tareas.tipo` suma
+`'reposicion_gondola'` (mismo precedente que `'armado'`, mig 345), `wms_tareas.origen` suma
+`'repositor'`. `fn_generar_tareas_reposicion_gondola(p_tenant_id)` — `SECURITY INVOKER` a propósito (la
+RLS de las 4 tablas que toca bloquea sola un tenant ajeno), recorre SKUs con exhibición asignada +
+`disponible_surtido=true` (REGLA #0: sin este flag el POS sigue diciendo "sin stock" aunque el stock
+físico ya esté en la góndola — ver [[wiki/features/ubicaciones]] mig 336), detecta góndola en cero,
+busca FEFO en depósito, dedupea, asigna vía `fn_repositor_elegir_asignado` (mig 354, reusado). Guard
+nuevo `fn_wms_tarea_asignado_valido_tenant` (trigger) en `wms_tareas.usuario_asignado_id` (columna
+existente desde mig 289, nunca había tenido este guard). `fn_repositor_elegir_asignado` gana `GRANT
+EXECUTE TO authenticated` (2do llamador: el generador, invocado directo por RPC). 🔒
+**`migration-reviewer`: 2 hallazgos reales corregidos en el momento** — `PedidosPage.tsx` no filtraba
+`reposicion_gondola` de su propia tab de WMS (fix incluido en la mig 356 de abajo) y dedupe no atómico
+(fix = mig 356). 2 notas sin corregir, bajo riesgo: el generador no filtra por sucursal visible del
+llamador (mismo patrón preexistente de `fn_generar_tareas_reabastecimiento_umbral`); `tareas_repositor`
+nunca tuvo `authenticated` explícito en su `REVOKE` (default-privileges igual le da INSERT/DELETE).
+Verificada con SQL real contra DEV (reparto por carga, movimiento físico de stock unidad por unidad,
+stock de origen a 0 preservando reserva, cancelación/reasignación, guard cross-tenant rechazado) y con
+Playwright real contra el navegador (tab "Reposición física", completar → toast + movimiento real en
+DB). Ver [[wiki/features/repositores]] y [[wiki/features/wms]].
 
 **354 (`354_repositores_fase2_asignacion.sql`) — 🟡 APLICADA Y VERIFICADA SOLO EN DEV
 (`gcmhzdedrkmmzfzfveig`), NO aplicada en PROD todavía — commiteada y pusheada a `origin/dev` (commit
@@ -253,6 +301,12 @@ mergeado limpio** (merge commit `7c26b3a641aafe3d39669badb7c61cf8e42ee3e5`), **t
 bloqueante del deploy: la prueba end-to-end con una orden real de TN/MELI** — requiere que GO o Fede
 generen una orden real en una tienda de test conectada con un kit mapeado (Claude Code no tiene ese
 acceso); la lógica de las RPCs ya está 100% verificada con datos de prueba reales.
+**001-356: 351 EN DEV Y PROD, 352-356 SOLO EN DEV.** Migs 355+356 son Repositores Fase 3 (reposición
+física a góndola + fix de dedupe) — misma sesión de Repositores continuada (cruzó medianoche a
+2026-08-12), commits `45a3c89b`/`d6f37b08` en `origin/dev`, sin mergear a `main` ni deployar — decisión
+pendiente de GO. Corrige la resolución anterior de I3 (el camino de reabastecimiento por umbral nunca
+tuvo el filtro de `tipo_logico` que sí tiene el picking automático). Queda **1 SOLA fase sin arrancar**
+del módulo: etiquetas + impresión.
 **001-354: 351 EN DEV Y PROD, 352-354 SOLO EN DEV.** Mig 354 es Repositores Fase 2 (asignación
 automática + reasignación manual) — misma sesión de Repositores continuada, commit `e200d673` en
 `origin/dev`, sin mergear a `main` ni deployar — decisión pendiente de GO. Fases que quedan sin

@@ -6,7 +6,140 @@ type: project
 
 ## ▶ RETOMAR ACÁ (post-/clear) — próxima sesión
 
-> ### ✅ ARRANCÁ ACÁ (2026-08-11 cont. 5) — 🆕 Repositores Fase 2 (mig 354): asignación automática + reasignación manual CONSTRUIDA Y VERIFICADA EN DEV — sigue sin deployar a PROD, decisión de GO pendiente
+> ### ✅ ARRANCÁ ACÁ (2026-08-11/12 cont. 6) — 🆕 Repositores Fase 3 (mig 355+356): reposición física a góndola CONSTRUIDA Y VERIFICADA EN DEV — sigue sin deployar a PROD, decisión de GO pendiente. Queda 1 SOLA fase sin arrancar (etiquetas+impresión)
+>
+> Continuación directa de la sesión de abajo (cont. 5, mismo día, cruzó medianoche a 2026-08-12). Se le
+> preguntó a GO con cuál de las 2 fases futuras seguir (reposición física a góndola / etiquetas +
+> impresión) — eligió **Reposición física a góndola**.
+>
+> #### 1. Investigación previa al diseño — corrige la resolución anterior de I3
+>
+> Antes de tocar código se investigó a fondo `wms_tareas`, `fn_wms_elegir_ubicacion_picking`,
+> `fn_generar_tareas_reabastecimiento_umbral`, el modelo de Ubicaciones post-rediseño,
+> `venta_item_despachos` y si el Motor de Rotación ya estaba construido. **Hallazgo clave que corrige
+> la I3 documentada en `relevamiento_repositores_respuestas.md` y en el comentario de la mig 352**: la
+> suposición original era que hacía falta "reusar el MECANISMO con un tipo de tarea nuevo" porque "un
+> replenishment nunca puede apuntar a una góndola" — eso es cierto SOLO para el camino de picking
+> automático (`fn_wms_elegir_ubicacion_picking`, que sí filtra duro por `tipo_logico='picking'`), pero
+> el camino de **reabastecimiento POR UMBRAL** (`fn_generar_tareas_reabastecimiento_umbral`) **nunca
+> tuvo ese filtro en SQL** — el único bloqueo real era la UI de Config, que solo ofrecía ubicaciones
+> picking en el selector de umbrales. Conclusión más precisa: sí se construye un `tipo` nuevo (por
+> separación conceptual — que la tarea viva en Repositores, no en la cola de Picking del depósito),
+> pero se **REUSA el mecanismo real de movimiento de stock** (`fn_completar_tarea_reabastecimiento`)
+> tal cual, sin duplicar su lógica.
+>
+> **Chequeo REGLA #0 antes de diseñar**: el stock que llega a una ubicación `tipo_logico='exhibicion'`
+> es INVISIBLE para una venta de mostrador normal si esa ubicación tiene `disponible_surtido=false`
+> (default desde la mig 336 para toda ubicación nueva) — confirmado grepeando ~9 queries de
+> `VentasPage.tsx`/`MasivoModal.tsx` que excluyen `disponible_surtido=false` del sourcing de venta. Sin
+> este chequeo, la reposición física movería stock real a un lugar donde el POS seguiría diciendo "sin
+> stock". El generador nuevo SOLO considera góndolas con `disponible_surtido=true` (toggle ya existente
+> en Config → Ubicaciones) — si el dueño no lo habilitó para una góndola, esa góndola simplemente no
+> genera tareas.
+>
+> #### 2. Mig `355_repositores_fase3_reposicion_gondola.sql`
+>
+> **Regla de disparo (MVP, cero configuración extra — mismo criterio que Fase 1)**: se genera una tarea
+> cuando el stock en la ubicación de exhibición de un SKU (asignada en Fase 1 vía
+> `producto_ubicacion_sucursal.ubicacion_exhibicion_id`) llega a CERO. No reusa
+> `producto_ubicacion_umbrales` (exigiría configurar un mínimo/máximo por SKU+góndola, trabajo extra no
+> pedido para esta fase) — la cantidad a mover es todo lo disponible en el lote FEFO más próximo a
+> vencer en depósito (`ubicaciones.subtipo_almacenamiento IN ('bulk','estiba','camara')`).
+>
+> - `wms_tareas.tipo` gana `'reposicion_gondola'` (mismo precedente que `'armado'`, mig 345) y
+>   `wms_tareas.origen` gana `'repositor'`.
+> - `fn_generar_tareas_reposicion_gondola(p_tenant_id)` — nueva, `SECURITY INVOKER` a propósito (si
+>   alguien pasa un tenant ajeno, la RLS de las 4 tablas que toca lo bloquea sola, verificado por el
+>   reviewer contra las policies reales). Recorre SKUs con exhibición asignada +
+>   `disponible_surtido=true`, detecta góndola en cero, busca FEFO en depósito, dedupea, arma la tarea
+>   con `usuario_asignado_id` completado por el MISMO reparto por carga de Fase 2
+>   (`fn_repositor_elegir_asignado`, mig 354) — reusa el pool de "quién hace trabajo de repositor".
+> - `fn_completar_tarea_reabastecimiento` (mig 297, el mecanismo real de mover stock con transferencia
+>   proporcional de reserva) se REUSA tal cual — único cambio, el guard de tipo pasa de
+>   `<> 'replenishment'` a `NOT IN ('replenishment', 'reposicion_gondola')`. Un solo lugar donde vive
+>   esta lógica de REGLA #0, no una copia paralela.
+> - Guard nuevo `fn_wms_tarea_asignado_valido_tenant` (trigger) en `wms_tareas.usuario_asignado_id` — la
+>   columna existe desde la mig 289 y ya se usaba en `PickingPage.tsx` (filtro "tareas mías o libres",
+>   pedido de GO 2026-08-08) pero nunca había tenido este guard de tenant.
+> - `fn_repositor_elegir_asignado` (mig 354) ganó un `GRANT EXECUTE TO authenticated` porque ahora tiene
+>   un 2do llamador (el generador, `SECURITY INVOKER` invocado directo por RPC) — antes solo la llamaban
+>   triggers `SECURITY DEFINER`.
+>
+> **Frontend**: `RepositoresPage.tsx` gana una sección nueva "Reposición física" (toggle junto a
+> "Precios/Etiquetas") con botón "Revisar reposición" (mismo patrón que "Revisar umbral" de Picking),
+> lista con origen→destino, completar/cancelar/reasignar (mismo patrón de Fase 2, motivo obligatorio).
+> `PickingPage.tsx` excluye `reposicion_gondola` de su cola (`.neq('tipo', 'reposicion_gondola')`) para
+> que no se mezcle con el trabajo de depósito.
+>
+> #### 3. `migration-reviewer` — 2 hallazgos reales corregidos en el momento
+>
+> 1. **`PedidosPage.tsx` tiene su PROPIA tab de WMS** (además de Picking) que también mostraba tareas
+>    `reposicion_gondola` sin filtrarlas — un click en "Confirmar retiro" ahí fallaba ruidosamente (no
+>    corrompía stock, pero confundía). Corregido con el mismo `.neq('tipo', 'reposicion_gondola')`.
+> 2. **Dedupe no atómico** en el generador (`CONTINUE WHEN EXISTS`, patrón heredado de
+>    `fn_generar_tareas_reabastecimiento_umbral`) — 2 llamadas concurrentes (doble click, 2 repositores)
+>    podían crear 2 tareas activas para el mismo producto+góndola, sobre-moviendo stock real. **Mig
+>    `356_fix_dedupe_reposicion_gondola.sql`**: índice único parcial
+>    `uq_wms_tareas_reposicion_gondola_activa` + `ON CONFLICT DO NOTHING`, mismo patrón que
+>    `uq_tareas_repositor_activa` de Fase 1 (mig 352). Verificado con 2 llamadas seguidas al generador:
+>    solo 1 tarea creada.
+>
+> **2 notas del reviewer, NO corregidas (bajo riesgo hoy, documentadas para más adelante)**:
+> - El generador no filtra por sucursal visible del llamador (mismo patrón preexistente de
+>   `fn_generar_tareas_reabastecimiento_umbral`) — en un tenant multi-sucursal con RLS restrictivo por
+>   usuario podría dar falsos negativos de dedupe o mezclar sucursal de origen/destino. Riesgo real bajo
+>   hoy (no hay tenant multi-sucursal + avanzado + WMS activo en producción todavía).
+> - `tareas_repositor` (Fase 1, mig 352) nunca tuvo `authenticated` explícito en el `REVOKE ALL FROM
+>   PUBLIC, anon` — por default-privileges de Supabase, `authenticated` igual tiene INSERT/DELETE ahí
+>   (contradice el comentario "sin INSERT a propósito" de mig 352). Bajo impacto (no toca
+>   stock/plata/fiscal), hallazgo adyacente no específico de esta fase.
+>
+> #### 4. Verificación real contra DEV (tenant "Almacén Jorgito", Sucursal Norte)
+>
+> - **SQL**: generación con reparto por carga confirmado (excluyó correctamente ADMIN/CONTADOR/RRHH del
+>   pool, igual que Fase 2); movimiento físico de stock verificado unidad por unidad (13 unidades
+>   RACK1→Góndola1, sumando 2 LPN de origen); stock de origen correctamente decrementado a 0
+>   preservando una línea reservada intacta; cancelación con motivo verificada; reasignación dentro del
+>   tenant verificada; guard cross-tenant RECHAZADO correctamente; dedupe atómico verificado (2 llamadas
+>   seguidas = 1 sola tarea).
+> - **Navegador** (Playwright ad-hoc, login real DUEÑO): tab "Reposición física" carga sin errores, card
+>   con origen→destino y cantidad, picker de reasignar con los usuarios reales del pool, reasignación
+>   con motivo → toast, completar → toast "Reposición completada — stock movido a la góndola" con
+>   movimiento real confirmado en DB.
+> - Todos los datos de prueba se limpiaron después (tareas, `producto_ubicacion_sucursal.
+>   ubicacion_exhibicion_id`, stock restaurado a sus cantidades originales, `actividad_log` de prueba
+>   borrado) — el tenant quedó exactamente como estaba antes de probar.
+>
+> #### 5. Housekeeping — `schema_full.sql` puesto al día
+>
+> Estaba desactualizado desde la mig 351 (le faltaban 351-356) porque el modo automático de
+> `dump-schema.mjs` necesita un `SUPABASE_ACCESS_TOKEN` no configurado en este entorno. GO pasó un
+> token temporal en el chat para usar UNA VEZ sin guardarlo — se usó inline (nunca escrito a disco) para
+> regenerar el archivo dos veces (tras mig 355 y tras mig 356), quedó current. **El token no se guardó
+> en ningún archivo ni quedó persistido.**
+>
+> #### 6. Commits de esta sesión (todos a `origin/dev`, ninguno a PROD)
+>
+> `36fc075b`/`4ebd7552` (fix seguridad mig 353 + wiki) → `e200d673`/`f29557f4` (Fase 2 mig 354 + wiki) →
+> `2037f3f9` (schema dump) → `45a3c89b` (Fase 3 mig 355) → `d6f37b08` (fix dedupe mig 356 +
+> `PedidosPage.tsx`) → `f72b5351` (schema dump final).
+>
+> #### 7. Estado de deploy y fase que queda
+>
+> **Mig 352-356, TODAS solo en DEV** (`gcmhzdedrkmmzfzfveig`) — Repositores (Fase 1+2+3) sigue sin
+> deployar a PROD, decisión de GO pendiente, sin respuesta todavía. **Queda 1 SOLA fase sin arrancar:
+> etiquetas + impresión** (diseño de etiqueta con precio por unidad grande, campo "Contenido" nuevo en
+> Identificación de producto, PDF pensado también para impresora térmica Zebra). Sin tag/release de
+> GitHub (nada fue a PROD esta sesión tampoco) — pendiente de confirmar con GO si corresponde igual, no
+> decidido.
+>
+> Ver `log.md` (2026-08-11, entrada al principio del archivo), `wiki/database/migraciones.md` (migs 355
+> y 356), [[wiki/features/repositores]] (sección "Fase 3"),
+> `sources/raw/relevamiento_repositores_respuestas.md` (nota de I3 actualizada).
+>
+> ---
+>
+> ### ✅ (histórico, 2026-08-11 cont. 5) — 🆕 Repositores Fase 2 (mig 354): asignación automática + reasignación manual CONSTRUIDA Y VERIFICADA EN DEV — este bloque quedó SUPERADO por el de arriba (cont. 6): Repositores Fase 3 (reposición física a góndola, mig 355+356) construida y verificada en DEV
 >
 > Continuación directa de la sesión de abajo (cont. 4, mismo día). Se le preguntó a GO con cuál de las 3
 > fases futuras de Repositores seguir (reposición física a góndola / asignación-reasignación / etiquetas

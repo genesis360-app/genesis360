@@ -2,7 +2,7 @@
 name: relevamiento_repositores_respuestas
 description: Respuestas de Fede al relevamiento del módulo Repositores (Fase E del backlog Comercial 25/7) + revisión de Claude + clarificaciones de GO. Reveló que "Fase E" son 4 proyectos con dependencias reales, no una sola fase.
 type: project
-status: 🟡 EN CONSTRUCCIÓN POR FASES — en vez de escribir un relevamiento final único, se partió en fases (F→A→B→C→D... mismo criterio que Comercial) por ser un módulo grande. Fase 1 (núcleo + disparadores + prioridad, mig 352+353) y Fase 2 (asignación automática + reasignación manual, mig 354) CONSTRUIDAS Y VERIFICADAS EN DEV el 2026-08-11 — ver [[wiki/features/repositores]]. NINGUNA deployada a PROD todavía. Fases futuras (reposición física/I3, etiquetas, notificaciones, reportes) sin arrancar — ahora 2, no 3.
+status: 🟡 EN CONSTRUCCIÓN POR FASES — en vez de escribir un relevamiento final único, se partió en fases (F→A→B→C→D... mismo criterio que Comercial) por ser un módulo grande. Fase 1 (núcleo + disparadores + prioridad, mig 352+353), Fase 2 (asignación automática + reasignación manual, mig 354) y Fase 3 (reposición física a góndola, mig 355+356) CONSTRUIDAS Y VERIFICADAS EN DEV el 2026-08-11/12 — ver [[wiki/features/repositores]]. NINGUNA deployada a PROD todavía. Solo queda 1 fase sin arrancar: etiquetas + impresión (notificaciones y reportes tampoco arrancaron). La Fase 3 CORRIGIÓ la resolución anterior de I3 (ver nota abajo, sección I).
 source: relevamiento-repositores-reglas-negocio.html
 updated: 2026-08-11
 ---
@@ -28,9 +28,9 @@ updated: 2026-08-11
 
 | # | Respuesta | Resumen |
 |---|---|---|
-| B1 | Dos disparadores automáticos: **cambio manual de precio** y **entrada a un estado con descuento**. Más una tarea continua/manual: mover stock de depósito a góndola. Módulo opcional (no todo negocio lo necesita) | 🟠 **Pregunta de Claude, respondida por GO (2026-08-01)**: ¿aplica a ediciones MASIVAS (import CSV, `MasivoModal`)? **Sí — una tarea por cada SKU**, confirmación individual obligatoria (requiere reetiquetado físico real). Puede consolidarse la IMPRESIÓN en una tanda (ver H3), pero no la confirmación. |
+| B1 | Dos disparadores automáticos: **cambio manual de precio** y **entrada a un estado con descuento**. Más una tarea continua/manual: mover stock de depósito a góndola. Módulo opcional (no todo negocio lo necesita) | ✅ **Los 2 disparadores de cartel construidos en la Fase 1 (mig 352)**; **la tarea de mover stock físico construida en la Fase 3 (mig 355+356, 2026-08-11/12)** — regla de disparo final: stock en la góndola llega a CERO (no config de mín/máx). 🟠 **Pregunta de Claude, respondida por GO (2026-08-01)**: ¿aplica a ediciones MASIVAS (import CSV, `MasivoModal`)? **Sí — una tarea por cada SKU**, confirmación individual obligatoria (requiere reetiquetado físico real). Puede consolidarse la IMPRESIÓN en una tanda (ver H3), pero no la confirmación. |
 | B2 | Sí — al **aprobarse** un cambio de estado (Fase B, mig 331) se genera automático la tarea de cambiar el cartel. Conecta con el motor de Rotación (ver más abajo) | Depende del Motor de Rotación (relevamiento derivado #3) para el detalle completo. |
-| B3 | Confirmado — reposición física de góndola es tarea del Repositor | — |
+| B3 | Confirmado — reposición física de góndola es tarea del Repositor | ✅ **Construido en la Fase 3 (mig 355+356, 2026-08-11/12)** — ver [[wiki/features/repositores]] → "Qué hace la Fase 3". |
 | B4 | **Gap real confirmado**: falta agregar a la configuración de Estados una regla para productos vencidos que NO tengan un estado con descuento ya configurado | Pendiente de diseño, se resuelve junto con el Motor de Rotación. |
 
 ## C. Contenido de la tarea
@@ -45,9 +45,9 @@ updated: 2026-08-11
 
 | # | Respuesta | Resumen |
 |---|---|---|
-| D1 | Confirmado: se reinterpreta la lógica actual para reposición inteligente, **aunque implique romper comportamiento existente**. Prioridad: valor agregado por sobre preservar código — "es el momento, antes de tener clientes en producción" | ✅ **Verificado por Claude contra PROD (no asumido)**: de 8 tenants, 1 solo "active" y es la propia cuenta de GO (4 ubicaciones, 31 líneas de stock, 22 ventas) — los 5 en trial están vacíos. La premisa de Fede se sostiene; único costo real es migrar a mano los datos de la cuenta de GO. |
-| D2 | **Ubicación única y obligatoria de exhibición por SKU** — necesaria para saber, según lo vendido de esa ubicación puntual, cuándo/cuánto reponer. Aclaración de GO (2026-08-01): es **por SUCURSAL**, y la obligatoriedad de unicidad **solo aplica a SKUs que TIENEN una ubicación de exhibición asignada** — Mostrador/Depósito no tiene esa obligación | Técnicamente viable HOY sin nada nuevo para el cálculo de reposición: `venta_item_despachos.ubicacion_id` ya registra de qué ubicación salió cada venta. El resto (modelo de datos de la ubicación única) se relevó a fondo en el relevamiento derivado #1 (Ubicaciones). |
-| D3 | Confirmado: se agrega **"Tipo de exhibición"** por ubicación/nivel — Góndola (autoservicio, necesita cartel) o Mostrador/Depósito (no necesita cartel). Se integra al rediseño de Ubicaciones | — |
+| D1 | Confirmado: se reinterpreta la lógica actual para reposición inteligente, **aunque implique romper comportamiento existente**. Prioridad: valor agregado por sobre preservar código — "es el momento, antes de tener clientes en producción" | ✅ **Verificado por Claude contra PROD (no asumido)**: de 8 tenants, 1 solo "active" y es la propia cuenta de GO (4 ubicaciones, 31 líneas de stock, 22 ventas) — los 5 en trial están vacíos. La premisa de Fede se sostiene; único costo real es migrar a mano los datos de la cuenta de GO. ✅ **Construido en la Fase 3 (mig 355+356)** — la reinterpretación real fue encontrar que `fn_generar_tareas_reabastecimiento_umbral` nunca tuvo el filtro de `tipo_logico='picking'` que sí tiene el picking automático, así que no hizo falta "romper" nada — ver corrección de I3 más abajo. |
+| D2 | **Ubicación única y obligatoria de exhibición por SKU** — necesaria para saber, según lo vendido de esa ubicación puntual, cuándo/cuánto reponer. Aclaración de GO (2026-08-01): es **por SUCURSAL**, y la obligatoriedad de unicidad **solo aplica a SKUs que TIENEN una ubicación de exhibición asignada** — Mostrador/Depósito no tiene esa obligación | Técnicamente viable HOY sin nada nuevo para el cálculo de reposición: `venta_item_despachos.ubicacion_id` ya registra de qué ubicación salió cada venta. El resto (modelo de datos de la ubicación única) se relevó a fondo en el relevamiento derivado #1 (Ubicaciones). ✅ **Construido**: `producto_ubicacion_sucursal.ubicacion_exhibicion_id` (mig 335) con UI desde la Fase 1 (mig 352), y es la columna que la Fase 3 lee para saber dónde reponer. |
+| D3 | Confirmado: se agrega **"Tipo de exhibición"** por ubicación/nivel — Góndola (autoservicio, necesita cartel) o Mostrador/Depósito (no necesita cartel). Se integra al rediseño de Ubicaciones | ✅ **Construido** — `ubicaciones.tipo_logico='exhibicion'` (mig 334/335, ✅ PROD desde v1.158.0), es el tipo que filtran tanto la Fase 1 (disparo de cartel) como la Fase 3 (destino de reposición física). |
 
 ## Rotación de productos con descuento (reemplaza la idea de GS1 por lote)
 
@@ -128,7 +128,7 @@ tensiona con mover esos datos a "nivel interno" — detalle completo en `log.md`
 |---|---|---|
 | I1 | Módulo único de Repositores, con pestañas internas: Precios/Etiquetas y Reposición física | — |
 | I2 | Gateado a **Modo Avanzado únicamente** por ahora. Se evalúa después qué partes bajan a Básico | — |
-| I3 | Sí — toda la lógica de reabastecimiento hacia góndola vive en Repositores; Inventario se ocupa de otras funciones | ⚠ **Pregunta de Claude sin cerrar del todo**: ya existe un tipo de tarea `replenishment` en WMS (bulk→zona picking, misma operación que "Mover LPN"). Falta decidir si la reposición a góndola de Repositores REUTILIZA ese mecanismo (agregando göndola como destino válido) o es un tercer tramo separado (bulk→picking por WMS, después picking→göndola por Repositores). Se resuelve al armar el relevamiento final de Repositores (punto 4), con las respuestas de Ubicaciones ya cerradas. |
+| I3 | Sí — toda la lógica de reabastecimiento hacia góndola vive en Repositores; Inventario se ocupa de otras funciones | ✅ **Construido en la Fase 3 (mig 355+356, 2026-08-11/12)** — resolución final, más precisa que la nota original de abajo ("Cierre de ambigüedades") y que el comentario de la mig 352: NO hacía falta un "tercer tramo separado". `fn_wms_elegir_ubicacion_picking` (camino de picking automático) sí filtra duro por `tipo_logico='picking'`, pero `fn_generar_tareas_reabastecimiento_umbral` (camino "por umbral") **nunca tuvo ese filtro en SQL** — el único bloqueo real era la UI de Config, que solo ofrecía ubicaciones picking en el selector de umbrales. Se construyó un `tipo` de tarea nuevo (`reposicion_gondola`) por separación conceptual (que la cola de Repositores no se mezcle con la de Picking del depósito), pero se REUSA tal cual el mecanismo real de movimiento de stock (`fn_completar_tarea_reabastecimiento`, mig 297), sin duplicar su lógica. Detalle completo en [[wiki/features/repositores]] → "Qué hace la Fase 3". |
 
 ## J. Notificaciones
 
@@ -267,6 +267,32 @@ guard de tenant) y con Playwright real contra el navegador (reasignación con mo
 `actividad_log`). De paso corrigió un bug de trazabilidad preexistente de la Fase 1 (completar/cancelar
 logueaba `entidad:'pedido'` en vez de un tipo propio).
 
-**Próxima sesión**: confirmar la decisión de GO sobre deployar Fase 1+2 a PROD, y si corresponde
-retomar, seguir con la fase de reposición física a góndola (construye I3) o la de etiquetas+impresión
-(G/H) — el orden entre esas dos (ahora las únicas 2 que quedan) no está decidido todavía.
+## ✅ Actualización 2026-08-11/12 (misma sesión continuada, cruzó medianoche) — Fase 3 (reposición física a góndola) CONSTRUIDA Y VERIFICADA EN DEV, I3 CORREGIDO con la resolución final
+
+Se le preguntó a GO con cuál de las 2 fases futuras que quedaban seguir (reposición física a góndola /
+etiquetas+impresión) — eligió **Reposición física a góndola** (I3/B1/B3 de este relevamiento).
+
+**I3 — resolución CORREGIDA.** La nota de la "Actualización 2026-08-11 (misma tarde)" de más abajo
+(y el comentario de la mig 352) daban por buena una lectura de I3 que resultó imprecisa: asumían que
+hacía falta un tipo de tarea nuevo *porque* un `replenishment` nunca puede apuntar a una góndola. Al
+investigar a fondo antes de diseñar la Fase 3 se encontró que esa afirmación es cierta **solo** para
+el camino de picking automático (`fn_wms_elegir_ubicacion_picking`, filtra duro por
+`tipo_logico='picking'`) — el camino de **reabastecimiento por umbral**
+(`fn_generar_tareas_reabastecimiento_umbral`) **nunca tuvo ese filtro en SQL**; el único bloqueo real
+era la UI de Config (el selector de umbrales solo ofrecía ubicaciones picking). Conclusión final, más
+precisa: no hacía falta un "tercer tramo separado" bulk→picking→góndola — sí se construyó un `tipo`
+de tarea nuevo (`reposicion_gondola`), pero por separación conceptual (que la cola de Repositores no
+se mezcle con la de Picking del depósito), no porque el mecanismo de movimiento de stock no sirviera.
+Se REUSA tal cual `fn_completar_tarea_reabastecimiento` (mig 297).
+
+**Fase 3 (mig 355+356) CONSTRUIDA Y VERIFICADA EN DEV** — detalle completo en
+[[wiki/features/repositores]] → "Qué hace la Fase 3". `origin/dev` commits `45a3c89b` (mig 355) y
+`d6f37b08` (fix de dedupe, mig 356). **NO deployada a PROD**, igual que Fases 1+2 — decisión de GO
+pendiente. Verificada con SQL real contra DEV (movimiento físico de stock unidad por unidad, reparto
+por carga, guard cross-tenant, dedupe atómico) y con Playwright real contra el navegador (tab
+"Reposición física", completar → toast + movimiento real en DB).
+
+**Próxima sesión**: confirmar la decisión de GO sobre deployar Fase 1+2+3 a PROD, y si corresponde
+retomar, construir la última fase que queda: **etiquetas + impresión** (G/H de este relevamiento —
+diseño de etiqueta con precio por unidad grande, campo "Contenido" nuevo en Identificación de
+producto, PDF pensado también para impresora térmica Zebra).
